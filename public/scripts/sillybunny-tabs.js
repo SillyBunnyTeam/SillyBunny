@@ -15,6 +15,13 @@ import {
     PERSONA_APPENDICES_SELECTIONS_KEY,
 } from './sillybunny-conversation/constants.js';
 import { conversationState } from './sillybunny-conversation/state.js';
+import {
+    resolveCharacterBadgeMirrorPlan,
+    resolveTopbarAdoptionPlan,
+    TOPBAR_ADOPTED_MARKER_ATTRIBUTE,
+    TOPBAR_ADOPTION_ATTRIBUTE,
+    TOPBAR_EXTENSION_SLOT_ID,
+} from './topbar-extension-slot/index.js';
 import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
 import { flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced } from '../script.js';
@@ -821,6 +828,11 @@ const sbState = {
         syncFrame: 0,
         fitFrame: 0,
         brandWidth: 0,
+    },
+    topbarExtensions: {
+        syncFrame: 0,
+        adopting: false,
+        observer: null,
     },
     bottomBarScale: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.bottomBarScale)),
     desktopButtonScale: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.desktopButtonScale)),
@@ -1881,6 +1893,52 @@ function moveElementAfter(element, referenceElement, parent) {
     parent.insertBefore(element, referenceElement.nextSibling);
 }
 
+/*
+ * Everything upstream (plus the bundled palette button) ships in #rightSendForm. The phone
+ * composer sizes that rail for exactly two buttons, so anything else there is third-party.
+ */
+const SB_COMPOSER_NATIVE_RIGHT_RAIL_IDS = Object.freeze([
+    'stscript_continue',
+    'stscript_pause',
+    'stscript_stop',
+    'mes_stop',
+    'mes_impersonate',
+    'mes_continue',
+    'sb_prose_polisher_but',
+    'send_but',
+    'qig-input-btn',
+]);
+
+const SB_COMPOSER_ADOPTED_ATTRIBUTE = 'data-sb-composer-adopted';
+
+/**
+ * Relocates third-party composer buttons between the rails. The right rail is a fixed two-button
+ * grid column with no overflow, so extension buttons there used to be hidden outright on phones;
+ * the left rail already scrolls, so it can hold any number of them. Desktop keeps them where the
+ * extension put them.
+ */
+function placeComposerExtensionButtons(leftForm, rightForm) {
+    const mobile = isMobileViewport();
+
+    if (mobile) {
+        for (const child of Array.from(rightForm.children)) {
+            if (!(child instanceof HTMLElement) || SB_COMPOSER_NATIVE_RIGHT_RAIL_IDS.includes(child.id)) {
+                continue;
+            }
+
+            child.setAttribute(SB_COMPOSER_ADOPTED_ATTRIBUTE, 'right');
+            leftForm.appendChild(child);
+        }
+
+        return;
+    }
+
+    for (const child of Array.from(leftForm.querySelectorAll(`:scope > [${SB_COMPOSER_ADOPTED_ATTRIBUTE}='right']`))) {
+        child.removeAttribute(SB_COMPOSER_ADOPTED_ATTRIBUTE);
+        rightForm.appendChild(child);
+    }
+}
+
 function placeComposerControls() {
     const leftForm = document.getElementById('leftSendForm');
     const rightForm = document.getElementById('rightSendForm');
@@ -1903,6 +1961,7 @@ function placeComposerControls() {
     }
 
     moveElementBefore(paletteButton, rightForm, sendButton);
+    placeComposerExtensionButtons(leftForm, rightForm);
 }
 
 function queueComposerControlPlacement() {
@@ -2058,8 +2117,22 @@ function setCharacterDrawerRightLock(enabled, { persist = true } = {}) {
     syncCharacterDrawerLockButton();
 }
 
+/*
+ * Identity-based ownership for the top-bar adoption pass. An id prefix is spoofable and absent
+ * on id-less nodes, so registering what our own factory built is the only reliable test. Any
+ * future SillyBunny element that becomes a direct child of #top-bar or #top-settings-holder
+ * must come from createElement() or it will be adopted as if it were third-party markup.
+ */
+const sbOwnedElements = new WeakSet();
+
+function isSillyBunnyOwnedElement(node) {
+    return node instanceof Element && sbOwnedElements.has(node);
+}
+
 function createElement(tagName, { id = '', className = '', text = '', html = '', attrs = {} } = {}) {
     const element = document.createElement(tagName);
+
+    sbOwnedElements.add(element);
 
     if (id) {
         element.id = id;
@@ -4935,7 +5008,11 @@ function getTopbarGroupOrder({ iconsOnly, mobile }) {
         customize.leadId,
         customize.railId,
     ];
-    const right = [];
+    // The extension slot leads the right group in every mode: syncTopbarGroupOrder() re-appends
+    // every listed id, so an unlisted element would be pushed to the front of the group as a side
+    // effect. It stays out of the left group because that one scrolls in cramped mode, which would
+    // clip an adopted extension's dropdown.
+    const right = [TOPBAR_EXTENSION_SLOT_ID];
 
     if (iconsOnly) {
         right.push(...quickAccessIds);
@@ -8893,6 +8970,8 @@ window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener('change', () => {
     // whole preference re-applies rather than just the group order.
     applyTopbarIconsOnlyPreference();
     queueTopbarBrandFit();
+    // Crossing the breakpoint also decides which rail third-party composer buttons belong in.
+    queueComposerControlPlacement();
 });
 
 document.addEventListener('click', (e) => {
@@ -9356,10 +9435,10 @@ function buildTopBar() {
     }
 
     // SillyBunny: preserve children injected by third-party extensions before wiping
-    // the bar. Re-append them after the shell layout is built so extensions targeting
-    // #top-bar (e.g. CharacterLibrary in standalone mode) aren't orphaned.
+    // the bar. They are adopted into the extension slot once the shell layout exists, so
+    // extensions targeting #top-bar (e.g. CharacterLibrary in standalone mode) aren't orphaned.
     const preservedExtensionChildren = Array.from(topBar.children)
-        .filter(child => !(child instanceof HTMLElement) || !child.id.startsWith('sb-'));
+        .filter(child => child instanceof HTMLElement && !isSillyBunnyOwnedElement(child));
 
     topBar.replaceChildren();
 
@@ -9370,6 +9449,10 @@ function buildTopBar() {
     const leftGroup = createElement('div', { className: 'sb-topbar-group sb-topbar-group-left' });
     const centerGroup = createElement('div', { className: 'sb-topbar-brand' });
     const rightGroup = createElement('div', { className: 'sb-topbar-group sb-topbar-group-right' });
+    const extensionSlot = createElement('div', {
+        id: TOPBAR_EXTENSION_SLOT_ID,
+        attrs: { 'data-sb-topbar-slot-empty': 'true' },
+    });
 
     const mobileButton = createElement('button', {
         id: 'sb-hamburger',
@@ -9488,12 +9571,13 @@ function buildTopBar() {
     const charactersDivider = createTopbarClusterDivider('sb-topbar-divider-characters');
 
     leftGroup.append(mobileButton, leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
-    rightGroup.append(desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
+    rightGroup.append(extensionSlot, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 
     stack.append(primaryRow, searchRow);
-    topBar.append(stack, ...preservedExtensionChildren);
+    topBar.append(stack);
+    adoptTopbarExtensionNodes(preservedExtensionChildren);
 
     // The anchor that leads a cluster carries the wider seam that separates the clusters.
     for (const cluster of SB_TOPBAR_CLUSTERS) {
@@ -9503,6 +9587,7 @@ function buildTopBar() {
     observeProxyButton('sb-left-shell-toggle', getShellConfig('left').hostIconSelector);
     observeProxyButton('sb-right-shell-toggle', getShellConfig('right').hostIconSelector);
     observeProxyButton('sb-character-toggle', '#rightNavDrawerIcon');
+    bindTopbarExtensionAdoption();
     bindTopBarBrand();
     updateTopBarBrand();
     updateTopbarUtilityButtons();
@@ -9546,6 +9631,189 @@ function hideHostToggles() {
     const worldInfoDrawer = document.getElementById('WI-SP-button');
     worldInfoDrawer?.classList.add('sb-drawer-host');
     worldInfoDrawer?.querySelector(':scope > .drawer-toggle')?.classList.add('sb-hidden-toggle');
+}
+
+function getTopbarExtensionSlot() {
+    const slot = document.getElementById(TOPBAR_EXTENSION_SLOT_ID);
+
+    return slot instanceof HTMLElement ? slot : null;
+}
+
+function getNativeCharacterDrawerIcon() {
+    const icon = getCharacterDrawerHost()?.querySelector(':scope #rightNavDrawerIcon')
+        ?? document.getElementById('rightNavDrawerIcon');
+
+    return icon instanceof HTMLElement ? icon : null;
+}
+
+/**
+ * Describes a DOM node for the pure adoption rules. Keeping the DOM reads here lets the
+ * decision logic in topbar-extension-slot/index.js stay importable and unit testable.
+ */
+function describeTopbarNode(node, index) {
+    const isElement = node instanceof Element;
+
+    return {
+        node,
+        key: isElement && node.id ? `id:${node.id}` : `index:${index}`,
+        isElement,
+        id: isElement ? node.id : '',
+        tagName: isElement ? node.tagName : '',
+        classNames: isElement ? Array.from(node.classList) : [],
+        adoptAttribute: isElement ? node.getAttribute(TOPBAR_ADOPTION_ATTRIBUTE) : null,
+        isSillyBunnyOwned: isSillyBunnyOwnedElement(node),
+    };
+}
+
+function describeCharacterBadge(node, index) {
+    const descriptor = describeTopbarNode(node, index);
+
+    return {
+        ...descriptor,
+        key: `badge:${index}`,
+        signature: `${descriptor.tagName}:${descriptor.classNames.join(' ')}`,
+    };
+}
+
+/**
+ * Mirrors extension badges from the ghosted native Characters icon onto the visible proxy
+ * button. CharacterLibrary appends its chevron to #rightNavDrawerIcon, which lives inside
+ * .sb-ghost-toggle and is therefore invisible, so the affordance never reaches the user.
+ * The badges are moved rather than copied: the extension flips visibility through a global
+ * document.querySelector, which only ever reaches the first copy.
+ */
+function syncCharacterToggleBadges() {
+    const drawerIcon = getNativeCharacterDrawerIcon();
+    const proxyButton = document.getElementById('sb-character-toggle');
+
+    if (!(drawerIcon instanceof HTMLElement) || !(proxyButton instanceof HTMLElement)) {
+        return;
+    }
+
+    const iconNodes = Array.from(drawerIcon.children);
+    const hostNodes = Array.from(proxyButton.querySelectorAll(`:scope > [${TOPBAR_ADOPTED_MARKER_ATTRIBUTE}='true']`));
+    const iconBadges = iconNodes.map((node, index) => describeCharacterBadge(node, index));
+    const hostBadges = hostNodes.map((node, index) => describeCharacterBadge(node, `host-${index}`));
+    const plan = resolveCharacterBadgeMirrorPlan({ iconBadges, hostBadges });
+    const byKey = new Map([...iconBadges, ...hostBadges].map(badge => [badge.key, badge.node]));
+
+    for (const key of plan.removeKeys) {
+        byKey.get(key)?.remove();
+    }
+
+    for (const key of plan.moveKeys) {
+        const badge = byKey.get(key);
+
+        if (badge instanceof HTMLElement) {
+            badge.setAttribute(TOPBAR_ADOPTED_MARKER_ATTRIBUTE, 'true');
+            proxyButton.appendChild(badge);
+        }
+    }
+
+    proxyButton.classList.toggle(
+        'sb-has-adopted-badge',
+        proxyButton.querySelector(`:scope > [${TOPBAR_ADOPTED_MARKER_ATTRIBUTE}='true']`) !== null,
+    );
+}
+
+function syncTopbarExtensionSlotEmptyState() {
+    const slot = getTopbarExtensionSlot();
+
+    if (!slot) {
+        return;
+    }
+
+    slot.dataset.sbTopbarSlotEmpty = String(slot.children.length === 0);
+}
+
+/**
+ * Moves third-party top-bar controls into the shell's own bar. Upstream's bare
+ * `.drawer { width: 100% }` plus this fork's fixed, click-through #top-settings-holder means an
+ * injected button otherwise stretches across the whole strip and eats every click meant for the
+ * bar underneath it (Sillyanonymous/SillyTavern-CharacterLibrary).
+ */
+function adoptTopbarExtensionNodes(extraNodes = []) {
+    const slot = getTopbarExtensionSlot();
+
+    if (!slot || sbState.topbarExtensions.adopting) {
+        return;
+    }
+
+    sbState.topbarExtensions.adopting = true;
+
+    try {
+        const candidates = [...extraNodes];
+
+        for (const source of [getCanonicalTopSettingsHolder(), document.getElementById('top-bar')]) {
+            if (source instanceof HTMLElement) {
+                candidates.push(...source.children);
+            }
+        }
+
+        const descriptors = candidates.map((node, index) => describeTopbarNode(node, index));
+        // Only id-bearing slot children can be matched by key; id-less descriptors fall back to a
+        // per-pass index, which would collide across the two lists. Those are covered by the
+        // parentElement check below instead.
+        const slotChildKeys = Array.from(slot.children)
+            .filter(node => node instanceof Element && node.id)
+            .map(node => `id:${node.id}`);
+        const plan = resolveTopbarAdoptionPlan({ nodes: descriptors, slotChildKeys });
+        const byKey = new Map(descriptors.map(descriptor => [descriptor.key, descriptor.node]));
+
+        for (const key of plan.adoptKeys) {
+            const node = byKey.get(key);
+
+            // The parent check -- not a "already in place" helper -- is what terminates repeated
+            // passes: appendChild on a node the slot already holds still mutates childList.
+            if (node instanceof HTMLElement && node.parentElement !== slot) {
+                slot.appendChild(node);
+            }
+        }
+
+        syncCharacterToggleBadges();
+        syncTopbarExtensionSlotEmptyState();
+    } finally {
+        sbState.topbarExtensions.adopting = false;
+        // Drop the records our own moves just produced before they reach the callback.
+        sbState.topbarExtensions.observer?.takeRecords();
+    }
+
+    queueTopbarBrandFit();
+}
+
+function queueTopbarExtensionAdoption() {
+    if (sbState.topbarExtensions.syncFrame) {
+        return;
+    }
+
+    sbState.topbarExtensions.syncFrame = window.requestAnimationFrame(() => {
+        sbState.topbarExtensions.syncFrame = 0;
+        adoptTopbarExtensionNodes();
+    });
+}
+
+function bindTopbarExtensionAdoption() {
+    if (!getTopbarExtensionSlot()) {
+        return;
+    }
+
+    if (!(sbState.topbarExtensions.observer instanceof MutationObserver)) {
+        sbState.topbarExtensions.observer = new MutationObserver(() => queueTopbarExtensionAdoption());
+    }
+
+    const observer = sbState.topbarExtensions.observer;
+
+    observer.disconnect();
+
+    // childList only: extensions inject direct children, and subtree on #top-bar would fire on
+    // every chatbar and search re-render inside #sb-topbar-stack.
+    for (const target of [getCanonicalTopSettingsHolder(), document.getElementById('top-bar'), getNativeCharacterDrawerIcon()]) {
+        if (target instanceof HTMLElement) {
+            observer.observe(target, { childList: true });
+        }
+    }
+
+    queueTopbarExtensionAdoption();
 }
 
 function createShellPanel(tabConfig) {

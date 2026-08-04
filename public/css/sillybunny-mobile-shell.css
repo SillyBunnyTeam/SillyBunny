@@ -128,15 +128,15 @@
         gap: 3px !important;
     }
 
-    #rightSendForm > div:not(#send_but):not(#mes_stop):not(#qig-input-btn):not(.stscript_btn) {
-        display: none !important;
-    }
-
-    /* SillyBunny: the STscript execution play/pause/stop controls (.stscript_btn)
-       are unused by this fork's roleplay-focused audience. mobile-styles.css
-       forces them to display:flex (see #533), which lets them overlap the
-       composer textarea on mobile. Hide them unconditionally here -- this sheet
-       loads after mobile-styles.css so the !important wins. */
+    /* SillyBunny: name what the phone composer hides instead of allow-listing what it keeps.
+       The old allow-list also swallowed every third-party button injected into the right rail;
+       those are now relocated into the scrollable left rail by placeComposerControls().
+       The STscript play/pause/stop controls are unused by this fork's roleplay-focused audience
+       and mobile-styles.css forces them to display:flex (see #533), where they overlap the
+       textarea -- this sheet loads after it so the !important wins. */
+    #rightSendForm > #mes_impersonate,
+    #rightSendForm > #mes_continue,
+    #rightSendForm > #sb_prose_polisher_but,
     #rightSendForm > .stscript_btn {
         display: none !important;
     }
@@ -1322,6 +1322,15 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         width: var(--sb-mobile-toggle-size);
         height: var(--sb-mobile-toggle-size);
         min-height: var(--sb-mobile-toggle-size);
+    }
+
+    /* Adopted third-party buttons follow the same target size as everything else in the bar.
+       This sheet loads after sillybunny-tabs.css, so the equal-specificity tie goes here. */
+    #sb-topbar-extension-slot .drawer-icon,
+    #sb-topbar-extension-slot .menu_button {
+        width: var(--sb-mobile-toggle-size);
+        height: var(--sb-mobile-toggle-size);
+        min-width: var(--sb-mobile-toggle-size);
     }
 
     /* Visibility and seam handling live in sillybunny-tabs.css; the phone bar only shortens

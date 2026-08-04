@@ -73,11 +73,14 @@
             }
         }
 
-        /* Declarative visibility rules based on active tab */
-        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="appearance"] .inline-drawer:not([data-settings-tab="appearance"]),
-        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="chat-writing"] .inline-drawer:not([data-settings-tab="chat-writing"]),
-        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="system-device"] .inline-drawer:not([data-settings-tab="system-device"]),
-        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="cache-account"] .inline-drawer:not([data-settings-tab="cache-account"]) {
+        /* Declarative visibility rules based on active tab.
+           Only drawers that carry a tag are hidden. An untagged drawer -- a third-party one that
+           landed here after tagDrawersWithCategories() last ran -- stays visible rather than
+           vanishing from all four tabs; tagUntaggedDrawers() then settles it into one. */
+        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="appearance"] .inline-drawer[data-settings-tab]:not([data-settings-tab="appearance"]),
+        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="chat-writing"] .inline-drawer[data-settings-tab]:not([data-settings-tab="chat-writing"]),
+        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="system-device"] .inline-drawer[data-settings-tab]:not([data-settings-tab="system-device"]),
+        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="cache-account"] .inline-drawer[data-settings-tab]:not([data-settings-tab="cache-account"]) {
             display: none !important;
         }
 
@@ -377,6 +380,39 @@
         }
     }
 
+    // Third-party extensions append their settings drawers long after initialize() runs, and the
+    // map above only knows this fork's own drawers. Give the leftovers a home so they show up in
+    // exactly one tab instead of every tab.
+    const DEFAULT_SETTINGS_TAB = 'system-device';
+
+    function tagUntaggedDrawers() {
+        const content = document.getElementById('user-settings-block-content');
+        if (!content) return;
+
+        content.querySelectorAll('.inline-drawer:not([data-settings-tab])').forEach(drawer => {
+            // A drawer nested inside an already-tagged section rides its parent's visibility.
+            if (drawer.parentElement?.closest('.inline-drawer[data-settings-tab]')) return;
+            drawer.setAttribute('data-settings-tab', DEFAULT_SETTINGS_TAB);
+        });
+    }
+
+    function watchForLateDrawers() {
+        const content = document.getElementById('user-settings-block-content');
+        if (!content || typeof MutationObserver === 'undefined') return;
+
+        let queued = 0;
+        const observer = new MutationObserver(() => {
+            if (queued) return;
+            queued = requestAnimationFrame(() => {
+                queued = 0;
+                tagDrawersWithCategories();
+                tagUntaggedDrawers();
+            });
+        });
+
+        observer.observe(content, { childList: true, subtree: true });
+    }
+
     function createTabBar() {
         const userSettingsContent = document.getElementById('user-settings-block-content');
         if (!userSettingsContent) return;
@@ -455,8 +491,10 @@
             promoteNestedDrawers();
             promoteCacheAccount();
             tagDrawersWithCategories();
+            tagUntaggedDrawers();
             createTabBar();
             setupSearchIntegration();
+            watchForLateDrawers();
         } catch (error) {
             console.error('[SillyBunny Settings Tabs] Initialization failed:', error);
         }
