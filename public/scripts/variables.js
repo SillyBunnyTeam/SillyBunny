@@ -13,6 +13,7 @@ import { SlashCommandParser } from './slash-commands/SlashCommandParser.js';
 import { slashCommandReturnHelper } from './slash-commands/SlashCommandReturnHelper.js';
 import { SlashCommandScope } from './slash-commands/SlashCommandScope.js';
 import { isFalseBoolean, convertValueType, isTrueBoolean } from './utils.js';
+import { readVariableValue } from './slash-commands/SlashCommandRuntimeUtils.js';
 
 /** @typedef {import('./slash-commands/SlashCommandParser.js').NamedArguments} NamedArguments */
 /** @typedef {import('./slash-commands/SlashCommand.js').UnnamedArguments} UnnamedArguments */
@@ -42,7 +43,7 @@ export function getLocalVariable(name, args = {}) {
         }
     }
 
-    return (localVariable?.trim?.() === '' || isNaN(Number(localVariable))) ? (localVariable || '') : Number(localVariable);
+    return readVariableValue(localVariable);
 }
 
 export function setLocalVariable(name, value, args = {}) {
@@ -99,7 +100,7 @@ export function getGlobalVariable(name, args = {}) {
         }
     }
 
-    return (globalVariable?.trim?.() === '' || isNaN(Number(globalVariable))) ? (globalVariable || '') : Number(globalVariable);
+    return readVariableValue(globalVariable);
 }
 
 export function setGlobalVariable(name, value, args = {}) {
@@ -491,6 +492,19 @@ export function parseBooleanOperands(args) {
  * @param {string|number?} b The right operand
  * @returns {boolean} True if the rule yields true, false otherwise
  */
+/**
+ * Whether an operand can take part in a numeric comparison.
+ *
+ * @param {any} value
+ * @returns {boolean}
+ */
+function isNumericOperand(value) {
+    if (typeof value === 'number') {
+        return true;
+    }
+    return typeof value === 'string' && value.trim() !== '' && !isNaN(Number(value));
+}
+
 export function evalBoolean(rule, a, b) {
     if (a === undefined) {
         throw new Error('Left operand is not provided');
@@ -514,7 +528,11 @@ export function evalBoolean(rule, a, b) {
     // If no rule was provided, we are implicitly using 'eq', as defined for the slash commands
     rule ??= 'eq';
 
-    if (typeof a === 'number' && typeof b === 'number') {
+    // SillyBunny: upstream tests `typeof === 'number'` here, which relied on the variable
+    // readers coercing on the way out. They no longer do that for values whose text would
+    // change (see readVariableValue), so a padded '007' would reach the string switch and
+    // throw for gt/gte/lt/lte. Accept numeric-looking strings so the comparison still runs.
+    if (isNumericOperand(a) && isNumericOperand(b)) {
         // only do numeric comparison if both operands are numbers
         const aNumber = Number(a);
         const bNumber = Number(b);

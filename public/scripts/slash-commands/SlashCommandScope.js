@@ -1,5 +1,5 @@
 import { SlashCommandClosure } from './SlashCommandClosure.js';
-import { convertValueType } from './SlashCommandRuntimeUtils.js';
+import { convertValueType, readVariableValue } from './SlashCommandRuntimeUtils.js';
 
 export class SlashCommandScope {
     /** @type {string[]} */ variableNames = [];
@@ -98,7 +98,7 @@ export class SlashCommandScope {
                 return v ?? '';
             } else {
                 const value = this.variables[key];
-                return (value?.trim?.() === '' || isNaN(Number(value))) ? (value || '') : Number(value);
+                return readVariableValue(value);
             }
         }
         if (this.parent) {

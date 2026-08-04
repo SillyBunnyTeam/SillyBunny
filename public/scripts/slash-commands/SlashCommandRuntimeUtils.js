@@ -10,6 +10,34 @@ export function isTrueBoolean(arg) {
     return ['on', 'true', '1'].includes(arg?.trim?.()?.toLowerCase?.() ?? '');
 }
 
+/**
+ * Reads a stored variable value, converting it to a number where that is lossless.
+ *
+ * SillyBunny diverges from upstream here: upstream returns Number(value) for anything
+ * numeric-looking, which rewrites '00' to 0 and '0.50' to 0.5 on every read. The stored
+ * value is fine; only the read loses the text. Converting only when the number renders
+ * back to the same characters keeps every genuinely numeric value behaving as before.
+ *
+ * Lives in this leaf module because both readers need it and variables.js imports
+ * SlashCommandScope.js, so a shared helper in either of those would be circular.
+ *
+ * @param {any} value Raw stored value.
+ * @returns {any} The number, or the value unchanged.
+ */
+export function readVariableValue(value) {
+    if (value?.trim?.() === '' || isNaN(Number(value))) {
+        return value || '';
+    }
+
+    // Non-strings arrive from the index path via JSON.parse. Number(false) is 0 but
+    // Number('false') is NaN, so they must not be compared as text.
+    if (typeof value === 'string' && String(Number(value)) !== value.trim()) {
+        return value;
+    }
+
+    return Number(value);
+}
+
 export function uuidv4() {
     if ('randomUUID' in crypto) {
         return crypto.randomUUID();
