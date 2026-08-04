@@ -1021,13 +1021,11 @@
     .menu_button:not(.sb-server-action):not(.api_button):not(.openrouter_authorize):not(#bg_selection_mode_button):not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child),
     .menu_button:not(.sb-server-action):not(.api_button):not(.openrouter_authorize):not(#bg_selection_mode_button):not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> input[hidden] + :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):last-child),
     .right_menu_button:not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child) {
-        width: var(--sb-control-icon-physical-size, 44px);
+        width: auto;
         min-width: var(--sb-control-icon-physical-size, 44px);
-        max-width: var(--sb-control-icon-physical-size, 44px);
-        height: var(--sb-control-icon-physical-size, 44px);
+        height: auto;
         min-height: var(--sb-control-icon-physical-size, 44px);
-        max-height: var(--sb-control-icon-physical-size, 44px);
-        padding: 0 !important;
+        padding: 0 6px !important;
     }
 
     .menu_button.sb-accent-preset,
