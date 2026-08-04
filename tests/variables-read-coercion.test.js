@@ -1,6 +1,10 @@
 import { describe, expect, test } from '@jest/globals';
 
-import { readVariableValue } from '../public/scripts/slash-commands/SlashCommandRuntimeUtils.js';
+import {
+    booleanOperandToString,
+    isNumericZero,
+    readVariableValue,
+} from '../public/scripts/slash-commands/SlashCommandRuntimeUtils.js';
 
 // readVariableValue backs all three variable readers: getLocalVariable and
 // getGlobalVariable in public/scripts/variables.js, and SlashCommandScope.getVariable
@@ -122,5 +126,24 @@ describe('arithmetic callers still work', () => {
         // yield 0 once Number() is applied, which is all the caller does with it.
         expect(Number(readVariableValue('0') || 0)).toBe(0);
         expect(Number(readVariableValue('00') || 0)).toBe(0);
+    });
+});
+
+describe('boolean callers retain upstream semantics', () => {
+    test('alternate numeric spellings of zero stay falsy', () => {
+        for (const value of ['00', '-0', '+0', '0.0', '0e0', '0x0']) {
+            expect(readVariableValue(value)).toBe(value);
+            expect(isNumericZero(readVariableValue(value))).toBe(true);
+        }
+        expect(isNumericZero('0.01')).toBe(false);
+        expect(isNumericZero('off')).toBe(false);
+    });
+
+    test('containment uses the numeric spelling upstream readers produced', () => {
+        expect(booleanOperandToString(readVariableValue('007'))).toBe('7');
+        expect(booleanOperandToString(readVariableValue('1e3'))).toBe('1000');
+        expect(booleanOperandToString(readVariableValue('0.50'))).toBe('0.5');
+        expect(booleanOperandToString(readVariableValue('+Infinity'))).toBe('null');
+        expect(booleanOperandToString('Needle')).toBe('needle');
     });
 });

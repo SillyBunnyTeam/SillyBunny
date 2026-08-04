@@ -38,6 +38,41 @@ export function readVariableValue(value) {
     return Number(value);
 }
 
+/**
+ * Whether an operand can take part in a numeric comparison.
+ *
+ * @param {any} value
+ * @returns {boolean}
+ */
+export function isNumericOperand(value) {
+    if (typeof value === 'number') {
+        return true;
+    }
+    return typeof value === 'string' && value.trim() !== '' && !isNaN(Number(value));
+}
+
+/**
+ * Whether an operand is a numeric representation of zero.
+ *
+ * @param {any} value
+ * @returns {boolean}
+ */
+export function isNumericZero(value) {
+    return isNumericOperand(value) && Number(value) === 0;
+}
+
+/**
+ * Converts a boolean operand to the string spelling used before formatted
+ * numeric variable values were preserved on read.
+ *
+ * @param {any} value
+ * @returns {string}
+ */
+export function booleanOperandToString(value) {
+    const comparableValue = isNumericOperand(value) ? Number(value) : value;
+    return (typeof comparableValue === 'string' ? comparableValue : JSON.stringify(comparableValue)).toLowerCase();
+}
+
 export function uuidv4() {
     if ('randomUUID' in crypto) {
         return crypto.randomUUID();

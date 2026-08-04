@@ -13,7 +13,7 @@ import { SlashCommandParser } from './slash-commands/SlashCommandParser.js';
 import { slashCommandReturnHelper } from './slash-commands/SlashCommandReturnHelper.js';
 import { SlashCommandScope } from './slash-commands/SlashCommandScope.js';
 import { isFalseBoolean, convertValueType, isTrueBoolean } from './utils.js';
-import { readVariableValue } from './slash-commands/SlashCommandRuntimeUtils.js';
+import { booleanOperandToString, isNumericOperand, isNumericZero, readVariableValue } from './slash-commands/SlashCommandRuntimeUtils.js';
 
 /** @typedef {import('./slash-commands/SlashCommandParser.js').NamedArguments} NamedArguments */
 /** @typedef {import('./slash-commands/SlashCommand.js').UnnamedArguments} UnnamedArguments */
@@ -492,19 +492,6 @@ export function parseBooleanOperands(args) {
  * @param {string|number?} b The right operand
  * @returns {boolean} True if the rule yields true, false otherwise
  */
-/**
- * Whether an operand can take part in a numeric comparison.
- *
- * @param {any} value
- * @returns {boolean}
- */
-function isNumericOperand(value) {
-    if (typeof value === 'number') {
-        return true;
-    }
-    return typeof value === 'string' && value.trim() !== '' && !isNaN(Number(value));
-}
-
 export function evalBoolean(rule, a, b) {
     if (a === undefined) {
         throw new Error('Left operand is not provided');
@@ -518,6 +505,10 @@ export function evalBoolean(rule, a, b) {
                 const resultOnTruthy = rule !== 'not';
                 if (isTrueBoolean(String(a))) return resultOnTruthy;
                 if (isFalseBoolean(String(a))) return !resultOnTruthy;
+                // Variable reads preserve numeric text such as "00" so formatted
+                // values survive round-trips. Keep upstream truthiness for those
+                // values: every numeric spelling of zero was previously read as 0.
+                if (isNumericZero(a)) return !resultOnTruthy;
                 return a ? resultOnTruthy : !resultOnTruthy;
             }
             default:
@@ -560,9 +551,11 @@ export function evalBoolean(rule, a, b) {
         }
     }
 
-    // otherwise do case-insensitive string comparsion, stringify non-strings
-    let aString = (typeof a === 'string') ? a.toLowerCase() : JSON.stringify(a).toLowerCase();
-    let bString = (typeof b === 'string') ? b.toLowerCase() : JSON.stringify(b).toLowerCase();
+    // Otherwise do case-insensitive string comparison. Numeric-looking strings
+    // must use their canonical numeric spelling, as upstream readers returned
+    // numbers before readVariableValue started preserving formatted text.
+    const aString = booleanOperandToString(a);
+    const bString = booleanOperandToString(b);
 
     switch (rule) {
         case 'in':
