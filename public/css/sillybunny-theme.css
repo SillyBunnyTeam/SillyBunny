@@ -964,6 +964,24 @@ h3:not(.popup h3):not(#chat h3) {
     overflow: visible;
 }
 
+/*
+ * SillyBunny: the rule above is sized by a minimum so a bare-text label can grow the pill. An
+ * :empty element has no children at all, not even a text node, so it can never carry such a label
+ * -- re-pin the square for those three selectors. aspect-ratio is the load-bearing one:
+ * connection-manager's mobile rule sets the block axis from a width-derived percentage that never
+ * resolves there, and it outweighs anything this sheet can say, so with height: auto and nothing
+ * else holding the box up the button collapses to the height of the glyph's line box.
+ */
+.menu_button:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty,
+.menu_button_icon:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty,
+.right_menu_button:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty {
+    max-width: var(--sb-control-icon-physical-size);
+    max-inline-size: var(--sb-control-icon-physical-size);
+    max-height: var(--sb-control-icon-physical-size);
+    max-block-size: var(--sb-control-icon-physical-size);
+    aspect-ratio: 1 / 1;
+}
+
 .menu_button:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty::before,
 .menu_button_icon:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty::before,
 .right_menu_button:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty::before {

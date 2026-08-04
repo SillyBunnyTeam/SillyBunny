@@ -46,4 +46,18 @@ describe('icon control sizing css', () => {
 
         expect(flushRules).toEqual([]);
     });
+
+    test('label-less glyph controls keep their square', () => {
+        // An :empty element has no children at all, so it can never carry the bare-text label the
+        // rule above is relaxed for. Without aspect-ratio a container that pins the width with
+        // !important (connection-manager's mobile profile actions) collapses the block axis to the
+        // height of the glyph, which is what the relaxation regressed.
+        const css = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-theme.css'), 'utf8').replace(/\r\n/g, '\n');
+        const emptyGlyphRule = css.match(/\.menu_button:is\(\.fa, \.fa-solid, \.fa-regular, \.fa-brands\):empty,\n\.menu_button_icon:is\([^)]*\):empty,\n\.right_menu_button:is\([^)]*\):empty\s*\{(?<body>[^}]*)\}/);
+
+        expect(emptyGlyphRule).not.toBeNull();
+        expect(emptyGlyphRule.groups.body).toMatch(/aspect-ratio:\s*1 \/ 1/);
+        expect(emptyGlyphRule.groups.body).toMatch(/max-width:\s*var\(--sb-control-icon-physical-size\)/);
+        expect(emptyGlyphRule.groups.body).toMatch(/max-height:\s*var\(--sb-control-icon-physical-size\)/);
+    });
 });
