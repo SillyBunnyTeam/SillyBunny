@@ -18,16 +18,21 @@ const __dirname = dirname(__filename);
 // Parse command line arguments
 const args = process.argv.slice(2);
 const versionArg = args.find(arg => arg.startsWith('--version='));
+const conversationCharacterArg = args.find(arg => arg.startsWith('--conversation-character='));
 const desktopOnly = args.includes('--desktop-only');
 const mobileOnly = args.includes('--mobile-only');
 
 if (!versionArg) {
     console.error('Error: --version parameter is required');
-    console.error('Usage: node tests/capture-screenshots.js --version=1.6.5');
+    console.error('Usage: node tests/capture-screenshots.js --version=1.7.0 [--conversation-character="Bunny Guide"]');
     process.exit(1);
 }
 
 const version = versionArg.split('=')[1];
+// Conversation Mode renders a real DM thread; point this at the character that
+// has one so the shot is not empty chrome. Defaults to the in-chat character.
+const conversationCharacter = conversationCharacterArg ? conversationCharacterArg.split('=').slice(1).join('=') : '';
+const searchQuery = 'agents';
 const baseURL = 'http://127.0.0.1:4444';
 const screenshotsDir = join(__dirname, '..', 'screenshots');
 
@@ -121,6 +126,29 @@ async function ensureOnlyOpen(page, target) {
     await page.waitForTimeout(500);
 }
 
+async function selectCharacterByName(page, name) {
+    const row = page.locator('#rm_print_characters_block .character_select')
+        .filter({ has: page.locator('.ch_name', { hasText: name }) })
+        .first();
+
+    if (!(await row.count())) {
+        throw new Error(`Character "${name}" not found in the character list`);
+    }
+
+    await row.click({ force: true, timeout: 5000 }).catch(async () => {
+        await row.dispatchEvent('click');
+    });
+    await page.waitForTimeout(1500);
+}
+
+// The Characters drawer header hosts the Roleplay/Conversation radio group; clicking
+// it is the same path a user takes, and it drives the conversation workspace events.
+async function setCharacterMode(page, mode) {
+    await ensureOnlyOpen(page, 'characters');
+    await forceClick(page, `#sb_character_mode_toggle [data-sb-character-mode="${mode}"]`);
+    await page.waitForTimeout(1000);
+}
+
 // Screenshot sections configuration
 const sections = [
     {
@@ -178,7 +206,44 @@ const sections = [
             await page.waitForSelector('#chat', { state: 'visible', timeout: 10000 });
             await page.waitForTimeout(2000);
         }
-    }
+    },
+    {
+        name: 'search',
+        description: 'Universal search over the open chat',
+        setup: async (page) => {
+            await ensureOnlyOpen(page, 'none');
+            // openGlobalSearch is the shell's own entry point; the topbar proxy icon is
+            // rebuilt by a MutationObserver and goes stale mid-run.
+            await page.evaluate('globalThis.SillyBunnyShell?.openGlobalSearch?.({ focusInput: true })');
+            await page.waitForSelector('#sb-universal-search.is-open', { timeout: 10000 });
+            await page.locator('#sb-universal-search input[type="search"]').fill(searchQuery);
+            await page.waitForSelector('#sb-universal-search-results.is-visible', { timeout: 10000 });
+            await page.waitForTimeout(1000);
+        },
+        teardown: async (page) => {
+            await page.keyboard.press('Escape');
+            await page.waitForTimeout(500);
+        },
+    },
+    {
+        name: 'conversation',
+        description: 'Conversation Mode DM thread',
+        setup: async (page) => {
+            if (conversationCharacter) {
+                await ensureOnlyOpen(page, 'characters');
+                await selectCharacterByName(page, conversationCharacter);
+            }
+            await setCharacterMode(page, 'conversation');
+            await ensureOnlyOpen(page, 'none');
+            // Wait for real bubbles, not just the chrome, so an empty thread fails loudly
+            await page.waitForSelector('.sb-conversation-message-bubble', { state: 'visible', timeout: 15000 });
+            await page.waitForTimeout(2000);
+        },
+        teardown: async (page) => {
+            await setCharacterMode(page, 'roleplay');
+            await ensureOnlyOpen(page, 'none');
+        },
+    },
 ];
 
 async function captureScreenshots(viewportType) {
@@ -226,6 +291,13 @@ async function captureScreenshots(viewportType) {
                 console.log(`   ✓ Saved: ${filename}`);
             } catch (error) {
                 console.error(`   ✗ Failed to capture ${section.name}: ${error.message}`);
+            }
+
+            // Sections that change global shell state must hand a clean page to the next one
+            try {
+                await section.teardown?.(page);
+            } catch (error) {
+                console.error(`   ✗ Failed to reset after ${section.name}: ${error.message}`);
             }
         }
     } catch (error) {
