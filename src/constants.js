@@ -515,12 +515,21 @@ export const OPENAI_FIXED_REASONING_EFFORT = {
     'gpt-5.3-chat-latest': 'medium',
 };
 
+/**
+ * NanoGPT's vocabulary is the ladder none < minimal < low < medium < high < xhigh, which has
+ * exactly as many rungs as this fork's own min < low < medium < high < xhigh < max, so every
+ * level translates one notch down with no collisions.
+ * SillyBunny divergence: upstream stops at `max: 'high'`, leaving NanoGPT's `xhigh` ceiling
+ * unreachable and this fork's "Extra High" sending an empty reasoning object. Values absent
+ * here are omitted entirely by the caller.
+ */
 export const NANOGPT_REASONING_EFFORT_MAP = {
     min: 'none',
     low: 'minimal',
     medium: 'low',
     high: 'medium',
-    max: 'high',
+    xhigh: 'high',
+    max: 'xhigh',
 };
 
 export const LOG_LEVELS = {

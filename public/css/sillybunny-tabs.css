@@ -13,6 +13,9 @@
     --sb-topbar-scale-active: var(--sb-topbar-scale-desktop);
     --sb-chatbar-scale-active: calc(var(--sb-topbar-scale-active) * var(--sb-bottom-bar-scale));
     --sb-topbar-primary-height-base: var(--topBarBlockSize);
+    /* Snapshot of the upstream bar height under a name this fork never overrides, so a rule can
+       scope --topBarBlockSize on an element without a self-reference cycle. */
+    --sb-host-topbar-block-size: var(--topBarBlockSize);
     --sb-topbar-padding-x-base: 10px;
     --sb-topbar-stack-gap-base: 4px;
     --sb-topbar-bottom-padding-base: 4px;
@@ -248,9 +251,19 @@
     pointer-events: auto;
 }
 
-/* SillyBunny: allow extension drawers (non-native) to be clickable despite parent pointer-events: none. */
+/*
+ * SillyBunny: allow extension drawers (non-native) to be clickable despite parent pointer-events: none.
+ * The box normalization matters as much as the pointer-events: upstream's bare `.drawer { width: 100% }`
+ * makes an injected drawer the only non-zero flex child of this fixed full-width strip, which then paints
+ * over the whole top bar and swallows every click. adoptTopbarExtensionNodes() moves these into the bar
+ * proper, so this is the pre-adoption frame and the opt-out path; the nine :not(#id) each contribute an
+ * ID, so the selector outranks `.drawer` on specificity alone.
+ */
 #top-settings-holder > .drawer:not(#ai-config-button):not(#sys-settings-button):not(#advanced-formatting-button):not(#WI-SP-button):not(#user-settings-button):not(#backgrounds-button):not(#extensions-settings-button):not(#persona-management-button):not(#rightNavHolder) {
     pointer-events: auto;
+    width: auto;
+    min-width: 0;
+    flex: 0 0 auto;
 }
 
 #top-bar {
@@ -1486,6 +1499,77 @@ body:not(.movingUI) .drawer-content.maximized {
 #top-settings-holder .popup,
 #top-settings-holder .popup * {
     pointer-events: auto;
+}
+
+/*
+ * SillyBunny: third-party top-bar buttons are adopted into this slot by
+ * adoptTopbarExtensionNodes() so they become real members of the bar rather than overlays
+ * floating above it. Every selector here carries the slot id, which outranks upstream's bare
+ * `.drawer` / `.drawer-icon` / `.menu_button` rules on specificity alone.
+ */
+#sb-topbar-extension-slot {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    gap: var(--sb-topbar-group-gap);
+    min-width: 0;
+}
+
+/*
+ * display:none rather than zero width: syncTopbarBrandFit() adds one inline gap per visible
+ * child, so an empty-but-visible slot would inflate the overflow verdict by a gap.
+ */
+#sb-topbar-extension-slot[data-sb-topbar-slot-empty='true'] {
+    display: none;
+}
+
+#sb-topbar-extension-slot > * {
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+#sb-topbar-extension-slot > .drawer {
+    width: auto;
+    max-width: 100%;
+}
+
+#sb-topbar-extension-slot .drawer-icon,
+#sb-topbar-extension-slot .menu_button,
+#top-bar #sb-topbar-extension-slot .drawer-icon,
+#top-bar #sb-topbar-extension-slot .menu_button {
+    width: auto;
+    inline-size: auto;
+    height: var(--sb-proxy-button-height);
+    min-height: var(--sb-proxy-button-height);
+    min-width: var(--sb-proxy-button-height);
+    min-inline-size: var(--sb-proxy-button-height);
+    padding: 0;
+    margin: 0;
+}
+
+#sb-topbar-extension-slot .menu_button,
+#top-bar #sb-topbar-extension-slot .menu_button {
+    max-width: none;
+    max-inline-size: min(12rem, 45vw);
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/* .sb-proxy-button clips itself with overflow:hidden, which would eat a mirrored badge. */
+.sb-proxy-button.sb-has-adopted-badge {
+    overflow: visible;
+}
+
+/*
+ * SillyBunny: CharacterLibrary anchors its embedded panel to --topBarBlockSize, which only
+ * covers the primary row; when the chat bar row is showing, the panel painted over the bottom
+ * of the bar. Scoping the variable to the container re-anchors both its inline top and height.
+ * The max() is needed because neither input alone clears the bar in every state: on phones the
+ * layout offset sits just above the bar's bottom edge, and on desktop the upstream height stops
+ * short of the chat bar row. Both operands are substituted at :root, so there is no cycle.
+ */
+#charlib-embedded-container {
+    --topBarBlockSize: max(var(--sb-host-topbar-block-size), var(--sb-topbar-layout-offset));
 }
 
 #left-nav-panel select {

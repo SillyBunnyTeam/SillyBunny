@@ -64,9 +64,10 @@ body::after {
 }
 
 #top-bar .drawer-toggle,
-#top-bar .menu_button,
+#top-bar .menu_button:not(#sb-topbar-extension-slot .menu_button),
 #topBar .drawer-toggle,
-#topBar .menu_button {
+#topBar .menu_button:not(#sb-topbar-extension-slot .menu_button) {
+    /* Adopted controls use the slot's own minimum-size contract so text labels can expand. */
     min-height: var(--topBarIconSize) !important;
     height: var(--topBarIconSize) !important;
     width: var(--topBarIconSize) !important;

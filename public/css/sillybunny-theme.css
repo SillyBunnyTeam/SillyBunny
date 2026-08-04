@@ -932,30 +932,54 @@ h3:not(.popup h3):not(#chat h3) {
 .menu_button:not(.sb-server-action):not(.api_button):not(.openrouter_authorize):not(#bg_selection_mode_button):not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child),
 .menu_button:not(.sb-server-action):not(.api_button):not(.openrouter_authorize):not(#bg_selection_mode_button):not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> input[hidden] + :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):last-child),
 .right_menu_button:not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child) {
-    width: var(--sb-control-icon-physical-size);
-    inline-size: var(--sb-control-icon-physical-size);
-    height: var(--sb-control-icon-physical-size);
-    block-size: var(--sb-control-icon-physical-size);
+    /*
+     * SillyBunny: sized by a minimum rather than a fixed square. The :only-child test above sees
+     * element children only, so a button whose label is a bare text node -- the common
+     * third-party shape, e.g. <button class="menu_button"><i class="fa-solid fa-x"></i>Open</button>
+     * -- matched this rule and had its label squashed out of a 38px box. A genuinely icon-only
+     * button still lands exactly on the square, because its content never reaches the minimum.
+     * The hardcoded :not() exclusions on the selectors above are older, per-case patches for the
+     * same over-match. The block axis is a minimum too: a narrow container can wrap such a label
+     * onto a second line, and a fixed height would push it outside the border.
+     */
+    width: auto;
+    inline-size: auto;
+    height: auto;
+    block-size: auto;
     min-width: var(--sb-control-icon-physical-size);
     min-inline-size: var(--sb-control-icon-physical-size);
     min-height: var(--sb-control-icon-physical-size);
     min-block-size: var(--sb-control-icon-physical-size);
-    max-width: var(--sb-control-icon-physical-size);
-    max-inline-size: var(--sb-control-icon-physical-size);
-    max-height: var(--sb-control-icon-physical-size);
-    max-block-size: var(--sb-control-icon-physical-size);
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    gap: 6px;
     flex: 0 0 auto;
-    padding: 0 !important;
+    padding: 0 6px !important;
     margin: 0;
     border-radius: var(--sb-icon-control-radius);
-    aspect-ratio: 1 / 1;
     box-sizing: border-box;
     line-height: 1;
     text-align: center;
     overflow: visible;
+}
+
+/*
+ * SillyBunny: the rule above is sized by a minimum so a bare-text label can grow the pill. An
+ * :empty element has no children at all, not even a text node, so it can never carry such a label
+ * -- re-pin the square for those three selectors. aspect-ratio is the load-bearing one:
+ * connection-manager's mobile rule sets the block axis from a width-derived percentage that never
+ * resolves there, and it outweighs anything this sheet can say, so with height: auto and nothing
+ * else holding the box up the button collapses to the height of the glyph's line box.
+ */
+.menu_button:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty,
+.menu_button_icon:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty,
+.right_menu_button:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty {
+    max-width: var(--sb-control-icon-physical-size);
+    max-inline-size: var(--sb-control-icon-physical-size);
+    max-height: var(--sb-control-icon-physical-size);
+    max-block-size: var(--sb-control-icon-physical-size);
+    aspect-ratio: 1 / 1;
 }
 
 .menu_button:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty::before,
@@ -2069,19 +2093,15 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     .menu_button:not(.sb-server-action):not(.api_button):not(.openrouter_authorize):not(#bg_selection_mode_button):not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child),
     .menu_button:not(.sb-server-action):not(.api_button):not(.openrouter_authorize):not(#bg_selection_mode_button):not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> input[hidden] + :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):last-child),
     .right_menu_button:not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child) {
-        width: var(--sb-control-icon-physical-size);
-        inline-size: var(--sb-control-icon-physical-size);
-        height: var(--sb-control-icon-physical-size);
-        block-size: var(--sb-control-icon-physical-size);
+        width: auto;
+        inline-size: auto;
+        height: auto;
+        block-size: auto;
         min-width: var(--sb-control-icon-physical-size);
         min-inline-size: var(--sb-control-icon-physical-size);
         min-height: var(--sb-control-icon-physical-size);
         min-block-size: var(--sb-control-icon-physical-size);
-        max-width: var(--sb-control-icon-physical-size);
-        max-inline-size: var(--sb-control-icon-physical-size);
-        max-height: var(--sb-control-icon-physical-size);
-        max-block-size: var(--sb-control-icon-physical-size);
-        padding: 0 !important;
+        padding: 0 6px !important;
     }
 
     #chat .mes_edit_buttons {
