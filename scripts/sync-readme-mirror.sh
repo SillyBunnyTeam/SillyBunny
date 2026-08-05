@@ -37,7 +37,9 @@ cleanup() {
 trap cleanup EXIT
 
 printf '%s\n\n' "$MIRROR_NOTICE" > "$TMP_FILE"
-cat "$SOURCE_README" >> "$TMP_FILE"
+# The mirror lives under .github, so language links from the root need one
+# directory component removed while image paths remain relative to .github.
+sed 's#](\.github/readme-#](readme-#g' "$SOURCE_README" >> "$TMP_FILE"
 
 if cmp -s "$TMP_FILE" "$TARGET_README"; then
     echo "README mirror is already in sync."
