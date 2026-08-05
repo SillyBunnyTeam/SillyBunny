@@ -133,6 +133,12 @@ export function buildWorldInfoScanChat(messages, throughIndex, formatMessage) {
     return formatted.reverse();
 }
 
+export function composeWorldInfoScanChat(sceneText, historyChat) {
+    const scene = typeof sceneText === "string" ? sceneText.trim() : "";
+    const history = Array.isArray(historyChat) ? historyChat : [];
+    return scene ? [scene, ...history] : [...history];
+}
+
 export function formatWorldInfoScanMessage(message, {
     text = "",
     speakerName = "",

@@ -9,7 +9,8 @@ function joinPromptParts(...values) {
 function getMappedPrompt(map, key, property = null) {
     if (!map || !key) return "";
     const value = map[key];
-    if (typeof value === "string") return cleanPromptPart(value);
+    // ST stores plain strings as the positive prompt; a negative only exists in the object form.
+    if (typeof value === "string") return property === "negative" ? "" : cleanPromptPart(value);
     if (property && value && typeof value === "object") return cleanPromptPart(value[property]);
     return "";
 }
