@@ -1330,6 +1330,9 @@ export async function selectCharacterById(id, { switchMenu = true } = {}) {
         setCharacterId(id);
         chat_metadata = {};
         await getChat({ switchMenu });
+        window.dispatchEvent(new CustomEvent('sb:roleplay-character-selected', {
+            detail: { avatar: characters[this_chid]?.avatar || '' },
+        }));
         syncCharacterMenuActiveEntity();
         return true;
     } else {

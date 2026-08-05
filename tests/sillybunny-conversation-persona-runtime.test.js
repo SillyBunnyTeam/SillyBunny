@@ -157,4 +157,18 @@ describe('conversation persona runtime', () => {
             showToast: false,
         });
     });
+
+    test('follows the newly selected roleplay character while Conversation is open', () => {
+        init();
+        selectConversationThread.mockClear();
+        conversationState.conversationWorkspaceOpen = true;
+
+        windowHandlers.get('sb:roleplay-character-selected')(new globalThis.CustomEvent({
+            avatar: 'new-character.png',
+        }));
+
+        expect(selectConversationThread).toHaveBeenCalledWith('new-character.png', {
+            showToast: false,
+        });
+    });
 });
