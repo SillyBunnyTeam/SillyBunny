@@ -177,6 +177,7 @@ lorum ipsum
 - PR #733 (2026-08-04) `docs: replace old 1.7.0 home screen screenshots with the new homepage UI`
 - PR #734 (2026-08-05) `fix: conversation mode selected character`
 - PR #736 (2026-08-05) `chore: update Quick Image Gen to 3.0.0`
+- PR #737 (2026-08-05) `chore: remove previous non-1.7.0 screenshots`
 
 ## v1.6.5
 
