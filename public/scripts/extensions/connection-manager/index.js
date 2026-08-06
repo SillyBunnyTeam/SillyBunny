@@ -15,6 +15,7 @@ import { SlashCommandScope } from '../../slash-commands/SlashCommandScope.js';
 import { cancelDebounce, collapseSpaces, getUniqueName, isFalseBoolean, isTrueBoolean, uuidv4, waitUntilCondition } from '../../utils.js';
 import { t } from '../../i18n.js';
 import { getSecretLabelById } from '../../secrets.js';
+import { chat_completion_sources, maybeApplyModelSamplingProfile, oai_settings, selected_custom_endpoint_preset, syncCustomEndpointPresetSelectionBySecretId } from '../../openai.js';
 import { performFuzzySearch } from '/scripts/power-user.js';
 import { StreamingDisplay } from '/scripts/streaming-display.js';
 import { ConnectionManagerRequestService } from '../shared.js';
@@ -53,6 +54,7 @@ const CC_COMMANDS = [
     'preset',
     // Do not fix; CC needs to set the API twice because it could be overridden by the preset
     'api',
+    'secret-id',
     'api-url',
     'model',
     'proxy',
@@ -73,7 +75,6 @@ const CC_COMMANDS = [
     'custom-reasoning-enabled-value',
     'custom-reasoning-disabled-value',
     'prompt-post-processing',
-    'secret-id',
     'regex-preset',
 ];
 
@@ -589,6 +590,33 @@ function findProfileByName(value) {
     return bestMatch.item;
 }
 
+function getCustomEndpointProfileSecretId(mode) {
+    if (
+        mode !== 'cc' ||
+        main_api !== 'openai' ||
+        oai_settings.chat_completion_source !== chat_completion_sources.CUSTOM ||
+        selected_custom_endpoint_preset?.name === 'None'
+    ) {
+        return '';
+    }
+
+    // SillyBunny: Custom endpoint profiles bind to their saved preset secret, not the active fallback key.
+    return String(selected_custom_endpoint_preset?.secretId ?? '').trim();
+}
+
+function syncAppliedCustomEndpointProfileSecret(mode, secretId) {
+    if (
+        mode !== 'cc' ||
+        main_api !== 'openai' ||
+        oai_settings.chat_completion_source !== chat_completion_sources.CUSTOM
+    ) {
+        return;
+    }
+
+    // SillyBunny: Custom status/model fetches read the selected preset secret after profile apply.
+    syncCustomEndpointPresetSelectionBySecretId(secretId);
+}
+
 /**
  * Reads the connection profile from the commands.
  * @param {string} mode Mode of the connection profile
@@ -607,6 +635,14 @@ async function readProfileFromCommands(mode, profile, cleanUp = false) {
 
             const allowEmpty = ALLOW_EMPTY.includes(command);
             const args = getNamedArguments();
+            if (command === 'secret-id') {
+                const customEndpointSecretId = getCustomEndpointProfileSecretId(mode);
+                if (customEndpointSecretId) {
+                    profile[command] = customEndpointSecretId;
+                    continue;
+                }
+            }
+
             const result = await SlashCommandParser.commands[command].callback(args, '');
             if (result || (allowEmpty && result === '')) {
                 profile[command] = result;
@@ -945,14 +981,22 @@ async function applyConnectionProfile(profile) {
     const spinner = new ConnectionManagerSpinner();
     spinner.start();
 
+    const failedCommands = [];
+
     try {
         for (const command of commands) {
             if (spinner.isAborted()) {
                 throw new Error(PROFILE_APPLICATION_ABORTED);
             }
 
-            const argument = profile[command];
+            let argument = profile[command];
             const allowEmpty = ALLOW_EMPTY.includes(command);
+            // SillyBunny: a profile without a proxy value means "no proxy". Reset the
+            // proxy preset instead of skipping, otherwise the previous profile's proxy
+            // stays active and leaks into requests made under this profile.
+            if (command === 'proxy' && !argument && !profile.exclude?.includes(command)) {
+                argument = 'None';
+            }
             if (!argument && !(allowEmpty && argument === '')) {
                 continue;
             }
@@ -963,7 +1007,19 @@ async function applyConnectionProfile(profile) {
                 // Keep persistence centralized in the explicit save after the full profile is applied.
                 cancelDebounce(saveSettingsDebounced);
                 try {
-                    await commandPromise;
+                    const result = await commandPromise;
+
+                    if (command === 'secret-id') {
+                        syncAppliedCustomEndpointProfileSecret(mode, result || argument);
+                    }
+
+                    // Validate critical commands succeeded
+                    if (['api', 'model', 'preset'].includes(command)) {
+                        if (!result && argument && !allowEmpty) {
+                            console.warn(`Profile application: ${command} returned empty result for argument "${argument}"`);
+                            failedCommands.push({ command, argument, reason: 'empty result' });
+                        }
+                    }
                 } finally {
                     cancelDebounce(saveSettingsDebounced);
                 }
@@ -973,11 +1029,29 @@ async function applyConnectionProfile(profile) {
                 }
 
                 console.error(`Failed to execute command: ${command} ${argument}`, error);
+                failedCommands.push({ command, argument, reason: error.message });
             }
 
             if (spinner.isAborted()) {
                 throw new Error(PROFILE_APPLICATION_ABORTED);
             }
+        }
+
+        if (mode === 'cc') {
+            maybeApplyModelSamplingProfile();
+            cancelDebounce(saveSettingsDebounced);
+        }
+
+        // Show user-visible errors if any commands failed
+        if (failedCommands.length > 0) {
+            const commandList = failedCommands
+                .map(f => `${FANCY_NAMES[f.command] || f.command}: ${f.reason}`)
+                .join(', ');
+            toastr.warning(
+                t`Some profile settings could not be applied: ${commandList}`,
+                t`Profile application incomplete`,
+                { timeOut: 8000 },
+            );
         }
     } finally {
         spinner.stop();

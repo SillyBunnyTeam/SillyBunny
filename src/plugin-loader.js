@@ -6,9 +6,15 @@ import express from 'express';
 import { default as git, CheckRepoActions } from 'simple-git';
 import { sync as commandExistsSync } from 'command-exists';
 import { getConfig, getConfigValue, color } from './util.js';
+import {
+    SERVER_PLUGIN_BACKUP_DIRECTORY,
+    SERVER_PLUGIN_RELEASE_MARKER,
+    SERVER_PLUGIN_UPDATE_DIRECTORY,
+} from './server-plugin-manager.js';
 
 const SERVER_PLUGINS_CONFIG_KEY = 'enableServerPlugins';
 const COMMON_SERVER_PLUGIN_CONFIG_MISTAKES = ['enableServerPlugin', 'enableserverplugin', 'enableserverplugins'];
+const RESERVED_PLUGIN_ENTRIES = new Set([SERVER_PLUGIN_UPDATE_DIRECTORY, SERVER_PLUGIN_BACKUP_DIRECTORY]);
 
 const enableServerPlugins = !!getConfigValue(SERVER_PLUGINS_CONFIG_KEY, false, 'boolean');
 const enableServerPluginsAutoUpdate = !!getConfigValue('enableServerPluginsAutoUpdate', true, 'boolean');
@@ -18,6 +24,21 @@ const enableServerPluginsAutoUpdate = !!getConfigValue('enableServerPluginsAutoU
  * @type {Map<string, any>}
  */
 const loadedPlugins = new Map();
+
+export function getLoadedServerPluginIds() {
+    return [...loadedPlugins.keys()];
+}
+
+export function getLoadedServerPlugins() {
+    return [...loadedPlugins.entries()].map(([id, record]) => ({
+        id,
+        directoryPath: record.directoryPath,
+    }));
+}
+
+function isReservedPluginEntry(file) {
+    return RESERVED_PLUGIN_ENTRIES.has(file);
+}
 
 /**
  * Determine if a file is a CommonJS module.
@@ -56,7 +77,7 @@ export async function loadPlugins(app, pluginsPath) {
             return emptyFn;
         }
 
-        const files = fs.readdirSync(pluginsPath);
+        const files = fs.readdirSync(pluginsPath).filter(file => !isReservedPluginEntry(file));
 
         // No plugins to load.
         if (files.length === 0) {
@@ -157,7 +178,7 @@ async function loadFromFile(app, pluginFilePath, exitHooks, pluginDirectoryPath 
         const fileUrl = url.pathToFileURL(pluginFilePath).toString();
         const plugin = await import(fileUrl);
         console.log(`Initializing plugin from ${pluginFilePath}`);
-        return await initPlugin(app, plugin, exitHooks);
+        return await initPlugin(app, plugin, exitHooks, pluginDirectoryPath);
     } catch (error) {
         console.error(`Failed to load plugin from ${pluginFilePath}: ${error}`);
         logMissingDependencyHint(error, pluginDirectoryPath);
@@ -274,7 +295,7 @@ function isValidPluginID(id) {
  * an "exit" function.
  * @returns {Promise<boolean>} Promise that resolves to true if plugin was initialized successfully
  */
-async function initPlugin(app, plugin, exitHooks) {
+async function initPlugin(app, plugin, exitHooks, pluginDirectoryPath) {
     const info = plugin.info || plugin.default?.info;
     if (typeof info !== 'object') {
         console.error('Failed to load plugin module; plugin info not found');
@@ -313,7 +334,10 @@ async function initPlugin(app, plugin, exitHooks) {
 
     await init(router);
 
-    loadedPlugins.set(id, plugin);
+    loadedPlugins.set(id, {
+        plugin,
+        directoryPath: fs.realpathSync(pluginDirectoryPath),
+    });
 
     // Add API routes to the app if the plugin registered any
     if (router.stack.length > 0) {
@@ -338,7 +362,7 @@ async function updatePlugins(pluginsPath) {
     }
 
     const directories = fs.readdirSync(pluginsPath)
-        .filter(file => !file.startsWith('.'))
+        .filter(file => !isReservedPluginEntry(file))
         .filter(file => fs.statSync(path.join(pluginsPath, file)).isDirectory());
 
     if (directories.length === 0) {
@@ -357,6 +381,12 @@ async function updatePlugins(pluginsPath) {
     for (const directory of directories) {
         try {
             const pluginPath = path.join(pluginsPath, directory);
+
+            if (fs.existsSync(path.join(pluginPath, SERVER_PLUGIN_RELEASE_MARKER))) {
+                console.log(`Skipping mutable auto-update for release-pinned plugin ${color.green(directory)}.`);
+                continue;
+            }
+
             const pluginRepo = git(pluginPath);
 
             const isRepo = await pluginRepo.checkIsRepo(CheckRepoActions.IS_REPO_ROOT);

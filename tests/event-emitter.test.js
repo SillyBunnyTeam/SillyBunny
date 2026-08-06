@@ -30,4 +30,40 @@ describe('EventEmitter', () => {
 
         expect(calls).toEqual(['first', 'second', 'after']);
     });
+
+    describe('when localStorage access is blocked', () => {
+        beforeEach(() => {
+            globalThis.localStorage = {
+                getItem: () => {
+                    throw new Error('The operation is insecure.');
+                },
+            };
+        });
+
+        test('still runs emit listeners', async () => {
+            const emitter = new EventEmitter();
+            const calls = [];
+
+            emitter.on('boot', value => {
+                calls.push(value);
+            });
+
+            await emitter.emit('boot', 'payload');
+
+            expect(calls).toEqual(['payload']);
+        });
+
+        test('still runs emitAndWait listeners', () => {
+            const emitter = new EventEmitter();
+            const calls = [];
+
+            emitter.on('boot', value => {
+                calls.push(value);
+            });
+
+            emitter.emitAndWait('boot', 'payload');
+
+            expect(calls).toEqual(['payload']);
+        });
+    });
 });

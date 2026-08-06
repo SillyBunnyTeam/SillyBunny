@@ -1,5 +1,6 @@
 import { DOMPurify, showdown } from '../../../../lib.js';
 import { chat, saveChatDebounced, substituteParams, substituteParamsExtended } from '../../../../script.js';
+import { encodeStyleTags, decodeStyleTags } from '../../../chats.js';
 import { eventSource, event_types } from '../../../events.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
 import { escapeHtml } from '../../../utils.js';
@@ -13,6 +14,7 @@ import {
     saveAgent,
 } from '../agent-store.js';
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from '../regex-scripts.js';
+import { resolveCompanionContentMacros } from './companion-macros.js';
 import {
     COMPANION_RESULTS_UPDATED_EVENT,
     deleteCompanionResult,
@@ -25,7 +27,6 @@ import {
     CHAT_ONLY_INPUT_MAX_CHARS,
     CHATROOM_REPLY_MAX_CHARS,
     CHATROOM_STYLE_VALUES,
-    MESSAGE_INBOX_EMPTY_OUTPUTS,
     PLOT_COMPASS_OBJECTIVE_MAX_CHARS,
     appendChatOnlyUserMessage,
     isAssistantMessage,
@@ -33,6 +34,8 @@ import {
     isChatroomAgent,
     isMessageInboxAgent,
     isPlotCompassAgent,
+    isSuppressedCompanionResult,
+    isValidCompanionMessage,
     normalizeChatOnlyInput,
     normalizeChatroomReply,
     normalizePlotCompassObjective,
@@ -198,10 +201,14 @@ function getMessageIndexFromElement(element) {
     return Number.isFinite(messageIndex) ? messageIndex : -1;
 }
 
-function sanitizeCompanionHtml(html = '') {
-    return DOMPurify.sanitize(String(html ?? ''), {
-        ADD_ATTR: ['target', 'rel'],
+function sanitizeCompanionHtml(html = '', { prefix = '.ica--companion-body ' } = {}) {
+    const encoded = encodeStyleTags(String(html ?? ''));
+    const sanitized = DOMPurify.sanitize(encoded, {
+        MESSAGE_SANITIZE: true,
+        ADD_TAGS: ['custom-style'],
+        ADD_ATTR: ['style', 'target', 'rel'],
     });
+    return decodeStyleTags(sanitized, { prefix });
 }
 
 function applyAgentRegexToCompanionContent(agentId, content, message) {
@@ -222,7 +229,7 @@ function applyAgentRegexToCompanionContent(agentId, content, message) {
     });
 }
 
-export function formatCompanionContent(agentId, result = {}, message = null) {
+export function formatCompanionContent(agentId, result = {}, message = null, stylePrefix = '.ica--companion-body ') {
     const rawContent = String(result.content ?? '').trim();
     if (isSuppressedCompanionResult(agentId, result)) {
         return '';
@@ -233,16 +240,18 @@ export function formatCompanionContent(agentId, result = {}, message = null) {
     }
 
     const content = applyAgentRegexToCompanionContent(agentId, rawContent, message);
+    const resolved = resolveCompanionContentMacros(content, message);
+    const sanitizeOptions = { prefix: stylePrefix };
 
     if (result.format === 'html') {
-        return decorateChoiceLines(sanitizeCompanionHtml(content));
+        return decorateChoiceLines(sanitizeCompanionHtml(resolved, sanitizeOptions));
     }
 
     if (result.format === 'text') {
-        return `<pre class="ica--companion-text">${escapeHtml(content)}</pre>`;
+        return `<pre class="ica--companion-text">${escapeHtml(resolved)}</pre>`;
     }
 
-    return decorateChoiceLines(sanitizeCompanionHtml(getMarkdownConverter().makeHtml(content)));
+    return decorateChoiceLines(sanitizeCompanionHtml(getMarkdownConverter().makeHtml(resolved), sanitizeOptions));
 }
 
 function getResultStatus(result = {}) {
@@ -282,13 +291,7 @@ export function isSilentCompanionAgent(agent = {}) {
     return isMessageInboxAgent(agent);
 }
 
-export function isSuppressedCompanionResult(agentId, result = {}) {
-    if (!MESSAGE_INBOX_EMPTY_OUTPUTS.has(String(result?.content ?? '').trim())) {
-        return false;
-    }
-
-    return isMessageInboxAgent(getAgentById(agentId));
-}
+export { isSuppressedCompanionResult };
 
 function getRenderableCompanionEntries(message) {
     return Object.entries(getCompanionResults(message))
@@ -498,7 +501,7 @@ export function insertChoiceIntoMessageInput(rawText) {
     textarea.value = current.trim() ? `${current.replace(/\s+$/, '')}\n${choice}` : choice;
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
     globalThis.$?.(textarea).trigger('input');
-    textarea.focus();
+    textarea.focus({ preventScroll: true });
     toastr.success('Added to the message box.');
     return true;
 }
@@ -544,7 +547,7 @@ export function renderCompanionResultsForMessage(messageIndex) {
         return;
     }
 
-    const entries = isAssistantMessage(message) ? getRenderableCompanionEntries(message) : [];
+    const entries = isValidCompanionMessage(message) ? getRenderableCompanionEntries(message) : [];
     let ledger = messageElement.find('.ica--companion-ledger');
 
     if (entries.length === 0) {
@@ -581,8 +584,8 @@ export function updateCompanionButtonVisibility() {
     const shouldShow = hasRunnableCompanionAgents();
     $('.mes_run_companions').each(function () {
         const messageElement = $(this).closest('.mes');
-        const isAssistant = messageElement.attr('is_user') !== 'true' && messageElement.attr('is_system') !== 'true';
-        $(this).toggle(shouldShow && isAssistant);
+        const isSystem = messageElement.attr('is_system') === 'true';
+        $(this).toggle(shouldShow && !isSystem);
     });
 }
 
@@ -604,8 +607,8 @@ async function copyText(text) {
 }
 
 async function runCompanionsFromMessageButton(messageIndex, button) {
-    if (!isAssistantMessage(chat[messageIndex])) {
-        toastr.warning('Companions can run on assistant replies only.');
+    if (!isValidCompanionMessage(chat[messageIndex])) {
+        toastr.warning('Companions cannot run on this message.');
         return;
     }
 
@@ -789,7 +792,7 @@ async function handleCompanionAction(event) {
 
     const action = $(event.currentTarget).attr('data-action');
     const { messageIndex, agentId, message, result } = getCompanionActionContext(event.currentTarget);
-    if (!isAssistantMessage(message) || !agentId) {
+    if (!isValidCompanionMessage(message) || !agentId) {
         toastr.warning('Invalid companion note.');
         return;
     }
@@ -862,7 +865,7 @@ function persistCompanionCollapseState(event) {
     const agentId = $(details).attr('data-agent-id') || '';
     const message = chat[messageIndex];
 
-    if (!isAssistantMessage(message) || !agentId) {
+    if (!isValidCompanionMessage(message) || !agentId) {
         return;
     }
 

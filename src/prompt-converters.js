@@ -1,19 +1,10 @@
 import crypto from 'node:crypto';
+// SillyBunny divergence: the effort vocabulary moved to its own leaf module so the
+// chat-completions backend can normalize incoming values against the same source of truth.
+import { REASONING_EFFORT } from './reasoning-effort.js';
 import { getConfigValue, tryParse } from './util.js';
 
 const PROMPT_PLACEHOLDER = getConfigValue('promptPlaceholder', 'Let\'s get started.');
-
-const REASONING_EFFORT = {
-    // 'auto' kept for backward-compat: backend may receive it from non-migrated external callers
-    auto: 'auto',
-    none: 'none',
-    low: 'low',
-    medium: 'medium',
-    high: 'high',
-    min: 'min',
-    max: 'max',
-    xhigh: 'xhigh',
-};
 
 export const PROMPT_PROCESSING_TYPE = {
     NONE: '',
@@ -584,10 +575,15 @@ export function convertGooglePrompt(messages, model, useSysPrompt, names) {
         // Inject stored thought signatures, or fall back to bypass magic for Gemini 3
         if (/gemini-3/.test(model) || /gemini-2\.5/.test(model)) {
             const skipSignatureMagic = 'skip_thought_signature_validator';
-            const textSignature = message.signature;
+            // Signatures are only valid on model turns; stamping one on a user-role part
+            // gets the request rejected with a 400 "Corrupted thought signature".
+            const textSignature = message.role === 'model' ? message.signature : null;
+            // A stored signature covers one generated part. Duplicating it across every
+            // text part of the message also trips the corruption validator.
+            const lastTextPart = parts.findLast((part) => typeof part.text === 'string');
 
             parts.forEach((part) => {
-                if (isThoughtSignaturesEnabled() && textSignature && typeof part.text === 'string') {
+                if (isThoughtSignaturesEnabled() && textSignature && part === lastTextPart) {
                     part.thoughtSignature = textSignature;
                 } else if (/gemini-3/.test(model)) {
                     // Gemini 3: Fall back to bypass magic for function calls (mandatory) and images
@@ -606,17 +602,22 @@ export function convertGooglePrompt(messages, model, useSysPrompt, names) {
 
         // merge consecutive messages with the same role
         if (index > 0 && message.role === contents[contents.length - 1].role) {
+            const previousParts = contents[contents.length - 1].parts;
             parts.forEach((part) => {
-                if (part.text) {
-                    const textPart = contents[contents.length - 1].parts.find(p => typeof p.text === 'string');
+                const isPlainText = typeof part.text === 'string'
+                    && !part.inlineData && !part.functionCall && !part.functionResponse
+                    && !part.thoughtSignature && !part.mediaResolution;
+                if (isPlainText) {
+                    // Signed parts must stay byte-identical to what the model produced,
+                    // so plain text never folds into them and they never fold into text.
+                    const textPart = previousParts.find(p => typeof p.text === 'string' && !p.thoughtSignature);
                     if (textPart) {
                         textPart.text += '\n\n' + part.text;
                     } else {
-                        contents[contents.length - 1].parts.push(part);
+                        previousParts.push(part);
                     }
-                }
-                if (part.inlineData || part.functionCall || part.functionResponse || part.thoughtSignature || part.mediaResolution) {
-                    contents[contents.length - 1].parts.push(part);
+                } else {
+                    previousParts.push(part);
                 }
             });
         } else {
@@ -800,19 +801,21 @@ export function convertXAIMessages(messages, names) {
             return;
         }
 
-        const needsCharNamePrefix = [
-            { role: 'assistant', condition: names.charName && !msg.content.startsWith(`${names.charName}: `) && !names.startsWithGroupName(msg.content) },
-            { role: 'system', name: 'example_assistant', condition: names.charName && !msg.content.startsWith(`${names.charName}: `) && !names.startsWithGroupName(msg.content) },
-            { role: 'system', name: 'example_user', condition: names.userName && !msg.content.startsWith(`${names.userName}: `) },
-        ];
+        if (typeof msg.content === 'string') {
+            const needsCharNamePrefix = [
+                { role: 'assistant', condition: names.charName && !msg.content.startsWith(`${names.charName}: `) && !names.startsWithGroupName(msg.content) },
+                { role: 'system', name: 'example_assistant', condition: names.charName && !msg.content.startsWith(`${names.charName}: `) && !names.startsWithGroupName(msg.content) },
+                { role: 'system', name: 'example_user', condition: names.userName && !msg.content.startsWith(`${names.userName}: `) },
+            ];
 
-        const matchingRule = needsCharNamePrefix.find(rule =>
-            msg.role === rule.role && (!rule.name || msg.name === rule.name) && rule.condition,
-        );
+            const matchingRule = needsCharNamePrefix.find(rule =>
+                msg.role === rule.role && (!rule.name || msg.name === rule.name) && rule.condition,
+            );
 
-        if (matchingRule) {
-            const prefix = msg.role === 'system' && msg.name === 'example_user' ? names.userName : names.charName;
-            msg.content = `${prefix}: ${msg.content}`;
+            if (matchingRule) {
+                const prefix = msg.role === 'system' && msg.name === 'example_user' ? names.userName : names.charName;
+                msg.content = `${prefix}: ${msg.content}`;
+            }
         }
 
         delete msg.name;
@@ -1127,9 +1130,10 @@ export function cachingSystemPromptForOpenRouter(messages, ttl = undefined) {
  * @param {string} reasoningEffort Reasoning effort
  * @param {boolean} stream If streaming is enabled
  * @param {boolean} isAdaptiveModel If the model supports adaptive thinking (Opus 4.6+)
+ * @param {boolean} supportsXhigh If the adaptive model accepts the xhigh effort value
  * @returns {number|string|null} Budget tokens, effort string, or null
  */
-export function calculateClaudeBudgetTokens(maxTokens, reasoningEffort, stream, isAdaptiveModel) {
+export function calculateClaudeBudgetTokens(maxTokens, reasoningEffort, stream, isAdaptiveModel, supportsXhigh = false) {
     // Adaptive thinking for Opus 4.6+: return effort string (like Gemini 3)
     if (isAdaptiveModel) {
         switch (reasoningEffort) {
@@ -1144,8 +1148,10 @@ export function calculateClaudeBudgetTokens(maxTokens, reasoningEffort, stream, 
                 return 'medium';
             case REASONING_EFFORT.high:
                 return 'high';
-            case REASONING_EFFORT.max:
             case REASONING_EFFORT.xhigh:
+                // SillyBunny: fall back for adaptive Claude models whose API rejects xhigh.
+                return supportsXhigh ? 'xhigh' : 'max';
+            case REASONING_EFFORT.max:
                 return 'max';
         }
         return null;

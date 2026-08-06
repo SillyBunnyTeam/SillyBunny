@@ -41,6 +41,8 @@ import { shouldRestoreTextGenStatusOnStartup } from './scripts/textgen-startup-s
 import { normalizeCharacterChatName, resolveCharacterChatNameForLoad } from './scripts/character-chat-resolver.js';
 import { getDebouncedChatSaveAbortReason } from './scripts/chat-save-guard.js';
 import { getCharacterDefinitionFormValues, getSuspiciousEmptyCharacterDefinitionSave } from './scripts/character-save-guard.js';
+// SillyBunny: keep model-produced chat filenames behind a strict, independently tested parser.
+import { CHAT_LABEL_TITLE_LIMIT, extractGeneratedChatLabel, normalizeGeneratedChatLabel, truncateChatLabelText } from './scripts/chat-label.js';
 
 import {
     world_info,
@@ -57,6 +59,7 @@ import {
     charUpdatePrimaryWorld,
     charSetAuxWorlds,
 } from './scripts/world-info.js';
+import { buildWorldInfoScanChat, substituteWorldInfoGreeting } from './scripts/world-info-scan-chat.js';
 
 import {
     groups,
@@ -80,6 +83,7 @@ import {
     getGroupCharacterCardsLazy,
     getGroupDepthPrompts,
     deleteGroupChatByName,
+    waitForQueuedGroupChatSaves,
 } from './scripts/group-chats.js';
 
 import {
@@ -118,12 +122,15 @@ import {
     proxies,
     loadProxyPresets,
     selected_proxy,
+    custom_endpoint_presets,
+    loadCustomEndpointPresets,
+    selected_custom_endpoint_preset,
     initOpenAI,
     reconnectOpenAi,
 } from './scripts/openai.js';
 import {
     extractOocBlocksForDisplay,
-    hasTextOrArrayPayload,
+    hasPromptPayload,
     shouldRetainContextAtDepth,
     restoreOocBlocksForDisplay,
     stripHtmlTagsFromContext,
@@ -188,7 +195,6 @@ import {
     copyText,
     escapeHtml,
     saveBase64AsFile,
-    uuidv4,
     equalsIgnoreCaseAndAccents,
     localizePagination,
     renderPaginationDropdown,
@@ -203,6 +209,7 @@ import {
     createTimeout,
     loadFileToDocument,
     getSanitizedFilename,
+    getStringHash,
 } from './scripts/utils.js';
 import {
     TOOLING_UI_HYDRATION_STATUS,
@@ -242,11 +249,13 @@ import {
 import { checkOpenRouterAuth, initSecrets, readSecretState } from './scripts/secrets.js';
 import { markdownExclusionExt } from './scripts/showdown-exclusion.js';
 import { markdownUnderscoreExt } from './scripts/showdown-underscore.js';
-import { NOTE_MODULE_NAME, initAuthorsNote, metadata_keys, setFloatingPrompt, shouldWIAddPrompt } from './scripts/authors-note.js';
+import { NOTE_MODULE_NAME, getAuthorsNoteDepth, getAuthorsNotePosition, getAuthorsNoteRole, initAuthorsNote, setFloatingPrompt, shouldWIAddPrompt } from './scripts/authors-note.js';
 import { registerPromptManagerMigration } from './scripts/PromptManager.js';
 import { getRegexedString, regex_placement } from './scripts/extensions/regex/engine.js';
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from './scripts/extensions/in-chat-agents/regex-scripts.js';
 import { resolveRegexScriptsForSnapshot } from './scripts/extensions/in-chat-agents/regex-snapshot-store.js';
+import { consolidateCompanionChatHistory, hasCompanionChatHistoryForHiddenHost, selectCompanionChatHistory } from './scripts/extensions/in-chat-agents/companion/companion-shared.js';
+import { IN_CHAT_AGENT_PROMPT_KEY_PREFIX, instrumentInChatAgentPromptValue, trimOldestRetainedContribution } from './scripts/in-chat-agent-inspection.js';
 import { initLogprobs, saveLogprobsForActiveMessage } from './scripts/logprobs.js';
 import { FILTER_STATES, FILTER_TYPES, FilterHelper, isFilterState } from './scripts/filters.js';
 import { getCfgPrompt, getGuidanceScale, initCfg } from './scripts/cfg-scale.js';
@@ -318,7 +327,7 @@ import { onboardingExperimentalMacroEngine } from './scripts/macros/engine/Macro
 import { compressRequest, setRequestCompressionConfig } from './scripts/request-compression.js';
 import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker } from './scripts/swipe-picker.js';
 import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-send-button.js';
-import { getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval } from './scripts/mobile-streaming.js';
+import { formatMobileStreamingPreview, getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval, isAndroidStreamingPlatform, shouldReduceStreamingDomWork, shouldUsePlainTextStreamingPreview } from './scripts/mobile-streaming.js';
 import {
     CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
     CHAT_RENDER_LIFECYCLE_ROUTE,
@@ -331,6 +340,7 @@ import {
     createStreamWriteBuffer,
     getChatHistoryPageSize,
     getChatRenderWindowStartIndex,
+    getNonSystemMessageDepth,
     normalizeChatRenderWindowSize,
     renderMessagesInBatches,
     resolveChatBottomScrollAction,
@@ -513,7 +523,7 @@ export let isChatSaving = false;
 export let firstRun = false;
 export let settingsReady = false;
 let currentVersion = '0.0.0';
-const SILLYBUNNY_UI_VERSION = 'SillyBunny v1.6.5';
+const SILLYBUNNY_UI_VERSION = 'SillyBunny v1.7.0';
 
 export let displayVersion = SILLYBUNNY_UI_VERSION;
 
@@ -556,7 +566,7 @@ export function getSillyBunnyFrontendIconSrc({ absolute = false } = {}) {
 export let system_avatar = getSillyBunnyFrontendIconSrc();
 export const comment_avatar = 'img/quill.png';
 export const default_user_avatar = 'img/user-default.png';
-export let CLIENT_VERSION = 'SillyBunny:v1.6.5:platberlitz'; // For Horde header
+export let CLIENT_VERSION = 'SillyBunny:v1.7.0:platberlitz'; // For Horde header
 
 function applySillyBunnyFrontendIcon(iconId = getStoredSillyBunnyFrontendIcon()) {
     const normalizedIconId = normalizeSillyBunnyFrontendIcon(iconId);
@@ -1040,7 +1050,7 @@ function registerSillyBunnyServiceWorker() {
     }
 
     const register = () => {
-        navigator.serviceWorker.register('/sw.js?v=20260614a', { updateViaCache: 'none' }).then((registration) => {
+        navigator.serviceWorker.register('/sw.js?v=20260622g', { updateViaCache: 'none' }).then((registration) => {
             return registration.update().catch((error) => {
                 console.warn('Failed to update SillyBunny service worker.', error);
             });
@@ -1280,8 +1290,9 @@ export function resultCheckStatus() {
 /**
  * Switches the currently selected character to the one with the given ID. (character index, not the character key!)
  *
- * If the character ID doesn't exist, if the chat is being saved, or if a group is being generated, this function does nothing.
+ * If the character ID doesn't exist or if a group is being generated, this function does nothing.
  * If the character is different from the currently selected one, it will clear the chat and reset any selected character or group.
+ * Pending and in-flight chat saves are awaited before the switch, not treated as a reason to refuse it.
  * @param {number} id The ID of the character to switch to.
  * @param {object} [options] Options for the switch.
  * @param {boolean} [options.switchMenu=true] Whether to switch the right menu to the character edit menu.
@@ -1289,11 +1300,6 @@ export function resultCheckStatus() {
  */
 export async function selectCharacterById(id, { switchMenu = true } = {}) {
     if (characters[id] === undefined) {
-        return false;
-    }
-
-    if (isChatSaving) {
-        toastr.info(t`Please wait until the chat is saved before switching characters.`, t`Your chat is still saving...`);
         return false;
     }
 
@@ -1324,6 +1330,9 @@ export async function selectCharacterById(id, { switchMenu = true } = {}) {
         setCharacterId(id);
         chat_metadata = {};
         await getChat({ switchMenu });
+        window.dispatchEvent(new CustomEvent('sb:roleplay-character-selected', {
+            detail: { avatar: characters[this_chid]?.avatar || '' },
+        }));
         syncCharacterMenuActiveEntity();
         return true;
     } else {
@@ -1367,7 +1376,7 @@ async function getHiddenBlock(hidden) {
 function getCharacterBlock(item, id) {
     let this_avatar = default_avatar;
     if (item.avatar != 'none') {
-        this_avatar = getThumbnailUrl('avatar', item.avatar);
+        this_avatar = getThumbnailUrlForViewport('avatar', item.avatar);
     }
     // Populate the template
     const template = $('#character_template .character_select').clone();
@@ -1789,7 +1798,7 @@ export async function getCharacters() {
     }
 }
 
-async function getExistingCharacterChats(characterId) {
+async function getExistingCharacterChats(characterId, fileName = '') {
     const character = characters[characterId];
     if (!character?.avatar) {
         return [];
@@ -1798,11 +1807,12 @@ async function getExistingCharacterChats(characterId) {
     const response = await fetch('/api/characters/chats', {
         method: 'POST',
         headers: getRequestHeaders(),
-        body: JSON.stringify({ avatar_url: character.avatar }),
+        body: JSON.stringify({ avatar_url: character.avatar, file_name: fileName }),
     });
 
     if (!response.ok) {
-        return [];
+        // SillyBunny: an unreadable chat list must not look like a character with no chats.
+        throw new Error(`Could not list existing chats: ${response.statusText}`);
     }
 
     const data = await response.json();
@@ -1827,7 +1837,7 @@ async function resolveCharacterChatForLoad(characterId, { allowCreate = false, a
         return { chatName: persistedChat, created: true };
     }
 
-    const existingChats = await getExistingCharacterChats(characterId);
+    const existingChats = await getExistingCharacterChats(characterId, persistedChat);
     // SillyBunny: avoid recreating stale character.chat filenames as new files.
     const resolvedChat = resolveCharacterChatNameForLoad({
         persistedChat,
@@ -1875,7 +1885,7 @@ async function delChat(chatfile) {
  * Deletes a character chat by its name.
  * @param {string} characterId Character ID to delete chat for
  * @param {string} fileName Name of the chat file to delete (without .jsonl extension)
- * @returns {Promise<void>} A promise that resolves when the chat is deleted.
+ * @returns {Promise<boolean>} Whether the chat was deleted.
  */
 export async function deleteCharacterChatByName(characterId, fileName) {
     // Make sure all the data is loaded.
@@ -1885,7 +1895,7 @@ export async function deleteCharacterChatByName(characterId, fileName) {
     const character = characters[characterId];
     if (!character) {
         console.warn(`Character with ID ${characterId} not found.`);
-        return;
+        return false;
     }
 
     const response = await fetch('/api/chats/delete', {
@@ -1899,7 +1909,7 @@ export async function deleteCharacterChatByName(characterId, fileName) {
 
     if (!response.ok) {
         console.error('Failed to delete chat for character.');
-        return;
+        return false;
     }
 
     if (fileName === character.chat) {
@@ -1915,6 +1925,8 @@ export async function deleteCharacterChatByName(characterId, fileName) {
     }
 
     await eventSource.emit(event_types.CHAT_DELETED, fileName);
+    // SillyBunny: Home only clears pinned state after a confirmed deletion.
+    return true;
 }
 
 export async function replaceCurrentChat() {
@@ -2818,6 +2830,15 @@ function getChatRenderWindowSize(requestedSize = power_user.chat_truncation) {
     return normalizeChatRenderWindowSize(requestedSize);
 }
 
+function getPagedChatRenderWindowSize(requestedSize, renderedMessageCount) {
+    const pageSize = getChatRenderWindowSize(requestedSize);
+    if (power_user.aggressive_dom_unload) {
+        return pageSize;
+    }
+
+    return normalizeChatRenderWindowSize(renderedMessageCount + pageSize);
+}
+
 function getRenderedChatMessageElements() {
     return Array.from(chatElement[0]?.querySelectorAll('.mes[mesid]') ?? []);
 }
@@ -3007,7 +3028,7 @@ export async function showMoreMessages(messagesToLoad = null) {
     const firstDisplayedMesId = chatElement.children('.mes').first().attr('mesid');
     const renderedMessageCount = getRenderedChatMessageElements().length;
     const requestedWindowSize = messagesToLoad ?? power_user.chat_truncation;
-    const windowSize = getChatRenderWindowSize(requestedWindowSize);
+    const windowSize = getPagedChatRenderWindowSize(requestedWindowSize, renderedMessageCount);
     const count = getChatHistoryPageSize(requestedWindowSize, {
         renderedMessageCount,
         windowSize,
@@ -3081,7 +3102,7 @@ export async function showNewerMessages(messagesToLoad = null) {
 
     const { renderedMessageCount, lastMessageId } = getRenderedChatMessageWindow();
     const requestedWindowSize = messagesToLoad ?? power_user.chat_truncation;
-    const windowSize = getChatRenderWindowSize(requestedWindowSize);
+    const windowSize = getPagedChatRenderWindowSize(requestedWindowSize, renderedMessageCount);
     const count = getChatHistoryPageSize(requestedWindowSize, {
         renderedMessageCount,
         windowSize,
@@ -3480,7 +3501,8 @@ export async function deleteMessage(id, swipeDeletionIndex = undefined, askConfi
     const startIndex = [0, minId].includes(id) ? id : null;
     deleteItemizedPromptForMessage(id);
     updateViewMessageIds(startIndex);
-    saveChatDebounced();
+    // SillyBunny: this shrink is the user's own deletion, not an accidental overwrite.
+    saveChatDebounced({ allowShrink: true });
 
     if (this_edit_mes_id === id) {
         this_edit_mes_id = undefined;
@@ -3558,25 +3580,9 @@ export async function sendTextareaMessage() {
     return generation;
 }
 
-/**
- * Formats the message text into an HTML string using Markdown and other formatting.
- * @param {string} mes Message text
- * @param {string} ch_name Character name
- * @param {boolean} isSystem If the message was sent by the system
- * @param {boolean} isUser If the message was sent by the user
- * @param {number} messageId Message index in chat array
- * @param {Partial<DOMPurify.Config>} [sanitizerOverrides] DOMPurify sanitizer option overrides
- * @param {boolean} [isReasoning] If the message is reasoning output
- * @returns {string} HTML string
- */
-export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, sanitizerOverrides = {}, isReasoning = false) {
-    if (!mes) {
-        return '';
-    }
-
-    const originalMessageHtml = mes;
-    const oocBlocks = [];
-
+// SillyBunny: Extracted message text preparation from messageFormatting for mobile streaming performance.
+// Allows plain-text preview rendering without full markdown/sanitizer pipeline on Android.
+function prepareMessageDisplayText(mes, ch_name, isSystem, isUser, messageId, isReasoning = false) {
     const resolvedMessageId = messageId !== null && messageId !== undefined && messageId !== ''
         ? Number(messageId)
         : NaN;
@@ -3590,7 +3596,7 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
         }
     }
 
-    mesForShowdownParse = mes;
+    const showdownSource = mes;
 
     // Force isSystem = false on comment messages so they get formatted properly
     if (ch_name === COMMENT_NAME_DEFAULT && isSystem && !isUser) {
@@ -3627,9 +3633,7 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
         };
 
         const regexPlacement = getRegexPlacement();
-        const usableMessages = chat.map((x, index) => ({ message: x, index: index })).filter(x => !x.message.is_system);
-        const indexOf = usableMessages.findIndex(x => x.index === resolvedMessageId);
-        const depth = resolvedMessageId >= 0 && indexOf !== -1 ? (usableMessages.length - indexOf - 1) : undefined;
+        const depth = getNonSystemMessageDepth(chat, resolvedMessageId);
         const agentRegexScripts = resolveRegexScriptsForSnapshot(chatMessage?.extra?.inChatAgents);
 
         if (!isUser && !isReasoning && agentRegexScripts.length > 0) {
@@ -3650,6 +3654,61 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
             depth: depth,
         });
     }
+
+    return { mes, isSystem, showdownSource };
+}
+
+// SillyBunny: Extracted markdown balancing for streaming preview optimization.
+function balanceStreamingMarkdown(text) {
+    let balancedText = text;
+    for (const char of ['*', '"', '```', '~~~']) {
+        if (isOdd(countOccurrences(balancedText, char))) {
+            const separator = char.length > 1 ? '\n' : '';
+            balancedText = balancedText.trimEnd() + separator + char;
+        }
+    }
+    return balancedText;
+}
+
+// SillyBunny: Extracted HTML sanitization to allow reuse in streaming and final render paths.
+function sanitizeMessageHtml(mes, sanitizerOverrides = {}) {
+    /** @type {DOMPurify.Config} */
+    const config = {
+        RETURN_DOM: false,
+        RETURN_DOM_FRAGMENT: false,
+        RETURN_TRUSTED_TYPE: false,
+        MESSAGE_SANITIZE: true,
+        ADD_TAGS: ['custom-style', CARD_SCRIPT_MARKER_TAG],
+        ADD_ATTR: ['style'], // Allow inline CSS effects from model-generated message spans.
+        ...sanitizerOverrides,
+    };
+    mes = encodeStyleTags(mes);
+    mes = DOMPurify.sanitize(mes, config);
+    return decodeStyleTags(mes, { prefix: '.mes_text ' });
+}
+
+/**
+ * Formats the message text into an HTML string using Markdown and other formatting.
+ * @param {string} mes Message text
+ * @param {string} ch_name Character name
+ * @param {boolean} isSystem If the message was sent by the system
+ * @param {boolean} isUser If the message was sent by the user
+ * @param {number} messageId Message index in chat array
+ * @param {Partial<DOMPurify.Config>} [sanitizerOverrides] DOMPurify sanitizer option overrides
+ * @param {boolean} [isReasoning] If the message is reasoning output
+ * @returns {string} HTML string
+ */
+export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, sanitizerOverrides = {}, isReasoning = false) {
+    if (!mes) {
+        return '';
+    }
+
+    const originalMessageHtml = mes;
+    const oocBlocks = [];
+    const preparedMessage = prepareMessageDisplayText(mes, ch_name, isSystem, isUser, messageId, isReasoning);
+    mes = preparedMessage.mes;
+    isSystem = preparedMessage.isSystem;
+    mesForShowdownParse = preparedMessage.showdownSource;
 
     if (power_user.auto_fix_generated_markdown) {
         mes = fixMarkdown(mes, true);
@@ -3737,24 +3796,10 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
         mes = mes.replace(new RegExp(`(^|\n)${escapeRegex(ch_name)}:`, 'g'), '$1');
     }
 
-    /** @type {DOMPurify.Config} */
-    const config = {
-        RETURN_DOM: false,
-        RETURN_DOM_FRAGMENT: false,
-        RETURN_TRUSTED_TYPE: false,
-        MESSAGE_SANITIZE: true,
-        ADD_TAGS: ['custom-style', CARD_SCRIPT_MARKER_TAG],
-        ADD_ATTR: ['style'], // Allow inline CSS effects from model-generated message spans.
-        ...sanitizerOverrides,
-    };
     mes = restoreOocBlocksForDisplay(mes, oocBlocks);
     // SillyBunny: card script detection - see #94.
     mes = markCardScriptHtml(mes, messageId, originalMessageHtml);
-    mes = encodeStyleTags(mes);
-    mes = DOMPurify.sanitize(mes, config);
-    mes = decodeStyleTags(mes, { prefix: '.mes_text ' });
-
-    return mes;
+    return sanitizeMessageHtml(mes, sanitizerOverrides);
 }
 
 function notifyCardScriptStripped(messageElement, messageId) {
@@ -3792,19 +3837,6 @@ function notifyCardScriptStripped(messageElement, messageId) {
 
     markCardScriptToastShown(toastKey);
     toastr.warning(t`This message contains card scripts. SillyBunny does not run them by default.`, t`Card scripts blocked`, { timeOut: 6000, preventDuplicates: true });
-}
-
-/**
- * Checks whether a prompt message still carries non-text payload after OOC text is removed.
- * @param {object} chatItem Message history item.
- * @returns {boolean} True if the prompt item should remain in context.
- */
-function hasPromptPayload(chatItem) {
-    return hasTextOrArrayPayload(chatItem?.mes, [
-        chatItem?.extra?.media,
-        chatItem?.extra?.files,
-        chatItem?.extra?.tool_invocations,
-    ]);
 }
 
 /**
@@ -3872,6 +3904,26 @@ const CUSTOM_MODEL_ICON_PATTERNS = Object.freeze([
     { icon: 'perplexity', pattern: /\bsonar\b|perplexity[/:_-]|r1-1776/i },
     { icon: 'moonshot', pattern: /\b(?:kimi|moonshot)\b/i },
     { icon: 'zai', pattern: /\b(?:glm|autoglm)\b|zai-org[/:_-]/i },
+    { icon: 'minimax', pattern: /\bminimax(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'poolside', pattern: /poolside[/:_-]|\blaguna-(?:xs|s)(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'meta', pattern: /meta[/:]|meta-llama[/:_-]|\b(?:llama|codellama)(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'microsoft', pattern: /microsoft[/:_-]|\bphi-[\w.-]+\b/i },
+    { icon: 'nova', pattern: /(?:amazon[/:_-]|amazon\.)nova(?:[-_.][\w.-]+)*\b|\bnova-(?:micro|lite|pro|premier)(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'ai2', pattern: /allenai[/:_-]|\b(?:olmoe?|tulu)(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'nousresearch', pattern: /nousresearch[/:_-]|\b(?:nous|hermes)(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'ibm', pattern: /ibm-granite[/:_-]|\bgranite(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'arcee', pattern: /arcee-ai[/:_-]|\barcee(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'inception', pattern: /inception[/:_-]|\bmercury(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'baidu', pattern: /baidu[/:_-]|\b(?:ernie|wenxin)(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'upstage', pattern: /upstage[/:_-]|\bsolar(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'qwen', pattern: /\bqwen[\w.-]*\b|\b(?:qwq|qvq)(?:[\w.-]*)?\b/i },
+    { icon: 'xiaomi', pattern: /\bmimo(?:[-_.][\w.-]+)*\b|\bxiaomi\b|xiaomi[/:_-]/i },
+    { icon: 'longcat', pattern: /\blong[-_ ]?cat(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'doubao', pattern: /\bdoubao[\w.-]*\b|\bbyte[-_ ]?dance\b|bytedance[/:_-]/i },
+    { icon: 'crofai', pattern: /\bcrofai\b|crofai[/:_-]|\bgreg(?:[-_.][\w.-]+)?\b/i },
+    { icon: 'nvidia', pattern: /\bnemotron[\w.-]*\b|\bnvidia\b|nvidia[/:_-]/i },
+    { icon: 'stepfun', pattern: /\bstepfun\b|\bstep[-_ ]?(?:fun|\d)[\w.-]*\b/i },
+    { icon: 'hunyuan', pattern: /\bhunyuan[\w.-]*\b|\btencent\b|tencent[/:_-]/i },
     { icon: 'openrouter', pattern: /\bopenrouter\b/i },
     { icon: 'fireworks', pattern: /\bfireworks\b/i },
     { icon: 'groq', pattern: /\bgroq\b/i },
@@ -4588,21 +4640,27 @@ export function addOneMessage(mes, { type = undefined, insertAfter = null, scrol
  */
 export function updateMessageElement(mes, { messageId = chat.length - 1, messageElement = messageTemplate.clone(), adjustMediaScroll = SCROLL_BEHAVIOR.NONE } = {}) {
     let avatarImg = getThumbnailUrl('persona', user_avatar);
+    // SillyBunny: Add mobile thumbnail tracking for viewport-aware avatar rendering (mobile performance).
+    let mobileAvatarImg = getMobileThumbnailUrl('persona', user_avatar);
     let originalAvatarImg = getFullAvatarUrl('persona', user_avatar);
 
     //for non-user messages
     if (!mes.is_user) {
         if (mes.force_avatar) {
-            avatarImg = mes.force_avatar;
-            originalAvatarImg = mes.force_avatar;
+            // SillyBunny: getAvatarRenderSources provides desktop/mobile/original variants for performance.
+            ({ desktop: avatarImg, mobile: mobileAvatarImg, original: originalAvatarImg } = getAvatarRenderSources(mes.force_avatar));
         } else if (this_chid === undefined) {
             avatarImg = system_avatar;
+            mobileAvatarImg = system_avatar;
             originalAvatarImg = system_avatar;
         } else if (characters[this_chid] && characters[this_chid].avatar !== 'none') {
             avatarImg = getThumbnailUrl('avatar', characters[this_chid].avatar);
+            // SillyBunny: Mobile thumbnail for character avatars reduces payload on mobile devices.
+            mobileAvatarImg = getMobileThumbnailUrl('avatar', characters[this_chid].avatar);
             originalAvatarImg = getFullAvatarUrl('avatar', characters[this_chid].avatar);
         } else {
             avatarImg = default_avatar;
+            mobileAvatarImg = default_avatar;
             originalAvatarImg = default_avatar;
         }
         //old processing:
@@ -4611,8 +4669,8 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
         //characterName = mes.is_system || mes.force_avatar ? mes.name : name2;
     } else if (mes.is_user && mes.force_avatar) {
         // Special case for persona images.
-        avatarImg = mes.force_avatar;
-        originalAvatarImg = mes.force_avatar;
+        // SillyBunny: getAvatarRenderSources provides desktop/mobile/original variants for performance.
+        ({ desktop: avatarImg, mobile: mobileAvatarImg, original: originalAvatarImg } = getAvatarRenderSources(mes.force_avatar));
     }
     const momentDate = timestampToMoment(mes.send_date);
     const timestamp = momentDate.isValid() ? momentDate.format('LL LT') : '';
@@ -4634,17 +4692,23 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
         'type': mes.extra?.type ?? '',
     });
 
+    const viewportAvatarImg = isMobile() ? mobileAvatarImg : originalAvatarImg;
+    const viewportThumbnailSrc = isMobile() ? mobileAvatarImg : avatarImg;
+
     if (messageElement[0] instanceof HTMLElement) {
-        const avatarCssUrl = `url("${String(avatarImg).replace(/(["\\])/g, '\\$1')}")`;
+        const avatarCssUrl = `url("${String(viewportAvatarImg).replace(/(["\\])/g, '\\$1')}")`;
+        const thumbnailAvatarCssUrl = `url("${String(viewportThumbnailSrc).replace(/(["\\])/g, '\\$1')}")`;
         const originalAvatarCssUrl = `url("${String(originalAvatarImg).replace(/(["\\])/g, '\\$1')}")`;
         messageElement[0].style.setProperty('--sb-message-avatar', avatarCssUrl);
         messageElement[0].style.setProperty('--mes-avatar-url', avatarCssUrl);
+        messageElement[0].style.setProperty('--mes-avatar-thumb-url', thumbnailAvatarCssUrl);
         messageElement[0].style.setProperty('--mes-avatar-original-url', originalAvatarCssUrl);
     }
 
     messageElement.find('.avatar img').attr({
-        src: originalAvatarImg,
-        'data-thumbnail-src': avatarImg,
+        src: viewportAvatarImg,
+        'data-thumbnail-src': viewportThumbnailSrc,
+        'data-original-src': originalAvatarImg,
         decoding: 'async',
         loading: messageId > 8 ? 'lazy' : 'eager',
     });
@@ -4729,18 +4793,6 @@ export function updateMessageMetaBadges(messageElement, message) {
         badge.html(`<i class="fa-solid fa-brain" aria-hidden="true"></i><span class="reasoning-tokens-count">${reasoningTokens}</span>`);
     } else {
         $messageElement.find('.reasoning-tokens-badge').remove();
-    }
-
-    const isGroupDm = Boolean(message?.extra?.is_group_dm);
-    if (isGroupDm) {
-        let dmBadge = $messageElement.find('.group-dm-badge');
-        if (!dmBadge.length) {
-            dmBadge = $('<span class="group-dm-badge" title="Private group DM" aria-label="Private group DM"></span>');
-            dmBadge.html('<i class="fa-solid fa-envelope" aria-hidden="true"></i><span>DM</span>');
-            $tokenCounter.after(dmBadge);
-        }
-    } else {
-        $messageElement.find('.group-dm-badge').remove();
     }
 
     const hasTransformHistory = hasPromptTransformHistoryForActiveSwipe(message);
@@ -5313,6 +5365,11 @@ export async function generateQuietPrompt({ quietPrompt = '', quietToLoud = fals
             TempResponseLength.restore(main_api);
             TempResponseLength.removeEventHook(main_api, eventHook);
         }
+        // SillyBunny: guarantee the send buttons are reactivated after quiet
+        // generation, regardless of whether Generate succeeded, failed, threw,
+        // or returned null data. Without this, memory refresh and other quiet
+        // generation callers can leave the chat input locked. (#527)
+        activateSendButtons();
     }
 }
 
@@ -5415,7 +5472,7 @@ function addPersonaDescriptionExtensionPrompt() {
             ? `${power_user.persona_description}\n${originalAN}`
             : `${originalAN}\n${power_user.persona_description}`;
 
-        setExtensionPrompt(NOTE_MODULE_NAME, ANWithDesc, chat_metadata[metadata_keys.position], chat_metadata[metadata_keys.depth], extension_settings.note.allowWIScan, chat_metadata[metadata_keys.role]);
+        setExtensionPrompt(NOTE_MODULE_NAME, ANWithDesc, getAuthorsNotePosition(), getAuthorsNoteDepth(), extension_settings.note.allowWIScan, getAuthorsNoteRole());
     }
 
     if (power_user.persona_description_position === persona_description_positions.AT_DEPTH) {
@@ -5495,9 +5552,10 @@ export function getExtensionPromptMaxDepth() {
  * @param {string} [separator] Separator for joining multiple prompts
  * @param {number} [role] Role of the prompt
  * @param {boolean} [wrap] Wrap start and end with a separator
+ * @param {(entry: {key: string, prompt: object, value: string}) => void} [resolvedPromptCallback] Receives source prompts from the same macro expansion pass
  * @returns {Promise<string>} Extension prompt
  */
-export async function getExtensionPrompt(position = extension_prompt_types.IN_PROMPT, depth = undefined, separator = '\n', role = undefined, wrap = true) {
+export async function getExtensionPrompt(position = extension_prompt_types.IN_PROMPT, depth = undefined, separator = '\n', role = undefined, wrap = true, resolvedPromptCallback = null) {
     const filterByFunction = async (prompt) => {
         const hasFilter = typeof prompt.filter === 'function';
         if (hasFilter && !await prompt.filter()) {
@@ -5514,7 +5572,18 @@ export async function getExtensionPrompt(position = extension_prompt_types.IN_PR
         .filter(filterByFunction);
     const prompts = await Promise.all(promptPromises);
 
-    let values = prompts.map(x => x.value.trim()).join(separator);
+    const promptKeyByValue = new Map(Object.keys(extension_prompts).map(key => [extension_prompts[key], key]));
+    const promptSegments = prompts.map((prompt, index) => ({
+        prompt,
+        key: promptKeyByValue.get(prompt) ?? '',
+        start: `\uE000ICA${index}S\uE001`,
+        end: `\uE000ICA${index}E\uE001`,
+    }));
+    const collectResolvedPrompts = typeof resolvedPromptCallback === 'function';
+    const collectedSegments = promptSegments.filter(segment => collectResolvedPrompts && segment.key.startsWith(IN_CHAT_AGENT_PROMPT_KEY_PREFIX));
+    let values = promptSegments.map(segment => collectedSegments.includes(segment)
+        ? instrumentInChatAgentPromptValue(segment.prompt.value, segment.start, segment.end)
+        : segment.prompt.value.trim()).join(separator);
     if (wrap && values.length && !values.startsWith(separator)) {
         values = separator + values;
     }
@@ -5523,6 +5592,20 @@ export async function getExtensionPrompt(position = extension_prompt_types.IN_PR
     }
     if (values.length) {
         values = substituteParams(values);
+    }
+    if (collectResolvedPrompts) {
+        for (const segment of collectedSegments) {
+            const start = values.indexOf(segment.start);
+            const end = start >= 0 ? values.indexOf(segment.end, start + segment.start.length) : -1;
+            if (start >= 0 && end >= 0) {
+                resolvedPromptCallback({
+                    key: segment.key,
+                    prompt: segment.prompt,
+                    value: values.slice(start + segment.start.length, end),
+                });
+            }
+            values = values.replace(segment.start, '').replace(segment.end, '');
+        }
     }
     return values;
 }
@@ -5845,6 +5928,18 @@ class StreamingProcessor {
      * @param {boolean?} continueOnReasoning If continuing on reasoning
      */
     async #checkDomElements(messageId, continueOnReasoning = null) {
+        const cachedMessageDomInvalid = this.messageDom !== null
+            && (!this.messageDom.isConnected || this.messageDom.getAttribute('mesid') !== String(messageId));
+        const cachedMessageTextDomInvalid = this.messageTextDom !== null && !this.messageTextDom.isConnected;
+
+        if (cachedMessageDomInvalid || cachedMessageTextDomInvalid) {
+            // SillyBunny: refresh stale stream targets after chat-window pruning or tail-gap re-renders.
+            this.messageDom = null;
+            this.messageTextDom = null;
+            this.messageTimerDom = null;
+            this.messageTokenCounterDom = null;
+        }
+
         if (this.messageDom === null || this.messageTextDom === null) {
             this.messageDom = document.querySelector(`#chat .mes[mesid="${messageId}"]`);
             this.messageTextDom = this.messageDom?.querySelector('.mes_text');
@@ -5914,8 +6009,14 @@ class StreamingProcessor {
     async onProgressStreaming(messageId, text, isFinal) {
         const isImpersonate = this.type == 'impersonate';
         const isContinue = this.type == 'continue';
-        const isIOSWebKit = isIOSWebKitPlatform();
-        const shouldReduceIntermediateStreamingWork = !isFinal && isIOSWebKit && power_user.ios_webkit_reduce_streaming_work;
+        const shouldReduceIntermediateStreamingWork = !isFinal && shouldReduceStreamingDomWork(globalThis.navigator, {
+            iosEnabled: power_user.ios_webkit_reduce_streaming_work,
+            androidEnabled: power_user.android_reduce_streaming_work,
+        });
+        const shouldBypassStreamingFadeIn = shouldReduceStreamingDomWork(globalThis.navigator, {
+            iosEnabled: power_user.ios_webkit_disable_stream_fade_in,
+            androidEnabled: power_user.android_disable_stream_fade_in,
+        });
         const shouldUseMobileStreamingPin = !isImpersonate && shouldGuardMobileChatScroll();
         const shouldPinMobileBottom = shouldUseMobileStreamingPin && shouldPinMobileChatToBottom();
 
@@ -5938,14 +6039,6 @@ class StreamingProcessor {
             displayIncompleteSentences: !isFinal,
             stoppingStrings: this.stoppingStrings,
         });
-
-        const charsToBalance = ['*', '"', '```', '~~~'];
-        for (const char of charsToBalance) {
-            if (!isFinal && isOdd(countOccurrences(processedText, char))) {
-                const separator = char.length > 1 ? '\n' : '';
-                processedText = processedText.trimEnd() + separator + char;
-            }
-        }
 
         if (isImpersonate) {
             this.sendTextarea.value = processedText;
@@ -5998,15 +6091,52 @@ class StreamingProcessor {
                 }
             }
 
-            const formattedText = messageFormatting(
-                processedText,
-                chat[messageId].name,
-                chat[messageId].is_system,
-                chat[messageId].is_user,
-                messageId,
-                {},
-                false,
-            );
+            const isAndroidStreamingPreview = isAndroidStreamingPlatform(globalThis.navigator);
+            const shouldUseAndroidBasicMarkdown = power_user.android_streaming_basic_markdown && isAndroidStreamingPreview;
+            const shouldUsePlainTextPreview = shouldUsePlainTextStreamingPreview({
+                isFinal,
+                isReducedDomWork: shouldReduceIntermediateStreamingWork,
+                isAndroidPlatform: isAndroidStreamingPreview,
+                isImpersonate,
+                useBasicMarkdown: shouldUseAndroidBasicMarkdown,
+            });
+            const shouldUseBasicMarkdown = shouldReduceIntermediateStreamingWork
+                && !isFinal
+                && !isImpersonate
+                && shouldUseAndroidBasicMarkdown;
+
+            const preparedPreview = shouldUsePlainTextPreview || shouldUseBasicMarkdown
+                ? prepareMessageDisplayText(
+                    processedText,
+                    chat[messageId].name,
+                    chat[messageId].is_system,
+                    chat[messageId].is_user,
+                    messageId,
+                    false,
+                )
+                : null;
+            const previewText = preparedPreview?.mes ?? processedText;
+            const markdownText = isFinal ? processedText : balanceStreamingMarkdown(processedText);
+
+            const formattedText = shouldUsePlainTextPreview || shouldUseBasicMarkdown
+                ? formatMobileStreamingPreview(
+                    shouldUseBasicMarkdown ? balanceStreamingMarkdown(previewText) : previewText,
+                    {
+                        useBasicMarkdown: shouldUseBasicMarkdown,
+                        collapseOocBlocks: !preparedPreview?.isSystem,
+                        converter,
+                        sanitizeHtml: sanitizeMessageHtml,
+                    },
+                )
+                : messageFormatting(
+                    markdownText,
+                    chat[messageId].name,
+                    chat[messageId].is_system,
+                    chat[messageId].is_user,
+                    messageId,
+                    {},
+                    false,
+                );
             const timePassed = formatGenerationTimer(this.timeStarted, currentTime, currentTokenCount, this.reasoningHandler.getDuration(), this.timeToFirstToken, currentReasoningTokens);
             this.#queueStreamingVisibleWrite({
                 messageId,
@@ -6022,7 +6152,7 @@ class StreamingProcessor {
                     shouldRefreshTokenCount,
                     shouldUpdateMetaBadges: !shouldReduceIntermediateStreamingWork,
                     shouldUseStreamFadeIn: power_user.stream_fade_in,
-                    bypassFadeIn: isIOSWebKit && power_user.ios_webkit_disable_stream_fade_in,
+                    bypassFadeIn: shouldBypassStreamingFadeIn,
                 },
                 isFinal,
             });
@@ -6238,7 +6368,8 @@ class StreamingProcessor {
 
         try {
             const sw = new Stopwatch(getStreamingUpdateInterval(1000 / power_user.streaming_fps, {
-                enabled: power_user.ios_webkit_conservative_streaming,
+                iosEnabled: power_user.ios_webkit_conservative_streaming,
+                androidEnabled: power_user.android_conservative_streaming,
             }));
             const timestamps = [];
             for await (const { text, swipes, logprobs, toolCalls, state } of this.generator()) {
@@ -6323,8 +6454,29 @@ export function createRawPrompt(prompt, api, instructOverride, quietToLoud, syst
         if (message.role === 'assistant') name = message.name ?? name2;
         if (message.role === 'system') name = message.name ?? '';
         const prefix = isInstruct || api === 'openai' ? '' : (name ? `${name}: ` : '');
-        const messageContent = normalizeContentText(message.content);
-        message.content = prefix + substituteParams(messageContent);
+        if (api === 'openai' && Array.isArray(message.content)) {
+            let didApplyPrefix = !prefix;
+            message.content = message.content.map(part => {
+                if (part?.type !== 'text' || typeof part.text !== 'string') {
+                    return part;
+                }
+
+                const text = substituteParams(part.text);
+                if (didApplyPrefix) {
+                    return { ...part, text };
+                }
+
+                didApplyPrefix = true;
+                return { ...part, text: prefix + text };
+            });
+
+            if (!didApplyPrefix) {
+                message.content.unshift({ type: 'text', text: prefix });
+            }
+        } else {
+            const messageContent = normalizeContentText(message.content);
+            message.content = prefix + substituteParams(messageContent);
+        }
         if (isInstruct) {  // instruct formatting for text completion
             const isUser = message.role === 'user';
             const isNarrator = message.role === 'system';
@@ -6681,6 +6833,8 @@ function removeLastMessage(messageId = null) {
  * @property {JsonSchema} [jsonSchema] JSON schema to use for the structured generation. Usually requires a special instruction.
  * @property {boolean} [suppressUserMessage] Whether the visible user message was already rendered by a caller.
  * @property {'main'|'auxiliary'|'none'} [cacheScope] Prompt cache lane for local backends.
+ * @property {boolean} [preserveLastMessage] Whether regeneration should retain the last assistant message as context.
+ * @property {ChatMessage} [companionHistoryTarget] Rewrite target whose Companion output must stay excluded during recursive tool calls.
  */
 
 /**
@@ -6725,7 +6879,7 @@ function consumePendingUserMessageExtra(message) {
     pendingUserMessageExtra = null;
 }
 
-export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null } = {}, dryRun = false) {
+export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null, preserveLastMessage = false, companionHistoryTarget = null } = {}, dryRun = false) {
     console.log('Generate entered');
     setGenerationProgress(0);
     generation_started = new Date();
@@ -6734,7 +6888,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     await unshallowCharacter(this_chid);
 
     // Occurs every time, even if the generation is aborted due to slash commands execution
-    await eventSource.emit(event_types.GENERATION_STARTED, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope }, dryRun);
+    await eventSource.emit(event_types.GENERATION_STARTED, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope, preserveLastMessage }, dryRun);
 
     // Don't recreate abort controller if signal is passed
     if (!(abortController && signal)) {
@@ -6770,7 +6924,8 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             textareaText = '';
             if (chat.length && lastMessage.is_user) {
                 //do nothing? why does this check exist?
-            } else if (type !== 'quiet' && type !== 'swipe' && !isImpersonate && !dryRun && !depth && chat.length) {
+            // SillyBunny: Guided Correction regenerates against the existing assistant reply.
+            } else if (type !== 'quiet' && type !== 'swipe' && !isImpersonate && !dryRun && !depth && chat.length && !(type === 'regenerate' && preserveLastMessage)) {
                 if (type === 'regenerate') {
                     requestMobileChatBottomPin();
                 }
@@ -6817,7 +6972,9 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     }
 
     // Occurs only if the generation is not aborted due to slash commands execution
-    await eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope: resolvedCacheScope }, dryRun);
+    const companionFeedbackTarget = companionHistoryTarget
+        ?? (type === 'continue' || type === 'swipe' || type === 'regenerate' ? lastMessage : null);
+    await eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope: resolvedCacheScope, preserveLastMessage, companionHistoryTarget: companionFeedbackTarget }, dryRun);
 
     if (main_api == 'kobold' && kai_settings.streaming_kobold && !kai_flags.can_use_streaming) {
         toastr.error(t`Streaming is enabled, but the version of Kobold used does not support token streaming.`, undefined, { timeOut: 10000, preventDuplicates: true });
@@ -6840,7 +6997,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     if (selected_group && !is_group_generating) {
         if (!dryRun) {
             // Returns the promise that generateGroupWrapper returns; resolves when generation is done
-            return generateGroupWrapper(false, type, { quiet_prompt, force_chid, signal: abortController.signal, quietImage, jsonSchema, cacheScope: resolvedCacheScope });
+            return generateGroupWrapper(false, type, { quiet_prompt, force_chid, signal: abortController.signal, quietImage, jsonSchema, cacheScope: resolvedCacheScope, preserveLastMessage, companionHistoryTarget: companionFeedbackTarget });
         }
 
         const characterIndexMap = new Map(characters.map((char, index) => [char.avatar, index]));
@@ -6880,6 +7037,9 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     // assemble the prompt so we can count its tokens regardless of whether a chat is active.)
     if (!dryRun && !hasBackendConnection) {
         is_send_press = false;
+        // SillyBunny: reactivate send buttons on early exit so the UI is not
+        // left locked when there is no backend connection. (#527)
+        activateSendButtons();
         return Promise.resolve();
     }
 
@@ -6941,34 +7101,126 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     }
 
     // First message in fresh 1-on-1 chat reacts to user/character settings changes
-    if (chat.length) {
-        chat[0].mes = substituteParams(chat[0].mes);
-    }
+    const firstChatMessage = chat[0];
+    const firstMessageVariants = !world_info_include_names && firstChatMessage
+        ? substituteWorldInfoGreeting(firstChatMessage.mes, substituteParams, { char: name2, user: name1 })
+        : undefined;
+    const firstPromptMessage = firstChatMessage
+        ? (firstMessageVariants?.prompt ?? substituteParams(firstChatMessage.mes))
+        : undefined;
 
     // Collect messages with usable content
     const canUseTools = ToolManager.isToolCallingSupported();
     const canPerformToolCalls = !dryRun && ToolManager.canPerformToolCalls(type) && depth < ToolManager.RECURSE_LIMIT;
-    let coreChat = chat.filter(x => !x.is_system || (canUseTools && Array.isArray(x.extra?.tool_invocations)));
+    let coreChat = chat.filter(x => !x.is_system
+        || (canUseTools && Array.isArray(x.extra?.tool_invocations))
+        || hasCompanionChatHistoryForHiddenHost(x));
     if (generationChatFilter) {
         coreChat = coreChat.filter((message, index) => generationChatFilter(message, index, coreChat));
     }
     if (type === 'swipe') {
         coreChat.pop();
     }
+    const companionRewriteTarget = companionHistoryTarget
+        ?? (isContinue || type === 'swipe' || type === 'regenerate' ? lastMessage : null);
+    const companionCandidateMessages = coreChat.filter(message =>
+        message !== companionRewriteTarget
+        && !message.extra?.[IGNORE_SYMBOL],
+    );
+    const companionPolicyMessages = (companionRewriteTarget && !chat.includes(companionRewriteTarget)
+        ? [...chat, companionRewriteTarget]
+        : chat
+    ).filter(message => !message.extra?.[IGNORE_SYMBOL]);
+    const companionChatHistory = selectCompanionChatHistory(companionCandidateMessages, {
+        policyMessages: companionPolicyMessages,
+    });
+    const {
+        host: consolidatedCompanionHistoryHost,
+        entries: consolidatedRetainedEntries,
+    } = consolidateCompanionChatHistory(companionCandidateMessages, companionChatHistory, sourceMessage => content => substituteParams(content, {
+        name2Override: String(sourceMessage.name ?? '').trim() || undefined,
+        original: sourceMessage.is_system ? '' : sourceMessage.mes,
+    }), message => !Array.isArray(message?.extra?.tool_invocations));
+    const consolidatedRetainedContributions = consolidatedRetainedEntries.map(({ message: sourceMessage, contribution }) => {
+        const sourceIndex = coreChat.indexOf(sourceMessage);
+        const regexType = sourceMessage.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
+        const options = { isPrompt: true, depth: (coreChat.length - sourceIndex - (isContinue ? 2 : 1)) };
+        const agentRegexScripts = resolveRegexScriptsForSnapshot(sourceMessage?.extra?.inChatAgents);
+        let promptContent = contribution.content;
+        if (agentRegexScripts.length > 0) {
+            const agentPlacement = sourceMessage.is_user ? AGENT_REGEX_PLACEMENT.USER_INPUT : AGENT_REGEX_PLACEMENT.AI_OUTPUT;
+            promptContent = applyRegexScriptList(promptContent, agentRegexScripts, agentPlacement, {
+                ...options,
+                characterOverride: name2,
+                substituteParamsFn: substituteParams,
+                substituteParamsExtendedFn: substituteParamsExtended,
+            });
+        }
+        const worldInfoContent = promptContent === contribution.content
+            ? undefined
+            : getRegexedString(contribution.content, regexType, options);
+        promptContent = getRegexedString(promptContent, regexType, options);
+        const contextDepth = Math.max(0, coreChat.length - sourceIndex - 1);
+        const retainOoc = shouldRetainContextAtDepth(contextDepth, power_user.ooc_context_depth);
+        const retainHtml = shouldRetainContextAtDepth(contextDepth, power_user.html_context_depth);
 
+        return {
+            contribution: {
+                ...contribution,
+                content: stripHtmlTagsFromContext(stripOocBlocksFromContext(promptContent, retainOoc), retainHtml),
+            },
+            worldInfoContent: worldInfoContent === undefined
+                ? undefined
+                : stripHtmlTagsFromContext(stripOocBlocksFromContext(worldInfoContent, retainOoc), retainHtml),
+        };
+    });
+    coreChat = coreChat.filter(chatItem => !chatItem.is_system
+        || (canUseTools && Array.isArray(chatItem.extra?.tool_invocations))
+        || chatItem === consolidatedCompanionHistoryHost);
+
+    const worldInfoMessageVariants = new Map();
     coreChat = await Promise.all(coreChat.map(async (/** @type {ChatMessage} */ chatItem, index) => {
-        let message = chatItem.mes;
+        const originalMessage = chatItem === firstChatMessage ? firstPromptMessage : chatItem.mes;
+        const worldInfoSourceMessage = chatItem === firstChatMessage && firstMessageVariants !== undefined
+            ? firstMessageVariants.worldInfo
+            : originalMessage;
+        const isConsolidatedCompanionHost = chatItem === consolidatedCompanionHistoryHost;
+        const hiddenCompanionHistory = chatItem.is_system && isConsolidatedCompanionHost;
+        // SillyBunny: project opted-in companion notes into prompt history without changing stored chat text.
+        const retainedContributions = isConsolidatedCompanionHost
+            ? consolidatedRetainedContributions.map(item => item.contribution).filter(contribution => contribution.content)
+            : [];
+        const contextSourceMessage = hiddenCompanionHistory ? '' : originalMessage;
+        const worldInfoContextSourceMessage = hiddenCompanionHistory ? '' : worldInfoSourceMessage;
+        let message = contextSourceMessage;
         let regexType = chatItem.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
         let options = { isPrompt: true, depth: (coreChat.length - index - (isContinue ? 2 : 1)) };
 
+        // SillyBunny: apply in-chat agent regex scripts (e.g. CYOA "Trim Choices") in prompt mode
+        const agentRegexScripts = resolveRegexScriptsForSnapshot(chatItem?.extra?.inChatAgents);
+        if (agentRegexScripts.length > 0) {
+            const agentPlacement = chatItem.is_user ? AGENT_REGEX_PLACEMENT.USER_INPUT : AGENT_REGEX_PLACEMENT.AI_OUTPUT;
+            message = applyRegexScriptList(message, agentRegexScripts, agentPlacement, {
+                ...options,
+                characterOverride: name2,
+                substituteParamsFn: substituteParams,
+                substituteParamsExtendedFn: substituteParamsExtended,
+            });
+        }
+
         let regexedMessage = getRegexedString(message, regexType, options);
-        regexedMessage = await appendFileContent(chatItem, regexedMessage);
+        let worldInfoRegexedMessage = message === worldInfoContextSourceMessage ? undefined : getRegexedString(worldInfoContextSourceMessage, regexType, options);
+        const fileContent = hiddenCompanionHistory ? '' : await appendFileContent(chatItem, '');
+        regexedMessage = fileContent + regexedMessage;
+        if (worldInfoRegexedMessage !== undefined) {
+            worldInfoRegexedMessage = fileContent + worldInfoRegexedMessage;
+        }
 
         const titles = [];
-        if (chatItem?.extra?.append_title && chatItem?.extra?.title) {
+        if (!hiddenCompanionHistory && chatItem?.extra?.append_title && chatItem?.extra?.title) {
             titles.push(chatItem.extra.title);
         }
-        if (Array.isArray(chatItem?.extra?.media)) {
+        if (!hiddenCompanionHistory && Array.isArray(chatItem?.extra?.media)) {
             for (const mediaItem of chatItem.extra.media) {
                 if (mediaItem?.title && mediaItem?.append_title) {
                     titles.push(mediaItem.title);
@@ -6976,22 +7228,64 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             }
         }
         if (titles.length > 0) {
-            regexedMessage = `${regexedMessage}\n\n${titles.join('\n\n')}`;
+            const appendedTitles = `\n\n${titles.join('\n\n')}`;
+            regexedMessage += appendedTitles;
+            if (worldInfoRegexedMessage !== undefined) {
+                worldInfoRegexedMessage += appendedTitles;
+            }
         }
 
         const contextDepth = Math.max(0, coreChat.length - index - 1);
+        const retainOoc = shouldRetainContextAtDepth(contextDepth, power_user.ooc_context_depth);
+        const retainHtml = shouldRetainContextAtDepth(contextDepth, power_user.html_context_depth);
         const contextMessage = stripHtmlTagsFromContext(
-            stripOocBlocksFromContext(regexedMessage, shouldRetainContextAtDepth(contextDepth, power_user.ooc_context_depth)),
-            shouldRetainContextAtDepth(contextDepth, power_user.html_context_depth),
+            stripOocBlocksFromContext(regexedMessage, retainOoc),
+            retainHtml,
         );
+        const consolidatedContextMessage = [contextMessage, ...retainedContributions.map(contribution => contribution.content)]
+            .filter(Boolean)
+            .join('\n\n');
+        const agentContributions = retainedContributions
+            .filter(contribution => contribution.content && consolidatedContextMessage.includes(contribution.content));
+
+        let worldInfoContextMessage = contextMessage;
+        if (worldInfoRegexedMessage !== undefined) {
+            worldInfoContextMessage = stripHtmlTagsFromContext(
+                stripOocBlocksFromContext(worldInfoRegexedMessage, retainOoc),
+                retainHtml,
+            );
+        }
+        if (isConsolidatedCompanionHost) {
+            const worldInfoRetainedContent = consolidatedRetainedContributions
+                .map(item => item.worldInfoContent ?? item.contribution.content)
+                .filter(Boolean);
+            worldInfoContextMessage = [worldInfoContextMessage, ...worldInfoRetainedContent]
+                .filter(Boolean)
+                .join('\n\n');
+        }
+        if (worldInfoContextMessage !== consolidatedContextMessage) {
+            worldInfoMessageVariants.set(index, { prompt: consolidatedContextMessage, worldInfo: worldInfoContextMessage });
+        }
 
         return {
             ...chatItem,
-            mes: contextMessage,
+            mes: consolidatedContextMessage,
+            extra: hiddenCompanionHistory ? {} : chatItem.extra,
+            is_system: hiddenCompanionHistory ? false : chatItem.is_system,
+            ...(agentContributions.length > 0 && { agentContributions }),
             index,
         };
     }));
-    coreChat = coreChat.filter(hasPromptPayload);
+    // SillyBunny: ICA prompt-only regexes must not remove stored chat text from World Info scans.
+    const worldInfoOnlyChat = coreChat.filter(chatItem => {
+        const variant = worldInfoMessageVariants.get(chatItem.index);
+        return variant && !hasPromptPayload(chatItem) && hasPromptPayload({ ...chatItem, mes: variant.worldInfo });
+    });
+    // SillyBunny: preserve an interrupted reasoning-only prefix when continuing.
+    coreChat = coreChat.filter((chatItem, index) => hasPromptPayload(
+        chatItem,
+        isContinue && index === coreChat.length - 1,
+    ));
 
     const promptReasoning = new PromptReasoning();
     for (let i = coreChat.length - 1; i >= 0; i--) {
@@ -7001,21 +7295,31 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         // In group chats, only include reasoning from the currently generating character
         const isOtherGroupMember = selected_group && coreChat[i].name !== name2;
 
+        const promptMessage = coreChat[i].mes;
+        const messageWithReasoning = isOtherGroupMember
+            ? promptMessage
+            : promptReasoning.addToMessage(
+                promptMessage,
+                getRegexedString(
+                    String(coreChat[i].extra?.reasoning ?? ''),
+                    regex_placement.REASONING,
+                    { isPrompt: true, depth: depth },
+                ),
+                isPrefix,
+                coreChat[i].extra?.reasoning_duration,
+            );
+
         coreChat[i] = {
             ...coreChat[i],
-            mes: isOtherGroupMember
-                ? coreChat[i].mes
-                : promptReasoning.addToMessage(
-                    coreChat[i].mes,
-                    getRegexedString(
-                        String(coreChat[i].extra?.reasoning ?? ''),
-                        regex_placement.REASONING,
-                        { isPrompt: true, depth: depth },
-                    ),
-                    isPrefix,
-                    coreChat[i].extra?.reasoning_duration,
-                ),
+            mes: messageWithReasoning,
         };
+
+        const worldInfoVariant = worldInfoMessageVariants.get(coreChat[i].index);
+        if (worldInfoVariant?.prompt === promptMessage && messageWithReasoning.endsWith(promptMessage)) {
+            const reasoningPrefix = messageWithReasoning.slice(0, messageWithReasoning.length - promptMessage.length);
+            worldInfoVariant.prompt = messageWithReasoning;
+            worldInfoVariant.worldInfo = reasoningPrefix + worldInfoVariant.worldInfo;
+        }
         if (promptReasoning.isLimitReached()) {
             break;
         }
@@ -7086,7 +7390,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     // Add WI to prompt (and also inject WI to AN value via hijack)
     // Make quiet prompt available for WIAN
     setExtensionPrompt(inject_ids.QUIET_PROMPT, quiet_prompt || '', extension_prompt_types.IN_PROMPT, 0, true);
-    const chatForWI = coreChat.map(x => world_info_include_names ? `${x.name}: ${x.mes}` : x.mes).reverse();
+    const chatForWI = buildWorldInfoScanChat(coreChat, worldInfoOnlyChat, worldInfoMessageVariants, world_info_include_names);
     /** @type {import('./scripts/world-info.js').WIGlobalScanData} */
     const globalScanData = {
         personaDescription: persona,
@@ -7232,6 +7536,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     }
 
     let chat2 = [];
+    let chat2AgentContributions = [];
     let continue_mag = '';
     let userMessageIndices = [];
     const lastUserMessageIndex = coreChat.findLastIndex(x => x.is_user);
@@ -7247,6 +7552,9 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         }
 
         chat2[i] = formatMessageHistoryItem(coreChat[j], isInstruct, false);
+        chat2AgentContributions[i] = Array.isArray(coreChat[j].agentContributions)
+            ? structuredClone(coreChat[j].agentContributions)
+            : [];
 
         if (j === 0 && isInstruct) {
             // Reformat with the first output sequence (if any)
@@ -7332,6 +7640,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     // Only add the chat in context if past the greeting message
     if (isContinue && (chat2.length > 1 || main_api === 'openai')) {
         cyclePrompt = chat2.shift();
+        chat2AgentContributions.shift();
         // Adjust indices to account for the shift
         injectedIndices = injectedIndices.map(shiftDownByOne).filter(x => x >= 0);
         userMessageIndices = userMessageIndices.map(shiftDownByOne).filter(x => x >= 0);
@@ -7377,13 +7686,22 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             continue;
         }
 
-        const item = chat2[i];
+        let item = chat2[i];
 
         if (typeof item !== 'string') {
             continue;
         }
 
-        tokenCount += await getTokenCountAsync(item.replace(/\r/gm, ''));
+        let itemTokens = await getTokenCountAsync(item.replace(/\r/gm, ''));
+        while (tokenCount + itemTokens >= this_max_context && chat2AgentContributions[i].length > 0) {
+            const trimmed = trimOldestRetainedContribution(item, chat2AgentContributions[i]);
+            if (!trimmed.changed) break;
+            item = trimmed.content;
+            chat2[i] = item;
+            chat2AgentContributions[i] = trimmed.contributions;
+            itemTokens = await getTokenCountAsync(item.replace(/\r/gm, ''));
+        }
+        tokenCount += itemTokens;
         if (tokenCount < this_max_context) {
             chatString = chatString + item;
             arrMes[i] = item;
@@ -7418,7 +7736,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     injectedIndices = newInjectedIndices;
 
     if (main_api !== 'openai') {
-        setInContextMessages(arrMes.length - injectedIndices.length, type);
+        setInContextMessages(arrMes.length - injectedIndices.length, type, preserveLastMessage);
     }
 
     // Estimate how many unpinned example messages fit in the context
@@ -7776,7 +8094,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             }
 
             if (!dryRun) {
-                setInContextMessages(openai_messages_count, type);
+                setInContextMessages(openai_messages_count, type, preserveLastMessage);
             }
             break;
         }
@@ -7807,7 +8125,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         let additionalPromptStuff = {
             ...thisPromptBits[currentArrayEntry],
             rawPrompt: generate_data.prompt || generate_data.input,
-            mesId: getNextMessageId(type),
+            mesId: getNextMessageId(type, preserveLastMessage),
             allAnchors: await getAllExtensionPrompts(),
             chatInjects: injectedIndices?.map(index => arrMes[arrMes.length - index - 1])?.join('') || '',
             summarizeString: (extension_prompts['1_memory']?.value || ''),
@@ -7908,7 +8226,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                         depth = depth + 1;
                         await ToolManager.saveFunctionToolInvocations(invocationResult.invocations);
                         startedSuccessorGeneration = true;
-                        return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage }, dryRun);
+                        return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage, companionHistoryTarget: companionRewriteTarget }, dryRun);
                     }
                 }
 
@@ -7994,7 +8312,12 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
      * @throws {Error} Throws an error if the response data contains an error message
      */
     async function onSuccess(data) {
-        if (!data) return;
+        if (!data) {
+            // SillyBunny: unblock generation on null/falsy data so the send
+            // buttons are not left locked. (#527)
+            unblockGeneration(type, { force: true });
+            return;
+        }
 
         if (data?.fromStream) {
             return data;
@@ -8110,7 +8433,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
                 depth = depth + 1;
                 await ToolManager.saveFunctionToolInvocations(invocationResult.invocations);
-                return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage }, dryRun);
+                return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage, companionHistoryTarget: companionRewriteTarget }, dryRun);
             }
         }
 
@@ -8292,8 +8615,8 @@ function unblockGeneration(type, { emitGenerationEnded = true, force = false } =
     }
 }
 
-export function getNextMessageId(type) {
-    return type == 'swipe' ? chat.length - 1 : chat.length;
+export function getNextMessageId(type, preserveLastMessage = false) {
+    return type == 'swipe' || (type === 'regenerate' && preserveLastMessage) ? chat.length - 1 : chat.length;
 }
 
 /**
@@ -8678,10 +9001,10 @@ export async function duplicateCharacter({ avatar = null, silent = false } = {})
     return data.path;
 }
 
-function setInContextMessages(msgInContextCount, type) {
+function setInContextMessages(msgInContextCount, type, preserveLastMessage = false) {
     chatElement.find('.mes').removeClass('lastInContext');
 
-    if (type === 'swipe' || type === 'regenerate' || type === 'continue') {
+    if (type === 'swipe' || (type === 'regenerate' && !preserveLastMessage) || type === 'continue') {
         msgInContextCount++;
     }
 
@@ -9032,6 +9355,15 @@ export function extractJsonFromData(data, { mainApi = null, chatCompletionSource
             switch (chatCompletionSource) {
                 case chat_completion_sources.CLAUDE:
                     result = data?.content?.find(x => x.type === 'tool_use')?.input;
+                    break;
+                case chat_completion_sources.LINKAPI:
+                    // Anthropic-leg responses carry raw content blocks; other legs return plain text.
+                    result = Array.isArray(data?.content)
+                        ? data.content.find(x => x.type === 'tool_use')?.input
+                        : tryParse(text);
+                    if (!result && returnInvalidJson) {
+                        return text;
+                    }
                     break;
                 case chat_completion_sources.PERPLEXITY:
                     result = tryParse(removeReasoningFromString(text));
@@ -10130,24 +10462,44 @@ function hasPendingChatSave() {
     return chatSaveTimeout !== null || chatSavePromise !== null;
 }
 
+/**
+ * Waits for saves already queued on the serial chat save queue to settle.
+ * SillyBunny: hasPendingChatSave() only sees the debounce timer, so queued saves need a separate drain.
+ * @returns {Promise<void>}
+ */
+async function waitForQueuedChatSaves() {
+    for (let attempt = 0; attempt < 5; attempt++) {
+        const queue = chatSaveQueue;
+        await queue.catch(() => {});
+        if (queue === chatSaveQueue) {
+            return;
+        }
+    }
+}
+
 export async function flushPendingChatSavesForNavigation() {
-    if (!hasPendingChatSave()) {
-        return true;
+    if (hasPendingChatSave()) {
+        // SillyBunny: preserve swipe/message edits before navigation clears the active chat.
+        const didFlush = await flushPendingChatSaves({ silent: true });
+        if (!didFlush) {
+            toastr.error(t`Could not save the current chat before switching chats. Try again in a moment.`, t`Chat save failed`);
+            return false;
+        }
     }
 
-    // SillyBunny: preserve swipe/message edits before navigation clears the active chat.
-    const didFlush = await flushPendingChatSaves();
-    if (!didFlush) {
-        toastr.error(t`Could not save the current chat before switching chats. Try again in a moment.`, t`Chat save failed`);
-    }
-    return didFlush;
+    // SillyBunny: let queued saves land instead of refusing to navigate while one is in flight.
+    await waitForQueuedChatSaves();
+    await waitForQueuedGroupChatSaves();
+    return true;
 }
 
 /**
  * Flushes any pending chat save, waits for in-flight saves, and saves the current chat immediately.
+ * @param {object} [options] Flush options.
+ * @param {boolean} [options.silent=false] Suppress the progress and success toasts. Failures are still reported.
  * @returns {Promise<boolean>} Whether the chat save completed successfully.
  */
-export async function flushPendingChatSaves() {
+export async function flushPendingChatSaves({ silent = false } = {}) {
     const chatId = getCurrentChatId();
 
     if (!chatId) {
@@ -10164,7 +10516,9 @@ export async function flushPendingChatSaves() {
         }
     }
 
-    toastr.info(t`Saving chat...`, t`Saving chat`);
+    if (!silent) {
+        toastr.info(t`Saving chat...`, t`Saving chat`);
+    }
 
     try {
         setChatSaveActive(true);
@@ -10179,7 +10533,9 @@ export async function flushPendingChatSaves() {
 
         saveTokenCache();
         await saveItemizedPrompts(chatId);
-        toastr.success(t`Chat saved successfully.`, t`Chat saved`);
+        if (!silent) {
+            toastr.success(t`Chat saved successfully.`, t`Chat saved`);
+        }
         return true;
     } catch (error) {
         console.error('Error flushing pending chat saves', error);
@@ -10242,7 +10598,7 @@ export function saveChat(...saveChatArguments) {
     return saveTask;
 }
 
-async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, mesId, force = false, chatData = undefined, throwOnError = false, deferBackup = false, activeChatName, characterName, avatarUrl, wasGroupChat = false } = {}) {
+async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, mesId, force = false, chatData = undefined, throwOnError = false, deferBackup = false, allowShrink = false, activeChatName, characterName, avatarUrl, wasGroupChat = false } = {}) {
     if (wasGroupChat || (selected_group && !activeChatName)) {
         toastr.error(t`Operation was aborted to prevent data corruption.`, t`saveChat called for a group chat`);
         throw new Error('saveChat called for a group chat');
@@ -10303,6 +10659,7 @@ async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, m
                 avatar_url: resolvedAvatarUrl,
                 force: force,
                 deferBackup: Boolean(deferBackup),
+                allowShrink: Boolean(allowShrink),
             }),
         });
         const result = await fetch('/api/chats/save', saveChatRequest);
@@ -10317,6 +10674,16 @@ async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, m
         }
 
         const errorData = await result.json();
+
+        if (errorData?.error === 'destructive') {
+            console.error(`Chat save refused as destructive (${errorData?.reason}). The file on disk was left unchanged.`);
+            toastr.error(t`This save would have wiped messages, so the chat file was left unchanged. Reload the page to resync.`, t`Chat not saved`);
+            if (throwOnError) {
+                throw new Error('destructive');
+            }
+            return false;
+        }
+
         const isIntegrityError = errorData?.error === 'integrity' && !force;
         if (!isIntegrityError) {
             const errorMessage = typeof errorData?.error === 'string' ? errorData.error : result.statusText;
@@ -10339,7 +10706,7 @@ async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, m
             return false;
         }
 
-        return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, deferBackup, activeChatName, characterName, avatarUrl, wasGroupChat });
+        return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, deferBackup, allowShrink, activeChatName, characterName, avatarUrl, wasGroupChat });
     } catch (error) {
         console.error(error);
         toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Chat could not be saved`);
@@ -10402,6 +10769,29 @@ export function getThumbnailUrl(type, file, t = false) {
     return `/thumbnail?type=${type}&file=${encodeURIComponent(file)}${t ? `&t=${Date.now()}` : ''}`;
 }
 
+/**
+ * Gets the URL for a mobile thumbnail preset.
+ * @param {import('../src/endpoints/thumbnails.js').ThumbnailType} type The type of the thumbnail to get
+ * @param {string} file The file name or path for which to get the thumbnail URL
+ * @param {boolean} [t=false] Whether to add a cache-busting timestamp to the URL
+ * @returns {string} The URL for the mobile thumbnail
+ */
+export function getMobileThumbnailUrl(type, file, t = false) {
+    return `/thumbnail?type=${type}&file=${encodeURIComponent(file)}&preset=mobile${t ? `&t=${Date.now()}` : ''}`;
+}
+
+/**
+ * Gets the thumbnail URL appropriate for the current viewport.
+ * Desktop receives full-resolution desktop thumbnails; mobile receives the mobile preset.
+ * @param {import('../src/endpoints/thumbnails.js').ThumbnailType} type The type of the thumbnail to get
+ * @param {string} file The file name or path for which to get the thumbnail URL
+ * @param {boolean} [t=false] Whether to add a cache-busting timestamp to the URL
+ * @returns {string} The URL for the thumbnail
+ */
+export function getThumbnailUrlForViewport(type, file, t = false) {
+    return isMobile() ? getMobileThumbnailUrl(type, file, t) : getThumbnailUrl(type, file, t);
+}
+
 function getFullAvatarUrl(type, file, t = false) {
     if (!file || file === 'none') {
         return default_avatar;
@@ -10411,12 +10801,27 @@ function getFullAvatarUrl(type, file, t = false) {
     return `${basePath}${encodeURIComponent(file)}${t ? `?t=${Date.now()}` : ''}`;
 }
 
+function getAvatarRenderSources(rawSrc) {
+    const avatar = parseAvatarSource(rawSrc);
+    if (avatar?.type && avatar.file) {
+        return {
+            desktop: getThumbnailUrl(avatar.type, avatar.file),
+            mobile: getMobileThumbnailUrl(avatar.type, avatar.file),
+            original: avatar.original,
+        };
+    }
+
+    return { desktop: rawSrc, mobile: rawSrc, original: rawSrc };
+}
+
 /**
  * Parses an avatar URL from either the thumbnail endpoint or the full avatar path.
  * @param {string} rawSrc Avatar image source.
- * @returns {{ type: 'avatar' | 'persona' | null, file: string, original: string } | null}
+ * @returns {{ type: 'avatar' | 'persona' | null, file: string, original: string, preset?: string | null } | null}
  */
-function parseAvatarSource(rawSrc) {
+// SillyBunny: exported so sillybunny-tabs.js reuses this parser instead of keeping a divergent copy
+// that skipped the pathname decode and re-encoded file names into "%2520".
+export function parseAvatarSource(rawSrc) {
     if (!rawSrc) {
         return null;
     }
@@ -10427,13 +10832,17 @@ function parseAvatarSource(rawSrc) {
 
     try {
         const parsed = new URL(rawSrc, window.location.origin);
+        if (parsed.origin !== window.location.origin) {
+            return { type: null, file: rawSrc, original: rawSrc };
+        }
         const pathName = decodeURIComponent(parsed.pathname);
 
         if (pathName === '/thumbnail') {
             const type = parsed.searchParams.get('type');
             const file = parsed.searchParams.get('file');
+            const preset = parsed.searchParams.get('preset');
             if ((type === 'avatar' || type === 'persona') && file) {
-                return { type, file, original: getFullAvatarUrl(type, file) };
+                return { type, file, original: getFullAvatarUrl(type, file), preset };
             }
         }
 
@@ -10472,13 +10881,16 @@ export async function refreshCharacterAvatar(avatarKey) {
     }
 
     const thumbnailUrl = getThumbnailUrl('avatar', avatarKey);
+    const mobileThumbnailUrl = getMobileThumbnailUrl('avatar', avatarKey);
     const fullAvatarUrl = getFullAvatarUrl('avatar', avatarKey);
     const cacheBustedThumbnailUrl = getThumbnailUrl('avatar', avatarKey, true);
+    const cacheBustedMobileThumbnailUrl = getMobileThumbnailUrl('avatar', avatarKey, true);
     const cacheBustedFullAvatarUrl = getFullAvatarUrl('avatar', avatarKey, true);
 
     try {
         await Promise.all([
             fetch(thumbnailUrl, { method: 'GET', cache: 'reload' }),
+            fetch(mobileThumbnailUrl, { method: 'GET', cache: 'reload' }),
             fetch(fullAvatarUrl, { method: 'GET', cache: 'reload' }),
         ]);
     } catch (error) {
@@ -10494,25 +10906,40 @@ export async function refreshCharacterAvatar(avatarKey) {
 
         const srcAvatar = parseAvatarSource(img.getAttribute('src'));
         const thumbnailAvatar = parseAvatarSource(img.getAttribute('data-thumbnail-src'));
+        const originalAvatar = parseAvatarSource(img.getAttribute('data-original-src'));
         const srcMatches = srcAvatar?.type === 'avatar' && srcAvatar.file === avatarKey;
         const thumbnailMatches = thumbnailAvatar?.type === 'avatar' && thumbnailAvatar.file === avatarKey;
+        const originalMatches = originalAvatar?.type === 'avatar' && originalAvatar.file === avatarKey;
 
-        if (!srcMatches && !thumbnailMatches) {
+        if (!srcMatches && !thumbnailMatches && !originalMatches) {
             continue;
         }
 
         if (thumbnailMatches) {
-            img.setAttribute('data-thumbnail-src', cacheBustedThumbnailUrl);
+            const cacheBustedUrl = thumbnailAvatar?.preset === 'mobile' ? cacheBustedMobileThumbnailUrl : cacheBustedThumbnailUrl;
+            img.setAttribute('data-thumbnail-src', cacheBustedUrl);
+        }
+
+        if (originalMatches) {
+            img.setAttribute('data-original-src', cacheBustedFullAvatarUrl);
         }
 
         if (srcMatches) {
-            img.setAttribute('src', isThumbnailAvatarSource(img.getAttribute('src')) ? cacheBustedThumbnailUrl : cacheBustedFullAvatarUrl);
+            const currentSrc = img.getAttribute('src');
+            const parsedSrc = parseAvatarSource(currentSrc);
+            if (parsedSrc?.preset === 'mobile') {
+                img.setAttribute('src', cacheBustedMobileThumbnailUrl);
+            } else if (isThumbnailAvatarSource(currentSrc)) {
+                img.setAttribute('src', cacheBustedThumbnailUrl);
+            } else {
+                img.setAttribute('src', cacheBustedFullAvatarUrl);
+            }
         }
 
         refreshedImages++;
     }
 
-    const avatarCssUrl = `url("${String(cacheBustedThumbnailUrl).replace(/(["\\])/g, '\\$1')}")`;
+    const viewportAvatarCssUrl = `url("${String(isMobile() ? cacheBustedMobileThumbnailUrl : cacheBustedFullAvatarUrl).replace(/(["\\])/g, '\\$1')}")`;
     const originalAvatarCssUrl = `url("${String(cacheBustedFullAvatarUrl).replace(/(["\\])/g, '\\$1')}")`;
 
     for (const messageElement of document.querySelectorAll('.mes')) {
@@ -10529,8 +10956,8 @@ export async function refreshCharacterAvatar(avatarKey) {
             continue;
         }
 
-        messageElement.style.setProperty('--sb-message-avatar', avatarCssUrl);
-        messageElement.style.setProperty('--mes-avatar-url', avatarCssUrl);
+        messageElement.style.setProperty('--sb-message-avatar', viewportAvatarCssUrl);
+        messageElement.style.setProperty('--mes-avatar-url', viewportAvatarCssUrl);
         messageElement.style.setProperty('--mes-avatar-original-url', originalAvatarCssUrl);
     }
 
@@ -10550,7 +10977,7 @@ export function buildAvatarList(block, entities, { templateId = 'inline_avatar_t
 
         let this_avatar = default_avatar;
         if (entity.item.avatar !== undefined && entity.item.avatar != 'none') {
-            this_avatar = getThumbnailUrl('avatar', entity.item.avatar);
+            this_avatar = getThumbnailUrlForViewport('avatar', entity.item.avatar);
         }
 
         avatarTemplate.attr('data-type', entity.type);
@@ -10579,7 +11006,7 @@ export function buildAvatarList(block, entities, { templateId = 'inline_avatar_t
         } else if (entity.type === 'persona') {
             avatarTemplate.attr({ 'data-pid': id, 'data-chid': null });
             avatarTemplate.find('img').attr({
-                src: getThumbnailUrl('persona', entity.item.avatar),
+                src: getThumbnailUrlForViewport('persona', entity.item.avatar),
                 loading: 'lazy',
                 decoding: 'async',
             });
@@ -10642,6 +11069,7 @@ export async function getChat({ allowMissingPersisted = false, switchMenu = true
                 ch_name: characters[this_chid].name,
                 file_name: resolvedChat.chatName,
                 avatar_url: characters[this_chid].avatar,
+                allow_create: resolvedChat.created,
             }),
         });
 
@@ -10661,9 +11089,9 @@ export async function getChat({ allowMissingPersisted = false, switchMenu = true
             chat.splice(0, chat.length);
             chat_metadata = {};
         }
-        if (!chat_metadata.integrity) {
-            chat_metadata.integrity = uuidv4();
-        }
+        // SillyBunny: a chat with no integrity slug is treated as intact by the server, which mints
+        // one on the first real save. Stamping one in here only dirtied legacy chats on load, and a
+        // dirty chat is one that gets rewritten to disk for no reason.
         await getChatResult({ emitCreated: resolvedChat.created, switchMenu });
         eventSource.emit(event_types.CHAT_LOADED, { detail: { id: this_chid, character: characters[this_chid] } });
 
@@ -10674,9 +11102,12 @@ export async function getChat({ allowMissingPersisted = false, switchMenu = true
             }
             $('#send_textarea').trigger('click').trigger('focus');
         });
+        return true;
     } catch (error) {
-        await getChatResult({ switchMenu });
+        // SillyBunny: a failed strict load must not be replaced with a newly saved greeting.
         console.log(error);
+        toastr.error(t`Could not load chat data. Try reloading the page.`);
+        return false;
     }
 }
 
@@ -10690,7 +11121,10 @@ async function getChatResult({ emitCreated = false, switchMenu = true } = {}) {
             freshChat = true;
         }
         // Make sure the chat appears on the server
-        await saveChatConditional();
+        // SillyBunny: never persist a message-less chat over a file this load did not create.
+        if (emitCreated || freshChat) {
+            await saveChatConditional();
+        }
     }
     await loadItemizedPrompts(getCurrentChatId());
     await printMessages();
@@ -10745,13 +11179,20 @@ export async function openCharacterChat(file_name) {
         return;
     }
 
-    await waitUntilCondition(() => !isChatSaving, debounce_timeout.extended, 10);
     await clearChat({ clearData: true });
+    const previousChatName = characters[this_chid].chat;
     characters[this_chid].chat = file_name;
     chat_metadata = {};
     $('#selected_chat_pole').val(file_name);
-    await getChat();
-    await updateRemoteChatName(this_chid, file_name);
+    if (!await getChat()) {
+        characters[this_chid].chat = previousChatName;
+        $('#selected_chat_pole').val(previousChatName);
+        return;
+    }
+    // SillyBunny: reopening the chat that is already recorded has nothing to persist.
+    if (file_name !== previousChatName) {
+        await updateRemoteChatName(this_chid, file_name);
+    }
 }
 
 ////////// OPTIMZED MAIN API CHANGE FUNCTION ////////////
@@ -11027,6 +11468,9 @@ export async function getSettings(initLoaderHandle = null) {
         // Load proxy presets
         loadProxyPresets(settings);
 
+        // Load Custom OpenAI-compatible endpoint profiles
+        await loadCustomEndpointPresets(settings);
+
         // Allow subscribers to mutate settings
         await eventSource.emit(event_types.SETTINGS_LOADED_AFTER, settings);
 
@@ -11160,6 +11604,15 @@ async function saveSettingsInner(loopCounter = 0) {
         background: background_settings,
         proxies: proxies,
         selected_proxy: selected_proxy,
+        // Strip plaintext keys from presets before saving
+        custom_endpoint_presets: custom_endpoint_presets.map(p => ({
+            ...p,
+            key: p.secretId ? '' : p.key,
+        })),
+        selected_custom_endpoint_preset: selected_custom_endpoint_preset ? {
+            ...selected_custom_endpoint_preset,
+            key: selected_custom_endpoint_preset.secretId ? '' : selected_custom_endpoint_preset.key,
+        } : selected_custom_endpoint_preset,
     };
 
     try {
@@ -11839,7 +12292,7 @@ async function promptForMessageScreenshotRange(messageId) {
         onOpen: function () {
             const startInput = popup.dlg.querySelector(`#${MESSAGE_SCREENSHOT_INPUT_IDS.start}`);
             if (startInput instanceof HTMLInputElement) {
-                startInput.focus();
+                startInput.focus({ preventScroll: true });
                 startInput.select();
             }
         },
@@ -11857,7 +12310,7 @@ async function promptForMessageScreenshotRange(messageId) {
             if (!range) {
                 toastr.warning(t`Enter message IDs between 0 and ${maximumMessageId}.`, t`Screenshot messages`);
                 if (startInput instanceof HTMLInputElement) {
-                    startInput.focus();
+                    startInput.focus({ preventScroll: true });
                     startInput.select();
                 }
                 return false;
@@ -12085,11 +12538,7 @@ export async function messageEdit(editMessageId) {
         }
     };
 
-    try {
-        editTextArea.focus({ preventScroll: true });
-    } catch {
-        editTextArea.focus();
-    }
+    editTextArea.focus({ preventScroll: true });
 
     // Sets the cursor at the end of the text
     editTextArea.setSelectionRange(text.length, text.length);
@@ -12348,7 +12797,6 @@ export function getCurrentChatDetails() {
     return { sessionName: currentChat, group: group, characterName: displayName, avatarImgURL: avatarImg };
 }
 
-const CHAT_LABEL_TITLE_LIMIT = 72;
 const CHAT_LABEL_FILENAME_LIMIT = 120;
 const CHAT_LABEL_MAX_MESSAGES = 14;
 const CHAT_LABEL_HEAD_MESSAGES = 4;
@@ -12511,78 +12959,6 @@ function buildChatLabelTranscript(chatData) {
     }).join('\n');
 }
 
-function truncateChatLabelText(value, limit = CHAT_LABEL_TITLE_LIMIT) {
-    const text = String(value || '').trim();
-    if (text.length <= limit) {
-        return text;
-    }
-
-    const clipped = text.slice(0, limit).trim();
-    const wordBoundary = clipped.lastIndexOf(' ');
-    return (wordBoundary > 24 ? clipped.slice(0, wordBoundary) : clipped).replace(/[._ -]+$/g, '').trim();
-}
-
-function normalizeGeneratedChatLabel(value, displayName = '') {
-    let title = String(value || '')
-        .replace(/<think>[\s\S]*?<\/think>/gi, '')
-        .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
-        .replace(/```(?:json)?/gi, '')
-        .replace(/```/g, '')
-        .replace(/^chat\s*(?:title|label|name)\s*[:=-]\s*/i, '')
-        .replace(/\.(?:jsonl?|txt)$/i, '')
-        .replace(/[\\/:*?"<>|]+/g, ' ')
-        .replace(/[\u0000-\u001F\u007F]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .replace(/^[\s"'`*_]+|[\s"'`*_]+$/g, '')
-        .replace(/[._ -]+$/g, '')
-        .trim();
-
-    const normalizedDisplayName = String(displayName || '').trim();
-    if (normalizedDisplayName) {
-        title = title.replace(new RegExp(`^${escapeRegex(normalizedDisplayName)}\\s*[-:]\\s*`, 'i'), '').trim();
-    }
-
-    title = truncateChatLabelText(title);
-    const genericTitles = new Set(['chat', 'conversation', 'new chat', 'roleplay chat', 'untitled', 'untitled chat']);
-    return genericTitles.has(title.toLowerCase()) ? '' : title;
-}
-
-function extractGeneratedChatLabel(responseText, displayName = '') {
-    const text = String(responseText || '')
-        .replace(/<think>[\s\S]*?<\/think>/gi, '')
-        .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
-        .trim();
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-
-    if (jsonMatch) {
-        try {
-            const parsed = JSON.parse(jsonMatch[0]);
-            const parsedTitle = parsed?.title || parsed?.label || parsed?.name;
-            const normalizedTitle = normalizeGeneratedChatLabel(parsedTitle, displayName);
-            if (normalizedTitle) {
-                return normalizedTitle;
-            }
-        } catch {
-            // Fall back to plain-text parsing below.
-        }
-    }
-
-    const plainTextLabel = normalizeGeneratedChatLabel(text, displayName);
-    if (plainTextLabel) {
-        return plainTextLabel;
-    }
-
-    for (const line of text.split('\n')) {
-        const normalizedLine = normalizeGeneratedChatLabel(line, displayName);
-        if (normalizedLine) {
-            return normalizedLine;
-        }
-    }
-
-    return '';
-}
-
 async function generateChatAutoLabelResponse(prompt, displayName, signal) {
     const generated = await generateRaw({
         prompt,
@@ -12737,7 +13113,7 @@ async function autoLabelChatFile(fileName, { existingNames, force = false, sourc
     const oldFileName = getChatBaseName(fileName);
     const groupId = selected_group;
     const characterId = this_chid;
-    const isGroupChat = Boolean(groupId);
+    const isGroupChat = groupId !== undefined && groupId !== null;
     const chatDetails = getCurrentChatDetails();
     const displayName = chatDetails.characterName || '';
 
@@ -12764,7 +13140,18 @@ async function autoLabelChatFile(fileName, { existingNames, force = false, sourc
         return { status: 'skipped', oldFileName };
     }
 
-    await renameGroupOrCharacterChat({
+    if (reloadCurrent) {
+        const isSameActiveTarget = isGroupChat
+            ? String(selected_group) === String(groupId) && getChatBaseName(getCurrentChatId()) === oldFileName
+            : (selected_group === null || selected_group === undefined)
+                && String(this_chid) === String(characterId)
+                && getChatBaseName(getCurrentChatId()) === oldFileName;
+        if (!isSameActiveTarget) {
+            throw new DOMException('Chat labeling was cancelled because the active chat changed.', 'AbortError');
+        }
+    }
+
+    const renameResult = await renameGroupOrCharacterChat({
         characterId,
         groupId,
         oldFileName,
@@ -12773,7 +13160,7 @@ async function autoLabelChatFile(fileName, { existingNames, force = false, sourc
         reloadCurrent,
     });
 
-    return { status: 'renamed', oldFileName, newFileName };
+    return { status: 'renamed', oldFileName, newFileName: renameResult.newFileName };
 }
 
 export async function autoLabelCurrentChat() {
@@ -13642,11 +14029,14 @@ function select_rm_characters() {
  * @param {string} value Prompt injection value.
  * @param {number} position Insertion position. 0 is after story string, 1 is in-chat with custom depth.
  * @param {number} depth Insertion depth. 0 represets the last message in context. Expected values up to MAX_INJECTION_DEPTH.
- * @param {number} role Extension prompt role. Defaults to SYSTEM.
  * @param {boolean} scan Should the prompt be included in the world info scan.
+ * @param {number} role Extension prompt role. Defaults to SYSTEM.
  * @param {(function(): Promise<boolean>|boolean)} filter Filter function to determine if the prompt should be injected.
+ * @param {string|null} name Display name shown in Prompt Manager.
  */
-export function setExtensionPrompt(key, value, position, depth, scan = false, role = extension_prompt_roles.SYSTEM, filter = null) {
+export function setExtensionPrompt(key, value, position, depth, scan = false, role = extension_prompt_roles.SYSTEM, filter = null, name = null) {
+    const promptName = typeof name === 'string' ? name.trim() : '';
+
     extension_prompts[key] = {
         value: String(value),
         position: Number(position),
@@ -13654,6 +14044,7 @@ export function setExtensionPrompt(key, value, position, depth, scan = false, ro
         scan: !!scan,
         role: Number(role ?? extension_prompt_roles.SYSTEM),
         filter: filter,
+        ...(promptName && { name: promptName }),
     };
 }
 
@@ -13934,6 +14325,25 @@ export function isMessageSwipeable(messageId, message = undefined) {
     }
 }
 
+// SillyBunny: one-click recovery for replacing a failed current swipe.
+function canDeleteAddSwipe(messageId, message = chat[messageId]) {
+    if (!message) {
+        return false;
+    }
+
+    const swipesArray = Array.isArray(message.swipes) ? message.swipes : [];
+    const selectedSwipe = Number(message.swipe_id);
+    const overswipe = getOverswipeBehavior(messageId, message);
+
+    return isSwipingAllowed() &&
+        isMessageSwipeable(messageId, message) &&
+        overswipe === OVERSWIPE_BEHAVIOR.REGENERATE &&
+        swipesArray.length > 1 &&
+        Number.isInteger(selectedSwipe) &&
+        selectedSwipe >= 0 &&
+        selectedSwipe < swipesArray.length;
+}
+
 /**
  * Returns the message's behavior when swiped past it's last branch.
  * This does not check if the message can currently be swiped. See isMessageSwipeable().
@@ -13977,6 +14387,7 @@ export function refreshSwipeButtons(updateCounters = false, fade = true) {
     //If swipes are disabled or hidden, hide all swipe buttons.
     if (!isSwipingAllowed()) {
         $('body').addClass('hideAllSwipeButtons');
+        chatElement.find('.mes_delete_add_swipe').hide();
         return;
         //Don't hide all swipe buttons.
     } else {
@@ -14005,6 +14416,7 @@ export function refreshSwipeButtons(updateCounters = false, fade = true) {
             const hasSwipes = (message?.swipes?.length > 1);
             const overswipe = getOverswipeBehavior(messageId, message);
             const swipePickerButton = $(div).find('.mes_swipe_picker');
+            const deleteAddSwipeButton = $(div).find('.mes_delete_add_swipe');
             const canOpenSwipePicker = canOpenSwipePickerForMessage(messageId);
 
             // Chevrons should always be shown on pristine greetings: https://github.com/SillyTavern/SillyTavern/pull/4712#issuecomment-3557893373
@@ -14020,6 +14432,7 @@ export function refreshSwipeButtons(updateCounters = false, fade = true) {
             //If there's only one swipe, the left arrow should not be shown.
             div.classList.toggle('swipes_visible', hasSwipes || pristineGreeting);
             swipePickerButton.toggle(canOpenSwipePicker);
+            deleteAddSwipeButton.toggle(canDeleteAddSwipe(messageId, message));
 
             //updateSwipeCounter does not need to be awaited, It can run a bit later.
             if (updateCounters) updateSwipeCounter(messageId, { message, messageElement: $(div) });
@@ -14027,6 +14440,7 @@ export function refreshSwipeButtons(updateCounters = false, fade = true) {
             //Hide all messages that are not swipeable.
             div.classList.remove('swipes_visible', 'last_swipe');
             $(div).find('.mes_swipe_picker').toggle(canOpenSwipePickerForMessage(messageId));
+            $(div).find('.mes_delete_add_swipe').hide();
         }
     });
 }
@@ -14749,7 +15163,9 @@ export async function swipe(event, direction, { source, repeated, message = chat
             //Update the chat.
             await loadFromSwipeId(mesId, newSwipeId);
             //Transition to the new chat.
-            await animateSwipe();
+            // SillyBunny: skip the slide-out so the target swipe's content renders to the DOM instantly,
+            // rather than lagging behind the previous message until the slide-out completes.
+            await animateSwipe(false, true);
         }
         await endSwipe();
     }
@@ -14909,7 +15325,8 @@ export async function swipe(event, direction, { source, repeated, message = chat
     /**
      * Anime a swipe, optionally running a generation.
      * @param {boolean} run_generate
-     * @param {boolean} [skipSwipeOut=false]
+     * @param {boolean} [skipSwipeOut=false] SillyBunny: callers now pass `true` so the DOM swaps instantly
+     *     (the message is blanked/replaced immediately), keeping only the slide-in enter animation.
      */
     async function animateSwipe(run_generate = false, skipSwipeOut = false) {
         let swipeViewportUpdate = null;
@@ -14924,6 +15341,11 @@ export async function swipe(event, direction, { source, repeated, message = chat
             await updateSwipeCounter(mesId);
             //shows "..." while generating
             thisMesDiv.find('.mes_text').html('...');
+            // SillyBunny: keep data in sync so MESSAGE_SWIPED listeners cannot re-render stale swipe text.
+            chat[mesId].mes = '...';
+            if (Array.isArray(chat[mesId].swipes) && chat[mesId].swipe_id < chat[mesId].swipes.length) {
+                chat[mesId].swipes[chat[mesId].swipe_id] = '...';
+            }
             // resets the timer
             thisMesDiv.find('.mes_timer').html('');
             thisMesDiv.find('.tokenCounterDisplay').text('');
@@ -15060,7 +15482,9 @@ export async function swipe(event, direction, { source, repeated, message = chat
                 clearMessageData(chat[mesId]);
                 let run_generate = true;
                 //Generate.
-                await animateSwipe(run_generate);
+                // SillyBunny: skip the slide-out so the message blanks to "..." instantly on regenerate,
+                // instead of keeping the previous generation visible during the slide-out animation.
+                await animateSwipe(run_generate, true);
                 await endSwipe();
                 return;
             } else if (overswipe == OVERSWIPE_BEHAVIOR.LOOP || overswipe == OVERSWIPE_BEHAVIOR.PRISTINE_GREETING) {
@@ -15279,16 +15703,9 @@ export async function doNewChat({ deleteCurrentChat = false } = {}) {
         return;
     }
 
-    //Fix it; New chat doesn't create while open create character menu
-    await waitUntilCondition(() => !isChatSaving, debounce_timeout.extended, 10);
     await clearChat({ clearData: true });
 
     chat_file_for_del = getCurrentChatDetails()?.sessionName;
-
-    // Make it easier to find in backups
-    if (deleteCurrentChat) {
-        await saveChatConditional();
-    }
 
     if (selected_group) {
         await createNewGroupChat(selected_group, { chatAlreadyPrepared: true });
@@ -15297,9 +15714,14 @@ export async function doNewChat({ deleteCurrentChat = false } = {}) {
         //RossAscends: added character name to new chat filenames and replaced Date.now() with humanizedDateTime;
         chat_metadata = {};
         const newChatName = `${name2} - ${humanizedDateTime()}`;
+        const previousChatName = characters[this_chid].chat;
         characters[this_chid].chat = newChatName;
         $('#selected_chat_pole').val(newChatName);
-        await getChat({ allowMissingPersisted: true });
+        if (!await getChat({ allowMissingPersisted: true })) {
+            characters[this_chid].chat = previousChatName;
+            $('#selected_chat_pole').val(previousChatName);
+            return;
+        }
         await updateRemoteChatName(this_chid, newChatName);
         if (deleteCurrentChat) await delChat(chat_file_for_del + '.jsonl');
     }
@@ -15317,9 +15739,11 @@ export async function doNewChat({ deleteCurrentChat = false } = {}) {
  */
 export async function renameGroupOrCharacterChat({ characterId, groupId, oldFileName, newFileName, loader: showLoader, reloadCurrent: shouldReloadCurrent = true }) {
     const currentChatId = getCurrentChatId();
+    const isGroupRename = groupId !== undefined && groupId !== null;
+    const targetCharacter = characterId !== undefined ? characters[characterId] : null;
     const body = {
-        is_group: !!groupId,
-        avatar_url: characters[characterId]?.avatar,
+        is_group: isGroupRename,
+        avatar_url: targetCharacter?.avatar,
         original_file: `${oldFileName}.jsonl`,
         renamed_file: `${newFileName.trim()}.jsonl`,
     };
@@ -15342,50 +15766,96 @@ export async function renameGroupOrCharacterChat({ characterId, groupId, oldFile
 
     try {
         const currentChatBaseName = getChatBaseName(currentChatId);
-        if (currentChatBaseName && currentChatBaseName === getChatBaseName(oldFileName)) {
+        const wasActiveTarget = isGroupRename
+            ? String(selected_group) === String(groupId) && currentChatBaseName === getChatBaseName(oldFileName)
+            : (selected_group === null || selected_group === undefined)
+                && String(this_chid) === String(characterId)
+                && currentChatBaseName === getChatBaseName(oldFileName);
+        const derivedChatIdHash = getStringHash(wasActiveTarget ? (chat_metadata.main_chat ?? currentChatId) : getChatBaseName(oldFileName));
+        body.chat_id_hash = Number.isSafeInteger(chat_metadata.chat_id_hash) && wasActiveTarget
+            ? chat_metadata.chat_id_hash
+            : derivedChatIdHash;
+        if (wasActiveTarget) {
             const didFlush = await flushPendingChatSaves();
             if (!didFlush) {
                 throw new Error('Could not save the current chat before renaming.');
             }
         }
 
-        const response = await fetch('/api/chats/rename', {
-            method: 'POST',
-            body: JSON.stringify(body),
-            headers: getRequestHeaders(),
-        });
+        const sendRenameRequest = async (requestBody) => {
+            const response = await fetch('/api/chats/rename', {
+                method: 'POST',
+                body: JSON.stringify(requestBody),
+                headers: getRequestHeaders(),
+            });
+            if (!response.ok) {
+                throw new Error('Unsuccessful chat rename request.');
+            }
+            const data = await response.json();
+            if (data.error || !data.sanitizedFileName) {
+                throw new Error('Server returned an invalid chat rename result.');
+            }
+            return data.sanitizedFileName;
+        };
 
-        if (!response.ok) {
-            throw new Error('Unsuccessful request.');
+        const actualNewFileName = await sendRenameRequest(body);
+        // SillyBunny: update only the lightweight active-chat pointer, never rewrite the full card.
+        const shouldUpdateCharacterPointer = !isGroupRename
+            && characterId !== undefined
+            && getChatBaseName(targetCharacter?.chat) === getChatBaseName(oldFileName);
+
+        try {
+            if (isGroupRename) {
+                await renameGroupChat(groupId, oldFileName, actualNewFileName);
+            } else if (shouldUpdateCharacterPointer) {
+                await updateRemoteChatName(characterId, actualNewFileName);
+                if (String(characterId) === String(this_chid)) {
+                    $('#selected_chat_pole').val(actualNewFileName);
+                }
+            }
+        } catch (persistenceError) {
+            const rollbackBody = {
+                ...body,
+                original_file: `${actualNewFileName}.jsonl`,
+                renamed_file: `${oldFileName}.jsonl`,
+            };
+            try {
+                await sendRenameRequest(rollbackBody);
+            } catch (rollbackError) {
+                throw new AggregateError([persistenceError, rollbackError], 'Chat rename and rollback both failed.');
+            }
+            throw persistenceError;
         }
 
-        const data = await response.json();
-
-        if (data.error) {
-            throw new Error('Server returned an error.');
+        const isStillActiveTarget = isGroupRename
+            ? String(selected_group) === String(groupId) && getChatBaseName(getCurrentChatId()) === actualNewFileName
+            : (selected_group === null || selected_group === undefined)
+                && String(this_chid) === String(characterId)
+                && getChatBaseName(getCurrentChatId()) === actualNewFileName;
+        if (shouldReloadCurrent && wasActiveTarget && isStillActiveTarget) {
+            try {
+                await reloadCurrentChat();
+            } catch (error) {
+                console.error('Failed to reload renamed chat:', error);
+            }
         }
 
-        if (data.sanitizedFileName) {
-            newFileName = data.sanitizedFileName;
+        const eventData = {
+            avatarId: body.avatar_url,
+            groupId,
+            oldFileName: `${getChatBaseName(oldFileName)}.jsonl`,
+            newFileName: `${actualNewFileName}.jsonl`,
+        };
+        try {
+            await eventSource.emit(event_types.CHAT_RENAMED, eventData);
+        } catch (error) {
+            console.error('Failed to emit chat rename event:', error);
         }
-
-        if (groupId) {
-            await renameGroupChat(groupId, oldFileName, newFileName);
-        } else if (characterId !== undefined && String(characterId) === String(this_chid) && characters[characterId]?.chat === oldFileName) {
-            characters[characterId].chat = newFileName;
-            $('#selected_chat_pole').val(characters[characterId].chat);
-            await createOrEditCharacter();
-        }
-
-        if (shouldReloadCurrent && currentChatId) {
-            await reloadCurrentChat();
-        }
-
-        const eventData = { avatarId: body.avatar_url, groupId, oldFileName: body.original_file, newFileName: body.renamed_file };
-        await eventSource.emit(event_types.CHAT_RENAMED, eventData);
-    } catch {
+        return { oldFileName: getChatBaseName(oldFileName), newFileName: actualNewFileName };
+    } catch (error) {
         await delay(500);
         await callGenericPopup('An error has occurred. Chat was not renamed.', POPUP_TYPE.TEXT);
+        throw error;
     } finally {
         await loaderHandle?.hide();
     }
@@ -15417,7 +15887,6 @@ export async function closeCurrentChat() {
             return false;
         }
 
-        await waitUntilCondition(() => !isChatSaving, debounce_timeout.extended, 10);
         await clearChat({ clearData: true });
         resetSelectedGroup();
         setCharacterId(undefined);
@@ -15446,22 +15915,22 @@ export async function closeCurrentChat() {
 export async function updateRemoteChatName(characterId, newName) {
     const character = characters[characterId];
     if (!character) {
-        console.warn(`Character not found for ID: ${characterId}`);
-        return;
+        throw new Error(`Character not found for ID: ${characterId}`);
     }
-    character.chat = newName;
-    const mergeRequest = {
-        avatar: character.avatar,
-        chat: newName,
-    };
-    const mergeResponse = await fetch('/api/characters/merge-attributes', {
+    // SillyBunny: the last opened chat lives in a sidecar, not the card, so
+    // switching chats no longer rewrites the character file.
+    const response = await fetch('/api/characters/last-chat', {
         method: 'POST',
         headers: getRequestHeaders(),
-        body: JSON.stringify(mergeRequest),
+        body: JSON.stringify({
+            avatar: character.avatar,
+            chat: newName,
+        }),
     });
-    if (!mergeResponse.ok) {
-        console.error('Failed to save extension field', mergeResponse.statusText);
+    if (!response.ok) {
+        throw new Error(`Failed to save character chat name: ${response.statusText}`);
     }
+    character.chat = newName;
 }
 
 
@@ -15702,8 +16171,13 @@ function addDebugFunctions() {
         alert(message);
     });
     registerDebugFunction('toggleEventTracing', 'Toggle event tracing', 'Useful to see what triggered a certain event.', () => {
-        localStorage.setItem('eventTracing', localStorage.getItem('eventTracing') === 'true' ? 'false' : 'true');
-        toastr.info('Event tracing is now ' + (localStorage.getItem('eventTracing') === 'true' ? 'enabled' : 'disabled'));
+        try {
+            const nextEventTracing = localStorage.getItem('eventTracing') === 'true' ? 'false' : 'true';
+            localStorage.setItem('eventTracing', nextEventTracing);
+            toastr.info('Event tracing is now ' + (nextEventTracing === 'true' ? 'enabled' : 'disabled'));
+        } catch {
+            toastr.warning('Event tracing could not be persisted in this browser session.');
+        }
     });
 
     registerDebugFunction('toggleRegenerateWarning', 'Toggle Ctrl+Enter regeneration confirmation', 'Toggle the warning when regenerating a message with a Ctrl+Enter hotkey.', () => {
@@ -15821,6 +16295,40 @@ jQuery(async function () {
     //limit swiping to only last message clicks
     $(document).on('click', '.last_mes .swipe_right', async (e, data) => await swipe(e, SWIPE_DIRECTION.RIGHT, data));
     $(document).on('click', '.last_mes .swipe_left', async (e, data) => await swipe(e, SWIPE_DIRECTION.LEFT, data));
+
+    $(document).on('click', '.mes_delete_add_swipe', async function () {
+        const button = $(this);
+        if (button.data('deleteAddSwipePending')) {
+            return;
+        }
+
+        button.data('deleteAddSwipePending', true);
+        try {
+            if (is_delete_mode) {
+                return;
+            }
+
+            const mesId = Number(button.closest('.mes').attr('mesid'));
+            const message = chat[mesId];
+            if (!canDeleteAddSwipe(mesId, message)) {
+                return;
+            }
+
+            const selectedSwipe = Number(message.swipe_id);
+            const newSwipeId = await deleteSwipe(selectedSwipe, mesId);
+            if (newSwipeId === undefined || !isSwipingAllowed()) {
+                return;
+            }
+
+            await swipe(null, SWIPE_DIRECTION.RIGHT, {
+                forceMesId: mesId,
+                forceSwipeId: message.swipes.length,
+                message,
+            });
+        } finally {
+            button.removeData('deleteAddSwipePending');
+        }
+    });
 
     initCharacterSearch();
 
@@ -16212,7 +16720,11 @@ jQuery(async function () {
             return;
         }
 
-        await renameChat(oldFileName, newName);
+        try {
+            await renameChat(oldFileName, newName);
+        } catch {
+            return;
+        }
 
         await delay(250);
         $('#option_select_chat').trigger('click');
@@ -16480,7 +16992,8 @@ jQuery(async function () {
             chatElement.find(`.mes[mesid="${this_del_mes}"]`).remove();
             chat.length = this_del_mes;
             chat_metadata.tainted = true;
-            await saveChatConditional();
+            // SillyBunny: this shrink is the user's own deletion, not an accidental overwrite.
+            await saveChatConditional({ allowShrink: true });
             chatElement.scrollTop(chatElement[0].scrollHeight);
             await eventSource.emit(event_types.MESSAGE_DELETED, chat.length);
             chatElement.find('.mes').removeClass('last_mes');
@@ -17017,8 +17530,9 @@ jQuery(async function () {
     $(document).on('click', '.mes .avatar', function () {
         const messageElement = $(this).closest('.mes');
         const avatarImage = $(this).children('img');
-        const fullAvatarURL = avatarImage.attr('src');
-        const thumbURL = avatarImage.attr('data-thumbnail-src') || fullAvatarURL;
+        const originalAvatarURL = avatarImage.attr('data-original-src');
+        const fullAvatarURL = originalAvatarURL || avatarImage.attr('src');
+        const thumbURL = avatarImage.attr('data-thumbnail-src') || avatarImage.attr('src') || fullAvatarURL;
         const avatarSource = parseAvatarSource(thumbURL) || parseAvatarSource(fullAvatarURL);
         const targetAvatarImg = avatarSource?.file || '';
         const charname = targetAvatarImg.replace('.png', '');
@@ -17055,9 +17569,9 @@ jQuery(async function () {
             const zoomedAvatarImgElement = $(`.zoomed_avatar[forChar="${charname}"] img`);
             if (messageElement.attr('is_user') == 'true' || (messageElement.attr('is_system') == 'true' && !isValidCharacter)) {
                 //handle user and system avatars
-                const isValidPersona = decodeURIComponent(targetAvatarImg) in power_user.personas;
+                const isValidPersona = targetAvatarImg in power_user.personas;
                 if (isValidPersona) {
-                    const personaSrc = getUserAvatar(targetAvatarImg);
+                    const personaSrc = originalAvatarURL || avatarSource?.original || getUserAvatar(targetAvatarImg);
                     zoomedAvatarImgElement.attr('src', personaSrc);
                     zoomedAvatarImgElement.attr('data-izoomify-url', personaSrc);
                 } else {
@@ -17159,6 +17673,33 @@ jQuery(async function () {
                 await importEmbeddedWorldInfo();
                 saveCharacterDebounced();
                 break;
+            case 'regenerate_thumbnail': {
+                if (this_chid === undefined || this_chid === -1 || !characters[this_chid]) {
+                    break;
+                }
+                const avatarKey = characters[this_chid].avatar;
+                if (!avatarKey || avatarKey === 'none') {
+                    toastr.warning(t`This character has no avatar to regenerate a thumbnail from.`);
+                    break;
+                }
+                try {
+                    const regenResponse = await fetch('/api/characters/regenerate-thumbnail', {
+                        method: 'POST',
+                        headers: getRequestHeaders(),
+                        body: JSON.stringify({ avatar_url: avatarKey }),
+                        cache: 'no-cache',
+                    });
+                    if (!regenResponse.ok) {
+                        toastr.error(t`Failed to regenerate thumbnail (${regenResponse.status})`);
+                        break;
+                    }
+                    await refreshCharacterAvatar(avatarKey);
+                    toastr.success(t`Thumbnail regenerated successfully.`, t`Thumbnail Refreshed`);
+                } catch (error) {
+                    console.error('Failed to regenerate thumbnail:', error);
+                    toastr.error(t`An error occurred while regenerating the thumbnail.`);
+                }
+            } break;
             case 'character_source': {
                 const source = getCharacterSource(this_chid);
                 if (source && isValidUrl(source)) {

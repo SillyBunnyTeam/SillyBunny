@@ -728,7 +728,7 @@ export class Popup {
             // interactable only gets applied when inserted into the DOM
             control.tabIndex = 0;
         } else {
-            control.focus();
+            control.focus({ preventScroll: true });
         }
     }
 
@@ -841,7 +841,7 @@ export class Popup {
                 const id = activeDialog?.getAttribute('data-id');
                 const popup = Popup.util.popups.find(x => x.id == id);
                 if (popup) {
-                    if (popup.lastFocus) popup.lastFocus.focus();
+                    if (popup.lastFocus) popup.lastFocus.focus({ preventScroll: true });
                     else popup.setAutoFocus();
                 }
             }

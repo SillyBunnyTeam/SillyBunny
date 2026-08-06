@@ -141,7 +141,7 @@ export class SlashCommandBrowser {
             evt.preventDefault();
             evt.stopPropagation();
             evt.stopImmediatePropagation();
-            this.search.focus();
+            this.search.focus({ preventScroll: true });
         }
     }
 }

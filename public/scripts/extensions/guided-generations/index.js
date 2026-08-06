@@ -1,6 +1,14 @@
-import { saveSettingsDebounced } from '../../../script.js';
+import { saveSettingsDebounced, eventSource, event_types } from '../../../script.js';
 import { extensionNames, extension_settings, renderExtensionTemplateAsync } from '../../extensions.js';
-import { extensionName, getPresetsForApiType, getProfileApiType, getProfileList } from './scripts/shared.js';
+import {
+    extensionName,
+    flushActiveGuides,
+    getActiveGuides,
+    getPresetsForApiType,
+    getProfileApiType,
+    getProfileList,
+    resolveStoredProfile,
+} from './scripts/shared.js';
 import { guidedCorrection } from './scripts/guidedCorrection.js';
 import { guidedImpersonate } from './scripts/guidedImpersonate.js';
 import { guidedResponse } from './scripts/guidedResponse.js';
@@ -16,6 +24,7 @@ const oldExtensionName = 'third-party/GuidedGenerations-Extension';
 const legacySystemPromptPresetNames = new Set(['GGSystemPrompt', 'GGSytemPrompt']);
 
 const defaultSettings = {
+    showFlushGuidesButton: true,
     showGuidedResponse: true,
     showGuidedSwipe: true,
     showGuidedCorrection: true,
@@ -39,6 +48,7 @@ const defaultSettings = {
 
 let qrObserver;
 let qrPollTimer;
+let flushGuidePollTimer;
 
 function isLegacySystemPromptPreset(value) {
     return typeof value === 'string' && legacySystemPromptPresetNames.has(value.trim());
@@ -145,11 +155,28 @@ async function populateProfiles(container) {
     profileSelect.innerHTML = '<option value="">Current profile</option>';
     for (const profile of profiles) {
         const option = document.createElement('option');
-        option.value = profile;
-        option.textContent = profile;
+        // SillyBunny: use profile id as the option value so retention survives
+        // profile renames. Display name is shown to the user. (#529)
+        option.value = profile.id;
+        option.textContent = profile.name;
         profileSelect.append(option);
     }
-    profileSelect.value = settings.profileImpersonate1st ?? '';
+
+    // SillyBunny: resolve the stored value to a valid profile id. Existing
+    // settings may store a legacy profile name instead of an id, so use
+    // resolveStoredProfile which accepts both. (#529)
+    const storedValue = settings.profileImpersonate1st ?? '';
+    if (storedValue) {
+        const resolved = resolveStoredProfile(storedValue);
+        profileSelect.value = resolved?.id ?? '';
+        // Migrate the stored value to an id if it was a name.
+        if (resolved && resolved.id !== storedValue) {
+            settings.profileImpersonate1st = resolved.id;
+            saveSettingsDebounced();
+        }
+    } else {
+        profileSelect.value = '';
+    }
 }
 
 async function populatePresets(container) {
@@ -296,6 +323,59 @@ function createActionButton(id, title, iconClass, actionFunc) {
     return button;
 }
 
+function getFlushGuideButtonLabel(activeCount) {
+    return `Flush guides (${activeCount} active)`;
+}
+
+function updateFlushGuideButton() {
+    const button = document.getElementById('gg_flush_guides_button');
+    if (!(button instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    const activeCount = getActiveGuides().length;
+    const label = getFlushGuideButtonLabel(activeCount);
+
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('aria-disabled', String(activeCount === 0));
+    button.dataset.activeCount = String(activeCount);
+    button.classList.toggle('gg-flush-guides-active', activeCount > 0);
+}
+
+async function flushGuides() {
+    if (getActiveGuides().length === 0) {
+        updateFlushGuideButton();
+        return;
+    }
+
+    try {
+        await flushActiveGuides();
+    } catch (error) {
+        console.warn('[GuidedGenerations][Flush] Could not flush active guides:', error);
+    } finally {
+        updateFlushGuideButton();
+    }
+}
+
+function createFlushGuidesButton() {
+    // Keep the flush button an empty FA-icon button like its siblings so
+    // theme icon-button sizing rules (which exclude buttons with child
+    // elements) apply to it too. The active-guide count badge is rendered
+    // in CSS from data-active-count via ::after.
+    const button = createActionButton('gg_flush_guides_button', getFlushGuideButtonLabel(0), 'fa-solid fa-broom gg-flush-guides-button', flushGuides);
+    button.dataset.activeCount = '0';
+    return button;
+}
+
+function startFlushGuideButtonUpdates() {
+    if (flushGuidePollTimer) {
+        return;
+    }
+
+    flushGuidePollTimer = window.setInterval(updateFlushGuideButton, 500);
+}
+
 function ensureButtonContainer() {
     const sendForm = document.getElementById('send_form');
     const nonQrFormItems = document.getElementById('nonQRFormItems');
@@ -338,6 +418,7 @@ function updateExtensionButtons() {
     container.append(qrContainer, actionsContainer);
 
     const buttons = [
+        settings.showFlushGuidesButton && createFlushGuidesButton(),
         settings.showSimpleSendButton && createActionButton('gg_simple_send_button', 'Simple Send', 'fa-solid fa-paper-plane', simpleSend),
         settings.showImpersonate1stPerson && createActionButton('gg_impersonate_button', 'Guided Impersonate', 'fa-solid fa-user-pen', guidedImpersonate),
         settings.showGuidedSwipe && createActionButton('gg_swipe_button', 'Guided Swipe', 'fa-solid fa-forward', guidedSwipe),
@@ -346,6 +427,7 @@ function updateExtensionButtons() {
     ].filter(Boolean);
 
     actionsContainer.append(...buttons);
+    updateFlushGuideButton();
     integrateQrBar();
 }
 
@@ -397,7 +479,29 @@ export async function init() {
     maybeWarnOldExtensionDeprecated();
     await loadSettingsPanel();
     updateExtensionButtons();
+    startFlushGuideButtonUpdates();
     startQrIntegration();
+
+    // SillyBunny: re-populate profile/preset dropdowns when Connection Manager
+    // profiles change, so the UI stays in sync without requiring a manual
+    // refresh click. Fixes the race condition where dropdowns populate before
+    // Connection Manager data is ready. (#529)
+    const refreshDropdowns = async () => {
+        const container = document.getElementById(`extension_settings_${extensionName}`);
+        if (container) {
+            await updateSettingsUI();
+        }
+    };
+
+    if (event_types?.CONNECTION_PROFILE_CREATED) {
+        eventSource.on(event_types.CONNECTION_PROFILE_CREATED, refreshDropdowns);
+    }
+    if (event_types?.CONNECTION_PROFILE_UPDATED) {
+        eventSource.on(event_types.CONNECTION_PROFILE_UPDATED, refreshDropdowns);
+    }
+    if (event_types?.CONNECTION_PROFILE_DELETED) {
+        eventSource.on(event_types.CONNECTION_PROFILE_DELETED, refreshDropdowns);
+    }
 }
 
 export {

@@ -30,17 +30,25 @@ import {
 /**
  * @typedef {object} AgentCompanionConfig
  * @property {'auto'|'manual'} trigger
- * @property {'card'|'hidden'} displayMode
+ * @property {'card'|'panel'|'hidden'} displayMode
  * @property {'markdown'|'html'|'text'} format
  * @property {number} contextMessages
  * @property {boolean} includeCharacterCard
  * @property {boolean} includePersona
  * @property {boolean} includeWorldInfo
  * @property {boolean} includeHistory
+ * @property {boolean} includeInChatHistory
+ * @property {number} chatHistoryDepth
+ * @property {boolean} includeAllChatHistory
+ * @property {boolean} keepInChatHistoryWhenHostHidden
  * @property {number} historyDepth
  * @property {AgentCompanionFeedback} feedback
  * @property {boolean} batch
  * @property {string[]} batchAgentIds
+ * @property {boolean} sendContextToCompanions - Send this companion's latest output to selected companions before they generate
+ * @property {string[]} contextRecipientAgentIds - Companion agent IDs that should receive this companion's latest output as context
+ * @property {string[]} dependencies - Companion agent IDs that should re-run when this agent produces new output
+ * @property {boolean} waitForDependencies - Delay this companion when selected dependencies are running in the same pass
  * @property {number} maxTokens
  */
 
@@ -78,7 +86,9 @@ import {
  * @property {string[]} triggerKeywords
  * @property {number} triggerProbability - 0-100
  * @property {string[]} generationTypes
- * @property {boolean} runOnImpersonate - Allows prompt-based post passes to rewrite generated impersonation text
+ * @property {boolean} runOnImpersonate - Allows this agent's post passes (prompt pass + agent regex) to rewrite generated impersonation text
+ * @property {boolean} runOnCompanionOutputs - Allows this agent's post passes (prompt pass + agent regex) to rewrite companion agent outputs
+ * @property {string[]} companionOutputTargetAgentIds - Companion agent/template ids to target; empty targets all companions
  */
 
 /**
@@ -160,15 +170,17 @@ let globalSettings = {
     connectionProfile: '',
     companionConnectionProfile: '',
     promptTransformShowNotifications: true,
+    postMainInterceptShowMessageFirst: true,
     appendAgentsExecutionMode: 'parallel',
     companionExecutionMode: 'parallel',
     companionConcurrentWithPostGen: false,
     helperPrefillMessages: '',
+    hiddenCompanionAgentIds: [],
 };
 
 /**
  * Returns the global settings.
- * @returns {{ enabled: boolean, pathfinderEnabled: boolean, separateRecentChats: boolean, enabledAgentIdsByChatType: Record<string, string[]>, scopedEnabledAgentIdsInitialized: boolean, connectionProfile: string, promptTransformShowNotifications: boolean, appendAgentsExecutionMode: 'parallel'|'sequential', helperPrefillMessages: string }}
+ * @returns {{ enabled: boolean, pathfinderEnabled: boolean, separateRecentChats: boolean, enabledAgentIdsByChatType: Record<string, string[]>, scopedEnabledAgentIdsInitialized: boolean, connectionProfile: string, promptTransformShowNotifications: boolean, postMainInterceptShowMessageFirst: boolean, appendAgentsExecutionMode: 'parallel'|'sequential', helperPrefillMessages: string, hiddenCompanionAgentIds: string[] }}
  */
 export function getGlobalSettings() {
     return globalSettings;
@@ -185,10 +197,12 @@ export function setGlobalSettings(update) {
 
     Object.assign(globalSettings, update);
     globalSettings.pathfinderEnabled = globalSettings.pathfinderEnabled !== false;
+    globalSettings.postMainInterceptShowMessageFirst = globalSettings.postMainInterceptShowMessageFirst !== false;
     globalSettings.enabledAgentIdsByChatType = normalizeScopedEnabledAgentIds(globalSettings.enabledAgentIdsByChatType);
     globalSettings.helperPrefillMessages = typeof globalSettings.helperPrefillMessages === 'string'
         ? globalSettings.helperPrefillMessages
         : '';
+    globalSettings.hiddenCompanionAgentIds = normalizeAgentIdCollection(globalSettings.hiddenCompanionAgentIds);
 
     if (!globalSettings.scopedEnabledAgentIdsInitialized) {
         const scopedSetting = update.enabledAgentIdsByChatType;
@@ -198,6 +212,14 @@ export function setGlobalSettings(update) {
             AGENT_CHAT_SCOPE_KEYS.some(scope => Object.hasOwn(scopedSetting, scope)),
         );
     }
+}
+
+function normalizeAgentIdCollection(value = []) {
+    if (!value || typeof value[Symbol.iterator] !== 'function') {
+        return [];
+    }
+
+    return normalizeAgentIdList([...value]).sort();
 }
 
 function normalizeAgentIdList(value) {
@@ -210,6 +232,26 @@ function normalizeAgentIdList(value) {
             .map(id => String(id ?? '').trim())
             .filter(Boolean),
     ));
+}
+
+export function getHiddenAgentIds() {
+    return new Set(globalSettings.hiddenCompanionAgentIds);
+}
+
+export function setHiddenAgentIds(ids) {
+    const nextHiddenIds = normalizeAgentIdCollection(ids);
+    const previous = JSON.stringify(globalSettings.hiddenCompanionAgentIds);
+    const next = JSON.stringify(nextHiddenIds);
+
+    globalSettings.hiddenCompanionAgentIds = nextHiddenIds;
+    if (previous !== next) {
+        persistAgentGlobalSettings();
+    }
+}
+
+export function isAgentHidden(agentId) {
+    const normalizedAgentId = String(agentId ?? '').trim();
+    return Boolean(normalizedAgentId && getHiddenAgentIds().has(normalizedAgentId));
 }
 
 function normalizeAgentChatScope(scope = AGENT_CHAT_SCOPES.INDIVIDUAL) {
@@ -504,6 +546,7 @@ export function agentMatchesListTab(agent, tab) {
 
 export const LEGACY_AGENT_MAX_TOKENS = 2000;
 export const DEFAULT_AGENT_MAX_TOKENS = 8192;
+export const MAX_AGENT_MAX_TOKENS = 64000;
 export const PATHFINDER_TEMPLATE_ID = 'tpl-pathfinder';
 
 export function areAgentsGloballyEnabled() {
@@ -851,7 +894,7 @@ export function normalizePromptTransformMaxTokens(value) {
         return DEFAULT_AGENT_MAX_TOKENS;
     }
 
-    return Math.max(16, Math.min(16000, Number(value)));
+    return Math.max(16, Math.min(MAX_AGENT_MAX_TOKENS, Number(value)));
 }
 
 export function normalizePreProcessMaxTokens(value) {
@@ -859,7 +902,7 @@ export function normalizePreProcessMaxTokens(value) {
         return DEFAULT_AGENT_MAX_TOKENS;
     }
 
-    return Math.max(16, Math.min(16000, Number(value)));
+    return Math.max(16, Math.min(MAX_AGENT_MAX_TOKENS, Number(value)));
 }
 
 function clampNumber(value, fallback, min, max) {
@@ -910,6 +953,10 @@ export function createDefaultCompanionConfig() {
         includeAuthorsNote: true,
         includeSystemPrompt: true,
         includeHistory: true,
+        includeInChatHistory: false,
+        chatHistoryDepth: 1,
+        includeAllChatHistory: true,
+        keepInChatHistoryWhenHostHidden: false,
         historyDepth: 3,
         feedback: {
             enabled: false,
@@ -917,7 +964,11 @@ export function createDefaultCompanionConfig() {
         },
         batch: false,
         batchAgentIds: [],
-        maxTokens: 32000,
+        sendContextToCompanions: false,
+        contextRecipientAgentIds: [],
+        dependencies: [],
+        waitForDependencies: false,
+        maxTokens: MAX_AGENT_MAX_TOKENS,
     };
 }
 
@@ -947,13 +998,19 @@ export function normalizeCompanionConfig(raw = {}) {
         rawPrompt: Boolean(rawConfig.rawPrompt),
         inlinePhase: ['pre', 'post', 'both'].includes(String(rawConfig.inlinePhase)) ? String(rawConfig.inlinePhase) : '',
         minContextTokens: clampNumber(rawConfig.minContextTokens, defaults.minContextTokens, 0, 200000),
-        contextMessages: clampNumber(rawConfig.contextMessages, defaults.contextMessages, 1, 50),
+        // SillyBunny: no upper bound. These are "how far back to look" dials, and a hard ceiling
+        // silently rewrote whatever the user saved (200 came back as 50) with no way to tell.
+        contextMessages: clampNumber(rawConfig.contextMessages, defaults.contextMessages, 1, Infinity),
         includeCharacterCard: rawConfig.includeCharacterCard === undefined ? defaults.includeCharacterCard : Boolean(rawConfig.includeCharacterCard),
         includePersona: rawConfig.includePersona === undefined ? defaults.includePersona : Boolean(rawConfig.includePersona),
         includeWorldInfo: rawConfig.includeWorldInfo === undefined ? defaults.includeWorldInfo : Boolean(rawConfig.includeWorldInfo),
         includeAuthorsNote: rawConfig.includeAuthorsNote === undefined ? defaults.includeAuthorsNote : Boolean(rawConfig.includeAuthorsNote),
         includeSystemPrompt: rawConfig.includeSystemPrompt === undefined ? defaults.includeSystemPrompt : Boolean(rawConfig.includeSystemPrompt),
         includeHistory: rawConfig.includeHistory === undefined ? defaults.includeHistory : Boolean(rawConfig.includeHistory),
+        includeInChatHistory: Boolean(rawConfig.includeInChatHistory),
+        chatHistoryDepth: clampNumber(rawConfig.chatHistoryDepth, defaults.chatHistoryDepth, 1, Infinity),
+        includeAllChatHistory: rawConfig.includeAllChatHistory === undefined ? defaults.includeAllChatHistory : Boolean(rawConfig.includeAllChatHistory),
+        keepInChatHistoryWhenHostHidden: Boolean(rawConfig.keepInChatHistoryWhenHostHidden),
         historyDepth: clampNumber(rawConfig.historyDepth, defaults.historyDepth, 1, 10),
         feedback: {
             enabled: Boolean(rawFeedback.enabled),
@@ -961,7 +1018,11 @@ export function normalizeCompanionConfig(raw = {}) {
         },
         batch: Boolean(rawConfig.batch),
         batchAgentIds: normalizeStringIdList(rawConfig.batchAgentIds),
-        maxTokens: clampNumber(rawConfig.maxTokens, defaults.maxTokens, 16, 32000),
+        sendContextToCompanions: Boolean(rawConfig.sendContextToCompanions),
+        contextRecipientAgentIds: normalizeStringIdList(rawConfig.contextRecipientAgentIds),
+        dependencies: normalizeStringIdList(rawConfig.dependencies),
+        waitForDependencies: Boolean(rawConfig.waitForDependencies),
+        maxTokens: clampNumber(rawConfig.maxTokens, defaults.maxTokens, 16, MAX_AGENT_MAX_TOKENS),
     };
 }
 
@@ -1181,6 +1242,8 @@ export function createDefaultAgent() {
             triggerProbability: 100,
             generationTypes: ['normal', 'continue', 'impersonate'],
             runOnImpersonate: false,
+            runOnCompanionOutputs: false,
+            companionOutputTargetAgentIds: [],
         },
         tools: [],
         settings: {},
@@ -1294,7 +1357,7 @@ export function normalizeAgent(rawAgent = {}) {
                 ? String(rawPostProcess.promptTransformMode)
                 : defaults.postProcess.promptTransformMode,
             promptTransformMaxTokens: Number.isFinite(Number(rawPostProcess.promptTransformMaxTokens))
-                ? Math.max(16, Math.min(16000, Number(rawPostProcess.promptTransformMaxTokens)))
+                ? Math.max(16, Math.min(MAX_AGENT_MAX_TOKENS, Number(rawPostProcess.promptTransformMaxTokens)))
                 : defaults.postProcess.promptTransformMaxTokens,
         },
         regexScripts: Array.isArray(rawAgent.regexScripts)
@@ -1318,6 +1381,12 @@ export function normalizeAgent(rawAgent = {}) {
             runOnImpersonate: Object.hasOwn(conditions, 'runOnImpersonate')
                 ? Boolean(conditions.runOnImpersonate)
                 : defaults.conditions.runOnImpersonate,
+            runOnCompanionOutputs: Object.hasOwn(conditions, 'runOnCompanionOutputs')
+                ? Boolean(conditions.runOnCompanionOutputs)
+                : defaults.conditions.runOnCompanionOutputs,
+            companionOutputTargetAgentIds: Array.isArray(conditions.companionOutputTargetAgentIds)
+                ? conditions.companionOutputTargetAgentIds.map(id => String(id ?? '').trim()).filter(Boolean)
+                : defaults.conditions.companionOutputTargetAgentIds,
         },
         tools: Array.isArray(rawAgent.tools)
             ? rawAgent.tools.map(tool => normalizeToolDef(tool))
@@ -1570,6 +1639,59 @@ export async function saveAgent(agent) {
     if (!response.ok) {
         throw new Error('Failed to save agent');
     }
+}
+
+/**
+ * Applies a new visual order to a subset of agents. Subset members are dealt back into the
+ * order-sorted slots the subset already occupies (agents outside the subset keep their relative
+ * position), then every slot is renumbered to `index * 10` so drag-and-drop always produces
+ * clean, collision-free order values.
+ * @param {string[]} orderedSubsetIds Agent ids in their new visual order.
+ * @returns {Promise<boolean>} Whether any agent's order value changed.
+ */
+export async function reorderAgentsIntoOrderSlots(orderedSubsetIds) {
+    const subsetIds = Array.from(new Set(
+        (Array.isArray(orderedSubsetIds) ? orderedSubsetIds : [])
+            .map(id => String(id ?? '').trim())
+            .filter(id => id && getAgentById(id)),
+    ));
+
+    if (subsetIds.length === 0) {
+        return false;
+    }
+
+    const subsetIdSet = new Set(subsetIds);
+    let subsetIndex = 0;
+    const finalOrderIds = getAgents()
+        .sort((a, b) => Number(a?.injection?.order ?? 0) - Number(b?.injection?.order ?? 0))
+        .map(agent => {
+            if (!subsetIdSet.has(agent.id)) {
+                return agent.id;
+            }
+
+            const nextId = subsetIds[subsetIndex];
+            subsetIndex += 1;
+            return nextId;
+        });
+
+    let changed = false;
+    for (let i = 0; i < finalOrderIds.length; i++) {
+        const agent = getAgentById(finalOrderIds[i]);
+        if (!agent) {
+            continue;
+        }
+
+        const desiredOrder = i * 10;
+        if (Number(agent?.injection?.order ?? 0) === desiredOrder) {
+            continue;
+        }
+
+        agent.injection.order = desiredOrder;
+        await saveAgent(agent);
+        changed = true;
+    }
+
+    return changed;
 }
 
 /**

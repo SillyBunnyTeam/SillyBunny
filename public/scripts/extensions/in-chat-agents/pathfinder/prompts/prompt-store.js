@@ -233,8 +233,6 @@ export function initializePromptStore(defaultPrompts = {}, defaultPipelines = {}
         const isDefault = !!defaultPipelines[id];
         pipelineCache.set(id, { ...pipeline, isDefault });
     }
-
-    console.log(`[PromptStore] Initialized with ${promptCache.size} prompts and ${pipelineCache.size} pipelines`);
 }
 
 /**

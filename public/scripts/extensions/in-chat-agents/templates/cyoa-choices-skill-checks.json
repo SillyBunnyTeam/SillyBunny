@@ -1,0 +1,140 @@
+{
+    "id": "tpl-cyoa-choices-skill-checks",
+    "name": "CYOA Choices with Skill Checks",
+    "description": "Append 3-7 skill-tagged action choices at the end of every response",
+    "icon": "",
+    "category": "tracker",
+    "execution": "inline",
+    "tags": [],
+    "version": 2,
+    "author": "Purachina",
+    "prompt": "## CYOA Choices with Skill Checks\n\nMaintain a setting-specific CYOA choice tracker from {{user}}'s perspective. When meaningful player agency is needed, output this block at the very end of the response:\n\n[CHOICES]\n1. **[Skill 0/100]** Action description\n2. **[Skill 0/100]** Action description\n3. **[Skill 0/100]** Action description\n[/CHOICES]\n\nRules:\n- Output 3–7 choices only.\n- The [CHOICES] block must be the final part of every response.\n- Write each choice as something {{user}} can do, say, inspect, threaten, negotiate, fight, sneak, craft, repair, analyze, decode, heal, or otherwise attempt.\n- Each choice must begin with a tag and target value: [Skill/Perk/Stat/Reputation/Item/Condition 0/100].\n- Examples: [Speech 42/100], [Stealth 80/100], [Medicine 25/100], [Analysis 70/100], [Strength 60/100], [Local Reputation 50/100], [Has Lockpick 30/100], [Injured 15/100].\n- Target values should match the current difficulty, danger, pressure, or advantage.\n- Choices should be concise, tactical, reactive, and genre-appropriate.\n\n## CYOA Skill Check Resolution\n\nFor this response, the hidden d100 roll is: {{roll:1d100}}.\n\nWhen {{user}} chooses or clearly attempts one of the previous [CHOICES], resolve it using the hidden d100 roll and the choice’s target value.\n\nResolution:\n- Natural 1: critical success.\n- Margin = target number - d100 roll.\n- Margin 10 or higher: clean success.\n- Margin 9 to -10: mixed, partial, or success-with-complication.\n- Margin -11 or lower: failure.\n- Natural 100: critical failure.\n\nIf user choice is completely different or deviates, base the check on the appropriate stat.\n\nNarrate the outcome naturally. Do not explain the mechanics or reveal the roll unless instructed. The choice must meaningfully affect the next scene. Failure still moves the story forward with consequences.",
+    "phase": "pre",
+    "connectionProfile": "",
+    "modelOverride": "",
+    "sourceTemplateId": "",
+    "injection": {
+        "position": 0,
+        "depth": 1,
+        "role": 0,
+        "order": 140,
+        "scan": false
+    },
+    "companion": {
+        "trigger": "auto",
+        "displayMode": "panel",
+        "format": "markdown",
+        "rawPrompt": false,
+        "inlinePhase": "",
+        "minContextTokens": 0,
+        "contextMessages": 10,
+        "includeCharacterCard": true,
+        "includePersona": true,
+        "includeWorldInfo": true,
+        "includeAuthorsNote": true,
+        "includeSystemPrompt": false,
+        "includeHistory": true,
+        "historyDepth": 3,
+        "feedback": {
+            "enabled": false,
+            "depth": 1
+        },
+        "batch": false,
+        "batchAgentIds": [],
+        "maxTokens": 64000
+    },
+    "preProcess": {
+        "mode": "inject",
+        "interceptTiming": "pre-generation",
+        "applyMode": "replace",
+        "wrapPosition": "after",
+        "wrapPrefix": "",
+        "wrapSuffix": "",
+        "patchStartTag": "<context_patch>",
+        "patchEndTag": "</context_patch>",
+        "maxTokens": 8192
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[CHOICES\\](?:(?!\\[CHOICES\\])[\\s\\S])*?\\[/CHOICES\\]",
+        "extractVariable": "fallout_choices",
+        "promptTransformEnabled": false,
+        "promptTransformShowNotifications": true,
+        "promptTransformMode": "rewrite",
+        "promptTransformMaxTokens": 8192
+    },
+    "regexScripts": [
+        {
+            "id": "07b32b4e-0752-4422-a078-8641c4962063",
+            "scriptName": "Render Fallout CYOA Choices",
+            "findRegex": "/\\[CHOICES\\]\\s*([\\s\\S]*?)\\s*\\[\\/CHOICES\\]/g",
+            "replaceString": "<details open class=\"term-choices\">\n  <summary>\n    <span class=\"term-window-dots\">\n      <span class=\"term-dot red\"></span>\n      <span class=\"term-dot yellow\"></span>\n      <span class=\"term-dot green\"></span>\n    </span>\n    <span class=\"term-title\">CHOICES.exe</span>\n    <span class=\"term-status\">awaiting input</span>\n  </summary>\n\n  <div class=\"term-choice-body\">\n    <div class=\"term-prompt\">{{user}}@st:~$ select_next_action</div>\n    <div class=\"term-choice-output\">\n$1\n    </div>\n    <div class=\"term-prompt term-cursor\">{{user}}@st:~$ </div>\n  </div>\n</details>\n\n<style>\n@keyframes termChoiceGlow {\n  from {\n    box-shadow:\n      0 0 8px rgba(115,255,155,.16),\n      inset 0 0 16px rgba(115,255,155,.025);\n  }\n  to {\n    box-shadow:\n      0 0 16px rgba(115,255,155,.30),\n      0 0 28px rgba(47,191,99,.10),\n      inset 0 0 22px rgba(115,255,155,.055);\n  }\n}\n\n@keyframes termChoiceBlink {\n  0%, 45% { opacity: 1; }\n  46%, 100% { opacity: 0; }\n}\n\n.term-choices {\n  --term-bg: #050807;\n  --term-panel: #07100b;\n  --term-green: #73ff9b;\n  --term-green-soft: #b8ffce;\n  --term-green-dim: #2fbf63;\n  --term-text: #d8ffe4;\n  --term-muted: #7fa88c;\n  --term-border: rgba(115,255,155,.36);\n  --term-border-soft: rgba(115,255,155,.18);\n  --term-glow: rgba(115,255,155,.20);\n\n  margin: 10px 0;\n  padding: 0;\n  border: 1px solid var(--term-border);\n  border-radius: 12px;\n  background:\n    linear-gradient(rgba(255,255,255,.024) 50%, rgba(0,0,0,.035) 50%),\n    radial-gradient(circle at top left, rgba(115,255,155,.09), transparent 35%),\n    radial-gradient(circle at bottom right, rgba(47,191,99,.07), transparent 32%),\n    var(--term-bg);\n  background-size: 100% 4px, 100% 100%, 100% 100%, 100% 100%;\n  color: var(--term-text);\n  font-family: \"Courier New\", Courier, monospace;\n  font-size: 10px;\n  overflow: hidden;\n  text-align: left;\n  animation: termChoiceGlow 3s ease-in-out infinite alternate;\n}\n\n.term-choices summary {\n  cursor: pointer;\n  list-style: none;\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 12px;\n  background:\n    linear-gradient(90deg, rgba(115,255,155,.10), rgba(47,191,99,.045), rgba(0,0,0,.12)),\n    #07100b;\n  border-bottom: 1px solid var(--term-border-soft);\n  color: var(--term-green);\n  font-weight: 800;\n  letter-spacing: .035em;\n  text-shadow: 0 0 7px rgba(115,255,155,.42);\n  user-select: none;\n}\n\n.term-choices summary::-webkit-details-marker {\n  display: none;\n}\n\n.term-window-dots {\n  display: inline-flex;\n  gap: 6px;\n  align-items: center;\n  flex: 0 0 auto;\n}\n\n.term-dot {\n  width: .72em;\n  height: .72em;\n  border-radius: 50%;\n  display: inline-block;\n  opacity: .95;\n}\n\n.term-dot.red { background: #ff5f56; }\n.term-dot.yellow { background: #ffbd2e; }\n.term-dot.green { background: #27c93f; }\n\n.term-title {\n  color: var(--term-green);\n  font-weight: 900;\n}\n\n.term-status {\n  margin-left: auto;\n  color: var(--term-muted);\n  font-weight: 500;\n  letter-spacing: 0;\n}\n\n.term-choices:not([open]) .term-status::before {\n  content: \"[closed] \";\n}\n\n.term-choices[open] .term-status::before {\n  content: \"[open] \";\n}\n\n.term-choice-body {\n  padding: 11px 14px 13px 15px;\n  border-left: 4px solid rgba(115,255,155,.42);\n  background:\n    radial-gradient(circle at top left, rgba(115,255,155,.075), transparent 36%),\n    repeating-linear-gradient(180deg, rgba(255,255,255,.022) 0, rgba(255,255,255,.022) 1px, transparent 1px, transparent 24px),\n    rgba(0,0,0,.18);\n  line-height: 1.42;\n  word-break: break-word;\n}\n\n.term-prompt {\n  color: var(--term-green);\n  margin: 0 0 9px 0;\n  text-shadow: 0 0 7px rgba(115,255,155,.35);\n  font-weight: 700;\n}\n\n.term-cursor {\n  margin: 10px 0 0 0;\n}\n\n.term-cursor::after {\n  content: \"█\";\n  display: inline-block;\n  margin-left: 2px;\n  color: var(--term-green);\n  animation: termChoiceBlink 1s steps(2, start) infinite;\n}\n\n.term-choice-output {\n  color: var(--term-text);\n  white-space: pre-wrap;\n}\n\n.term-choice-output ol {\n  margin: 0;\n  padding-left: 2.25em;\n  list-style-position: outside;\n  white-space: normal;\n}\n\n.term-choice-output li {\n  margin: 0 0 .72em 0;\n  padding: .52em .7em .62em .75em;\n  color: var(--term-text);\n  background:\n    linear-gradient(90deg, rgba(115,255,155,.105), rgba(115,255,155,.035)),\n    rgba(0,0,0,.16);\n  border: 1px solid rgba(115,255,155,.16);\n  border-radius: 8px;\n  text-shadow: 0 0 3px rgba(115,255,155,.10);\n}\n\n.term-choice-output li:last-child {\n  margin-bottom: 0;\n}\n\n.term-choice-output li::marker {\n  color: var(--term-green);\n  font-weight: 900;\n  text-shadow: 0 0 6px rgba(115,255,155,.35);\n}\n\n.term-choice-output li:nth-child(1) {\n  background: linear-gradient(90deg, rgba(115,255,155,.14), rgba(115,255,155,.035)), rgba(0,0,0,.16);\n}\n\n.term-choice-output li:nth-child(2) {\n  background: linear-gradient(90deg, rgba(93,242,135,.12), rgba(93,242,135,.03)), rgba(0,0,0,.16);\n}\n\n.term-choice-output li:nth-child(3) {\n  background: linear-gradient(90deg, rgba(184,255,206,.105), rgba(184,255,206,.025)), rgba(0,0,0,.16);\n}\n\n.term-choice-output li:nth-child(4) {\n  background: linear-gradient(90deg, rgba(115,220,255,.10), rgba(115,220,255,.025)), rgba(0,0,0,.16);\n}\n\n.term-choice-output li:nth-child(5) {\n  background: linear-gradient(90deg, rgba(190,160,255,.10), rgba(190,160,255,.025)), rgba(0,0,0,.16);\n}\n\n.term-choice-output li:nth-child(6) {\n  background: linear-gradient(90deg, rgba(255,224,130,.10), rgba(255,224,130,.025)), rgba(0,0,0,.16);\n}\n\n.term-choice-output li:nth-child(7) {\n  background: linear-gradient(90deg, rgba(255,145,145,.10), rgba(255,145,145,.025)), rgba(0,0,0,.16);\n}\n\n.term-choice-output strong,\n.term-choice-output b {\n  color: var(--term-green-soft);\n  font-weight: 900;\n  text-shadow: 0 0 6px rgba(115,255,155,.38);\n}\n\n.term-choice-output a {\n  color: #a7ffbf;\n  text-shadow: 0 0 5px rgba(115,255,155,.25);\n}\n\n.term-choice-output::selection,\n.term-choice-output *::selection {\n  background: rgba(115,255,155,.25);\n  color: #ffffff;\n}\n\n.term-choices:not([open]) .term-choice-body {\n  display: none !important;\n}\n</style>",
+            "trimStrings": [],
+            "placement": [
+                2
+            ],
+            "disabled": false,
+            "markdownOnly": true,
+            "promptOnly": false,
+            "runOnEdit": true,
+            "substituteRegex": 0,
+            "minDepth": null,
+            "maxDepth": null
+        },
+        {
+            "id": "43535115-b766-4e19-8f94-d1cb440048f4",
+            "scriptName": "Trim Choices",
+            "findRegex": "/\\[CHOICES\\][\\s\\S]*?\\[\\/CHOICES\\]/g",
+            "replaceString": "",
+            "trimStrings": [],
+            "placement": [
+                2
+            ],
+            "disabled": false,
+            "markdownOnly": false,
+            "promptOnly": true,
+            "runOnEdit": true,
+            "substituteRegex": 0,
+            "minDepth": 2,
+            "maxDepth": null
+        },
+        {
+            "id": "3a1f4833-6528-4eb9-9fe2-6f99d1e5996f",
+            "scriptName": "Replace Bold Markdown",
+            "findRegex": "/\\*\\*(.*?)\\*\\*/g",
+            "replaceString": "<strong>$1</strong>",
+            "trimStrings": [],
+            "placement": [
+                2
+            ],
+            "disabled": false,
+            "markdownOnly": true,
+            "promptOnly": false,
+            "runOnEdit": true,
+            "substituteRegex": 0,
+            "minDepth": null,
+            "maxDepth": null
+        }
+    ],
+    "enabled": false,
+    "favorite": false,
+    "phaseLocked": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal",
+            "continue",
+            "impersonate"
+        ],
+        "runOnImpersonate": false
+    },
+    "tools": [],
+    "settings": {},
+    "subcategory": "player-choices"
+}

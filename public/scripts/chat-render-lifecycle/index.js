@@ -17,6 +17,10 @@ import {
     resolveChatScrollAction,
 } from './scroll-intent.js';
 import {
+    CHAT_SCROLL_STATE,
+    resolveChatScrollStateTransition,
+} from './scroll-state.js';
+import {
     CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
     CHAT_RENDER_LIFECYCLE_ROUTE,
     CHAT_RENDER_LIFECYCLE_ROUTE_DEFAULTS,
@@ -33,6 +37,9 @@ import {
     getChatRenderWindowStartIndex,
     normalizeChatRenderWindowSize,
 } from './render-window.js';
+import {
+    getNonSystemMessageDepth,
+} from './message-depth.js';
 import {
     createStreamWriteBuffer,
 } from './stream-buffer.js';
@@ -56,6 +63,7 @@ export {
     CHAT_RENDER_WINDOW_AGGRESSIVE_DEFAULT,
     CHAT_SCROLL_ACTION,
     CHAT_SCROLL_INTENT,
+    CHAT_SCROLL_STATE,
     captureVisibleMessageAnchor,
     createMessageUpdateQueue,
     createDelegatedResizeObserver,
@@ -64,10 +72,12 @@ export {
     createStreamWriteBuffer,
     getChatHistoryPageSize,
     getChatRenderWindowStartIndex,
+    getNonSystemMessageDepth,
     MOBILE_VIEWPORT_SETTLE_DELAY_MS,
     normalizeChatRenderWindowSize,
     resolveChatBottomScrollAction,
     resolveChatScrollAction,
+    resolveChatScrollStateTransition,
     restoreVisibleMessageAnchor,
     renderMessagesInBatches,
     resolveChatRenderLifecycleRollout,
@@ -100,6 +110,10 @@ export function createChatRenderLifecycle() {
             intent: CHAT_SCROLL_INTENT,
             resolve: resolveChatScrollAction,
         },
+        scrollState: {
+            state: CHAT_SCROLL_STATE,
+            resolve: resolveChatScrollStateTransition,
+        },
         rollout: {
             key: CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
             route: CHAT_RENDER_LIFECYCLE_ROUTE,
@@ -114,6 +128,7 @@ export function createChatRenderLifecycle() {
             maxSize: CHAT_RENDER_WINDOW_MAX,
             getPageSize: getChatHistoryPageSize,
             getStartIndex: getChatRenderWindowStartIndex,
+            getNonSystemMessageDepth,
             normalizeSize: normalizeChatRenderWindowSize,
         },
         streamBuffer: {

@@ -18,6 +18,30 @@ function getStoredLanguage() {
     }
 }
 
+function safeSetLocalStorageItem(key, value) {
+    try {
+        localStorage.setItem(key, value);
+    } catch {
+        // Ignore storage write failures in Safari Private Browsing.
+    }
+}
+
+function safeGetLocalStorageItem(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch {
+        return null;
+    }
+}
+
+function safeRemoveLocalStorageItem(key) {
+    try {
+        localStorage.removeItem(key);
+    } catch {
+        // Ignore storage write failures in Safari Private Browsing.
+    }
+}
+
 /** @type {Set<string>|null} Array of translations keys if they should be tracked - if not tracked then null */
 let trackMissingDynamicTranslate = null;
 
@@ -278,7 +302,7 @@ function addLanguagesToDropdown() {
         uiLanguageSelects.append(option);
     }
 
-    const selectedLanguage = localStorage.getItem(storageKey);
+    const selectedLanguage = safeGetLocalStorageItem(storageKey);
     if (selectedLanguage) {
         uiLanguageSelects.val(selectedLanguage);
     }
@@ -296,9 +320,9 @@ export async function initLocales() {
         const language = String($(this).val());
 
         if (language) {
-            localStorage.setItem(storageKey, language);
+            safeSetLocalStorageItem(storageKey, language);
         } else {
-            localStorage.removeItem(storageKey);
+            safeRemoveLocalStorageItem(storageKey);
         }
 
         location.reload();
@@ -311,7 +335,7 @@ export async function initLocales() {
         attributeFilter: ['data-i18n'],
     });
 
-    if (localStorage.getItem('trackDynamicTranslate') === 'true' && isSupportedNonEnglish()) {
+    if (safeGetLocalStorageItem('trackDynamicTranslate') === 'true' && isSupportedNonEnglish()) {
         trackMissingDynamicTranslate = new Set();
     }
 
@@ -324,8 +348,8 @@ export async function initLocales() {
         'This includes things translated via the t`...` function and translate(). It will only track strings translated <b>after</b> this is toggled on, '
         + 'and when they actually pop up, so refreshing the page and opening popups, etc, is needed. Will only track if the current locale is not English.',
         () => {
-            const isTracking = localStorage.getItem('trackDynamicTranslate') !== 'true';
-            localStorage.setItem('trackDynamicTranslate', isTracking ? 'true' : 'false');
+            const isTracking = safeGetLocalStorageItem('trackDynamicTranslate') !== 'true';
+            safeSetLocalStorageItem('trackDynamicTranslate', isTracking ? 'true' : 'false');
             if (isTracking && isSupportedNonEnglish()) {
                 trackMissingDynamicTranslate = new Set();
                 toastr.success('Dynamic translation tracking enabled.');

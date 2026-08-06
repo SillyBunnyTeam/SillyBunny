@@ -1,11 +1,11 @@
-FROM oven/bun:1.3.11-alpine
+FROM oven/bun:1.3.14-alpine
 
 # Arguments
 ARG APP_HOME=/home/bun/app
 
 # Install system dependencies
 # "Don't rely on the base image for tools; if you call it, you install it." ;)
-RUN apk add --no-cache gcompat tini git git-lfs su-exec shadow dos2unix
+RUN apk add --no-cache gcompat tini git git-lfs nodejs npm su-exec shadow dos2unix
 
 # Create app directory and set ownership
 WORKDIR ${APP_HOME}

@@ -10,7 +10,7 @@
         "lore",
         "detail"
     ],
-    "version": 1,
+    "version": 2,
     "author": "Purachina",
     "prompt": "### World Detail\nAdd 1 small world detail per scene that may later matter to {{user}} as setup, constraint, opportunity, or complication.\n\nUse this exact format at the end of the response:\n\n[WORLD|Category|Location or Context]\ndetail: (max 50 words)\n[/WORLD]\n\nCategory: 🏛 CULTURE | 🗣 OVERHEARD | 📜 HISTORY | 🌿 ENVIRONMENT | 🔧 HOW IT WORKS | 👥 DAILY LIFE | 🪧 SIGNAGE | 📖 FOLKLORE | 💰 ECONOMY | ⚙️ INFRASTRUCTURE\n\nRules:\n- Exactly 1 detail per scene, max 50 words.\n- Concrete, setting-native, and passively noticeable in the moment.\n- Use customs, overheard lines, hazards, systems, resources, architecture, or social realities.\n- Must become useful, revealing, or constraining later.\n- Expand the world in a new direction; support future plot development.",
     "phase": "both",
@@ -28,7 +28,7 @@
         "regexReplace": "",
         "regexFlags": "g",
         "appendText": "",
-        "extractPattern": "\\\\[WORLD\\\\|[^\\\\]]*\\\\]",
+        "extractPattern": "\\[WORLD\\|[^\\]\\r\\n]*\\](?:(?!\\[WORLD(?=[:|\\]]))[\\s\\S])*?\\[/WORLD\\]",
         "extractVariable": "world_data"
     },
     "enabled": false,

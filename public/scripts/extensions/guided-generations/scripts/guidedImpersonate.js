@@ -4,7 +4,8 @@ import {
     extensionName,
     extension_settings,
     getContext,
-    getCurrentProfile,
+    getCurrentProfileId,
+    guidedImpersonateInjectId,
     getLastImpersonateResult,
     getPreviousImpersonateInput,
     handleSwitching,
@@ -69,16 +70,16 @@ async function guidedImpersonate() {
     const settings = extension_settings[extensionName] ?? {};
     const profileValue = settings.profileImpersonate1st ?? '';
     const presetValue = settings.presetImpersonate1st ?? '';
-    const originalProfile = await getCurrentProfile();
+    const originalProfile = await getCurrentProfileId();
     const switching = await handleSwitching(profileValue, presetValue, originalProfile);
     const promptTemplate = settings.promptImpersonate1st ?? '';
     const filledPrompt = applyPromptTemplate(promptTemplate, currentInputText);
     const helperPrefillPrompt = serializeHelperPrefillForPrompt(parseHelperPrefillMessages(settings.helperPrefillMessages));
     const impersonatePrompt = buildGuidedImpersonatePrompt(filledPrompt, helperPrefillPrompt);
     const fullScript = `// Impersonate guide|
-/inject id=gg-impersonate-voice position=chat ephemeral=true scan=true depth=0 role=system ${escapeSlashCommandDelimiters(getImpersonateSystemFrame())} |
+/inject id=${guidedImpersonateInjectId} position=chat ephemeral=true scan=true depth=0 role=system ${escapeSlashCommandDelimiters(getImpersonateSystemFrame())} |
 /impersonate await=true ${escapeSlashCommandDelimiters(impersonatePrompt)} |
-/flushinject gg-impersonate-voice |`;
+/flushinject ${guidedImpersonateInjectId} |`;
 
     try {
         await switching.switch();

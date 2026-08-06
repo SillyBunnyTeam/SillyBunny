@@ -3,6 +3,7 @@ import { describe, expect, test } from '@jest/globals';
 import {
     CHAT_SCROLL_ACTION,
     CHAT_SCROLL_INTENT,
+    CHAT_SCROLL_STATE,
     CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
     CHAT_RENDER_LIFECYCLE_ROUTE,
     CHAT_RENDER_LIFECYCLE_ROUTE_DEFAULTS,
@@ -17,11 +18,13 @@ import {
     createStreamWriteBuffer,
     getChatHistoryPageSize,
     getChatRenderWindowStartIndex,
+    getNonSystemMessageDepth,
     MOBILE_VIEWPORT_SETTLE_DELAY_MS,
     normalizeChatRenderWindowSize,
     resolveChatBottomScrollAction,
     resolveChatRenderLifecycleRollout,
     resolveChatScrollAction,
+    resolveChatScrollStateTransition,
     renderMessagesInBatches,
     restoreVisibleMessageAnchor,
     runSettledFrames,
@@ -39,17 +42,20 @@ describe('chat render lifecycle index seam', () => {
         expect(typeof resolveChatBottomScrollAction).toBe('function');
         expect(typeof shouldApplyChatBottomScrollAction).toBe('function');
         expect(typeof resolveChatScrollAction).toBe('function');
+        expect(typeof resolveChatScrollStateTransition).toBe('function');
         expect(typeof resolveChatRenderLifecycleRollout).toBe('function');
         expect(typeof renderMessagesInBatches).toBe('function');
         expect(typeof normalizeChatRenderWindowSize).toBe('function');
         expect(typeof getChatRenderWindowStartIndex).toBe('function');
         expect(typeof getChatHistoryPageSize).toBe('function');
+        expect(typeof getNonSystemMessageDepth).toBe('function');
         expect(typeof createMessageUpdateQueue).toBe('function');
         expect(typeof createStreamWriteBuffer).toBe('function');
         expect(typeof createDelegatedResizeObserver).toBe('function');
         expect(typeof createMobileViewportObserver).toBe('function');
         expect(CHAT_SCROLL_INTENT.TAIL_APPEND).toBe('tail-append');
         expect(CHAT_SCROLL_ACTION.PIN_BOTTOM).toBe('pin-bottom');
+        expect(CHAT_SCROLL_STATE.STREAMING_FOLLOW).toBe('streaming-follow');
         expect(CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY).toBe('sillybunny.chatRenderLifecycle.enabled');
         expect(CHAT_RENDER_WINDOW_DEFAULT).toBe(100);
         expect(CHAT_RENDER_WINDOW_MAX).toBe(200);
@@ -80,6 +86,8 @@ describe('chat render lifecycle index seam', () => {
         expect(lifecycle.scrollIntent.resolve).toBe(resolveChatScrollAction);
         expect(lifecycle.scrollIntent.intent).toBe(CHAT_SCROLL_INTENT);
         expect(lifecycle.scrollIntent.action).toBe(CHAT_SCROLL_ACTION);
+        expect(lifecycle.scrollState.state).toBe(CHAT_SCROLL_STATE);
+        expect(lifecycle.scrollState.resolve).toBe(resolveChatScrollStateTransition);
         expect(lifecycle.rollout.key).toBe(CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY);
         expect(lifecycle.rollout.route).toBe(CHAT_RENDER_LIFECYCLE_ROUTE);
         expect(lifecycle.rollout.routeDefaults).toBe(CHAT_RENDER_LIFECYCLE_ROUTE_DEFAULTS);
@@ -90,6 +98,7 @@ describe('chat render lifecycle index seam', () => {
         expect(lifecycle.renderWindow.normalizeSize).toBe(normalizeChatRenderWindowSize);
         expect(lifecycle.renderWindow.getStartIndex).toBe(getChatRenderWindowStartIndex);
         expect(lifecycle.renderWindow.getPageSize).toBe(getChatHistoryPageSize);
+        expect(lifecycle.renderWindow.getNonSystemMessageDepth).toBe(getNonSystemMessageDepth);
         expect(lifecycle.streamBuffer.create).toBe(createStreamWriteBuffer);
         expect(lifecycle.updateQueue.create).toBe(createMessageUpdateQueue);
         expect(lifecycle.resizeObserver.create).toBe(createDelegatedResizeObserver);

@@ -7,8 +7,11 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const indexSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'index.js'), 'utf8');
 const publicIndexSource = readFileSync(path.join(repoRoot, 'public', 'index.html'), 'utf8');
 const companionUiSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'companion', 'companion-ui.js'), 'utf8');
+const agentRunnerSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'agent-runner.js'), 'utf8');
 const extensionStyleSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'style.css'), 'utf8');
 const editorTemplateSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'editor.html'), 'utf8');
+const settingsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'settings.html'), 'utf8');
+const coreScriptSource = readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
 
 function getFunctionSource(name) {
     const marker = `function ${name}(`;
@@ -76,6 +79,27 @@ describe('in-chat agents generation UI wiring', () => {
         expect(indexSource).toContain('Applied generated companion. Review and save when ready.');
     });
 
+    test('passes custom tracker regeneration instructions into the LLM prompt', () => {
+        const source = getFunctionSource('generateTrackerKitWithAI');
+
+        expect(source).toContain("extraInstructions = ''");
+        expect(source).toContain('Extra custom instructions for this generation:');
+        expect(source).toContain("extraInstructions || '(none)'");
+    });
+
+    test('wires custom tracker HTML preview and regeneration controls', () => {
+        const previewSource = getFunctionSource('buildTrackerHtmlPreviewNode');
+        const popupSource = getFunctionSource('buildTrackerPreviewPopupContent');
+
+        expect(previewSource).toContain('applyRegexScriptList');
+        expect(previewSource).toContain('AGENT_REGEX_PLACEMENT.AI_OUTPUT');
+        expect(previewSource).toContain('ica--tracker-preview-frame');
+        expect(popupSource).toContain('ica--tracker-builder-extra-instructions');
+        expect(indexSource).toContain("text: 'Regenerate'");
+        expect(indexSource).toContain('trackerPreviewPopup.content.innerHTML');
+        expect(extensionStyleSource).toContain('.ica--tracker-preview-frame');
+    });
+
     test('keeps companion settings labels clear and aligned', () => {
         expect(editorTemplateSource).toContain('ica--companion-core-grid');
         expect(extensionStyleSource).toContain('.ica--companion-core-grid');
@@ -83,7 +107,102 @@ describe('in-chat agents generation UI wiring', () => {
         expect(editorTemplateSource).toContain('Run selected companions in one request');
         expect(editorTemplateSource).toContain('Batch With Enabled Companions');
         expect(editorTemplateSource).toContain('Turn it on to fetch currently enabled side companions');
+        expect(editorTemplateSource).toContain('ica--editor-companion-sendContextToCompanions');
+        expect(editorTemplateSource).toContain('Send context to the following Companion Agents before generation');
+        expect(editorTemplateSource).toContain('ica--editor-companion-contextRecipientAgentIds');
+        expect(editorTemplateSource).toContain('ica--editor-companion-waitForDependencies');
+        expect(editorTemplateSource).toContain('Delay until selected companions finish');
+        expect(editorTemplateSource).toContain('<span>Keep this agent in Chat History</span>');
+        expect(editorTemplateSource).toContain('Notes to keep');
+        expect(editorTemplateSource).toContain('Keeps this agent\'s most recent notes in the AI\'s context. Only notes that finished generating are counted.');
+        expect(editorTemplateSource).toContain('<span>Keep all notes instead</span>');
+        expect(editorTemplateSource).toContain('<span>Keep notes in context even when their message is hidden</span>');
+        // The depth input disables itself when "keep all" is on, so no prose warning is needed.
+        expect(editorTemplateSource).not.toContain('Cannot be turned on with');
         expect(editorTemplateSource).not.toContain('Batch with compatible companions');
+    });
+
+    test('persists companion context-send and dependency delay toggles', () => {
+        const readSource = getFunctionSource('readCompanionConfigFromEditor');
+        const writeSource = getFunctionSource('writeCompanionConfigToEditor');
+
+        expect(indexSource).toContain("#ica--editor-companion-sendContextToCompanions");
+        expect(indexSource).toContain("#ica--editor-companion-contextRecipientAgentIds");
+        expect(readSource).toContain("sendContextToCompanions: root.find('#ica--editor-companion-sendContextToCompanions').prop('checked')");
+        expect(readSource).toContain("contextRecipientAgentIds: normalizeCompanionBatchAgentIds(root.find('#ica--editor-companion-contextRecipientAgentIds').val())");
+        expect(writeSource).toContain("editorEl.find('#ica--editor-companion-sendContextToCompanions').prop('checked', nextCompanion.sendContextToCompanions);");
+        expect(writeSource).toContain('updateCompanionContextRecipientOptions();');
+        expect(indexSource).toContain("#ica--editor-companion-waitForDependencies");
+        expect(readSource).toContain("waitForDependencies: root.find('#ica--editor-companion-waitForDependencies').prop('checked')");
+        expect(writeSource).toContain("editorEl.find('#ica--editor-companion-waitForDependencies').prop('checked', nextCompanion.waitForDependencies);");
+    });
+
+    test('persists companion chat history and projects it into prompt-only messages', () => {
+        const readSource = getFunctionSource('readCompanionConfigFromEditor');
+        const writeSource = getFunctionSource('writeCompanionConfigToEditor');
+
+        expect(indexSource).toContain("editorEl.find('#ica--editor-companion-includeInChatHistory').prop('checked', companion.includeInChatHistory);");
+        expect(readSource).toContain("includeInChatHistory: root.find('#ica--editor-companion-includeInChatHistory').prop('checked')");
+        expect(readSource).toContain("chatHistoryDepth: Number(root.find('#ica--editor-companion-chatHistoryDepth').val())");
+        expect(readSource).toContain("includeAllChatHistory: root.find('#ica--editor-companion-includeAllChatHistory').prop('checked')");
+        expect(readSource).toContain("keepInChatHistoryWhenHostHidden: root.find('#ica--editor-companion-keepInChatHistoryWhenHostHidden').prop('checked')");
+        expect(writeSource).toContain("editorEl.find('#ica--editor-companion-includeInChatHistory').prop('checked', nextCompanion.includeInChatHistory);");
+        expect(writeSource).toContain("editorEl.find('#ica--editor-companion-chatHistoryDepth').val(nextCompanion.chatHistoryDepth);");
+        expect(writeSource).toContain("editorEl.find('#ica--editor-companion-includeAllChatHistory').prop('checked', nextCompanion.includeAllChatHistory);");
+        expect(writeSource).toContain("editorEl.find('#ica--editor-companion-keepInChatHistoryWhenHostHidden').prop('checked', nextCompanion.keepInChatHistoryWhenHostHidden);");
+        expect(indexSource).toContain("prop('disabled', editorEl.find('#ica--editor-companion-includeAllChatHistory').prop('checked'))");
+        expect(indexSource).toContain('syncCompanionChatHistoryConfig(agent) > 0');
+        expect(coreScriptSource).toContain('const companionRewriteTarget = companionHistoryTarget');
+        expect(coreScriptSource).toContain('const companionFeedbackTarget = companionHistoryTarget');
+        expect(coreScriptSource).toContain('companionHistoryTarget: companionFeedbackTarget');
+        expect(agentRunnerSource).toContain('companionRuntime?.stripAuxiliaryTrackerEchoes?.(message.mes, undefined, activeAgents)');
+        expect(agentRunnerSource).toContain('await refreshMessageAfterMutation(messageIndex, message, { deferBackup: true });');
+        expect(coreScriptSource).toContain("isContinue || type === 'swipe' || type === 'regenerate' ? lastMessage : null");
+        expect(coreScriptSource).toContain('message !== companionRewriteTarget');
+        expect(coreScriptSource).toContain('!message.extra?.[IGNORE_SYMBOL]');
+        expect(coreScriptSource).toContain(').filter(message => !message.extra?.[IGNORE_SYMBOL]);');
+        expect(coreScriptSource).toContain('consolidateCompanionChatHistory(companionCandidateMessages, companionChatHistory');
+        expect(coreScriptSource).toContain('companionRewriteTarget && !chat.includes(companionRewriteTarget)');
+        expect(coreScriptSource).toContain('policyMessages: companionPolicyMessages');
+        expect(coreScriptSource.match(/companionHistoryTarget: companionRewriteTarget/g)).toHaveLength(2);
+        expect(coreScriptSource).toContain('hasCompanionChatHistoryForHiddenHost(x)');
+        expect(coreScriptSource).toContain('consolidateCompanionChatHistory(companionCandidateMessages, companionChatHistory');
+        expect(coreScriptSource).toContain('chatItem === consolidatedCompanionHistoryHost');
+        expect(coreScriptSource).toContain("original: sourceMessage.is_system ? '' : sourceMessage.mes");
+        expect(coreScriptSource).toContain("const contextSourceMessage = hiddenCompanionHistory ? '' : originalMessage");
+        expect(coreScriptSource).toContain("const worldInfoContextSourceMessage = hiddenCompanionHistory ? '' : worldInfoSourceMessage");
+        expect(coreScriptSource).toContain('const consolidatedContextMessage = [contextMessage, ...retainedContributions.map(contribution => contribution.content)]');
+        expect(coreScriptSource).toContain("const fileContent = hiddenCompanionHistory ? '' : await appendFileContent(chatItem, '');");
+        expect(coreScriptSource).toContain('extra: hiddenCompanionHistory ? {} : chatItem.extra');
+        expect(coreScriptSource).toContain('is_system: hiddenCompanionHistory ? false : chatItem.is_system');
+        expect(coreScriptSource).toContain('getRegexedString(worldInfoContextSourceMessage, regexType, options)');
+        expect(indexSource).toContain('includeInChatHistory: currentCompanion.includeInChatHistory');
+        expect(indexSource).toContain('chatHistoryDepth: currentCompanion.chatHistoryDepth');
+        expect(indexSource).toContain('includeAllChatHistory: currentCompanion.includeAllChatHistory');
+        expect(indexSource).toContain('keepInChatHistoryWhenHostHidden: currentCompanion.keepInChatHistoryWhenHostHidden');
+        expect(extensionStyleSource).toContain('.popup:has(#ica--editor).wide_dialogue_popup');
+        expect(extensionStyleSource).toContain('width: calc(100dvw - 20px);');
+    });
+
+    test('keeps the quick-chip target action touch-sized on coarse pointers', () => {
+        const coarsePointerStart = extensionStyleSource.indexOf('@media (pointer: coarse), (any-pointer: coarse)');
+        const coarsePointerEnd = extensionStyleSource.indexOf('.mes_fix_trackers--running', coarsePointerStart);
+        const coarsePointerStyles = extensionStyleSource.slice(coarsePointerStart, coarsePointerEnd);
+
+        expect(coarsePointerStart).toBeGreaterThanOrEqual(0);
+        expect(coarsePointerStyles).toContain(`.ica--quick-chip-apply-target {
+        width: 44px;
+        min-width: 44px;
+    }`);
+        expect(coarsePointerStyles).toContain(`.ica--quick-chip-apply,
+    .ica--quick-chip-apply-target,
+    .ica--quick-chip-pin {
+        height: 44px;
+        min-height: 44px;
+    }`);
+        expect(coarsePointerStyles).toContain(`.ica--quick-chip-actions {
+        align-items: center;
+    }`);
     });
 
     test('lists all enabled side companions in batch selector regardless of compatibility', () => {
@@ -91,6 +210,74 @@ describe('in-chat agents generation UI wiring', () => {
         expect(source).not.toContain('getCompanionBatchCompatibilityKey');
         expect(source).toContain('isAgentEnabledForCurrentScope(candidate)');
         expect(source).toContain('isCompanionAgent(candidate)');
+        expect(source).toContain('referenceIds: getCompanionReferenceIds(candidate)');
+    });
+
+    test('selects companion links by saved id or source template id', () => {
+        const batchSource = getFunctionSource('updateCompanionBatchAgentOptions');
+        const contextRecipientSource = getFunctionSource('updateCompanionContextRecipientOptions');
+        const dependencySource = getFunctionSource('updateCompanionDependencyOptions');
+
+        for (const source of [batchSource, contextRecipientSource, dependencySource]) {
+            expect(source).toContain('options.flatMap(option => option.referenceIds)');
+            expect(source).toContain('option.referenceIds.some(id => selectedKeys.has(id.toLowerCase()))');
+        }
+    });
+
+    test('migrates Level Up and User-based Stats context links once', () => {
+        const migrationSource = getFunctionSource('migrateLevelUpStatsContextLinks');
+        const defaultSource = getFunctionSource('applyLevelUpStatsContextLinkDefault');
+
+        expect(indexSource).toContain('LEVEL_UP_STATS_CONTEXT_LINKS_VERSION');
+        expect(indexSource).toContain('LEVEL_UP_COMPANION_TEMPLATE_ID');
+        expect(indexSource).toContain('USER_BASED_STATS_TEMPLATE_ID');
+        expect(defaultSource).toContain('sendContextToCompanions: true');
+        expect(defaultSource).toContain('contextRecipientAgentIds: recipientIds');
+        expect(defaultSource).toContain('dependencies: dependencyIds');
+        expect(defaultSource).toContain('waitForDependencies');
+        expect(indexSource).toContain('const LEVEL_UP_STATS_CONTEXT_LINKS_VERSION = 2;');
+        expect(migrationSource).toContain('levelUpStatsContextLinksVersion');
+        expect(indexSource).toContain('await migrateLevelUpStatsContextLinks();');
+    });
+
+    test('targets inline and companion tracker fixes independently', () => {
+        const visibilitySource = getFunctionSource('updateFixTrackersButtonVisibility');
+        const runSource = getFunctionSource('runTrackerFixFromButton');
+        const globalButtonStart = indexSource.indexOf("$('#ica--fixTrackers').on('click'");
+        const globalButtonEnd = indexSource.indexOf("$('#ica--templatesCallout')", globalButtonStart);
+        const globalButtonSource = indexSource.slice(globalButtonStart, globalButtonEnd);
+
+        expect(visibilitySource).toContain('hasInlineCandidates');
+        expect(visibilitySource).toContain('hasCompanionCandidates');
+        expect(visibilitySource).toContain('const isAssistantMessage = isNonSystemMessage');
+        expect(visibilitySource).toContain('(hasInlineCandidates && isAssistantMessage)');
+        expect(visibilitySource).toContain('(hasCompanionCandidates && isNonSystemMessage)');
+        expect(runSource).toContain('hasRunnableInlineTrackerAgents()');
+        expect(runSource).toContain('hasRunnableCompanionTrackerAgents()');
+        expect(runSource).toContain('const cancelRevision = getAgentGenerationCancelRevision();');
+        expect(runSource).toContain('const fixChatId = getCurrentChatId();');
+        expect(runSource).toContain('isFixContextCurrent()');
+        expect(runSource).toContain('runTrackerFixOnMessage(inlineMessageIndex, { cancelRevision })');
+        expect(runSource).toContain('runTrackerCompanionsOnMessage(companionMessageIndex, { cancelRevision })');
+        expect(runSource).toContain('No assistant reply selected to fix trackers on.');
+        expect(globalButtonSource).toContain('const inlineMessageIndex = getLastAssistantMessageIndex();');
+        expect(globalButtonSource).toContain('const companionMessageIndex = getLatestValidCompanionMessageIndex();');
+        expect(globalButtonSource).toContain('{ inlineMessageIndex, companionMessageIndex }');
+    });
+
+    test('populates companion dependency selector during editor setup', () => {
+        const source = getFunctionSource('openEditor');
+        const setupStart = source.indexOf('updateTrackerBuilderVisibility();');
+        const setupEnd = source.indexOf('// Show/hide sections based on phase');
+        const setupSource = source.slice(setupStart, setupEnd);
+
+        expect(editorTemplateSource).toContain('ica--editor-companion-dependencies');
+        expect(setupSource).toContain('updateCompanionBatchAgentOptions();');
+        expect(setupSource).toContain('updateCompanionContextRecipientOptions();');
+        expect(setupSource).toContain('updateCompanionDependencyOptions();');
+        expect(setupSource.indexOf('updateCompanionContextRecipientOptions();')).toBeGreaterThan(setupSource.indexOf('updateCompanionBatchAgentOptions();'));
+        expect(setupSource.indexOf('updateCompanionDependencyOptions();')).toBeGreaterThan(setupSource.indexOf('updateCompanionContextRecipientOptions();'));
+        expect(setupSource.indexOf('updateCompanionDependencyOptions();')).toBeGreaterThan(setupSource.indexOf('updateCompanionBatchAgentOptions();'));
     });
 
     test('labels companion agent cards as side execution', () => {
@@ -99,5 +286,68 @@ describe('in-chat agents generation UI wiring', () => {
         expect(labelSource).toContain('isCompanionAgent(agent)');
         expect(labelSource).toContain("return 'side';");
         expect(indexSource).toContain('getAgentCardPhaseLabel(agent)');
+    });
+
+    test('enables selected post-generation agents on companion outputs', () => {
+        const handlerStart = indexSource.indexOf("$('#ica--bulkEnableOnCompanions').on('click'");
+        const handlerEnd = indexSource.indexOf("$('#ica--bulkDisable').on('click'", handlerStart);
+        const handlerSource = indexSource.slice(handlerStart, handlerEnd);
+
+        expect(settingsSource).toContain('ica--bulkEnableOnCompanions');
+        expect(settingsSource).toContain('On Companions');
+        expect(handlerSource).toContain('for (const id of selectedAgentIds)');
+        expect(handlerSource).toContain('isCompanionAgent(agent)');
+        expect(handlerSource).toContain('isToolAgent(agent)');
+        expect(handlerSource).toContain("['post', 'both'].includes(agent.phase)");
+        expect(handlerSource).toContain('agent.conditions.runOnCompanionOutputs = true;');
+        expect(handlerSource).toContain('lockBundledAgentCustomization(agent);');
+        expect(handlerSource).toContain('await saveAgent(agent);');
+        expect(handlerSource).toContain('exitSelectMode();');
+    });
+
+    test('allows manual agent application to multiple selected targets', () => {
+        const pickerSource = getFunctionSource('pickManualAgentRunTargets');
+        const handlerStart = indexSource.indexOf("card.find('.ica--btn-run-target').on('click'");
+        const handlerEnd = indexSource.indexOf("card.find('.ica--btn-preview-prompt').on('click'", handlerStart);
+        const handlerSource = indexSource.slice(handlerStart, handlerEnd);
+
+        expect(pickerSource).toContain('type="checkbox" name="ica--run-target"');
+        expect(pickerSource).not.toContain('type="radio" name="ica--run-target"');
+        expect(pickerSource).toContain("picker.find('input[name=\"ica--run-target\"]:checked').map((_, input) => String(input.value)).get()");
+        expect(pickerSource).toContain('return selected.flatMap(value => {');
+        expect(handlerSource).toContain('const targets = await pickManualAgentRunTargets(agent);');
+        expect(handlerSource).toContain('await Promise.all(targets.map(target => runAgentOnTarget(agent.id, target)));');
+    });
+
+    test('offers chosen-target application from Quick Toggles', () => {
+        const quickStart = indexSource.indexOf("quickItem.find('.ica--quick-chip-apply-target').on('click'");
+        const quickEnd = indexSource.indexOf("quickItem.find('.ica--quick-chip-pin').on('click'", quickStart);
+        const quickHandlerSource = indexSource.slice(quickStart, quickEnd);
+
+        expect(indexSource).toContain('const canApplyToChosenTarget = !isPathfinderAgent(agent) && !companionExecution;');
+        expect(indexSource).toContain('ica--quick-chip-apply-target');
+        expect(quickHandlerSource).toContain('const targets = await pickManualAgentRunTargets(agent);');
+        expect(quickHandlerSource).toContain('await Promise.all(targets.map(target => runAgentOnTarget(agent.id, target)));');
+    });
+
+    // Inline cards deliberately have no editor hook: opening agent settings from a chat message
+    // would be a Layer 1 config entry point and a nested modal chain.
+    test('does not wire inline Companion cards to the shared editor', () => {
+        expect(indexSource).toContain("import { initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';");
+        expect(indexSource).not.toContain('configureCompanionCardUi');
+    });
+
+    test('allows the manual reply target to expand to an assistant message range', () => {
+        const parserSource = getFunctionSource('getManualAgentRunMessageIndices');
+        const pickerSource = getFunctionSource('pickManualAgentRunTargets');
+
+        expect(parserSource).toContain("range.split(',')");
+        expect(parserSource).toContain('!message.is_user && !message.is_system');
+        expect(parserSource).toContain('return [...indexes].sort((a, b) => a - b);');
+        expect(pickerSource).toContain('ica--run-target-message-range');
+        expect(pickerSource).toContain('Last assistant reply #${lastAssistantIndex}');
+        expect(pickerSource).toContain('getManualAgentRunMessageIndices(');
+        expect(pickerSource).toContain('return selected.flatMap(value => {');
+        expect(extensionStyleSource).toContain('.ica--run-target-range');
     });
 });

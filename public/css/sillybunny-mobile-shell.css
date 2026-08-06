@@ -1,6 +1,17 @@
 /* SillyBunny mobile shell foundation: final sheet contract for modal drawers.
  * Keep this at the end of the shell sheet so it beats older mobile drawer rules. */
 @media screen and (max-width: 768px) {
+    /* SillyBunny: Android Firefox ignores user-scalable=no in the viewport
+       meta, allowing pinch-zoom to drift the visual viewport away from the
+       layout viewport. pan-y permits vertical touch scrolling but blocks
+       horizontal panning, pinch-zoom, and double-tap-zoom on the document
+       root. Horizontal panning is never desired at the document level;
+       specific horizontal rails set their own touch-action. (#526) */
+    html,
+    body {
+        touch-action: pan-y;
+    }
+
     /* SillyBunny: visualViewport-backed height so the shell contracts with
        the software keyboard instead of relying on dvh, which is unreliable
        with body { position: fixed } on Android Chrome. */
@@ -60,18 +71,18 @@
     }
 
     #nonQRFormItems {
-        --sb-mobile-composer-input-height: clamp(34px, calc(42px * var(--sb-bottom-bar-scale, 1)), 56px);
-        --sb-composer-action-size: clamp(20px, calc(26px * var(--sb-bottom-bar-scale, 1)), 36px);
-        --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.45);
-        --sb-composer-action-icon-size: clamp(10px, calc(13px * var(--sb-bottom-bar-scale, 1)), 18px);
-        --sb-composer-left-rail-width: min(28vw, calc(var(--sb-composer-action-size) * 2 + 3px));
+        --sb-mobile-composer-input-height: clamp(40px, calc(44px * var(--sb-bottom-bar-scale, 1)), 56px);
+        --sb-composer-action-size: clamp(40px, calc(44px * var(--sb-bottom-bar-scale, 1)), 44px);
+        --sb-composer-send-width: var(--sb-composer-action-size);
+        --sb-composer-action-icon-size: clamp(13px, calc(16px * var(--sb-bottom-bar-scale, 1)), 18px);
+        --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 3px);
         --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 3px);
         display: grid !important;
         grid-template-columns: var(--sb-composer-left-rail-width) minmax(0, 1fr) var(--sb-composer-right-rail-width) !important;
         grid-template-rows: minmax(var(--sb-mobile-composer-input-height), auto) !important;
         grid-template-areas: 'tools input action' !important;
         align-items: center !important;
-        gap: 0 4px !important;
+        gap: 0 clamp(8px, 2vw, 10px) !important;
         min-height: calc(var(--sb-mobile-composer-input-height) + 4px) !important;
         padding: 2px 4px !important;
         box-sizing: border-box !important;
@@ -79,13 +90,13 @@
     }
 
     :root[data-sb-compact-mode='true'] #nonQRFormItems {
-        --sb-mobile-composer-input-height: clamp(30px, calc(34px * var(--sb-bottom-bar-scale, 1)), 48px);
-        --sb-composer-action-size: clamp(18px, calc(22px * var(--sb-bottom-bar-scale, 1)), 32px);
-        --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.42);
-        --sb-composer-action-icon-size: clamp(9px, calc(11px * var(--sb-bottom-bar-scale, 1)), 16px);
-        --sb-composer-left-rail-width: min(26vw, calc(var(--sb-composer-action-size) * 2 + 2px));
+        --sb-mobile-composer-input-height: clamp(34px, calc(38px * var(--sb-bottom-bar-scale, 1)), 44px);
+        --sb-composer-action-size: clamp(34px, calc(38px * var(--sb-bottom-bar-scale, 1)), 40px);
+        --sb-composer-send-width: var(--sb-composer-action-size);
+        --sb-composer-action-icon-size: clamp(11px, calc(14px * var(--sb-bottom-bar-scale, 1)), 16px);
+        --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 2px);
         --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 2px);
-        gap: 0 3px !important;
+        gap: 0 clamp(8px, 2vw, 10px) !important;
     }
 
     #leftSendForm {
@@ -101,6 +112,10 @@
         gap: 3px !important;
     }
 
+    #leftSendForm::-webkit-scrollbar {
+        display: none;
+    }
+
     #rightSendForm {
         grid-area: action !important;
         width: 100% !important;
@@ -113,7 +128,16 @@
         gap: 3px !important;
     }
 
-    #rightSendForm > div:not(#send_but):not(#mes_stop):not(#qig-input-btn):not(.stscript_btn) {
+    /* SillyBunny: name what the phone composer hides instead of allow-listing what it keeps.
+       The old allow-list also swallowed every third-party button injected into the right rail;
+       those are now relocated into the scrollable left rail by placeComposerControls().
+       The STscript play/pause/stop controls are unused by this fork's roleplay-focused audience
+       and mobile-styles.css forces them to display:flex (see #533), where they overlap the
+       textarea -- this sheet loads after it so the !important wins. */
+    #rightSendForm > #mes_impersonate,
+    #rightSendForm > #mes_continue,
+    #rightSendForm > #sb_prose_polisher_but,
+    #rightSendForm > .stscript_btn {
         display: none !important;
     }
 
@@ -143,7 +167,6 @@
         max-width: 100% !important;
         min-height: var(--sb-mobile-composer-input-height) !important;
         max-height: 42dvh !important;
-        field-sizing: content !important;
         resize: none !important;
         overflow-y: auto !important;
         box-sizing: border-box !important;
@@ -484,13 +507,21 @@
         padding: 3px 10px !important;
     }
 
-    #right-nav-panel.openDrawer .sb-character-favorites-label {
-        font-size: calc(var(--mainFontSize) * 0.66) !important;
-        letter-spacing: 0.12em !important;
+    /* The collapsed shell header parks the mode toggle + close button over the
+       right end of this band, and the characters button floats on its left;
+       inset the favorites block so the divider and strip sit cleanly between
+       the flanking controls instead of running underneath them.
+       Left 48px clears the 44px characters button; right 134px clears the
+       82px mode toggle + 36px close button and their edge offsets. */
+    #right-nav-panel.openDrawer #HotSwapWrapper {
+        margin: 0 134px 0 48px !important;
+        min-height: 44px;
+        justify-content: center;
     }
 
-    #right-nav-panel.openDrawer #HotSwapWrapper .hotswap {
-        max-height: 28px !important;
+    #right-nav-panel.openDrawer .sb-character-favorites-label {
+        font-size: calc(var(--mainFontSize) * 0.66);
+        letter-spacing: 0.12em;
     }
 
     #right-nav-panel.openDrawer #HotSwapWrapper .hotswap > small {
@@ -730,7 +761,14 @@
         overflow-x: hidden !important;
         overscroll-behavior: contain !important;
         -webkit-overflow-scrolling: touch !important;
-        padding-bottom: max(24px, var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px))) !important;
+        padding-bottom: max(24px, calc(var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + var(--sb-ios-keyboard-bottom-inset, 0px))) !important;
+    }
+
+    #left-nav-panel.openDrawer .sb-shell-panel-scroller > :is(.scrollableInner, .scrollableInnerFull) {
+        min-height: 0;
+        max-height: none;
+        overflow: visible;
+        -webkit-overflow-scrolling: auto;
     }
 
     #right-nav-panel.openDrawer > .scrollableInner,
@@ -746,7 +784,7 @@
         box-sizing: border-box !important;
         scrollbar-gutter: stable !important;
         padding-inline-end: var(--sb-character-scroll-gutter, 8px) !important;
-        padding-bottom: max(24px, var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px))) !important;
+        padding-bottom: max(24px, calc(var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + var(--sb-ios-keyboard-bottom-inset, 0px))) !important;
     }
 
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) > .scrollableInner,
@@ -832,9 +870,11 @@
     @media screen and (max-width: 768px) {
         /* SillyBunny: iOS 17 WebKit can misresolve dvh for the main shell. */
         body:not(.movingUI) #sheld {
-            // SillyBunny: add visual-viewport top so that when iOS Safari shifts the
-            // viewport up (keyboard open) the shell moves with it instead of floating
-            // mid-screen above the composer.
+            /* SillyBunny: add visual-viewport top so that when iOS Safari shifts the
+               viewport up (keyboard open) the shell moves with it instead of floating
+               mid-screen above the composer. NOTE: must be a CSS block comment, not //,
+               or the parser discards tokens through the next semicolon and silently
+               swallows the top: declaration below (regressed the iOS keyboard offset). */
             top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-shell-viewport-top, 0px)) !important;
             min-height: 100px !important;
             min-width: 0 !important;
@@ -863,6 +903,20 @@
             -webkit-overflow-scrolling: auto !important;
         }
     }
+}
+
+/* SillyBunny: mirror the <=768px drawer keyboard inset on wide iOS viewports
+   (iPadOS desktop-mode Safari reports a desktop UA and exceeds 768px).
+   .sb-ios-keyboard-inset-active is only toggled while the iOS software
+   keyboard is open, so non-iOS and keyboard-closed layouts never match. */
+html.sb-ios-keyboard-inset-active #left-nav-panel.openDrawer .sb-shell-panel-scroller,
+html.sb-ios-keyboard-inset-active #user-settings-block.openDrawer .sb-shell-panel-scroller,
+html.sb-ios-keyboard-inset-active .sb-shell-root.openDrawer .sb-shell-panel-scroller,
+html.sb-ios-keyboard-inset-active .sb-shell-root.fillLeft.openDrawer .sb-shell-panel-scroller,
+html.sb-ios-keyboard-inset-active .sb-shell-root.fillRight.openDrawer .sb-shell-panel-scroller,
+html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner,
+html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInnerFull {
+    padding-bottom: max(24px, calc(var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + var(--sb-ios-keyboard-bottom-inset, 0px)));
 }
 
 /* =========================================================================
@@ -1202,8 +1256,8 @@
         display: none;
     }
 
-    :root[data-sb-mobile-nav-layout='horizontal'][data-sb-mobile-nav-customize='shown'] #sb-left-shell-toggle,
-    :root[data-sb-mobile-nav-replacement='shown'] #sb-left-shell-toggle {
+    :root:not([data-sb-topbar-icons-only='true'])[data-sb-mobile-nav-layout='horizontal'][data-sb-mobile-nav-customize='shown'] #sb-left-shell-toggle,
+    :root:not([data-sb-topbar-icons-only='true'])[data-sb-mobile-nav-replacement='shown'] #sb-left-shell-toggle {
         display: inline-flex;
     }
 
@@ -1234,6 +1288,75 @@
         padding: 0 2px;
     }
 
+    /* Icons only top bar: phones have no room for both the rail and the centre brand, so drop
+       the label here and hand its column to the rail. Desktop keeps the label. */
+    :root[data-sb-topbar-icons-only='true'] .sb-topbar-brand {
+        display: none;
+    }
+
+    /* One spacing rhythm for the whole bar: the clusters and the groups both sit at the 3-4px
+       group gap, and the grid seam would otherwise add a third width. Identical square buttons a
+       few px apart at three different distances is what reads as awkward, so the seam keys off
+       the group gap too. */
+    :root[data-sb-topbar-icons-only='true'] #sb-topbar-inner {
+        grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+        gap: var(--sb-topbar-group-gap);
+    }
+
+    :root[data-sb-topbar-icons-only='true'] .sb-topbar-group-right {
+        min-width: 0;
+    }
+
+    :root[data-sb-topbar-icons-only='true'] .sb-topbar-group-left {
+        justify-self: stretch;
+        min-width: 0;
+    }
+
+    /* One target size for the whole bar. The page icons and Quick Access slots used to sit at the
+       26px chatbar size next to 40px anchors, which made them noticeably harder to hit
+       (Geechan review, #685). Home needs naming explicitly: its id-level min-width in
+       sillybunny-tabs.css outranks a class selector. */
+    :root[data-sb-topbar-icons-only='true'] .sb-proxy-button-icon-only,
+    :root[data-sb-topbar-icons-only='true'] #sb-home-toggle {
+        min-width: var(--sb-mobile-toggle-size);
+        width: var(--sb-mobile-toggle-size);
+        height: var(--sb-mobile-toggle-size);
+        min-height: var(--sb-mobile-toggle-size);
+    }
+
+    /* Adopted third-party buttons keep the same minimum target size as the rest of the bar.
+       Icon-only controls stay square while text-bearing controls can grow to fit their label.
+       This sheet loads after sillybunny-tabs.css, so the equal-specificity tie goes here. */
+    #sb-topbar-extension-slot .drawer-icon,
+    #sb-topbar-extension-slot .menu_button,
+    #top-bar #sb-topbar-extension-slot .drawer-icon,
+    #top-bar #sb-topbar-extension-slot .menu_button {
+        width: auto;
+        inline-size: auto;
+        height: var(--sb-mobile-toggle-size);
+        min-height: var(--sb-mobile-toggle-size);
+        min-width: var(--sb-mobile-toggle-size);
+        min-inline-size: var(--sb-mobile-toggle-size);
+    }
+
+    /* Visibility and seam handling live in sillybunny-tabs.css; the phone bar only shortens
+       the icon-only target to match its smaller squares. */
+    .sb-topbar-cluster-divider {
+        height: calc(var(--sb-mobile-toggle-size) * 0.5);
+    }
+
+    /* The Home|Characters boundary keeps its rule on phones in every mode, so the bar reads the
+       same whether or not the icons-only option is on. */
+    #sb-topbar-divider-home {
+        display: inline-block;
+    }
+
+    /* The strip's characters-pages boundary; equal specificity to the desktop hide in
+       sillybunny-tabs.css, so this sheet's later load order re-enables it on phones. */
+    :root[data-sb-topbar-icons-only='true'] #sb-topbar-divider-characters {
+        display: inline-block;
+    }
+
     .sb-universal-search {
         width: 100%;
     }
@@ -1258,6 +1381,7 @@
     #sb-left-shell-toggle,
     #sb-right-shell-toggle,
     #sb-character-toggle,
+    .sb-topbar-page-button,
     #sb-chatbar-visibility-toggle {
         min-width: var(--sb-mobile-toggle-size);
         width: var(--sb-mobile-toggle-size);
@@ -1273,6 +1397,7 @@
     #sb-left-shell-toggle span,
     #sb-right-shell-toggle span,
     #sb-character-toggle span,
+    .sb-topbar-page-button span,
     #sb-chatbar-visibility-toggle span {
         display: none;
     }
@@ -1283,6 +1408,7 @@
     #sb-left-shell-toggle::after,
     #sb-right-shell-toggle::after,
     #sb-character-toggle::after,
+    .sb-topbar-page-button::after,
     #sb-chatbar-visibility-toggle::after {
         left: var(--sb-proxy-underline-inset);
         right: var(--sb-proxy-underline-inset);
@@ -1295,6 +1421,7 @@
     #sb-left-shell-toggle i,
     #sb-right-shell-toggle i,
     #sb-character-toggle i,
+    .sb-topbar-page-button i,
     #sb-chatbar-visibility-toggle i {
         font-size: var(--sb-topbar-compact-icon-size);
     }
@@ -1316,8 +1443,8 @@
         max-height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) - var(--sb-mobile-shell-gap) - env(safe-area-inset-bottom, 0px)) !important;
         min-width: 0 !important;
         margin-top: 0 !important;
-        border-radius: 22px 22px 0 0 !important;
-        animation: sbMobileShellSheetIn 220ms var(--sb-ease-out) both !important;
+        border-radius: 20px 20px 0 0 !important;
+        animation: sbMobileShellSheetIn 220ms var(--sb-ease-out) both;
         transform-origin: center bottom;
     }
 
@@ -1725,6 +1852,7 @@
     }
 
     .sb-mobile-panel-close {
+        -webkit-appearance: none;
         appearance: none;
         width: var(--sb-mobile-touch-target, 44px);
         height: var(--sb-mobile-touch-target, 44px);
@@ -1761,6 +1889,7 @@
     }
 
     .sb-nav-item {
+        -webkit-appearance: none;
         appearance: none;
         position: relative;
         isolation: isolate;
@@ -1898,7 +2027,9 @@
     #right-nav-panel.openDrawer > .sb-character-shell-header {
         flex: 0 0 auto;
         gap: 3px;
-        padding: 10px 52px 8px 12px;
+        padding: 10px 104px 8px 12px;
+        min-height: 60px;
+        z-index: 3;
     }
 
     #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-close {
@@ -1908,6 +2039,27 @@
         min-width: var(--sb-mobile-touch-target, 44px);
         height: var(--sb-mobile-touch-target, 44px);
         min-height: var(--sb-mobile-touch-target, 44px);
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-character-shell-mode-toggle {
+        top: 8px;
+        right: 56px;
+        min-height: var(--sb-mobile-touch-target, 44px);
+        padding: 3px;
+        gap: 2px;
+        z-index: 2;
+        pointer-events: auto;
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-character-shell-mode-button {
+        min-width: 36px;
+        min-height: 36px;
+        padding: 8px;
+        pointer-events: auto;
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-character-shell-mode-button .fa-solid {
+        width: 14px;
     }
 
     #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-kicker {
@@ -1924,12 +2076,14 @@
         align-items: center;
         width: 100%;
         min-width: 0;
-        min-height: 50px;
-        max-height: 50px;
+        min-height: 58px;
+        max-height: 58px;
         margin: 0;
         padding: 7px var(--sb-shell-panel-padding-inline);
         border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 76%, transparent);
         box-sizing: border-box;
+        position: relative;
+        z-index: 1;
     }
 
     #right-nav-panel.openDrawer > #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
@@ -1940,16 +2094,46 @@
         min-width: 0;
         overflow: hidden;
         justify-content: flex-start;
+        /* The mode toggle (right: 56px) and close button float over this row;
+           reserve their footprint so the last favorites stay visible and tappable. */
+        margin-right: 136px;
     }
 
+    /* Horizontal-rail treatment like .sb-character-create-bar: the strip must
+       stay a real scroll container or touch panning has nothing to scroll
+       (mobile-styles.css and an earlier revision of this rule flattened it to
+       overflow: hidden). */
     #right-nav-panel.openDrawer #HotSwapWrapper .hotswap {
         min-width: 0;
         max-width: 100%;
-        max-height: 34px;
+        max-height: 28px;
         margin: 0;
-        overflow: hidden;
+        overflow-x: auto;
+        overflow-y: hidden;
+        overscroll-behavior-x: contain;
+        touch-action: pan-x;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
         white-space: nowrap;
+    }
+
+    /* No-favorites hint (RossAscends-mods.js injects a <small> from no_favs).
+       The rail reserves 136px for the mode toggle and close button, so this line
+       is shrunk below its text width; the inherited justify-content: center then
+       overflows it evenly and clips both ends ("avorite ... Hot"). Pin it to the
+       start and ellipsize so it reads from the first word. */
+    #right-nav-panel.openDrawer #HotSwapWrapper .hotswap > small {
+        justify-content: flex-start;
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    #right-nav-panel.openDrawer #HotSwapWrapper .hotswap > small > span {
+        display: block;
+        min-width: 0;
+        overflow: hidden;
         text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     #right-nav-panel.openDrawer #HotSwapWrapper .hotswap > .avatar {
@@ -2098,17 +2282,24 @@
 
     #right-nav-panel.openDrawer:not([data-menu-type="character_edit"]):not([data-menu-type="create"]) #rm_button_selected_ch,
     #right-nav-panel.openDrawer:not([data-menu-type="character_edit"]):not([data-menu-type="create"]) #result_info {
-        display: none !important;
+        display: none;
     }
 
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) .sb-character-editor-controls-row {
         grid-template-columns: var(--sb-character-editor-avatar-size) minmax(0, 1fr);
         grid-template-areas:
             'avatar name'
-            'side-actions side-actions'
+            'avatar side-actions'
             'icon-actions icon-actions'
             'tags tags';
         gap: 6px;
+    }
+
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #character-editor-pinned-actions,
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls,
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > .form_create_bottom_buttons_block,
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls .char-button-toolbar {
+        display: contents !important;
     }
 
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls {
@@ -2251,6 +2442,7 @@
         display: grid !important;
         grid-template-columns: var(--sb-character-list-avatar-size) minmax(0, 1fr) !important;
         align-items: center !important;
+        flex: 0 0 auto;
         gap: 6px 10px;
         min-height: calc(var(--sb-character-list-avatar-size) + 18px);
         width: 100%;
@@ -2280,8 +2472,8 @@
     #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
         grid-column: 1;
         grid-row: 1 / -1;
-        align-self: center;
-        justify-self: center;
+        align-self: center !important;
+        justify-self: center !important;
         width: var(--sb-character-list-avatar-size) !important;
         min-width: var(--sb-character-list-avatar-size) !important;
         max-width: var(--sb-character-list-avatar-size) !important;
@@ -2614,48 +2806,48 @@
         top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px)) !important;
         bottom: auto !important;
         box-sizing: border-box !important;
-        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px) - env(safe-area-inset-bottom, 0px)) !important;
-        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)))) - var(--sb-mobile-shell-gap, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)))) - var(--sb-mobile-shell-gap, 0px) - env(safe-area-inset-bottom, 0px)) !important;
     }
 }
 
 /* SillyBunny: final mobile density pass for phone chat chrome and message rhythm. */
 @media screen and (max-width: 768px) {
     :root {
-        --sb-topbar-primary-height-base: 30px;
+        --sb-topbar-primary-height-base: 28px;
         --sb-topbar-padding-x-base: 6px;
-        --sb-topbar-stack-gap-base: 3px;
+        --sb-topbar-stack-gap-base: 2px;
         --sb-topbar-bottom-padding-base: 2px;
         --sb-topbar-inline-gap-base: 4px;
         --sb-topbar-search-row-height-base: 28px;
         --sb-topbar-group-gap-base: 3px;
-        --sb-chatbar-height-base: 34px;
+        --sb-chatbar-height-base: 32px;
         --sb-chatbar-gap-base: 4px;
         --sb-chatbar-padding-y-base: 2px;
         --sb-chatbar-padding-x-base: 4px;
-        --sb-chatbar-button-size-base: 24px;
-        --sb-chatbar-field-height-base: 24px;
+        --sb-chatbar-button-size-base: 22px;
+        --sb-chatbar-field-height-base: 22px;
         --sb-chatbar-field-padding-x-base: 6px;
         --sb-chatbar-input-font-scale-base: 0.64;
-        --sb-mobile-toggle-size-base: 36px;
-        --sb-home-toggle-min-width-base: 36px;
+        --sb-mobile-toggle-size-base: 34px;
+        --sb-home-toggle-min-width-base: 34px;
         --sb-proxy-underline-inset-base: 7px;
         --sb-proxy-underline-bottom-base: 3px;
         --sb-message-icon-size: clamp(24px, calc(var(--bottomFormBlockSize, 44px) * 0.56), 30px);
     }
 
     :root[data-sb-compact-mode='true'] {
-        --sb-topbar-primary-height-base: 32px;
+        --sb-topbar-primary-height-base: 26px;
         --sb-topbar-padding-x-base: 5px;
         --sb-topbar-inline-gap-base: 3px;
-        --sb-topbar-search-row-height-base: 30px;
-        --sb-chatbar-height-base: 32px;
-        --sb-chatbar-button-size-base: 22px;
-        --sb-chatbar-field-height-base: 22px;
+        --sb-topbar-search-row-height-base: 28px;
+        --sb-chatbar-height-base: 30px;
+        --sb-chatbar-button-size-base: 21px;
+        --sb-chatbar-field-height-base: 21px;
         --sb-chatbar-field-padding-x-base: 5px;
-        --sb-mobile-toggle-size-base: 34px;
-        --sb-home-toggle-min-width-base: 34px;
-        --sb-mobile-tools-min-size: 34px;
+        --sb-mobile-toggle-size-base: 32px;
+        --sb-home-toggle-min-width-base: 32px;
+        --sb-mobile-tools-min-size: 32px;
         --sb-message-icon-size: clamp(22px, calc(var(--bottomFormBlockSize, 36px) * 0.56), 28px);
     }
 
@@ -2672,31 +2864,95 @@
     }
 
     #sb-bottom-chat-bar {
-        --sb-bottom-chat-mobile-gutter: max(6px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+        --sb-bottom-chat-mobile-gutter: max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
         --sb-bottom-chat-mobile-gap: clamp(1px, calc(1.5px * var(--sb-bottom-bar-scale)), 3px);
         --sb-bottom-chat-mobile-padding-block: clamp(1px, calc(1.5px * var(--sb-bottom-bar-scale)), 2px);
         --sb-bottom-chat-mobile-padding-inline: clamp(3px, calc(4px * var(--sb-bottom-bar-scale)), 6px);
         --sb-bottom-chat-mobile-button-size: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
         --sb-bottom-chat-mobile-select-height: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
         --sb-bottom-chat-mobile-persona-size: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
-        --sb-bottom-chat-mobile-radius: clamp(8px, calc(10px * var(--sb-bottom-bar-scale)), 13px);
+        --sb-bottom-chat-mobile-radius: 0px;
+        /* Keep vertical drags on the band between #chat and the composer from
+           becoming visual-viewport pans; its only owned gesture is the
+           horizontal secondary action rail. */
+        touch-action: pan-x;
+    }
+
+    #sb-bottom-chat-secondary-row {
+        touch-action: pan-x;
+    }
+
+    #chat {
+        padding-inline: max(clamp(6px, 1.5vw, 16px), env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px)) !important;
+    }
+
+    #form_sheld {
+        padding: 0 0 env(safe-area-inset-bottom, 0px) !important;
+        margin: 0 !important;
+        width: 100% !important;
+        max-width: none !important;
+    }
+
+    #send_form {
+        margin: 0 !important;
+        width: 100% !important;
+        max-width: none !important;
+        border-radius: 0 !important;
+        background: var(--sb-composer-surface-bg);
+        border: 1px solid var(--sb-shell-border) !important;
+        border-left: 0 !important;
+        border-right: 0 !important;
+        box-shadow: inset 0 1px 0 rgba(255, 244, 210, 0.05);
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
+    }
+
+    #send_form:focus-within {
+        border-top-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 56%, var(--sb-shell-border)) !important;
+        box-shadow:
+            0 -6px 20px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 12%, transparent),
+            inset 0 1px 0 color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent) !important;
+        outline: none !important;
+    }
+
+    #send_form.sb-generating-controls {
+        border-top-color: color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 78%, var(--sb-shell-border)) !important;
+        box-shadow:
+            0 -6px 24px color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 28%, transparent),
+            inset 0 1px 0 color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 52%, transparent) !important;
     }
 
     #nonQRFormItems {
-        --sb-mobile-composer-input-height: clamp(32px, calc(38px * var(--sb-bottom-bar-scale, 1)), 52px);
-        --sb-composer-action-size: clamp(20px, calc(24px * var(--sb-bottom-bar-scale, 1)), 34px);
-        --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.40);
-        --sb-composer-action-icon-size: clamp(10px, calc(12px * var(--sb-bottom-bar-scale, 1)), 17px);
-        --sb-composer-left-rail-width: min(26vw, calc(var(--sb-composer-action-size) * 2 + 2px));
+        --sb-mobile-composer-input-height: clamp(40px, calc(44px * var(--sb-bottom-bar-scale, 1)), 52px);
+        --sb-composer-action-size: clamp(40px, calc(44px * var(--sb-bottom-bar-scale, 1)), 44px);
+        --sb-composer-send-width: var(--sb-composer-action-size);
+        --sb-composer-action-icon-size: clamp(13px, calc(16px * var(--sb-bottom-bar-scale, 1)), 18px);
+        --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 4px);
         --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 2px);
-        gap: 0 3px !important;
+        gap: 0 clamp(8px, 2vw, 10px) !important;
         min-height: calc(var(--sb-mobile-composer-input-height) + 3px) !important;
         padding: 1px 4px !important;
     }
 
+    :root[data-sb-compact-mode='true'] #nonQRFormItems {
+        --sb-mobile-composer-input-height: clamp(34px, calc(38px * var(--sb-bottom-bar-scale, 1)), 44px);
+        --sb-composer-action-size: clamp(34px, calc(38px * var(--sb-bottom-bar-scale, 1)), 40px);
+        --sb-composer-send-width: var(--sb-composer-action-size);
+        --sb-composer-action-icon-size: clamp(11px, calc(14px * var(--sb-bottom-bar-scale, 1)), 16px);
+        --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 4px);
+    }
+
     #send_textarea {
-        padding: 4px 6px !important;
+        padding: 8px 6px !important;
         line-height: 1.15 !important;
+        border-radius: 10px !important;
+        background: var(--sb-composer-input-state-bg, var(--sb-composer-input-bg)) !important;
+        box-shadow: var(--sb-composer-input-state-shadow, none) !important;
+    }
+
+    #send_form:focus-within #send_textarea {
+        --sb-composer-input-state-bg: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 8%, var(--sb-composer-input-bg));
+        --sb-composer-input-state-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-focus-ring) 32%, transparent);
     }
 
     #leftSendForm,
@@ -2704,10 +2960,8 @@
         gap: 2px !important;
     }
 
-    #chat .mes:not(.smallSysMes) {
-        --avatar-base-width: 42px;
-        --avatar-base-height: 42px;
-        padding: 6px 8px 2px;
+    #leftSendForm {
+        padding-left: 0;
     }
 
     #chat .mes:not(.smallSysMes) .mesAvatarWrapper {
@@ -2722,7 +2976,8 @@
     }
 
     #chat .mes:not(.smallSysMes) .mes_block {
-        padding-left: 6px;
+        padding: 2px 4px;
+        margin: 0;
     }
 
     #chat .mes_text,
@@ -2732,6 +2987,7 @@
 
     #chat .mes_text {
         padding: 2px max(18px, calc(var(--mes-right-spacing) - 10px)) 2px 0;
+        margin: 0;
     }
 
     #chat .mes_text p,
@@ -2753,7 +3009,7 @@
 
     body:is(.echostyle, .whisperstyle, .hushstyle, .tidestyle) #chat .mes:not(.smallSysMes) {
         --moonlit-sb-avatar-column-width: max(var(--custom-ChatAvatar, 40px), 50px);
-        --messageLineHeight: calc(var(--mainFontSize) + 0.35rem);
+        --messageLineHeight: calc(var(--mainFontSize) + var(--lineSpacingMobileLeading, 0.35rem));
         --mesParagraphSpacingTop: 0.28em;
         --mesParagraphSpacingBottom: 0.42em;
         column-gap: 6px;
@@ -2761,7 +3017,7 @@
 
     body.ripplestyle #chat .mes:not(.smallSysMes) {
         --moonlit-sb-ripple-avatar-mobile-width: min(var(--customRippleAvatarMobileWidth, 100px), 86px);
-        --messageLineHeight: calc(var(--mainFontSize) + 0.35rem);
+        --messageLineHeight: calc(var(--mainFontSize) + var(--lineSpacingMobileLeading, 0.35rem));
         --mesParagraphSpacingTop: 0.28em;
         --mesParagraphSpacingBottom: 0.42em;
         column-gap: 6px;
@@ -2831,5 +3087,22 @@
     .streaming-display button {
         font-size: 0.82em;
         padding: 6px 10px;
+    }
+}
+
+@media screen and (max-width: 768px) and (prefers-reduced-motion: reduce) {
+    #left-nav-panel.openDrawer,
+    #user-settings-block.openDrawer,
+    .sb-shell-root.openDrawer,
+    .sb-shell-root.fillLeft.openDrawer,
+    .sb-shell-root.fillRight.openDrawer,
+    #right-nav-panel.openDrawer {
+        animation: none;
+    }
+
+    #sb-mobile-nav,
+    #sb-mobile-chat-tools,
+    .sb-nav-item {
+        transition: none;
     }
 }

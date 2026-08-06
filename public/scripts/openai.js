@@ -45,7 +45,7 @@ import {
 } from './PromptManager.js';
 
 import { forceCharacterEditorTokenize, getCustomStoppingStrings, persona_description_positions, power_user } from './power-user.js';
-import { SECRET_KEYS, secret_state, writeSecret } from './secrets.js';
+import { rotateSecret, SECRET_KEYS, secret_state, writeSecret } from './secrets.js';
 
 import { getEventSourceStream } from './sse-stream.js';
 import {
@@ -88,12 +88,20 @@ import { hasTextOrArrayPayload, shouldRetainContextAtDepth, stripHtmlTagsFromCon
 import { checkPostInterceptChatBudget, shouldCheckPostInterceptChatBudget } from './openai-prompt-budget.js';
 import {
     buildChatCompletionPresetForSave,
+    buildChatCompletionSamplingProfileKey,
     buildChatCompletionSamplingSettingsSnapshot,
+    buildCustomEndpointPresetForSave,
     buildReverseProxyPresetForSave,
+    getChatCompletionSamplingProfileLookupKeys,
+    getCustomEndpointFavoritesKey,
+    normalizeCustomEndpointPreset,
     normalizeReverseProxyPreset,
     shouldIncludeSamplingFieldsInPreset,
 } from './openai-preset-utils.js';
+import { applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model } from './openai-model-capabilities.js';
 import { TOOL_CALL_RECURSE_LIMIT_DEFAULT, normalizeToolCallRecurseLimit } from './tool-call-recurse-limit.js';
+import { LINKAPI_ENDPOINT, getLinkApiRequestFormat } from './linkapi-utils.js';
+import { IN_CHAT_AGENT_PROMPT_KEY_PREFIX, RUNTIME_AGENTS_IDENTIFIER, collectInChatAgentInspectionRecords, getInChatAgentContributionKind, isInChatAgentPromptIdentifier, trimOldestRetainedContribution } from './in-chat-agent-inspection.js';
 
 export {
     openai_messages_count,
@@ -247,6 +255,7 @@ export const chat_completion_sources = {
     SILICONFLOW: 'siliconflow',
     MINIMAX: 'minimax',
     WORKERS_AI: 'workers_ai',
+    LINKAPI: 'linkapi',
 };
 
 export const REVERSE_PROXY_SUPPORTED_SOURCES = [
@@ -284,6 +293,7 @@ const MODEL_ID_SEARCH_CONTROLS = [
     { source: chat_completion_sources.VERTEXAI, setting: 'vertexai_model', input: '#vertexai_model_id', select: '#model_vertexai_select', dynamicGroupId: 'vertexai_other_models' },
     { source: chat_completion_sources.CUSTOM, setting: 'custom_model', input: '#custom_model_id', select: '#model_custom_select', datalist: '#model_custom_select_fill', dynamicOnly: true },
     { source: chat_completion_sources.ZAI, setting: 'zai_model', input: '#zai_model_id', select: '#model_zai_select', dynamicGroupId: 'zai_other_models' },
+    { source: chat_completion_sources.LINKAPI, setting: 'linkapi_model', input: '#linkapi_model_id', select: '#model_linkapi_select', dynamicGroupId: 'linkapi_other_models', dynamicOnly: true },
 ];
 
 const INLINE_SELECT_PICKER_CONTROLS = [
@@ -475,6 +485,8 @@ export const settingsToUpdate = {
     vertexai_model: ['#model_vertexai_select', 'vertexai_model', false, true],
     zai_model: ['#model_zai_select', 'zai_model', false, true],
     zai_endpoint: ['#zai_endpoint', 'zai_endpoint', false, true],
+    linkapi_model: ['#model_linkapi_select', 'linkapi_model', false, true],
+    linkapi_endpoint: ['#linkapi_endpoint', 'linkapi_endpoint', false, true],
     workers_ai_model: ['#model_workers_ai_select', 'workers_ai_model', false, true],
     workers_ai_account_id: ['#workers_ai_account_id', 'workers_ai_account_id', false, true],
     openai_max_context: ['#openai_max_context', 'openai_max_context', false, false],
@@ -558,7 +570,7 @@ const default_settings = {
     scenario_format: default_scenario_format,
     personality_format: default_personality_format,
     openai_model: 'gpt-4-turbo',
-    claude_model: 'claude-sonnet-4-5',
+    claude_model: 'claude-opus-5',
     claude_disable_temperature: false,
     claude_disable_top_p: false,
     google_model: 'gemini-2.5-pro',
@@ -578,15 +590,17 @@ const default_settings = {
     electronhub_sort_models: 'alphabetically',
     electronhub_group_models: false,
     nanogpt_model: 'gpt-4o-mini',
-    deepseek_model: 'deepseek-chat',
+    deepseek_model: 'deepseek-v4-flash',
     aimlapi_model: 'chatgpt-4o-latest',
     xai_model: 'grok-3-beta',
     pollinations_model: 'openai',
     cometapi_model: 'gpt-4o',
     moonshot_model: 'kimi-latest',
     fireworks_model: 'accounts/fireworks/models/kimi-k2-instruct',
-    zai_model: 'glm-5.1',
+    zai_model: 'glm-5.2',
     zai_endpoint: ZAI_ENDPOINT.COMMON,
+    linkapi_model: 'claude-sonnet-4-5',
+    linkapi_endpoint: LINKAPI_ENDPOINT.GLOBAL,
     workers_ai_model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
     workers_ai_account_id: '',
     azure_base_url: '',
@@ -686,6 +700,17 @@ export let proxies = [
     },
 ];
 export let selected_proxy = proxies[0];
+
+export let custom_endpoint_presets = [
+    {
+        name: 'None',
+        url: '',
+        key: '',
+        model: '',
+        secretId: '',
+    },
+];
+export let selected_custom_endpoint_preset = custom_endpoint_presets[0];
 
 export let openai_setting_names;
 export let openai_settings;
@@ -819,6 +844,14 @@ function setOpenAIMessages(chat) {
         const isSameModel = originApi === currentApi && originModel === currentModel;
         const signature = isSameModel ? chat[j]?.extra?.reasoning_signature : null;
         const reasoning = isSameModel ? String(chat[j]?.extra?.reasoning ?? '') : '';
+        const agentContributions = Array.isArray(chat[j].agentContributions)
+            ? structuredClone(chat[j].agentContributions).map(contribution => ({
+                ...contribution,
+                content: typeof contribution.content === 'string'
+                    ? contribution.content.replace(/\r/gm, '')
+                    : contribution.content,
+            }))
+            : null;
 
         // Remove reasoning metadata from invocations if the API/model don't match
         if (Array.isArray(invocations) && invocations.length > 0) {
@@ -832,7 +865,18 @@ function setOpenAIMessages(chat) {
             });
         }
 
-        const message = { 'role': role, 'content': content, name: name, 'media': media, 'mediaDisplay': mediaDisplay, 'mediaIndex': mediaIndex, 'invocations': invocations, 'signature': signature, 'reasoning': reasoning };
+        const message = {
+            'role': role,
+            'content': content,
+            name: name,
+            'media': media,
+            'mediaDisplay': mediaDisplay,
+            'mediaIndex': mediaIndex,
+            'invocations': invocations,
+            'signature': signature,
+            'reasoning': reasoning,
+            ...(agentContributions && { agentContributions }),
+        };
         if (hasPromptPayload(message)) {
             messages[i] = message;
         }
@@ -1056,13 +1100,39 @@ async function populationInjectionPrompts(prompts, messages) {
                     .join(separator);
 
                 // Get extension prompt
+                const extensionContributions = [];
                 const extensionPrompt = order === extensionPromptsOrder
-                    ? await getExtensionPrompt(extension_prompt_types.IN_CHAT, i, separator, roleTypes[role], wrap)
+                    ? await getExtensionPrompt(extension_prompt_types.IN_CHAT, i, separator, roleTypes[role], wrap, ({ key, prompt, value }) => {
+                        if (!key.startsWith(IN_CHAT_AGENT_PROMPT_KEY_PREFIX) || !value.trim()) return;
+                        extensionContributions.push({
+                            identifier: key.replace(/\W/g, '_'),
+                            name: String(prompt.name ?? '').trim() || key,
+                            role,
+                            content: value.trim(),
+                            kind: getInChatAgentContributionKind(key),
+                        });
+                    })
                     : '';
                 const jointPrompt = [rolePrompts, extensionPrompt].filter(x => x).map(x => x.trim()).join(separator);
 
+                const promptContributions = orderPrompts
+                    .filter(prompt => prompt.role === role && isInChatAgentPromptIdentifier(prompt.identifier) && prompt.content)
+                    .map(prompt => ({
+                        identifier: prompt.identifier,
+                        name: String(prompt.name ?? '').trim() || prompt.identifier,
+                        role,
+                        content: String(prompt.content).trim(),
+                        kind: getInChatAgentContributionKind(prompt.identifier),
+                    }));
+                const agentContributions = [...promptContributions, ...extensionContributions];
+
                 if (jointPrompt && jointPrompt.length) {
-                    roleMessages.push({ 'role': role, 'content': jointPrompt, injected: true });
+                    roleMessages.push({
+                        'role': role,
+                        'content': jointPrompt,
+                        injected: true,
+                        ...(agentContributions.length > 0 && { agentContributions }),
+                    });
                 }
             }
         }
@@ -1156,18 +1226,16 @@ async function populateChatHistory(messages, prompts, chatCompletion, type = nul
         // We do not want to mutate the prompt
         const prompt = new Prompt(chatPrompt);
         prompt.identifier = `chatHistory-${messages.length - index}`;
-        const chatMessage = await Message.fromPromptAsync(promptManager.preparePrompt(prompt));
-
-        if (promptManager.serviceSettings.names_behavior === character_names_behavior.COMPLETION && prompt.name) {
-            const messageName = promptManager.isValidName(prompt.name) ? prompt.name : promptManager.sanitizeName(prompt.name);
-            await chatMessage.setName(messageName);
-        }
+        let survivingContributions = Array.isArray(chatPrompt.agentContributions)
+            ? structuredClone(chatPrompt.agentContributions)
+            : [];
 
         /**
          * Inline a media attachment into the chat message.
          * @param {MediaAttachment} media - The media attachment to inline.
+         * @param {Message} message - The message receiving the attachment.
          */
-        const inlineMediaAttachment = async (media) => {
+        const inlineMediaAttachment = async (media, message) => {
             if (!media || !media.url) {
                 return;
             }
@@ -1175,26 +1243,46 @@ async function populateChatHistory(messages, prompts, chatCompletion, type = nul
                 media.type = MEDIA_TYPE.IMAGE;
             }
             if (imageInlining && media.type === MEDIA_TYPE.IMAGE) {
-                await chatMessage.addImage(media.url);
+                await message.addImage(media.url);
             }
             if (videoInlining && media.type === MEDIA_TYPE.VIDEO) {
-                await chatMessage.addVideo(media.url);
+                await message.addVideo(media.url);
             }
             if (audioInlining && media.type === MEDIA_TYPE.AUDIO) {
-                await chatMessage.addAudio(media.url);
+                await message.addAudio(media.url);
             }
         };
 
-        if (Array.isArray(chatPrompt.media) && chatPrompt.media.length) {
-            if (chatPrompt.mediaDisplay === MEDIA_DISPLAY.LIST) {
-                for (const media of chatPrompt.media) {
-                    await inlineMediaAttachment(media);
+        const buildChatMessage = async () => {
+            const message = await Message.fromPromptAsync(promptManager.preparePrompt(prompt));
+            if (survivingContributions.length > 0) {
+                message.agentContributions = survivingContributions;
+            }
+            if (promptManager.serviceSettings.names_behavior === character_names_behavior.COMPLETION && prompt.name) {
+                const messageName = promptManager.isValidName(prompt.name) ? prompt.name : promptManager.sanitizeName(prompt.name);
+                await message.setName(messageName);
+            }
+            if (Array.isArray(chatPrompt.media) && chatPrompt.media.length) {
+                if (chatPrompt.mediaDisplay === MEDIA_DISPLAY.LIST) {
+                    for (const media of chatPrompt.media) {
+                        await inlineMediaAttachment(media, message);
+                    }
+                }
+                if (chatPrompt.mediaDisplay === MEDIA_DISPLAY.GALLERY) {
+                    const media = chatPrompt.media[chatPrompt.mediaIndex];
+                    await inlineMediaAttachment(media, message);
                 }
             }
-            if (chatPrompt.mediaDisplay === MEDIA_DISPLAY.GALLERY) {
-                const media = chatPrompt.media[chatPrompt.mediaIndex];
-                await inlineMediaAttachment(media);
-            }
+            return message;
+        };
+
+        let chatMessage = await buildChatMessage();
+        while (!chatCompletion.canAfford(chatMessage) && survivingContributions.length > 0 && typeof prompt.content === 'string') {
+            const trimmed = trimOldestRetainedContribution(prompt.content, survivingContributions);
+            if (!trimmed.changed) break;
+            prompt.content = trimmed.content;
+            survivingContributions = trimmed.contributions;
+            chatMessage = await buildChatMessage();
         }
 
         if (canUseTools && Array.isArray(chatPrompt.invocations)) {
@@ -1661,12 +1749,14 @@ async function preparePromptsForChatCompletion({ scenario, charPersonality, name
 
             const hasFilter = typeof prompt.filter === 'function';
             if (hasFilter && !await prompt.filter()) continue;
+            const promptName = typeof prompt.name === 'string' ? prompt.name.trim() : '';
 
             systemPrompts.push({
                 identifier: key.replace(/\W/g, '_'),
                 position: getPromptPosition(prompt.position),
                 role: getPromptRole(prompt.role),
                 content: prompt.value,
+                ...(promptName && { name: promptName }),
                 extension: true,
             });
         }
@@ -1808,6 +1898,7 @@ export async function prepareOpenAIMessages({
             chatCompletion.log('----------------------------------------------------');
         }
     } finally {
+        await chatCompletion.buildRuntimeAgentMessages();
         // Pass chat completion to prompt manager for inspection
         promptManager.setChatCompletion(chatCompletion);
 
@@ -1984,6 +2075,8 @@ export function getChatCompletionModel(settings = null) {
             return settings.zai_model;
         case chat_completion_sources.WORKERS_AI:
             return settings.workers_ai_model;
+        case chat_completion_sources.LINKAPI:
+            return settings.linkapi_model;
         default:
             console.error(`Unknown chat completion source: ${source}`);
             return '';
@@ -2098,24 +2191,31 @@ function ensureModelFavoritesStore(settings = oai_settings) {
 
 function getModelFavoritesForSource(source = oai_settings.chat_completion_source, settings = oai_settings) {
     const favoritesStore = ensureModelFavoritesStore(settings);
+    const favoritesKey = getCustomEndpointFavoritesKey(source, settings.custom_url);
 
-    if (!Array.isArray(favoritesStore[source])) {
-        favoritesStore[source] = [];
+    if (source === chat_completion_sources.CUSTOM && favoritesKey !== source && !Object.hasOwn(favoritesStore, favoritesKey)) {
+        favoritesStore[favoritesKey] = Array.isArray(favoritesStore[source]) ? [...favoritesStore[source]] : [];
     }
 
-    favoritesStore[source] = [...new Set(
-        favoritesStore[source]
+    if (!Array.isArray(favoritesStore[favoritesKey])) {
+        favoritesStore[favoritesKey] = [];
+    }
+
+    favoritesStore[favoritesKey] = [...new Set(
+        favoritesStore[favoritesKey]
             .filter(model => typeof model === 'string')
             .map(model => model.trim())
             .filter(Boolean),
     )];
 
-    return favoritesStore[source];
+    return favoritesStore[favoritesKey];
 }
 
 function setModelFavoritesForSource(source, favorites, settings = oai_settings) {
     const favoritesStore = ensureModelFavoritesStore(settings);
-    favoritesStore[source] = [...new Set(
+    const favoritesKey = getCustomEndpointFavoritesKey(source, settings.custom_url);
+
+    favoritesStore[favoritesKey] = [...new Set(
         (Array.isArray(favorites) ? favorites : [])
             .filter(model => typeof model === 'string')
             .map(model => model.trim())
@@ -2320,6 +2420,76 @@ function getModelSelectPickerOptionEntries(select) {
     return entries.filter(entry => entry.value);
 }
 
+function clampScrollValue(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+}
+
+function getLayoutViewportScrollAnchor() {
+    const scrollingElement = document.scrollingElement;
+
+    return {
+        left: Math.max(0, Math.round(window.scrollX || scrollingElement?.scrollLeft || 0)),
+        top: Math.max(0, Math.round(window.scrollY || scrollingElement?.scrollTop || 0)),
+    };
+}
+
+function restoreLayoutViewportScroll(anchor) {
+    if (!anchor) {
+        return;
+    }
+
+    const scrollingElement = document.scrollingElement;
+    if (scrollingElement instanceof Element) {
+        scrollingElement.scrollLeft = anchor.left;
+        scrollingElement.scrollTop = anchor.top;
+    }
+
+    if (window.scrollX !== anchor.left || window.scrollY !== anchor.top) {
+        window.scrollTo(anchor.left, anchor.top);
+    }
+}
+
+function scrollElementIntoNearestPanelScroller(element, { block = 'nearest' } = {}) {
+    if (!(element instanceof HTMLElement)) {
+        return;
+    }
+
+    const anchor = getLayoutViewportScrollAnchor();
+    const scroller = element.closest('.sb-model-id-picker-menu, .sb-shell-panel-scroller, .scrollableInner, .scrollableInnerFull');
+
+    if (!(scroller instanceof HTMLElement) || scroller.clientHeight <= 0) {
+        element.scrollIntoView({ block, inline: 'nearest' });
+        restoreLayoutViewportScroll(anchor);
+        requestAnimationFrame(() => restoreLayoutViewportScroll(anchor));
+        return;
+    }
+
+    const scrollerRect = scroller.getBoundingClientRect();
+    const elementRect = element.getBoundingClientRect();
+    const topOverflow = elementRect.top - scrollerRect.top;
+    const bottomOverflow = elementRect.bottom - scrollerRect.bottom;
+    let delta = 0;
+
+    if (block === 'center') {
+        delta = topOverflow - ((scrollerRect.height - elementRect.height) / 2);
+    } else if (block === 'start') {
+        delta = topOverflow;
+    } else if (block === 'end') {
+        delta = bottomOverflow;
+    } else if (topOverflow < 0) {
+        delta = topOverflow;
+    } else if (bottomOverflow > 0) {
+        delta = bottomOverflow;
+    }
+
+    if (Math.abs(delta) > 1) {
+        scroller.scrollTop = clampScrollValue(scroller.scrollTop + delta, 0, Math.max(0, scroller.scrollHeight - scroller.clientHeight));
+    }
+
+    restoreLayoutViewportScroll(anchor);
+    requestAnimationFrame(() => restoreLayoutViewportScroll(anchor));
+}
+
 function openInlineModelSelectPicker(select, { input = null, source = select.id } = {}) {
     const row = input instanceof HTMLInputElement && input.parentElement instanceof HTMLElement ? input.parentElement : null;
     const menuParent = row?.parentElement;
@@ -2383,7 +2553,7 @@ function openInlineModelSelectPicker(select, { input = null, source = select.id 
     menu.hidden = !willOpen;
 
     if (!menu.hidden) {
-        menu.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        scrollElementIntoNearestPanelScroller(menu.querySelector('[aria-selected="true"]'));
     }
 
     return true;
@@ -2506,7 +2676,7 @@ function openInlineSelectPicker(select, { source = select.id, label = select.id,
     menu.hidden = !willOpen;
 
     if (!menu.hidden) {
-        menu.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        scrollElementIntoNearestPanelScroller(menu.querySelector('[aria-selected="true"]'));
     }
 
     return true;
@@ -2581,7 +2751,7 @@ function openModelSelectPicker(select, options = {}) {
         return;
     }
 
-    select.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    scrollElementIntoNearestPanelScroller(select);
 
     if (shouldUseInlineModelSelectPicker() && openInlineModelSelectPicker(select, options)) {
         return;
@@ -2979,7 +3149,7 @@ function rebuildModelIdSearchControl(control, { preserveQuery = false } = {}) {
     const staticEntries = getModelIdSearchStaticEntries(control);
     const query = preserveQuery ? normalizeModelIdSearchValue(state.query).toLowerCase() : '';
     const selectedValue = normalizeModelIdSearchValue(oai_settings[control.setting] ?? input.value ?? select.value);
-    const favorites = getModelFavoritesForSource(control.source);
+    const favorites = [...getModelFavoritesForSource(control.source)].sort((left, right) => left.localeCompare(right));
     const favoriteValues = new Set(favorites);
     const dynamicOptions = getModelIdSearchDynamicOptions(control);
     const optionMap = new Map();
@@ -3458,6 +3628,7 @@ function groupOpenAISettingsIntoDrawers() {
                 '#openai_settings > div > .range-block:has(#openai_show_thoughts)',
                 '#openai_settings > div > .range-block:has(#openai_auto_append_reasoning_tags)',
                 '#openai_settings > div > .flex-container:has(#openai_reasoning_effort)',
+                '#openai_settings > div > .range-block:has(#openai_start_reply_with)',
                 '#openai_settings > div > .range-block:has(#openai_reasoning_tag_style)',
                 '#openai_settings > div > .flex-container:has(#openai_verbosity)',
                 '#openai_settings > div > .range-block:has(#claude_assistant_prefill)',
@@ -3524,6 +3695,12 @@ function updateOpenAISettingsGroupVisibility() {
         });
         $(this).toggle(hasVisibleContent);
     });
+}
+
+function updateKimiK3PrefillVisibility() {
+    const supportedSources = [chat_completion_sources.CUSTOM, chat_completion_sources.MOONSHOT, chat_completion_sources.NANOGPT, chat_completion_sources.OPENROUTER];
+    const isSupportedSource = supportedSources.includes(oai_settings.chat_completion_source);
+    $('#openai_start_reply_with').closest('.range-block').toggle(isSupportedSource && isKimiK3Model(getChatCompletionModel()));
 }
 
 function updateServerChatCompletionConfigSourceVisibility() {
@@ -4635,6 +4812,23 @@ function saveModelList(data) {
         }
     }
 
+    // LinkAPI - dynamic list only (models are scoped to the active key's group)
+    if (oai_settings.chat_completion_source == chat_completion_sources.LINKAPI) {
+        $('#linkapi_other_models').empty();
+        model_list.forEach((model) => {
+            $('#linkapi_other_models').append(
+                $('<option>', { value: model.id, text: model.id }),
+            );
+        });
+        if (model_list.length > 0) {
+            const selectedModel = model_list.map(m => m.id).includes(oai_settings.linkapi_model)
+                ? oai_settings.linkapi_model
+                : model_list[0]?.id || oai_settings.linkapi_model;
+            $('#model_linkapi_select').val(selectedModel).trigger('change');
+            $('#linkapi_model_id').val(selectedModel);
+        }
+    }
+
     // VertexAI - hybrid approach: keep static optgroups, add dynamic to "From API" optgroup
     if (oai_settings.chat_completion_source === chat_completion_sources.VERTEXAI) {
         // Clear only dynamic models from "From API" optgroup
@@ -4894,8 +5088,14 @@ function getReasoningEffort(settings = null, model = null) {
                     ? reasoning_effort_types.min
                     : reasoning_effort_types.low;
             case reasoning_effort_types.max: {
+                const nativeOpenAISource = [chat_completion_sources.OPENAI, chat_completion_sources.OPENAI_RESPONSES, chat_completion_sources.AZURE_OPENAI].includes(settings.chat_completion_source);
+                // SillyBunny: GPT-5.6 exposes max separately from xhigh.
+                if (nativeOpenAISource && /^gpt-5\.6(?:-|$)/.test(model)) {
+                    return reasoning_effort_types.max;
+                }
+
                 // xhigh is supported on OpenAI models after gpt-5.1-codex-max and on xAI grok-4.20-multi-agent
-                const xhighOpenAI = [chat_completion_sources.OPENAI, chat_completion_sources.OPENAI_RESPONSES, chat_completion_sources.AZURE_OPENAI].includes(settings.chat_completion_source)
+                const xhighOpenAI = nativeOpenAISource
                     && /^gpt-5\.([2-9]|\d{2,})/.test(model);
                 const xhighXAI = settings.chat_completion_source === chat_completion_sources.XAI
                     && model.includes('grok-4.20-multi-agent');
@@ -4982,6 +5182,7 @@ export async function createGenerationParameters(settings, model, type, messages
         chat_completion_sources.VERTEXAI,
         chat_completion_sources.MAKERSUITE,
         chat_completion_sources.CHUTES,
+        chat_completion_sources.LINKAPI,
     ];
 
     // Sources that support logprobs
@@ -5017,10 +5218,12 @@ export async function createGenerationParameters(settings, model, type, messages
 
     const isO1 = gptSources.includes(settings.chat_completion_source) && ['o1-2024-12-17', 'o1'].includes(model);
     const isWorkersAIJsonMode = settings.chat_completion_source === chat_completion_sources.WORKERS_AI && jsonSchema;
+    const isKimiK3Request = [chat_completion_sources.CUSTOM, chat_completion_sources.MOONSHOT, chat_completion_sources.NANOGPT, chat_completion_sources.OPENROUTER].includes(settings.chat_completion_source)
+        && isKimiK3Model(model);
     const stream = settings.stream_openai && type !== 'quiet' && !isO1 && !isWorkersAIJsonMode;
 
     const noMultiSwipeTypes = ['quiet', 'impersonate', 'continue'];
-    const canMultiSwipe = settings.n > 1 && !noMultiSwipeTypes.includes(type) && multiswipeSources.includes(settings.chat_completion_source);
+    const canMultiSwipe = settings.n > 1 && !noMultiSwipeTypes.includes(type) && multiswipeSources.includes(settings.chat_completion_source) && !isKimiK3Request;
 
     let logit_bias = {};
     if (settings.bias_preset_selected
@@ -5279,6 +5482,29 @@ export async function createGenerationParameters(settings, model, type, messages
         }
     }
 
+    if (settings.chat_completion_source === chat_completion_sources.LINKAPI) {
+        generate_data.linkapi_endpoint = settings.linkapi_endpoint || LINKAPI_ENDPOINT.GLOBAL;
+        const linkApiFormat = getLinkApiRequestFormat(model);
+        if (linkApiFormat === 'anthropic') {
+            generate_data.top_k = settings.top_k_openai > 0 ? Number(settings.top_k_openai) : undefined;
+            generate_data.use_sysprompt = settings.use_sysprompt;
+            generate_data.claude_disable_temperature = Boolean(settings.claude_disable_temperature);
+            generate_data.claude_disable_top_p = Boolean(settings.claude_disable_top_p);
+            generate_data.stop = getCustomStoppingStrings(); // Claude shouldn't have limits on stop strings.
+            // Don't add a prefill on quiet gens (summarization) and when using continue prefill.
+            if (type !== 'quiet' && !(type === 'continue' && settings.continue_prefill)) {
+                generate_data.assistant_prefill = type === 'impersonate'
+                    ? getEffectiveAssistantImpersonationPrefill(settings)
+                    : substituteParams(settings.assistant_prefill);
+            }
+        } else if (linkApiFormat === 'google') {
+            const stopStringsLimit = 5;
+            generate_data.top_k = settings.top_k_openai > 0 ? Number(settings.top_k_openai) : undefined;
+            generate_data.use_sysprompt = settings.use_sysprompt;
+            generate_data.stop = getCustomStoppingStrings(stopStringsLimit).slice(0, stopStringsLimit).filter(x => x.length >= 1 && x.length <= 16);
+        }
+    }
+
     if (seedSupportedSources.includes(settings.chat_completion_source) && settings.seed >= 0) {
         generate_data.seed = settings.seed;
     }
@@ -5330,20 +5556,12 @@ export async function createGenerationParameters(settings, model, type, messages
         }
     }
 
-    // SillyBunny: Claude Fable models reject sampling parameters with HTTP 400, including via OpenAI-compatible proxies.
-    // Substring match to also catch router ids like 'anthropic/claude-fable-5'.
-    if (/claude-fable/.test(model)) {
-        delete generate_data.temperature;
-        delete generate_data.top_p;
-        delete generate_data.top_k;
-        delete generate_data.frequency_penalty;
-        delete generate_data.presence_penalty;
-        // Keep reasoning_effort for the native Claude source (the backend maps it to adaptive thinking);
-        // strip it for proxies, which may translate it into a thinking budget that fable rejects.
-        if (settings.chat_completion_source !== chat_completion_sources.CLAUDE) {
-            delete generate_data.reasoning_effort;
-            delete generate_data.custom_reasoning_param_name;
-        }
+    // SillyBunny: Claude Fable and Sonnet 5 reject sampling parameters, including through provider-prefixed proxy model ids.
+    applyClaudeModelParameterConstraints(generate_data, {
+        preserveReasoning: [chat_completion_sources.CLAUDE, chat_completion_sources.LINKAPI].includes(settings.chat_completion_source),
+    });
+    if (isKimiK3Request) {
+        applyKimiK3ModelParameterConstraints(generate_data);
     }
 
     if (jsonSchema) {
@@ -5370,7 +5588,13 @@ async function sendOpenAIRequest(type, messages, signal, { jsonSchema = null, ca
 
     const model = getChatCompletionModel(oai_settings);
     const { generate_data, stream, canMultiSwipe } = await createGenerationParameters(oai_settings, model, type, messages, { jsonSchema, cacheScope });
+
     await eventSource.emit(event_types.CHAT_COMPLETION_SETTINGS_READY, generate_data);
+
+    if (generate_data.chat_completion_source === chat_completion_sources.CUSTOM && selected_custom_endpoint_preset?.secretId) {
+        // SillyBunny: Custom endpoint profiles bind chat requests to their saved secret, not the last active CUSTOM key.
+        generate_data.secret_id = selected_custom_endpoint_preset.secretId;
+    }
 
     console.log(`[OpenAI frontend] sendOpenAIRequest: type=${type} source=${generate_data.chat_completion_source} model=${generate_data.model} stream=${generate_data.stream}`);
 
@@ -5460,7 +5684,42 @@ export function getStreamingReply(data, state, { chatCompletionSource = null, ov
     const chat_completion_source = chatCompletionSource ?? oai_settings.chat_completion_source;
     const show_thoughts = overrideShowThoughts ?? shouldRequestReasoning(oai_settings);
 
-    if (chat_completion_source === chat_completion_sources.CLAUDE) {
+    if (chat_completion_source === chat_completion_sources.LINKAPI) {
+        // LinkAPI relays Anthropic, Gemini, or OpenAI SSE depending on the model's routing leg,
+        // so detect the payload shape instead of assuming a single format.
+        if (Array.isArray(data?.candidates)) {
+            // Gemini leg
+            const inlineData = data?.candidates?.[0]?.content?.parts?.filter(x => x.inlineData && !x.thought)?.map(x => x.inlineData) || [];
+            if (Array.isArray(inlineData) && inlineData.length > 0) {
+                state.images.push(...inlineData.map(x => `data:${x.mimeType};base64,${x.data}`).filter(isDataURL));
+            }
+            if (show_thoughts) {
+                state.reasoning += (data?.candidates?.[0]?.content?.parts?.filter(x => x.thought)?.map(x => x.text)?.[0] || '');
+            }
+            const parts = data?.candidates?.[0]?.content?.parts || [];
+            parts.forEach((part) => {
+                if (part.thoughtSignature && typeof part.text === 'string') {
+                    state.signature = part.thoughtSignature;
+                }
+            });
+            return data?.candidates?.[0]?.content?.parts?.filter(x => !x.thought)?.map(x => x.text)?.[0] || '';
+        }
+        if (Array.isArray(data?.choices)) {
+            // OpenAI-compatible leg
+            if (show_thoughts) {
+                state.reasoning +=
+                    data.choices?.filter(x => x?.delta?.reasoning_content)?.[0]?.delta?.reasoning_content ??
+                    data.choices?.filter(x => x?.delta?.reasoning)?.[0]?.delta?.reasoning ??
+                    '';
+            }
+            return data.choices?.[0]?.delta?.content ?? data.choices?.[0]?.message?.content ?? data.choices?.[0]?.text ?? '';
+        }
+        // Anthropic leg (content_block_delta events); other event types yield an empty string.
+        if (show_thoughts) {
+            state.reasoning += data?.delta?.thinking || '';
+        }
+        return data?.delta?.text || '';
+    } else if (chat_completion_source === chat_completion_sources.CLAUDE) {
         if (show_thoughts) {
             state.reasoning += data?.delta?.thinking || '';
         }
@@ -5762,12 +6021,16 @@ class Message {
     content;
     /** @type {string} */
     name;
+    /** @type {string} */
+    displayName;
     /** @type {object} */
     tool_call = null;
     /** @type {string?} */
     signature = null;
     /** @type {string?} */
     reasoning = null;
+    /** @type {object[]|null} */
+    agentContributions = null;
 
     /**
      * @constructor
@@ -6030,8 +6293,13 @@ class Message {
      * @param {Object} prompt - The prompt object.
      * @returns {Promise<Message>} A new instance of Message.
      */
-    static fromPromptAsync(prompt) {
-        return Message.createAsync(prompt.role, prompt.content, prompt.identifier);
+    static async fromPromptAsync(prompt) {
+        const message = await Message.createAsync(prompt.role, prompt.content, prompt.identifier);
+        const promptName = typeof prompt.name === 'string' ? prompt.name.trim() : '';
+        if (prompt.extension && promptName) {
+            message.displayName = promptName;
+        }
+        return message;
     }
 
     /**
@@ -6201,6 +6469,7 @@ export class ChatCompletion {
     constructor() {
         this.tokenBudget = 0;
         this.messages = new MessageCollection('root');
+        this.runtimeAgentMessages = null;
         this.loggingEnabled = false;
         this.overriddenPrompts = [];
     }
@@ -6212,6 +6481,27 @@ export class ChatCompletion {
      */
     getMessages() {
         return this.messages;
+    }
+
+    getRuntimeAgentMessages() {
+        return this.runtimeAgentMessages;
+    }
+
+    async buildRuntimeAgentMessages() {
+        this.runtimeAgentMessages = null;
+        const runtimeMessages = new MessageCollection(RUNTIME_AGENTS_IDENTIFIER);
+
+        try {
+            for (const record of collectInChatAgentInspectionRecords(this.messages.flatten())) {
+                const message = await Message.createAsync(record.role, record.content, record.identifier);
+                message.displayName = record.name;
+                message.kind = record.kind;
+                runtimeMessages.add(message);
+            }
+            this.runtimeAgentMessages = runtimeMessages;
+        } catch (error) {
+            console.warn('[PromptManager] Failed to count detached In-Chat Agent inspection tokens:', error);
+        }
     }
 
     /**
@@ -6687,7 +6977,37 @@ function getModelSamplingProfileKey() {
     if (!source || !model) {
         return null;
     }
-    return `${source}:${model}`;
+    return buildChatCompletionSamplingProfileKey(source, model);
+}
+
+function getModelSamplingProfileKeys() {
+    const source = oai_settings.chat_completion_source;
+    const model = getChatCompletionModel();
+    if (!source || !model) {
+        return [];
+    }
+    return getChatCompletionSamplingProfileLookupKeys(source, model);
+}
+
+function getModelSamplingProfileMatch() {
+    const profileKeys = getModelSamplingProfileKeys();
+    const profiles = oai_settings.model_sampling_profiles;
+
+    if (!profileKeys.length || !profiles) {
+        return null;
+    }
+
+    for (const profileKey of profileKeys) {
+        if (Object.hasOwn(profiles, profileKey)) {
+            return {
+                canonicalKey: profileKeys[0],
+                profileKey,
+                profile: profiles[profileKey],
+            };
+        }
+    }
+
+    return null;
 }
 
 function getSamplingSettingsSnapshot() {
@@ -6730,20 +7050,39 @@ function saveSamplingProfileForCurrentModel() {
         toastr.warning(t`No model is currently selected.`, t`Cannot save sampling profile`);
         return;
     }
+    oai_settings.model_sampling_profiles ??= {};
     oai_settings.model_sampling_profiles[profileKey] = getSamplingSettingsSnapshot();
+    for (const lookupKey of getModelSamplingProfileKeys()) {
+        if (lookupKey !== profileKey) {
+            delete oai_settings.model_sampling_profiles[lookupKey];
+        }
+    }
     saveSettingsDebounced();
     const modelLabel = getChatCompletionModel();
+
+    // Visual feedback flash
+    const $saveButton = $('#model_sampling_profile_save');
+    $saveButton.addClass('success-flash');
+    setTimeout(() => {
+        $saveButton.removeClass('success-flash');
+    }, 1200);
+
     toastr.success(t`Saved sampling settings for ${modelLabel}.`, t`Model sampling profile saved`);
 }
 
 function clearSamplingProfileForCurrentModel() {
-    const profileKey = getModelSamplingProfileKey();
-    if (!profileKey) {
+    const profileKeys = getModelSamplingProfileKeys();
+    if (!profileKeys.length) {
         toastr.warning(t`No model is currently selected.`, t`Cannot clear sampling profile`);
         return;
     }
-    if (oai_settings.model_sampling_profiles?.[profileKey]) {
-        delete oai_settings.model_sampling_profiles[profileKey];
+    const profiles = oai_settings.model_sampling_profiles;
+    const deletedKeys = profileKeys.filter(profileKey => profiles && Object.hasOwn(profiles, profileKey));
+
+    if (deletedKeys.length) {
+        for (const profileKey of deletedKeys) {
+            delete profiles[profileKey];
+        }
         saveSettingsDebounced();
         const modelLabel = getChatCompletionModel();
         toastr.info(t`Cleared sampling profile for ${modelLabel}.`, t`Model sampling profile removed`);
@@ -6753,19 +7092,19 @@ function clearSamplingProfileForCurrentModel() {
     }
 }
 
-function maybeApplyModelSamplingProfile() {
+export function maybeApplyModelSamplingProfile() {
     if (!oai_settings.model_sampling_profiles_enabled) {
         return;
     }
-    const profileKey = getModelSamplingProfileKey();
-    if (!profileKey) {
+    const profileMatch = getModelSamplingProfileMatch();
+    if (!profileMatch) {
         return;
     }
-    const profile = oai_settings.model_sampling_profiles?.[profileKey];
-    if (!profile) {
-        return;
+    applySamplingSettings(profileMatch.profile);
+    if (profileMatch.profileKey !== profileMatch.canonicalKey) {
+        oai_settings.model_sampling_profiles[profileMatch.canonicalKey] = structuredClone(profileMatch.profile);
+        saveSettingsDebounced();
     }
-    applySamplingSettings(profile);
     // SillyBunny: Removed constant "Model sampling profile loaded" toast to reduce UI noise
 }
 
@@ -6882,6 +7221,9 @@ async function getStatusOpen() {
         $('.model_custom_select').empty();
         data.custom_url = oai_settings.custom_url;
         data.custom_include_headers = oai_settings.custom_include_headers;
+        if (selected_custom_endpoint_preset?.secretId) {
+            data.secret_id = selected_custom_endpoint_preset.secretId;
+        }
     }
 
     if (oai_settings.chat_completion_source === chat_completion_sources.AZURE_OPENAI) {
@@ -6896,6 +7238,10 @@ async function getStatusOpen() {
 
     if (oai_settings.chat_completion_source === chat_completion_sources.MINIMAX) {
         data.minimax_endpoint = oai_settings.minimax_endpoint;
+    }
+
+    if (oai_settings.chat_completion_source === chat_completion_sources.LINKAPI) {
+        data.linkapi_endpoint = oai_settings.linkapi_endpoint;
     }
 
     if (oai_settings.chat_completion_source === chat_completion_sources.VERTEXAI) {
@@ -7536,6 +7882,13 @@ function onSettingsPresetChange() {
         scheduleOpenAIUiRefresh();
         $('#openai_logit_bias_preset').trigger('change');
 
+        // SillyBunny: re-assert the per-model sampling profile after a preset has
+        // written its sampling values, so a bound model profile always wins over
+        // the (Default/char) preset — the core promise of "decouple sampling from
+        // preset". Without this, starting a new chat or switching to a backend
+        // with a saved sampling profile silently reverts to the preset's sampling.
+        maybeApplyModelSamplingProfile();
+
         await saveSettings();
         await eventSource.emit(event_types.OAI_PRESET_CHANGED_AFTER);
         await eventSource.emit(event_types.PRESET_CHANGED, { apiId: 'openai', name: presetName });
@@ -7545,7 +7898,8 @@ function onSettingsPresetChange() {
 function getMaxContextOpenAI(value) {
     if (isMaxContextUnlockedForSource()) {
         return unlocked_max;
-    } else if (value.startsWith('gpt-5.4')) {
+    } else if (value.startsWith('gpt-5.4') || value.startsWith('gpt-5.6')) {
+        // SillyBunny: GPT-5.6 has the same one-million-token context tier as GPT-5.4.
         return max_1mil;
     } else if (value.startsWith('gpt-5')) {
         return max_400k;
@@ -7660,6 +8014,7 @@ function getZaiMaxContext(model, isUnlocked) {
     }
 
     const contextMap = {
+        'glm-5.2': max_1mil,
         'glm-5.1': max_200k,
         'glm-5-turbo': max_200k,
         'glm-5v-turbo': max_200k,
@@ -7774,6 +8129,7 @@ function getMoonshotMaxContext(model, isUnlocked) {
         'kimi-k2-turbo-preview': max_256k,
         'kimi-k2-thinking': max_256k,
         'kimi-k2-thinking-turbo': max_256k,
+        'kimi-k3': max_1mil,
     };
 
     // Return context size if model found, otherwise default to 32k
@@ -7933,6 +8289,12 @@ async function onModelChange() {
         if (value) {
             oai_settings.zai_model = value;
             $('#model_zai_select').val(value);
+        }
+    }
+    if ($(this).is('#linkapi_model_id')) {
+        if (value) {
+            oai_settings.linkapi_model = value;
+            $('#model_linkapi_select').val(value);
         }
     }
     if ($(this).is('#vertexai_model_id')) {
@@ -8165,6 +8527,12 @@ async function onModelChange() {
         $('#zai_model_id').val(value);
     }
 
+    if (value && $(this).is('#model_linkapi_select')) {
+        console.log('LinkAPI model changed to', value);
+        oai_settings.linkapi_model = value;
+        $('#linkapi_model_id').val(value);
+    }
+
     if ([chat_completion_sources.MAKERSUITE, chat_completion_sources.VERTEXAI].includes(oai_settings.chat_completion_source)) {
         if (maxContextUnlocked) {
             $('#openai_max_context').attr('max', max_2mil);
@@ -8207,7 +8575,7 @@ async function onModelChange() {
     if (oai_settings.chat_completion_source == chat_completion_sources.CLAUDE) {
         if (maxContextUnlocked) {
             $('#openai_max_context').attr('max', unlocked_max);
-        } else if (/^claude-(sonnet-4-(?:[5-9]|\d{2,})|opus-4-(?:[6-9]|\d{2,})|fable)/.test(value)) { // SillyBunny: |fable — claude-fable-5 has a 1M context window
+        } else if (/^claude-(opus-5|sonnet-5|sonnet-4-(?:[5-9]|\d{2,})|opus-4-(?:[6-9]|\d{2,})|fable)/.test(value)) { // SillyBunny: current Claude models with 1M context windows
             $('#openai_max_context').attr('max', max_1mil);
         } else if (/^claude-(3|opus|haiku|sonnet)/.test(value)) {
             $('#openai_max_context').attr('max', max_200k);
@@ -8491,10 +8859,32 @@ async function onModelChange() {
         $('#temp_openai').attr('max', claude_max_temp).val(oai_settings.temp_openai).trigger('input');
     }
 
+    if (oai_settings.chat_completion_source == chat_completion_sources.LINKAPI) {
+        const linkApiFormat = getLinkApiRequestFormat(oai_settings.linkapi_model);
+        // Context size follows the underlying model family, not the wire format:
+        // bracket-tagged per-request channels route via the OpenAI leg but keep native context.
+        const linkApiModelId = String(oai_settings.linkapi_model || '').toLowerCase();
+        const maxContext = maxContextUnlocked ? unlocked_max
+            : linkApiModelId.includes('gemini') ? max_1mil
+                : linkApiModelId.includes('claude') ? max_200k
+                    : max_128k;
+        $('#openai_max_context').attr('max', maxContext);
+        oai_settings.openai_max_context = Math.min(Number($('#openai_max_context').attr('max')), oai_settings.openai_max_context);
+        $('#openai_max_context').val(oai_settings.openai_max_context).trigger('input');
+        // Anthropic and Gemini relays reject temperatures above 1.0.
+        if (linkApiFormat !== 'openai') {
+            oai_settings.temp_openai = Math.min(claude_max_temp, oai_settings.temp_openai);
+            $('#temp_openai').attr('max', claude_max_temp).val(oai_settings.temp_openai).trigger('input');
+        } else {
+            $('#temp_openai').attr('max', oai_max_temp).val(oai_settings.temp_openai).trigger('input');
+        }
+    }
+
     $('#openai_max_context_counter').attr('max', Number($('#openai_max_context').attr('max')));
 
     saveSettingsDebounced();
     updateFeatureSupportFlags();
+    updateKimiK3PrefillVisibility();
     updateAdvancedFormattingVisibility();
     updateOpenAIModelFavoriteButton();
     refreshModelIdSearchControlsForSource(oai_settings.chat_completion_source);
@@ -8562,6 +8952,7 @@ async function onConnectButtonClick(e) {
         [chat_completion_sources.POLLINATIONS]: { key: SECRET_KEYS.POLLINATIONS, selector: '#api_key_pollinations', proxy: false },
         [chat_completion_sources.WORKERS_AI]: { key: SECRET_KEYS.WORKERS_AI, selector: '#api_key_workers_ai', proxy: false },
         [chat_completion_sources.MINIMAX]: { key: SECRET_KEYS.MINIMAX, selector: '#api_key_minimax', proxy: false },
+        [chat_completion_sources.LINKAPI]: { key: SECRET_KEYS.LINKAPI, selector: '#api_key_linkapi', proxy: false },
     };
 
     // Vertex AI Express version - use API key
@@ -8581,7 +8972,12 @@ async function onConnectButtonClick(e) {
     const config = apiSourceConfig[oai_settings.chat_completion_source];
     if (config) {
         const apiKey = String($(config.selector).val()).trim();
-        if (apiKey.length) {
+        const isBoundCustomEndpointProfile = oai_settings.chat_completion_source === chat_completion_sources.CUSTOM
+            && selected_custom_endpoint_preset?.name !== 'None'
+            && selected_custom_endpoint_preset?.secretId;
+
+        // SillyBunny: custom endpoint profiles keep their own secret ids; Connect must not mint duplicate active keys.
+        if (!isBoundCustomEndpointProfile && apiKey.length) {
             await writeSecret(config.key, apiKey);
         }
 
@@ -8660,6 +9056,9 @@ function toggleChatCompletionForms() {
         $('#model_zai_select').trigger('change');
     } else if (oai_settings.chat_completion_source == chat_completion_sources.WORKERS_AI) {
         $('#model_workers_ai_select').trigger('change');
+    } else if (oai_settings.chat_completion_source == chat_completion_sources.LINKAPI) {
+        $('#linkapi_model_id').val(oai_settings.linkapi_model);
+        $('#model_linkapi_select').val(oai_settings.linkapi_model).trigger('change');
     }
 
     $('[data-source]').each(function () {
@@ -8672,6 +9071,7 @@ function toggleChatCompletionForms() {
 
     setToolReasoningControls();
     updateAdvancedFormattingVisibility();
+    updateKimiK3PrefillVisibility();
     updateOpenAISettingsGroupVisibility();
     updateOpenAIModelFavoriteButton();
 }
@@ -8809,6 +9209,8 @@ export function isImageInliningSupported() {
         // Claude
         'claude-3',
         'claude-fable', // SillyBunny: claude-fable-5 vision support
+        'claude-opus-5', // SillyBunny: claude-opus-5 vision support
+        'claude-sonnet-5', // SillyBunny: claude-sonnet-5 vision support
         'claude-opus-4',
         'claude-sonnet-4',
         'claude-haiku-4',
@@ -8897,6 +9299,8 @@ export function isImageInliningSupported() {
             return (Array.isArray(model_list) && model_list.find(m => m.id === oai_settings.nanogpt_model)?.capabilities?.vision);
         case chat_completion_sources.ZAI:
             return visionSupportedModels.some(model => oai_settings.zai_model.includes(model));
+        case chat_completion_sources.LINKAPI:
+            return visionSupportedModels.some(model => oai_settings.linkapi_model.includes(model));
         case chat_completion_sources.SILICONFLOW:
             return visionSupportedModels.some(model => oai_settings.siliconflow_model.includes(model));
         case chat_completion_sources.WORKERS_AI: {
@@ -8942,6 +9346,8 @@ export function isVideoInliningSupported() {
             return (Array.isArray(model_list) && model_list.find(m => m.id === oai_settings.openrouter_model)?.architecture?.input_modalities?.includes('video'));
         case chat_completion_sources.ZAI:
             return videoSupportedModels.some(model => oai_settings.zai_model.includes(model));
+        case chat_completion_sources.LINKAPI:
+            return videoSupportedModels.some(model => oai_settings.linkapi_model.includes(model));
         default:
             return false;
     }
@@ -9228,12 +9634,267 @@ $('#delete_proxy').on('click', async function () {
     }
 });
 
+/**
+ * Custom OpenAI-compatible endpoint profile stuff
+ */
+export async function loadCustomEndpointPresets(settings) {
+    const hasSavedCustomEndpointPresets = Array.isArray(settings.custom_endpoint_presets) && settings.custom_endpoint_presets.length > 0;
+    let endpointPresets = settings.custom_endpoint_presets;
+
+    if (!hasSavedCustomEndpointPresets) {
+        endpointPresets = custom_endpoint_presets.map(preset => normalizeCustomEndpointPreset(preset));
+    } else {
+        endpointPresets = endpointPresets.map(preset => normalizeCustomEndpointPreset(preset));
+    }
+
+    custom_endpoint_presets = endpointPresets;
+
+    if (!custom_endpoint_presets.some(preset => preset.name === 'None')) {
+        custom_endpoint_presets.unshift(normalizeCustomEndpointPreset({ name: 'None' }));
+    }
+
+    const savedSelectedPreset = settings.selected_custom_endpoint_preset;
+    // SillyBunny: re-resolve the saved selection against the presets array so both point at the same object.
+    const savedSelectedName = savedSelectedPreset ? normalizeCustomEndpointPreset(savedSelectedPreset).name : null;
+    selected_custom_endpoint_preset = savedSelectedName
+        ? custom_endpoint_presets.find(preset => preset.name === savedSelectedName) ?? null
+        : null;
+    if (savedSelectedName && !selected_custom_endpoint_preset) {
+        selected_custom_endpoint_preset = normalizeCustomEndpointPreset(savedSelectedPreset);
+        custom_endpoint_presets.push(selected_custom_endpoint_preset);
+    }
+
+    $('#custom_endpoint_preset').empty();
+
+    for (const preset of custom_endpoint_presets) {
+        appendCustomEndpointPresetOption(preset);
+    }
+
+    $('#custom_endpoint_preset').val(selected_custom_endpoint_preset?.name || 'None');
+
+    if (selected_custom_endpoint_preset) {
+        // SillyBunny: load-time apply must not rotate or write secrets; requests send secret_id explicitly.
+        await setCustomEndpointPreset(
+            selected_custom_endpoint_preset.name,
+            selected_custom_endpoint_preset.url,
+            selected_custom_endpoint_preset.key,
+            selected_custom_endpoint_preset.model,
+            { secretId: selected_custom_endpoint_preset.secretId, writeKey: false, reconnect: false },
+        );
+    } else {
+        $('#custom_endpoint_preset_name').val('');
+    }
+}
+
+function getCustomEndpointPresetOption(name) {
+    return $('#custom_endpoint_preset option').filter((_, option) => option.value === name);
+}
+
+function appendCustomEndpointPresetOption(preset) {
+    const normalizedPreset = normalizeCustomEndpointPreset(preset);
+    const option = document.createElement('option');
+    option.innerText = normalizedPreset.name;
+    option.value = normalizedPreset.name;
+    option.selected = normalizedPreset.name === 'None';
+    $('#custom_endpoint_preset').append(option);
+}
+
+function updateCustomEndpointPresetOption(preset) {
+    const option = getCustomEndpointPresetOption(preset.name);
+
+    if (option.length > 0) {
+        option.text(preset.name);
+    } else {
+        appendCustomEndpointPresetOption(preset);
+    }
+}
+
+async function activateCustomEndpointPresetSecret(preset, { forceWrite = false } = {}) {
+    if (!preset || preset.name === 'None') {
+        return;
+    }
+
+    if (preset.secretId && (!forceWrite || !preset.key)) {
+        // SillyBunny: rotate to the bound profile secret instead of writing duplicate or accidental empty keys.
+        await rotateSecret(SECRET_KEYS.CUSTOM, preset.secretId);
+        return;
+    }
+
+    // SillyBunny: legacy/keyless profiles get a stable per-profile secret id, even when the key is intentionally empty.
+    const secretId = await writeSecret(SECRET_KEYS.CUSTOM, preset.key, undefined, { allowEmpty: true });
+    if (secretId) {
+        preset.secretId = secretId;
+    }
+}
+
+function updateCustomEndpointKeyInput(preset, key) {
+    if (preset?.secretId) {
+        // SillyBunny: saved profile secrets are write-only in the UI; avoid replaying stale plaintext copies.
+        $('#api_key_custom').val('').attr('placeholder', t`(saved secret)`);
+        return;
+    }
+
+    $('#api_key_custom').removeAttr('placeholder').val(key);
+}
+
+// SillyBunny: connection profiles can rotate CUSTOM secrets without using the endpoint preset dropdown.
+export function syncCustomEndpointPresetSelectionBySecretId(secretId) {
+    const normalizedSecretId = String(secretId ?? '').trim();
+    if (!normalizedSecretId) {
+        return false;
+    }
+
+    const matchedPreset = custom_endpoint_presets.find(preset => preset.name !== 'None' && String(preset.secretId ?? '').trim() === normalizedSecretId);
+    if (matchedPreset) {
+        selected_custom_endpoint_preset = matchedPreset;
+        $('#custom_endpoint_preset').val(matchedPreset.name);
+        updateCustomEndpointKeyInput(matchedPreset, matchedPreset.key);
+        return true;
+    }
+
+    const selectedSecretId = String(selected_custom_endpoint_preset?.secretId ?? '').trim();
+    if (selectedSecretId && selectedSecretId !== normalizedSecretId) {
+        selected_custom_endpoint_preset = custom_endpoint_presets.find(preset => preset.name === 'None') ?? normalizeCustomEndpointPreset({ name: 'None' });
+        $('#custom_endpoint_preset').val(selected_custom_endpoint_preset.name);
+        updateCustomEndpointKeyInput(selected_custom_endpoint_preset, '');
+        return true;
+    }
+
+    return false;
+}
+
+async function setCustomEndpointPreset(name, url, key, model, { secretId = '', writeKey = true, reconnect = true } = {}) {
+    const normalizedPreset = normalizeCustomEndpointPreset({ name, url, key, model, secretId });
+    const preset = custom_endpoint_presets.find(p => p.name === normalizedPreset.name);
+    if (preset) {
+        preset.url = normalizedPreset.url;
+        preset.key = normalizedPreset.key;
+        preset.model = normalizedPreset.model;
+        preset.secretId = normalizedPreset.secretId || preset.secretId || '';
+        selected_custom_endpoint_preset = preset;
+    } else {
+        const newPreset = normalizedPreset;
+        custom_endpoint_presets.push(newPreset);
+        selected_custom_endpoint_preset = newPreset;
+        appendCustomEndpointPresetOption(newPreset);
+    }
+
+    $('#custom_endpoint_preset_name').val(normalizedPreset.name === 'None' ? '' : normalizedPreset.name);
+    oai_settings.custom_url = normalizedPreset.url;
+    $('#custom_api_url_text').val(oai_settings.custom_url);
+    oai_settings.custom_model = normalizedPreset.model;
+    $('#custom_model_id').val(oai_settings.custom_model);
+    $('#model_custom_select').val(oai_settings.custom_model);
+    refreshModelIdSearchControlsForSource(chat_completion_sources.CUSTOM);
+
+    if (writeKey) {
+        await activateCustomEndpointPresetSecret(selected_custom_endpoint_preset);
+    }
+    updateCustomEndpointKeyInput(selected_custom_endpoint_preset, normalizedPreset.key);
+
+    if (reconnect && oai_settings.chat_completion_source === chat_completion_sources.CUSTOM) {
+        reconnectOpenAi();
+    }
+}
+
+async function onCustomEndpointPresetChange() {
+    const value = String($('#custom_endpoint_preset').find(':selected').val());
+    const selectedPreset = custom_endpoint_presets.find(preset => preset.name === value);
+
+    if (selectedPreset) {
+        await setCustomEndpointPreset(selectedPreset.name, selectedPreset.url, selectedPreset.key, selectedPreset.model, { secretId: selectedPreset.secretId });
+    } else {
+        console.error(t`Custom endpoint profile '${value}' not found in custom endpoint profiles array.`);
+    }
+    saveSettingsDebounced();
+}
+
+$('#save_custom_endpoint').on('click', async function () {
+    const presetName = String($('#custom_endpoint_preset_name').val()).trim();
+    const keyInputValue = String($('#api_key_custom').val()).trim();
+
+    if (!presetName || presetName === 'None') {
+        toastr.error(t`Please enter a name for the endpoint profile.`);
+        return;
+    }
+
+    const existingPreset = custom_endpoint_presets.find(preset => preset.name === presetName);
+    const preset = buildCustomEndpointPresetForSave({
+        name: presetName,
+        url: $('#custom_api_url_text').val(),
+        key: keyInputValue,
+        model: $('#custom_model_id').val(),
+        secretId: keyInputValue ? '' : existingPreset?.secretId,
+    });
+
+    // Bind the active CUSTOM secret when saving without typing a new key (e.g. picked via the secrets manager)
+    const activeSecret = secret_state[SECRET_KEYS.CUSTOM]?.find(s => s.active);
+    if (!keyInputValue && !preset.secretId && activeSecret) {
+        preset.secretId = activeSecret.id;
+    }
+
+    // Write a secret when a key was typed, or mint a stable empty secret for keyless endpoints
+    if (keyInputValue || !preset.secretId) {
+        await activateCustomEndpointPresetSecret(preset, { forceWrite: true });
+    }
+
+    await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId, writeKey: false });
+    saveSettingsDebounced();
+    toastr.success(t`Custom Endpoint Profile Saved`);
+    updateCustomEndpointPresetOption(preset);
+    $('#custom_endpoint_preset').val(preset.name);
+});
+
+$('#delete_custom_endpoint').on('click', async function () {
+    const presetName = $('#custom_endpoint_preset_name').val();
+    const index = custom_endpoint_presets.findIndex(preset => preset.name === presetName);
+
+    if (index !== -1) {
+        custom_endpoint_presets.splice(index, 1);
+        getCustomEndpointPresetOption(presetName).remove();
+
+        if (custom_endpoint_presets.length > 0) {
+            const newIndex = Math.max(0, index - 1);
+            selected_custom_endpoint_preset = custom_endpoint_presets[newIndex];
+        } else {
+            selected_custom_endpoint_preset = normalizeCustomEndpointPreset({ name: 'None' });
+        }
+
+        await setCustomEndpointPreset(
+            selected_custom_endpoint_preset.name,
+            selected_custom_endpoint_preset.url,
+            selected_custom_endpoint_preset.key,
+            selected_custom_endpoint_preset.model,
+            { secretId: selected_custom_endpoint_preset.secretId },
+        );
+
+        saveSettingsDebounced();
+        $('#custom_endpoint_preset').val(selected_custom_endpoint_preset.name);
+        toastr.success(t`Custom Endpoint Profile Deleted`);
+    } else {
+        toastr.error(t`Could not find custom endpoint profile with name '${presetName}'`);
+    }
+});
+
 function runProxyCallback(_, value) {
     if (!value) {
         return selected_proxy?.name || '';
     }
 
     const proxyNames = proxies.map(preset => preset.name);
+
+    // SillyBunny: 'None' is the no-proxy sentinel connection profiles send when they
+    // have no proxy configured, but the None preset itself is deletable. Resolve the
+    // sentinel exactly — fuzzy search could land on a real proxy — and recreate it
+    // silently instead of warning about a preset the user never chose.
+    if (value.trim().toLowerCase() === 'none' && !proxyNames.some(name => name.toLowerCase() === 'none')) {
+        setProxyPreset('None', '', '', '');
+        updateProxyPresetOption(selected_proxy);
+        $('#openai_proxy_preset').val(selected_proxy.name);
+        saveSettingsDebounced();
+        return selected_proxy.name;
+    }
+
     const fuse = new Fuse(proxyNames);
     const result = fuse.search(value);
 
@@ -9854,6 +10515,7 @@ export function initOpenAI() {
         syncProxyPresetToBoundSource(oai_settings.chat_completion_source);
         // SillyBunny: source switches should not reset the selected settings preset.
         restoreOpenAIPresetSelection(presetName);
+        maybeApplyModelSamplingProfile();
         saveSettingsDebounced();
         reconnectOpenAi();
         forceCharacterEditorTokenize();
@@ -9991,8 +10653,18 @@ export function initOpenAI() {
         saveSettingsDebounced();
     });
 
+    $('#custom_api_url_text').on('change', function () {
+        oai_settings.custom_url = String($(this).val());
+        if (oai_settings.chat_completion_source === chat_completion_sources.CUSTOM) {
+            refreshModelIdSearchControlsForSource(chat_completion_sources.CUSTOM);
+        }
+        saveSettingsDebounced();
+    });
+
     $('#custom_model_id').on('input', function () {
         oai_settings.custom_model = String($(this).val());
+        updateKimiK3PrefillVisibility();
+        updateOpenAISettingsGroupVisibility();
         saveSettingsDebounced();
     });
 
@@ -10039,6 +10711,10 @@ export function initOpenAI() {
     });
     $('#zai_model_id').on('input', function () {
         oai_settings.zai_model = String($(this).val());
+        saveSettingsDebounced();
+    });
+    $('#linkapi_model_id').on('input', function () {
+        oai_settings.linkapi_model = String($(this).val());
         saveSettingsDebounced();
     });
     $('#vertexai_model_id').on('input', function () {
@@ -10344,6 +11020,10 @@ export function initOpenAI() {
         oai_settings.zai_endpoint = String($(this).val());
         saveSettingsDebounced();
     });
+    $('#linkapi_endpoint').on('input', function () {
+        oai_settings.linkapi_endpoint = String($(this).val());
+        saveSettingsDebounced();
+    });
     $('#siliconflow_endpoint').on('input', function () {
         oai_settings.siliconflow_endpoint = String($(this).val());
         saveSettingsDebounced();
@@ -10386,6 +11066,7 @@ export function initOpenAI() {
     $('#azure_openai_model').on('change', onModelChange);
     $('#model_zai_select').on('change', onModelChange);
     $('#model_workers_ai_select').on('change', onModelChange);
+    $('#model_linkapi_select').on('change', onModelChange);
     $('#settings_preset_openai').on('change', onSettingsPresetChange);
     $('#new_oai_preset').on('click', onNewPresetClick);
     $('#delete_oai_preset').on('click', onDeletePresetClick);
@@ -10402,4 +11083,5 @@ export function initOpenAI() {
     $('#openai_proxy_password_show').on('click', onProxyPasswordShowClick);
     $('#customize_additional_parameters').on('click', onCustomizeParametersClick);
     $('#openai_proxy_preset').on('change', onProxyPresetChange);
+    $('#custom_endpoint_preset').on('change', onCustomEndpointPresetChange);
 }

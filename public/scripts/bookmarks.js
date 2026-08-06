@@ -17,7 +17,6 @@ import {
 } from '../script.js';
 import { humanizedDateTime } from './RossAscends-mods.js';
 import {
-    DEFAULT_AUTO_MODE_DELAY,
     group_activation_strategy,
     group_generation_mode,
     groups,
@@ -385,7 +384,6 @@ export async function convertSoloToGroupChat() {
         chats: chats,
         hideMutedSprites: false,
         generation_mode: group_generation_mode.SWAP,
-        auto_mode_delay: DEFAULT_AUTO_MODE_DELAY,
     };
 
     const createGroupResponse = await fetch('/api/groups/create', {

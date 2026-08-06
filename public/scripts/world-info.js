@@ -1,9 +1,9 @@
 import { Fuse } from '../lib.js';
 
-import { saveSettings, substituteParams, getRequestHeaders, chat_metadata, this_chid, characters, saveCharacterDebounced, menu_type, eventSource, event_types, getExtensionPromptByName, saveMetadata, getCurrentChatId, extension_prompt_roles, create_save, createOrEditCharacter, name1, getOneCharacter, select_selected_character } from '../script.js';
+import { saveSettings, substituteParams, getRequestHeaders, chat_metadata, this_chid, characters, saveCharacterDebounced, menu_type, eventSource, event_types, getExtensionPromptByName, saveMetadata, getCurrentChatId, extension_prompt_roles, create_save, createOrEditCharacter, name1, getOneCharacter, select_selected_character, getEntitiesList } from '../script.js';
 import { download, debounce, initScrollHeight, resetScrollHeight, parseJsonFile, extractDataFromPng, getFileBuffer, getCharaFilename, getSortableDelay, escapeRegex, PAGINATION_TEMPLATE, navigation_option, waitUntilCondition, isTrueBoolean, setValueByPath, flashHighlight, select2ModifyOptions, getSelect2OptionId, dynamicSelect2DataViaAjax, highlightRegex, select2ChoiceClickSubscribe, isFalseBoolean, getSanitizedFilename, checkOverwriteExistingData, getStringHash, parseStringArray, cancelDebounce, findChar, onlyUnique, equalsIgnoreCaseAndAccents, uuidv4, normalizeArray, getUniqueName, logSlashCommandWarn, addLongPressEvent, escapeHtml } from './utils.js';
 import { extension_settings, getContext } from './extensions.js';
-import { NOTE_MODULE_NAME, metadata_keys, shouldWIAddPrompt } from './authors-note.js';
+import { NOTE_MODULE_NAME, getAuthorsNoteDepth, getAuthorsNotePosition, getAuthorsNoteRole, shouldWIAddPrompt } from './authors-note.js';
 import { isMobile } from './RossAscends-mods.js';
 import { FILTER_TYPES, FilterHelper } from './filters.js';
 import { getTokenCountAsync } from './tokenizers.js';
@@ -23,8 +23,11 @@ import { renderTemplateAsync } from './templates.js';
 import { t } from './i18n.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { getOrCreatePersonaDescriptor, setPersonaDescription, user_avatar } from './personas.js';
-import { normalizeCharacterBookPosition, normalizeWorldInfoPosition } from './world-info-character-book.js';
+import { escapeCharacterBookRegex, normalizeCharacterBookPosition, normalizeWorldInfoPosition, serializeCharacterBookKeys, serializeWorldInfoEntry } from './world-info-character-book.js';
+import { detectEmbeddedLorebookCandidates, findMatchingLorebookName, getLinkedAuxBooks, isEmbeddedBookLinked } from './world-info-batch-helpers.js';
+import { getTimedEffectWindow, getWorldInfoGroupNames, normalizeWorldInfoKey, normalizeWorldInfoProbability, passesWorldInfoProbability } from './world-info-scan-core.js';
 
+// SillyBunny divergence: World Info is integrated with the fork shell and auxiliary lorebook sources while retaining upstream scan helpers.
 export const world_info_insertion_strategy = {
     evenly: 0,
     character_first: 1,
@@ -81,7 +84,12 @@ export let world_info_use_group_scoring = false;
 export let world_info_character_strategy = world_info_insertion_strategy.character_first;
 export let world_info_budget_cap = 0;
 export let world_info_max_recursion_steps = 0;
-const saveWorldDebounced = debounce(async (name, data) => await _save(name, data), debounce_timeout.relaxed);
+/** @type {Map<string, {timer: ReturnType<typeof setTimeout>, data: object}>} */
+const pendingWorldInfoSaves = new Map();
+/** @type {Map<string, Promise<void>>} */
+const worldInfoSaveQueues = new Map();
+/** @type {Map<string, Promise<string|null>>} */
+const worldInfoSaveBlocks = new Map();
 const saveSettingsDebounced = debounce(() => {
     Object.assign(world_info, { globalSelect: selected_world_info });
     saveSettings();
@@ -92,6 +100,7 @@ const WORLD_INFO_DESKTOP_SPLIT_QUERY = '(min-width: 961px)';
 let desktopSelectedWorldInfoUid = null;
 let isWorldInfoEditorPopoutRequested = false;
 let isWorldInfoEditorPopoutShellSyncBound = false;
+let worldInfoEditorLoadId = 0;
 
 // Do not optimize. updateEditor is a function that is updated by the displayWorldEntries with new data.
 export const worldInfoFilter = new FilterHelper(() => updateEditor());
@@ -109,6 +118,7 @@ const WORLD_INFO_LIST_VIEW_FILTER_KEY = 'world_info_list_view_filter';
 export const DEFAULT_DEPTH = 4;
 export const DEFAULT_WEIGHT = 100;
 export const MAX_SCAN_DEPTH = 1000;
+const MAX_WORLD_INFO_NAME_BYTES = 234;
 const MAX_COMMENT_LENGTH = 100;
 const KNOWN_DECORATORS = ['@@activate', '@@dont_activate'];
 let worldInfoListViewFilter = WORLD_INFO_LIST_VIEW_FILTERS.all;
@@ -292,10 +302,6 @@ class WorldInfoBuffer {
      */
     get(entry, scanState) {
         let depth = entry.scanDepth ?? this.getDepth();
-        if (depth <= this.#startDepth) {
-            return '';
-        }
-
         if (depth < 0) {
             console.error(`[WI] Invalid WI scan depth ${depth}. Must be >= 0`);
             return '';
@@ -310,23 +316,25 @@ class WorldInfoBuffer {
         const JOINER = '\n' + MATCHER;
         let result = MATCHER + this.#depthBuffer.slice(this.#startDepth, depth).join(JOINER);
 
-        if (entry.matchPersonaDescription && this.#globalScanData.personaDescription) {
-            result += JOINER + this.#globalScanData.personaDescription;
-        }
-        if (entry.matchCharacterDescription && this.#globalScanData.characterDescription) {
-            result += JOINER + this.#globalScanData.characterDescription;
-        }
-        if (entry.matchCharacterPersonality && this.#globalScanData.characterPersonality) {
-            result += JOINER + this.#globalScanData.characterPersonality;
-        }
-        if (entry.matchCharacterDepthPrompt && this.#globalScanData.characterDepthPrompt) {
-            result += JOINER + this.#globalScanData.characterDepthPrompt;
-        }
-        if (entry.matchScenario && this.#globalScanData.scenario) {
-            result += JOINER + this.#globalScanData.scenario;
-        }
-        if (entry.matchCreatorNotes && this.#globalScanData.creatorNotes) {
-            result += JOINER + this.#globalScanData.creatorNotes;
+        if (depth > 0) {
+            if (entry.matchPersonaDescription && this.#globalScanData.personaDescription) {
+                result += JOINER + this.#globalScanData.personaDescription;
+            }
+            if (entry.matchCharacterDescription && this.#globalScanData.characterDescription) {
+                result += JOINER + this.#globalScanData.characterDescription;
+            }
+            if (entry.matchCharacterPersonality && this.#globalScanData.characterPersonality) {
+                result += JOINER + this.#globalScanData.characterPersonality;
+            }
+            if (entry.matchCharacterDepthPrompt && this.#globalScanData.characterDepthPrompt) {
+                result += JOINER + this.#globalScanData.characterDepthPrompt;
+            }
+            if (entry.matchScenario && this.#globalScanData.scenario) {
+                result += JOINER + this.#globalScanData.scenario;
+            }
+            if (entry.matchCreatorNotes && this.#globalScanData.creatorNotes) {
+                result += JOINER + this.#globalScanData.creatorNotes;
+            }
         }
 
         if (this.#injectBuffer.length > 0) {
@@ -448,8 +456,9 @@ class WorldInfoBuffer {
 
         // Increment score for every key found in the buffer
         if (Array.isArray(entry.key)) {
-            numberOfPrimaryKeys = entry.key.length;
-            for (const key of entry.key) {
+            const normalizedKeys = entry.key.map(key => normalizeWorldInfoKey(key, substituteParams)).filter(Boolean);
+            numberOfPrimaryKeys = normalizedKeys.length;
+            for (const key of normalizedKeys) {
                 if (this.matchKeys(bufferState, key, entry)) {
                     primaryScore++;
                 }
@@ -458,8 +467,9 @@ class WorldInfoBuffer {
 
         // Increment score for every secondary key found in the buffer
         if (Array.isArray(entry.keysecondary)) {
-            numberOfSecondaryKeys = entry.keysecondary.length;
-            for (const key of entry.keysecondary) {
+            const normalizedKeys = entry.keysecondary.map(key => normalizeWorldInfoKey(key, substituteParams)).filter(Boolean);
+            numberOfSecondaryKeys = normalizedKeys.length;
+            for (const key of normalizedKeys) {
                 if (this.matchKeys(bufferState, key, entry)) {
                     secondaryScore++;
                 }
@@ -616,10 +626,11 @@ class WorldInfoTimedEffects {
      * @returns {WITimedEffect} Timed effect for the entry
      */
     #getEntryTimedEffect(type, entry, isProtected) {
+        const { start, end } = getTimedEffectWindow(this.#chat.length, Number(entry[type]));
         return {
             hash: this.#getEntryHash(entry),
-            start: this.#chat.length,
-            end: this.#chat.length + Number(entry[type]),
+            start,
+            end,
             protected: !!isProtected,
         };
     }
@@ -909,7 +920,7 @@ export async function getWorldInfoPrompt(chat, maxContext, isDryRun, globalScanD
     const activatedWorldInfo = await checkWorldInfo(chat, maxContext, isDryRun, globalScanData);
     worldInfoBefore = activatedWorldInfo.worldInfoBefore;
     worldInfoAfter = activatedWorldInfo.worldInfoAfter;
-    worldInfoString = worldInfoBefore + worldInfoAfter;
+    worldInfoString = [worldInfoBefore, worldInfoAfter].filter(Boolean).join('\n');
 
     if (!isDryRun && activatedWorldInfo.allActivatedEntries && activatedWorldInfo.allActivatedEntries.size > 0) {
         const arg = Array.from(activatedWorldInfo.allActivatedEntries.values());
@@ -1348,6 +1359,10 @@ function registerWorldInfoSlashCommands() {
             entry.content = content;
         }
 
+        syncWIOriginalDataKeys(data, entry.uid);
+        setWIOriginalDataValue(data, entry.uid, 'comment', entry.comment);
+        setWIOriginalDataValue(data, entry.uid, 'content', entry.content);
+
         await saveWorldInfo(file, data);
         reloadEditor(file);
 
@@ -1450,7 +1465,14 @@ function registerWorldInfoSlashCommands() {
                     entry[field] = value;
                 }
 
-                if (originalWIDataKeyMap[field]) {
+                if (field === 'key' || field === 'keysecondary') {
+                    syncWIOriginalDataKeys(data, uid);
+                } else if (field === 'disable') {
+                    setWIOriginalDataValue(data, uid, 'enabled', !entry.disable);
+                } else if (field === 'position') {
+                    setWIOriginalDataValue(data, uid, 'extensions.position', entry.position);
+                    setWIOriginalDataValue(data, uid, 'position', entry.position == 0 ? 'before_char' : 'after_char');
+                } else if (originalWIDataKeyMap[field]) {
                     setWIOriginalDataValue(data, uid, originalWIDataKeyMap[field], entry[field]);
                 }
         }
@@ -2030,12 +2052,16 @@ function registerWorldInfoSlashCommands() {
  * @return {Promise<void>} A promise that resolves when the world editor is loaded
  */
 export async function showWorldEditor(name) {
+    const loadId = ++worldInfoEditorLoadId;
     if (!name) {
         await hideWorldEditor();
         return;
     }
 
     const wiData = await loadWorldInfo(name);
+    if (loadId !== worldInfoEditorLoadId) {
+        return;
+    }
     await displayWorldEntries(name, wiData);
 }
 
@@ -2098,6 +2124,7 @@ export async function updateWorldInfoList() {
 }
 
 async function hideWorldEditor() {
+    worldInfoEditorLoadId++;
     desktopSelectedWorldInfoUid = null;
     clearWorldInfoDesktopEditor();
     await displayWorldEntries(null, null);
@@ -2314,6 +2341,9 @@ function addMissingWorldInfoFields(data) {
                 names: [],
                 tags: [],
             };
+        } else {
+            entry.characterFilter.names = Array.isArray(entry.characterFilter.names) ? entry.characterFilter.names : [];
+            entry.characterFilter.tags = Array.isArray(entry.characterFilter.tags) ? entry.characterFilter.tags : [];
         }
     });
 
@@ -2543,16 +2573,9 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
         }
 
         if (world_info.charLore) {
-            world_info.charLore.forEach((charLore, index) => {
-                if (charLore.extraBooks?.includes(name)) {
-                    const tempCharLore = charLore.extraBooks.filter((e) => e !== name);
-                    if (tempCharLore.length === 0) {
-                        world_info.charLore.splice(index, 1);
-                    } else {
-                        charLore.extraBooks = tempCharLore;
-                    }
-                }
-            });
+            world_info.charLore = world_info.charLore
+                .map(charLore => ({ ...charLore, extraBooks: charLore.extraBooks?.filter(book => book !== name) ?? [] }))
+                .filter(charLore => charLore.extraBooks.length > 0);
 
             saveSettingsDebounced();
         }
@@ -2705,9 +2728,12 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
         });
     }
 
-    $('#world_popup_new').off('click').on('click', () => {
+    $('#world_popup_new').off('click').on('click', async () => {
         const entry = createWorldInfoEntry(name, data);
-        if (entry) updateEditor(entry.uid);
+        if (entry) {
+            await saveWorldInfo(name, data, true);
+            updateEditor(entry.uid);
+        }
     });
 
     $('#world_popup_name_button').off('click').on('click', async () => {
@@ -2762,7 +2788,7 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
             if (entry.order === newOrder) continue;
 
             entry.order = newOrder;
-            setWIOriginalDataValue(data, entry.order, 'order', entry.order);
+            setWIOriginalDataValue(data, entry.uid, 'insertion_order', entry.order);
             updated++;
         }
 
@@ -2847,12 +2873,13 @@ export const originalWIDataKeyMap = {
     'excludeRecursion': 'extensions.exclude_recursion',
     'preventRecursion': 'extensions.prevent_recursion',
     'delayUntilRecursion': 'extensions.delay_until_recursion',
-    'selectiveLogic': 'selectiveLogic',
+    'selectiveLogic': 'extensions.selectiveLogic',
     'comment': 'comment',
     'constant': 'constant',
     'order': 'insertion_order',
     'depth': 'extensions.depth',
     'probability': 'extensions.probability',
+    'useProbability': 'extensions.useProbability',
     'position': 'extensions.position',
     'role': 'extensions.role',
     'content': 'content',
@@ -2862,7 +2889,7 @@ export const originalWIDataKeyMap = {
     'selective': 'selective',
     'matchWholeWords': 'extensions.match_whole_words',
     'useGroupScoring': 'extensions.use_group_scoring',
-    'caseSensitive': 'extensions.case_sensitive',
+    'caseSensitive': 'case_sensitive',
     'matchPersonaDescription': 'extensions.match_persona_description',
     'matchCharacterDescription': 'extensions.match_character_description',
     'matchCharacterPersonality': 'extensions.match_character_personality',
@@ -2879,6 +2906,9 @@ export const originalWIDataKeyMap = {
     'delay': 'extensions.delay',
     'triggers': 'extensions.triggers',
     'ignoreBudget': 'extensions.ignore_budget',
+    'outletName': 'extensions.outlet_name',
+    'group': 'extensions.group',
+    'agentBlacklisted': 'extensions.agent_blacklisted',
 };
 
 /** Checks the state of the current search, and adds/removes the search sorting option accordingly */
@@ -2913,7 +2943,8 @@ function verifyWorldInfoSearchSortRule() {
  */
 export function setWIOriginalDataValue(data, uid, key, value) {
     if (data.originalData && Array.isArray(data.originalData.entries)) {
-        let originalEntry = data.originalData.entries.find(x => x.uid === uid);
+        const originalIndex = getWIOriginalDataIndex(data, uid);
+        const originalEntry = originalIndex >= 0 ? data.originalData.entries[originalIndex] : null;
 
         if (!originalEntry) {
             return;
@@ -2931,14 +2962,40 @@ export function setWIOriginalDataValue(data, uid, key, value) {
  */
 export function deleteWIOriginalDataValue(data, uid) {
     if (data.originalData && Array.isArray(data.originalData.entries)) {
-        // Non-strict equality is used here to allow for both string and number comparisons
-        // @eslint-disable-next-line eqeqeq
-        const originalIndex = data.originalData.entries.findIndex(x => x.uid == uid);
+        const originalIndex = getWIOriginalDataIndex(data, uid);
 
         if (originalIndex >= 0) {
             data.originalData.entries.splice(originalIndex, 1);
+            if (data.originalDataUidMap) {
+                delete data.originalDataUidMap[uid];
+                for (const [mappedUid, index] of Object.entries(data.originalDataUidMap)) {
+                    if (index > originalIndex) {
+                        data.originalDataUidMap[mappedUid] = index - 1;
+                    }
+                }
+            }
         }
     }
+}
+
+function getWIOriginalDataIndex(data, uid) {
+    const mappedIndex = data.originalDataUidMap?.[uid];
+    if (Number.isInteger(mappedIndex) && data.originalData?.entries?.[mappedIndex]) {
+        return mappedIndex;
+    }
+    return data.originalData?.entries?.findIndex(x => String(x.id ?? x.uid) === String(uid)) ?? -1;
+}
+
+function syncWIOriginalDataKeys(data, uid) {
+    const entry = data.entries?.[uid];
+    if (!entry) {
+        return;
+    }
+
+    const serialized = serializeCharacterBookKeys(entry.key, entry.keysecondary);
+    setWIOriginalDataValue(data, uid, 'keys', serialized.keys);
+    setWIOriginalDataValue(data, uid, 'secondary_keys', serialized.secondaryKeys);
+    setWIOriginalDataValue(data, uid, 'use_regex', serialized.useRegex);
 }
 
 /** @typedef {import('./utils.js').Select2Option} Select2Option */
@@ -3089,11 +3146,10 @@ export function parseRegexFromString(input) {
  * @param {JQuery<HTMLElement>} params.template - The template element containing the input.
  * @param {object} params.entry - The entry object containing the keys.
  * @param {string} params.entryPropName - The property name of the entry that holds the keys.
- * @param {string} params.originalDataValueName - The name of the original data value to be set.
  * @param {string} params.name - The name of the world info entry.
  * @param {object} params.data - The data object containing entries.
  */
-function enableKeysInputHelper({ template, entry, entryPropName, originalDataValueName, name, data }) {
+function enableKeysInputHelper({ template, entry, entryPropName, name, data }) {
     const isFancyInput = !isMobile() && !power_user.wi_key_input_plaintext;
     const input = isFancyInput ? template.find(`select[name="${entryPropName}"]`) : template.find(`textarea[name="${entryPropName}"]`);
     input.data('uid', entry.uid);
@@ -3143,7 +3199,7 @@ function enableKeysInputHelper({ template, entry, entryPropName, originalDataVal
             if (!skipReset) await resetScrollHeight(this);
             if (!noSave) {
                 data.entries[uid][entryPropName] = keys;
-                setWIOriginalDataValue(data, uid, originalDataValueName, data.entries[uid][entryPropName]);
+                syncWIOriginalDataKeys(data, uid);
                 await saveWorldInfo(name, data);
             }
             $(this).toggleClass('empty', !data.entries[uid][entryPropName].length);
@@ -3183,7 +3239,7 @@ function enableKeysInputHelper({ template, entry, entryPropName, originalDataVal
             if (!skipReset) await resetScrollHeight(this);
             if (!noSave) {
                 data.entries[uid][entryPropName] = splitKeywordsAndRegexes(value);
-                setWIOriginalDataValue(data, uid, originalDataValueName, data.entries[uid][entryPropName]);
+                syncWIOriginalDataKeys(data, uid);
                 await saveWorldInfo(name, data);
                 $(this).toggleClass('empty', !data.entries[uid][entryPropName].length);
             }
@@ -3265,23 +3321,48 @@ function initCharacterFilterSelect2Helper(characterFilter) {
  */
 function fillCharacterAndTagOptionsHelper({ characterFilter, entry }) {
     const characters = getContext().characters;
+    const knownNames = new Set();
     characters.forEach((character) => {
         const option = document.createElement('option');
         const name = character.avatar.replace(/\.[^/.]+$/, '') ?? character.name;
+        knownNames.add(name);
         option.innerText = name;
         option.selected = entry.characterFilter?.names?.includes(name);
         option.setAttribute('data-type', 'character');
         characterFilter.append(option);
     });
+    for (const name of entry.characterFilter?.names ?? []) {
+        if (knownNames.has(name)) {
+            continue;
+        }
+        const option = document.createElement('option');
+        option.innerText = name;
+        option.selected = true;
+        option.setAttribute('data-type', 'character');
+        characterFilter.append(option);
+    }
     const tags = getContext().tags;
+    const knownTags = new Set();
     tags.forEach((tag) => {
         const option = document.createElement('option');
         option.innerText = `[Tag] ${tag.name}`;
         option.selected = entry.characterFilter?.tags?.includes(tag.id);
         option.value = tag.id;
+        knownTags.add(tag.id);
         option.setAttribute('data-type', 'tag');
         characterFilter.append(option);
     });
+    for (const tag of entry.characterFilter?.tags ?? []) {
+        if (knownTags.has(tag)) {
+            continue;
+        }
+        const option = document.createElement('option');
+        option.innerText = `[Tag] ${tag}`;
+        option.value = tag;
+        option.selected = true;
+        option.setAttribute('data-type', 'tag');
+        characterFilter.append(option);
+    }
 }
 
 /**
@@ -3333,8 +3414,9 @@ function handleProbabilityInputHelper({ probabilityInput, data, entry, name }) {
     probabilityInput.data('uid', entry.uid);
     probabilityInput.on('input', async function (_, { noSave = false } = {}) {
         const uid = $(this).data('uid');
+        const isEmpty = $(this).val() === '';
         const value = Number($(this).val());
-        data.entries[uid].probability = !isNaN(value) ? value : null;
+        data.entries[uid].probability = !isEmpty && !isNaN(value) ? value : null;
         if (data.entries[uid].probability !== null) {
             data.entries[uid].probability = Math.min(100, Math.max(0, data.entries[uid].probability));
             if (data.entries[uid].probability !== value) {
@@ -3342,9 +3424,13 @@ function handleProbabilityInputHelper({ probabilityInput, data, entry, name }) {
             }
         }
         setWIOriginalDataValue(data, uid, 'extensions.probability', data.entries[uid].probability);
+        if (!noSave) {
+            data.entries[uid].useProbability = true;
+            setWIOriginalDataValue(data, uid, 'extensions.useProbability', true);
+        }
         !noSave && await saveWorldInfo(name, data);
     });
-    probabilityInput.val(entry.probability).trigger('input', { noSave: true });
+    probabilityInput.val(entry.probability ?? '');
     probabilityInput.css({ width: '100%', maxWidth: 'none' });
 }
 
@@ -3363,6 +3449,7 @@ function handleProbabilityToggleHelper({ probabilityToggle, data, entry, name, p
         const uid = $(this).data('uid');
         const value = $(this).prop('checked');
         data.entries[uid].useProbability = value;
+        setWIOriginalDataValue(data, uid, 'extensions.useProbability', value);
         const probabilityContainerElement = probabilityContainer && typeof probabilityContainer.show === 'function' && probabilityContainer.length
             ? probabilityContainer
             : $(this).closest('.world_entry').find('.probabilityContainer');
@@ -3371,12 +3458,11 @@ function handleProbabilityToggleHelper({ probabilityToggle, data, entry, name, p
         if (value && data.entries[uid].probability === null) {
             data.entries[uid].probability = 100;
         }
-        if (!value) {
-            data.entries[uid].probability = null;
-        }
-        probabilityInput.val(data.entries[uid].probability).trigger('input', { noSave });
+        probabilityInput.val(data.entries[uid].probability ?? '');
     });
-    probabilityToggle.prop('checked', true).trigger('input', { noSave: true });
+    const useProbability = entry.useProbability ?? true;
+    probabilityToggle.prop('checked', useProbability);
+    useProbability ? probabilityContainer?.show() : probabilityContainer?.hide();
     probabilityToggle.parent().hide();
 }
 
@@ -3395,10 +3481,11 @@ function handleBooleanSelectHelper({ selectElem, entry, entryKey, data, name }) 
         const uid = $(this).data('uid');
         const value = $(this).val();
         data.entries[uid][entryKey] = value === 'null' ? null : value === 'true';
-        setWIOriginalDataValue(data, uid, `extensions.${entryKey.replace(/[A-Z]/g, m => `_${m.toLowerCase()}`)}`, data.entries[uid][entryKey]);
+        const originalDataKey = originalWIDataKeyMap[entryKey] ?? `extensions.${entryKey.replace(/[A-Z]/g, m => `_${m.toLowerCase()}`)}`;
+        setWIOriginalDataValue(data, uid, originalDataKey, data.entries[uid][entryKey]);
         !noSave && await saveWorldInfo(name, data);
     });
-    selectElem.val((entry[entryKey] === null || entry[entryKey] === undefined) ? 'null' : entry[entryKey] ? 'true' : 'false').trigger('input', { noSave: true });
+    selectElem.val((entry[entryKey] === null || entry[entryKey] === undefined) ? 'null' : entry[entryKey] ? 'true' : 'false');
 }
 
 /**
@@ -3417,7 +3504,14 @@ function handleNumberInputHelper({ inputElem, entry, entryKey, data, name, min, 
     inputElem.data('uid', entry.uid);
     inputElem.on('input', async function (_, { noSave = false } = {}) {
         const uid = $(this).data('uid');
+        const isEmpty = $(this).val() === '';
         let value = Number($(this).val());
+        if (isEmpty) {
+            data.entries[uid][entryKey] = null;
+            setWIOriginalDataValue(data, uid, `extensions.${entryKey.replace(/[A-Z]/g, m => `_${m.toLowerCase()}`)}`, null);
+            !noSave && await saveWorldInfo(name, data);
+            return;
+        }
         if (clamp) {
             if (value < min) {
                 value = min;
@@ -3431,7 +3525,7 @@ function handleNumberInputHelper({ inputElem, entry, entryKey, data, name, min, 
         setWIOriginalDataValue(data, uid, `extensions.${entryKey.replace(/[A-Z]/g, m => `_${m.toLowerCase()}`)}`, data.entries[uid][entryKey]);
         !noSave && await saveWorldInfo(name, data);
     });
-    inputElem.val(entry[entryKey] ?? (clamp ? min : '')).trigger('input', { noSave: true });
+    inputElem.val(entry[entryKey] ?? '');
 }
 
 /**
@@ -3623,7 +3717,11 @@ export async function getWorldEntry(name, data, entry, options = {}) {
         !noSave && await saveWorldInfo(name, data);
     });
     const roleValue = entry.position === world_info_position.atDepth ? String(entry.role ?? extension_prompt_roles.SYSTEM) : '';
-    headerTemplate.find(`select[name="position"] option[value="${entry.position}"][data-role="${roleValue}"]`).prop('selected', true).trigger('input', { noSave: true });
+    headerTemplate.find(`select[name="position"] option[value="${entry.position}"][data-role="${roleValue}"]`).prop('selected', true);
+    const depthInput = headerTemplate.find('input[name="depth"]');
+    const isAtDepth = entry.position === world_info_position.atDepth;
+    depthInput.prop('disabled', !isAtDepth);
+    depthInput.css('visibility', isAtDepth ? 'visible' : 'hidden');
 
     // Tri-state selector
     handleEntryStateSelectorHelper({
@@ -3729,8 +3827,8 @@ export async function getWorldEntry(name, data, entry, options = {}) {
         editTemplate.find('.world_entry_form_uid_value').text(`(UID: ${entry.uid})`);
 
         // Key inputs
-        const keyInput = enableKeysInputHelper({ template: editTemplate, entry, entryPropName: 'key', originalDataValueName: 'keys', name, data });
-        const keySecondaryInput = enableKeysInputHelper({ template: editTemplate, entry, entryPropName: 'keysecondary', originalDataValueName: 'secondary_keys', name, data });
+        const keyInput = enableKeysInputHelper({ template: editTemplate, entry, entryPropName: 'key', name, data });
+        const keySecondaryInput = enableKeysInputHelper({ template: editTemplate, entry, entryPropName: 'keysecondary', name, data });
         if (!keyInput.isFancy) initScrollHeight(keyInput.control);
         if (!keySecondaryInput.isFancy) initScrollHeight(keySecondaryInput.control);
 
@@ -3767,7 +3865,9 @@ export async function getWorldEntry(name, data, entry, options = {}) {
             !noSave && await saveWorldInfo(name, data);
             value ? commentContainer.show() : commentContainer.hide();
         });
-        commentToggle.prop('checked', true).trigger('input', { noSave: true });
+        const hasMemo = entry.addMemo ?? true;
+        commentToggle.prop('checked', hasMemo);
+        hasMemo ? editorRoot.find('.commentContainer').show() : editorRoot.find('.commentContainer').hide();
         commentToggle.parent().hide();
 
         // Logic AND/NOT
@@ -3778,7 +3878,7 @@ export async function getWorldEntry(name, data, entry, options = {}) {
             const uid = $(this).data('uid');
             const value = Number($(this).val());
             data.entries[uid].selectiveLogic = !isNaN(value) ? value : world_info_logic.AND_ANY;
-            setWIOriginalDataValue(data, uid, 'selectiveLogic', data.entries[uid].selectiveLogic);
+            setWIOriginalDataValue(data, uid, 'extensions.selectiveLogic', data.entries[uid].selectiveLogic);
             !noSave && await saveWorldInfo(name, data);
         });
         editTemplate.find(`select[name="entryLogicType"] option[value=${entry.selectiveLogic}]`).prop('selected', true).trigger('input', { noSave: true });
@@ -3799,7 +3899,9 @@ export async function getWorldEntry(name, data, entry, options = {}) {
             keysecondarytextpole.css('height', keyprimaryHeight + 'px');
             value ? keysecondary.show() : keysecondary.hide();
         });
-        selectiveInput.prop('checked', true).trigger('input', { noSave: true });
+        const isSelective = entry.selective ?? false;
+        selectiveInput.prop('checked', isSelective);
+        isSelective ? editTemplate.find('.keysecondary').show() : editTemplate.find('.keysecondary').hide();
         selectiveInput.parent().hide();
 
         // Character filter
@@ -3820,17 +3922,10 @@ export async function getWorldEntry(name, data, entry, options = {}) {
             } else if (value) {
                 Object.assign(data.entries[uid], { characterFilter: { isExclude: true, names: [], tags: [] } });
             }
-            if (data.entries[uid]?.characterFilter?.names?.length > 0) {
-                for (const name of [...data.entries[uid].characterFilter.names]) {
-                    if (!getContext().characters.find(x => x.avatar.replace(/\.[^/.]+$/, '') === name)) {
-                        data.entries[uid].characterFilter.names = data.entries[uid].characterFilter.names.filter(x => x !== name);
-                    }
-                }
-            }
             setWIOriginalDataValue(data, uid, 'character_filter', data.entries[uid].characterFilter);
             !noSave && await saveWorldInfo(name, data);
         });
-        characterExclusionInput.prop('checked', entry.characterFilter?.isExclude ?? false).trigger('input', { noSave: true });
+        characterExclusionInput.prop('checked', entry.characterFilter?.isExclude ?? false);
 
         const characterFilter = editTemplate.find('select[name="characterFilter"]');
         characterFilter.data('uid', entry.uid);
@@ -3894,7 +3989,7 @@ export async function getWorldEntry(name, data, entry, options = {}) {
             setWIOriginalDataValue(data, uid, 'extensions.scan_depth', data.entries[uid].scanDepth);
             !noSave && await saveWorldInfo(name, data);
         });
-        scanDepthInput.val(entry.scanDepth ?? null).trigger('input', { noSave: true });
+        scanDepthInput.val(entry.scanDepth ?? '');
 
         // Group
         const groupInput = editTemplate.find('input[name="group"]');
@@ -3924,7 +4019,7 @@ export async function getWorldEntry(name, data, entry, options = {}) {
         // Group weight
         handleNumberInputHelper({
             inputElem: editTemplate.find('input[name="groupWeight"]'),
-            entry, entryKey: 'groupWeight', data, name, min: 1, max: 10000, clamp: true,
+            entry, entryKey: 'groupWeight', data, name, min: 1, max: 999999, clamp: true,
         });
 
         // Sticky, cooldown, delay
@@ -3962,12 +4057,14 @@ export async function getWorldEntry(name, data, entry, options = {}) {
         delayUntilRecursionInput.prop('checked', entry.delayUntilRecursion).trigger('input', { noSave: true });
         delayUntilRecursionLevelInput.on('input', async function (_, { noSave = false } = {}) {
             const uid = $(this).data('uid');
-            const content = $(this).val();
+            const content = String($(this).val());
+            const numericLevel = Number(content);
             const value = content === '' ? (typeof data.entries[uid].delayUntilRecursion === 'boolean' ? data.entries[uid].delayUntilRecursion : true)
-                : content === 1 ? true
-                    : !isNaN(Number(content)) ? Number(content)
+                : numericLevel === 1 ? true
+                    : Number.isInteger(numericLevel) && numericLevel > 1 ? numericLevel
                         : false;
             data.entries[uid].delayUntilRecursion = value;
+            delayUntilRecursionInput.prop('checked', Boolean(value));
             setWIOriginalDataValue(data, uid, 'extensions.delay_until_recursion', data.entries[uid].delayUntilRecursion);
             !noSave && await saveWorldInfo(name, data);
         });
@@ -4263,10 +4360,18 @@ export function duplicateWorldInfoEntry(data, uid) {
     // Exclude uid and gather the rest of the properties
     const originalData = structuredClone(data.entries[uid]);
     delete originalData.uid;
+    const sourceOriginalIndex = getWIOriginalDataIndex(data, uid);
+    const sourceOriginalEntry = sourceOriginalIndex >= 0
+        ? structuredClone(data.originalData.entries[sourceOriginalIndex])
+        : null;
 
     // Create new entry and copy over data
     const entry = createWorldInfoEntry(data.name, data);
     Object.assign(entry, originalData);
+    const targetOriginalIndex = data.originalDataUidMap?.[entry.uid];
+    if (Number.isInteger(targetOriginalIndex)) {
+        data.originalData.entries[targetOriginalIndex] = structuredClone(serializeWorldInfoEntry(entry, world_info_position, sourceOriginalEntry ?? undefined));
+    }
 
     return entry;
 }
@@ -4384,20 +4489,100 @@ export function createWorldInfoEntry(_name, data) {
 
     const newEntry = { uid: newUid, ...structuredClone(newWorldInfoEntryTemplate) };
     data.entries[newUid] = newEntry;
+    appendWIOriginalDataEntry(data, newEntry);
 
     return newEntry;
 }
 
-async function _save(name, data) {
-    // Prevent double saving if both immediate and debounced save are called
-    cancelDebounce(saveWorldDebounced);
+function appendWIOriginalDataEntry(data, entry, originalEntry = undefined) {
+    if (!data.originalData || !Array.isArray(data.originalData.entries)) {
+        return;
+    }
 
-    await fetch('/api/worldinfo/edit', {
-        method: 'POST',
-        headers: getRequestHeaders(),
-        body: JSON.stringify({ name: name, data: data }),
+    data.originalDataUidMap ??= {};
+    data.originalDataUidMap[entry.uid] = data.originalData.entries.length;
+    // Clone: the serialized record aliases live entry objects (extensions, triggers)
+    // and must not track later editor mutations.
+    data.originalData.entries.push(structuredClone(serializeWorldInfoEntry(entry, world_info_position, originalEntry)));
+}
+
+async function _save(name, data) {
+    const previousSave = worldInfoSaveQueues.get(name) ?? Promise.resolve();
+    const save = previousSave.catch(() => undefined).then(async () => {
+        const response = await fetch('/api/worldinfo/edit', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ name: name, data: data }),
+        });
+        if (!response.ok) {
+            throw new Error(`World Info save failed with status ${response.status}`);
+        }
+        await eventSource.emit(event_types.WORLDINFO_UPDATED, name, data);
     });
-    await eventSource.emit(event_types.WORLDINFO_UPDATED, name, data);
+    worldInfoSaveQueues.set(name, save);
+    try {
+        await save;
+    } finally {
+        if (worldInfoSaveQueues.get(name) === save) {
+            worldInfoSaveQueues.delete(name);
+        }
+    }
+}
+
+function cancelPendingWorldInfoSave(name) {
+    const pendingSave = pendingWorldInfoSaves.get(name);
+    if (pendingSave !== undefined) {
+        clearTimeout(pendingSave.timer);
+        pendingWorldInfoSaves.delete(name);
+    }
+    return pendingSave?.data;
+}
+
+async function settleWorldInfoSave(name) {
+    while (true) {
+        const pendingData = cancelPendingWorldInfoSave(name);
+        if (pendingData) {
+            await _save(name, pendingData);
+        }
+        const pendingSave = worldInfoSaveQueues.get(name);
+        if (!pendingSave) {
+            return;
+        }
+        await pendingSave;
+    }
+}
+
+function blockWorldInfoSaves(name) {
+    if (worldInfoSaveBlocks.has(name)) {
+        throw new Error(`World Info operation already in progress for ${name}`);
+    }
+    let releaseBlock = () => {};
+    const block = new Promise(resolve => {
+        releaseBlock = resolve;
+    });
+    worldInfoSaveBlocks.set(name, block);
+    return (targetName) => {
+        if (worldInfoSaveBlocks.get(name) === block) {
+            worldInfoSaveBlocks.delete(name);
+        }
+        releaseBlock(targetName);
+    };
+}
+
+async function getCanonicalWorldInfoName(name) {
+    const sanitizedName = await getSanitizedFilename(name);
+    const encoder = new TextEncoder();
+    let result = '';
+    let bytes = 0;
+    for (const character of sanitizedName) {
+        const characterBytes = encoder.encode(character).length;
+        if (bytes + characterBytes > MAX_WORLD_INFO_NAME_BYTES) {
+            break;
+        }
+        result += character;
+        bytes += characterBytes;
+    }
+    return result;
 }
 
 
@@ -4419,45 +4604,107 @@ export async function saveWorldInfo(name, data, immediately = false) {
         return;
     }
 
+    const saveBlock = worldInfoSaveBlocks.get(name);
+    if (saveBlock) {
+        const targetName = await saveBlock;
+        if (!targetName) {
+            return;
+        }
+        name = targetName;
+    }
+
     // Update cache immediately, so any future call can pull from this
     worldInfoCache.set(name, data);
 
     if (immediately) {
+        cancelPendingWorldInfoSave(name);
         return await _save(name, data);
     }
 
-    saveWorldDebounced(name, data);
+    cancelPendingWorldInfoSave(name);
+    const timer = setTimeout(() => {
+        pendingWorldInfoSaves.delete(name);
+        _save(name, data).catch(error => {
+            console.error(`Failed to save World Info ${name}:`, error);
+            toastr.error(String(error), t`World Info Save Failed`);
+        });
+    }, debounce_timeout.relaxed);
+    pendingWorldInfoSaves.set(name, { timer, data });
+}
+
+async function replaceWorldInfoData(name, data) {
+    const releaseSaveBlock = blockWorldInfoSaves(name);
+    let saveTarget = name;
+    try {
+        await settleWorldInfoSave(name);
+        await _save(name, data);
+        saveTarget = null;
+        worldInfoCache.set(name, data);
+    } finally {
+        releaseSaveBlock(saveTarget);
+    }
 }
 
 async function renameWorldInfo(name, data) {
     const oldName = name;
-    const newName = await Popup.show.input('Rename World Info', 'Enter a new name:', oldName);
+    const requestedName = await Popup.show.input('Rename World Info', 'Enter a new name:', oldName);
 
-    if (oldName === newName || !newName) {
+    if (oldName === requestedName || !requestedName) {
         console.debug('World info rename cancelled');
         return;
     }
-    if (equalsIgnoreCaseAndAccents(oldName, newName)) {
+    const newName = await getCanonicalWorldInfoName(requestedName);
+    const oldCanonicalName = await getCanonicalWorldInfoName(oldName);
+    if (!newName) {
+        return;
+    }
+    if (oldCanonicalName === newName || equalsIgnoreCaseAndAccents(oldName, newName)) {
         toastr.warning(t`Name not accepted, as it is the same as before (ignoring case and accents).`, t`Rename World Info`);
+        return;
+    }
+    if (world_names.some(worldName => equalsIgnoreCaseAndAccents(worldName, newName))) {
+        toastr.warning(t`Name not accepted, as a World Info with that name already exists.`, t`Rename World Info`);
         return;
     }
 
     const entryPreviouslySelected = selected_world_info.findIndex((e) => e === oldName);
+    const releaseSaveBlock = blockWorldInfoSaves(oldName);
+    let saveTarget = oldName;
+    try {
+        await settleWorldInfoSave(oldName);
+        const response = await fetch('/api/worldinfo/rename', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ oldName, newName, data }),
+        });
+        if (!response.ok) {
+            toastr.error(t`World Info could not be renamed.`, t`Rename World Info`);
+            return;
+        }
+        saveTarget = newName;
 
-    await saveWorldInfo(newName, data, true);
-    await deleteWorldInfo(oldName);
+        worldInfoCache.delete(oldName);
+        worldInfoCache.set(newName, data);
+        if (entryPreviouslySelected !== -1) {
+            selected_world_info[entryPreviouslySelected] = newName;
+            saveSettingsDebounced();
+        }
 
-    await updateWorldInfoLinks(oldName, newName);
+        await updateWorldInfoLinks(oldName, newName);
+        await updateWorldInfoList();
 
-    if (entryPreviouslySelected !== -1) {
-        const wiElement = getWIElement(newName);
-        wiElement.prop('selected', true);
-        $('#world_info').trigger('change');
-    }
+        if (entryPreviouslySelected !== -1) {
+            const wiElement = getWIElement(newName);
+            wiElement.prop('selected', true);
+            $('#world_info').trigger('change');
+        }
 
-    const selectedIndex = world_names.indexOf(newName);
-    if (selectedIndex !== -1) {
-        $('#world_editor_select').val(selectedIndex).trigger('change');
+        const selectedIndex = world_names.indexOf(newName);
+        if (selectedIndex !== -1) {
+            $('#world_editor_select').val(selectedIndex).trigger('change');
+        }
+    } finally {
+        releaseSaveBlock(saveTarget);
     }
 }
 
@@ -4468,7 +4715,7 @@ async function renameWorldInfo(name, data) {
  * @returns {Promise<void>}
  */
 async function updateWorldInfoLinks(oldName, newName) {
-    const existingCharLores = world_info.charLore?.filter((e) => e.extraBooks.includes(oldName));
+    const existingCharLores = world_info.charLore?.filter((e) => e.extraBooks?.includes(oldName));
     if (existingCharLores && existingCharLores.length > 0) {
         existingCharLores.forEach((charLore) => {
             const tempCharLore = charLore.extraBooks.filter((e) => e !== oldName);
@@ -4476,6 +4723,26 @@ async function updateWorldInfoLinks(oldName, newName) {
             charLore.extraBooks = tempCharLore;
         });
         saveSettingsDebounced();
+    }
+
+    if (power_user.persona_description_lorebook === oldName) {
+        power_user.persona_description_lorebook = newName;
+        const descriptor = getOrCreatePersonaDescriptor();
+        descriptor.lorebook = newName;
+        setPersonaDescription();
+        saveSettingsDebounced();
+    }
+
+    for (const descriptor of Object.values(power_user.persona_descriptions ?? {})) {
+        if (descriptor?.lorebook === oldName) {
+            descriptor.lorebook = newName;
+            saveSettingsDebounced();
+        }
+    }
+
+    if (chat_metadata[METADATA_KEY] === oldName) {
+        chat_metadata[METADATA_KEY] = newName;
+        await saveMetadata();
     }
 
     // find all characters using the old lorebook name as their primary world
@@ -4556,48 +4823,56 @@ export async function deleteWorldInfo(worldInfoName) {
         return false;
     }
 
-    const response = await fetch('/api/worldinfo/delete', {
-        method: 'POST',
-        headers: getRequestHeaders(),
-        body: JSON.stringify({ name: worldInfoName }),
-    });
+    const releaseSaveBlock = blockWorldInfoSaves(worldInfoName);
+    let saveTarget = worldInfoName;
+    try {
+        await settleWorldInfoSave(worldInfoName);
+        const response = await fetch('/api/worldinfo/delete', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ name: worldInfoName }),
+        });
 
-    if (!response.ok) {
-        return false;
-    }
-
-    if (worldInfoCache.has(worldInfoName)) {
-        worldInfoCache.delete(worldInfoName);
-    }
-
-    const existingWorldIndex = selected_world_info.findIndex((e) => e === worldInfoName);
-    if (existingWorldIndex !== -1) {
-        selected_world_info.splice(existingWorldIndex, 1);
-        saveSettingsDebounced();
-    }
-
-    await updateWorldInfoList();
-    $('#world_editor_select').trigger('change');
-
-    if ($('#character_world').val() === worldInfoName) {
-        $('#character_world').val('').trigger('change');
-        setWorldInfoButtonClass(undefined, false);
-        if (menu_type != 'create') {
-            saveCharacterDebounced();
+        if (!response.ok) {
+            return false;
         }
-    }
+        saveTarget = null;
 
-    if (power_user.persona_description_lorebook === worldInfoName) {
-        power_user.persona_description_lorebook = '';
-        if (power_user.personas[user_avatar]) {
-            const object = getOrCreatePersonaDescriptor();
-            object.lorebook = '';
+        if (worldInfoCache.has(worldInfoName)) {
+            worldInfoCache.delete(worldInfoName);
         }
-        $('#persona_lore_button').toggleClass('world_set', false);
-        saveSettingsDebounced();
-    }
 
-    return true;
+        const existingWorldIndex = selected_world_info.findIndex((e) => e === worldInfoName);
+        if (existingWorldIndex !== -1) {
+            selected_world_info.splice(existingWorldIndex, 1);
+            saveSettingsDebounced();
+        }
+
+        await updateWorldInfoList();
+        $('#world_editor_select').trigger('change');
+
+        if ($('#character_world').val() === worldInfoName) {
+            $('#character_world').val('').trigger('change');
+            setWorldInfoButtonClass(undefined, false);
+            if (menu_type != 'create') {
+                saveCharacterDebounced();
+            }
+        }
+
+        if (power_user.persona_description_lorebook === worldInfoName) {
+            power_user.persona_description_lorebook = '';
+            if (power_user.personas[user_avatar]) {
+                const object = getOrCreatePersonaDescriptor();
+                object.lorebook = '';
+            }
+            $('#persona_lore_button').toggleClass('world_set', false);
+            saveSettingsDebounced();
+        }
+
+        return true;
+    } finally {
+        releaseSaveBlock(saveTarget);
+    }
 }
 
 export function getFreeWorldEntryUid(data) {
@@ -4660,17 +4935,25 @@ export async function createNewWorldInfo(worldName, { interactive = false } = {}
         return false;
     }
 
-    const sanitizedWorldName = await getSanitizedFilename(worldName);
+    const sanitizedWorldName = await getCanonicalWorldInfoName(worldName);
+    if (!sanitizedWorldName) {
+        return false;
+    }
 
-    const allowed = await checkOverwriteExistingData('World Info', world_names, sanitizedWorldName, { interactive: interactive, actionName: 'Create', deleteAction: (existingName) => deleteWorldInfo(existingName) });
+    const existingWorldName = findMatchingLorebookName(world_names, sanitizedWorldName);
+    const persistedWorldName = existingWorldName ?? sanitizedWorldName;
+    const allowed = await checkOverwriteExistingData('World Info', world_names, sanitizedWorldName, {
+        interactive: interactive,
+        actionName: 'Create',
+    });
     if (!allowed) {
         return false;
     }
 
-    await saveWorldInfo(worldName, worldInfoTemplate, true);
+    await replaceWorldInfoData(persistedWorldName, worldInfoTemplate);
     await updateWorldInfoList();
 
-    const selectedIndex = world_names.indexOf(worldName);
+    const selectedIndex = world_names.indexOf(persistedWorldName);
     if (selectedIndex !== -1) {
         $('#world_editor_select').val(selectedIndex).trigger('change');
     } else {
@@ -4720,7 +5003,7 @@ async function getCharacterLore() {
         }
 
         const data = await loadWorldInfo(worldName);
-        const newEntries = data ? Object.keys(data.entries).map((x) => data.entries[x]).map(({ uid, ...rest }) => ({ uid, world: worldName, ...rest })) : [];
+        const newEntries = getWorldEntries(data, worldName);
         entries = entries.concat(newEntries);
 
         if (!newEntries.length) {
@@ -4732,6 +5015,22 @@ async function getCharacterLore() {
     return entries;
 }
 
+function getWorldEntries(data, worldName) {
+    if (!data?.entries || typeof data.entries !== 'object' || Array.isArray(data.entries)) {
+        if (data) {
+            console.warn(`[WI] Skipping malformed World Info '${worldName}'`);
+        }
+        return [];
+    }
+
+    return Object.entries(data.entries)
+        .filter(([, entry]) => entry && typeof entry === 'object' && !Array.isArray(entry))
+        .map(([key, entry]) => {
+            const { uid = Number.isNaN(Number(key)) ? key : Number(key), ...rest } = entry;
+            return { uid, world: worldName, ...rest };
+        });
+}
+
 async function getGlobalLore() {
     if (!selected_world_info?.length) {
         return [];
@@ -4740,7 +5039,7 @@ async function getGlobalLore() {
     let entries = [];
     for (const worldName of selected_world_info) {
         const data = await loadWorldInfo(worldName);
-        const newEntries = data ? Object.keys(data.entries).map((x) => data.entries[x]).map(({ uid, ...rest }) => ({ uid, world: worldName, ...rest })) : [];
+        const newEntries = getWorldEntries(data, worldName);
         entries = entries.concat(newEntries);
     }
 
@@ -4762,7 +5061,7 @@ async function getChatLore() {
     }
 
     const data = await loadWorldInfo(chatWorld);
-    const entries = data ? Object.keys(data.entries).map((x) => data.entries[x]).map(({ uid, ...rest }) => ({ uid, world: chatWorld, ...rest })) : [];
+    const entries = getWorldEntries(data, chatWorld);
 
     console.debug(`[WI] Chat lore has ${entries.length} entries`, [chatWorld]);
 
@@ -4788,7 +5087,7 @@ async function getPersonaLore() {
     }
 
     const data = await loadWorldInfo(personaWorld);
-    const entries = data ? Object.keys(data.entries).map((x) => data.entries[x]).map(({ uid, ...rest }) => ({ uid, world: personaWorld, ...rest })) : [];
+    const entries = getWorldEntries(data, personaWorld);
 
     console.debug(`[WI] Persona lore has ${entries.length} entries`, [personaWorld]);
 
@@ -4845,7 +5144,7 @@ export async function getSortedEntries() {
             // positions strictly and silently drops anything else, so normalize at scan time.
             // Runs after hashing to keep existing timed-effect entry hashes stable.
             const position = normalizeWorldInfoPosition(entry.position, world_info_position) ?? world_info_position.before;
-            return { ...entry, position };
+            return normalizeWorldInfoProbability({ ...entry, position });
         });
 
         console.debug(`[WI] Found ${entries.length} world lore entries. Sorted by strategy`, Object.entries(world_info_insertion_strategy).find((x) => x[1] === world_info_character_strategy));
@@ -4884,9 +5183,9 @@ function parseDecorators(content) {
     };
 
     if (content.startsWith('@@')) {
-        let newContent = content;
-        const splited = content.split('\n');
-        let decorators = [];
+        let newContent = '';
+        const splited = content.split(/\r?\n/);
+        const decorators = [];
         let fallbacked = false;
 
         for (let i = 0; i < splited.length; i++) {
@@ -4944,7 +5243,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
     let scanState = scan_state.INITIAL;
     let token_budget_overflowed = false;
     let count = 0;
-    let allActivatedEntries = new Map();
+    let allActivatedEntries = new Set();
     let failedProbabilityChecks = new Set();
     let allActivatedText = '';
 
@@ -4966,10 +5265,10 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
     }
 
     /** @type {number[]} Represents the delay levels for entries that are delayed until recursion */
-    const availableRecursionDelayLevels = [...new Set(sortedEntries
+    const availableRecursionDelayLevels = world_info_recursive ? [...new Set(sortedEntries
         .filter(entry => entry.delayUntilRecursion)
         .map(entry => entry.delayUntilRecursion === true ? 1 : entry.delayUntilRecursion),
-    )].sort((a, b) => a - b);
+    )].sort((a, b) => a - b) : [];
     // Already preset with the first level
     let currentRecursionDelayLevel = availableRecursionDelayLevels.shift() ?? 0;
     if (currentRecursionDelayLevel > 0 && availableRecursionDelayLevels.length) {
@@ -5009,7 +5308,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
             };
 
             // Already processed, considered and then skipped entries should still be skipped
-            if (failedProbabilityChecks.has(entry) || allActivatedEntries.has(`${entry.world}.${entry.uid}`)) {
+            if (failedProbabilityChecks.has(entry) || allActivatedEntries.has(entry)) {
                 continue;
             }
 
@@ -5127,8 +5426,8 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
 
             // PRIMARY KEYWORDS
             let primaryKeyMatch = entry.key.find(key => {
-                const substituted = substituteParams(key);
-                return substituted && buffer.matchKeys(textToScan, substituted.trim(), entry);
+                const normalizedKey = normalizeWorldInfoKey(key, substituteParams);
+                return normalizedKey && buffer.matchKeys(textToScan, normalizedKey, entry);
             });
 
             if (!primaryKeyMatch) {
@@ -5136,11 +5435,10 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
                 continue;
             }
 
-            const hasSecondaryKeywords = (
-                entry.selective && //all entries are selective now
-                Array.isArray(entry.keysecondary) && //always true
-                entry.keysecondary.length //ignore empties
-            );
+            const normalizedSecondaryKeys = Array.isArray(entry.keysecondary)
+                ? entry.keysecondary.map(key => normalizeWorldInfoKey(key, substituteParams)).filter(Boolean)
+                : [];
+            const hasSecondaryKeywords = entry.selective && normalizedSecondaryKeys.length;
 
             if (!hasSecondaryKeywords) {
                 // Handle cases where secondary is empty
@@ -5158,9 +5456,8 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
             const matchSecondaryKeys = () => {
                 let hasAnyMatch = false;
                 let hasAllMatch = true;
-                for (let keysecondary of entry.keysecondary) {
-                    const secondarySubstituted = substituteParams(keysecondary);
-                    const hasSecondaryMatch = secondarySubstituted && buffer.matchKeys(textToScan, secondarySubstituted.trim(), entry);
+                for (const secondarySubstituted of normalizedSecondaryKeys) {
+                    const hasSecondaryMatch = buffer.matchKeys(textToScan, secondarySubstituted, entry);
 
                     if (hasSecondaryMatch) hasAnyMatch = true;
                     if (!hasSecondaryMatch) hasAllMatch = false;
@@ -5206,15 +5503,22 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
         console.debug(`[WI] Search done. Found ${activatedNow.size} possible entries.`);
 
         // Sort the entries for the probability and the budget limit checks
-        const newEntries = [...activatedNow]
-            .sort((a, b) => {
-                const isASticky = timedEffects.isEffectActive('sticky', a) ? 1 : 0;
-                const isBSticky = timedEffects.isEffectActive('sticky', b) ? 1 : 0;
-                return isBSticky - isASticky || sortedEntries.indexOf(a) - sortedEntries.indexOf(b);
-            });
+        let newEntries;
+        if (activatedNow.size > 1) {
+            const sortedEntriesIndex = new Map(sortedEntries.map((entry, index) => [entry, index]));
+            newEntries = [...activatedNow]
+                .sort((a, b) => {
+                    const isASticky = timedEffects.isEffectActive('sticky', a) ? 1 : 0;
+                    const isBSticky = timedEffects.isEffectActive('sticky', b) ? 1 : 0;
+                    return isBSticky - isASticky
+                        || (sortedEntriesIndex.get(a) ?? -1) - (sortedEntriesIndex.get(b) ?? -1);
+                });
+        } else {
+            newEntries = [...activatedNow];
+        }
 
-
-        let newContent = '';
+        let acceptedContent = '';
+        const successfulNewEntries = [];
         const textToScanTokens = await getTokenCountAsync(allActivatedText);
 
         filterByInclusionGroups(newEntries, allActivatedEntries, buffer, scanState, timedEffects);
@@ -5234,20 +5538,8 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
             }
 
             const verifyProbability = () => {
-                // If we don't need to roll, it's always true
-                if (!entry.useProbability || entry.probability === 100) {
-                    console.debug(`WI entry ${entry.uid} does not use probability`);
-                    return true;
-                }
-
                 const isSticky = timedEffects.isEffectActive('sticky', entry);
-                if (isSticky) {
-                    console.debug(`WI entry ${entry.uid} is sticky, does not need to re-roll probability`);
-                    return true;
-                }
-
-                const rollValue = Math.random() * 100;
-                if (rollValue <= entry.probability) {
+                if (passesWorldInfoProbability(entry, Math.random, isSticky)) {
                     console.debug(`WI entry ${entry.uid} passed probability check of ${entry.probability}%`);
                     return true;
                 }
@@ -5264,9 +5556,9 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
 
             // Substitute macros inline, for both this checking and also future processing
             entry.content = substituteParams(entry.content);
-            newContent += `${entry.content}\n`;
+            const nextContent = `${acceptedContent}${entry.content}\n`;
 
-            if (!entry.ignoreBudget && (textToScanTokens + (await getTokenCountAsync(newContent))) >= budget) {
+            if (!entry.ignoreBudget && (textToScanTokens + (await getTokenCountAsync(nextContent))) >= budget) {
                 if (!token_budget_overflowed) {
                     console.debug('[WI] --- BUDGET OVERFLOW CHECK ---');
                     if (world_info_overflow_alert) {
@@ -5280,12 +5572,16 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
                 continue;
             }
 
-            allActivatedEntries.set(`${entry.world}.${entry.uid}`, entry);
+            acceptedContent = nextContent;
+            successfulNewEntries.push(entry);
+            allActivatedEntries.add(entry);
             console.debug(`[WI] Entry ${entry.uid} activation successful, adding to prompt`, entry);
         }
 
-        const successfulNewEntries = newEntries.filter(x => !failedProbabilityChecks.has(x));
         const successfulNewEntriesForRecursion = successfulNewEntries.filter(x => !x.preventRecursion);
+        if (acceptedContent) {
+            allActivatedText = acceptedContent + allActivatedText;
+        }
 
         console.debug(`[WI] --- LOOP #${count} RESULT ---`);
         if (!newEntries.length) {
@@ -5321,8 +5617,8 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
 
             let over_max = (
                 world_info_min_activations_depth_max > 0 &&
-                buffer.getDepth() > world_info_min_activations_depth_max
-            ) || (buffer.getDepth() > chat.length);
+                buffer.getDepth() >= world_info_min_activations_depth_max
+            ) || (buffer.getDepth() >= chat.length);
 
             if (!over_max) {
                 nextScanState = scan_state.MIN_ACTIVATIONS; // loop
@@ -5334,7 +5630,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
         }
 
         // If the scan is done, but we still have open "delay until recursion" levels, we should continue with the next one
-        if (nextScanState === scan_state.NONE && availableRecursionDelayLevels.length) {
+        if (world_info_recursive && scanState === scan_state.RECURSION && nextScanState === scan_state.NONE && availableRecursionDelayLevels.length) {
             nextScanState = scan_state.RECURSION;
             currentRecursionDelayLevel = availableRecursionDelayLevels.shift();
             logNextState('[WI] Open delayed recursion levels left. Preparing next delayed recursion level', currentRecursionDelayLevel, '. Still delayed:', availableRecursionDelayLevels);
@@ -5348,7 +5644,6 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
                 .map(x => x.content).join('\n');
             if (text) {
                 buffer.addRecurse(text);
-                allActivatedText = (text + '\n' + allActivatedText);
             }
         } else {
             logNextState('[WI] Scan done. No new entries to prompt. Stopping.');
@@ -5441,12 +5736,13 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
                 ANBottomEntries.unshift(content);
                 break;
             case world_info_position.atDepth: {
-                const existingDepthIndex = WIDepthEntries.findIndex((e) => e.depth === (entry.depth ?? DEFAULT_DEPTH) && e.role === (entry.role ?? extension_prompt_roles.SYSTEM));
+                const depth = entry.depth ?? DEFAULT_DEPTH;
+                const existingDepthIndex = WIDepthEntries.findIndex((e) => e.depth === depth && e.role === (entry.role ?? extension_prompt_roles.SYSTEM));
                 if (existingDepthIndex !== -1) {
                     WIDepthEntries[existingDepthIndex].entries.unshift(content);
                 } else {
                     WIDepthEntries.push({
-                        depth: entry.depth,
+                        depth,
                         entries: [content],
                         role: entry.role ?? extension_prompt_roles.SYSTEM,
                     });
@@ -5459,7 +5755,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
                     break;
                 }
                 if (Array.isArray(WIOutletEntries[entry.outletName])) {
-                    WIOutletEntries[entry.outletName].push(content);
+                    WIOutletEntries[entry.outletName].unshift(content);
                 } else {
                     WIOutletEntries[entry.outletName] = [content];
                 }
@@ -5476,7 +5772,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
     if (shouldWIAddPrompt) {
         const originalAN = context.extensionPrompts[NOTE_MODULE_NAME].value;
         const ANWithWI = `${ANTopEntries.join('\n')}\n${originalAN}\n${ANBottomEntries.join('\n')}`.replace(/(^\n)|(\n$)/g, '');
-        context.setExtensionPrompt(NOTE_MODULE_NAME, ANWithWI, chat_metadata[metadata_keys.position], chat_metadata[metadata_keys.depth], extension_settings.note.allowWIScan, chat_metadata[metadata_keys.role]);
+        context.setExtensionPrompt(NOTE_MODULE_NAME, ANWithWI, getAuthorsNotePosition(), getAuthorsNoteDepth(), extension_settings.note.allowWIScan, getAuthorsNoteRole());
     }
 
     timedEffects.setTimedEffects(Array.from(allActivatedEntries.values()));
@@ -5512,24 +5808,23 @@ function filterGroupsByScoring(groups, buffer, removeEntry, scanState, hasSticky
             continue;
         }
 
-        const scores = group.map(entry => buffer.getScore(entry, scanState));
+        const scoringEntries = [...group];
+        const scores = scoringEntries.map(entry => buffer.getScore(entry, scanState));
         const maxScore = Math.max(...scores);
         console.debug(`[WI] Group '${key}' max score:`, maxScore);
         //console.table(group.map((entry, i) => ({ uid: entry.uid, key: JSON.stringify(entry.key), score: scores[i] })));
 
-        for (let i = 0; i < group.length; i++) {
-            const isScored = group[i].useGroupScoring ?? world_info_use_group_scoring;
+        for (let i = 0; i < scoringEntries.length; i++) {
+            const entry = scoringEntries[i];
+            const isScored = entry.useGroupScoring ?? world_info_use_group_scoring;
 
             if (!isScored) {
                 continue;
             }
 
             if (scores[i] < maxScore) {
-                console.debug(`[WI] Entry ${group[i].uid}`, `removed as score loser from inclusion group '${key}'`, group[i]);
-                removeEntry(group[i]);
-                group.splice(i, 1);
-                scores.splice(i, 1);
-                i--;
+                console.debug(`[WI] Entry ${entry.uid}`, `removed as score loser from inclusion group '${key}'`, entry);
+                removeEntry(entry);
             }
         }
     }
@@ -5552,7 +5847,7 @@ function filterGroupsByTimedEffects(groups, timedEffects, removeEntry) {
         // If the group has any sticky entries, leave only the sticky entries
         const stickyEntries = group.filter(x => timedEffects.isEffectActive('sticky', x));
         if (stickyEntries.length) {
-            for (const entry of group) {
+            for (const entry of [...group]) {
                 if (stickyEntries.includes(entry)) {
                     continue;
                 }
@@ -5588,7 +5883,7 @@ function filterGroupsByTimedEffects(groups, timedEffects, removeEntry) {
 /**
  * Filters entries by inclusion groups.
  * @param {object[]} newEntries Entries activated on current recursion level
- * @param {Map<string, object>} allActivatedEntries Map of all activated entries
+ * @param {Set<object>} allActivatedEntries Set of all activated entries
  * @param {WorldInfoBuffer} buffer The buffer to use for scanning
  * @param {number} scanState The current scan state
  * @param {WorldInfoTimedEffects} timedEffects The timed effects currently active
@@ -5597,7 +5892,7 @@ function filterByInclusionGroups(newEntries, allActivatedEntries, buffer, scanSt
     console.debug('[WI] --- INCLUSION GROUP CHECKS ---');
 
     const grouped = newEntries.filter(x => x.group).reduce((acc, item) => {
-        item.group.split(/,\s*/).filter(x => x).forEach(group => {
+        getWorldInfoGroupNames(item.group).forEach(group => {
             if (!acc[group]) {
                 acc[group] = [];
             }
@@ -5611,9 +5906,20 @@ function filterByInclusionGroups(newEntries, allActivatedEntries, buffer, scanSt
         return;
     }
 
-    const removeEntry = (entry) => newEntries.splice(newEntries.indexOf(entry), 1);
+    const removeEntry = (entry) => {
+        const entryIndex = newEntries.indexOf(entry);
+        if (entryIndex !== -1) {
+            newEntries.splice(entryIndex, 1);
+        }
+        for (const group of Object.values(grouped)) {
+            const groupIndex = group.indexOf(entry);
+            if (groupIndex !== -1) {
+                group.splice(groupIndex, 1);
+            }
+        }
+    };
     function removeAllBut(group, chosen, logging = true) {
-        for (const entry of group) {
+        for (const entry of [...group]) {
             if (entry === chosen) {
                 continue;
             }
@@ -5636,7 +5942,7 @@ function filterByInclusionGroups(newEntries, allActivatedEntries, buffer, scanSt
             continue;
         }
 
-        if (Array.from(allActivatedEntries.values()).some(x => x.group === key)) {
+        if (Array.from(allActivatedEntries.values()).some(x => getWorldInfoGroupNames(x.group).includes(key))) {
             console.debug(`[WI] Skipping inclusion group check, group '${key}' was already activated`);
             // We need to forcefully deactivate all other entries in the group
             removeAllBut(group, null, false);
@@ -5750,7 +6056,7 @@ function convertRisuLorebook(inputObj) {
             delayUntilRecursion: false,
             displayIndex: index,
             probability: entry.activationPercent ?? 100,
-            useProbability: entry.activationPercent ?? true,
+            useProbability: true,
             outletName: '',
             group: '',
             groupOverride: false,
@@ -5823,19 +6129,19 @@ function convertNovelLorebook(inputObj) {
 }
 
 export function convertCharacterBook(characterBook) {
-    const result = { entries: {}, originalData: characterBook };
+    const originalData = structuredClone(characterBook);
+    const result = { entries: {}, originalData, originalDataUidMap: {} };
 
     characterBook.entries.forEach((entry, index) => {
-        // Not in the spec, but this is needed to find the entry in the original data
-        if (entry.id === undefined) {
-            entry.id = index;
-        }
-
-        result.entries[entry.id] = {
+        const uid = getFreeWorldEntryUid(result);
+        const toRegex = key => entry.use_regex && !parseRegexFromString(key)
+            ? `/${escapeCharacterBookRegex(key)}/`
+            : key;
+        result.entries[uid] = {
             ...newWorldInfoEntryTemplate,
-            uid: entry.id,
-            key: entry.keys,
-            keysecondary: entry.secondary_keys || [],
+            uid,
+            key: Array.isArray(entry.keys) ? entry.keys.map(toRegex) : [],
+            keysecondary: Array.isArray(entry.secondary_keys) ? entry.secondary_keys.map(toRegex) : [],
             comment: entry.comment || '',
             content: entry.content,
             constant: entry.constant || false,
@@ -5845,7 +6151,7 @@ export function convertCharacterBook(characterBook) {
             excludeRecursion: entry.extensions?.exclude_recursion ?? false,
             preventRecursion: entry.extensions?.prevent_recursion ?? false,
             delayUntilRecursion: entry.extensions?.delay_until_recursion ?? false,
-            disable: !entry.enabled,
+            disable: entry.enabled === false,
             addMemo: !!entry.comment,
             displayIndex: entry.extensions?.display_index ?? index,
             probability: entry.extensions?.probability ?? 100,
@@ -5857,9 +6163,10 @@ export function convertCharacterBook(characterBook) {
             groupOverride: entry.extensions?.group_override ?? false,
             groupWeight: entry.extensions?.group_weight ?? DEFAULT_WEIGHT,
             scanDepth: entry.extensions?.scan_depth ?? null,
-            caseSensitive: entry.extensions?.case_sensitive ?? null,
+            caseSensitive: entry.case_sensitive ?? entry.extensions?.case_sensitive ?? null,
             matchWholeWords: entry.extensions?.match_whole_words ?? null,
             useGroupScoring: entry.extensions?.use_group_scoring ?? null,
+            characterFilter: entry.character_filter,
             automationId: entry.extensions?.automation_id ?? '',
             role: entry.extensions?.role ?? extension_prompt_roles.SYSTEM,
             vectorized: entry.extensions?.vectorized ?? false,
@@ -5877,6 +6184,7 @@ export function convertCharacterBook(characterBook) {
             ignoreBudget: entry.extensions?.ignore_budget ?? false,
             agentBlacklisted: entry.extensions?.agent_blacklisted ?? entry.agentBlacklisted ?? false,
         };
+        result.originalDataUidMap[uid] = index;
     });
 
     return result;
@@ -5910,16 +6218,20 @@ export function checkEmbeddedWorld(chid) {
         // Only show the alert once per character
         const checkKey = `AlertWI_${characters[chid].avatar}`;
         const worldName = characters[chid]?.data?.extensions?.world;
-        if (!accountStorage.getItem(checkKey) && (!worldName || !world_names.includes(worldName))) {
+        const bookName = characters[chid]?.data?.character_book?.name || `${characters[chid]?.name}'s Lorebook`;
+        const fileName = getCharaFilename(null, { manualAvatarKey: characters[chid].avatar });
+        const auxBooks = getLinkedAuxBooks(world_info.charLore, fileName);
+        if (!accountStorage.getItem(checkKey) && !isEmbeddedBookLinked(bookName, worldName, auxBooks, world_names)) {
             accountStorage.setItem(checkKey, 'true');
 
             if (power_user.world_import_dialog) {
                 const html = `<h3>This character has an embedded World/Lorebook.</h3>
                 <h3>Would you like to import it now?</h3>
                 <div class="m-b-1">If you want to import it later, select "Import Card Lore" in the "More..." dropdown menu on the character panel.</div>`;
-                const checkResult = (result) => {
+                const checkResult = async (result) => {
                     if (result) {
-                        importEmbeddedWorldInfo(true);
+                        await importEmbeddedWorldInfo(true);
+                        saveCharacterDebounced();
                     }
                 };
                 callGenericPopup(html, POPUP_TYPE.CONFIRM, '', { okButton: 'Yes' }).then(checkResult);
@@ -5950,24 +6262,31 @@ export async function importEmbeddedWorldInfo(skipPopup = false) {
         return;
     }
 
-    const bookName = characters[chid]?.data?.character_book?.name || `${characters[chid]?.name}'s Lorebook`;
+    const rawBookName = characters[chid]?.data?.character_book?.name || `${characters[chid]?.name}'s Lorebook`;
+    const bookName = await getCanonicalWorldInfoName(rawBookName);
+    if (!bookName) {
+        return;
+    }
+    const existingBookName = findMatchingLorebookName(world_names, bookName);
+    const persistedBookName = existingBookName ?? bookName;
 
     if (!skipPopup) {
-        const confirmation = await Popup.show.confirm(t`Are you sure you want to import '${bookName}'?`, world_names.includes(bookName) ? t`It will overwrite the World/Lorebook with the same name.` : '');
+        const confirmation = await Popup.show.confirm(t`Are you sure you want to import '${persistedBookName}'?`, world_names.includes(persistedBookName) ? t`It will overwrite the World/Lorebook with the same name.` : '');
         if (!confirmation) {
             return;
         }
     }
 
-    const convertedBook = convertCharacterBook(characters[chid].data.character_book);
-
-    await saveWorldInfo(bookName, convertedBook, true);
+    const result = await importEmbeddedWorldInfoForCharacter(chid, { targetName: persistedBookName, collision: Boolean(existingBookName) });
+    if (result.status !== 'imported') {
+        return;
+    }
     await updateWorldInfoList();
-    $('#character_world').val(bookName).trigger('change');
+    $('#character_world').val(result.bookName).trigger('change');
 
-    toastr.success(t`The world '${bookName}' has been imported and linked to the character successfully.`, t`World/Lorebook imported`);
+    toastr.success(t`The world '${result.bookName}' has been imported and linked to the character successfully.`, t`World/Lorebook imported`);
 
-    const newIndex = world_names.indexOf(bookName);
+    const newIndex = world_names.indexOf(result.bookName);
     if (newIndex >= 0) {
         //show&draw the WI panel before..
         openWorldInfoCharacterPanelTab();
@@ -5976,6 +6295,213 @@ export async function importEmbeddedWorldInfo(skipPopup = false) {
     }
 
     setWorldInfoButtonClass(chid, true);
+}
+
+/**
+ * Imports the embedded lorebook for a single character by chid.
+ * Pure helper — saves the world info but does not touch the active-character UI.
+ * @param {number} chid - Character hash id
+ * @param {object} [options={}] Optional import settings
+ * @param {string} [options.targetName] Existing persisted name to overwrite
+ * @param {boolean} [options.collision] Whether the target replaces an existing book
+ * @returns {Promise<{chid: number, characterName: string, bookName: string, status: 'imported'|'skipped', collision: boolean}>}
+ */
+export async function importEmbeddedWorldInfoForCharacter(chid, { targetName, collision } = {}) {
+    const character = characters[chid];
+
+    if (!character?.data?.character_book) {
+        return { chid, characterName: character?.name ?? 'Unknown', bookName: '', status: 'skipped', collision: false };
+    }
+
+    const rawBookName = character.data.character_book.name || `${character.name}'s Lorebook`;
+    const bookName = await getCanonicalWorldInfoName(rawBookName);
+    if (!bookName) {
+        return { chid, characterName: character.name, bookName: '', status: 'skipped', collision: false };
+    }
+    const existingName = findMatchingLorebookName(world_names, bookName);
+    const persistedBookName = targetName ?? existingName ?? bookName;
+    const didCollide = collision ?? Boolean(existingName);
+    const convertedBook = convertCharacterBook(character.data.character_book);
+
+    await replaceWorldInfoData(persistedBookName, convertedBook);
+
+    return { chid, characterName: character.name, bookName: persistedBookName, status: 'imported', collision: didCollide };
+}
+
+/**
+ * Batch-imports embedded lorebooks for all visible loaded character cards.
+ * Detects embedded books, shows a confirmation dialog with collision warnings,
+ * imports each book, links via auxiliary world books (settings-only, safe for non-active chars),
+ * and reports a summary.
+ */
+export async function importEmbeddedWorldInfoBatch() {
+    const entities = getEntitiesList({ doFilter: true });
+    const visibleCharList = entities
+        .filter(e => e.type === 'character' && e.id !== undefined && e.id !== -1)
+        .map(e => ({ chid: e.id, character: e.item }));
+
+    const canonicalNames = new Map(await Promise.all(visibleCharList.map(async ({ chid, character }) => {
+        const bookName = character.data.character_book?.name || `${character.name}'s Lorebook`;
+        return [chid, await getCanonicalWorldInfoName(bookName)];
+    })));
+    const candidates = detectEmbeddedLorebookCandidates(visibleCharList, world_names, canonicalNames);
+
+    if (candidates.length === 0) {
+        toastr.info(t`No visible character cards have embedded lorebooks.`, t`Batch Import`);
+        return;
+    }
+
+    const collisionCount = candidates.filter(c => c.collision).length;
+
+    // Build a selectable checkbox list via DOM construction (avoids HTML injection)
+    const contentEl = document.createElement('div');
+    const heading = document.createElement('h3');
+    heading.textContent = t`Import embedded lorebooks for ${candidates.length} visible character(s)?`;
+    contentEl.appendChild(heading);
+
+    if (collisionCount > 0) {
+        const note = document.createElement('div');
+        note.className = 'm-b-1';
+        note.textContent = t`Checked entries marked with a warning will overwrite the existing lorebook with the same name.`;
+        contentEl.appendChild(note);
+    }
+
+    const toggleLabel = document.createElement('label');
+    toggleLabel.className = 'checkbox_label flexGap5 m-b-1';
+    const toggleAll = document.createElement('input');
+    toggleAll.type = 'checkbox';
+    toggleAll.checked = true;
+    const toggleSpan = document.createElement('span');
+    toggleSpan.textContent = t`Select all`;
+    toggleLabel.appendChild(toggleAll);
+    toggleLabel.appendChild(toggleSpan);
+    contentEl.appendChild(toggleLabel);
+
+    const listEl = document.createElement('div');
+    listEl.style.maxHeight = '50vh';
+    listEl.style.overflowY = 'auto';
+    listEl.style.textAlign = 'left';
+    contentEl.appendChild(listEl);
+
+    for (const candidate of candidates) {
+        const label = document.createElement('label');
+        label.className = 'checkbox_label flexGap5';
+        label.style.margin = '4px 0';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = true;
+        checkbox.dataset.chid = String(candidate.chid);
+        checkbox.classList.add('batch_wi_import_candidate');
+
+        const span = document.createElement('span');
+        span.textContent = `${candidate.characterName} → ${candidate.bookName}`;
+
+        label.appendChild(checkbox);
+        label.appendChild(span);
+
+        if (candidate.collision) {
+            const warn = document.createElement('small');
+            warn.textContent = t`(overwrites existing)`;
+            label.appendChild(warn);
+        }
+
+        listEl.appendChild(label);
+    }
+
+    toggleAll.addEventListener('change', () => {
+        listEl.querySelectorAll('input.batch_wi_import_candidate').forEach(input => {
+            if (input instanceof HTMLInputElement) {
+                input.checked = toggleAll.checked;
+            }
+        });
+    });
+
+    const content = $(contentEl);
+    const confirm = await callGenericPopup(content, POPUP_TYPE.CONFIRM, '', { okButton: t`Import`, wide: true });
+
+    if (!confirm) {
+        return;
+    }
+
+    const selectedChids = new Set();
+    content.find('input.batch_wi_import_candidate:checked').each(function () {
+        selectedChids.add(String($(this).data('chid')));
+    });
+
+    const selected = candidates.filter(c => selectedChids.has(String(c.chid)));
+
+    if (selected.length === 0) {
+        toastr.info(t`No characters selected.`, t`Batch Import`);
+        return;
+    }
+
+    const results = [];
+    const importedNames = [...world_names];
+    for (const candidate of selected) {
+        try {
+            const existingName = findMatchingLorebookName(importedNames, candidate.bookName);
+            const targetName = existingName ?? candidate.bookName;
+            const result = await importEmbeddedWorldInfoForCharacter(candidate.chid, { targetName, collision: Boolean(existingName) });
+
+            if (result.status === 'imported') {
+                importedNames.push(result.bookName);
+                const characterKey = characters[candidate.chid]?.avatar;
+                if (characterKey) {
+                    const fileName = getCharaFilename(null, { manualAvatarKey: characterKey });
+                    const linkedBooks = getLinkedAuxBooks(world_info.charLore, fileName);
+                    if (!linkedBooks.includes(result.bookName)) {
+                        await charUpdateAddAuxWorld(characterKey, result.bookName);
+                    }
+                    // Mark the one-time embedded lorebook alert as handled for this character
+                    accountStorage.setItem(`AlertWI_${characterKey}`, 'true');
+                }
+            }
+
+            results.push(result);
+        } catch (error) {
+            console.error('[Batch WI Import] Failed for', candidate.characterName, error);
+            results.push({ ...candidate, status: 'skipped', collision: false, error: error.message });
+        }
+    }
+
+    await updateWorldInfoList();
+
+    const imported = results.filter(r => r.status === 'imported');
+    const skipped = results.filter(r => r.status === 'skipped');
+    const collisions = imported.filter(r => r.collision);
+
+    let summary = `<h3>${t`Batch import complete`}</h3>`;
+    summary += `<div>${imported.length} ${t`imported`}`;
+
+    if (collisions.length > 0) {
+        summary += `, ${collisions.length} ${t`overwrote existing`}`;
+    }
+
+    if (skipped.length > 0) {
+        summary += `, ${skipped.length} ${t`skipped`}`;
+    }
+
+    summary += '.</div>';
+
+    if (imported.length > 0) {
+        summary += '<ul>';
+        for (const r of imported) {
+            summary += `<li>${escapeHtml(r.characterName)} → ${escapeHtml(r.bookName)}${r.collision ? ` (${t`overwrote`})` : ''}</li>`;
+        }
+        summary += '</ul>';
+    }
+
+    if (skipped.length > 0) {
+        summary += `<div class="m-t-1"><b>${t`Skipped:`}</b></div><ul>`;
+        for (const r of skipped) {
+            summary += `<li>${escapeHtml(r.characterName)}${r.error ? `: ${escapeHtml(r.error)}` : ` (${t`no embedded lorebook`})`}</li>`;
+        }
+        summary += '</ul>';
+    }
+
+    await callGenericPopup(summary, POPUP_TYPE.TEXT, '', { okButton: t`Close` });
+    toastr.success(t`Imported ${imported.length} lorebook(s) from ${selected.length} character(s).`, t`Batch Import Complete`);
 }
 
 export function onWorldInfoChange(args, text) {
@@ -6080,22 +6606,25 @@ export async function importWorldInfo(file) {
             return;
         }
 
-        // Convert Novel Lorebook
-        if (jsonData.lorebookVersion !== undefined) {
+        const isNativeWorldInfo = jsonData.entries && typeof jsonData.entries === 'object' && !Array.isArray(jsonData.entries);
+        const characterBook = jsonData.spec === 'lorebook_v3' ? jsonData.data : jsonData;
+
+        if (isNativeWorldInfo) {
+            console.log('Importing native World Info');
+        } else if (jsonData.lorebookVersion !== undefined) {
             console.log('Converting Novel Lorebook');
-            formData.append('convertedData', JSON.stringify(convertNovelLorebook(jsonData)));
-        }
-
-        // Convert Agnai Memory Book
-        if (jsonData.kind === 'memory') {
+            formData.set('convertedData', JSON.stringify(convertNovelLorebook(jsonData)));
+        } else if (jsonData.kind === 'memory' && Array.isArray(jsonData.entries)) {
             console.log('Converting Agnai Memory Book');
-            formData.append('convertedData', JSON.stringify(convertAgnaiMemoryBook(jsonData)));
-        }
-
-        // Convert Risu Lorebook
-        if (jsonData.type === 'risu') {
+            formData.set('convertedData', JSON.stringify(convertAgnaiMemoryBook(jsonData)));
+        } else if (jsonData.type === 'risu' && Array.isArray(jsonData.data)) {
             console.log('Converting Risu Lorebook');
-            formData.append('convertedData', JSON.stringify(convertRisuLorebook(jsonData)));
+            formData.set('convertedData', JSON.stringify(convertRisuLorebook(jsonData)));
+        } else if (Array.isArray(characterBook?.entries)) {
+            console.log('Converting CharacterBook');
+            formData.set('convertedData', JSON.stringify(convertCharacterBook(characterBook)));
+        } else {
+            throw new Error('Unsupported World Info format');
         }
     } catch (error) {
         toastr.error(`Error parsing file: ${error}`);
@@ -6103,13 +6632,25 @@ export async function importWorldInfo(file) {
     }
 
     const worldName = file.name.substr(0, file.name.lastIndexOf('.'));
-    const sanitizedWorldName = await getSanitizedFilename(worldName);
-    const allowed = await checkOverwriteExistingData('World Info', world_names, sanitizedWorldName, { interactive: true, actionName: 'Import', deleteAction: (existingName) => deleteWorldInfo(existingName) });
+    const sanitizedWorldName = await getCanonicalWorldInfoName(worldName);
+    if (!sanitizedWorldName) {
+        return false;
+    }
+    const existingWorldName = findMatchingLorebookName(world_names, sanitizedWorldName);
+    const persistedWorldName = existingWorldName ?? sanitizedWorldName;
+    const allowed = await checkOverwriteExistingData('World Info', world_names, sanitizedWorldName, {
+        interactive: true,
+        actionName: 'Import',
+    });
     if (!allowed) {
         return false;
     }
+    formData.set('name', persistedWorldName);
+    const releaseSaveBlock = blockWorldInfoSaves(persistedWorldName);
+    let saveTarget = persistedWorldName;
 
     try {
+        await settleWorldInfoSave(persistedWorldName);
         const result = await fetch('/api/worldinfo/import', {
             method: 'POST',
             headers: getRequestHeaders({ omitContentType: true }),
@@ -6120,10 +6661,12 @@ export async function importWorldInfo(file) {
         if (!result.ok) {
             throw new Error(`Failed to import world info: ${result.statusText}`);
         }
+        saveTarget = null;
 
         const data = await result.json();
 
         if (data.name) {
+            worldInfoCache.delete(data.name);
             await updateWorldInfoList();
 
             const newIndex = world_names.indexOf(data.name);
@@ -6136,6 +6679,8 @@ export async function importWorldInfo(file) {
     } catch (error) {
         console.error('Error importing world info:', error);
         toastr.error(t`Failed to import World Info`);
+    } finally {
+        releaseSaveBlock(saveTarget);
     }
 }
 
@@ -6245,6 +6790,10 @@ export async function moveWorldInfoEntry(sourceName, targetName, uid, { deleteOr
         }
 
         const entryToMove = structuredClone(sourceData.entries[entryUidString]);
+        const sourceOriginalIndex = getWIOriginalDataIndex(sourceData, entryUidString);
+        const sourceOriginalEntry = sourceOriginalIndex >= 0
+            ? structuredClone(sourceData.originalData.entries[sourceOriginalIndex])
+            : null;
 
         const newUid = getFreeWorldEntryUid(targetData);
         if (newUid === null) {
@@ -6258,12 +6807,12 @@ export async function moveWorldInfoEntry(sourceName, targetName, uid, { deleteOr
         entryToMove.displayIndex = maxDisplayIndex + 1;
 
         targetData.entries[newUid] = entryToMove;
+        appendWIOriginalDataEntry(targetData, entryToMove, sourceOriginalEntry ?? undefined);
 
         if (deleteOriginal) {
             delete sourceData.entries[entryUidString];
             // Remove from originalData if it exists
             deleteWIOriginalDataValue(sourceData, entryUidString);
-            // TODO: setWIOriginalDataValue
             console.debug(`[WI Move] Removed entry UID ${entryUidString} from source '${sourceName}'.`);
         }
 
@@ -6420,6 +6969,8 @@ export function initWorldInfo() {
         e.target.value = '';
     });
 
+    $('#world_batch_import_embedded').on('click', importEmbeddedWorldInfoBatch);
+
     $('#world_create_button').on('click', async () => {
         const tempName = getFreeWorldName();
         const finalName = await Popup.show.input(t`Create a new World Info`, t`Enter a name for the new file:`, tempName);
@@ -6451,6 +7002,7 @@ export function initWorldInfo() {
     });
 
     $('#world_editor_select').on('change', async () => {
+        cancelDebounce(debouncedWorldInfoSearch);
         $('#world_info_search').val('');
         worldInfoFilter.setFilterData(FILTER_TYPES.WORLD_INFO_SEARCH, '', true);
         const selectedIndex = String($('#world_editor_select').find(':selected').val());
@@ -6526,12 +7078,12 @@ export function initWorldInfo() {
 
     $('#world_info_overflow_alert').on('change', function () {
         world_info_overflow_alert = !!$(this).prop('checked');
-        saveSettingsDebounced();
+        saveSettings();
     });
 
     $('#world_info_use_group_scoring').on('change', function () {
         world_info_use_group_scoring = !!$(this).prop('checked');
-        saveSettingsDebounced();
+        saveSettings();
     });
 
     $('#world_info_budget_cap').on('input', function () {
@@ -6602,8 +7154,9 @@ export function initWorldInfo() {
 
     $('#world_info_sort_order').on('change', function () {
         const value = String($(this).find(':selected').val());
+        const rule = String($(this).find(':selected').data('rule'));
         // Save sort order, but do not save search sorting, as this is a temporary sorting option
-        if (value !== 'search') accountStorage.setItem(SORT_ORDER_KEY, value);
+        if (rule !== 'search') accountStorage.setItem(SORT_ORDER_KEY, value);
         updateEditor(navigation_option.none);
     });
 

@@ -1,4 +1,5 @@
 import { Fuse } from '../../../lib.js';
+import { MacrosParser } from '../../macros.js';
 
 import { characters, eventSource, event_types, generateQuietPrompt, generateRaw, getRequestHeaders, online_status, saveSettingsDebounced, substituteParams, substituteParamsExtended, system_message_types, this_chid } from '../../../script.js';
 import { dragElement, isMobile } from '../../RossAscends-mods.js';
@@ -3739,4 +3740,33 @@ export async function init() {
             </div>
         `,
     }));
+
+    const getAvailableExpressionsList = () => {
+        const expressions = getCachedExpressions();
+
+        const currentLastMessage = selected_group ? getLastCharacterMessage() : null;
+        const spriteFolderName = getSpriteFolderName(currentLastMessage, currentLastMessage?.name);
+
+        if (!spriteCache[spriteFolderName] || expressions.length === 0) {
+            return expressions.length === 0 ? DEFAULT_EXPRESSIONS : expressions;
+        }
+
+        const available = expressions.filter(label => {
+            const expression = spriteCache[spriteFolderName]?.find(x => x.label === label);
+            return (expression?.files.length ?? 0) > 0;
+        });
+
+        if (available.length === 0) {
+            return expressions;
+        }
+        return available;
+    };
+
+    MacrosParser.registerMacro('availableSprites', () => {
+        return getAvailableExpressionsList().join(', ');
+    }, 'Returns a comma-separated list of expressions that have available sprites for the current character.');
+
+    MacrosParser.registerMacro('availableExpressions', () => {
+        return getAvailableExpressionsList().join(', ');
+    }, 'Returns a comma-separated list of expressions that have available sprites for the current character.');
 }

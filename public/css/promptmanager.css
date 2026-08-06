@@ -113,6 +113,11 @@
         transform var(--sb-transition-slow);
 }
 
+/* Runtime inspection rows have no editable controls, including on mobile. */
+#completion_prompt_manager #completion_prompt_manager_list li.prompt-manager-runtime-row {
+    grid-template-columns: minmax(0, 1fr) minmax(54px, auto);
+}
+
 #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_controls {
     display: flex;
     justify-content: flex-end;
@@ -357,7 +362,7 @@
 }
 
 #completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name > a,
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name > span[title] {
+#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name > span[title]:not(.fa-solid) {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -369,6 +374,13 @@
 }
 
 #completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name .prompt-manager-inspect-action:hover {
+    text-decoration: underline;
+}
+
+#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name .prompt-manager-inspect-action:focus-visible {
+    outline: 2px solid var(--SmartThemeQuoteColor);
+    outline-offset: 2px;
+    border-radius: 4px;
     text-decoration: underline;
 }
 
@@ -614,6 +626,7 @@
     flex-direction: column;
     z-index: var(--sb-z-loader) !important;
     border-radius: 0;
+    -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, black 6%);
     min-width: 0;
@@ -684,6 +697,10 @@
         padding: 10px;
     }
 
+    #completion_prompt_manager #completion_prompt_manager_list li.prompt-manager-runtime-row {
+        grid-template-areas: "name tokens";
+    }
+
     #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_list_head > span:nth-child(2) {
         display: none;
     }
@@ -709,13 +726,17 @@
         scrollbar-width: none;
     }
 
+    /* Keep the controls row clear of the absolutely positioned drag handle. */
+    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt:has(.drag-handle.ui-sortable-handle) > span:nth-child(3) {
+        padding-left: 14px;
+    }
+
     #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt > span:nth-child(3)::-webkit-scrollbar {
         display: none;
     }
 
-    #completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt .prompt_manager_prompt_controls {
-        min-width: 0;
-        width: max-content;
+    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_controls {
+        min-width: max-content;
         justify-content: flex-start;
         gap: 4px;
     }
@@ -725,6 +746,7 @@
         height: clamp(34px, var(--sb-mobile-toggle-size, var(--sb-mobile-touch-target, 44px)), 44px);
         width: clamp(34px, var(--sb-mobile-toggle-size, var(--sb-mobile-touch-target, 44px)), 44px);
         flex-basis: clamp(34px, var(--sb-mobile-toggle-size, var(--sb-mobile-touch-target, 44px)), 44px);
+        flex-shrink: 0;
         border-radius: var(--sb-icon-control-radius, 10px);
     }
 
@@ -859,6 +881,7 @@
         border-radius: 0;
         box-shadow: none;
         background: transparent;
+        -webkit-backdrop-filter: none;
         backdrop-filter: none;
         overflow: visible;
     }

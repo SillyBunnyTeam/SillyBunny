@@ -26,11 +26,15 @@ import {
     entitiesFilter,
     doNewChat,
     online_status,
+    activateSendButtons,
+    deactivateSendButtons,
     messageFormatting,
     extension_prompt_types,
     extension_prompt_roles,
     deleteMessage,
     settingsReady,
+    updateMessageMetaBadges,
+    updateMessageTokenAccounting,
 } from '../script.js';
 import { isMobile, initMovingUI, favsToHotswap } from './RossAscends-mods.js';
 import { normalizeContextRetentionDepth } from './ooc-blocks.js';
@@ -47,11 +51,11 @@ import {
 } from './instruct-mode.js';
 
 import { getTagsList, tag_import_setting, tag_map, tag_sort_mode, tags } from './tags.js';
-import { tokenizers } from './tokenizers.js';
+import { resetTokenCache, tokenizers } from './tokenizers.js';
 import { BIAS_CACHE } from './logit-bias.js';
 import { renderTemplateAsync } from './templates.js';
 
-import { countOccurrences, debounce, delay, download, getFileText, getSanitizedFilename, getStringHash, isOdd, isTrueBoolean, onlyUnique, resetScrollHeight, shuffle, sortMoments, stringToRange, timestampToMoment } from './utils.js';
+import { countOccurrences, debounce, delay, download, getFileText, getSanitizedFilename, getStringHash, isOdd, isTrueBoolean, onlyUnique, resetScrollHeight, shuffle, sortMoments, stringToRange, timestampToMoment, toggleDrawer } from './utils.js';
 import { FILTER_TYPES } from './filters.js';
 import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from './slash-commands/SlashCommandArgument.js';
@@ -59,7 +63,7 @@ import { PARSER_FLAG } from './slash-commands/SlashCommandParser.js';
 import { AUTOCOMPLETE_SELECT_KEY, AUTOCOMPLETE_STATE, AUTOCOMPLETE_WIDTH } from './autocomplete/AutoComplete.js';
 import { SlashCommandEnumValue, enumTypes } from './slash-commands/SlashCommandEnumValue.js';
 import { commonEnumProviders, enumIcons } from './slash-commands/SlashCommandCommonEnumsProvider.js';
-import { POPUP_TYPE, callGenericPopup, fixToastrForDialogs } from './popup.js';
+import { POPUP_RESULT, POPUP_TYPE, callGenericPopup, fixToastrForDialogs } from './popup.js';
 import { loadSystemPrompts } from './sysprompt.js';
 import { fuzzySearchCategories } from './filters.js';
 import { accountStorage } from './util/AccountStorage.js';
@@ -71,6 +75,10 @@ import { t } from './i18n.js';
 import { getBackgroundPath, isCustomBackgroundUrl } from './backgrounds.js';
 import { setSlashCommandParserSettingsGetter } from './slash-commands/SlashCommandParserConfig.js';
 import { persona_description_positions as _persona_description_positions } from './personas.js';
+import { generateCustomCssWithAI, resolveCustomCssAIProfile } from './sillybunny-custom-css-ai.js';
+import { populateConnectionProfileSelect } from './extensions/in-chat-agents/profile-utils.js';
+import { resolveMovingUIViewportState, scaleMovingUIViewportState } from './moving-ui-viewport.js';
+import { ANDROID_STREAMING_SETTING_DEFAULTS, ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY, initializeAndroidStreamingSettings } from './mobile-streaming.js';
 
 export const toastPositionClasses = [
     'toast-top-left',
@@ -157,6 +165,41 @@ const SILLYBUNNY_PALETTE_BINDINGS = Object.freeze([
     ['bot_mes_blur_tint_color', '#bot-mes-blur-tint-color-picker', 'botMesBlurTint'],
     ['shadow_color', '#shadow-color-picker', 'shadow'],
     ['border_color', '#border-color-picker', 'border'],
+]);
+const SB_ACCENT_PROFILE_SEED_VERSION = 2;
+const SB_ACCENT_PROFILES_DRAWER_KEY = 'SBAccentProfilesDrawerExpanded';
+const MAX_SB_ACCENT_PROFILE_NAME_LENGTH = 40;
+const SILLYBUNNY_ACCENT_PROFILE_SEEDS = Object.freeze([
+    { name: 'Warm Signal', quote_text_color: 'rgba(201, 198, 168, 1)', underline_text_color: 'rgba(166, 164, 147, 1)' },
+    { name: 'Story Moss', quote_text_color: 'rgba(114, 192, 144, 1)', underline_text_color: 'rgba(161, 209, 172, 1)' },
+    { name: 'Forest Dawn', quote_text_color: 'rgba(53, 167, 124, 1)', underline_text_color: 'rgba(245, 125, 38, 1)' },
+    { name: 'Rose Glow', quote_text_color: 'rgba(156, 207, 216, 1)', underline_text_color: 'rgba(246, 193, 119, 1)' },
+    { name: 'Moonlit Rose', quote_text_color: 'rgba(244, 114, 182, 1)', underline_text_color: 'rgba(251, 207, 232, 1)' },
+    { name: 'Tidepool', quote_text_color: 'rgba(6, 182, 212, 1)', underline_text_color: 'rgba(125, 211, 252, 1)' },
+    { name: 'Bluebell', quote_text_color: 'rgba(96, 165, 250, 1)', underline_text_color: 'rgba(191, 219, 254, 1)' },
+    { name: 'Lavender Ink', quote_text_color: 'rgba(167, 139, 250, 1)', underline_text_color: 'rgba(196, 181, 253, 1)' },
+    { name: 'Foxglove', quote_text_color: 'rgba(217, 70, 239, 1)', underline_text_color: 'rgba(249, 168, 212, 1)' },
+    { name: 'Copper Sage', quote_text_color: 'rgba(217, 119, 6, 1)', underline_text_color: 'rgba(132, 204, 22, 1)' },
+    { name: 'Ember', quote_text_color: 'rgba(239, 68, 68, 1)', underline_text_color: 'rgba(251, 146, 60, 1)' },
+    { name: 'Seafoam', quote_text_color: 'rgba(45, 212, 191, 1)', underline_text_color: 'rgba(134, 239, 172, 1)' },
+    { name: 'Orchid Static', quote_text_color: 'rgba(192, 132, 252, 1)', underline_text_color: 'rgba(103, 232, 249, 1)' },
+    { name: 'Graphite Glow', quote_text_color: 'rgba(107, 114, 128, 1)', underline_text_color: 'rgba(209, 213, 219, 1)' },
+    { name: 'Aurora Veil', quote_text_color: 'rgba(52, 211, 153, 1)', underline_text_color: 'rgba(129, 140, 248, 1)' },
+    { name: 'Solar Flare', quote_text_color: 'rgba(249, 115, 22, 1)', underline_text_color: 'rgba(250, 204, 21, 1)' },
+    { name: 'Mint Glass', quote_text_color: 'rgba(110, 231, 183, 1)', underline_text_color: 'rgba(167, 243, 208, 1)' },
+    { name: 'Berry Stain', quote_text_color: 'rgba(190, 24, 93, 1)', underline_text_color: 'rgba(244, 114, 182, 1)' },
+    { name: 'Slate Mist', quote_text_color: 'rgba(148, 163, 184, 1)', underline_text_color: 'rgba(203, 213, 225, 1)' },
+    { name: 'Desert Bloom', quote_text_color: 'rgba(234, 88, 12, 1)', underline_text_color: 'rgba(244, 114, 182, 1)' },
+    { name: 'Glacier', quote_text_color: 'rgba(14, 165, 233, 1)', underline_text_color: 'rgba(186, 230, 253, 1)' },
+    { name: 'Coral Reef', quote_text_color: 'rgba(251, 113, 133, 1)', underline_text_color: 'rgba(45, 212, 191, 1)' },
+    { name: 'Plum Wine', quote_text_color: 'rgba(126, 34, 206, 1)', underline_text_color: 'rgba(216, 180, 254, 1)' },
+    { name: 'Sage Smoke', quote_text_color: 'rgba(74, 222, 128, 1)', underline_text_color: 'rgba(163, 163, 163, 1)' },
+    { name: 'Lichen', quote_text_color: 'rgba(132, 204, 22, 1)', underline_text_color: 'rgba(190, 242, 100, 1)' },
+    { name: 'Harvest Gold', quote_text_color: 'rgba(202, 138, 4, 1)', underline_text_color: 'rgba(253, 224, 71, 1)' },
+    { name: 'Indigo Dusk', quote_text_color: 'rgba(79, 70, 229, 1)', underline_text_color: 'rgba(165, 180, 252, 1)' },
+    { name: 'Pearl', quote_text_color: 'rgba(226, 232, 240, 1)', underline_text_color: 'rgba(148, 163, 184, 1)' },
+    { name: 'Mango Tango', quote_text_color: 'rgba(251, 146, 60, 1)', underline_text_color: 'rgba(253, 186, 116, 1)' },
+    { name: 'Neptune', quote_text_color: 'rgba(37, 99, 235, 1)', underline_text_color: 'rgba(34, 211, 238, 1)' },
 ]);
 const THEME_COLOR_PROPERTIES = Object.freeze([
     { key: 'main_text_color', selector: '#main-text-color-picker', type: 'main' },
@@ -273,6 +316,8 @@ export const power_user = {
     ios_webkit_reduce_streaming_work: true,
     ios_webkit_disable_smooth_streaming: true,
     ios_webkit_disable_stream_fade_in: true,
+    ...ANDROID_STREAMING_SETTING_DEFAULTS,
+    [ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY]: true,
 
     // SillyBunny: aggressive DOM unloading for low-memory devices
     aggressive_dom_unload: false,
@@ -294,6 +339,8 @@ export const power_user = {
     sort_order: 'asc',
     sort_rule: null,
     font_scale: 1,
+    line_spacing: 1.2, // SillyBunny: chat message line-spacing slider.
+    message_margin_size: 1, // SillyBunny: chat message margin-size slider.
     blur_strength: 10,
     shadow_width: 2,
     'customCSS-bg-blur': 0,
@@ -306,6 +353,8 @@ export const power_user = {
     italics_text_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeEmColor').trim()}`,
     underline_text_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeUnderlineColor').trim()}`,
     quote_text_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeQuoteColor').trim()}`,
+    sb_accent_profiles: SILLYBUNNY_ACCENT_PROFILE_SEEDS.map(profile => ({ ...profile })),
+    sb_accent_profiles_seed_version: SB_ACCENT_PROFILE_SEED_VERSION,
     blur_tint_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeBlurTintColor').trim()}`,
     chat_tint_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeChatTintColor').trim()}`,
     user_mes_blur_tint_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeUserMesBlurTintColor').trim()}`,
@@ -646,6 +695,69 @@ function switchIcons() {
 function switchTokenCount() {
     $('body').toggleClass('no-tokenCount', !power_user.message_token_count_enabled);
     $('#messageTokensEnabled').prop('checked', power_user.message_token_count_enabled);
+}
+
+let tokenizationCacheRefreshId = 0;
+
+async function refreshTokenizationCachesForSettingsChange() {
+    const refreshId = ++tokenizationCacheRefreshId;
+
+    await resetTokenCache({ toast: false });
+
+    let hasChatTokenCounts = false;
+    for (const message of chat) {
+        if (!message || typeof message !== 'object') {
+            continue;
+        }
+
+        if (message.extra && Object.hasOwn(message.extra, 'token_count')) {
+            delete message.extra.token_count;
+            hasChatTokenCounts = true;
+        }
+
+        if (!Array.isArray(message.swipe_info)) {
+            continue;
+        }
+
+        for (const swipeInfo of message.swipe_info) {
+            if (swipeInfo?.extra && Object.hasOwn(swipeInfo.extra, 'token_count')) {
+                delete swipeInfo.extra.token_count;
+                hasChatTokenCounts = true;
+            }
+        }
+    }
+
+    if (refreshId !== tokenizationCacheRefreshId) {
+        return;
+    }
+
+    if (power_user.message_token_count_enabled) {
+        for (const [messageId, message] of chat.entries()) {
+            if (!message || typeof message !== 'object') {
+                continue;
+            }
+
+            await updateMessageTokenAccounting(message, { countOutput: true });
+            if (refreshId !== tokenizationCacheRefreshId) {
+                return;
+            }
+
+            updateMessageMetaBadges($(`#chat .mes[mesid="${messageId}"]`), message);
+        }
+        hasChatTokenCounts = true;
+    } else {
+        $('#chat .tokenCounterDisplay').text('');
+    }
+
+    if (hasChatTokenCounts) {
+        await saveChatConditional();
+    }
+}
+
+function resetTokenizationCachesForSettingsChange() {
+    void refreshTokenizationCachesForSettingsChange().catch(error => {
+        console.error('Failed to refresh token counts after tokenizer settings changed', error);
+    });
 }
 
 function switchMesIDDisplay() {
@@ -1441,6 +1553,254 @@ function syncThemeColorPickersFromState() {
     for (const [key, selector] of SILLYBUNNY_PALETTE_BINDINGS) {
         $(selector).attr('color', power_user[key]);
     }
+
+    syncCustomAccentPickersFromState();
+    renderAccentProfiles();
+}
+
+function syncCustomAccentPickersFromState() {
+    $('#sb-accent-primary-picker').attr('color', power_user.quote_text_color);
+    $('#sb-accent-secondary-picker').attr('color', power_user.underline_text_color);
+}
+
+function getSeedAccentProfiles() {
+    return SILLYBUNNY_ACCENT_PROFILE_SEEDS.map(profile => ({ ...profile }));
+}
+
+function normalizeAccentProfile(profile) {
+    if (!profile || typeof profile !== 'object') {
+        return null;
+    }
+
+    const name = typeof profile.name === 'string'
+        ? profile.name.trim().replace(/\s+/g, ' ').slice(0, MAX_SB_ACCENT_PROFILE_NAME_LENGTH)
+        : '';
+    const quoteColor = typeof profile.quote_text_color === 'string' ? profile.quote_text_color.trim() : '';
+    const underlineColor = typeof profile.underline_text_color === 'string' ? profile.underline_text_color.trim() : '';
+
+    if (!name || !quoteColor || !underlineColor) {
+        return null;
+    }
+
+    return {
+        name,
+        quote_text_color: quoteColor,
+        underline_text_color: underlineColor,
+    };
+}
+
+function getAccentProfileKey(profile) {
+    return profile.name.toLocaleLowerCase();
+}
+
+function normalizeAccentProfiles() {
+    const sourceProfiles = Array.isArray(power_user.sb_accent_profiles) ? power_user.sb_accent_profiles : [];
+    const normalizedProfiles = sourceProfiles.map(normalizeAccentProfile).filter(Boolean);
+    const previousSeedVersion = Number.isInteger(power_user.sb_accent_profiles_seed_version)
+        ? power_user.sb_accent_profiles_seed_version
+        : 0;
+    let changed = normalizedProfiles.length !== sourceProfiles.length || !Array.isArray(power_user.sb_accent_profiles);
+
+    if (previousSeedVersion < SB_ACCENT_PROFILE_SEED_VERSION) {
+        const profileKeys = new Set(normalizedProfiles.map(getAccentProfileKey));
+        for (const seedProfile of getSeedAccentProfiles()) {
+            const profileKey = getAccentProfileKey(seedProfile);
+            if (!profileKeys.has(profileKey)) {
+                normalizedProfiles.push(seedProfile);
+                profileKeys.add(profileKey);
+                changed = true;
+            }
+        }
+    }
+
+    if (power_user.sb_accent_profiles_seed_version !== SB_ACCENT_PROFILE_SEED_VERSION) {
+        power_user.sb_accent_profiles_seed_version = SB_ACCENT_PROFILE_SEED_VERSION;
+        changed = true;
+    }
+
+    power_user.sb_accent_profiles = normalizedProfiles;
+    return changed;
+}
+
+function getAccentProfile(index) {
+    normalizeAccentProfiles();
+    return power_user.sb_accent_profiles[index] || null;
+}
+
+function renderAccentProfiles() {
+    const list = $('#sb-accent-profiles-list');
+    const emptyState = $('#sb-accent-profiles-empty');
+
+    if (!list.length) {
+        return;
+    }
+
+    normalizeAccentProfiles();
+    list.empty();
+    emptyState.toggle(power_user.sb_accent_profiles.length === 0);
+
+    power_user.sb_accent_profiles.forEach((profile, index) => {
+        const isSelected = profile.quote_text_color === power_user.quote_text_color && profile.underline_text_color === power_user.underline_text_color;
+        const item = $('<div></div>', { class: 'sb-accent-profile-item', role: 'listitem' });
+        const applyButton = $('<button></button>', {
+            type: 'button',
+            class: 'menu_button sb-accent-profile-apply',
+            title: `Apply ${profile.name}`,
+            'aria-label': `Apply ${profile.name} accent profile`,
+            'aria-pressed': String(isSelected),
+        })
+            .attr('data-accent-profile-index', String(index))
+            .toggleClass('is-selected', isSelected)
+            .css('--sb-accent-profile-primary', profile.quote_text_color)
+            .css('--sb-accent-profile-secondary', profile.underline_text_color);
+        const swatches = $('<span></span>', { class: 'sb-accent-profile-swatches', 'aria-hidden': 'true' })
+            .append($('<span></span>', { class: 'sb-accent-profile-swatch sb-accent-profile-swatch-primary' }))
+            .append($('<span></span>', { class: 'sb-accent-profile-swatch sb-accent-profile-swatch-secondary' }));
+        const name = $('<span></span>', { class: 'sb-accent-profile-name' }).text(profile.name);
+        const deleteButton = $('<button></button>', {
+            type: 'button',
+            class: 'menu_button menu_button_icon sb-accent-profile-delete',
+            title: `Delete ${profile.name}`,
+            'aria-label': `Delete ${profile.name} accent profile`,
+        })
+            .attr('data-accent-profile-index', String(index))
+            .append($('<i></i>', { class: 'fa-solid fa-trash-can' }));
+
+        applyButton.append(swatches, name);
+        item.append(applyButton, deleteButton);
+        list.append(item);
+    });
+}
+
+function getStoredSbAccentProfilesDrawerExpanded() {
+    const storedValue = accountStorage.getItem(SB_ACCENT_PROFILES_DRAWER_KEY);
+    if (storedValue === null) {
+        return null;
+    }
+
+    return storedValue === 'true';
+}
+
+function setStoredSbAccentProfilesDrawerExpanded(expanded) {
+    accountStorage.setItem(SB_ACCENT_PROFILES_DRAWER_KEY, String(Boolean(expanded)));
+}
+
+function syncSbAccentProfilesDrawerExpandedState(drawer, expanded) {
+    const toggle = drawer.querySelector(':scope > .inline-drawer-header .sb-accent-profiles-toggle');
+    if (toggle instanceof HTMLElement) {
+        toggle.setAttribute('aria-expanded', String(Boolean(expanded)));
+    }
+}
+
+function bindSbAccentProfilesDrawerPersistence() {
+    const drawer = document.getElementById('sb-accent-profiles-panel');
+    if (!(drawer instanceof HTMLElement) || drawer.dataset.sbAccentProfilesDrawerBound === 'true') {
+        return;
+    }
+
+    drawer.dataset.sbAccentProfilesDrawerBound = 'true';
+
+    const storedExpanded = getStoredSbAccentProfilesDrawerExpanded();
+    toggleDrawer(drawer, storedExpanded ?? false);
+    syncSbAccentProfilesDrawerExpandedState(drawer, storedExpanded ?? false);
+
+    drawer.addEventListener('inline-drawer-toggle', () => {
+        const icon = drawer.querySelector(':scope > .inline-drawer-header .inline-drawer-icon');
+        if (!(icon instanceof HTMLElement)) {
+            return;
+        }
+
+        const expanded = icon.classList.contains('up');
+        syncSbAccentProfilesDrawerExpandedState(drawer, expanded);
+        setStoredSbAccentProfilesDrawerExpanded(expanded);
+    });
+}
+
+function applyAccentColors(quoteColor, underlineColor) {
+    power_user.quote_text_color = quoteColor;
+    power_user.underline_text_color = underlineColor;
+    applyThemeColor('quote');
+    applyThemeColor('underline');
+    syncCustomAccentPickersFromState();
+    renderAccentProfiles();
+    saveSettingsDebounced();
+}
+
+function applyAccentProfile(index) {
+    const profile = getAccentProfile(index);
+
+    if (!profile) {
+        return;
+    }
+
+    applyAccentColors(profile.quote_text_color, profile.underline_text_color);
+    toastr.info(`${profile.name} applied.`, 'Accent profile');
+}
+
+async function saveAccentProfile() {
+    const newName = await callGenericPopup('Save current accent colors as:', POPUP_TYPE.INPUT, 'My Accent', {
+        okButton: 'Save',
+        cancelButton: 'Cancel',
+    });
+
+    if (!newName) {
+        return;
+    }
+
+    const newProfile = normalizeAccentProfile({
+        name: String(newName),
+        quote_text_color: power_user.quote_text_color,
+        underline_text_color: power_user.underline_text_color,
+    });
+
+    if (!newProfile) {
+        toastr.warning('Accent profile name is required.', 'Accent profile');
+        return;
+    }
+
+    normalizeAccentProfiles();
+    const existingIndex = power_user.sb_accent_profiles.findIndex(profile => profile.name.toLocaleLowerCase() === newProfile.name.toLocaleLowerCase());
+
+    if (existingIndex !== -1) {
+        const confirm = await callGenericPopup(`Replace the "${newProfile.name}" accent profile?`, POPUP_TYPE.CONFIRM, '', {
+            okButton: 'Replace',
+            cancelButton: 'Cancel',
+        });
+
+        if (!confirm) {
+            return;
+        }
+
+        power_user.sb_accent_profiles[existingIndex] = newProfile;
+    } else {
+        power_user.sb_accent_profiles.push(newProfile);
+    }
+
+    renderAccentProfiles();
+    saveSettingsDebounced();
+    toastr.success(`${newProfile.name} saved.`, 'Accent profile');
+}
+
+async function deleteAccentProfile(index) {
+    const profile = getAccentProfile(index);
+
+    if (!profile) {
+        return;
+    }
+
+    const confirm = await callGenericPopup(`Delete the "${profile.name}" accent profile?`, POPUP_TYPE.CONFIRM, '', {
+        okButton: 'Delete',
+        cancelButton: 'Cancel',
+    });
+
+    if (!confirm) {
+        return;
+    }
+
+    power_user.sb_accent_profiles.splice(index, 1);
+    renderAccentProfiles();
+    saveSettingsDebounced();
+    toastr.success(`${profile.name} deleted.`, 'Accent profile');
 }
 
 function applySillyBunnyPalettePreset(presetId) {
@@ -1482,6 +1842,124 @@ function applyCustomCSS() {
     }
     style.innerHTML = power_user.custom_css;
     applyCustomThemeStyleEntries();
+}
+
+function buildCustomCssAiPopup(currentCss) {
+    const content = $(`
+        <div class="flex-container flexFlowColumn flexGap5">
+            <h3>Generate Custom CSS</h3>
+            <label for="custom_css_ai_instruction"><small>Describe what you want the CSS to change</small></label>
+            <textarea id="custom_css_ai_instruction" class="text_pole textarea_compact monospace" rows="6" placeholder="Example: Make message cards softer, with rounded corners and subtle accent borders."></textarea>
+            <label for="custom_css_ai_profile"><small>Connection profile</small></label>
+            <select id="custom_css_ai_profile" class="text_pole margin0 wide100p"></select>
+            <div class="flex-container flexFlowColumn flexGap5">
+                <label class="checkbox_label"><input type="radio" name="custom_css_ai_apply_mode" value="replace" checked><span>Replace current CSS</span></label>
+                <label class="checkbox_label"><input type="radio" name="custom_css_ai_apply_mode" value="append"><span>Append below current CSS</span></label>
+            </div>
+            <small>The AI sees your current Custom CSS and the active SillyBunny theme variables. It should return raw CSS only.</small>
+            <small>Current Custom CSS length: ${String(currentCss ?? '').length.toLocaleString()} characters.</small>
+        </div>
+    `);
+
+    const activeProfileId = resolveCustomCssAIProfile('');
+    populateConnectionProfileSelect(content.find('#custom_css_ai_profile').get(0), {
+        emptyLabel: 'Use active connection profile',
+        selectedValue: activeProfileId,
+    });
+
+    return content;
+}
+
+function setCustomCssAiWandBusy(isBusy) {
+    const button = $('#custom_css_ai_wand');
+    const icon = button.find('i').first();
+
+    button.toggleClass('is-busy disabled', isBusy)
+        .attr('aria-busy', String(isBusy))
+        .attr('aria-disabled', String(isBusy));
+    icon.toggleClass('fa-wand-magic-sparkles', !isBusy)
+        .toggleClass('fa-spinner fa-spin', isBusy);
+}
+
+async function handleCustomCssAiWandClick() {
+    const button = $('#custom_css_ai_wand');
+    if (button.hasClass('is-busy')) {
+        return;
+    }
+
+    const currentCss = String($('#customCSS').val() ?? '');
+    const content = buildCustomCssAiPopup(currentCss);
+    const result = await callGenericPopup(content, POPUP_TYPE.CONFIRM, '', {
+        okButton: 'Generate CSS',
+        cancelButton: 'Cancel',
+        wide: true,
+        leftAlign: true,
+        allowVerticalScrolling: true,
+        onOpen: () => content.find('#custom_css_ai_instruction').trigger('focus'),
+        onClosing: popup => {
+            if (popup.result !== POPUP_RESULT.AFFIRMATIVE) {
+                return true;
+            }
+
+            if (!String(content.find('#custom_css_ai_instruction').val() ?? '').trim()) {
+                globalThis.toastr?.warning?.('Describe the CSS change first.');
+                return false;
+            }
+
+            return true;
+        },
+    });
+
+    if (result !== POPUP_RESULT.AFFIRMATIVE) {
+        return;
+    }
+
+    const instruction = String(content.find('#custom_css_ai_instruction').val() ?? '').trim();
+    const selectedProfileId = String(content.find('#custom_css_ai_profile').val() ?? '').trim();
+    const effectiveProfileId = resolveCustomCssAIProfile(selectedProfileId);
+    const applyMode = String(content.find('input[name="custom_css_ai_apply_mode"]:checked').val() ?? 'replace');
+
+    if (!effectiveProfileId && online_status === 'no_connection') {
+        globalThis.toastr?.warning?.('Connect to an API or select a usable connection profile first.');
+        return;
+    }
+
+    setCustomCssAiWandBusy(true);
+    globalThis.toastr?.info?.('Generating custom CSS...', '', { timeOut: 0, extendedTimeOut: 0 });
+    deactivateSendButtons({ markBodyGenerating: false });
+
+    try {
+        const generatedCss = await generateCustomCssWithAI({
+            instruction,
+            currentCss,
+            profileId: effectiveProfileId,
+        });
+
+        if (!generatedCss.trim()) {
+            globalThis.toastr?.clear?.();
+            globalThis.toastr?.error?.('AI returned an empty CSS response.');
+            return;
+        }
+
+        const nextCss = applyMode === 'append' && currentCss.trim()
+            ? `${currentCss.trimEnd()}\n\n${generatedCss}`
+            : generatedCss;
+
+        $('#customCSS').val(nextCss);
+        power_user.custom_css = nextCss;
+        applyCustomCSS();
+        saveSettingsDebounced();
+        globalThis.toastr?.clear?.();
+        globalThis.toastr?.success?.('Generated custom CSS.');
+    } catch (error) {
+        globalThis.toastr?.clear?.();
+        if (!String(error?.message ?? error ?? '').match(/abort|cancel/i)) {
+            globalThis.toastr?.error?.(`Custom CSS generation failed: ${error?.message ?? error}`);
+        }
+    } finally {
+        activateSendButtons();
+        setCustomCssAiWandBusy(false);
+    }
 }
 
 function getGoogleFontStylesheetId() {
@@ -1618,6 +2096,43 @@ function applyFontScale(type) {
     $('#font_scale').val(power_user.font_scale);
 }
 
+function applyLineSpacing(type) {
+    const setLineSpacing = () => {
+        const lineSpacing = Number(power_user.line_spacing);
+        const spacingScale = Number.isFinite(lineSpacing) ? lineSpacing : 1.2;
+
+        document.documentElement.style.setProperty('--lineSpacingDesktopLeading', `${spacingScale * 0.5}rem`);
+        document.documentElement.style.setProperty('--lineSpacingMobileLeading', `${spacingScale * 0.42}rem`);
+    };
+
+    if (type === 'forced') {
+        setLineSpacing();
+    } else {
+        $('#line_spacing').off('mouseup touchend').on('mouseup touchend', setLineSpacing);
+    }
+
+    $('#line_spacing_counter').val(power_user.line_spacing);
+    $('#line_spacing').val(power_user.line_spacing);
+}
+
+function applyMessageMarginSize(type) {
+    const setMessageMarginSize = () => {
+        const marginSize = Number(power_user.message_margin_size);
+        const marginScale = Number.isFinite(marginSize) ? marginSize : 1;
+
+        document.documentElement.style.setProperty('--messageMarginScale', String(marginScale));
+    };
+
+    if (type === 'forced') {
+        setMessageMarginSize();
+    } else {
+        $('#message_margin_size').off('mouseup touchend').on('mouseup touchend', setMessageMarginSize);
+    }
+
+    $('#message_margin_size_counter').val(power_user.message_margin_size);
+    $('#message_margin_size').val(power_user.message_margin_size);
+}
+
 /**
  * Checks if the chat needs to be reloaded to apply media display settings.
  * @returns {boolean} True if the chat needs reload to apply media display settings
@@ -1668,6 +2183,11 @@ function applyTheme(name) {
     }
     applyThemeEffects();
 
+    if (typeof theme.custom_css === 'string') {
+        power_user.custom_css = theme.custom_css;
+        applyCustomCSS();
+    }
+
     console.log('theme applied: ' + name);
 }
 
@@ -1706,6 +2226,8 @@ async function showDebugMenu() {
 export function applyPowerUserSettings() {
     switchUiMode();
     applyFontScale('forced');
+    applyLineSpacing('forced');
+    applyMessageMarginSize('forced');
     applyThemeColor();
     applyChatWidth('forced');
     applyAvatarStyle();
@@ -1787,6 +2309,8 @@ function getExampleMessagesBehavior() {
 //MARK: loadPowerUser
 export async function loadPowerUserSettings(settings, data) {
     const defaultStscript = JSON.parse(JSON.stringify(power_user.stscript));
+    const hasAccentProfileSeedVersion = settings.power_user !== undefined && Object.hasOwn(settings.power_user, 'sb_accent_profiles_seed_version');
+    const savedPowerUserSettings = settings.power_user && typeof settings.power_user === 'object' ? settings.power_user : {};
     customThemeStyleEntries = settings.extension_settings?.CTSI?.entries && typeof settings.extension_settings.CTSI.entries === 'object'
         ? { ...settings.extension_settings.CTSI.entries }
         : {};
@@ -1801,6 +2325,18 @@ export async function loadPowerUserSettings(settings, data) {
             delete settings.power_user.auto_sort_tags;
         }
         Object.assign(power_user, settings.power_user);
+    }
+
+    if (!hasAccentProfileSeedVersion) {
+        power_user.sb_accent_profiles_seed_version = 0;
+    }
+
+    if (normalizeAccentProfiles()) {
+        saveSettingsDebounced();
+    }
+
+    if (initializeAndroidStreamingSettings(power_user, savedPowerUserSettings)) {
+        saveSettingsDebounced();
     }
 
     if (power_user.stscript === undefined) {
@@ -1938,7 +2474,7 @@ export async function loadPowerUserSettings(settings, data) {
     $('#noShadowsmode').prop('checked', power_user.noShadows);
     $('#google_font_preset').val(power_user.google_font);
     $('#google_font_custom').val(power_user.google_font);
-    $('#start_reply_with').text(power_user.user_prompt_bias);
+    $('.start-reply-with-input').val(power_user.user_prompt_bias);
     $('#chat-show-reply-prefix-checkbox').prop('checked', power_user.show_user_prompt_bias);
     $('#auto_continue_enabled').prop('checked', power_user.auto_continue.enabled);
     $('#auto_continue_allow_chat_completions').prop('checked', power_user.auto_continue.allow_chat_completions);
@@ -2013,12 +2549,23 @@ export async function loadPowerUserSettings(settings, data) {
     $('#ios_webkit_reduce_streaming_work').prop('checked', power_user.ios_webkit_reduce_streaming_work);
     $('#ios_webkit_disable_smooth_streaming').prop('checked', power_user.ios_webkit_disable_smooth_streaming);
     $('#ios_webkit_disable_stream_fade_in').prop('checked', power_user.ios_webkit_disable_stream_fade_in);
+    $('#android_conservative_streaming').prop('checked', power_user.android_conservative_streaming);
+    $('#android_reduce_streaming_work').prop('checked', power_user.android_reduce_streaming_work);
+    $('#android_streaming_basic_markdown').prop('checked', power_user.android_streaming_basic_markdown);
+    $('#android_disable_smooth_streaming').prop('checked', power_user.android_disable_smooth_streaming);
+    $('#android_disable_stream_fade_in').prop('checked', power_user.android_disable_stream_fade_in);
     $('#aggressive_dom_unload').prop('checked', power_user.aggressive_dom_unload);
     $('#aggressive_dom_window_size').val(power_user.aggressive_dom_window_size);
     $('#aggressive_dom_window_size_counter').val(power_user.aggressive_dom_window_size);
 
     $('#font_scale').val(power_user.font_scale);
     $('#font_scale_counter').val(power_user.font_scale);
+
+    $('#line_spacing').val(power_user.line_spacing);
+    $('#line_spacing_counter').val(power_user.line_spacing);
+
+    $('#message_margin_size').val(power_user.message_margin_size);
+    $('#message_margin_size_counter').val(power_user.message_margin_size);
 
     $('#blur_strength').val(power_user.blur_strength);
     $('#blur_strength_counter').val(power_user.blur_strength);
@@ -2121,58 +2668,10 @@ function applyMovingUIStateStyles(element, state) {
     }
 }
 
-function parseMovingUIStatePixel(value) {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-        return value;
-    }
-
-    if (typeof value !== 'string') {
-        return null;
-    }
-
-    const trimmedValue = value.trim();
-    if (!/^-?\d+(?:\.\d+)?(?:px)?$/.test(trimmedValue)) {
-        return null;
-    }
-
-    return Number.parseFloat(trimmedValue);
-}
-
 function getMovingUIViewportSize() {
     return {
         width: window.innerWidth || document.documentElement.clientWidth || 0,
         height: window.innerHeight || document.documentElement.clientHeight || 0,
-    };
-}
-
-function getMovingUIStateBounds(state) {
-    const { width: viewportWidth, height: viewportHeight } = getMovingUIViewportSize();
-    const width = parseMovingUIStatePixel(state?.width);
-    const height = parseMovingUIStatePixel(state?.height);
-    const right = parseMovingUIStatePixel(state?.right);
-    const bottom = parseMovingUIStatePixel(state?.bottom);
-    let left = parseMovingUIStatePixel(state?.left);
-    let top = parseMovingUIStatePixel(state?.top);
-
-    if (left === null && right !== null && width !== null) {
-        left = viewportWidth - right - width;
-    }
-
-    if (top === null && bottom !== null && height !== null) {
-        top = viewportHeight - bottom - height;
-    }
-
-    if (left === null || top === null || width === null || height === null) {
-        return null;
-    }
-
-    return {
-        left,
-        top,
-        right: left + width,
-        bottom: top + height,
-        width,
-        height,
     };
 }
 
@@ -2211,7 +2710,27 @@ function isMovingUIStateOutOfViewport(element, state) {
         return isMovingUIBoundsOutOfViewport(elementBounds);
     }
 
-    return isMovingUIBoundsOutOfViewport(getMovingUIStateBounds(state));
+    const { width: viewportWidth, height: viewportHeight } = getMovingUIViewportSize();
+    const resolution = resolveMovingUIViewportState(state, { viewportWidth, viewportHeight });
+    return resolution.canContain && resolution.changed;
+}
+
+function containMovingUIElement(element, state) {
+    const { width: viewportWidth, height: viewportHeight } = getMovingUIViewportSize();
+    const resolution = resolveMovingUIViewportState(state, {
+        viewportWidth,
+        viewportHeight,
+        elementBounds: getMovingUIElementBounds(element),
+    });
+
+    if (resolution.changed) {
+        Object.assign(state, resolution.state);
+        for (const property of Object.keys(resolution.updates)) {
+            applyMovingUIStateStyle(element, property, resolution.state[property]);
+        }
+    }
+
+    return resolution.changed;
 }
 
 function syncMovingUIOffscreenWarning(showWarning) {
@@ -2227,21 +2746,34 @@ export function loadMovingUIState() {
         && power_user.movingUI === true) {
         console.debug('loading movingUI state');
         let hasOffscreenPanel = false;
+        let didContainPanel = false;
         for (var elmntName of Object.keys(power_user.movingUIState)) {
             var elmntState = power_user.movingUIState[elmntName];
             try {
                 const targetNames = elmntName === 'nav-panel-shared-size' ? ['left-nav-panel', 'right-nav-panel'] : [elmntName];
+                const targetElements = [];
+                let sharedStateChanged = false;
                 let applied = false;
                 for (const targetName of targetNames) {
                     var elmnt = $('#' + $.escapeSelector(targetName));
                     if (elmnt.length) {
                         console.debug(`loading state for ${targetName} from ${elmntName}`);
                         applyMovingUIStateStyles(elmnt[0], elmntState);
-                        // SillyBunny: make bad persisted panel geometry recoverable from Settings.
-                        hasOffscreenPanel = isMovingUIStateOutOfViewport(elmnt[0], elmntState) || hasOffscreenPanel;
+                        // Persisted geometry must never enlarge the document or
+                        // leave a panel unreachable after a viewport/monitor change.
+                        const didContainTarget = containMovingUIElement(elmnt[0], elmntState);
+                        didContainPanel = didContainTarget || didContainPanel;
+                        sharedStateChanged = didContainTarget || sharedStateChanged;
+                        targetElements.push(elmnt[0]);
                         applied = true;
                     }
                 }
+                if (sharedStateChanged && targetElements.length > 1) {
+                    targetElements.forEach(element => applyMovingUIStateStyles(element, elmntState));
+                }
+                targetElements.forEach(element => {
+                    hasOffscreenPanel = isMovingUIStateOutOfViewport(element, elmntState) || hasOffscreenPanel;
+                });
                 if (!applied) {
                     console.debug(`skipping ${elmntName} because it doesn't exist in the DOM`);
                 }
@@ -2250,6 +2782,9 @@ export function loadMovingUIState() {
             }
         }
         syncMovingUIOffscreenWarning(hasOffscreenPanel);
+        if (didContainPanel) {
+            saveSettingsDebounced();
+        }
     } else {
         console.debug('skipping movingUI state load');
         syncMovingUIOffscreenWarning(false);
@@ -2861,13 +3396,13 @@ async function importTheme(file) {
         }
     }
 
-    themes.push(parsed);
-    await saveTheme(parsed.name, getNewTheme(parsed));
-    const option = document.createElement('option');
-    option.selected = false;
-    option.value = parsed.name;
-    option.innerText = parsed.name;
-    $('#themes').append(option);
+    const theme = getNewTheme(parsed);
+    await saveTheme(parsed.name, theme);
+    applyTheme(parsed.name);
+    if (typeof theme.custom_css === 'string') {
+        power_user.custom_css = theme.custom_css;
+        applyCustomCSS();
+    }
     saveSettingsDebounced();
     toastr.success(parsed.name, 'Theme imported');
 }
@@ -2954,6 +3489,9 @@ function getNewTheme(parsed) {
         if (Object.hasOwn(theme, key)) {
             theme[key] = parsed[key];
         }
+    }
+    if (typeof parsed.custom_css === 'string') {
+        theme.custom_css = parsed.custom_css;
     }
     return theme;
 }
@@ -3526,25 +4064,15 @@ jQuery(async () => {
         const scaleX = parseFloat(Number(window.innerWidth / coreTruthWinWidth).toFixed(4));
 
         if (Object.keys(power_user.movingUIState).length > 0) {
+            let hasOffscreenPanel = false;
             for (var elmntName of Object.keys(power_user.movingUIState)) {
                 var elmntState = power_user.movingUIState[elmntName];
-                var oldHeight = elmntState.height;
-                var oldWidth = elmntState.width;
-                var oldLeft = elmntState.left;
-                var oldTop = elmntState.top;
-                var oldBottom = elmntState.bottom;
-                var oldRight = elmntState.right;
-                var newHeight, newWidth, newTop, newBottom, newLeft, newRight;
-
-                newHeight = Number(oldHeight * scaleY).toFixed(0);
-                newWidth = Number(oldWidth * scaleX).toFixed(0);
-                newLeft = Number(oldLeft * scaleX).toFixed(0);
-                newTop = Number(oldTop * scaleY).toFixed(0);
-                newBottom = Number(oldBottom * scaleY).toFixed(0);
-                newRight = Number(oldRight * scaleX).toFixed(0);
                 try {
                     const targetNames = elmntName === 'nav-panel-shared-size' ? ['left-nav-panel', 'right-nav-panel'] : [elmntName];
+                    const targetElements = [];
+                    let sharedStateChanged = false;
                     let applied = false;
+                    Object.assign(elmntState, scaleMovingUIViewportState(elmntState, { scaleX, scaleY }));
 
                     for (const targetName of targetNames) {
                         const elmnt = $('#' + $.escapeSelector(targetName));
@@ -3552,28 +4080,30 @@ jQuery(async () => {
                             continue;
                         }
 
-                        console.log(`scaling ${targetName} by ${scaleX}x${scaleY} to ${newWidth}x${newHeight}`);
+                        console.log(`scaling ${targetName} by ${scaleX}x${scaleY} to ${elmntState.width}x${elmntState.height}`);
                         const element = elmnt[0];
-                        applyMovingUIStateStyle(element, 'height', newHeight);
-                        applyMovingUIStateStyle(element, 'width', newWidth);
-                        applyMovingUIStateStyle(element, 'inset', `${newTop}px ${newRight}px ${newBottom}px ${newLeft}px`);
+                        applyMovingUIStateStyles(element, elmntState);
+                        const didContainTarget = containMovingUIElement(element, elmntState);
+                        sharedStateChanged = didContainTarget || sharedStateChanged;
+                        targetElements.push(element);
                         applied = true;
                     }
 
-                    if (applied) {
-                        power_user.movingUIState[elmntName].height = newHeight;
-                        power_user.movingUIState[elmntName].width = newWidth;
-                        power_user.movingUIState[elmntName].top = newTop;
-                        power_user.movingUIState[elmntName].bottom = newBottom;
-                        power_user.movingUIState[elmntName].left = newLeft;
-                        power_user.movingUIState[elmntName].right = newRight;
-                    } else {
+                    if (sharedStateChanged && targetElements.length > 1) {
+                        targetElements.forEach(element => applyMovingUIStateStyles(element, elmntState));
+                    }
+                    targetElements.forEach(element => {
+                        hasOffscreenPanel = isMovingUIStateOutOfViewport(element, elmntState) || hasOffscreenPanel;
+                    });
+
+                    if (!applied) {
                         console.log(`skipping ${elmntName} because it doesn't exist in the DOM`);
                     }
                 } catch (err) {
                     console.log(`error occurred while processing ${elmntName}: ${err}`);
                 }
             }
+            syncMovingUIOffscreenWarning(hasOffscreenPanel);
         } else {
             console.debug('aborting MUI reset', Object.keys(power_user.movingUIState).length);
         }
@@ -3656,8 +4186,10 @@ jQuery(async () => {
         reloadMarkdownProcessor();
     });
 
-    $('#start_reply_with').on('input', function () {
-        power_user.user_prompt_bias = String($(this).val());
+    $('.start-reply-with-input').on('input', function () {
+        const value = String($(this).val());
+        power_user.user_prompt_bias = value;
+        $('.start-reply-with-input').not(this).val(value);
         saveSettingsDebounced();
     });
 
@@ -3723,6 +4255,16 @@ jQuery(async () => {
         power_user.custom_css = String($('#customCSS').val());
         saveSettingsDebounced();
         applyCustomCSS();
+    });
+
+    // SillyBunny: Custom CSS AI wand uses the active Connection Manager profile without swapping global state.
+    $('#custom_css_ai_wand').on('click', () => { void handleCustomCssAiWandClick(); });
+    $('#custom_css_ai_wand').on('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+            return;
+        }
+        event.preventDefault();
+        $('#custom_css_ai_wand').trigger('click');
     });
 
     $('#google_font_preset').on('change', function () {
@@ -3852,6 +4394,31 @@ jQuery(async () => {
         saveSettingsDebounced();
     });
 
+    $('#android_conservative_streaming').on('input', function () {
+        power_user.android_conservative_streaming = !!$(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
+    $('#android_reduce_streaming_work').on('input', function () {
+        power_user.android_reduce_streaming_work = !!$(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
+    $('#android_streaming_basic_markdown').on('input', function () {
+        power_user.android_streaming_basic_markdown = !!$(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
+    $('#android_disable_smooth_streaming').on('input', function () {
+        power_user.android_disable_smooth_streaming = !!$(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
+    $('#android_disable_stream_fade_in').on('input', function () {
+        power_user.android_disable_stream_fade_in = !!$(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
     // SillyBunny: aggressive DOM unloading for low-memory devices
     $('#aggressive_dom_unload').on('input', function () {
         power_user.aggressive_dom_unload = !!$(this).prop('checked');
@@ -3869,6 +4436,22 @@ jQuery(async () => {
         power_user.font_scale = Number($(this).val());
         $('#font_scale_counter').val(power_user.font_scale);
         applyFontScale(applyMode);
+        saveSettingsDebounced();
+    });
+
+    $('input[name="line_spacing"]').on('input', async function (e, data) {
+        const applyMode = data?.forced ? 'forced' : 'normal';
+        power_user.line_spacing = Number($(this).val());
+        $('#line_spacing_counter').val(power_user.line_spacing);
+        applyLineSpacing(applyMode);
+        saveSettingsDebounced();
+    });
+
+    $('input[name="message_margin_size"]').on('input', async function (e, data) {
+        const applyMode = data?.forced ? 'forced' : 'normal';
+        power_user.message_margin_size = Number($(this).val());
+        $('#message_margin_size_counter').val(power_user.message_margin_size);
+        applyMessageMarginSize(applyMode);
         saveSettingsDebounced();
     });
 
@@ -4077,6 +4660,7 @@ jQuery(async () => {
         const value = $(this).find(':selected').val();
         power_user.tokenizer = Number(value);
         BIAS_CACHE.clear();
+        resetTokenizationCachesForSettingsChange();
         saveSettingsDebounced();
 
         // Trigger character editor re-tokenize
@@ -4117,6 +4701,7 @@ jQuery(async () => {
 
     $('#token_padding').on('input', function () {
         power_user.token_padding = Number($(this).val());
+        resetTokenizationCachesForSettingsChange();
         saveSettingsDebounced();
     });
 
@@ -4583,13 +5168,23 @@ jQuery(async () => {
         }
 
         if (quoteColor && underlineColor) {
-            power_user.quote_text_color = quoteColor;
-            power_user.underline_text_color = underlineColor;
-            applyThemeColor('quote');
-            applyThemeColor('underline');
-            saveSettingsDebounced();
+            applyAccentColors(quoteColor, underlineColor);
             toastr.info('Accent colors applied.', 'SillyBunny palette');
         }
+    });
+
+    bindSbAccentProfilesDrawerPersistence();
+
+    $(document).on('click', '#sb-accent-profile-save', async function () {
+        await saveAccentProfile();
+    });
+
+    $(document).on('click', '.sb-accent-profile-apply', function () {
+        applyAccentProfile(Number($(this).attr('data-accent-profile-index')));
+    });
+
+    $(document).on('click', '.sb-accent-profile-delete', async function () {
+        await deleteAccentProfile(Number($(this).attr('data-accent-profile-index')));
     });
 
     // Custom RGB accent toggle
@@ -4606,12 +5201,14 @@ jQuery(async () => {
     $('#sb-accent-primary-picker').on('change', (/** @type {ColorPickerEvent} */ evt) => {
         power_user.quote_text_color = evt.detail.rgba;
         applyThemeColor('quote');
+        renderAccentProfiles();
         saveSettingsDebounced();
     });
 
     $('#sb-accent-secondary-picker').on('change', (/** @type {ColorPickerEvent} */ evt) => {
         power_user.underline_text_color = evt.detail.rgba;
         applyThemeColor('underline');
+        renderAccentProfiles();
         saveSettingsDebounced();
     });
 
@@ -4994,7 +5591,7 @@ jQuery(async () => {
             }
 
             power_user.user_prompt_bias = String(value ?? '');
-            $('#start_reply_with').val(power_user.user_prompt_bias);
+            $('.start-reply-with-input').val(power_user.user_prompt_bias);
             saveSettingsDebounced();
 
             return power_user.user_prompt_bias;

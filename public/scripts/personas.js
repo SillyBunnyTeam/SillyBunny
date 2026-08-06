@@ -10,12 +10,15 @@ import {
     eventSource,
     event_types,
     getCurrentChatId,
+    getMobileThumbnailUrl,
     getRequestHeaders,
     getThumbnailUrl,
+    getThumbnailUrlForViewport,
     groupToEntity,
     menu_type,
     name1,
     name2,
+    parseAvatarSource,
     reloadCurrentChat,
     saveChatConditional,
     saveMetadata,
@@ -69,6 +72,7 @@ import { commonEnumMatchProviders, commonEnumProviders, enumIcons } from './slas
 import { SlashCommandEnumValue, enumTypes } from './slash-commands/SlashCommandEnumValue.js';
 import { SlashCommandParser } from './slash-commands/SlashCommandParser.js';
 import { isFirefox } from './browser-fixes.js';
+import { isMobile } from './RossAscends-mods.js';
 import { slashCommandReturnHelper } from './slash-commands/SlashCommandReturnHelper.js';
 
 /**
@@ -142,7 +146,31 @@ function switchPersonaGridView() {
  * @returns {string} User avatar URL
  */
 export function getUserAvatar(avatarImg) {
-    return `${USER_AVATAR_PATH}${avatarImg}`;
+    return `${USER_AVATAR_PATH}${encodeURIComponent(avatarImg)}`;
+}
+
+// SillyBunny: Added to support mobile thumbnail optimization and viewport-aware avatar rendering.
+// Returns all avatar source variants (desktop thumbnail, mobile thumbnail, original) for performance.
+/**
+ * Gets every source used to render a persona avatar.
+ * @param {string} avatarId Persona avatar file name
+ * @param {boolean} [cacheBust=false] Whether to cache-bust every source
+ * @returns {{display: string, thumbnail: string, original: string, desktopThumbnail: string, mobileThumbnail: string}}
+ */
+function getPersonaAvatarSources(avatarId, cacheBust = false) {
+    const desktopThumbnail = getThumbnailUrl('persona', avatarId, cacheBust);
+    const mobileThumbnail = getMobileThumbnailUrl('persona', avatarId, cacheBust);
+    const originalAvatar = getUserAvatar(avatarId);
+    const original = cacheBust ? `${originalAvatar}?t=${Date.now()}` : originalAvatar;
+    const mobile = isMobile();
+
+    return {
+        display: mobile ? mobileThumbnail : original,
+        thumbnail: mobile ? mobileThumbnail : desktopThumbnail,
+        original,
+        desktopThumbnail,
+        mobileThumbnail,
+    };
 }
 
 function createPersonaAppendixId(name = 'appendix') {
@@ -259,7 +287,10 @@ function composePersonaDescription(avatarId = user_avatar) {
     for (const appendix of getActivePersonaAppendices(avatarId)) {
         const description = String(appendix.description ?? '').trim();
         if (description) {
-            chunks.push(`[${appendix.name}]\n${description}`);
+            // SillyBunny: wrap the appendix label in parentheses instead of square brackets.
+            // Mirrors the Conversation Mode change so the persona shape is consistent across
+            // modes and avoids colliding with any square-bracket command grammar downstream.
+            chunks.push(`(${appendix.name})\n${description}`);
         }
     }
 
@@ -356,17 +387,72 @@ export async function setUserAvatar(imgfile, { toastPersonaNameChange = true, na
     await eventSource.emit(event_types.PERSONA_CHANGED, user_avatar);
 }
 
-function reloadUserAvatar(force = false) {
-    $('.mes').each(function () {
-        const avatarImg = $(this).find('.avatar img');
-        if (force) {
-            avatarImg.attr('src', avatarImg.attr('src'));
-        }
-
-        if ($(this).attr('is_user') == 'true' && $(this).attr('force_avatar') == 'false') {
-            avatarImg.attr('src', getThumbnailUrl('persona', user_avatar));
-        }
+// SillyBunny: Added avatar source tracking functions for mobile thumbnail optimization.
+// These helpers enable efficient avatar updates across desktop and mobile viewports.
+function messageUsesPersonaAvatar(avatarImg, avatarId) {
+    return ['src', 'data-thumbnail-src', 'data-original-src'].some((attribute) => {
+        const source = parseAvatarSource(avatarImg.getAttribute(attribute));
+        return source?.type === 'persona' && source.file === avatarId;
     });
+}
+
+function updateMessagePersonaAvatar(messageElement, sources, { avatarId = '', includeUnforced = true } = {}) {
+    if (!(messageElement instanceof HTMLElement)
+        || messageElement.getAttribute('is_user') !== 'true') {
+        return;
+    }
+
+    const avatarImg = messageElement.querySelector('.avatar img');
+    if (!(avatarImg instanceof HTMLImageElement)) {
+        return;
+    }
+
+    const isForced = messageElement.getAttribute('force_avatar') !== 'false';
+    if ((isForced && (!avatarId || !messageUsesPersonaAvatar(avatarImg, avatarId)))
+        || (!isForced && !includeUnforced)) {
+        return;
+    }
+
+    avatarImg.setAttribute('src', sources.display);
+    avatarImg.setAttribute('data-thumbnail-src', sources.thumbnail);
+    avatarImg.setAttribute('data-original-src', sources.original);
+
+    const displayCssUrl = `url(${JSON.stringify(sources.display)})`;
+    messageElement.style.setProperty('--sb-message-avatar', displayCssUrl);
+    messageElement.style.setProperty('--mes-avatar-url', displayCssUrl);
+    messageElement.style.setProperty('--mes-avatar-thumb-url', `url(${JSON.stringify(sources.thumbnail)})`);
+    messageElement.style.setProperty('--mes-avatar-original-url', `url(${JSON.stringify(sources.original)})`);
+}
+
+function reloadUserAvatar(cacheBust = false) {
+    const sources = getPersonaAvatarSources(user_avatar, cacheBust);
+    for (const messageElement of document.querySelectorAll('.mes')) {
+        updateMessagePersonaAvatar(messageElement, sources);
+    }
+}
+
+function reloadPersonaAvatar(avatarId, cacheBust = false) {
+    const sources = getPersonaAvatarSources(avatarId, cacheBust);
+    for (const messageElement of document.querySelectorAll('.mes')) {
+        updateMessagePersonaAvatar(messageElement, sources, {
+            avatarId,
+            includeUnforced: avatarId === user_avatar,
+        });
+    }
+}
+
+async function refreshPersonaAvatar(avatarId) {
+    const sources = getPersonaAvatarSources(avatarId);
+    await Promise.all([
+        fetch(sources.desktopThumbnail, { method: 'GET', cache: 'reload' }),
+        fetch(sources.mobileThumbnail, { method: 'GET', cache: 'reload' }),
+        fetch(sources.original, { method: 'GET', cache: 'reload' }),
+    ]);
+
+    reloadPersonaAvatar(avatarId, true);
+    if (avatarId === user_avatar) {
+        updateSelectedPersonaMasthead(true);
+    }
 }
 
 /**
@@ -430,7 +516,7 @@ function getUserAvatarBlock(avatarId) {
     template.attr('data-avatar-id', avatarId);
     template.find('.avatar').attr('data-avatar-id', avatarId).attr('title', avatarId);
     template.toggleClass('default_persona', avatarId === power_user.default_persona);
-    const avatarUrl = getThumbnailUrl('persona', avatarId, isFirefox());
+    const avatarUrl = getThumbnailUrlForViewport('persona', avatarId, isFirefox());
     template.find('img').attr('src', avatarUrl);
 
     // Make sure description block has at least three rows. Otherwise height looks inconsistent. I don't have a better idea for this.
@@ -546,9 +632,10 @@ export async function getUserAvatars(doRender = true, openPageAt = '') {
  * Uploads an avatar file to the server
  * @param {string} url URL for the avatar file
  * @param {string} [name] Optional name for the avatar file
+ * @param {boolean} [refreshOverwrite=false] Whether to refresh an overwritten avatar
  * @returns {Promise} Promise that resolves when the avatar is uploaded
  */
-async function uploadUserAvatar(url, name) {
+async function uploadUserAvatar(url, name, refreshOverwrite = false) {
     const fetchResult = await fetch(url);
     const blob = await fetchResult.blob();
     const file = new File([blob], 'avatar.png', { type: 'image/png' });
@@ -572,7 +659,11 @@ async function uploadUserAvatar(url, name) {
 
     // Get the actual path from the response
     const data = await response.json();
-    await getUserAvatars(true, data?.path || name);
+    const avatarId = String(data?.path || name || '');
+    if (refreshOverwrite && avatarId) {
+        await refreshPersonaAvatar(avatarId);
+    }
+    await getUserAvatars(true, avatarId);
 }
 
 async function changeUserAvatar(e) {
@@ -627,10 +718,8 @@ async function changeUserAvatar(e) {
         const dataPath = data?.path;
 
         // If the user uploaded a new avatar, we want to make sure it's not cached
-        if (overwriteName && dataPath) {
-            await fetch(getUserAvatar(String(dataPath)), { cache: 'reload' });
-            await fetch(getThumbnailUrl('persona', String(dataPath)), { cache: 'reload' });
-            reloadUserAvatar(true);
+        if (overwriteName) {
+            await refreshPersonaAvatar(String(dataPath || overwriteName));
         }
 
         if (!overwriteName && dataPath) {
@@ -897,7 +986,8 @@ export async function convertCharacterToPersona(characterId = null) {
     let description = characters[characterId]?.description;
     const overwriteName = `${name} (Persona).png`;
 
-    if (overwriteName in power_user.personas) {
+    const isOverwrite = overwriteName in power_user.personas;
+    if (isOverwrite) {
         const confirm = await Popup.show.confirm(t`Overwrite Existing Persona`, t`This character exists as a persona already. Do you want to overwrite it?`);
         if (!confirm) {
             console.log('User cancelled the overwrite of the persona');
@@ -914,7 +1004,7 @@ export async function convertCharacterToPersona(characterId = null) {
     }
 
     const thumbnailAvatar = getThumbnailUrl('avatar', avatarUrl);
-    await uploadUserAvatar(thumbnailAvatar, overwriteName);
+    await uploadUserAvatar(thumbnailAvatar, overwriteName, isOverwrite);
 
     power_user.personas[overwriteName] = name;
     power_user.persona_descriptions[overwriteName] = {
@@ -995,11 +1085,11 @@ function createPersonaChip(text, className = '') {
     return chip;
 }
 
-function updateSelectedPersonaMasthead() {
+function updateSelectedPersonaMasthead(cacheBust = false) {
     const name = power_user.personas?.[user_avatar] || name1 || t`[No persona]`;
     const descriptor = power_user.persona_descriptions?.[user_avatar];
     const title = descriptor?.title || '';
-    const avatarUrl = user_avatar ? getThumbnailUrl('persona', user_avatar, isFirefox()) : '';
+    const avatarUrl = user_avatar ? getThumbnailUrlForViewport('persona', user_avatar, cacheBust || isFirefox()) : '';
     const avatar = document.getElementById('persona_selected_avatar');
     const chips = document.getElementById('persona_selected_chips');
 
@@ -2734,10 +2824,7 @@ async function uploadPersonaAvatar(avatarId, base64Data, { resizePrompt = false 
             throw new Error(`Upload failed: ${uploadResponse.statusText}`);
         }
 
-        // Cache bust for the updated avatar
-        await fetch(getUserAvatar(avatarId), { cache: 'reload' });
-        await fetch(getThumbnailUrl('persona', avatarId), { cache: 'reload' });
-        reloadUserAvatar(true);
+        await refreshPersonaAvatar(avatarId);
         return true;
     } catch (error) {
         console.error('Error uploading persona avatar:', error);

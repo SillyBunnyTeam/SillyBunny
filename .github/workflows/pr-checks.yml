@@ -2,40 +2,20 @@ name: ✅ Pull Request Checks
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
 
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
-  validate-pr-metadata:
-    name: ✅ Validate PR Metadata
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Validate target branch
-        env:
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-        run: |
-          if [ "$BASE_REF" != "staging" ]; then
-            echo "Pull requests must target the staging branch. Current target: $BASE_REF"
-            exit 1
-          fi
-
-      - name: Validate PR title prefix
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          if ! grep -Eq '^(fix|chore|feat|sync|docs)(\([^)]+\))?!?:[[:space:]].+' <<< "$PR_TITLE"; then
-            echo "PR title must start with one of: fix:, chore:, feat:, sync:, docs:"
-            echo "Current title: $PR_TITLE"
-            exit 1
-          fi
-
   block-default-user-state:
     name: ✅ Block tracked default-user state
     runs-on: ubuntu-latest
-    if: always() && github.event.action != 'edited'
+    if: always()
 
     steps:
       - name: Checkout Repository
@@ -56,8 +36,7 @@ jobs:
   run-eslint:
     name: ✅ Check ESLint on PR
     runs-on: ubuntu-latest
-    # Only needs to run when code is changed
-    if: always() && github.event.action != 'edited'
+    if: always()
 
     steps:
       - name: Checkout Repository
@@ -84,8 +63,7 @@ jobs:
   run-tests:
     name: ✅ Run Unit Tests on PR
     runs-on: ubuntu-latest
-    # Only needs to run when code is changed
-    if: always() && github.event.action != 'edited'
+    if: always()
 
     steps:
       - name: Checkout Repository
@@ -115,7 +93,7 @@ jobs:
   frontend-budgets:
     name: ✅ Check Frontend Assets
     runs-on: ubuntu-latest
-    if: always() && github.event.action != 'edited'
+    if: always()
 
     steps:
       - name: Checkout Repository
@@ -141,7 +119,7 @@ jobs:
   run-bun-checks:
     name: ✅ Check Bun Runtime
     runs-on: ubuntu-latest
-    if: always() && github.event.action != 'edited'
+    if: always()
 
     steps:
       - name: Checkout Repository
@@ -153,7 +131,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.11
+          bun-version: 1.3.14
 
       - name: Install dependencies with Bun
         run: bun install --frozen-lockfile --ignore-scripts

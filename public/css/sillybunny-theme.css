@@ -46,10 +46,9 @@
     --sb-section-gap: 14px;
     --sb-settings-card-padding: var(--spacing-md) 14px;
     --sb-message-icon-size: clamp(24px, calc(var(--bottomFormBlockSize, 36px) * 0.78), 30px);
-    --sb-composer-action-size: clamp(24px, calc(var(--bottomFormBlockSize, 36px) * 0.72), 30px);
-    --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.45);
-    --sb-composer-action-icon-size: clamp(12px, calc(var(--bottomFormIconSize, 20px) * 0.62), 15px);
-    --sb-composer-side-rail-width: min(16%, calc(var(--sb-composer-action-size) * 4 + 12px));
+    --sb-composer-action-size: clamp(34px, calc(var(--bottomFormBlockSize, 36px) * 0.94), 38px);
+    --sb-composer-send-width: var(--sb-composer-action-size);
+    --sb-composer-action-icon-size: clamp(14px, calc(var(--bottomFormIconSize, 20px) * 0.72), 17px);
     --sb-message-meta-line-height: 1.18;
     --sb-chat-composer-gap: var(--spacing-sm);
     --sb-chat-composer-edge-gap: var(--spacing-sm);
@@ -121,6 +120,12 @@
     --sb-editing-border: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 48%, var(--sb-shell-border));
     --sb-on-accent: rgb(0, 0, 0);
     --sb-on-solid-accent: var(--sb-on-accent);
+    /* Tint the page surface rather than paint over it, so the theme's own body
+       colour stays legible on top in both light and dark themes. The accent is
+       derived from the text colours, so a heavier mix eats contrast: 20% keeps
+       every theme that relies on this above 4.5:1 while staying clearly visible. */
+    --sb-selection-bg: color-mix(in srgb, var(--sb-accent) 20%, var(--SmartThemeBlurTintColor));
+    --sb-selection-fg: var(--SmartThemeBodyColor);
     --sb-warning-fg: color-mix(in srgb, var(--color-danger, var(--sb-color-error)) 72%, var(--SmartThemeBodyColor) 28%);
     --sb-warning-bg: color-mix(in srgb, var(--color-danger, var(--sb-color-error)) 12%, var(--SmartThemeBlurTintColor) 88%);
     --sb-warning-border: color-mix(in srgb, var(--color-danger, var(--sb-color-error)) 42%, var(--SmartThemeBorderColor) 58%);
@@ -140,6 +145,33 @@
     --sb-page-overlay-opacity: 1;
     --sb-composer-surface-opacity: 1;
     --sb-message-radius: 22px;
+}
+
+/* Baseline only: theme custom_css is injected last, so themes that declare their
+   own ::selection still win. This covers the themes that declare none, which
+   otherwise fall back to the OS highlight colour with the text colour untouched,
+   which leaves code/kbd chips unreadable because they set their own ink. */
+::selection {
+    background-color: var(--sb-selection-bg);
+    color: var(--sb-selection-fg);
+}
+
+/* style.css paints the inline code chip with var(--black70a) over var(--white70a),
+   but themes treat both as free aliases and several repoint them at the same
+   accent, which collapses the chip and its text to one colour and hides the text.
+   Derive the chip from the page tint those aliases are supposed to track, so the
+   ink always keeps a surface. Themes that style code explicitly still win. */
+code {
+    background-color: color-mix(in srgb, var(--SmartThemeBlurTintColor) 70%, transparent);
+}
+
+a,
+button,
+[role="button"],
+.menu_button,
+input[type="button"],
+input[type="submit"] {
+    -webkit-tap-highlight-color: transparent;
 }
 
 .zoomed_avatar_container,
@@ -218,10 +250,9 @@
     --sb-icon-control-size: 1.85rem;
     --sb-inline-drawer-icon-size: 1.85rem;
     --sb-message-icon-size: clamp(20px, calc(var(--bottomFormBlockSize, 34px) * 0.68), 26px);
-    --sb-composer-action-size: clamp(20px, calc(var(--bottomFormBlockSize, 34px) * 0.62), 26px);
-    --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.42);
-    --sb-composer-action-icon-size: clamp(11px, calc(var(--bottomFormIconSize, 18px) * 0.58), 13px);
-    --sb-composer-side-rail-width: min(14%, calc(var(--sb-composer-action-size) * 4 + 10px));
+    --sb-composer-action-size: clamp(30px, calc(var(--bottomFormBlockSize, 34px) * 0.88), 34px);
+    --sb-composer-send-width: var(--sb-composer-action-size);
+    --sb-composer-action-icon-size: clamp(12px, calc(var(--bottomFormIconSize, 18px) * 0.7), 15px);
 }
 
 @media (pointer: coarse), screen and (max-width: 768px) {
@@ -901,30 +932,54 @@ h3:not(.popup h3):not(#chat h3) {
 .menu_button:not(.sb-server-action):not(.api_button):not(.openrouter_authorize):not(#bg_selection_mode_button):not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child),
 .menu_button:not(.sb-server-action):not(.api_button):not(.openrouter_authorize):not(#bg_selection_mode_button):not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> input[hidden] + :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):last-child),
 .right_menu_button:not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child) {
-    width: var(--sb-control-icon-physical-size);
-    inline-size: var(--sb-control-icon-physical-size);
-    height: var(--sb-control-icon-physical-size);
-    block-size: var(--sb-control-icon-physical-size);
+    /*
+     * SillyBunny: sized by a minimum rather than a fixed square. The :only-child test above sees
+     * element children only, so a button whose label is a bare text node -- the common
+     * third-party shape, e.g. <button class="menu_button"><i class="fa-solid fa-x"></i>Open</button>
+     * -- matched this rule and had its label squashed out of a 38px box. A genuinely icon-only
+     * button still lands exactly on the square, because its content never reaches the minimum.
+     * The hardcoded :not() exclusions on the selectors above are older, per-case patches for the
+     * same over-match. The block axis is a minimum too: a narrow container can wrap such a label
+     * onto a second line, and a fixed height would push it outside the border.
+     */
+    width: auto;
+    inline-size: auto;
+    height: auto;
+    block-size: auto;
     min-width: var(--sb-control-icon-physical-size);
     min-inline-size: var(--sb-control-icon-physical-size);
     min-height: var(--sb-control-icon-physical-size);
     min-block-size: var(--sb-control-icon-physical-size);
-    max-width: var(--sb-control-icon-physical-size);
-    max-inline-size: var(--sb-control-icon-physical-size);
-    max-height: var(--sb-control-icon-physical-size);
-    max-block-size: var(--sb-control-icon-physical-size);
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    gap: 6px;
     flex: 0 0 auto;
-    padding: 0 !important;
+    padding: 0 6px !important;
     margin: 0;
     border-radius: var(--sb-icon-control-radius);
-    aspect-ratio: 1 / 1;
     box-sizing: border-box;
     line-height: 1;
     text-align: center;
     overflow: visible;
+}
+
+/*
+ * SillyBunny: the rule above is sized by a minimum so a bare-text label can grow the pill. An
+ * :empty element has no children at all, not even a text node, so it can never carry such a label
+ * -- re-pin the square for those three selectors. aspect-ratio is the load-bearing one:
+ * connection-manager's mobile rule sets the block axis from a width-derived percentage that never
+ * resolves there, and it outweighs anything this sheet can say, so with height: auto and nothing
+ * else holding the box up the button collapses to the height of the glyph's line box.
+ */
+.menu_button:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty,
+.menu_button_icon:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty,
+.right_menu_button:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty {
+    max-width: var(--sb-control-icon-physical-size);
+    max-inline-size: var(--sb-control-icon-physical-size);
+    max-height: var(--sb-control-icon-physical-size);
+    max-block-size: var(--sb-control-icon-physical-size);
+    aspect-ratio: 1 / 1;
 }
 
 .menu_button:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty::before,
@@ -1104,27 +1159,12 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     position: relative;
     isolation: isolate;
     box-sizing: border-box;
-    padding: 4px;
+    padding: 6px;
     border-radius: 16px;
     border-color: color-mix(in srgb, var(--sb-shell-border) 92%, transparent);
-    box-shadow: 0 -10px 40px color-mix(in srgb, var(--SmartThemeShadowColor) 14%, transparent);
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent), transparent 90%),
-        var(--sb-composer-surface-bg);
+    box-shadow: 0 -8px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 12%, transparent);
+    background: var(--sb-composer-surface-bg);
     overflow: hidden;
-}
-
-#send_form::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    border-radius: inherit;
-    pointer-events: none;
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent), transparent 90%),
-        var(--sb-composer-surface-bg);
-    opacity: 1;
 }
 
 #nonQRFormItems {
@@ -1148,7 +1188,7 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
 
 #leftSendForm,
 #rightSendForm {
-    gap: 6px;
+    gap: 4px;
     align-items: center;
     flex: 0 0 auto;
     min-width: 0;
@@ -1180,6 +1220,7 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     width: var(--sb-composer-action-size);
     min-width: var(--sb-composer-action-size);
     height: var(--sb-composer-action-size);
+    flex: 0 0 var(--sb-composer-action-size);
     margin: 0;
     padding: 0;
     border-radius: var(--sb-radius-button);
@@ -1222,6 +1263,16 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     caret-color: var(--color-primary, var(--sb-accent));
     font-size: calc(var(--mainFontSize) * 0.9);
     transition: border-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast), background-color var(--sb-transition-fast);
+
+    /* style.css paints a permanent 3px border-top as the STscript progress bar and hides
+       it behind a 5px-deep rectangular clip-path. The 10px radius above bows that border
+       down the left/right edges past the clip, leaking blue arcs at the corners. Keep the
+       track transparent at rest; the rule below restores it while commands run. */
+    --progColor: transparent;
+}
+
+#form_sheld.isExecutingCommandsFromChatInput #send_textarea {
+    --progColor: rgb(146, 190, 252);
 }
 
 :root[data-sb-compact-mode='true'] #send_form {
@@ -1254,9 +1305,9 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
 #send_form:focus-within {
     border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 56%, var(--sb-shell-border));
     box-shadow:
-        0 -10px 40px color-mix(in srgb, var(--SmartThemeShadowColor) 14%, transparent),
-        0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, transparent),
-        inset 0 0 0 1px color-mix(in srgb, var(--sb-focus-ring) 32%, transparent);
+        0 -8px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 12%, transparent),
+        0 0 0 2px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, transparent);
+    outline: none;
 }
 
 #send_form:focus-within #nonQRFormItems {
@@ -1281,6 +1332,13 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
         inset 0 0 0 1px color-mix(in srgb, var(--sb-generating-glow-color) 54%, transparent);
 }
 
+#send_form.sb-generating-controls #nonQRFormItems {
+    border-color: color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 76%, var(--sb-shell-border));
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 22%, transparent), transparent 82%),
+        color-mix(in srgb, var(--SmartThemeBodyColor) 5%, var(--sb-composer-surface-base, transparent));
+}
+
 #send_form.sb-generating-controls::after {
     content: '';
     position: absolute;
@@ -1294,13 +1352,6 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     box-shadow: 0 0 18px color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 42%, transparent);
     transform: translateX(-50%);
     pointer-events: none;
-}
-
-#send_form.sb-generating-controls #nonQRFormItems {
-    border-color: color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 76%, var(--sb-shell-border));
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 22%, transparent), transparent 82%),
-        color-mix(in srgb, var(--SmartThemeBodyColor) 5%, var(--sb-composer-surface-base, transparent));
 }
 
 #leftSendForm > div i,
@@ -1337,6 +1388,7 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
         0 10px 18px color-mix(in srgb, var(--SmartThemeShadowColor) 10%, transparent);
     color: var(--sb-on-solid-accent, var(--sb-on-accent, var(--color-background, var(--SmartThemeBlurTintColor)))) !important;
     font-size: var(--sb-composer-action-icon-size) !important;
+    opacity: 1;
 }
 
 #send_form .mes_stop,
@@ -1356,6 +1408,7 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
         0 10px 18px color-mix(in srgb, var(--SmartThemeShadowColor) 10%, transparent);
     color: var(--sb-on-solid-accent, var(--sb-on-accent, var(--color-background, var(--SmartThemeBlurTintColor)))) !important;
     font-size: var(--sb-composer-action-icon-size) !important;
+    opacity: 1;
 }
 
 /*
@@ -1497,14 +1550,13 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
 }
 
 #chat .mes .mesAvatarWrapper > :is(.mesIDDisplay, .mes_timer, .tokenCounterDisplay) {
-    inline-size: 100%;
+    inline-size: max-content;
+    max-inline-size: 100%;
     min-block-size: calc(var(--mainFontSize) * var(--sb-message-meta-line-height));
     padding: 0 2px;
     box-sizing: border-box;
     line-height: var(--sb-message-meta-line-height);
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 #chat .mes .mesAvatarWrapper > .mesIDDisplay {
@@ -2041,19 +2093,40 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     .menu_button:not(.sb-server-action):not(.api_button):not(.openrouter_authorize):not(#bg_selection_mode_button):not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child),
     .menu_button:not(.sb-server-action):not(.api_button):not(.openrouter_authorize):not(#bg_selection_mode_button):not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> input[hidden] + :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):last-child),
     .right_menu_button:not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child) {
-        width: var(--sb-control-icon-physical-size);
-        inline-size: var(--sb-control-icon-physical-size);
-        height: var(--sb-control-icon-physical-size);
-        block-size: var(--sb-control-icon-physical-size);
+        width: auto;
+        inline-size: auto;
+        height: auto;
+        block-size: auto;
         min-width: var(--sb-control-icon-physical-size);
         min-inline-size: var(--sb-control-icon-physical-size);
         min-height: var(--sb-control-icon-physical-size);
         min-block-size: var(--sb-control-icon-physical-size);
-        max-width: var(--sb-control-icon-physical-size);
-        max-inline-size: var(--sb-control-icon-physical-size);
-        max-height: var(--sb-control-icon-physical-size);
-        max-block-size: var(--sb-control-icon-physical-size);
-        padding: 0 !important;
+        padding: 0 6px !important;
+    }
+
+    #chat .mes_edit_buttons {
+        max-inline-size: 100%;
+        flex-wrap: wrap;
+        column-gap: 4px;
+        row-gap: 4px;
+    }
+
+    #chat .mes_edit_buttons .menu_button {
+        width: var(--sb-message-icon-size);
+        inline-size: var(--sb-message-icon-size);
+        height: var(--sb-message-icon-size);
+        block-size: var(--sb-message-icon-size);
+        min-width: var(--sb-message-icon-size);
+        min-inline-size: var(--sb-message-icon-size);
+        min-height: var(--sb-message-icon-size);
+        min-block-size: var(--sb-message-icon-size);
+        max-width: var(--sb-message-icon-size);
+        max-inline-size: var(--sb-message-icon-size);
+        max-height: var(--sb-message-icon-size);
+        max-block-size: var(--sb-message-icon-size);
+        flex: 0 0 var(--sb-message-icon-size);
+        font-size: calc(var(--sb-message-icon-size) * 0.52);
+        line-height: 1;
     }
 }
 
@@ -2097,13 +2170,19 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     color: var(--color-primary, var(--sb-accent));
 }
 
-#rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > .avatar {
+#rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
     grid-column: 1;
     grid-row: 1 / span 2;
-    align-self: center;
-    justify-self: center;
+    align-self: center !important;
+    justify-self: center !important;
     flex: 0 0 var(--avatar-base-width);
     margin: 0;
+}
+
+@media screen and (max-width: 1000px) {
+    body #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
+        grid-row: 1 / -1 !important;
+    }
 }
 
 #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.character_select_container, .group_select_container) {
@@ -2177,10 +2256,17 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     line-height: 1.35;
 }
 
+/* Upstream tags.css clamps .tags.tags_inline to max-height: 66% with
+   overflow: hidden, which suits its own list metrics but slices the bottom off
+   every pill in the fork's grid row (a 22px "ST Default" tag rendered at 15px).
+   The mobile shell already opts out; do the same here so the desktop drawer
+   shows whole tags. */
 #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select) .tags_inline {
     grid-column: 1 / -1;
     grid-row: 3;
     min-width: 0;
+    max-height: none;
+    overflow: visible;
 }
 
 #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select) :is(.ch_fav_icon, .group_fav_icon) {
@@ -2231,11 +2317,9 @@ input[type='range']::-moz-range-thumb {
     overflow: hidden;
 }
 
-.select2-container--default .select2-results {
-    max-height: 300px;
-    overflow-x: hidden;
-    overflow-y: auto;
-}
+/* No cap on the .select2-results wrapper: .select2-results__options is the one
+   scroll container (300px base, 320px for World Info). Capping both nests two
+   scrollbars and cuts the option list off mid-row. */
 
 .select2-container--default .select2-results__options {
     background-color: #11151c;
@@ -4618,6 +4702,136 @@ input[type='range']::-moz-range-thumb {
     flex: 0 0 auto;
 }
 
+.sb-accent-profiles-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border-radius: var(--sb-radius-md);
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 74%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+}
+
+.sb-accent-profiles-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.sb-accent-profiles-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex: 1 1 auto;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.sb-accent-profiles-toggle .inline-drawer-icon {
+    flex: 0 0 auto;
+}
+
+.sb-accent-profiles-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.sb-accent-profile-title {
+    font-weight: 700;
+    color: var(--SmartThemeBodyColor);
+}
+
+.sb-accent-profiles-copy small,
+.sb-accent-profiles-empty {
+    color: var(--sb-muted-fg);
+    font-size: calc(var(--mainFontSize) * 0.75);
+}
+
+.sb-accent-profile-save {
+    min-height: var(--sb-control-min-height);
+    flex: 0 0 auto;
+    gap: 8px;
+}
+
+.sb-accent-profiles-content {
+    min-width: 0;
+}
+
+.sb-accent-profiles-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px;
+}
+
+.sb-accent-profile-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--sb-control-min-height);
+    gap: 6px;
+    min-width: 0;
+}
+
+.sb-accent-profile-apply {
+    min-height: var(--sb-control-min-height);
+    justify-content: flex-start;
+    gap: 8px;
+    min-width: 0;
+    padding-inline: 10px;
+}
+
+.sb-accent-profile-apply.is-selected {
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 36%, var(--sb-shell-border));
+    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 14%, var(--SmartThemeBlurTintColor) 86%);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 24%, transparent);
+}
+
+.sb-accent-profile-swatches {
+    display: inline-grid;
+    grid-template-columns: repeat(2, 14px);
+    gap: 3px;
+    flex: 0 0 auto;
+    align-items: center;
+}
+
+.sb-accent-profile-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 20%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeShadowColor) 12%, transparent);
+}
+
+.sb-accent-profile-swatch-primary {
+    background: var(--sb-accent-profile-primary, var(--SmartThemeQuoteColor));
+}
+
+.sb-accent-profile-swatch-secondary {
+    background: var(--sb-accent-profile-secondary, var(--SmartThemeUnderlineColor));
+}
+
+.sb-accent-profile-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-accent-profile-delete {
+    width: var(--sb-control-min-height);
+    min-width: var(--sb-control-min-height);
+    min-height: var(--sb-control-min-height);
+    color: var(--sb-muted-fg);
+}
+
+.sb-accent-profile-delete:hover,
+.sb-accent-profile-delete:focus-visible {
+    color: var(--sb-color-danger);
+    border-color: color-mix(in srgb, var(--sb-color-danger) 34%, var(--sb-shell-border));
+    background: color-mix(in srgb, var(--sb-color-danger) 10%, var(--SmartThemeBlurTintColor) 90%);
+}
+
 .sb-theme-message-style-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
@@ -4712,6 +4926,24 @@ input[type='range']::-moz-range-thumb {
 
     .sb-accent-picker-row {
         gap: 8px;
+    }
+
+    .sb-accent-profiles-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .sb-accent-profiles-toggle {
+        width: 100%;
+    }
+
+    .sb-accent-profile-save {
+        justify-content: center;
+        width: 100%;
+    }
+
+    .sb-accent-profiles-list {
+        grid-template-columns: 1fr;
     }
 }
 

@@ -6,6 +6,8 @@ import vm from 'node:vm';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const bootGuardSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-boot-guard.js'), 'utf8');
+const IOS_WEBKIT_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+const DESKTOP_CHROME_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
 class FakeElement {
     constructor(tagName, { id = '', className = '' } = {}) {
@@ -138,27 +140,58 @@ function matchesSelector(element, selector) {
     return true;
 }
 
-function createBootGuardHarness() {
+function createFakeXMLHttpRequest() {
+    return class FakeXMLHttpRequest {
+        constructor() {
+            this.status = 0;
+            this.requestListeners = new Map();
+        }
+
+        open(method, url) {
+            this.requestMethod = method;
+            this.requestUrl = url;
+        }
+
+        send() {
+            this.sent = true;
+        }
+
+        addEventListener(type, listener) {
+            const existing = this.requestListeners.get(type) || [];
+            existing.push(listener);
+            this.requestListeners.set(type, existing);
+        }
+
+        dispatch(type) {
+            (this.requestListeners.get(type) || []).forEach(listener => listener());
+        }
+    };
+}
+
+function createBootGuardHarness({ userAgent = IOS_WEBKIT_USER_AGENT, platform = 'iPhone', maxTouchPoints = 5 } = {}) {
     const document = new FakeDocument();
     const timers = [];
     const listeners = new Map();
     let now = 0;
+    const fakeNavigator = { maxTouchPoints, platform, userAgent };
 
     const window = {
         addEventListener: (type, listener) => listeners.set(type, listener),
         clearTimeout: jest.fn(),
         location: { reload: jest.fn() },
+        navigator: fakeNavigator,
         setTimeout: (callback, delay) => {
             timers.push({ callback, delay });
             return timers.length;
         },
+        XMLHttpRequest: createFakeXMLHttpRequest(),
     };
 
     vm.runInNewContext(bootGuardSource, {
         console,
         Date: { now: () => now },
         document,
-        navigator: {},
+        navigator: fakeNavigator,
         Promise,
         window,
     });
@@ -182,6 +215,23 @@ function addPreloader(document) {
 }
 
 describe('SillyBunny boot guard', () => {
+    test('stays hidden when the browser is not iOS WebKit', () => {
+        const { document, listeners, timers, window } = createBootGuardHarness({
+            maxTouchPoints: 0,
+            platform: 'Linux x86_64',
+            userAgent: DESKTOP_CHROME_USER_AGENT,
+        });
+        const preloader = addPreloader(document);
+
+        expect(timers).toHaveLength(0);
+        expect(listeners.has('error')).toBe(false);
+        expect(listeners.has('unhandledrejection')).toBe(false);
+
+        window.SillyBunnyBootGuard.showFailure('boom');
+
+        expect(preloader.querySelector('button')).toBeNull();
+    });
+
     test('removes startup loader artifacts before showing the recovery panel', () => {
         const { document, window } = createBootGuardHarness();
         const preloader = addPreloader(document);
@@ -257,7 +307,7 @@ describe('SillyBunny boot guard', () => {
         expect(preloader.querySelector('button')).toBeNull();
     });
 
-    test('still surfaces non-extension startup errors', () => {
+    test('still surfaces non-extension startup errors on iOS WebKit', () => {
         const { document, listeners, timers } = createBootGuardHarness();
         const preloader = addPreloader(document);
         const initialTimerCount = timers.length;
@@ -272,5 +322,118 @@ describe('SillyBunny boot guard', () => {
         timers.slice(initialTimerCount).forEach(timer => timer.callback());
 
         expect(preloader.querySelector('button').textContent).toBe('Clear frontend cache and reload');
+    });
+
+    test('describes message-less thrown objects instead of showing [object Object]', () => {
+        const { document, listeners, timers } = createBootGuardHarness();
+        const preloader = addPreloader(document);
+        const initialTimerCount = timers.length;
+
+        listeners.get('error')({
+            filename: '/lib/jquery-3.5.1.min.js',
+            message: '[object Object]',
+            lineno: 2,
+            colno: 31677,
+            error: { readyState: 4, status: 0, statusText: 'error' },
+        });
+
+        timers.slice(initialTimerCount).forEach(timer => timer.callback());
+
+        const details = preloader.querySelector('pre').textContent;
+        expect(details).toContain('status: 0');
+        expect(details).toContain('statusText: error');
+        expect(details).toContain('readyState: 4');
+    });
+
+    test('names the failing request behind an object-shaped startup failure', () => {
+        const { document, listeners, timers, window } = createBootGuardHarness();
+        const preloader = addPreloader(document);
+        const initialTimerCount = timers.length;
+
+        const request = new window.XMLHttpRequest();
+        request.open('POST', '/api/tokenizers/openai/count?model=gpt-4-turbo');
+        request.send();
+        request.status = 404;
+        request.dispatch('loadend');
+
+        listeners.get('error')({
+            filename: '/lib/jquery-3.5.1.min.js',
+            message: '[object Object]',
+            lineno: 2,
+            colno: 31677,
+            error: { readyState: 4, status: 404, statusText: 'Not Found' },
+        });
+
+        timers.slice(initialTimerCount).forEach(timer => timer.callback());
+
+        const details = preloader.querySelector('pre').textContent;
+        expect(details).toContain('Failed requests during startup:');
+        expect(details).toContain('POST /api/tokenizers/openai/count?model=gpt-4-turbo -> 404');
+    });
+
+    test('ignores object-shaped failures whose only failing request is a third-party extension file', () => {
+        const { document, listeners, timers, window } = createBootGuardHarness();
+        const preloader = addPreloader(document);
+        const initialTimerCount = timers.length;
+
+        const request = new window.XMLHttpRequest();
+        request.open('GET', 'scripts/extensions/third-party/SB-GroupUtilities/html/group-note.html');
+        request.send();
+        request.status = 404;
+        request.dispatch('loadend');
+
+        listeners.get('error')({
+            filename: '/lib/jquery-3.5.1.min.js',
+            message: '[object Object]',
+            lineno: 2,
+            colno: 31677,
+            error: { readyState: 4, status: 404, statusText: 'Not Found', responseText: 'Not Found' },
+        });
+
+        timers.slice(initialTimerCount).forEach(timer => timer.callback());
+
+        expect(preloader.querySelector('pre')).toBeNull();
+    });
+
+    test('still blames SillyBunny when a core request failed alongside a third-party one', () => {
+        const { document, listeners, timers, window } = createBootGuardHarness();
+        const preloader = addPreloader(document);
+        const initialTimerCount = timers.length;
+
+        const extensionRequest = new window.XMLHttpRequest();
+        extensionRequest.open('GET', 'scripts/extensions/third-party/SB-GroupUtilities/html/group-note.html');
+        extensionRequest.send();
+        extensionRequest.status = 404;
+        extensionRequest.dispatch('loadend');
+
+        const coreRequest = new window.XMLHttpRequest();
+        coreRequest.open('GET', '/api/settings/get');
+        coreRequest.send();
+        coreRequest.status = 500;
+        coreRequest.dispatch('loadend');
+
+        listeners.get('error')({
+            filename: '/lib/jquery-3.5.1.min.js',
+            message: '[object Object]',
+            lineno: 2,
+            colno: 31677,
+            error: { readyState: 4, status: 500, statusText: 'Internal Server Error' },
+        });
+
+        timers.slice(initialTimerCount).forEach(timer => timer.callback());
+
+        expect(preloader.querySelector('pre').textContent).toContain('GET /api/settings/get -> 500');
+    });
+
+    test('describes rejected objects that only carry enumerable keys', () => {
+        const { document, listeners, timers } = createBootGuardHarness();
+        const preloader = addPreloader(document);
+        const initialTimerCount = timers.length;
+
+        listeners.get('unhandledrejection')({ reason: { extensionId: 'quick-reply' } });
+
+        timers.slice(initialTimerCount).forEach(timer => timer.callback());
+
+        expect(preloader.querySelector('pre').textContent).toContain('extensionId: quick-reply');
     });
 });

@@ -1,4 +1,6 @@
 import { getParsedUA, isMobile } from './RossAscends-mods.js';
+import { shouldBlockMobileDocumentPan } from './mobile-shell-lifecycle/index.js';
+import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
 
 const isFirefox = () => /firefox/i.test(navigator.userAgent);
 
@@ -108,23 +110,92 @@ function isEditableFocusTarget(element) {
         || (element instanceof HTMLElement && element.isContentEditable);
 }
 
+function isMobileShellPanelEditable(element) {
+    return isEditableFocusTarget(element)
+        && element instanceof HTMLElement
+        && Boolean(element.closest('.sb-shell-panel-scroller'));
+}
+
+function addDocumentViewportAnchorPatch({ suspendWhileEditing = false } = {}) {
+    let resetScheduled = false;
+
+    // SillyBunny: the legacy shell inset keeps the caret visible, so old iOS
+    // force-scroll can be anchored immediately instead of waiting for blur.
+    const isComposerHeldAboveKeyboard = () => isLegacyIOSWebKitPlatform()
+        && document.documentElement.classList.contains('sb-ios-composer-keyboard-inset-active');
+
+    const shouldSuspendDocumentScrollReset = () => suspendWhileEditing
+        && isEditableFocusTarget(document.activeElement)
+        && !isMobileShellPanelEditable(document.activeElement)
+        && !isComposerHeldAboveKeyboard();
+
+    const resetDocumentScroll = () => {
+        if (shouldSuspendDocumentScrollReset()) {
+            return;
+        }
+
+        const scrollingElement = document.scrollingElement;
+        const scrollLeft = Math.max(window.scrollX || 0, scrollingElement?.scrollLeft || 0);
+        const scrollTop = Math.max(window.scrollY || 0, scrollingElement?.scrollTop || 0);
+
+        if (scrollLeft <= 0 && scrollTop <= 0) {
+            return;
+        }
+
+        if (scrollingElement instanceof Element) {
+            scrollingElement.scrollLeft = 0;
+            scrollingElement.scrollTop = 0;
+        }
+
+        window.scrollTo(0, 0);
+    };
+
+    const scheduleDocumentScrollReset = () => {
+        if (resetScheduled || shouldSuspendDocumentScrollReset()) {
+            return;
+        }
+
+        resetScheduled = true;
+        requestAnimationFrame(() => {
+            resetDocumentScroll();
+            resetScheduled = false;
+        });
+    };
+
+    resetDocumentScroll();
+    window.addEventListener('scroll', scheduleDocumentScrollReset, { passive: true });
+
+    if (suspendWhileEditing) {
+        document.addEventListener('focusout', scheduleDocumentScrollReset, true);
+    }
+}
+
 function applyBrowserFixes() {
     if (isFirefox()) {
         sanitizeInlineQuotationOnCopy();
     }
 
-    if (isMobile()) {
+    const isMobileViewport = isMobile();
+    const isIOSWebKit = isIOSWebKitPlatform();
+
+    addDocumentViewportAnchorPatch({ suspendWhileEditing: isIOSWebKit });
+
+    if (isMobileViewport) {
         const viewport = window.visualViewport;
-        const isIOSWebKit = /iPad|iPhone|iPod/.test(navigator.platform) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
         const viewportResetSettleMs = 360;
         let viewportFixScheduled = false;
         let viewportResetScheduled = false;
         let lastViewportHeight = Math.round(viewport?.height || window.innerHeight || 0);
+        let lastOffsetLeft = Math.round(viewport?.offsetLeft || 0);
+        let lastScale = viewport?.scale || 1;
         let lastSendInteractionAt = 0;
         let lastSendFocusedAt = 0;
+        let documentPanTouchStart = null;
 
         const updateViewportBaseline = () => {
             lastViewportHeight = Math.round(viewport?.height || window.innerHeight || 0);
+            lastOffsetLeft = Math.round(viewport?.offsetLeft || 0);
+            lastScale = viewport?.scale || 1;
         };
 
         const resetTransientViewportPosition = ({ restoreScroll = false } = {}) => {
@@ -140,7 +211,7 @@ function applyBrowserFixes() {
             document.body.style.bottom = '';
             document.body.style.transform = '';
 
-            if (restoreScroll && (document.scrollingElement?.scrollTop || 0) > 0) {
+            if (restoreScroll && ((document.scrollingElement?.scrollTop || 0) > 0 || (document.scrollingElement?.scrollLeft || 0) > 0)) {
                 window.scrollTo(0, 0);
             }
         };
@@ -166,6 +237,30 @@ function applyBrowserFixes() {
 
         const handleMobileViewportReset = (event) => {
             scheduleViewportReset({ restoreScroll: Boolean(event?.detail?.restoreScroll) });
+        };
+
+        const blockDocumentPanFromShellGaps = (event) => {
+            if (shouldBlockMobileDocumentPan(event, { touchStart: documentPanTouchStart })) {
+                event.preventDefault();
+            }
+        };
+
+        const captureDocumentPanStart = (event) => {
+            if (event.touches?.length !== 1) {
+                documentPanTouchStart = null;
+                return;
+            }
+
+            const touch = event.touches[0];
+            documentPanTouchStart = {
+                identifier: touch.identifier,
+                clientX: touch.clientX,
+                clientY: touch.clientY,
+            };
+        };
+
+        const clearDocumentPanStart = () => {
+            documentPanTouchStart = null;
         };
 
         const applyPositionFix = ({ force = false } = {}) => {
@@ -209,8 +304,31 @@ function applyBrowserFixes() {
 
             const currentViewportHeight = Math.round(viewport?.height || window.innerHeight || 0);
             const viewportDelta = Math.abs(currentViewportHeight - lastViewportHeight);
+            const currentOffsetLeft = Math.round(viewport?.offsetLeft || 0);
+            const offsetLeftDelta = Math.abs(currentOffsetLeft - lastOffsetLeft);
+            const currentScale = viewport?.scale || 1;
+            const scaleDelta = Math.abs(currentScale - lastScale);
 
             lastViewportHeight = currentViewportHeight;
+            lastOffsetLeft = currentOffsetLeft;
+            lastScale = currentScale;
+
+            // SillyBunny: detect visual-viewport scale change from pinch-zoom
+            // or double-tap-zoom (Firefox mobile ignores user-scalable=no and
+            // touch-action). Reset scroll and transient position fixes so the
+            // app re-anchors to the layout viewport.
+            if (scaleDelta > 0.01) {
+                scheduleViewportReset({ restoreScroll: true });
+                return;
+            }
+
+            // SillyBunny: detect horizontal visual-viewport drift from pinch-zoom
+            // panning (Android Firefox ignores user-scalable=no). Reset scroll and
+            // transient position fixes so the app re-anchors to the layout viewport.
+            if (offsetLeftDelta > 4) {
+                scheduleViewportReset({ restoreScroll: true });
+                return;
+            }
 
             // Ignore tiny viewport twitches from the mobile browser chrome and
             // keyboard suggestion UI. Those do not need the layout workaround.
@@ -222,6 +340,7 @@ function applyBrowserFixes() {
         };
 
         viewport?.addEventListener('resize', fixFunkyPositioning, { passive: true });
+        viewport?.addEventListener('scroll', fixFunkyPositioning, { passive: true });
         window.addEventListener('resize', fixFunkyPositioning, { passive: true });
         document.addEventListener('pointerdown', (event) => {
             if (event.target instanceof HTMLElement && event.target.closest('#send_but')) {
@@ -258,6 +377,22 @@ function applyBrowserFixes() {
             }
         }, true);
         window.addEventListener('sb-mobile-viewport-reset', handleMobileViewportReset);
+
+        // SillyBunny: Firefox mobile ignores touch-action CSS and user-scalable=no
+        // in the viewport meta for pinch-zoom. Intercept multi-touch events at the
+        // touch level and preventDefault to block the browser's zoom gesture before
+        // it can change visualViewport.scale and drift the app layout.
+        const blockMultiTouchZoom = (event) => {
+            if (event.touches.length > 1) {
+                event.preventDefault();
+            }
+        };
+        document.addEventListener('touchstart', blockMultiTouchZoom, { passive: false });
+        document.addEventListener('touchstart', captureDocumentPanStart, { passive: true, capture: true });
+        document.addEventListener('touchmove', blockMultiTouchZoom, { passive: false });
+        document.addEventListener('touchmove', blockDocumentPanFromShellGaps, { passive: false, capture: true });
+        document.addEventListener('touchend', clearDocumentPanStart, { passive: true, capture: true });
+        document.addEventListener('touchcancel', clearDocumentPanStart, { passive: true, capture: true });
     }
 
     addMacOSPatch();

@@ -1,5 +1,233 @@
 # Changelog
 
+## v1.7.0
+
+**SillyBunny version 1.7.0 has released**
+This update features comprehensive bug fixes all across the board, as well as a new feature, Conversation Mode!
+
+**New: Conversation Mode**
+Conversation Mode is inspired by instant messaging apps like Discord, Telegram, and Signal. Interface is more inspired by Telegram and Signal than Discord, however. Among a few features includes: solo messaging, group messaging, selfies, reminders, scheduling, and more! Based heavily on TheLonelyDevil's [Discord Pals](https://github.com/TheLonelyDevil9/discord-pals), check it out!
+
+### Fixed
+- Companion Agent fixes for regeneration, the fix trackers buttons, the general HTML regexes, and added more customisation options for Companion Agents, both in the Companion Agent drawer and the settings themselves.
+- Fixed sampling profile, custom endpoint, secret binding, proxy isolation, and connection profile issues.
+- Hardened chat saving, backups, renaming, metadata preservation, and unnecessary resaving. There should now be less backups overall, and your chat suddenly deleting and moving to the greeting while the rest disappears are now highly mitigated, as much as possible.
+- Fixed compatibility for third-party extensions CharacterLibrary and ST-Copilot. Should be future-proofed for other third-party SillyTavern extensions but it depends. Open an issue on Github for specific extensions and we can take a look.
+- Corrected Claude responses, Gemini thought signatures, Grok dialogue, and SillyTavern version mapping for extensions by hard-coding it to the latest version, 1.18.0.
+- Fixed TTS extension reading the font color tags and HTML tags.
+- Fixed multiple platforms' device issues with starting SillyBunny in either node or bun.
+- Corrected some WebKit layout issues.
+- Termux bun launch should now work better due to reordering of how dependencies are found and installed.
+- Fixed UI bugs such as button and tag truncations.
+
+### Added
+- Conversation Mode for DM-style RPs with your characters.
+- Added the hardcoding for the latest new models for different backends at the time of release. They should still be automatically updated via your API, this is just for UI/cleaning purposes.
+- LinkAPI-specific backend with auto-routing, and Custom Endpoint Profiles for Custom OpenAI-compatible backend, similar to the Reverse Proxy option in other backends like AI Studio.
+- Option to add more desktop top bar quick shortcuts.
+- Option to include every page icon on the desktop and mobile top bar.
+- Companion Agent settings - adding the ability for agents to depend on each other, send context to each other, and wait for other agents to finish before starting a specific one.
+- A wand icon in the Custom CSS menu that allows you to request your equipped LLM what to add or change.
+- Locks on every dropdown for Bunny Preset Tools to prevent random reopening and reclosing when using mobile devices, as well as allowing dropdown reordering.
+- Delete-and-add swipe and TTS stop actions.
+- Verbose console logging.
+- Sorting by newest added character.
+- Optional disabling of core extensions.
+- New model/provider icons, control labels, model variants, and Kimi K3 partial-prefill support.
+- Opt-in `bun --smol` launcher support on devices that need arguments before the start command. Use `SILLYBUNNY_BUN_SMOL=1 ./start.sh` to launch a small device-friendly SillyBunny.
+- New agents: Level Up Companion, User-based Stats, and CYOA Choices with Skill Checks.
+
+### Changed
+- Reworked the home screen.
+- Updated Quick Image Gen to upstream `v3.0.0`, with SillyBunny-specific compatibility.
+- Updated Pura’s Director Preset, Grounded Prose Rules, TLD Card Conversion, and Memory Shard agent.
+- Reorganized custom agent templates into content and tracker categories.
+- Changed the default window size to Snap to Chat Width behavior.
+- Main LLM messages by default now output before pre-generation intercept agents change them.
+- Updated non-English README files to reference SillyBunny.
+
+### Improvements
+- Improved Android mobile performance.
+- Improved mobile shell loading, touch behavior, horizontal navigation, and keyboard handling.
+- Added more accent profiles.
+- Added clearer iOS startup diagnostics.
+- Improved accessibility labels and compact mobile controls.
+- Improved documentation.
+
+### Removed
+- Removed deprecated model entries.
+- Removed dead code.
+- Removed placeholder text from the UI.
+- Deprecated Group DMs from Group Chats, as they are now delegated to Conversation Mode.
+
+### Supporting Mechanical Staging PR Ledger
+- PR #495 (2026-06-15) `chore: bump version to 1.7.0`
+- PR #496 (2026-06-16) `fix: keep card and hidden companions out of the tracker panel`
+- PR #497 (2026-06-16) `fix: clamp unmapped SB minors to highest synced ST version`
+- PR #498 (2026-06-16) `fix: prevent Windows file locks during chat integrity checks`
+- PR #499 (2026-06-16) `feat: add edit button to companion previous states in tracker panel`
+- PR #500 (2026-06-16) `feat: add availableSprites macro for Expressions Agent`
+- PR #501 (2026-06-16) `feat: add desktop top bar shortcut slots`
+- PR #502 (2026-06-16) `chore: sync Quick Image Gen v2.2.0`
+- PR #503 (2026-06-18) `feat: add character Conversation Mode for Discord-style DMs`
+- PR #505 (2026-06-18) `fix: re-apply model sampling profile after preset changes`
+- PR #506 (2026-06-19) `fix: scope conversation connection profile without switching the global profile`
+- PR #507 (2026-06-19) `chore: add missing MAX_AGENT_MAX_TOKENS export to agent-store test mocks`
+- PR #508 (2026-06-19) `chore: sync stale test expectations to current source`
+- PR #509 (2026-06-19) `fix: coalesce consecutive user messages in conversation mode`
+- PR #510 (2026-06-19) `fix: navigate to exact setting from universal search`
+- PR #511 (2026-06-19) `chore(frontend-budgets): raise blocking stylesheet bytes and startup script count ceilings`
+- PR #512 (2026-06-19) `fix: prevent empty conversation replies when persona description uses brackets`
+- PR #513 (2026-06-19) `fix: detect Node.js in standard install paths in Start-Node.bat`
+- PR #514 (2026-06-19) `fix: snapshot client socket address so streaming abort detects Bun disconnects`
+- PR #515 (2026-06-19) `fix: exclude hidden messages from companion context threshold so the memory shard waits for fresh context`
+- PR #516 (2026-06-19) `fix(ica): guard main generation against echoing companion tracker format`
+- PR #517 (2026-06-19) `fix: surface custom-category templates (HTML Toggle, etc.) in the templates browser`
+- PR #518 (2026-06-19) `fix: make swipe DOM updates instant`
+- PR #519 (2026-06-19) `fix: keep mobile shell visible during keyboard viewport shifts`
+- PR #520 (2026-06-19) `fix: lazy-load Conversation Mode runtime`
+- PR #521 (2026-06-19) `chore: hard-code Claude Opus 4.8 and GLM-5.2`
+- PR #522 (2026-06-19) `fix: bootstrap bun-termux on Termux`
+- PR #523 (2026-06-19) `fix: restore iOS keyboard shell offset broken by invalid CSS comments`
+- PR #524 (2026-06-19) `chore: guard all first-party CSS against invalid // comments`
+- PR #536 (2026-06-19) `fix: block pinch-zoom viewport drift on Android Firefox`
+- PR #537 (2026-06-19) `fix: block multi-touch pinch-zoom on Firefox mobile`
+- PR #538 (2026-06-19) `fix: scan all Claude content blocks for text, not just content[0]`
+- PR #543 (2026-06-19) `fix: use 5-column grid for home action buttons and update TLD site link to BotBooru`
+- PR #544 (2026-06-19) `chore: update TLD Card Conversion Preset to v8`
+- PR #548 (2026-06-20) `fix: hide unused STscript controls in mobile composer`
+- PR #549 (2026-06-20) `fix: scroll mobile drawer inputs above the keyboard`
+- PR #550 (2026-06-20) `chore: reclassify custom in-chat agent templates into content and tracker`
+- PR #551 (2026-06-20) `feat: add custom OpenAI-compatible endpoint profiles`
+- PR #553 (2026-06-20) `feat: lock and reorder BunnyPresetTools section dropdowns`
+- PR #554 (2026-06-20) `feat: add custom accent color profiles`
+- PR #556 (2026-06-20) `feat: sort model favorites alphabetically and scope Custom favorites per URL`
+- PR #557 (2026-06-20) `fix: preserve Bunny Preset Tools section icons`
+- PR #558 (2026-06-20) `fix: persist Pathfinder section collapse state`
+- PR #559 (2026-06-20) `chore(agents): update Grounded Prose Rules template`
+- PR #560 (2026-06-20) `fix: bind custom endpoint profiles to saved secrets`
+- PR #561 (2026-06-20) `fix(companion-panel): keep manual Play button visible after first run`
+- PR #562 (2026-06-20) `fix: improve WebKit prefix parity and iOS guards`
+- PR #563 (2026-06-20) `fix(ica): regenerate extract trackers from Fix Trackers`
+- PR #564 (2026-06-20) `feat(in-chat-agents): live HTML preview and regenerate for custom tracker builder`
+- PR #566 (2026-06-20) `feat(in-chat-agents): add textarea fullscreen toggles`
+- PR #567 (2026-06-20) `fix: bind Custom endpoint status checks to profile secrets`
+- PR #568 (2026-06-20) `fix: backport shell polish and loading-state fixes`
+- PR #569 (2026-06-20) `fix: continue mobile shell state and UI polish`
+- PR #571 (2026-06-20) `chore: streamline PR workflow runs`
+- PR #572 (2026-06-20) `feat: Conversation mode & general UI polish`
+- PR #576 (2026-06-21) `fix: restore mobile shell cascade guards`
+- PR #577 (2026-06-21) `feat: add line spacing slider`
+- PR #579 (2026-06-21) `fix: prevent companion panel blur flash on close`
+- PR #581 (2026-06-21) `feat: add custom CSS AI wand`
+- PR #585 (2026-06-21) `fix: Desktop Padding Reverts`
+- PR #587 (2026-06-21) `fix: let in-chat agent trim regex actually work`
+- PR #588 (2026-06-21) `fix: stop custom endpoint Connect from clobbering profile keys`
+- PR #590 (2026-06-21) `fix: DOM content bleed over user and assistant messages`
+- PR #591 (2026-06-23) `feat: show main LLM message before pre-generation intercept`
+- PR #592 (2026-06-22) `feat: improve accent profile settings`
+- PR #594 (2026-06-22) `fix: workspace and customize shortcuts toggle use intended behaviour`
+- PR #595 (2026-06-22) `fix: PR unit test regression cleanup`
+- PR #596 (2026-06-22) `feat: add margin size slider`
+- PR #597 (2026-06-22) `fix: auto-close the post-generation ICA toast`
+- PR #599 (2026-06-22) `fix: make Icons Only work on horizontal side rail`
+- PR #600 (2026-06-22) `chore: add Pura's Director Preset 14.0 and RPG elements as agents`
+- PR #601 (2026-06-22) `fix: make regex HTMLs work universally on ICA`
+- PR #602 (2026-06-22) `fix: prevent switching branches from hanging`
+- PR #606 (2026-06-22) `feat(console): add verbose logging toggle`
+- PR #608 (2026-06-23) `fix: use set group chat greetings + harden group chat creation`
+- PR #609 (2026-06-23) `fix(group_chat): fix group chat new messages + add greetings button QoL`
+- PR #610 (2026-06-23) `fix: hide the iOS "not loading" warning when not applicable`
+- PR #616 (2026-06-23) `docs: update alt language README files`
+- PR #617 (2026-06-26) `chore: update Quick Image Gen to 2.2.1`
+- PR #618 (2026-06-26) `fix: viewport escaping out of bounds due to dragging in general`
+- PR #619 (2026-06-26) `fix(ui): make edit message icons smaller on mobile`
+- PR #620 (2026-06-26) `feat(ui): preset settings dropdown`
+- PR #621 (2026-06-27) `fix(connection_profile): persist custom endpoint profiles secret`
+- PR #623 (2026-06-27) `fix(mobile_ui): soften touch guards and re-allow scrolling`
+- PR #624 (2026-06-27) `feat(qol): add a Delete + Add Swipe button`
+- PR #625 (2026-06-27) `chore: Change default for 'Snap to Chat Width'`
+- PR #626 (2026-06-28) `fix: Hardening viewport escaping across the board`
+- PR #627 (2026-07-27) `fix: Performance Optimizations for mobile on Android`
+- PR #629 (2026-06-28) `feat(tts) - add stop button for TTS playback`
+- PR #630 (2026-07-01) `fix(ica): render macros in Companion Agents drawer`
+- PR #631 (2026-07-01) `feat(ica): add a hide/unhide button for every agent in the Companion Agents drawer`
+- PR #633 (2026-07-01) `fix(sampling_profile): automatic sampling profile switch`
+- PR #635 (2026-07-01) `fix(custom_css): allow importing of custom CSS when uploading themes that have it`
+- PR #636 (2026-07-01) `fix(mobile_webkit_safari): steady the input textbox viewport`
+- PR #637 (2026-07-01) `feat(ica): include the number of tokens used by agents in the UI`
+- PR #639 (2026-07-07) `fix(profiles): resolve custom endpoint secret persistence, connection profile consistency, and sampling profile UX`
+- PR #640 (2026-07-07) `fix: Batch Importing Embedded Lorebooks Correctly in One Shot`
+- PR #641 (2026-07-07) `fix: Endpoint Profiles Not Loading Correctly in Clientside UI`
+- PR #642 (2026-07-05) `fix(ipad_webkit_viewport): steady text box input viewport on iPadOS`
+- PR #643 (2026-07-08) `chore: more SVGs for different models/companies`
+- PR #644 (2026-07-08) `fix(ica): minimum context overrides number of messages in Companion Agents`
+- PR #645 (2026-07-08) `fix: requests made under a connection profile no longer inherit the currently active proxy`
+- PR #646 (2026-07-08) `fix: click-to-toggle header text now opt-in`
+- PR #647 (2026-07-08) `fix: Gemini thought signatures getting mangled/corrupted`
+- PR #648 (2026-07-08) `fix: agent prompt editor blow-up being shapeless/formless with text spilling off-screen`
+- PR #649 (2026-07-08) `feat: add LinkAPI chat completion provider integration with auto-routing`
+- PR #650 (2026-07-09) `fix(ica): viewing the in-chat agents injected into the preset should show their actual names`
+- PR #651 (2026-07-09) `fix(card_imports): fixes chub AI import API + botbooru support`
+- PR #652 (2026-07-09) `fix(mobile): restore viewport pan hardening and keep popup inputs above the keyboard`
+- PR #653 (2026-07-09) `fix(tests): cover secret-bound profiles dropping plaintext keys (split from #627)`
+- PR #654 (2026-07-09) `feat: New ordering mechanism for agents and companion sidebar`
+- PR #655 (2026-07-09) `fix: that funkily-sized button (guided generations flush/sweep)`
+- PR #656 (2026-07-09) `fix: Grok example dialogue glitch`
+- PR #657 (2026-07-11) `feat(agents): let post-generation passes target companion outputs, impersonation text, and picked targets`
+- PR #658 (2026-07-11) `fix(mobile): hold the chat composer above the iOS keyboard to stop the viewport escape`
+- PR #659 (2026-07-15) `chore: add the new GPT 5.6 variants, Sonnet 5, remove deprecated models`
+- PR #661 (2026-07-12) `fix: Favs not lighting up, scrolling favorites on desktop, validator behavior changes, etc`
+- PR #662 (2026-07-15) `fix(chat_files): hardens chat files, fixes backups and chat renaming`
+- PR #663 (2026-07-15) `fix(continue): continue button also works when thinking is interrupted`
+- PR #664 (2026-07-15) `fix(ios): add exception to viewport fix on message box`
+- PR #665 (2026-07-15) `fix(mobile): remove icon overlap on message box`
+- PR #667 (2026-07-15) `fix(tts): TTS extension only considers actual quotes`
+- PR #668 (2026-07-15) `fix: Viewport scrolling offscreen in-depth`
+- PR #670 (2026-07-17) `fix(mobile): allow horizontal sliding`
+- PR #675 (2026-07-17) `fix: Start-Node.bat unescaped parentheses causes immediate exit`
+- PR #676 (2026-07-17) `fix: Bun throws EEXIST on mkdir when SillyBunny is installed inside OneDrive`
+- PR #677 (2026-07-20) `chore: refresh and update Pura's Director Preset to 15.0`
+- PR #678 (2026-07-22) `fix(ios): includes backwards compatibility of viewport fix for old iOS versions`
+- PR #680 (2026-07-22) `feat: Card sorting option based on newest additions (for real)`
+- PR #682 (2026-07-23) `chore: Update Group Utilities Link to correct GitHub`
+- PR #683 (2026-07-24) `chore: enforce LF line endings via .gitattributes`
+- PR #687 (2026-07-25) `fix: issue of being unable to import or rename any preset to any user-deleted bundled default presets`
+- PR #688 (2026-07-25) `fix: characters with spaces show proper thumbnails`
+- PR #689 (2026-07-26) `feat(launcher): gate bun --smol behind SILLYBUNNY_BUN_SMOL`
+- PR #690 (2026-07-26) `fix: Chat saving issue resolution via hardening`
+- PR #691 (2026-07-26) `fix: WI activation sliders width consistency`
+- PR #692 (2026-07-26) `fix: overlap between favorites bar and Roleplay/Conversation selector`
+- PR #693 (2026-07-26) `fix: Dropdowns scrollbar fixes`
+- PR #694 (2026-07-26) `fix: QR Stale Bar Fix`
+- PR #695 (2026-07-26) `chore: Clean up dead references`
+- PR #696 (2026-07-26) `chore: Add labels for 23 control elements`
+- PR #697 (2026-07-26) `chore: hardcoded values revised for z index in extension menu/options/popper modal`
+- PR #698 (2026-07-26) `fix: subtitle tooltip for shell subtitles`
+- PR #699 (2026-07-27) `feat: Allow disabling core extensions`
+- PR #700 (2026-07-27) `fix(proxy): resolve the 'None' no-proxy error`
+- PR #701 (2026-07-27) `fix(style): anchor bottom-positioned toasts to viewport on mobile`
+
+### Merged Staging PRs
+- PR #136 (2026-05-18) `fix: stop post-gen agents re-running on mobile recovery events`
+- PR #702 (2026-07-28) `chore: prepare v1.7 pre-release cleanup`
+- PR #703 (2026-07-29) `feat: reuse Start Reply With for Kimi K3 partial prefill`
+- PR #704 (2026-07-30) `fix(ios): fix iOS crash startup logs not being detailed enough`
+- PR #705 (2026-08-03) `fix(termux): fix the ordering of what is installed first on start-termux-bun.sh`
+- PR #708 (2026-08-03) `fix: chats no longer constantly resave when opening them`
+- PR #709 (2026-08-03) `fix: character metadata is preserved`
+- PR #711 (2026-08-03) `fix(server): port now closes if it's unused`
+- PR #712 (2026-08-03) `fix: character card metadata fixes (windows edition)`
+- PR #725 (2026-08-04) `fix(ica): fix memory shard completely hiding the previous shard`
+- PR #729 (2026-08-04) `fix: fix CharacterLibrary and ST-CoPilot incompatibilities`
+- PR #731 (2026-08-04) `fix(characters): align favourites bar across tabs`
+- PR #732 (2026-08-04) `feat(home): rework home screen for v1.7.0 release`
+- PR #733 (2026-08-04) `docs: replace old 1.7.0 home screen screenshots with the new homepage UI`
+- PR #734 (2026-08-05) `fix: conversation mode selected character`
+- PR #736 (2026-08-05) `chore: update Quick Image Gen to 3.0.0`
+- PR #737 (2026-08-05) `chore: remove previous non-1.7.0 screenshots`
+- PR #738 (2026-08-06) `chore: merge 1.7.0 staging cleanly into main`
+
 ## v1.6.5
 
 Date: 2026-06-15
@@ -85,7 +313,11 @@ This update introduces Companion Agents, sidecar-style auxiliary AI helpers that
 - PR #428 (2026-06-11) `fix: make server.js self-supervising so restart works everywhere (#412)`
 - PR #429 (2026-06-11) `fix: stop double-evaluating script.js via versioned module URLs (#424)`
 - PR #430 (2026-06-11) `chore(tests): pin @playwright/test to 1.60.0 for chromium 1223`
+- PR #431 (2026-06-11) `chore: layer fork stylesheets and consolidate top-bar mobile rules`
 - PR #432 (2026-06-11) `chore: sync Quick Image Gen v2.1.0`
+- PR #433 (2026-06-11) `chore: consolidate composer and bottom-bar mobile styles`
+- PR #434 (2026-06-11) `chore: consolidate drawer and overlay mobile styles`
+- PR #435 (2026-06-11) `chore: tighten phase 2 mobile css ratchets`
 - PR #436 (2026-06-12) `fix: agent enable/disable toggle not responding on mobile`
 - PR #437 (2026-06-12) `fix: scope top-bar drawer hiding to native drawers for extension compatibility`
 - PR #438 (2026-06-12) `fix(mobile): prevent iOS chat overscroll blanking and keyboard composer displacement`

@@ -187,36 +187,46 @@ describe('Connection Profile reverse proxy request mapping', () => {
         });
     });
 
-    test('falls back to a backend-bound proxy preset when the profile preset has no URL', () => {
+    test('honors an explicit profile proxy selection of None without fallbacks', () => {
+        mockOpenAiSettings.reverse_proxy = 'https://active.example/v1';
+        mockOpenAiSettings.proxy_password = 'active-secret';
         mockProxies.push(
             { name: 'None', url: '', password: '', source: '' },
             { name: 'Gemini proxy', url: 'https://proxy.example/google', password: '', source: 'makersuite' },
         );
 
-        expect(getChatCompletionProfileReverseProxy({ proxy: 'None' }, 'makersuite')).toEqual({
-            reverse_proxy: 'https://proxy.example/google',
-            proxy_password: '',
-        });
-        expect(getChatCompletionProfileReverseProxy({ proxy: 'Deleted proxy' }, 'makersuite')).toEqual({
+        expect(getChatCompletionProfileReverseProxy({ proxy: 'None' }, 'makersuite')).toEqual({});
+        expect(getChatCompletionProfileReverseProxy({ proxy: 'Deleted proxy' }, 'makersuite')).toEqual({});
+    });
+
+    test('falls back to a backend-bound proxy preset when the profile has no proxy key', () => {
+        mockProxies.push(
+            { name: 'None', url: '', password: '', source: '' },
+            { name: 'Gemini proxy', url: 'https://proxy.example/google', password: '', source: 'makersuite' },
+        );
+
+        expect(getChatCompletionProfileReverseProxy({}, 'makersuite')).toEqual({
             reverse_proxy: 'https://proxy.example/google',
             proxy_password: '',
         });
     });
 
-    test('falls back to the active reverse proxy for unsaved manual proxy URLs', () => {
+    test('falls back to the active reverse proxy only when the profile has no proxy key', () => {
         mockOpenAiSettings.reverse_proxy = 'https://manual.example/v1';
         mockOpenAiSettings.proxy_password = 'manual-secret';
         mockProxies.push({ name: 'None', url: '', password: '', source: '' });
 
-        expect(getChatCompletionProfileReverseProxy({ proxy: 'None' }, 'openai')).toEqual({
+        expect(getChatCompletionProfileReverseProxy({}, 'openai')).toEqual({
             reverse_proxy: 'https://manual.example/v1',
             proxy_password: 'manual-secret',
         });
+        expect(getChatCompletionProfileReverseProxy({ proxy: 'None' }, 'openai')).toEqual({});
     });
 
     test('omits reverse proxy fields when no usable proxy is available', () => {
         mockProxies.push({ name: 'None', url: '', password: '', source: '' });
 
         expect(getChatCompletionProfileReverseProxy({ proxy: 'None' }, 'openai')).toEqual({});
+        expect(getChatCompletionProfileReverseProxy({}, 'openai')).toEqual({});
     });
 });

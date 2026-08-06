@@ -124,6 +124,32 @@
     flex-shrink: 0;
 }
 
+.ica--token-counter {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 35%, transparent);
+    border-radius: var(--sb-radius-md, 10px);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 8%, transparent);
+}
+
+.ica--token-counter.is-empty {
+    opacity: 0.75;
+}
+
+.ica--token-counter-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+#ica--total-tokens-val {
+    font-variant-numeric: tabular-nums;
+}
+
 /* ── Agent List ─────────────────────────────────────── */
 
 .ica--agentList {
@@ -217,9 +243,11 @@
 
 .ica--quick-chip-main,
 .ica--quick-chip-pin,
-.ica--quick-chip-apply {
+.ica--quick-chip-apply,
+.ica--quick-chip-apply-target {
     border: none;
     color: inherit;
+    -webkit-appearance: none;
     appearance: none;
     font: inherit;
 }
@@ -239,7 +267,8 @@
 
 .ica--quick-chip-main:hover,
 .ica--quick-chip-pin:hover,
-.ica--quick-chip-apply:hover {
+.ica--quick-chip-apply:hover,
+.ica--quick-chip-apply-target:hover {
     background: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 18%, transparent);
 }
 
@@ -300,7 +329,8 @@
     flex: 0 0 auto;
 }
 
-.ica--quick-chip-apply {
+.ica--quick-chip-apply,
+.ica--quick-chip-apply-target {
     width: 38px;
     min-width: 38px;
     display: inline-flex;
@@ -318,7 +348,9 @@
 }
 
 .ica--quick-chip-apply:hover,
-.ica--quick-chip-apply:focus-visible {
+.ica--quick-chip-apply:focus-visible,
+.ica--quick-chip-apply-target:hover,
+.ica--quick-chip-apply-target:focus-visible {
     opacity: 1;
     color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 78%, var(--SmartThemeBodyColor, #ddd) 22%);
 }
@@ -335,6 +367,7 @@
     align-items: center;
     gap: 8px;
     cursor: pointer;
+    -webkit-user-select: none;
     user-select: none;
     font-size: calc(var(--mainFontSize) * 0.78);
     font-weight: 600;
@@ -428,7 +461,7 @@
 }
 
 .ica--card-drag-handle {
-    display: none;
+    display: inline-flex;
     width: 28px;
     height: 28px;
     align-items: center;
@@ -442,6 +475,7 @@
     opacity: 0.45;
     cursor: grab;
     flex-shrink: 0;
+    touch-action: none;
 }
 
 .ica--card-drag-handle:hover {
@@ -597,6 +631,23 @@ button.ica--card-pill--version-update {
     animation: ica--version-pulse 0.85s ease-in-out;
 }
 
+.ica--card-pill--tokens {
+    font-variant-numeric: tabular-nums;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 13%, var(--SmartThemeBorderColor, #555) 18%, transparent);
+    opacity: 0.86;
+}
+
+.ica--card-pill--tokens strong {
+    font-weight: 700;
+}
+
+/* The note's host message is hidden from prompts; the note itself is still live. */
+.ica--card-pill--absorbed {
+    background: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 28%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--SmartThemeBorderColor, #555) 62%, transparent);
+    opacity: 0.6;
+}
+
 @keyframes ica--version-pulse {
     0%, 100% {
         box-shadow: 0 0 0 0 color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 0%, transparent);
@@ -720,7 +771,8 @@ button.ica--card-pill--version-update {
     }
 
     .ica--quick-chip-pin,
-    .ica--quick-chip-apply {
+    .ica--quick-chip-apply,
+    .ica--quick-chip-apply-target {
         width: 30px;
         min-width: 30px;
     }
@@ -805,6 +857,7 @@ button.ica--card-pill--version-update {
     background: transparent;
     border: none;
     color: inherit;
+    -webkit-appearance: none;
     appearance: none;
     font: inherit;
     text-decoration: none;
@@ -941,9 +994,13 @@ button.ica--card-pill--version-update {
     display: flex;
     flex-direction: column;
     gap: 14px;
+    min-height: 0;
     max-height: min(82vh, 960px);
     overflow-y: auto;
+    overscroll-behavior: contain;
     padding-right: 4px;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
 }
 
 .ica--editor-section {
@@ -1003,6 +1060,116 @@ button.ica--card-pill--version-update {
 
 .ica--editor.ica--editor-fullscreen #ica--editor-prompt {
     min-height: min(54vh, 620px);
+}
+
+.ica--textarea-fullscreen-wrapper {
+    position: relative;
+    display: block;
+    width: 100%;
+}
+
+.ica--textarea-fullscreen-wrapper textarea {
+    box-sizing: border-box;
+    padding-right: 42px;
+}
+
+.ica--textarea-fullscreen-toggle {
+    position: absolute;
+    top: 7px;
+    right: 7px;
+    z-index: 2;
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    min-height: 28px;
+    padding: 0;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.72;
+}
+
+.ica--textarea-fullscreen-toggle:hover,
+.ica--textarea-fullscreen-wrapper:focus-within .ica--textarea-fullscreen-toggle {
+    opacity: 1;
+}
+
+.ica--textarea-fullscreen-active {
+    overflow: hidden;
+}
+
+dialog.ica--textarea-fullscreen-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10060;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: color-mix(in srgb, var(--SmartThemeShadowColor, #000) 42%, transparent);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+}
+
+dialog.ica--textarea-fullscreen-backdrop::backdrop {
+    background: transparent;
+}
+
+/* While fullscreen, the field and toggle are hosted inside the body-level backdrop so
+   transformed/filtered dialog ancestors cannot become their containing block and
+   shrink or misplace the viewport-sized editor. */
+.ica--textarea-fullscreen-backdrop textarea.ica--textarea-fullscreen-field {
+    --ica-textarea-fullscreen-top: max(10px, env(safe-area-inset-top, 0px));
+    --ica-textarea-fullscreen-right: max(10px, env(safe-area-inset-right, 0px));
+    --ica-textarea-fullscreen-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+    --ica-textarea-fullscreen-left: max(10px, env(safe-area-inset-left, 0px));
+    position: fixed !important;
+    inset: var(--ica-textarea-fullscreen-top) var(--ica-textarea-fullscreen-right) var(--ica-textarea-fullscreen-bottom) var(--ica-textarea-fullscreen-left);
+    z-index: 10061;
+    width: calc(100vw - var(--ica-textarea-fullscreen-left) - var(--ica-textarea-fullscreen-right));
+    width: calc(100dvw - var(--ica-textarea-fullscreen-left) - var(--ica-textarea-fullscreen-right));
+    height: calc(100vh - var(--ica-textarea-fullscreen-top) - var(--ica-textarea-fullscreen-bottom));
+    height: calc(100dvh - var(--ica-textarea-fullscreen-top) - var(--ica-textarea-fullscreen-bottom));
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 16px 56px 16px 16px;
+    resize: none;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 70%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 96%, var(--SmartThemeChatTintColor, #222) 4%);
+    box-shadow: 0 24px 80px color-mix(in srgb, var(--SmartThemeShadowColor) 42%, transparent);
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    overflow-y: auto;
+}
+
+.ica--textarea-fullscreen-backdrop .ica--textarea-fullscreen-toggle {
+    position: fixed;
+    top: calc(max(10px, env(safe-area-inset-top, 0px)) + 10px);
+    right: calc(max(10px, env(safe-area-inset-right, 0px)) + 10px);
+    z-index: 10062;
+    opacity: 1;
+}
+
+@media (max-width: 600px) {
+    .ica--textarea-fullscreen-backdrop textarea.ica--textarea-fullscreen-field {
+        --ica-textarea-fullscreen-top: max(6px, env(safe-area-inset-top, 0px));
+        --ica-textarea-fullscreen-right: max(6px, env(safe-area-inset-right, 0px));
+        --ica-textarea-fullscreen-bottom: max(6px, env(safe-area-inset-bottom, 0px));
+        --ica-textarea-fullscreen-left: max(6px, env(safe-area-inset-left, 0px));
+        padding: 14px 52px 14px 14px;
+        border-radius: 10px;
+        font-size: 16px;
+    }
+
+    .ica--textarea-fullscreen-backdrop .ica--textarea-fullscreen-toggle {
+        top: calc(max(6px, env(safe-area-inset-top, 0px)) + 8px);
+        right: calc(max(6px, env(safe-area-inset-right, 0px)) + 8px);
+    }
 }
 
 .ica--prompt-preview pre {
@@ -1134,6 +1301,41 @@ button.ica--card-pill--version-update {
     padding: 10px 12px;
 }
 
+.ica--tracker-preview-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.ica--tracker-preview-status {
+    font-size: calc(var(--mainFontSize) * 0.72);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 76%, var(--SmartThemeBodyColor, #ddd) 24%);
+}
+
+.ica--tracker-preview-frame {
+    margin-top: 8px;
+    padding: 12px;
+    max-height: min(42vh, 420px);
+    overflow: auto;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #555) 76%, transparent);
+    border-radius: var(--sb-radius-md, 12px);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 46%, transparent);
+    -webkit-overflow-scrolling: touch;
+}
+
+.ica--tracker-preview-source {
+    margin: 0;
+    white-space: pre-wrap;
+    font-family: var(--monoFontFamily, monospace);
+    font-size: calc(var(--mainFontSize) * 0.86);
+    line-height: 1.45;
+}
+
 .ica--regex-placement-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -1226,6 +1428,7 @@ button.ica--card-pill--version-update {
     min-height: 40px;
     padding: 8px 10px;
     cursor: pointer;
+    -webkit-user-select: none;
     user-select: none;
     list-style: none;
 }
@@ -1407,6 +1610,10 @@ button.ica--card-pill--version-update {
     overflow-x: auto;
     scrollbar-width: none;
     padding-bottom: 2px;
+}
+
+.ica--agent-tabs::-webkit-scrollbar {
+    display: none;
 }
 
 .ica--agent-tab {
@@ -1702,6 +1909,9 @@ button.ica--card-pill--version-update {
 /* ── Slide-out Tracker Panel ────────────────────────── */
 
 .ica--tpanel {
+    --ica--tpanel-viewport-height: var(--sb-shell-viewport-height, 100dvh);
+    --ica--tpanel-viewport-top: var(--sb-shell-viewport-top, 0px);
+    --ica--tpanel-sheet-height: min(70dvh, 560px, var(--ica--tpanel-viewport-height));
     position: fixed;
     /* Above the mobile shell's modal layer (--sb-z-modal-content: 3100), below toasts. */
     z-index: var(--sb-z-popout, 4000);
@@ -1713,7 +1923,7 @@ button.ica--card-pill--version-update {
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 92%, #000);
     -webkit-backdrop-filter: blur(calc(var(--blurStrength, 10) * 1px));
     backdrop-filter: blur(calc(var(--blurStrength, 10) * 1px));
-    transition: transform 0.25s ease;
+    transition: -webkit-clip-path 0.25s ease, clip-path 0.25s ease;
     overflow-y: auto;
     overscroll-behavior: contain;
     contain: layout style;
@@ -1727,10 +1937,10 @@ button.ica--card-pill--version-update {
 
 .ica--tpanel[data-edge="right"],
 .ica--tpanel[data-edge="left"] {
-    top: 0;
-    bottom: 0;
+    top: var(--ica--tpanel-viewport-top);
+    bottom: auto;
     width: min(420px, 94vw);
-    height: 100dvh;
+    height: var(--ica--tpanel-viewport-height);
 }
 
 .ica--tpanel[data-edge="right"] {
@@ -1738,7 +1948,8 @@ button.ica--card-pill--version-update {
     left: auto;
     border-left-width: 1px;
     padding-right: calc(12px + env(safe-area-inset-right, 0px));
-    transform: translateX(100%);
+    -webkit-clip-path: inset(0 0 0 100%);
+    clip-path: inset(0 0 0 100%);
 }
 
 .ica--tpanel[data-edge="left"] {
@@ -1746,7 +1957,8 @@ button.ica--card-pill--version-update {
     right: auto;
     border-right-width: 1px;
     padding-left: calc(12px + env(safe-area-inset-left, 0px));
-    transform: translateX(-100%);
+    -webkit-clip-path: inset(0 100% 0 0);
+    clip-path: inset(0 100% 0 0);
 }
 
 .ica--tpanel[data-edge="top"],
@@ -1754,35 +1966,43 @@ button.ica--card-pill--version-update {
     left: 0;
     right: 0;
     width: 100%;
-    height: min(70dvh, 560px);
+    height: var(--ica--tpanel-sheet-height);
 }
 
 .ica--tpanel[data-edge="top"] {
-    top: 0;
+    top: var(--ica--tpanel-viewport-top);
     bottom: auto;
     border-bottom-width: 1px;
     padding-top: calc(12px + env(safe-area-inset-top, 0px));
-    transform: translateY(-100%);
+    -webkit-clip-path: inset(0 0 100% 0);
+    clip-path: inset(0 0 100% 0);
 }
 
 .ica--tpanel[data-edge="bottom"] {
-    bottom: 0;
-    top: auto;
+    /* The transformed zero-height <html> is the fixed-position containing block,
+       so bottom: 0 would place this sheet above the viewport. Use measured shell
+       coordinates for both normal and keyboard-shifted visual viewports. */
+    top: calc(var(--ica--tpanel-viewport-top) + var(--ica--tpanel-viewport-height) - var(--ica--tpanel-sheet-height));
+    bottom: auto;
     border-top-width: 1px;
     padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-    transform: translateY(100%);
+    -webkit-clip-path: inset(100% 0 0 0);
+    clip-path: inset(100% 0 0 0);
 }
 
-/* Must out-rank the per-edge closed transforms above (same class+attr specificity,
-   later source order would otherwise keep the panel off-screen while open). */
+.ica--tpanel:not(.is-open) {
+    visibility: hidden;
+    pointer-events: none;
+    /* Delay hiding until the close slide finishes so the backdrop blur leaves in lockstep. */
+    transition: -webkit-clip-path 0.25s ease, clip-path 0.25s ease, visibility 0s linear 0.25s;
+}
+
 .ica--tpanel[data-edge="right"].is-open,
-.ica--tpanel[data-edge="left"].is-open {
-    transform: translateX(0);
-}
-
+.ica--tpanel[data-edge="left"].is-open,
 .ica--tpanel[data-edge="top"].is-open,
 .ica--tpanel[data-edge="bottom"].is-open {
-    transform: translateY(0);
+    -webkit-clip-path: inset(0);
+    clip-path: inset(0);
 }
 
 .ica--tpanel-header {
@@ -1818,9 +2038,47 @@ button.ica--card-pill--version-update {
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 36%, transparent);
 }
 
+.ica--tpanel-agent[data-hidden="true"] {
+    opacity: 0.55;
+}
+
+.ica--tpanel-agent[data-hidden="true"] .ica--tpanel-agent-name span {
+    text-decoration: line-through;
+}
+
+.ica--tpanel-agent[data-hidden="true"] .ica--tpanel-agent-body,
+.ica--tpanel-agent[data-hidden="true"] .ica--tpanel-history,
+.ica--tpanel-agent[data-hidden="true"] .ica--chatonly-composer,
+.ica--tpanel-agent[data-hidden="true"] .ica--plot-objective-composer,
+.ica--tpanel-agent[data-hidden="true"] .ica--tpanel-compact,
+.ica--tpanel-agent[data-hidden="true"] .ica--cdash-empty {
+    display: none;
+}
+
+.ica--tpanel-drag-handle {
+    cursor: grab;
+    touch-action: none;
+}
+
+.ica--tpanel-drag-handle:active {
+    cursor: grabbing;
+}
+
+.ica--tpanel-agent-placeholder {
+    min-height: 64px;
+    border-radius: var(--sb-radius-lg, 14px);
+    border: 1px dashed color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 58%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 10%, transparent);
+}
+
+.ui-sortable-helper.ica--tpanel-agent {
+    box-shadow: 0 18px 36px color-mix(in srgb, #000 24%, transparent);
+}
+
 .ica--tpanel-agent-head {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 8px;
 }
 
@@ -1850,6 +2108,14 @@ button.ica--card-pill--version-update {
     align-items: center;
     gap: 4px;
     flex: 0 0 auto;
+}
+
+.ica--tpanel-agent-token-pills {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-width: 0;
 }
 
 .ica--tpanel-agent-body {
@@ -1950,6 +2216,7 @@ button.ica--card-pill--version-update {
     cursor: pointer;
     font-size: calc(var(--mainFontSize) * 0.8);
     opacity: 0.65;
+    -webkit-user-select: none;
     user-select: none;
     min-height: 32px;
     display: flex;
@@ -1965,6 +2232,9 @@ button.ica--card-pill--version-update {
 }
 
 .ica--tpanel-history-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: calc(var(--mainFontSize) * 0.72);
     opacity: 0.55;
     margin-bottom: 4px;
@@ -2084,6 +2354,7 @@ button.ica--card-pill--version-update {
 }
 
 .ica--template-filter-bar {
+    position: -webkit-sticky;
     position: sticky;
     top: 0;
     z-index: 2;
@@ -2309,6 +2580,29 @@ button.ica--card-pill--version-update {
 }
 
 @media (max-width: 720px) {
+    .popup:has(#ica--editor).wide_dialogue_popup {
+        width: calc(100vw - 20px);
+        width: calc(100dvw - 20px);
+        min-width: 0;
+        max-width: calc(100vw - 20px);
+        max-width: calc(100dvw - 20px);
+    }
+
+    .popup:has(#ica--editor) .popup-body,
+    .popup:has(#ica--editor) .popup-content,
+    #ica--editor,
+    #ica--editor .ica--editor-section {
+        min-width: 0;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
+    #ica--editor :is(input, select, textarea) {
+        min-width: 0;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
     .ica--templates-callout {
         position: relative;
         flex-direction: column;
@@ -2374,6 +2668,15 @@ button.ica--card-pill--version-update {
 
 .ica--tool-badge .fa-route {
     font-size: 0.85em;
+}
+
+.ica--update-all-list {
+    margin: 10px 0 0;
+    padding-inline-start: 20px;
+    max-height: 40vh;
+    overflow-y: auto;
+    text-align: start;
+    font-size: calc(var(--mainFontSize) * 0.9);
 }
 
 .ica--tool-list {
@@ -2526,11 +2829,6 @@ button.ica--card-pill--version-update {
         touch-action: pan-y;
     }
 
-    .ica--card-drag-handle {
-        display: inline-flex;
-        touch-action: none;
-    }
-
     .ica--card-toggle::before {
         content: '';
         position: absolute;
@@ -2545,6 +2843,37 @@ button.ica--card-pill--version-update {
         content: '';
         position: absolute;
         inset: -14px -10px;
+    }
+
+    /* .ica--quick-chip-actions uses align-items: stretch, so the definite height below
+       leaves the crosshair at cross-start while its siblings stretch to the chip height.
+       Centre the row and share one height so all three icons land on the same axis.
+       Widths stay untouched to preserve the phone density rules above. */
+    .ica--quick-chip-actions {
+        align-items: center;
+    }
+
+    .ica--quick-chip-apply,
+    .ica--quick-chip-apply-target,
+    .ica--quick-chip-pin {
+        height: 44px;
+        min-height: 44px;
+    }
+
+    .ica--quick-chip-apply-target {
+        width: 44px;
+        min-width: 44px;
+    }
+
+    /* Companion card actions are transparent at rest, so growing them to the 44px touch
+       contract is visually identical on touch while keeping hit areas from overlapping. */
+    .ica--companion-action,
+    #chat .ica--companion-actions .ica--companion-action {
+        width: 44px;
+        min-width: 44px;
+        max-width: 44px;
+        height: 44px;
+        min-height: 44px;
     }
 }
 
@@ -2568,4 +2897,65 @@ button.ica--card-pill--version-update {
 @keyframes mes-fix-trackers-spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
+}
+
+/* Manual "Apply to..." target picker popup */
+.ica--run-target-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+}
+
+.ica--run-target-picker h4 {
+    margin: 0 0 4px 0;
+}
+
+.ica--run-target-picker .checkbox_label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ica--run-target-range {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 26px;
+}
+
+.ica--run-target-range span {
+    flex: 0 0 auto;
+}
+
+.ica--run-target-range input {
+    min-width: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ica--templates-callout-dismiss,
+    .ica--category-header .ica--chevron,
+    .ica--agent-card,
+    .ica--card-toggle,
+    .ica--card-toggle::after,
+    .ica--card-pill--version-update,
+    .ica--card-btn,
+    .prompt-manager-send-to-agents-action,
+    .ica--choice-line,
+    .ica--tpanel,
+    .ica--tpanel:not(.is-open),
+    .ica--template-pill,
+    .ica--group-card-create,
+    .ica--template-card {
+        transition: none !important;
+    }
+
+    .ica--card-pill--version-update:hover,
+    .ica--card-pill--version-update:focus-visible,
+    .mes_fix_trackers--running.fa-solid,
+    .mes_fix_trackers--running > i,
+    .mes_run_companions--running.fa-solid,
+    .mes_run_companions--running > i {
+        animation: none !important;
+    }
 }

@@ -10,6 +10,70 @@ export function isTrueBoolean(arg) {
     return ['on', 'true', '1'].includes(arg?.trim?.()?.toLowerCase?.() ?? '');
 }
 
+/**
+ * Reads a stored variable value, converting it to a number where that is lossless.
+ *
+ * SillyBunny diverges from upstream here: upstream returns Number(value) for anything
+ * numeric-looking, which rewrites '00' to 0 and '0.50' to 0.5 on every read. The stored
+ * value is fine; only the read loses the text. Converting only when the number renders
+ * back to the same characters keeps every genuinely numeric value behaving as before.
+ *
+ * Lives in this leaf module because getLocalVariable, getGlobalVariable, and
+ * SlashCommandScope.getVariable all need it, while variables.js imports
+ * SlashCommandScope.js. A shared helper in either of those would be circular.
+ *
+ * @param {any} value Raw stored value.
+ * @returns {any} The number, or the value unchanged.
+ */
+export function readVariableValue(value) {
+    if (value?.trim?.() === '' || isNaN(Number(value))) {
+        return value || '';
+    }
+
+    // Non-strings arrive from the index path via JSON.parse. Number(false) is 0 but
+    // Number('false') is NaN, so they must not be compared as text.
+    if (typeof value === 'string' && String(Number(value)) !== value.trim()) {
+        return value;
+    }
+
+    return Number(value);
+}
+
+/**
+ * Whether an operand can take part in a numeric comparison.
+ *
+ * @param {any} value
+ * @returns {boolean}
+ */
+export function isNumericOperand(value) {
+    if (typeof value === 'number') {
+        return true;
+    }
+    return typeof value === 'string' && value.trim() !== '' && !isNaN(Number(value));
+}
+
+/**
+ * Whether an operand is a numeric representation of zero.
+ *
+ * @param {any} value
+ * @returns {boolean}
+ */
+export function isNumericZero(value) {
+    return isNumericOperand(value) && Number(value) === 0;
+}
+
+/**
+ * Converts a boolean operand to the string spelling used before formatted
+ * numeric variable values were preserved on read.
+ *
+ * @param {any} value
+ * @returns {string}
+ */
+export function booleanOperandToString(value) {
+    const comparableValue = isNumericOperand(value) ? Number(value) : value;
+    return (typeof comparableValue === 'string' ? comparableValue : JSON.stringify(comparableValue)).toLowerCase();
+}
+
 export function uuidv4() {
     if ('randomUUID' in crypto) {
         return crypto.randomUUID();

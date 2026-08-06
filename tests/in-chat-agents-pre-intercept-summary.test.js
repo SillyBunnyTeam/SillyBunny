@@ -52,10 +52,12 @@ beforeAll(async () => {
         activateSendButtons: jest.fn(),
         chat: [],
         deactivateSendButtons: jest.fn(),
+        getCurrentChatId: jest.fn(() => 'chat-a'),
         getRequestHeaders: jest.fn(() => ({})),
         generateQuietPrompt: jest.fn(),
         is_send_press: false,
         normalizeContentText: jest.fn(value => String(value ?? '')),
+        saveChatDebounced: jest.fn(),
         saveSettingsDebounced: jest.fn(),
         substituteParams: jest.fn(value => String(value ?? '')),
     }));
@@ -73,6 +75,7 @@ beforeAll(async () => {
         AGENT_CATEGORIES: {},
         AGENT_SUBCATEGORIES: {},
         DEFAULT_AGENT_MAX_TOKENS: 8192,
+        MAX_AGENT_MAX_TOKENS: 64000,
         LEGACY_AGENT_MAX_TOKENS: 2048,
         areAgentsGloballyEnabled: jest.fn(() => true),
         getAgents: jest.fn(() => []),
@@ -94,6 +97,7 @@ beforeAll(async () => {
             maxTokens: 2048,
         })),
         loadAgents: jest.fn(),
+        reorderAgentsIntoOrderSlots: jest.fn(async () => false),
         saveAgent: jest.fn(async () => {}),
         deleteAgent: jest.fn(async () => {}),
         createDefaultAgent: jest.fn(() => ({
@@ -146,12 +150,14 @@ beforeAll(async () => {
         buildPromptDynamicMacros: jest.fn(() => ({})),
         deactivatePathfinderRuntime: jest.fn(),
         initAgentRunner: jest.fn(),
+        getAgentGenerationCancelRevision: jest.fn(() => 0),
         isAgentGenerationActive: jest.fn(() => false),
         onAgentGenerationStateChanged: jest.fn(),
         getPreGenerationInterceptHistoryForMessage: jest.fn(() => []),
         getPromptTransformHistoryForMessage: jest.fn(() => []),
         refreshRegexSnapshotsForAgent: jest.fn(() => 0),
         runAgentOnMessage: jest.fn(),
+        runAgentOnTarget: jest.fn(),
         runTrackerFixOnMessage: jest.fn(),
         syncToolAgentRegistrations: jest.fn(),
         undoPromptTransform: jest.fn(async () => false),
@@ -171,6 +177,7 @@ beforeAll(async () => {
             ESCAPED: 'escaped',
         },
         createDefaultRegexScript: jest.fn(() => ({})),
+        applyRegexScriptList: jest.fn(value => value),
         normalizeRegexScript: jest.fn(value => value),
     }));
 
@@ -189,8 +196,16 @@ beforeAll(async () => {
     }));
 
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js', () => ({
+        agentHasConnectedCompanionDependencies: jest.fn(() => false),
         collectRecentCompanionResults: jest.fn(() => []),
+        getCompanionResults: jest.fn(() => ({})),
+        getLatestValidCompanionMessageIndex: jest.fn(() => -1),
+        hasConnectedCompanionAgentCandidates: jest.fn(() => false),
+        hasConnectedCompanionAgents: jest.fn(() => false),
         initCompanionRunner: jest.fn(),
+        runConnectedCompanionsOnMessage: jest.fn(async () => []),
+        runTrackerCompanionsOnMessage: jest.fn(async () => []),
+        syncCompanionChatHistoryConfig: jest.fn(() => 0),
     }));
 
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-ui.js', () => ({
@@ -208,6 +223,7 @@ beforeAll(async () => {
         configureCompanionPanel: jest.fn(),
         initCompanionPanel: jest.fn(),
         openCompanionPanel: jest.fn(),
+        refreshCompanionPanel: jest.fn(),
         updateCompanionPanelHandleVisibility: jest.fn(),
     }));
 

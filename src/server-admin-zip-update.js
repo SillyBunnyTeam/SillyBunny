@@ -6,6 +6,8 @@ import { pipeline } from 'node:stream/promises';
 import fetch from 'node-fetch';
 import yauzl from 'yauzl';
 
+import { isPathInside } from './path-containment.js';
+
 const GITHUB_OWNER = 'platberlitz';
 const GITHUB_REPO = 'SillyBunny';
 const GITHUB_RELEASE_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
@@ -193,11 +195,6 @@ function getSafeZipEntryPath(fileName) {
     return parts.join(path.sep);
 }
 
-function isPathInside(parent, candidate) {
-    const relative = path.relative(parent, candidate);
-    return relative === '' || (relative && !relative.startsWith('..') && !path.isAbsolute(relative));
-}
-
 function openZip(zipPath) {
     return new Promise((resolve, reject) => {
         yauzl.open(zipPath, { lazyEntries: true }, (error, zipFile) => {
@@ -257,7 +254,7 @@ async function extractZip(zipPath, destination) {
 
             const targetPath = path.resolve(root, relativePath);
 
-            if (!isPathInside(root, targetPath)) {
+            if (!isPathInside(root, targetPath, { allowEqual: true })) {
                 fail(new Error(`ZIP entry escapes the extraction directory: ${entry.fileName}`));
                 return;
             }

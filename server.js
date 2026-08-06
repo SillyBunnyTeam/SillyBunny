@@ -1,10 +1,9 @@
 #!/usr/bin/env bun
 import { runSupervisor, shouldSupervise } from './src/server-supervisor.js';
 
-// When started directly (bun/node server.js, Docker, systemd), supervise a
-// child copy of this process so the in-app restart (exit code 75) relaunches
-// it. Launcher scripts set SILLYBUNNY_LAUNCHER=1 and loop on the exit code
-// themselves; the supervised child sees SILLYBUNNY_SUPERVISED=1 and boots.
+// Supervise a child copy so restarts and transactional plugin replacement are
+// owned by one process. Launcher scripts may wrap this supervisor so host-code
+// updates can reload it; the supervised child boots the application.
 if (shouldSupervise()) {
     await runSupervisor();
 }

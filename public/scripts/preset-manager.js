@@ -304,7 +304,7 @@ class PresetManager {
             setData: (data) => {
                 power_user.user_prompt_bias = data.value ?? '';
                 power_user.show_user_prompt_bias = data.show ?? false;
-                $('#start_reply_with').val(power_user.user_prompt_bias);
+                $('.start-reply-with-input').val(power_user.user_prompt_bias);
                 $('#chat-show-reply-prefix-checkbox').prop('checked', power_user.show_user_prompt_bias);
                 return saveSettingsDebounced();
             },
@@ -863,7 +863,7 @@ class PresetManager {
      * @param {object} [options] Options for saving the preset
      * @param {boolean} [options.skipUpdate=false] If true, skips updating the preset list after saving.
      */
-    async savePreset(name, settings, { skipUpdate = false, restoreDefault = false } = {}) {
+    async savePreset(name, settings, { skipUpdate = false } = {}) {
         if (this.apiId === 'instruct' && settings) {
             await checkForSystemPromptInInstructTemplate(name, settings);
         }
@@ -877,15 +877,11 @@ class PresetManager {
         const response = await fetch('/api/presets/save', {
             method: 'POST',
             headers: getRequestHeaders(),
-            body: JSON.stringify({ preset, name, apiId: this.apiId, restoreDefault }),
+            body: JSON.stringify({ preset, name, apiId: this.apiId }),
         });
 
         if (!response.ok) {
-            const responseData = await response.json().catch(() => ({}));
-            const errorMessage = responseData?.isDeletedDefault
-                ? t`This bundled default was deleted. Use Restore default presets to bring it back.`
-                : t`Check the server connection and reload the page to prevent data loss.`;
-            toastr.error(errorMessage, t`Preset could not be saved`);
+            toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Preset could not be saved`);
             console.error('Preset could not be saved', response);
             throw new Error('Preset could not be saved');
         }
@@ -1762,7 +1758,7 @@ export async function initPresetManager() {
             }
 
             await presetManager.deletePreset();
-            await presetManager.savePreset(name, data.preset, { restoreDefault: true });
+            await presetManager.savePreset(name, data.preset);
             const option = presetManager.findPreset(name);
             await presetManager.selectPreset(option);
             const successToast = !presetManager.isAdvancedFormatting() ? t`Default preset restored` : t`Default template restored`;

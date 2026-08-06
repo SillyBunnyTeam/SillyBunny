@@ -10,9 +10,9 @@
         "deadlines",
         "quests"
     ],
-    "version": 2,
+    "version": 4,
     "author": "Purachina",
-    "prompt": "### Pending Events\nTrack upcoming events, deadlines, promises, and unresolved threads. Update when events are added, resolved, or failed. Use this EXACT format:\n\n[EVENT|Type|Summary|Deadline]\ncontext: MANDATORY; explain the stakes or origin\n[/EVENT]\n\nType options: 🎯 QUEST | 💬 PROMISE | ⏰ DEADLINE | ⚠️ THREAT | 🎉 SOCIAL | 💡 OPPORTUNITY | ❌ FAILED | ✅ RESOLVED\n\nRules:\n- Events appear AFTER narrative content\n- Only show events that were ADDED, UPDATED, or RESOLVED this scene\n- Mark resolved/failed events once, then remove them\n- Deadline can be specific (Friday 3 PM) or vague (soon, eventually)\n- Track only important events; low-stakes events are to be completely ignored (e.g. cooking steps).",
+    "prompt": "### Pending Events\nTrack upcoming events, deadlines, promises, and unresolved threads. Update when events are added, resolved, or failed. Use this EXACT format:\n\n[EVENT|Type|Summary|Deadline]\ncontext: MANDATORY; explain the stakes or origin\n[/EVENT]\n\nType options: 🎯 QUEST | 💬 PROMISE | ⏰ DEADLINE | ⚠️ THREAT | 🎉 SOCIAL | 💡 OPPORTUNITY | ❌ FAILED | ✅ RESOLVED\n\nRules:\n- Events appear AFTER narrative content\n- Only show events that were ADDED, UPDATED, or RESOLVED this scene\n- Mark resolved/failed events once, then remove them\n- Deadline can be specific (Friday 3 PM) or vague (soon, eventually)\n- Track only important events; low-stakes events are to be completely ignored (e.g. cooking steps).\n- When nothing qualifies this scene, output the single line tracker-none in place of the block",
     "phase": "both",
     "injection": {
         "position": 0,
@@ -28,7 +28,7 @@
         "regexReplace": "",
         "regexFlags": "g",
         "appendText": "",
-        "extractPattern": "\\[EVENT\\|[^\\]]*\\]",
+        "extractPattern": "\\[EVENT\\|[^\\]\\r\\n]*\\](?:(?!\\[EVENT(?=[:|\\]]))[\\s\\S])*?\\[/EVENT\\]",
         "extractVariable": "event_data"
     },
     "enabled": false,

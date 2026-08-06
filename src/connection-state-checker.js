@@ -8,6 +8,24 @@ const TCP_ESTABLISHED = '01';
 const CONNECTION_TABLE_CACHE_MS = 50;
 const DEFAULT_POLL_INTERVAL_MS = 150;
 const NETSTAT_TIMEOUT_MS = 1000;
+const NETSTAT_ESTABLISHED_STATE = 'ESTABLISHED';
+const NETSTAT_TCP_STATES = new Set([
+    'CLOSED',
+    'CLOSE_WAIT',
+    'CLOSING',
+    'DELETE_TCB',
+    'ESTABLISHED',
+    'FIN_WAIT_1',
+    'FIN_WAIT_2',
+    'LAST_ACK',
+    'LISTEN',
+    'LISTENING',
+    'SYN_RECEIVED',
+    'SYN_RECV',
+    'SYN_RCVD',
+    'SYN_SENT',
+    'TIME_WAIT',
+]);
 
 /**
  * @typedef {object} SocketAddress
@@ -17,7 +35,7 @@ const NETSTAT_TIMEOUT_MS = 1000;
  * @property {number} remotePort Remote socket port
  */
 
-/** @type {{ platform: string, expiresAt: number, promise: Promise<Set<string>> } | null} */
+/** @type {{ platform: string, expiresAt: number, promise: Promise<Set<string> | null> } | null} */
 let connectionTableCache = null;
 
 function normalizeAddress(address) {
@@ -200,7 +218,7 @@ function parseNetstatOutput(text) {
         const remoteEndpoint = fields[tcpIndex + endpointOffset + 1];
         const state = fields[tcpIndex + endpointOffset + 2];
 
-        if (!localEndpoint || !remoteEndpoint || !/^established$/i.test(state)) {
+        if (!localEndpoint || !remoteEndpoint) {
             continue;
         }
 
@@ -208,6 +226,17 @@ function parseNetstatOutput(text) {
         const remote = parseNetstatEndpoint(remoteEndpoint);
 
         if (!local || !remote || !local.port || !remote.port) {
+            continue;
+        }
+
+        const normalizedState = String(state || '').toUpperCase();
+        if (!NETSTAT_TCP_STATES.has(normalizedState)) {
+            // Windows localizes TCP states. An unrecognized state makes the
+            // table unsafe for disconnect detection, so callers fail open.
+            return null;
+        }
+
+        if (normalizedState !== NETSTAT_ESTABLISHED_STATE) {
             continue;
         }
 
@@ -309,6 +338,24 @@ export async function isSocketConnected(socket) {
         return true;
     }
 
+    return isSocketAddressConnected(address);
+}
+
+/**
+ * Checks the OS connection table for a captured socket address 4-tuple.
+ * Used by the streaming disconnect poller to avoid re-reading the live socket
+ * fields, which runtimes like Bun may clear mid-request (leaving the poller
+ * unable to detect a client disconnect). Returns true (assume alive) only when
+ * the address or platform connection table is unavailable, matching the prior
+ * fail-open behaviour.
+ * @param {SocketAddress} address Captured local/remote address and ports.
+ * @returns {Promise<boolean>} True if the connection is still in the OS table.
+ */
+export async function isSocketAddressConnected(address) {
+    if (!address?.localAddress || !address?.localPort || !address?.remoteAddress || !address?.remotePort) {
+        return true;
+    }
+
     let table;
     try {
         table = await getCachedConnectionTable();
@@ -343,6 +390,14 @@ export function pollSocketConnection(socket, intervalMs = DEFAULT_POLL_INTERVAL_
     let checking = false;
     const interval = Math.max(50, Number(intervalMs) || DEFAULT_POLL_INTERVAL_MS);
 
+    // Snapshot the socket's 4-tuple address once obtained, then check the OS
+    // connection table against the snapshot. The live socket fields (used by
+    // getSocketAddress) can be cleared mid-request under some runtimes (notably
+    // Bun), which previously caused the poller to read null forever and report
+    // the connection as alive even after the client disconnected. We lazily
+    // retry capturing the address until we have it, then reuse the snapshot.
+    let addressSnapshot = null;
+
     async function checkConnection() {
         if (stopped || checking) {
             return;
@@ -350,7 +405,25 @@ export function pollSocketConnection(socket, intervalMs = DEFAULT_POLL_INTERVAL_
 
         checking = true;
         try {
-            const connected = await isSocketConnected(socket);
+            if (socket.destroyed) {
+                if (!stopped) {
+                    stopped = true;
+                    clearInterval(timer);
+                    console.info('Detected destroyed client socket during streaming request');
+                    onDisconnect();
+                }
+                return;
+            }
+
+            if (!addressSnapshot) {
+                addressSnapshot = getSocketAddress(socket);
+                if (!addressSnapshot) {
+                    // Live address fields not available yet this tick; retry next interval.
+                    return;
+                }
+            }
+
+            const connected = await isSocketAddressConnected(addressSnapshot);
             if (!connected && !stopped) {
                 stopped = true;
                 clearInterval(timer);
@@ -380,6 +453,8 @@ export const testExports = {
     },
     connectionKey,
     collapseIpv6Address,
+    getSocketAddress,
+    isSocketAddressConnected,
     normalizeAddress,
     parseLinuxTcpTable,
     parseNetstatOutput,

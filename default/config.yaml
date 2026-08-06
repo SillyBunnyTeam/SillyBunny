@@ -252,6 +252,22 @@ thumbnails:
     persona:
       - 864
       - 1280
+  # Lower-resolution preset used by mobile clients to reduce bandwidth and CPU.
+  # The desktop thumbnail format/quality/dimensions are used when this preset is disabled.
+  mobile:
+    enabled: true
+    format: "jpg"
+    quality: 82
+    dimensions:
+      bg:
+        - 240
+        - 135
+      avatar:
+        - 320
+        - 480
+      persona:
+        - 320
+        - 480
 
 # PERFORMANCE-RELATED CONFIGURATION
 performance:

@@ -1,3 +1,4 @@
+/* SillyBunny divergence: World Info is presented through the fork's shell and Characters-panel layout. */
 .world_info_select_block {
     display: flex;
     flex-direction: row;
@@ -195,6 +196,7 @@
 
 #world_popup_bottom_holder div {
     width: fit-content;
+    -webkit-user-select: none;
     user-select: none;
 }
 
@@ -1344,6 +1346,9 @@ select.keyselect+span.select2-container .select2-selection--multiple {
 
     #WorldInfo.sb-shell-embedded-content #wiActivationSettings {
         flex-direction: column;
+        /* override the base align-items: start, which in column direction shrinks
+           #wiSliders/#wiCheckboxes to content width instead of filling the panel */
+        align-items: stretch;
     }
 
     #WorldInfo.sb-shell-embedded-content #wiSliders,

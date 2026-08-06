@@ -7,6 +7,7 @@ import {
     extension_prompts,
     setExtensionPrompt,
     substituteParams,
+    substituteParamsExtended,
     generateQuietPrompt,
     getCurrentChatId,
     normalizeContentText,
@@ -18,6 +19,7 @@ import {
 } from '../../../script.js';
 import { getContext } from '../../extensions.js';
 import { eventSource, event_types } from '../../events.js';
+import { POPUP_RESULT, POPUP_TYPE, callGenericPopup } from '../../popup.js';
 import { ToolManager } from '../../tool-calling.js';
 import {
     areAgentsGloballyEnabled,
@@ -55,8 +57,17 @@ import {
 import { getPathfinderToolDefinitions } from './pathfinder/tool-definitions.js';
 import { getContextualLorebooks } from './pathfinder/pathfinder-tool-bridge.js';
 import { PATHFINDER_RETRIEVAL_PROMPT_KEYS, runSidecarRetrieval } from './pathfinder/sidecar-retrieval.js';
-import { markAutoSummaryComplete, shouldAutoSummarize } from './pathfinder/auto-summary.js';
+import { shouldAutoSummarize } from './pathfinder/auto-summary.js';
 import { buildRegexScriptRefsForAgent, cacheAgentRegexScripts, migrateLegacyRegexSnapshotsInMessages } from './regex-snapshot-store.js';
+import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from './regex-scripts.js';
+import { getCompanionReferenceIds } from './companion/companion-shared.js';
+import {
+    getTrackerMetadataKey,
+    getTrackerRepairPayload,
+    inspectTrackerState,
+    mergeTrackerRepairPayload,
+    TRACKER_REPAIR_INSTRUCTION,
+} from './tracker-state.js';
 
 const PROMPT_KEY_PREFIX = 'inchat_agent_';
 const PATHFINDER_AUTO_SUMMARY_PROMPT_KEY = 'pathfinder_zz_auto_summary';
@@ -74,6 +85,7 @@ const pendingRegexSnapshotSaves = new WeakSet();
 const migratedLegacyRegexSnapshotChatIds = new Set();
 const GREETING_GENERATION_TYPE = 'first_message';
 const IMPERSONATE_GENERATION_TYPE = 'impersonate';
+export const COMPANION_OUTPUT_GENERATION_TYPE = 'companion_output';
 const PREPEND_PROMPT_TRANSFORM_TEMPLATE_IDS = new Set([
     'tpl-scene-tracker',
     'tpl-time-tracker',
@@ -411,7 +423,7 @@ async function processManualAgentRunQueue() {
             notifyAgentGenerationStateChanged();
 
             try {
-                const result = await executeManualAgentRun(queuedRun.agentId, queuedRun.messageIndex, queuedRun.cancelRevision);
+                const result = await executeManualAgentRun(queuedRun.agentId, queuedRun.target, queuedRun.cancelRevision);
                 queuedRun.resolve(result);
             } catch (error) {
                 queuedRun.reject(error);
@@ -429,7 +441,30 @@ async function processManualAgentRunQueue() {
     }
 }
 
-function enqueueManualAgentRun(agentId, messageIndex) {
+/**
+ * Normalizes a manual-run target. Plain numbers/strings keep the historical
+ * "run on this chat message" meaning; objects can address the composer text box
+ * or a companion result on a message.
+ * @param {number|string|{ kind?: string, messageIndex?: number, companionAgentId?: string }} target
+ * @returns {{ kind: 'message'|'composer'|'companion', messageIndex: number, companionAgentId: string }}
+ */
+function normalizeManualRunTarget(target) {
+    if (typeof target === 'number' || typeof target === 'string') {
+        return { kind: 'message', messageIndex: Number(target), companionAgentId: '' };
+    }
+
+    const kind = ['message', 'composer', 'companion'].includes(String(target?.kind ?? '').trim())
+        ? String(target.kind).trim()
+        : 'message';
+
+    return {
+        kind,
+        messageIndex: Number(target?.messageIndex ?? -1),
+        companionAgentId: String(target?.companionAgentId ?? '').trim(),
+    };
+}
+
+function enqueueManualAgentRun(agentId, target) {
     const wasAlreadyActive = isAgentGenerationActive();
     manualAgentRunCancelRequested = false;
     if (!isGenerationInProgress) {
@@ -449,7 +484,7 @@ function enqueueManualAgentRun(agentId, messageIndex) {
 
         return (async () => {
             try {
-                return await executeManualAgentRun(agentId, messageIndex, cancelRevision);
+                return await executeManualAgentRun(agentId, target, cancelRevision);
             } finally {
                 parallelManualRunCount = Math.max(0, parallelManualRunCount - 1);
                 notifyAgentGenerationStateChanged();
@@ -460,7 +495,7 @@ function enqueueManualAgentRun(agentId, messageIndex) {
     return new Promise((resolve, reject) => {
         manualAgentRunQueue.push({
             agentId,
-            messageIndex,
+            target,
             cancelRevision,
             resolve,
             reject,
@@ -676,6 +711,7 @@ function normalizeGenerationType(generationType) {
         case GREETING_GENERATION_TYPE:
         case 'impersonate':
         case 'quiet':
+        case COMPANION_OUTPUT_GENERATION_TYPE:
             return String(generationType).trim().toLowerCase();
         default:
             return 'normal';
@@ -2104,15 +2140,90 @@ function getPromptTransformAgentsForMessage(activeAgents, generationType) {
     return getPromptTransformAgents(activeAgents);
 }
 
+function agentOptedIntoImpersonatePasses(agent) {
+    if (agent?.conditions?.runOnImpersonate) {
+        return true;
+    }
+
+    const sourceTemplateId = String(agent?.sourceTemplateId ?? '').trim();
+    return IMPERSONATE_PROMPT_TRANSFORM_TEMPLATE_IDS.has(sourceTemplateId);
+}
+
 function getPromptTransformAgentsForImpersonate(activeAgents) {
-    return getPromptTransformAgents(activeAgents).filter(agent => {
-        if (agent?.conditions?.runOnImpersonate) {
-            return true;
+    return getPromptTransformAgents(activeAgents).filter(agentOptedIntoImpersonatePasses);
+}
+
+function getRegexAgentsForImpersonate(activeAgents) {
+    return activeAgents.filter(agent =>
+        !isCompanionAgent(agent) &&
+        !isToolAgent(agent) &&
+        agentOptedIntoImpersonatePasses(agent) &&
+        getAgentRegexScripts(agent).length > 0,
+    );
+}
+
+/**
+ * Applies the given agents' ST-style regex scripts directly to a plain text value
+ * (impersonation composer text or a companion result), outside the message
+ * regex-snapshot display pipeline. Runs the display-mode pass first so the common
+ * markdownOnly scripts apply, then the raw-text pass for scripts with both mode
+ * flags off.
+ * @param {object[]} agents
+ * @param {string} text
+ * @param {{ characterOverride?: string }} [options]
+ * @returns {string}
+ */
+function applyAgentRegexScriptsToText(agents, text, { characterOverride = '' } = {}) {
+    let output = String(text ?? '');
+    if (!output) {
+        return output;
+    }
+
+    const baseOptions = {
+        characterOverride,
+        substituteParamsFn: substituteParams,
+        substituteParamsExtendedFn: substituteParamsExtended,
+    };
+
+    for (const agent of agents) {
+        const scripts = getAgentRegexScripts(agent);
+        if (scripts.length === 0) {
+            continue;
         }
 
-        const sourceTemplateId = String(agent?.sourceTemplateId ?? '').trim();
-        return IMPERSONATE_PROMPT_TRANSFORM_TEMPLATE_IDS.has(sourceTemplateId);
-    });
+        output = applyRegexScriptList(output, scripts, AGENT_REGEX_PLACEMENT.AI_OUTPUT, { ...baseOptions, isMarkdown: true });
+        output = applyRegexScriptList(output, scripts, AGENT_REGEX_PLACEMENT.AI_OUTPUT, baseOptions);
+    }
+
+    return output;
+}
+
+function companionOutputPassTargetsCompanion(agent, companionReferenceIdSet) {
+    const targetIds = Array.isArray(agent?.conditions?.companionOutputTargetAgentIds)
+        ? agent.conditions.companionOutputTargetAgentIds.map(id => String(id ?? '').trim().toLowerCase()).filter(Boolean)
+        : [];
+
+    if (targetIds.length === 0) {
+        return true;
+    }
+
+    return targetIds.some(id => companionReferenceIdSet.has(id));
+}
+
+function getCompanionOutputPostPassAgents(companionAgent) {
+    if (!areAgentsGloballyEnabled()) {
+        return [];
+    }
+
+    const companionReferenceIdSet = new Set(getCompanionReferenceIds(companionAgent).map(id => id.toLowerCase()));
+
+    return getEnabledAgents().filter(agent =>
+        agent.id !== companionAgent?.id &&
+        !isCompanionAgent(agent) &&
+        !isToolAgent(agent) &&
+        agent?.conditions?.runOnCompanionOutputs &&
+        companionOutputPassTargetsCompanion(agent, companionReferenceIdSet),
+    );
 }
 
 function getPreGenerationInterceptAgents(activeAgents) {
@@ -2154,6 +2265,10 @@ function shouldShowPreInterceptNotifications(agent) {
         getGlobalSettings()?.promptTransformShowNotifications &&
         agent?.preProcess?.mode === 'intercept',
     );
+}
+
+function shouldShowPostMainInterceptMessageFirst() {
+    return getGlobalSettings()?.postMainInterceptShowMessageFirst !== false;
 }
 
 function describePromptTransformTarget(profileId = '', runner = '') {
@@ -2211,17 +2326,24 @@ function showPromptTransformRunningToast(agent, mode, profileId = '', options = 
     const applyMode = ['wrap', 'patch'].includes(String(options?.applyMode))
         ? String(options.applyMode)
         : 'replace';
-    const runningLabel = kind === 'preIntercept'
-        ? `Running pre-generation ${applyMode} intercept...`
-        : kind === 'postMainIntercept'
-            ? `Running post-main ${applyMode} intercept...`
-            : `Running ${modeLabel} via ${targetLabel}...`;
+    const skipChanges = Boolean(options?.skipChanges && kind === 'postMainIntercept');
+    const cancelHandler = typeof options?.onCancel === 'function'
+        ? options.onCancel
+        : cancelAgentGeneration;
+    const runningLabel = skipChanges
+        ? 'Generating main output for pre-generation intercept'
+        : kind === 'preIntercept'
+            ? `Running pre-generation ${applyMode} intercept...`
+            : kind === 'postMainIntercept'
+                ? `Running post-main ${applyMode} intercept...`
+                : `Running ${modeLabel} via ${targetLabel}...`;
+    const cancelLabel = skipChanges ? 'Skip changes' : 'Cancel Agent';
     const messageHtml = `
         <div>${escapeToastHtml(runningLabel)}</div>
         <div>${escapeToastHtml(`Order ${metadata.order} | Model: ${metadata.modelLabel}`)}</div>
         <button type="button" class="menu_button menu_button_icon caution ${cancelButtonClass}">
             <i class="fa-solid fa-stop"></i>
-            <span>Cancel Agent</span>
+            <span>${escapeToastHtml(cancelLabel)}</span>
         </button>
     `;
 
@@ -2237,7 +2359,7 @@ function showPromptTransformRunningToast(agent, mode, profileId = '', options = 
             cancelButton?.addEventListener('click', event => {
                 event.preventDefault();
                 event.stopPropagation();
-                cancelAgentGeneration();
+                cancelHandler();
             });
         },
     });
@@ -2255,12 +2377,12 @@ function clearPromptTransformRunningToast(toast) {
     }
 
     activePromptTransformToasts.delete(toast);
-    toastr.clear(toast);
+    toastr.clear(toast, { force: true });
 }
 
 function clearAllPromptTransformRunningToasts() {
     for (const toast of activePromptTransformToasts) {
-        toastr.clear(toast);
+        toastr.clear(toast, { force: true });
     }
 
     activePromptTransformToasts.clear();
@@ -2270,7 +2392,7 @@ function clearAllPromptTransformRunningToasts() {
         const message = $(element).find('.toast-message').text().trim();
         return $(element).find('.ica--toast-cancel-agent').length > 0 ||
             (title === 'In-Chat Agent' && /^Running (?:prompt (?:rewrite|append) via |pre-generation )/u.test(message));
-    }).each((_, element) => toastr.clear($(element)));
+    }).each((_, element) => toastr.clear($(element), { force: true }));
 }
 
 async function commitOpenEditorForMessage(messageIndex) {
@@ -2599,14 +2721,27 @@ function applyContextInterceptText(originalText, interceptText, preProcess = {})
 
 function buildPromptTransformMessages(agentPrompt, messageText, assistantName, generationType, mode) {
     const isImpersonate = isImpersonateGenerationType(generationType);
-    const targetLabel = isImpersonate ? 'generated impersonation text' : 'assistant response';
-    const originalLabel = isImpersonate ? 'original text' : 'original response';
-    const contentLabel = isImpersonate ? 'text' : 'response';
+    const isCompanionOutput = normalizeGenerationType(generationType) === COMPANION_OUTPUT_GENERATION_TYPE;
+    const targetLabel = isImpersonate
+        ? 'generated impersonation text'
+        : isCompanionOutput
+            ? 'companion agent note'
+            : 'assistant response';
+    const originalLabel = isImpersonate
+        ? 'original text'
+        : isCompanionOutput
+            ? 'original note'
+            : 'original response';
+    const contentLabel = isImpersonate ? 'text' : isCompanionOutput ? 'note' : 'response';
     const actionInstruction = mode === 'append'
         ? `Generate only the new content that should be appended after the ${targetLabel} according to the instructions above. Do not repeat, rewrite, summarize, or quote the original ${targetLabel}. Return only the appended content, with no labels or commentary unless the appended content itself requires them.`
         : `Rewrite the ${targetLabel} according to the instructions above. Return only the final rewritten ${targetLabel}. If no changes are needed, return the ${originalLabel} verbatim. Do not add commentary, labels, or code fences unless the ${contentLabel} itself requires them.`;
     const currentAssistantResponse = unwrapAssistantResponseWrapper(messageText);
-    const responseLabel = isImpersonate ? 'Current generated impersonation text' : 'Current assistant response';
+    const responseLabel = isImpersonate
+        ? 'Current generated impersonation text'
+        : isCompanionOutput
+            ? 'Current companion agent note'
+            : 'Current assistant response';
 
     return [
         {
@@ -3204,22 +3339,40 @@ async function runPromptTransformAgent(agent, message, generationType, messageTe
     }
 }
 
-async function runPromptTransformAppendBatch(agents, message, generationType, messageTextOverride = null, messageIndex = null) {
+async function runPromptTransformAppendBatch(agents, message, generationType, messageTextOverride = null, messageIndex = null, { applyToMessage = true, cancelRevision = null } = {}) {
     const currentMessageText = unwrapAssistantResponseWrapper(
         messageTextOverride !== null ? messageTextOverride : message?.mes,
     );
+    const isCancelled = () => cancelRevision !== null && agentGenerationCancelRevision !== cancelRevision;
     const globalSettings = getGlobalSettings();
     const executionMode = globalSettings.appendAgentsExecutionMode === 'sequential' ? 'sequential' : 'parallel';
 
     let results = [];
 
+    if (isCancelled()) {
+        return {
+            results,
+            changed: false,
+            nextMessageText: currentMessageText,
+            beforeText: currentMessageText,
+            cancelled: true,
+        };
+    }
+
     if (executionMode === 'sequential') {
         for (const agent of agents) {
+            if (isCancelled()) {
+                break;
+            }
+
             try {
                 const result = await runPromptTransformAgent(agent, message, generationType, currentMessageText, messageIndex, {
                     applyToMessage: false,
                 });
                 results.push(result);
+                if (isCancelled() || result.status === 'cancelled') {
+                    break;
+                }
             } catch (error) {
                 results.push({
                     agentId: agent.id,
@@ -3262,8 +3415,18 @@ async function runPromptTransformAppendBatch(agents, message, generationType, me
         );
     }
 
+    if (isCancelled() || results.some(result => result?.status === 'cancelled')) {
+        return {
+            results,
+            changed: false,
+            nextMessageText: currentMessageText,
+            beforeText: currentMessageText,
+            cancelled: true,
+        };
+    }
+
     const consolidated = consolidateAppendPromptTransformOutputs(currentMessageText, agents, results);
-    if (consolidated.changed) {
+    if (consolidated.changed && applyToMessage) {
         message.mes = consolidated.text;
         await syncPromptTransformMessageStateAsync(message, messageIndex);
     }
@@ -3399,6 +3562,8 @@ function injectPreGenerationAgentPrompts(activeAgents, generationType) {
             agent.injection.depth,
             agent.injection.scan,
             agent.injection.role,
+            null,
+            agent.name,
         );
     }
 }
@@ -3517,10 +3682,10 @@ function onGenerationStopped() {
 /**
  * Injects pre-generation agent prompts.
  * @param {string} generationType
- * @param {object} _options
+ * @param {object} options
  * @param {boolean} dryRun
  */
-async function onGenerationAfterCommands(generationType, _options, dryRun) {
+async function onGenerationAfterCommands(generationType, options, dryRun) {
     if (internalPromptTransformDepth > 0) {
         return;
     }
@@ -3594,12 +3759,18 @@ async function onGenerationAfterCommands(generationType, _options, dryRun) {
                 false,
                 extension_prompt_roles.SYSTEM,
             );
-            markAutoSummaryComplete();
+            // SillyBunny: do NOT reset the counter here. The counter is reset
+            // only after the Pathfinder_Summarize tool actually writes a summary.
+            // Resetting at injection time caused the interval to be consumed even
+            // when the model skipped or failed the tool call, preventing future
+            // summaries from triggering. (#530)
         }
     }
 
     injectPreGenerationAgentPrompts(activeAgents, generationType);
-    companionRuntime?.injectCompanionFeedbackPrompts?.(activeAgents);
+    companionRuntime?.injectCompanionFeedbackPrompts?.(activeAgents, {
+        excludeMessage: options?.companionHistoryTarget ?? null,
+    });
 
     if (!dryRun) {
         syncToolAgentRegistrations();
@@ -3643,8 +3814,19 @@ async function processReceivedMessage(messageIndex, generationType, activationSn
         markPostProcessingRunProcessed(message, runKey, messageIndex, indexRunKey);
 
         const activeAgents = getActiveAgentsForMessage(generationType, resolvedActivationSnapshot);
+        let chatStateChanged = false;
+        let messageDisplayChanged = false;
+
+        const cleanedAuxiliaryEchoes = companionRuntime?.stripAuxiliaryTrackerEchoes?.(message.mes, undefined, activeAgents);
+        if (typeof cleanedAuxiliaryEchoes === 'string' && cleanedAuxiliaryEchoes !== normalizeContentText(message.mes)) {
+            message.mes = cleanedAuxiliaryEchoes;
+            await syncPromptTransformMessageStateAsync(message, messageIndex);
+            await refreshMessageAfterMutation(messageIndex, message, { deferBackup: true });
+            chatStateChanged = true;
+        }
+
         // Companions normally run last so they see the post-transform reply; the concurrent
-        // option trades that for speed and runs them against the raw reply alongside the passes.
+        // option trades that for speed and runs them against the current reply alongside the passes.
         const companionStageArgs = { messageIndex, message, generationType, activeAgents };
         const concurrentCompanionStage = getGlobalSettings().companionConcurrentWithPostGen && companionRuntime?.runCompanionStage
             ? companionRuntime.runCompanionStage(companionStageArgs).catch(error => {
@@ -3665,8 +3847,6 @@ async function processReceivedMessage(messageIndex, generationType, activationSn
                 ),
             );
 
-        let chatStateChanged = false;
-        let messageDisplayChanged = false;
         if (storePreGenerationInterceptHistory(message, takePendingPreGenerationInterceptRuns())) {
             chatStateChanged = true;
             messageDisplayChanged = true;
@@ -3941,21 +4121,40 @@ function onMessageEdited(messageIndex) {
     saveChatDebouncedForAgent();
 }
 
-async function runPromptTransformAgentsForText(promptTransformAgents, initialText, generationType) {
+async function runPromptTransformAgentsForText(promptTransformAgents, initialText, generationType, { messageContext = {}, cancelRevision = null, stopOnFailure = false } = {}) {
     const message = {
         mes: initialText,
         name: getUserMessageName(),
         is_user: true,
         is_system: false,
         extra: {},
+        ...messageContext,
     };
     const promptRuns = [];
-    let currentPromptTransformText = unwrapAssistantResponseWrapper(initialText);
+    const initialPromptTransformText = unwrapAssistantResponseWrapper(initialText);
+    const isCancelled = () => cancelRevision !== null && agentGenerationCancelRevision !== cancelRevision;
+    const cancelledResult = () => ({
+        promptRuns,
+        text: initialPromptTransformText,
+        changed: false,
+        cancelled: true,
+    });
+    const failedResult = () => ({
+        promptRuns,
+        text: initialPromptTransformText,
+        changed: false,
+        failed: true,
+    });
+    let currentPromptTransformText = initialPromptTransformText;
     let appendBatch = [];
 
     const flushAppendBatch = async () => {
         if (appendBatch.length === 0) {
-            return;
+            return null;
+        }
+
+        if (isCancelled()) {
+            return { cancelled: true };
         }
 
         const batchAgents = appendBatch;
@@ -3967,26 +4166,59 @@ async function runPromptTransformAgentsForText(promptTransformAgents, initialTex
             generationType,
             currentPromptTransformText,
             null,
+            { cancelRevision },
         );
         promptRuns.push(...batchResult.results);
+
+        if (batchResult.cancelled || isCancelled() || batchResult.results.some(result => result?.status === 'cancelled')) {
+            return { cancelled: true };
+        }
+
+        if (stopOnFailure && batchResult.results.some(result => result?.status === 'error')) {
+            return { failed: true };
+        }
+
         currentPromptTransformText = batchResult.nextMessageText;
+        return null;
     };
 
     for (const agent of promptTransformAgents) {
+        if (isCancelled()) {
+            return cancelledResult();
+        }
+
         if (getPromptTransformMode(agent) === 'append') {
             appendBatch.push(agent);
             continue;
         }
 
-        await flushAppendBatch();
+        const appendResult = await flushAppendBatch();
+        if (appendResult?.cancelled) {
+            return cancelledResult();
+        }
+        if (appendResult?.failed) {
+            return failedResult();
+        }
 
         try {
             const result = await runPromptTransformAgent(agent, message, generationType, currentPromptTransformText, null, {
                 applyToMessage: false,
             });
             promptRuns.push(result);
+
+            if (isCancelled() || result.status === 'cancelled') {
+                return cancelledResult();
+            }
+            if (stopOnFailure && result.status === 'error') {
+                return failedResult();
+            }
+
             currentPromptTransformText = result.nextMessageText;
         } catch (error) {
+            if (isCancelled()) {
+                return cancelledResult();
+            }
+
             promptRuns.push({
                 agentId: agent.id,
                 agentName: agent.name,
@@ -3997,16 +4229,97 @@ async function runPromptTransformAgentsForText(promptTransformAgents, initialTex
                 runner: 'error',
                 timestamp: new Date().toISOString(),
             });
+
+            if (stopOnFailure) {
+                return failedResult();
+            }
         }
     }
 
-    await flushAppendBatch();
+    const appendResult = await flushAppendBatch();
+    if (appendResult?.cancelled) {
+        return cancelledResult();
+    }
+    if (appendResult?.failed) {
+        return failedResult();
+    }
 
     return {
         promptRuns,
         text: currentPromptTransformText,
         changed: currentPromptTransformText !== unwrapAssistantResponseWrapper(initialText),
     };
+}
+
+/**
+ * Runs the post passes of every enabled inline agent that opted into companion-output
+ * targeting (prompt pass first, agent regex second) against a completed companion result.
+ * The caller stores the returned text back into the companion result so downstream
+ * consumers (panel display, feedback injection, dependent companions) all see it.
+ * @param {object} companionAgent The companion whose output is being transformed
+ * @param {string} initialText The companion result content
+ * @param {{ messageIndex?: number, cancelRevision?: number }} [options]
+ * @returns {Promise<{ text: string, changed: boolean, cancelled?: boolean }>}
+ */
+export async function runCompanionOutputPostPasses(companionAgent, initialText, { messageIndex = -1, cancelRevision = getAgentGenerationCancelRevision() } = {}) {
+    const baseText = String(initialText ?? '');
+    if (!baseText.trim()) {
+        return { text: baseText, changed: false };
+    }
+
+    const isCancelled = () => agentGenerationCancelRevision !== cancelRevision;
+    if (isCancelled()) {
+        return { text: baseText, changed: false, cancelled: true };
+    }
+
+    const transformers = getCompanionOutputPostPassAgents(companionAgent);
+    if (transformers.length === 0) {
+        return { text: baseText, changed: false };
+    }
+
+    const sourceMessage = chat[Number(messageIndex)] ?? null;
+    const characterName = String(sourceMessage?.name ?? '').trim();
+    let currentText = baseText;
+    let changed = false;
+
+    const promptAgents = getPromptTransformAgents(transformers);
+    if (promptAgents.length > 0) {
+        const promptResult = await runPromptTransformAgentsForText(
+            promptAgents,
+            currentText,
+            COMPANION_OUTPUT_GENERATION_TYPE,
+            {
+                messageContext: characterName ? { name: characterName } : {},
+                cancelRevision,
+                stopOnFailure: true,
+            },
+        );
+        if (promptResult.cancelled || isCancelled()) {
+            return { text: baseText, changed: false, cancelled: true };
+        }
+        if (promptResult.failed) {
+            const failure = promptResult.promptRuns.find(run => run?.status === 'error');
+            throw new Error(failure?.error || 'Companion output prompt transform failed.');
+        }
+
+        currentText = promptResult.text;
+        changed = changed || promptResult.changed;
+    }
+
+    if (isCancelled()) {
+        return { text: baseText, changed: false, cancelled: true };
+    }
+
+    const regexAgents = transformers.filter(agent => getAgentRegexScripts(agent).length > 0);
+    if (regexAgents.length > 0) {
+        const regexText = applyAgentRegexScriptsToText(regexAgents, currentText, { characterOverride: characterName });
+        if (regexText !== currentText) {
+            currentText = regexText;
+            changed = true;
+        }
+    }
+
+    return { text: currentText, changed };
 }
 
 async function runContextInterceptAgent(agent, currentContextText, generationType, contextFormat, options = {}) {
@@ -4048,10 +4361,14 @@ async function runContextInterceptAgent(agent, currentContextText, generationTyp
         buildContextInterceptMessages(expandedPrompt, currentContextText, generationType, contextFormat, timing),
     );
     const cancelRevision = agentGenerationCancelRevision;
-    const runningToast = shouldShowPreInterceptNotifications(agent)
+    const skipChanges = timing === POST_MAIN_GENERATION_INTERCEPT_TIMING && Boolean(options?.skipChanges);
+    const showRunningToast = skipChanges || shouldShowPreInterceptNotifications(agent);
+    const runningToast = showRunningToast
         ? showPromptTransformRunningToast(agent, applyMode, profileId, {
             kind: timing === POST_MAIN_GENERATION_INTERCEPT_TIMING ? 'postMainIntercept' : 'preIntercept',
             applyMode,
+            skipChanges,
+            onCancel: skipChanges ? options?.onCancel : null,
         })
         : null;
 
@@ -4291,7 +4608,7 @@ async function runPreGenerationInterceptorsOnChat(initialChatMessages, generatio
     return { chat: currentChatMessages, runs };
 }
 
-async function runPostMainGenerationInterceptorsOnText(initialOutputText, generationType) {
+async function runPostMainGenerationInterceptorsOnText(initialOutputText, generationType, options = {}) {
     if (internalPromptTransformDepth > 0 || !areAgentsGloballyEnabled()) {
         return { text: initialOutputText, runs: [], cancelled: false };
     }
@@ -4305,7 +4622,9 @@ async function runPostMainGenerationInterceptorsOnText(initialOutputText, genera
         return { text: currentOutputText, runs: [], cancelled: true };
     }
 
-    const activationSnapshot = getGenerationContextSnapshot(generationType);
+    const activationSnapshot = options?.activationSnapshot
+        ? cloneActivationSnapshot(options.activationSnapshot, generationType)
+        : getGenerationContextSnapshot(generationType);
     const interceptAgents = getPostMainGenerationInterceptAgents(getSnapshotAgents(activationSnapshot));
     if (interceptAgents.length === 0) {
         return { text: currentOutputText, runs: [], cancelled: false };
@@ -4323,7 +4642,11 @@ async function runPostMainGenerationInterceptorsOnText(initialOutputText, genera
                 currentOutputText,
                 activationSnapshot.generationType,
                 'text',
-                { timing: POST_MAIN_GENERATION_INTERCEPT_TIMING },
+                {
+                    timing: POST_MAIN_GENERATION_INTERCEPT_TIMING,
+                    skipChanges: Boolean(options?.skipChanges),
+                    onCancel: options?.onCancel,
+                },
             );
 
             if (generationStopRequested || result.status === 'cancelled') {
@@ -4367,6 +4690,40 @@ async function runPostMainGenerationInterceptorsOnText(initialOutputText, genera
     }
 
     return { text: currentOutputText, runs, cancelled: false };
+}
+
+function buildPostMainInterceptReviewPopupContent(text) {
+    return `
+        <div class="ica--post-main-intercept-review">
+            <p>Review the main output before it is shown in chat.</p>
+            <pre class="ica--post-main-intercept-review-output"><code>${escapeToastHtml(text)}</code></pre>
+        </div>
+    `;
+}
+
+async function showPostMainInterceptReviewPopup(text) {
+    const popupContent = buildPostMainInterceptReviewPopupContent(text);
+    const result = await callGenericPopup(popupContent, POPUP_TYPE.TEXT, '', {
+        wide: true,
+        large: true,
+        allowVerticalScrolling: true,
+        okButton: false,
+        cancelButton: false,
+        customButtons: [
+            {
+                text: 'Skip intercept',
+                result: POPUP_RESULT.CUSTOM1,
+                classes: ['menu_button_primary'],
+            },
+            {
+                text: 'Continue intercept',
+                result: POPUP_RESULT.CUSTOM2,
+                classes: ['menu_button_primary'],
+            },
+        ],
+    });
+
+    return result === POPUP_RESULT.CUSTOM2;
 }
 
 function getPostMainGenerationInterceptorsForGeneration(generationType) {
@@ -4426,7 +4783,7 @@ async function onGenerationOutputBufferingDecision(eventData) {
     const interceptAgents = getPostMainGenerationInterceptorsForGeneration(eventData.type ?? currentMainGenerationType);
     if (interceptAgents.length > 0) {
         eventData.hasPostMainInterceptors = true;
-        if (interceptAgents.some(shouldShowPreInterceptNotifications)) {
+        if (interceptAgents.some(shouldShowPreInterceptNotifications) || shouldShowPostMainInterceptMessageFirst()) {
             showInitialGenerationToast();
         }
     }
@@ -4449,7 +4806,29 @@ async function onMainGenerationOutputReady(eventData) {
     }
 
     const generationType = eventData.type ?? currentMainGenerationType;
-    const result = await runPostMainGenerationInterceptorsOnText(eventData.text, generationType);
+    const activationSnapshot = getGenerationContextSnapshot(generationType);
+    const interceptAgents = getPostMainGenerationInterceptAgents(getSnapshotAgents(activationSnapshot));
+    if (interceptAgents.length === 0) {
+        return;
+    }
+
+    const shouldShowMessageFirst = shouldShowPostMainInterceptMessageFirst();
+    if (shouldShowMessageFirst) {
+        const runPostMainIntercepts = await showPostMainInterceptReviewPopup(eventData.text);
+        if (generationStopRequested) {
+            eventData.cancelled = true;
+            return;
+        }
+
+        if (!runPostMainIntercepts) {
+            return;
+        }
+    }
+
+    const result = await runPostMainGenerationInterceptorsOnText(eventData.text, generationType, {
+        activationSnapshot,
+        skipChanges: false,
+    });
     pendingPreGenerationInterceptRuns.push(...result.runs);
 
     if (result.cancelled || generationStopRequested) {
@@ -4482,22 +4861,39 @@ async function onImpersonateReady(text = '') {
         : buildActivationSnapshot(IMPERSONATE_GENERATION_TYPE);
     const activeAgents = getSnapshotAgents(activationSnapshot);
     const promptTransformAgents = getPromptTransformAgentsForImpersonate(activeAgents);
-    if (promptTransformAgents.length === 0) {
+    const regexAgents = getRegexAgentsForImpersonate(activeAgents);
+    if (promptTransformAgents.length === 0 && regexAgents.length === 0) {
         return;
     }
 
     // Impersonate produces user-side text; rewrite only the composer value, never the last assistant swipe.
-    const result = await runPromptTransformAgentsForText(promptTransformAgents, initialText, IMPERSONATE_GENERATION_TYPE);
-    if (!result.changed) {
+    let transformedText = initialText;
+    let changed = false;
+
+    if (promptTransformAgents.length > 0) {
+        const result = await runPromptTransformAgentsForText(promptTransformAgents, transformedText, IMPERSONATE_GENERATION_TYPE);
+        transformedText = result.text;
+        changed = changed || result.changed;
+    }
+
+    if (regexAgents.length > 0) {
+        const regexText = applyAgentRegexScriptsToText(regexAgents, transformedText, { characterOverride: getUserMessageName() });
+        if (regexText !== transformedText) {
+            transformedText = regexText;
+            changed = true;
+        }
+    }
+
+    if (!changed) {
         return;
     }
 
     if (normalizeContentText(textarea.value) !== textareaTextAtStart) {
-        toastr.warning('Skipped applying the impersonation prompt pass because the input changed while it was running.', 'In-Chat Agents');
+        toastr.warning('Skipped applying the impersonation post passes because the input changed while they were running.', 'In-Chat Agents');
         return;
     }
 
-    textarea.value = result.text;
+    textarea.value = transformedText;
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
@@ -4730,14 +5126,105 @@ export function initAgentRunner() {
     migrateLegacyRegexSnapshotsForCurrentChat();
 }
 
-async function executeManualAgentRun(agentId, messageIndex, cancelRevision = agentGenerationCancelRevision) {
-    await commitOpenEditorForMessage(messageIndex);
+/**
+ * Runs a single inline agent's post passes (forced prompt pass, then agent regex)
+ * on a plain text value that is not a chat message.
+ * @param {object} agent
+ * @param {string} text
+ * @param {string} generationType Labeling context for the prompt pass
+ * @param {{ characterOverride?: string, messageContext?: object }} [options]
+ * @returns {Promise<{ text: string, changed: boolean }>}
+ */
+export async function runSingleAgentPostPassesOnText(agent, text, generationType, { characterOverride = '', messageContext = {} } = {}) {
+    let currentText = String(text ?? '');
+    let changed = false;
 
+    if (String(agent?.prompt ?? '').trim()) {
+        const promptResult = await runPromptTransformAgentsForText([agent], currentText, generationType, { messageContext });
+        currentText = promptResult.text;
+        changed = changed || promptResult.changed;
+    }
+
+    if (getAgentRegexScripts(agent).length > 0) {
+        const regexText = applyAgentRegexScriptsToText([agent], currentText, { characterOverride });
+        if (regexText !== currentText) {
+            currentText = regexText;
+            changed = true;
+        }
+    }
+
+    return { text: currentText, changed };
+}
+
+async function executeManualComposerAgentRun(agent, cancelRevision) {
+    if (isCompanionAgent(agent)) {
+        toastr.warning('Companion agents attach notes to messages and cannot rewrite the composer text.');
+        return null;
+    }
+
+    const textarea = document.querySelector('#send_textarea');
+    if (!textarea) {
+        toastr.error('Composer text box not found.');
+        return null;
+    }
+
+    const initialText = normalizeContentText(textarea.value);
+    if (!initialText.trim()) {
+        toastr.warning('The composer text box is empty.');
+        return null;
+    }
+
+    const result = await runSingleAgentPostPassesOnText(agent, initialText, IMPERSONATE_GENERATION_TYPE, {
+        characterOverride: getUserMessageName(),
+    });
+
+    if (agentGenerationCancelRevision !== cancelRevision) {
+        return null;
+    }
+
+    if (!result.changed) {
+        toastr.info(`"${agent.name}" made no changes to the composer text.`, 'In-Chat Agents');
+        return result;
+    }
+
+    if (normalizeContentText(textarea.value) !== initialText) {
+        toastr.warning('Skipped applying the agent because the composer text changed while it was running.', 'In-Chat Agents');
+        return null;
+    }
+
+    textarea.value = result.text;
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    return result;
+}
+
+async function executeManualAgentRun(agentId, target, cancelRevision = agentGenerationCancelRevision) {
+    const runTarget = normalizeManualRunTarget(target);
     const agent = getAgentById(agentId);
     if (!agent) {
         toastr.error('Agent not found.');
         return null;
     }
+
+    if (runTarget.kind === 'composer') {
+        return await executeManualComposerAgentRun(agent, cancelRevision);
+    }
+
+    if (runTarget.kind === 'companion') {
+        if (isCompanionAgent(agent)) {
+            toastr.warning('Companion agents cannot post-process other companion notes.');
+            return null;
+        }
+
+        if (!companionRuntime?.applyAgentPostPassesToCompanionResult) {
+            toastr.error('Companion runtime is unavailable.');
+            return null;
+        }
+
+        return await companionRuntime.applyAgentPostPassesToCompanionResult(agent.id, runTarget.messageIndex, runTarget.companionAgentId, { cancelRevision });
+    }
+
+    const messageIndex = runTarget.messageIndex;
+    await commitOpenEditorForMessage(messageIndex);
 
     const message = chat[messageIndex];
     if (!message || message.is_user || message.is_system) {
@@ -4799,15 +5286,25 @@ async function executeManualAgentRun(agentId, messageIndex, cancelRevision = age
  * @returns {Promise<import('./agent-store.js').InChatAgent | null>}
  */
 export async function runAgentOnMessage(agentId, messageIndex) {
+    return await runAgentOnTarget(agentId, { kind: 'message', messageIndex: Number(messageIndex) });
+}
+
+/**
+ * Manually runs a single agent on a chosen target: a chat message, the composer
+ * text box, or a companion result on a message. Queued like other manual runs.
+ * @param {string} agentId
+ * @param {number|{ kind: 'message'|'composer'|'companion', messageIndex?: number, companionAgentId?: string }} target
+ */
+export async function runAgentOnTarget(agentId, target) {
     if (!areAgentsGloballyEnabled()) {
         toastr.warning('In-Chat Agents are disabled.');
         return null;
     }
 
-    return await enqueueManualAgentRun(agentId, messageIndex);
+    return await enqueueManualAgentRun(agentId, target);
 }
 
-export async function runTrackerFixOnMessage(messageIndex) {
+export async function runTrackerFixOnMessage(messageIndex, { cancelRevision = agentGenerationCancelRevision } = {}) {
     if (!areAgentsGloballyEnabled()) {
         toastr.warning('In-Chat Agents are disabled.');
         return;
@@ -4821,6 +5318,10 @@ export async function runTrackerFixOnMessage(messageIndex) {
     }
 
     const generationType = 'normal';
+    const fixChatId = getCurrentChatId();
+    const fixCancelRevision = cancelRevision;
+    const isFixCancelled = () => agentGenerationCancelRevision !== fixCancelRevision;
+    const isFixTargetCurrent = () => getCurrentChatId() === fixChatId && chat[messageIndex] === message;
     const enabledAgents = getEnabledAgents();
     const trackerAgents = enabledAgents.filter(agent => !isCompanionAgent(agent) && isTrackerFixAgent(agent));
 
@@ -4829,7 +5330,13 @@ export async function runTrackerFixOnMessage(messageIndex) {
         return;
     }
 
+    const trackerExtractAgents = trackerAgents.filter(agent =>
+        agent.postProcess?.enabled &&
+        agent.postProcess.type === 'extract' &&
+        agent.postProcess.extractVariable,
+    );
     const trackerTransformAgents = trackerAgents.filter(agent =>
+        !trackerExtractAgents.includes(agent) &&
         (agent.phase === 'post' || agent.phase === 'both') &&
         agent.postProcess?.promptTransformEnabled &&
         String(agent.prompt ?? '').trim(),
@@ -4850,6 +5357,9 @@ export async function runTrackerFixOnMessage(messageIndex) {
     let chatStateChanged = false;
     let messageDisplayChanged = false;
     const promptRuns = [];
+    let trackerRepairs = 0;
+    let trackerRepairErrors = 0;
+    let trackerMetadataUpdates = 0;
     let currentPromptTransformText = unwrapAssistantResponseWrapper(message.mes);
 
     if (currentPromptTransformText !== normalizeContentText(message.mes)) {
@@ -4874,7 +5384,9 @@ export async function runTrackerFixOnMessage(messageIndex) {
             generationType,
             currentPromptTransformText,
             messageIndex,
+            { applyToMessage: false, cancelRevision: fixCancelRevision },
         );
+        if (!isFixTargetCurrent()) return;
         promptRuns.push(...batchResult.results);
         currentPromptTransformText = batchResult.nextMessageText;
 
@@ -4885,6 +5397,8 @@ export async function runTrackerFixOnMessage(messageIndex) {
     };
 
     for (const agent of trackerTransformAgents) {
+        if (isFixCancelled()) break;
+
         if (getPromptTransformMode(agent) === 'append') {
             appendBatch.push(agent);
             continue;
@@ -4893,7 +5407,10 @@ export async function runTrackerFixOnMessage(messageIndex) {
         await flushAppendBatch();
 
         try {
-            const result = await runPromptTransformAgent(agent, message, generationType, currentPromptTransformText, messageIndex);
+            const result = await runPromptTransformAgent(agent, message, generationType, currentPromptTransformText, messageIndex, {
+                applyToMessage: false,
+            });
+            if (!isFixTargetCurrent()) return;
             promptRuns.push(result);
             currentPromptTransformText = result.nextMessageText;
 
@@ -4916,6 +5433,7 @@ export async function runTrackerFixOnMessage(messageIndex) {
     }
 
     await flushAppendBatch();
+    if (!isFixTargetCurrent()) return;
 
     if (currentPromptTransformText !== message.mes) {
         message.mes = currentPromptTransformText;
@@ -4924,32 +5442,113 @@ export async function runTrackerFixOnMessage(messageIndex) {
         messageDisplayChanged = true;
     }
 
+    // SillyBunny divergence: Fix Trackers repairs the raw tracker block and then
+    // derives metadata from that validated text instead of discarding model output.
+    for (const agent of trackerExtractAgents) {
+        if (isFixCancelled()) break;
+
+        const inspection = inspectTrackerState(agent, message.mes);
+        if (inspection.status === 'valid') {
+            continue;
+        }
+
+        if (!String(agent.prompt ?? '').trim()) {
+            trackerRepairErrors++;
+            continue;
+        }
+
+        try {
+            const repairAgent = {
+                ...agent,
+                prompt: `${String(agent.prompt).trim()}\n\n${TRACKER_REPAIR_INSTRUCTION}`,
+                postProcess: {
+                    ...agent.postProcess,
+                    promptTransformMode: 'append',
+                },
+            };
+            const result = await runPromptTransformAgent(repairAgent, message, generationType, message.mes, messageIndex, {
+                applyToMessage: false,
+            });
+            if (!isFixTargetCurrent()) return;
+            if (!String(result.outputText ?? '').trim() || result.status === 'error' || result.status === 'cancelled') {
+                trackerRepairErrors++;
+                continue;
+            }
+
+            const merged = mergeTrackerRepairPayload(agent, message.mes, result.outputText, {
+                prepend: shouldPrependPromptTransformOutput(agent, result.outputText),
+            });
+            if (!merged.changed) {
+                trackerRepairErrors++;
+                continue;
+            }
+
+            message.mes = merged.text;
+            currentPromptTransformText = merged.text;
+            await syncPromptTransformMessageStateAsync(message, messageIndex);
+            chatStateChanged = true;
+            messageDisplayChanged = true;
+            trackerRepairs++;
+        } catch (error) {
+            trackerRepairErrors++;
+            console.warn(`[InChatAgents] Tracker repair failed in agent "${agent.name}":`, error);
+        }
+    }
+
+    if (!isFixTargetCurrent()) {
+        return;
+    }
+
+    if (isFixCancelled()) {
+        if (chatStateChanged || regexSnapshotChanged) {
+            syncAssistantMessageStateToSwipe(message, messageIndex);
+            saveChatDebouncedForAgent({ deferBackup: false });
+        }
+        if (messageDisplayChanged) {
+            scheduleMessageRefresh(messageIndex, message, { deferBackup: true });
+        }
+        return;
+    }
+
+    for (const agent of trackerExtractAgents) {
+        const metadataKey = getTrackerMetadataKey(agent);
+        if (!metadataKey) continue;
+
+        let latestValue = '';
+        for (let index = chat.length - 1; index >= 0; index--) {
+            const candidate = chat[index];
+            if (!candidate || candidate.is_user || candidate.is_system) continue;
+
+            const payload = getTrackerRepairPayload(agent, candidate.mes).payload;
+            if (payload) {
+                latestValue = payload;
+                break;
+            }
+        }
+
+        if (latestValue) {
+            if (chat_metadata[metadataKey] !== latestValue) {
+                chat_metadata[metadataKey] = latestValue;
+                chatStateChanged = true;
+                trackerMetadataUpdates++;
+            }
+        } else if (Object.hasOwn(chat_metadata, metadataKey)) {
+            delete chat_metadata[metadataKey];
+            chatStateChanged = true;
+            trackerMetadataUpdates++;
+        }
+    }
+
     const utilityAgents = trackerAgents.filter(agent =>
-        agent.postProcess?.enabled && agent.postProcess.type !== 'regex',
+        agent.postProcess?.enabled &&
+        agent.postProcess.type !== 'regex' &&
+        agent.postProcess.type !== 'extract',
     );
 
     for (const agent of utilityAgents) {
         const postProcess = agent.postProcess;
 
         switch (postProcess.type) {
-            case 'extract': {
-                if (!postProcess.extractPattern || !postProcess.extractVariable) {
-                    break;
-                }
-
-                try {
-                    const regex = new RegExp(postProcess.extractPattern, 'g');
-                    const matches = message.mes.match(regex);
-                    if (matches) {
-                        chat_metadata[`agent_${postProcess.extractVariable}`] = matches.join('\n');
-                        chatStateChanged = true;
-                    }
-                } catch (error) {
-                    console.warn(`[InChatAgents] Extract error in agent "${agent.name}":`, error);
-                }
-                break;
-            }
-
             case 'append': {
                 if (!postProcess.appendText) {
                     break;
@@ -4966,11 +5565,6 @@ export async function runTrackerFixOnMessage(messageIndex) {
         }
     }
 
-    if (updateMessageRegexSnapshot(message, trackerAgents, generationType)) {
-        chatStateChanged = true;
-        messageDisplayChanged = true;
-    }
-
     if (promptRuns.length > 0 && updatePromptTransformRuns(message, promptRuns)) {
         chatStateChanged = true;
     }
@@ -4984,6 +5578,10 @@ export async function runTrackerFixOnMessage(messageIndex) {
         chatStateChanged = true;
     }
 
+    if (!isFixTargetCurrent()) {
+        return;
+    }
+
     if (chatStateChanged || regexSnapshotChanged) {
         syncAssistantMessageStateToSwipe(message, messageIndex);
         saveChatDebouncedForAgent({ deferBackup: false });
@@ -4995,11 +5593,14 @@ export async function runTrackerFixOnMessage(messageIndex) {
 
     const changedRuns = promptRuns.filter(r => r.changed);
     const failedRuns = promptRuns.filter(r => r.status === 'error');
+    const postProcessRuns = utilityAgents.length + trackerMetadataUpdates;
+    const errorRuns = failedRuns.length + trackerRepairErrors;
     const parts = [];
+    if (trackerRepairs > 0) parts.push(`${trackerRepairs} tracker${trackerRepairs > 1 ? 's' : ''} regenerated`);
     if (changedRuns.length > 0) parts.push(`${changedRuns.length} prompt transform${changedRuns.length > 1 ? 's' : ''} applied`);
-    if (utilityAgents.length > 0) parts.push(`${utilityAgents.length} post-process${utilityAgents.length > 1 ? 'es' : ''} run`);
+    if (postProcessRuns > 0) parts.push(`${postProcessRuns} post-process${postProcessRuns > 1 ? 'es' : ''} run`);
     if (regexSnapshotChanged) parts.push('regex snapshot updated');
-    if (failedRuns.length > 0) parts.push(`${failedRuns.length} error${failedRuns.length > 1 ? 's' : ''}`);
+    if (errorRuns > 0) parts.push(`${errorRuns} error${errorRuns > 1 ? 's' : ''}`);
 
     if (parts.length > 0) {
         toastr.success(parts.join(', '), 'Trackers fixed');

@@ -61,13 +61,13 @@ function resolveDefaultEnabled({ defaultEnabled, route, routeDefaults }) {
 }
 
 /**
- * Resolves the temporary lifecycle rollout guard for future runtime routing.
+ * Resolves the device-local lifecycle kill switch and per-route defaults.
  * @param {object} [options] Options.
  * @param {boolean} [options.defaultEnabled] Explicit default override.
  * @param {string|boolean|null} [options.queryValue] Explicit query override value.
  * @param {string|null} [options.route] Lifecycle route name.
  * @param {Record<string, boolean>} [options.routeDefaults] Per-route default map.
- * @param {{getItem: (key: string) => string|null}|null} [options.storage] Storage override source.
+ * @param {{getItem: (key: string) => string|null}|null} [options.storage] Device-local override source.
  * @returns {{enabled: boolean, source: 'query'|'storage'|'default'}}
  */
 export function resolveChatRenderLifecycleRollout({

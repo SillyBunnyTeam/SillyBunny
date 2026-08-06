@@ -13,6 +13,9 @@
     --sb-topbar-scale-active: var(--sb-topbar-scale-desktop);
     --sb-chatbar-scale-active: calc(var(--sb-topbar-scale-active) * var(--sb-bottom-bar-scale));
     --sb-topbar-primary-height-base: var(--topBarBlockSize);
+    /* Snapshot of the upstream bar height under a name this fork never overrides, so a rule can
+       scope --topBarBlockSize on an element without a self-reference cycle. */
+    --sb-host-topbar-block-size: var(--topBarBlockSize);
     --sb-topbar-padding-x-base: 10px;
     --sb-topbar-stack-gap-base: 4px;
     --sb-topbar-bottom-padding-base: 4px;
@@ -76,6 +79,9 @@
     --sb-topbar-search-row-height: calc(var(--sb-topbar-search-row-height-base) * var(--sb-topbar-scale-active));
     --sb-topbar-search-panel-gap: calc(var(--sb-topbar-search-panel-gap-base) * var(--sb-topbar-scale-active));
     --sb-topbar-group-gap: calc(var(--sb-topbar-group-gap-base) * var(--sb-topbar-scale-active));
+    /* Seam between icons-only clusters. A multiple of the group gap rather than a fixed value, so
+       it tracks the user's top bar scale and compact mode instead of fighting them. */
+    --sb-topbar-cluster-gap: calc(var(--sb-topbar-group-gap) * 2.5);
     --sb-chatbar-height: calc(var(--sb-chatbar-height-base) * var(--sb-chatbar-scale-active));
     --sb-chatbar-gap: calc(var(--sb-chatbar-gap-base) * var(--sb-chatbar-scale-active));
     --sb-chatbar-cluster-gap: calc(var(--sb-chatbar-cluster-gap-base) * var(--sb-chatbar-scale-active));
@@ -245,9 +251,19 @@
     pointer-events: auto;
 }
 
-/* SillyBunny: allow extension drawers (non-native) to be clickable despite parent pointer-events: none. */
+/*
+ * SillyBunny: allow extension drawers (non-native) to be clickable despite parent pointer-events: none.
+ * The box normalization matters as much as the pointer-events: upstream's bare `.drawer { width: 100% }`
+ * makes an injected drawer the only non-zero flex child of this fixed full-width strip, which then paints
+ * over the whole top bar and swallows every click. adoptTopbarExtensionNodes() moves these into the bar
+ * proper, so this is the pre-adoption frame and the opt-out path; the nine :not(#id) each contribute an
+ * ID, so the selector outranks `.drawer` on specificity alone.
+ */
 #top-settings-holder > .drawer:not(#ai-config-button):not(#sys-settings-button):not(#advanced-formatting-button):not(#WI-SP-button):not(#user-settings-button):not(#backgrounds-button):not(#extensions-settings-button):not(#persona-management-button):not(#rightNavHolder) {
     pointer-events: auto;
+    width: auto;
+    min-width: 0;
+    flex: 0 0 auto;
 }
 
 #top-bar {
@@ -282,6 +298,7 @@
 }
 
 body.sb-topbar-dragging {
+    -webkit-user-select: none;
     user-select: none;
 }
 
@@ -603,6 +620,7 @@ body.sb-topbar-compact #sb-chatbar-layer {
 }
 
 .sb-chatbar-button {
+    -webkit-appearance: none;
     appearance: none;
     position: relative;
     isolation: isolate;
@@ -846,6 +864,7 @@ body.sb-topbar-compact #sb-chatbar-layer {
 }
 
 .sb-connection-strip-connect {
+    -webkit-appearance: none;
     appearance: none;
     position: relative;
     isolation: isolate;
@@ -1135,10 +1154,33 @@ body:not(.movingUI) .drawer-content.maximized {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    margin: -2px 0;
+    padding: 2px 6px;
+    border-radius: 999px;
     font-size: var(--sb-type-body);
     font-weight: var(--sb-weight-title);
     line-height: var(--sb-line-title);
     letter-spacing: 0;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: background-color 160ms ease-out, box-shadow 160ms ease-out, opacity 160ms ease-out;
+}
+
+.sb-brand-title:hover,
+.sb-brand-title.is-previewing,
+.sb-brand-title:focus-visible {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 9%, transparent);
+}
+
+.sb-brand-title:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 58%, transparent);
+}
+
+.sb-brand-title:active {
+    opacity: 0.82;
 }
 
 .sb-brand-title.is-chat {
@@ -1161,6 +1203,7 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .sb-proxy-button {
+    -webkit-appearance: none;
     appearance: none;
     position: relative;
     overflow: hidden;
@@ -1284,6 +1327,157 @@ body:not(.movingUI) .drawer-content.maximized {
     display: none;
 }
 
+/* Icons only top bar: each section grows a cluster of its own page icons. Workspace and Customize
+   yield to their complete clusters while Home and Characters stay put with labels suppressed.
+
+   Square hit boxes at the labelled buttons' own height. The icons used to be 30px wide inside a
+   36px-tall bar, which read as a smaller, harder-to-hit control than the anchors beside them
+   (Geechan review, #685). Placed after .sb-proxy-button-icon-only so equal specificity resolves
+   here by source order. */
+.sb-topbar-page-button,
+:root[data-sb-topbar-icons-only='true'] .sb-proxy-button-icon-only {
+    width: var(--sb-proxy-button-height);
+    min-width: var(--sb-proxy-button-height);
+}
+
+/* The rails do not scroll on their own. A nested scroll region ended mid-button and left an
+   unreadable sliver of an icon at its boundary; the whole bar scrolls as one axis instead. */
+.sb-topbar-pages {
+    display: none;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: var(--sb-topbar-group-gap);
+}
+
+:root[data-sb-topbar-icons-only='true'] #sb-left-shell-toggle,
+:root[data-sb-topbar-icons-only='true'] #sb-right-shell-toggle {
+    display: none;
+}
+
+/* A cluster's anchor sits tight against its own page icons; each new anchor opens the wider seam
+   that separates the clusters, so Workspace, Customize and Characters read as three zones rather
+   than one strip. Derived from the group gap so it follows the user's top bar scale. */
+:root[data-sb-topbar-icons-only='true'] .sb-topbar-cluster-lead:not(:first-child) {
+    margin-inline-start: calc(var(--sb-topbar-cluster-gap) - var(--sb-topbar-group-gap));
+}
+
+:root[data-sb-topbar-icons-only='true'] #sb-topbar-cluster-workspace {
+    margin-inline-start: calc(var(--sb-topbar-cluster-gap) - var(--sb-topbar-group-gap));
+}
+
+/* Boundary rule between clusters: a 1px theme-derived rule marks where one cluster ends and the
+   next begins -- Workspace|Customize on the left half, Home|Characters on the right -- at every
+   size while the mode is on. The symmetric margins reproduce the cluster seam around the rule. */
+.sb-topbar-cluster-divider {
+    display: none;
+    flex: 0 0 auto;
+    width: 1px;
+    height: calc(var(--sb-proxy-button-height) * 0.55);
+    border-radius: 999px;
+    margin-inline: calc((var(--sb-topbar-cluster-gap) - var(--sb-topbar-group-gap)) / 2);
+    background: var(--sb-shell-border);
+}
+
+/* The divider carries the seam, so the lead's extra margin steps aside to keep the rule centred
+   (this must follow the seam-margin rule above to win on source order). */
+:root[data-sb-topbar-icons-only='true'] .sb-topbar-cluster-divider {
+    display: inline-block;
+}
+
+/* The characters divider is the phone strip's boundary marker; on desktop the home divider
+   already carries Home|Characters, so showing both would double the rule. The phone sheet
+   re-enables it at equal specificity and wins on load order. */
+:root[data-sb-topbar-icons-only='true'] #sb-topbar-divider-characters {
+    display: none;
+}
+
+:root[data-sb-topbar-icons-only='true'] .sb-topbar-cluster-divider + .sb-topbar-cluster-lead {
+    margin-inline-start: 0;
+}
+
+/* Overflow state: the leading group scrolls and the trailing controls sit beside it, so Quick
+   Actions, Home and Characters stay reachable however far the icons are scrolled.
+   The icons deliberately scroll beside the trailing group rather than under it. Scrolling them
+   under would need the pinned group to paint over them, and its only theme-correct backing is
+   the bar's own translucent background: repainting that double-darkens, and backdrop-filter
+   silently no-ops in WebKit when nested inside another backdrop-filtered element (#top-bar),
+   leaving the group transparent with the icons showing straight through it on iOS. */
+:root[data-sb-topbar-scroll='true'] #sb-topbar-inner {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    /* Without this the nowrap content sets a min-content floor and the bar grows past the
+       viewport instead of scrolling inside it. */
+    min-width: 0;
+    max-width: 100%;
+}
+
+:root[data-sb-topbar-scroll='true'] .sb-topbar-group-left {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    /* Tell WebKit this axis is a pan target; without it the buttons swallow the gesture. */
+    touch-action: pan-x;
+    /* No scroll snapping: the first snap point is the leading page icon, so the browser pulled
+       the bar past the hamburger on load and hid it. */
+    scroll-padding-inline-end: var(--sb-topbar-group-gap);
+}
+
+:root[data-sb-topbar-scroll='true'] .sb-topbar-group-left::-webkit-scrollbar {
+    display: none;
+}
+
+/* The min-content floor propagates up through every flex/grid ancestor, so each one has to be
+   told it may shrink or the whole bar widens past the viewport instead of scrolling.
+   Gated on icons-only rather than on the scroll state itself: the overflow verdict is measured
+   from #sb-topbar-inner's client width, and leaving these unset lets the bar inflate to fit its
+   own content, so a small overflow would never be detected and could never be scrolled. */
+:root[data-sb-topbar-icons-only='true'] #sb-topbar-stack,
+:root[data-sb-topbar-icons-only='true'] #sb-topbar-primary,
+:root[data-sb-topbar-icons-only='true'] #sb-topbar-inner {
+    min-width: 0;
+}
+
+:root[data-sb-topbar-scroll='true'] .sb-topbar-group-right {
+    flex: 0 0 auto;
+    min-width: auto;
+    padding-left: var(--sb-topbar-group-gap);
+}
+
+:root[data-sb-topbar-icons-only='true'] .sb-topbar-pages {
+    display: flex;
+}
+
+:root[data-sb-topbar-icons-only='true'] .sb-topbar-shortcut-duplicate {
+    display: none;
+}
+
+/* Once the label is squeezed out there is nothing left to centre on, so it yields its width to
+   the clusters, which keep hugging their own edge of the bar. The clusters are positioned by
+   meaning here, not by balance: Workspace stays hard left and Characters hard right at every
+   width, so neither group is ever pulled toward the centre. */
+:root[data-sb-topbar-brand-cramped='true'] .sb-topbar-brand {
+    display: none;
+}
+
+/* display:none takes the label out of the grid entirely, and with only two items left the right
+   group would auto-place into the centre `auto` column and drift toward the middle, under the
+   left group's overflow. Collapse to two columns so each group keeps its own edge. */
+:root[data-sb-topbar-brand-cramped='true'] #sb-topbar-inner {
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+}
+
+/* #sb-home-toggle's id-level min-width outranks .sb-proxy-button-icon-only, so without this
+   the home button keeps a label-width box with no label in it. */
+:root[data-sb-topbar-icons-only='true'] #sb-home-toggle {
+    min-width: var(--sb-proxy-button-height);
+}
+
 #top-settings-holder > .sb-drawer-host:not(.sb-embedded-drawer) {
     width: 0;
     min-width: 0;
@@ -1305,6 +1499,77 @@ body:not(.movingUI) .drawer-content.maximized {
 #top-settings-holder .popup,
 #top-settings-holder .popup * {
     pointer-events: auto;
+}
+
+/*
+ * SillyBunny: third-party top-bar buttons are adopted into this slot by
+ * adoptTopbarExtensionNodes() so they become real members of the bar rather than overlays
+ * floating above it. Every selector here carries the slot id, which outranks upstream's bare
+ * `.drawer` / `.drawer-icon` / `.menu_button` rules on specificity alone.
+ */
+#sb-topbar-extension-slot {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    gap: var(--sb-topbar-group-gap);
+    min-width: 0;
+}
+
+/*
+ * display:none rather than zero width: syncTopbarBrandFit() adds one inline gap per visible
+ * child, so an empty-but-visible slot would inflate the overflow verdict by a gap.
+ */
+#sb-topbar-extension-slot[data-sb-topbar-slot-empty='true'] {
+    display: none;
+}
+
+#sb-topbar-extension-slot > * {
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+#sb-topbar-extension-slot > .drawer {
+    width: auto;
+    max-width: 100%;
+}
+
+#sb-topbar-extension-slot .drawer-icon,
+#sb-topbar-extension-slot .menu_button,
+#top-bar #sb-topbar-extension-slot .drawer-icon,
+#top-bar #sb-topbar-extension-slot .menu_button {
+    width: auto;
+    inline-size: auto;
+    height: var(--sb-proxy-button-height);
+    min-height: var(--sb-proxy-button-height);
+    min-width: var(--sb-proxy-button-height);
+    min-inline-size: var(--sb-proxy-button-height);
+    padding: 0;
+    margin: 0;
+}
+
+#sb-topbar-extension-slot .menu_button,
+#top-bar #sb-topbar-extension-slot .menu_button {
+    max-width: none;
+    max-inline-size: min(12rem, 45vw);
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/* .sb-proxy-button clips itself with overflow:hidden, which would eat a mirrored badge. */
+.sb-proxy-button.sb-has-adopted-badge {
+    overflow: visible;
+}
+
+/*
+ * SillyBunny: CharacterLibrary anchors its embedded panel to --topBarBlockSize, which only
+ * covers the primary row; when the chat bar row is showing, the panel painted over the bottom
+ * of the bar. Scoping the variable to the container re-anchors both its inline top and height.
+ * The max() is needed because neither input alone clears the bar in every state: on phones the
+ * layout offset sits just above the bar's bottom edge, and on desktop the upstream height stops
+ * short of the chat bar row. Both operands are substituted at :root, so there is no cycle.
+ */
+#charlib-embedded-container {
+    --topBarBlockSize: max(var(--sb-host-topbar-block-size), var(--sb-topbar-layout-offset));
 }
 
 #left-nav-panel select {
@@ -1607,6 +1872,7 @@ body.movingUI #right-nav-panel.openDrawer > .sb-shell-resize-handle {
 body.sb-shell-resizing,
 body.sb-shell-resizing * {
     cursor: nwse-resize !important;
+    -webkit-user-select: none !important;
     user-select: none !important;
 }
 
@@ -1769,6 +2035,7 @@ body.sb-shell-resizing * {
 }
 
 .sb-shell-tab {
+    -webkit-appearance: none;
     appearance: none;
     border: 1px solid transparent;
     border-radius: var(--sb-radius-button, 14px);
@@ -1808,9 +2075,14 @@ body.sb-shell-resizing * {
 }
 
 .sb-shell-tab i {
+    --fa-display: inline-flex;
     width: 18px;
+    height: 18px;
     margin-top: 0;
     opacity: 0.82;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
     text-align: center;
 }
 
@@ -1921,13 +2193,149 @@ body.sb-shell-resizing * {
 }
 
 #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-subtitle {
-    max-width: min(62ch, 100%);
     font-size: var(--sb-type-control);
     line-height: 1.36;
 }
 
 #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-description {
     display: none;
+}
+
+.sb-shell-root-left .sb-shell-main > .sb-shell-header,
+.sb-shell-root-right .sb-shell-main > .sb-shell-header {
+    gap: 4px;
+    padding: 8px var(--sb-shell-panel-padding-inline) 10px;
+}
+
+.sb-shell-root-left .sb-shell-main > .sb-shell-header .sb-shell-kicker,
+.sb-shell-root-right .sb-shell-main > .sb-shell-header .sb-shell-kicker {
+    font-size: var(--sb-type-caption);
+    letter-spacing: var(--sb-tracking-label);
+}
+
+.sb-shell-root-left .sb-shell-main > .sb-shell-header .sb-shell-title,
+.sb-shell-root-right .sb-shell-main > .sb-shell-header .sb-shell-title {
+    font-size: calc(var(--mainFontSize) * 1.12);
+    line-height: 1.15;
+}
+
+.sb-shell-root-left .sb-shell-main > .sb-shell-header .sb-shell-subtitle,
+.sb-shell-root-right .sb-shell-main > .sb-shell-header .sb-shell-subtitle {
+    font-size: var(--sb-type-control);
+    line-height: 1.36;
+}
+
+.sb-shell-header .sb-shell-subtitle {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.sb-shell-root-left .sb-shell-main > .sb-shell-header .sb-shell-description,
+.sb-shell-root-right .sb-shell-main > .sb-shell-header .sb-shell-description {
+    display: none;
+}
+
+/* The mode toggle is absolutely positioned, so header text lays out underneath it.
+   The header is a start-aligned flex column, so cap the fit-content width instead
+   of using margin: reserve the toggle footprint (~215px + 66px right offset) so
+   long text ellipsizes instead of running under the pill. */
+@media screen and (min-width: 769px) {
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-title,
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-subtitle {
+        max-width: calc(100% - 276px);
+    }
+}
+
+.sb-character-shell-mode-toggle {
+    position: absolute;
+    top: 18px;
+    right: 66px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 40px;
+    padding: 3px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 88%, transparent);
+    border-radius: 999px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-surface) 96%, rgba(255, 255, 255, 0.04)), color-mix(in srgb, var(--sb-shell-surface) 84%, transparent));
+    box-shadow: 0 12px 28px color-mix(in srgb, #000 18%, transparent), inset 0 1px 0 color-mix(in srgb, #fff 10%, transparent);
+    z-index: 1;
+}
+
+.sb-character-shell-mode-button {
+    border: 0;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    color: var(--sb-shell-text-secondary);
+    font-size: var(--sb-type-meta);
+    font-weight: 700;
+    line-height: 1;
+    min-height: 32px;
+    padding: 8px 13px;
+    cursor: pointer;
+    transition: background var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast), transform var(--sb-transition-fast), opacity var(--sb-transition-fast);
+    opacity: 0.72;
+}
+
+.sb-character-shell-mode-button .fa-solid {
+    font-size: 13px;
+    width: 14px;
+    text-align: center;
+}
+
+.sb-character-shell-mode-button:hover,
+.sb-character-shell-mode-button:focus-visible {
+    background: color-mix(in srgb, var(--sb-shell-surface) 70%, transparent);
+    color: var(--sb-shell-text);
+    opacity: 0.92;
+}
+
+.sb-character-shell-mode-button.is-active {
+    opacity: 1;
+    color: var(--sb-shell-text);
+    transform: translateY(-0.5px);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--sb-accent) 34%, var(--sb-shell-surface)), color-mix(in srgb, var(--sb-accent) 20%, var(--sb-shell-surface)));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-accent) 50%, transparent), 0 6px 14px color-mix(in srgb, var(--sb-accent) 18%, transparent);
+}
+
+.sb-character-shell-mode-toggle[data-active-mode='roleplay'] .sb-character-shell-mode-button[data-sb-character-mode='conversation'],
+.sb-character-shell-mode-toggle[data-active-mode='conversation'] .sb-character-shell-mode-button[data-sb-character-mode='roleplay'] {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-shell-border) 62%, transparent);
+}
+
+@media (max-width: 900px) {
+    #right-nav-panel.openDrawer > .sb-character-shell-header {
+        padding-right: calc(var(--sb-shell-panel-padding-inline) + 118px);
+    }
+
+    .sb-character-shell-mode-toggle {
+        top: 17px;
+        right: 66px;
+        min-height: 40px;
+        gap: 3px;
+        padding: 2px;
+    }
+
+    .sb-character-shell-mode-button {
+        min-width: 34px;
+        min-height: 34px;
+        padding: 9px;
+        justify-content: center;
+    }
+
+    .sb-character-shell-mode-button span {
+        display: none;
+    }
+
+    .sb-character-shell-mode-button .fa-solid {
+        width: auto;
+    }
 }
 
 .sb-shell-header.sb-shell-header-collapsed {
@@ -1995,28 +2403,43 @@ body.sb-shell-resizing * {
     display: none !important;
 }
 
+#right-nav-panel.openDrawer:is([data-menu-type="characters"], [data-menu-type="world-info"], [data-menu-type="persona"]) > #CharListButtonAndHotSwaps {
+    display: flex !important;
+    visibility: visible !important;
+}
+
 #right-nav-panel #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
     display: contents;
 }
 
 #right-nav-panel #CharListButtonAndHotSwaps {
-    min-height: 52px;
-    max-height: 52px;
+    /* Reserve space for the favorites label, gap, and avatar strip together. */
+    flex: 0 0 auto;
+    min-height: 70px;
+    max-height: none;
     padding: var(--sb-shell-space-sm) var(--sb-shell-panel-padding-inline);
+    box-sizing: border-box;
     border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 76%, transparent);
     overflow: hidden;
 }
 
 #right-nav-panel #HotSwapWrapper {
+    /* Deliberate two-row layout (label divider, then avatar strip); previously
+       the strip only ended up below the label as a flex-wrap accident */
+    flex-direction: column;
     align-items: center;
-    gap: 10px;
+    gap: 5px;
     margin: 0 !important;
+    padding: 0 !important;
     min-height: 0;
     overflow: hidden;
 }
 
 #right-nav-panel .sb-character-favorites-label {
     flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
     font-size: var(--sb-type-caption);
     font-weight: var(--sb-weight-title);
     letter-spacing: var(--sb-tracking-kicker);
@@ -2025,14 +2448,37 @@ body.sb-shell-resizing * {
     opacity: 0.72;
 }
 
+#right-nav-panel .sb-character-favorites-label::before,
+#right-nav-panel .sb-character-favorites-label::after {
+    content: '';
+    flex: 1 1 auto;
+    height: 1px;
+    background: color-mix(in srgb, var(--sb-shell-border) 76%, transparent);
+}
+
 #right-nav-panel #HotSwapWrapper .hotswap {
     min-width: 0;
-    flex: 1 1 auto;
+    /* Shrink-to-fit so a short row centers under the label; overflowing rows
+       clamp to full width and scroll */
+    flex: 0 0 auto;
+    align-self: center;
+    max-width: 100%;
+    column-gap: 5px;
     max-height: 36px;
     margin: 0;
+    padding: 1px 2px;
     align-items: center;
     flex-wrap: nowrap;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
+    /* Wheel-driven sideways scroll; a visible scrollbar would eat the 36px row,
+       and smooth behavior makes rapid wheel ticks overwrite each other */
+    scrollbar-width: none;
+    scroll-behavior: auto;
+}
+
+#right-nav-panel #HotSwapWrapper .hotswap::-webkit-scrollbar {
+    display: none;
 }
 
 #right-nav-panel #HotSwapWrapper .hotswap > small {
@@ -2154,8 +2600,11 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 #right-nav-panel .sb-character-create-bar #rm_button_group_chats::after {
-    content: none;
-    display: none;
+    content: 'Create New Chat Group';
+    font-family: var(--mainFontFamily);
+    font-size: var(--sb-type-caption);
+    font-weight: var(--sb-weight-title);
+    line-height: var(--sb-line-compact);
 }
 
 #right-nav-panel .sb-character-create-bar #rm_print_characters_pagination {
@@ -2275,6 +2724,20 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     display: block;
 }
 
+.sb-character-conversation-panel[hidden] {
+    display: none !important;
+}
+
+.sb-character-conversation-panel {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px;
+    overflow-y: auto;
+    height: 100%;
+}
+
 .sb-character-persona-panel #persona-management-button,
 .sb-character-persona-panel #PersonaManagement {
     width: 100% !important;
@@ -2345,6 +2808,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-character-import-action {
+    -webkit-appearance: none;
     appearance: none;
     width: 100%;
     min-height: 92px;
@@ -2374,11 +2838,13 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-character-import-action > i {
+    --fa-display: inline-flex;
     width: 48px;
     height: 48px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    line-height: 1;
     border-radius: var(--sb-radius-md, 16px);
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 14%, transparent);
     color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 72%, var(--SmartThemeBodyColor));
@@ -2500,7 +2966,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     font-size: var(--sb-type-control);
     line-height: var(--sb-line-body);
     opacity: 0.9;
-    max-width: 68ch;
 }
 
 .sb-shell-description {
@@ -2721,6 +3186,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-search-result {
+    -webkit-appearance: none;
     appearance: none;
     width: 100%;
     padding: 12px 14px;
@@ -3539,10 +4005,66 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     margin-bottom: var(--sb-shell-space-md);
 }
 
-.sb-theme-card-header {
-    display: flex;
+.sb-theme-settings-drawer {
+    min-width: 0;
+    overflow: hidden;
+    border-radius: var(--sb-radius-md, 16px);
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 78%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+}
+
+.sb-theme-settings-drawer > .inline-drawer-header {
+    min-height: 48px;
+    margin: 0;
+    padding: 10px 14px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.sb-theme-settings-drawer > .inline-drawer-header:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+}
+
+.sb-theme-settings-drawer > .inline-drawer-header > strong {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: calc(var(--mainFontSize) * 0.82);
+}
+
+.sb-theme-settings-drawer > .inline-drawer-header > .inline-drawer-icon {
+    flex: 0 0 auto;
+    font-size: calc(var(--mainFontSize) * 1.15);
+}
+
+.sb-theme-settings-drawer > .sb-theme-settings-drawer-body {
+    min-width: 0;
+    margin: 0;
+    padding: 0 var(--sb-shell-space-md) var(--sb-shell-space-md);
+}
+
+.sb-theme-settings-drawer > .sb-theme-settings-drawer-body[style*='display: block'] {
+    display: flex !important;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--sb-shell-space-sm);
+}
+
+.sb-theme-settings-drawer > .sb-theme-settings-drawer-body > p:first-child {
+    margin-top: 0;
+}
+
+:root[data-sb-compact-mode='true'] .sb-theme-settings-drawer > .sb-theme-settings-drawer-body {
+    padding: 0 var(--sb-shell-space-sm) var(--sb-shell-space-sm);
+}
+
+@media screen and (max-width: 620px) {
+    .sb-theme-settings-drawer > .inline-drawer-header {
+        padding: 9px 10px;
+    }
+
+    .sb-theme-settings-drawer > .sb-theme-settings-drawer-body {
+        padding: 0 10px 10px;
+    }
 }
 
 .sb-theme-slider-group {
@@ -3596,6 +4118,24 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     opacity: 0.72;
 }
 
+.sb-interface-settings-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sb-shell-space-sm);
+}
+
+.sb-interface-settings-group.sb-theme-slider-group {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.sb-interface-settings-group + .sb-interface-settings-group {
+    padding-top: var(--sb-shell-space-md);
+    border-top: 1px solid color-mix(in srgb, var(--sb-shell-border) 62%, transparent);
+}
+
 .sb-mobile-only-setting {
     display: none;
 }
@@ -3607,6 +4147,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-theme-option {
+    -webkit-appearance: none;
     appearance: none;
     border-radius: var(--sb-radius-md, 16px);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 84%, transparent);
@@ -3707,15 +4248,12 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 70%, transparent);
 }
 
-.sb-topbar-label-group,
-.sb-topbar-label-header,
 .sb-topbar-label-section,
 .sb-topbar-custom-text-field {
     display: flex;
     flex-direction: column;
 }
 
-.sb-topbar-label-group,
 .sb-topbar-label-section,
 .sb-topbar-custom-text-field {
     gap: 12px;
@@ -3749,6 +4287,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-compact-mode-option {
+    -webkit-appearance: none;
     appearance: none;
     position: relative;
     isolation: isolate;
@@ -3847,6 +4386,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-mobile-nav-choice {
+    -webkit-appearance: none;
     appearance: none;
     position: relative;
     isolation: isolate;
@@ -3978,7 +4518,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 .sb-shortcut-row {
     display: grid;
-    grid-template-columns: 56px minmax(0, 1fr);
+    grid-template-columns: 110px minmax(0, 1fr);
     align-items: center;
     gap: 12px;
     min-width: 0;
@@ -4190,10 +4730,10 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 /* Bottom chat management bar */
 #nonQRFormItems {
     display: grid !important;
-    grid-template-columns: var(--sb-composer-side-rail-width, min(16%, 132px)) minmax(0, 1fr) var(--sb-composer-side-rail-width, min(16%, 132px)) !important;
+    grid-template-columns: max-content minmax(0, 1fr) max-content !important;
     grid-template-areas: 'tools input action' !important;
     align-items: center !important;
-    gap: 0 4px !important;
+    gap: 0 6px !important;
     min-width: 0 !important;
     overflow: visible !important;
     box-sizing: border-box !important;
@@ -4201,9 +4741,9 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 #leftSendForm {
     grid-area: tools !important;
-    width: 100% !important;
+    width: max-content !important;
     min-width: 0 !important;
-    max-width: 100% !important;
+    max-width: min(35vw, calc(var(--sb-composer-action-size, 38px) * 6 + 30px)) !important;
     overflow-x: auto !important;
     overflow-y: hidden !important;
     scrollbar-width: none !important;
@@ -4225,9 +4765,9 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 #rightSendForm {
     grid-area: action !important;
-    width: 100% !important;
+    width: max-content !important;
     min-width: 0 !important;
-    max-width: 100% !important;
+    max-width: max-content !important;
     overflow: visible !important;
     justify-self: end !important;
     justify-content: flex-end !important;
@@ -4241,7 +4781,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     min-height: var(--sb-composer-action-size, 30px) !important;
     max-height: var(--sb-composer-action-size, 30px) !important;
     flex: 0 0 var(--sb-composer-send-width, calc(var(--sb-composer-action-size, 30px) * 1.45)) !important;
-    border-radius: var(--sb-radius-button, 14px) !important;
+    border-radius: var(--sb-radius-sm, 10px) !important;
 }
 
 #send_form .mes_stop,
@@ -4253,7 +4793,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     min-height: var(--sb-composer-action-size, 30px) !important;
     max-height: var(--sb-composer-action-size, 30px) !important;
     flex: 0 0 var(--sb-composer-send-width, calc(var(--sb-composer-action-size, 30px) * 1.45)) !important;
-    border-radius: var(--sb-radius-button, 14px) !important;
+    border-radius: var(--sb-radius-sm, 10px) !important;
 }
 
 @media screen and (min-width: 1001px) {
@@ -4270,7 +4810,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     align-items: center;
     gap: calc(4px * var(--sb-bottom-bar-scale));
     box-sizing: border-box;
-    margin-block-end: var(--sb-chat-composer-gap, 8px);
+    margin-block-end: 4px;
     padding: calc(3px * var(--sb-bottom-bar-scale)) calc(8px * var(--sb-bottom-bar-scale));
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 72%, transparent);
     border-radius: var(--sb-radius-md, 14px);
@@ -4299,6 +4839,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, var(--sb-composer-surface-base, var(--SmartThemeBlurTintColor)));
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
     border-radius: calc(10px * var(--sb-bottom-bar-scale));
+    -webkit-appearance: none;
     appearance: none;
     cursor: pointer;
     overflow: hidden;
@@ -4390,6 +4931,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-bottom-chat-btn {
+    -webkit-appearance: none;
     appearance: none;
     position: relative;
     border: none;
@@ -4894,6 +5436,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-persona-option {
+    -webkit-appearance: none;
     appearance: none;
     width: 100%;
     border: 0;
@@ -5136,7 +5679,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 #right-nav-panel .sb-character-editor-controls-row {
-    --sb-character-editor-avatar-size: clamp(96px, 12vw, 132px);
+    --sb-character-editor-avatar-size: clamp(112px, 13vw, 152px);
     width: 100%;
     display: grid;
     grid-template-columns: var(--sb-character-editor-avatar-size) minmax(0, 1fr);
@@ -5233,7 +5776,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 #right-nav-panel .sb-character-editor-controls-row #avatar_controls,
 #right-nav-panel .sb-character-editor-controls-row #avatar_controls > .form_create_bottom_buttons_block,
 #right-nav-panel .sb-character-editor-controls-row #avatar_controls .char-button-toolbar {
-    display: contents;
+    display: contents !important;
 }
 
 #right-nav-panel #avatar_controls .char-button-group-icons {
@@ -5605,10 +6148,12 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     white-space: nowrap;
 }
 
+/* !important: themes (e.g. MoonlitEchoes) pin .menu_button colors with !important,
+   which otherwise flattens the lit state to the idle button color */
 #right-nav-panel .sb-character-editor-side-actions #favorite_button.fav_on {
-    color: var(--active);
-    border-color: color-mix(in srgb, var(--active) 46%, transparent);
-    background: color-mix(in srgb, var(--active) 14%, transparent);
+    color: var(--active) !important;
+    border-color: color-mix(in srgb, var(--active) 46%, transparent) !important;
+    background: color-mix(in srgb, var(--active) 14%, transparent) !important;
 }
 
 #right-nav-panel .sb-character-editor-side-actions #favorite_button:hover {
@@ -5621,18 +6166,25 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     width: var(--sb-character-editor-avatar-size) !important;
     min-width: var(--sb-character-editor-avatar-size) !important;
     max-width: var(--sb-character-editor-avatar-size) !important;
-    height: var(--sb-character-editor-avatar-size) !important;
-    min-height: var(--sb-character-editor-avatar-size) !important;
-    max-height: var(--sb-character-editor-avatar-size) !important;
+    /* Portrait box instead of the old square: card art is mostly portrait and
+       the square crop hid most of the image */
+    aspect-ratio: 3 / 4;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
     margin: 0 !important;
     border-width: 3px;
     border-radius: var(--sb-radius-lg, 22px);
     overflow: hidden;
+    /* Letterbox surface for art that isn't 3:4, so `contain` reads as a frame */
+    background: color-mix(in srgb, var(--sb-shell-surface) 62%, transparent);
 }
 
 #right-nav-panel .sb-character-editor-controls-row > #avatar_div_div img {
     width: 100% !important;
     height: 100% !important;
+    /* The whole image stays visible regardless of its aspect ratio */
+    object-fit: contain !important;
 }
 
 #right-nav-panel #avatar_div > #tagList {
@@ -6154,10 +6706,11 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     white-space: nowrap;
 }
 
+/* !important: same theme-override guard as the character editor favorite button */
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) .sb-group-editor-side-actions #group_favorite_button.fav_on {
-    color: var(--active);
-    border-color: color-mix(in srgb, var(--active) 46%, transparent);
-    background: color-mix(in srgb, var(--active) 14%, transparent);
+    color: var(--active) !important;
+    border-color: color-mix(in srgb, var(--active) 46%, transparent) !important;
+    background: color-mix(in srgb, var(--active) 14%, transparent) !important;
 }
 
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) .sb-group-editor-name-row label {
@@ -6298,43 +6851,9 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     }
 
     #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack,
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .flex1,
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls,
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls > .flex-container:first-child {
+    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .flex1 {
         grid-template-columns: minmax(0, 1fr);
         width: 100%;
-    }
-
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .flex1 > :is(#rm_group_automode_label, #rm_group_auto_dm_cooldown_label),
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #rm_group_auto_dm_cooldown_label {
-        grid-template-columns: 18px minmax(0, 1fr) minmax(4.5em, 5.5em) max-content !important;
-    }
-
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls > .flex-container:first-child > .checkbox_label {
-        grid-template-columns: 18px minmax(0, 1fr);
-        width: 100%;
-    }
-
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack #rm_group_generate_schedule {
-        width: 100% !important;
-        inline-size: 100% !important;
-        min-width: 0 !important;
-        min-inline-size: 0 !important;
-        min-height: var(--sb-mobile-touch-target, 44px);
-        height: auto;
-        max-height: none;
-        justify-self: stretch;
-        padding-inline: 12px !important;
-        white-space: normal;
-    }
-
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack #rm_group_generate_schedule span {
-        min-width: 0;
-        white-space: normal;
-    }
-
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #rm_group_ai_schedule {
-        min-height: 9rem;
     }
 }
 
@@ -6371,7 +6890,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack {
     display: grid;
-    grid-template-columns: auto minmax(240px, 0.9fr) minmax(360px, 1.1fr);
+    grid-template-columns: auto minmax(240px, 1fr);
     align-items: start;
     gap: var(--sb-shell-space-sm);
     width: 100%;
@@ -6380,13 +6899,8 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     border-top: 1px solid color-mix(in srgb, var(--sb-shell-border) 58%, transparent);
 }
 
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .flex1,
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls {
+#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .flex1 {
     min-width: 0;
-}
-
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls {
-    margin-left: 0;
 }
 
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > #rm_button_back_from_group {
@@ -6435,87 +6949,9 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     white-space: normal;
 }
 
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .flex1 > :is(#rm_group_automode_label, #rm_group_auto_dm_cooldown_label) {
-    grid-template-columns: 18px minmax(8em, 1fr) minmax(4.5em, 5.5em) max-content;
-}
-
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #rm_group_auto_dm_cooldown_label {
-    grid-template-columns: minmax(18px, 18px) minmax(8em, 1fr) minmax(4.5em, 5.5em) max-content !important;
-}
-
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #rm_group_auto_dm_cooldown_label::before {
-    content: '';
-    width: 18px;
-    height: 18px;
-}
-
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .flex1 input[type="number"] {
     width: 100%;
     min-width: 0;
-}
-
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls {
-    grid-column: 3;
-    grid-row: 1;
-}
-
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls > .flex-container:first-child {
-    display: grid;
-    grid-template-columns: minmax(0, max-content) minmax(0, max-content) minmax(var(--sb-mobile-touch-target, 44px), 1fr);
-    align-items: center;
-    align-self: flex-end;
-    justify-content: stretch;
-    column-gap: var(--sb-shell-space-sm);
-    row-gap: 6px;
-    width: 100%;
-    margin-left: 0;
-}
-
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls > .flex-container:first-child > .checkbox_label {
-    display: grid;
-    grid-template-columns: 18px minmax(0, max-content);
-    align-items: center;
-    column-gap: 8px;
-    min-width: 0;
-    white-space: normal;
-}
-
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack #rm_group_generate_schedule {
-    width: 100% !important;
-    inline-size: 100% !important;
-    min-width: 0 !important;
-    min-inline-size: 0 !important;
-    max-width: 100% !important;
-    max-inline-size: 100% !important;
-    height: auto;
-    min-height: 40px;
-    max-height: none;
-    justify-self: stretch;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding-inline: 12px !important;
-    text-align: center;
-    white-space: normal;
-    aspect-ratio: auto !important;
-    overflow: visible;
-}
-
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack #rm_group_generate_schedule span {
-    display: inline;
-    min-width: 0;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    line-height: var(--sb-line-compact);
-}
-
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack #rm_group_ai_schedule {
-    width: min(34rem, 100%);
-    height: clamp(12rem, 18vh, 16rem);
-    min-height: clamp(12rem, 18vh, 16rem);
-    align-self: flex-end;
-    margin-left: auto;
 }
 
 @media screen and (max-width: 1420px) {
@@ -6523,15 +6959,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
         grid-template-columns: auto minmax(0, 1fr);
     }
 
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls {
-        grid-column: 1 / -1;
-        grid-row: 2;
-    }
-
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack #rm_group_ai_schedule {
-        height: clamp(14rem, 26vh, 20rem);
-        min-height: clamp(14rem, 26vh, 20rem);
-    }
 }
 
 @media screen and (max-width: 1180px) {
@@ -6540,25 +6967,13 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     }
 
     #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > :is(#rm_group_submit, #rm_group_restore_avatar),
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .flex1,
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls {
+    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .flex1 {
         grid-column: 1;
         grid-row: auto;
         margin-left: 0;
         transform: none;
     }
 
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack #rm_group_ai_schedule {
-        width: 100%;
-        align-self: stretch;
-        margin-left: 0;
-    }
-
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls > .flex-container:first-child {
-        width: 100%;
-        align-self: stretch;
-        margin-left: 0;
-    }
 }
 
 @media screen and (max-width: 768px) {
@@ -6828,6 +7243,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-topbar-label-option {
+    -webkit-appearance: none;
     appearance: none;
     position: relative;
     isolation: isolate;
@@ -7401,21 +7817,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
         box-sizing: border-box;
     }
 
-    #right-nav-panel:is([data-menu-type='group_create'], [data-menu-type='group_edit']) #rm_group_generate_schedule {
-        min-width: 0;
-        min-inline-size: 0;
-        min-height: var(--sb-mobile-touch-target, 44px);
-        padding: 0 12px;
-        gap: 6px;
-    }
-
-    #right-nav-panel:is([data-menu-type='group_create'], [data-menu-type='group_edit']) #rm_group_generate_schedule span[data-i18n='Generate Schedule'] {
-        display: inline;
-        min-width: 0;
-        white-space: normal;
-        overflow-wrap: anywhere;
-    }
-
     :root[data-sb-mobile-nav-mode='icon-only'] .sb-shell-root.openDrawer .sb-shell-tab,
     :root[data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab {
         width: var(--sb-mobile-touch-target, 44px);
@@ -7696,7 +8097,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
     :root:not([data-sb-desktop-nav-layout='vertical']) #right-nav-panel.openDrawer .sb-character-shell-nav {
         justify-content: center !important;
-        padding-inline: max(var(--sb-shell-panel-padding-inline), 60px) !important;
+        padding-inline: var(--sb-shell-panel-padding-inline) !important;
     }
 
     :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav {
@@ -7739,4 +8140,24 @@ body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.gr
         animation: none !important;
         transition-duration: 0.01ms !important;
     }
+}
+
+/* Unlayered fork cascade guards for upstream rules that beat layered shell layout rules. */
+/* Must beat unlayered public/css/sillybunny-theme.css icon-only button sizing. */
+#right-nav-panel .sb-character-create-bar #rm_button_create,
+#right-nav-panel .sb-character-create-bar #rm_button_group_chats {
+    width: auto;
+    inline-size: auto;
+    min-width: max-content;
+    min-inline-size: max-content;
+    max-width: none;
+    max-inline-size: none;
+    height: auto;
+    block-size: auto;
+    min-height: 44px;
+    max-height: none;
+    max-block-size: none;
+    padding: 0 var(--sb-shell-space-lg) !important;
+    aspect-ratio: auto;
+    flex: 0 0 auto;
 }

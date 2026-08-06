@@ -4,10 +4,25 @@ REM Use this if Bun causes high CPU usage on your platform.
 setlocal enabledelayedexpansion
 pushd %~dp0
 
+REM Prepend common Node.js install locations so double-click launches still find
+REM Node when the launching shell inherited a stale PATH (e.g. right after install,
+REM before Explorer refreshes environment variables). Mirrors the PATH augmentation
+REM Start.bat applies for Bun/Git discovery.
+set "PATH=%ProgramFiles%\nodejs;%ProgramFiles(x86)%\nodejs;%APPDATA%\npm;%LocalAppData%\Volta\bin;%USERPROFILE%\scoop\shims;%PATH%"
+
 where node > nul 2>&1
 if %errorlevel% neq 0 (
     echo Node.js was not found in PATH.
     echo Install Node.js from https://nodejs.org/ or use Start.bat for Bun.
+    echo If you just installed Node.js, restart your PC or relaunch from a fresh
+    echo Command Prompt so the updated PATH is picked up.
+    goto end
+)
+
+where npm > nul 2>&1
+if %errorlevel% neq 0 (
+    echo npm was not found in PATH.
+    echo Install a complete Node.js distribution from https://nodejs.org/
     goto end
 )
 
@@ -18,9 +33,9 @@ if exist node_modules\eslint\package.json set "_dependency_profile=node-developm
 node scripts\dependency-state.js check !_dependency_profile! > nul 2>&1
 if !errorlevel! neq 0 (
     if "!_dependency_profile!"=="node-development" (
-        echo Installing packages via npm including development tooling (Node.js mode)...
+        echo Installing packages via npm including development tooling ^(Node.js mode^)...
     ) else (
-        echo Installing packages via npm (Node.js mode)...
+        echo Installing packages via npm ^(Node.js mode^)...
     )
     if exist package-lock.json (
         if "!_dependency_profile!"=="node-development" (
@@ -41,6 +56,9 @@ if !errorlevel! neq 0 (
 ) else (
     echo Dependencies are up to date.
 )
+
+call npm run init
+if !errorlevel! neq 0 goto end
 
 echo Entering SillyBunny (Node.js mode)...
 set NODE_NO_WARNINGS=1

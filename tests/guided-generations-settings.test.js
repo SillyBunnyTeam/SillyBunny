@@ -12,6 +12,8 @@ describe('Guided Generations settings migration', () => {
 
         await jest.unstable_mockModule('../public/script.js', () => ({
             saveSettingsDebounced,
+            eventSource: { on: jest.fn() },
+            event_types: {},
         }));
         await jest.unstable_mockModule('../public/scripts/extensions.js', () => ({
             extensionNames: [],
@@ -20,9 +22,12 @@ describe('Guided Generations settings migration', () => {
         }));
         await jest.unstable_mockModule('../public/scripts/extensions/guided-generations/scripts/shared.js', () => ({
             extensionName: 'guided-generations',
+            flushActiveGuides: jest.fn(async () => []),
+            getActiveGuides: jest.fn(() => []),
             getPresetsForApiType: jest.fn(async () => []),
             getProfileApiType: jest.fn(async () => ''),
             getProfileList: jest.fn(async () => []),
+            resolveStoredProfile: jest.fn(() => null),
         }));
         await jest.unstable_mockModule('../public/scripts/extensions/guided-generations/scripts/guidedCorrection.js', () => ({
             guidedCorrection: jest.fn(),

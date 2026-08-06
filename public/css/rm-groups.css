@@ -51,6 +51,7 @@
 #rm_group_buttons>input {
 
     cursor: pointer;
+    -webkit-user-select: none;
     user-select: none;
 }
 

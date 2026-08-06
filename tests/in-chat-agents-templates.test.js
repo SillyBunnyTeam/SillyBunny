@@ -22,14 +22,25 @@ const sourceFilenames = [
     'chat-only-companion.json',
     'chatroom-companion.json',
     'continuity-companion.json',
+    'cyoa-choices-skill-checks.json',
     'directors-commentary-companion.json',
+    'event-tracker.json',
+    'item-tracker.json',
     'lorebook-scout-companion.json',
     'memory-shard-companion.json',
     'message-inbox-companion.json',
     'npc-motivator.json',
+    'npc-profiles.json',
+    'parallel-tracker.json',
     'plot-compass-companion.json',
     'relationship-lens-companion.json',
+    'relationship-tracker.json',
+    'reputation-tracker.json',
     'scene-tracker.json',
+    'secrets-tracker.json',
+    'status-tracker.json',
+    'time-tracker.json',
+    'world-detail.json',
 ];
 
 function readTemplate(filename) {
@@ -45,6 +56,30 @@ function readIndexSetBody(name) {
     }
 
     return match[1];
+}
+
+function readIndexFunctionBody(name) {
+    const source = fs.readFileSync(indexSourceUrl, 'utf8');
+    const start = source.indexOf(`function ${name}(`);
+
+    if (start === -1) {
+        throw new Error(`Missing function definition: ${name}`);
+    }
+
+    const bodyStart = source.indexOf('{', start);
+    let depth = 0;
+    for (let i = bodyStart; i < source.length; i++) {
+        if (source[i] === '{') {
+            depth++;
+        } else if (source[i] === '}') {
+            depth--;
+            if (depth === 0) {
+                return source.slice(start, i + 1);
+            }
+        }
+    }
+
+    throw new Error(`Unterminated function: ${name}`);
 }
 
 async function importAgentStore() {
@@ -88,6 +123,31 @@ function renderChatroomOutput(source) {
     });
 }
 
+const updatingExistingStatsSection = '## Updating Existing Stats\n\nIf an existing [USER_STATS] block is provided, update it instead of generating a new one.\n\nWhen applying a [LEVEL_UP]:\n- Increase Level by 1.\n- Apply skill increases.\n- Add earned perk, if any.\n- Preserve existing traits, perks, weaknesses, and notes unless changed.\n- Keep stats consistent and setting-specific.\n[/USER_STATS]';
+
+function expectLevelUpStatsDefaults(levelUp, stats) {
+    expect(levelUp.companion).toEqual(expect.objectContaining({
+        batch: true,
+    }));
+    expect(levelUp.companion.batchAgentIds).toContain('tpl-user-based-stats-generator');
+    expect(levelUp.companion.sendContextToCompanions).toBe(true);
+    expect(levelUp.companion.contextRecipientAgentIds).toContain('tpl-user-based-stats-generator');
+    expect(stats.companion).toEqual(expect.objectContaining({
+        batch: true,
+    }));
+    expect(stats.companion.batchAgentIds).toContain('tpl-level-up-companion');
+    expect(stats.companion.sendContextToCompanions).toBe(true);
+    expect(stats.companion.contextRecipientAgentIds).toContain('tpl-level-up-companion');
+    expect(stats.companion.dependencies).toContain('tpl-level-up-companion');
+    expect(stats.companion.waitForDependencies).toBe(true);
+}
+
+function expectExistingStatsSectionOnStatsTemplate(levelUp, stats) {
+    expect(levelUp.prompt).not.toContain('## Updating Existing Stats');
+    expect(stats.prompt).toContain(updatingExistingStatsSection);
+    expect(stats.prompt.endsWith(updatingExistingStatsSection)).toBe(true);
+}
+
 describe('in-chat agent bundled templates', () => {
     test('keeps source files synced with the template browser catalog', () => {
         const catalog = readTemplate('index.json');
@@ -97,6 +157,66 @@ describe('in-chat agent bundled templates', () => {
             const catalogTemplate = catalog.find(template => template.id === source.id);
             expect(catalogTemplate).toEqual(source);
         }
+    });
+
+    test('tracker extractors compile and retain complete canonical blocks', () => {
+        const examples = new Map([
+            ['tpl-achievements-tracker', '[ACH|First Step|COMMON|Started]\nunlocked: began\n[/ACH]'],
+            ['tpl-direction-menu', '[DIRECTIONS]\n1. Continue\n[/DIRECTIONS]'],
+            ['tpl-event-tracker', '[EVENT|QUEST|Find it|Soon]\ncontext: stakes\n[/EVENT]'],
+            ['tpl-item-tracker', '[ITEM|GAINED|Key|Brass]\nnote: found\n[/ITEM]'],
+            ['tpl-npc-profiles', '[NPC:REF|Ava|red scarf|wary][/NPC]'],
+            ['tpl-parallel-tracker', '[PARALLEL|Background|threat]\n- A\n- B\n- C\n[/PARALLEL]'],
+            ['tpl-relationship-tracker', '[METER|Ava|5/10|6/10|Friendly|STABLE]\nreason\n[/METER]'],
+            ['tpl-reputation-tracker', '[REP|Town|Helpful|RISING]\ncause: rescue\n[/REP]'],
+            ['tpl-scene-tracker', '[SCENE|Harbor|Dusk|Foggy]\ndetail: bells\n[/SCENE]'],
+            ['tpl-secrets-tracker', '[SECRET|Ava|Map|No one]\ncontext: hidden\n[/SECRET]'],
+            ['tpl-status-tracker', '[STATUS|Ava|Tired|MILD]\nnote: travel\n[/STATUS]'],
+            ['tpl-time-tracker', '[TIME|Day 2|Tuesday|Dusk]\nnote: later\n[/TIME]'],
+            ['tpl-world-detail', '[WORLD|CULTURE|Harbor]\ndetail: bells\n[/WORLD]'],
+            ['tpl-cyoa-choices-skill-checks', '[CHOICES]\n1. Continue\n[/CHOICES]'],
+        ]);
+        const catalog = readTemplate('index.json');
+
+        for (const [templateId, example] of examples) {
+            const template = findCatalogTemplate(catalog, templateId);
+            const pattern = new RegExp(template.postProcess.extractPattern, 'g');
+            expect(example.match(pattern)).toEqual([example]);
+
+            const closingTag = example.match(/\[\/([A-Z]+)\]$/)?.[0];
+            const malformedThenComplete = `${example.slice(0, -closingTag.length)}\n${example}`;
+            expect(malformedThenComplete.match(pattern)).toEqual([example]);
+        }
+
+        const skillChecks = findCatalogTemplate(catalog, 'tpl-cyoa-choices-skill-checks');
+        const trimScript = skillChecks.regexScripts.find(script => script.scriptName === 'Trim Choices');
+        expect(() => new RegExp(trimScript.findRegex.slice(1, trimScript.findRegex.lastIndexOf('/')), 'g')).not.toThrow();
+    });
+
+    test('keeps Level Up and User-based Stats connected by default', () => {
+        const catalog = readTemplate('index.json');
+
+        expectLevelUpStatsDefaults(
+            findCatalogTemplate(catalog, 'tpl-level-up-companion'),
+            findCatalogTemplate(catalog, 'tpl-user-based-stats-generator'),
+        );
+        expectLevelUpStatsDefaults(
+            readTemplate('level-up-companion.json'),
+            readTemplate('user-based-stats-generator.json'),
+        );
+    });
+
+    test('keeps existing stat update instructions on User-based Stats', () => {
+        const catalog = readTemplate('index.json');
+
+        expectExistingStatsSectionOnStatsTemplate(
+            findCatalogTemplate(catalog, 'tpl-level-up-companion'),
+            findCatalogTemplate(catalog, 'tpl-user-based-stats-generator'),
+        );
+        expectExistingStatsSectionOnStatsTemplate(
+            readTemplate('level-up-companion.json'),
+            readTemplate('user-based-stats-generator.json'),
+        );
     });
 
     test('keeps bundled companion prompts free of negative wrappers and uppercase protocols', () => {
@@ -115,11 +235,14 @@ describe('in-chat agent bundled templates', () => {
     });
 
     test('keeps draft companion template versions at v1', () => {
+        // Memory Shard shipped a full prompt rewrite, so it carries a real version bump to hand
+        // installed copies the update pill. Everything else is still a v1 draft.
+        const bumpedCompanionVersions = new Map([['memory-shard-companion.json', 2]]);
         const companionFilenames = sourceFilenames.filter(filename => filename.includes('companion') || filename === 'npc-motivator.json');
 
         for (const filename of companionFilenames) {
             const template = readTemplate(filename);
-            expect(template.version).toBe(1);
+            expect(template.version).toBe(bumpedCompanionVersions.get(filename) ?? 1);
         }
     });
 
@@ -142,7 +265,7 @@ describe('in-chat agent bundled templates', () => {
             rawPrompt: true,
             inlinePhase: 'pre',
             feedback: { enabled: true, depth: 1 },
-            maxTokens: 32000,
+            maxTokens: 64000,
         }));
         expect(template.conditions.generationTypes).toEqual(['normal', 'continue', 'impersonate']);
     });
@@ -158,6 +281,42 @@ describe('in-chat agent bundled templates', () => {
             expect(template.prompt).toContain('repair task');
             expect(template.prompt).not.toContain('End EVERY');
             expect(template.prompt).not.toContain('EXACT');
+        }
+    });
+
+    test('teaches the empty-output sentinel to conditional trackers only', () => {
+        // Trackers that report a change report nothing on a quiet turn, which the companion layer
+        // renders as literally nothing. Templates that emit output every scene are excluded, since a
+        // sentinel there would give the model permission to skip work it is supposed to do.
+        const sentinelTemplates = [
+            'achievements-tracker.json',
+            'event-tracker.json',
+            'item-tracker.json',
+            'npc-profiles.json',
+            'relationship-tracker.json',
+            'reputation-tracker.json',
+            'scene-tracker.json',
+            'secrets-tracker.json',
+            'status-tracker.json',
+            'time-tracker.json',
+        ];
+        const alwaysEmittingTemplates = [
+            'parallel-tracker.json',
+            'world-detail.json',
+            'cyoa-choices.json',
+            'cyoa-choices-skill-checks.json',
+            'direction-menu.json',
+        ];
+        const catalog = readTemplate('index.json');
+
+        for (const filename of sentinelTemplates) {
+            const template = readTemplate(filename);
+            expect(template.prompt).toContain('tracker-none');
+            expect(findCatalogTemplate(catalog, template.id).prompt).toContain('tracker-none');
+        }
+
+        for (const filename of alwaysEmittingTemplates) {
+            expect(readTemplate(filename).prompt).not.toContain('tracker-none');
         }
     });
 
@@ -200,7 +359,7 @@ describe('in-chat agent bundled templates', () => {
             format: 'markdown',
             feedback: { enabled: true, depth: 2 },
             batch: false,
-            maxTokens: 32000,
+            maxTokens: 64000,
         }));
         expect(relationship.companion).toEqual(expect.objectContaining({
             trigger: 'manual',
@@ -247,8 +406,16 @@ describe('in-chat agent bundled templates', () => {
             contextMessages: 30,
             includeHistory: true,
             feedback: { enabled: true, depth: 1 },
-            maxTokens: 32000,
+            maxTokens: 64000,
+            // Every shard stays in context, including ones whose host message the shard's own
+            // "hide story above this shard" button has since hidden.
+            includeInChatHistory: true,
+            includeAllChatHistory: true,
+            keepInChatHistoryWhenHostHidden: true,
         }));
+        expect(memoryShard.prompt).toContain('# MEMORY SHARD: [ID]-[NEXT NUM]');
+        expect(memoryShard.prompt).toContain('# CONSOLIDATED MEMORY SHARD: [ID]-MASTER');
+        expect(memoryShard.prompt).toContain('## Shard Reference Key');
         expect(chatroom.companion).toEqual(expect.objectContaining({
             trigger: 'auto',
             displayMode: 'panel',
@@ -258,7 +425,7 @@ describe('in-chat agent bundled templates', () => {
             includeHistory: true,
             historyDepth: 1,
             feedback: { enabled: false, depth: 1 },
-            maxTokens: 32000,
+            maxTokens: 64000,
         }));
         expect(chatroom.regexScripts).toHaveLength(6);
         expect(chatroom.prompt).toContain('chatroom-style|active-style');
@@ -288,7 +455,7 @@ describe('in-chat agent bundled templates', () => {
             includeHistory: true,
             historyDepth: 6,
             feedback: { enabled: false, depth: 1 },
-            maxTokens: 32000,
+            maxTokens: 64000,
         }));
         expect(chatOnly.prompt).toContain('private side-channel conversation');
         expect(chatOnly.prompt).toContain('[Your previous notes]');
@@ -317,7 +484,7 @@ describe('in-chat agent bundled templates', () => {
             includeAuthorsNote: true,
             includeHistory: false,
             feedback: { enabled: false, depth: 1 },
-            maxTokens: 32000,
+            maxTokens: 64000,
         }));
         expect(messageInbox.regexScripts).toHaveLength(6);
         expect(messageInbox.prompt).toContain('phone-none');
@@ -345,7 +512,7 @@ describe('in-chat agent bundled templates', () => {
             includeHistory: true,
             historyDepth: 1,
             feedback: { enabled: true, depth: 1 },
-            maxTokens: 32000,
+            maxTokens: 64000,
         }));
         expect(plotCompass.prompt).toContain('[Plot Compass Objective]');
         expect(plotCompass.prompt).not.toContain('first line of [Your previous notes]');
@@ -360,7 +527,7 @@ describe('in-chat agent bundled templates', () => {
         expect(saved.category).toBe('companion');
         expect(saved.execution).toBe('companion');
         expect(isCompanionAgent(saved)).toBe(true);
-        expect(saved.companion.maxTokens).toBe(32000);
+        expect(saved.companion.maxTokens).toBe(64000);
     });
 
     test('renders orphan greentext continuation lines inside the Chatroom interface', () => {
@@ -420,5 +587,31 @@ describe('in-chat agent bundled templates', () => {
         expect(readIndexSetBody('INTERNAL_BUNDLED_TEMPLATE_IDS')).toContain(pathfinderTemplateId);
         expect(readIndexSetBody('REMOVED_BUNDLED_TEMPLATE_IDS')).not.toContain(pathfinderTemplateId);
         expect(readIndexSetBody('DEFAULT_BUNDLED_TEMPLATE_IDS')).not.toContain(pathfinderTemplateId);
+    });
+
+    test('keeps every catalog template category renderable in the browser', async () => {
+        const { AGENT_CATEGORIES } = await importAgentStore();
+        const catalog = readTemplate('index.json');
+        const knownCategories = Object.keys(AGENT_CATEGORIES);
+
+        const unknownCategories = catalog
+            .map(template => template.category)
+            .filter(category => !knownCategories.includes(category));
+
+        expect(unknownCategories).toEqual([]);
+    });
+
+    test('surfaces bundled content templates such as HTML Toggle in the browser', () => {
+        const catalog = readTemplate('index.json');
+        const htmlToggle = findCatalogTemplate(catalog, 'tpl-html-toggle');
+
+        expect(htmlToggle.category).toBe('content');
+        expect(htmlToggle.subcategory).toBe('behaviour');
+
+        // 'custom' stays in AGENT_CATEGORIES as a fallback for user/saved agents
+        // even though no bundled templates ship in that category anymore.
+        const orderSource = readIndexFunctionBody('getTemplateBrowserCategoryOrder');
+        expect(orderSource).not.toContain('category !== \'custom\'');
+        expect(orderSource).toContain('AGENT_CATEGORIES');
     });
 });

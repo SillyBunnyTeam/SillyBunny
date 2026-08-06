@@ -2,6 +2,7 @@ import https from 'node:https';
 import http from 'node:http';
 import fs from 'node:fs';
 import { APP_NAME } from './runtime.js';
+import { isAddressInUseError, retryOnAddressInUse, trackListeningServer } from './server-listen.js';
 import { color, urlHostnameToIPv6, getHasIP } from './util.js';
 
 // Express routers
@@ -54,6 +55,8 @@ import { router as imageMetadataRouter } from './endpoints/image-metadata.js';
 import { router as volcengineRouter } from './endpoints/volcengine.js';
 import { router as serverAdminRouter } from './endpoints/server-admin.js';
 import { router as inChatAgentsRouter } from './endpoints/in-chat-agents.js';
+// SillyBunny divergence: keep Conversation REST mounted here only; endpoint behavior stays isolated in its fork-owned router for upstream syncs.
+import { router as sillyBunnyConversationRouter } from './endpoints/sillybunny-conversation.js';
 
 /**
  * @typedef {object} ServerStartupResult
@@ -119,6 +122,9 @@ export function setupPrivateEndpoints(app) {
     app.use('/api/image-metadata', imageMetadataRouter);
     app.use('/api/server-admin', serverAdminRouter);
     app.use('/api/in-chat-agents', inChatAgentsRouter);
+    // SillyBunny divergence: preserve both fork REST aliases here so future upstream merges only need to reconcile these mount points.
+    app.use('/api/sillybunny-conversation', sillyBunnyConversationRouter);
+    app.use('/api/sillybunny/conversation', sillyBunnyConversationRouter);
 }
 
 /**
@@ -150,7 +156,7 @@ export class ServerStartup {
      * @returns {error is NodeJS.ErrnoException}
      */
     #isAddressInUseError(error) {
-        return typeof error === 'object' && error !== null && 'code' in error && error.code === 'EADDRINUSE';
+        return isAddressInUseError(error);
     }
 
     /**
@@ -215,8 +221,19 @@ export class ServerStartup {
                 passphrase: String(this.cliArgs.keyPassphrase ?? ''),
             };
             const server = https.createServer(sslOptions, this.app);
-            server.on('error', reject);
-            server.on('listening', resolve);
+            server.on('error', (error) => {
+                // Drop the half-built server so a retry does not leak it. A
+                // server that already bound stays up: only the bind attempt is
+                // being abandoned here.
+                if (!server.listening) {
+                    server.close(() => { });
+                }
+                reject(error);
+            });
+            server.on('listening', () => {
+                trackListeningServer(server);
+                resolve();
+            });
 
             let host = url.hostname;
             if (ipVersion === 6) host = urlHostnameToIPv6(url.hostname);
@@ -238,8 +255,19 @@ export class ServerStartup {
     #createHttpServer(url, ipVersion) {
         return new Promise((resolve, reject) => {
             const server = http.createServer(this.app);
-            server.on('error', reject);
-            server.on('listening', resolve);
+            server.on('error', (error) => {
+                // Drop the half-built server so a retry does not leak it. A
+                // server that already bound stays up: only the bind attempt is
+                // being abandoned here.
+                if (!server.listening) {
+                    server.close(() => { });
+                }
+                reject(error);
+            });
+            server.on('listening', () => {
+                trackListeningServer(server);
+                resolve();
+            });
 
             let host = url.hostname;
             if (ipVersion === 6) host = urlHostnameToIPv6(url.hostname);
@@ -266,9 +294,20 @@ export class ServerStartup {
 
         const createFunc = this.cliArgs.ssl ? this.#createHttpsServer.bind(this) : this.#createHttpServer.bind(this);
 
-        if (useIPv6) {
+        // A restart can outrun the previous process releasing the port, so wait
+        // it out briefly instead of aborting the relaunch on the first failure.
+        const listen = (url, ipVersion) => retryOnAddressInUse(() => createFunc(url, ipVersion), {
+            onRetry: (attempt, attempts) => {
+                if (attempt === 1) {
+                    console.warn(`${this.#getListenAddress(url, ipVersion)} is still in use; waiting for it to be released (up to ${attempts} attempts).`);
+                }
+            },
+        });
+
+        const startIPv6 = (async () => {
+            if (!useIPv6) return;
             try {
-                await createFunc(this.cliArgs.getIPv6ListenUrl(), 6);
+                await listen(this.cliArgs.getIPv6ListenUrl(), 6);
             } catch (error) {
                 console.error('Warning: failed to start server on IPv6');
                 if (this.#isAddressInUseError(error)) {
@@ -280,11 +319,12 @@ export class ServerStartup {
                 v6Failed = true;
                 v6Error = error;
             }
-        }
+        })();
 
-        if (useIPv4) {
+        const startIPv4 = (async () => {
+            if (!useIPv4) return;
             try {
-                await createFunc(this.cliArgs.getIPv4ListenUrl(), 4);
+                await listen(this.cliArgs.getIPv4ListenUrl(), 4);
             } catch (error) {
                 console.error('Warning: failed to start server on IPv4');
                 if (this.#isAddressInUseError(error)) {
@@ -296,7 +336,9 @@ export class ServerStartup {
                 v4Failed = true;
                 v4Error = error;
             }
-        }
+        })();
+
+        await Promise.all([startIPv6, startIPv4]);
 
         return [v6Failed, v4Failed, v6Error, v4Error];
     }

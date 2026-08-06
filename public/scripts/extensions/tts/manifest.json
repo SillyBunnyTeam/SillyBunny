@@ -13,6 +13,7 @@
     "version": "1.0.0",
     "homePage": "None",
     "hooks": {
-        "activate": "init"
+        "activate": "init",
+        "disable": "deactivate"
     }
 }

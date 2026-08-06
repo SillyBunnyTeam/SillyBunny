@@ -28,11 +28,30 @@ function getMediaQueryPxValues(cssSource) {
 // Ratchet budgets: ceilings match the measured state of staging when this
 // test landed. Lower them as cleanup PRs land; never raise them without a
 // review note explaining the regression.
+//
+// sillybunny-mobile-shell.css raised 664 -> 665: one display:none !important
+// added to unconditionally hide the unused STscript play/pause/stop controls
+// (.stscript_btn) in the mobile composer, overriding the display:flex !important
+// that mobile-styles.css added in #533.
+// sillybunny-mobile-shell.css raised 665 -> 677: phone-only edge-to-edge
+// composer and safe-area overrides need to beat upstream mobile padding and
+// border rules without affecting desktop.
+// sillybunny-mobile-shell.css raised 677 -> 685: the unified composer surface
+// and input state styling need to override upstream mobile composer rules.
+// sillybunny-paper-theme.css starts at 55: the phone-only paper texture and
+// chrome adjustment sheet is budgeted from introduction.
+// sillybunny-theme.css raised 158 -> 161: the mobile character list needs to
+// override upstream !important avatar alignment rules for missing avatars.
+// sillybunny-tabs.css raised 386 -> 389: the favourites bar fix re-shows the
+// bar on the character tabs with display:flex !important and
+// visibility:visible !important to beat the JS inline hide, and pins
+// #HotSwapWrapper padding:0 !important against the base flex-container rules.
 const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
-    'sillybunny-mobile-shell.css': 664,
-    'sillybunny-tabs.css': 386,
+    'sillybunny-mobile-shell.css': 685,
+    'sillybunny-paper-theme.css': 55,
+    'sillybunny-tabs.css': 389,
     'sillybunny-chat-styles.css': 225,
-    'sillybunny-theme.css': 158,
+    'sillybunny-theme.css': 161,
 });
 
 const FORK_DISTINCT_BREAKPOINT_BUDGET = 18;
@@ -65,6 +84,31 @@ describe('mobile css ratchet budgets', () => {
     });
 });
 
+describe('paper texture regression guards', () => {
+    const paperThemeCss = forkSheetSources['sillybunny-paper-theme.css'];
+
+    test('keeps the base ambient body pseudo-element available', () => {
+        expect(paperThemeCss).not.toMatch(/body::before\s*\{/);
+        expect(paperThemeCss).toMatch(/body::after\s*\{/);
+    });
+
+    test('gates both page and message paper overlays behind texture opacity', () => {
+        const bodyAfterRule = paperThemeCss.match(/body::after\s*\{[\s\S]*?\}/)?.[0] ?? '';
+        const messageAfterRule = paperThemeCss.match(/\.mes::after\s*\{[\s\S]*?\}/)?.[0] ?? '';
+
+        expect(bodyAfterRule).toContain('--sb-paper-texture-opacity');
+        expect(messageAfterRule).toContain('--sb-paper-texture-opacity');
+    });
+
+    test('derives thought box colors from active SmartTheme tokens', () => {
+        const thoughtBoxTokenBlock = paperThemeCss.match(/--thought-box-bg:[\s\S]*?--thought-box-accent:[^;]+;/)?.[0] ?? '';
+
+        expect(thoughtBoxTokenBlock).toContain('--SmartThemeBlurTintColor');
+        expect(thoughtBoxTokenBlock).toContain('--SmartThemeBodyColor');
+        expect(thoughtBoxTokenBlock).toContain('--SmartThemeQuoteColor');
+    });
+});
+
 describe('index.html mobile stylesheet gates', () => {
     const indexHtml = readPublicFile('index.html');
     const stylesheetTags = [...indexHtml.matchAll(/<link\s[^>]*rel="stylesheet"[^>]*>/g)].map(match => match[0]);
@@ -74,7 +118,7 @@ describe('index.html mobile stylesheet gates', () => {
     }
 
     test('mobile sheets keep their (max-width: 768px) media gates', () => {
-        for (const href of ['css/mobile-styles.css', 'css/sillybunny-mobile-shell.css']) {
+        for (const href of ['css/mobile-styles.css', 'css/sillybunny-paper-theme.css', 'css/sillybunny-mobile-shell.css']) {
             const tag = findStylesheetTag(href);
 
             expect(tag).toBeDefined();
@@ -87,6 +131,7 @@ describe('index.html mobile stylesheet gates', () => {
             'style.css',
             'css/mobile-styles.css',
             'css/sillybunny-theme.css',
+            'css/sillybunny-paper-theme.css',
             'css/sillybunny-tabs.css',
             'css/sillybunny-mobile-shell.css',
             'css/user.css',

@@ -366,9 +366,9 @@ export async function favsToHotswap() {
     const entities = getEntitiesList({ doFilter: false });
     const container = $('#right-nav-panel .hotswap');
 
-    // Hard limit is required because even if all hotswaps don't fit the screen, their images would still be loaded
-    // 25 is roughly calculated as the maximum number of favs that can fit an ultrawide monitor with the default theme
-    const FAVS_LIMIT = 25;
+    // The bar scrolls sideways and avatars are lazy-loaded thumbnails, so the old
+    // fits-on-one-screen cap of 25 no longer applies; this is just a sanity bound.
+    const FAVS_LIMIT = 250;
     const favs = entities.filter(x => x.item.fav || x.item.fav == 'true').slice(0, FAVS_LIMIT);
 
     //helpful instruction message if no characters are favorited
@@ -469,6 +469,7 @@ function RA_autoconnect(PrevApi) {
                     || (secret_state[SECRET_KEYS.POLLINATIONS] && oai_settings.chat_completion_source === chat_completion_sources.POLLINATIONS)
                     || (secret_state[SECRET_KEYS.WORKERS_AI] && oai_settings.chat_completion_source == chat_completion_sources.WORKERS_AI)
                     || (secret_state[SECRET_KEYS.MINIMAX] && oai_settings.chat_completion_source == chat_completion_sources.MINIMAX)
+                    || (secret_state[SECRET_KEYS.LINKAPI] && oai_settings.chat_completion_source == chat_completion_sources.LINKAPI)
                     || (isValidUrl(oai_settings.custom_url) && oai_settings.chat_completion_source == chat_completion_sources.CUSTOM)
                     || (secret_state[SECRET_KEYS.AZURE_OPENAI] && oai_settings.chat_completion_source == chat_completion_sources.AZURE_OPENAI)
                 ) {
@@ -508,7 +509,13 @@ function restoreUserInput() {
         return;
     }
 
-    const userInput = localStorage.getItem(getUserInputKey());
+    let userInput = null;
+    try {
+        userInput = localStorage.getItem(getUserInputKey());
+    } catch {
+        // Ignore storage read failures in Safari Private Browsing.
+    }
+
     if (userInput) {
         $('#send_textarea').val(userInput)[0].dispatchEvent(new Event('input', { bubbles: true }));
     }
@@ -516,7 +523,11 @@ function restoreUserInput() {
 
 function saveUserInput() {
     const userInput = String($('#send_textarea').val());
-    localStorage.setItem(getUserInputKey(), userInput);
+    try {
+        localStorage.setItem(getUserInputKey(), userInput);
+    } catch {
+        // Ignore storage write failures in Safari Private Browsing.
+    }
     console.debug('User Input -- ', userInput);
 }
 const saveUserInputDebounced = debounce(saveUserInput);
@@ -538,7 +549,9 @@ export function dragElement($elmnt) {
     const elmntName = $elmnt.attr('id');
     const stateKey = getMovingUIStateKey(elmntName);
     const elmntNameEscaped = $.escapeSelector(elmntName);
-    const $elmntHeader = $(`#${elmntNameEscaped}header`);
+    const headerSelector = elmntName === 'sheld'
+        ? '#sheldheader, #sb_conversation_header'
+        : `#${elmntNameEscaped}header`;
 
     // Helper: Save position/size to state and emit events
     function savePositionAndSize() {
@@ -688,17 +701,17 @@ export function dragElement($elmnt) {
         savePositionAndSize();
     }
 
-    // Setup event listeners
-    if ($elmntHeader.length) {
-        $elmntHeader.off('mousedown').on('mousedown', (e) => {
-            if ($(e.target).hasClass('drag-grabber')) {
-                actionType = 'drag';
-                isMouseDown = true;
-                observer.observe($elmnt[0], { attributes: true, attributeFilter: ['style'] });
-                dragMouseDown(e);
-            }
-        });
-    }
+    // Setup event listeners using event delegation to support dynamic header elements like #sb_conversation_header
+    $(document).off('mousedown', headerSelector).on('mousedown', headerSelector, (e) => {
+        const isHeader = $(e.target).closest('#sb_conversation_header').length > 0;
+        const isInteractive = $(e.target).closest('button, input, select, textarea, [role="button"], a, i').length > 0;
+        if ($(e.target).hasClass('drag-grabber') || (isHeader && !isInteractive)) {
+            actionType = 'drag';
+            isMouseDown = true;
+            observer.observe($elmnt[0], { attributes: true, attributeFilter: ['style'] });
+            dragMouseDown(e);
+        }
+    });
 
     $elmnt.off('mousedown').on('mousedown', (e) => {
         const rect = $elmnt[0].getBoundingClientRect();
@@ -784,6 +797,21 @@ export function initRossMods() {
     });
 
     $('#api_button').on('click', () => checkStatusDebounced());
+
+    // Mouse wheel scrolls the favorites hotswap bar sideways.
+    // Native listener because jQuery cannot register non-passive wheel handlers.
+    const hotswapBar = document.querySelector('#HotSwapWrapper .hotswap');
+    hotswapBar?.addEventListener('wheel', (event) => {
+        if (event.ctrlKey || event.metaKey) return;
+        if (hotswapBar.scrollWidth <= hotswapBar.clientWidth) return;
+        // Leave trackpad horizontal swipes to native handling
+        if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+        event.preventDefault();
+        // deltaMode 1 = lines (Firefox); convert to roughly one avatar per line
+        const step = event.deltaMode === 1 ? event.deltaY * 34 : event.deltaY;
+        // 'instant' so rapid wheel ticks accumulate instead of restarting a smooth animation
+        hotswapBar.scrollTo({ left: hotswapBar.scrollLeft + step, behavior: 'instant' });
+    }, { passive: false });
 
     //toggle pin class when lock toggle clicked
     $(RPanelPin).on('click', function () {

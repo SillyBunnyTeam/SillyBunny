@@ -14,17 +14,27 @@ import storage from 'node-persist';
 
 import { AVATAR_WIDTH, AVATAR_HEIGHT, DEFAULT_AVATAR_PATH } from '../constants.js';
 import { default as validateAvatarUrlMiddleware, getFileNameValidationFunction } from '../middleware/validateFileName.js';
-import { deepMerge, humanizedDateTime, tryParse, MemoryLimitedMap, getConfigValue, mutateJsonString, clientRelativePath, getUniqueName, sanitizeSafeCharacterReplacements, tryWriteFileSync } from '../util.js';
+import { deepMerge, humanizedDateTime, tryParse, MemoryLimitedMap, getConfigValue, mutateJsonString, clientRelativePath, getUniqueName, recoverFileWritesInDirectorySync, recoverFileWriteSync, sanitizeSafeCharacterReplacements, tryWriteFileSync } from '../util.js';
 import { TavernCardValidator } from '../validator/TavernCardValidator.js';
 import { parse, read, write } from '../character-card-parser.js';
 import { readWorldInfoFile } from './worldinfo.js';
-import { invalidateThumbnail } from './thumbnails.js';
+import { invalidateThumbnail, generateThumbnail } from './thumbnails.js';
 import { importRisuSprites } from './sprites.js';
 import { getUserDirectories } from '../users.js';
 import { getChatInfo } from './chats.js';
 import { ByafParser } from '../byaf.js';
 import { CharXParser, persistCharXAssets } from '../charx.js';
 import { getSuspiciousEmptyCharacterDefinitionFields } from '../character-save-guard.js';
+import { createEntityDateAdded, ensureEntityDateAdded, prepareEntityDateAddedMove, reconcileEntityDateAdded, removeEntityDateAdded } from '../entity-date-added.js';
+import { getEntityLastChat, prepareEntityLastChatMove, readEntityLastChats, removeEntityLastChat, setEntityLastChat } from '../entity-last-chat.js';
+import {
+    clearChatRecoveryState,
+    createCharacterChatTarget,
+    isChatRecoverable,
+    markChatDeleted,
+    readChatJsonlStrict,
+    runChatRecoveryBestEffort,
+} from '../chat-recovery.js';
 
 // With 100 MB limit it would take roughly 3000 characters to reach this limit
 const memoryCacheCapacity = getConfigValue('performance.memoryCacheCapacity', '100mb');
@@ -34,10 +44,33 @@ const isAndroid = process.platform === 'android';
 // Use shallow character data for the character list
 const useShallowCharacters = !!getConfigValue('performance.lazyLoadCharacters', false, 'boolean');
 const useDiskCache = !!getConfigValue('performance.useDiskCache', true, 'boolean');
+const isChatBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
+const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', 25, 'number'));
 const BULK_MERGE_CONCURRENCY = 8;
 const EXTENSION_UNSET_VALUE = '__@@UNSET@@__';
 const forbiddenAvatarRegExp = path.sep === '/' ? /[/\x00]/ : /[/\x00\\]/;
 const CHARACTER_EMPTY_DEFINITION_SAVE_OVERRIDE = 'allow_empty_definition_save';
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+const getPngFileName = fileName => path.extname(fileName).toLowerCase() === '.png'
+    ? fileName
+    : `${fileName}.png`;
+const getEntityDateAddedRoot = directories => directories.root || path.dirname(directories.characters);
+const getCharacterDateAddedFallback = stat => [stat.ctimeMs, stat.birthtimeMs, stat.mtimeMs]
+    .find(timestamp => Number.isFinite(timestamp) && timestamp > 0) ?? Date.now();
+const isPngBuffer = buffer => buffer.length >= PNG_SIGNATURE.length && buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE);
+const isSameFile = (firstPath, secondPath) => {
+    if (path.resolve(firstPath) === path.resolve(secondPath)) {
+        return true;
+    }
+
+    try {
+        const firstStats = fs.statSync(firstPath, { bigint: true });
+        const secondStats = fs.statSync(secondPath, { bigint: true });
+        return firstStats.dev === secondStats.dev && firstStats.ino !== 0n && firstStats.ino === secondStats.ino;
+    } catch {
+        return false;
+    }
+};
 
 class DiskCache {
     /**
@@ -183,6 +216,7 @@ function getCacheKey(inputFile) {
  * @returns {Promise<string | undefined>} - Character card data
  */
 async function readCharacterData(inputFile, inputFormat = 'png') {
+    recoverFileWriteSync(inputFile);
     const cacheKey = getCacheKey(inputFile);
     if (memoryCache.has(cacheKey)) {
         return memoryCache.get(cacheKey);
@@ -216,34 +250,54 @@ async function readCharacterData(inputFile, inputFormat = 'png') {
  * Writes the character card to the specified image file.
  * @param {string|Buffer} inputFile - Path to the image file or image buffer
  * @param {string} data - Character card data
- * @param {string} outputFile - Target image file name
+ * @param {string} outputFile - Target image file name, with or without a PNG extension
  * @param {import('express').Request} request - Express request obejct
  * @param {Crop|undefined} crop - Crop parameters
+ * @param {{preserveDateAdded?: boolean, preserveFileIdentity?: boolean}} [writeOptions]
  * @returns {Promise<boolean>} - True if the operation was successful
  */
-async function writeCharacterData(inputFile, data, outputFile, request, crop = undefined) {
+async function writeCharacterData(inputFile, data, outputFile, request, crop = undefined, { preserveDateAdded = false, preserveFileIdentity = false } = {}) {
     try {
-        // Reset the cache
-        for (const key of memoryCache.keys()) {
-            if (Buffer.isBuffer(inputFile)) {
-                break;
-            }
-            if (key.startsWith(inputFile)) {
-                memoryCache.delete(key);
-                break;
-            }
+        const outputImageName = getPngFileName(outputFile);
+        const outputImagePath = path.join(request.user.directories.characters, outputImageName);
+        const fileExists = fs.existsSync(outputImagePath);
+        let expectedFileIdentity;
+        let shouldPreserveFileIdentity = preserveFileIdentity;
+        let shouldReplaceFileOnly = false;
+
+        if (preserveFileIdentity && !fileExists) {
+            throw new Error(`Character card does not exist: ${outputImageName}`);
         }
-        if (useDiskCache && !Buffer.isBuffer(inputFile)) {
-            diskCache.syncQueue.add(request.user.profile.handle);
+
+        if (preserveFileIdentity) {
+            recoverFileWriteSync(outputImagePath);
+            const activeFileStats = fs.lstatSync(outputImagePath, { bigint: true });
+            shouldPreserveFileIdentity = activeFileStats.isFile() && activeFileStats.nlink === 1n;
+            shouldReplaceFileOnly = !activeFileStats.isFile() || activeFileStats.nlink !== 1n;
+            expectedFileIdentity = { dev: activeFileStats.dev, ino: activeFileStats.ino };
         }
+
         /**
          * Read the image, resize, and save it as a PNG into the buffer.
          * @returns {Promise<Buffer>} Image buffer
          */
         const getInputImage = async () => {
             try {
+                let rawImage;
+                // SillyBunny: metadata-only card edits must not rebuild an existing PNG through Jimp.
+                const editsExistingCard = typeof inputFile === 'string' && isSameFile(inputFile, outputImagePath);
+                if (editsExistingCard && (crop === undefined || crop === null)) {
+                    rawImage = await fsPromises.readFile(inputFile);
+                    if (isPngBuffer(rawImage)) {
+                        return rawImage;
+                    }
+                }
+
                 if (Buffer.isBuffer(inputFile)) {
                     return await parseImageBuffer(inputFile, crop);
+                }
+                if (rawImage) {
+                    return await parseImageBuffer(rawImage, crop);
                 }
 
                 return await tryReadImage(inputFile, crop);
@@ -258,9 +312,48 @@ async function writeCharacterData(inputFile, data, outputFile, request, crop = u
 
         // Get the chunks
         const outputImage = write(inputImage, data);
-        const outputImagePath = path.join(request.user.directories.characters, `${outputFile}.png`);
+        const operationTime = Date.now();
+        const migrationFallback = fileExists ? getCharacterDateAddedFallback(fs.statSync(outputImagePath)) : operationTime;
 
-        tryWriteFileSync(outputImagePath, outputImage);
+        if (preserveFileIdentity) {
+            if (fs.readFileSync(outputImagePath).equals(outputImage)) {
+                return true;
+            }
+        }
+
+        // Reset the cache only when the card actually changed.
+        for (const key of memoryCache.keys()) {
+            if (Buffer.isBuffer(inputFile)) {
+                break;
+            }
+            if (key.startsWith(inputFile)) {
+                memoryCache.delete(key);
+                break;
+            }
+        }
+        if (useDiskCache && !Buffer.isBuffer(inputFile)) {
+            diskCache.syncQueue.add(request.user.profile.handle);
+        }
+
+        if (fileExists) {
+            ensureEntityDateAdded(getEntityDateAddedRoot(request.user.directories), 'characters', outputImageName, migrationFallback, operationTime);
+        }
+        tryWriteFileSync(outputImagePath, outputImage, undefined, {
+            preserveFileIdentity: shouldPreserveFileIdentity,
+            expectedFileIdentity,
+            replaceFileOnly: shouldReplaceFileOnly,
+        });
+        if (!fileExists) {
+            try {
+                if (preserveDateAdded) {
+                    ensureEntityDateAdded(getEntityDateAddedRoot(request.user.directories), 'characters', outputImageName, operationTime, operationTime);
+                } else {
+                    createEntityDateAdded(getEntityDateAddedRoot(request.user.directories), 'characters', outputImageName, operationTime);
+                }
+            } catch (metadataError) {
+                console.error('Could not record date-added metadata after creating a character.', metadataError);
+            }
+        }
         return true;
     } catch (err) {
         console.error(err);
@@ -314,19 +407,29 @@ async function mergeCharacterUpdate(avatarPath, avatar, updateData, request, sho
 
     const update = structuredClone(updateData);
     _.unset(update, 'json_data');
+    _.unset(update, 'avatar');
     _.unset(character, 'json_data');
 
+    const beforeMerge = structuredClone(character);
     character = deepMerge(character, update);
     applyUnsetSentinels(character, update);
     deleteUnsetSentinels(character);
+
+    // SillyBunny: writing re-encodes the whole PNG and drops the character caches,
+    // so a merge that changed nothing must not touch the file.
+    if (_.isEqual(character, beforeMerge)) {
+        return { ok: true, unchanged: true };
+    }
 
     const validator = new TavernCardValidator(character);
     if (!validator.validate()) {
         return { ok: false, error: validator.lastValidationError ?? 'Validation failed' };
     }
 
-    const targetImg = avatar.replace('.png', '');
-    await writeCharacterData(avatarPath, JSON.stringify(character), targetImg, request);
+    const writeSucceeded = await writeCharacterData(avatarPath, JSON.stringify(character), avatar, request, undefined, { preserveFileIdentity: true });
+    if (!writeSucceeded) {
+        return { ok: false, error: 'Failed to write character data.' };
+    }
     return { ok: true };
 }
 
@@ -467,9 +570,10 @@ const toShallow = (character) => {
  * @param  {import('../users.js').UserDirectoryList} directories User directories
  * @param  {object} options Options for the character processing
  * @param  {boolean} options.shallow If true, only return the core character's metadata
+ * @param  {fs.Stats} [options.fileStat] Preloaded character file metadata
  * @return {Promise<object>}     A Promise that resolves when the character processing is done.
  */
-const processCharacter = async (item, directories, { shallow }) => {
+const processCharacter = async (item, directories, { shallow, fileStat }) => {
     try {
         const imgFile = path.join(directories.characters, item);
         const imgData = await readCharacterData(imgFile);
@@ -479,8 +583,8 @@ const processCharacter = async (item, directories, { shallow }) => {
         jsonObject.avatar = item;
         const character = jsonObject;
         character.json_data = imgData;
-        const charStat = fs.statSync(path.join(directories.characters, item));
-        character.date_added = charStat.ctimeMs;
+        const charStat = fileStat ?? fs.statSync(path.join(directories.characters, item));
+        character.date_added = getCharacterDateAddedFallback(charStat);
         character.create_date = jsonObject.create_date || new Date(Math.round(charStat.ctimeMs)).toISOString();
         const chatsDirectory = path.join(directories.chats, item.replace('.png', ''));
 
@@ -550,6 +654,7 @@ function convertToV2(char, directories) {
         depth_prompt_prompt: char.depth_prompt_prompt,
         depth_prompt_depth: char.depth_prompt_depth,
         depth_prompt_role: char.depth_prompt_role,
+        world: char.world ?? char.data?.extensions?.world,
     }, directories);
 
     result.chat = char.chat ?? `${char.name} - ${humanizedDateTime()}`;
@@ -696,12 +801,12 @@ function charaFormatData(data, directories) {
             const file = readWorldInfoFile(directories, data.world, false);
 
             // File was imported - save it to the character book
-            if (file && file.originalData) {
-                _.set(char, 'data.character_book', file.originalData);
-            }
-
-            // File was not imported - convert the world info to the character book
-            if (file && file.entries) {
+            if (file?.originalData && Array.isArray(file.originalData.entries)) {
+                const originalData = structuredClone(file.originalData);
+                originalData.extensions ??= {};
+                _.set(char, 'data.character_book', originalData);
+            } else if (file && file.entries) {
+                // File was not imported - convert the world info to the character book
                 _.set(char, 'data.character_book', convertWorldInfoToCharacterBook(data.world, file.entries));
             }
         } catch {
@@ -727,16 +832,53 @@ function charaFormatData(data, directories) {
  * @param {object} entries Entries object
  */
 function convertWorldInfoToCharacterBook(name, entries) {
-    /** @type {{ entries: object[]; name: string }} */
-    const result = { entries: [], name };
+    /** @type {{ entries: object[]; name: string; extensions: object }} */
+    const result = { entries: [], name, extensions: {} };
+    const sortedEntries = Object.values(entries).sort((a, b) => (a.displayIndex ?? a.uid ?? 0) - (b.displayIndex ?? b.uid ?? 0));
 
-    for (const index in entries) {
-        const entry = entries[index];
+    for (const entry of sortedEntries) {
+        const allKeys = [...(entry.key ?? []), ...(entry.keysecondary ?? [])];
+        const parseRegexKey = key => {
+            const match = String(key).match(/^\/([\s\S]+)\/([gimsuy]*)$/);
+            if (!match) {
+                return null;
+            }
+            for (let index = 0; index < match[1].length; index++) {
+                if (match[1][index] !== '/') {
+                    continue;
+                }
+                let backslashes = 0;
+                for (let cursor = index - 1; cursor >= 0 && match[1][cursor] === '\\'; cursor--) {
+                    backslashes++;
+                }
+                if (backslashes % 2 === 0) {
+                    return null;
+                }
+            }
+            try {
+                RegExp(match[1], match[2]);
+                return match;
+            } catch {
+                return null;
+            }
+        };
+        const parsedKeys = allKeys.map(parseRegexKey);
+        const useRegex = allKeys.length > 0 && parsedKeys.every(Boolean);
+        const serializeKey = key => {
+            if (!useRegex) {
+                return key;
+            }
+            const match = parseRegexKey(key);
+            if (match?.[2]) {
+                return key;
+            }
+            return match?.[1]?.replace(/(\\*)\//g, (_slash, backslashes) => `${backslashes.slice(0, -1)}/`) ?? key;
+        };
 
         const originalEntry = {
             id: entry.uid,
-            keys: entry.key,
-            secondary_keys: entry.keysecondary,
+            keys: (entry.key ?? []).map(serializeKey),
+            secondary_keys: (entry.keysecondary ?? []).map(serializeKey),
             comment: entry.comment,
             content: entry.content,
             constant: entry.constant,
@@ -744,7 +886,8 @@ function convertWorldInfoToCharacterBook(name, entries) {
             insertion_order: entry.order,
             enabled: !entry.disable,
             position: entry.position == 0 ? 'before_char' : 'after_char',
-            use_regex: true, // ST keys are always regex
+            use_regex: useRegex,
+            case_sensitive: entry.caseSensitive ?? null,
             extensions: {
                 ...entry.extensions,
                 position: entry.position,
@@ -778,6 +921,7 @@ function convertWorldInfoToCharacterBook(name, entries) {
                 match_creator_notes: entry.matchCreatorNotes ?? false,
                 triggers: entry.triggers ?? [],
                 ignore_budget: entry.ignoreBudget ?? false,
+                agent_blacklisted: entry.agentBlacklisted ?? false,
             },
         };
 
@@ -1124,35 +1268,85 @@ router.post('/rename', validateAvatarUrlMiddleware, async function (request, res
     const newAvatarName = `${newInternalName}.png`;
 
     const oldAvatarPath = path.join(request.user.directories.characters, oldAvatarName);
+    const newAvatarPath = path.join(request.user.directories.characters, newAvatarName);
 
     const oldChatsPath = path.join(request.user.directories.chats, oldInternalName);
     const newChatsPath = path.join(request.user.directories.chats, newInternalName);
+    const dateAddedRoot = getEntityDateAddedRoot(request.user.directories);
+    let dateAddedMoved = false;
+    let chatsCopied = false;
+    let oldDateAdded;
+    let operationTime;
 
     try {
+        operationTime = Date.now();
+        oldDateAdded = ensureEntityDateAdded(
+            dateAddedRoot,
+            'characters',
+            oldAvatarName,
+            getCharacterDateAddedFallback(fs.statSync(oldAvatarPath)),
+            operationTime,
+        );
+        prepareEntityDateAddedMove(dateAddedRoot, 'characters', oldAvatarName, newAvatarName, oldDateAdded, operationTime);
+        dateAddedMoved = true;
+
         // Read old file, replace name int it
         const rawOldData = await readCharacterData(oldAvatarPath);
         if (rawOldData === undefined) throw new Error('Failed to read character file');
 
         const oldData = getCharaCardV2(JSON.parse(rawOldData), request.user.directories);
+        // SillyBunny: carry the sidecar's last opened chat onto the new avatar name,
+        // falling back to the card for installs that predate the sidecar.
+        prepareEntityLastChatMove(dateAddedRoot, oldAvatarName, newAvatarName, oldData?.chat);
         _.set(oldData, 'data.name', newName);
         _.set(oldData, 'name', newName);
         const newData = JSON.stringify(oldData);
 
         // Write data to new location
-        await writeCharacterData(oldAvatarPath, newData, newInternalName, request);
+        const writeSucceeded = await writeCharacterData(oldAvatarPath, newData, newInternalName, request, undefined, { preserveDateAdded: true });
+        if (!writeSucceeded) {
+            throw new Error('Failed to write renamed character data.');
+        }
 
         // Rename chats folder
         if (fs.existsSync(oldChatsPath) && !fs.existsSync(newChatsPath)) {
             fs.cpSync(oldChatsPath, newChatsPath, { recursive: true });
+            chatsCopied = true;
             fs.rmSync(oldChatsPath, { recursive: true, force: true });
         }
 
         // Remove the old character file
         fs.unlinkSync(oldAvatarPath);
+        try {
+            removeEntityDateAdded(dateAddedRoot, 'characters', oldAvatarName);
+        } catch (metadataError) {
+            console.error('Could not remove stale date-added metadata after character rename.', metadataError);
+        }
 
         // Return new avatar name to ST
         return response.send({ avatar: newAvatarName });
     } catch (err) {
+        if (dateAddedMoved && fs.existsSync(oldAvatarPath)) {
+            let chatsRestored = true;
+            if (chatsCopied) {
+                try {
+                    fs.cpSync(newChatsPath, oldChatsPath, { recursive: true });
+                    fs.rmSync(newChatsPath, { recursive: true, force: true });
+                } catch (rollbackError) {
+                    chatsRestored = false;
+                    console.error('Could not restore chats after a failed character rename.', rollbackError);
+                }
+            }
+            if (chatsRestored) {
+                try {
+                    fs.rmSync(newAvatarPath, { force: true });
+                    removeEntityDateAdded(dateAddedRoot, 'characters', newAvatarName, operationTime);
+                    removeEntityLastChat(dateAddedRoot, newAvatarName);
+                } catch (rollbackError) {
+                    console.error('Could not clean up date-added metadata after a failed character rename.', rollbackError);
+                }
+            }
+        }
         console.error(err);
         return response.sendStatus(500);
     }
@@ -1199,18 +1393,20 @@ router.post('/edit', validateAvatarUrlMiddleware, async function (request, respo
     char.chat = request.body.chat;
     char.create_date = request.body.create_date;
     char = JSON.stringify(char);
-    let targetFile = (request.body.avatar_url).replace('.png', '');
+    const targetFile = request.body.avatar_url;
 
     try {
+        let writeSucceeded;
         if (!request.file) {
-            await writeCharacterData(avatarPath, char, targetFile, request);
+            writeSucceeded = await writeCharacterData(avatarPath, char, targetFile, request, undefined, { preserveFileIdentity: true });
         } else {
             const crop = tryParse(request.query.crop);
             const newAvatarPath = path.join(request.file.destination, request.file.filename);
             invalidateThumbnail(request.user.directories, 'avatar', request.body.avatar_url);
-            await writeCharacterData(newAvatarPath, char, targetFile, request, crop);
+            writeSucceeded = await writeCharacterData(newAvatarPath, char, targetFile, request, crop, { preserveFileIdentity: true });
             fs.unlinkSync(newAvatarPath);
         }
+        if (!writeSucceeded) throw new Error('Failed to write character data.');
 
         return response.sendStatus(200);
     } catch (err) {
@@ -1243,11 +1439,12 @@ router.post('/edit-avatar', validateAvatarUrlMiddleware, async function (request
         }
 
         const crop = tryParse(request.query.crop);
-        const fileName = request.body.avatar_url.replace('.png', '');
-        await writeCharacterData(uploadPath, data, fileName, request, crop);
+        const fileName = request.body.avatar_url;
+        const writeSucceeded = await writeCharacterData(uploadPath, data, fileName, request, crop, { preserveFileIdentity: true });
 
         // Remove uploaded temp file
         fs.unlinkSync(uploadPath);
+        if (!writeSucceeded) throw new Error('Failed to write character avatar data.');
 
         // Reset thumbnail cache
         invalidateThumbnail(request.user.directories, 'avatar', request.body.avatar_url);
@@ -1301,8 +1498,9 @@ router.post('/edit-attribute', validateAvatarUrlMiddleware, async function (requ
         char[request.body.field] = request.body.value;
         char.data[request.body.field] = request.body.value;
         let newCharJSON = JSON.stringify(char);
-        const targetFile = (request.body.avatar_url).replace('.png', '');
-        await writeCharacterData(avatarPath, newCharJSON, targetFile, request);
+        const targetFile = request.body.avatar_url;
+        const writeSucceeded = await writeCharacterData(avatarPath, newCharJSON, targetFile, request, undefined, { preserveFileIdentity: true });
+        if (!writeSucceeded) throw new Error('Failed to write character data.');
         return response.sendStatus(200);
     } catch (err) {
         console.error('An error occurred, character edit invalidated.', err);
@@ -1395,6 +1593,29 @@ router.post('/merge-attributes', getFileNameValidationFunction('avatar'), async 
     }
 });
 
+// SillyBunny: recording which chat a character last had open must not rewrite the
+// card. Upstream routes this through /merge-attributes, which re-encodes the PNG
+// on every chat switch and resets the file's timestamps.
+router.post('/last-chat', getFileNameValidationFunction('avatar'), async function (request, response) {
+    try {
+        const avatar = request.body?.avatar;
+        if (typeof avatar !== 'string' || !avatar) {
+            return response.status(400).send({ message: 'No avatar provided.' });
+        }
+
+        const chatName = request.body?.chat;
+        if (chatName !== undefined && chatName !== null && typeof chatName !== 'string') {
+            return response.status(400).send({ message: 'Invalid chat name provided.' });
+        }
+
+        setEntityLastChat(getEntityDateAddedRoot(request.user.directories), avatar, chatName ?? '');
+        return response.sendStatus(200);
+    } catch (exception) {
+        console.error('Could not save the last opened chat.', exception);
+        return response.status(500).send({ message: 'Unexpected error while saving the last opened chat.' });
+    }
+});
+
 router.post('/delete', validateAvatarUrlMiddleware, async function (request, response) {
     if (!request.body || !request.body.avatar_url) {
         return response.sendStatus(400);
@@ -1406,29 +1627,122 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
     }
 
     const avatarPath = path.join(request.user.directories.characters, request.body.avatar_url);
+    try {
+        recoverFileWriteSync(avatarPath);
+    } catch (error) {
+        console.error('Could not recover character before deletion.', error);
+        return response.sendStatus(500);
+    }
     if (!fs.existsSync(avatarPath)) {
         return response.sendStatus(400);
     }
 
-    fs.unlinkSync(avatarPath);
-    invalidateThumbnail(request.user.directories, 'avatar', request.body.avatar_url);
-    let dir_name = (request.body.avatar_url.replace('.png', ''));
+    let dir_name = request.body.avatar_url.replace('.png', '');
 
     if (!dir_name.length) {
         console.error('Malicious dirname prevented');
         return response.sendStatus(403);
     }
 
+    /** @type {ReturnType<typeof createCharacterChatTarget>[]} */
+    let recoveryTargets = [];
     if (request.body.delete_chats == true) {
         try {
-            await fs.promises.rm(path.join(request.user.directories.chats, sanitize(dir_name)), { recursive: true, force: true });
+            const owner = sanitize(dir_name);
+            const chatsDirectory = path.join(request.user.directories.chats, owner);
+            if (fs.existsSync(chatsDirectory)) {
+                const chatFiles = await fs.promises.readdir(chatsDirectory, { withFileTypes: true });
+                recoveryTargets = chatFiles
+                    .filter(entry => entry.isFile() && path.extname(entry.name) === '.jsonl')
+                    .map(chatFile => createCharacterChatTarget({
+                        chatsDirectory: request.user.directories.chats,
+                        backupDirectory: request.user.directories.backups,
+                        owner,
+                        filename: chatFile.name,
+                        maxRecoveryStates: maxTotalChatBackups,
+                    }));
+            }
+            if (isChatBackupEnabled) {
+                for (const recoveryTarget of recoveryTargets) {
+                    runChatRecoveryBestEffort(
+                        () => markChatDeleted(recoveryTarget),
+                        'Failed to mark chat recovery state for deletion; continuing with character deletion.',
+                    );
+                }
+            }
+            await fs.promises.rm(chatsDirectory, { recursive: true, force: true });
+            for (const recoveryTarget of recoveryTargets) {
+                runChatRecoveryBestEffort(
+                    () => clearChatRecoveryState(recoveryTarget),
+                    'Failed to clear chat recovery state after character deletion.',
+                );
+            }
         } catch (err) {
             console.error(err);
             return response.sendStatus(500);
         }
     }
 
+    try {
+        fs.unlinkSync(avatarPath);
+    } catch (error) {
+        console.error('Could not delete character.', error);
+        return response.sendStatus(500);
+    }
+    try {
+        removeEntityDateAdded(
+            getEntityDateAddedRoot(request.user.directories),
+            'characters',
+            request.body.avatar_url,
+        );
+    } catch (metadataError) {
+        console.error('Could not remove date-added metadata after character deletion.', metadataError);
+    }
+    try {
+        removeEntityLastChat(getEntityDateAddedRoot(request.user.directories), request.body.avatar_url);
+    } catch (metadataError) {
+        console.error('Could not remove last-chat metadata after character deletion.', metadataError);
+    }
+    invalidateThumbnail(request.user.directories, 'avatar', request.body.avatar_url);
+
     return response.sendStatus(200);
+});
+
+/**
+ * HTTP POST endpoint for the "/api/characters/regenerate-thumbnail" route.
+ *
+ * Invalidates the cached avatar thumbnail for a character and regenerates it from the original avatar file.
+ *
+ * @param {import("express").Request} request The HTTP request object. Body: `{ avatar_url: string }`
+ * @param {import("express").Response} response The HTTP response object.
+ */
+router.post('/regenerate-thumbnail', validateAvatarUrlMiddleware, async function (request, response) {
+    if (!request.body || !request.body.avatar_url) {
+        return response.sendStatus(400);
+    }
+
+    if (request.body.avatar_url !== sanitize(request.body.avatar_url)) {
+        console.error('Malicious filename prevented');
+        return response.sendStatus(403);
+    }
+
+    const avatarPath = path.join(request.user.directories.characters, request.body.avatar_url);
+    if (!fs.existsSync(avatarPath)) {
+        return response.status(404).json({ error: 'Character avatar file not found.' });
+    }
+
+    try {
+        invalidateThumbnail(request.user.directories, 'avatar', request.body.avatar_url);
+        const result = await generateThumbnail(request.user.directories, 'avatar', request.body.avatar_url, true);
+        return response.json({
+            ok: true,
+            regenerated: result.path !== null,
+            aspectRatio: result.aspectRatio,
+        });
+    } catch (error) {
+        console.error('Failed to regenerate thumbnail for', request.body.avatar_url, error);
+        return response.status(500).json({ error: 'Failed to regenerate thumbnail.' });
+    }
 });
 
 /**
@@ -1447,10 +1761,36 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
  */
 router.post('/all', async function (request, response) {
     try {
+        recoverFileWritesInDirectorySync(request.user.directories.characters);
         const files = fs.readdirSync(request.user.directories.characters);
         const pngFiles = files.filter(file => file.endsWith('.png'));
-        const processingPromises = pngFiles.map(file => processCharacter(file, request.user.directories, { shallow: useShallowCharacters }));
+        const fileStats = new Map();
+        const dateAddedEntries = pngFiles.map(file => {
+            try {
+                const fileStat = fs.statSync(path.join(request.user.directories.characters, file));
+                fileStats.set(file, fileStat);
+                return { id: file, fallback: getCharacterDateAddedFallback(fileStat) };
+            } catch {
+                return null;
+            }
+        }).filter(Boolean);
+        const dateAddedByFile = reconcileEntityDateAdded(
+            getEntityDateAddedRoot(request.user.directories),
+            'characters',
+            dateAddedEntries,
+        );
+        const processingPromises = pngFiles.map(file => processCharacter(file, request.user.directories, {
+            shallow: useShallowCharacters,
+            fileStat: fileStats.get(file),
+        }));
         const data = (await Promise.all(processingPromises)).filter(c => c.name);
+        // SillyBunny: the sidecar owns the last opened chat; the card's own value is
+        // only a fallback for installs that predate it.
+        const lastChatByFile = readEntityLastChats(getEntityDateAddedRoot(request.user.directories));
+        for (const character of data) {
+            character.date_added = dateAddedByFile.get(character.avatar);
+            character.chat = lastChatByFile.get(character.avatar) ?? character.chat;
+        }
         return response.send(data);
     } catch (err) {
         console.error(err);
@@ -1470,6 +1810,26 @@ router.post('/get', validateAvatarUrlMiddleware, async function (request, respon
         }
 
         const data = await processCharacter(item, request.user.directories, { shallow: false });
+        let fileStat;
+        try {
+            fileStat = fs.statSync(filePath);
+        } catch (error) {
+            if (error?.code === 'ENOENT') {
+                return response.sendStatus(404);
+            }
+            throw error;
+        }
+        const dateAddedByFile = reconcileEntityDateAdded(
+            getEntityDateAddedRoot(request.user.directories),
+            'characters',
+            [{ id: item, fallback: getCharacterDateAddedFallback(fileStat) }],
+        );
+        data.date_added = dateAddedByFile.get(item);
+        if (data.date_added === undefined) {
+            return response.sendStatus(404);
+        }
+        // SillyBunny: see the sidecar overlay in POST /all.
+        data.chat = getEntityLastChat(getEntityDateAddedRoot(request.user.directories), item) ?? data.chat;
 
         return response.send(data);
     } catch (err) {
@@ -1484,8 +1844,23 @@ router.post('/chats', validateAvatarUrlMiddleware, async function (request, resp
 
         const characterDirectory = (request.body.avatar_url).replace('.png', '');
         const chatsDirectory = path.join(request.user.directories.chats, characterDirectory);
+        const requestedFileName = request.body.file_name
+            ? sanitize(`${String(request.body.file_name).replace(/\.jsonl$/i, '')}.jsonl`)
+            : '';
+        const recoveryTarget = requestedFileName
+            ? createCharacterChatTarget({
+                chatsDirectory: request.user.directories.chats,
+                backupDirectory: request.user.directories.backups,
+                owner: characterDirectory,
+                filename: requestedFileName,
+                maxRecoveryStates: maxTotalChatBackups,
+            })
+            : null;
 
         if (!fs.existsSync(chatsDirectory)) {
+            if (isChatBackupEnabled && recoveryTarget && isChatRecoverable(recoveryTarget)) {
+                return response.send([{ file_name: requestedFileName, file_id: path.parse(requestedFileName).name, last_mes: 0 }]);
+            }
             return response.send({ error: true });
         }
 
@@ -1493,6 +1868,9 @@ router.post('/chats', validateAvatarUrlMiddleware, async function (request, resp
         const jsonFiles = files.filter(file => file.isFile() && path.extname(file.name) === '.jsonl').map(file => file.name);
 
         if (jsonFiles.length === 0) {
+            if (isChatBackupEnabled && recoveryTarget && isChatRecoverable(recoveryTarget)) {
+                return response.send([{ file_name: requestedFileName, file_id: path.parse(requestedFileName).name, last_mes: 0 }]);
+            }
             return response.send([]);
         }
 
@@ -1509,10 +1887,20 @@ router.post('/chats', validateAvatarUrlMiddleware, async function (request, resp
         const chatData = (await Promise.allSettled(jsonFilesPromise)).filter(x => x.status === 'fulfilled').map(x => x.value);
         const validFiles = chatData.filter(i => i.file_name);
 
+        if (recoveryTarget && !validFiles.some(file => file.file_name === requestedFileName)) {
+            // SillyBunny: retain the persisted target so the strict load endpoint can recover or reject it.
+            const requestedChat = readChatJsonlStrict(recoveryTarget.activePath);
+            const hasRecoverableSnapshot = isChatBackupEnabled && isChatRecoverable(recoveryTarget);
+            if ((requestedChat.status === 'corrupt' && requestedChat.data !== null) || hasRecoverableSnapshot) {
+                validFiles.push({ file_name: requestedFileName, file_id: path.parse(requestedFileName).name, last_mes: 0 });
+            }
+        }
+
         return response.send(validFiles);
     } catch (error) {
+        // SillyBunny: a listing failure must be distinguishable from a character that has no chats yet.
         console.error(error);
-        return response.send({ error: true });
+        return response.status(500).send({ error: true });
     }
 });
 
@@ -1549,6 +1937,10 @@ router.post('/import', async function (request, response) {
     const uploadPath = path.join(request.file.destination, request.file.filename);
     const format = request.body.file_type;
     const preservedFileName = getPreservedName(request);
+
+    if (preservedFileName) {
+        recoverFileWriteSync(path.join(request.user.directories.characters, `${preservedFileName}.png`));
+    }
 
     const formatImportFunctions = {
         'yaml': importFromYaml,
@@ -1620,7 +2012,16 @@ router.post('/duplicate', validateAvatarUrlMiddleware, async function (request, 
             suffix++;
         }
 
-        fs.copyFileSync(filename, newFilename);
+        const operationTime = Date.now();
+        const dateAddedRoot = getEntityDateAddedRoot(request.user.directories);
+        const newAvatarName = path.basename(newFilename);
+        recoverFileWriteSync(filename);
+        fs.copyFileSync(filename, newFilename, fs.constants.COPYFILE_EXCL);
+        try {
+            createEntityDateAdded(dateAddedRoot, 'characters', newAvatarName, operationTime);
+        } catch (metadataError) {
+            console.error('Could not record date-added metadata after duplicating a character.', metadataError);
+        }
         console.info(`${filename} was copied to ${newFilename}`);
         response.send({ path: path.parse(newFilename).base });
     } catch (error) {
@@ -1643,6 +2044,7 @@ router.post('/export', validateAvatarUrlMiddleware, async function (request, res
 
         switch (request.body.format) {
             case 'png': {
+                recoverFileWriteSync(filename);
                 const rawBuffer = await fsPromises.readFile(filename);
                 const rawData = read(rawBuffer);
                 const mutatedData = mutateJsonString(rawData, unsetPrivateFields);

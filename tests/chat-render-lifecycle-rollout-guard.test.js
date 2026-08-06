@@ -74,14 +74,14 @@ describe('chat render lifecycle rollout guard', () => {
         expect(disabledRoutes.every(value => value === false)).toBe(true);
     });
 
-    test('storage override enables lifecycle routing', () => {
+    test('device-local kill switch enables lifecycle routing', () => {
         expect(resolveChatRenderLifecycleRollout({ storage: createStorage('true') })).toEqual({
             enabled: true,
             source: 'storage',
         });
     });
 
-    test('storage override disables lifecycle routing', () => {
+    test('device-local kill switch disables lifecycle routing', () => {
         expect(resolveChatRenderLifecycleRollout({
             defaultEnabled: true,
             storage: createStorage('false'),

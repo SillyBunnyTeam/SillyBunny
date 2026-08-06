@@ -6,10 +6,9 @@ import {
     extensionName,
     extension_settings,
     getContext,
+    guidedCorrectionInjectId,
     getLastAiMessage,
 } from './shared.js';
-
-const correctionInjectionId = 'correction';
 
 async function executeSTScriptCommand(command) {
     const context = getContext();
@@ -144,7 +143,7 @@ async function applyAppendedGenerationToTarget(context, targetIndex, targetMessa
 
 async function generateCorrection(target) {
     const forceCharacterId = getTargetForceCharacterId(target.message);
-    const options = {};
+    const options = { preserveLastMessage: true };
 
     if (forceCharacterId !== undefined) {
         options.force_chid = forceCharacterId;
@@ -188,17 +187,22 @@ async function guidedCorrection() {
         const depth = settings.depthPromptGuidedCorrection ?? 0;
         const promptTemplate = settings.promptGuidedCorrection ?? '';
         const filledPrompt = applyPromptTemplate(promptTemplate, originalInput);
-        const stscriptCommand = `/inject id=${correctionInjectionId} position=chat ephemeral=true scan=true depth=${depth} role=${injectionRole} ${filledPrompt} |`;
+        const stscriptCommand = `/inject id=${guidedCorrectionInjectId} position=chat ephemeral=true scan=true depth=${depth} role=${injectionRole} ${filledPrompt} |`;
 
         await executeSTScriptCommand(stscriptCommand);
         debugLog('[Correction] Executed command:', stscriptCommand);
 
-        if (!await waitForInjection(correctionInjectionId)) {
+        if (!await waitForInjection(guidedCorrectionInjectId)) {
             toastr.error('Could not verify correction instruction injection.', 'Guided Correction');
             return;
         }
 
         trailingMessages = await isolateTargetMessage(context, target.index);
+
+        if (context.groupId) {
+            textarea.value = '';
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        }
 
         await generateCorrection(target);
         const targetWasUpdatedInPlace = await applyAppendedGenerationToTarget(context, target.index, target.message);
@@ -230,7 +234,7 @@ async function guidedCorrection() {
         textarea.dispatchEvent(new Event('input', { bubbles: true }));
 
         try {
-            await executeSTScriptCommand(`/flushinject ${correctionInjectionId}`);
+            await executeSTScriptCommand(`/flushinject ${guidedCorrectionInjectId}`);
         } catch (error) {
             console.warn('[GuidedGenerations][Correction] Could not flush guided correction injection:', error);
         }

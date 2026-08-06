@@ -1,0 +1,128 @@
+{
+    "id": "tpl-level-up-companion",
+    "name": "Level Up Companion",
+    "description": "Track major milestones and emit level-up blocks when earned",
+    "icon": "",
+    "category": "companion",
+    "execution": "companion",
+    "tags": [],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "## Leveling and Growth Rules\n\nTrack {{user}}'s progress. Only level up after a major milestone, such as completing an arc, surviving a deadly encounter, solving a major mystery, defeating or saving someone important, making a major world-state choice, or repeatedly committing to a clear playstyle.\n\nDo not level up after minor successes, routine checks, or ordinary conversations.\n\nA level-up grants:\n- +1 Level.\n- 5-15 total skill points in recently used skills.\n- Optional story-supported changes to reputation, items, conditions, relationships, factions, or resources.\n- A new perk only if clearly earned through repeated behavior, a major achievement, or a defining choice.\n\nOnly output [LEVEL_UP] when warranted.\n\n## Level-Up Output Format\n\n[LEVEL_UP]\nLevel: X\nReason: Brief major milestone description.\n\nSkill Growth:\n- Skill Name: +X, now X/100\n- Skill Name: +X, now X/100\n\nNew Perk:\n- Perk Name: Mechanical or narrative effect.\nEarned By: One sentence describing what unlocked it.\n\nOther Changes:\n- Optional reputation, item, condition, companion, faction, relationship, resource, or story-state change.\n[/LEVEL_UP]\n\nIf no perk is earned:\n\nNew Perk:\n- None this level.\nEarned By: No new perk was clearly earned.",
+    "phase": "pre",
+    "connectionProfile": "",
+    "modelOverride": "",
+    "sourceTemplateId": "",
+    "injection": {
+        "position": 1,
+        "depth": 1,
+        "role": 0,
+        "order": 120,
+        "scan": false
+    },
+    "companion": {
+        "trigger": "auto",
+        "displayMode": "panel",
+        "format": "markdown",
+        "rawPrompt": false,
+        "inlinePhase": "",
+        "minContextTokens": 0,
+        "contextMessages": 10,
+        "includeCharacterCard": true,
+        "includePersona": true,
+        "includeWorldInfo": true,
+        "includeAuthorsNote": true,
+        "includeSystemPrompt": true,
+        "includeHistory": true,
+        "historyDepth": 3,
+        "feedback": {
+            "enabled": true,
+            "depth": 1
+        },
+        "batch": true,
+        "batchAgentIds": [
+            "tpl-user-based-stats-generator"
+        ],
+        "sendContextToCompanions": true,
+        "contextRecipientAgentIds": [
+            "tpl-user-based-stats-generator"
+        ],
+        "maxTokens": 64000
+    },
+    "preProcess": {
+        "mode": "inject",
+        "interceptTiming": "pre-generation",
+        "applyMode": "replace",
+        "wrapPosition": "after",
+        "wrapPrefix": "",
+        "wrapSuffix": "",
+        "patchStartTag": "<context_patch>",
+        "patchEndTag": "</context_patch>",
+        "maxTokens": 8192
+    },
+    "postProcess": {
+        "enabled": false,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "",
+        "extractVariable": "",
+        "promptTransformEnabled": false,
+        "promptTransformShowNotifications": true,
+        "promptTransformMode": "rewrite",
+        "promptTransformMaxTokens": 8192
+    },
+    "regexScripts": [
+        {
+            "id": "44e5eba0-bf45-4b2a-81d1-6f39e0db4157",
+            "scriptName": "Replace Level Up",
+            "findRegex": "/\\[LEVEL_UP\\]\\s*([\\s\\S]*?)\\s*\\[\\/LEVEL_UP\\]/g",
+            "replaceString": "<style>\n.levelup-terminal {\n  --term-bg: #050807;\n  --term-green: #73ff9b;\n  --term-green-dim: #2fbf63;\n  --term-text: #d8ffe4;\n  --term-muted: #7fa88c;\n  --term-border: rgba(115, 255, 155, 0.35);\n  --term-glow: rgba(115, 255, 155, 0.18);\n  --term-gold: #ffe082;\n\n  max-width: 760px;\n  margin: 1em auto;\n  border: 1px solid var(--term-border);\n  border-radius: 12px;\n  background:\n    linear-gradient(rgba(255,255,255,0.025) 50%, rgba(0,0,0,0.035) 50%),\n    radial-gradient(circle at top left, rgba(255,224,130,0.10), transparent 34%),\n    radial-gradient(circle at bottom right, rgba(115,255,155,0.08), transparent 36%),\n    var(--term-bg);\n  background-size: 100% 4px, 100% 100%, 100% 100%, 100% 100%;\n  color: var(--term-text);\n  font-family: \"Courier New\", Courier, monospace;\n  box-shadow:\n    0 0 22px var(--term-glow),\n    inset 0 0 30px rgba(0,0,0,0.55);\n  overflow: hidden;\n}\n\n.levelup-terminal-header {\n  display: flex;\n  align-items: center;\n  gap: 0.5em;\n  padding: 0.65em 0.85em;\n  background: #07100b;\n  border-bottom: 1px solid var(--term-border);\n  color: var(--term-green);\n  text-shadow: 0 0 8px var(--term-glow);\n  letter-spacing: 0.04em;\n  font-weight: 700;\n}\n\n.levelup-dot {\n  width: 0.72em;\n  height: 0.72em;\n  border-radius: 50%;\n  display: inline-block;\n  opacity: 0.9;\n}\n\n.levelup-dot.red { background: #ff5f56; }\n.levelup-dot.yellow { background: #ffbd2e; }\n.levelup-dot.green { background: #27c93f; }\n\n.levelup-title {\n  margin-left: 0.35em;\n}\n\n.levelup-terminal-body {\n  padding: 0.9em;\n}\n\n.levelup-terminal details {\n  border: 1px solid rgba(115,255,155,0.22);\n  background: rgba(3, 10, 7, 0.72);\n  border-radius: 8px;\n  margin: 0.65em 0;\n  overflow: hidden;\n}\n\n.levelup-terminal details[open] {\n  border-color: rgba(255,224,130,0.45);\n  box-shadow:\n    inset 0 0 18px rgba(115,255,155,0.045),\n    0 0 18px rgba(255,224,130,0.08);\n}\n\n.levelup-terminal summary {\n  cursor: pointer;\n  list-style: none;\n  padding: 0.65em 0.75em;\n  color: var(--term-gold);\n  background: rgba(255,224,130,0.055);\n  border-bottom: 1px solid rgba(255,224,130,0.16);\n  font-weight: 700;\n  text-shadow: 0 0 8px rgba(255,224,130,0.22);\n  user-select: none;\n}\n\n.levelup-terminal summary::-webkit-details-marker {\n  display: none;\n}\n\n.levelup-terminal summary::before {\n  content: \"> \";\n  color: var(--term-green-dim);\n}\n\n.levelup-terminal details:not([open]) summary::after {\n  content: \" [closed]\";\n  color: var(--term-muted);\n  font-weight: 400;\n}\n\n.levelup-terminal details[open] summary::after {\n  content: \" [open]\";\n  color: var(--term-muted);\n  font-weight: 400;\n}\n\n.levelup-output {\n  margin: 0;\n  padding: 0.85em;\n  white-space: pre-wrap;\n  word-break: break-word;\n  color: var(--term-text);\n  line-height: 1.45;\n  font-size: 0.94em;\n  font-family: \"Courier New\", Courier, monospace;\n}\n\n.levelup-output strong,\n.levelup-output b {\n  color: #b8ffce;\n  font-weight: 900;\n  text-shadow: 0 0 7px rgba(115,255,155,0.25);\n}\n\n.levelup-prompt {\n  color: var(--term-green);\n  text-shadow: 0 0 8px rgba(115,255,155,0.22);\n}\n\n.levelup-badge {\n  display: inline-block;\n  color: var(--term-gold);\n  text-shadow: 0 0 8px rgba(255,224,130,0.25);\n}\n\n.levelup-cursor::after {\n  content: \"\u2588\";\n  display: inline-block;\n  color: var(--term-green);\n  animation: levelup-blink 1s steps(2, start) infinite;\n}\n\n@keyframes levelup-blink {\n  0%, 45% { opacity: 1; }\n  46%, 100% { opacity: 0; }\n}\n</style>\n\n<div class=\"levelup-terminal\">\n  <div class=\"levelup-terminal-header\">\n    <span class=\"levelup-dot red\"></span>\n    <span class=\"levelup-dot yellow\"></span>\n    <span class=\"levelup-dot green\"></span>\n    <span class=\"levelup-title\">LEVEL_UP.exe</span>\n  </div>\n\n  <div class=\"levelup-terminal-body\">\n    <details open>\n      <summary>LEVEL UP REPORT</summary>\n      <div class=\"levelup-output\"><span class=\"levelup-prompt\">{{user}}@st:~$ run LEVEL_UP.report</span>\n<span class=\"levelup-badge\">[ LEVEL UP CONFIRMED ]</span>\n\n$1\n\n<span class=\"levelup-prompt levelup-cursor\">{{user}}@st:~$ </span></div>\n    </details>\n  </div>\n</div>",
+            "trimStrings": [],
+            "placement": [
+                2
+            ],
+            "disabled": false,
+            "markdownOnly": true,
+            "promptOnly": false,
+            "runOnEdit": true,
+            "substituteRegex": 0,
+            "minDepth": null,
+            "maxDepth": null
+        },
+        {
+            "id": "18f145d7-8a0b-4e7e-a17b-ff24eaaba21c",
+            "scriptName": "Replace Bold Markdown",
+            "findRegex": "/\\*\\*(.*?)\\*\\*/g",
+            "replaceString": "<strong>$1</strong>",
+            "trimStrings": [],
+            "placement": [
+                2
+            ],
+            "disabled": false,
+            "markdownOnly": true,
+            "promptOnly": false,
+            "runOnEdit": true,
+            "substituteRegex": 0,
+            "minDepth": null,
+            "maxDepth": null
+        }
+    ],
+    "enabled": false,
+    "favorite": false,
+    "phaseLocked": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal",
+            "continue",
+            "impersonate"
+        ],
+        "runOnImpersonate": false
+    },
+    "tools": [],
+    "settings": {}
+}

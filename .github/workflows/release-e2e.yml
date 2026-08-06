@@ -1,0 +1,121 @@
+name: Release E2E Validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - '**/*.md'
+      - '.github/**'
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**/*.md'
+      - '.github/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  run-release-e2e:
+    name: Run Chromium E2E suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CI: 'true'
+      PLAYWRIGHT_HTML_OPEN: never
+      SILLYBUNNY_TEST_BASE_URL: http://127.0.0.1:4444
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # v4.3.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tests/package-lock.json
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install root dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install test dependencies
+        env:
+          NPM_CONFIG_USERCONFIG: ${{ github.workspace }}/.npmrc
+        run: npm ci --ignore-scripts --prefix tests
+
+      - name: Install Chromium
+        working-directory: tests
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Initialize server state
+        run: npm run init
+
+      - name: Run release E2E suite
+        env:
+          SILLYBUNNY_LAUNCHER: '1'
+          SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1'
+        run: |
+          set -euo pipefail
+
+          server_log="$RUNNER_TEMP/sillybunny-server.log"
+          bun server.js --browserLaunchEnabled=false > "$server_log" 2>&1 &
+          server_pid=$!
+
+          cleanup() {
+            kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          startup_deadline=$((SECONDS + 120))
+          until curl --fail --silent --connect-timeout 1 --max-time 2 "$SILLYBUNNY_TEST_BASE_URL/" > /dev/null; do
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              echo 'SillyBunny exited before becoming ready.' >&2
+              cat "$server_log" >&2
+              exit 1
+            fi
+
+            if (( SECONDS >= startup_deadline )); then
+              echo 'SillyBunny did not become ready within 120 seconds.' >&2
+              cat "$server_log" >&2
+              exit 1
+            fi
+
+            sleep 1
+          done
+
+          npm run test:e2e --prefix tests -- --workers=1 --reporter=line,html
+
+      - name: Print server log on failure
+        if: failure()
+        run: |
+          if [ -f "$RUNNER_TEMP/sillybunny-server.log" ]; then
+            cat "$RUNNER_TEMP/sillybunny-server.log"
+          fi
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-e2e-diagnostics-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/sillybunny-server.log
+            tests/playwright-report/
+            tests/test-results/
+          if-no-files-found: ignore
+          retention-days: 14

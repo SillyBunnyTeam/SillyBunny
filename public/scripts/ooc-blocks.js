@@ -1,6 +1,6 @@
 // SillyBunny: keep user-visible OOC notes readable while excluding them from prompt context.
-const OOC_BLOCK_PLACEHOLDER_PREFIX = '\uE000SB_OOC_BLOCK_';
-const OOC_BLOCK_PLACEHOLDER_SUFFIX = '_\uE001';
+const OOC_BLOCK_PLACEHOLDER_PREFIX = '\uE000SBOOCBLOCK';
+const OOC_BLOCK_PLACEHOLDER_SUFFIX = '\uE001';
 
 /**
  * Normalizes prompt-context retention settings.
@@ -196,4 +196,18 @@ export function renderOocBlock(content) {
 export function hasTextOrArrayPayload(text, payloads = []) {
     return String(text ?? '').trim().length > 0
         || payloads.some(payload => Array.isArray(payload) && payload.length > 0);
+}
+
+/**
+ * Checks whether a prompt message still carries payload after OOC text is removed.
+ * @param {object} chatItem Message history item.
+ * @param {boolean} [includeReasoning=false] Whether reasoning can retain the message.
+ * @returns {boolean} True if the prompt item should remain in context.
+ */
+export function hasPromptPayload(chatItem, includeReasoning = false) {
+    return hasTextOrArrayPayload(chatItem?.mes, [
+        chatItem?.extra?.media,
+        chatItem?.extra?.files,
+        chatItem?.extra?.tool_invocations,
+    ]) || (includeReasoning && String(chatItem?.extra?.reasoning ?? '').trim().length > 0);
 }

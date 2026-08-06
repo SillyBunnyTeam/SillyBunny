@@ -142,14 +142,14 @@ function normalizeNumber(value, fallback = 0) {
     return Number.isFinite(numberValue) ? numberValue : fallback;
 }
 
-function normalizeText(value) {
+export function normalizeMobileShellText(value) {
     return String(value ?? '')
         .replace(/\s+/g, ' ')
         .trim()
         .toLowerCase();
 }
 
-function clampText(value, maxLength = 120) {
+export function clampMobileShellText(value, maxLength = 120) {
     const normalizedValue = String(value ?? '').replace(/\s+/g, ' ').trim();
     const safeMaxLength = Math.max(1, Math.round(normalizeNumber(maxLength, 120)));
     if (normalizedValue.length <= safeMaxLength) {
@@ -159,14 +159,14 @@ function clampText(value, maxLength = 120) {
     return `${normalizedValue.slice(0, safeMaxLength - 1).trimEnd()}…`;
 }
 
-function normalizeRailIcon(value, fallback = MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK) {
-    const fallbackIcon = clampText(fallback || MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK, 60);
+export function normalizeMobileShellRailIcon(value, fallback = MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK) {
+    const fallbackIcon = clampMobileShellText(fallback || MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK, 60);
     const iconClass = String(value ?? '')
         .trim()
         .split(/\s+/)
         .find(token => /^fa-[a-z0-9-]+$/i.test(token) && !MOBILE_SHELL_RAIL_ICON_STYLE_CLASSES.has(token.toLowerCase()));
 
-    return clampText(iconClass?.toLowerCase() || fallbackIcon, 60);
+    return clampMobileShellText(iconClass?.toLowerCase() || fallbackIcon, 60);
 }
 
 function getTouchPoint(touch) {
@@ -402,8 +402,8 @@ export function resolveMobileShellExclusiveOpen({
  * @returns {{shellKey: string, tabId: string}}
  */
 export function resolveMobileShellQuickActionRoute(action = null) {
-    const legacyShellKey = normalizeText(action?.shellKey || action?.shell);
-    const legacyTabId = normalizeText(action?.tabId || action?.tab);
+    const legacyShellKey = normalizeMobileShellText(action?.shellKey || action?.shell);
+    const legacyTabId = normalizeMobileShellText(action?.tabId || action?.tab);
     const isLegacyWorldInfoRoute = legacyShellKey === 'left' && legacyTabId === 'world-info';
 
     return {
@@ -433,7 +433,7 @@ export function normalizeMobileShellQuickAction({
     }
 
     const { shellKey, tabId } = resolveMobileShellQuickActionRoute(action);
-    const requestedType = normalizeText(action.type);
+    const requestedType = normalizeMobileShellText(action.type);
     const isShellAction = requestedType === 'shell';
     const shellExists = shellKey === MOBILE_SHELL_RAIL_CHARACTER_SHELL_KEY || Boolean(shellConfig);
 
@@ -441,10 +441,10 @@ export function normalizeMobileShellQuickAction({
         return null;
     }
 
-    const dedupeKey = clampText(action.dedupeKey, 160);
+    const dedupeKey = clampMobileShellText(action.dedupeKey, 160);
     const type = dedupeKey ? 'custom' : isShellAction ? 'shell' : 'tab';
-    const displayText = clampText(action.displayText, 80);
-    const sectionLabel = clampText(action.sectionLabel, 80);
+    const displayText = clampMobileShellText(action.displayText, 80);
+    const sectionLabel = clampMobileShellText(action.sectionLabel, 80);
     const labelMaxLength = normalizeNumber(limits.labelMaxLength, MOBILE_SHELL_RAIL_QUICK_ACTION_LABEL_MAX_LENGTH);
     const iconFallback = limits.iconFallback || MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK;
     const fallbackLabel = type === 'custom'
@@ -452,7 +452,7 @@ export function normalizeMobileShellQuickAction({
         : type === 'shell'
             ? shellConfig?.title || shellKey
             : tabConfig?.label || tabId;
-    const label = clampText(action.label || fallbackLabel, labelMaxLength);
+    const label = clampMobileShellText(action.label || fallbackLabel, labelMaxLength);
 
     if (!label) {
         return null;
@@ -467,7 +467,7 @@ export function normalizeMobileShellQuickAction({
         type,
         shellKey,
         tabId,
-        icon: normalizeRailIcon(action.icon, fallbackIcon),
+        icon: normalizeMobileShellRailIcon(action.icon, fallbackIcon),
         label,
     };
 
@@ -740,6 +740,316 @@ export const MOBILE_SHELL_VIEWPORT_SYNC_STEP = Object.freeze({
     SCHEDULE_TOPBAR_CONTEXT_REFRESH: 'schedule-topbar-context-refresh',
     SYNC_MOBILE_MODAL_STATE: 'sync-mobile-modal-state',
 });
+
+const MOBILE_DOCUMENT_PAN_BACKGROUND_SELECTOR = [
+    'html',
+    'body',
+    '#bg1',
+    '#bg_custom',
+].join(', ');
+
+const MOBILE_DOCUMENT_PAN_GUARD_SELECTOR = [
+    '#sheld',
+    '#chat',
+    '#form_sheld',
+    '#top-bar',
+    '#top-settings-holder',
+    '#send_form',
+    '#nonQRFormItems',
+    '#leftSendForm',
+    '#qr--bar',
+    '#rightSendForm',
+    '#sb-mobile-nav',
+    '#sb-mobile-chat-tools',
+    '#sb-mobile-chat-tools-panel',
+    '#sb-bottom-chat-bar',
+    '#sb-persona-picker',
+    '#select2-sb-bottom-chat-select-container',
+    '[aria-labelledby="select2-sb-bottom-chat-select-container"]',
+    '.select2-selection',
+    '#shadow_popup',
+    '#dialogue_popup',
+    '#left-nav-panel',
+    '#right-nav-panel',
+    '#user-settings-block',
+    '#ica--tracker-panel',
+    '#ica--tracker-panel-handle',
+    'dialog.popup',
+    '.popup',
+    '.sb-shell-root',
+    '.sb-shell-header',
+    '.ica--tpanel',
+    '.ica--tpanel-handle',
+].join(', ');
+
+const MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR = [
+    '#leftSendForm',
+    '#qr--bar',
+    '#sb-bottom-chat-secondary-row',
+    '.sb-bottom-chat-secondary-row',
+    '#sb-persona-picker',
+    '.group_speaker_list',
+    '.ica--agent-tabs',
+    '.ica--template-pill-row',
+    '.sb-shell-nav',
+    '.sb-settings-tabs-nav',
+    // The icons-only top bar is made entirely of buttons, so every swipe on it matches
+    // MOBILE_DOCUMENT_PAN_CONTROL_SELECTOR and the pan guard blocks it unless the rail is
+    // allowlisted here.
+    '.sb-topbar-group-left',
+    '.sb-conversation-channel-tabs',
+    '.sb-conversation-quick-actions',
+    '.sb-character-create-bar',
+    '#HotSwapWrapper .hotswap',
+    '#right-nav-panel .rm_tag_controls',
+    '#completion_prompt_manager .completion_prompt_manager_prompt > span:nth-child(3)',
+    '.popup.horizontal_scrolling_dialogue_popup .popup-content',
+    '.mes_text pre code',
+    '.mes_reasoning pre code',
+    '.img_enlarged_holder',
+    '.img_enlarged_container pre code',
+    '.select2-results__options',
+].join(', ');
+
+const MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR = [
+    'input',
+    'textarea',
+    'select',
+    '[contenteditable="true"]',
+].join(', ');
+
+const MOBILE_DOCUMENT_PAN_CONTROL_SELECTOR = [
+    'button',
+    '[role="button"]',
+    '.menu_button',
+    '.interactable',
+    '#dialogue_popup_controls',
+    '.popup-controls',
+    '.popup-button-close',
+    '.select2-selection',
+    '#ica--tracker-panel-handle',
+    '.ica--tpanel-handle',
+].join(', ');
+
+const MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX = 3;
+const SCROLLABLE_OVERFLOW_VALUES = new Set(['auto', 'scroll', 'overlay']);
+
+function elementMatchesSelector(element, selector) {
+    return Boolean(element && typeof element.matches === 'function' && element.matches(selector));
+}
+
+function getParentElementLike(element) {
+    if (!element || typeof element !== 'object') {
+        return null;
+    }
+
+    if (element.parentElement && typeof element.parentElement === 'object') {
+        return element.parentElement;
+    }
+
+    if (element.parentNode && typeof element.parentNode === 'object' && element.parentNode !== element) {
+        return element.parentNode;
+    }
+
+    if (element.host && typeof element.host === 'object' && element.host !== element) {
+        return element.host;
+    }
+
+    return null;
+}
+
+function closestMatchingElement(target, selector) {
+    let element = target;
+
+    while (element && typeof element === 'object') {
+        if (elementMatchesSelector(element, selector)) {
+            return element;
+        }
+
+        if (typeof element.closest === 'function') {
+            const closest = element.closest(selector);
+            if (closest) {
+                return closest;
+            }
+        }
+
+        element = getParentElementLike(element);
+    }
+
+    return null;
+}
+
+function findTouchByIdentifier(touches, identifier) {
+    return Array.from(touches ?? []).find(touch => touch?.identifier === identifier) ?? null;
+}
+
+function isHorizontalGesture(delta) {
+    if (!delta) {
+        return false;
+    }
+
+    const absX = Math.abs(delta.x);
+    const absY = Math.abs(delta.y);
+
+    return absX > MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX && absX > absY;
+}
+
+function getGestureDelta(event, touchStart) {
+    if (!touchStart) {
+        return null;
+    }
+
+    const currentTouch = findTouchByIdentifier(event.touches, touchStart.identifier) ?? event.touches?.[0] ?? null;
+    if (!currentTouch) {
+        return null;
+    }
+
+    return {
+        x: normalizeNumber(currentTouch.clientX) - normalizeNumber(touchStart.clientX),
+        y: normalizeNumber(currentTouch.clientY) - normalizeNumber(touchStart.clientY),
+    };
+}
+
+function canElementScrollOnAxis(element, axis) {
+    if (typeof Element === 'undefined' || !(element instanceof Element) || typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') {
+        return true;
+    }
+
+    if (typeof document !== 'undefined' && element === document.scrollingElement) {
+        return true;
+    }
+
+    const style = window.getComputedStyle(element);
+    const overflow = axis === 'x' ? style.overflowX : style.overflowY;
+
+    return SCROLLABLE_OVERFLOW_VALUES.has(overflow);
+}
+
+function canElementScrollForGesture(element, delta, { requireAvailableScrollInDirection = false } = {}) {
+    if (!element || !delta) {
+        return false;
+    }
+
+    const absX = Math.abs(delta.x);
+    const absY = Math.abs(delta.y);
+    const wantsHorizontalScroll = absX > absY;
+    const canScrollX = normalizeNumber(element.scrollWidth) - normalizeNumber(element.clientWidth) > MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX && canElementScrollOnAxis(element, 'x');
+    const canScrollY = normalizeNumber(element.scrollHeight) - normalizeNumber(element.clientHeight) > MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX && canElementScrollOnAxis(element, 'y');
+
+    if (!requireAvailableScrollInDirection) {
+        return wantsHorizontalScroll ? canScrollX : canScrollY;
+    }
+
+    if (wantsHorizontalScroll) {
+        if (!canScrollX) {
+            return false;
+        }
+
+        const scrollLeft = normalizeNumber(element.scrollLeft);
+        const maxScrollLeft = normalizeNumber(element.scrollWidth) - normalizeNumber(element.clientWidth);
+        return delta.x > 0
+            ? scrollLeft > MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX
+            : scrollLeft < maxScrollLeft - MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX;
+    }
+
+    if (!canScrollY) {
+        return false;
+    }
+
+    const scrollTop = normalizeNumber(element.scrollTop);
+    const maxScrollTop = normalizeNumber(element.scrollHeight) - normalizeNumber(element.clientHeight);
+    return delta.y > 0
+        ? scrollTop > MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX
+        : scrollTop < maxScrollTop - MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX;
+}
+
+function closestScrollableElementForGesture(target, delta, {
+    requireAvailableScrollInDirection = false,
+    boundary = null,
+} = {}) {
+    let element = target;
+
+    while (element && typeof element === 'object') {
+        if (canElementScrollForGesture(element, delta, { requireAvailableScrollInDirection })) {
+            return element;
+        }
+
+        if (element === boundary) {
+            break;
+        }
+
+        element = getParentElementLike(element);
+    }
+
+    return null;
+}
+
+/**
+ * Decides whether a mobile touchmove started on fixed mobile chrome should be
+ * cancelled before the browser pans the visual viewport.
+ * @param {TouchEvent|object} event Touchmove-like event.
+ * @param {object} [options] Options.
+ * @param {{identifier: number, clientX: number, clientY: number}|null} [options.touchStart=null] Starting touch point.
+ * @returns {boolean}
+ */
+export function shouldBlockMobileDocumentPan(event, { touchStart = null } = {}) {
+    if (!event?.cancelable || event.defaultPrevented || event.touches?.length !== 1) {
+        return false;
+    }
+
+    const target = event.target;
+    const backgroundElement = elementMatchesSelector(target, MOBILE_DOCUMENT_PAN_BACKGROUND_SELECTOR);
+    const guardedElement = backgroundElement ? null : closestMatchingElement(target, MOBILE_DOCUMENT_PAN_GUARD_SELECTOR);
+
+    if (!guardedElement && !backgroundElement) {
+        return false;
+    }
+
+    const gestureDelta = getGestureDelta(event, touchStart);
+    const editableElement = closestMatchingElement(target, MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR);
+    if (editableElement) {
+        const isScrollableEditable = elementMatchesSelector(editableElement, 'textarea, [contenteditable="true"]');
+        if (isScrollableEditable && gestureDelta && canElementScrollForGesture(editableElement, gestureDelta, { requireAvailableScrollInDirection: true })) {
+            return false;
+        }
+
+        const ancestorScrollElement = guardedElement
+            ? closestScrollableElementForGesture(getParentElementLike(editableElement), gestureDelta, {
+                requireAvailableScrollInDirection: true,
+                boundary: guardedElement,
+            })
+            : null;
+        if (ancestorScrollElement && (!isHorizontalGesture(gestureDelta) || elementMatchesSelector(ancestorScrollElement, MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR))) {
+            return false;
+        }
+
+        return true;
+    }
+
+    const scrollElement = guardedElement
+        ? closestScrollableElementForGesture(target, gestureDelta, {
+            requireAvailableScrollInDirection: true,
+            boundary: guardedElement,
+        })
+        : null;
+    if (closestMatchingElement(target, MOBILE_DOCUMENT_PAN_CONTROL_SELECTOR)) {
+        if (scrollElement && (!isHorizontalGesture(gestureDelta) || elementMatchesSelector(scrollElement, MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR))) {
+            return false;
+        }
+
+        return true;
+    }
+
+    if (scrollElement) {
+        if (isHorizontalGesture(gestureDelta)) {
+            return !elementMatchesSelector(scrollElement, MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR);
+        }
+
+        return false;
+    }
+
+    return true;
+}
 
 function clampBoundNumber(value, min, max) {
     return Math.min(Math.max(normalizeNumber(value, min), min), max);

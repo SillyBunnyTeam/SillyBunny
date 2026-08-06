@@ -50,10 +50,18 @@ function getReverseProxyRequestFields(proxyPreset) {
 }
 
 export function getChatCompletionProfileReverseProxy(profile, chatCompletionSource) {
-    const profileProxy = proxies.find((preset) => preset.name === profile?.proxy);
+    const profileProxyName = profile?.proxy;
+    const profileProxy = proxies.find((preset) => preset.name === profileProxyName);
     const profileProxyFields = getReverseProxyRequestFields(profileProxy);
     if (profileProxyFields.reverse_proxy) {
         return profileProxyFields;
+    }
+
+    // SillyBunny: a profile that explicitly stores a proxy selection ('None' included)
+    // must be honored as-is. Falling through here would leak the currently active
+    // profile's proxy state into requests made under this profile (e.g. Agents).
+    if (profileProxyName) {
+        return {};
     }
 
     const sourceProxy = proxies.find((preset) => preset.name !== 'None' && preset.source === chatCompletionSource && preset.url);

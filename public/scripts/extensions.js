@@ -85,6 +85,11 @@ const ignoredExtensionSettingsSelector = ignoredExtensionSettingsSelectors.join(
 const LEGACY_MOONLIT_ECHOES_SETTINGS_KEY = 'SillyTavernMoonlitEchoesTheme';
 const SILLYBUNNY_MOONLIT_ECHOES_EXTENSION_NAME = 'third-party/SillyBunny-MoonlitEchoesTheme';
 const MOONLIT_ECHOES_NOTICE_STORAGE_KEY = 'moonlit_echoes_moved_notice_v1';
+const LEGACY_BUNDLED_OPT_IN_EXTENSION_IDS = [
+    'sillytavern-character-colors',
+    'sillytavern-image-gen',
+    'sillytavern-moonlitechoestheme',
+];
 const genericExtensionSettingsClasses = new Set([
     'alignitemscenter',
     'alignitemsbaseline',
@@ -106,6 +111,7 @@ const genericExtensionSettingsClasses = new Set([
 
 let extensionSettingsDedupeObserver = null;
 let extensionSettingsDedupeScheduled = false;
+let bundledOptInSettingsLoaded = false;
 
 const getApiUrl = () => extension_settings.apiUrl;
 const sortManifestsByOrder = (a, b) => parseInt(a.loading_order) - parseInt(b.loading_order) || String(a.display_name).localeCompare(String(b.display_name));
@@ -303,6 +309,8 @@ export const extension_settings = {
     autoConnect: false,
     notifyUpdates: false,
     bundledOptInDefaultsApplied: false,
+    bundledOptInProcessedExtensions: [],
+    lockedExtensionsUnlockApplied: false,
     disabledExtensions: [],
     expressionOverrides: [],
     memory: {},
@@ -387,29 +395,93 @@ export const extension_settings = {
     },
 };
 
-function applyBundledOptInDefaults() {
-    if (extension_settings.bundledOptInDefaultsApplied) {
+/**
+ * SillyBunny: core and bundled extensions used to be force-enabled, which made any entry
+ * the user still had in `disabledExtensions` for them a no-op. Now that those toggles are
+ * honoured, drop those stale entries once so upgrading does not silently switch off
+ * extensions that have been running all along. Choices made afterwards are respected.
+ * @returns {boolean} True if the settings were changed.
+ */
+function clearStaleLockedExtensionDisables() {
+    if (extension_settings.lockedExtensionsUnlockApplied) {
         return false;
     }
 
+    extension_settings.lockedExtensionsUnlockApplied = true;
+
+    const staleEntries = extension_settings.disabledExtensions
+        .filter(name => ['core', 'bundled'].includes(getExtensionType(name)));
+
+    if (staleEntries.length > 0) {
+        console.log(`[Extensions] Re-enabled previously locked extensions: ${staleEntries.join(', ')}`);
+        extension_settings.disabledExtensions = extension_settings.disabledExtensions
+            .filter(name => !staleEntries.includes(name));
+    }
+
+    return true;
+}
+
+function applyBundledOptInDefaults({ migrateLegacy = false, initializeProcessedIds = false } = {}) {
     const bundledOptInExtensions = Object.entries(manifests)
         .filter(([, manifest]) => manifest?.bundled_opt_in === true)
         .map(([name]) => name);
 
-    if (bundledOptInExtensions.length === 0) {
-        return false;
-    }
+    const storedProcessedIds = Array.isArray(extension_settings.bundledOptInProcessedExtensions)
+        ? extension_settings.bundledOptInProcessedExtensions
+        : [];
+    const processedIds = [];
+    const processedKeys = new Set();
+    let changed = initializeProcessedIds || !Array.isArray(extension_settings.bundledOptInProcessedExtensions);
 
-    let changed = false;
+    for (const id of storedProcessedIds) {
+        const key = getExtensionDedupKey(id);
+        if (!key || processedKeys.has(key)) {
+            changed = true;
+            continue;
+        }
 
-    for (const extensionName of bundledOptInExtensions) {
-        if (!extension_settings.disabledExtensions.includes(extensionName)) {
-            extension_settings.disabledExtensions.push(extensionName);
+        processedKeys.add(key);
+        processedIds.push(key);
+        if (id !== key) {
             changed = true;
         }
     }
 
-    extension_settings.bundledOptInDefaultsApplied = true;
+    // SillyBunny: the legacy global bit covered older opt-ins; newer bundled opt-ins are tracked per-extension.
+    if (migrateLegacy && extension_settings.bundledOptInDefaultsApplied) {
+        for (const id of LEGACY_BUNDLED_OPT_IN_EXTENSION_IDS) {
+            const key = getExtensionDedupKey(id);
+            if (processedKeys.has(key)) {
+                continue;
+            }
+
+            processedKeys.add(key);
+            processedIds.push(key);
+            changed = true;
+        }
+    }
+
+    for (const extensionName of bundledOptInExtensions) {
+        const key = getExtensionDedupKey(extensionName);
+        if (processedKeys.has(key)) {
+            continue;
+        }
+
+        if (!extension_settings.disabledExtensions.some(name => areExtensionIdsEqual(name, extensionName))) {
+            extension_settings.disabledExtensions.push(extensionName);
+        }
+
+        processedKeys.add(key);
+        processedIds.push(key);
+        changed = true;
+    }
+
+    extension_settings.bundledOptInProcessedExtensions = processedIds;
+    if (bundledOptInExtensions.length > 0 && !extension_settings.bundledOptInDefaultsApplied) {
+        extension_settings.bundledOptInDefaultsApplied = true;
+        changed = true;
+    }
+
     return changed;
 }
 
@@ -499,17 +571,13 @@ function hasExtensionHook(extensionName, hookName) {
  * @param {string} externalId External ID of the extension (excluding or including the leading 'third-party/')
  * @returns {string} Type of the extension (global, local, system, or empty string if not found)
  */
-function getExtensionType(externalId) {
+export function getExtensionType(externalId) {
     const id = Object.keys(extensionTypes).find(id => id === externalId || (id.startsWith('third-party') && id.endsWith(externalId)));
     return id ? extensionTypes[id] : '';
 }
 
 function isExternalExtension(externalId) {
     return ['local', 'global'].includes(getExtensionType(externalId));
-}
-
-function isAlwaysEnabledExtension(externalId) {
-    return ['core', 'bundled'].includes(getExtensionType(externalId));
 }
 
 function areExtensionIdsEqual(left, right) {
@@ -523,7 +591,7 @@ function resolveExtensionName(name) {
 }
 
 function isExtensionDisabled(externalId) {
-    return !isAlwaysEnabledExtension(externalId) && extension_settings.disabledExtensions.some(name => areExtensionIdsEqual(name, externalId));
+    return extension_settings.disabledExtensions.some(name => areExtensionIdsEqual(name, externalId));
 }
 
 function markExtensionInactive(name) {
@@ -745,15 +813,11 @@ export async function enableExtension(name, reload = true) {
 export async function disableExtension(name, reload = true) {
     const extensionName = resolveExtensionName(name);
 
-    if (isAlwaysEnabledExtension(extensionName)) {
-        console.warn(`Extension "${extensionName}" is always enabled and cannot be disabled.`);
-        return;
-    }
-
     await callExtensionHook(extensionName, 'disable');
     extension_settings.disabledExtensions = extension_settings.disabledExtensions.filter(x => !areExtensionIdsEqual(x, extensionName));
     extension_settings.disabledExtensions.push(extensionName);
     markExtensionInactive(extensionName);
+    await eventSource.emit(event_types.EXTENSION_DISABLED, extensionName);
     stateChanged = true;
     await saveSettings();
     if (reload) {
@@ -1302,9 +1366,9 @@ function generateExtensionHtml(name, manifest, isActive, isDisabled, isExternal,
             case 'local':
                 return '<i class="fa-sm fa-fw fa-solid fa-user" data-i18n="[title]ext_type_local" title="This is a local extension, available only for you."></i>';
             case 'core':
-                return '<i class="fa-sm fa-fw fa-solid fa-lock" title="This is a core extension and cannot be disabled."></i>';
+                return '<i class="fa-sm fa-fw fa-solid fa-cube" title="This is a SillyBunny core extension. It cannot be deleted and can be disabled."></i>';
             case 'bundled':
-                return '<i class="fa-sm fa-fw fa-solid fa-box-archive" title="This is a bundled third-party extension and cannot be disabled."></i>';
+                return '<i class="fa-sm fa-fw fa-solid fa-box-archive" title="This is a bundled third-party extension. It cannot be deleted or updated, and can be disabled."></i>';
             case 'system':
                 return '<i class="fa-sm fa-fw fa-solid fa-cog" data-i18n="[title]ext_type_system" title="This is a built-in extension. It cannot be deleted and can be disabled."></i>';
             default:
@@ -1325,11 +1389,9 @@ function generateExtensionHtml(name, manifest, isActive, isDisabled, isExternal,
             : '<a>';
     }
 
-    const isAlwaysEnabled = isAlwaysEnabledExtension(name);
-    let toggleElement = isAlwaysEnabled ?
-        `<input type="checkbox" title="This extension is required" data-name="${name}" class="${checkboxClass}" checked disabled>` : isActive || isDisabled ?
-            '<input type="checkbox" title="' + t`Click to toggle` + `" data-name="${name}" class="${isActive ? 'toggle_disable' : 'toggle_enable'} ${checkboxClass}" ${isActive ? 'checked' : ''}>` :
-            `<input type="checkbox" title="Cannot enable extension" data-name="${name}" class="extension_missing ${checkboxClass}" disabled>`;
+    let toggleElement = isActive || isDisabled ?
+        '<input type="checkbox" title="' + t`Click to toggle` + `" data-name="${name}" class="${isActive ? 'toggle_disable' : 'toggle_enable'} ${checkboxClass}" ${isActive ? 'checked' : ''}>` :
+        `<input type="checkbox" title="Cannot enable extension" data-name="${name}" class="extension_missing ${checkboxClass}" disabled>`;
 
     let deleteButton = isExternal ? `<button class="btn_delete menu_button" data-name="${externalId}" data-i18n="[title]Delete" title="Delete"><i class="fa-fw fa-solid fa-trash-can"></i></button>` : '';
     let cleanButton = isExternal && hasExtensionHook(externalId, 'clean') ? `<button class="btn_clean menu_button" data-name="${externalId}" data-i18n="[title]Clean extension data" title="Clean extension data"><i class="fa-fw fa-solid fa-broom"></i></button>` : '';
@@ -1978,6 +2040,9 @@ async function moveExtension(extensionName, source, destination) {
  */
 export async function deleteExtension(extensionName, shouldClean = false) {
     const fullExtensionName = getFullExtensionName(extensionName);
+    const apiExtensionName = fullExtensionName.startsWith('third-party/')
+        ? fullExtensionName.slice('third-party/'.length)
+        : extensionName;
     if (shouldClean) {
         await callExtensionHook(fullExtensionName, 'clean');
     }
@@ -1985,21 +2050,27 @@ export async function deleteExtension(extensionName, shouldClean = false) {
     await callExtensionHook(fullExtensionName, 'delete');
 
     try {
-        await fetch('/api/extensions/delete', {
+        const response = await fetch('/api/extensions/delete', {
             method: 'POST',
             headers: getRequestHeaders(),
             body: JSON.stringify({
-                extensionName,
+                extensionName: apiExtensionName,
                 global: getExtensionType(extensionName) === 'global',
             }),
         });
+        if (!response.ok) {
+            throw new Error(`Extension deletion failed with status ${response.status}.`);
+        }
     } catch (error) {
-        console.error('Error:', error);
+        console.error('Extension deletion failed:', error);
+        toastr.error(t`Failed to delete extension ${extensionName}.`);
+        return false;
     }
 
     await saveSettings();
     toastr.success(t`Extension ${extensionName} deleted`);
     delay(1000).then(() => location.reload());
+    return true;
 }
 
 /**
@@ -2191,6 +2262,10 @@ export async function installExtension(url, global, branch = '') {
  * @param {boolean} enableAutoUpdate Enable auto-update
  */
 export async function loadExtensionSettings(settings, versionChanged, enableAutoUpdate) {
+    const persistedExtensionSettings = settings.extension_settings;
+    const hasPersistedProcessedIds = Array.isArray(persistedExtensionSettings?.bundledOptInProcessedExtensions);
+    const shouldInitializeProcessedIds = !bundledOptInSettingsLoaded && !hasPersistedProcessedIds;
+
     if (settings.extension_settings) {
         Object.assign(extension_settings, settings.extension_settings);
     }
@@ -2218,11 +2293,16 @@ export async function loadExtensionSettings(settings, versionChanged, enableAuto
     });
     const removedCount = originalDisabledCount - extension_settings.disabledExtensions.length;
 
-    if (applyBundledOptInDefaults()) {
-        saveSettingsDebounced();
-    } else if (removedCount > 0) {
+    const unlockMigrationChanged = clearStaleLockedExtensionDisables();
+    const bundledOptInChanged = applyBundledOptInDefaults({
+        migrateLegacy: shouldInitializeProcessedIds,
+        initializeProcessedIds: shouldInitializeProcessedIds,
+    });
+
+    if (unlockMigrationChanged || bundledOptInChanged || removedCount > 0) {
         saveSettingsDebounced();
     }
+    bundledOptInSettingsLoaded = true;
 
     scheduleExtensionAssetPrefetch();
 

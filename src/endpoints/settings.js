@@ -61,7 +61,7 @@ function getSettingsBackupSizeDetails(sourceFile) {
  * @param {string} handle User handle
  * @returns {void}
  */
-function triggerAutoSave(handle) {
+export function triggerAutoSave(handle) {
     if (!AUTOSAVE_FUNCTIONS.has(handle)) {
         const throttledAutoSave = _.throttle(() => {
             logBackupEvent('settings-autosave-fired', { handle });

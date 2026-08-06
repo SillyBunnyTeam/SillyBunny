@@ -33,11 +33,19 @@ describe('companion card ui', () => {
     let eventTypes;
     let agents;
     let sanitize;
+    let encodeStyleTags;
+    let decodeStyleTags;
 
     async function importCompanionUi() {
         jest.resetModules();
 
         sanitize = jest.fn(html => String(html));
+        encodeStyleTags = jest.fn(text => String(text).replaceAll(/<style>(.+?)<\/style>/gims, (_, match) => {
+            return `<custom-style>${encodeURIComponent(match)}</custom-style>`;
+        }));
+        decodeStyleTags = jest.fn((text, { prefix } = {}) => String(text).replaceAll(/<custom-style>(.+?)<\/custom-style>/gms, (_, match) => {
+            return `<style data-prefix="${prefix}">${decodeURIComponent(match)}</style>`;
+        }));
 
         await jest.unstable_mockModule('../public/lib.js', () => ({
             DOMPurify: { sanitize },
@@ -50,10 +58,18 @@ describe('companion card ui', () => {
             },
         }));
 
+        await jest.unstable_mockModule('../public/scripts/chats.js', () => ({
+            encodeStyleTags,
+            decodeStyleTags,
+        }));
+
         await jest.unstable_mockModule('../public/script.js', () => ({
             chat,
             saveChatDebounced: jest.fn(),
-            substituteParams: jest.fn(value => String(value ?? '')),
+            substituteParams: jest.fn((value, options = {}) => String(value ?? '')
+                .replaceAll('{{user}}', 'Traveler')
+                .replaceAll('{{char}}', options.name2Override || 'Assistant')
+                .replaceAll('{{original}}', options.original ?? '')),
             substituteParamsExtended: jest.fn(value => String(value ?? '')),
         }));
 
@@ -172,6 +188,16 @@ describe('companion card ui', () => {
         expect(sanitize).toHaveBeenCalled();
     });
 
+    // DESIGN.md limits inline companion cards to regenerate, edit, copy, delete, and manual-run.
+    // Hiding an agent lives in the companion panel; agent settings live behind Workspace.
+    test('keeps inline card actions within the documented vocabulary', () => {
+        const source = fs.readFileSync(new URL('../public/scripts/extensions/in-chat-agents/companion/companion-ui.js', import.meta.url), 'utf8');
+
+        expect(source).not.toContain('data-action="hide"');
+        expect(source).not.toContain('data-action="settings"');
+        expect(source).not.toContain('configureCompanionCardUi');
+    });
+
     test('beautifies Chat Only transcript speaker turns before markdown conversion', async () => {
         const chatOnlyTemplate = readTemplate('chat-only-companion.json');
         agents.push({
@@ -230,6 +256,89 @@ describe('companion card ui', () => {
         expect(sanitize).toHaveBeenCalledWith('<div class="status">calm</div>', expect.anything());
     });
 
+    test('resolves companion output macros with the source message context', async () => {
+        const { formatCompanionContent } = await importCompanionUi();
+
+        const html = formatCompanionContent('companion-tracker', {
+            content: '{{user}} noticed {{char}} said {{original}}',
+            format: 'markdown',
+        }, { name: 'Aria', mes: 'the door is open' });
+
+        expect(html).toBe('<md>Traveler noticed Aria said the door is open</md>');
+    });
+
+    test('resolves escaped companion output macro delimiters before rendering', async () => {
+        const { formatCompanionContent } = await importCompanionUi();
+
+        const html = formatCompanionContent('companion-tracker', {
+            content: 'Objective: \\{\\{user\\}\\} ends up with &#123;&#123;char&#125;&#125;',
+            format: 'markdown',
+        }, { name: 'Aria', mes: 'the door is open' });
+
+        expect(html).toBe('<md>Objective: Traveler ends up with Aria</md>');
+    });
+
+    test('keeps the active character macro when the source message is from the user', async () => {
+        const { formatCompanionContent } = await importCompanionUi();
+
+        const html = formatCompanionContent('companion-tracker', {
+            content: '{{user}} asked {{char}} about {{original}}',
+            format: 'markdown',
+        }, { name: 'Traveler', is_user: true, mes: 'the hidden door' });
+
+        expect(html).toBe('<md>Traveler asked Assistant about the hidden door</md>');
+    });
+
+    test('preserves style tags emitted by regex scripts in card bodies', async () => {
+        agents[0].regexScripts = [{
+            id: 'styled-card',
+            scriptName: 'Styled Card',
+            findRegex: '/\\[STYLE\\]/g',
+            replaceString: '<style>.terminal { color: red; }</style><div class="terminal">stats</div>',
+            placement: [2],
+            disabled: false,
+            markdownOnly: true,
+            promptOnly: false,
+            substituteRegex: 0,
+        }];
+        const { formatCompanionContent } = await importCompanionUi();
+
+        const html = formatCompanionContent('companion-tracker', {
+            content: '[STYLE]',
+            format: 'html',
+        }, { name: 'Aria' });
+
+        expect(html).toContain('<style data-prefix=".ica--companion-body ">');
+        expect(html).toContain('.terminal { color: red; }');
+        expect(html).toContain('<div class="terminal">stats</div>');
+        expect(sanitize).toHaveBeenCalledWith(expect.stringContaining('<custom-style>'), expect.anything());
+        expect(encodeStyleTags).toHaveBeenCalled();
+        expect(decodeStyleTags).toHaveBeenCalledWith(expect.stringContaining('<custom-style>'), { prefix: '.ica--companion-body ' });
+    });
+
+    test('scopes panel bodies with the tracker panel CSS prefix', async () => {
+        agents[0].regexScripts = [{
+            id: 'styled-card',
+            scriptName: 'Styled Card',
+            findRegex: '/\\[STYLE\\]/g',
+            replaceString: '<style>.terminal { color: red; }</style><div class="terminal">stats</div>',
+            placement: [2],
+            disabled: false,
+            markdownOnly: true,
+            promptOnly: false,
+            substituteRegex: 0,
+        }];
+        const { formatCompanionContent } = await importCompanionUi();
+
+        const html = formatCompanionContent('companion-tracker', {
+            content: '[STYLE]',
+            format: 'html',
+        }, { name: 'Aria' }, '.ica--tpanel-agent-body ');
+
+        expect(html).toContain('<style data-prefix=".ica--tpanel-agent-body ">');
+        expect(decodeStyleTags).toHaveBeenCalledWith(expect.stringContaining('<custom-style>'), { prefix: '.ica--tpanel-agent-body ' });
+    });
+
     test('normalizes markerless Chatroom pipe streams before rendering', async () => {
         const chatroomTemplate = readTemplate('chatroom-companion.json');
         agents.push({
@@ -242,14 +351,14 @@ describe('companion card ui', () => {
         const { formatCompanionContent } = await importCompanionUi();
 
         const html = formatCompanionContent('chatroom', {
-            content: "mixed|mixed @Rover_Stan/user/18/omg she's so precious/so sweet @Rinascita_Historian/user/42/The contrast is wild/analytical @CatEarEnthusiast/user/92/Kris is a real one/hype",
+            content: 'mixed|mixed @Rover_Stan/user/18/omg she\'s so precious/so sweet @Rinascita_Historian/user/42/The contrast is wild/analytical @CatEarEnthusiast/user/92/Kris is a real one/hype',
             format: 'html',
         }, { name: 'Assistant' });
 
         expect(html).toContain('Chatroom');
         expect(html).toContain('STYLE: mixed');
         expect(html).toContain('Rover_Stan');
-        expect(html).toContain("omg she's so precious");
+        expect(html).toContain('omg she\'s so precious');
         expect(html).toContain('Rinascita_Historian');
         expect(html).toContain('The contrast is wild');
         expect(html).toContain('CatEarEnthusiast');
@@ -271,7 +380,7 @@ describe('companion card ui', () => {
         const html = formatCompanionContent('chatroom', {
             content: [
                 'chatroom-style|reddit',
-                "chatroom|Laurus_Fan_99|meta|18|top comment|181|He's so pure!",
+                'chatroom|Laurus_Fan_99|meta|18|top comment|181|He\'s so pure!',
                 'chatroom|Gale_Watcher|meta|42|reply|42|She looks exhausted.',
                 'chatroom-end',
             ].join('\n'),
@@ -282,9 +391,9 @@ describe('companion card ui', () => {
         expect(html).toContain('Gale_Watcher');
         expect(html).toContain('top comment');
         expect(html).toContain('reply');
-        expect(html).toContain("He's so pure!");
+        expect(html).toContain('He\'s so pure!');
         expect(html).toContain('She looks exhausted.');
-        expect(html).not.toContain("top comment|181|He's so pure!");
+        expect(html).not.toContain('top comment|181|He\'s so pure!');
         expect(html).not.toContain('reply|42|She looks exhausted.');
     });
 
@@ -311,7 +420,7 @@ describe('companion card ui', () => {
         expect(isHiddenCompanionResult('companion-tracker', {})).toBe(true);
     });
 
-    test('suppresses no-message Message Inbox results', async () => {
+    test('suppresses empty-output sentinel results for any companion', async () => {
         agents.push({
             id: 'message-inbox',
             name: 'Message Inbox',
@@ -324,7 +433,18 @@ describe('companion card ui', () => {
         expect(isSuppressedCompanionResult('message-inbox', emptyResult)).toBe(true);
         expect(isHiddenCompanionResult('message-inbox', emptyResult)).toBe(true);
         expect(formatCompanionContent('message-inbox', emptyResult)).toBe('');
-        expect(isSuppressedCompanionResult('companion-tracker', emptyResult)).toBe(false);
+
+        // Suppression keys off the content, so a tracker sentinel goes silent the same way and a
+        // custom agent opts in purely by teaching its prompt one of the sentinels.
+        const quietTracker = { content: 'tracker-none', format: 'markdown', displayMode: 'panel' };
+        expect(isSuppressedCompanionResult('companion-tracker', quietTracker)).toBe(true);
+        expect(formatCompanionContent('companion-tracker', quietTracker)).toBe('');
+        expect(isSuppressedCompanionResult('companion-tracker', emptyResult)).toBe(true);
+
+        // Real output, and prose that merely mentions the token, still render.
+        expect(isSuppressedCompanionResult('companion-tracker', { content: '[STATUS|Ava|Tired|MILD]\nnote: travel\n[/STATUS]' })).toBe(false);
+        expect(isSuppressedCompanionResult('companion-tracker', { content: 'tracker-none was returned earlier' })).toBe(false);
+        expect(isSuppressedCompanionResult('companion-tracker', { content: '' })).toBe(false);
     });
 
     test('cleans uuid suffixes from companion agent display names', async () => {

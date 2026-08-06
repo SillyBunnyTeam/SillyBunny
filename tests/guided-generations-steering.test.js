@@ -59,12 +59,14 @@ describe('Guided Generations steering commands', () => {
             chat: [{ name: 'Bot', mes: 'Previous reply', swipes: ['Previous reply'], swipe_id: 0 }],
             chatMetadata: { script_injects: {} },
             executeSlashCommandsWithOptions: jest.fn(async (command) => {
-                if (command.includes('/inject id=instruct')) {
-                    context.chatMetadata.script_injects.instruct = { value: command };
+                const injectMatch = String(command).match(/\/inject id=([^\s|]+)/);
+                if (injectMatch) {
+                    context.chatMetadata.script_injects[injectMatch[1]] = { value: command };
                 }
 
-                if (command.includes('/flushinject instruct')) {
-                    delete context.chatMetadata.script_injects.instruct;
+                const flushMatch = String(command).match(/\/flushinject ([^\s|]+)/);
+                if (flushMatch) {
+                    delete context.chatMetadata.script_injects[flushMatch[1]];
                 }
             }),
             groupId: null,
@@ -102,10 +104,13 @@ describe('Guided Generations steering commands', () => {
         }));
         await jest.unstable_mockModule('../public/scripts/extensions/guided-generations/scripts/presetUtils.js', () => ({
             getCurrentProfile: jest.fn(async () => ''),
+            getCurrentProfileId: jest.fn(async () => ''),
             getPresetsForApiType: jest.fn(async () => []),
             getProfileApiType: jest.fn(async () => ''),
+            getProfileById: jest.fn(() => null),
             getProfileList: jest.fn(async () => []),
             handleSwitching: jest.fn(async () => ({ switch: jest.fn(), restore: jest.fn() })),
+            resolveStoredProfile: jest.fn(() => null),
         }));
     });
 
@@ -116,10 +121,10 @@ describe('Guided Generations steering commands', () => {
 
         expect(context.executeSlashCommandsWithOptions).toHaveBeenCalledTimes(2);
         const command = context.executeSlashCommandsWithOptions.mock.calls[0][0];
-        expect(command).toContain('/inject id=instruct position=chat ephemeral=true scan=true depth=2 role=assistant GUIDE: aim for a colder, suspicious reply|');
+        expect(command).toContain('/inject id=gg-guided-response position=chat ephemeral=true scan=true depth=2 role=assistant GUIDE: aim for a colder, suspicious reply|');
         expect(command).toContain('/trigger await=true|');
-        expect(context.executeSlashCommandsWithOptions).toHaveBeenLastCalledWith('/flushinject instruct');
-        expect(context.chatMetadata.script_injects.instruct).toBeUndefined();
+        expect(context.executeSlashCommandsWithOptions).toHaveBeenLastCalledWith('/flushinject gg-guided-response');
+        expect(context.chatMetadata.script_injects['gg-guided-response']).toBeUndefined();
         expect(textarea.value).toBe('aim for a colder, suspicious reply');
         expect(textarea.dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'input' }));
     });
@@ -129,10 +134,10 @@ describe('Guided Generations steering commands', () => {
 
         await guidedSwipe();
 
-        expect(context.executeSlashCommandsWithOptions).toHaveBeenCalledWith('/inject id=instruct position=chat ephemeral=true scan=true depth=3 role=assistant SWIPE GUIDE: aim for a colder, suspicious reply |');
+        expect(context.executeSlashCommandsWithOptions).toHaveBeenCalledWith('/inject id=gg-guided-swipe position=chat ephemeral=true scan=true depth=3 role=assistant SWIPE GUIDE: aim for a colder, suspicious reply |');
         expect(context.swipe.right).toHaveBeenCalledTimes(1);
-        expect(context.executeSlashCommandsWithOptions).toHaveBeenLastCalledWith('/flushinject instruct');
-        expect(context.chatMetadata.script_injects.instruct).toBeUndefined();
+        expect(context.executeSlashCommandsWithOptions).toHaveBeenLastCalledWith('/flushinject gg-guided-swipe');
+        expect(context.chatMetadata.script_injects['gg-guided-swipe']).toBeUndefined();
         expect(textarea.value).toBe('aim for a colder, suspicious reply');
         expect(textarea.dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'input' }));
     });

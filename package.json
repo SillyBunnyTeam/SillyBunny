@@ -79,6 +79,7 @@
         "open": "^10.2.0",
         "png-chunk-text": "^1.0.0",
         "png-chunks-extract": "^1.0.0",
+        "proper-lockfile": "^4.1.2",
         "proxy-agent": "^6.5.0",
         "rate-limiter-flexible": "^5.0.5",
         "response-time": "^2.3.4",
@@ -100,7 +101,8 @@
         "yauzl": "^3.2.1"
     },
     "engines": {
-        "bun": ">= 1.3.0"
+        "bun": ">= 1.3.14",
+        "node": ">= 20"
     },
     "overrides": {
         "openai": "^4.17.0",
@@ -112,16 +114,19 @@
     "description": "Bun-first SillyBunny chat workspace",
     "repository": {
         "type": "git",
-        "url": "https://github.com/platberlitz/SillyBunny.git"
+        "url": "https://github.com/SillyBunnyTeam/SillyBunny.git"
     },
-    "version": "1.6.5",
+    "version": "1.7.0",
     "scripts": {
         "start": "bun server.js",
         "start:node": "node --no-warnings server.js",
         "start:mobile": "bun --smol server.js",
         "debug": "bun --inspect server.js",
+        "debug:node": "node --inspect server.js",
         "start:global": "bun server.js --global",
+        "start:global:node": "node --no-warnings server.js --global",
         "start:no-csrf": "bun server.js --disableCsrf",
+        "start:no-csrf:node": "node --no-warnings server.js --disableCsrf",
         "build:frontend": "node scripts/build-frontend-assets.js",
         "perf:frontend": "node scripts/measure-frontend-performance.js",
         "init": "node src/server-init.js || bun src/server-init.js",
@@ -137,7 +142,7 @@
         "sillybunny": "./src/server-global.js",
         "sillytavern": "./src/server-global.js"
     },
-    "packageManager": "bun@1.3.11",
+    "packageManager": "bun@1.3.14",
     "main": "server.js",
     "devDependencies": {
         "@types/archiver": "^6.0.3",

@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 cd "$SCRIPT_DIR"
 
 is_truthy() {
@@ -21,6 +21,21 @@ is_truthy() {
 
 is_termux() {
     [[ -n "${TERMUX_VERSION:-}" || "${PREFIX:-}" == /data/data/com.termux/files/usr ]]
+}
+
+is_termux_shared_storage_repo() {
+    if ! is_termux; then
+        return 1
+    fi
+
+    case "$SCRIPT_DIR" in
+        /storage/*|/sdcard/*)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
 prefer_node_runtime() {
@@ -139,6 +154,13 @@ while (($#)); do
     esac
     shift
 done
+
+if (( ! self_update_only )) && is_termux_shared_storage_repo; then
+    echo "[SillyBunny] Termux installs must stay in your Termux home, not Android shared storage." >&2
+    echo "[SillyBunny] Android blocks the node_modules links Bun and npm need under paths like /storage/emulated/0." >&2
+    echo "[SillyBunny] Reclone into '$HOME/SillyBunny', then rerun this launcher. Use 'termux-setup-storage' only to grant file access." >&2
+    exit 1
+fi
 
 auto_update_enabled=0
 if (( self_update_requested )); then
@@ -293,6 +315,11 @@ fi
 
 "$PACKAGE_MANAGER_CMD" run init
 
+if is_truthy "${SILLYBUNNY_BUN_SMOL:-}" && [[ "$runtime_kind" == node ]]; then
+    echo "[SillyBunny] SILLYBUNNY_BUN_SMOL is set, but this host resolved to Node.js — --smol is a Bun flag and will be ignored."
+    echo "[SillyBunny] For Bun with --smol, use ./start-bun.sh (Termux: bash start-termux-bun.sh)."
+fi
+
 echo "Entering SillyBunny..."
 export NODE_NO_WARNINGS=1
 export SILLYBUNNY_LAUNCHER=1
@@ -303,6 +330,12 @@ server_restart_count=0
 run_server() {
     if [[ "$runtime_kind" == node ]]; then
         "$RUNTIME_CMD" --no-warnings server.js "$@"
+    elif is_truthy "${SILLYBUNNY_BUN_SMOL:-}"; then
+        # Bun grows the JSC heap freely while RAM looks plentiful, so on small
+        # hosts RSS sawtooths by more than a gigabyte between collections.
+        # --smol trades throughput for much more aggressive GC, matching the
+        # start:mobile script in package.json.
+        "$RUNTIME_CMD" --smol server.js "$@"
     else
         "$RUNTIME_CMD" server.js "$@"
     fi

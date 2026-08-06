@@ -1,169 +1,54 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-06-11T00:25:00+05:30",
+  "generatedAt": "2026-07-25T00:00:00Z",
   "title": "Design System: SillyBunny",
   "extensions": {
     "colorMeta": {
-      "warm-signal": {
-        "role": "primary",
-        "displayName": "Warm Signal",
-        "canonical": "#c9c6a8",
-        "source": "--sb-accent",
-        "tonalRamp": ["#2b2a23", "#484633", "#686344", "#8b855c", "#aaa477", "#c9c6a8", "#dddac2", "#f0efdf"]
-      },
-      "warm-signal-soft": {
-        "role": "primary",
-        "displayName": "Soft Signal",
-        "canonical": "#a6a493",
-        "source": "--sb-accent-soft",
-        "tonalRamp": ["#25251f", "#3e3d31", "#5b5944", "#78745c", "#918d73", "#a6a493", "#c8c5b5", "#e9e7dc"]
-      },
-      "charcoal-canvas": {
-        "role": "neutral",
-        "displayName": "Charcoal Canvas",
-        "canonical": "#1b1f26",
-        "source": "--color-background",
-        "tonalRamp": ["#111317", "#1b1f26", "#272c35", "#353b45", "#4b525e", "#747b86", "#a8adb5", "#eceef2"]
-      },
-      "ink-panel": {
-        "role": "neutral",
-        "displayName": "Ink Panel",
-        "canonical": "#1d2128",
-        "source": "--SmartThemeBlurTintColor",
-        "tonalRamp": ["#121419", "#1d2128", "#2b3038", "#3d434d", "#59606a", "#858b94", "#babec5", "#f0f1f3"]
-      },
-      "panel-raised": {
-        "role": "neutral",
-        "displayName": "Raised Panel",
-        "canonical": "#2f3238",
-        "source": "--color-surface-strong",
-        "tonalRamp": ["#17191d", "#25282d", "#2f3238", "#454951", "#616670", "#8b9098", "#c0c3c8", "#f2f3f4"]
-      },
-      "panel-hover": {
-        "role": "neutral",
-        "displayName": "Hover Panel",
-        "canonical": "#393d41",
-        "source": "--color-surface-hover",
-        "tonalRamp": ["#1a1c1e", "#2c3034", "#393d41", "#51575c", "#70767d", "#999fa5", "#cacdd1", "#f5f6f6"]
-      },
-      "linen-text": {
-        "role": "neutral",
-        "displayName": "Linen Text",
-        "canonical": "#cfcfc5",
-        "source": "--SmartThemeBodyColor",
-        "tonalRamp": ["#2c2c25", "#4b4b3d", "#6d6c56", "#929073", "#b2b090", "#cfcfc5", "#e1e1d9", "#f4f4ef"]
-      },
-      "muted-linen": {
-        "role": "neutral",
-        "displayName": "Muted Linen",
-        "canonical": "#999992",
-        "source": "--sb-muted-fg",
-        "tonalRamp": ["#23231f", "#3c3c35", "#57574d", "#747368", "#908f83", "#aaa99f", "#cbc9c0", "#eeece6"]
-      },
-      "success": {
-        "role": "secondary",
-        "displayName": "Success Gold",
-        "canonical": "#f3c985",
-        "source": "--color-success",
-        "tonalRamp": ["#2f2110", "#563716", "#835323", "#b57437", "#d99d5d", "#f3c985", "#f8dfb8", "#fff4df"]
-      },
-      "danger": {
-        "role": "secondary",
-        "displayName": "Danger Rose",
-        "canonical": "#fb7185",
-        "source": "--color-danger",
-        "tonalRamp": ["#351018", "#651827", "#942538", "#c53e53", "#e85d72", "#fb7185", "#ffadba", "#ffe2e7"]
-      },
-      "warning": {
-        "role": "secondary",
-        "displayName": "Warning Amber",
-        "canonical": "#facc15",
-        "source": "--color-warning",
-        "tonalRamp": ["#302606", "#5c4608", "#8f6d0a", "#bd920d", "#e4b512", "#facc15", "#ffe889", "#fff7d1"]
-      }
+      "warm-signal": {"role": "primary", "displayName": "Warm Signal", "canonical": "#c9c6a8", "source": "--sb-accent", "tonalRamp": ["#2b2a23", "#484633", "#686344", "#8b855c", "#aaa477", "#c9c6a8", "#dddac2", "#f0efdf"]},
+      "warm-signal-soft": {"role": "primary", "displayName": "Soft Signal", "canonical": "#a6a493", "source": "--sb-accent-soft", "tonalRamp": ["#25251f", "#3e3d31", "#5b5944", "#78745c", "#918d73", "#a6a493", "#c8c5b5", "#e9e7dc"]},
+      "charcoal-canvas": {"role": "neutral", "displayName": "Charcoal Canvas", "canonical": "#1b1f26", "source": "--color-background", "tonalRamp": ["#111317", "#1b1f26", "#272c35", "#353b45", "#4b525e", "#747b86", "#a8adb5", "#eceef2"]},
+      "ink-panel": {"role": "neutral", "displayName": "Ink Panel", "canonical": "#1d2128", "source": "--SmartThemeBlurTintColor", "tonalRamp": ["#121419", "#1d2128", "#2b3038", "#3d434d", "#59606a", "#858b94", "#babec5", "#f0f1f3"]},
+      "panel-raised": {"role": "neutral", "displayName": "Raised Panel", "canonical": "#2f3238", "source": "--color-surface-strong", "tonalRamp": ["#17191d", "#25282d", "#2f3238", "#454951", "#616670", "#8b9098", "#c0c3c8", "#f2f3f4"]},
+      "panel-hover": {"role": "neutral", "displayName": "Hover Panel", "canonical": "#393d41", "source": "--color-surface-hover", "tonalRamp": ["#1a1c1e", "#2c3034", "#393d41", "#51575c", "#70767d", "#999fa5", "#cacdd1", "#f5f6f6"]},
+      "linen-text": {"role": "neutral", "displayName": "Linen Text", "canonical": "#cfcfc5", "source": "--SmartThemeBodyColor", "tonalRamp": ["#2c2c25", "#4b4b3d", "#6d6c56", "#929073", "#b2b090", "#cfcfc5", "#e1e1d9", "#f4f4ef"]},
+      "muted-linen": {"role": "neutral", "displayName": "Muted Linen", "canonical": "#999992", "source": "--sb-muted-fg", "tonalRamp": ["#23231f", "#3c3c35", "#57574d", "#747368", "#908f83", "#aaa99f", "#cbc9c0", "#eeece6"]},
+      "shadow-ink": {"role": "neutral", "displayName": "Shadow Ink", "canonical": "#050607", "source": "--SmartThemeShadowColor", "tonalRamp": ["#050607", "#15171a", "#25282d", "#3d4249", "#5b626b", "#858c94", "#b8bdc3", "#edf0f2"]},
+      "success": {"role": "secondary", "displayName": "Success Gold", "canonical": "#f3c985", "source": "--color-success", "tonalRamp": ["#2f2110", "#563716", "#835323", "#b57437", "#d99d5d", "#f3c985", "#f8dfb8", "#fff4df"]},
+      "danger": {"role": "secondary", "displayName": "Danger Rose", "canonical": "#fb7185", "source": "--color-danger", "tonalRamp": ["#351018", "#651827", "#942538", "#c53e53", "#e85d72", "#fb7185", "#ffadba", "#ffe2e7"]},
+      "warning": {"role": "secondary", "displayName": "Warning Amber", "canonical": "#facc15", "source": "--color-warning", "tonalRamp": ["#302606", "#5c4608", "#8f6d0a", "#bd920d", "#e4b512", "#facc15", "#ffe889", "#fff7d1"]}
     },
     "typographyMeta": {
-      "display": {
-        "displayName": "Display",
-        "purpose": "Welcome hero titles and first-run surfaces only."
-      },
-      "headline": {
-        "displayName": "Headline",
-        "purpose": "Shell titles, major panel headings, and onboarding sections."
-      },
-      "title": {
-        "displayName": "Title",
-        "purpose": "Cards, setting groups, agent chips, and compact headings."
-      },
-      "body": {
-        "displayName": "Body",
-        "purpose": "Chat-adjacent prose, setting descriptions, tutorials, and explanatory copy."
-      },
-      "label": {
-        "displayName": "Label",
-        "purpose": "Eyebrows, metadata, counters, and compact status labels."
-      },
-      "mono": {
-        "displayName": "Mono",
-        "purpose": "Logs, regex, prompt snippets, token diagnostics, and structured output."
-      }
+      "display": {"displayName": "Display", "purpose": "Home and first-run welcome titles only."},
+      "headline": {"displayName": "Headline", "purpose": "Opened shell and major panel headings."},
+      "title": {"displayName": "Title", "purpose": "Setting groups, action rows, cards, and compact headings."},
+      "body": {"displayName": "Body", "purpose": "Chat-adjacent explanation, tutorials, and settings prose."},
+      "label": {"displayName": "Label", "purpose": "Compact metadata and state labels without eyebrow-heavy section scaffolding."},
+      "mono": {"displayName": "Mono", "purpose": "Logs, regex, prompt fragments, token diagnostics, and structured output."}
     },
     "shadows": [
-      {
-        "name": "shell-shadow",
-        "value": "0 32px 90px color-mix(in srgb, var(--SmartThemeShadowColor) 34%, transparent)",
-        "purpose": "Large shell panels and major overlay surfaces."
-      },
-      {
-        "name": "welcome-panel-shadow",
-        "value": "0 30px 70px color-mix(in srgb, var(--SmartThemeShadowColor) 18%, transparent)",
-        "purpose": "Home and onboarding panels."
-      },
-      {
-        "name": "card-lift",
-        "value": "0 14px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 12%, transparent)",
-        "purpose": "Welcome action cards, selected theme options, and medium interactive cards."
-      },
-      {
-        "name": "control-glow",
-        "value": "inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 18%, transparent)",
-        "purpose": "Hover and focus confirmation on buttons, icon controls, and active utility controls."
-      }
+      {"name": "shell-shadow", "value": "0 8px 24px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent)", "purpose": "Opened configuration shell or fixed overlay above chat."},
+      {"name": "panel-lift", "value": "0 4px 8px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent)", "purpose": "Selected theme option or explicitly elevated welcome action."},
+      {"name": "focus-ring", "value": "inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 70%, transparent)", "purpose": "Keyboard and focus-visible confirmation."}
     ],
     "motion": [
-      {
-        "name": "fast-state",
-        "value": "180ms ease",
-        "purpose": "Default hover, focus, and active-state feedback."
-      },
-      {
-        "name": "standard-state",
-        "value": "240ms ease",
-        "purpose": "Shell reveal and medium component transitions."
-      },
-      {
-        "name": "slow-state",
-        "value": "360ms ease",
-        "purpose": "Rare slow transitions, never routine product navigation."
-      }
+      {"name": "fast-state", "value": "180ms cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "Hover, focus, active, and compact control feedback."},
+      {"name": "standard-state", "value": "240ms cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "Shell reveal, drawer state, and medium component transitions."},
+      {"name": "reduced-motion", "value": "0ms linear", "purpose": "Instant state changes when prefers-reduced-motion is enabled."}
     ],
     "breakpoints": [
-      {
-        "name": "compact-desktop",
-        "value": "1000px"
-      },
-      {
-        "name": "mobile",
-        "value": "768px"
-      },
-      {
-        "name": "narrow-mobile",
-        "value": "620px"
-      },
-      {
-        "name": "small-mobile",
-        "value": "420px"
-      }
+      {"name": "compact-desktop", "value": "1000px", "purpose": "Compact desktop contract; fork mobile chrome does not start yet."},
+      {"name": "mobile", "value": "768px", "purpose": "Mobile shell and touch-target contract."},
+      {"name": "narrow-mobile", "value": "620px", "purpose": "Dense phone layout tuning."},
+      {"name": "small-mobile", "value": "420px", "purpose": "Tightest phone layout tuning."}
+    ],
+    "zIndex": [
+      {"name": "dropdown", "value": 100},
+      {"name": "sticky", "value": 500},
+      {"name": "shell", "value": 1000},
+      {"name": "shell-panel", "value": 1100},
+      {"name": "overlay", "value": 2000},
+      {"name": "modal", "value": 3000},
+      {"name": "toast", "value": 5000}
     ]
   },
   "components": [
@@ -171,123 +56,92 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Warm action button for primary confirmation and launch actions.",
+      "description": "Single primary confirmation or launch action in a view.",
       "html": "<button class=\"ds-button-primary\">Start writing</button>",
-      "css": ".ds-button-primary { min-height: 38px; padding: 10px 14px; border: 1px solid transparent; border-radius: 14px; background: color-mix(in srgb, var(--color-primary, #c9c6a8) 88%, #f4f1df 12%); color: var(--sb-on-accent, #050607); font: 700 14px/1.2 Figtree, Noto Sans, sans-serif; cursor: pointer; transition: background-color 180ms ease, box-shadow 180ms ease; } .ds-button-primary:hover { background: color-mix(in srgb, var(--color-primary, #c9c6a8) 82%, #f4f1df 18%); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary, #c9c6a8) 34%, transparent), inset 0 -2px 0 color-mix(in srgb, #050607 12%, transparent); } .ds-button-primary:focus-visible { outline: none; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring, #c9c6a8) 70%, transparent); }"
+      "css": ".ds-button-primary { min-height: 38px; padding: 10px 14px; border: 0; border-radius: 14px; background: var(--color-primary, #c9c6a8); color: var(--sb-on-accent, #050607); font: 700 14px/1.2 Figtree, Noto Sans, sans-serif; cursor: pointer; transition: background-color 180ms cubic-bezier(0.22, 1, 0.36, 1); } .ds-button-primary:hover { background: color-mix(in srgb, var(--color-primary, #c9c6a8) 86%, white); } .ds-button-primary:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--sb-focus-ring, #c9c6a8); } .ds-button-primary:active { transform: translateY(1px); } @media (prefers-reduced-motion: reduce) { .ds-button-primary { transition: none; } }"
     },
     {
       "name": "Ghost Button",
       "kind": "button",
       "refersTo": "button-ghost",
-      "description": "Default tonal button for repeated shell and settings actions.",
+      "description": "Tonal repeated action for shell and settings surfaces.",
       "html": "<button class=\"ds-button-ghost\">Open panel</button>",
-      "css": ".ds-button-ghost { min-height: 38px; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--sb-shell-border, #050607) 80%, transparent); border-radius: 14px; background: var(--sb-button-bg, #1d2128); color: var(--SmartThemeBodyColor, #cfcfc5); font: 700 14px/1.2 Figtree, Noto Sans, sans-serif; cursor: pointer; transition: background-color 180ms ease, box-shadow 180ms ease; } .ds-button-ghost:hover { background: var(--sb-button-hover, #393d41); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary, #c9c6a8) 18%, transparent); } .ds-button-ghost:focus-visible { outline: none; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring, #c9c6a8) 70%, transparent); }"
+      "css": ".ds-button-ghost { min-height: 38px; padding: 10px 14px; border: 1px solid var(--sb-shell-border, #050607); border-radius: 14px; background: var(--sb-button-bg, #1d2128); color: var(--SmartThemeBodyColor, #cfcfc5); font: 700 14px/1.2 Figtree, Noto Sans, sans-serif; cursor: pointer; transition: background-color 180ms cubic-bezier(0.22, 1, 0.36, 1); } .ds-button-ghost:hover { background: var(--sb-button-hover, #393d41); } .ds-button-ghost:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--sb-focus-ring, #c9c6a8); }"
     },
     {
       "name": "Text Field",
       "kind": "input",
       "refersTo": "input-field",
-      "description": "Stable field treatment for search, prompts, settings, and compact forms.",
+      "description": "Stable search, prompt, settings, and compact form field.",
       "html": "<label class=\"ds-field\"><span>Search settings</span><input class=\"ds-input\" placeholder=\"Type to search\"></label>",
-      "css": ".ds-field { display: grid; gap: 6px; color: var(--SmartThemeBodyColor, #cfcfc5); font-family: Figtree, Noto Sans, sans-serif; } .ds-field span { font-size: 11px; line-height: 1.35; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sb-muted-fg, #999992); } .ds-input { min-height: 46px; padding: 0 12px; border: 1px solid var(--sb-input-border, #050607); border-radius: 14px; background: var(--sb-input-bg, #1d2128); color: var(--SmartThemeBodyColor, #cfcfc5); font: 400 15px/1.45 Figtree, Noto Sans, sans-serif; transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease; } .ds-input::placeholder { color: color-mix(in srgb, var(--SmartThemeBodyColor, #cfcfc5) 60%, transparent); } .ds-input:focus { outline: none; border-color: color-mix(in srgb, var(--sb-focus-ring, #c9c6a8) 85%, transparent); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring, #c9c6a8) 35%, transparent); }"
+      "css": ".ds-field { display: grid; gap: 6px; color: var(--SmartThemeBodyColor, #cfcfc5); font-family: Figtree, Noto Sans, sans-serif; } .ds-field span { font-size: 11px; line-height: 1.35; font-weight: 700; letter-spacing: 0.04em; color: var(--sb-muted-fg, #999992); } .ds-input { min-height: 46px; padding: 0 12px; border: 1px solid var(--sb-input-border, #050607); border-radius: 14px; background: var(--sb-input-bg, #1d2128); color: var(--SmartThemeBodyColor, #cfcfc5); font: 400 15px/1.45 Figtree, Noto Sans, sans-serif; } .ds-input::placeholder { color: var(--SmartThemeBodyColor, #cfcfc5); opacity: 0.72; } .ds-input:focus { outline: none; border-color: var(--sb-focus-ring, #c9c6a8); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring, #c9c6a8) 35%, transparent); }"
     },
     {
       "name": "Shell Tab",
       "kind": "nav",
       "refersTo": "shell-tab-active",
-      "description": "Workspace and Customize navigation tab with icon, label, and active state.",
-      "html": "<button class=\"ds-shell-tab is-active\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M4 6h16v2H4V6Zm0 5h16v2H4v-2Zm0 5h10v2H4v-2Z\" fill=\"currentColor\"/></svg><span><strong>Workspace</strong><small>Presets and agents</small></span></button>",
-      "css": ".ds-shell-tab { min-height: 44px; padding: 8px 14px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid transparent; border-radius: 14px; background: transparent; color: var(--SmartThemeBodyColor, #cfcfc5); font-family: Figtree, Noto Sans, sans-serif; cursor: pointer; transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease; } .ds-shell-tab svg { width: 18px; height: 18px; opacity: 0.82; } .ds-shell-tab span { display: grid; gap: 2px; text-align: left; } .ds-shell-tab strong { font-size: 13.5px; line-height: 1.1; } .ds-shell-tab small { font-size: 10.8px; line-height: 1.35; opacity: 0.74; } .ds-shell-tab:hover { background: color-mix(in srgb, var(--sb-button-hover, #393d41) 52%, transparent); } .ds-shell-tab.is-active { background: var(--sb-shell-tab-active-bg, #2f3238); border-color: color-mix(in srgb, var(--sb-shell-border, #050607) 85%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-shell-border, #050607) 78%, transparent), inset 0 -2px 0 color-mix(in srgb, var(--color-primary, #c9c6a8) 34%, transparent); } .ds-shell-tab:focus-visible { outline: none; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring, #c9c6a8) 70%, transparent); }"
-    },
-    {
-      "name": "Theme Option",
-      "kind": "card",
-      "refersTo": "card-surface",
-      "description": "Selectable card used for shell style and compact settings choices.",
-      "html": "<button class=\"ds-theme-option is-selected\"><span class=\"sb-theme-option-label\">Clean Minimal</span></button>",
-      "css": ".ds-theme-option { width: 220px; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; border: 1px solid color-mix(in srgb, var(--sb-shell-border, #050607) 84%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--sb-shell-main-bg, #1d2128) 84%, transparent); color: var(--SmartThemeBodyColor, #cfcfc5); align-items: center; justify-content: center; text-align: center; font-family: Figtree, Noto Sans, sans-serif; cursor: pointer; transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease; } .ds-theme-option-label { font-size: 12.3px; font-weight: 700; } .ds-theme-option:hover { transform: translateY(-1px); } .ds-theme-option.is-selected { background: var(--sb-shell-tab-active-bg, #2f3238); box-shadow: 0 14px 28px color-mix(in srgb, var(--SmartThemeShadowColor, #050607) 16%, transparent); } .ds-theme-option:focus-visible { outline: none; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring, #c9c6a8) 70%, transparent); }"
-    },
-    {
-      "name": "Welcome Action Card",
-      "kind": "card",
-      "refersTo": "card-surface",
-      "description": "Home and onboarding shortcut card that keeps the creative surface friendly.",
-      "html": "<a class=\"ds-welcome-card\" href=\"#\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3Zm0 2.3L6 8.7v6.6l6 3.4 6-3.4V8.7l-6-3.4Z\" fill=\"currentColor\"/></svg><span><strong>Open Assistant</strong><small>Ask for help in plain language.</small></span></a>",
-      "css": ".ds-welcome-card { width: 260px; min-height: 88px; padding: 12px 14px; display: flex; align-items: center; justify-content: center; gap: 12px; border: 1px solid color-mix(in srgb, var(--sb-shell-border, #050607) 86%, transparent); border-radius: 20px; background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #1d2128) 92%, var(--SmartThemeChatTintColor, #1d2128) 8%); color: var(--SmartThemeBodyColor, #cfcfc5); text-decoration: none; box-shadow: 0 14px 28px color-mix(in srgb, var(--SmartThemeShadowColor, #050607) 12%, transparent); font-family: Figtree, Noto Sans, sans-serif; transition: background-color 180ms ease, box-shadow 180ms ease; } .ds-welcome-card svg { width: 20px; height: 20px; color: color-mix(in srgb, var(--color-primary, #c9c6a8) 64%, var(--SmartThemeBodyColor, #cfcfc5)); flex: 0 0 auto; } .ds-welcome-card span { display: grid; gap: 5px; text-align: center; } .ds-welcome-card strong { font-size: 13.8px; line-height: 1.2; } .ds-welcome-card small { font-size: 11.1px; line-height: 1.45; color: var(--sb-muted-fg, #999992); } .ds-welcome-card:hover { box-shadow: 0 18px 32px color-mix(in srgb, var(--SmartThemeShadowColor, #050607) 16%, transparent); } .ds-welcome-card:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring, #c9c6a8) 60%, transparent), 0 14px 28px color-mix(in srgb, var(--SmartThemeShadowColor, #050607) 12%, transparent); }"
+      "description": "Labelled top-level destination with a clear active state.",
+      "html": "<button class=\"ds-shell-tab is-active\"><span><strong>Workspace</strong><small>Presets and agents</small></span></button>",
+      "css": ".ds-shell-tab { min-height: 44px; padding: 8px 14px; display: inline-flex; align-items: center; border: 1px solid transparent; border-radius: 14px; background: transparent; color: var(--SmartThemeBodyColor, #cfcfc5); font-family: Figtree, Noto Sans, sans-serif; cursor: pointer; transition: background-color 180ms cubic-bezier(0.22, 1, 0.36, 1); } .ds-shell-tab span { display: grid; gap: 2px; text-align: left; } .ds-shell-tab strong { font-size: 13.5px; line-height: 1.1; } .ds-shell-tab small { font-size: 10.8px; line-height: 1.35; opacity: 0.78; } .ds-shell-tab:hover, .ds-shell-tab.is-active { background: var(--sb-shell-tab-active-bg, #2f3238); } .ds-shell-tab.is-active { border-color: var(--sb-shell-border, #050607); box-shadow: inset 0 -2px 0 var(--color-primary, #c9c6a8); } .ds-shell-tab:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--sb-focus-ring, #c9c6a8); }"
     },
     {
       "name": "Agent Quick Chip",
       "kind": "chip",
       "refersTo": "chip-enabled",
-      "description": "Compact in-chat agent control chip for enabling, pinning, and applying helper prompts.",
-      "html": "<button class=\"ds-agent-chip is-enabled\"><span class=\"ds-agent-status\">✓</span><span><strong>Scene Tracker</strong><small>Enabled</small></span></button>",
-      "css": ".ds-agent-chip { min-width: 220px; padding: 6px; display: flex; align-items: center; gap: 10px; border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #050607) 42%, transparent); border-radius: 14px; background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #1d2128) 28%, transparent); color: var(--SmartThemeBodyColor, #cfcfc5); font-family: Figtree, Noto Sans, sans-serif; cursor: pointer; transition: background-color 180ms ease, border-color 180ms ease; } .ds-agent-chip.is-enabled { border-color: color-mix(in srgb, var(--SmartThemeQuoteColor, #c9c6a8) 52%, transparent); background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor, #c9c6a8) 12%, transparent), color-mix(in srgb, var(--SmartThemeBlurTintColor, #1d2128) 26%, transparent)); } .ds-agent-status { width: 30px; height: 30px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--SmartThemeQuoteColor, #c9c6a8) 18%, transparent); color: color-mix(in srgb, var(--SmartThemeQuoteColor, #c9c6a8) 80%, #f4f1df 20%); font-weight: 700; } .ds-agent-chip span:last-child { display: grid; gap: 2px; text-align: left; } .ds-agent-chip strong { font-size: 13.8px; line-height: 1.2; } .ds-agent-chip small { font-size: 10.2px; line-height: 1.25; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.64; } .ds-agent-chip:hover { background: color-mix(in srgb, var(--SmartThemeBorderColor, #050607) 18%, transparent); } .ds-agent-chip:focus-visible { outline: none; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring, #c9c6a8) 70%, transparent); }"
+      "description": "Compact in-chat agent control with readable status.",
+      "html": "<button class=\"ds-agent-chip is-enabled\"><span aria-hidden=\"true\">&#10003;</span><span><strong>Scene Tracker</strong><small>Enabled</small></span></button>",
+      "css": ".ds-agent-chip { min-height: 38px; padding: 6px 8px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--SmartThemeBorderColor, #050607); border-radius: 14px; background: var(--sb-button-bg, #1d2128); color: var(--SmartThemeBodyColor, #cfcfc5); font-family: Figtree, Noto Sans, sans-serif; cursor: pointer; } .ds-agent-chip.is-enabled { background: color-mix(in srgb, var(--color-primary, #c9c6a8) 14%, var(--sb-button-bg, #1d2128)); border-color: color-mix(in srgb, var(--color-primary, #c9c6a8) 50%, var(--SmartThemeBorderColor, #050607)); } .ds-agent-chip span:first-child { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: color-mix(in srgb, var(--color-primary, #c9c6a8) 20%, transparent); } .ds-agent-chip span:last-child { display: grid; gap: 2px; text-align: left; } .ds-agent-chip strong { font-size: 13px; line-height: 1.2; } .ds-agent-chip small { font-size: 10px; line-height: 1.25; color: var(--sb-muted-fg, #999992); } .ds-agent-chip:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--sb-focus-ring, #c9c6a8); }"
+    },
+    {
+      "name": "Welcome Action",
+      "kind": "card",
+      "refersTo": "card-surface",
+      "description": "Sparse, labelled Home or first-run shortcut.",
+      "html": "<a class=\"ds-welcome-action\" href=\"#\"><span><strong>Open Assistant</strong><small>Ask for help in plain language.</small></span></a>",
+      "css": ".ds-welcome-action { min-width: 220px; min-height: 76px; padding: 14px 16px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--sb-shell-border, #050607); border-radius: 20px; background: var(--sb-chat-surface-source, #1d2128); color: var(--SmartThemeBodyColor, #cfcfc5); text-decoration: none; font-family: Figtree, Noto Sans, sans-serif; } .ds-welcome-action span { display: grid; gap: 5px; text-align: center; } .ds-welcome-action strong { font-size: 13.8px; line-height: 1.2; } .ds-welcome-action small { font-size: 11.1px; line-height: 1.45; color: var(--sb-muted-fg, #999992); } .ds-welcome-action:hover { background: var(--sb-button-hover, #393d41); } .ds-welcome-action:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--sb-focus-ring, #c9c6a8); }"
     }
   ],
   "narrative": {
-    "northStar": "The Storyteller's Control Room",
-    "overview": "SillyBunny should feel like a creative control room for roleplay and storytelling: expressive enough to invite imagination, structured enough to keep the writer in flow, and practical enough to carry the full SillyTavern surface without making the first screen feel like a cockpit. The system uses warm signals against charcoal panels, rounded tactile controls, and atmospheric depth that helps separate chat, shell, onboarding, and agent work.\n\nThe product must preserve the PRODUCT.md line: \"Express personality through usefulness.\" Personality belongs in onboarding, assistant surfaces, launchpad cards, and creative workflow affordances. Settings, API setup, presets, sampling, and server tools stay familiar, predictable, and compact.\n\nThis system rejects needless complexity, generic SaaS polish, sterile upstream-clone blandness, hover-only discovery, tiny touch targets, and browser behavior that breaks on iOS WebKit.",
+    "northStar": "The Open Page",
+    "overview": "Picture a person writing at night with one conversation open, the rest of the desk cleared away, and a small set of tools within reach when needed. SillyBunny is a product UI, not a showcase surface: the character, messages, and composer own the visual priority. The shell is deliberately quiet so it can recede during active roleplay and become useful on demand.\n\nThe system carries personality through helpful wording, tactile feedback, and a warm signal accent rather than decoration. It makes complexity available without making it ambient: configuration belongs behind the header, sub-category tabs reveal the next layer, and each view has one primary action. The default charcoal theme is only the starting point; every visual token must remain compatible with user themes and SillyTavern data, presets, extensions, and settings.\n\nThe physical scene is a focused writing session on a dim screen, where the user needs comfortable contrast, predictable touch targets, and no panel competing with the conversation. This system rejects UI creep, nested menu spirals, configuration sprawl, bottom bar bloat, mystery meat navigation, desktop-only assumptions, and generic SaaS polish.",
     "keyCharacteristics": [
-      "Creative product UI, not a marketing surface.",
-      "Dark charcoal default with warm signal accents and user-adjustable themes.",
-      "Layered atmospheric panels: tonal surfaces first, restrained shadows second.",
-      "Tactile and clear controls with stable dimensions and mobile-safe hit areas.",
-      "Progressive complexity through shell panels, global search, compact mode, and launchpad guidance."
+      "Content-first chat viewport with no unsolicited permanent configuration panels.",
+      "Restrained charcoal, linen, and warm-signal palette with user-theme aliases.",
+      "Familiar controls that disclose depth through deliberate input, not visual noise.",
+      "Stable desktop and mobile interaction vocabulary, including WebKit-safe shell behavior.",
+      "Personality expressed through usefulness, especially in Home, agents, onboarding, and helper states."
     ],
     "rules": [
-      {
-        "name": "The Warm Signal Rule",
-        "body": "Warm Signal is for action, current selection, focus, and meaningful state. If it is being used as decoration, remove it.",
-        "section": "colors"
-      },
-      {
-        "name": "The Theme-Compatible Rule",
-        "body": "SillyBunny themes use `SmartTheme*` and `sb-*` CSS variables. New colors must flow through those variables or documented semantic aliases, not hard-coded one-off values.",
-        "section": "colors"
-      },
-      {
-        "name": "The No Pure Extremes Rule",
-        "body": "Do not introduce new pure black or pure white surfaces. Tint darks toward the charcoal system and lights toward the linen system.",
-        "section": "colors"
-      },
-      {
-        "name": "The Interface Sans Rule",
-        "body": "Do not introduce display fonts for controls, labels, tabs, or dense setting surfaces. The tool should stay readable under pressure.",
-        "section": "typography"
-      },
-      {
-        "name": "The No Viewport Type Rule",
-        "body": "Product UI type should scale from `--mainFontSize` and user settings, not from viewport width.",
-        "section": "typography"
-      },
-      {
-        "name": "The Layer Before Shadow Rule",
-        "body": "Add tonal separation before adding a stronger shadow. If a shadow is doing all the work, the surface token is wrong.",
-        "section": "elevation"
-      },
-      {
-        "name": "The WebKit Reliability Rule",
-        "body": "On mobile and Safari surfaces, prefer solid or near-solid layers over fragile blur stacks. Depth must never break scrolling, focus, safe areas, or fixed positioning.",
-        "section": "elevation"
-      }
+      {"name": "The Signal Scarcity Rule", "body": "Warm Signal appears for action, selection, focus, or meaningful state. If removing it does not reduce comprehension, remove it.", "section": "colors"},
+      {"name": "The Theme Alias Rule", "body": "New work consumes `SmartTheme*`, `color-*`, `sb-*`, spacing, and radius aliases. Do not hard-code a new color that bypasses saved user themes.", "section": "colors"},
+      {"name": "The Contrast Rule", "body": "Body and placeholder text target at least 4.5:1 contrast; large text targets at least 3:1. Muted text can be quiet, but never illegible.", "section": "colors"},
+      {"name": "The Interface Sans Rule", "body": "Use Figtree or its fallback stack for controls, tabs, labels, and dense settings. Decorative type must never make repeated work harder.", "section": "typography"},
+      {"name": "The User Scale Rule", "body": "Product type follows `--mainFontSize` and existing user preferences. Do not add viewport-driven type or a parallel density system.", "section": "typography"},
+      {"name": "The Layer Before Shadow Rule", "body": "Establish a tonal surface before adding elevation. If a shadow is doing all the work, the surface token is wrong.", "section": "elevation"},
+      {"name": "The State-Only Motion Rule", "body": "Use the existing 180ms and 240ms ease-out transitions for hover, focus, active, reveal, loading, and feedback. No decorative choreography, bounce, or motion that delays a task. Every transition has a reduced-motion path.", "section": "elevation"},
+      {"name": "The WebKit Reliability Rule", "body": "Prefer solid or near-solid surfaces on mobile. Fixed layers must respect safe areas, keyboard resizing, scrolling, and focus behavior in Safari/WebKit.", "section": "elevation"}
     ],
     "dos": [
-      "Do keep the default path simple first and powerful nearby.",
-      "Do use Warm Signal for current selection, focus, meaningful state, and primary action only.",
-      "Do preserve creative flow between chat, characters, presets, world info, personas, and agents.",
-      "Do test mobile layouts with iOS WebKit constraints in mind: safe areas, fixed layers, focus behavior, scroll containers, and touch targets.",
-      "Do route new visual work through existing `SmartTheme*`, `sb-*`, `color-*`, spacing, and radius tokens.",
-      "Do keep controls tactile and clear, with default, hover, focus, active, disabled, and loading or empty states where relevant."
+      "Do keep main content uninterrupted and let configuration appear only after deliberate input.",
+      "Do give every view one primary action, then place powerful options behind learnable progressive disclosure.",
+      "Do preserve SillyTavern-compatible settings, character data, chats, presets, extensions, and migration paths.",
+      "Do use `SmartTheme*`, `sb-*`, `color-*`, spacing, and radius tokens so user themes continue to work.",
+      "Do keep desktop and mobile gestures, ordering, labels, and action vocabulary consistent.",
+      "Do provide visible focus, semantic labels, comfortable touch targets, resilient wrapping, and reduced-motion behavior.",
+      "Do use tonal surfaces before shadows and verify text contrast before shipping."
     ],
     "donts": [
-      "Don't make the interface feel complex for its own sake.",
-      "Don't ship dense control walls on default surfaces, gratuitous advanced settings, or novelty interactions that slow repeated chat work.",
-      "Don't create generic SaaS polish, sterile upstream-clone blandness, or showcase-style visual treatments.",
-      "Don't hide essential writing controls behind mystery meat navigation.",
-      "Don't rely on desktop-only assumptions, hover-only discovery, tiny touch targets, or browser behavior that breaks on iOS WebKit.",
-      "Don't use border-left or border-right greater than `1px` as a colored accent on cards, list items, callouts, or alerts.",
-      "Don't add gradient text, decorative glassmorphism, identical repeated card grids, or modal-first flows.",
-      "Don't introduce pure black or pure white as new surface colors. Use tinted charcoal and linen neutrals."
+      "Don't ship UI creep: persistent panels, sidebars, or toolbars in the active primary viewport.",
+      "Don't create a nested menu spiral or more than one collapsible section at layer 4.",
+      "Don't present configuration sprawl, bottom bar bloat, or a dense control wall by default.",
+      "Don't interrupt active conversation with a modal for non-critical configuration; try inline or progressive alternatives first.",
+      "Don't rely on mystery meat navigation, hover-only discovery, desktop-only assumptions, tiny touch targets, or fragile iOS WebKit behavior.",
+      "Don't use generic SaaS polish, sterile upstream-clone blandness, or decorative motion without navigational purpose.",
+      "Don't use gradient text, decorative glassmorphism, repeating stripe or grid backgrounds, identical repeated card grids, or sketchy illustrations.",
+      "Don't use `border-left` or `border-right` greater than `1px` as a colored accent.",
+      "Don't pair a `1px` border with a shadow of `16px` blur or more; choose tonal separation, a border, or a restrained shadow.",
+      "Don't use card or section radii above `20px`, or let long labels and headings overflow narrow viewports.",
+      "Don't introduce new pure black or pure white surfaces, or silently overwrite compatible user configuration."
     ]
   }
 }

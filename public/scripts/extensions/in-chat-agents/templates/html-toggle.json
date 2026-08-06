@@ -3,7 +3,8 @@
     "name": "HTML Toggle",
     "description": "Use inline HTML for diegetic in-world objects (signs, letters, screens)",
     "icon": "",
-    "category": "custom",
+    "category": "content",
+    "subcategory": "behaviour",
     "tags": [
         "html",
         "artifacts",

@@ -1,0 +1,1163 @@
+import { animation_duration, characters } from '../../script.js';
+import { debounce_timeout } from '../constants.js';
+import { loadStylesheetAsync } from '../dynamic-styles.js';
+import { isIOSWebKitPlatform } from '../mobile-send-button.js';
+import { getUserAvatar } from '../personas.js';
+import { loadMovingUIState, power_user } from '../power-user.js';
+import { dragElement, shouldSendOnEnter } from '../RossAscends-mods.js';
+import { debounce } from '../utils.js';
+import { addConversationFilesToInput, clearConversationAttachmentInput, processSendQueue, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
+import { CHROME_IDS, DEFAULT_GROUNDED_DIALOGUE_RULES, GEECHAN_DEFAULT_PROMPT } from './constants.js';
+import {
+    createConversationBranchForAvatar,
+    deleteConversationBranch,
+    getConversationBranches,
+    getConversationGroupIdForAvatar,
+    getConversationPersonaId,
+    getConversationThreadKey,
+    getConversationThreadStore,
+    getCurrentCharacter,
+    getCurrentCharAvatar,
+    getRoleplayCurrentCharacter,
+    isAvatarInConversationGroup,
+    parsePositiveInt,
+    renameConversationBranch,
+    resetCharacterConversationBranches,
+    saveGroupConversationSettings,
+    setActiveConversationBranch,
+} from './context.js';
+import { editConversationMessage } from './generation.js';
+import {
+    applySettingsToPanel,
+    handleCharacterMessagePolish,
+    saveCurrentPanelSettings,
+    syncConversationToolsVisibility,
+    updateConversationChrome,
+    updateConversationHeader,
+} from './interface.js';
+import { getCharacterForAvatar } from './media.js';
+import { clearAllConversationUnreadCounts, clearUnreadCount, isConversationActiveThread } from './notifications.js';
+import { getConversationPals, getConversationRailItems, getCurrentGroupConversationMembers } from './pals-rail.js';
+import { switchConversationPersona } from './persona-switch.js';
+import { editUserPersonaStatus, setActiveConversationPersonaAppendixIds, setUserStatus } from './personas.js';
+import {
+    addWeeklyScheduleRow,
+    handleCreateConversationGroupFromPicker,
+    hideConversationStartPicker,
+    openAddMemberPicker,
+    renderConversationPersonaPicker,
+    toggleAddDmPicker,
+    toggleConversationGroupPicker,
+    togglePersonaPicker,
+    toggleUserStatusPicker,
+    updateUserFooter,
+} from './pickers.js';
+import { scheduleInterfaceRefresh, schedulePalsRailRender, scheduleTimelineRender } from './render-scheduler.js';
+import { generateCharacterSchedule, saveStoredSchedule } from './schedule.js';
+import {
+    clearConversationMemoryFromPanel,
+    closeConversationSettings,
+    closePalsRail,
+    forceCreateMemoryFromPanel,
+    openConversationSettings,
+    openScheduleEditorModal,
+    refreshConversationMemoryFromPanel,
+    renderConversationMemoryPanel,
+    renderScheduleDisplay,
+    togglePalsRail,
+} from './settings-panel.js';
+import { getSettings, resetFollowupCount, saveSettings } from './settings-store.js';
+import { conversationState, sendQueue } from './state.js';
+import { createForcedConversationQueueItem } from './send-queue-utils.js';
+import { getConversationThread, updateLastUserActivity } from './thread-store.js';
+import {
+    branchConversationFromMessage,
+    clearConversationReplyTarget,
+    copyConversationMessage,
+    deleteConversationMessage,
+    generateConversationSelfieFromMessageCommand,
+    ensureConversationChrome,
+    quickConversationReminder,
+    quickConversationSelfie,
+    quickConversationSummarize,
+    reactConversationMessage,
+    regenerateConversationMessage,
+    replyToConversationMessage,
+    setConversationTimelineChannel,
+    speakConversationMessage,
+    toggleConversationMessagePin,
+    updateConversationNotificationSettingsVisibility,
+    updateConversationSearchQuery,
+} from './timeline-render.js';
+import { setLastConversationPreview } from './typing.js';
+
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20260725a';
+const CONVERSATION_STYLESHEET_ID = 'sb-conversation-css';
+
+function ensureConversationStylesheet() {
+    if (conversationState.conversationCssLoaded) {
+        return;
+    }
+
+    conversationState.conversationCssLoaded = true;
+    loadStylesheetAsync(CONVERSATION_STYLESHEET_HREF, { id: CONVERSATION_STYLESHEET_ID })
+        .then(() => {
+            if (conversationState.conversationWorkspaceOpen) {
+                conversationState.timelineBottomScrollPending = true;
+                scheduleTimelineRender();
+            }
+        })
+        .catch(error => {
+            conversationState.conversationCssLoaded = false;
+            console.warn('Conversation Mode: stylesheet failed to load', error);
+        });
+}
+
+function requestConversationRuntimeStart() {
+    window.dispatchEvent(new CustomEvent('sb:conversation-runtime-needed'));
+}
+
+function getConversationToolsVisible() {
+    try {
+        return localStorage.getItem('sb_conv_tools_visible') === 'true';
+    } catch {
+        return false;
+    }
+}
+
+function setConversationToolsVisible(visible) {
+    try {
+        localStorage.setItem('sb_conv_tools_visible', String(visible));
+    } catch {
+        // Ignore storage write failures in Safari Private Browsing.
+    }
+}
+
+function closeGroundedDialogueRulesEditor(overlay, previouslyFocusedElement) {
+    overlay.remove();
+    if (previouslyFocusedElement instanceof HTMLElement) {
+        previouslyFocusedElement.focus({ preventScroll: true });
+    }
+}
+
+function openGroundedDialogueRulesEditor() {
+    const backingInput = document.getElementById('sb_conv_grounded_dialogue_rules');
+    if (!(backingInput instanceof HTMLTextAreaElement)) {
+        toastr.warning('Open Conversation settings before editing Grounded Dialogue Rules.');
+        return;
+    }
+
+    const previouslyFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const overlay = document.createElement('div');
+    overlay.id = 'sb_conversation_grounded_rules_modal';
+    overlay.className = 'sb-conversation-schedule-modal-overlay';
+    overlay.style.cssText = `
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+        background: rgba(0, 0, 0, 0.7);
+        box-sizing: border-box;
+    `;
+
+    const modal = document.createElement('div');
+    modal.className = 'sb-conversation-schedule-modal';
+    modal.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        inline-size: min(720px, calc(100vw - 24px));
+        max-block-size: min(78vh, 760px);
+        padding: 16px;
+        border: 1px solid color-mix(in srgb, var(--sb-shell-border, #666) 70%, transparent);
+        border-radius: var(--sb-radius-lg, 16px);
+        background: var(--SmartThemeBlurTintColor, var(--SmartThemeBodyColor));
+        color: var(--SmartThemeBodyColorContrast);
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+    `;
+
+    const header = document.createElement('div');
+    header.className = 'sb-conversation-field-row';
+    header.style.cssText = 'align-items: center; justify-content: space-between; gap: 10px;';
+
+    const title = document.createElement('div');
+    title.innerHTML = '<div class="sb-conversation-settings-kicker">Global prompt style</div><div class="sb-conversation-settings-title">Grounded Dialogue Rules</div>';
+    header.appendChild(title);
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'menu_button menu_button_icon';
+    closeButton.title = 'Close editor';
+    closeButton.setAttribute('aria-label', 'Close Grounded Dialogue Rules editor');
+    closeButton.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+    header.appendChild(closeButton);
+
+    const hint = document.createElement('p');
+    hint.className = 'sb-conversation-field-hint';
+    hint.textContent = 'This global block is added to Conversation Mode prompts only when the Grounded Dialogue Rules toggle is on.';
+
+    const editor = document.createElement('textarea');
+    editor.className = 'text_pole textarea_compact wide100p';
+    editor.rows = 18;
+    editor.value = backingInput.value || DEFAULT_GROUNDED_DIALOGUE_RULES;
+    editor.style.cssText = 'min-block-size: 340px; resize: vertical; font-family: var(--monoFontFamily, monospace);';
+
+    const actions = document.createElement('div');
+    actions.className = 'sb-conversation-field-row';
+    actions.style.cssText = 'justify-content: flex-end; gap: 8px;';
+
+    const resetButton = document.createElement('button');
+    resetButton.type = 'button';
+    resetButton.className = 'menu_button';
+    resetButton.textContent = 'Reset';
+
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'menu_button';
+    cancelButton.textContent = 'Cancel';
+
+    const saveButton = document.createElement('button');
+    saveButton.type = 'button';
+    saveButton.className = 'menu_button';
+    saveButton.textContent = 'Save Rules';
+
+    actions.append(resetButton, cancelButton, saveButton);
+    modal.append(header, hint, editor, actions);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    const closeEditor = () => closeGroundedDialogueRulesEditor(overlay, previouslyFocusedElement);
+    closeButton.addEventListener('click', closeEditor);
+    cancelButton.addEventListener('click', closeEditor);
+    resetButton.addEventListener('click', () => {
+        editor.value = DEFAULT_GROUNDED_DIALOGUE_RULES;
+        editor.focus({ preventScroll: true });
+    });
+    saveButton.addEventListener('click', () => {
+        backingInput.value = editor.value;
+        backingInput.dispatchEvent(new Event('input', { bubbles: true }));
+        saveCurrentPanelSettings();
+        toastr.success('Grounded Dialogue Rules updated.');
+        closeEditor();
+    });
+    overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) {
+            closeEditor();
+        }
+    });
+    overlay.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeEditor();
+        }
+    });
+
+    requestAnimationFrame(() => editor.focus({ preventScroll: true }));
+}
+
+function focusConversationInput({ skipIOS = false } = {}) {
+    if (skipIOS && isIOSWebKitPlatform()) {
+        return;
+    }
+
+    const input = document.getElementById(CHROME_IDS.input);
+    if (input instanceof HTMLTextAreaElement) {
+        input.focus({ preventScroll: true });
+    }
+}
+
+function getConversationFullAvatarUrl(file, type) {
+    if (!file || file === 'none') {
+        return '';
+    }
+
+    if (type === 'persona') {
+        return getUserAvatar(file);
+    }
+
+    return `/characters/${encodeURIComponent(file)}`;
+}
+
+function getConversationZoomedAvatarElement(avatarKey) {
+    return $('.zoomed_avatar').filter(function () {
+        return $(this).attr('forChar') === avatarKey;
+    });
+}
+
+function removeConversationZoomedAvatar($avatar) {
+    $avatar.fadeOut(animation_duration, () => {
+        $avatar.remove();
+    });
+}
+
+function showConversationZoomedAvatar(target) {
+    const file = target.dataset.avatarFile || '';
+    const type = target.dataset.avatarType || 'avatar';
+    const avatarSrc = getConversationFullAvatarUrl(file, type);
+    if (!avatarSrc) {
+        return;
+    }
+
+    const avatarKey = `${type}:${file}`;
+    const existingAvatar = getConversationZoomedAvatarElement(avatarKey);
+    if (existingAvatar.length) {
+        removeConversationZoomedAvatar(existingAvatar);
+        return;
+    }
+
+    if (!power_user.movingUI) {
+        $('.zoomed_avatar').each(function () {
+            const currentForChar = $(this).attr('forChar');
+            if (currentForChar && currentForChar !== avatarKey) {
+                $(this).remove();
+            }
+        });
+    }
+
+    const template = $('#zoomed_avatar_template').html();
+    if (!template) {
+        return;
+    }
+
+    const safeId = avatarKey.replace(/[^\w-]/g, '_');
+    const newElement = $(template);
+    newElement.attr('forChar', avatarKey);
+    newElement.attr('id', `zoomFor_${safeId}`);
+    newElement.addClass('draggable');
+    newElement.find('.drag-grabber').attr('id', `zoomFor_${safeId}header`);
+
+    const zoomedAvatarImgElement = newElement.find('.zoomed_avatar_img');
+    zoomedAvatarImgElement.attr('src', avatarSrc);
+    zoomedAvatarImgElement.attr('data-izoomify-url', avatarSrc);
+    zoomedAvatarImgElement.on('dragstart', (event) => {
+        event.preventDefault();
+        return false;
+    });
+
+    newElement.on('click touchend', '.dragClose', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        removeConversationZoomedAvatar(newElement);
+    });
+
+    $('body').append(newElement);
+    newElement.fadeIn(animation_duration);
+    loadMovingUIState();
+    newElement.css('display', 'flex');
+    dragElement(newElement);
+
+    if (power_user.zoomed_avatar_magnification) {
+        newElement.find('.zoomed_avatar_container').izoomify();
+    }
+}
+
+export async function selectConversationThread(avatar, { branchId = '', groupId = null, personaId = getConversationPersonaId(), showToast = false } = {}) {
+    if (!avatar) {
+        return false;
+    }
+
+    if (personaId && !await switchConversationPersona(personaId)) {
+        return false;
+    }
+
+    const normalizedGroupId = groupId ? String(groupId) : '';
+    return openConversationWorkspaceForAvatar(avatar, {
+        branchId,
+        groupId: normalizedGroupId || null,
+        showToast,
+    });
+}
+
+export function bindConversationChromeControls(sheld) {
+    if (sheld.dataset.sbConversationChromeBound === 'true') {
+        return;
+    }
+
+    sheld.dataset.sbConversationChromeBound = 'true';
+    sheld.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+            return;
+        }
+
+        const target = event.target instanceof Element ? event.target.closest('[data-sb-conversation-action="zoom-avatar"]') : null;
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        event.preventDefault();
+        target.click();
+    });
+
+    sheld.addEventListener('click', async (event) => {
+        const target = event.target instanceof Element ? event.target.closest('[data-sb-conversation-action], .sb-conversation-pal, .sb-conversation-mobile-menu-trigger') : null;
+
+        if (!target || (!target.closest('.sb-conversation-message-actions') && !target.closest('.sb-conversation-mobile-menu-trigger'))) {
+            document.querySelectorAll('.sb-conversation-message-actions.open').forEach(el => {
+                el.classList.remove('open');
+            });
+        }
+
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        if (target.classList.contains('sb-conversation-mobile-menu-trigger')) {
+            event.stopPropagation();
+            const currentBubble = target.closest('.sb-conversation-message-bubble');
+            const currentActionBar = currentBubble?.querySelector('.sb-conversation-message-actions');
+            if (currentActionBar) {
+                const isOpen = currentActionBar.classList.contains('open');
+                document.querySelectorAll('.sb-conversation-message-actions.open').forEach(el => {
+                    if (el !== currentActionBar) {
+                        el.classList.remove('open');
+                    }
+                });
+                if (isOpen) {
+                    currentActionBar.classList.remove('open');
+                } else {
+                    currentActionBar.classList.add('open');
+                }
+            }
+            return;
+        }
+
+        if (target.classList.contains('sb-conversation-pal')) {
+            const avatar = target.dataset.avatar || characters[parsePositiveInt(target.dataset.characterIndex, -1, 0)]?.avatar;
+            const groupId = target.dataset.groupId || '';
+            if (avatar) {
+                closePalsRail();
+                await selectConversationThread(avatar, {
+                    groupId: groupId || null,
+                    showToast: false,
+                });
+            }
+            return;
+        }
+
+        switch (target.dataset.sbConversationAction) {
+            case 'zoom-avatar':
+                event.preventDefault();
+                event.stopPropagation();
+                showConversationZoomedAvatar(target);
+                break;
+            case 'toggle-tools': {
+                const currentVisible = getConversationToolsVisible();
+                setConversationToolsVisible(!currentVisible);
+                syncConversationToolsVisibility();
+                break;
+            }
+            case 'toggle-pals':
+                togglePalsRail();
+                break;
+            case 'close-pals':
+                closePalsRail();
+                break;
+            case 'open-settings':
+                openConversationSettings();
+                break;
+            case 'close-settings':
+                closeConversationSettings();
+                break;
+            case 'polish-character-message':
+                await handleCharacterMessagePolish(target.dataset.messageId, target);
+                break;
+            case 'open-add-member':
+                openAddMemberPicker();
+                break;
+            case 'open-add-dm':
+                toggleAddDmPicker();
+                break;
+            case 'open-new-group-chat':
+                toggleConversationGroupPicker();
+                break;
+            case 'mark-all-read': {
+                const { cleared, removedLegacy } = clearAllConversationUnreadCounts();
+                schedulePalsRailRender();
+                if (cleared > 0 || removedLegacy > 0) {
+                    toastr.success('Marked all Conversation pings as read.');
+                } else {
+                    toastr.info('No Conversation pings to clear.');
+                }
+                break;
+            }
+            case 'create-conversation-group':
+                await handleCreateConversationGroupFromPicker();
+                break;
+            case 'cancel-conversation-group':
+                hideConversationStartPicker();
+                break;
+            case 'attach-file': {
+                const fileInput = document.getElementById(CHROME_IDS.fileInput);
+                if (fileInput instanceof HTMLInputElement) {
+                    fileInput.click();
+                }
+                break;
+            }
+            case 'clear-attachments':
+                clearConversationAttachmentInput();
+                break;
+            case 'clear-reply-target':
+                clearConversationReplyTarget();
+                break;
+            case 'create-memory':
+                await forceCreateMemoryFromPanel();
+                break;
+            case 'refresh-memory':
+                await refreshConversationMemoryFromPanel();
+                break;
+            case 'clear-memory':
+                clearConversationMemoryFromPanel();
+                break;
+            case 'stop-image-generation':
+                conversationState.imageGenerationAbortController?.abort?.();
+                conversationState.imageGenerationActive = false;
+                conversationState.imageGenerationAbortController = null;
+                scheduleTimelineRender();
+                toastr.info('Image generation stopped.');
+                break;
+            case 'add-character-dm': {
+                const index = parsePositiveInt(target.dataset.characterIndex, -1, 0);
+                if (index >= 0) {
+                    const char = characters[index];
+                    if (char?.avatar) {
+                        if (isIOSWebKitPlatform()) {
+                            focusConversationInput();
+                        }
+
+                        const charSettings = getSettings(char.avatar, { groupId: '' });
+                        charSettings.enabled = true;
+                        saveSettings(char.avatar, charSettings, { groupId: '' });
+                        document.getElementById('sb_conversation_add_dm_picker')?.setAttribute('hidden', '');
+                        closePalsRail();
+                        await selectConversationThread(char.avatar, {
+                            groupId: null,
+                            showToast: false,
+                        });
+                        schedulePalsRailRender();
+                        setTimeout(() => {
+                            focusConversationInput({ skipIOS: true });
+                        }, 100);
+                    }
+                }
+                break;
+            }
+            case 'select-branch': {
+                const avatar = target.dataset.avatar;
+                const groupId = target.dataset.groupId || '';
+                const branchId = target.dataset.branchId;
+                if (avatar && branchId) {
+                    setActiveConversationBranch(avatar, branchId, { groupId });
+                    openConversationWorkspaceForAvatar(avatar, {
+                        groupId: groupId || null,
+                        showToast: false,
+                    });
+                    scheduleInterfaceRefresh({ syncControls: false });
+                    renderConversationMemoryPanel();
+                    document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
+                }
+                break;
+            }
+            case 'new-branch': {
+                const avatar = target.dataset.avatar;
+                const groupId = target.dataset.groupId || '';
+                const character = getCharacterForAvatar(avatar);
+                if (!avatar) {
+                    break;
+                }
+                const fallbackName = `Chat ${getConversationBranches(avatar, { groupId }).length + 1}`;
+                const name = globalThis.prompt?.(`Name this Conversation branch for ${character?.name || 'this character'}`, fallbackName) || fallbackName;
+                createConversationBranchForAvatar(avatar, name, { groupId });
+                openConversationWorkspaceForAvatar(avatar, {
+                    groupId: groupId || null,
+                    showToast: false,
+                });
+                scheduleInterfaceRefresh({ syncControls: false });
+                renderConversationMemoryPanel();
+                document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
+                break;
+            }
+            case 'rename-branch': {
+                const avatar = target.dataset.avatar;
+                const groupId = target.dataset.groupId || '';
+                const branchId = target.dataset.branchId;
+                const branch = getConversationBranches(avatar, { groupId }).find(item => item.id === branchId);
+                if (avatar && branchId && branch) {
+                    const name = globalThis.prompt?.('Rename Conversation branch', branch.name || 'Conversation');
+                    if (name?.trim()) {
+                        renameConversationBranch(avatar, branchId, name, { groupId });
+                        schedulePalsRailRender();
+                        if (isConversationActiveThread(avatar, groupId)) {
+                            updateConversationHeader(getSettings(avatar, { groupId }));
+                            renderConversationMemoryPanel();
+                        }
+                    }
+                }
+                break;
+            }
+            case 'delete-branch': {
+                const avatar = target.dataset.avatar;
+                const groupId = target.dataset.groupId || '';
+                const branchId = target.dataset.branchId;
+                const branch = getConversationBranches(avatar, { groupId }).find(item => item.id === branchId);
+                if (avatar && branchId && branch) {
+                    const confirmed = typeof globalThis.confirm === 'function'
+                        ? globalThis.confirm(`Delete the "${branch.name || 'Conversation'}" branch? This cannot be undone.`)
+                        : true;
+                    if (confirmed) {
+                        deleteConversationBranch(avatar, branchId, { groupId });
+                        if (isConversationActiveThread(avatar, groupId)) {
+                            scheduleInterfaceRefresh({ syncControls: false });
+                            renderConversationMemoryPanel();
+                        } else {
+                            schedulePalsRailRender();
+                        }
+                    }
+                }
+                break;
+            }
+            case 'delete-dm': {
+                const avatar = target.dataset.avatar;
+                const groupId = target.dataset.groupId || '';
+                const character = getCharacterForAvatar(avatar);
+                if (!avatar) {
+                    break;
+                }
+                const name = character?.name || 'this character';
+                const historyLabel = groupId ? `group Conversation history with ${name}` : `solo DM history with ${name}`;
+                const confirmed = typeof globalThis.confirm === 'function'
+                    ? globalThis.confirm(`Delete your previous ${historyLabel}? This cannot be undone.`)
+                    : true;
+                if (confirmed) {
+                    resetCharacterConversationBranches(avatar, { groupId });
+                    setLastConversationPreview(avatar, 'Conversation ready', { groupId });
+                    clearUnreadCount(avatar, { groupId });
+                    resetFollowupCount(avatar, { groupId });
+
+                    if (!groupId) {
+                        const charSettings = getSettings(avatar, { groupId: '' });
+                        charSettings.enabled = false;
+                        saveSettings(avatar, charSettings, { groupId: '' });
+                    }
+
+                    if (isConversationActiveThread(avatar, groupId)) {
+                        const remainingPals = getConversationRailItems()
+                            .filter(item => !(item.character.avatar === avatar && item.groupId === groupId));
+                        if (remainingPals.length > 0) {
+                            const nextPal = remainingPals[0];
+                            openConversationWorkspaceForAvatar(nextPal.character.avatar, { groupId: nextPal.groupId || null, showToast: false });
+                            scheduleInterfaceRefresh({ syncControls: true });
+                        } else {
+                            conversationState.conversationWorkspaceOpen = false;
+                            emitConversationWorkspaceStateChange();
+                            scheduleInterfaceRefresh({ syncControls: false });
+                        }
+                    } else {
+                        schedulePalsRailRender();
+                    }
+                    toastr.success(`Deleted ${historyLabel}.`);
+                }
+                break;
+            }
+            case 'new-chat': {
+                const avatar = getCurrentCharAvatar();
+                if (!avatar) {
+                    toastr.warning('Pick a DM first.');
+                    break;
+                }
+                const groupId = getConversationGroupIdForAvatar(avatar);
+                createConversationBranchForAvatar(avatar, `Chat ${getConversationBranches(avatar, { groupId }).length + 1}`, { groupId });
+                updateLastUserActivity(avatar, { groupId });
+                scheduleInterfaceRefresh({ syncControls: false });
+                renderConversationMemoryPanel();
+                toastr.success('New Conversation branch started.');
+                break;
+            }
+            case 'edit-message':
+                editConversationMessage(target.dataset.messageId);
+                break;
+            case 'reply-message':
+                replyToConversationMessage(target.dataset.messageId);
+                break;
+            case 'copy-message':
+                await copyConversationMessage(target.dataset.messageId);
+                break;
+            case 'speak-message':
+                await speakConversationMessage(target.dataset.messageId);
+                break;
+            case 'toggle-message-pin':
+                toggleConversationMessagePin(target.dataset.messageId);
+                break;
+            case 'react-message':
+                reactConversationMessage(target.dataset.messageId, target.dataset.reaction);
+                break;
+            case 'branch-from-message':
+                branchConversationFromMessage(target.dataset.messageId);
+                break;
+            case 'regenerate-message':
+                await regenerateConversationMessage(target.dataset.messageId);
+                break;
+            case 'delete-message': {
+                const confirmed = typeof globalThis.confirm === 'function'
+                    ? globalThis.confirm('Delete this Conversation message?')
+                    : true;
+                if (confirmed) {
+                    deleteConversationMessage(target.dataset.messageId);
+                }
+                break;
+            }
+            case 'quick-selfie':
+                await quickConversationSelfie();
+                break;
+            case 'generate-selfie-command':
+                await generateConversationSelfieFromMessageCommand(target.dataset.messageId, target.dataset.selfieIndex);
+                break;
+            case 'quick-remind':
+                await quickConversationReminder();
+                break;
+            case 'quick-summarize':
+                await quickConversationSummarize();
+                break;
+            case 'force-response': {
+                const avatar = getCurrentCharAvatar();
+                if (avatar) {
+                    const groupId = conversationState.conversationSelectedGroupId || '';
+                    const personaId = getConversationPersonaId();
+                    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
+                    const branchId = threadStore?.activeBranchId || '';
+                    const messages = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
+                    sendQueue.push(createForcedConversationQueueItem({
+                        avatar,
+                        branchId,
+                        groupId,
+                        personaId,
+                        threadKey: getConversationThreadKey(avatar, groupId, { personaId }),
+                        createdAt: Date.now(),
+                    }, messages));
+                    void processSendQueue();
+                }
+                break;
+            }
+            case 'set-channel':
+                setConversationTimelineChannel(target.dataset.channel);
+                break;
+            case 'weekly-add':
+                addWeeklyScheduleRow();
+                break;
+            case 'edit-schedule': {
+                const avatar = getCurrentCharAvatar();
+                if (avatar || getCurrentGroupConversationMembers().length) {
+                    openScheduleEditorModal(avatar);
+                }
+                break;
+            }
+            case 'reset-prompt': {
+                const area = document.getElementById('sb_conv_geechan_chatroom_prompt');
+                if (area instanceof HTMLTextAreaElement) {
+                    area.value = GEECHAN_DEFAULT_PROMPT;
+                    area.dispatchEvent(new Event('input', { bubbles: true }));
+                    toastr.success('System prompt reset to default Geechan preset.');
+                }
+                break;
+            }
+            case 'edit-grounded-dialogue-rules':
+                openGroundedDialogueRulesEditor();
+                break;
+            case 'weekly-remove': {
+                const row = target.closest('.sb-conversation-weekly-row');
+                if (row instanceof HTMLElement) {
+                    row.remove();
+                    saveCurrentPanelSettings();
+                }
+                break;
+            }
+            case 'set-user-status': {
+                const status = target.dataset.status;
+                if (status) {
+                    setUserStatus(status);
+                    updateUserFooter();
+                    document.getElementById(CHROME_IDS.userStatusPicker)?.setAttribute('hidden', '');
+                }
+                break;
+            }
+            case 'open-user-status-picker':
+                toggleUserStatusPicker();
+                break;
+            case 'edit-user-persona-status':
+                editUserPersonaStatus();
+                break;
+            case 'open-persona-picker':
+                togglePersonaPicker();
+                break;
+            case 'pick-persona': {
+                const avatarId = target.dataset.personaAvatar;
+                if (avatarId) {
+                    if (!await switchConversationPersona(avatarId)) {
+                        break;
+                    }
+                    updateUserFooter();
+                    const picker = document.getElementById(CHROME_IDS.personaPicker);
+                    if (picker instanceof HTMLElement) {
+                        renderConversationPersonaPicker(picker);
+                    }
+                }
+                break;
+            }
+            case 'generate-schedule': {
+                if (conversationState.scheduleGenerationBusy) {
+                    break;
+                }
+                const character = getCurrentCharacter();
+                const genAvatar = getCurrentCharAvatar();
+                if (!character || !genAvatar) {
+                    toastr.warning('No character selected.');
+                    break;
+                }
+                conversationState.scheduleGenerationBusy = true;
+                const genBtn = target;
+                const personaId = getConversationPersonaId();
+                genBtn.setAttribute('disabled', '');
+                toastr.info(`Generating schedule for ${character.name}…`);
+                try {
+                    const groupId = getConversationGroupIdForAvatar(genAvatar);
+                    const schedule = await generateCharacterSchedule(character, { groupId, personaId });
+                    if (schedule) {
+                        saveStoredSchedule(genAvatar, schedule, { personaId });
+                        const genSettings = getSettings(genAvatar, { groupId, personaId });
+                        genSettings.auto_schedule = JSON.stringify(schedule);
+                        genSettings.talkativeness = schedule.talkativeness;
+                        genSettings.inactivity_threshold = schedule.inactivityThresholdMinutes;
+                        genSettings.schedule_generated_at = Date.now();
+                        if (groupId) {
+                            saveGroupConversationSettings(groupId, genSettings, { personaId });
+                        }
+                        saveSettings(genAvatar, genSettings, { groupId, personaId });
+                        if (isConversationActiveThread(genAvatar, groupId, { personaId })) {
+                            applySettingsToPanel(genSettings);
+                            renderScheduleDisplay();
+                            updateConversationChrome(genSettings);
+                        }
+                        toastr.success(`Schedule generated for ${character.name}.`);
+                    } else {
+                        toastr.warning('Schedule generation returned no data. Try again.');
+                    }
+                } catch (err) {
+                    console.error('Schedule generation error:', err);
+                    toastr.error('Schedule generation failed.');
+                } finally {
+                    conversationState.scheduleGenerationBusy = false;
+                    genBtn.removeAttribute('disabled');
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    });
+
+    const form = document.getElementById(CHROME_IDS.form);
+    if (form instanceof HTMLFormElement && form.dataset.sbConversationBound !== 'true') {
+        form.dataset.sbConversationBound = 'true';
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            void submitConversationInput();
+        });
+    }
+
+    const input = document.getElementById(CHROME_IDS.input);
+    if (input instanceof HTMLTextAreaElement && input.dataset.sbConversationBound !== 'true') {
+        input.dataset.sbConversationBound = 'true';
+        input.addEventListener('keydown', (event) => {
+            if (event.isComposing || event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || !shouldSendOnEnter()) {
+                return;
+            }
+
+            event.preventDefault();
+            void submitConversationInput();
+        });
+        input.addEventListener('input', () => {
+            input.style.height = 'auto';
+            input.style.height = `${input.scrollHeight}px`;
+        });
+        input.addEventListener('paste', (event) => {
+            const files = Array.from(event.clipboardData?.files || []);
+            if (!files.length) {
+                return;
+            }
+
+            event.preventDefault();
+            addConversationFilesToInput(files);
+        });
+    }
+
+    const fileInput = document.getElementById(CHROME_IDS.fileInput);
+    if (fileInput instanceof HTMLInputElement && fileInput.dataset.sbConversationBound !== 'true') {
+        fileInput.dataset.sbConversationBound = 'true';
+        fileInput.addEventListener('change', updateConversationAttachmentPreview);
+    }
+
+    const drawer = document.getElementById(CHROME_IDS.settingsDrawer);
+    if (drawer instanceof HTMLElement && drawer.dataset.sbConversationBound !== 'true') {
+        drawer.dataset.sbConversationBound = 'true';
+        drawer.addEventListener('change', saveCurrentPanelSettings);
+    }
+
+    const notificationMuted = document.getElementById('sb_conv_notifications_muted');
+    if (notificationMuted instanceof HTMLInputElement && notificationMuted.dataset.sbConversationBound !== 'true') {
+        notificationMuted.dataset.sbConversationBound = 'true';
+        notificationMuted.addEventListener('change', updateConversationNotificationSettingsVisibility);
+    }
+
+    const searchInput = document.getElementById(CHROME_IDS.search);
+    if (searchInput instanceof HTMLInputElement && searchInput.dataset.sbConversationBound !== 'true') {
+        searchInput.dataset.sbConversationBound = 'true';
+        const debouncedSearch = debounce(() => updateConversationSearchQuery(searchInput.value), debounce_timeout.short);
+        searchInput.addEventListener('input', debouncedSearch);
+    }
+
+    const stage = document.getElementById(CHROME_IDS.stage);
+    if (stage instanceof HTMLElement && stage.dataset.sbConversationDropBound !== 'true') {
+        stage.dataset.sbConversationDropBound = 'true';
+        const stopDrag = () => {
+            stage.dataset.dragging = 'false';
+            const dropHint = document.getElementById(CHROME_IDS.dropHint);
+            if (dropHint instanceof HTMLElement) {
+                dropHint.hidden = true;
+            }
+        };
+
+        stage.addEventListener('dragover', (event) => {
+            event.preventDefault();
+            stage.dataset.dragging = 'true';
+            const dropHint = document.getElementById(CHROME_IDS.dropHint);
+            if (dropHint instanceof HTMLElement) {
+                dropHint.hidden = false;
+            }
+        });
+        stage.addEventListener('dragleave', stopDrag);
+        stage.addEventListener('drop', (event) => {
+            event.preventDefault();
+            stopDrag();
+            const files = Array.from(event.dataTransfer?.files || []);
+            if (files.length) {
+                addConversationFilesToInput(files);
+            }
+        });
+    }
+
+    const backdrop = document.getElementById(CHROME_IDS.settingsBackdrop);
+    if (backdrop instanceof HTMLElement && backdrop.dataset.sbConversationBound !== 'true') {
+        backdrop.dataset.sbConversationBound = 'true';
+        backdrop.addEventListener('click', () => {
+            closeConversationSettings();
+            closePalsRail();
+        });
+    }
+
+    const palsSearch = document.getElementById('sb_conversation_pals_search');
+    if (palsSearch instanceof HTMLInputElement && palsSearch.dataset.sbConversationBound !== 'true') {
+        palsSearch.dataset.sbConversationBound = 'true';
+        const debouncedPalsFilter = debounce(() => {
+            const query = palsSearch.value.toLowerCase().trim();
+            const pals = document.querySelectorAll('.sb-conversation-pal');
+            pals.forEach(pal => {
+                if (pal instanceof HTMLElement) {
+                    const palName = pal.querySelector('.sb-conversation-pal-name')?.textContent?.toLowerCase() || '';
+                    const row = pal.closest('.sb-conversation-pal-row');
+                    const targetElement = row instanceof HTMLElement ? row : pal;
+                    if (palName.includes(query)) {
+                        targetElement.classList.remove('sb-conversation-hidden');
+                    } else {
+                        targetElement.classList.add('sb-conversation-hidden');
+                    }
+                }
+            });
+        }, debounce_timeout.short);
+        palsSearch.addEventListener('input', debouncedPalsFilter);
+    }
+
+    const personaPicker = document.getElementById(CHROME_IDS.personaPicker);
+    if (personaPicker instanceof HTMLElement && personaPicker.dataset.sbConversationAppendicesBound !== 'true') {
+        personaPicker.dataset.sbConversationAppendicesBound = 'true';
+        personaPicker.addEventListener('change', (event) => {
+            const checkbox = event.target instanceof Element
+                ? event.target.closest('.sb-conversation-persona-note-checkbox')
+                : null;
+            if (!(checkbox instanceof HTMLInputElement)) {
+                return;
+            }
+
+            const avatarId = checkbox.dataset.personaAvatar;
+            if (!avatarId) {
+                return;
+            }
+
+            const selectedIds = Array.from(personaPicker.querySelectorAll('.sb-conversation-persona-note-checkbox'))
+                .filter(input => input instanceof HTMLInputElement && input.dataset.personaAvatar === avatarId && input.checked)
+                .map(input => input.value);
+            const threadAvatar = getCurrentCharAvatar();
+            setActiveConversationPersonaAppendixIds(avatarId, selectedIds, {
+                avatar: threadAvatar,
+                groupId: getConversationGroupIdForAvatar(threadAvatar),
+                personaId: avatarId,
+            });
+            renderConversationPersonaPicker(personaPicker);
+            updateUserFooter();
+        });
+    }
+}
+
+export function getDefaultConversationAvatar() {
+    if (conversationState.conversationSelectedAvatar && getCharacterForAvatar(conversationState.conversationSelectedAvatar)) {
+        return conversationState.conversationSelectedAvatar;
+    }
+
+    const pal = getConversationPals().find(item => item.character?.avatar);
+    if (pal?.character?.avatar) {
+        return pal.character.avatar;
+    }
+
+    const currentAvatar = getRoleplayCurrentCharacter()?.avatar;
+    if (currentAvatar) {
+        return currentAvatar;
+    }
+
+    return (Array.isArray(characters) ? characters : []).find(character => character?.avatar)?.avatar || null;
+}
+
+function emitConversationWorkspaceStateChange() {
+    window.dispatchEvent(new CustomEvent('sb:conversation-workspace-state-changed', {
+        detail: {
+            open: Boolean(conversationState.conversationWorkspaceOpen),
+        },
+    }));
+}
+
+export function openConversationWorkspaceForAvatar(avatar, { branchId = '', groupId = null, showToast = true, enable = false } = {}) {
+    closeConversationSettings();
+    const character = avatar ? getCharacterForAvatar(avatar) : null;
+    const targetAvatar = character?.avatar || null;
+    const targetGroupId = groupId && targetAvatar && isAvatarInConversationGroup(targetAvatar, groupId) ? String(groupId) : null;
+    if (branchId && targetAvatar && !getConversationBranches(targetAvatar, { groupId: targetGroupId }).some(branch => branch.id === String(branchId))) {
+        return false;
+    }
+    const wasWorkspaceOpen = Boolean(conversationState.conversationWorkspaceOpen);
+    const threadChanged = conversationState.conversationSelectedAvatar !== targetAvatar || conversationState.conversationSelectedGroupId !== targetGroupId;
+    conversationState.conversationWorkspaceOpen = true;
+    emitConversationWorkspaceStateChange();
+    conversationState.conversationSelectedAvatar = targetAvatar;
+    conversationState.conversationSelectedGroupId = targetGroupId;
+    conversationState.conversationUnavailableGroupId = null;
+    if (threadChanged) {
+        conversationState.conversationTimelineChannel = 'main';
+        conversationState.conversationTimelineSearchQuery = '';
+    }
+    if (!wasWorkspaceOpen || threadChanged) {
+        conversationState.timelineBottomScrollPending = true;
+    }
+    ensureConversationStylesheet();
+
+    if (!targetAvatar) {
+        scheduleInterfaceRefresh({ syncControls: false });
+        setTimeout(() => {
+            document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
+        }, 100);
+        return false;
+    }
+
+    if (branchId) {
+        setActiveConversationBranch(targetAvatar, String(branchId), { groupId: targetGroupId });
+    }
+
+    const settings = getSettings(targetAvatar, { groupId: targetGroupId });
+    const wasEnabled = Boolean(settings.enabled);
+    if (enable && !settings.enabled) {
+        settings.enabled = true;
+        saveSettings(targetAvatar, settings, { groupId: targetGroupId });
+    }
+    requestConversationRuntimeStart();
+    applySettingsToPanel(settings);
+    scheduleInterfaceRefresh({ syncControls: true });
+    if (showToast && enable && !wasEnabled) {
+        toastr.info(`Conversation Mode activated for ${character.name || 'Character'}.`);
+    }
+    setTimeout(() => {
+        document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
+    }, 100);
+    return true;
+}
+
+export function openConversationWorkspaceFromWelcome() {
+    const avatar = conversationState.conversationSelectedAvatar || getDefaultConversationAvatar();
+    const selectedGroupId = conversationState.conversationSelectedGroupId || '';
+    const groupId = selectedGroupId && avatar && isAvatarInConversationGroup(avatar, selectedGroupId) ? selectedGroupId : null;
+    if (!avatar || !openConversationWorkspaceForAvatar(avatar, { groupId, showToast: false })) {
+        toastr.warning('Pick or import a character before opening Conversation Mode.');
+        return false;
+    }
+
+    return true;
+}
+
+export function getRoleplayAvatarForWelcome() {
+    return conversationState.conversationSelectedAvatar || getRoleplayCurrentCharacter()?.avatar || null;
+}
+
+export function disableConversationModeForCurrentCharacter({ focusRoleplay = true } = {}) {
+    const avatar = getCurrentCharAvatar();
+    const personaId = getConversationPersonaId();
+    const groupId = getConversationGroupIdForAvatar(avatar);
+    closeConversationSettings({ avatar, groupId, personaId });
+    conversationState.conversationWorkspaceOpen = false;
+    conversationState.conversationSelectedAvatar = null;
+    conversationState.conversationSelectedGroupId = null;
+    conversationState.conversationUnavailableGroupId = null;
+    conversationState.conversationTimelineChannel = 'main';
+    conversationState.conversationTimelineSearchQuery = '';
+    emitConversationWorkspaceStateChange();
+    scheduleInterfaceRefresh({ syncControls: false });
+    if (focusRoleplay) {
+        document.getElementById('send_textarea')?.focus?.({ preventScroll: false });
+    }
+}
+
+export function setConversationInterfaceActive(active) {
+    const chrome = active ? ensureConversationChrome() : { sheld: document.getElementById('sheld') };
+    if (!(chrome?.sheld instanceof HTMLElement)) {
+        return;
+    }
+
+    if (!active) {
+        chrome.sheld.removeAttribute('data-sb-conversation-mode');
+        closeConversationSettings();
+        closePalsRail();
+        for (const id of [CHROME_IDS.header, CHROME_IDS.stage, CHROME_IDS.palsRail]) {
+            const element = document.getElementById(id);
+            if (element instanceof HTMLElement) {
+                element.hidden = true;
+            }
+        }
+        const timeline = document.getElementById(CHROME_IDS.timeline);
+        if (timeline instanceof HTMLElement) {
+            // Mobile Safari keeps hidden DOM expensive; rebuild the timeline lazily on next open.
+            timeline.replaceChildren();
+            timeline.removeAttribute('data-sb-conversation-fingerprint');
+            conversationState.lastTimelineFingerprint = '';
+            conversationState.lastRenderedAvatar = null;
+            conversationState.lastRenderedThreadKey = '';
+            conversationState.lastRenderedMessageCount = 0;
+            conversationState.timelineBottomScrollPending = false;
+        }
+        return;
+    }
+
+    chrome.sheld.dataset.sbConversationMode = 'on';
+    for (const id of [CHROME_IDS.header, CHROME_IDS.stage, CHROME_IDS.palsRail]) {
+        const element = document.getElementById(id);
+        if (element instanceof HTMLElement) {
+            element.hidden = false;
+        }
+    }
+    updateUserFooter();
+}

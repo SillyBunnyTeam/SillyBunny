@@ -100,6 +100,25 @@ describe('in-chat agent scoped enabled state', () => {
         expect(store.getGlobalSettings().helperPrefillMessages).toBe('');
     });
 
+    test('stores hidden companion IDs in global settings', async () => {
+        const store = await importStore();
+
+        expect([...store.getHiddenAgentIds()]).toEqual([]);
+
+        store.setGlobalSettings({
+            hiddenCompanionAgentIds: ['companion-b', '', ' companion-a ', 'companion-b'],
+        });
+
+        expect(store.getGlobalSettings().hiddenCompanionAgentIds).toEqual(['companion-a', 'companion-b']);
+        expect(store.isAgentHidden('companion-a')).toBe(true);
+        expect(store.isAgentHidden('missing-companion')).toBe(false);
+
+        store.setHiddenAgentIds(new Set(['companion-c', 'companion-a']));
+
+        expect(store.getGlobalSettings().hiddenCompanionAgentIds).toEqual(['companion-a', 'companion-c']);
+        expect(saveSettingsDebounced).toHaveBeenCalledTimes(1);
+    });
+
     test('resolves compact regex snapshots from runtime cache', async () => {
         const store = await importStore();
         const snapshotStore = await import('../public/scripts/extensions/in-chat-agents/regex-snapshot-store.js');
@@ -303,7 +322,7 @@ describe('in-chat agent scoped enabled state', () => {
             wrapSuffix: 'suffix',
             patchStartTag: '<context_patch>',
             patchEndTag: '<done>',
-            maxTokens: 16000,
+            maxTokens: 64000,
         }));
 
         store.loadAgents([{
@@ -346,6 +365,10 @@ describe('in-chat agent scoped enabled state', () => {
             includeAuthorsNote: true,
             includeSystemPrompt: true,
             includeHistory: true,
+            includeInChatHistory: false,
+            chatHistoryDepth: 1,
+            includeAllChatHistory: true,
+            keepInChatHistoryWhenHostHidden: false,
             historyDepth: 3,
             feedback: {
                 enabled: false,
@@ -353,7 +376,11 @@ describe('in-chat agent scoped enabled state', () => {
             },
             batch: false,
             batchAgentIds: [],
-            maxTokens: 32000,
+            sendContextToCompanions: false,
+            contextRecipientAgentIds: [],
+            dependencies: [],
+            waitForDependencies: false,
+            maxTokens: 64000,
         });
         expect(store.isCompanionAgent(agent)).toBe(false);
     });
@@ -370,6 +397,10 @@ describe('in-chat agent scoped enabled state', () => {
             includePersona: true,
             includeWorldInfo: true,
             includeHistory: true,
+            includeInChatHistory: true,
+            chatHistoryDepth: 999,
+            includeAllChatHistory: false,
+            keepInChatHistoryWhenHostHidden: true,
             historyDepth: -1,
             feedback: {
                 enabled: true,
@@ -377,16 +408,26 @@ describe('in-chat agent scoped enabled state', () => {
             },
             batch: true,
             batchAgentIds: ['continuity-companion', 'director-commentary'],
+            sendContextToCompanions: true,
+            contextRecipientAgentIds: ['level-up-companion', 'stats-companion'],
+            dependencies: ['level-up-companion'],
+            waitForDependencies: true,
             maxTokens: 999999,
         })).toEqual(expect.objectContaining({
             trigger: 'manual',
             displayMode: 'hidden',
             format: 'html',
-            contextMessages: 50,
+            // Context Messages and Notes to keep have no upper bound: they are look-back dials,
+            // and a ceiling silently rewrote whatever the user saved.
+            contextMessages: 999,
             includeCharacterCard: true,
             includePersona: true,
             includeWorldInfo: true,
             includeHistory: true,
+            includeInChatHistory: true,
+            chatHistoryDepth: 999,
+            includeAllChatHistory: false,
+            keepInChatHistoryWhenHostHidden: true,
             historyDepth: 1,
             feedback: {
                 enabled: true,
@@ -394,7 +435,11 @@ describe('in-chat agent scoped enabled state', () => {
             },
             batch: true,
             batchAgentIds: ['continuity-companion', 'director-commentary'],
-            maxTokens: 32000,
+            sendContextToCompanions: true,
+            contextRecipientAgentIds: ['level-up-companion', 'stats-companion'],
+            dependencies: ['level-up-companion'],
+            waitForDependencies: true,
+            maxTokens: 64000,
         }));
 
         expect(store.normalizeCompanionConfig({
@@ -406,6 +451,24 @@ describe('in-chat agent scoped enabled state', () => {
             feedback: { depth: 'never' },
             maxTokens: 'never',
         })).toEqual(store.createDefaultCompanionConfig());
+
+        // The reported case: 200 survives a save/load round trip instead of snapping back to 50.
+        expect(store.normalizeCompanionConfig({
+            contextMessages: 200,
+            chatHistoryDepth: 200,
+        })).toEqual(expect.objectContaining({
+            contextMessages: 200,
+            chatHistoryDepth: 200,
+        }));
+
+        // The lower bound still holds.
+        expect(store.normalizeCompanionConfig({
+            contextMessages: 0,
+            chatHistoryDepth: -5,
+        })).toEqual(expect.objectContaining({
+            contextMessages: 1,
+            chatHistoryDepth: 1,
+        }));
     });
 
     test('normalizes category and execution independently for companion agents', async () => {

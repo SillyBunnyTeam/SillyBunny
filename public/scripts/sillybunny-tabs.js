@@ -1,16 +1,34 @@
 import { DEFAULT_SCROLL_EDGE_SETTLE_DELAYS, jumpScrollElementToEdge } from './chat-scroll-edges.js';
 import {
+    clampMobileShellText as clampText,
     createMobileShellLifecycle,
     MOBILE_SHELL_NAV_TOGGLE_ACTION,
+    normalizeMobileShellRailIcon as normalizeFontAwesomeIcon,
+    normalizeMobileShellText as normalizeText,
 } from './mobile-shell-lifecycle/index.js';
+import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
 import { createPresetApiSyncLifecycle } from './preset-api-sync-lifecycle/index.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
 import { hasServerReturnedAfterRestart } from './server-restart-monitor.js';
+import {
+    PERSONA_APPENDICES_DEFAULT_SCOPE_KEY,
+    PERSONA_APPENDICES_SELECTIONS_KEY,
+} from './sillybunny-conversation/constants.js';
+import { conversationState } from './sillybunny-conversation/state.js';
+import {
+    resolveCharacterBadgeMirrorPlan,
+    resolveTopbarAdoptionPlan,
+    TOPBAR_ADOPTED_MARKER_ATTRIBUTE,
+    TOPBAR_ADOPTION_ATTRIBUTE,
+    TOPBAR_EXTENSION_SLOT_ID,
+} from './topbar-extension-slot/index.js';
+import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
-import { flushCharacterSaveDebounced, getOneCharacter, refreshCsrfToken, saveSettingsDebounced } from '../script.js';
+import { characters, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
 
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
+const SB_SHELL_SUBTITLE_PLACEHOLDER = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.';
 
 const SB_STORAGE_KEYS = Object.freeze({
     leftTab: 'sb-left-tab',
@@ -26,11 +44,16 @@ const SB_STORAGE_KEYS = Object.freeze({
     topbarLabelDesktopParts: 'sb-topbar-label-desktop-parts',
     topbarLabelMobilePart: 'sb-topbar-label-mobile-part',
     topbarLabelCustomText: 'sb-topbar-label-custom-text',
+    topbarLabelClickCycle: 'sb-topbar-label-click-cycle',
     chatbarVisible: 'sb-chatbar-visible',
     topbarOffset: 'sb-topbar-offset',
     settingsDrawerStatePrefix: 'sb-settings-inline-drawer',
     shortcutLeft: 'sb-shortcut-left',
     shortcutRight: 'sb-shortcut-right',
+    shortcutSlot3: 'sb-shortcut-slot3',
+    shortcutSlot4: 'sb-shortcut-slot4',
+    shortcutSlot5: 'sb-shortcut-slot5',
+    shortcutSlot6: 'sb-shortcut-slot6',
     bottomBarScale: 'sb-bottom-bar-scale',
     bottomChatSecondaryOpen: 'sb-bottom-chat-secondary-open',
     desktopButtonScale: 'sb-desktop-button-scale',
@@ -52,9 +75,16 @@ const SB_STORAGE_KEYS = Object.freeze({
     mobileQuickActionsLegacy: 'sb-mobile-quick-actions',
     settingsDrawerAutoClose: 'sb-settings-drawer-auto-close',
     compactMode: 'sb-compact-mode',
+    // Legacy single-key form of the per-device pair below; kept as a read-only seed so a bar
+    // configured before the split keeps its look on both devices.
+    topbarIconsOnly: 'sb-topbar-icons-only',
+    desktopTopbarIconsOnly: 'sb-desktop-topbar-icons-only',
+    mobileTopbarIconsOnly: 'sb-mobile-topbar-icons-only',
     frontendIcon: 'sb-frontend-icon',
     characterEditorSubTab: 'sb-character-editor-sub-tab',
     bottomChatBarVisible: 'sb-bottom-chat-bar-visible',
+    paperTextureEnabled: 'sb-paper-texture-enabled',
+    paperTextureOpacity: 'sb-paper-texture-opacity',
 });
 
 const SB_SHORTCUT_TARGETS = Object.freeze([
@@ -69,11 +99,34 @@ const SB_SHORTCUT_TARGETS = Object.freeze([
     { value: 'right:extensions', label: 'Extensions', icon: 'fa-cubes' },
     { value: 'characters:persona', label: 'Persona', icon: 'fa-face-smile' },
     { value: 'right:background', label: 'Background', icon: 'fa-panorama' },
+    { value: 'none', label: 'None', icon: 'fa-circle-minus' },
 ]);
 
 const SB_SHORTCUT_DEFAULTS = Object.freeze({
     left: 'left:agents',
     right: 'action:search',
+    slot3: 'none',
+    slot4: 'none',
+    slot5: 'none',
+    slot6: 'none',
+});
+const SB_SHORTCUT_SLOTS = Object.freeze(['left', 'right', 'slot3', 'slot4', 'slot5', 'slot6']);
+const SB_SHORTCUT_DESKTOP_SLOTS = Object.freeze(['slot3', 'slot4', 'slot5', 'slot6']);
+const SB_SHORTCUT_STORAGE_KEYS = Object.freeze({
+    left: SB_STORAGE_KEYS.shortcutLeft,
+    right: SB_STORAGE_KEYS.shortcutRight,
+    slot3: SB_STORAGE_KEYS.shortcutSlot3,
+    slot4: SB_STORAGE_KEYS.shortcutSlot4,
+    slot5: SB_STORAGE_KEYS.shortcutSlot5,
+    slot6: SB_STORAGE_KEYS.shortcutSlot6,
+});
+const SB_SHORTCUT_LABELS = Object.freeze({
+    left: 'Left',
+    right: 'Right',
+    slot3: 'Slot 3 (Desktop)',
+    slot4: 'Slot 4 (Desktop)',
+    slot5: 'Slot 5 (Desktop)',
+    slot6: 'Slot 6 (Desktop)',
 });
 const SB_PANEL_STYLESHEETS = Object.freeze({
     'characters:world-info': [
@@ -153,9 +206,14 @@ function debounceAction(callback, wait = SB_MOBILE_ACTION_DEBOUNCE_MS) {
 }
 
 function getShortcutTarget(side) {
-    const stored = migrateLegacyWorldInfoRoute(safeGetItem(side === 'left' ? SB_STORAGE_KEYS.shortcutLeft : SB_STORAGE_KEYS.shortcutRight));
+    const storageKey = SB_SHORTCUT_STORAGE_KEYS[side];
+    const stored = migrateLegacyWorldInfoRoute(storageKey ? safeGetItem(storageKey) : null);
     const valid = SB_SHORTCUT_TARGETS.some(t => t.value === stored);
-    return valid ? stored : SB_SHORTCUT_DEFAULTS[side];
+    return valid ? stored : SB_SHORTCUT_DEFAULTS[side] || 'none';
+}
+
+function getShortcutButtonId(side) {
+    return `sb-shortcut-${side}`;
 }
 
 function getShortcutConfig(target) {
@@ -327,6 +385,12 @@ const SB_TOPBAR_SCALE = Object.freeze({
     step: 5,
     defaultValue: 100,
 });
+const SB_PAPER_TEXTURE_OPACITY = Object.freeze({
+    min: 0,
+    max: 100,
+    step: 5,
+    defaultValue: 20,
+});
 const SB_TOPBAR_LABEL_PARTS = Object.freeze([
     {
         id: 'ctx',
@@ -347,6 +411,7 @@ const SB_TOPBAR_LABEL_PARTS = Object.freeze([
 const SB_TOPBAR_LABEL_PART_ORDER = Object.freeze(SB_TOPBAR_LABEL_PARTS.map(part => part.id));
 const SB_TOPBAR_LABEL_PART_IDS = new Set(SB_TOPBAR_LABEL_PART_ORDER);
 const SB_TOPBAR_LABEL_CUSTOM_TEXT_MAX_LENGTH = 48;
+const SB_TOPBAR_LABEL_CYCLE_RESET_MS = 5000;
 const SB_TOPBAR_DRAG_X_RATIO = 0.36;
 const SB_TOPBAR_DRAG_Y_RATIO = 0.24;
 const SB_TOPBAR_CONTEXT_REFRESH_DEBOUNCE = 220;
@@ -415,35 +480,44 @@ const SB_MESSAGE_STYLES = Object.freeze([
     { id: '2', label: 'Document', icon: 'fa-file-lines' },
 ]);
 
+const SB_WORLD_INFO_SUBTITLE_HTML = 'Advanced: Modify lorebooks for character cards here. For more information, read the guide found <a class="notes-link" href="https://docs.sillytavern.app/usage/core-concepts/worldinfo/" target="_blank" rel="noopener noreferrer">here</a>.';
+const SB_SAMPLING_SUBTITLE_HTML = 'Modify model text parameters here - useful for dialing in responses! If you\'re unsure what these all mean, check out <a class="notes-link" href="https://rentry.org/samplersettings" target="_blank" rel="noopener noreferrer">Geechan\'s guide on sampling.</a>';
+
 const SB_CHARACTER_TAB_COPY = Object.freeze({
     characters: {
         title: 'Character Menu',
-        subtitle: 'Browse, create, and tune the cast for your chats from one place.',
+        subtitle: 'View or create character cards here for your roleplays and chats!',
         description: 'Move between characters, groups, personas, lore, and imports without leaving the writing workspace.',
     },
     groups: {
         title: 'Group Menu',
-        subtitle: 'Build and organize group casts for multi-character scenes.',
+        subtitle: 'View or create group chats here for your roleplays and chats!',
         description: 'Sort group chats, check members, and return to character cards without losing your place.',
+    },
+    conversation: {
+        title: 'Conversation Mode',
+        subtitle: SB_SHELL_SUBTITLE_PLACEHOLDER,
+        description: 'Tune schedules, cooldowns, format prompts, and DM helpers without opening a group chat.',
     },
     editor: {
         title: 'Card Editor',
-        subtitle: 'Shape the selected card details, prompts, greetings, and metadata.',
+        subtitle: 'Edit your character cards or group chats in great detail here!',
         description: 'Use the subtabs to keep core identity, definitions, greetings, and metadata separated.',
     },
     'world-info': {
         title: 'World Info',
-        subtitle: 'Manage lorebooks and world details from the character workspace.',
+        subtitle: SB_WORLD_INFO_SUBTITLE_HTML,
+        subtitleIsHtml: true,
         description: 'Create, edit, import, and activate World Info entries without leaving the Characters menu.',
     },
     persona: {
         title: 'Persona',
-        subtitle: 'Choose how you appear in chat and connect personas to characters.',
+        subtitle: 'Edit your own persona here for roleplay and chats!',
         description: 'Edit persona details, locks, and defaults in the same flow as your character work.',
     },
     import: {
         title: 'Import',
-        subtitle: 'Add cards from files or links, then fold them into your local cast.',
+        subtitle: 'Directly import character cards here from various sources.',
         description: 'PNG, JSON, YAML, CHARX, BYAF, and supported URL imports stay one tab away.',
     },
 });
@@ -487,6 +561,7 @@ const SB_SHELLS = Object.freeze({
             id: 'presets',
             label: 'Presets',
             icon: 'fa-sliders',
+            description: 'Change or modify your Chat Completion presets, settings, and/or prompts here. We recommend our included Geechan and Pura presets if you\'re unsure.',
         },
         embeddedTabs: [
             {
@@ -494,12 +569,14 @@ const SB_SHELLS = Object.freeze({
                 drawerId: 'sys-settings-button',
                 label: 'API',
                 icon: 'fa-plug',
+                description: 'Configure the model backend for all AI character responses. We recommend OpenRouter if you\'re unsure.',
             },
             {
                 id: 'advanced-formatting',
                 drawerId: 'advanced-formatting-button',
                 label: 'Formatting',
                 icon: 'fa-text-height',
+                description: 'Change Text Completion templates and system prompts here!',
             },
         ],
         customTabs: [
@@ -507,6 +584,8 @@ const SB_SHELLS = Object.freeze({
                 id: 'sampling',
                 label: 'Sampling',
                 icon: 'fa-wave-square',
+                description: SB_SAMPLING_SUBTITLE_HTML,
+                descriptionIsHtml: true,
                 searchPlaceholder: 'Search temperature, top p, repetition penalty, or backend samplers',
                 searchExamples: ['temperature', 'top p', 'repetition penalty'],
             },
@@ -514,6 +593,7 @@ const SB_SHELLS = Object.freeze({
                 id: 'agents',
                 label: 'Agents',
                 icon: 'fa-robot',
+                description: 'Enable, disable, or modify in-chat agents here. Can be configured as pre-gen, sidecar, or post-gen.',
             },
         ],
     },
@@ -535,6 +615,7 @@ const SB_SHELLS = Object.freeze({
             id: 'settings',
             label: 'Settings',
             icon: 'fa-screwdriver-wrench',
+            description: 'Modify and customise SillyBunny\'s general appearance and configuration here.',
             searchPlaceholder: 'Search Appearance, top bar, chat style, blur, or update notices',
             searchExamples: ['theme', 'top bar', 'Appearance', 'notify extension updates'],
         },
@@ -544,6 +625,7 @@ const SB_SHELLS = Object.freeze({
                 drawerId: 'extensions-settings-button',
                 label: 'Extensions',
                 icon: 'fa-cubes',
+                description: 'Install, manage, and configure SillyTavern extensions here. Backwards compatibility isn\'t guaranteed, but should be applicable.',
                 searchPlaceholder: 'Search themes, Quick Reply, Dialogue Colors, or Image Gen',
                 searchExamples: ['themes', 'Quick Reply', 'Dialogue Colors', 'Image Gen'],
             },
@@ -552,6 +634,7 @@ const SB_SHELLS = Object.freeze({
                 drawerId: 'backgrounds-button',
                 label: 'Background',
                 icon: 'fa-panorama',
+                description: 'Change the appearance of the background surrounding your chats here!',
                 searchPlaceholder: 'Search background names, blur, fit, or vibe words',
                 searchExamples: ['cozy', 'landscape', 'blur', 'fit'],
             },
@@ -561,6 +644,7 @@ const SB_SHELLS = Object.freeze({
                 id: 'server',
                 label: 'Server',
                 icon: 'fa-server',
+                description: 'Edit SillyBunny backend settings and configuration here.',
                 searchPlaceholder: 'Search update, restart, config.yaml, or branch',
                 searchExamples: ['update', 'restart', 'config.yaml', 'branch'],
             },
@@ -568,12 +652,31 @@ const SB_SHELLS = Object.freeze({
                 id: 'console-logs',
                 label: 'Console Logs',
                 icon: 'fa-terminal',
+                description: 'View all SillyBunny logs for easy troubleshooting here.',
                 searchPlaceholder: 'Search error, warning, npm, bun, or extension logs',
                 searchExamples: ['error', 'warning', 'npm', 'bun'],
             },
         ],
     },
 });
+
+function renderShellSubtitle(target, subtitle, { isHtml = false } = {}) {
+    if (!(target instanceof HTMLElement)) {
+        return;
+    }
+
+    target.textContent = '';
+    if (isHtml) {
+        target.insertAdjacentHTML('beforeend', subtitle || '');
+        // Subtitles render single-line with text-overflow: ellipsis; expose the
+        // full text as a tooltip so truncated copy stays readable.
+        target.title = target.textContent.trim();
+        return;
+    }
+
+    target.textContent = subtitle || '';
+    target.title = (subtitle || '').trim();
+}
 
 const SB_DRAWER_ROUTES = Object.freeze({
     'user-settings-button': { shell: 'right', tab: 'settings' },
@@ -613,7 +716,6 @@ const SB_MOBILE_QUICK_ACTION_ICON_FALLBACK = sbMobileShellLifecycle.railModel.li
 let sbIsSyncingRailActions = false;
 const SB_MOBILE_NAV_CLOSED_ICON = 'fa-compass';
 const SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS = 350;
-const SB_FONT_AWESOME_STYLE_CLASSES = Object.freeze(new Set(['fa-solid', 'fa-regular', 'fa-brands']));
 const SB_MOBILE_NAV_LAYOUTS = Object.freeze(['horizontal', 'vertical']);
 const SB_MOBILE_DEFAULT_QUICK_ACTIONS = Object.freeze([
     { type: 'tab', shellKey: 'left', tabId: 'presets', icon: 'fa-sliders', label: 'Presets' },
@@ -641,6 +743,69 @@ const SB_MOBILE_NAV_PAGE_TARGETS = Object.freeze([
     { value: 'right:console-logs', shellKey: 'right', tabId: 'console-logs', label: 'Console Logs', icon: 'fa-terminal' },
 ]);
 
+// SillyBunny: the optional icons-only top bar does not pool every page into one strip. It expands
+// each section in place into that section's own pages, so the bar keeps the skeleton PRODUCT.md
+// prescribes and each cluster stays readable as its own zone. Labels and icons resolve from
+// SB_SHELLS / SB_CHARACTER_PANEL_TABS at build time so a cluster cannot drift when a page is
+// renamed. Kept separate from SB_SHORTCUT_TARGETS and SB_MOBILE_NAV_PAGE_TARGETS because those two
+// are persisted in user settings and carry pseudo-entries these lists must not inherit.
+const SB_TOPBAR_CLUSTERS = Object.freeze([
+    {
+        key: 'workspace',
+        leadId: 'sb-left-shell-toggle',
+        railId: 'sb-topbar-cluster-workspace',
+        pages: Object.freeze([
+            { value: 'left:presets', shellKey: 'left', tabId: 'presets' },
+            { value: 'left:api', shellKey: 'left', tabId: 'api' },
+            { value: 'left:sampling', shellKey: 'left', tabId: 'sampling' },
+            { value: 'left:advanced-formatting', shellKey: 'left', tabId: 'advanced-formatting' },
+            { value: 'left:agents', shellKey: 'left', tabId: 'agents' },
+        ]),
+    },
+    {
+        key: 'customize',
+        leadId: 'sb-right-shell-toggle',
+        railId: 'sb-topbar-cluster-customize',
+        pages: Object.freeze([
+            { value: 'right:settings', shellKey: 'right', tabId: 'settings' },
+            { value: 'right:extensions', shellKey: 'right', tabId: 'extensions' },
+            { value: 'right:background', shellKey: 'right', tabId: 'background' },
+            { value: 'right:server', shellKey: 'right', tabId: 'server' },
+            { value: 'right:console-logs', shellKey: 'right', tabId: 'console-logs' },
+        ]),
+    },
+    {
+        key: 'characters',
+        leadId: 'sb-character-toggle',
+        railId: 'sb-topbar-cluster-characters',
+        pages: Object.freeze([
+            { value: 'characters:groups', shellKey: 'characters', tabId: 'groups' },
+            { value: 'characters:editor', shellKey: 'characters', tabId: 'editor' },
+            { value: 'characters:world-info', shellKey: 'characters', tabId: 'world-info' },
+            { value: 'characters:persona', shellKey: 'characters', tabId: 'persona' },
+            { value: 'characters:import', shellKey: 'characters', tabId: 'import' },
+        ]),
+    },
+]);
+const SB_TOPBAR_PAGE_TARGETS = Object.freeze(SB_TOPBAR_CLUSTERS.flatMap(cluster => cluster.pages));
+
+// SillyBunny: Home and Characters remain as Layer 2 anchors. Workspace and Customize are redundant
+// once all of their pages are shown, so CSS hides those two only while icons-only mode is active.
+const SB_TOPBAR_ANCHOR_IDS = Object.freeze([
+    'sb-home-toggle',
+    'sb-character-toggle',
+]);
+const SB_TOPBAR_BRAND_MIN_WIDTH = 60;
+
+// The per-device key wins; the legacy single key seeds both sides of the split so a bar
+// configured before it keeps its look everywhere until a device is set on its own.
+function readTopbarIconsOnlySetting(storageKey) {
+    return normalizeStoredBoolean(
+        safeGetItem(storageKey),
+        normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarIconsOnly), false),
+    );
+}
+
 const sbState = {
     initialized: false,
     initRetryTimer: 0,
@@ -652,7 +817,23 @@ const sbState = {
     theme: normalizeTheme(safeGetItem(SB_STORAGE_KEYS.theme)),
     frontendIcon: normalizeFrontendIcon(safeGetItem(SB_STORAGE_KEYS.frontendIcon)),
     surfaceTransparency: normalizeSurfaceTransparency(safeGetItem(SB_STORAGE_KEYS.surfaceTransparency)),
+    paperTextureEnabled: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.paperTextureEnabled), false),
+    paperTextureOpacity: normalizePaperTextureOpacity(safeGetItem(SB_STORAGE_KEYS.paperTextureOpacity)),
     compactMode: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), false),
+    topbarIconsOnly: {
+        desktop: readTopbarIconsOnlySetting(SB_STORAGE_KEYS.desktopTopbarIconsOnly),
+        mobile: readTopbarIconsOnlySetting(SB_STORAGE_KEYS.mobileTopbarIconsOnly),
+    },
+    topbarPages: {
+        syncFrame: 0,
+        fitFrame: 0,
+        brandWidth: 0,
+    },
+    topbarExtensions: {
+        syncFrame: 0,
+        adopting: false,
+        observer: null,
+    },
     bottomBarScale: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.bottomBarScale)),
     desktopButtonScale: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.desktopButtonScale)),
     mobileButtonScale: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.mobileButtonScale)),
@@ -668,11 +849,14 @@ const sbState = {
             ? 'char'
             : normalizeTopbarLabelPart(safeGetItem(SB_STORAGE_KEYS.topbarLabelMobilePart), ''),
         customText: normalizeTopbarCustomText(safeGetItem(SB_STORAGE_KEYS.topbarLabelCustomText)),
+        clickCycle: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarLabelClickCycle), true),
         contextTokens: null,
         refreshTimer: 0,
         refreshInFlight: false,
         refreshPending: false,
         refreshToken: 0,
+        cyclePart: '',
+        cycleResetTimer: 0,
         bindingRetryTimer: 0,
         boundEventSource: null,
         windowBindingsAttached: false,
@@ -692,7 +876,7 @@ const sbState = {
             left: normalizeShellSize(safeGetItem(SB_STORAGE_KEYS.leftShellSize)),
             right: normalizeShellSize(safeGetItem(SB_STORAGE_KEYS.rightShellSize)),
         },
-        snapToChatWidth: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth), false),
+        snapToChatWidth: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth), true),
         activeResize: null,
     },
     characterDrawer: {
@@ -760,6 +944,7 @@ const sbState = {
         observer: null,
         debounceTimer: 0,
         retryTimer: 0,
+        sourceCache: new WeakMap(),
     },
     bottomChatBar: {
         chatSelect: null,
@@ -805,6 +990,11 @@ const sbState = {
         paused: false,
         lastUpdatedAt: 0,
         lastError: '',
+        configBusy: false,
+        configLoaded: false,
+        configPath: '',
+        configLastModifiedMs: 0,
+        verboseLoggingEnabled: false,
     },
     importer: {
         refs: null,
@@ -984,6 +1174,21 @@ function formatSurfaceTransparency(value) {
     return `${normalizeSurfaceTransparency(value)}%`;
 }
 
+function normalizePaperTextureOpacity(value) {
+    const numericValue = Number(value);
+
+    if (!Number.isFinite(numericValue)) {
+        return SB_PAPER_TEXTURE_OPACITY.defaultValue;
+    }
+
+    const snappedValue = Math.round(numericValue / SB_PAPER_TEXTURE_OPACITY.step) * SB_PAPER_TEXTURE_OPACITY.step;
+    return Math.min(SB_PAPER_TEXTURE_OPACITY.max, Math.max(SB_PAPER_TEXTURE_OPACITY.min, snappedValue));
+}
+
+function formatPaperTextureOpacity(value) {
+    return `${normalizePaperTextureOpacity(value)}%`;
+}
+
 function clampNumber(value, min, max) {
     return Math.min(max, Math.max(min, value));
 }
@@ -1023,16 +1228,6 @@ function getMobileQuickActionTabConfig(shellKey, tabId) {
         ...(Array.isArray(shellConfig.embeddedTabs) ? shellConfig.embeddedTabs : []),
         ...(Array.isArray(shellConfig.customTabs) ? shellConfig.customTabs : []),
     ].find(tab => tab?.id === tabId) || null;
-}
-
-function normalizeFontAwesomeIcon(value, fallback = SB_MOBILE_QUICK_ACTION_ICON_FALLBACK) {
-    const fallbackIcon = clampText(fallback || SB_MOBILE_QUICK_ACTION_ICON_FALLBACK, 60);
-    const iconClass = String(value ?? '')
-        .trim()
-        .split(/\s+/)
-        .find(token => /^fa-[a-z0-9-]+$/i.test(token) && !SB_FONT_AWESOME_STYLE_CLASSES.has(token.toLowerCase()));
-
-    return clampText(iconClass?.toLowerCase() || fallbackIcon, 60);
 }
 
 function getMobileQuickActionContext(value) {
@@ -1335,9 +1530,12 @@ function restorePersistedTopbarState() {
         ? 'char'
         : normalizeTopbarLabelPart(safeGetItem(SB_STORAGE_KEYS.topbarLabelMobilePart), '');
     sbState.topbarLabel.customText = normalizeTopbarCustomText(safeGetItem(SB_STORAGE_KEYS.topbarLabelCustomText));
+    sbState.topbarLabel.clickCycle = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarLabelClickCycle), true);
     sbState.chatbar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.chatbarVisible), sbState.chatbar.visible);
     sbState.chatbar.topbarOffset = normalizeTopbarOffset(safeGetItem(SB_STORAGE_KEYS.topbarOffset));
     sbState.compactMode = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), sbState.compactMode);
+    sbState.topbarIconsOnly.desktop = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopTopbarIconsOnly), sbState.topbarIconsOnly.desktop);
+    sbState.topbarIconsOnly.mobile = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileTopbarIconsOnly), sbState.topbarIconsOnly.mobile);
     sbState.bottomChatBar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatBarVisible), sbState.bottomChatBar.visible);
     sbState.shellSizing.snapToChatWidth = normalizeStoredBoolean(
         safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth),
@@ -1475,7 +1673,7 @@ function setMobileButtonScale(value, { persist = true } = {}) {
 
 function applyMobileNavPreferences() {
     const quickActionsShown = sbState.mobileNav.showQuickActions;
-    const useIconOnly = sbState.mobileNav.layout === 'vertical' && sbState.mobileNav.iconOnly;
+    const useIconOnly = sbState.mobileNav.iconOnly;
     document.documentElement.dataset.sbMobileNavLayout = sbState.mobileNav.layout;
     document.documentElement.dataset.sbMobileNavMode = useIconOnly ? 'icon-only' : 'labeled';
     document.documentElement.dataset.sbMobileNavCustomize = sbState.mobileNav.showCustomize ? 'shown' : 'hidden';
@@ -1485,7 +1683,7 @@ function applyMobileNavPreferences() {
 
 function applyDesktopNavPreferences() {
     const quickActionsShown = sbState.desktopNav.showQuickActions;
-    const useIconOnly = sbState.desktopNav.layout === 'vertical' && sbState.desktopNav.iconOnly;
+    const useIconOnly = sbState.desktopNav.iconOnly;
     document.documentElement.dataset.sbDesktopNavLayout = sbState.desktopNav.layout;
     document.documentElement.dataset.sbDesktopNavMode = useIconOnly ? 'icon-only' : 'labeled';
     document.documentElement.dataset.sbDesktopNavCustomize = sbState.desktopNav.showCustomize ? 'shown' : 'hidden';
@@ -1695,6 +1893,52 @@ function moveElementAfter(element, referenceElement, parent) {
     parent.insertBefore(element, referenceElement.nextSibling);
 }
 
+/*
+ * Everything upstream (plus the bundled palette button) ships in #rightSendForm. The phone
+ * composer sizes that rail for exactly two buttons, so anything else there is third-party.
+ */
+const SB_COMPOSER_NATIVE_RIGHT_RAIL_IDS = Object.freeze([
+    'stscript_continue',
+    'stscript_pause',
+    'stscript_stop',
+    'mes_stop',
+    'mes_impersonate',
+    'mes_continue',
+    'sb_prose_polisher_but',
+    'send_but',
+    'qig-input-btn',
+]);
+
+const SB_COMPOSER_ADOPTED_ATTRIBUTE = 'data-sb-composer-adopted';
+
+/**
+ * Relocates third-party composer buttons between the rails. The right rail is a fixed two-button
+ * grid column with no overflow, so extension buttons there used to be hidden outright on phones;
+ * the left rail already scrolls, so it can hold any number of them. Desktop keeps them where the
+ * extension put them.
+ */
+function placeComposerExtensionButtons(leftForm, rightForm) {
+    const mobile = isMobileViewport();
+
+    if (mobile) {
+        for (const child of Array.from(rightForm.children)) {
+            if (!(child instanceof HTMLElement) || SB_COMPOSER_NATIVE_RIGHT_RAIL_IDS.includes(child.id)) {
+                continue;
+            }
+
+            child.setAttribute(SB_COMPOSER_ADOPTED_ATTRIBUTE, 'right');
+            leftForm.appendChild(child);
+        }
+
+        return;
+    }
+
+    for (const child of Array.from(leftForm.querySelectorAll(`:scope > [${SB_COMPOSER_ADOPTED_ATTRIBUTE}='right']`))) {
+        child.removeAttribute(SB_COMPOSER_ADOPTED_ATTRIBUTE);
+        rightForm.appendChild(child);
+    }
+}
+
 function placeComposerControls() {
     const leftForm = document.getElementById('leftSendForm');
     const rightForm = document.getElementById('rightSendForm');
@@ -1717,6 +1961,7 @@ function placeComposerControls() {
     }
 
     moveElementBefore(paletteButton, rightForm, sendButton);
+    placeComposerExtensionButtons(leftForm, rightForm);
 }
 
 function queueComposerControlPlacement() {
@@ -1761,6 +2006,40 @@ function setCompactMode(enabled, { persist = true } = {}) {
     }
 
     queueComposerControlPlacement();
+    updateThemePickerUi();
+}
+
+// SillyBunny: the icons-only top bar is stored per device -- the Desktop Navigation copy governs
+// desktop viewports and the Mobile Navigation copy governs phones -- so turning the dense bar on
+// for a phone does not also restyle the desktop, and vice versa. Only the viewport's own setting
+// is ever in force.
+function isTopbarIconsOnlyActive() {
+    return isMobileViewport() ? sbState.topbarIconsOnly.mobile : sbState.topbarIconsOnly.desktop;
+}
+
+function applyTopbarIconsOnlyPreference() {
+    document.documentElement.dataset.sbTopbarIconsOnly = String(isTopbarIconsOnlyActive());
+    syncTopbarIconsOnlyLayout();
+    queueTopbarPageStateSync();
+    scheduleCharacterToggleGhostSync();
+}
+
+function setTopbarIconsOnly(mode, enabled, { persist = true } = {}) {
+    const isDesktop = mode === 'desktop';
+    const nextEnabled = Boolean(enabled);
+
+    if (isDesktop) {
+        sbState.topbarIconsOnly.desktop = nextEnabled;
+    } else {
+        sbState.topbarIconsOnly.mobile = nextEnabled;
+    }
+
+    applyTopbarIconsOnlyPreference();
+
+    if (persist) {
+        safeSetItem(isDesktop ? SB_STORAGE_KEYS.desktopTopbarIconsOnly : SB_STORAGE_KEYS.mobileTopbarIconsOnly, String(nextEnabled));
+    }
+
     updateThemePickerUi();
 }
 
@@ -1838,8 +2117,22 @@ function setCharacterDrawerRightLock(enabled, { persist = true } = {}) {
     syncCharacterDrawerLockButton();
 }
 
+/*
+ * Identity-based ownership for the top-bar adoption pass. An id prefix is spoofable and absent
+ * on id-less nodes, so registering what our own factory built is the only reliable test. Any
+ * future SillyBunny element that becomes a direct child of #top-bar or #top-settings-holder
+ * must come from createElement() or it will be adopted as if it were third-party markup.
+ */
+const sbOwnedElements = new WeakSet();
+
+function isSillyBunnyOwnedElement(node) {
+    return node instanceof Element && sbOwnedElements.has(node);
+}
+
 function createElement(tagName, { id = '', className = '', text = '', html = '', attrs = {} } = {}) {
     const element = document.createElement(tagName);
+
+    sbOwnedElements.add(element);
 
     if (id) {
         element.id = id;
@@ -1868,13 +2161,6 @@ function wait(ms) {
     return new Promise(resolve => window.setTimeout(resolve, ms));
 }
 
-function normalizeText(value) {
-    return String(value ?? '')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toLowerCase();
-}
-
 function normalizeCharacterEditorSubTab(tabId) {
     const normalizedTabId = normalizeText(tabId);
     return SB_CHARACTER_EDITOR_SUB_TABS.includes(normalizedTabId) ? normalizedTabId : SB_CHARACTER_EDITOR_DEFAULT_SUB_TAB;
@@ -1896,15 +2182,6 @@ function resolveCharacterEditorSubTab(tabId) {
 
 function isCharacterEditorMenuType(menuType) {
     return ['character_edit', 'create'].includes(menuType ?? '');
-}
-
-function clampText(value, maxLength = 120) {
-    const normalizedValue = String(value ?? '').replace(/\s+/g, ' ').trim();
-    if (normalizedValue.length <= maxLength) {
-        return normalizedValue;
-    }
-
-    return `${normalizedValue.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
 function getSearchTextCandidates(element) {
@@ -2136,6 +2413,22 @@ function prefersReducedMotion() {
 function getShellProxyButton(shellKey) {
     const shellConfig = getShellConfig(shellKey);
     const proxyButton = shellConfig?.proxyButtonId ? document.getElementById(shellConfig.proxyButtonId) : null;
+
+    if (proxyButton instanceof HTMLElement && isActuallyVisible(proxyButton)) {
+        return proxyButton;
+    }
+
+    // SillyBunny: Workspace and Customize are hidden in icons-only mode, and Workspace is also
+    // hidden on phones. Fall back to the cluster icon so focus does not silently drop to <body>.
+    const activeTabId = getShellState(shellKey)?.activeTabId;
+    const pageButton = activeTabId
+        ? document.querySelector(`[data-sb-topbar-page="${CSS.escape(`${shellKey}:${activeTabId}`)}"]`)
+        : null;
+
+    if (pageButton instanceof HTMLElement && isActuallyVisible(pageButton)) {
+        return pageButton;
+    }
+
     return proxyButton instanceof HTMLElement ? proxyButton : null;
 }
 
@@ -2213,6 +2506,89 @@ function restoreShellFocus(shellKey) {
     }
 }
 
+function getLayoutViewportScrollAnchor() {
+    const scrollingElement = document.scrollingElement;
+
+    return {
+        left: Math.max(0, Math.round(window.scrollX || scrollingElement?.scrollLeft || 0)),
+        top: Math.max(0, Math.round(window.scrollY || scrollingElement?.scrollTop || 0)),
+    };
+}
+
+function restoreLayoutViewportScroll(anchor) {
+    if (!anchor) {
+        return;
+    }
+
+    const scrollingElement = document.scrollingElement;
+    if (scrollingElement instanceof Element) {
+        scrollingElement.scrollLeft = anchor.left;
+        scrollingElement.scrollTop = anchor.top;
+    }
+
+    if (window.scrollX !== anchor.left || window.scrollY !== anchor.top) {
+        window.scrollTo(anchor.left, anchor.top);
+    }
+}
+
+function queueLayoutViewportScrollRestore(anchor) {
+    restoreLayoutViewportScroll(anchor);
+    window.requestAnimationFrame(() => restoreLayoutViewportScroll(anchor));
+    window.setTimeout(() => restoreLayoutViewportScroll(anchor), 120);
+}
+
+function getManagedScrollContainer(target) {
+    if (!(target instanceof HTMLElement)) {
+        return null;
+    }
+
+    return target.closest('.sb-shell-panel-scroller, .scrollableInner, .scrollableInnerFull, .sb-search-results, #chat');
+}
+
+function scrollElementIntoManagedView(target, { block = 'nearest', behavior = 'auto' } = {}) {
+    if (!(target instanceof HTMLElement)) {
+        return false;
+    }
+
+    const anchor = getLayoutViewportScrollAnchor();
+    const scroller = getManagedScrollContainer(target);
+
+    if (!(scroller instanceof HTMLElement) || scroller.clientHeight <= 0) {
+        target.scrollIntoView({ block, behavior });
+        queueLayoutViewportScrollRestore(anchor);
+        return false;
+    }
+
+    const scrollerRect = scroller.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const topOverflow = targetRect.top - scrollerRect.top;
+    const bottomOverflow = targetRect.bottom - scrollerRect.bottom;
+    let delta = 0;
+
+    if (block === 'center') {
+        delta = topOverflow - ((scrollerRect.height - targetRect.height) / 2);
+    } else if (block === 'end') {
+        delta = bottomOverflow;
+    } else if (block === 'start') {
+        delta = topOverflow;
+    } else if (topOverflow < 0) {
+        delta = topOverflow;
+    } else if (bottomOverflow > 0) {
+        delta = bottomOverflow;
+    }
+
+    if (Math.abs(delta) > 1) {
+        const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+        scroller.scrollTo({
+            top: clampNumber(scroller.scrollTop + delta, 0, maxScrollTop),
+            behavior,
+        });
+    }
+
+    queueLayoutViewportScrollRestore(anchor);
+    return true;
+}
+
 function scrollShellTabButtonIntoView(nav, button, { smooth = false } = {}) {
     if (!(nav instanceof HTMLElement) || !(button instanceof HTMLElement)) {
         return;
@@ -2254,11 +2630,28 @@ function readFiniteViewportNumber(value, fallback = 0) {
     return Number.isFinite(number) ? number : fallback;
 }
 
-function getShellViewportSize() {
+function getLayoutViewportSize() {
     const doc = document.documentElement;
-    const visualViewport = window.visualViewport;
     const fallbackWidth = window.innerWidth || doc?.clientWidth || 0;
     const fallbackHeight = window.innerHeight || doc?.clientHeight || 0;
+
+    const width = Math.max(0, Math.round(readFiniteViewportNumber(fallbackWidth, 0)));
+    const height = Math.max(0, Math.round(readFiniteViewportNumber(fallbackHeight, 0)));
+
+    return {
+        width,
+        height,
+        left: 0,
+        top: 0,
+        right: width,
+        bottom: height,
+    };
+}
+
+function getVisualViewportSize(fallbackViewport = getLayoutViewportSize()) {
+    const visualViewport = window.visualViewport;
+    const fallbackWidth = fallbackViewport.width;
+    const fallbackHeight = fallbackViewport.height;
     const width = Math.max(0, Math.round(readFiniteViewportNumber(visualViewport?.width, fallbackWidth)));
     const height = Math.max(0, Math.round(readFiniteViewportNumber(visualViewport?.height, fallbackHeight)));
 
@@ -2272,6 +2665,147 @@ function getShellViewportSize() {
     };
 }
 
+function isEditableElement(element) {
+    return element instanceof HTMLElement
+        && (['INPUT', 'TEXTAREA', 'SELECT'].includes(element.tagName) || element.isContentEditable);
+}
+
+function isMobileShellPanelEditableElement(element) {
+    return isEditableElement(element)
+        && Boolean(element.closest('#left-nav-panel, #user-settings-block, .sb-shell-root, #right-nav-panel'));
+}
+
+function isChatComposerEditableElement(element) {
+    return isEditableElement(element)
+        && Boolean(element.closest('#send_textarea, #send_form, #form_sheld'));
+}
+
+function hasOpenMobileShellDrawer() {
+    return getMobileShellBoundDrawers().some(drawer => drawer.classList.contains('openDrawer'));
+}
+
+function shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize) {
+    if (!isIOSWebKitPlatform() || !isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
+        return false;
+    }
+
+    const activeElement = document.activeElement;
+    return isMobileShellPanelEditableElement(activeElement) || isChatComposerEditableElement(activeElement) || hasOpenMobileShellDrawer();
+}
+
+const MOBILE_COMPOSER_KEYBOARD_PAN_EPSILON_PX = 8;
+const MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS = 700;
+const MOBILE_IOS_KEYBOARD_MIN_HEIGHT_PX = 80;
+
+let sbLastIOSKeyboardHeight = 0;
+let sbComposerKeyboardPreShiftDeadline = 0;
+let sbComposerKeyboardSettleTimer = 0;
+
+function isVisualViewportKeyboardOpen(layoutViewport = getLayoutViewportSize(), visualViewportSize = getVisualViewportSize(layoutViewport)) {
+    const keyboardHeight = Math.max(0, layoutViewport.height - visualViewportSize.height);
+    return keyboardHeight > MOBILE_IOS_KEYBOARD_MIN_HEIGHT_PX || visualViewportSize.top > 2;
+}
+
+/**
+ * SillyBunny: old iOS versions can force-scroll the document to reveal the
+ * composer caret. Shrink the stable shell by the keyboard height before that
+ * reveal while preserving the modern viewport behavior on iOS 26 and newer.
+ */
+function getComposerKeyboardInset(layoutViewport, visualViewportSize) {
+    if (!isLegacyIOSWebKitPlatform() || !isMobileViewport()) {
+        return 0;
+    }
+
+    const keyboardHeight = Math.max(0, layoutViewport.height - visualViewportSize.height);
+    if (keyboardHeight > MOBILE_IOS_KEYBOARD_MIN_HEIGHT_PX) {
+        sbLastIOSKeyboardHeight = keyboardHeight;
+    }
+
+    if (!isChatComposerEditableElement(document.activeElement)) {
+        return 0;
+    }
+
+    const withinPreShiftWindow = Date.now() < sbComposerKeyboardPreShiftDeadline;
+
+    if (isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
+        // Do not shrink after Safari has already panned, which would recreate
+        // the empty space below the escaped composer.
+        if (visualViewportSize.top > MOBILE_COMPOSER_KEYBOARD_PAN_EPSILON_PX) {
+            return 0;
+        }
+
+        return withinPreShiftWindow ? Math.max(keyboardHeight, sbLastIOSKeyboardHeight) : keyboardHeight;
+    }
+
+    return withinPreShiftWindow ? sbLastIOSKeyboardHeight : 0;
+}
+
+function handleComposerKeyboardFocusIn(event) {
+    if (!isLegacyIOSWebKitPlatform() || !isMobileViewport()) {
+        return;
+    }
+
+    if (isChatComposerEditableElement(event.target)) {
+        sbComposerKeyboardPreShiftDeadline = Date.now() + MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS;
+        window.clearTimeout(sbComposerKeyboardSettleTimer);
+        sbComposerKeyboardSettleTimer = window.setTimeout(queueMobileViewportStateSync, MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS + 50);
+    }
+
+    queueMobileViewportStateSync();
+}
+
+function handleMobileKeyboardFocusOut() {
+    if (!isLegacyIOSWebKitPlatform() || !isMobileViewport()) {
+        return;
+    }
+
+    queueMobileViewportStateSync();
+}
+
+function syncIOSKeyboardBottomInset() {
+    const root = document.documentElement;
+    let bottomInset = 0;
+
+    if (isIOSWebKitPlatform()) {
+        const layoutViewport = getLayoutViewportSize();
+        const visualViewportSize = getVisualViewportSize(layoutViewport);
+
+        if (isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
+            bottomInset = Math.max(0, Math.round(layoutViewport.height - visualViewportSize.top - visualViewportSize.height));
+        }
+    }
+
+    const value = `${bottomInset}px`;
+    if (root.style.getPropertyValue('--sb-ios-keyboard-bottom-inset') !== value) {
+        root.style.setProperty('--sb-ios-keyboard-bottom-inset', value);
+    }
+
+    // SillyBunny: the <=768px shell CSS consumes the inset var directly; wide
+    // viewports (iPadOS desktop-mode Safari) gate the padding on this class so
+    // desktop layouts only pick it up while the software keyboard is open.
+    root.classList.toggle('sb-ios-keyboard-inset-active', bottomInset > 0);
+}
+
+function getShellViewportSize() {
+    const layoutViewport = getLayoutViewportSize();
+    const visualViewportSize = getVisualViewportSize(layoutViewport);
+
+    const composerKeyboardInset = getComposerKeyboardInset(layoutViewport, visualViewportSize);
+    if (composerKeyboardInset > 0) {
+        const height = Math.max(0, layoutViewport.height - composerKeyboardInset);
+        return { ...layoutViewport, height, bottom: height };
+    }
+
+    // SillyBunny: iOS keyboard edits inside shell panels or the chat composer
+    // should not feed Safari visualViewport jitter back into shell geometry.
+    // Keep layout stable while focused panel scrolling still uses visualViewport.
+    if (shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize)) {
+        return layoutViewport;
+    }
+
+    return visualViewportSize;
+}
+
 function syncShellViewportBounds() {
     if (sbIsSyncingRailActions) {
         return;
@@ -2280,14 +2814,226 @@ function syncShellViewportBounds() {
     const root = document.documentElement;
     const viewportSize = getShellViewportSize();
     const topOffset = Math.max(0, Math.round(getResolvedShellTopbarOffset()));
+    const setRootViewportProperty = (property, value) => {
+        if (root.style.getPropertyValue(property) !== value) {
+            root.style.setProperty(property, value);
+        }
+    };
 
-    root.style.setProperty('--sb-shell-viewport-height', `${viewportSize.height}px`);
-    root.style.setProperty('--sb-shell-measured-top-offset', `${topOffset}px`);
-    root.style.setProperty('--sb-shell-available-height', `${Math.max(0, viewportSize.height - topOffset)}px`);
-    // SillyBunny: iOS Safari shifts the visual viewport (visualViewport.offsetTop > 0)
-    // when the keyboard opens; without this var the shell stays anchored at
-    // the layout viewport top and the composer floats mid-screen.
-    root.style.setProperty('--sb-shell-viewport-top', `${viewportSize.top}px`);
+    setRootViewportProperty('--sb-shell-viewport-height', `${viewportSize.height}px`);
+    setRootViewportProperty('--sb-shell-measured-top-offset', `${topOffset}px`);
+    setRootViewportProperty('--sb-shell-available-height', `${Math.max(0, viewportSize.height - topOffset)}px`);
+    // SillyBunny: iOS Safari shifts the visual viewport while the keyboard opens;
+    // keyboard edit paths intentionally keep the stable layout top.
+    setRootViewportProperty('--sb-shell-viewport-top', `${viewportSize.top}px`);
+
+    // SillyBunny: browser-fixes.js may reset document scroll mid-edit once the
+    // legacy shell has moved the focused composer above the keyboard.
+    const composerKeyboardInset = getComposerKeyboardInset(getLayoutViewportSize(), getVisualViewportSize());
+    root.classList.toggle('sb-ios-composer-keyboard-inset-active', composerKeyboardInset > 0);
+}
+
+function getMobileFocusedInputScroller(target) {
+    if (!(target instanceof HTMLElement)) {
+        return null;
+    }
+
+    // Shell construction retains compatibility wrappers inside the real panel
+    // scroller. Prefer the outer scroll owner, otherwise scroll legacy drawers.
+    const shellScroller = target.closest('.sb-shell-panel-scroller');
+    if (shellScroller instanceof HTMLElement) {
+        return shellScroller;
+    }
+
+    const legacyScroller = target.closest('.scrollableInner, .scrollableInnerFull');
+    return legacyScroller instanceof HTMLElement ? legacyScroller : null;
+}
+
+function syncMobileFocusedInputScroll(target = document.activeElement) {
+    if (!isMobileViewport() || !(target instanceof HTMLElement) || target !== document.activeElement || !isEditableElement(target)) {
+        return;
+    }
+
+    const scroller = getMobileFocusedInputScroller(target);
+    if (!scroller) {
+        return;
+    }
+
+    // visualViewport tracks the keyboard: top grows and height shrinks as the
+    // keyboard rises, so (top + height) is the bottom of the visible area.
+    const layoutViewport = getLayoutViewportSize();
+    const viewportSize = getVisualViewportSize(layoutViewport);
+
+    if (!isVisualViewportKeyboardOpen(layoutViewport, viewportSize)) {
+        return;
+    }
+
+    const viewportBottom = viewportSize.top + viewportSize.height;
+    const rect = target.getBoundingClientRect();
+    const overflow = rect.bottom - viewportBottom + 16;
+
+    if (overflow > 0) {
+        scroller.scrollTop += overflow;
+    }
+}
+
+let sbMobileFocusedInputScrollTimer = null;
+
+/**
+ * SillyBunny: on mobile the body is fixed/clip, so the browser cannot scroll a
+ * focused input above the virtual keyboard the way a normal page would. Follow
+ * the keyboard's visual viewport updates until Safari finishes its animation.
+ */
+function scheduleMobileFocusedInputScroll(event) {
+    const target = event?.target instanceof HTMLElement && isEditableElement(event.target)
+        ? event.target
+        : document.activeElement;
+
+    if (!(target instanceof HTMLElement)) {
+        return;
+    }
+
+    window.requestAnimationFrame(() => syncMobileFocusedInputScroll(target));
+
+    if (sbMobileFocusedInputScrollTimer !== null) {
+        window.clearTimeout(sbMobileFocusedInputScrollTimer);
+    }
+
+    sbMobileFocusedInputScrollTimer = window.setTimeout(() => {
+        sbMobileFocusedInputScrollTimer = null;
+        syncMobileFocusedInputScroll(target);
+    }, 360);
+}
+
+const MOBILE_POPUP_KEYBOARD_CLEARANCE_PX = 16;
+
+function getMobilePopupDialogForKeyboard(element) {
+    if (!(element instanceof HTMLElement)) {
+        return null;
+    }
+
+    const dialog = element.closest('dialog.popup');
+    return dialog instanceof HTMLElement && dialog.open ? dialog : null;
+}
+
+function clearMobilePopupKeyboardShift(dialog) {
+    if (!(dialog instanceof HTMLElement)) {
+        return;
+    }
+
+    const scroller = dialog.querySelector('[data-sb-keyboard-max-height]');
+    if (scroller instanceof HTMLElement) {
+        const previousMaxHeight = scroller.dataset.sbKeyboardMaxHeight;
+        if (previousMaxHeight) {
+            scroller.style.maxHeight = previousMaxHeight;
+        } else {
+            scroller.style.removeProperty('max-height');
+        }
+        delete scroller.dataset.sbKeyboardMaxHeight;
+    }
+
+    if (dialog.dataset.sbKeyboardShift !== undefined) {
+        const previousTransform = dialog.dataset.sbKeyboardTransform;
+        const previousTransformPriority = dialog.dataset.sbKeyboardTransformPriority;
+        if (previousTransform) {
+            dialog.style.setProperty('transform', previousTransform, previousTransformPriority);
+        } else {
+            dialog.style.removeProperty('transform');
+        }
+    }
+
+    delete dialog.dataset.sbKeyboardAdjusted;
+    delete dialog.dataset.sbKeyboardShift;
+    delete dialog.dataset.sbKeyboardTransform;
+    delete dialog.dataset.sbKeyboardTransformPriority;
+}
+
+function clearAllMobilePopupKeyboardShifts(except = null) {
+    for (const dialog of document.querySelectorAll('dialog.popup[data-sb-keyboard-adjusted], dialog.popup[data-sb-keyboard-shift]')) {
+        if (dialog !== except) {
+            clearMobilePopupKeyboardShift(dialog);
+        }
+    }
+}
+
+/**
+ * SillyBunny: popup dialogs are centered against the layout viewport, which
+ * does not shrink with the virtual keyboard (interactive-widget=resizes-visual).
+ * When a focused popup input sits behind the keyboard, the browser pans the
+ * visual viewport to reveal it, pushing the top bar off screen (e.g. the
+ * connection profile name popup). Scroll the popup body first, then shift the
+ * dialog up so the input clears the keyboard and the browser never needs to pan.
+ */
+function syncMobilePopupKeyboardShift() {
+    const activeElement = document.activeElement;
+    const dialog = isMobileViewport() && isEditableElement(activeElement)
+        ? getMobilePopupDialogForKeyboard(activeElement)
+        : null;
+
+    clearAllMobilePopupKeyboardShifts(dialog);
+
+    if (!dialog) {
+        return;
+    }
+
+    const layoutViewport = getLayoutViewportSize();
+    const viewportSize = getVisualViewportSize(layoutViewport);
+
+    if (!isVisualViewportKeyboardOpen(layoutViewport, viewportSize)) {
+        clearMobilePopupKeyboardShift(dialog);
+        return;
+    }
+
+    // Measure without the current shift so a shrinking keyboard relaxes it.
+    clearMobilePopupKeyboardShift(dialog);
+
+    // visualViewport tracks the keyboard: top grows and height shrinks as the
+    // keyboard rises, so (top + height) is the bottom of the visible area.
+    const viewportBottom = viewportSize.top + viewportSize.height;
+    const scroller = activeElement.closest('.popup-body, .popup-content');
+
+    if (scroller instanceof HTMLElement) {
+        const availableHeight = Math.max(0, viewportSize.height - (MOBILE_POPUP_KEYBOARD_CLEARANCE_PX * 2));
+        scroller.dataset.sbKeyboardMaxHeight = scroller.style.maxHeight;
+        scroller.style.maxHeight = `${availableHeight}px`;
+        dialog.dataset.sbKeyboardAdjusted = 'true';
+
+        const scrollOverflow = activeElement.getBoundingClientRect().bottom + MOBILE_POPUP_KEYBOARD_CLEARANCE_PX - viewportBottom;
+        if (scrollOverflow > 0) {
+            scroller.scrollTop += scrollOverflow;
+        }
+    }
+
+    const overflow = activeElement.getBoundingClientRect().bottom + MOBILE_POPUP_KEYBOARD_CLEARANCE_PX - viewportBottom;
+
+    if (overflow <= 0) {
+        return;
+    }
+
+    const dialogTop = dialog.getBoundingClientRect().top;
+    const maxShift = Math.max(0, dialogTop - viewportSize.top - MOBILE_POPUP_KEYBOARD_CLEARANCE_PX);
+    const shift = Math.round(Math.min(overflow, maxShift));
+
+    if (shift <= 0) {
+        return;
+    }
+
+    dialog.dataset.sbKeyboardAdjusted = 'true';
+    dialog.dataset.sbKeyboardShift = String(shift);
+    dialog.dataset.sbKeyboardTransform = dialog.style.transform;
+    dialog.dataset.sbKeyboardTransformPriority = dialog.style.getPropertyPriority('transform');
+    const computedTransform = dialog.style.transform || window.getComputedStyle(dialog).transform;
+    const baseTransform = computedTransform && computedTransform !== 'none' ? ` ${computedTransform}` : '';
+    dialog.style.setProperty('transform', `translateY(-${shift}px)${baseTransform}`, 'important');
+}
+
+let sbMobilePopupKeyboardSyncTimer = 0;
+
+function scheduleMobilePopupKeyboardSync() {
+    window.requestAnimationFrame(syncMobilePopupKeyboardShift);
+    window.clearTimeout(sbMobilePopupKeyboardSyncTimer);
+    // Run again after the keyboard animation / visualViewport resize settles.
+    sbMobilePopupKeyboardSyncTimer = window.setTimeout(syncMobilePopupKeyboardShift, 200);
 }
 
 function getMobileShellBoundDrawers() {
@@ -2309,11 +3055,15 @@ function applyMobileDrawerBoundsDecision(drawer, decision) {
     }
 
     for (const property of decision.styleRemovals) {
-        drawer.style.removeProperty(property);
+        if (drawer.style.getPropertyValue(property) || drawer.style.getPropertyPriority(property)) {
+            drawer.style.removeProperty(property);
+        }
     }
 
     for (const { property, value, priority } of decision.styleWrites) {
-        drawer.style.setProperty(property, value, priority);
+        if (drawer.style.getPropertyValue(property) !== value || drawer.style.getPropertyPriority(property) !== priority) {
+            drawer.style.setProperty(property, value, priority);
+        }
     }
 }
 
@@ -2343,6 +3093,9 @@ function syncMobileShellDrawerBounds() {
     }
 }
 
+let sbMobileShellDrawerBoundsFrameId = 0;
+let sbMobileShellDrawerBoundsFollowupId = 0;
+
 function queueMobileShellDrawerBoundsSync() {
     const schedule = sbMobileShellLifecycle.viewportSync.resolveDrawerBoundsSchedule({
         isMobileViewport: isMobileViewport(),
@@ -2354,18 +3107,31 @@ function queueMobileShellDrawerBoundsSync() {
         return;
     }
 
+    if (sbMobileShellDrawerBoundsFrameId && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(sbMobileShellDrawerBoundsFrameId);
+        sbMobileShellDrawerBoundsFrameId = 0;
+    }
+    if (sbMobileShellDrawerBoundsFollowupId) {
+        window.clearTimeout(sbMobileShellDrawerBoundsFollowupId);
+        sbMobileShellDrawerBoundsFollowupId = 0;
+    }
+
     const sync = () => {
+        sbMobileShellDrawerBoundsFrameId = 0;
         syncShellViewportBounds();
         syncMobileShellDrawerBounds();
     };
 
     if (schedule.useAnimationFrame) {
-        window.requestAnimationFrame(sync);
+        sbMobileShellDrawerBoundsFrameId = window.requestAnimationFrame(sync);
     } else {
         sync();
     }
 
-    window.setTimeout(sync, schedule.followupDelayMs);
+    sbMobileShellDrawerBoundsFollowupId = window.setTimeout(() => {
+        sbMobileShellDrawerBoundsFollowupId = 0;
+        sync();
+    }, schedule.followupDelayMs);
 }
 
 function isMovingUIActive() {
@@ -3130,47 +3896,6 @@ function stripAvatarOrigin(url) {
         : normalizedUrl;
 }
 
-function safeDecodeUriComponent(value) {
-    try {
-        return decodeURIComponent(value);
-    } catch {
-        return value;
-    }
-}
-
-function parseChatAvatarSource(rawSrc) {
-    const normalizedSrc = stripAvatarOrigin(rawSrc);
-    if (!normalizedSrc) {
-        return null;
-    }
-
-    const trimmedSrc = normalizedSrc.startsWith('/') ? normalizedSrc.slice(1) : normalizedSrc;
-
-    try {
-        const parsedUrl = new URL(normalizedSrc, window.location.origin);
-        if (parsedUrl.pathname.endsWith('thumbnail')) {
-            const type = parsedUrl.searchParams.get('type');
-            const file = parsedUrl.searchParams.get('file');
-
-            if (type && file) {
-                return { type, file: safeDecodeUriComponent(file) };
-            }
-        }
-    } catch {
-        // Fall back to direct path inspection below.
-    }
-
-    if (trimmedSrc.startsWith('characters/')) {
-        return { type: 'avatar', file: trimmedSrc.replace(/^characters\//, '') };
-    }
-
-    if (trimmedSrc.startsWith('User Avatars/')) {
-        return { type: 'persona', file: trimmedSrc.replace(/^User Avatars\//, '') };
-    }
-
-    return { type: null, file: normalizedSrc };
-}
-
 function isAbsoluteAvatarUrl(path) {
     return /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(String(path ?? ''));
 }
@@ -3185,24 +3910,22 @@ function ensureAvatarPath(path) {
 }
 
 function getChatAvatarSources(rawSrc) {
-    const avatarInfo = parseChatAvatarSource(rawSrc);
+    const source = ensureAvatarPath(stripAvatarOrigin(rawSrc));
+    const avatarInfo = parseAvatarSource(source);
     if (!avatarInfo) {
-        return { thumb: '', original: '' };
+        return { display: '', thumb: '', original: '' };
     }
 
-    const { type, file } = avatarInfo;
+    const { type, file, original } = avatarInfo;
+    const isThumbnail = Object.prototype.hasOwnProperty.call(avatarInfo, 'preset');
     const thumb = type === 'avatar' || type === 'persona'
-        ? `/thumbnail?type=${type}&file=${encodeURIComponent(file)}`
+        ? (isThumbnail ? source : getThumbnailUrl(type, file))
         : ensureAvatarPath(file);
-    const original = type === 'avatar'
-        ? ensureAvatarPath(`characters/${file}`)
-        : type === 'persona'
-            ? ensureAvatarPath(`User Avatars/${file}`)
-            : ensureAvatarPath(file);
 
     return {
+        display: source || thumb,
         thumb: stripAvatarOrigin(thumb),
-        original: stripAvatarOrigin(original),
+        original: stripAvatarOrigin(ensureAvatarPath(original)),
     };
 }
 
@@ -3226,20 +3949,32 @@ function updateChatAvatarVariables(root = document) {
             continue;
         }
 
-        const srcCandidate = avatarImg.getAttribute('src') || avatarImg.getAttribute('data-src') || avatarImg.currentSrc;
-        const { thumb, original } = getChatAvatarSources(srcCandidate);
-
-        if (!thumb && !original) {
+        const src = avatarImg.getAttribute('src') || avatarImg.getAttribute('data-src') || avatarImg.currentSrc;
+        const thumbnailSrc = avatarImg.getAttribute('data-thumbnail-src');
+        const originalSrc = avatarImg.getAttribute('data-original-src');
+        const cachedSources = sbState.chatAvatars.sourceCache.get(message);
+        if (cachedSources?.src === src
+            && cachedSources.thumbnailSrc === thumbnailSrc
+            && cachedSources.originalSrc === originalSrc) {
             continue;
         }
+        sbState.chatAvatars.sourceCache.set(message, { src, thumbnailSrc, originalSrc });
 
-        const thumbUrl = thumb || original;
-        const originalUrl = original || thumbUrl;
-        const displayUrl = originalUrl || thumbUrl;
+        const srcSources = getChatAvatarSources(src);
+        const thumbnailSources = getChatAvatarSources(thumbnailSrc);
+        const originalSources = getChatAvatarSources(originalSrc);
+        const displayUrl = srcSources.display || thumbnailSources.display || originalSources.display;
+        const thumbUrl = thumbnailSources.display || srcSources.thumb || displayUrl;
+        const originalUrl = originalSources.display || srcSources.original || thumbnailSources.original || displayUrl;
+
+        if (!displayUrl && !thumbUrl && !originalUrl) {
+            continue;
+        }
 
         message.dataset.avatarThumb = thumbUrl;
         message.dataset.avatarOriginal = originalUrl;
         message.dataset.avatar = displayUrl;
+        message.style.setProperty('--sb-message-avatar', formatAvatarCssUrl(displayUrl));
         message.style.setProperty('--mes-avatar-thumb-url', formatAvatarCssUrl(thumbUrl));
         message.style.setProperty('--mes-avatar-original-url', formatAvatarCssUrl(originalUrl));
         message.style.setProperty('--mes-avatar-url', formatAvatarCssUrl(displayUrl));
@@ -3281,7 +4016,7 @@ function initChatAvatarVariables() {
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ['src', 'data-src'],
+        attributeFilter: ['src', 'data-src', 'data-thumbnail-src', 'data-original-src'],
     });
 
     sbState.chatAvatars.observer = observer;
@@ -3364,6 +4099,36 @@ function setSurfaceTransparency(value, { persist = true } = {}) {
     updateThemePickerUi();
 }
 
+function applyPaperTextureOpacity() {
+    const enabled = sbState.paperTextureEnabled;
+    const opacity = enabled ? normalizePaperTextureOpacity(sbState.paperTextureOpacity) / 100 : 0;
+    document.documentElement.style.setProperty('--sb-paper-texture-opacity', opacity.toFixed(2));
+}
+
+function setPaperTextureEnabled(enabled, { persist = true } = {}) {
+    const nextEnabled = normalizeStoredBoolean(enabled, false);
+    sbState.paperTextureEnabled = nextEnabled;
+    applyPaperTextureOpacity();
+
+    if (persist) {
+        safeSetItem(SB_STORAGE_KEYS.paperTextureEnabled, String(nextEnabled));
+    }
+
+    updateThemePickerUi();
+}
+
+function setPaperTextureOpacity(value, { persist = true } = {}) {
+    const nextOpacity = normalizePaperTextureOpacity(value);
+    sbState.paperTextureOpacity = nextOpacity;
+    applyPaperTextureOpacity();
+
+    if (persist) {
+        safeSetItem(SB_STORAGE_KEYS.paperTextureOpacity, String(nextOpacity));
+    }
+
+    updateThemePickerUi();
+}
+
 function setDesktopTopbarLabelPart(partId, enabled) {
     const normalizedPart = normalizeTopbarLabelPart(partId);
     if (!normalizedPart) {
@@ -3379,6 +4144,7 @@ function setDesktopTopbarLabelPart(partId, enabled) {
 
     sbState.topbarLabel.desktopParts = normalizeTopbarLabelParts(Array.from(nextParts), []);
     safeSetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts, JSON.stringify(sbState.topbarLabel.desktopParts));
+    flushSbStorageWrites();
     updateThemePickerUi();
     updateTopBarBrand();
     scheduleTopbarContextRefresh(0);
@@ -3394,6 +4160,7 @@ function setMobileTopbarLabelPart(partId, enabled) {
 
     sbState.topbarLabel.mobilePart = nextPart;
     safeSetItem(SB_STORAGE_KEYS.topbarLabelMobilePart, nextPart);
+    flushSbStorageWrites();
     updateThemePickerUi();
     updateTopBarBrand();
     scheduleTopbarContextRefresh(0);
@@ -3406,7 +4173,29 @@ function setTopbarCustomText(value) {
     }
 
     sbState.topbarLabel.customText = nextText;
+    if (!nextText && sbState.topbarLabel.cyclePart === 'custom') {
+        resetTopBarLabelCycle({ refresh: false });
+    }
+
     safeSetItem(SB_STORAGE_KEYS.topbarLabelCustomText, nextText);
+    flushSbStorageWrites();
+    updateThemePickerUi();
+    updateTopBarBrand();
+}
+
+function setTopbarLabelClickCycle(enabled) {
+    const nextValue = Boolean(enabled);
+    if (sbState.topbarLabel.clickCycle === nextValue) {
+        return;
+    }
+
+    sbState.topbarLabel.clickCycle = nextValue;
+    if (!nextValue) {
+        resetTopBarLabelCycle({ refresh: false });
+    }
+
+    safeSetItem(SB_STORAGE_KEYS.topbarLabelClickCycle, String(nextValue));
+    flushSbStorageWrites();
     updateThemePickerUi();
     updateTopBarBrand();
 }
@@ -3743,7 +4532,9 @@ function setTopbarContextTokens(tokens) {
 }
 
 function isTopbarContextLabelEnabled() {
-    return sbState.topbarLabel.desktopParts.includes('ctx') || sbState.topbarLabel.mobilePart === 'ctx';
+    return sbState.topbarLabel.desktopParts.includes('ctx')
+        || sbState.topbarLabel.mobilePart === 'ctx'
+        || sbState.topbarLabel.cyclePart === 'ctx';
 }
 
 function syncTopbarContextTokensFromPromptManager() {
@@ -3823,6 +4614,19 @@ function getConfiguredTopbarLabelParts() {
     return normalizeTopbarLabelParts(sbState.topbarLabel.desktopParts);
 }
 
+function getTopbarLabelPartOption(partId) {
+    return SB_TOPBAR_LABEL_PARTS.find(part => part.id === partId) ?? null;
+}
+
+function getTopbarLabelCycleParts() {
+    const cycleParts = ['', 'ctx', 'char'];
+    if (sbState.topbarLabel.customText) {
+        cycleParts.push('custom');
+    }
+
+    return cycleParts;
+}
+
 function getTopBarLabelPartText(partId, context = getSillyTavernContext()) {
     switch (partId) {
         case 'ctx':
@@ -3840,8 +4644,109 @@ function getTopBarLabelPartText(partId, context = getSillyTavernContext()) {
     }
 }
 
+function getTopBarLabelPreviewText(partId, context = getSillyTavernContext()) {
+    const normalizedPart = normalizeTopbarLabelPart(partId);
+    const labelText = normalizedPart ? getTopBarLabelPartText(normalizedPart, context) : '';
+    if (labelText) {
+        return labelText;
+    }
+
+    if (normalizedPart === 'ctx') {
+        return '...';
+    }
+
+    return getTopbarLabelPartOption(normalizedPart)?.label ?? '';
+}
+
+function resetTopBarLabelCycle({ refresh = true } = {}) {
+    const hadCyclePart = Boolean(sbState.topbarLabel.cyclePart);
+    window.clearTimeout(sbState.topbarLabel.cycleResetTimer);
+    sbState.topbarLabel.cycleResetTimer = 0;
+    sbState.topbarLabel.cyclePart = '';
+
+    if (hadCyclePart && refresh) {
+        updateTopBarBrand();
+    }
+}
+
+function scheduleTopBarLabelCycleReset() {
+    window.clearTimeout(sbState.topbarLabel.cycleResetTimer);
+    sbState.topbarLabel.cycleResetTimer = window.setTimeout(() => {
+        resetTopBarLabelCycle();
+    }, SB_TOPBAR_LABEL_CYCLE_RESET_MS);
+}
+
+function cycleTopBarLabel() {
+    const cycleParts = getTopbarLabelCycleParts();
+    const currentPart = normalizeTopbarLabelPart(sbState.topbarLabel.cyclePart, '');
+    const currentIndex = cycleParts.indexOf(currentPart);
+    const nextIndex = currentIndex >= 0 ? currentIndex + 1 : 1;
+    const nextPart = cycleParts[nextIndex % cycleParts.length];
+
+    sbState.topbarLabel.cyclePart = nextPart;
+    if (nextPart) {
+        scheduleTopBarLabelCycleReset();
+    } else {
+        window.clearTimeout(sbState.topbarLabel.cycleResetTimer);
+        sbState.topbarLabel.cycleResetTimer = 0;
+    }
+
+    if (nextPart === 'ctx') {
+        scheduleTopbarContextRefresh(0);
+    }
+
+    updateTopBarBrand();
+}
+
+function returnToChatSurface() {
+    // Close every overlay surface without touching the active chat itself.
+    window.dispatchEvent(new CustomEvent('sb:close-conversation-workspace'));
+    closeShell('left');
+    closeShell('right');
+    closeCharacterPanel();
+    closeMobileNav();
+    closeMobileChatTools();
+    setConnectionStripOpenState(false);
+    queueLandingPageStateSync();
+}
+
+function handleTopBarTitleActivation() {
+    if (sbState.topbarLabel.clickCycle) {
+        cycleTopBarLabel();
+        return;
+    }
+
+    returnToChatSurface();
+}
+
+function bindTopBarTitleCycle(title) {
+    if (!(title instanceof HTMLElement) || title.dataset.sbTopbarTitleCycleBound === 'true') {
+        return;
+    }
+
+    title.dataset.sbTopbarTitleCycleBound = 'true';
+    title.addEventListener('click', event => {
+        event.stopPropagation();
+        handleTopBarTitleActivation();
+    });
+    title.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        handleTopBarTitleActivation();
+    });
+}
+
 function getTopBarLabel() {
     const context = getSillyTavernContext();
+    const previewPart = normalizeTopbarLabelPart(sbState.topbarLabel.cyclePart, '');
+    if (previewPart) {
+        return getTopBarLabelPreviewText(previewPart, context);
+    }
+
     const parts = getConfiguredTopbarLabelParts()
         .map(partId => normalizeTopbarLabelPart(partId))
         .filter(Boolean);
@@ -3865,10 +4770,16 @@ function updateTopBarBrand() {
     const label = getTopBarLabel();
     const isActiveChat = hasActiveTopBarChat(context);
 
+    bindTopBarTitleCycle(title);
     title.textContent = label;
     title.title = label;
+    title.setAttribute('aria-label', sbState.topbarLabel.clickCycle
+        ? `${label}. Tap to preview top bar label options.`
+        : `${label}. Tap to return to the chat.`);
     title.classList.toggle('is-chat', isActiveChat);
+    title.classList.toggle('is-previewing', Boolean(sbState.topbarLabel.cyclePart));
     brand.dataset.brandState = isActiveChat ? 'chat' : 'idle';
+    queueTopbarBrandFit();
 }
 
 function scheduleTopBarBrandBindingRetry(delay = 240) {
@@ -3926,6 +4837,24 @@ function bindTopBarBrand() {
         refresh();
         scheduleTopbarContextRefresh();
     };
+    const resetCycleAndRefreshWithContext = () => {
+        resetTopBarLabelCycle({ refresh: false });
+        refreshWithContext();
+    };
+    // SillyBunny: top-bar taps only preview alternate labels; chat/context moves restore configured text.
+    const resetCycleEvents = new Set([
+        eventTypes.APP_READY,
+        eventTypes.CHAT_CHANGED,
+        eventTypes.CHAT_CREATED,
+        eventTypes.GROUP_CHAT_CREATED,
+        eventTypes.CHARACTER_EDITED,
+        eventTypes.CHARACTER_RENAMED,
+        eventTypes.CHARACTER_DELETED,
+        eventTypes.GROUP_UPDATED,
+        eventTypes.PERSONA_CHANGED,
+        eventTypes.MAIN_API_CHANGED,
+        eventTypes.SETTINGS_UPDATED,
+    ].filter(Boolean));
     const events = [
         eventTypes.APP_READY,
         eventTypes.CHAT_CHANGED,
@@ -3945,7 +4874,8 @@ function bindTopBarBrand() {
     ].filter(Boolean);
 
     for (const eventName of new Set(events)) {
-        eventSource.on(eventName, refreshWithContext);
+        const eventHandler = resetCycleEvents.has(eventName) ? resetCycleAndRefreshWithContext : refreshWithContext;
+        eventSource.on(eventName, eventHandler);
     }
 
     if (eventTypes.CHAT_COMPLETION_PROMPT_READY) {
@@ -3971,7 +4901,9 @@ function stopProxyPointerPropagation(element) {
 
     element.addEventListener('mousedown', stop);
     element.addEventListener('pointerdown', stop);
-    element.addEventListener('touchstart', stop);
+    // Passive: the handler never calls preventDefault, and a non-passive touchstart on every
+    // button pulls WebKit off its compositor scrolling path, which stalls the icons-only rail.
+    element.addEventListener('touchstart', stop, { passive: true });
 }
 
 function createProxyButton({ id, icon, label, title, className = '' }, onClick) {
@@ -3992,6 +4924,253 @@ function createProxyButton({ id, icon, label, title, className = '' }, onClick) 
     button.addEventListener('click', debounceAction(onClick));
 
     return button;
+}
+
+function getTopbarPageConfig(page) {
+    if (isSearchShortcutTarget(page.value)) {
+        return getShortcutConfig(page.value);
+    }
+
+    if (page.shellKey === 'characters') {
+        return getCharacterPanelTabConfig(page.tabId);
+    }
+
+    const shellConfig = getShellConfig(page.shellKey);
+
+    return [
+        shellConfig?.baseTab,
+        ...(shellConfig?.embeddedTabs ?? []),
+        ...(shellConfig?.customTabs ?? []),
+    ].find(tab => tab?.id === page.tabId) ?? null;
+}
+
+function createTopbarPageButton(page) {
+    const config = getTopbarPageConfig(page);
+    const label = config?.label ?? page.tabId;
+    const button = createProxyButton(
+        {
+            id: '',
+            icon: config?.icon ?? 'fa-circle-dot',
+            label,
+            title: label,
+            className: 'sb-proxy-button-icon-only sb-topbar-page-button',
+        },
+        () => activateShortcutTarget(page.value),
+    );
+
+    button.dataset.sbTopbarPage = page.value;
+
+    return button;
+}
+
+function buildTopbarPageRail(railId, pages) {
+    const rail = createElement('div', {
+        id: railId,
+        className: 'sb-topbar-pages',
+        attrs: { role: 'group' },
+    });
+
+    for (const page of pages) {
+        rail.appendChild(createTopbarPageButton(page));
+    }
+
+    return rail;
+}
+
+// SillyBunny: a 1px rule between two clusters, visible at every size while icons-only mode is on
+// so the boundaries read the same with or without the brand label between them.
+function createTopbarClusterDivider(id) {
+    return createElement('span', {
+        id,
+        className: 'sb-topbar-cluster-divider',
+        attrs: { 'aria-hidden': 'true' },
+    });
+}
+
+// SillyBunny: the whole bar has one canonical child order per group per mode, and the layout is
+// applied by replaying that order rather than by moving individual buttons and remembering where
+// each came from. appendChild on a node the group already holds is a move, so replaying is
+// idempotent and no remembered reference node can go stale.
+//
+// The cluster rails are display:none while the mode is off, so the "off" order renders exactly as
+// the bar always has: the button sequence never changes between modes, only labels and the added
+// clusters do. Phones fold the Characters pages into the single scrolling left strip, because the
+// right group is pinned at its natural width there and would otherwise starve the strip.
+function getTopbarGroupOrder({ iconsOnly, mobile }) {
+    const [workspace, customize, characters] = SB_TOPBAR_CLUSTERS;
+    const quickAccessIds = SB_SHORTCUT_SLOTS.map(side => getShortcutButtonId(side));
+    // The divider spans ride the order too; CSS decides when they are visible.
+    const left = [
+        'sb-hamburger',
+        workspace.leadId,
+        workspace.railId,
+        'sb-topbar-divider-customize',
+        customize.leadId,
+        customize.railId,
+    ];
+    // The extension slot leads the right group in every mode: syncTopbarGroupOrder() re-appends
+    // every listed id, so an unlisted element would be pushed to the front of the group as a side
+    // effect. It stays out of the left group because that one scrolls in cramped mode, which would
+    // clip an adopted extension's dropdown.
+    const right = [TOPBAR_EXTENSION_SLOT_ID];
+
+    if (iconsOnly) {
+        right.push(...quickAccessIds);
+    } else {
+        left.push('sb-shortcut-left', 'sb-shortcut-slot3', 'sb-shortcut-slot4');
+        right.push('sb-shortcut-slot6', 'sb-shortcut-slot5', 'sb-shortcut-right');
+    }
+
+    // The home divider marks the Home|Characters boundary; phones keep it in every mode.
+    right.push('sb-home-toggle', 'sb-topbar-divider-home');
+
+    if (iconsOnly && mobile) {
+        // The characters pages ride the strip, so the divider marks where they start there;
+        // the anchor stays pinned right beside Home.
+        right.push(characters.leadId);
+        left.push('sb-topbar-divider-characters', characters.railId);
+    } else {
+        // The characters divider rides along hidden here; the home divider above carries the
+        // Home|Characters boundary on desktop.
+        right.push('sb-topbar-divider-characters', characters.leadId, characters.railId);
+    }
+
+    return { left, right };
+}
+
+function syncTopbarGroupOrder() {
+    const leftGroup = document.querySelector('#sb-topbar-inner > .sb-topbar-group-left');
+    const rightGroup = document.querySelector('#sb-topbar-inner > .sb-topbar-group-right');
+
+    if (!(leftGroup instanceof HTMLElement) || !(rightGroup instanceof HTMLElement)) {
+        return;
+    }
+
+    const order = getTopbarGroupOrder({
+        iconsOnly: isTopbarIconsOnlyActive(),
+        mobile: isMobileViewport(),
+    });
+
+    for (const [group, ids] of [[leftGroup, order.left], [rightGroup, order.right]]) {
+        for (const id of ids) {
+            const element = document.getElementById(id);
+
+            if (element instanceof HTMLElement) {
+                group.appendChild(element);
+            }
+        }
+    }
+}
+
+function syncTopbarIconsOnlyLayout() {
+    const iconsOnly = isTopbarIconsOnlyActive();
+
+    for (const buttonId of SB_TOPBAR_ANCHOR_IDS) {
+        document.getElementById(buttonId)?.classList.toggle('sb-proxy-button-icon-only', iconsOnly);
+    }
+
+    syncTopbarGroupOrder();
+    syncTopbarIconsOnlyDedupe();
+    syncTopbarBrandFit();
+
+    for (const cluster of SB_TOPBAR_CLUSTERS) {
+        document.getElementById(cluster.railId)?.toggleAttribute('inert', !iconsOnly);
+    }
+}
+
+// SillyBunny: the complete clusters keep their canonical positions. A Quick Access slot pointed at
+// one of those pages yields in icons-only mode; non-cluster actions such as Search remain visible.
+function syncTopbarIconsOnlyDedupe() {
+    const clusterButtons = document.querySelectorAll('.sb-topbar-page-button[data-sb-topbar-page]');
+    const claimedByClusters = new Set(Array.from(clusterButtons, button => button.dataset.sbTopbarPage));
+    const iconsOnly = isTopbarIconsOnlyActive();
+
+    for (const side of SB_SHORTCUT_SLOTS) {
+        const button = document.getElementById(getShortcutButtonId(side));
+
+        if (button instanceof HTMLElement) {
+            button.classList.toggle(
+                'sb-topbar-shortcut-duplicate',
+                iconsOnly && claimedByClusters.has(getShortcutTarget(side)),
+            );
+        }
+    }
+}
+
+// SillyBunny: once the icon count outgrows the bar the brand label is the least useful thing on
+// it, so it yields its width to the rails. The decision is made from the rails' full content
+// width plus a fixed label reservation, never from the label's current state, so showing and
+// hiding it cannot feed back into itself and oscillate.
+function syncTopbarBrandFit() {
+    const inner = document.getElementById('sb-topbar-inner');
+    const brand = document.querySelector('.sb-topbar-brand');
+
+    if (!(inner instanceof HTMLElement) || !(brand instanceof HTMLElement)) {
+        return;
+    }
+
+    if (!isTopbarIconsOnlyActive()) {
+        delete document.documentElement.dataset.sbTopbarBrandCramped;
+        delete document.documentElement.dataset.sbTopbarScroll;
+        return;
+    }
+
+    // Phones drop the label unconditionally, so only the overflow verdict matters there.
+    const labelCanFit = !isMobileViewport();
+
+    if (isActuallyVisible(brand)) {
+        sbState.topbarPages.brandWidth = Math.max(brand.scrollWidth, SB_TOPBAR_BRAND_MIN_WIDTH);
+    }
+
+    const groups = [...inner.querySelectorAll(':scope > .sb-topbar-group')];
+    const gap = Number.parseFloat(getComputedStyle(inner).columnGap) || 0;
+    let needed = 0;
+
+    for (const group of groups) {
+        for (const child of group.children) {
+            if (!(child instanceof HTMLElement) || !isActuallyVisible(child)) {
+                continue;
+            }
+
+            // Rails are scroll containers, so their laid-out width understates what they hold.
+            needed += child.classList.contains('sb-topbar-pages') ? child.scrollWidth : child.offsetWidth;
+            // The cluster seams and divider centring live in margins, which offsetWidth omits.
+            // Leaving them uncounted opens a dead band where the bar overflows its grid tracks
+            // -- the groups visibly overlap -- yet the scroll verdict never trips.
+            const childStyle = getComputedStyle(child);
+            needed += (Number.parseFloat(childStyle.marginInlineStart) || 0) + (Number.parseFloat(childStyle.marginInlineEnd) || 0);
+            needed += gap;
+        }
+    }
+
+    const reservation = sbState.topbarPages.brandWidth || SB_TOPBAR_BRAND_MIN_WIDTH;
+    const available = inner.clientWidth;
+
+    if (labelCanFit && needed + reservation + gap > available) {
+        document.documentElement.dataset.sbTopbarBrandCramped = 'true';
+    } else {
+        delete document.documentElement.dataset.sbTopbarBrandCramped;
+    }
+
+    // Even with the label gone the icons can outrun the bar. Rather than let a rail clip a
+    // button to an unreadable sliver, hand the whole bar one scroll axis and pin the trailing
+    // controls so Quick Actions, Search, Home and Characters stay reachable at any width.
+    if (needed > available) {
+        document.documentElement.dataset.sbTopbarScroll = 'true';
+    } else {
+        delete document.documentElement.dataset.sbTopbarScroll;
+    }
+}
+
+function queueTopbarBrandFit() {
+    if (sbState.topbarPages.fitFrame) {
+        return;
+    }
+
+    sbState.topbarPages.fitFrame = window.requestAnimationFrame(() => {
+        sbState.topbarPages.fitFrame = 0;
+        syncTopbarBrandFit();
+    });
 }
 
 function bindSearchShortcutPreFocus(button, targetGetter) {
@@ -4265,10 +5444,6 @@ function escapeSelectorValue(value) {
     }
 
     return String(value ?? '').replace(/["\\]/g, '\\$&');
-}
-
-function escapeRegExp(value) {
-    return String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function stripDecoratedOptionText(value) {
@@ -4580,7 +5755,11 @@ async function handleRenameChat() {
         return;
     }
 
-    await chatContext.context.renameChat(currentChatId, String(newChatName).trim());
+    try {
+        await chatContext.context.renameChat(currentChatId, String(newChatName).trim());
+    } catch {
+        return;
+    }
     scheduleChatbarRefresh(120);
 }
 
@@ -4833,7 +6012,7 @@ function showBottomChatMassDeleteDialog(files, currentChatId) {
         document.addEventListener('keydown', handleKeydown);
         updateStatus();
         if (!isMobileViewport()) {
-            ageInput.focus();
+            ageInput.focus({ preventScroll: true });
         }
     });
 }
@@ -5508,7 +6687,7 @@ function createChatSearchRegex(terms = getSearchTerms()) {
         return null;
     }
 
-    return new RegExp(`(${terms.map(escapeRegExp).join('|')})`, 'gi');
+    return new RegExp(`(${terms.map(escapeRegex).join('|')})`, 'gi');
 }
 
 function addChatSearchTextSegment(segments, value) {
@@ -5803,7 +6982,7 @@ async function applyChatSearchHighlights({ scrollToFirst = false } = {}) {
     setSearchStatusText(getChatSearchStatusText(totalMatches, renderedMatches));
 
     if (scrollToFirst && firstMatch instanceof HTMLElement) {
-        firstMatch.scrollIntoView({
+        scrollElementIntoManagedView(firstMatch, {
             block: 'center',
             behavior: getReducedMotionScrollBehavior(),
         });
@@ -5812,7 +6991,7 @@ async function applyChatSearchHighlights({ scrollToFirst = false } = {}) {
         if (messageElement instanceof HTMLElement) {
             messageElement.classList.add('sb-search-hit');
             window.setTimeout(() => messageElement.classList.remove('sb-search-hit'), 2400);
-            messageElement.scrollIntoView({
+            scrollElementIntoManagedView(messageElement, {
                 block: 'center',
                 behavior: getReducedMotionScrollBehavior(),
             });
@@ -6620,6 +7799,45 @@ function queueMobileModalStateSync() {
     });
 }
 
+function isTopbarPageActive(page) {
+    return page.shellKey === 'characters'
+        ? isCharacterPanelTabOpen(page.tabId)
+        : isShellTabOpen(page.shellKey, page.tabId);
+}
+
+function syncTopbarPageButtonStates() {
+    for (const page of SB_TOPBAR_PAGE_TARGETS) {
+        const button = document.querySelector(`[data-sb-topbar-page="${CSS.escape(page.value)}"]`);
+
+        if (!(button instanceof HTMLElement)) {
+            continue;
+        }
+
+        const isActive = isTopbarPageActive(page);
+        button.classList.toggle('is-current', isActive);
+        button.setAttribute('aria-expanded', String(isActive));
+
+        if (isActive) {
+            button.setAttribute('aria-current', 'page');
+        } else {
+            button.removeAttribute('aria-current');
+        }
+    }
+
+    syncCharacterTopbarButtonState();
+}
+
+function queueTopbarPageStateSync() {
+    if (sbState.topbarPages.syncFrame) {
+        return;
+    }
+
+    sbState.topbarPages.syncFrame = window.requestAnimationFrame(() => {
+        sbState.topbarPages.syncFrame = 0;
+        syncTopbarPageButtonStates();
+    });
+}
+
 function forceDrawerState(drawerRootOrId, shouldOpen, drawerIconOrSelector = null) {
     const el = typeof drawerRootOrId === 'string'
         ? document.getElementById(drawerRootOrId)
@@ -6629,6 +7847,7 @@ function forceDrawerState(drawerRootOrId, shouldOpen, drawerIconOrSelector = nul
     el.classList.toggle('closedDrawer', !shouldOpen);
     syncDrawerIconState(drawerIconOrSelector, shouldOpen);
     queueMobileModalStateSync();
+    queueTopbarPageStateSync();
 }
 
 function isShellOpen(shellKey) {
@@ -6872,7 +8091,7 @@ function syncCharacterTitlebarVisibility() {
         return;
     }
 
-    const shouldHide = ['characters', 'groups', 'editor_empty', 'world-info', 'persona', 'import'].includes(panel.dataset.menuType ?? '');
+    const shouldHide = ['characters', 'groups', 'editor_empty', 'world-info', 'persona', 'import', 'conversation'].includes(panel.dataset.menuType ?? '');
     pinAndTabs.style.display = shouldHide ? 'none' : '';
     syncCharacterEditorFullscreenAvailability();
 }
@@ -7051,7 +8270,7 @@ function setCharacterEditorFullscreenState(expanded, { focusButton = false } = {
     }
 
     if (isExpanded && !wasExpanded) {
-        document.getElementById('sb_character_editor_subtabs')?.scrollIntoView({ block: 'nearest' });
+        scrollElementIntoManagedView(document.getElementById('sb_character_editor_subtabs'), { block: 'nearest' });
     }
 }
 
@@ -7295,6 +8514,57 @@ function preserveCharacterImportTab() {
     syncCharacterTitlebarVisibility();
 }
 
+function syncCharacterModeToggle() {
+    const toggle = document.getElementById('sb_character_mode_toggle');
+
+    if (!(toggle instanceof HTMLElement)) {
+        return;
+    }
+
+    const activeMode = conversationState.conversationWorkspaceOpen ? 'conversation' : 'roleplay';
+    toggle.dataset.activeMode = activeMode;
+    toggle.querySelectorAll('[data-sb-character-mode]').forEach((button) => {
+        if (!(button instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const isActive = button.dataset.sbCharacterMode === activeMode;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-checked', String(isActive));
+    });
+}
+
+function setCharacterShellMode(mode) {
+    const normalizedMode = mode === 'conversation' ? 'conversation' : 'roleplay';
+    const isConversationMode = normalizedMode === 'conversation';
+    const mobileViewport = isMobileViewport();
+
+    if (conversationState.conversationWorkspaceOpen === isConversationMode) {
+        syncCharacterModeToggle();
+        if (mobileViewport) {
+            closeCharacterPanel();
+        }
+        return;
+    }
+
+    if (isConversationMode) {
+        window.dispatchEvent(new CustomEvent('sb:open-conversation-workspace', {
+            detail: {
+                avatar: characters[this_chid]?.avatar || '',
+                showToast: false,
+            },
+        }));
+    } else {
+        window.dispatchEvent(new CustomEvent('sb:close-conversation-workspace'));
+    }
+
+    syncCharacterModeToggle();
+
+    if (mobileViewport) {
+        closeCharacterPanel();
+    }
+}
+
 function openCharacterPanelTab(tabId) {
     const normalizedTabId = normalizeCharacterPanelTab(tabId);
     sbState.characterDrawer.lastTab = normalizedTabId;
@@ -7399,6 +8669,7 @@ function syncCharacterShellTabs(activeTab = null) {
     }
 
     syncCharacterHeaderCopy(normalizedTab);
+    syncCharacterModeToggle();
 
     panel?.querySelectorAll('[data-sb-character-tab]').forEach(tab => {
         if (!(tab instanceof HTMLElement)) {
@@ -7424,6 +8695,8 @@ function syncCharacterShellTabs(activeTab = null) {
             button.removeAttribute('aria-current');
         }
     });
+
+    queueTopbarPageStateSync();
 
     if (panel instanceof HTMLElement && panel.classList.contains('openDrawer')) {
         const tabConfig = getCharacterPanelTabConfig(normalizedTab);
@@ -7453,7 +8726,7 @@ function syncCharacterHeaderCopy(activeTab = 'characters') {
     }
 
     if (subtitle instanceof HTMLElement) {
-        subtitle.textContent = copy.subtitle;
+        renderShellSubtitle(subtitle, copy.subtitle, { isHtml: copy.subtitleIsHtml === true });
     }
 
     if (description instanceof HTMLElement) {
@@ -7580,6 +8853,7 @@ function syncCharacterDrawerStateFromDom({ force = false } = {}) {
 
     syncChatbarVisibilityState();
     queueMobileModalStateSync();
+    queueTopbarPageStateSync();
 }
 
 function bindCharacterDrawerStateObserver() {
@@ -7693,6 +8967,15 @@ function scheduleCharacterToggleGhostSync() {
     }
 }
 window.addEventListener('resize', syncCharacterToggleGhostRect, { passive: true });
+window.addEventListener('resize', queueTopbarBrandFit, { passive: true });
+window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener('change', () => {
+    // Crossing the breakpoint can change which device's icons-only setting is in force, so the
+    // whole preference re-applies rather than just the group order.
+    applyTopbarIconsOnlyPreference();
+    queueTopbarBrandFit();
+    // Crossing the breakpoint also decides which rail third-party composer buttons belong in.
+    queueComposerControlPlacement();
+});
 
 document.addEventListener('click', (e) => {
     if (characterToggleDispatchGuard) return;
@@ -7921,6 +9204,7 @@ function bindLandingPageObserver() {
 }
 
 async function returnToLandingPage() {
+    window.dispatchEvent(new CustomEvent('sb:close-conversation-workspace'));
     closeShell('left');
     closeShell('right');
     closeCharacterPanel();
@@ -7956,10 +9240,37 @@ function syncProxyButtonState(proxyButton, sourceIcon) {
 
     const isOpen = sourceIcon.classList.contains('openIcon');
     const isPinned = sourceIcon.classList.contains('drawerPinnedOpen');
+    const isCharacterButton = proxyButton.id === 'sb-character-toggle';
+
+    if (isCharacterButton && isTopbarIconsOnlyActive()) {
+        const isCurrent = isCharacterPanelTabOpen(SB_CHARACTER_PANEL_DEFAULT_TAB);
+        proxyButton.classList.remove('is-open', 'is-pinned');
+        proxyButton.classList.toggle('is-current', isCurrent);
+        proxyButton.setAttribute('aria-expanded', String(isCurrent));
+
+        if (isCurrent) {
+            proxyButton.setAttribute('aria-current', 'page');
+        } else {
+            proxyButton.removeAttribute('aria-current');
+        }
+        return;
+    }
 
     proxyButton.classList.toggle('is-open', isOpen);
     proxyButton.classList.toggle('is-pinned', isPinned);
     proxyButton.setAttribute('aria-expanded', String(isOpen));
+
+    if (isCharacterButton) {
+        proxyButton.classList.remove('is-current');
+        proxyButton.removeAttribute('aria-current');
+    }
+}
+
+function syncCharacterTopbarButtonState() {
+    syncProxyButtonState(
+        document.getElementById('sb-character-toggle'),
+        document.querySelector('#rightNavDrawerIcon'),
+    );
 }
 
 function observeProxyButton(buttonId, iconSelector) {
@@ -7974,9 +9285,21 @@ function observeProxyButton(buttonId, iconSelector) {
 
     const observer = new MutationObserver(() => {
         syncProxyButtonState(proxyButton, sourceIcon);
+        if (isTopbarIconsOnlyActive()) {
+            queueTopbarPageStateSync();
+        }
     });
 
     observer.observe(sourceIcon, { attributes: true, attributeFilter: ['class'] });
+}
+
+function activateCharacterTopbarButton() {
+    if (isTopbarIconsOnlyActive()) {
+        openCharacterPanelTab(SB_CHARACTER_PANEL_DEFAULT_TAB);
+        return;
+    }
+
+    toggleCharacterPanel();
 }
 
 function wasShellJustOpened(shellKey) {
@@ -8115,10 +9438,10 @@ function buildTopBar() {
     }
 
     // SillyBunny: preserve children injected by third-party extensions before wiping
-    // the bar. Re-append them after the shell layout is built so extensions targeting
-    // #top-bar (e.g. CharacterLibrary in standalone mode) aren't orphaned.
+    // the bar. They are adopted into the extension slot once the shell layout exists, so
+    // extensions targeting #top-bar (e.g. CharacterLibrary in standalone mode) aren't orphaned.
     const preservedExtensionChildren = Array.from(topBar.children)
-        .filter(child => !(child instanceof HTMLElement) || !child.id.startsWith('sb-'));
+        .filter(child => child instanceof HTMLElement && !isSillyBunnyOwnedElement(child));
 
     topBar.replaceChildren();
 
@@ -8129,6 +9452,10 @@ function buildTopBar() {
     const leftGroup = createElement('div', { className: 'sb-topbar-group sb-topbar-group-left' });
     const centerGroup = createElement('div', { className: 'sb-topbar-brand' });
     const rightGroup = createElement('div', { className: 'sb-topbar-group sb-topbar-group-right' });
+    const extensionSlot = createElement('div', {
+        id: TOPBAR_EXTENSION_SLOT_ID,
+        attrs: { 'data-sb-topbar-slot-empty': 'true' },
+    });
 
     const mobileButton = createElement('button', {
         id: 'sb-hamburger',
@@ -8184,7 +9511,7 @@ function buildTopBar() {
             label: 'Characters',
             title: 'Open character management',
         },
-        () => toggleCharacterPanel(),
+        activateCharacterTopbarButton,
     );
 
     const leftShortcutConfig = getShortcutConfig(getShortcutTarget('left'));
@@ -8213,29 +9540,70 @@ function buildTopBar() {
     );
     bindSearchShortcutPreFocus(rightShortcut, () => getShortcutTarget('right'));
 
+    const desktopShortcutButtons = {};
+    for (const side of SB_SHORTCUT_DESKTOP_SLOTS) {
+        const shortcutConfig = getShortcutConfig(getShortcutTarget(side));
+        const shortcut = createProxyButton(
+            {
+                id: getShortcutButtonId(side),
+                icon: shortcutConfig.icon,
+                label: shortcutConfig.label,
+                title: `Quick access: ${shortcutConfig.label}`,
+                className: 'sb-proxy-button-icon-only sb-desktop-setting',
+            },
+            () => activateShortcutTarget(getShortcutTarget(side)),
+        );
+        bindSearchShortcutPreFocus(shortcut, () => getShortcutTarget(side));
+        desktopShortcutButtons[side] = shortcut;
+    }
+
     centerGroup.innerHTML = `
-        <div id="sb-topbar-title" class="sb-brand-title">${SB_IDLE_BRAND_LABEL}</div>
+        <div id="sb-topbar-title" class="sb-brand-title" role="button" tabindex="0" aria-label="Tap to preview top bar label options">${SB_IDLE_BRAND_LABEL}</div>
     `;
 
-    leftGroup.append(mobileButton, leftButton, rightButton, leftShortcut);
-    rightGroup.append(rightShortcut, homeButton, charactersButton);
+    // SillyBunny: each cluster rail is built beside the Layer 2 anchor it belongs to and stays
+    // display:none until icons-only mode is on, so one static child order serves both modes and the
+    // button sequence never shifts when the option is toggled. Search gets no dedicated button: it
+    // rides a Quick Access slot here exactly as it does with the option off.
+    const [workspaceCluster, customizeCluster, charactersCluster] = SB_TOPBAR_CLUSTERS;
+    const workspaceRail = buildTopbarPageRail(workspaceCluster.railId, workspaceCluster.pages);
+    const customizeRail = buildTopbarPageRail(customizeCluster.railId, customizeCluster.pages);
+    const charactersRail = buildTopbarPageRail(charactersCluster.railId, charactersCluster.pages);
+    const customizeDivider = createTopbarClusterDivider('sb-topbar-divider-customize');
+    const homeDivider = createTopbarClusterDivider('sb-topbar-divider-home');
+    const charactersDivider = createTopbarClusterDivider('sb-topbar-divider-characters');
+
+    leftGroup.append(mobileButton, leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
+    rightGroup.append(extensionSlot, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 
     stack.append(primaryRow, searchRow);
-    topBar.append(stack, ...preservedExtensionChildren);
+    topBar.append(stack);
+    adoptTopbarExtensionNodes(preservedExtensionChildren);
+
+    // The anchor that leads a cluster carries the wider seam that separates the clusters.
+    for (const cluster of SB_TOPBAR_CLUSTERS) {
+        document.getElementById(cluster.leadId)?.classList.add('sb-topbar-cluster-lead');
+    }
 
     observeProxyButton('sb-left-shell-toggle', getShellConfig('left').hostIconSelector);
     observeProxyButton('sb-right-shell-toggle', getShellConfig('right').hostIconSelector);
     observeProxyButton('sb-character-toggle', '#rightNavDrawerIcon');
+    bindTopbarExtensionAdoption();
     bindTopBarBrand();
     updateTopBarBrand();
     updateTopbarUtilityButtons();
     updateShortcutButton('left');
     updateShortcutButton('right');
+    updateShortcutButton('slot3');
+    updateShortcutButton('slot4');
+    updateShortcutButton('slot5');
+    updateShortcutButton('slot6');
     syncTopbarLayoutState();
     queueLandingPageStateSync();
     scheduleCharacterToggleGhostSync();
+    queueTopbarPageStateSync();
 }
 
 function hideHostToggles() {
@@ -8266,6 +9634,189 @@ function hideHostToggles() {
     const worldInfoDrawer = document.getElementById('WI-SP-button');
     worldInfoDrawer?.classList.add('sb-drawer-host');
     worldInfoDrawer?.querySelector(':scope > .drawer-toggle')?.classList.add('sb-hidden-toggle');
+}
+
+function getTopbarExtensionSlot() {
+    const slot = document.getElementById(TOPBAR_EXTENSION_SLOT_ID);
+
+    return slot instanceof HTMLElement ? slot : null;
+}
+
+function getNativeCharacterDrawerIcon() {
+    const icon = getCharacterDrawerHost()?.querySelector(':scope #rightNavDrawerIcon')
+        ?? document.getElementById('rightNavDrawerIcon');
+
+    return icon instanceof HTMLElement ? icon : null;
+}
+
+/**
+ * Describes a DOM node for the pure adoption rules. Keeping the DOM reads here lets the
+ * decision logic in topbar-extension-slot/index.js stay importable and unit testable.
+ */
+function describeTopbarNode(node, index) {
+    const isElement = node instanceof Element;
+
+    return {
+        node,
+        key: isElement && node.id ? `id:${node.id}` : `index:${index}`,
+        isElement,
+        id: isElement ? node.id : '',
+        tagName: isElement ? node.tagName : '',
+        classNames: isElement ? Array.from(node.classList) : [],
+        adoptAttribute: isElement ? node.getAttribute(TOPBAR_ADOPTION_ATTRIBUTE) : null,
+        isSillyBunnyOwned: isSillyBunnyOwnedElement(node),
+    };
+}
+
+function describeCharacterBadge(node, index) {
+    const descriptor = describeTopbarNode(node, index);
+
+    return {
+        ...descriptor,
+        key: `badge:${index}`,
+        signature: `${descriptor.tagName}:${descriptor.classNames.join(' ')}`,
+    };
+}
+
+/**
+ * Mirrors extension badges from the ghosted native Characters icon onto the visible proxy
+ * button. CharacterLibrary appends its chevron to #rightNavDrawerIcon, which lives inside
+ * .sb-ghost-toggle and is therefore invisible, so the affordance never reaches the user.
+ * The badges are moved rather than copied: the extension flips visibility through a global
+ * document.querySelector, which only ever reaches the first copy.
+ */
+function syncCharacterToggleBadges() {
+    const drawerIcon = getNativeCharacterDrawerIcon();
+    const proxyButton = document.getElementById('sb-character-toggle');
+
+    if (!(drawerIcon instanceof HTMLElement) || !(proxyButton instanceof HTMLElement)) {
+        return;
+    }
+
+    const iconNodes = Array.from(drawerIcon.children);
+    const hostNodes = Array.from(proxyButton.querySelectorAll(`:scope > [${TOPBAR_ADOPTED_MARKER_ATTRIBUTE}='true']`));
+    const iconBadges = iconNodes.map((node, index) => describeCharacterBadge(node, index));
+    const hostBadges = hostNodes.map((node, index) => describeCharacterBadge(node, `host-${index}`));
+    const plan = resolveCharacterBadgeMirrorPlan({ iconBadges, hostBadges });
+    const byKey = new Map([...iconBadges, ...hostBadges].map(badge => [badge.key, badge.node]));
+
+    for (const key of plan.removeKeys) {
+        byKey.get(key)?.remove();
+    }
+
+    for (const key of plan.moveKeys) {
+        const badge = byKey.get(key);
+
+        if (badge instanceof HTMLElement) {
+            badge.setAttribute(TOPBAR_ADOPTED_MARKER_ATTRIBUTE, 'true');
+            proxyButton.appendChild(badge);
+        }
+    }
+
+    proxyButton.classList.toggle(
+        'sb-has-adopted-badge',
+        proxyButton.querySelector(`:scope > [${TOPBAR_ADOPTED_MARKER_ATTRIBUTE}='true']`) !== null,
+    );
+}
+
+function syncTopbarExtensionSlotEmptyState() {
+    const slot = getTopbarExtensionSlot();
+
+    if (!slot) {
+        return;
+    }
+
+    slot.dataset.sbTopbarSlotEmpty = String(slot.children.length === 0);
+}
+
+/**
+ * Moves third-party top-bar controls into the shell's own bar. Upstream's bare
+ * `.drawer { width: 100% }` plus this fork's fixed, click-through #top-settings-holder means an
+ * injected button otherwise stretches across the whole strip and eats every click meant for the
+ * bar underneath it (Sillyanonymous/SillyTavern-CharacterLibrary).
+ */
+function adoptTopbarExtensionNodes(extraNodes = []) {
+    const slot = getTopbarExtensionSlot();
+
+    if (!slot || sbState.topbarExtensions.adopting) {
+        return;
+    }
+
+    sbState.topbarExtensions.adopting = true;
+
+    try {
+        const candidates = [...extraNodes];
+
+        for (const source of [getCanonicalTopSettingsHolder(), document.getElementById('top-bar')]) {
+            if (source instanceof HTMLElement) {
+                candidates.push(...source.children);
+            }
+        }
+
+        const descriptors = candidates.map((node, index) => describeTopbarNode(node, index));
+        // Only id-bearing slot children can be matched by key; id-less descriptors fall back to a
+        // per-pass index, which would collide across the two lists. Those are covered by the
+        // parentElement check below instead.
+        const slotChildKeys = Array.from(slot.children)
+            .filter(node => node instanceof Element && node.id)
+            .map(node => `id:${node.id}`);
+        const plan = resolveTopbarAdoptionPlan({ nodes: descriptors, slotChildKeys });
+        const byKey = new Map(descriptors.map(descriptor => [descriptor.key, descriptor.node]));
+
+        for (const key of plan.adoptKeys) {
+            const node = byKey.get(key);
+
+            // The parent check -- not a "already in place" helper -- is what terminates repeated
+            // passes: appendChild on a node the slot already holds still mutates childList.
+            if (node instanceof HTMLElement && node.parentElement !== slot) {
+                slot.appendChild(node);
+            }
+        }
+
+        syncCharacterToggleBadges();
+        syncTopbarExtensionSlotEmptyState();
+    } finally {
+        sbState.topbarExtensions.adopting = false;
+        // Drop the records our own moves just produced before they reach the callback.
+        sbState.topbarExtensions.observer?.takeRecords();
+    }
+
+    queueTopbarBrandFit();
+}
+
+function queueTopbarExtensionAdoption() {
+    if (sbState.topbarExtensions.syncFrame) {
+        return;
+    }
+
+    sbState.topbarExtensions.syncFrame = window.requestAnimationFrame(() => {
+        sbState.topbarExtensions.syncFrame = 0;
+        adoptTopbarExtensionNodes();
+    });
+}
+
+function bindTopbarExtensionAdoption() {
+    if (!getTopbarExtensionSlot()) {
+        return;
+    }
+
+    if (!(sbState.topbarExtensions.observer instanceof MutationObserver)) {
+        sbState.topbarExtensions.observer = new MutationObserver(() => queueTopbarExtensionAdoption());
+    }
+
+    const observer = sbState.topbarExtensions.observer;
+
+    observer.disconnect();
+
+    // childList only: extensions inject direct children, and subtree on #top-bar would fire on
+    // every chatbar and search re-render inside #sb-topbar-stack.
+    for (const target of [getCanonicalTopSettingsHolder(), document.getElementById('top-bar'), getNativeCharacterDrawerIcon()]) {
+        if (target instanceof HTMLElement) {
+            observer.observe(target, { childList: true });
+        }
+    }
+
+    queueTopbarExtensionAdoption();
 }
 
 function createShellPanel(tabConfig) {
@@ -8971,6 +10522,132 @@ function updateConsoleLogsInteractivity() {
 
     refs.pauseButton.textContent = state.paused ? 'Resume Live' : 'Pause Live';
     setButtonDisabled(refs.refreshButton, state.busy);
+    setButtonDisabled(refs.verboseLoggingActionButton, state.busy || state.configBusy || !state.configLoaded);
+}
+
+function setConsoleLogsVerboseLoggingUI(value) {
+    const state = getConsoleLogsState();
+    const refs = getConsoleLogsRefs();
+    const enabled = Number(value) === 0;
+
+    state.verboseLoggingEnabled = enabled;
+
+    if (refs?.verboseLoggingStatus instanceof HTMLElement) {
+        refs.verboseLoggingStatus.textContent = enabled
+            ? 'Verbose logging is enabled.'
+            : 'Standard logging is enabled.';
+        refs.verboseLoggingStatus.dataset.state = enabled ? 'warn' : 'neutral';
+    }
+
+    if (refs?.verboseLoggingActionButton instanceof HTMLButtonElement) {
+        refs.verboseLoggingActionButton.textContent = enabled
+            ? 'Debug Logging: Enabled'
+            : 'Debug Logging: Disabled';
+    }
+
+    updateConsoleLogsInteractivity();
+}
+
+function getLoggingConfigTextFromYaml(content) {
+    if (typeof content !== 'string' || !content.trim()) {
+        return 1;
+    }
+
+    const match = content.match(/^\s*minLogLevel:\s*(\d+)\s*$/m);
+    return match ? Number(match[1]) : 1;
+}
+
+function replaceLoggingMinLogLevel(content, nextLevel) {
+    const desiredLevel = Number(nextLevel) === 0 ? 0 : 1;
+    const minLogLevelPattern = /^(\s*minLogLevel:\s*)(\d+)\s*$/m;
+
+    if (minLogLevelPattern.test(content)) {
+        return content.replace(minLogLevelPattern, `$1${desiredLevel}`);
+    }
+
+    const loggingHeaderPattern = /^(logging:\s*\n)(?:\s*#.*\n)*?/m;
+    if (loggingHeaderPattern.test(content)) {
+        return content.replace(loggingHeaderPattern, (match) => `${match}  minLogLevel: ${desiredLevel}\n`);
+    }
+
+    return `${content.trimEnd()}\n\nlogging:\n  minLogLevel: ${desiredLevel}\n`;
+}
+
+async function refreshConsoleLogsConfig() {
+    const state = getConsoleLogsState();
+    const refs = getConsoleLogsRefs();
+
+    if (!refs) {
+        return;
+    }
+
+    state.configBusy = true;
+    updateConsoleLogsInteractivity();
+
+    try {
+        const data = await requestServerAdmin('/api/server-admin/config/get');
+        const content = String(data?.content ?? '');
+        const enabled = getLoggingConfigTextFromYaml(content) === 0;
+
+        state.configLoaded = true;
+        state.configPath = String(data?.path ?? '');
+        state.configLastModifiedMs = Number(data?.lastModifiedMs ?? 0) || 0;
+        setConsoleLogsVerboseLoggingUI(enabled ? 0 : 1);
+    } catch (error) {
+        state.configLoaded = false;
+        state.verboseLoggingEnabled = false;
+        if (refs?.verboseLoggingStatus instanceof HTMLElement) {
+            refs.verboseLoggingStatus.textContent = error?.message || 'Failed to load config.yaml.';
+            refs.verboseLoggingStatus.dataset.state = 'danger';
+        }
+        console.error('Failed to load logging config for Console Logs.', error);
+    } finally {
+        state.configBusy = false;
+        updateConsoleLogsInteractivity();
+    }
+}
+
+async function toggleConsoleLogsVerboseLogging() {
+    const state = getConsoleLogsState();
+    const refs = getConsoleLogsRefs();
+
+    if (!refs || !state.configLoaded || state.configBusy || state.busy) {
+        return;
+    }
+
+    state.configBusy = true;
+    updateConsoleLogsInteractivity();
+
+    try {
+        const data = await requestServerAdmin('/api/server-admin/config/get');
+        const content = String(data?.content ?? '');
+        const nextEnabled = !state.verboseLoggingEnabled;
+        const nextContent = replaceLoggingMinLogLevel(content, nextEnabled ? 0 : 1);
+        const result = await requestServerAdmin('/api/server-admin/config/save', {
+            content: nextContent,
+            expectedLastModifiedMs: Number(data?.lastModifiedMs ?? 0) || state.configLastModifiedMs,
+            restart: false,
+        });
+
+        state.configPath = String(result?.path ?? state.configPath);
+        state.configLastModifiedMs = Number(result?.lastModifiedMs ?? 0) || state.configLastModifiedMs;
+        setConsoleLogsVerboseLoggingUI(nextEnabled ? 0 : 1);
+        if (refs.verboseLoggingStatus instanceof HTMLElement) {
+            refs.verboseLoggingStatus.textContent = result?.message || 'Logging config saved.';
+            refs.verboseLoggingStatus.dataset.state = 'saved';
+        }
+        globalThis.toastr?.success?.('Logging config saved. Restart SillyBunny to apply it.', 'Console logs');
+    } catch (error) {
+        console.error('Failed to save logging config for Console Logs.', error);
+        if (refs?.verboseLoggingStatus instanceof HTMLElement) {
+            refs.verboseLoggingStatus.textContent = error?.message || 'Failed to save logging config.';
+            refs.verboseLoggingStatus.dataset.state = 'danger';
+        }
+        globalThis.toastr?.error?.(error?.message || 'Failed to save logging config.', 'Console logs');
+    } finally {
+        state.configBusy = false;
+        updateConsoleLogsInteractivity();
+    }
 }
 
 function renderConsoleLogsStatus() {
@@ -9139,12 +10816,13 @@ function getImporterRefs() {
     return getImporterState().refs;
 }
 
-async function requestServerAdmin(endpoint, body = {}) {
+async function requestServerAdmin(endpoint, body = {}, { signal } = {}) {
     const headers = await waitForAuthorizedRequestHeaders();
     const response = await fetch(endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify(body),
+        signal,
     });
 
     const text = await response.text();
@@ -9256,27 +10934,48 @@ function getThumbnailSettingsFromRefs(refs = getServerAdminRefs()) {
     };
 
     return {
-        enabled: Boolean(refs?.thumbnailEnabled?.checked),
-        format: refs?.thumbnailFormat?.value === 'jpg' ? 'jpg' : 'png',
-        quality: parseSize(refs?.thumbnailQuality, 100),
-        dimensions: {
-            bg: [
-                parseSize(refs?.thumbnailBgWidth, 240),
-                parseSize(refs?.thumbnailBgHeight, 135),
-            ],
-            avatar: [
-                parseSize(refs?.thumbnailAvatarWidth, 864),
-                parseSize(refs?.thumbnailAvatarHeight, 1280),
-            ],
-            persona: [
-                parseSize(refs?.thumbnailPersonaWidth, 864),
-                parseSize(refs?.thumbnailPersonaHeight, 1280),
-            ],
+        settings: {
+            enabled: Boolean(refs?.thumbnailEnabled?.checked),
+            format: refs?.thumbnailFormat?.value === 'jpg' ? 'jpg' : 'png',
+            quality: parseSize(refs?.thumbnailQuality, 100),
+            dimensions: {
+                bg: [
+                    parseSize(refs?.thumbnailBgWidth, 240),
+                    parseSize(refs?.thumbnailBgHeight, 135),
+                ],
+                avatar: [
+                    parseSize(refs?.thumbnailAvatarWidth, 864),
+                    parseSize(refs?.thumbnailAvatarHeight, 1280),
+                ],
+                persona: [
+                    parseSize(refs?.thumbnailPersonaWidth, 864),
+                    parseSize(refs?.thumbnailPersonaHeight, 1280),
+                ],
+            },
+        },
+        mobileSettings: {
+            enabled: Boolean(refs?.thumbnailMobileEnabled?.checked),
+            format: refs?.thumbnailMobileFormat?.value === 'jpg' ? 'jpg' : 'png',
+            quality: parseSize(refs?.thumbnailMobileQuality, 82),
+            dimensions: {
+                bg: [
+                    parseSize(refs?.thumbnailMobileBgWidth, 240),
+                    parseSize(refs?.thumbnailMobileBgHeight, 135),
+                ],
+                avatar: [
+                    parseSize(refs?.thumbnailMobileAvatarWidth, 320),
+                    parseSize(refs?.thumbnailMobileAvatarHeight, 480),
+                ],
+                persona: [
+                    parseSize(refs?.thumbnailMobilePersonaWidth, 320),
+                    parseSize(refs?.thumbnailMobilePersonaHeight, 480),
+                ],
+            },
         },
     };
 }
 
-function setThumbnailInputValues(settings = {}, refs = getServerAdminRefs()) {
+function setThumbnailInputValues({ settings = {}, mobileSettings = {} } = {}, refs = getServerAdminRefs()) {
     if (!refs) {
         return;
     }
@@ -9290,6 +10989,16 @@ function setThumbnailInputValues(settings = {}, refs = getServerAdminRefs()) {
     refs.thumbnailAvatarHeight.value = String(settings.dimensions?.avatar?.[1] ?? 1280);
     refs.thumbnailPersonaWidth.value = String(settings.dimensions?.persona?.[0] ?? 864);
     refs.thumbnailPersonaHeight.value = String(settings.dimensions?.persona?.[1] ?? 1280);
+
+    refs.thumbnailMobileEnabled.checked = Boolean(mobileSettings.enabled);
+    refs.thumbnailMobileFormat.value = mobileSettings.format === 'jpg' ? 'jpg' : 'png';
+    refs.thumbnailMobileQuality.value = String(mobileSettings.quality ?? 82);
+    refs.thumbnailMobileBgWidth.value = String(mobileSettings.dimensions?.bg?.[0] ?? 240);
+    refs.thumbnailMobileBgHeight.value = String(mobileSettings.dimensions?.bg?.[1] ?? 135);
+    refs.thumbnailMobileAvatarWidth.value = String(mobileSettings.dimensions?.avatar?.[0] ?? 320);
+    refs.thumbnailMobileAvatarHeight.value = String(mobileSettings.dimensions?.avatar?.[1] ?? 480);
+    refs.thumbnailMobilePersonaWidth.value = String(mobileSettings.dimensions?.persona?.[0] ?? 320);
+    refs.thumbnailMobilePersonaHeight.value = String(mobileSettings.dimensions?.persona?.[1] ?? 480);
 }
 
 function setThumbnailInputsDisabled(disabled, refs = getServerAdminRefs()) {
@@ -9304,9 +11013,19 @@ function setThumbnailInputsDisabled(disabled, refs = getServerAdminRefs()) {
         refs?.thumbnailPersonaWidth,
         refs?.thumbnailPersonaHeight,
         refs?.thumbnailUseRecommendedButton,
+        refs?.thumbnailUseRecommendedMobileButton,
         refs?.thumbnailSaveButton,
         refs?.thumbnailSaveClearButton,
         refs?.thumbnailClearButton,
+        refs?.thumbnailMobileEnabled,
+        refs?.thumbnailMobileFormat,
+        refs?.thumbnailMobileQuality,
+        refs?.thumbnailMobileBgWidth,
+        refs?.thumbnailMobileBgHeight,
+        refs?.thumbnailMobileAvatarWidth,
+        refs?.thumbnailMobileAvatarHeight,
+        refs?.thumbnailMobilePersonaWidth,
+        refs?.thumbnailMobilePersonaHeight,
     ];
 
     for (const control of controls) {
@@ -9518,9 +11237,10 @@ function renderServerThumbnailSettings(data) {
         return;
     }
 
-    setThumbnailInputValues(data?.settings ?? {});
+    setThumbnailInputValues({ settings: data?.settings ?? {}, mobileSettings: data?.mobileSettings ?? {} });
     state.thumbnailLastModifiedMs = Number(data?.lastModifiedMs ?? 0) || state.thumbnailLastModifiedMs;
     state.thumbnailRecommended = data?.recommended ?? state.thumbnailRecommended;
+    state.thumbnailRecommendedMobile = data?.recommendedMobile ?? state.thumbnailRecommendedMobile;
     state.thumbnailSettingsLoaded = true;
     setServerAdminMessage(refs.thumbnailNote, 'Thumbnail settings loaded. Saving applies to new thumbnails immediately.', 'neutral');
 }
@@ -9724,8 +11444,10 @@ async function handleServerThumbnailSave({ clearCache = false } = {}) {
     setServerAdminMessage(refs.thumbnailNote, clearCache ? 'Saving settings and clearing thumbnail cache…' : 'Saving thumbnail settings…');
 
     try {
+        const { settings, mobileSettings } = getThumbnailSettingsFromRefs(refs);
         const result = await requestServerAdmin('/api/server-admin/config/thumbnail-settings/save', {
-            settings: getThumbnailSettingsFromRefs(refs),
+            settings,
+            mobileSettings,
             expectedLastModifiedMs: state.thumbnailLastModifiedMs || state.lastModifiedMs,
             clearCache,
         });
@@ -9789,8 +11511,26 @@ function handleUseRecommendedThumbnailSettings() {
         },
     };
 
-    setThumbnailInputValues(recommended, refs);
-    setServerAdminMessage(refs.thumbnailNote, 'Recommended high-quality thumbnail settings are staged. Save them when ready.', 'warn');
+    setThumbnailInputValues({ settings: recommended, mobileSettings: getThumbnailSettingsFromRefs(refs).mobileSettings }, refs);
+    setServerAdminMessage(refs.thumbnailNote, 'Recommended desktop thumbnail settings are staged. Save them when ready.', 'warn');
+}
+
+function handleUseRecommendedMobileThumbnailSettings() {
+    const state = getServerAdminState();
+    const refs = getServerAdminRefs();
+    const recommendedMobile = state.thumbnailRecommendedMobile ?? {
+        enabled: true,
+        format: 'jpg',
+        quality: 82,
+        dimensions: {
+            bg: [240, 135],
+            avatar: [320, 480],
+            persona: [320, 480],
+        },
+    };
+
+    setThumbnailInputValues({ settings: getThumbnailSettingsFromRefs(refs).settings, mobileSettings: recommendedMobile }, refs);
+    setServerAdminMessage(refs.thumbnailNote, 'Recommended mobile thumbnail settings are staged. Save them when ready.', 'warn');
 }
 
 function createThumbnailSizeRow(label, key) {
@@ -10075,12 +11815,16 @@ async function handleServerAdminBranchSwitch(selectElement) {
     updateServerAdminInteractivity();
     setServerAdminMessage(refs.updateNote, `Switching to branch "${targetBranch}"…`);
 
+    const abortController = new AbortController();
+    const abortTimeout = setTimeout(() => abortController.abort(), 45000);
+
     try {
         const result = await requestServerAdmin('/api/server-admin/switch-branch', {
             branch: targetBranch,
             autoStash: hasLocalChanges,
-        });
+        }, { signal: abortController.signal });
 
+        clearTimeout(abortTimeout);
         state.busy = false;
         state.restarting = true;
         updateServerAdminInteractivity();
@@ -10100,12 +11844,20 @@ async function handleServerAdminBranchSwitch(selectElement) {
             toastr.warning('Branch switched, but restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
         }
     } catch (error) {
+        clearTimeout(abortTimeout);
         console.error('Failed to switch branch.', error);
         state.busy = false;
         updateServerAdminInteractivity();
 
         // Reset select to current branch
         selectElement.value = currentBranch;
+
+        if (error.name === 'AbortError') {
+            const timeoutMessage = 'Branch switch is taking longer than expected. The server may still be working; refresh in a moment to see the result.';
+            setServerAdminMessage(refs.updateNote, timeoutMessage, 'warn');
+            toastr.warning(timeoutMessage, 'Branch Switch', { timeOut: 10000 });
+            return;
+        }
 
         const errorMessage = error.message || 'Failed to switch branch.';
         setServerAdminMessage(refs.updateNote, errorMessage, 'danger');
@@ -10203,13 +11955,52 @@ function buildServerAdminPanel() {
     thumbnailSizes.append(bgSize.row, avatarSize.row, personaSize.row);
 
     const thumbnailActions = createElement('div', { className: 'sb-server-actions' });
-    const thumbnailUseRecommendedButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Use recommended', attrs: { type: 'button' } });
+    const thumbnailUseRecommendedButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Use desktop recommended', attrs: { type: 'button' } });
+    const thumbnailUseRecommendedMobileButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Use mobile recommended', attrs: { type: 'button' } });
     const thumbnailSaveButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Save thumbnails', attrs: { type: 'button' } });
     const thumbnailSaveClearButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action menu_button_primary', text: 'Save & Clear Cache', attrs: { type: 'button' } });
     const thumbnailClearButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Clear cache only', attrs: { type: 'button' } });
-    const thumbnailNote = createElement('div', { className: 'sb-server-note', text: 'Use PNG at 100 quality with larger avatar/persona dimensions for sharper character thumbnails, then clear the cache to rebuild them.' });
-    thumbnailActions.append(thumbnailUseRecommendedButton, thumbnailSaveButton, thumbnailSaveClearButton, thumbnailClearButton);
-    thumbnailCard.append(thumbnailHeader, thumbnailControls, thumbnailSizes, thumbnailActions, thumbnailNote);
+    const thumbnailNote = createElement('div', { className: 'sb-server-note', text: 'Desktop thumbnails default to PNG at full resolution. Enable the mobile preset to serve smaller JPG thumbnails to phone-sized screens.' });
+
+    const thumbnailMobileHeading = createElement('div', { className: 'sb-thumbnail-mobile-heading', text: 'Mobile preset' });
+    const thumbnailMobileControls = createElement('div', { className: 'sb-thumbnail-controls' });
+    const thumbnailMobileEnabledLabel = createElement('label', { className: 'checkbox_label sb-thumbnail-enabled' });
+    const thumbnailMobileEnabled = createElement('input', { attrs: { type: 'checkbox' } });
+    const thumbnailMobileEnabledText = createElement('small', { text: 'Generate mobile thumbnails' });
+    thumbnailMobileEnabledLabel.append(thumbnailMobileEnabled, thumbnailMobileEnabledText);
+
+    const thumbnailMobileFormatGroup = createElement('label', { className: 'sb-thumbnail-field' });
+    const thumbnailMobileFormatText = createElement('span', { text: 'Mobile format' });
+    const thumbnailMobileFormat = createElement('select', { className: 'text_pole' });
+    thumbnailMobileFormat.append(
+        createElement('option', { text: 'JPG', attrs: { value: 'jpg' } }),
+        createElement('option', { text: 'PNG', attrs: { value: 'png' } }),
+    );
+    thumbnailMobileFormatGroup.append(thumbnailMobileFormatText, thumbnailMobileFormat);
+
+    const thumbnailMobileQualityGroup = createElement('label', { className: 'sb-thumbnail-field' });
+    const thumbnailMobileQualityText = createElement('span', { text: 'Mobile quality' });
+    const thumbnailMobileQuality = createElement('input', {
+        className: 'text_pole sb-thumbnail-number',
+        attrs: {
+            type: 'number',
+            inputmode: 'numeric',
+            min: '1',
+            max: '100',
+            step: '1',
+        },
+    });
+    thumbnailMobileQualityGroup.append(thumbnailMobileQualityText, thumbnailMobileQuality);
+    thumbnailMobileControls.append(thumbnailMobileEnabledLabel, thumbnailMobileFormatGroup, thumbnailMobileQualityGroup);
+
+    const thumbnailMobileSizes = createElement('div', { className: 'sb-thumbnail-sizes' });
+    const mobileBgSize = createThumbnailSizeRow('Mobile background', 'mobile-bg');
+    const mobileAvatarSize = createThumbnailSizeRow('Mobile character', 'mobile-avatar');
+    const mobilePersonaSize = createThumbnailSizeRow('Mobile persona', 'mobile-persona');
+    thumbnailMobileSizes.append(mobileBgSize.row, mobileAvatarSize.row, mobilePersonaSize.row);
+
+    thumbnailActions.append(thumbnailUseRecommendedButton, thumbnailUseRecommendedMobileButton, thumbnailSaveButton, thumbnailSaveClearButton, thumbnailClearButton);
+    thumbnailCard.append(thumbnailHeader, thumbnailControls, thumbnailSizes, thumbnailMobileHeading, thumbnailMobileControls, thumbnailMobileSizes, thumbnailActions, thumbnailNote);
 
     const configCard = createElement('section', { className: 'sb-admin-card sb-server-card' });
     const configHeader = createElement('div', { className: 'sb-admin-card-header' });
@@ -10262,10 +12053,20 @@ function buildServerAdminPanel() {
         thumbnailPersonaWidth: personaSize.widthInput,
         thumbnailPersonaHeight: personaSize.heightInput,
         thumbnailUseRecommendedButton,
+        thumbnailUseRecommendedMobileButton,
         thumbnailSaveButton,
         thumbnailSaveClearButton,
         thumbnailClearButton,
         thumbnailNote,
+        thumbnailMobileEnabled,
+        thumbnailMobileFormat,
+        thumbnailMobileQuality,
+        thumbnailMobileBgWidth: mobileBgSize.widthInput,
+        thumbnailMobileBgHeight: mobileBgSize.heightInput,
+        thumbnailMobileAvatarWidth: mobileAvatarSize.widthInput,
+        thumbnailMobileAvatarHeight: mobileAvatarSize.heightInput,
+        thumbnailMobilePersonaWidth: mobilePersonaSize.widthInput,
+        thumbnailMobilePersonaHeight: mobilePersonaSize.heightInput,
         configPath,
         configState,
         configEditor,
@@ -10283,6 +12084,7 @@ function buildServerAdminPanel() {
     updateButton.addEventListener('click', handleServerAdminUpdate);
     restartButton.addEventListener('click', handleServerAdminRestart);
     thumbnailUseRecommendedButton.addEventListener('click', handleUseRecommendedThumbnailSettings);
+    thumbnailUseRecommendedMobileButton.addEventListener('click', handleUseRecommendedMobileThumbnailSettings);
     thumbnailSaveButton.addEventListener('click', () => handleServerThumbnailSave({ clearCache: false }));
     thumbnailSaveClearButton.addEventListener('click', () => handleServerThumbnailSave({ clearCache: true }));
     thumbnailClearButton.addEventListener('click', handleServerThumbnailClearCache);
@@ -10452,12 +12254,27 @@ function buildConsoleLogsPanel() {
     const pauseButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Pause Live', attrs: { type: 'button' } });
     const statusNote = createElement('div', { className: 'sb-server-note' });
     const output = createElement('pre', { className: 'sb-server-output sb-console-log-output' });
+    const verboseLoggingCard = createElement('section', { className: 'sb-admin-card sb-server-card sb-console-log-verbose-card' });
+    const verboseLoggingHeader = createElement('div', { className: 'sb-admin-card-header' });
+    const verboseLoggingCopy = createElement('div', { className: 'sb-admin-card-copy' });
+    const verboseLoggingTitle = createElement('strong', { text: 'Verbose Debug Logging' });
+    const verboseLoggingDescription = createElement('p', { text: 'Enable full debugging console output for advanced troubleshooting. Changes are saved to config.yaml and apply after a restart.' });
+    const verboseLoggingStatus = createElement('span', { className: 'sb-server-inline-state', text: 'Loading…' });
+    const verboseLoggingActionButton = createElement('button', {
+        className: 'menu_button menu_button_icon sb-server-action interactable sb-console-log-verbose-action',
+        text: 'Debug Logging: Disabled',
+        attrs: { type: 'button' },
+    });
 
     copy.append(title, description);
     header.append(copy, statusPill);
     actions.append(refreshButton, pauseButton);
     card.append(header, actions, statusNote, output);
+    verboseLoggingCopy.append(verboseLoggingTitle, verboseLoggingDescription);
+    verboseLoggingHeader.append(verboseLoggingCopy, verboseLoggingStatus);
+    verboseLoggingCard.append(verboseLoggingHeader, verboseLoggingActionButton);
     column.append(callout, card);
+    column.append(verboseLoggingCard);
     scroller.appendChild(column);
 
     const state = getConsoleLogsState();
@@ -10467,12 +12284,17 @@ function buildConsoleLogsPanel() {
         pauseButton,
         statusNote,
         output,
+        verboseLoggingStatus,
+        verboseLoggingActionButton,
     };
 
     refreshButton.addEventListener('click', () => {
         void refreshConsoleLogs({ forceFull: state.latestId === 0 });
     });
     pauseButton.addEventListener('click', toggleConsoleLogsPolling);
+    verboseLoggingActionButton.addEventListener('click', () => {
+        void toggleConsoleLogsVerboseLogging();
+    });
 
     renderConsoleLogsOutput({ preserveScroll: false });
     updateConsoleLogsInteractivity();
@@ -10483,6 +12305,7 @@ function buildConsoleLogsPanel() {
         button: null,
         searchRoot: column,
         onActivate: () => {
+            void refreshConsoleLogsConfig();
             void refreshConsoleLogs({ forceFull: getConsoleLogsState().latestId === 0 });
             scheduleConsoleLogsRefresh(0);
         },
@@ -10687,7 +12510,6 @@ function logSillyTavernExtensionSyncReport(reportData) {
         warningCount: Array.isArray(result?.warnings) ? result.warnings.length : 0,
         error: result?.error || '',
     })));
-    console.log(reportData);
     console.groupEnd();
 }
 
@@ -10703,7 +12525,7 @@ async function handleSillyTavernFolderImport() {
     if (!sourcePath) {
         setServerAdminMessage(refs.note, 'Paste the path to your SillyTavern folder or user data folder first.', 'warn');
         toastr.warning('Paste a SillyTavern folder path first.', 'Import SillyTavern');
-        refs.pathInput.focus();
+        refs.pathInput.focus({ preventScroll: true });
         return;
     }
 
@@ -10746,7 +12568,7 @@ async function handleSillyTavernExtensionSync() {
     if (!sourcePath) {
         setServerAdminMessage(refs.note, 'Paste the path to your existing SillyTavern folder before syncing extensions.', 'warn');
         toastr.warning('Paste a SillyTavern folder path first.', 'Sync Extensions');
-        refs.pathInput.focus();
+        refs.pathInput.focus({ preventScroll: true });
         return;
     }
 
@@ -10982,6 +12804,27 @@ function injectSillyTavernImportCard() {
     updateSillyTavernImportInteractivity();
 }
 
+function createThemeSettingsDrawer({ id, title, content, className = '' }) {
+    const drawer = createElement('section', {
+        id,
+        className: `inline-drawer sb-theme-settings-drawer ${className}`.trim(),
+        attrs: {
+            'data-settings-tab': 'appearance',
+        },
+    });
+    const header = createElement('div', { className: 'inline-drawer-toggle inline-drawer-header' });
+    const heading = createElement('strong', { text: title });
+    const icon = createElement('div', { className: 'fa-solid fa-circle-chevron-down inline-drawer-icon down' });
+    const body = createElement('div', { className: 'inline-drawer-content sb-theme-settings-drawer-body' });
+    body.style.display = 'none';
+
+    header.append(heading);
+    header.append(icon);
+    body.append(...content);
+    drawer.append(header, body);
+    return drawer;
+}
+
 function createThemeSliderGroup({ title, valueId, inputId, value, min, max, step, ariaLabel, caption, onInput, className = '' }) {
     const sliderGroup = createElement('div', { className: `sb-theme-slider-group ${className}`.trim() });
     const sliderHeader = createElement('div', { className: 'sb-theme-slider-header' });
@@ -11049,19 +12892,15 @@ function createTopbarLabelOption(mode, part) {
 }
 
 function createShortcutSettingsGroup() {
-    const group = createElement('section', {
-        className: 'sb-theme-slider-group',
+    const description = createElement('p', {
+        className: 'sb-theme-slider-caption',
+        text: 'Assign a shell tab or universal search to each shortcut button in the top bar.',
     });
-
-    const heading = createElement('div', { className: 'sb-theme-slider-label' });
-    heading.innerHTML = '<strong>Quick Access Shortcuts</strong><br><small>Assign a shell tab or universal search to each shortcut button in the top bar.</small>';
-    group.appendChild(heading);
-
     const rows = createElement('div', {
         className: 'sb-shortcut-rows',
     });
 
-    for (const side of ['left', 'right']) {
+    for (const side of SB_SHORTCUT_SLOTS) {
         const selectId = `sb-shortcut-${side}-select`;
         const row = createElement('div', { className: 'sb-shortcut-row' });
 
@@ -11071,7 +12910,7 @@ function createShortcutSettingsGroup() {
                 for: selectId,
             },
         });
-        label.textContent = side === 'left' ? 'Left' : 'Right';
+        label.textContent = SB_SHORTCUT_LABELS[side] || side;
 
         const select = createElement('select', {
             id: selectId,
@@ -11089,8 +12928,10 @@ function createShortcutSettingsGroup() {
         }
 
         select.addEventListener('change', () => {
-            const key = side === 'left' ? SB_STORAGE_KEYS.shortcutLeft : SB_STORAGE_KEYS.shortcutRight;
-            safeSetItem(key, select.value);
+            const key = SB_SHORTCUT_STORAGE_KEYS[side];
+            if (key) {
+                safeSetItem(key, select.value);
+            }
             updateShortcutButton(side);
         });
 
@@ -11098,8 +12939,11 @@ function createShortcutSettingsGroup() {
         rows.appendChild(row);
     }
 
-    group.appendChild(rows);
-    return group;
+    return createThemeSettingsDrawer({
+        id: 'sb-quick-access-shortcuts-drawer',
+        title: 'Quick Access Shortcuts',
+        content: [description, rows],
+    });
 }
 
 function getMobileQuickActionContextLabel(action) {
@@ -11526,6 +13370,19 @@ function createNavigationSettingsGroup(mode = 'mobile') {
         icon: 'fa-icons',
         onChange: input => isDesktop ? setDesktopNavIconOnly(input.checked) : setMobileNavIconOnly(input.checked),
     });
+    // SillyBunny: stored per device -- this group's copy governs its own viewport only, exactly
+    // like the shell-tab toggle above it -- and it belongs with navigation rather than nested
+    // inside the Quick Access Shortcuts drawer. Sitting next to the shell-tab toggle also keeps
+    // the two similarly named options readable side by side.
+    const topbarIconsOnlyChoice = createMobileNavChoice({
+        id: `sb-${modePrefix}-topbar-icons-only-input`,
+        type: 'checkbox',
+        value: 'topbar-icons-only',
+        label: 'Icons only top bar',
+        icon: 'fa-grip',
+        onChange: input => setTopbarIconsOnly(modePrefix, input.checked),
+    });
+    topbarIconsOnlyChoice.querySelector('input')?.setAttribute('data-sb-topbar-icons-only-input', modePrefix);
     const showCustomizeChoice = createMobileNavChoice({
         id: `sb-${modePrefix}-nav-show-customize-input`,
         type: 'checkbox',
@@ -11607,6 +13464,7 @@ function createNavigationSettingsGroup(mode = 'mobile') {
         header,
         layoutGrid,
         iconOnlyChoice,
+        topbarIconsOnlyChoice,
         createMobileNavDivider(),
         showCustomizeChoice,
         showQuickActionsChoice,
@@ -11648,9 +13506,45 @@ function createDesktopShellSizingSettingsGroup() {
     return group;
 }
 
+function createPaperTextureSettingsGroup() {
+    const group = createElement('section', {
+        className: 'sb-theme-slider-group sb-paper-texture-group',
+    });
+    const header = createElement('div', { className: 'sb-mobile-nav-settings-header' });
+    const title = createElement('strong', { text: 'Paper Texture' });
+    const description = createElement('p', {
+        className: 'sb-theme-slider-caption',
+        text: 'Add a subtle paper grain and wash overlay to the chat background.',
+    });
+    const toggleChoice = createMobileNavChoice({
+        id: 'sb-paper-texture-enabled-input',
+        type: 'checkbox',
+        value: 'paper-texture-enabled',
+        label: 'Enable paper texture',
+        icon: 'fa-scroll',
+        onChange: input => setPaperTextureEnabled(input.checked),
+    });
+    const opacitySliderGroup = createThemeSliderGroup({
+        title: 'Texture opacity',
+        valueId: 'sb-paper-texture-opacity-value',
+        inputId: 'sb-paper-texture-opacity-input',
+        value: sbState.paperTextureOpacity,
+        min: SB_PAPER_TEXTURE_OPACITY.min,
+        max: SB_PAPER_TEXTURE_OPACITY.max,
+        step: SB_PAPER_TEXTURE_OPACITY.step,
+        ariaLabel: 'Paper texture opacity',
+        caption: 'Higher values make the paper grain and wash more visible.',
+        onInput: nextValue => setPaperTextureOpacity(nextValue),
+    });
+
+    header.append(title, description);
+    group.append(header, toggleChoice, opacitySliderGroup);
+    return group;
+}
+
 function createFrontendIconSettingsGroup() {
     const group = createElement('section', {
-        className: 'sb-theme-slider-group sb-frontend-icon-group',
+        className: 'sb-interface-settings-group sb-frontend-icon-group',
     });
     const header = createElement('div', { className: 'sb-frontend-icon-header' });
     const title = createElement('strong', { text: 'Frontend Icon' });
@@ -11693,7 +13587,7 @@ function createFrontendIconSettingsGroup() {
 }
 
 function updateShortcutButton(side) {
-    const buttonId = side === 'left' ? 'sb-shortcut-left' : 'sb-shortcut-right';
+    const buttonId = getShortcutButtonId(side);
     const button = document.getElementById(buttonId);
     if (!(button instanceof HTMLElement)) return;
 
@@ -11701,6 +13595,13 @@ function updateShortcutButton(side) {
     const config = getShortcutConfig(target);
     const icon = button.querySelector('i');
     const span = button.querySelector('span');
+    const isDisabled = target === 'none';
+
+    if (isDisabled) {
+        button.style.setProperty('display', 'none', 'important');
+    } else {
+        button.style.removeProperty('display');
+    }
 
     if (icon) {
         icon.className = `fa-solid ${config.icon}`;
@@ -11711,14 +13612,16 @@ function updateShortcutButton(side) {
     button.title = `Quick access: ${config.label}`;
     button.setAttribute('aria-label', `Quick access: ${config.label}`);
     button.dataset.sbUniversalSearchTrigger = String(isSearchShortcutTarget(target));
+    syncTopbarIconsOnlyDedupe();
     syncShortcutButtonActiveStates();
+    queueTopbarBrandFit();
 }
 
 function syncShortcutButtonActiveStates() {
     const searchExpanded = getUniversalSearchState().expanded;
 
-    for (const side of ['left', 'right']) {
-        const buttonId = side === 'left' ? 'sb-shortcut-left' : 'sb-shortcut-right';
+    for (const side of SB_SHORTCUT_SLOTS) {
+        const buttonId = getShortcutButtonId(side);
         const button = document.getElementById(buttonId);
 
         if (!(button instanceof HTMLButtonElement)) {
@@ -11728,14 +13631,11 @@ function syncShortcutButtonActiveStates() {
         const target = getShortcutTarget(side);
         setButtonPressed(button, isSearchShortcutTarget(target) && searchExpanded);
     }
+
+    queueTopbarPageStateSync();
 }
 
 function createTopbarLabelSettingsGroup() {
-    const group = createElement('section', {
-        className: 'sb-theme-slider-group sb-topbar-label-group',
-    });
-    const header = createElement('div', { className: 'sb-topbar-label-header' });
-    const title = createElement('strong', { text: 'Top Bar Label' });
     const description = createElement('p', {
         className: 'sb-theme-slider-caption',
         text: 'Choose what the center label shows. Desktop can mix multiple parts with a middle dot, while mobile keeps one selection at a time.',
@@ -11775,7 +13675,33 @@ function createTopbarLabelSettingsGroup() {
         setTopbarCustomText(input instanceof HTMLInputElement ? input.value : '');
     });
 
-    header.append(title, description);
+    const clickCycleId = 'sb-topbar-label-click-cycle-input';
+    const clickCycleOption = createElement('label', {
+        className: 'sb-topbar-label-option sb-topbar-label-click-cycle-option',
+        attrs: {
+            for: clickCycleId,
+        },
+    });
+    const clickCycleCheckbox = createElement('input', {
+        id: clickCycleId,
+        className: 'sb-topbar-label-checkbox',
+        attrs: {
+            type: 'checkbox',
+            'data-sb-topbar-label-click-cycle-input': 'true',
+        },
+    });
+    const clickCycleCopy = createElement('span', { className: 'sb-topbar-label-option-copy' });
+    const clickCycleTitle = createElement('strong', { text: 'Click To Preview Label Options' });
+    const clickCycleDescription = createElement('small', { text: 'When enabled, clicking the label cycles through a preview of each part. When disabled, the label stays on your selection above and clicking it returns to the chat.' });
+
+    clickCycleCheckbox.addEventListener('change', event => {
+        const input = event.currentTarget;
+        setTopbarLabelClickCycle(input instanceof HTMLInputElement ? input.checked : true);
+    });
+
+    clickCycleCopy.append(clickCycleTitle, clickCycleDescription);
+    clickCycleOption.append(clickCycleCheckbox, clickCycleCopy);
+
     desktopHeading.append(desktopTitle, desktopDescription);
     mobileHeading.append(mobileTitle, mobileDescription);
     customTextHeading.append(customTextTitle, customTextDescription);
@@ -11788,9 +13714,12 @@ function createTopbarLabelSettingsGroup() {
     desktopSection.append(desktopHeading, desktopGrid);
     mobileSection.append(mobileHeading, mobileGrid);
     customTextField.append(customTextHeading, customTextInput);
-    group.append(header, desktopSection, mobileSection, customTextField);
 
-    return group;
+    return createThemeSettingsDrawer({
+        id: 'sb-topbar-label-drawer',
+        title: 'Top Bar Label',
+        content: [description, desktopSection, mobileSection, customTextField, clickCycleOption],
+    });
 }
 
 function injectThemePicker() {
@@ -11805,8 +13734,6 @@ function injectThemePicker() {
     }
 
     const card = createElement('div', { id: 'sb-theme-card', className: 'sb-theme-card' });
-    const header = createElement('div', { className: 'sb-theme-card-header' });
-    const title = createElement('strong', { text: 'Shell Style' });
     const description = createElement('p', { text: 'Switch the navigation shell between built-in visual directions.' });
     const optionRow = createElement('div', { className: 'sb-theme-option-row' });
     const surfaceSliderGroup = createThemeSliderGroup({
@@ -11820,6 +13747,7 @@ function injectThemePicker() {
         ariaLabel: 'Background visibility',
         caption: 'Higher values make the home and chat surfaces more transparent so your selected background picture shows through.',
         onInput: nextValue => setSurfaceTransparency(nextValue),
+        className: 'sb-interface-settings-group',
     });
     const bottomBarSliderGroup = createThemeSliderGroup({
         title: 'Bottom Bar Size',
@@ -11832,6 +13760,7 @@ function injectThemePicker() {
         ariaLabel: 'Bottom bar size',
         caption: 'Resize the bottom chat bar, send form, and action buttons without editing CSS.',
         onInput: nextValue => setBottomBarScale(nextValue),
+        className: 'sb-interface-settings-group',
     });
     const desktopButtonSliderGroup = createThemeSliderGroup({
         title: 'Desktop Button Size',
@@ -11869,14 +13798,13 @@ function injectThemePicker() {
     const mobileCompactModeSettingsGroup = createCompactModeSettingsGroup('mobile');
     const desktopBottomChatBarSettingsGroup = createBottomChatBarSettingsGroup('desktop');
     const mobileBottomChatBarSettingsGroup = createBottomChatBarSettingsGroup('mobile');
+    const paperTextureSettingsGroup = createPaperTextureSettingsGroup();
     const frontendIconSettingsGroup = createFrontendIconSettingsGroup();
     const shortcutSettingsGroup = createShortcutSettingsGroup();
     const desktopQuickActionSettingsGroup = createMobileQuickActionSettingsGroup('desktop');
     const mobileQuickActionSettingsGroup = createMobileQuickActionSettingsGroup();
     const desktopSettingsOutlet = document.getElementById('sb-desktop-settings-outlet');
     const mobileSettingsOutlet = document.getElementById('sb-mobile-settings-outlet');
-    header.append(title, description);
-
     for (const theme of SB_THEMES) {
         const button = createElement('button', {
             className: 'sb-theme-option',
@@ -11893,6 +13821,17 @@ function injectThemePicker() {
         button.addEventListener('click', () => setShellTheme(theme.id));
         optionRow.appendChild(button);
     }
+
+    const shellStyleSettingsGroup = createThemeSettingsDrawer({
+        id: 'sb-shell-style-drawer',
+        title: 'Shell Style',
+        content: [description, optionRow],
+    });
+    const interfaceSettingsGroup = createThemeSettingsDrawer({
+        id: 'sb-interface-drawer',
+        title: 'Interface',
+        content: [frontendIconSettingsGroup, surfaceSliderGroup, bottomBarSliderGroup],
+    });
 
     getMessageStyleSelect()?.addEventListener('change', updateThemePickerUi);
     document.addEventListener('sb:chat-style-updated', updateThemePickerUi);
@@ -11916,11 +13855,12 @@ function injectThemePicker() {
             mobileButtonSliderGroup,
             mobileCompactModeSettingsGroup,
             mobileBottomChatBarSettingsGroup,
+            paperTextureSettingsGroup,
             mobileQuickActionSettingsGroup,
         );
     }
 
-    card.append(header, optionRow, frontendIconSettingsGroup, surfaceSliderGroup, bottomBarSliderGroup, topbarLabelSettingsGroup, shortcutSettingsGroup);
+    card.append(shellStyleSettingsGroup, interfaceSettingsGroup, topbarLabelSettingsGroup, shortcutSettingsGroup);
     if (!(desktopSettingsOutlet instanceof HTMLElement)) {
         card.append(
             desktopNavLayoutSettingsGroup,
@@ -11943,7 +13883,7 @@ function injectThemePicker() {
             mobileQuickActionSettingsGroup,
         );
     }
-    themeBlock.prepend(card);
+    themeBlock.append(card);
     updateThemePickerUi();
 }
 
@@ -11970,6 +13910,9 @@ function updateThemePickerUi() {
     const mobileNavShowQuickActionsInput = document.getElementById('sb-mobile-nav-show-quick-actions-input');
     const mobileNavReplaceQuickActionsInput = document.getElementById('sb-mobile-nav-replace-quick-actions-input');
     const mobileNavReplacementSelect = document.getElementById('sb-mobile-nav-replacement-select');
+    const paperTextureEnabledInput = document.getElementById('sb-paper-texture-enabled-input');
+    const paperTextureOpacityInput = document.getElementById('sb-paper-texture-opacity-input');
+    const paperTextureOpacityValue = document.getElementById('sb-paper-texture-opacity-value');
 
     for (const button of document.querySelectorAll('[data-sb-theme-option]')) {
         const themeId = button.getAttribute('data-sb-theme-option');
@@ -12047,6 +13990,15 @@ function updateThemePickerUi() {
         customTextInput.value = sbState.topbarLabel.customText;
     }
 
+    for (const input of document.querySelectorAll('[data-sb-topbar-label-click-cycle-input]')) {
+        if (!(input instanceof HTMLInputElement)) {
+            continue;
+        }
+
+        input.checked = sbState.topbarLabel.clickCycle;
+        input.closest('.sb-topbar-label-option')?.classList.toggle('is-selected', sbState.topbarLabel.clickCycle);
+    }
+
     for (const input of document.querySelectorAll('[data-sb-compact-mode-input]')) {
         if (!(input instanceof HTMLInputElement)) {
             continue;
@@ -12085,6 +14037,21 @@ function updateThemePickerUi() {
         input.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', isChecked);
     }
 
+    // Each Navigation group's checkbox reflects its own device's stored value, not the state in
+    // force on this viewport. Quick Access stays fully live in icons-only mode -- the slots are
+    // part of the right-hand cluster now, not superseded by it.
+    for (const input of document.querySelectorAll('[data-sb-topbar-icons-only-input]')) {
+        if (!(input instanceof HTMLInputElement)) {
+            continue;
+        }
+
+        const isChecked = input.getAttribute('data-sb-topbar-icons-only-input') === 'desktop'
+            ? sbState.topbarIconsOnly.desktop
+            : sbState.topbarIconsOnly.mobile;
+        input.checked = isChecked;
+        input.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', isChecked);
+    }
+
     if (desktopNavIconOnlyInput instanceof HTMLInputElement) {
         desktopNavIconOnlyInput.checked = sbState.desktopNav.iconOnly;
         const choice = desktopNavIconOnlyInput.closest('.sb-mobile-nav-choice');
@@ -12102,6 +14069,9 @@ function updateThemePickerUi() {
         }
         choice?.classList.toggle('is-selected', sbState.desktopNav.showCustomize);
         choice?.classList.toggle('is-disabled', false);
+        if (choice instanceof HTMLElement) {
+            choice.style.display = sbState.desktopNav.layout === 'vertical' ? 'none' : '';
+        }
     }
 
     if (desktopNavShowQuickActionsInput instanceof HTMLInputElement) {
@@ -12147,6 +14117,9 @@ function updateThemePickerUi() {
         }
         choice?.classList.toggle('is-selected', sbState.mobileNav.showCustomize);
         choice?.classList.toggle('is-disabled', false);
+        if (choice instanceof HTMLElement) {
+            choice.style.display = sbState.mobileNav.layout === 'vertical' ? 'none' : '';
+        }
     }
 
     if (mobileNavShowQuickActionsInput instanceof HTMLInputElement) {
@@ -12167,6 +14140,25 @@ function updateThemePickerUi() {
         mobileNavReplacementSelect.value = normalizeMobileNavReplacementTarget(sbState.mobileNav.replacementTarget);
         mobileNavReplacementSelect.disabled = !sbState.mobileNav.replaceQuickActions;
         mobileNavReplacementSelect.closest('.sb-mobile-nav-replacement-field')?.classList.toggle('is-disabled', !sbState.mobileNav.replaceQuickActions);
+    }
+
+    if (paperTextureEnabledInput instanceof HTMLInputElement) {
+        paperTextureEnabledInput.checked = sbState.paperTextureEnabled;
+        const choice = paperTextureEnabledInput.closest('.sb-mobile-nav-choice');
+        choice?.classList.toggle('is-selected', sbState.paperTextureEnabled);
+    }
+
+    if (paperTextureOpacityInput instanceof HTMLInputElement) {
+        paperTextureOpacityInput.min = String(SB_PAPER_TEXTURE_OPACITY.min);
+        paperTextureOpacityInput.max = String(SB_PAPER_TEXTURE_OPACITY.max);
+        paperTextureOpacityInput.step = String(SB_PAPER_TEXTURE_OPACITY.step);
+        paperTextureOpacityInput.value = String(sbState.paperTextureOpacity);
+        paperTextureOpacityInput.disabled = !sbState.paperTextureEnabled;
+        paperTextureOpacityInput.closest('.sb-theme-slider-group')?.classList.toggle('is-disabled', !sbState.paperTextureEnabled);
+    }
+
+    if (paperTextureOpacityValue instanceof HTMLElement) {
+        paperTextureOpacityValue.textContent = formatPaperTextureOpacity(sbState.paperTextureOpacity);
     }
 
     for (const button of document.querySelectorAll('[data-sb-message-style]')) {
@@ -12625,7 +14617,7 @@ function setUniversalSearchActiveIndex(index) {
         button.setAttribute('aria-selected', String(active));
         if (active) {
             input?.setAttribute('aria-activedescendant', button.id);
-            button.scrollIntoView({ block: 'nearest' });
+            scrollElementIntoManagedView(button, { block: 'nearest' });
         }
     }
 
@@ -12657,9 +14649,60 @@ function expandHiddenAccordions(target) {
     }
 }
 
+const SB_SEARCH_HIGHLIGHT_CLASS = 'highlighted-drawer';
+const SB_SEARCH_HIGHLIGHT_DURATION_MS = 1800;
+
 function pulseSearchTarget(target) {
     if (!(target instanceof HTMLElement)) {
         return;
+    }
+
+    const drawer = target.closest('.inline-drawer');
+    const highlightTarget = drawer instanceof HTMLElement ? drawer : target;
+
+    document.querySelectorAll('.' + SB_SEARCH_HIGHLIGHT_CLASS)
+        .forEach(el => el.classList.remove(SB_SEARCH_HIGHLIGHT_CLASS));
+
+    highlightTarget.classList.add(SB_SEARCH_HIGHLIGHT_CLASS);
+    window.setTimeout(() => {
+        highlightTarget.classList.remove(SB_SEARCH_HIGHLIGHT_CLASS);
+    }, SB_SEARCH_HIGHLIGHT_DURATION_MS);
+}
+
+function revealSettingsCategoryFor(target) {
+    if (!(target instanceof HTMLElement)) {
+        return;
+    }
+
+    const settingsContent = document.getElementById('user-settings-block-content');
+    if (!settingsContent || !settingsContent.contains(target)) {
+        return;
+    }
+
+    const taggedDrawer = target.closest('.inline-drawer[data-settings-tab]');
+    if (taggedDrawer instanceof HTMLElement) {
+        const category = taggedDrawer.getAttribute('data-settings-tab');
+        if (category) {
+            settingsContent.setAttribute('data-active-tab', category);
+            const settingsBlock = document.getElementById('user-settings-block');
+            if (settingsBlock) {
+                settingsBlock.setAttribute('data-active-tab', category);
+            }
+            document.querySelectorAll('.sb-settings-tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-tab') === category);
+            });
+            return;
+        }
+    }
+
+    settingsContent.setAttribute('data-search-active', 'true');
+    const tabNav = document.getElementById('sb-settings-tabs');
+    if (tabNav) {
+        const clearSearchActive = () => {
+            settingsContent.removeAttribute('data-search-active');
+            tabNav.removeEventListener('click', clearSearchActive);
+        };
+        tabNav.addEventListener('click', clearSearchActive);
     }
 }
 
@@ -12678,7 +14721,7 @@ function revealSearchMatch(shellKey, match) {
         if (match.element instanceof HTMLElement) {
             window.setTimeout(() => {
                 expandHiddenAccordions(match.element);
-                match.element.scrollIntoView({
+                scrollElementIntoManagedView(match.element, {
                     block: 'center',
                     behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
                 });
@@ -12692,8 +14735,9 @@ function revealSearchMatch(shellKey, match) {
     openShell(shellKey, match.tabId);
 
     window.setTimeout(() => {
+        revealSettingsCategoryFor(match.element);
         expandHiddenAccordions(match.element);
-        match.element.scrollIntoView({
+        scrollElementIntoManagedView(match.element, {
             block: 'center',
             behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
         });
@@ -12735,15 +14779,16 @@ function setActiveTab(shellKey, tabId, { focusButton = false } = {}) {
     }
 
     syncMobileShellRailActionState(shellKey, tabId);
+    queueTopbarPageStateSync();
 
     const activeTab = shellState.tabs.get(tabId);
     shellState.headerTitle.textContent = activeTab.label;
-    shellState.headerSubtitle.textContent = activeTab.description ?? '';
+    renderShellSubtitle(shellState.headerSubtitle, activeTab.description ?? '', { isHtml: activeTab.descriptionIsHtml === true });
     scrollShellTabButtonIntoView(shellState.nav, activeTab.button, { smooth: focusButton });
     shellState.updateNavScrollIndicators?.();
 
     if (focusButton && isActuallyVisible(activeTab.button)) {
-        activeTab.button?.focus();
+        activeTab.button?.focus({ preventScroll: true });
     } else if (isShellOpen(shellKey)) {
         window.requestAnimationFrame(() => focusShellPanel(shellKey, { force: true }));
     }
@@ -12756,6 +14801,7 @@ function setActiveTab(shellKey, tabId, { focusButton = false } = {}) {
     const shellRoot = document.getElementById(shellConfig.rootPanelId);
     if (shellRoot instanceof HTMLElement && shellRoot.classList.contains('openDrawer')) {
         dispatchShellTabActivated(shellKey, activeTab);
+        queueMobileShellActivationRefresh();
     }
 }
 
@@ -13031,7 +15077,7 @@ function buildShell(shellKey) {
     });
     const eyebrow = createElement('div', { className: 'sb-shell-kicker', text: shellConfig.title });
     const title = createElement('h2', { className: 'sb-shell-title', text: shellConfig.baseTab.label, attrs: { tabindex: '-1' } });
-    const subtitle = createElement('p', { className: 'sb-shell-subtitle', text: shellConfig.baseTab.description ?? '' });
+    const subtitle = createElement('p', { className: 'sb-shell-subtitle' });
     const shellDescription = createElement('p', { className: 'sb-shell-description', text: shellConfig.subtitle });
     const panelBody = createElement('div', { className: 'sb-shell-body' });
     const resizeHandle = createElement('div', {
@@ -13042,6 +15088,7 @@ function buildShell(shellKey) {
     });
 
     closeButton.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+    renderShellSubtitle(subtitle, shellConfig.baseTab.description ?? '', { isHtml: shellConfig.baseTab.descriptionIsHtml === true });
     closeButton.addEventListener('click', () => closeShell(shellKey));
     shellRoot.addEventListener('keydown', event => {
         if (event.key !== 'Escape') {
@@ -13093,6 +15140,7 @@ function buildShell(shellKey) {
             const activeTab = shellState.tabs.get(shellState.activeTabId);
             activeTab?.onActivate?.();
             dispatchShellTabActivated(shellKey, activeTab);
+            queueMobileShellActivationRefresh();
             updateNavScrollIndicators();
             window.requestAnimationFrame(() => focusShellPanel(shellKey));
             queueMobileModalStateSync();
@@ -13448,7 +15496,7 @@ function syncMobileShellRailActions(shellKey = null) {
                     : null;
                 const railActionPlan = sbMobileShellLifecycle.railModel.resolveActionVisibility({
                     hasVerticalRail,
-                    showCustomize: navState.showCustomize,
+                    showCustomize: hasVerticalRail || navState.showCustomize,
                     showQuickActions: navState.showQuickActions,
                     builtInActions: getBuiltInRailActionsForShell(currentShellKey),
                     builtInActionKeys: Array.from(getAllBuiltInRailActionKeys()),
@@ -13565,6 +15613,15 @@ function dispatchShellTabActivated(shellKey, tabState) {
             label: tabState.label,
         },
     }));
+}
+
+function queueMobileShellActivationRefresh() {
+    if (!isMobileViewport()) {
+        return;
+    }
+
+    queueMobileShellDrawerBoundsSync();
+    queueMobileViewportStateSync();
 }
 
 function getInlineDrawerAutoCloseId(drawer, index = 0) {
@@ -14002,6 +16059,24 @@ function injectCharacterDrawerControls() {
         shellCloseButton.addEventListener('click', () => closeCharacterPanel());
     }
 
+    const modeToggle = document.getElementById('sb_character_mode_toggle');
+    if (modeToggle instanceof HTMLElement && modeToggle.dataset.sbBound !== 'true') {
+        modeToggle.dataset.sbBound = 'true';
+        modeToggle.querySelectorAll('[data-sb-character-mode]').forEach((button) => {
+            if (!(button instanceof HTMLButtonElement)) {
+                return;
+            }
+
+            button.addEventListener('click', () => setCharacterShellMode(button.dataset.sbCharacterMode));
+        });
+    }
+
+    if (document.documentElement.dataset.sbCharacterModeStateBound !== 'true') {
+        document.documentElement.dataset.sbCharacterModeStateBound = 'true';
+        window.addEventListener('sb:conversation-workspace-state-changed', syncCharacterModeToggle);
+    }
+    syncCharacterModeToggle();
+
     const charactersTab = document.getElementById('sb_character_tab_characters');
     if (charactersTab instanceof HTMLButtonElement && charactersTab.dataset.sbBound !== 'true') {
         charactersTab.dataset.sbBound = 'true';
@@ -14376,6 +16451,29 @@ function syncMobileViewportState() {
 
         handler();
     }
+
+    // SillyBunny: after viewport sizing settles, give iOS shell scrollers enough
+    // bottom inset to move focused bottom fields above the keyboard without
+    // locking the document and exposing a blank Safari background.
+    syncIOSKeyboardBottomInset();
+}
+
+let sbMobileViewportStateFrameId = 0;
+
+function queueMobileViewportStateSync() {
+    if (sbMobileViewportStateFrameId) {
+        return;
+    }
+
+    if (typeof window.requestAnimationFrame !== 'function') {
+        syncMobileViewportState();
+        return;
+    }
+
+    sbMobileViewportStateFrameId = window.requestAnimationFrame(() => {
+        sbMobileViewportStateFrameId = 0;
+        syncMobileViewportState();
+    });
 }
 
 function reinitSelect2AfterShell() {
@@ -14657,8 +16755,6 @@ async function refreshBottomChatSelect() {
 }
 
 const PERSONA_APPENDICES_METADATA_KEY = 'persona_appendices';
-const PERSONA_APPENDICES_SELECTIONS_KEY = 'activeAppendices';
-const PERSONA_APPENDICES_DEFAULT_SCOPE_KEY = '__default__';
 
 function getPersonaAppendixScopeKeyFromContext(context) {
     return String(context?.groupId || context?.characters?.[context?.characterId]?.avatar || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
@@ -15119,7 +17215,7 @@ function openPersonaAppendicesManager() {
         document.getElementById('persona_editor_tab_prompt')?.click();
         const appendicesHeading = document.getElementById('persona_appendices_heading');
         const addButton = document.getElementById('persona_appendix_add');
-        (appendicesHeading ?? addButton)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        scrollElementIntoManagedView(appendicesHeading ?? addButton, { block: 'center', behavior: getReducedMotionScrollBehavior() });
         addButton?.focus({ preventScroll: true });
     }, 160);
 }
@@ -15322,6 +17418,8 @@ function initAll() {
     setShellTheme(sbState.theme, { persist: false });
     setFrontendIconPreference(sbState.frontendIcon, { persist: false });
     setSurfaceTransparency(sbState.surfaceTransparency, { persist: false });
+    setPaperTextureEnabled(sbState.paperTextureEnabled, { persist: false });
+    setPaperTextureOpacity(sbState.paperTextureOpacity, { persist: false });
     setCompactMode(sbState.compactMode, { persist: false });
     setDesktopShellSnapToChatWidth(sbState.shellSizing.snapToChatWidth, { persist: false });
     setCharacterDrawerRightLock(sbState.characterDrawer.rightLocked, { persist: false });
@@ -15336,6 +17434,8 @@ function initAll() {
     initChatAvatarVariables();
     syncDesktopShellSizing();
     buildTopBar();
+    // Must follow buildTopBar(): it rearranges the buttons that call creates.
+    applyTopbarIconsOnlyPreference();
     bindLandingPageObserver();
     buildBottomChatBar();
     // Refresh again after the current JS task — APP_READY may have already
@@ -15355,12 +17455,39 @@ function initAll() {
     bindInlineDrawerAutoCloseToggle();
     syncMobileViewportState();
 
-    window.addEventListener('resize', syncMobileViewportState, { passive: true });
-    window.addEventListener('orientationchange', syncMobileViewportState);
-    window.visualViewport?.addEventListener('resize', syncMobileViewportState, { passive: true });
-    window.visualViewport?.addEventListener('scroll', syncMobileViewportState, { passive: true });
+    window.addEventListener('resize', queueMobileViewportStateSync, { passive: true });
+    window.addEventListener('orientationchange', queueMobileViewportStateSync);
+    window.visualViewport?.addEventListener('resize', queueMobileViewportStateSync, { passive: true });
+    // SillyBunny: iOS can move visualViewport.offsetTop without resizing while the keyboard is open.
+    window.visualViewport?.addEventListener('scroll', queueMobileViewportStateSync, { passive: true });
     window.visualViewport?.addEventListener('resize', syncDesktopShellSizing, { passive: true });
-    window.visualViewport?.addEventListener('scroll', syncDesktopShellSizing, { passive: true });
+
+    // SillyBunny: keep focused inputs in mobile settings drawers above the
+    // virtual keyboard. The fixed/clipped body blocks native scrolling, so the
+    // real panel scroller is nudged manually after viewport changes.
+    document.addEventListener('focusin', scheduleMobileFocusedInputScroll);
+    document.addEventListener('focusout', scheduleMobileFocusedInputScroll);
+    window.visualViewport?.addEventListener('resize', scheduleMobileFocusedInputScroll, { passive: true });
+    window.visualViewport?.addEventListener('scroll', scheduleMobileFocusedInputScroll, { passive: true });
+
+    // SillyBunny: popup dialogs sit outside the shell scrollers; shift them
+    // above the virtual keyboard instead so the browser never pans the visual
+    // viewport away from the top bar (see syncMobilePopupKeyboardShift).
+    document.addEventListener('focusin', scheduleMobilePopupKeyboardSync);
+    document.addEventListener('focusout', scheduleMobilePopupKeyboardSync);
+    window.visualViewport?.addEventListener('resize', scheduleMobilePopupKeyboardSync, { passive: true });
+
+    // SillyBunny: keep iOS drawer scroller padding in sync with keyboard focus;
+    // this provides scroll range for bottom inputs without fixing the document.
+    if (isIOSWebKitPlatform()) {
+        document.addEventListener('focusin', syncIOSKeyboardBottomInset);
+        document.addEventListener('focusout', syncIOSKeyboardBottomInset);
+    }
+
+    if (isLegacyIOSWebKitPlatform()) {
+        document.addEventListener('focusin', handleComposerKeyboardFocusIn);
+        document.addEventListener('focusout', handleMobileKeyboardFocusOut);
+    }
 
     // SillyBunny: re-sync shell width when the chat width slider changes so settings
     // panels narrow alongside the chat container (matches standard ST behaviour).
@@ -15424,6 +17551,9 @@ function initAll() {
         },
         setCompactMode(value) {
             setCompactMode(value);
+        },
+        setTopbarIconsOnly(mode, value) {
+            setTopbarIconsOnly(mode, value);
         },
         setDesktopShellSnapToChatWidth(value) {
             setDesktopShellSnapToChatWidth(value);

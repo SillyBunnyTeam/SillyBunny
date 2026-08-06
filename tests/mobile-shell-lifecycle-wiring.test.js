@@ -1,15 +1,63 @@
 import { describe, expect, test } from '@jest/globals';
+import { parse } from '@adobe/css-tools';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-import { MOBILE_SHELL_VIEWPORT_SYNC_STEP } from '../public/scripts/mobile-shell-lifecycle/index.js';
+import {
+    MOBILE_SHELL_VIEWPORT_SYNC_STEP,
+    shouldBlockMobileDocumentPan,
+} from '../public/scripts/mobile-shell-lifecycle/index.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tabsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-tabs.js'), 'utf8');
 const browserFixesSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'browser-fixes.js'), 'utf8');
 const tabsCssSource = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-tabs.css'), 'utf8');
 const mobileShellCssSource = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8');
+
+function createElementStub({
+    parentElement = null,
+    matches = () => false,
+    closest = () => null,
+    scrollWidth = 0,
+    clientWidth = 0,
+    scrollHeight = 0,
+    clientHeight = 0,
+    scrollLeft = 0,
+    scrollTop = 0,
+} = {}) {
+    return {
+        parentElement,
+        matches,
+        closest,
+        scrollWidth,
+        clientWidth,
+        scrollHeight,
+        clientHeight,
+        scrollLeft,
+        scrollTop,
+    };
+}
+
+function selectorListIncludes(selector, token) {
+    return String(selector ?? '')
+        .split(',')
+        .map(part => part.trim())
+        .includes(token);
+}
+
+function createTouchMove(target, { startX = 0, startY = 0, x = 0, y = 0, cancelable = true, touches = null } = {}) {
+    const touchStart = { identifier: 1, clientX: startX, clientY: startY };
+
+    return {
+        event: {
+            target,
+            cancelable,
+            touches: touches ?? [{ identifier: 1, clientX: x, clientY: y }],
+        },
+        touchStart,
+    };
+}
 
 function getFunctionSource(name) {
     const marker = `function ${name}(`;
@@ -55,6 +103,420 @@ function getFunctionSource(name) {
 }
 
 describe('mobile shell lifecycle wiring', () => {
+    test('keeps the trailing mobile chat hardening parseable', () => {
+        expect(() => parse(mobileShellCssSource, { source: 'sillybunny-mobile-shell.css' })).not.toThrow();
+        expect(mobileShellCssSource).toMatch(/#sb-bottom-chat-bar\s*\{[^}]*touch-action:\s*pan-x;/);
+        expect(mobileShellCssSource).toMatch(/#sb-bottom-chat-secondary-row\s*\{[^}]*touch-action:\s*pan-x;/);
+    });
+
+    test('blocks mobile document panning from fixed chrome and scroll edges', () => {
+        expect(browserFixesSource).toContain('blockDocumentPanFromShellGaps');
+        expect(browserFixesSource).toContain('captureDocumentPanStart');
+        expect(browserFixesSource).toContain('document.addEventListener(\'touchmove\', blockDocumentPanFromShellGaps, { passive: false, capture: true });');
+
+        const chatScroller = createElementStub({
+            matches: selector => selectorListIncludes(selector, '#chat'),
+            scrollHeight: 1200,
+            clientHeight: 600,
+            scrollTop: 120,
+        });
+        const chatScrollerAtTop = createElementStub({
+            matches: selector => selectorListIncludes(selector, '#chat'),
+            scrollHeight: 1200,
+            clientHeight: 600,
+        });
+        const wideMessageText = createElementStub({
+            parentElement: chatScroller,
+            matches: selector => selectorListIncludes(selector, '.mes_text'),
+            scrollWidth: 900,
+            clientWidth: 320,
+        });
+        const wideMessageTextNode = { parentNode: wideMessageText };
+        const shellSurface = createElementStub({
+            matches: selector => selectorListIncludes(selector, '#sheld'),
+        });
+        const composerChrome = createElementStub({
+            matches: selector => selectorListIncludes(selector, '#nonQRFormItems'),
+        });
+        const sendFormChrome = createElementStub({
+            matches: selector => selectorListIncludes(selector, '#send_form'),
+        });
+        const composerGap = createElementStub({ parentElement: composerChrome });
+        const textarea = createElementStub({
+            parentElement: composerChrome,
+            matches: selector => selector.includes('textarea'),
+        });
+        const scrollableTextarea = createElementStub({
+            parentElement: composerChrome,
+            matches: selector => selector.includes('textarea'),
+            scrollHeight: 400,
+            clientHeight: 120,
+            scrollTop: 100,
+        });
+        const textareaAtBottom = createElementStub({
+            parentElement: composerChrome,
+            matches: selector => selector.includes('textarea'),
+            scrollHeight: 400,
+            clientHeight: 120,
+            scrollTop: 280,
+        });
+        const quickReplyRail = createElementStub({
+            parentElement: composerChrome,
+            matches: selector => selectorListIncludes(selector, '#leftSendForm'),
+            scrollWidth: 600,
+            clientWidth: 240,
+            scrollLeft: 120,
+        });
+        const quickReplyRailAtStart = createElementStub({
+            parentElement: composerChrome,
+            matches: selector => selectorListIncludes(selector, '#leftSendForm'),
+            scrollWidth: 600,
+            clientWidth: 240,
+        });
+        const quickReplyButton = createElementStub({ parentElement: quickReplyRail });
+        const quickReplyStartButton = createElementStub({ parentElement: quickReplyRailAtStart });
+        const quickReplyControl = createElementStub({
+            parentElement: quickReplyRail,
+            matches: selector => selectorListIncludes(selector, '.interactable'),
+        });
+        const incidentalComposerRail = createElementStub({
+            parentElement: composerChrome,
+            matches: selector => selectorListIncludes(selector, '#leftSendForm'),
+            scrollWidth: 57,
+            clientWidth: 55,
+        });
+        const incidentalComposerGap = createElementStub({ parentElement: incidentalComposerRail });
+        const incidentalComposerControl = createElementStub({
+            parentElement: incidentalComposerRail,
+            matches: selector => selectorListIncludes(selector, '.interactable'),
+        });
+        const sendFormButton = createElementStub({ parentElement: sendFormChrome });
+        const genericButton = createElementStub({
+            matches: selector => selectorListIncludes(selector, 'button'),
+        });
+        const companionHandle = createElementStub({
+            closest: selector => selectorListIncludes(selector, '#ica--tracker-panel-handle') ? companionHandle : null,
+        });
+        const companionPanel = createElementStub({
+            matches: selector => selectorListIncludes(selector, '#ica--tracker-panel') || selectorListIncludes(selector, '.ica--tpanel'),
+            scrollHeight: 1200,
+            clientHeight: 600,
+            scrollTop: 120,
+        });
+        const companionPanelAtTop = createElementStub({
+            matches: selector => selectorListIncludes(selector, '#ica--tracker-panel') || selectorListIncludes(selector, '.ica--tpanel'),
+            scrollHeight: 1200,
+            clientHeight: 600,
+        });
+        const companionPanelBody = createElementStub({ parentElement: companionPanel });
+        const guidedActionsContainer = createElementStub({
+            parentElement: sendFormChrome,
+            matches: selector => selectorListIncludes(selector, '.gg-action-buttons-container'),
+        });
+        const guidedActionsGap = createElementStub({ parentElement: guidedActionsContainer });
+        const bottomChatBar = createElementStub({
+            matches: selector => selectorListIncludes(selector, '#sb-bottom-chat-bar'),
+        });
+        const bottomChatButton = createElementStub({ parentElement: bottomChatBar });
+        const bottomChatSelect = createElementStub({
+            parentElement: bottomChatBar,
+            matches: selector => selector.includes('select'),
+        });
+        const bottomChatLongNameSelect = createElementStub({
+            parentElement: bottomChatBar,
+            matches: selector => selector.includes('select'),
+            scrollWidth: 900,
+            clientWidth: 180,
+        });
+        const bottomChatSelect2Selection = createElementStub({
+            matches: selector => selectorListIncludes(selector, '.select2-selection') || selectorListIncludes(selector, '[aria-labelledby="select2-sb-bottom-chat-select-container"]'),
+            scrollWidth: 900,
+            clientWidth: 180,
+        });
+        const bottomChatSecondaryRow = createElementStub({
+            parentElement: bottomChatBar,
+            matches: selector => selectorListIncludes(selector, '#sb-bottom-chat-secondary-row') || selectorListIncludes(selector, '.sb-bottom-chat-secondary-row'),
+            scrollWidth: 700,
+            clientWidth: 260,
+            scrollLeft: 120,
+        });
+        const bottomChatSecondaryRowAtStart = createElementStub({
+            parentElement: bottomChatBar,
+            matches: selector => selectorListIncludes(selector, '#sb-bottom-chat-secondary-row') || selectorListIncludes(selector, '.sb-bottom-chat-secondary-row'),
+            scrollWidth: 700,
+            clientWidth: 260,
+        });
+        const bottomChatSecondaryButton = createElementStub({ parentElement: bottomChatSecondaryRow });
+        const bottomChatSecondaryStartButton = createElementStub({ parentElement: bottomChatSecondaryRowAtStart });
+        const presetPopupBody = createElementStub({
+            matches: selector => selectorListIncludes(selector, '.popup-body'),
+            scrollHeight: 1200,
+            clientHeight: 600,
+        });
+        const presetButton = createElementStub({ parentElement: presetPopupBody });
+        const legacyDialog = createElementStub({
+            matches: selector => selectorListIncludes(selector, '#dialogue_popup'),
+        });
+        const legacyDialogText = createElementStub({
+            parentElement: legacyDialog,
+            matches: selector => selectorListIncludes(selector, '#dialogue_popup_text'),
+            scrollHeight: 1200,
+            clientHeight: 600,
+        });
+        const legacyDialogInput = createElementStub({
+            parentElement: legacyDialog,
+            matches: selector => selector.includes('textarea'),
+        });
+        const legacyDialogControls = createElementStub({
+            parentElement: legacyDialog,
+            matches: selector => selectorListIncludes(selector, '#dialogue_popup_controls'),
+        });
+        const legacyDialogButton = createElementStub({ parentElement: legacyDialogControls });
+        const genericPopup = createElementStub({
+            matches: selector => selectorListIncludes(selector, 'dialog.popup') || selectorListIncludes(selector, '.popup'),
+        });
+        const genericPopupBody = createElementStub({
+            parentElement: genericPopup,
+            matches: selector => selectorListIncludes(selector, '.popup-body'),
+            scrollHeight: 1200,
+            clientHeight: 600,
+        });
+        const genericPopupInput = createElementStub({
+            parentElement: genericPopupBody,
+            matches: selector => selector.includes('textarea') || selectorListIncludes(selector, '.popup-input'),
+        });
+        const genericPopupControls = createElementStub({
+            parentElement: genericPopupBody,
+            matches: selector => selectorListIncludes(selector, '.popup-controls'),
+        });
+        const genericPopupButton = createElementStub({ parentElement: genericPopupControls });
+        const characterDrawerScroller = createElementStub({
+            matches: selector => selectorListIncludes(selector, '.sb-shell-panel-scroller'),
+            scrollHeight: 1600,
+            clientHeight: 600,
+        });
+        const characterCard = createElementStub({ parentElement: characterDrawerScroller });
+        const shellNavScroller = createElementStub({
+            parentElement: shellSurface,
+            matches: selector => selectorListIncludes(selector, '.sb-shell-nav'),
+            scrollWidth: 900,
+            clientWidth: 300,
+            scrollLeft: 200,
+        });
+        const shellNavScrollerAtStart = createElementStub({
+            parentElement: shellSurface,
+            matches: selector => selectorListIncludes(selector, '.sb-shell-nav'),
+            scrollWidth: 900,
+            clientWidth: 300,
+        });
+        const shellNavTab = createElementStub({ parentElement: shellNavScroller });
+        const shellNavStartTab = createElementStub({ parentElement: shellNavScrollerAtStart });
+        const chatMove = createTouchMove(chatScroller, { y: -40 });
+        const chatHorizontalMove = createTouchMove(chatScroller, { x: -70, y: 4 });
+        const chatAtTopPullDownMove = createTouchMove(chatScrollerAtTop, { x: 2, y: 40 });
+        const wideMessageTextMove = createTouchMove(wideMessageText, { x: -70, y: 4 });
+        const wideMessageTextNodeMove = createTouchMove(wideMessageTextNode, { x: -70, y: 4 });
+        const wideMessageTextVerticalMove = createTouchMove(wideMessageTextNode, { x: 2, y: -40 });
+        const shellRightEdgeHorizontalMove = createTouchMove(shellSurface, { startX: 390, x: 310, y: 4 });
+        const railHorizontalMove = createTouchMove(quickReplyButton, { x: 40, y: 2 });
+        const railAtStartEdgeMove = createTouchMove(quickReplyStartButton, { x: 40, y: 2 });
+        const railVerticalMove = createTouchMove(quickReplyButton, { x: 2, y: -40 });
+        const railControlMove = createTouchMove(quickReplyControl, { x: -40, y: 2 });
+        const incidentalComposerGapMove = createTouchMove(incidentalComposerGap, { x: -40, y: 2 });
+        const incidentalComposerControlMove = createTouchMove(incidentalComposerControl, { x: -40, y: 2 });
+        const companionHandleHorizontalMove = createTouchMove(companionHandle, { x: -40, y: 1 });
+        const companionHandleVerticalMove = createTouchMove(companionHandle, { x: 1, y: 40 });
+        const companionPanelVerticalMove = createTouchMove(companionPanelBody, { x: 1, y: -40 });
+        const companionPanelAtTopPullDownMove = createTouchMove(companionPanelAtTop, { x: 1, y: 40 });
+        const companionPanelHorizontalMove = createTouchMove(companionPanelBody, { x: -40, y: 1 });
+        const gapMove = createTouchMove(composerGap, { y: -40 });
+        const guidedActionsGapMove = createTouchMove(guidedActionsGap, { y: -40 });
+        const textareaMove = createTouchMove(textarea, { y: -40 });
+        const scrollableTextareaMove = createTouchMove(scrollableTextarea, { y: -40 });
+        const textareaAtBottomMove = createTouchMove(textareaAtBottom, { y: -40 });
+        const sendFormButtonMove = createTouchMove(sendFormButton, { y: -40 });
+        const buttonMove = createTouchMove(genericButton, { y: -40 });
+        const bottomChatButtonMove = createTouchMove(bottomChatButton, { y: -40 });
+        const bottomChatSelectMove = createTouchMove(bottomChatSelect, { y: -40 });
+        const bottomChatLongNameSelectMove = createTouchMove(bottomChatLongNameSelect, { x: -50, y: 1 });
+        const bottomChatSelect2SelectionMove = createTouchMove(bottomChatSelect2Selection, { x: -50, y: 1 });
+        const bottomChatHorizontalMove = createTouchMove(bottomChatSecondaryButton, { x: 40, y: 2 });
+        const bottomChatHorizontalAtStartEdgeMove = createTouchMove(bottomChatSecondaryStartButton, { x: 40, y: 2 });
+        const bottomChatVerticalMove = createTouchMove(bottomChatSecondaryButton, { x: 2, y: -40 });
+        const presetMove = createTouchMove(presetButton, { y: -40 });
+        const legacyDialogTextMove = createTouchMove(legacyDialogText, { y: -40 });
+        const legacyDialogInputMove = createTouchMove(legacyDialogInput, { y: -40 });
+        const legacyDialogButtonMove = createTouchMove(legacyDialogButton, { y: -40 });
+        const genericPopupBodyMove = createTouchMove(genericPopupBody, { y: -40 });
+        const genericPopupInputMove = createTouchMove(genericPopupInput, { y: -40 });
+        const genericPopupButtonMove = createTouchMove(genericPopupButton, { y: -40 });
+        const characterDrawerMove = createTouchMove(characterCard, { y: -40 });
+        const shellNavHorizontalMove = createTouchMove(shellNavTab, { x: -50, y: 1 });
+        const shellNavHorizontalAtStartEdgeMove = createTouchMove(shellNavStartTab, { x: 50, y: 1 });
+        const multiTouchMove = createTouchMove(composerGap, { touches: [{}, {}] });
+        const nonCancelableMove = createTouchMove(composerGap, { cancelable: false });
+
+        expect(shouldBlockMobileDocumentPan(chatMove.event, { touchStart: chatMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(chatHorizontalMove.event, { touchStart: chatHorizontalMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(chatAtTopPullDownMove.event, { touchStart: chatAtTopPullDownMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(wideMessageTextMove.event, { touchStart: wideMessageTextMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(wideMessageTextNodeMove.event, { touchStart: wideMessageTextNodeMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(wideMessageTextVerticalMove.event, { touchStart: wideMessageTextVerticalMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(shellRightEdgeHorizontalMove.event, { touchStart: shellRightEdgeHorizontalMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(textareaMove.event, { touchStart: textareaMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(scrollableTextareaMove.event, { touchStart: scrollableTextareaMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(textareaAtBottomMove.event, { touchStart: textareaAtBottomMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(railHorizontalMove.event, { touchStart: railHorizontalMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(railAtStartEdgeMove.event, { touchStart: railAtStartEdgeMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(railVerticalMove.event, { touchStart: railVerticalMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(railControlMove.event, { touchStart: railControlMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(incidentalComposerGapMove.event, { touchStart: incidentalComposerGapMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(incidentalComposerControlMove.event, { touchStart: incidentalComposerControlMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(companionHandleHorizontalMove.event, { touchStart: companionHandleHorizontalMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(companionHandleVerticalMove.event, { touchStart: companionHandleVerticalMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(companionPanelVerticalMove.event, { touchStart: companionPanelVerticalMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(companionPanelAtTopPullDownMove.event, { touchStart: companionPanelAtTopPullDownMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(companionPanelHorizontalMove.event, { touchStart: companionPanelHorizontalMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(gapMove.event, { touchStart: gapMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(guidedActionsGapMove.event, { touchStart: guidedActionsGapMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(sendFormButtonMove.event, { touchStart: sendFormButtonMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(buttonMove.event, { touchStart: buttonMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(bottomChatButtonMove.event, { touchStart: bottomChatButtonMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(bottomChatSelectMove.event, { touchStart: bottomChatSelectMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(bottomChatLongNameSelectMove.event, { touchStart: bottomChatLongNameSelectMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(bottomChatSelect2SelectionMove.event, { touchStart: bottomChatSelect2SelectionMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(bottomChatHorizontalMove.event, { touchStart: bottomChatHorizontalMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(bottomChatHorizontalAtStartEdgeMove.event, { touchStart: bottomChatHorizontalAtStartEdgeMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(bottomChatVerticalMove.event, { touchStart: bottomChatVerticalMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(presetMove.event, { touchStart: presetMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(legacyDialogTextMove.event, { touchStart: legacyDialogTextMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(legacyDialogInputMove.event, { touchStart: legacyDialogInputMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(legacyDialogButtonMove.event, { touchStart: legacyDialogButtonMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(genericPopupBodyMove.event, { touchStart: genericPopupBodyMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(genericPopupInputMove.event, { touchStart: genericPopupInputMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(genericPopupButtonMove.event, { touchStart: genericPopupButtonMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(characterDrawerMove.event, { touchStart: characterDrawerMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(shellNavHorizontalMove.event, { touchStart: shellNavHorizontalMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(shellNavHorizontalAtStartEdgeMove.event, { touchStart: shellNavHorizontalAtStartEdgeMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(multiTouchMove.event, { touchStart: multiTouchMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(nonCancelableMove.event, { touchStart: nonCancelableMove.touchStart })).toBe(false);
+    });
+
+    test('allows horizontal scrolling within designated mobile rails', () => {
+        for (const [rootSelector, railSelector] of [
+            ['#sheld', '.group_speaker_list'],
+            ['#left-nav-panel', '.ica--agent-tabs'],
+            ['.popup', '.ica--template-pill-row'],
+            ['#user-settings-block', '.sb-settings-tabs-nav'],
+            ['#top-bar', '.sb-topbar-group-left'],
+            ['#sheld', '.sb-conversation-channel-tabs'],
+            ['#sheld', '.sb-conversation-quick-actions'],
+            ['#right-nav-panel', '.sb-character-create-bar'],
+            ['#right-nav-panel', '#HotSwapWrapper .hotswap'],
+            ['#right-nav-panel', '#right-nav-panel .rm_tag_controls'],
+            ['#left-nav-panel', '#completion_prompt_manager .completion_prompt_manager_prompt > span:nth-child(3)'],
+            ['.popup', '.popup.horizontal_scrolling_dialogue_popup .popup-content'],
+            ['#chat', '.mes_text pre code'],
+            ['#chat', '.mes_reasoning pre code'],
+            ['.popup', '.img_enlarged_holder'],
+            ['.popup', '.img_enlarged_container pre code'],
+        ]) {
+            const root = createElementStub({
+                matches: selector => selectorListIncludes(selector, rootSelector),
+            });
+            const rail = createElementStub({
+                parentElement: root,
+                matches: selector => selectorListIncludes(selector, railSelector),
+                scrollWidth: 600,
+                clientWidth: 240,
+                scrollLeft: 120,
+            });
+            const railAtStart = createElementStub({
+                parentElement: root,
+                matches: selector => selectorListIncludes(selector, railSelector),
+                scrollWidth: 600,
+                clientWidth: 240,
+            });
+            const control = createElementStub({
+                parentElement: rail,
+                matches: selector => selectorListIncludes(selector, 'button'),
+            });
+            const controlAtStart = createElementStub({
+                parentElement: railAtStart,
+                matches: selector => selectorListIncludes(selector, 'button'),
+            });
+            const inwardMove = createTouchMove(control, { x: -40, y: 2 });
+            const railGapMove = createTouchMove(rail, { x: -40, y: 2 });
+            const outwardMove = createTouchMove(controlAtStart, { x: 40, y: 2 });
+            const verticalMove = createTouchMove(control, { x: 2, y: -40 });
+
+            expect(shouldBlockMobileDocumentPan(inwardMove.event, { touchStart: inwardMove.touchStart })).toBe(false);
+            expect(shouldBlockMobileDocumentPan(railGapMove.event, { touchStart: railGapMove.touchStart })).toBe(false);
+            expect(shouldBlockMobileDocumentPan(outwardMove.event, { touchStart: outwardMove.touchStart })).toBe(true);
+            expect(shouldBlockMobileDocumentPan(verticalMove.event, { touchStart: verticalMove.touchStart })).toBe(true);
+        }
+    });
+
+    test('allows owned scrolling from controls while blocking edge overscroll in mobile drawers', () => {
+        const createMenuRoot = rootSelector => createElementStub({
+            matches: selector => selectorListIncludes(selector, rootSelector) || selectorListIncludes(selector, `${rootSelector}.openDrawer`),
+            scrollHeight: 1600,
+            clientHeight: 600,
+        });
+        const workspaceRoot = createMenuRoot('#left-nav-panel');
+        const customizeRoot = createMenuRoot('#user-settings-block');
+        const characterRoot = createMenuRoot('#right-nav-panel');
+        const closedWorkspaceRoot = createElementStub({
+            matches: selector => selectorListIncludes(selector, '#left-nav-panel'),
+            scrollHeight: 1600,
+            clientHeight: 600,
+        });
+        const workspaceButton = createElementStub({
+            parentElement: workspaceRoot,
+            matches: selector => selectorListIncludes(selector, 'button'),
+        });
+        const connectionProfileAction = createElementStub({ parentElement: workspaceRoot });
+        const customizeSelect = createElementStub({
+            parentElement: customizeRoot,
+            matches: selector => selector.includes('select'),
+        });
+        const characterCard = createElementStub({ parentElement: characterRoot });
+        const closedWorkspaceButton = createElementStub({ parentElement: closedWorkspaceRoot });
+
+        const workspaceScrollMove = createTouchMove(workspaceButton, { x: 1, y: -40 });
+        const workspaceAtTopPullDownMove = createTouchMove(workspaceButton, { x: 1, y: 40 });
+        const connectionProfileActionMove = createTouchMove(connectionProfileAction, { x: 40, y: 1 });
+        const customizeSelectMove = createTouchMove(customizeSelect, { x: 1, y: -40 });
+        const characterAtTopPullDownMove = createTouchMove(characterCard, { x: 1, y: 40 });
+        const closedWorkspaceAtTopPullDownMove = createTouchMove(closedWorkspaceButton, { x: 1, y: 40 });
+
+        expect(shouldBlockMobileDocumentPan(workspaceScrollMove.event, { touchStart: workspaceScrollMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(workspaceAtTopPullDownMove.event, { touchStart: workspaceAtTopPullDownMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(connectionProfileActionMove.event, { touchStart: connectionProfileActionMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(customizeSelectMove.event, { touchStart: customizeSelectMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(characterAtTopPullDownMove.event, { touchStart: characterAtTopPullDownMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(closedWorkspaceAtTopPullDownMove.event, { touchStart: closedWorkspaceAtTopPullDownMove.touchStart })).toBe(true);
+    });
+
+    test('does not hand guarded control gestures to a scroll owner outside the guard', () => {
+        const documentScroller = createElementStub({
+            scrollHeight: 2000,
+            clientHeight: 800,
+            scrollTop: 200,
+        });
+        const guardedSurface = createElementStub({
+            parentElement: documentScroller,
+            matches: selector => selectorListIncludes(selector, '#send_form'),
+        });
+        const button = createElementStub({
+            parentElement: guardedSurface,
+            matches: selector => selectorListIncludes(selector, 'button'),
+        });
+        const move = createTouchMove(button, { y: -40 });
+
+        expect(shouldBlockMobileDocumentPan(move.event, { touchStart: move.touchStart })).toBe(true);
+    });
+
     test('imports the mobile shell lifecycle seam into the shell adapter', () => {
         expect(tabsSource).toContain('createMobileShellLifecycle');
         expect(tabsSource).toContain('MOBILE_SHELL_NAV_TOGGLE_ACTION');
@@ -133,6 +595,20 @@ describe('mobile shell lifecycle wiring', () => {
     });
 
     test('settles mobile viewport reset without reapplying the fixed-position workaround', () => {
+        expect(browserFixesSource).toContain('import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from \'./mobile-send-button.js\';');
+        expect(browserFixesSource).toContain('function addDocumentViewportAnchorPatch({ suspendWhileEditing = false } = {}) {');
+        expect(browserFixesSource).toContain('function isMobileShellPanelEditable(element) {');
+        expect(browserFixesSource).toContain('const shouldSuspendDocumentScrollReset = () => suspendWhileEditing');
+        expect(browserFixesSource).toContain('&& isEditableFocusTarget(document.activeElement)');
+        expect(browserFixesSource).toContain('&& !isMobileShellPanelEditable(document.activeElement)');
+        expect(browserFixesSource).toContain('const isComposerHeldAboveKeyboard = () => isLegacyIOSWebKitPlatform()');
+        expect(browserFixesSource).toContain('&& !isComposerHeldAboveKeyboard();');
+        expect(browserFixesSource).toContain('if (shouldSuspendDocumentScrollReset()) {');
+        expect(browserFixesSource).toContain('if (resetScheduled || shouldSuspendDocumentScrollReset()) {');
+        expect(browserFixesSource).toContain('document.addEventListener(\'focusout\', scheduleDocumentScrollReset, true);');
+        expect(browserFixesSource).toContain('const isMobileViewport = isMobile();');
+        expect(browserFixesSource).toContain('const isIOSWebKit = isIOSWebKitPlatform();');
+        expect(browserFixesSource).toContain('addDocumentViewportAnchorPatch({ suspendWhileEditing: isIOSWebKit });');
         expect(browserFixesSource).toContain('const viewportResetSettleMs = 360;');
         expect(browserFixesSource).toContain('const resetTransientViewportPosition = ({ restoreScroll = false } = {}) => {');
         expect(browserFixesSource).toContain('const scheduleViewportReset = ({ restoreScroll = false } = {}) => {');
@@ -190,7 +666,7 @@ describe('mobile shell lifecycle wiring', () => {
         expect(getInlineDrawerStorageKeySource).not.toContain('`${SB_STORAGE_KEYS.settingsDrawerStatePrefix}:${contextSegments.join(\'/\')}:drawer:${drawerLabel}:${drawerIndex}`');
     });
 
-    test('clamps resizable shell panels against the visual viewport and panel top', () => {
+    test('clamps shell panels and iOS composer edits on stable viewport bounds', () => {
         const getResolvedShellTopbarOffsetSource = getFunctionSource('getResolvedShellTopbarOffset');
         const getDesktopShellResizeBoundsSource = getFunctionSource('getDesktopShellResizeBounds');
         const setShellSizeOverrideSource = getFunctionSource('setShellSizeOverride');
@@ -199,10 +675,20 @@ describe('mobile shell lifecycle wiring', () => {
         const syncMobileViewportStateSource = getFunctionSource('syncMobileViewportState');
 
         expect(tabsSource).toContain('function getShellViewportSize(');
+        expect(tabsSource).toContain('function getVisualViewportSize(');
+        expect(tabsSource).toContain('function shouldUseStableIOSPanelViewport(');
+        expect(tabsSource).toContain('import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from \'./mobile-send-button.js\';');
+        expect(tabsSource).toContain('function isChatComposerEditableElement(');
+        expect(tabsSource).toContain('function hasOpenMobileShellDrawer(');
+        expect(tabsSource).toContain('!isIOSWebKitPlatform() || !isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)');
+        expect(tabsSource).toContain('return isMobileShellPanelEditableElement(activeElement) || isChatComposerEditableElement(activeElement) || hasOpenMobileShellDrawer();');
+        expect(tabsSource).not.toContain('if (isChatComposerEditableElement(activeElement)) {');
+        expect(tabsSource).toContain('return layoutViewport;');
         expect(tabsSource).toContain('function syncShellViewportBounds(');
         expect(tabsSource).toContain('function syncMobileShellDrawerBounds(');
         expect(tabsSource).toContain('function queueMobileShellDrawerBoundsSync(');
-        expect(tabsSource).toContain('root.style.setProperty(\'--sb-shell-available-height\'');
+        expect(tabsSource).toContain('setRootViewportProperty(\'--sb-shell-available-height\'');
+        expect(tabsSource).toContain('setRootViewportProperty(\'--sb-shell-viewport-top\', `${viewportSize.top}px`);');
         expect(tabsSource).toContain('function applyMobileDrawerBoundsDecision(');
         expect(tabsSource).toContain('window.visualViewport');
         expect(tabsSource).toContain('function getShellViewportTop(');
@@ -218,14 +704,37 @@ describe('mobile shell lifecycle wiring', () => {
         expect(closeShellSource).toContain('syncMobileShellDrawerBounds();');
         expect(closeShellSource).toContain('queueMobileShellDrawerBoundsSync();');
         expect(syncMobileViewportStateSource).toContain('syncMobileShellDrawerBounds();');
-        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', syncMobileViewportState, { passive: true });');
-        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', syncMobileViewportState, { passive: true });');
+        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', queueMobileViewportStateSync, { passive: true });');
+        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', queueMobileViewportStateSync, { passive: true });');
+        expect(tabsSource).toContain('window.addEventListener(\'resize\', queueMobileViewportStateSync, { passive: true });');
         expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', syncDesktopShellSizing, { passive: true });');
-        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', syncDesktopShellSizing, { passive: true });');
+        expect(tabsSource).toContain('window.addEventListener(\'orientationchange\', queueMobileViewportStateSync);');
         expect(mobileShellCssSource).toMatch(/#left-nav-panel\.openDrawer,[\s\S]*#right-nav-panel\.openDrawer\s*\{[\s\S]*top:\s*calc\(var\(--sb-shell-measured-top-offset,[\s\S]*bottom:\s*auto\s*!important;[\s\S]*box-sizing:\s*border-box\s*!important;[\s\S]*height:\s*calc\(var\(--sb-shell-available-height/);
         expect(mobileShellCssSource.lastIndexOf('bottom: auto !important;')).toBeGreaterThan(
             mobileShellCssSource.lastIndexOf('bottom: env(safe-area-inset-bottom, 0px) !important;'),
         );
+    });
+
+    test('uses keyboard inset resizing only for legacy iOS composer edits', () => {
+        const getComposerKeyboardInsetSource = getFunctionSource('getComposerKeyboardInset');
+        const getShellViewportSizeSource = getFunctionSource('getShellViewportSize');
+        const handleComposerKeyboardFocusInSource = getFunctionSource('handleComposerKeyboardFocusIn');
+        const syncShellViewportBoundsSource = getFunctionSource('syncShellViewportBounds');
+
+        expect(getComposerKeyboardInsetSource).toContain('if (!isLegacyIOSWebKitPlatform() || !isMobileViewport()) {');
+        expect(getComposerKeyboardInsetSource).toContain('const keyboardHeight = Math.max(0, layoutViewport.height - visualViewportSize.height);');
+        expect(getComposerKeyboardInsetSource).toContain('sbLastIOSKeyboardHeight = keyboardHeight;');
+        expect(getComposerKeyboardInsetSource).toContain('if (visualViewportSize.top > MOBILE_COMPOSER_KEYBOARD_PAN_EPSILON_PX) {');
+        expect(getComposerKeyboardInsetSource).toContain('return withinPreShiftWindow ? sbLastIOSKeyboardHeight : 0;');
+        expect(handleComposerKeyboardFocusInSource).toContain('sbComposerKeyboardPreShiftDeadline = Date.now() + MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS;');
+        expect(getShellViewportSizeSource).toContain('if (shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize)) {');
+        expect(getShellViewportSizeSource).toContain('return layoutViewport;');
+        expect(getShellViewportSizeSource).toContain('const composerKeyboardInset = getComposerKeyboardInset(layoutViewport, visualViewportSize);');
+        expect(getShellViewportSizeSource).toContain('return { ...layoutViewport, height, bottom: height };');
+        expect(syncShellViewportBoundsSource).toContain('root.classList.toggle(\'sb-ios-composer-keyboard-inset-active\', composerKeyboardInset > 0);');
+        expect(tabsSource).toContain('if (isLegacyIOSWebKitPlatform()) {');
+        expect(tabsSource).toContain('document.addEventListener(\'focusin\', handleComposerKeyboardFocusIn);');
+        expect(tabsSource).toContain('document.addEventListener(\'focusout\', handleMobileKeyboardFocusOut);');
     });
 
     test('routes mobile viewport sync planning through the lifecycle seam', () => {
@@ -238,10 +747,22 @@ describe('mobile shell lifecycle wiring', () => {
         expect(syncMobileViewportStateSource).toContain('[viewportSyncStep.SCHEDULE_TOPBAR_CONTEXT_REFRESH]: () => scheduleTopbarContextRefresh(0),');
         expect(queueMobileShellDrawerBoundsSyncSource).toContain('sbMobileShellLifecycle.viewportSync.resolveDrawerBoundsSchedule({');
         expect(queueMobileShellDrawerBoundsSyncSource).toContain('followupDelayMs: SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS,');
-        expect(queueMobileShellDrawerBoundsSyncSource).toContain('window.setTimeout(sync, schedule.followupDelayMs);');
+        expect(queueMobileShellDrawerBoundsSyncSource).toContain('sbMobileShellDrawerBoundsFollowupId = window.setTimeout(() => {');
         expect(syncMobileViewportStateSource).not.toContain('if (!isMobileViewport()) {');
         expect(queueMobileShellDrawerBoundsSyncSource).not.toContain('if (!isMobileViewport()) {');
         expect(queueMobileShellDrawerBoundsSyncSource).not.toContain('if (typeof window.requestAnimationFrame === \'function\') {');
+    });
+
+    test('refreshes mobile shell layout after tab activation', () => {
+        const setActiveTabSource = getFunctionSource('setActiveTab');
+        const buildShellSource = getFunctionSource('buildShell');
+        const activationRefreshSource = getFunctionSource('queueMobileShellActivationRefresh');
+
+        expect(activationRefreshSource).toContain('if (!isMobileViewport()) {');
+        expect(activationRefreshSource).toContain('queueMobileShellDrawerBoundsSync();');
+        expect(activationRefreshSource).toContain('queueMobileViewportStateSync();');
+        expect(setActiveTabSource).toMatch(/dispatchShellTabActivated\(shellKey, activeTab\);\r?\n\s+queueMobileShellActivationRefresh\(\);/);
+        expect(buildShellSource).toMatch(/dispatchShellTabActivated\(shellKey, activeTab\);\r?\n\s+queueMobileShellActivationRefresh\(\);/);
     });
 
     test('pins every mobile viewport sync step to a dispatch handler', () => {
@@ -258,7 +779,7 @@ describe('mobile shell lifecycle wiring', () => {
         const updateThemePickerUiSource = getFunctionSource('updateThemePickerUi');
 
         expect(tabsSource).toContain('desktopShellSnapToChatWidth: \'sb-desktop-shell-snap-to-chat-width\'');
-        expect(tabsSource).toContain('snapToChatWidth: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth), false)');
+        expect(tabsSource).toContain('snapToChatWidth: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth), true)');
         expect(tabsSource).toContain('function setDesktopShellSnapToChatWidth(');
         expect(tabsSource).toContain('safeSetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth, String(nextEnabled));');
         expect(getDesktopShellDimensionsSource).toContain('isShellSnapToChatWidthEnabled(shellKey)');

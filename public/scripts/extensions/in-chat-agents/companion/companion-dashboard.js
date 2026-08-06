@@ -13,27 +13,19 @@ import {
 import {
     COMPANION_RESULTS_UPDATED_EVENT,
     getCompanionResults,
+    getLatestValidCompanionMessageIndex,
     runCompanionAgentOnMessage,
     runCompanionsOnMessage,
 } from './companion-runner.js';
-import { openCompanionPanel } from './companion-panel.js';
+import { resolveCompanionContentMacros } from './companion-macros.js';
+import { isConversationModeActive, openCompanionPanel } from './companion-panel.js';
 import {
-    MESSAGE_INBOX_EMPTY_OUTPUTS,
-    isAssistantMessage,
-    isMessageInboxAgent,
+    isSuppressedCompanionResult,
+    isValidCompanionMessage,
 } from './companion-shared.js';
 
 const RECENT_NOTES_LIMIT = 20;
 const NOTE_SNIPPET_LENGTH = 120;
-
-function isSuppressedDashboardResult(agentId, result = {}) {
-    if (!MESSAGE_INBOX_EMPTY_OUTPUTS.has(String(result?.content ?? '').trim())) {
-        return false;
-    }
-
-    const agent = getAgentById(agentId);
-    return isMessageInboxAgent(agent);
-}
 
 /**
  * Behavior owned by index.js (editor, list rendering, conversion flow) arrives through this seam
@@ -49,6 +41,23 @@ function isSuppressedDashboardResult(agentId, result = {}) {
  */
 let dashboardHooks = null;
 let activeDashboardPopup = null;
+
+function scrollChatMessageIntoView(messageElement) {
+    const chatRoot = document.getElementById('chat');
+
+    if (!(messageElement instanceof HTMLElement) || !(chatRoot instanceof HTMLElement) || !chatRoot.contains(messageElement)) {
+        return;
+    }
+
+    const chatRect = chatRoot.getBoundingClientRect();
+    const messageRect = messageElement.getBoundingClientRect();
+    const delta = (messageRect.top - chatRect.top) - ((chatRect.height - messageRect.height) / 2);
+
+    chatRoot.scrollTo({
+        top: Math.min(Math.max(chatRoot.scrollTop + delta, 0), Math.max(0, chatRoot.scrollHeight - chatRoot.clientHeight)),
+        behavior: 'smooth',
+    });
+}
 
 export function configureCompanionDashboard(hooks) {
     dashboardHooks = hooks;
@@ -73,16 +82,53 @@ function partitionDashboardAgents(agents = []) {
     return { companions, convertible };
 }
 
+function normalizeTokenCount(value) {
+    const tokenCount = Number(value);
+    return Number.isFinite(tokenCount) && tokenCount > 0 ? Math.round(tokenCount) : 0;
+}
+
+function formatTokenCount(value) {
+    return normalizeTokenCount(value).toLocaleString();
+}
+
+function buildCompanionTokenUsagePillsHtml(result = {}) {
+    const inputTokens = normalizeTokenCount(result?.tokenUsage?.inputTokens);
+    const outputTokens = normalizeTokenCount(result?.tokenUsage?.outputTokens);
+
+    return [
+        inputTokens ? `<span class="ica--card-pill ica--card-pill--tokens" title="Estimated input tokens" aria-label="Input tokens ${escapeHtml(formatTokenCount(inputTokens))}"><span>Input</span><strong>${escapeHtml(formatTokenCount(inputTokens))}</strong></span>` : '',
+        outputTokens ? `<span class="ica--card-pill ica--card-pill--tokens" title="Estimated output tokens" aria-label="Output tokens ${escapeHtml(formatTokenCount(outputTokens))}"><span>Output</span><strong>${escapeHtml(formatTokenCount(outputTokens))}</strong></span>` : '',
+    ].filter(Boolean).join('');
+}
+
+function getLatestDashboardResult(agentId) {
+    for (let messageIndex = chat.length - 1; messageIndex >= 0; messageIndex--) {
+        const message = chat[messageIndex];
+        if (!isValidCompanionMessage(message)) {
+            continue;
+        }
+
+        const result = getCompanionResults(message)[agentId];
+        if (result && typeof result === 'object' && !isSuppressedCompanionResult(agentId, result)) {
+            return result;
+        }
+    }
+
+    return null;
+}
+
 export function buildCompanionAgentRowHtml(agent) {
     const companion = getCompanionConfig(agent);
     const enabled = isAgentEnabledForCurrentScope(agent);
-    const pills = [
+    const configPills = [
         companion.trigger === 'manual' ? 'manual' : 'auto',
         ['panel', 'hidden'].includes(companion.displayMode) ? companion.displayMode : 'card',
         companion.format,
         companion.batch ? 'batch' : '',
         companion.feedback.enabled ? `feedback ×${companion.feedback.depth}` : '',
     ].filter(Boolean).map(label => `<span class="ica--card-pill">${escapeHtml(label)}</span>`).join('');
+    const tokenPills = buildCompanionTokenUsagePillsHtml(getLatestDashboardResult(agent.id));
+    const pills = `${configPills}${tokenPills}`;
 
     return `
         <div class="ica--cdash-row${enabled ? ' is-enabled' : ''}" data-agent-id="${escapeHtml(agent.id)}">
@@ -124,7 +170,7 @@ export function collectRecentNoteEntries(limit = RECENT_NOTES_LIMIT) {
 
     for (let messageIndex = chat.length - 1; messageIndex >= 0 && entries.length < limit; messageIndex--) {
         const message = chat[messageIndex];
-        if (!isAssistantMessage(message)) {
+        if (!isValidCompanionMessage(message)) {
             continue;
         }
 
@@ -133,11 +179,11 @@ export function collectRecentNoteEntries(limit = RECENT_NOTES_LIMIT) {
                 break;
             }
 
-            if (!result || typeof result !== 'object' || result.status !== 'done' || isSuppressedDashboardResult(agentId, result)) {
+            if (!result || typeof result !== 'object' || result.status !== 'done' || isSuppressedCompanionResult(agentId, result)) {
                 continue;
             }
 
-            const content = String(result.content ?? '').replace(/\s+/g, ' ').trim();
+            const content = resolveCompanionContentMacros(String(result.content ?? ''), message).replace(/\s+/g, ' ').trim();
             entries.push({
                 messageIndex,
                 agentId,
@@ -182,9 +228,9 @@ export function buildDashboardHtml() {
             <div class="ica--cdash-subtitle">Companions run as separate auxiliary LLM calls and render as collapsible note cards under assistant replies — they never edit the reply itself.</div>
             ${noticeHtml}
             <div class="ica--cdash-toolbar">
-                <button type="button" class="menu_button menu_button_icon" data-action="run-all" title="Run every enabled companion on the last assistant reply"${disabledAttribute}>
+                <button type="button" class="menu_button menu_button_icon" data-action="run-all" title="Run every enabled companion on the last message"${disabledAttribute}>
                     <i class="fa-solid fa-play"></i>
-                    <span>Run All on Last Reply</span>
+                    <span>Run All on Last Message</span>
                 </button>
                 <button type="button" class="menu_button menu_button_icon" data-action="open-panel" title="Open the slide-out companion panel with the latest state">
                     <i class="fa-solid fa-user-astronaut"></i>
@@ -233,7 +279,7 @@ async function closeDashboard() {
 function jumpToMessage(messageIndex) {
     const messageElement = document.querySelector(`.mes[mesid="${messageIndex}"]`);
     if (messageElement) {
-        messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        scrollChatMessageIntoView(messageElement);
     } else {
         toastr.info('That message is above the rendered window. Scroll up in the chat to load it.');
     }
@@ -246,16 +292,16 @@ async function handleDashboardAction(event, root, rerender) {
     const agent = agentId ? getAgentById(agentId) : null;
 
     if (action === 'run-all') {
-        const lastIndex = dashboardHooks.getLastAssistantMessageIndex();
+        const lastIndex = getLatestValidCompanionMessageIndex();
         if (lastIndex < 0) {
-            toastr.warning('No assistant reply yet to run companions on.');
+            toastr.warning('No message yet to run companions on.');
             return;
         }
         button.prop('disabled', true);
         try {
             const results = await runCompanionsOnMessage(lastIndex);
             if (!Object.keys(results ?? {}).length) {
-                toastr.info('No companion agents ran for this reply.');
+                toastr.info('No companion agents ran for this message.');
             }
         } finally {
             button.prop('disabled', false);
@@ -303,9 +349,9 @@ async function handleDashboardAction(event, root, rerender) {
     }
 
     if (action === 'run') {
-        const lastIndex = dashboardHooks.getLastAssistantMessageIndex();
+        const lastIndex = getLatestValidCompanionMessageIndex();
         if (lastIndex < 0) {
-            toastr.warning('No assistant reply yet to run this companion on.');
+            toastr.warning('No message yet to run this companion on.');
             return;
         }
         button.prop('disabled', true);
@@ -332,6 +378,10 @@ async function handleDashboardAction(event, root, rerender) {
 export async function openCompanionDashboard() {
     if (!dashboardHooks) {
         console.warn('[InChatAgents] Companion dashboard opened before configuration.');
+        return;
+    }
+
+    if (isConversationModeActive()) {
         return;
     }
 
@@ -392,5 +442,6 @@ export function initCompanionWandMenuItem() {
         </div>
     `);
     menuItem.on('click', () => openCompanionDashboard());
+    menuItem.toggle?.(!isConversationModeActive());
     $('#extensionsMenu').append(menuItem);
 }

@@ -450,9 +450,12 @@ export function initDefaultSlashCommands() {
                 return '';
             }
 
-            await renameChat(currentChatName, chatName.toString());
+            const result = await renameChat(currentChatName, chatName.toString());
+            if (!result) {
+                return '';
+            }
 
-            toastr.success(t`Successfully renamed chat to: ${chatName}`);
+            toastr.success(t`Successfully renamed chat to: ${result.newFileName}`);
             return '';
         },
         unnamedArgumentList: [
@@ -5126,7 +5129,8 @@ async function deleteMessagesByNameCallback(_, name) {
         }
     }
 
-    await saveChatConditional();
+    // SillyBunny: this shrink is the user's own deletion, not an accidental overwrite.
+    await saveChatConditional({ allowShrink: true });
     await reloadCurrentChat();
 
     toastr.info(t`Deleted ${messagesToDelete.length} messages from ${name}`);
@@ -6345,6 +6349,7 @@ function getModelOptions(quiet) {
         { id: 'model_cometapi_select', api: 'openai', type: chat_completion_sources.COMETAPI },
         { id: 'model_zai_select', api: 'openai', type: chat_completion_sources.ZAI },
         { id: 'model_workers_ai_select', api: 'openai', type: chat_completion_sources.WORKERS_AI },
+        { id: 'model_linkapi_select', api: 'openai', type: chat_completion_sources.LINKAPI },
         { id: 'model_novel_select', api: 'novel', type: null },
         { id: 'horde_model', api: 'koboldhorde', type: null },
     ];

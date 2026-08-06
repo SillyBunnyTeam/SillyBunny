@@ -42,6 +42,37 @@ const chara_note_position = {
     after: 2,
 };
 
+const DEFAULT_DEPTH = 4;
+const DEFAULT_POSITION = 1;
+const DEFAULT_INTERVAL = 1;
+// script.js and this module import each other, so extension_prompt_roles is still in its temporal
+// dead zone while this module body runs. The default role has to be read lazily, at call time.
+const getDefaultRole = () => extension_prompt_roles.SYSTEM;
+
+// SillyBunny: resolving these at read time keeps a chat that never used an Author's Note out of
+// chat_metadata. Stamping the defaults in on load dirtied every chat the moment it was opened, and
+// there is no metadata-only write: saving chat metadata rewrites the entire chat file.
+export function getAuthorsNotePrompt() {
+    return chat_metadata[metadata_keys.prompt] ?? extension_settings.note?.default ?? '';
+}
+
+export function getAuthorsNoteInterval() {
+    return chat_metadata[metadata_keys.interval] ?? extension_settings.note?.defaultInterval ?? DEFAULT_INTERVAL;
+}
+
+export function getAuthorsNotePosition() {
+    return chat_metadata[metadata_keys.position] ?? extension_settings.note?.defaultPosition ?? DEFAULT_POSITION;
+}
+
+export function getAuthorsNoteDepth() {
+    return chat_metadata[metadata_keys.depth] ?? extension_settings.note?.defaultDepth ?? DEFAULT_DEPTH;
+}
+
+export function getAuthorsNoteRole() {
+    return chat_metadata[metadata_keys.role] ?? extension_settings.note?.defaultRole ?? getDefaultRole();
+}
+
+// SillyBunny divergence: character and group Author's Notes use a fork-owned scoped store while preserving existing note settings.
 function ensureCharacterNoteStore() {
     if (!extension_settings.note.chara) {
         extension_settings.note.chara = [];
@@ -189,7 +220,7 @@ function setNoteTextCommand(_, text) {
         $('#extension_floating_prompt').val(text).trigger('input');
         toastr.success(t`Author's Note text updated`);
     }
-    return chat_metadata[metadata_keys.prompt];
+    return getAuthorsNotePrompt();
 }
 
 function setNoteDepthCommand(_, text) {
@@ -204,7 +235,7 @@ function setNoteDepthCommand(_, text) {
         $('#extension_floating_depth').val(Math.abs(value)).trigger('input');
         toastr.success(t`Author's Note depth updated`);
     }
-    return chat_metadata[metadata_keys.depth];
+    return getAuthorsNoteDepth();
 }
 
 function setNoteIntervalCommand(_, text) {
@@ -219,7 +250,7 @@ function setNoteIntervalCommand(_, text) {
         $('#extension_floating_interval').val(Math.abs(value)).trigger('input');
         toastr.success(t`Author's Note frequency updated`);
     }
-    return chat_metadata[metadata_keys.interval];
+    return getAuthorsNoteInterval();
 }
 
 function setNotePositionCommand(_, text) {
@@ -242,7 +273,7 @@ function setNotePositionCommand(_, text) {
         $(`input[name="extension_floating_position"][value="${position}"]`).prop('checked', true).trigger('input');
         toastr.info(t`Author's Note position updated`);
     }
-    return Object.keys(validPositions).find(key => validPositions[key] == chat_metadata[metadata_keys.position]);
+    return Object.keys(validPositions).find(key => validPositions[key] == getAuthorsNotePosition());
 }
 
 function setNoteRoleCommand(_, text) {
@@ -263,7 +294,7 @@ function setNoteRoleCommand(_, text) {
         $('#extension_floating_role').val(Math.abs(role)).trigger('input');
         toastr.info(t`Author's Note role updated`);
     }
-    return Object.keys(validRoles).find(key => validRoles[key] == chat_metadata[metadata_keys.role]);
+    return Object.keys(validRoles).find(key => validRoles[key] == getAuthorsNoteRole());
 }
 
 function updateSettings({ saveExtensionSettings = true } = {}) {
@@ -457,11 +488,6 @@ function onExtensionFloatingDefaultInput() {
 }
 
 function loadSettings() {
-    const DEFAULT_DEPTH = 4;
-    const DEFAULT_POSITION = 1;
-    const DEFAULT_INTERVAL = 1;
-    const DEFAULT_ROLE = extension_prompt_roles.SYSTEM;
-
     if (extension_settings.note.defaultPosition === undefined) {
         extension_settings.note.defaultPosition = DEFAULT_POSITION;
     }
@@ -475,20 +501,15 @@ function loadSettings() {
     }
 
     if (extension_settings.note.defaultRole === undefined) {
-        extension_settings.note.defaultRole = DEFAULT_ROLE;
+        extension_settings.note.defaultRole = getDefaultRole();
     }
 
-    chat_metadata[metadata_keys.prompt] = chat_metadata[metadata_keys.prompt] ?? extension_settings.note.default ?? '';
-    chat_metadata[metadata_keys.interval] = chat_metadata[metadata_keys.interval] ?? extension_settings.note.defaultInterval ?? DEFAULT_INTERVAL;
-    chat_metadata[metadata_keys.position] = chat_metadata[metadata_keys.position] ?? extension_settings.note.defaultPosition ?? DEFAULT_POSITION;
-    chat_metadata[metadata_keys.depth] = chat_metadata[metadata_keys.depth] ?? extension_settings.note.defaultDepth ?? DEFAULT_DEPTH;
-    chat_metadata[metadata_keys.role] = chat_metadata[metadata_keys.role] ?? extension_settings.note.defaultRole ?? DEFAULT_ROLE;
-    $('#extension_floating_prompt').val(chat_metadata[metadata_keys.prompt]);
-    $('#extension_floating_interval').val(chat_metadata[metadata_keys.interval]);
+    $('#extension_floating_prompt').val(getAuthorsNotePrompt());
+    $('#extension_floating_interval').val(getAuthorsNoteInterval());
     $('#extension_floating_allow_wi_scan').prop('checked', extension_settings.note.allowWIScan ?? false);
-    $('#extension_floating_depth').val(chat_metadata[metadata_keys.depth]);
-    $('#extension_floating_role').val(chat_metadata[metadata_keys.role]);
-    $(`input[name="extension_floating_position"][value="${chat_metadata[metadata_keys.position]}"]`).prop('checked', true);
+    $('#extension_floating_depth').val(getAuthorsNoteDepth());
+    $('#extension_floating_role').val(getAuthorsNoteRole());
+    $(`input[name="extension_floating_position"][value="${getAuthorsNotePosition()}"]`).prop('checked', true);
 
     const context = getContext();
     const canEditCharacterNote = Boolean(context.groupId || getEditableCharacterNoteAvatar());
@@ -526,28 +547,28 @@ export function setFloatingPrompt() {
     setFloatingPrompt entered
     ------
     lastMessageNumber = ${lastMessageNumber}
-    metadata_keys.interval = ${chat_metadata[metadata_keys.interval]}
-    metadata_keys.position = ${chat_metadata[metadata_keys.position]}
-    metadata_keys.depth = ${chat_metadata[metadata_keys.depth]}
-    metadata_keys.role = ${chat_metadata[metadata_keys.role]}
+    metadata_keys.interval = ${getAuthorsNoteInterval()}
+    metadata_keys.position = ${getAuthorsNotePosition()}
+    metadata_keys.depth = ${getAuthorsNoteDepth()}
+    metadata_keys.role = ${getAuthorsNoteRole()}
     ------
     `);
 
     // interval 1 should be inserted no matter what
-    if (chat_metadata[metadata_keys.interval] === 1) {
+    if (getAuthorsNoteInterval() === 1) {
         lastMessageNumber = 1;
     }
 
-    if (lastMessageNumber <= 0 || chat_metadata[metadata_keys.interval] <= 0) {
+    if (lastMessageNumber <= 0 || getAuthorsNoteInterval() <= 0) {
         context.setExtensionPrompt(MODULE_NAME, '', extension_prompt_types.NONE, MAX_INJECTION_DEPTH);
         $('#extension_floating_counter').text('(disabled)');
         shouldWIAddPrompt = false;
         return;
     }
 
-    const messagesTillInsertion = lastMessageNumber >= chat_metadata[metadata_keys.interval]
-        ? (lastMessageNumber % chat_metadata[metadata_keys.interval])
-        : (chat_metadata[metadata_keys.interval] - lastMessageNumber);
+    const messagesTillInsertion = lastMessageNumber >= getAuthorsNoteInterval()
+        ? (lastMessageNumber % getAuthorsNoteInterval())
+        : (getAuthorsNoteInterval() - lastMessageNumber);
     const shouldAddPrompt = messagesTillInsertion == 0;
     shouldWIAddPrompt = shouldAddPrompt;
 
@@ -559,10 +580,10 @@ export function setFloatingPrompt() {
     context.setExtensionPrompt(
         MODULE_NAME,
         String(prompt),
-        chat_metadata[metadata_keys.position],
-        chat_metadata[metadata_keys.depth],
+        getAuthorsNotePosition(),
+        getAuthorsNoteDepth(),
         extension_settings.note.allowWIScan,
-        chat_metadata[metadata_keys.role],
+        getAuthorsNoteRole(),
     );
     $('#extension_floating_counter').text(shouldAddPrompt ? '0' : messagesTillInsertion);
 }
@@ -624,7 +645,8 @@ async function onChatChanged() {
     $('#extension_use_floating_chara').prop('disabled', !canEditCharacterNote);
     $('input[name="extension_floating_char_position"]').prop('disabled', !canEditCharacterNote);
 
-    const tokenCounter1 = chat_metadata[metadata_keys.prompt] ? await getTokenCountAsync(chat_metadata[metadata_keys.prompt]) : 0;
+    const authorsNotePrompt = getAuthorsNotePrompt();
+    const tokenCounter1 = authorsNotePrompt ? await getTokenCountAsync(authorsNotePrompt) : 0;
     $('#extension_floating_prompt_token_counter').text(tokenCounter1);
 
     let tokenCounter2;
@@ -768,7 +790,7 @@ function registerAuthorsNoteMacros() {
         macros.register('authorsNote', {
             category: MacroCategory.PROMPTS,
             description: t`The contents of the Author's Note`,
-            handler: () => chat_metadata[metadata_keys.prompt] ?? '',
+            handler: () => getAuthorsNotePrompt(),
         });
         macros.register('charAuthorsNote', {
             category: MacroCategory.PROMPTS,
@@ -783,7 +805,7 @@ function registerAuthorsNoteMacros() {
     } else {
         // TODO: Remove this when the experimental macro engine is replacing the old macro engine
         MacrosParser.registerMacro('authorsNote',
-            () => chat_metadata[metadata_keys.prompt] ?? '',
+            () => getAuthorsNotePrompt(),
             t`The contents of the Author's Note`,
         );
         MacrosParser.registerMacro('charAuthorsNote',

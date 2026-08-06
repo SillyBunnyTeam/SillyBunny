@@ -160,6 +160,9 @@
             <div class="ica--regex-note">Injected into Plot Compass runs and editable any time from this agent's settings.</div>
         </div>
         <div class="ica--companion-core-grid">
+            <label title="Lower numbers run earlier when Append Agents Execution is set to Sequential.">Order
+                <input type="number" id="ica--editor-companion-order" class="text_pole" min="0" max="999" value="100" />
+            </label>
             <label>Trigger
                 <select id="ica--editor-companion-trigger" class="text_pole">
                     <option value="auto">Auto after matching replies</option>
@@ -181,7 +184,7 @@
                 </select>
             </label>
             <label>Context Messages
-                <input type="number" id="ica--editor-companion-contextMessages" class="text_pole" min="1" max="50" value="10" />
+                <input type="number" id="ica--editor-companion-contextMessages" class="text_pole" min="1" value="10" />
             </label>
             <label title="Only auto-run once the chat reaches roughly this many tokens. 0 runs always.">Min Context Tokens
                 <input type="number" id="ica--editor-companion-minContextTokens" class="text_pole" min="0" max="200000" step="1000" value="0" />
@@ -190,7 +193,7 @@
                 <input type="number" id="ica--editor-companion-historyDepth" class="text_pole" min="1" max="10" value="3" />
             </label>
             <label>Max Tokens
-                <input type="number" id="ica--editor-companion-maxTokens" class="text_pole" min="16" max="32000" value="32000" />
+                <input type="number" id="ica--editor-companion-maxTokens" class="text_pole" min="16" max="64000" value="64000" />
             </label>
         </div>
         <div class="ica--companion-toggle-grid">
@@ -200,8 +203,17 @@
             <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeAuthorsNote" /><span>Include Author's Note</span></label>
             <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeSystemPrompt" /><span>Include System Prompt</span></label>
             <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeHistory" /><span>Include prior notes</span></label>
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeInChatHistory" /><span>Keep this agent in Chat History</span></label>
             <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-feedbackEnabled" /><span>Feed recent notes into future generations</span></label>
             <label class="checkbox_label" title="Send the agent prompt exactly as written, without appending format instructions. Recommended for trackers that define their own output format."><input type="checkbox" id="ica--editor-companion-rawPrompt" /><span>Use agent prompt as-is (no added instructions)</span></label>
+        </div>
+        <div class="ica--editor-row" id="ica--companion-chat-history-row">
+            <label>Notes to keep
+                <input type="number" id="ica--editor-companion-chatHistoryDepth" class="text_pole" min="1" value="1" />
+            </label>
+            <div class="ica--regex-note">Keeps this agent's most recent notes in the AI's context. Only notes that finished generating are counted.</div>
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeAllChatHistory" /><span>Keep all notes instead</span></label>
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-keepInChatHistoryWhenHostHidden" /><span>Keep notes in context even when their message is hidden</span></label>
         </div>
         <div class="ica--editor-row" id="ica--companion-feedback-depth-row">
             <label>Feedback Depth
@@ -218,6 +230,22 @@
                 <select id="ica--editor-companion-batchAgentIds" class="text_pole" multiple size="5"></select>
             </label>
             <div class="ica--regex-note">Only selected companions can batch together. Agents with different models, profiles, or context settings still run separately.</div>
+        </div>
+        <div class="ica--editor-row" id="ica--companion-context-recipient-row">
+            <label class="checkbox_label" title="Send this companion's latest completed output to selected companions as extra prompt context before they generate."><input type="checkbox" id="ica--editor-companion-sendContextToCompanions" /><span>Send context to the following Companion Agents before generation</span></label>
+        </div>
+        <div class="ica--editor-row" id="ica--companion-context-recipient-select-row" style="display:none">
+            <label>Companion Agents Receiving This Context
+                <select id="ica--editor-companion-contextRecipientAgentIds" class="text_pole" multiple size="5"></select>
+            </label>
+            <div class="ica--regex-note">Selected companions receive this companion's latest available output in their prompt context before they generate.</div>
+        </div>
+        <div class="ica--editor-row" id="ica--companion-dependency-row">
+            <label>Re-run After These Companions Update
+                <select id="ica--editor-companion-dependencies" class="text_pole" multiple size="5"></select>
+            </label>
+            <label class="checkbox_label" title="When selected companions are also running, wait for them to finish before this companion generates."><input type="checkbox" id="ica--editor-companion-waitForDependencies" /><span>Delay until selected companions finish</span></label>
+            <div class="ica--regex-note">This companion will automatically re-run when any selected companion produces new output.</div>
         </div>
     </div>
 
@@ -277,7 +305,7 @@
                     </select>
                 </label>
                 <label class="flex1">Max Tokens
-                    <input type="number" id="ica--editor-pre-maxTokens" class="text_pole" min="16" max="16000" value="8192" />
+                    <input type="number" id="ica--editor-pre-maxTokens" class="text_pole" min="16" max="64000" value="8192" />
                 </label>
             </div>
             <div class="ica--editor-row" id="ica--pre-wrap-position-row">
@@ -377,18 +405,30 @@
                     </select>
                 </label>
                 <label class="flex1">Max Tokens
-                    <input type="number" id="ica--editor-pp-promptMaxTokens" class="text_pole" min="16" max="32000" value="8192" />
+                    <input type="number" id="ica--editor-pp-promptMaxTokens" class="text_pole" min="16" max="64000" value="8192" />
                 </label>
             </div>
             <label class="checkbox_label">
                 <input type="checkbox" id="ica--editor-pp-promptShowNotifications" />
                 <span>Show toast notifications while this prompt pass runs</span>
             </label>
-            <label class="checkbox_label">
-                <input type="checkbox" id="ica--editor-pp-runOnImpersonate" />
-                <span>Allow this prompt pass to rewrite generated impersonation text</span>
-            </label>
             <div class="ica--regex-note">The prompt pass runs after the main reply using this agent's prompt and connection profile. In <b>rewrite</b> mode it replaces the message. In <b>append</b> mode it only adds newly generated text after the original reply. Useful macros inside the prompt include <code>&#123;&#123;currentMessage&#125;&#125;</code>, <code>&#123;&#123;response&#125;&#125;</code>, and <code>&#123;&#123;original&#125;&#125;</code>.</div>
+        </div>
+        <label class="checkbox_label">
+            <input type="checkbox" id="ica--editor-pp-runOnImpersonate" />
+            <span>Run this agent's post passes (prompt pass + Agent Regex) on generated impersonation text</span>
+        </label>
+        <label class="checkbox_label">
+            <input type="checkbox" id="ica--editor-pp-runOnCompanionOutputs" />
+            <span>Run this agent's post passes (prompt pass + Agent Regex) on companion agent outputs</span>
+        </label>
+        <div id="ica--pp-companion-target-options" style="display:none">
+            <div class="ica--editor-row">
+                <label class="flex1">Companion targets <small>(none selected = all companions)</small>
+                    <select id="ica--editor-pp-companionTargets" class="text_pole" multiple size="5"></select>
+                </label>
+            </div>
+            <div class="ica--regex-note">When a targeted companion finishes a note, this agent's post-generation prompt pass and Agent Regex scripts run on that note before it is stored, so the panel, message cards, feedback injection, and dependent companions all see the transformed version. Avoid targeting structured tracker companions with prose rewrites.</div>
         </div>
         <label class="checkbox_label">
             <input type="checkbox" id="ica--editor-pp-enabled" />

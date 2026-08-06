@@ -1,11 +1,13 @@
 import { eventSource, event_types, saveSettingsDebounced } from '../../../script.js';
 import { extension_settings } from '../../extensions.js';
 import { delay, isTrueBoolean } from '../../utils.js';
+import { accountStorage } from '../../util/AccountStorage.js';
 import { SlashCommand } from '../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../slash-commands/SlashCommandArgument.js';
 import { SlashCommandParser } from '../../slash-commands/SlashCommandParser.js';
 import { waitForFrame } from './lib/wait.js';
 
+const INPUT_HISTORY_STORAGE_KEY = 'st--inputHistory';
 
 class Settings {
     /**@type {number}*/ maxHistory = 10;
@@ -169,7 +171,7 @@ const showHistoryMenu = async () => {
                 item.addEventListener('click', async () => {
                     hideHistoryMenu();
                     ta.value = c;
-                    ta.focus();
+                    ta.focus({ preventScroll: true });
                 });
                 historyMenu.append(item);
             }
@@ -285,10 +287,18 @@ eventSource.on(event_types.GENERATION_STARTED, () => {
 
 let inputHistoryIdx = -1;
 export function getInputHistory() {
-    return JSON.parse(localStorage.getItem('st--inputHistory') ?? '[]');
+    try {
+        return JSON.parse(accountStorage.getItem(INPUT_HISTORY_STORAGE_KEY) ?? '[]');
+    } catch {
+        return [];
+    }
 }
 export function setInputHistory(inputHistory) {
-    localStorage.setItem('st--inputHistory', JSON.stringify(inputHistory));
+    try {
+        accountStorage.setItem(INPUT_HISTORY_STORAGE_KEY, JSON.stringify(inputHistory));
+    } catch {
+        // Persistence failure does not discard the caller's in-memory history.
+    }
 }
 export function addToInputHistory(text) {
     text = text?.trim();
@@ -326,5 +336,5 @@ export function inputHistoryForward() {
 }
 export function showInputHistory() {
     showHistoryMenu();
-    ta.focus();
+    ta.focus({ preventScroll: true });
 }

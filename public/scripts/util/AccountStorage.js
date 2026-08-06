@@ -1,6 +1,7 @@
 import { saveSettingsDebounced } from '../../script.js';
 
 const MIGRATED_MARKER = '__migrated';
+const CURRENT_MIGRATION_VERSION = '2';
 const MIGRATABLE_KEYS = [
     /^AlertRegex_/,
     /^AlertWI_/,
@@ -30,6 +31,15 @@ const MIGRATABLE_KEYS = [
     /^WINavOpened$/,
     /^WI_PerPage$/,
     /^world_info_sort_order$/,
+    // SillyBunny: migrate fork-owned per-account UI state from legacy device storage.
+    /^ica--agent-list-tab$/,
+    /^ica--tracker-panel-handle-top-v2$/,
+    /^ica--tracker-panel-locked$/,
+    /^pathfinder-collapsed-sections$/,
+    /^pathfinder-quickstart-dismissed$/,
+    /^pathfinder-retrieval-log-mode$/,
+    /^pathfinder-summary-memory-state$/,
+    /^st--inputHistory$/,
 ];
 
 /**
@@ -54,7 +64,9 @@ class AccountStorage {
         for (const key of localStorageKeys) {
             if (MIGRATABLE_KEYS.some(k => k.test(key))) {
                 const value = globalThis.localStorage.getItem(key);
-                this.#state[key] = value;
+                if (value !== null && !Object.hasOwn(this.#state, key)) {
+                    this.#state[key] = value;
+                }
                 globalThis.localStorage.removeItem(key);
             }
         }
@@ -69,9 +81,9 @@ class AccountStorage {
             this.#state = Object.assign(this.#state, state);
         }
 
-        if (!Object.hasOwn(this.#state, MIGRATED_MARKER)) {
+        if (this.#state[MIGRATED_MARKER] !== CURRENT_MIGRATION_VERSION) {
             this.#migrateLocalStorage();
-            this.#state[MIGRATED_MARKER] = '1';
+            this.#state[MIGRATED_MARKER] = CURRENT_MIGRATION_VERSION;
             saveSettingsDebounced();
         }
 

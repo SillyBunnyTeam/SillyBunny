@@ -689,7 +689,11 @@ export async function loadTextGenSettings(data, loadedSettings) {
         const result = prompt(`Enter Mancer base URL\nDefault: ${MANCER_SERVER_DEFAULT}`, MANCER_SERVER);
 
         if (result) {
-            localStorage.setItem(MANCER_SERVER_KEY, result);
+            try {
+                localStorage.setItem(MANCER_SERVER_KEY, result);
+            } catch {
+                // Ignore storage write failures in Safari Private Browsing.
+            }
             MANCER_SERVER = result;
         }
     });

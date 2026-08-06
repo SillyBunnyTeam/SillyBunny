@@ -28,6 +28,10 @@
                     <i class="fa-solid fa-book-open"></i>
                     <span>Templates</span>
                 </div>
+                <button type="button" id="ica--updateAllAgents" class="menu_button menu_button_icon" title="Update every agent whose bundled template has a newer version" style="display:none">
+                    <i class="fa-solid fa-arrow-up-right-dots"></i>
+                    <span>Update All</span>
+                </button>
                 <button type="button" id="ica--fixTrackers" class="menu_button menu_button_icon" title="Re-run enabled tracker agents on the last assistant reply">
                     <i class="fa-solid fa-wrench"></i>
                     <span>Fix Trackers</span>
@@ -71,6 +75,10 @@
                 <button type="button" id="ica--bulkEnable" class="menu_button menu_button_icon" title="Enable selected agents">
                     <i class="fa-solid fa-toggle-on"></i>
                     <span>Enable</span>
+                </button>
+                <button type="button" id="ica--bulkEnableOnCompanions" class="menu_button menu_button_icon" title="Enable selected post-generation agents on Companion Agent outputs">
+                    <i class="fa-solid fa-user-astronaut"></i>
+                    <span>On Companions</span>
                 </button>
                 <button type="button" id="ica--bulkDisable" class="menu_button menu_button_icon" title="Disable selected agents">
                     <i class="fa-solid fa-toggle-off"></i>
@@ -123,6 +131,11 @@
             </select>
         </div>
 
+        <div id="ica--agent-token-counter" class="ica--token-counter" aria-live="polite">
+            <span class="ica--token-counter-label"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Agent Tokens</span>
+            <strong id="ica--total-tokens-val">0</strong>
+        </div>
+
         <div id="ica--agentList" class="ica--agentList"></div>
 
         <div class="ica--footer">
@@ -173,6 +186,10 @@
             <label class="checkbox_label" title="Master switch for prompt pass toasts. Per-agent notification checkboxes still decide which agents can show them.">
                 <input type="checkbox" id="ica--promptTransformShowNotifications" />
                 <span>Allow prompt pass toast notifications</span>
+            </label>
+            <label class="checkbox_label" title="View main LLM output before pre-generation intercept">
+                <input type="checkbox" id="ica--postMainInterceptShowMessageFirst" />
+                <span>View main LLM output before pre-generation intercept</span>
             </label>
             <label class="checkbox_label" title="Enable or disable the built-in Pathfinder submodule without disabling shared In-Chat Agents.">
                 <input type="checkbox" id="ica--pathfinderSubmoduleEnabled" />

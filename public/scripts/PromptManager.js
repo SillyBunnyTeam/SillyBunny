@@ -4,7 +4,7 @@ import { DOMPurify } from '../lib.js';
 
 import { event_types, eventSource, is_send_press, main_api, saveSettingsDebounced, substituteParams } from '../script.js';
 import { is_group_generating } from './group-chats.js';
-import { getCurrentOpenAIPresetPromptOrder, Message, MessageCollection, TokenHandler } from './openai.js';
+import { getCurrentOpenAIPresetPromptOrder, Message, TokenHandler } from './openai.js';
 import { power_user } from './power-user.js';
 import { debounce, waitUntilCondition, escapeHtml, uuidv4 } from './utils.js';
 import { debounce_timeout } from './constants.js';
@@ -15,6 +15,8 @@ import { isMobile } from './RossAscends-mods.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { getPromptDisplayTokenCounts, getPromptSourceTokenCounts } from './prompt-token-counts.js';
 import { getRenderedMarkerPrompt } from './prompt-manager-marker-preview.js';
+import { clearPromptSetVariables } from './prompt-variable-cleanup.js';
+import { RUNTIME_AGENTS_IDENTIFIER, resolveInChatAgentTokenUsage } from './in-chat-agent-inspection.js';
 import {
     resolvePromptManagerRenderState,
     resolvePromptManagerScrollRestore,
@@ -369,6 +371,9 @@ class PromptManager {
         // Message collection of the most recent chatcompletion
         this.messages = null;
 
+        // Detached, inspection-only In-Chat Agent messages from the latest prompt assembly.
+        this.runtimeAgentMessages = null;
+
         // The current token handler instance
         this.tokenHandler = null;
 
@@ -384,6 +389,9 @@ class PromptManager {
         // Prompt row token counts calculated from enabled preset prompt source text.
         this.sourcePromptTokenCounts = {};
         this.sourcePromptTokenUsage = 0;
+
+        // Monotonic render token used to discard stale async renders.
+        this.renderRequestId = 0;
 
         // Error state, contains error message.
         this.error = null;
@@ -662,6 +670,16 @@ class PromptManager {
 
             counts[promptID] = null;
             promptOrderEntry.enabled = !promptOrderEntry.enabled;
+
+            // SillyBunny: clear persisted variables owned by a prompt when it is disabled.
+            if (!promptOrderEntry.enabled) {
+                const prompt = this.getPromptById(promptID);
+
+                if (prompt?.content) {
+                    clearPromptSetVariables(prompt.content);
+                }
+            }
+
             this.setStoredDrawerExpanded(drawerExpanded);
             this.render();
             this.saveServiceSettings();
@@ -735,8 +753,10 @@ class PromptManager {
             this.clearInspectForm();
 
             const promptID = event.target.closest('.' + this.configuration.prefix + 'prompt_manager_prompt').dataset.pmIdentifier;
-            if (true === this.messages.hasItemWithIdentifier(promptID)) {
-                const messages = this.messages.getItemByIdentifier(promptID);
+            const messages = promptID === RUNTIME_AGENTS_IDENTIFIER
+                ? this.runtimeAgentMessages
+                : this.messages.getItemByIdentifier(promptID);
+            if (messages) {
                 this.selectedPromptId = promptID;
                 this.activePopupArea = 'inspect';
 
@@ -744,6 +764,15 @@ class PromptManager {
 
                 this.showPopup('inspect');
             }
+        };
+
+        // Inspect actions are anchors without href, so they need explicit key activation.
+        this.handleInspectKeydown = (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            this.handleInspect(event);
         };
 
         // Detach selected prompt from list form and close edit form
@@ -1206,12 +1235,17 @@ class PromptManager {
         }
     }
 
+    #isRenderCurrent(renderRequestId) {
+        return renderRequestId === this.renderRequestId;
+    }
+
     /**
      * Main rendering function
      *
      * @param afterTryGenerate - Whether a dry run should be attempted before rendering
      */
     render(afterTryGenerate = true) {
+        const renderRequestId = ++this.renderRequestId;
         const renderState = resolvePromptManagerRenderState({
             mainApi: main_api,
             promptOrderStrategy: this.configuration.promptOrder.strategy,
@@ -1223,7 +1257,37 @@ class PromptManager {
         if (!renderState.shouldRender && !renderState.shouldWaitForGeneration) return;
         this.error = null;
 
+        const renderPromptManagerDom = async () => {
+            this.profileStart('render');
+            try {
+                const scrollPosition = this.#getScrollPosition();
+                await this.populateSourcePromptTokenCounts();
+                if (!this.#isRenderCurrent(renderRequestId)) {
+                    return;
+                }
+
+                const renderedPromptManager = await this.renderPromptManager(renderRequestId);
+                if (!renderedPromptManager || !this.#isRenderCurrent(renderRequestId)) {
+                    return;
+                }
+
+                const renderedListItems = await this.renderPromptManagerListItems(renderRequestId);
+                if (!renderedListItems || !this.#isRenderCurrent(renderRequestId)) {
+                    return;
+                }
+
+                this.makeDraggable();
+                this.#setScrollPosition(scrollPosition);
+            } finally {
+                this.profileEnd('render');
+            }
+        };
+
         waitUntilCondition(() => !is_send_press && !is_group_generating, 1024 * 1024, 100).then(async () => {
+            if (!this.#isRenderCurrent(renderRequestId)) {
+                return;
+            }
+
             const readyRenderState = resolvePromptManagerRenderState({
                 mainApi: main_api,
                 promptOrderStrategy: this.configuration.promptOrder.strategy,
@@ -1239,25 +1303,15 @@ class PromptManager {
                 this.profileStart('filling context');
                 this.tryGenerate().finally(async () => {
                     this.profileEnd('filling context');
-                    this.profileStart('render');
-                    const scrollPosition = this.#getScrollPosition();
-                    await this.populateSourcePromptTokenCounts();
-                    await this.renderPromptManager();
-                    await this.renderPromptManagerListItems();
-                    this.makeDraggable();
-                    this.#setScrollPosition(scrollPosition);
-                    this.profileEnd('render');
+                    if (!this.#isRenderCurrent(renderRequestId)) {
+                        return;
+                    }
+
+                    await renderPromptManagerDom();
                 });
             } else {
                 // Executed during live communication
-                this.profileStart('render');
-                const scrollPosition = this.#getScrollPosition();
-                await this.populateSourcePromptTokenCounts();
-                await this.renderPromptManager();
-                await this.renderPromptManagerListItems();
-                this.makeDraggable();
-                this.#setScrollPosition(scrollPosition);
-                this.profileEnd('render');
+                await renderPromptManagerDom();
             }
         }).catch(() => {
             console.log('Timeout while waiting for send press to be false');
@@ -1804,7 +1858,7 @@ class PromptManager {
 
         const createInlineDrawer = (message) => {
             const truncatedTitle = message.content.length > 32 ? message.content.slice(0, 32) + '...' : message.content;
-            const title = message.identifier || truncatedTitle;
+            const title = message.displayName || message.identifier || truncatedTitle;
             const role = message.role;
             const content = message.content || 'No Content';
             const tokens = message.getTokens();
@@ -2011,6 +2065,14 @@ class PromptManager {
         const messages = chatCompletion.getMessages();
 
         this.setMessages(messages);
+        this.runtimeAgentMessages = chatCompletion.getRuntimeAgentMessages();
+        if (this.selectedPromptId === RUNTIME_AGENTS_IDENTIFIER && this.activePopupArea === 'inspect') {
+            const messageList = document.getElementById(this.configuration.prefix + 'prompt_manager_popup_entry_form_inspect_list');
+            if (messageList) {
+                messageList.innerHTML = '';
+                this.loadMessagesIntoInspectForm(this.runtimeAgentMessages);
+            }
+        }
         this.populateTokenCounts(messages);
         this.overriddenPrompts = chatCompletion.getOverriddenPrompts();
     }
@@ -2045,6 +2107,10 @@ class PromptManager {
         return this.hasRuntimePromptTokenCounts() ? this.tokenUsage : this.sourcePromptTokenUsage;
     }
 
+    getInChatAgentTokenUsage() {
+        return resolveInChatAgentTokenUsage(this.runtimeAgentMessages, this.getActivePromptTokenCounts());
+    }
+
     async populateSourcePromptTokenCounts() {
         if (this.hasRuntimePromptTokenCounts() || !this.activeCharacter || !this.tokenHandler) {
             this.sourcePromptTokenCounts = {};
@@ -2065,16 +2131,20 @@ class PromptManager {
 
     /**
      * Empties, then re-assembles the container containing the prompt list.
+     * @param {number} renderRequestId Current render request token.
+     * @returns {Promise<boolean>} True when the current render completed.
      */
-    async renderPromptManager() {
+    async renderPromptManager(renderRequestId = this.renderRequestId) {
+        if (!this.#isRenderCurrent(renderRequestId)) {
+            return false;
+        }
+
         let selectedPromptIndex = 0;
         const existingAppendSelect = document.getElementById(`${this.configuration.prefix}prompt_manager_footer_append_prompt`);
         if (existingAppendSelect instanceof HTMLSelectElement) {
             selectedPromptIndex = existingAppendSelect.selectedIndex;
         }
         const promptManagerDiv = this.containerElement;
-        this.restorePopupToOrigin();
-        promptManagerDiv.innerHTML = '';
 
         const errorDiv = this.error ? `
                 <div class="${this.configuration.prefix}prompt_manager_error">
@@ -2083,20 +2153,14 @@ class PromptManager {
         ` : '';
 
         const totalActiveTokens = this.getDisplayTokenUsage();
+        const totalAgentTokens = this.getInChatAgentTokenUsage();
 
-        const headerHtml = await renderTemplateAsync('promptManagerHeader', { error: this.error, errorDiv, prefix: this.configuration.prefix, totalActiveTokens, dragLocked: power_user.prompt_manager_drag_locked });
-        promptManagerDiv.insertAdjacentHTML('beforeend', headerHtml);
-
-        this.listElement = promptManagerDiv.querySelector(`#${this.configuration.prefix}prompt_manager_list`);
-
-        if (this.selectedPromptId && !this.getPromptById(this.selectedPromptId)) {
-            this.hidePopup();
-            this.clearEditForm();
-            this.clearInspectForm();
-            this.selectedPromptId = null;
-            this.activePopupArea = '';
+        const headerHtml = await renderTemplateAsync('promptManagerHeader', { error: this.error, errorDiv, prefix: this.configuration.prefix, totalActiveTokens, totalAgentTokens, dragLocked: power_user.prompt_manager_drag_locked });
+        if (!this.#isRenderCurrent(renderRequestId)) {
+            return false;
         }
 
+        let footerHtml = '';
         if (null !== this.activeCharacter) {
             const prompts = [...this.serviceSettings.prompts]
                 .filter(prompt => prompt && !prompt?.system_prompt)
@@ -2111,7 +2175,27 @@ class PromptManager {
                 selectedPromptIndex = 0;
             }
 
-            const footerHtml = await renderTemplateAsync('promptManagerFooter', { promptsHtml, prefix: this.configuration.prefix });
+            footerHtml = await renderTemplateAsync('promptManagerFooter', { promptsHtml, prefix: this.configuration.prefix });
+            if (!this.#isRenderCurrent(renderRequestId)) {
+                return false;
+            }
+        }
+
+        if (this.selectedPromptId && this.selectedPromptId !== RUNTIME_AGENTS_IDENTIFIER && !this.getPromptById(this.selectedPromptId)) {
+            this.hidePopup();
+            this.clearEditForm();
+            this.clearInspectForm();
+            this.selectedPromptId = null;
+            this.activePopupArea = '';
+        }
+
+        this.restorePopupToOrigin();
+        promptManagerDiv.innerHTML = '';
+        promptManagerDiv.insertAdjacentHTML('beforeend', headerHtml);
+
+        this.listElement = promptManagerDiv.querySelector(`#${this.configuration.prefix}prompt_manager_list`);
+
+        if (null !== this.activeCharacter) {
             const footerSlot = promptManagerDiv.querySelector(`.${this.configuration.prefix}prompt_manager_footer_slot`);
             footerSlot?.insertAdjacentHTML('beforeend', footerHtml);
 
@@ -2119,7 +2203,7 @@ class PromptManager {
             if (!(footerDiv instanceof HTMLElement)) {
                 this.bindDrawerPersistence();
                 this.bindDragLockButton();
-                return;
+                return true;
             }
 
             footerDiv?.querySelector('#prompt-manager-reset-character')?.addEventListener('click', this.handleCharacterReset);
@@ -2138,6 +2222,7 @@ class PromptManager {
         this.syncPopupPlacement();
         this.syncEditorPaneState();
         this.syncListSelection();
+        return true;
     }
 
     bindDragLockButton() {
@@ -2157,17 +2242,22 @@ class PromptManager {
 
     /**
      * Empties, then re-assembles the prompt list
+     * @param {number} renderRequestId Current render request token.
+     * @returns {Promise<boolean>} True when the current render completed.
      */
-    async renderPromptManagerListItems() {
-        if (!this.serviceSettings.prompts) return;
+    async renderPromptManagerListItems(renderRequestId = this.renderRequestId) {
+        if (!this.serviceSettings.prompts || !this.#isRenderCurrent(renderRequestId)) return false;
 
         const promptManagerList = this.listElement;
-        promptManagerList.innerHTML = '';
+        if (!(promptManagerList instanceof HTMLElement)) return false;
 
         const { prefix } = this.configuration;
         const displayTokenCounts = this.getActivePromptTokenCounts();
 
         let listItemHtml = await renderTemplateAsync('promptManagerListHeader', { prefix });
+        if (!this.#isRenderCurrent(renderRequestId) || promptManagerList !== this.listElement) {
+            return false;
+        }
 
         this.getPromptsForCharacter(this.activeCharacter).forEach(prompt => {
             if (!prompt) return;
@@ -2260,7 +2350,7 @@ class PromptManager {
                         ${isImportantPrompt ? '<span class="fa-fw fa-solid fa-star" title="Important Prompt"></span>' : ''}
                         ${isUserPrompt ? '<span class="fa-fw fa-solid fa-asterisk" title="Preset Prompt"></span>' : ''}
                         ${isInjectionPrompt ? '<span class="fa-fw fa-solid fa-syringe" title="In-Chat Injection"></span>' : ''}
-                        ${this.isPromptInspectionAllowed(prompt) ? `<a title="${encodedName}" class="prompt-manager-inspect-action">${encodedName}</a>` : `<span title="${encodedName}">${encodedName}</span>`}
+                        ${this.isPromptInspectionAllowed(prompt) ? `<a title="${encodedName}" class="prompt-manager-inspect-action" role="button" tabindex="0">${encodedName}</a>` : `<span title="${encodedName}">${encodedName}</span>`}
                         ${roleIcon ? `<span data-role="${escapeHtml(prompt.role)}" class="fa-xs fa-solid ${roleIcon}" title="${roleTitle}"></span>` : ''}
                         ${isInjectionPrompt ? `<small class="prompt-manager-injection-depth">@ ${escapeHtml(prompt.injection_depth.toString())}</small>` : ''}
                         ${isOverriddenPrompt ? '<small class="fa-solid fa-address-card prompt-manager-overridden" title="Pulled from a character card"></small>' : ''}
@@ -2279,6 +2369,25 @@ class PromptManager {
             `;
         });
 
+        const runtimeAgentTokens = this.getInChatAgentTokenUsage();
+        const runtimeSelectedClass = this.selectedPromptId === RUNTIME_AGENTS_IDENTIFIER && this.activePopupArea
+            ? `${prefix}prompt_manager_prompt_selected`
+            : '';
+        listItemHtml += `
+            <li class="${prefix}prompt_manager_prompt ${prefix}prompt_manager_marker prompt-manager-runtime-row ${runtimeSelectedClass}" data-pm-identifier="${RUNTIME_AGENTS_IDENTIFIER}" data-pm-runtime="true">
+                <span class="${prefix}prompt_manager_prompt_name" data-pm-name="Agents">
+                    <span class="fa-fw fa-solid fa-robot" aria-hidden="true"></span>
+                    <a title="Agents" class="prompt-manager-inspect-action" role="button" tabindex="0">Agents</a>
+                </span>
+                <span class="prompt_manager_prompt_tokens" data-pm-tokens="${runtimeAgentTokens || '-'}">${runtimeAgentTokens || '-'}</span>
+            </li>
+        `;
+
+        if (!this.#isRenderCurrent(renderRequestId) || promptManagerList !== this.listElement) {
+            return false;
+        }
+
+        promptManagerList.innerHTML = '';
         promptManagerList.insertAdjacentHTML('beforeend', listItemHtml);
 
         // Now that the new elements are in the DOM, you can add the event listeners.
@@ -2288,6 +2397,7 @@ class PromptManager {
 
         Array.from(promptManagerList.getElementsByClassName('prompt-manager-inspect-action')).forEach(el => {
             el.addEventListener('click', this.handleInspect);
+            el.addEventListener('keydown', this.handleInspectKeydown);
         });
 
         Array.from(promptManagerList.getElementsByClassName('prompt-manager-edit-action')).forEach(el => {
@@ -2307,6 +2417,7 @@ class PromptManager {
         });
 
         this.syncListSelection();
+        return true;
     }
 
     /**

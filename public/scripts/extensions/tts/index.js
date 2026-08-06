@@ -39,9 +39,76 @@ import { ElectronHubTtsProvider } from './electronhub.js';
 import { ChutesTtsProvider } from './chutes.js';
 import { VolcengineTtsProvider } from './volcengine.js';
 import { applyLocale, t } from '/scripts/i18n.js';
+import { registerExtensionCapability } from '../../sillybunny-conversation/extension-capabilities.js';
 
 const UPDATE_INTERVAL = 1000;
 const wrapper = new ModuleWorkerWrapper(moduleWorker);
+
+/**
+ * Safely clones an object, with fallback for environments without structuredClone.
+ * @param {any} obj - The object to clone
+ * @returns {any} The cloned object
+ */
+function safeClone(obj) {
+    try {
+        return typeof structuredClone === 'function'
+            ? structuredClone(obj)
+            : JSON.parse(JSON.stringify(obj));
+    } catch (error) {
+        console.warn('TTS: Failed to clone object, using shallow copy', error);
+        return { ...obj };
+    }
+}
+
+/**
+ * Sequential provider-load queue. Requests run in submission order, so the most
+ * recent request always determines the final provider (A -> B -> A ends on A).
+ * Only a request identical to the most recently queued one is deduplicated;
+ * older same-provider promises are never reused across an interleaved request.
+ */
+function createTtsProviderLoadQueue(loadProvider) {
+    let tail = Promise.resolve();
+    let lastQueued = null;
+    return function enqueueProviderLoad(provider) {
+        if (lastQueued?.provider === provider) return lastQueued.promise;
+        const promise = tail.catch(() => {}).then(() => loadProvider(provider));
+        tail = promise;
+        const entry = { provider, promise };
+        lastQueued = entry;
+        const clear = () => {
+            if (lastQueued === entry) lastQueued = null;
+        };
+        promise.then(clear, clear);
+        return promise;
+    };
+}
+
+function createTtsVoiceMapInitializer(initialize) {
+    let currentPromise = null;
+    let unrestrictedRequested = false;
+    let requestedSpeakers = new Set();
+    return function requestVoiceMapInitialization(unrestricted = false, speakers = []) {
+        unrestrictedRequested ||= Boolean(unrestricted);
+        for (const speaker of Array.isArray(speakers) ? speakers : []) {
+            const name = String(speaker || '').trim();
+            if (name) requestedSpeakers.add(name);
+        }
+        if (!currentPromise) {
+            currentPromise = (async () => {
+                do {
+                    const nextUnrestricted = unrestrictedRequested;
+                    const nextSpeakers = [...requestedSpeakers];
+                    unrestrictedRequested = false;
+                    requestedSpeakers = new Set();
+                    await initialize(nextUnrestricted, nextSpeakers);
+                } while (unrestrictedRequested || requestedSpeakers.size > 0);
+            })().finally(() => {
+                currentPromise = null;
+            });
+        }
+        return currentPromise;
+    };
+}
 
 let voiceMapEntries = [];
 let voiceMap = {}; // {charName:voiceid, charName2:voiceid2}
@@ -50,7 +117,13 @@ let lastMessage = null;
 let lastMessageHash = null;
 let periodicMessageGenerationTimer = null;
 let lastPositionOfParagraphEnd = -1;
-let currentInitVoiceMapPromise = null;
+let activeNarrateButton = null;
+let ttsShellInitializationPromise = null;
+let ttsProviderReadinessPromise = null;
+let audioQueuePumpPromise = null;
+let ttsPlaybackEpoch = 0;
+let ttsGenerationAbortController = null;
+let unregisterTtsCapability = null;
 
 const DEFAULT_VOICE_MARKER = '[Default Voice]';
 const DISABLED_VOICE_MARKER = 'disabled';
@@ -117,7 +190,7 @@ export function registerTtsProvider(name, provider) {
 
     // Load if it was previously selected
     if (extension_settings.tts.currentProvider === name) {
-        loadTtsProvider(name);
+        void loadTtsProvider(name).catch(error => console.error(error));
     }
 }
 
@@ -170,6 +243,12 @@ let ttsProviderName;
 
 
 async function onNarrateOneMessage() {
+    if (isTtsProcessing()) {
+        resetTtsPlayback();
+        resetNarrateButtonIcon();
+        return;
+    }
+
     audioElement.src = '/sounds/silence.mp3';
     const context = getContext();
     const id = $(this).closest('.mes').attr('mesid');
@@ -179,9 +258,11 @@ async function onNarrateOneMessage() {
         return;
     }
 
-    resetTtsPlayback();
-    processAndQueueTtsMessage(message, Number(id), { manual: true });
-    moduleWorker();
+    const started = await narrateTtsMessage(message, { messageId: Number(id), manual: true, force: true });
+    if (!started) return;
+
+    activeNarrateButton = $(this);
+    activeNarrateButton.removeClass('fa-bullhorn').addClass('fa-stop');
 }
 
 async function onNarrateText(args, text) {
@@ -197,9 +278,7 @@ async function onNarrateText(args, text) {
     const baseName = args?.voice || name2;
     const name = (baseName === 'SillyTavern System' ? DEFAULT_VOICE_MARKER : baseName) || DEFAULT_VOICE_MARKER;
 
-    const voiceMapEntry = voiceMap[name] === DEFAULT_VOICE_MARKER
-        ? voiceMap[DEFAULT_VOICE_MARKER]
-        : voiceMap[name];
+    const voiceMapEntry = resolveSpeakerVoiceMapEntry(name);
 
     if (voiceMapEntry === DISABLED_VOICE_MARKER) {
         toastr.info(`TTS voice for ${name} is disabled.`);
@@ -222,17 +301,120 @@ async function onNarrateText(args, text) {
     return '';
 }
 
+async function ensureTtsInitialized() {
+    if (!ttsShellInitializationPromise && !window._ttsExtensionInitialized) {
+        init();
+    }
+    if (ttsShellInitializationPromise) {
+        await ttsShellInitializationPromise;
+    }
+    // Provider readiness stays retryable: a failed load never poisons the shell.
+    await ensureTtsProviderLoaded();
+}
+
+function resolveSpeakerVoiceMapEntry(key) {
+    const direct = voiceMap[key] === DEFAULT_VOICE_MARKER ? voiceMap[DEFAULT_VOICE_MARKER] : voiceMap[key];
+    if (direct !== undefined || !extension_settings.tts.multi_voice_enabled || key === DEFAULT_VOICE_MARKER) {
+        return direct;
+    }
+    // Multi-voice maps only store expanded keys; plain-name callers (e.g. /speak)
+    // resolve through the speaker's "(Other text)" entry.
+    const expandedKey = `${key} (Other text)`;
+    return voiceMap[expandedKey] === DEFAULT_VOICE_MARKER ? voiceMap[DEFAULT_VOICE_MARKER] : voiceMap[expandedKey];
+}
+
+function hasVoiceMapForSpeaker(name) {
+    const keys = extension_settings.tts.multi_voice_enabled && name !== DEFAULT_VOICE_MARKER
+        ? [`${name} ("Quotes")`, `${name} (*Text inside asterisks*)`, `${name} (Other text)`]
+        : [name];
+    return keys.every(key => {
+        const mapped = resolveSpeakerVoiceMapEntry(key);
+        return mapped === DISABLED_VOICE_MARKER || Boolean(mapped);
+    });
+}
+
+export async function narrateTtsMessage(message, { messageId = null, manual = false, force = false, isStillVisible = null, propagateErrors = false, unrestrictedVoiceMap = false } = {}) {
+    if (!message || typeof message !== 'object') {
+        return false;
+    }
+
+    const isManual = Boolean(manual || force);
+    try {
+        if (!ttsShellInitializationPromise && !window._ttsExtensionInitialized) {
+            init();
+        }
+        if (ttsShellInitializationPromise) {
+            await ttsShellInitializationPromise;
+        }
+    } catch (error) {
+        console.warn('TTS initialization failed', error);
+        if (propagateErrors) throw error;
+        return false;
+    }
+
+    if (!extension_settings.tts.enabled) {
+        if (isManual) toastr.warning('TTS is disabled. Please enable it in the extension settings.');
+        return false;
+    }
+    if (!isManual && !extension_settings.tts.auto_generation) {
+        return false;
+    }
+    if (!isManual && message.is_user && !extension_settings.tts.narrate_user) {
+        return false;
+    }
+    if (!String(message.mes || '').trim() && !message.extra?.display_text) {
+        if (isManual) toastr.info('No text to narrate.');
+        return false;
+    }
+
+    const speaker = String(message.name || DEFAULT_VOICE_MARKER).trim() || DEFAULT_VOICE_MARKER;
+    try {
+        // Provider readiness is retried per request; earlier failures never
+        // permanently reject narration.
+        await ensureTtsProviderLoaded();
+        await initVoiceMap(Boolean(unrestrictedVoiceMap), [speaker]);
+        if (!hasVoiceMapForSpeaker(speaker)) {
+            if (isManual) toastr.info(`Specified voice for ${speaker} was not found. Check the TTS extension settings.`);
+            return false;
+        }
+    } catch (error) {
+        console.warn('TTS voice map initialization failed', error);
+        if (isManual) toastr.warning('Could not load TTS voices. Check the TTS extension settings.');
+        if (propagateErrors) throw error;
+        return false;
+    }
+
+    // Readiness may have awaited network work; automatic narration must
+    // revalidate that its exact source thread is still the visible one.
+    if (!isManual && typeof isStillVisible === 'function' && !isStillVisible()) {
+        return false;
+    }
+
+    if (isManual) resetTtsPlayback();
+    processAndQueueTtsMessage({ ...message, name: speaker }, messageId, { manual: isManual });
+    await wrapper.update();
+    return true;
+}
+
 async function moduleWorker() {
     if (!extension_settings.tts.enabled) {
         return;
     }
 
-    processTtsQueue();
-    processAudioJobQueue();
+    await processTtsQueue();
+    await processAudioJobQueue();
     updateUiAudioPlayState();
 }
 
 function resetTtsPlayback() {
+    // Every started chunk/job belongs to an epoch; bumping it makes any
+    // in-flight async work from the previous playback state a no-op.
+    ttsPlaybackEpoch += 1;
+
+    // Abort in-flight provider generation where signals are supported.
+    ttsGenerationAbortController?.abort();
+    ttsGenerationAbortController = null;
+
     // Stop system TTS utterance
     cancelTtsPlay();
 
@@ -250,6 +432,14 @@ function resetTtsPlayback() {
 
     // Set audio ready to process again
     audioQueueProcessorReady = true;
+    resetNarrateButtonIcon();
+}
+
+function resetNarrateButtonIcon() {
+    if (activeNarrateButton) {
+        activeNarrateButton.removeClass('fa-stop').addClass('fa-bullhorn');
+        activeNarrateButton = null;
+    }
 }
 
 function isTtsProcessing() {
@@ -281,7 +471,7 @@ function isTtsProcessing() {
  */
 function processAndQueueTtsMessage(message, messageId = null, { manual = false } = {}) {
     /** @type {TtsMessage} */
-    const clone = structuredClone(message);
+    const clone = safeClone(message);
     clone.id = messageId ?? null;
     clone.manual = manual ?? false;
 
@@ -351,16 +541,18 @@ let audioQueueProcessorReady = true;
  */
 async function playAudioData(audioJob) {
     const { audioBlob, char } = audioJob;
-    // Since current audio job can be cancelled, don't playback if it is null
-    if (currentAudioJob == null) {
+    if (currentAudioJob !== audioJob) {
         console.log('Cancelled TTS playback because currentAudioJob was null');
+        return;
     }
     if (audioBlob instanceof Blob) {
         const srcUrl = await getBase64Async(audioBlob);
+        if (currentAudioJob !== audioJob) return;
 
         // VRM lip sync
         if (extension_settings.vrm?.enabled && typeof globalThis.vrmLipSync === 'function') {
             await globalThis.vrmLipSync(audioBlob, char);
+            if (currentAudioJob !== audioJob) return;
         }
 
         audioElement.src = srcUrl;
@@ -369,12 +561,13 @@ async function playAudioData(audioJob) {
     } else {
         throw `TTS received invalid audio data type ${typeof audioBlob}`;
     }
-    audioElement.addEventListener('ended', completeCurrentAudioJob);
+    audioElement.addEventListener('ended', () => completeCurrentAudioJob(audioJob), { once: true });
     audioElement.addEventListener('canplay', () => {
+        if (currentAudioJob !== audioJob) return;
         console.debug('Starting TTS playback');
         audioElement.playbackRate = extension_settings.tts.playback_rate;
-        audioElement.play();
-    });
+        void audioElement.play();
+    }, { once: true });
 }
 
 globalThis.tts_preview = function (id) {
@@ -457,11 +650,16 @@ function addAudioControl() {
     updateUiAudioPlayState();
 }
 
-function completeCurrentAudioJob() {
+function completeCurrentAudioJob(audioJob = currentAudioJob) {
+    if (currentAudioJob !== audioJob) return;
     audioQueueProcessorReady = true;
     currentAudioJob = null;
+    if (!isTtsProcessing()) {
+        resetNarrateButtonIcon();
+    }
     // updateUiPlayState();
-    wrapper.update();
+    void processAudioJobQueue();
+    void wrapper.update();
 }
 
 /**
@@ -470,7 +668,7 @@ function completeCurrentAudioJob() {
  * @param {string} char
  * @returns {Promise<{audioBlob: Blob|string, mimeType: string}>}
  */
-async function addAudioJob(response, char) {
+async function addAudioJob(response, char, epoch = ttsPlaybackEpoch) {
     let audioBlob, mimeType;
     if (typeof response === 'string') {
         audioBlob = response;
@@ -482,25 +680,45 @@ async function addAudioJob(response, char) {
         }
         mimeType = audioBlob.type;
     }
-    audioJobQueue.push({ audioBlob, char });
+    // Late chunks from a cancelled/reset job must never resume playback.
+    if (!isTtsEpochCurrent(epoch)) {
+        return null;
+    }
+    audioJobQueue.push({ audioBlob, char, epoch });
     console.debug('Pushed audio job to queue.');
+    await processAudioJobQueue();
     return { audioBlob, mimeType };
 }
 
 async function processAudioJobQueue() {
     // Nothing to do, audio not completed, or audio paused - stop processing.
     if (audioJobQueue.length == 0 || !audioQueueProcessorReady || audioPaused) {
-        return;
+        return audioQueuePumpPromise;
     }
-    try {
-        audioQueueProcessorReady = false;
-        currentAudioJob = audioJobQueue.shift();
-        playAudioData(currentAudioJob);
-    } catch (error) {
-        toastr.error(error.toString());
-        console.error(error);
-        audioQueueProcessorReady = true;
+    if (audioQueuePumpPromise) return audioQueuePumpPromise;
+
+    const audioJob = audioJobQueue.shift();
+    if (audioJob?.epoch != null && !isTtsEpochCurrent(audioJob.epoch)) {
+        return processAudioJobQueue();
     }
+    audioQueueProcessorReady = false;
+    currentAudioJob = audioJob;
+    audioQueuePumpPromise = playAudioData(audioJob)
+        .catch(error => {
+            toastr.error(error.toString());
+            console.error(error);
+            if (currentAudioJob === audioJob) {
+                currentAudioJob = null;
+                audioQueueProcessorReady = true;
+            }
+        })
+        .finally(() => {
+            audioQueuePumpPromise = null;
+            if (audioQueueProcessorReady && audioJobQueue.length > 0) {
+                void processAudioJobQueue();
+            }
+        });
+    return audioQueuePumpPromise;
 }
 
 //################//
@@ -512,13 +730,48 @@ const ttsJobQueue = [];
 /** @type {TtsMessage|null} */
 let currentTtsJob = null; // Null if nothing is currently being processed
 
+function scheduleTtsQueueWakeup() {
+    // SimpleMutex releases isBusy inside a `finally`; a microtask can run before
+    // that release and get swallowed. A macrotask is guaranteed to observe it.
+    setTimeout(() => void wrapper.update(), 0);
+}
+
 function completeTtsJob() {
     console.info(`Current TTS job for ${currentTtsJob?.name} completed.`);
     currentTtsJob = null;
+    if (ttsJobQueue.length > 0) {
+        scheduleTtsQueueWakeup();
+    }
+}
+
+function isTtsEpochCurrent(epoch) {
+    return epoch === ttsPlaybackEpoch;
+}
+
+async function pumpAsyncTtsResponses(response, processResponse, isCurrent = () => true) {
+    if (typeof response?.[Symbol.asyncIterator] === 'function') {
+        try {
+            for await (const chunk of response) {
+                if (!isCurrent()) return false;
+                await processResponse(chunk);
+            }
+        } finally {
+            if (!isCurrent()) await response.return?.().catch(() => {});
+        }
+        return isCurrent();
+    }
+    if (!isCurrent()) return false;
+    await processResponse(response);
+    return isCurrent();
 }
 
 async function tts(text, voiceId, char, voiceMapKey = null) {
     const messageId = currentTtsJob?.id ?? null;
+    const jobEpoch = ttsPlaybackEpoch;
+    const isCurrent = () => isTtsEpochCurrent(jobEpoch);
+    const controller = new AbortController();
+    ttsGenerationAbortController = controller;
+    let terminalStatus = 'error';
 
     await eventSource.emit(event_types.TTS_JOB_STARTED, { messageId, characterName: char, text, voiceId });
 
@@ -527,25 +780,29 @@ async function tts(text, voiceId, char, voiceMapKey = null) {
         if (typeof globalThis.rvcVoiceConversion === 'function' && extension_settings.rvc.enabled)
             response = await globalThis.rvcVoiceConversion(response, char, text);
 
-        const audioResult = await addAudioJob(response, char);
+        if (!isCurrent()) return;
+        const audioResult = await addAudioJob(response, char, jobEpoch);
+        if (!audioResult) return;
         const eventData = { messageId, characterName: char, text, audio: audioResult.audioBlob, mimeType: audioResult.mimeType };
         await eventSource.emit(event_types.TTS_AUDIO_READY, eventData);
     }
 
-    // voiceMapKey can also include segment qualifiers, e.g. '{char} ("Quotes")'
-    let response = await ttsProvider.generateTts(text, voiceId, voiceMapKey);
-
-    // If async generator, process every chunk as it comes in
-    if (typeof response[Symbol.asyncIterator] === 'function') {
-        for await (const chunk of response) {
-            await processResponse(chunk);
-        }
-    } else {
-        await processResponse(response);
+    try {
+        // voiceMapKey can also include segment qualifiers, e.g. '{char} ("Quotes")'.
+        // The abort signal is a trailing optional argument; providers without
+        // cancellation support simply ignore it.
+        const response = await ttsProvider.generateTts(text, voiceId, voiceMapKey, controller.signal);
+        const finishedCurrent = await pumpAsyncTtsResponses(response, processResponse, isCurrent);
+        terminalStatus = finishedCurrent ? 'success' : 'cancelled';
+        if (finishedCurrent) completeTtsJob();
+    } catch (error) {
+        terminalStatus = controller.signal.aborted || !isCurrent() || error?.name === 'AbortError' ? 'cancelled' : 'error';
+        if (terminalStatus === 'error') throw error;
+    } finally {
+        if (ttsGenerationAbortController === controller) ttsGenerationAbortController = null;
+        // Every started job ends with exactly one terminal event.
+        await eventSource.emit(event_types.TTS_JOB_COMPLETE, { messageId, characterName: char, status: terminalStatus });
     }
-
-    await eventSource.emit(event_types.TTS_JOB_COMPLETE, { messageId, characterName: char });
-    completeTtsJob();
 }
 
 function parseMessageSegments(text) {
@@ -611,6 +868,36 @@ function parseMessageSegments(text) {
     return segments;
 }
 
+// SillyBunny: filter action blocks before quote extraction so quoted actions remain excluded from dialogue-only narration.
+function filterTtsAsterisks(text, { narrateDialoguesOnly = false, passAsterisks = false } = {}) {
+    if (passAsterisks) {
+        return text;
+    }
+
+    return narrateDialoguesOnly
+        ? text.replace(/\*[^*]*?(\*|$)/g, '').trim()
+        : text.replaceAll('*', '').trim();
+}
+
+// SillyBunny: discard semantic blocks before quote extraction without dropping dialogue wrapped in presentation tags.
+function stripTtsTaggedBlocks(text, { preserveFormatting = false } = {}) {
+    const formattingTags = new Set([
+        'b', 'big', 'em', 'font', 'i', 'mark', 's', 'small', 'span', 'strike', 'strong', 'sub', 'sup', 'u',
+    ]);
+    let filteredText = String(text ?? '');
+    let previousText;
+
+    do {
+        previousText = filteredText;
+        filteredText = filteredText.replace(
+            /<([a-z][\w:-]*)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi,
+            (_block, tagName, content) => preserveFormatting && formattingTags.has(tagName.toLowerCase()) ? content : '',
+        );
+    } while (filteredText !== previousText);
+
+    return filteredText;
+}
+
 async function processTtsQueue() {
     // Called each moduleWorker iteration to pull chat messages from queue
     if (currentTtsJob || ttsJobQueue.length <= 0 || audioPaused) {
@@ -656,7 +943,7 @@ async function processTtsQueue() {
                     toastr.info(`TTS voice for ${char} is disabled.`);
                 }
                 currentTtsJob = null;
-                setTimeout(() => wrapper.update(), 0);
+                scheduleTtsQueueWakeup();
                 return;
             }
 
@@ -677,6 +964,7 @@ async function processTtsQueue() {
             toastr.error(error.toString());
             console.error(error);
             currentTtsJob = null;
+            scheduleTtsQueueWakeup();
         }
         return;
     }
@@ -692,14 +980,23 @@ async function processTtsQueue() {
         text = text.replace(/~~~.*?~~~/gs, '').trim();
     }
 
-    if (extension_settings.tts.skip_tags) {
-        text = text.replace(/<.*?>[\s\S]*?<\/.*?>/g, '').trim();
+    text = filterTtsAsterisks(text, {
+        narrateDialoguesOnly: extension_settings.tts.narrate_dialogues_only,
+        passAsterisks: extension_settings.tts.pass_asterisks,
+    });
+
+    // SillyBunny: Strip tag markup before quote extraction so wrappers preserve dialogue without narrating attributes.
+    if (extension_settings.tts.narrate_quoted_only) {
+        const partJoiner = (ttsProvider?.separator || ' ... ');
+        if (extension_settings.tts.skip_tags) {
+            text = stripTtsTaggedBlocks(text, { preserveFormatting: true });
+        }
+        text = text.replace(/<.*?>/g, '').trim();
+        text = joinQuotedBlocks(text, { separator: partJoiner, includeQuotes: true });
     }
 
-    if (!extension_settings.tts.pass_asterisks) {
-        text = extension_settings.tts.narrate_dialogues_only
-            ? text.replace(/\*[^*]*?(\*|$)/g, '').trim() // remove asterisks content
-            : text.replaceAll('*', '').trim(); // remove just the asterisks
+    if (extension_settings.tts.skip_tags) {
+        text = text.replace(/<.*?>[\s\S]*?<\/.*?>/g, '').trim();
     }
 
     if (extension_settings.tts.apply_regex && extension_settings.tts.regex_pattern) {
@@ -710,11 +1007,6 @@ async function processTtsQueue() {
         } else {
             console.warn('Invalid regex pattern:', extension_settings.tts.regex_pattern);
         }
-    }
-
-    if (extension_settings.tts.narrate_quoted_only) {
-        const partJoiner = (ttsProvider?.separator || ' ... ');
-        text = joinQuotedBlocks(text, { separator: partJoiner, includeQuotes: true });
     }
 
     // Remove embedded images
@@ -769,10 +1061,12 @@ async function processTtsQueue() {
 
         // Clear current job so the segmented jobs can be processed
         currentTtsJob = null;
+        scheduleTtsQueueWakeup();
     } catch (error) {
         toastr.error(error.toString());
         console.error(error);
         currentTtsJob = null;
+        scheduleTtsQueueWakeup();
     }
 }
 
@@ -1058,37 +1352,66 @@ function updateRegexPatternWarning() {
 // TTS Provider //
 //##############//
 
-async function loadTtsProvider(provider) {
+async function loadTtsProviderInternal(provider) {
     //Clear the current config and add new config
     $('#tts_provider_settings').html('');
 
     if (!provider) {
-        return;
+        throw new Error('No TTS provider is selected.');
     }
 
-    // Init provider references
-    extension_settings.tts.currentProvider = provider;
-    ttsProviderName = provider;
-    ttsProvider = new ttsProviders[provider];
+    const Provider = ttsProviders[provider];
+    if (typeof Provider !== 'function') {
+        throw new Error(`TTS provider ${provider} is unavailable.`);
+    }
+
+    const nextProvider = new Provider();
 
     // Init provider settings
-    $('#tts_provider_settings').append(ttsProvider.settingsHtml);
-    if (!(ttsProviderName in extension_settings.tts)) {
-        console.warn(`Provider ${ttsProviderName} not in Extension Settings, initiatilizing provider in settings`);
-        extension_settings.tts[ttsProviderName] = {};
+    $('#tts_provider_settings').append(nextProvider.settingsHtml);
+    if (!(provider in extension_settings.tts)) {
+        console.warn(`Provider ${provider} not in Extension Settings, initiatilizing provider in settings`);
+        extension_settings.tts[provider] = {};
     }
-    await ttsProvider.loadSettings(extension_settings.tts[ttsProviderName]);
+    await nextProvider.loadSettings(extension_settings.tts[provider]);
+
+    const previousProvider = ttsProvider;
+    ttsProviderName = provider;
+    ttsProvider = nextProvider;
     await initVoiceMap();
+    if (previousProvider !== nextProvider && typeof previousProvider?.dispose === 'function') {
+        previousProvider.dispose();
+    }
+    return nextProvider;
+}
+
+const queueTtsProviderLoad = createTtsProviderLoadQueue(loadTtsProviderInternal);
+
+function loadTtsProvider(provider) {
+    return queueTtsProviderLoad(String(provider || '').trim());
+}
+
+async function ensureTtsProviderLoaded() {
+    const providerName = String(extension_settings.tts.currentProvider || $('#tts_provider').val() || defaultSettings.currentProvider || '').trim();
+    if (!providerName) {
+        throw new Error('No TTS provider is selected.');
+    }
+    if (!ttsProvider || ttsProviderName !== providerName) {
+        await loadTtsProvider(providerName);
+    }
+    if (!ttsProvider || ttsProviderName !== providerName || typeof ttsProvider.checkReady !== 'function') {
+        throw new Error(`TTS provider ${providerName} did not initialize.`);
+    }
 }
 
 function onTtsProviderChange() {
-    if (typeof ttsProvider?.dispose === 'function') {
-        ttsProvider.dispose();
-    }
     const ttsProviderSelection = $('#tts_provider').val();
     extension_settings.tts.currentProvider = ttsProviderSelection;
     $('#playback_rate_block').toggle(extension_settings.tts.currentProvider !== 'System');
-    loadTtsProvider(ttsProviderSelection);
+    void loadTtsProvider(ttsProviderSelection).catch(error => {
+        toastr.error(error.toString());
+        console.error(error);
+    });
 }
 
 // Ensure that TTS provider settings are saved to extension settings.
@@ -1143,7 +1466,7 @@ async function onMessageEvent(messageId, lastCharIndex) {
 
     // clone message object, as things go haywire if message object is altered below (it's passed by reference)
     /** @type {TtsMessage} */
-    const message = structuredClone(context.chat[messageId]);
+    const message = safeClone(context.chat[messageId]);
     const hashNew = getStringHash(message?.mes ?? '');
 
     // Ignore prompt-hidden messages
@@ -1171,11 +1494,11 @@ async function onMessageEvent(messageId, lastCharIndex) {
 
     // if last message within current message, message got extended. only send diff to TTS.
     if (isLastMessageInCurrent()) {
-        const tmp = structuredClone(message);
+        const tmp = safeClone(message);
         message.mes = message.mes.replace(lastMessage.mes, '');
         lastMessage = tmp;
     } else {
-        lastMessage = structuredClone(message);
+        lastMessage = safeClone(message);
     }
 
     // We're currently swiping. Don't generate voice
@@ -1219,7 +1542,7 @@ async function onMessageDeleted() {
         return;
     }
     lastMessageHash = messageHash;
-    lastMessage = context.chat.length ? structuredClone(context.chat[context.chat.length - 1]) : null;
+    lastMessage = context.chat.length ? safeClone(context.chat[context.chat.length - 1]) : null;
 
     // stop any tts playback since message might not exist anymore
     resetTtsPlayback();
@@ -1280,7 +1603,7 @@ async function onPeriodicMessageGenerationTick() {
         return;
     }
 
-    const lastMessage = structuredClone(context.chat[lastMessageId]);
+    const lastMessage = safeClone(context.chat[lastMessageId]);
     const lastMessageText = lastMessage?.mes ?? '';
 
     // look for double ending lines which should indicate the end of a paragraph
@@ -1302,18 +1625,44 @@ async function onPeriodicMessageGenerationTick() {
     }
 }
 
+function expandCharactersForMultiVoice(characters, multiVoiceEnabled) {
+    if (!multiVoiceEnabled) {
+        return characters;
+    }
+
+    const expandedCharacters = [];
+    for (const char of characters) {
+        if (char === DEFAULT_VOICE_MARKER || char === 'SillyTavern System') {
+            expandedCharacters.push(char);
+        } else {
+            expandedCharacters.push(`${char} ("Quotes")`);
+            expandedCharacters.push(`${char} (*Text inside asterisks*)`);
+            expandedCharacters.push(`${char} (Other text)`);
+        }
+    }
+    return expandedCharacters;
+}
+
 /**
  * Get characters in current chat
  * @param {boolean} unrestricted - If true, will include all characters in voiceMapEntries, even if they are not in the current chat.
+ * @param {string[]} [extraSpeakers=[]] - Speaker names that must have entries even when absent from the character list.
  * @returns {string[]} - Array of character names
  */
-export function getCharacters(unrestricted) {
+export function getCharacters(unrestricted, extraSpeakers = []) {
     const context = getContext();
+    const requestedSpeakers = (Array.isArray(extraSpeakers) ? extraSpeakers : [])
+        .map(name => String(name || '').trim())
+        .filter(Boolean);
 
     if (unrestricted) {
+        // Unrestricted maps still need the persona and any explicitly requested
+        // speakers (e.g. Conversation partners) so their mapping can be edited.
         const names = context.characters.map(char => char.name);
         names.unshift(DEFAULT_VOICE_MARKER);
-        return names.filter(onlyUnique);
+        if (context.name1) names.push(context.name1);
+        names.push(...requestedSpeakers);
+        return expandCharactersForMultiVoice(names.filter(onlyUnique), extension_settings.tts.multi_voice_enabled);
     }
 
     let characters = [];
@@ -1334,24 +1683,10 @@ export function getCharacters(unrestricted) {
             }
         }
     }
+    characters.push(...requestedSpeakers);
     characters = characters.filter(onlyUnique);
 
-    // If multi-voice is enabled, expand characters to include segment types
-    if (extension_settings.tts.multi_voice_enabled) {
-        const expandedCharacters = [];
-        for (const char of characters) {
-            if (char === DEFAULT_VOICE_MARKER || char === 'SillyTavern System') {
-                expandedCharacters.push(char);
-            } else {
-                expandedCharacters.push(`${char} ("Quotes")`);
-                expandedCharacters.push(`${char} (*Text inside asterisks*)`);
-                expandedCharacters.push(`${char} (Other text)`);
-            }
-        }
-        return expandedCharacters;
-    }
-
-    return characters;
+    return expandCharactersForMultiVoice(characters, extension_settings.tts.multi_voice_enabled);
 }
 
 export function sanitizeId(input) {
@@ -1390,10 +1725,8 @@ function updateVoiceMap() {
         }
         tempVoiceMap[voice.name] = voice.voiceId;
     }
-    if (Object.keys(tempVoiceMap).length !== 0) {
-        voiceMap = tempVoiceMap;
-        console.log(`Voicemap updated to ${JSON.stringify(voiceMap)}`);
-    }
+    voiceMap = tempVoiceMap;
+    console.log(`Voicemap updated to ${JSON.stringify(voiceMap)}`);
     if (!extension_settings.tts[ttsProviderName].voiceMap) {
         extension_settings.tts[ttsProviderName].voiceMap = {};
     }
@@ -1451,78 +1784,65 @@ class VoiceMapEntry {
  * @param {boolean} unrestricted - If true, will include all characters in voiceMapEntries, even if they are not in the current chat.
  * @returns {Promise} A promise that resolves when the initialization is complete.
  */
-export async function initVoiceMap(unrestricted = false) {
-    // Preventing parallel execution
-    if (currentInitVoiceMapPromise) {
-        return currentInitVoiceMapPromise;
-    }
-
-    currentInitVoiceMapPromise = (async () => {
-        const initialChatId = getCurrentChatId();
-        try {
-            await initVoiceMapInternal(unrestricted);
-        } finally {
-            currentInitVoiceMapPromise = null;
-        }
-        const currentChatId = getCurrentChatId();
-
-        if (initialChatId !== currentChatId) {
-            // Chat changed during initialization, reinitialize
-            await initVoiceMap(unrestricted);
-        }
-    })();
-
-    return currentInitVoiceMapPromise;
+export function initVoiceMap(unrestricted = false, speakers = []) {
+    return requestVoiceMapInitialization(unrestricted, speakers);
 }
 
 /**
  * Init voiceMapEntries for character select list.
  * @param {boolean} unrestricted - If true, will include all characters in voiceMapEntries, even if they are not in the current chat.
  */
-async function initVoiceMapInternal(unrestricted) {
+async function initVoiceMapInternal(unrestricted, speakers, provider, providerName) {
     // Gate initialization if not enabled or TTS Provider not ready. Prevents error popups.
-    const enabled = $('#tts_enabled').is(':checked');
-    if (!enabled) {
-        return;
+    if (!extension_settings.tts.enabled) {
+        return false;
+    }
+    if (!provider || typeof provider.checkReady !== 'function') {
+        throw new Error(`TTS provider ${providerName || ''} did not initialize.`);
     }
 
     // Keep errors inside extension UI rather than toastr. Toastr errors for TTS are annoying.
     try {
-        await ttsProvider.checkReady();
+        await provider.checkReady();
     } catch (error) {
         const message = `TTS Provider not ready. ${error}`;
         setTtsStatus(message, false);
-        return;
+        throw error;
     }
 
     setTtsStatus('TTS Provider Loaded', true);
 
-    // Clear existing voiceMap state
-    $('#tts_voicemap_block').empty();
-    voiceMapEntries = [];
-
-    // Get characters in current chat
-    const characters = getCharacters(unrestricted);
-
     // Get saved voicemap from provider settings, handling new and old representations
     let voiceMapFromSettings = {};
-    if ('voiceMap' in extension_settings.tts[ttsProviderName]) {
+    if ('voiceMap' in extension_settings.tts[providerName]) {
         // Handle previous representation
-        if (typeof extension_settings.tts[ttsProviderName].voiceMap === 'string') {
-            voiceMapFromSettings = parseVoiceMap(extension_settings.tts[ttsProviderName].voiceMap);
+        if (typeof extension_settings.tts[providerName].voiceMap === 'string') {
+            voiceMapFromSettings = parseVoiceMap(extension_settings.tts[providerName].voiceMap);
             // Handle new representation
-        } else if (typeof extension_settings.tts[ttsProviderName].voiceMap === 'object') {
-            voiceMapFromSettings = extension_settings.tts[ttsProviderName].voiceMap;
+        } else if (typeof extension_settings.tts[providerName].voiceMap === 'object') {
+            voiceMapFromSettings = extension_settings.tts[providerName].voiceMap;
         }
     }
 
     // Get voiceIds from provider
     let voiceIdsFromProvider;
     try {
-        voiceIdsFromProvider = await ttsProvider.fetchTtsVoiceObjects();
-    } catch {
+        voiceIdsFromProvider = await provider.fetchTtsVoiceObjects();
+    } catch (error) {
         toastr.error('TTS Provider failed to return voice ids.');
+        throw error;
     }
+    if (!Array.isArray(voiceIdsFromProvider)) {
+        throw new Error('TTS Provider failed to return voice ids.');
+    }
+    if (provider !== ttsProvider || providerName !== ttsProviderName) {
+        return false;
+    }
+
+    // Preserve the last usable map until all provider readiness work succeeds.
+    $('#tts_voicemap_block').empty();
+    voiceMapEntries = [];
+    const characters = getCharacters(unrestricted, speakers);
 
     // Build UI using VoiceMapEntry objects
     for (const character of characters) {
@@ -1543,13 +1863,41 @@ async function initVoiceMapInternal(unrestricted) {
         voiceMapEntries.push(voiceMapEntry);
     }
     updateVoiceMap();
+    return true;
 }
 
-export async function init() {
-    // Guard against double initialization (module may be loaded via multiple URL variants)
-    if (window._ttsExtensionInitialized) return;
-    window._ttsExtensionInitialized = true;
+async function initializeVoiceMapRequest(unrestricted, speakers = []) {
+    while (true) {
+        const initialChatId = getCurrentChatId();
+        const provider = ttsProvider;
+        const providerName = ttsProviderName;
+        await initVoiceMapInternal(unrestricted, speakers, provider, providerName);
+        if (initialChatId === getCurrentChatId() && provider === ttsProvider && providerName === ttsProviderName) {
+            return;
+        }
+    }
+}
 
+const requestVoiceMapInitialization = createTtsVoiceMapInitializer(initializeVoiceMapRequest);
+
+export function init() {
+    if (ttsShellInitializationPromise) return ttsShellInitializationPromise;
+    if (window._ttsExtensionInitialized) return Promise.resolve();
+    window._ttsExtensionInitialized = true;
+    // Register the capability at activation start so slow shell/provider
+    // initialization never leaves early Conversation callers without it.
+    registerTtsCapability();
+    ttsShellInitializationPromise = initializeTtsExtension();
+    return ttsShellInitializationPromise;
+}
+
+export function deactivate() {
+    resetTtsPlayback();
+    unregisterTtsCapability?.();
+    unregisterTtsCapability = null;
+}
+
+async function initializeTtsExtension() {
     async function addExtensionControls() {
         const settingsHtml = $(await renderExtensionTemplateAsync('tts', 'settings'));
         $('#tts_container').append(settingsHtml);
@@ -1586,7 +1934,12 @@ export async function init() {
     }
     await addExtensionControls(); // No init dependencies
     loadSettings(); // Depends on Extension Controls and loadTtsProvider
-    loadTtsProvider(extension_settings.tts.currentProvider); // No dependencies
+    // Shell/listeners never wait on provider readiness. A provider failure is
+    // logged and retried by the next narration/readiness request.
+    ttsProviderReadinessPromise = loadTtsProvider(extension_settings.tts.currentProvider);
+    void ttsProviderReadinessPromise.catch(error => {
+        console.warn('TTS provider initialization failed; it will be retried on demand.', error);
+    });
     addAudioControl(); // Depends on Extension Controls
     setInterval(wrapper.update.bind(wrapper), UPDATE_INTERVAL); // Init depends on all the things
     eventSource.on(event_types.MESSAGE_SWIPED, resetTtsPlayback);
@@ -1638,3 +1991,17 @@ export async function init() {
 
     document.body.appendChild(audioElement);
 }
+
+function registerTtsCapability() {
+    unregisterTtsCapability?.();
+    unregisterTtsCapability = registerExtensionCapability('tts', Object.freeze({
+        ensureReady: ensureTtsInitialized,
+        narrateTtsMessage,
+    }));
+}
+
+export {
+    createTtsProviderLoadQueue,
+    createTtsVoiceMapInitializer,
+    pumpAsyncTtsResponses,
+};

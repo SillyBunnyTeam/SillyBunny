@@ -88,7 +88,7 @@ export function initInputMarkdown() {
                     end--; // Adjust the end index since we removed the space
                 }
                 // To add the formatting, we need to select the text first
-                textarea.focus();
+                textarea.focus({ preventScroll: true });
                 document.execCommand('insertText', false, charsToAdd + selectedText + charsToAdd + possibleAddedSpace);
             }
         } else {
@@ -119,16 +119,16 @@ export function initInputMarkdown() {
 
                 if (charsToAdd + discoveredWord + charsToAdd === discoveredWordWithPossibleFormatting) {
                     // Replace the expanded selection with the original discovered word
-                    textarea.focus();
+                    textarea.focus({ preventScroll: true });
                     document.execCommand('insertText', false, discoveredWord);
                     // Adjust cursor position
                     cursorShift = -charsToAdd.length;
                 } else { //format did not previously exist, so add it
-                    textarea.focus();
+                    textarea.focus({ preventScroll: true });
                     document.execCommand('insertText', false, charsToAdd + discoveredWord + charsToAdd);
                 }
             } else { //caret is not inside a word, so just add the formatting
-                textarea.focus();
+                textarea.focus({ preventScroll: true });
                 textarea.setSelectionRange(start, end);
                 selectedText = textarea.value.substring(start, end);
                 document.execCommand('insertText', false, charsToAdd + selectedText + charsToAdd);

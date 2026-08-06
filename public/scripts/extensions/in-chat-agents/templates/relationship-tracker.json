@@ -10,9 +10,9 @@
         "npc",
         "meter"
     ],
-    "version": 2,
+    "version": 4,
     "author": "Purachina",
-    "prompt": "### Relationship Meters\nTrack affection and trust for recurring NPCs with significant interactions. Update only when meaningful shifts occur. If nothing changed, omit entirely. Use this EXACT format:\n\n[METER|Name|X/10|X/10|Status|Condition]\nbrief reason for change\n[/METER]\n\nStatus options (positive): Stranger → Acquaintance → Friendly → Close → Intimate → Devoted\nStatus options (negative): Wary → Hostile → Nemesis\nStatus options (complex): Complicated | Codependent | Estranged | Rivals | Frenemies\n\nCondition options: 💚 STABLE | 💛 SHIFTING | 💔 HEARTBROKEN | 🖤 BETRAYED | 💢RESENTFUL |🔥 PASSIONATE |❄️ COLD | 🫧 INFATUATED | 💀 SEVERED | 🩹 MENDING | ⛓️ OBSESSED | 😶 NUMB | 🌧️ GRIEVING | 🤝 RECONCILING | ⚡ VOLATILE\n\nRules:\n- Meters appear ONCE per NPC at first significant appearance, then only when changed\n- Place meter AFTER narrative content\n- Only show meters that CHANGED this scene\n- Use pipe | separators between data points\n- Affection and Trust are independent axes (high affection + low trust = infatuation/obsession; low affection + high trust = respect)\n- Shifts of more than 2 points in one scene require extreme justification\n- Condition reflects the EMOTIONAL STATE of the relationship, not just the numbers\n- Condition can change independently of scores (e.g., Trust stays at 7 but Condition shifts from STABLE to VOLATILE after a fight)\n- Contradictory signals are valid (high affection + BETRAYED, low trust + PASSIONATE)\n- SEVERED means the relationship has ended; retire the meter after one final showing\n- Relationships may stagnate or lower; slow down relationship development",
+    "prompt": "### Relationship Meters\nTrack affection and trust for recurring NPCs with significant interactions. Update only when meaningful shifts occur. If nothing changed, omit entirely. Use this EXACT format:\n\n[METER|Name|X/10|X/10|Status|Condition]\nbrief reason for change\n[/METER]\n\nStatus options (positive): Stranger → Acquaintance → Friendly → Close → Intimate → Devoted\nStatus options (negative): Wary → Hostile → Nemesis\nStatus options (complex): Complicated | Codependent | Estranged | Rivals | Frenemies\n\nCondition options: 💚 STABLE | 💛 SHIFTING | 💔 HEARTBROKEN | 🖤 BETRAYED | 💢RESENTFUL |🔥 PASSIONATE |❄️ COLD | 🫧 INFATUATED | 💀 SEVERED | 🩹 MENDING | ⛓️ OBSESSED | 😶 NUMB | 🌧️ GRIEVING | 🤝 RECONCILING | ⚡ VOLATILE\n\nRules:\n- Meters appear ONCE per NPC at first significant appearance, then only when changed\n- Place meter AFTER narrative content\n- Only show meters that CHANGED this scene\n- Use pipe | separators between data points\n- Affection and Trust are independent axes (high affection + low trust = infatuation/obsession; low affection + high trust = respect)\n- Shifts of more than 2 points in one scene require extreme justification\n- Condition reflects the EMOTIONAL STATE of the relationship, not just the numbers\n- Condition can change independently of scores (e.g., Trust stays at 7 but Condition shifts from STABLE to VOLATILE after a fight)\n- Contradictory signals are valid (high affection + BETRAYED, low trust + PASSIONATE)\n- SEVERED means the relationship has ended; retire the meter after one final showing\n- Relationships may stagnate or lower; slow down relationship development\n- When nothing qualifies this scene, output the single line tracker-none in place of the block",
     "phase": "both",
     "injection": {
         "position": 0,
@@ -28,7 +28,7 @@
         "regexReplace": "",
         "regexFlags": "g",
         "appendText": "",
-        "extractPattern": "\\[METER\\|[^\\]]*\\]",
+        "extractPattern": "\\[METER\\|[^\\]\\r\\n]*\\](?:(?!\\[METER(?=[:|\\]]))[\\s\\S])*?\\[/METER\\]",
         "extractVariable": "relationship_data"
     },
     "enabled": false,

@@ -1,6 +1,7 @@
 import { describe, expect, test } from '@jest/globals';
 
 import {
+    clampMobileShellText,
     createMobileShellLifecycle,
     getMobileShellQuickActionKey,
     MOBILE_SHELL_RAIL_CHARACTER_SHELL_KEY,
@@ -8,6 +9,8 @@ import {
     MOBILE_SHELL_RAIL_QUICK_ACTION_LABEL_MAX_LENGTH,
     MOBILE_SHELL_RAIL_QUICK_ACTION_LIMIT,
     normalizeMobileShellQuickAction,
+    normalizeMobileShellRailIcon,
+    normalizeMobileShellText,
     resolveMobileShellQuickActionRoute,
     resolveMobileShellRailActionVisibility,
 } from '../public/scripts/mobile-shell-lifecycle/index.js';
@@ -23,6 +26,13 @@ const apiTab = {
 };
 
 describe('mobile shell rail model lifecycle', () => {
+    test('shares text and icon normalization with shell consumers', () => {
+        expect(normalizeMobileShellText('  World   Info ')).toBe('world info');
+        expect(clampMobileShellText('  long   label  ', 8)).toBe('long la…');
+        expect(clampMobileShellText('label', Number.NaN)).toBe('label');
+        expect(normalizeMobileShellRailIcon('fa-solid FA-PLUG')).toBe('fa-plug');
+    });
+
     test('keeps rail quick-action constants explicit', () => {
         expect(MOBILE_SHELL_RAIL_QUICK_ACTION_LIMIT).toBe(12);
         expect(MOBILE_SHELL_RAIL_QUICK_ACTION_LABEL_MAX_LENGTH).toBe(36);

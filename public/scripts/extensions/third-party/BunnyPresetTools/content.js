@@ -8,12 +8,22 @@ import {
 import { extension_settings, saveMetadataDebounced } from '../../../extensions.js';
 import { background_settings } from '../../../backgrounds.js';
 import { promptManager } from '../../../openai.js';
+import { power_user } from '../../../power-user.js';
+import {
+    buildSectionBlocks,
+    computeReorderedOrder,
+    getSectionLockState,
+    setSectionLockState,
+    stripDividerPrefix,
+} from './sectionOrder.js';
 
 const EXTENSION_NAME = 'BunnyPresetTools';
 const LEGACY_EXTENSION_NAME = 'NemoPresetExt';
 const BUILT_IN_DIVIDER_PATTERNS = ['=+', '-{3,}', '\\*{3,}', '(?:[^\\w\\s]+\\s*)?[─━—-]\\+'];
 const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'ogv', 'm4v']);
 const BACKGROUND_LOCK_KEY = 'custom_background';
+const SECTION_DRAG_HOLD_MS = 2500;
+const SECTION_DRAG_MOVE_THRESHOLD_PX = 8;
 
 let promptListElement = null;
 let promptListObserver = null;
@@ -32,6 +42,9 @@ let backgroundCardObserversAttached = false;
 let backgroundSyncTimer = null;
 let backgroundLifecycleHandlersAttached = false;
 let legacySettingsMigrationChecked = false;
+let activeSectionDrag = null;
+let sectionDropIndicator = null;
+let suppressSectionToggleUntil = 0;
 
 function migrateLegacySettings() {
     if (legacySettingsMigrationChecked) {
@@ -70,6 +83,9 @@ function ensureSettings() {
     }
     if (!settings.promptSectionStates || typeof settings.promptSectionStates !== 'object') {
         settings.promptSectionStates = {};
+    }
+    if (!settings.promptSectionLocks || typeof settings.promptSectionLocks !== 'object') {
+        settings.promptSectionLocks = {};
     }
     if (!settings.openSectionStates || typeof settings.openSectionStates !== 'object') {
         settings.openSectionStates = {};
@@ -273,7 +289,10 @@ function injectPromptToolbar(promptList) {
         const settings = ensureSettings();
         const sections = Array.from(promptList.querySelectorAll('.bpt-section-row'));
         sections.forEach(section => {
-            setPromptSectionOpenState(settings, section.dataset.sectionId, section.dataset.sectionName || section.dataset.sectionId, false);
+            const sectionName = section.dataset.sectionName || section.dataset.sectionId;
+            if (!getSectionLockState(settings, section.dataset.sectionId, sectionName)) {
+                setPromptSectionOpenState(settings, section.dataset.sectionId, sectionName, false);
+            }
         });
         saveSettingsDebounced();
         schedulePromptRefresh();
@@ -282,7 +301,10 @@ function injectPromptToolbar(promptList) {
         const settings = ensureSettings();
         const sections = Array.from(promptList.querySelectorAll('.bpt-section-row'));
         sections.forEach(section => {
-            setPromptSectionOpenState(settings, section.dataset.sectionId, section.dataset.sectionName || section.dataset.sectionId, true);
+            const sectionName = section.dataset.sectionName || section.dataset.sectionId;
+            if (!getSectionLockState(settings, section.dataset.sectionId, sectionName)) {
+                setPromptSectionOpenState(settings, section.dataset.sectionId, sectionName, true);
+            }
         });
         saveSettingsDebounced();
         schedulePromptRefresh();
@@ -298,7 +320,8 @@ function getPromptRows() {
         return [];
     }
 
-    return Array.from(promptListElement.querySelectorAll(':scope > li.completion_prompt_manager_prompt[data-pm-identifier]'));
+    return Array.from(promptListElement.querySelectorAll(':scope > li.completion_prompt_manager_prompt[data-pm-identifier]'))
+        .filter(row => row.dataset.pmRuntime !== 'true');
 }
 
 function getPromptRowName(row) {
@@ -398,6 +421,12 @@ function cleanupPromptSections() {
         row.style.display = '';
         delete row.dataset.sectionId;
     });
+
+    promptListElement.querySelectorAll(':scope > li[data-pm-runtime="true"]').forEach(row => {
+        row.classList.remove('bpt-section-item', 'bpt-divider-row', 'bpt-divider-source', 'bpt-divider-structural');
+        row.style.display = '';
+        delete row.dataset.sectionId;
+    });
 }
 
 function applySectionRowStyles(row, isOpen) {
@@ -405,8 +434,12 @@ function applySectionRowStyles(row, isOpen) {
         return;
     }
 
-    row.style.setProperty('display', 'block', 'important');
+    const isLocked = row.classList.contains('is-locked');
+
+    row.style.setProperty('display', 'grid', 'important');
     row.style.setProperty('width', '100%', 'important');
+    row.style.gridTemplateColumns = 'minmax(0, 1fr) auto';
+    row.style.alignItems = 'stretch';
     row.style.setProperty('min-height', '48px', 'important');
     row.style.boxSizing = 'border-box';
     row.style.padding = '0';
@@ -425,17 +458,17 @@ function applySectionRowStyles(row, isOpen) {
         trigger.style.setProperty('display', 'flex', 'important');
         trigger.style.setProperty('align-items', 'center', 'important');
         trigger.style.setProperty('width', '100%', 'important');
-        trigger.style.setProperty('grid-column', '1 / -1', 'important');
+        trigger.style.setProperty('grid-column', '1', 'important');
         trigger.style.setProperty('min-height', '48px', 'important');
         trigger.style.setProperty('gap', '10px', 'important');
         trigger.style.setProperty('padding', '10px 12px', 'important');
         trigger.style.border = '0';
-        trigger.style.borderRadius = 'inherit';
+        trigger.style.borderRadius = '14px 0 0 14px';
         trigger.style.background = 'transparent';
         trigger.style.color = 'inherit';
         trigger.style.font = 'inherit';
         trigger.style.textAlign = 'left';
-        trigger.style.cursor = 'pointer';
+        trigger.style.cursor = isLocked ? 'default' : 'pointer';
         trigger.style.touchAction = 'manipulation';
         trigger.style.appearance = 'none';
         trigger.style.webkitAppearance = 'none';
@@ -467,26 +500,350 @@ function applySectionRowStyles(row, isOpen) {
         count.style.fontSize = '0.9em';
         count.style.whiteSpace = 'nowrap';
     }
+
+    const lockButton = row.querySelector('.bpt-section-lock');
+    if (lockButton instanceof HTMLElement) {
+        lockButton.style.display = 'flex';
+        lockButton.style.alignItems = 'center';
+        lockButton.style.justifyContent = 'center';
+        lockButton.style.alignSelf = 'stretch';
+        lockButton.style.minWidth = '46px';
+        lockButton.style.minHeight = '48px';
+        lockButton.style.padding = '0 12px';
+        lockButton.style.border = '0';
+        lockButton.style.borderLeft = '1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 72%, transparent)';
+        lockButton.style.borderRadius = '0 14px 14px 0';
+        lockButton.style.background = isLocked
+            ? 'color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent)'
+            : 'color-mix(in srgb, var(--SmartThemeBlurTintColor) 52%, transparent)';
+        lockButton.style.color = isLocked ? 'var(--SmartThemeBodyColor)' : 'var(--SmartThemeEmColor)';
+        lockButton.style.cursor = 'pointer';
+        lockButton.style.touchAction = 'manipulation';
+        lockButton.style.appearance = 'none';
+        lockButton.style.webkitAppearance = 'none';
+    }
 }
 
-function createSectionRow(sectionId, title, sectionName, isOpen) {
+function getSectionRowsForDrag() {
+    if (!promptListElement) {
+        return [];
+    }
+
+    return Array.from(promptListElement.querySelectorAll(':scope > li.bpt-section-row'))
+        .filter(row => row instanceof HTMLElement && row.style.display !== 'none' && row.getClientRects().length > 0);
+}
+
+function ensureSectionDropIndicator() {
+    if (!sectionDropIndicator) {
+        sectionDropIndicator = document.createElement('li');
+        sectionDropIndicator.className = 'bpt-drop-indicator';
+        sectionDropIndicator.setAttribute('aria-hidden', 'true');
+        sectionDropIndicator.setAttribute('role', 'presentation');
+    }
+
+    return sectionDropIndicator;
+}
+
+function clearSectionDropIndicator() {
+    sectionDropIndicator?.remove();
+    sectionDropIndicator = null;
+}
+
+function clearSectionDropTarget() {
+    promptListElement?.querySelectorAll('.bpt-section-drop-target').forEach(row => {
+        row.classList.remove('bpt-section-drop-target');
+    });
+}
+
+function placeSectionDropIndicator(targetSectionId) {
+    if (!promptListElement || !activeSectionDrag?.isDragging) {
+        return;
+    }
+
+    const indicator = ensureSectionDropIndicator();
+    const rows = getSectionRowsForDrag().filter(row => row !== activeSectionDrag.row);
+    const targetRow = targetSectionId
+        ? rows.find(row => row.dataset.sectionId === targetSectionId)
+        : null;
+
+    clearSectionDropTarget();
+
+    if (targetRow) {
+        targetRow.classList.add('bpt-section-drop-target');
+        promptListElement.insertBefore(indicator, targetRow);
+        return;
+    }
+
+    promptListElement.append(indicator);
+}
+
+function resolveSectionDropTarget(clientX, clientY) {
+    const rows = getSectionRowsForDrag().filter(row => row !== activeSectionDrag?.row);
+    if (!rows.length) {
+        return null;
+    }
+
+    const rowAtPoint = document.elementsFromPoint?.(clientX, clientY)
+        .map(element => element.closest?.('.bpt-section-row'))
+        .find(row => row instanceof HTMLElement && row !== activeSectionDrag?.row && rows.includes(row));
+
+    if (rowAtPoint) {
+        const rect = rowAtPoint.getBoundingClientRect();
+        if (clientY <= rect.top + rect.height / 2) {
+            return rowAtPoint.dataset.sectionId || null;
+        }
+
+        const nextRow = rows[rows.indexOf(rowAtPoint) + 1];
+        return nextRow?.dataset.sectionId || null;
+    }
+
+    for (const row of rows) {
+        const rect = row.getBoundingClientRect();
+        if (clientY <= rect.top + rect.height / 2) {
+            return row.dataset.sectionId || null;
+        }
+    }
+
+    return null;
+}
+
+function updateSectionDropTarget(clientX, clientY) {
+    if (!activeSectionDrag?.isDragging) {
+        return;
+    }
+
+    const targetSectionId = resolveSectionDropTarget(clientX, clientY);
+    activeSectionDrag.dropTargetSectionId = targetSectionId;
+    placeSectionDropIndicator(targetSectionId);
+}
+
+function hasSamePromptOrder(previousOrder, nextOrder) {
+    if (!Array.isArray(previousOrder) || !Array.isArray(nextOrder) || previousOrder.length !== nextOrder.length) {
+        return false;
+    }
+
+    return previousOrder.every((entry, index) => entry?.identifier === nextOrder[index]?.identifier);
+}
+
+function commitSectionReorder(fromSectionId, toSectionId) {
+    const activeCharacter = promptManager?.activeCharacter;
+    const promptOrder = promptManager?.getPromptOrderForCharacter?.(activeCharacter);
+
+    if (!promptListElement || !activeCharacter || !Array.isArray(promptOrder)) {
+        return false;
+    }
+
+    const rows = Array.from(promptListElement.querySelectorAll(':scope > li.bpt-section-row, :scope > li.completion_prompt_manager_prompt[data-pm-identifier]'));
+    const blocks = buildSectionBlocks(rows);
+    const updatedPromptOrder = computeReorderedOrder(promptOrder, blocks, fromSectionId, toSectionId);
+
+    if (hasSamePromptOrder(promptOrder, updatedPromptOrder)) {
+        return false;
+    }
+
+    promptManager.removePromptOrderForCharacter(activeCharacter);
+    promptManager.addPromptOrderForCharacter(activeCharacter, updatedPromptOrder);
+    promptManager.log?.(`Prompt sections reordered for ${activeCharacter.name}.`);
+
+    const renderUpdatedOrder = () => {
+        promptManager.render?.(false);
+        schedulePromptRefresh();
+    };
+    const saveResult = promptManager.saveServiceSettings?.();
+
+    if (saveResult?.then) {
+        saveResult.then(renderUpdatedOrder).catch(error => {
+            console.warn('[BunnyPresetTools] Failed to save section reorder.', error);
+            renderUpdatedOrder();
+        });
+    } else {
+        saveSettingsDebounced();
+        renderUpdatedOrder();
+    }
+
+    return true;
+}
+
+function removeSectionDragListeners() {
+    document.removeEventListener('pointermove', handleSectionDragPointerMove, true);
+    document.removeEventListener('pointerup', handleSectionDragPointerUp, true);
+    document.removeEventListener('pointercancel', handleSectionDragPointerCancel, true);
+    document.removeEventListener('contextmenu', handleSectionDragContextMenu, true);
+}
+
+function finishSectionDrag({ suppressClick = false } = {}) {
+    if (!activeSectionDrag) {
+        return;
+    }
+
+    window.clearTimeout(activeSectionDrag.holdTimer);
+    removeSectionDragListeners();
+
+    if (suppressClick || activeSectionDrag.isDragging) {
+        suppressSectionToggleUntil = Date.now() + 450;
+    }
+
+    activeSectionDrag.row.classList.remove('bpt-section-dragging');
+    activeSectionDrag.trigger?.removeAttribute('aria-grabbed');
+    promptListElement?.classList.remove('bpt-section-reordering');
+    clearSectionDropTarget();
+    clearSectionDropIndicator();
+
+    try {
+        activeSectionDrag.trigger?.releasePointerCapture?.(activeSectionDrag.pointerId);
+    } catch {
+        // Pointer capture may already be released by the browser.
+    }
+
+    activeSectionDrag = null;
+}
+
+function beginSectionDrag() {
+    if (!activeSectionDrag || activeSectionDrag.isDragging) {
+        return;
+    }
+
+    const settings = ensureSettings();
+    if (getSectionLockState(settings, activeSectionDrag.sectionId, activeSectionDrag.sectionName) || power_user.prompt_manager_drag_locked) {
+        finishSectionDrag();
+        return;
+    }
+
+    activeSectionDrag.isDragging = true;
+    activeSectionDrag.row.classList.add('bpt-section-dragging');
+    activeSectionDrag.trigger?.setAttribute('aria-grabbed', 'true');
+    promptListElement?.classList.add('bpt-section-reordering');
+
+    try {
+        activeSectionDrag.trigger?.setPointerCapture?.(activeSectionDrag.pointerId);
+    } catch {
+        // Pointer capture is a progressive enhancement for this reorder gesture.
+    }
+
+    updateSectionDropTarget(activeSectionDrag.lastX, activeSectionDrag.lastY);
+}
+
+function armSectionDrag(event, row, sectionId, sectionName) {
+    if (!(event instanceof PointerEvent) || !event.isPrimary || (event.button !== undefined && event.button !== 0)) {
+        return;
+    }
+
+    const settings = ensureSettings();
+    if (getSectionLockState(settings, sectionId, sectionName) || power_user.prompt_manager_drag_locked || !promptManager?.activeCharacter) {
+        return;
+    }
+
+    finishSectionDrag();
+
+    activeSectionDrag = {
+        row,
+        trigger: event.currentTarget instanceof HTMLElement ? event.currentTarget : row.querySelector('.bpt-section-trigger'),
+        sectionId,
+        sectionName,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        lastX: event.clientX,
+        lastY: event.clientY,
+        dropTargetSectionId: sectionId,
+        holdTimer: window.setTimeout(beginSectionDrag, SECTION_DRAG_HOLD_MS),
+        isDragging: false,
+    };
+
+    document.addEventListener('pointermove', handleSectionDragPointerMove, true);
+    document.addEventListener('pointerup', handleSectionDragPointerUp, true);
+    document.addEventListener('pointercancel', handleSectionDragPointerCancel, true);
+    document.addEventListener('contextmenu', handleSectionDragContextMenu, true);
+}
+
+function handleSectionDragPointerMove(event) {
+    if (!activeSectionDrag || event.pointerId !== activeSectionDrag.pointerId) {
+        return;
+    }
+
+    activeSectionDrag.lastX = event.clientX;
+    activeSectionDrag.lastY = event.clientY;
+
+    const distance = Math.hypot(event.clientX - activeSectionDrag.startX, event.clientY - activeSectionDrag.startY);
+    if (!activeSectionDrag.isDragging && distance > SECTION_DRAG_MOVE_THRESHOLD_PX) {
+        finishSectionDrag();
+        return;
+    }
+
+    if (activeSectionDrag.isDragging) {
+        event.preventDefault();
+        event.stopPropagation();
+        updateSectionDropTarget(event.clientX, event.clientY);
+    }
+}
+
+function handleSectionDragPointerUp(event) {
+    if (!activeSectionDrag || event.pointerId !== activeSectionDrag.pointerId) {
+        return;
+    }
+
+    if (!activeSectionDrag.isDragging) {
+        finishSectionDrag();
+        return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const { sectionId, dropTargetSectionId } = activeSectionDrag;
+    commitSectionReorder(sectionId, dropTargetSectionId);
+    finishSectionDrag({ suppressClick: true });
+}
+
+function handleSectionDragPointerCancel(event) {
+    if (!activeSectionDrag || event.pointerId !== activeSectionDrag.pointerId) {
+        return;
+    }
+
+    finishSectionDrag({ suppressClick: activeSectionDrag.isDragging });
+}
+
+function handleSectionDragContextMenu(event) {
+    if (!activeSectionDrag) {
+        return;
+    }
+
+    event.preventDefault();
+    if (!activeSectionDrag.isDragging) {
+        finishSectionDrag();
+    }
+}
+
+function createSectionRow(sectionId, title, sectionName, isOpen, isLocked) {
     const row = document.createElement('li');
-    row.className = `bpt-section-row ${isOpen ? '' : 'is-collapsed'}`.trim();
+    row.className = `bpt-section-row ${isOpen ? '' : 'is-collapsed'} ${isLocked ? 'is-locked' : 'is-unlocked'}`.trim();
     row.dataset.sectionId = sectionId;
     row.dataset.sectionName = sectionName;
+    const triggerTitle = isLocked
+        ? 'Unlock this section before changing its open state or position.'
+        : power_user.prompt_manager_drag_locked
+            ? 'Tap to open or close. Unlock Prompt Manager reordering to move this section.'
+            : 'Tap to open or close. Hold for 2.5 seconds to move this section.';
     row.innerHTML = `
-        <button class="bpt-section-trigger" type="button" aria-expanded="${String(isOpen)}" aria-label="Toggle ${title}">
+        <button class="bpt-section-trigger" type="button" aria-expanded="${String(isOpen)}" aria-disabled="${String(isLocked)}" aria-label="Toggle section">
             <span class="bpt-section-toggle" aria-hidden="true">
                 <i class="fa-solid ${isOpen ? 'fa-chevron-down' : 'fa-chevron-right'}"></i>
             </span>
             <span class="bpt-section-title"></span>
             <span class="bpt-section-count"></span>
         </button>
+        <button class="bpt-section-lock" type="button" aria-pressed="${String(isLocked)}" aria-label="Toggle section lock">
+            <i class="fa-solid ${isLocked ? 'fa-lock' : 'fa-unlock'}" aria-hidden="true"></i>
+        </button>
     `;
     applySectionRowStyles(row, isOpen);
     row.querySelector('.bpt-section-title').textContent = title;
     const toggleSection = () => {
         const settings = ensureSettings();
+        if (getSectionLockState(settings, sectionId, sectionName)) {
+            return;
+        }
+
         const nextIsOpen = !getPromptSectionOpenState(settings, sectionId, sectionName);
         setPromptSectionOpenState(settings, sectionId, sectionName, nextIsOpen);
         saveSettingsDebounced();
@@ -494,10 +851,16 @@ function createSectionRow(sectionId, title, sectionName, isOpen) {
     };
 
     const trigger = row.querySelector('.bpt-section-trigger');
+    trigger.setAttribute('aria-label', `Toggle ${title}`);
+    trigger.setAttribute('title', triggerTitle);
     let lastToggleAt = 0;
     const activateTrigger = event => {
         event.preventDefault();
         event.stopPropagation();
+
+        if (Date.now() < suppressSectionToggleUntil) {
+            return;
+        }
 
         const now = Date.now();
         if (now - lastToggleAt < 180) {
@@ -507,14 +870,35 @@ function createSectionRow(sectionId, title, sectionName, isOpen) {
         lastToggleAt = now;
         toggleSection();
     };
+    trigger.addEventListener('pointerdown', event => armSectionDrag(event, row, sectionId, sectionName));
     trigger.addEventListener('click', activateTrigger);
     trigger.addEventListener('touchend', activateTrigger);
-    return row;
-}
 
-function stripDividerPrefix(title, dividerRegex) {
-    const cleaned = String(title).replace(dividerRegex, '').replace(/^[\s:|~>-]+/, '').trim();
-    return cleaned || String(title).trim();
+    const lockButton = row.querySelector('.bpt-section-lock');
+    const lockLabel = isLocked ? `Unlock ${title} section` : `Lock ${title} section open or closed`;
+    lockButton.setAttribute('aria-label', lockLabel);
+    lockButton.setAttribute('title', lockLabel);
+    let lastLockToggleAt = 0;
+    const activateLockButton = event => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const now = Date.now();
+        if (now - lastLockToggleAt < 180) {
+            return;
+        }
+
+        lastLockToggleAt = now;
+
+        const settings = ensureSettings();
+        const nextLocked = !getSectionLockState(settings, sectionId, sectionName);
+        setSectionLockState(settings, sectionId, sectionName, nextLocked);
+        saveSettingsDebounced();
+        schedulePromptRefresh();
+    };
+    lockButton.addEventListener('click', activateLockButton);
+    lockButton.addEventListener('touchend', activateLockButton);
+    return row;
 }
 
 function refreshPromptSections() {
@@ -563,8 +947,9 @@ function refreshPromptSections() {
 
                 const sectionId = row.dataset.pmIdentifier || promptName || `bpt-section-${sections.length}`;
                 const isOpen = getPromptSectionOpenState(settings, sectionId, promptName);
+                const isLocked = getSectionLockState(settings, sectionId, promptName);
                 const sectionTitle = stripDividerPrefix(promptName, dividerRegex);
-                const sectionRow = createSectionRow(sectionId, sectionTitle, promptName, isOpen);
+                const sectionRow = createSectionRow(sectionId, sectionTitle, promptName, isOpen, isLocked);
                 const isSourcePrompt = hasPromptRowContent(row);
 
                 row.before(sectionRow);
@@ -574,6 +959,7 @@ function refreshPromptSections() {
                     id: sectionId,
                     title: sectionTitle,
                     isOpen,
+                    isLocked,
                     row: sectionRow,
                     prompts: [],
                 };
@@ -621,7 +1007,11 @@ function refreshPromptSections() {
             section.row.querySelector('.bpt-section-count').textContent = `${enabledCount}/${countablePrompts.length}`;
             section.row.style.display = query.length === 0 || titleMatches || matchedCount > 0 ? '' : 'none';
             section.row.classList.toggle('is-collapsed', !section.isOpen && query.length === 0);
-            section.row.querySelector('.bpt-section-trigger')?.setAttribute('aria-expanded', String(section.isOpen || query.length > 0));
+            section.row.classList.toggle('is-locked', section.isLocked);
+            section.row.classList.toggle('is-unlocked', !section.isLocked);
+            const sectionTrigger = section.row.querySelector('.bpt-section-trigger');
+            sectionTrigger?.setAttribute('aria-expanded', String(section.isOpen || query.length > 0));
+            sectionTrigger?.setAttribute('aria-disabled', String(section.isLocked));
             applySectionRowStyles(section.row, section.isOpen || query.length > 0);
 
             const icon = section.row.querySelector('.bpt-section-toggle i');

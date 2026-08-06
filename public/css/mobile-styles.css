@@ -163,12 +163,14 @@
 
     #right-nav-panel #CharListButtonAndHotSwaps {
         display: grid;
-        grid-template-columns: var(--sb-mobile-touch-target, 44px) minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);
+        grid-template-columns: minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);
         align-items: center;
-        gap: 6px;
+        gap: 8px;
         width: 100%;
         box-sizing: border-box;
-        padding: 4px 0 6px;
+        min-height: 58px;
+        max-height: none;
+        padding: 6px var(--sb-character-mobile-edge, var(--sb-shell-panel-padding-inline, 12px));
     }
 
     #right-nav-panel #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
@@ -181,7 +183,12 @@
         min-width: var(--sb-mobile-touch-target, 44px);
     }
 
+    #right-nav-panel:not(:is([data-menu-type="character_edit"], [data-menu-type="create"])) #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
+        display: none;
+    }
+
     #right-nav-panel #HotSwapWrapper {
+        grid-column: 1;
         min-width: 0;
         width: auto;
         max-width: 100%;
@@ -221,19 +228,36 @@
     }
 
     #right-nav-panel #sb-character-right-lock {
-        grid-column: 3;
+        grid-column: 2;
     }
 
     #right-nav-panel #sb-character-back-to-list {
-        grid-column: 4;
+        grid-column: 3;
     }
 
     #right-nav-panel #sb-character-mobile-close {
-        grid-column: 4;
+        grid-column: 3;
     }
 
     #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #CharListButtonAndHotSwaps {
-        grid-template-columns: 36px minmax(0, 1fr) 36px 36px 36px;
+        grid-template-columns: var(--sb-mobile-touch-target, 44px) minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);
+    }
+
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
+        display: flex;
+        grid-column: 1;
+    }
+
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #rm_button_characters {
+        grid-column: 1;
+    }
+
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-right-lock {
+        grid-column: 3;
+    }
+
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-back-to-list {
+        grid-column: 4;
     }
 
     #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-mobile-close {
@@ -664,6 +688,7 @@
         border-radius: 6px;
         z-index: 3;
         cursor: pointer;
+        -webkit-backdrop-filter: blur(2px);
         backdrop-filter: blur(2px);
     }
 
@@ -828,6 +853,7 @@
         border-radius: 6px;
         z-index: 3;
         cursor: pointer;
+        -webkit-backdrop-filter: blur(2px);
         backdrop-filter: blur(2px);
     }
 
@@ -987,6 +1013,7 @@
         min-height: var(--sb-mobile-touch-target, 44px);
     }
 
+    /* SillyBunny divergence: text-labelled icon controls may expand beyond upstream square sizing. */
     .menu_button:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty,
     .menu_button_icon:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty,
     .right_menu_button:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty,
@@ -995,13 +1022,11 @@
     .menu_button:not(.sb-server-action):not(.api_button):not(.openrouter_authorize):not(#bg_selection_mode_button):not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child),
     .menu_button:not(.sb-server-action):not(.api_button):not(.openrouter_authorize):not(#bg_selection_mode_button):not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> input[hidden] + :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):last-child),
     .right_menu_button:not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child) {
-        width: var(--sb-control-icon-physical-size, 44px);
+        width: auto;
         min-width: var(--sb-control-icon-physical-size, 44px);
-        max-width: var(--sb-control-icon-physical-size, 44px);
-        height: var(--sb-control-icon-physical-size, 44px);
+        height: auto;
         min-height: var(--sb-control-icon-physical-size, 44px);
-        max-height: var(--sb-control-icon-physical-size, 44px);
-        padding: 0 !important;
+        padding: 0 6px !important;
     }
 
     .menu_button.sb-accent-preset,
@@ -1094,6 +1119,7 @@
 
     #send_form {
         border: 1px solid var(--SmartThemeBorderColor);
+        -webkit-backdrop-filter: blur(20px);
         backdrop-filter: blur(20px);
         max-width: 100dvw;
     }
@@ -1217,6 +1243,7 @@
         border-radius: 0 0 20px 20px;
         top: var(--topBarBlockSize) !important;
         left: 0 !important;
+        -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength) * 2));
         backdrop-filter: blur(calc(var(--SmartThemeBlurStrength) * 2));
 
         @starting-style {
@@ -1450,6 +1477,7 @@
         max-width: unset;
         min-height: unset;
         max-height: unset;
+        -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength) * 2));
         backdrop-filter: blur(calc(var(--SmartThemeBlurStrength) * 2));
         left: 0;
         right: 0;
@@ -1538,6 +1566,7 @@
         z-index: var(--sb-z-loader) !important;
         overflow-y: auto !important;
         border-radius: 0 !important;
+        -webkit-backdrop-filter: blur(20px);
         backdrop-filter: blur(20px);
         background: var(--SmartThemeBlurTintColor);
     }
@@ -1771,6 +1800,22 @@
         display: none !important;
     }
 
+    #rightSendForm > .stscript_btn {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: var(--sb-composer-action-size) !important;
+        min-width: var(--sb-composer-action-size) !important;
+        max-width: var(--sb-composer-action-size) !important;
+        height: var(--sb-composer-action-size) !important;
+        min-height: var(--sb-composer-action-size) !important;
+        max-height: var(--sb-composer-action-size) !important;
+        flex: 0 0 var(--sb-composer-action-size) !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+    }
+
     #leftSendForm > div,
     #rightSendForm > div:not(.stscript_btn),
     #send_but,
@@ -1788,7 +1833,7 @@
         align-items: center !important;
         justify-content: center !important;
         box-sizing: border-box !important;
-        border-radius: 8px !important;
+        border-radius: 10px !important;
         line-height: 1 !important;
         font-size: var(--sb-composer-action-icon-size) !important;
     }
@@ -1798,7 +1843,7 @@
     :root[data-sb-compact-mode='true'] #send_but,
     :root[data-sb-compact-mode='true'] #send_form .mes_stop,
     :root[data-sb-compact-mode='true'] #send_form.sb-generating-controls #mes_stop {
-        border-radius: 7px !important;
+        border-radius: 9px !important;
         font-size: var(--sb-composer-action-icon-size) !important;
     }
 
@@ -1857,7 +1902,7 @@
         grid-area: action !important;
         align-self: center !important;
         align-items: center !important;
-        justify-content: center !important;
+        justify-content: flex-end !important;
         height: var(--sb-composer-action-size) !important;
         min-height: var(--sb-composer-action-size) !important;
         max-height: var(--sb-composer-action-size) !important;
@@ -1884,8 +1929,8 @@
 
     .group_speaker_controls {
         display: grid !important;
-        grid-template-columns: minmax(0, 1fr) repeat(4, var(--sb-mobile-touch-target, 44px)) !important;
-        grid-template-areas: "avatars speak dm chat auto" !important;
+        grid-template-columns: minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px) !important;
+        grid-template-areas: "avatars greeting speak" !important;
         gap: 5px !important;
         align-items: center !important;
         min-height: calc(var(--sb-mobile-touch-target, 44px) + 8px) !important;
@@ -1962,40 +2007,14 @@
         height: 34px !important;
     }
 
-    .group-dm-unread-dot {
-        top: -2px !important;
-        right: -2px !important;
-        display: block !important;
-        width: 10px !important;
-        height: 10px !important;
-        min-width: 10px !important;
-        min-height: 10px !important;
-    }
-
-    .group_speaker_avatar.has-unread-dm {
-        border-color: var(--sb-state-attention, var(--color-danger, #fb7185)) !important;
-        box-shadow: 0 0 0 1px var(--sb-state-attention-border, color-mix(in srgb, var(--color-danger, #fb7185) 42%, transparent)) !important;
-        animation: none !important;
-    }
-
-    .group_speaker_avatar.has-unread-dm::after {
-        inset: -4px !important;
-    }
-
     .group_speaker_avatar span,
-    #group_speaker_now span,
-    #group_speaker_dm_now span,
-    #group_speaker_dm_consolidate span,
-    #group_speaker_auto_dm span,
-    .group_speaker_toggle span {
+    #group_add_greeting span,
+    #group_speaker_now span {
         display: none !important;
     }
 
-    #group_speaker_now,
-    #group_speaker_dm_now,
-    #group_speaker_dm_consolidate,
-    #group_speaker_auto_dm,
-    .group_speaker_toggle {
+    #group_add_greeting,
+    #group_speaker_now {
         width: var(--sb-mobile-touch-target, 44px) !important;
         min-width: var(--sb-mobile-touch-target, 44px) !important;
         max-width: var(--sb-mobile-touch-target, 44px) !important;
@@ -2013,40 +2032,12 @@
         font-size: 16px !important;
     }
 
+    #group_add_greeting {
+        grid-area: greeting !important;
+    }
+
     #group_speaker_now {
         grid-area: speak !important;
-    }
-
-    #group_speaker_dm_now {
-        grid-area: dm !important;
-    }
-
-    #group_speaker_dm_consolidate {
-        grid-area: chat !important;
-    }
-
-    .group_speaker_toggle {
-        grid-area: auto !important;
-    }
-
-    #group_speaker_dm_now.selected,
-    #group_speaker_auto_dm.selected {
-        color: var(--SmartThemeBlurTintColor) !important;
-        background: var(--SmartThemeQuoteColor) !important;
-        border-color: var(--SmartThemeQuoteColor) !important;
-        opacity: 1 !important;
-        box-shadow: 0 0 0 2px color-mix(in srgb, var(--SmartThemeQuoteColor) 45%, transparent), 0 0 10px color-mix(in srgb, var(--SmartThemeQuoteColor) 55%, transparent) !important;
-    }
-
-    #group_speaker_dm_now.selected i,
-    #group_speaker_auto_dm.selected i {
-        color: var(--SmartThemeBlurTintColor) !important;
-    }
-
-    #group_speaker_dm_now:not(.selected),
-    #group_speaker_auto_dm:not(.selected) {
-        opacity: 0.58 !important;
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent) !important;
     }
 
     /* SillyBunny: Mobile-specific group member touch targets for Add Members screen */
@@ -2110,19 +2101,6 @@
     #rm_group_members .group_member_icon {
         max-width: var(--sb-group-actions-width);
         flex-wrap: wrap;
-    }
-
-    /* SillyBunny: Prevent text overflow on Generate Schedule button */
-    #rm_group_generate_schedule {
-        max-width: 100%;
-        min-width: 0;
-    }
-
-    #rm_group_generate_schedule span {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        min-width: 0;
     }
 
     /* General fix for menu_button_icon with text on mobile */

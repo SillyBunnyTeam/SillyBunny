@@ -7,12 +7,14 @@ import { Jimp, JimpMime } from '../jimp.js';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import { imageSize as sizeOf } from 'image-size';
 
-import { getConfigValue, invalidateFirefoxCache } from '../util.js';
+import { getConfigValue, invalidateFirefoxCache, recoverFileWriteSync } from '../util.js';
 import {
     getThumbnailResolution,
+    getThumbnailMobileResolution,
     isAnimatedWebP,
     isAnimatedApng,
     thumbnailDimensions as dimensions,
+    thumbnailMobileDimensions as mobileDimensions,
 } from './image-metadata.js';
 import { ResizeStrategy } from '@jimp/plugin-resize';
 import { safeCover } from '../jimp-safe.js';
@@ -29,29 +31,62 @@ const thumbnailRuntimeSettings = {
     format: String(getConfigValue('thumbnails.format', 'png')).toLowerCase().trim() === 'png' ? 'png' : 'jpg',
 };
 
+const thumbnailMobileRuntimeSettings = {
+    enabled: !!getConfigValue('thumbnails.mobile.enabled', true, 'boolean'),
+    quality: Math.min(100, Math.max(1, parseInt(getConfigValue('thumbnails.mobile.quality', 82, 'number')))),
+    format: String(getConfigValue('thumbnails.mobile.format', 'jpg')).toLowerCase().trim() === 'png' ? 'png' : 'jpg',
+};
+
+async function setCachedThumbnailContentType(response, filePath) {
+    let fileHandle = null;
+    try {
+        fileHandle = await fs.promises.open(filePath, 'r');
+        const header = Buffer.alloc(12);
+        await fileHandle.read(header, 0, header.length, 0);
+
+        if (header.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) {
+            response.type('jpg');
+        } else if (header.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+            response.type('png');
+        }
+    } catch {
+        // Fall back to Express' extension-based content type.
+    } finally {
+        if (fileHandle !== null) {
+            await fileHandle.close();
+        }
+    }
+}
+
 /**
  * @typedef {'bg' | 'avatar' | 'persona'} ThumbnailType
  */
 
 
 /**
+ * @typedef {'desktop' | 'mobile'} ThumbnailPreset
+ */
+
+/**
  * Gets a path to thumbnail folder based on the type.
  * @param {import('../users.js').UserDirectoryList} directories User directories
  * @param {ThumbnailType} type Thumbnail type
+ * @param {ThumbnailPreset} [preset='desktop'] Thumbnail preset
  * @returns {string} Path to the thumbnails folder
  */
-function getThumbnailFolder(directories, type) {
+export function getThumbnailFolder(directories, type, preset = 'desktop') {
     let thumbnailFolder;
+    const isMobile = preset === 'mobile';
 
     switch (type) {
         case 'bg':
-            thumbnailFolder = directories.thumbnailsBg;
+            thumbnailFolder = isMobile ? directories.thumbnailsBgMobile : directories.thumbnailsBg;
             break;
         case 'avatar':
-            thumbnailFolder = directories.thumbnailsAvatar;
+            thumbnailFolder = isMobile ? directories.thumbnailsAvatarMobile : directories.thumbnailsAvatar;
             break;
         case 'persona':
-            thumbnailFolder = directories.thumbnailsPersona;
+            thumbnailFolder = isMobile ? directories.thumbnailsPersonaMobile : directories.thumbnailsPersona;
             break;
     }
 
@@ -83,19 +118,56 @@ function getOriginalFolder(directories, type) {
 }
 
 /**
+ * Resolves a requested file name to the name that actually exists in the original images folder.
+ * @param {import('../users.js').UserDirectoryList} directories User directories
+ * @param {ThumbnailType} type Thumbnail type
+ * @param {string} file Requested file name
+ * @returns {string} File name to use for thumbnail lookups
+ */
+// SillyBunny: diverges from upstream. Clients can send a `file` that was percent-encoded twice
+// ("Mara%2520Rodriguez.png"); Express decodes it once, leaving a literal "%20" that never matches
+// the file on disk. The name as sent always wins, so real '%' characters keep working.
+function resolveOriginalFileName(directories, type, file) {
+    if (!file.includes('%')) {
+        return file;
+    }
+
+    const originalFolder = getOriginalFolder(directories, type);
+    if (originalFolder === undefined || fs.existsSync(path.join(originalFolder, file))) {
+        return file;
+    }
+
+    let decodedFile;
+    try {
+        decodedFile = decodeURIComponent(file);
+    } catch {
+        // A '%' that is not a valid escape sequence is a legal file name character.
+        return file;
+    }
+
+    // Re-run the sanitizer so a decoded name can never escape the folder.
+    if (!decodedFile || decodedFile === file || decodedFile !== sanitize(decodedFile)) {
+        return file;
+    }
+
+    return fs.existsSync(path.join(originalFolder, decodedFile)) ? decodedFile : file;
+}
+
+/**
  * Removes the generated thumbnail from the disk.
  * @param {import('../users.js').UserDirectoryList} directories User directories
  * @param {ThumbnailType} type Type of the thumbnail
  * @param {string} file Name of the file
  */
 export function invalidateThumbnail(directories, type, file) {
-    const folder = getThumbnailFolder(directories, type);
-    if (folder === undefined) throw new Error('Invalid thumbnail type');
+    for (const preset of ['desktop', 'mobile']) {
+        const folder = getThumbnailFolder(directories, type, preset);
+        if (folder === undefined) throw new Error('Invalid thumbnail type');
 
-    const pathToThumbnail = path.join(folder, sanitize(file));
-
-    if (fs.existsSync(pathToThumbnail)) {
-        fs.unlinkSync(pathToThumbnail);
+        const pathToThumbnail = path.join(folder, sanitize(file));
+        if (fs.existsSync(pathToThumbnail)) {
+            fs.unlinkSync(pathToThumbnail);
+        }
     }
 }
 
@@ -109,6 +181,16 @@ export function getThumbnailRuntimeSettings() {
     return { ...thumbnailRuntimeSettings };
 }
 
+export function setThumbnailMobileRuntimeSettings(settings = {}) {
+    thumbnailMobileRuntimeSettings.enabled = Boolean(settings.enabled);
+    thumbnailMobileRuntimeSettings.quality = Math.min(100, Math.max(1, parseInt(settings.quality, 10) || 82));
+    thumbnailMobileRuntimeSettings.format = String(settings.format ?? 'jpg').toLowerCase().trim() === 'png' ? 'png' : 'jpg';
+}
+
+export function getThumbnailMobileRuntimeSettings() {
+    return { ...thumbnailMobileRuntimeSettings };
+}
+
 /**
  * Generates or retrieves a thumbnail for a given file.
  * @param {import('../users.js').UserDirectoryList} directories - User's directory configuration.
@@ -116,21 +198,29 @@ export function getThumbnailRuntimeSettings() {
  * @param {string} file - The filename of the image.
  * @param {boolean} [forceGenerate=false] - Whether to force generation even if a thumbnail exists.
  * @param {boolean|null} [isKnownAnimated=null] - If true, skips generation. If false, assumes static. If null, checks.
+ * @param {ThumbnailPreset} [preset='desktop'] - Thumbnail preset to generate.
  * @returns {Promise<{path: string|null, aspectRatio: number|null, resolution: number|null}>} Path to thumbnail, its aspect ratio, and resolution.
  */
-export async function generateThumbnail(directories, type, file, forceGenerate = false, isKnownAnimated = null) {
+export async function generateThumbnail(directories, type, file, forceGenerate = false, isKnownAnimated = null, preset = 'desktop') {
     // If the caller has already determined the file is animated, skip processing.
     if (isKnownAnimated) {
         return { path: null, aspectRatio: null, resolution: null };
     }
 
-    const thumbnailFolder = getThumbnailFolder(directories, type);
+    const isMobile = preset === 'mobile';
+    const thumbnailFolder = getThumbnailFolder(directories, type, preset);
     const originalFolder = getOriginalFolder(directories, type);
     if (thumbnailFolder === undefined || originalFolder === undefined) throw new Error('Invalid thumbnail type');
+    // SillyBunny: tolerate a double percent-encoded name (see resolveOriginalFileName).
+    file = resolveOriginalFileName(directories, type, file);
     const pathToCachedFile = path.join(thumbnailFolder, file);
 
     try {
         const pathToOriginalFile = path.join(originalFolder, file);
+
+        if (type === 'avatar' && path.extname(pathToOriginalFile).toLowerCase() === '.png') {
+            recoverFileWriteSync(pathToOriginalFile);
+        }
 
         // Check if thumbnail already exists and return it if not forcing regeneration
         if (!forceGenerate && fs.existsSync(pathToCachedFile)) {
@@ -152,7 +242,7 @@ export async function generateThumbnail(directories, type, file, forceGenerate =
                     const fileDimensions = sizeOf(buffer);
                     const ratio = (fileDimensions.height > 0) ? (fileDimensions.width / fileDimensions.height) : 1.0;
                     // When a thumbnail exists, return the current resolution from config so the JSON can be updated.
-                    const resolution = getThumbnailResolution(type);
+                    const resolution = isMobile ? getThumbnailMobileResolution(type) : getThumbnailResolution(type);
                     return { path: pathToCachedFile, aspectRatio: ratio, resolution };
                 }
             } catch (e) {
@@ -192,7 +282,7 @@ export async function generateThumbnail(directories, type, file, forceGenerate =
         }
 
         // Process the image to generate thumbnail
-        const result = await processSingleImage(file, originalFolder, thumbnailFolder, type);
+        const result = await processSingleImage(file, originalFolder, thumbnailFolder, type, preset);
         if (result.success) {
             return { path: pathToCachedFile, aspectRatio: result.aspectRatio ?? null, resolution: result.resolution ?? null };
         } else {
@@ -211,13 +301,15 @@ export async function generateThumbnail(directories, type, file, forceGenerate =
  * @param {string} originalFolder - Path to the original image folder.
  * @param {string} thumbnailFolder - Path to the thumbnail output folder.
  * @param {ThumbnailType} type - The type of thumbnail to generate.
+ * @param {ThumbnailPreset} [preset='desktop'] - Thumbnail preset to generate.
  * @returns {Promise<{success: boolean, filename?: string, error?: string, aspectRatio?: number, resolution?: number}>} Result of the processing.
  */
-async function processSingleImage(file, originalFolder, thumbnailFolder, type) {
+async function processSingleImage(file, originalFolder, thumbnailFolder, type, preset = 'desktop') {
     const pathToOriginalFile = path.join(originalFolder, file);
     const pathToCachedFile = path.join(thumbnailFolder, file);
 
     try {
+        const isMobile = preset === 'mobile';
         const fileBuffer = fs.readFileSync(pathToOriginalFile);
         const image = await Jimp.read(fileBuffer);
 
@@ -227,10 +319,12 @@ async function processSingleImage(file, originalFolder, thumbnailFolder, type) {
         const aspectRatio = (originalHeight > 0) ? (originalWidth / originalHeight) : 1.0;
 
         const thumbImage = image.clone();
-        const thumbnailResolution = getThumbnailResolution(type);
+        const thumbnailResolution = isMobile ? getThumbnailMobileResolution(type) : getThumbnailResolution(type);
+        const dimensionSource = isMobile ? mobileDimensions : dimensions;
+        const settings = isMobile ? thumbnailMobileRuntimeSettings : thumbnailRuntimeSettings;
 
         if (type === 'bg') {
-            const [configWidth, configHeight] = dimensions[type];
+            const [configWidth, configHeight] = dimensionSource[type];
             const targetPixelArea = configWidth * configHeight;
 
             // Calculate thumbnail dimensions to maintain target pixel area while preserving aspect ratio
@@ -242,13 +336,13 @@ async function processSingleImage(file, originalFolder, thumbnailFolder, type) {
             thumbImage.resize({ w: thumbWidth, h: thumbHeight, mode: ResizeStrategy.BILINEAR });
         } else if (type === 'avatar' || type === 'persona') {
             // Crop and resize to fixed dimensions
-            const [configWidth, configHeight] = dimensions[type];
+            const [configWidth, configHeight] = dimensionSource[type];
             safeCover(thumbImage, { w: configWidth, h: configHeight, mode: ResizeStrategy.BILINEAR });
         }
 
-        const buffer = thumbnailRuntimeSettings.format === 'png'
+        const buffer = settings.format === 'png'
             ? await thumbImage.getBuffer(JimpMime.png)
-            : await thumbImage.getBuffer(JimpMime.jpeg, { quality: thumbnailRuntimeSettings.quality, jpegColorSpace: 'ycbcr' });
+            : await thumbImage.getBuffer(JimpMime.jpeg, { quality: settings.quality, jpegColorSpace: 'ycbcr' });
 
         writeFileAtomicSync(pathToCachedFile, buffer);
 
@@ -266,14 +360,19 @@ async function processSingleImage(file, originalFolder, thumbnailFolder, type) {
  */
 publicRouter.get('/', async function (request, response) {
     try {
-        const { file: rawFile, type, animated } = request.query;
+        const { file: rawFile, type, animated, preset: rawPreset } = request.query;
         if (typeof rawFile !== 'string' || typeof type !== 'string') return response.sendStatus(400);
         if (!(type === 'bg' || type === 'avatar' || type === 'persona')) {
             return response.sendStatus(400);
         }
 
-        const file = sanitize(rawFile);
-        if (file !== rawFile) return response.sendStatus(403);
+        const sanitizedFile = sanitize(rawFile);
+        if (sanitizedFile !== rawFile) return response.sendStatus(403);
+
+        // SillyBunny: tolerate a double percent-encoded `file` param (see resolveOriginalFileName).
+        const file = resolveOriginalFileName(request.user.directories, type, sanitizedFile);
+
+        const requestedPreset = rawPreset === 'mobile' ? 'mobile' : 'desktop';
 
         const serveOriginal = () => {
             const folder = getOriginalFolder(request.user.directories, type);
@@ -300,12 +399,14 @@ publicRouter.get('/', async function (request, response) {
             return serveOriginal();
         }
 
-        const thumbnailFolder = getThumbnailFolder(request.user.directories, type);
+        // If the mobile preset is disabled, fall back to the desktop thumbnail.
+        const effectivePreset = (requestedPreset === 'mobile' && thumbnailMobileRuntimeSettings.enabled) ? 'mobile' : 'desktop';
+        const thumbnailFolder = getThumbnailFolder(request.user.directories, type, effectivePreset);
         const pathToCachedFile = path.join(thumbnailFolder, file);
 
         // Try to generate thumbnail if it doesn't exist
         if (!fs.existsSync(pathToCachedFile)) {
-            const thumbResult = await generateThumbnail(request.user.directories, type, file, false);
+            const thumbResult = await generateThumbnail(request.user.directories, type, file, false, null, effectivePreset);
             // If generation failed (path is null), serve the original file
             if (!thumbResult.path) {
                 return serveOriginal();
@@ -314,6 +415,7 @@ publicRouter.get('/', async function (request, response) {
 
         if (fs.existsSync(pathToCachedFile)) {
             invalidateFirefoxCache(pathToCachedFile, request, response);
+            await setCachedThumbnailContentType(response, pathToCachedFile);
             return response.sendFile(file, { root: thumbnailFolder, dotfiles: 'allow' });
         }
 

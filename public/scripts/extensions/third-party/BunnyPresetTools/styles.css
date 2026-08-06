@@ -19,8 +19,9 @@
 }
 
 #completion_prompt_manager #completion_prompt_manager_list li.bpt-section-row {
-    display: block;
-    grid-template-columns: minmax(0, 1fr);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: stretch;
     min-height: 48px;
     padding: 0;
     margin: 8px 0 4px;
@@ -40,7 +41,7 @@
 .bpt-section-trigger {
     appearance: none;
     -webkit-appearance: none;
-    grid-column: 1 / -1;
+    grid-column: 1;
     min-height: 48px;
     width: 100%;
     display: flex;
@@ -48,13 +49,17 @@
     gap: 10px;
     padding: 10px 12px;
     border: 0;
-    border-radius: inherit;
+    border-radius: 14px 0 0 14px;
     background: transparent;
     color: inherit;
     font: inherit;
     text-align: left;
     cursor: pointer;
     touch-action: manipulation;
+}
+
+.bpt-section-row.is-locked .bpt-section-trigger {
+    cursor: default;
 }
 
 .bpt-section-trigger > * {
@@ -88,6 +93,62 @@
     color: var(--SmartThemeEmColor);
     font-size: 0.9em;
     white-space: nowrap;
+}
+
+.bpt-section-lock {
+    appearance: none;
+    -webkit-appearance: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    align-self: stretch;
+    min-width: 46px;
+    min-height: 48px;
+    padding: 0 12px;
+    border: 0;
+    border-left: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 72%, transparent);
+    border-radius: 0 14px 14px 0;
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 52%, transparent);
+    color: var(--SmartThemeEmColor);
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.bpt-section-row.is-locked .bpt-section-lock {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
+    color: var(--SmartThemeBodyColor);
+}
+
+.bpt-section-lock:hover,
+.bpt-section-lock:focus-visible {
+    outline: none;
+    color: var(--SmartThemeBodyColor);
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--SmartThemeQuoteColor) 72%, transparent);
+}
+
+#completion_prompt_manager_list.bpt-section-reordering {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+#completion_prompt_manager_list li.bpt-section-row.bpt-section-dragging {
+    opacity: 0.72;
+    transform: scale(0.995);
+    box-shadow: 0 14px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
+}
+
+#completion_prompt_manager_list li.bpt-section-row.bpt-section-drop-target {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeQuoteColor) 48%, transparent);
+}
+
+#completion_prompt_manager_list li.bpt-drop-indicator {
+    display: block;
+    height: 8px;
+    margin: 6px 0;
+    border-radius: 999px;
+    list-style: none;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 70%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--SmartThemeQuoteColor) 16%, transparent);
 }
 
 #completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt.bpt-section-item .prompt_manager_prompt_name {
@@ -356,6 +417,12 @@ body.bpt-animated-bg-active #bg1 {
     .bpt-section-trigger {
         padding: 14px 16px;
         min-height: 48px;
+    }
+
+    .bpt-section-lock {
+        min-width: 52px;
+        min-height: 52px;
+        padding: 0 14px;
     }
 
     .bpt-section-toggle {

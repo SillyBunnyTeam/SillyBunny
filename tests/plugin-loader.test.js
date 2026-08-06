@@ -11,7 +11,7 @@ function createPluginsDirectory() {
     return pluginsPath;
 }
 
-async function importPluginLoader(config) {
+async function importPluginLoader(config, { commandExists = false, gitFactory = null } = {}) {
     jest.resetModules();
 
     const effectiveConfig = {
@@ -32,16 +32,17 @@ async function importPluginLoader(config) {
     }));
 
     await jest.unstable_mockModule('command-exists', () => ({
-        sync: jest.fn(() => false),
+        sync: jest.fn(() => commandExists),
     }));
 
+    const defaultGitFactory = jest.fn(() => ({
+        checkIsRepo: jest.fn(async () => false),
+    }));
     await jest.unstable_mockModule('simple-git', () => ({
         CheckRepoActions: {
             IS_REPO_ROOT: 'IS_REPO_ROOT',
         },
-        default: jest.fn(() => ({
-            checkIsRepo: jest.fn(async () => false),
-        })),
+        default: gitFactory || defaultGitFactory,
     }));
 
     return await import('../src/plugin-loader.js');
@@ -122,5 +123,49 @@ describe('plugin loader diagnostics', () => {
         expect(errors).not.toContain('Server plugin dependency');
         expect(errors).not.toContain('npm install');
         expect(errors).not.toContain('bun install');
+    });
+
+    test('does not load hidden staging directories or mutate release-pinned plugins', async () => {
+        const pluginsPath = createPluginsDirectory();
+        const pluginPath = path.join(pluginsPath, 'pinned-plugin');
+        const hiddenPath = path.join(pluginsPath, '.server-plugin-updates');
+        fs.mkdirSync(pluginPath);
+        fs.mkdirSync(hiddenPath);
+        fs.writeFileSync(path.join(pluginPath, '.sillybunny-release.json'), '{}');
+        fs.writeFileSync(path.join(hiddenPath, 'index.mjs'), 'throw new Error("hidden staging code loaded");\n');
+        const gitFactory = jest.fn();
+        const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+        const { loadPlugins } = await importPluginLoader({
+            enableServerPlugins: true,
+            enableServerPluginsAutoUpdate: true,
+        }, {
+            commandExists: true,
+            gitFactory,
+        });
+
+        await loadPlugins(createApp(), pluginsPath);
+
+        expect(gitFactory).not.toHaveBeenCalled();
+        expect(logSpy.mock.calls.flat().join('\n')).toContain('Skipping mutable auto-update for release-pinned plugin pinned-plugin');
+    });
+
+    test('continues to load dot-prefixed plugins that are not updater storage', async () => {
+        const pluginsPath = createPluginsDirectory();
+        const pluginPath = path.join(pluginsPath, '.custom-plugin');
+        fs.mkdirSync(pluginPath);
+        fs.writeFileSync(path.join(pluginPath, 'index.mjs'), [
+            'export const info = { id: "hidden_plugin", name: "Hidden", description: "Test" };',
+            'export function init() {}',
+        ].join('\n'));
+        const app = createApp();
+        const { getLoadedServerPluginIds, getLoadedServerPlugins, loadPlugins } = await importPluginLoader({ enableServerPlugins: true });
+
+        await loadPlugins(app, pluginsPath);
+
+        expect(getLoadedServerPluginIds()).toContain('hidden_plugin');
+        expect(getLoadedServerPlugins()).toContainEqual({
+            id: 'hidden_plugin',
+            directoryPath: fs.realpathSync(pluginPath),
+        });
     });
 });

@@ -6,7 +6,7 @@ import { getAllPrompts, getPrompt, savePrompt, isPromptModified, getAllPipelines
 import { getDefaultPrompts } from './default-prompts.js';
 import { getSettings, setSettings, listConnectionProfiles } from '../tree-store.js';
 
-const DEFAULT_PIPELINE_MAX_TOKENS = 32000;
+const DEFAULT_PIPELINE_MAX_TOKENS = 64000;
 
 const EDITOR_HTML = `
 <div id="pathfinder-prompt-editor" class="pathfinder-prompt-editor">

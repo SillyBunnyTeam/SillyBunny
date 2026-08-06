@@ -9,7 +9,7 @@ import { chat_completion_sources, getChatCompletionModel, oai_settings } from '.
 import { Popup } from './popup.js';
 import { performFuzzySearch, power_user } from './power-user.js';
 import { getPresetManager } from './preset-manager.js';
-import { shouldReduceStreamingDomWork, shouldRenderLiveReasoningContent } from './mobile-streaming.js';
+import { getStreamingReasoningRenderInterval, shouldReduceStreamingDomWork, shouldRenderLiveReasoningContent } from './mobile-streaming.js';
 import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from './slash-commands/SlashCommandArgument.js';
 import { commonEnumProviders, enumIcons } from './slash-commands/SlashCommandCommonEnumsProvider.js';
@@ -230,6 +230,18 @@ export function extractReasoningFromData(data, {
                         ?? data?.choices?.[0]?.message?.reasoning
                         ?? '';
                 }
+                case chat_completion_sources.LINKAPI: {
+                    // Response shape depends on the model's routing leg (Anthropic/Gemini/OpenAI).
+                    if (Array.isArray(data?.content)) {
+                        return data.content.filter(part => part.type === 'thinking').map(part => part.thinking).join('\n\n') ?? '';
+                    }
+                    if (Array.isArray(data?.responseContent?.parts)) {
+                        return data.responseContent.parts.filter(part => part.thought).map(part => part.text).join('\n\n') ?? '';
+                    }
+                    return data?.choices?.[0]?.message?.reasoning_content
+                        ?? data?.choices?.[0]?.message?.reasoning
+                        ?? '';
+                }
             }
             break;
     }
@@ -256,7 +268,8 @@ export function extractReasoningSignatureFromData(data, {
     }
 
     const source = chatCompletionSource ?? oai_settings.chat_completion_source;
-    const isGemini = source === chat_completion_sources.MAKERSUITE || source === chat_completion_sources.VERTEXAI;
+    const isGemini = source === chat_completion_sources.MAKERSUITE || source === chat_completion_sources.VERTEXAI
+        || (source === chat_completion_sources.LINKAPI && Boolean(data?.responseContent || data?.candidates));
     const isOpenRouter = source === chat_completion_sources.OPENROUTER;
 
     if (!isGemini && !isOpenRouter) {
@@ -670,8 +683,10 @@ export class ReasoningHandler {
         setDatasetProperty(this.messageReasoningDetailsDom, 'type', this.type);
 
         const now = Date.now();
-        const shouldReduceReasoningDomWork = shouldReduceStreamingDomWork(globalThis.navigator, {
-            enabled: power_user.ios_webkit_conservative_streaming,
+        const navigatorRef = globalThis.navigator;
+        const shouldReduceReasoningDomWork = shouldReduceStreamingDomWork(navigatorRef, {
+            iosEnabled: power_user.ios_webkit_conservative_streaming,
+            androidEnabled: power_user.android_conservative_streaming,
         });
         const shouldRenderReasoning = shouldRenderLiveReasoningContent({
             isReducedDomWork: shouldReduceReasoningDomWork,
@@ -680,20 +695,22 @@ export class ReasoningHandler {
             hasRenderedContent: Boolean(this.messageReasoningContentDom.childNodes.length),
             lastRenderAt: this.#lastReasoningDomRenderAt,
             now,
+            minIntervalMs: getStreamingReasoningRenderInterval(navigatorRef),
         });
 
-        // SillyBunny: iOS WebKit can force-reload under reasoning-heavy streams if we
+        // SillyBunny: mobile browsers can force-reload under reasoning-heavy streams if we
         // format and morph a growing hidden reasoning block on every live tick.
         if (shouldRenderReasoning) {
-            // SillyBunny: throttle live reasoning DOM work on iOS WebKit so large
+            // SillyBunny: throttle live reasoning DOM work on reduced platforms so large
             // hidden reasoning blocks do not cause aggressive repaint or reload loops.
             const reasoning = trimSpaces(this.reasoningDisplayText ?? this.reasoning);
             const displayReasoning = messageFormatting(reasoning, '', false, false, messageId, {}, true);
 
             if (power_user.stream_fade_in) {
                 applyStreamFadeIn(this.messageReasoningContentDom, displayReasoning, {
-                    bypassFadeIn: shouldReduceStreamingDomWork(globalThis.navigator, {
-                        enabled: power_user.ios_webkit_disable_stream_fade_in,
+                    bypassFadeIn: shouldReduceStreamingDomWork(navigatorRef, {
+                        iosEnabled: power_user.ios_webkit_disable_stream_fade_in,
+                        androidEnabled: power_user.android_disable_stream_fade_in,
                     }),
                 });
             } else {
@@ -1417,7 +1434,7 @@ function setReasoningEventHandlers() {
             resetHeight();
         }
 
-        textarea.focus();
+        textarea.focus({ preventScroll: true });
         textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 
         const textareaRect = textarea.getBoundingClientRect();

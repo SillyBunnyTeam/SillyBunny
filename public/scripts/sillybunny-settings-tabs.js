@@ -73,11 +73,14 @@
             }
         }
 
-        /* Declarative visibility rules based on active tab */
-        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="appearance"] .inline-drawer:not([data-settings-tab="appearance"]),
-        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="chat-writing"] .inline-drawer:not([data-settings-tab="chat-writing"]),
-        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="system-device"] .inline-drawer:not([data-settings-tab="system-device"]),
-        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="cache-account"] .inline-drawer:not([data-settings-tab="cache-account"]) {
+        /* Declarative visibility rules based on active tab.
+           Only drawers that carry a tag are hidden. An untagged drawer -- a third-party one that
+           landed here after tagDrawersWithCategories() last ran -- stays visible rather than
+           vanishing from all four tabs; tagUntaggedDrawers() then settles it into one. */
+        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="appearance"] .inline-drawer[data-settings-tab]:not([data-settings-tab="appearance"]),
+        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="chat-writing"] .inline-drawer[data-settings-tab]:not([data-settings-tab="chat-writing"]),
+        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="system-device"] .inline-drawer[data-settings-tab]:not([data-settings-tab="system-device"]),
+        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="cache-account"] .inline-drawer[data-settings-tab]:not([data-settings-tab="cache-account"]) {
             display: none !important;
         }
 
@@ -127,7 +130,28 @@
         if (parentAppearance && col1) {
             // Give parent drawer header a cleaner title
             const mainHeaderSpan = parentAppearance.querySelector(':scope > .inline-drawer-header b span');
-            if (mainHeaderSpan) mainHeaderSpan.textContent = 'UI Theme & Presets';
+            if (mainHeaderSpan) {
+                mainHeaderSpan.textContent = 'UI Theme';
+                mainHeaderSpan.setAttribute('data-i18n', 'UI Theme');
+            }
+
+            // Keep palettes and accent controls separate from full UI themes
+            const themePresets = parentAppearance.querySelector('#UI-presets-block > .sb-theme-presets');
+            if (themePresets && !document.getElementById('sb-theme-presets-drawer')) {
+                const presetsDrawer = document.createElement('div');
+                presetsDrawer.id = 'sb-theme-presets-drawer';
+                presetsDrawer.className = 'inline-drawer wide100p flexFlowColumn sb-settings-subdrawer';
+                presetsDrawer.innerHTML = `
+                    <div class="inline-drawer-toggle inline-drawer-header userSettingsInnerExpandable">
+                        <b><i class="fa-solid fa-swatchbook"></i> <span data-i18n="Presets">Presets</span></b>
+                        <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
+                    </div>
+                    <div class="inline-drawer-content sb-settings-subdrawer-body" style="display:none">
+                    </div>
+                `;
+                parentAppearance.insertAdjacentElement('afterend', presetsDrawer);
+                presetsDrawer.querySelector('.inline-drawer-content').appendChild(themePresets);
+            }
 
             // Find AppearanceLayoutSection
             const layoutSec = document.getElementById('AppearanceLayoutSection');
@@ -232,6 +256,25 @@
             col2.appendChild(iosDrawer);
         }
 
+        // Wrap Android Streaming Stability in its own inline-drawer
+        const androidBlock = document.querySelector('[name="AndroidStreamingToggles"]');
+        if (androidBlock && col2 && !document.getElementById('sb-android-streaming-drawer')) {
+            const androidDrawer = document.createElement('div');
+            androidDrawer.id = 'sb-android-streaming-drawer';
+            androidDrawer.className = 'inline-drawer wide100p flexFlowColumn sb-settings-subdrawer';
+            androidDrawer.innerHTML = `
+                <div class="inline-drawer-toggle inline-drawer-header userSettingsInnerExpandable" title="Controls Android browser safeguards for long streamed generations.">
+                    <b><i class="fa-solid fa-mobile-screen"></i> <span>Android Streaming Stability</span></b>
+                    <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
+                </div>
+                <div class="inline-drawer-content sb-settings-subdrawer-body" style="display:none">
+                </div>
+            `;
+            androidBlock.parentNode.insertBefore(androidDrawer, androidBlock);
+            androidDrawer.querySelector('.inline-drawer-content').appendChild(androidBlock);
+            col2.appendChild(androidDrawer);
+        }
+
         // Wrap Aggressive DOM Unloading in its own inline-drawer
         const domUnloadBlock = document.querySelector('[name="AggressiveDomUnloadToggles"]');
         if (domUnloadBlock && col2 && !document.getElementById('sb-aggressive-dom-unload-drawer')) {
@@ -301,6 +344,7 @@
         const mappings = {
             // Appearance Tab
             'AppearanceSection': 'appearance',
+            'sb-theme-presets-drawer': 'appearance',
             'sb-theme-colors-drawer': 'appearance',
             'sb-avatar-chat-styles-drawer': 'appearance',
             'AppearanceLayoutSection': 'appearance',
@@ -320,6 +364,7 @@
             'DesktopSection': 'system-device',
             'MobileSection': 'system-device',
             'sb-ios-webkit-streaming-drawer': 'system-device',
+            'sb-android-streaming-drawer': 'system-device',
             'sb-aggressive-dom-unload-drawer': 'system-device',
 
             // Cache & Account Tab
@@ -333,6 +378,39 @@
                 el.setAttribute('data-settings-tab', tab);
             }
         }
+    }
+
+    // Third-party extensions append their settings drawers long after initialize() runs, and the
+    // map above only knows this fork's own drawers. Give the leftovers a home so they show up in
+    // exactly one tab instead of every tab.
+    const DEFAULT_SETTINGS_TAB = 'system-device';
+
+    function tagUntaggedDrawers() {
+        const content = document.getElementById('user-settings-block-content');
+        if (!content) return;
+
+        content.querySelectorAll('.inline-drawer:not([data-settings-tab])').forEach(drawer => {
+            // A drawer nested inside an already-tagged section rides its parent's visibility.
+            if (drawer.parentElement?.closest('.inline-drawer[data-settings-tab]')) return;
+            drawer.setAttribute('data-settings-tab', DEFAULT_SETTINGS_TAB);
+        });
+    }
+
+    function watchForLateDrawers() {
+        const content = document.getElementById('user-settings-block-content');
+        if (!content || typeof MutationObserver === 'undefined') return;
+
+        let queued = 0;
+        const observer = new MutationObserver(() => {
+            if (queued) return;
+            queued = requestAnimationFrame(() => {
+                queued = 0;
+                tagDrawersWithCategories();
+                tagUntaggedDrawers();
+            });
+        });
+
+        observer.observe(content, { childList: true, subtree: true });
     }
 
     function createTabBar() {
@@ -413,8 +491,10 @@
             promoteNestedDrawers();
             promoteCacheAccount();
             tagDrawersWithCategories();
+            tagUntaggedDrawers();
             createTabBar();
             setupSearchIntegration();
+            watchForLateDrawers();
         } catch (error) {
             console.error('[SillyBunny Settings Tabs] Initialization failed:', error);
         }

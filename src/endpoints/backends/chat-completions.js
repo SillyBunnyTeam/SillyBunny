@@ -5,6 +5,8 @@ import express from 'express';
 import fetch from 'node-fetch';
 import urlJoin from 'url-join';
 import { getLocalPromptCacheValue, isLikelyLocalServerUrl } from '../../../public/scripts/local-url-utils.js';
+import { getLinkApiBaseUrl, getLinkApiRequestFormat } from '../../../public/scripts/linkapi-utils.js';
+import { applyKimiK3ModelParameterConstraints, isKimiK3Model } from '../../../public/scripts/openai-model-capabilities.js';
 
 import {
     AIMLAPI_HEADERS,
@@ -58,6 +60,7 @@ import {
     cachingSystemPromptForOpenRouter,
     addOpenRouterSignatures,
 } from '../../prompt-converters.js';
+import { applyReasoningEffortNormalization } from '../../reasoning-effort.js';
 
 import { readSecret, SECRET_KEYS } from '../secrets.js';
 import {
@@ -342,12 +345,17 @@ async function sendClaudeRequest(request, response) {
         const convertedPrompt = convertClaudeMessages(request.body.messages, request.body.assistant_prefill, useSystemPrompt, useTools, getPromptNames(request));
         // SillyBunny: claude-fable-5 support (substring match also catches router ids like 'anthropic/claude-fable-5')
         const isFableModel = /claude-fable/.test(request.body.model);
-        const useThinking = /^claude-(3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || (isFableModel && enableAdaptiveThinking);
-        const useWebSearch = (/^claude-(3-5|3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel) && Boolean(request.body.enable_web_search);
-        const isLimitedSampling = /^claude-(opus-4-1|sonnet-4-5|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model);
-        const useVerbosity = /^claude-(opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel;
-        const noPrefillModel = /^claude-(opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel;
-        const isAdaptiveModel = enableAdaptiveThinking && (/^claude-(opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel);
+        // SillyBunny: Claude Sonnet 5 and Opus 5 require adaptive thinking and reject sampling params and assistant prefill.
+        const isSonnetOrOpus5 = /^claude-(?:sonnet|opus)-5/.test(request.body.model);
+        const useThinking = /^claude-(3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || (isFableModel && enableAdaptiveThinking) || isSonnetOrOpus5;
+        const useWebSearch = (/^claude-(3-5|3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnetOrOpus5) && Boolean(request.body.enable_web_search);
+        const isLimitedSampling = /^claude-(opus-4-1|sonnet-4-5|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model);
+        const useVerbosity = /^claude-(opus-4-5|opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnetOrOpus5;
+        const noPrefillModel = /^claude-(opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnetOrOpus5;
+        // Sonnet 5 and Opus 5 are always adaptive; other adaptive models require the feature flag.
+        const isAdaptiveModel = (enableAdaptiveThinking && (/^claude-(opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel)) || isSonnetOrOpus5;
+        // SillyBunny: Claude 5 preserves xhigh separately from max; older adaptive models keep the max fallback.
+        const supportsXhigh = isSonnetOrOpus5;
         let fixThinkingPrefill = false;
         // Add custom stop sequences
         const stopSequences = [];
@@ -439,13 +447,24 @@ async function sendClaudeRequest(request, response) {
             delete requestBody.top_k;
         }
 
+        // SillyBunny: Claude Sonnet 5 and Opus 5 reject all custom sampling params with HTTP 400.
+        if (isSonnetOrOpus5) {
+            delete requestBody.temperature;
+            delete requestBody.top_p;
+            delete requestBody.top_k;
+        }
+
         const reasoningEffort = request.body.reasoning_effort;
-        const budgetTokens = calculateClaudeBudgetTokens(requestBody.max_tokens, reasoningEffort, requestBody.stream, isAdaptiveModel);
+        const budgetTokens = calculateClaudeBudgetTokens(requestBody.max_tokens, reasoningEffort, requestBody.stream, isAdaptiveModel, supportsXhigh);
 
         // Adaptive thinking: returns a string effort level (like Gemini 3)
         if (useThinking && typeof budgetTokens === 'string') {
             fixThinkingPrefill = true;
             requestBody.thinking = { type: 'adaptive' };
+            // SillyBunny: Claude 5 defaults to omitted; request summarized display when the UI shows reasoning.
+            if (isSonnetOrOpus5 && request.body.include_reasoning) {
+                requestBody.thinking.display = 'summarized';
+            }
             requestBody.output_config ??= {};
             requestBody.output_config.effort = budgetTokens;
             // top_k is not allowed in adaptive mode
@@ -469,6 +488,9 @@ async function sendClaudeRequest(request, response) {
             delete requestBody.temperature;
             delete requestBody.top_p;
             delete requestBody.top_k;
+        } else if (isSonnetOrOpus5 && budgetTokens === null) {
+            // SillyBunny: Claude 5 enables adaptive thinking by default; explicitly disable when effort is none/auto.
+            requestBody.thinking = { type: 'disabled' };
         }
 
         if ((fixThinkingPrefill || noPrefillModel) && convertedPrompt.messages.length && convertedPrompt.messages[convertedPrompt.messages.length - 1].role === 'assistant') {
@@ -514,7 +536,14 @@ async function sendClaudeRequest(request, response) {
 
             /** @type {any} */
             const generateResponseJson = await generateResponse.json();
-            const responseText = generateResponseJson?.content?.[0]?.text || '';
+            // SillyBunny: scan all content blocks for the first text block, not just
+            // content[0]. When adaptive thinking is enabled, content[0] is a thinking
+            // block ({ type: 'thinking', thinking: '...' }) with no .text property,
+            // causing empty responses for Fable and other thinking-enabled models.
+            const textBlock = Array.isArray(generateResponseJson?.content)
+                ? generateResponseJson.content.find(block => block?.type === 'text')
+                : null;
+            const responseText = textBlock?.text || generateResponseJson?.content?.[0]?.text || '';
             console.debug('Claude response:', summarizeLlmPayloadForLog(generateResponseJson));
 
             // Wrap it back to OAI format + save the original content
@@ -1155,6 +1184,11 @@ async function sendDeepSeekRequest(request, response) {
         if (request.body.logprobs > 0 && !isThinkingModel) {
             bodyParams['top_logprobs'] = request.body.logprobs;
             bodyParams['logprobs'] = true;
+        }
+
+        // DeepSeek accepts low/high/max and aliases medium/xhigh to high itself; min has no DeepSeek meaning.
+        if (isThinkingModel && request.body.reasoning_effort && !['auto', 'none'].includes(request.body.reasoning_effort)) {
+            bodyParams['reasoning_effort'] = request.body.reasoning_effort === 'min' ? 'low' : request.body.reasoning_effort;
         }
 
         if (Array.isArray(request.body.tools) && request.body.tools.length > 0) {
@@ -2196,6 +2230,10 @@ router.post('/status', async function (request, statusResponse) {
                 console.error('Error fetching Cloudflare Workers AI models:', error);
                 return statusResponse.status(500).send({ error: true });
             }
+        } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.LINKAPI) {
+            apiUrl = `${getLinkApiBaseUrl(request.body.linkapi_endpoint)}/v1`;
+            apiKey = readSecret(request.user.directories, SECRET_KEYS.LINKAPI, request.body.secret_id);
+            headers = {};
         } else {
             console.warn('This chat completion source is not supported yet.');
             return statusResponse.status(400).send({ error: true });
@@ -2515,7 +2553,7 @@ function forwardResponsesApiStream(fetchResponse, expressResponse, request, onDi
     }
 
     expressResponse.setHeader('Content-Type', 'text/event-stream');
-    expressResponse.setHeader('Cache-Control', 'no-cache');
+    expressResponse.setHeader('Cache-Control', 'no-cache, no-transform');
     expressResponse.setHeader('Connection', 'keep-alive');
 
     let buffer = '';
@@ -2773,9 +2811,21 @@ async function sendOpenAIResponsesRequest(request, response) {
     }
 }
 
-router.post('/generate', async function (request, response) {
+function getSafeCompletionErrorStatus(status) {
+    const parsed = Number(status);
+    return Number.isInteger(parsed) && parsed >= 400 && parsed < 500 ? parsed : 502;
+}
+
+// SillyBunny divergence: export the existing handler so Conversation REST can reuse upstream request assembly without forking backend logic.
+export async function handleChatCompletionsGenerate(request, response) {
     try {
         if (!request.body) return response.status(400).send({ error: true });
+
+        // SillyBunny divergence: normalize here, before the source switch, so every provider
+        // branch below inherits it. Extensions and hand-edited connection profiles can supply a
+        // reasoning effort the frontend never validated, and the pass-through sources forward it
+        // to the provider verbatim.
+        applyReasoningEffortNormalization(request.body);
 
         console.log(`[ChatCompletions] generate: type=${request.body.type} source=${request.body.chat_completion_source} model=${request.body.model} stream=${request.body.stream}`);
 
@@ -2807,6 +2857,26 @@ router.post('/generate', async function (request, response) {
             case CHAT_COMPLETION_SOURCES.ELECTRONHUB: return await sendElectronHubRequest(request, response);
             case CHAT_COMPLETION_SOURCES.AZURE_OPENAI: return await sendAzureOpenAIRequest(request, response);
             case CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES: return await sendOpenAIResponsesRequest(request, response);
+            case CHAT_COMPLETION_SOURCES.LINKAPI: {
+                const format = getLinkApiRequestFormat(request.body.model);
+                if (format === 'openai') {
+                    break; // OpenAI-compatible models use the shared chat/completions path below
+                }
+                const baseUrl = getLinkApiBaseUrl(request.body.linkapi_endpoint);
+                const apiKey = readSecret(request.user.directories, SECRET_KEYS.LINKAPI, request.body.secret_id);
+                if (!apiKey) {
+                    console.warn('LinkAPI key is missing.');
+                    return response.status(400).send({ error: true });
+                }
+                // Delegate to the native handlers through their reverse-proxy override path.
+                request.body.proxy_password = apiKey;
+                if (format === 'anthropic') {
+                    request.body.reverse_proxy = `${baseUrl}/v1`; // handler appends '/messages'
+                    return await sendClaudeRequest(request, response);
+                }
+                request.body.reverse_proxy = baseUrl; // getGoogleApiBaseUrl appends '/v1beta'
+                return await sendMakerSuiteRequest(request, response);
+            }
         }
 
         let apiUrl;
@@ -3008,9 +3078,11 @@ router.post('/generate', async function (request, response) {
             if (request.body.repetition_penalty !== undefined) {
                 bodyParams['repetition_penalty'] = request.body.repetition_penalty;
             }
-            if (request.body.reasoning_effort) {
-                const effort = NANOGPT_REASONING_EFFORT_MAP[request.body.reasoning_effort];
-                bodyParams['reasoning'] = { effort: effort };
+            // SillyBunny divergence: gate on the map rather than on the raw value being truthy.
+            // 'none' and 'auto' are truthy but have no NanoGPT equivalent, so upstream sent a
+            // bare `"reasoning": {}` for them -- and for anything else it could not translate.
+            if (Object.hasOwn(NANOGPT_REASONING_EFFORT_MAP, request.body.reasoning_effort)) {
+                bodyParams['reasoning'] = { effort: NANOGPT_REASONING_EFFORT_MAP[request.body.reasoning_effort] };
             }
 
             const isClaude = /(?:^|\/)claude[-_]/.test(request.body.model);
@@ -3040,7 +3112,7 @@ router.post('/generate', async function (request, response) {
             apiUrl = new URL(request.body.reverse_proxy || API_MOONSHOT).toString();
             apiKey = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.MOONSHOT);
             headers = {};
-            bodyParams = {
+            bodyParams = isKimiK3Model(request.body.model) ? {} : {
                 thinking: {
                     type: request.body.include_reasoning ? 'enabled' : 'disabled',
                 },
@@ -3099,6 +3171,16 @@ router.post('/generate', async function (request, response) {
                     json_schema: request.body.json_schema.value,
                 };
             }
+        } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.LINKAPI) {
+            apiUrl = `${getLinkApiBaseUrl(request.body.linkapi_endpoint)}/v1`;
+            apiKey = readSecret(request.user.directories, SECRET_KEYS.LINKAPI, request.body.secret_id);
+            headers = {};
+            bodyParams = {};
+            if (request.body.reasoning_effort && request.body.reasoning_effort !== 'none') {
+                // Client-side aliases min/max are not valid OpenAI-style effort values.
+                const effortMap = { min: 'low', max: 'high' };
+                bodyParams['reasoning_effort'] = effortMap[request.body.reasoning_effort] ?? request.body.reasoning_effort;
+            }
         } else {
             console.warn('This chat completion source is not supported yet.');
             return response.status(400).send({ error: true });
@@ -3156,6 +3238,13 @@ router.post('/generate', async function (request, response) {
             };
         }
 
+        // Grok rejects 'name' on non-user messages ("Only messages of role 'user' can have a name"),
+        // so fold names into content like the native xAI path when a Grok model is reached through
+        // OpenRouter, custom endpoints, or other OpenAI-compatible providers.
+        if (!isTextCompletion && Array.isArray(request.body.messages) && /grok/i.test(String(request.body.model))) {
+            request.body.messages = convertXAIMessages(request.body.messages, getPromptNames(request));
+        }
+
         const requestBody = {
             'messages': isTextCompletion === false ? request.body.messages : undefined,
             'prompt': isTextCompletion === true ? textPrompt : undefined,
@@ -3175,8 +3264,27 @@ router.post('/generate', async function (request, response) {
             ...bodyParams,
         };
 
+        const isKimiK3Request = !isTextCompletion
+            && [CHAT_COMPLETION_SOURCES.CUSTOM, CHAT_COMPLETION_SOURCES.MOONSHOT, CHAT_COMPLETION_SOURCES.NANOGPT, CHAT_COMPLETION_SOURCES.OPENROUTER].includes(request.body.chat_completion_source)
+            && isKimiK3Model(requestBody.model);
+
+        if (isKimiK3Request) {
+            applyKimiK3ModelParameterConstraints(requestBody);
+        }
+
         if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.CUSTOM) {
             excludeKeysByYaml(requestBody, request.body.custom_exclude_body);
+        }
+
+        if (isKimiK3Request) {
+            const responseFormatType = requestBody.response_format?.type;
+            const usesStructuredOutput = Boolean(request.body.json_schema)
+                || Boolean(requestBody.response_format && responseFormatType !== 'text');
+            if ([CHAT_COMPLETION_SOURCES.CUSTOM, CHAT_COMPLETION_SOURCES.NANOGPT, CHAT_COMPLETION_SOURCES.OPENROUTER].includes(request.body.chat_completion_source)
+                && !usesStructuredOutput
+                && Array.isArray(requestBody.messages)) {
+                addAssistantPrefix(requestBody.messages, [], 'partial');
+            }
         }
 
         /** @type {import('node-fetch').RequestInit} */
@@ -3214,7 +3322,7 @@ router.post('/generate', async function (request, response) {
             console.error('Chat completion request error: ', message, responseText);
 
             if (!response.headersSent) {
-                response.send({ error: { message }, quota_error: quota_error });
+                response.status(getSafeCompletionErrorStatus(fetchResponse.status)).send({ error: { message }, quota_error: quota_error });
             } else if (!response.writableEnded) {
                 response.write(responseText);
             } else {
@@ -3243,7 +3351,9 @@ router.post('/generate', async function (request, response) {
             response.end();
         }
     }
-});
+}
+
+router.post('/generate', handleChatCompletionsGenerate);
 
 const multimodalModels = express.Router();
 

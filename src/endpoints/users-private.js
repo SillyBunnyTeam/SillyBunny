@@ -12,10 +12,13 @@ import { getUserAvatar, toKey, getPasswordHash, getPasswordSalt, createBackupArc
 import { SETTINGS_FILE, USER_DIRECTORY_TEMPLATE } from '../constants.js';
 import { checkForNewContent, CONTENT_TYPES } from './content-manager.js';
 import { SECRETS_FILE } from './secrets.js';
-import { color, Cache, getConfigValue, ensureDirectory, normalizeZipEntryPath } from '../util.js';
+import { color, Cache, getConfigValue, ensureDirectory, normalizeZipEntryPath, recoverFileWritesInDirectorySync } from '../util.js';
+import { ENTITY_DATE_ADDED_FILE, importEntityDateAdded } from '../entity-date-added.js';
+import { ENTITY_LAST_CHAT_FILE, importEntityLastChat } from '../entity-last-chat.js';
 
+// SillyBunny divergence: private user export/import keeps fork-owned account data and metadata compatible across releases.
 const RESET_CACHE = new Cache(5 * 60 * 1000);
-const IMPORTABLE_ROOT_FILES = [SETTINGS_FILE, SECRETS_FILE];
+const IMPORTABLE_ROOT_FILES = [SETTINGS_FILE, SECRETS_FILE, ENTITY_DATE_ADDED_FILE, ENTITY_LAST_CHAT_FILE];
 const IMPORTABLE_TOP_LEVEL_DIRECTORIES = [...new Set(
     Object.values(USER_DIRECTORY_TEMPLATE)
         .filter(Boolean)
@@ -225,6 +228,8 @@ async function copyDirectoryTree(sourceDirectory, destinationDirectory, {
 
 async function copyAllowedFolderContents(sourceRoot, targetRoot) {
     let copiedEntries = 0;
+    let importedEntityDateAdded;
+    let importedEntityLastChat;
     const protectedRoots = new Set([await getStableRealPath(targetRoot)]);
     const visitedDirectories = new Set();
 
@@ -236,6 +241,16 @@ async function copyAllowedFolderContents(sourceRoot, targetRoot) {
 
         const destinationPath = path.join(targetRoot, relativePath);
         const stats = await fsPromises.stat(sourcePath);
+
+        if (relativePath === ENTITY_DATE_ADDED_FILE && stats.isFile()) {
+            importedEntityDateAdded = await fsPromises.readFile(sourcePath);
+            continue;
+        }
+
+        if (relativePath === ENTITY_LAST_CHAT_FILE && stats.isFile()) {
+            importedEntityLastChat = await fsPromises.readFile(sourcePath);
+            continue;
+        }
 
         if (stats.isDirectory()) {
             const copiedFiles = await copyDirectoryTree(sourcePath, destinationPath, {
@@ -256,6 +271,24 @@ async function copyAllowedFolderContents(sourceRoot, targetRoot) {
         ensureDirectory(path.dirname(destinationPath));
         await fsPromises.copyFile(sourcePath, destinationPath);
         copiedEntries++;
+    }
+
+    if (importedEntityDateAdded !== undefined) {
+        try {
+            importEntityDateAdded(targetRoot, importedEntityDateAdded);
+            copiedEntries++;
+        } catch (error) {
+            console.warn('Could not import date-added metadata. Imported entities will be indexed locally.', error);
+        }
+    }
+
+    if (importedEntityLastChat !== undefined) {
+        try {
+            importEntityLastChat(targetRoot, importedEntityLastChat);
+            copiedEntries++;
+        } catch (error) {
+            console.warn('Could not import last-chat metadata. Imported characters will fall back to their card value.', error);
+        }
     }
 
     if (copiedEntries === 0) {
@@ -533,6 +566,8 @@ async function importZipContents(zipFilePath, targetRoot) {
             }
 
             let importedFiles = 0;
+            let importedEntityDateAdded;
+            let importedEntityLastChat;
             let completed = false;
 
             const finalize = (finalError = null) => {
@@ -542,8 +577,27 @@ async function importZipContents(zipFilePath, targetRoot) {
 
                 completed = true;
 
-                if (finalError) {
-                    reject(finalError);
+                const completionError = finalError;
+                if (!completionError && importedEntityDateAdded !== undefined) {
+                    try {
+                        importEntityDateAdded(targetRoot, importedEntityDateAdded);
+                    } catch (error) {
+                        importedFiles--;
+                        console.warn('Could not import date-added metadata. Imported entities will be indexed locally.', error);
+                    }
+                }
+
+                if (!completionError && importedEntityLastChat !== undefined) {
+                    try {
+                        importEntityLastChat(targetRoot, importedEntityLastChat);
+                    } catch (error) {
+                        importedFiles--;
+                        console.warn('Could not import last-chat metadata. Imported characters will fall back to their card value.', error);
+                    }
+                }
+
+                if (completionError) {
+                    reject(completionError);
                 } else if (importedFiles === 0) {
                     reject(new Error('That ZIP did not contain any importable SillyTavern files.'));
                 } else {
@@ -584,6 +638,22 @@ async function importZipContents(zipFilePath, targetRoot) {
 
                     const destinationPath = path.join(targetRoot, relativePath);
                     ensureDirectory(path.dirname(destinationPath));
+
+                    if (relativePath === ENTITY_DATE_ADDED_FILE || relativePath === ENTITY_LAST_CHAT_FILE) {
+                        const chunks = [];
+                        readStream.on('data', chunk => chunks.push(chunk));
+                        readStream.once('error', finalize);
+                        readStream.once('end', () => {
+                            if (relativePath === ENTITY_DATE_ADDED_FILE) {
+                                importedEntityDateAdded = Buffer.concat(chunks);
+                            } else {
+                                importedEntityLastChat = Buffer.concat(chunks);
+                            }
+                            importedFiles++;
+                            zipfile.readEntry();
+                        });
+                        return;
+                    }
 
                     pipeline(readStream, fs.createWriteStream(destinationPath))
                         .then(() => {
@@ -767,6 +837,7 @@ router.post('/import-sillytavern/folder', async (request, response) => {
             return response.status(400).json({ error: 'That folder is already the current SillyBunny account.' });
         }
 
+        recoverFileWritesInDirectorySync(request.user.directories.characters);
         const copiedEntries = await copyAllowedFolderContents(sourceRoot, targetRoot);
         await checkForNewContent([request.user.directories]);
 
@@ -808,6 +879,7 @@ router.post('/import-sillytavern/zip', async (request, response) => {
             return response.status(400).json({ error: 'A SillyTavern backup ZIP is required.' });
         }
 
+        recoverFileWritesInDirectorySync(request.user.directories.characters);
         const importedFiles = await importZipContents(uploadedZipPath, request.user.directories.root);
         await checkForNewContent([request.user.directories]);
 

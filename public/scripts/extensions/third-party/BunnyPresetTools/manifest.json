@@ -1,12 +1,12 @@
 {
     "display_name": "Bunny Preset Tools",
     "author": "SillyBunny",
-    "version": "1.5.3",
+    "version": "1.5.4",
     "description": "Prompt sections and animated backgrounds tailored for SillyBunny.",
     "requires": [],
     "optional": [],
     "js": "content.js",
     "css": "styles.css",
-    "homePage": "https://github.com/platberlitz/SillyBunny",
+    "homePage": "https://github.com/SillyBunnyTeam/SillyBunny",
     "loading_order": 1000
 }

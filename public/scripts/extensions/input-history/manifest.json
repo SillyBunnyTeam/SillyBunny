@@ -6,7 +6,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "LenAnderson",
-    "version": "1.6.5",
+    "version": "1.7.0",
     "homePage": "https://github.com/LenAnderson/SillyTavern-InputHistory",
     "manifest_version": 3
 }

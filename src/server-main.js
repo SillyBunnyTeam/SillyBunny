@@ -12,7 +12,6 @@ import https from 'node:https';
 import cors from 'cors';
 import { csrfSync } from 'csrf-sync';
 import express from 'express';
-import compression from 'compression';
 import cookieSession from 'cookie-session';
 import multer from 'multer';
 import responseTime from 'response-time';
@@ -25,8 +24,11 @@ import { serverDirectory } from './server-directory.js';
 import { getServerBootId } from './server-boot-marker.js';
 
 import { serverEvents, EVENT_NAMES } from './server-events.js';
-import { loadPlugins } from './plugin-loader.js';
+import { getLoadedServerPlugins, loadPlugins } from './plugin-loader.js';
 import { registerGracefulShutdown } from './shutdown.js';
+import { closeListeningServers } from './server-listen.js';
+import { notifyServerStartup } from './server-plugin-update-ipc.js';
+import { SUPERVISED_ENV, SUPERVISOR_FORCE_KILL_TIMEOUT_MS, SUPERVISOR_SHUTDOWN_MESSAGE } from './server-supervisor.js';
 import {
     initUserStorage,
     getCookieSecret,
@@ -49,6 +51,7 @@ import {
 import getWebpackServeMiddleware from './middleware/webpack-serve.js';
 import { FRONTEND_ASSET_PREFIX, rewriteFrontendHtml } from './frontend-assets.js';
 import { getFrontendAssetMiddleware, setPublicAssetHeaders, shouldServeFrontendAssets } from './middleware/frontend-assets.js';
+import getResponseCompressionMiddleware from './middleware/response-compression.js';
 import basicAuthMiddleware from './middleware/basicAuth.js';
 import requireHttpsMiddleware from './middleware/requireHttps.js';
 import { createSession, destroySession, validateCredentials, isSessionAuthEnabled } from './middleware/sessionAuth.js';
@@ -61,16 +64,19 @@ import cacheBuster from './middleware/cacheBuster.js';
 import corsProxyMiddleware from './middleware/corsProxy.js';
 import hostWhitelistMiddleware from './middleware/hostWhitelist.js';
 import userCssMiddleware from './middleware/userCss.js';
+import { createUploadStorage } from './middleware/uploadStorage.js';
 import {
     getVersion,
     color,
     removeColorFormatting,
     getSeparator,
     safeReadFileSync,
+    recoverFileWritesInDirectorySync,
     setupLogLevel,
     setWindowTitle,
     getConfigValue,
 } from './util.js';
+import { isBenignStreamAbort } from './stream-disconnect-guard.js';
 import { UPLOADS_DIRECTORY } from './constants.js';
 
 // Routers
@@ -107,7 +113,7 @@ const app = express();
 app.use(helmet({
     contentSecurityPolicy: false,
 }));
-app.use(compression());
+app.use(getResponseCompressionMiddleware());
 app.use(responseTime());
 
 app.use(express.json({ limit: '500mb' }));
@@ -443,8 +449,9 @@ if (cliArgs.enableCorsProxy) {
 
 // File uploads
 const uploadsPath = path.join(cliArgs.dataRoot, UPLOADS_DIRECTORY);
-fs.mkdirSync(uploadsPath, { recursive: true });
-app.use(multer({ dest: uploadsPath, limits: { fieldSize: 500 * 1024 * 1024 } }).single('avatar'));
+// SillyBunny: avoid Bun's recursive mkdir bug on ReadOnly Windows directories.
+const uploadStorage = createUploadStorage(uploadsPath);
+app.use(multer({ storage: uploadStorage, limits: { fieldSize: 500 * 1024 * 1024 } }).single('avatar'));
 app.use(multerMonkeyPatch);
 
 app.get('/version', async function (_, response) {
@@ -479,6 +486,9 @@ async function preSetupTasks() {
     console.log();
 
     startupDirectories = await getUserDirectoriesList();
+    for (const directories of startupDirectories) {
+        recoverFileWritesInDirectorySync(directories.characters);
+    }
     await migrateGroupChatsMetadataFormat(startupDirectories);
     await migratePublicOverrides();
     await checkForNewContent(startupDirectories, PRESET_CONTENT_TYPES);
@@ -497,6 +507,10 @@ async function preSetupTasks() {
     const exitProcess = async (exitCode = 0) => {
         if (isExiting) return;
         isExiting = true;
+        // Release the listen ports first. An in-app restart relaunches
+        // immediately, and process teardown alone can leave the port
+        // encumbered long enough for the next boot to fail on EADDRINUSE.
+        await closeListeningServers();
         await statsOnExit();
         if (typeof cleanupPlugins === 'function') {
             await cleanupPlugins();
@@ -512,8 +526,46 @@ async function preSetupTasks() {
     // SillyBunny: signal handlers pass signal names, but process.exit needs numeric codes in Bun.
     process.on('SIGINT', () => exitProcess(0));
     process.on('SIGTERM', () => exitProcess(0));
+    process.on('SIGHUP', () => exitProcess(0));
+    if (process.platform === 'win32') {
+        process.on('SIGBREAK', () => exitProcess(0));
+    }
+    if (process.env[SUPERVISED_ENV] === '1') {
+        const exitAfterSupervisorDisconnect = () => {
+            const forceExitTimer = setTimeout(() => process.exit(1), SUPERVISOR_FORCE_KILL_TIMEOUT_MS);
+            forceExitTimer.unref?.();
+            return exitProcess(0);
+        };
+
+        if (process.connected === false) {
+            await exitAfterSupervisorDisconnect();
+        } else {
+            process.on('message', (message) => {
+                if (message === SUPERVISOR_SHUTDOWN_MESSAGE) {
+                    exitProcess(0);
+                }
+            });
+            process.on('disconnect', exitAfterSupervisorDisconnect);
+        }
+    }
     process.on('uncaughtException', (err) => {
+        // SillyBunny: ignore expected stream disconnects from cancelled generations.
+        if (isBenignStreamAbort(err)) {
+            console.warn('Ignored streaming disconnect error:', err?.message ?? err);
+            return;
+        }
+
         console.error('Uncaught exception:', err);
+        exitProcess();
+    });
+    process.on('unhandledRejection', (reason) => {
+        // SillyBunny: ignore expected stream disconnects from cancelled generations.
+        if (isBenignStreamAbort(reason)) {
+            console.warn('Ignored streaming disconnect rejection:', reason?.message ?? reason);
+            return;
+        }
+
+        console.error('Unhandled rejection:', reason);
         exitProcess();
     });
 
@@ -652,6 +704,7 @@ async function postSetupTasks(result) {
 
     setupLogLevel();
     serverEvents.emit(EVENT_NAMES.SERVER_STARTED, { url: browserLaunchUrl });
+    notifyServerStartup(getLoadedServerPlugins());
     void runDeferredStartupTasks();
 }
 

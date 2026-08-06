@@ -553,7 +553,7 @@ export function copyText(text) {
     const textArea = document.createElement('textarea');
     textArea.value = text;
     parent.appendChild(textArea);
-    textArea.focus();
+    textArea.focus({ preventScroll: true });
     textArea.select();
     document.execCommand('copy');
     parent.removeChild(textArea);
@@ -2490,11 +2490,12 @@ export function highlightRegex(regexStr) {
  * @param {object} options - Optional parameters
  * @param {boolean} [options.interactive=false] - Whether to show a confirmation dialog when needing to overwrite an existing data object
  * @param {string} [options.actionName='overwrite'] - The action name to display in the confirmation dialog
- * @param {(existingName:string)=>void} [options.deleteAction=null] - Optional action to execute wen deleting an existing data object on overwrite
+ * @param {(existingName:string)=>void|Promise<void>} [options.deleteAction=null] - Optional action to execute when deleting an existing data object on overwrite
  * @returns {Promise<boolean>} True if the user confirmed the overwrite or there is no overwrite needed, false otherwise
  */
 export async function checkOverwriteExistingData(type, existingNames, name, { interactive = false, actionName = 'Overwrite', deleteAction = null } = {}) {
-    const existing = existingNames.find(x => equalsIgnoreCaseAndAccents(x, name));
+    const existing = existingNames.find(x => x === name)
+        ?? existingNames.find(x => equalsIgnoreCaseAndAccents(x, name));
     if (!existing) {
         return true;
     }
@@ -2509,7 +2510,7 @@ export async function checkOverwriteExistingData(type, existingNames, name, { in
 
     // If there is an action to delete the existing data, do it, as the name might be slightly different so file name would not be the same
     if (deleteAction) {
-        deleteAction(existing);
+        await deleteAction(existing);
     }
 
     return true;
@@ -3028,14 +3029,25 @@ export async function importFromExternalUrl(url, { preserveFileName = null } = {
     }
 
     if (!request.ok) {
-        toastr.info(request.statusText, 'Custom content import failed');
-        console.error('Custom content import failed', request.status, request.statusText);
+        const responseText = await request.text().catch(() => '');
+        const errorMessage = responseText || request.statusText || `HTTP ${request.status}`;
+        toastr.info(errorMessage, 'Custom content import failed');
+        console.error('Custom content import failed', request.status, request.statusText, responseText);
         return;
     }
 
     const data = await request.blob();
     const customContentType = request.headers.get('X-Custom-Content-Type');
-    let fileName = request.headers.get('Content-Disposition').split('filename=')[1].replace(/"/g, '');
+    const contentDisposition = request.headers.get('Content-Disposition') || '';
+    const fileNameMatch = contentDisposition.match(/filename\*=(?:UTF-8'')?([^;]+)|filename="?([^";]+)"?/i);
+    let fileName = fileNameMatch?.[1] || fileNameMatch?.[2] || url.split('/').filter(Boolean).pop() || 'file';
+
+    try {
+        fileName = decodeURIComponent(fileName.replace(/^"|"$/g, ''));
+    } catch {
+        fileName = fileName.replace(/^"|"$/g, '');
+    }
+
     const file = new File([data], fileName, { type: data.type });
 
     const extraData = new Map();

@@ -2,18 +2,24 @@ import { chat } from '../../../../script.js';
 import { hideChatMessageRange } from '../../../chats.js';
 import { eventSource, event_types } from '../../../events.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
+import { accountStorage } from '../../../util/AccountStorage.js';
 import { escapeHtml } from '../../../utils.js';
 import {
     areAgentsGloballyEnabled,
     getAgents,
     getCompanionConfig,
+    getHiddenAgentIds,
     isAgentEnabledForCurrentScope,
+    isAgentHidden,
     isCompanionAgent,
+    reorderAgentsIntoOrderSlots,
     saveAgent,
+    setHiddenAgentIds,
 } from '../agent-store.js';
 import {
     COMPANION_RESULTS_UPDATED_EVENT,
     getCompanionResults,
+    getLatestValidCompanionMessageIndex,
     runCompanionAgentOnMessage,
     runCompanionsOnMessage,
 } from './companion-runner.js';
@@ -30,6 +36,7 @@ import {
     MEMORY_SHARD_TEMPLATE_ID,
     PLOT_COMPASS_OBJECTIVE_MAX_CHARS,
     appendChatOnlyUserMessage,
+    holdsReadableCompanionResults,
     isAssistantMessage,
     isChatOnlyAgent,
     isChatroomAgent,
@@ -55,6 +62,55 @@ let panelLocked = getStoredPanelLocked();
 let panelOpenedAt = 0;
 let suppressHandleClickUntil = 0;
 let handleNode = null;
+let conversationModeObserver = null;
+
+// SillyBunny divergence: Conversation Mode owns the shell while active, so the upstream companion panel must hide behind this DOM-state adapter.
+export function isConversationModeActive() {
+    const sheld = globalThis.document?.getElementById?.('sheld');
+    return sheld?.dataset?.sbConversationMode === 'on'
+        || sheld?.getAttribute?.('data-sb-conversation-mode') === 'on';
+}
+
+function syncConversationModePanelVisibility() {
+    if (isConversationModeActive()) {
+        closeCompanionPanel();
+    }
+    updateCompanionPanelHandleVisibility();
+}
+
+function observeConversationModeState() {
+    const sheld = globalThis.document?.getElementById?.('sheld');
+    if (!sheld || typeof globalThis.MutationObserver !== 'function') {
+        return;
+    }
+
+    if (typeof globalThis.HTMLElement === 'function' && !(sheld instanceof globalThis.HTMLElement)) {
+        return;
+    }
+
+    // One observer instance for the panel lifecycle; re-init never stacks observers.
+    conversationModeObserver?.disconnect?.();
+    conversationModeObserver = new globalThis.MutationObserver(syncConversationModePanelVisibility);
+    conversationModeObserver.observe(sheld, { attributes: true, attributeFilter: ['data-sb-conversation-mode'] });
+}
+
+function scrollChatMessageIntoView(messageElement) {
+    const chatRoot = document.getElementById('chat');
+
+    if (!(messageElement instanceof HTMLElement) || !(chatRoot instanceof HTMLElement) || !chatRoot.contains(messageElement)) {
+        return;
+    }
+
+    const chatRect = chatRoot.getBoundingClientRect();
+    const messageRect = messageElement.getBoundingClientRect();
+    const delta = (messageRect.top - chatRect.top) - ((chatRect.height - messageRect.height) / 2);
+
+    chatRoot.scrollTo({
+        top: Math.min(Math.max(chatRoot.scrollTop + delta, 0), Math.max(0, chatRoot.scrollHeight - chatRoot.clientHeight)),
+        behavior: 'smooth',
+    });
+}
+
 /** Behavior owned by index.js (the agent editor) arrives through this seam — no import cycle. */
 let panelHooks = null;
 
@@ -93,7 +149,7 @@ export function parseStoredHandlePosition(raw) {
 
 function getStoredHandlePosition() {
     try {
-        return parseStoredHandlePosition(globalThis.localStorage?.getItem?.(HANDLE_POSITION_STORAGE_KEY));
+        return parseStoredHandlePosition(accountStorage.getItem(HANDLE_POSITION_STORAGE_KEY));
     } catch {
         return null;
     }
@@ -101,18 +157,18 @@ function getStoredHandlePosition() {
 
 function storeHandlePosition(edge, fraction) {
     try {
-        globalThis.localStorage?.setItem?.(HANDLE_POSITION_STORAGE_KEY, JSON.stringify({
+        accountStorage.setItem(HANDLE_POSITION_STORAGE_KEY, JSON.stringify({
             edge: HANDLE_EDGES.includes(edge) ? edge : 'right',
             fraction: clampHandleTopFraction(fraction),
         }));
     } catch {
-        // Private browsing or storage quota: the position just won't persist.
+        // Persistence failure must not make the handle unusable for this session.
     }
 }
 
 function getStoredPanelLocked() {
     try {
-        return globalThis.localStorage?.getItem?.(PANEL_LOCK_STORAGE_KEY) === 'true';
+        return accountStorage.getItem(PANEL_LOCK_STORAGE_KEY) === 'true';
     } catch {
         return false;
     }
@@ -120,9 +176,9 @@ function getStoredPanelLocked() {
 
 function storePanelLocked(locked) {
     try {
-        globalThis.localStorage?.setItem?.(PANEL_LOCK_STORAGE_KEY, locked ? 'true' : 'false');
+        accountStorage.setItem(PANEL_LOCK_STORAGE_KEY, locked ? 'true' : 'false');
     } catch {
-        // Private browsing or storage quota: the lock still applies for this session.
+        // Persistence failure leaves the in-memory lock state unchanged.
     }
 }
 
@@ -332,8 +388,26 @@ function getPanelAgents() {
     return getAgents().filter(agent => isCompanionAgent(agent) && agent.category !== 'tool');
 }
 
+// SillyBunny: the slide-out tracker panel is the home for 'panel'-mode companion state only.
+// 'card' renders inline under the reply (handled by isHiddenCompanionResult in companion-ui),
+// and 'hidden' is feedback-only and renders nowhere. When a live agent exists we trust its
+// current editor config so flipping the Display dropdown takes effect on the next render; for
+// orphaned results (deleted agent) we fall back to the mode stored on the result, defaulting to
+// the product default ('panel') when absent.
+function isPanelDisplayMode(agent, result = {}) {
+    if (agent) {
+        return getCompanionConfig(agent).displayMode === 'panel';
+    }
+
+    return (result.displayMode ?? 'panel') === 'panel';
+}
+
 function getLatestAssistantIndex() {
     return chat.findLastIndex(isAssistantMessage);
+}
+
+function getLatestValidCompanionIndex() {
+    return getLatestValidCompanionMessageIndex();
 }
 
 async function savePlotCompassObjective(agent, objective) {
@@ -357,14 +431,17 @@ export function collectPanelAgentStates() {
     const byAgentId = new Map();
 
     for (const agent of getPanelAgents()) {
-        if (isAgentEnabledForCurrentScope(agent)) {
+        // SillyBunny: only 'panel'-mode companions belong in the tracker panel; 'card' and 'hidden' are excluded.
+        if (isAgentEnabledForCurrentScope(agent) && isPanelDisplayMode(agent)) {
             byAgentId.set(agent.id, { agentId: agent.id, agent, latest: null, history: [] });
         }
     }
 
     for (let messageIndex = chat.length - 1; messageIndex >= 0; messageIndex--) {
         const message = chat[messageIndex];
-        if (!isAssistantMessage(message)) {
+        // Notes on hidden hosts stay listed: "hide story above this shard" hides every earlier
+        // shard's message, and skipping them here wiped those shards out of the panel entirely.
+        if (!holdsReadableCompanionResults(message)) {
             continue;
         }
 
@@ -377,14 +454,22 @@ export function collectPanelAgentStates() {
                 continue;
             }
 
-            let state = byAgentId.get(agentId);
+            // SillyBunny: resolve the agent up front so we can filter by display mode before
+            // creating any panel state. 'card' and 'hidden' results stay out of the panel;
+            // orphaned results fall back to the mode stored on the result itself.
+            const existingState = byAgentId.get(agentId);
+            const agent = existingState?.agent ?? getPanelAgents().find(candidate => candidate.id === agentId) ?? null;
+            if (!isPanelDisplayMode(agent, result)) {
+                continue;
+            }
+
+            let state = existingState;
             if (!state) {
-                const agent = getPanelAgents().find(candidate => candidate.id === agentId) ?? null;
                 state = { agentId, agent, latest: null, history: [] };
                 byAgentId.set(agentId, state);
             }
 
-            const entry = { messageIndex, result };
+            const entry = { messageIndex, result, hostHidden: Boolean(message.is_system) };
             if (!state.latest) {
                 state.latest = entry;
             } else if (state.history.length < PANEL_HISTORY_LIMIT) {
@@ -402,7 +487,7 @@ export function collectPanelAgentStates() {
 }
 
 export function shouldShowCompanionPanelHandle() {
-    if (!areAgentsGloballyEnabled()) {
+    if (isConversationModeActive() || !areAgentsGloballyEnabled()) {
         return false;
     }
 
@@ -418,6 +503,27 @@ function getStateIcon(state) {
     return icon || 'fa-user-astronaut';
 }
 
+function normalizeTokenCount(value) {
+    const tokenCount = Number(value);
+    return Number.isFinite(tokenCount) && tokenCount > 0 ? Math.round(tokenCount) : 0;
+}
+
+function formatTokenCount(value) {
+    return normalizeTokenCount(value).toLocaleString();
+}
+
+function buildCompanionTokenUsagePillsHtml(result = {}) {
+    const inputTokens = normalizeTokenCount(result?.tokenUsage?.inputTokens);
+    const outputTokens = normalizeTokenCount(result?.tokenUsage?.outputTokens);
+
+    const pills = [
+        inputTokens ? `<span class="ica--card-pill ica--card-pill--tokens" title="Estimated input tokens" aria-label="Input tokens ${escapeHtml(formatTokenCount(inputTokens))}"><span>Input</span><strong>${escapeHtml(formatTokenCount(inputTokens))}</strong></span>` : '',
+        outputTokens ? `<span class="ica--card-pill ica--card-pill--tokens" title="Estimated output tokens" aria-label="Output tokens ${escapeHtml(formatTokenCount(outputTokens))}"><span>Output</span><strong>${escapeHtml(formatTokenCount(outputTokens))}</strong></span>` : '',
+    ].filter(Boolean).join('');
+
+    return pills ? `<span class="ica--tpanel-agent-token-pills">${pills}</span>` : '';
+}
+
 function buildPanelEntryBody(agentId, entry) {
     const status = String(entry.result.status ?? 'done');
     if (status === 'pending') {
@@ -428,7 +534,7 @@ function buildPanelEntryBody(agentId, entry) {
         return `<div class="ica--companion-error">${escapeHtml(entry.result.error || 'Companion run failed.')}</div>`;
     }
 
-    return formatCompanionContent(agentId, entry.result, chat[entry.messageIndex]);
+    return formatCompanionContent(agentId, entry.result, chat[entry.messageIndex], '.ica--tpanel-agent-body ');
 }
 
 function buildChatOnlyComposer(state) {
@@ -494,11 +600,19 @@ function buildPanelEntryControls(state) {
     ].filter(Boolean).join('');
 }
 
+/** Marks a note whose host message is hidden from prompts - the note itself still counts. */
+function buildAbsorbedPillHtml(entry) {
+    return entry?.hostHidden
+        ? '<span class="ica--card-pill ica--card-pill--absorbed" title="The messages associated with this note are hidden from chat history, but this note remains as context seen by the LLM.">Absorbed</span>'
+        : '';
+}
+
 function buildPanelAgentSection(state) {
     const agentId = state.agentId ?? state.agent?.id ?? '';
     const latest = state.latest;
     const name = getStateDisplayName(state);
     const icon = getStateIcon(state);
+    const isHidden = isAgentHidden(agentId);
 
     const settingsButton = state.agent
         ? '<button type="button" class="ica--cdash-action" data-action="panel-edit" title="Open this companion\'s agent settings" aria-label="Agent settings"><i class="fa-solid fa-gear"></i></button>'
@@ -506,13 +620,21 @@ function buildPanelAgentSection(state) {
     const runLatestButton = state.agent
         ? '<button type="button" class="ica--cdash-action" data-action="panel-run-latest" title="Run this companion on the latest assistant reply" aria-label="Run companion"><i class="fa-solid fa-play"></i></button>'
         : '';
+    const hiddenTitle = isHidden ? 'Unhide this companion' : 'Hide this companion (skipped on auto-trigger)';
+    const hiddenLabel = isHidden ? 'Unhide companion' : 'Hide companion';
+    const hiddenIcon = isHidden ? 'fa-eye-slash' : 'fa-eye';
+    const hiddenButton = `<button type="button" class="ica--cdash-action" data-action="panel-hide" title="${hiddenTitle}" aria-label="${hiddenLabel}"><i class="fa-solid ${hiddenIcon}"></i></button>`;
+    // Orphaned results have no agent to persist an order onto, so they get no drag handle.
+    const dragHandleButton = state.agent
+        ? '<button type="button" class="ica--cdash-action ica--tpanel-drag-handle" title="Drag to reorder (arrow keys nudge)" aria-label="Reorder companion"><i class="fa-solid fa-grip-vertical"></i></button>'
+        : '';
 
     if (!latest) {
         return `
-            <section class="ica--tpanel-agent" data-agent-id="${escapeHtml(agentId)}">
+            <section class="ica--tpanel-agent" data-agent-id="${escapeHtml(agentId)}" data-hidden="${isHidden}">
                 <div class="ica--tpanel-agent-head">
                     <span class="ica--tpanel-agent-name"><i class="fa-solid ${escapeHtml(icon)}"></i><span>${escapeHtml(name)}</span></span>
-                    <span class="ica--tpanel-agent-actions">${runLatestButton}${settingsButton}</span>
+                    <span class="ica--tpanel-agent-actions">${dragHandleButton}${hiddenButton}${runLatestButton}${settingsButton}</span>
                 </div>
                 <div class="ica--cdash-empty">No state yet. It will appear after the next reply${getCompanionConfig(state.agent).trigger === 'manual' ? ' you run it on' : ''}.</div>
                 ${buildPanelEntryControls(state)}
@@ -525,8 +647,13 @@ function buildPanelAgentSection(state) {
             <details class="ica--tpanel-history">
                 <summary>Previous states (${state.history.length})</summary>
                 ${state.history.map(entry => `
-                    <div class="ica--tpanel-history-entry">
-                        <div class="ica--tpanel-history-head">Message #${entry.messageIndex}</div>
+                    <div class="ica--tpanel-history-entry" data-message-index="${entry.messageIndex}" data-host-hidden="${Boolean(entry.hostHidden)}">
+                        <div class="ica--tpanel-history-head">
+                            <span>Message #${entry.messageIndex}</span>
+                            ${buildAbsorbedPillHtml(entry)}
+                            ${buildCompanionTokenUsagePillsHtml(entry.result)}
+                            <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit this state's text" aria-label="Edit history entry"><i class="fa-solid fa-pen-to-square"></i></button>
+                        </div>
                         <div class="ica--tpanel-agent-body">${buildPanelEntryBody(agentId, entry)}</div>
                     </div>
                 `).join('')}
@@ -534,14 +661,25 @@ function buildPanelAgentSection(state) {
         `
         : '';
 
+    // A hidden host cannot be re-run: runSingleCompanionAgent rejects system messages, so the
+    // rerun controls would silently do nothing. Editing the stored text and jumping still work.
+    const rerunButtons = latest.hostHidden
+        ? ''
+        : `
+                    <button type="button" class="ica--cdash-action" data-action="panel-regenerate" title="Regenerate this state" aria-label="Regenerate state"><i class="fa-solid fa-rotate-right"></i></button>
+                    <button type="button" class="ica--cdash-action" data-action="panel-fix" title="Fix: re-run with strict output enforcement (use when the model wrote roleplay instead)" aria-label="Fix state"><i class="fa-solid fa-wrench"></i></button>`;
+
     return `
-        <section class="ica--tpanel-agent" data-agent-id="${escapeHtml(agentId)}" data-message-index="${latest.messageIndex}">
+        <section class="ica--tpanel-agent" data-agent-id="${escapeHtml(agentId)}" data-message-index="${latest.messageIndex}" data-hidden="${isHidden}" data-host-hidden="${Boolean(latest.hostHidden)}">
             <div class="ica--tpanel-agent-head">
                 <span class="ica--tpanel-agent-name"><i class="fa-solid ${escapeHtml(icon)}"></i><span>${escapeHtml(name)}</span></span>
                 <span class="ica--tpanel-agent-when">#${latest.messageIndex}</span>
+                ${buildAbsorbedPillHtml(latest)}
+                ${buildCompanionTokenUsagePillsHtml(latest.result)}
                 <span class="ica--tpanel-agent-actions">
-                    <button type="button" class="ica--cdash-action" data-action="panel-regenerate" title="Regenerate this state" aria-label="Regenerate state"><i class="fa-solid fa-rotate-right"></i></button>
-                    <button type="button" class="ica--cdash-action" data-action="panel-fix" title="Fix: re-run with strict output enforcement (use when the model wrote roleplay instead)" aria-label="Fix state"><i class="fa-solid fa-wrench"></i></button>
+                    ${dragHandleButton}
+                    ${hiddenButton}
+                    ${runLatestButton}${rerunButtons}
                     <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit this state's text by hand (e.g. type your Plot Compass objective)" aria-label="Edit state text"><i class="fa-solid fa-pen-to-square"></i></button>
                     ${settingsButton}
                     <button type="button" class="ica--cdash-action" data-action="panel-jump" title="Scroll to the source message" aria-label="Scroll to source message"><i class="fa-solid fa-comment-dots"></i></button>
@@ -555,11 +693,22 @@ function buildPanelAgentSection(state) {
     `;
 }
 
+function countVisibleStoryAbove(messageIndex) {
+    return chat.slice(0, messageIndex).filter(message => message && !message.is_system).length;
+}
+
 /** The memory shard can replace the history it summarizes: offer hiding everything above it. */
 function buildCompactionButton(state) {
     const isMemoryShard = state.agent?.sourceTemplateId === MEMORY_SHARD_TEMPLATE_ID
         || /memory shard/i.test(String(state.agent?.name ?? state.latest?.result?.agentName ?? ''));
     if (!isMemoryShard || !state.latest || state.latest.messageIndex < 1 || state.latest.result?.status !== 'done') {
+        return '';
+    }
+
+    // Nothing left to absorb: either the shard's own host sits inside an already-hidden range,
+    // or a previous compaction already hid everything above it. Offering the button again would
+    // re-hide hidden messages and report a count of work it did not do.
+    if (state.latest.hostHidden || countVisibleStoryAbove(state.latest.messageIndex) === 0) {
         return '';
     }
 
@@ -593,11 +742,66 @@ export function buildPanelHtml() {
 function renderPanel() {
     const panelElement = $('#ica--tracker-panel');
     panelElement.html(buildPanelHtml());
+    setupPanelSortable();
+}
+
+/** Persists the panel's visual order onto injection.order so the agents page stays in step. */
+async function applyPanelReorder(orderedIds) {
+    const changed = await reorderAgentsIntoOrderSlots(orderedIds);
+    if (panelOpen) {
+        renderPanel();
+    }
+    if (changed && typeof panelHooks?.refreshAgentList === 'function') {
+        panelHooks.refreshAgentList();
+    }
+}
+
+function setupPanelSortable() {
+    const body = $('#ica--tracker-panel .ica--tpanel-body');
+    if (!body.length || typeof body.sortable !== 'function') {
+        return;
+    }
+
+    if (body.sortable('instance') !== undefined) {
+        body.sortable('destroy');
+    }
+
+    body.sortable({
+        items: '.ica--tpanel-agent',
+        handle: '.ica--tpanel-drag-handle',
+        // jQuery UI's mouse widget matches event.target against `cancel` before the `handle`
+        // gate runs; its default (`input, textarea, button, select, option`) would swallow every
+        // drag that starts on the grip because the grip is a <button>. Cancel the section's other
+        // controls but leave the drag handle draggable.
+        cancel: 'input, textarea, .menu_button, .ica--cdash-action:not(.ica--tpanel-drag-handle)',
+        tolerance: 'pointer',
+        distance: 5,
+        placeholder: 'ica--tpanel-agent-placeholder',
+        forcePlaceholderSize: true,
+        start: function (_event, ui) {
+            ui.placeholder.height(ui.item.outerHeight());
+        },
+        stop: async function () {
+            const orderedIds = body.children('.ica--tpanel-agent').map((_, el) => el.dataset.agentId).get().filter(Boolean);
+            await applyPanelReorder(orderedIds);
+        },
+    });
+}
+
+/** Re-renders the open panel; lets other surfaces (the agents page) push order changes in. */
+export function refreshCompanionPanel() {
+    if (panelOpen) {
+        renderPanel();
+    }
 }
 
 export function updateCompanionPanelHandleVisibility() {
+    const conversationModeActive = isConversationModeActive();
     const shouldShow = shouldShowCompanionPanelHandle();
     $('#ica--tracker-panel-handle').toggle(shouldShow);
+    // Conversation Mode hides both companion wand entries (panel + dashboard).
+    $('#ica_tracker_panel_wand_item').toggle?.(!conversationModeActive);
+    $('#ica_companions_wand_item').toggle?.(!conversationModeActive);
     if (shouldShow) {
         // Sizes are only measurable once visible; (re)place on the next frame.
         requestHandlePlacement();
@@ -605,6 +809,12 @@ export function updateCompanionPanelHandleVisibility() {
 }
 
 export function openCompanionPanel() {
+    if (isConversationModeActive()) {
+        closeCompanionPanel();
+        updateCompanionPanelHandleVisibility();
+        return;
+    }
+
     panelOpen = true;
     panelOpenedAt = Date.now();
     renderPanel();
@@ -656,14 +866,14 @@ async function handlePanelAction(event) {
     }
 
     if (action === 'panel-regenerate-all') {
-        const lastAssistantIndex = getLatestAssistantIndex();
-        if (lastAssistantIndex < 0) {
-            toastr.warning('No assistant reply yet to run companions on.');
+        const lastValidIndex = getLatestValidCompanionIndex();
+        if (lastValidIndex < 0) {
+            toastr.warning('No message yet to run companions on.');
             return;
         }
         button.prop('disabled', true);
         try {
-            await runCompanionsOnMessage(lastAssistantIndex);
+            await runCompanionsOnMessage(lastValidIndex);
         } finally {
             button.prop('disabled', false);
             if (panelOpen) {
@@ -675,21 +885,42 @@ async function handlePanelAction(event) {
 
     const section = button.closest('.ica--tpanel-agent');
     const agentId = section.attr('data-agent-id') || '';
-    const messageIndex = Number(section.attr('data-message-index'));
+
+    if (action === 'panel-hide') {
+        if (!agentId) {
+            toastr.warning('No companion selected.');
+            return;
+        }
+
+        const hiddenAgentIds = getHiddenAgentIds();
+        if (hiddenAgentIds.has(agentId)) {
+            hiddenAgentIds.delete(agentId);
+        } else {
+            hiddenAgentIds.add(agentId);
+        }
+        setHiddenAgentIds(hiddenAgentIds);
+
+        if (panelOpen) {
+            renderPanel();
+        }
+        return;
+    }
+
+    const messageIndex = Number(button.closest('[data-message-index]').attr('data-message-index'));
 
     if (action === 'panel-run-latest') {
         if (!agentId) {
             toastr.warning('No companion selected.');
             return;
         }
-        const lastAssistantIndex = getLatestAssistantIndex();
-        if (lastAssistantIndex < 0) {
-            toastr.warning('No assistant reply yet to run this companion on.');
+        const lastValidIndex = getLatestValidCompanionIndex();
+        if (lastValidIndex < 0) {
+            toastr.warning('No message yet to run this companion on.');
             return;
         }
         button.prop('disabled', true);
         try {
-            await runCompanionAgentOnMessage(agentId, lastAssistantIndex);
+            await runCompanionAgentOnMessage(agentId, lastValidIndex);
         } finally {
             button.prop('disabled', false);
             if (panelOpen) {
@@ -789,7 +1020,10 @@ async function handlePanelAction(event) {
 
         const inputField = section.find('[data-role="plot-compass-objective"]');
         const objective = normalizePlotCompassObjective(inputField.val());
-        const runIndex = Number.isInteger(messageIndex) ? messageIndex : getLatestAssistantIndex();
+        // The section can be anchored to a hidden host now that hidden hosts keep their notes;
+        // a companion cannot run on one, so fall back to the newest visible reply.
+        const canRunOnSection = Number.isInteger(messageIndex) && !chat[messageIndex]?.is_system;
+        const runIndex = canRunOnSection ? messageIndex : getLatestAssistantIndex();
         if (runIndex < 0) {
             toastr.warning('No assistant reply yet to plan from.');
             return;
@@ -812,6 +1046,12 @@ async function handlePanelAction(event) {
     }
 
     if (action === 'panel-hide-before' && Number.isInteger(messageIndex) && messageIndex > 0) {
+        const hideCount = countVisibleStoryAbove(messageIndex);
+        if (hideCount === 0) {
+            toastr.info('Everything above this shard is already hidden from prompts.');
+            return;
+        }
+
         const result = await new Popup(
             `Exclude messages #0–#${messageIndex - 1} from prompts? The shard carries that history from here on; messages stay visible in the chat and can be unhidden later.`,
             POPUP_TYPE.CONFIRM,
@@ -821,7 +1061,7 @@ async function handlePanelAction(event) {
         }
 
         await hideChatMessageRange(0, messageIndex - 1, false);
-        toastr.success(`Hid ${messageIndex} message(s) from prompts.`);
+        toastr.success(`Hid ${hideCount} message(s) from prompts.`);
         if (panelOpen) {
             renderPanel();
         }
@@ -857,7 +1097,7 @@ async function handlePanelAction(event) {
         closeCompanionPanel();
         const messageElement = document.querySelector(`.mes[mesid="${messageIndex}"]`);
         if (messageElement) {
-            messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            scrollChatMessageIntoView(messageElement);
         } else {
             toastr.info('That message is above the rendered window. Scroll up in the chat to load it.');
         }
@@ -892,6 +1132,39 @@ export function initCompanionPanel() {
     `);
 
     $('#ica--tracker-panel').on('click', '[data-action]', handlePanelAction);
+    $('#ica--tracker-panel').on('keydown', '.ica--tpanel-drag-handle', async function (event) {
+        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const section = this.closest('.ica--tpanel-agent');
+        const sibling = event.key === 'ArrowUp' ? section?.previousElementSibling : section?.nextElementSibling;
+        if (!section || !sibling?.classList?.contains('ica--tpanel-agent')) {
+            return;
+        }
+
+        if (event.key === 'ArrowUp') {
+            sibling.before(section);
+        } else {
+            sibling.after(section);
+        }
+
+        const agentId = section.dataset.agentId || '';
+        const orderedIds = $('#ica--tracker-panel .ica--tpanel-body')
+            .children('.ica--tpanel-agent')
+            .map((_, el) => el.dataset.agentId)
+            .get()
+            .filter(Boolean);
+        await applyPanelReorder(orderedIds);
+        // applyPanelReorder re-renders the panel; put focus back so nudges can be chained.
+        $('#ica--tracker-panel .ica--tpanel-agent')
+            .filter((_, el) => el.dataset.agentId === agentId)
+            .find('.ica--tpanel-drag-handle')
+            .trigger('focus');
+    });
     $('#ica--tracker-panel').on('click', '.ica--tpanel-agent-body .ica--choice-line', function (event) {
         event.preventDefault();
         event.stopPropagation();
@@ -948,5 +1221,6 @@ export function initCompanionPanel() {
         });
     }
 
-    updateCompanionPanelHandleVisibility();
+    observeConversationModeState();
+    syncConversationModePanelVisibility();
 }

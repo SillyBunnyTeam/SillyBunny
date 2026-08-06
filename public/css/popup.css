@@ -182,8 +182,17 @@ body.no-blur .popup[open]::backdrop {
 }
 
 .popup-controls {
-    margin-top: 10px;
+    margin-top: 8px;
     display: flex;
+
+    /* SillyBunny: '.popup-body' clips overflow, so the control row must never leave it.
+       'max-width' stops 'align-self: center' from sizing the row past the popup, wrapping
+       replaces the horizontal overflow it used to produce, and the padding is the room the
+       focus ring and '.menu_button_default' glow need, since both paint outside the border box. */
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 100%;
+    padding: 6px;
     align-self: center;
     gap: var(--spacing-md, 12px);
 }
@@ -206,6 +215,15 @@ body.no-blur .popup[open]::backdrop {
 .popup-controls .menu_button {
     /* Popup buttons should not scale to smallest size, otherwise they will always break to multiline if multiple words */
     width: unset;
+
+    /* SillyBunny: row spacing comes from the row gap, so the row padding stays available as
+       focus ring room. 'flex-grow' only has free space to consume once the row hits its
+       'max-width', which is exactly the wrapped case, so unwrapped popups are unaffected.
+       'white-space' lets a label that cannot fit a line on its own wrap instead of overflowing. */
+    margin: 0;
+    max-width: 100%;
+    flex-grow: 1;
+    white-space: normal;
 
     /* Fix weird animation issue with fonts on brightness filter */
     backface-visibility: hidden;

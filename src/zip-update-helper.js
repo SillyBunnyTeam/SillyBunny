@@ -4,6 +4,8 @@ import process from 'node:process';
 import { spawn, spawnSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 
+import { isPathInside } from './path-containment.js';
+
 const PROTECTED_TOP_LEVEL = new Set(['.git', 'backups', 'cache', 'data', 'node_modules']);
 
 function decodePayload(encoded) {
@@ -18,11 +20,6 @@ function isProcessAlive(pid) {
     } catch (error) {
         return error?.code !== 'ESRCH';
     }
-}
-
-function isPathInside(parent, candidate) {
-    const relative = path.relative(parent, candidate);
-    return relative === '' || (relative && !relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
 function buildVisibleWindowsCommand(command, cwd) {
@@ -112,7 +109,7 @@ function applyReleaseOverlay({ releaseRoot, installDir, backupRoot, logPath }, s
     for (const entry of entries) {
         const destinationPath = path.resolve(installDir, entry.relativePath);
 
-        if (!isPathInside(installDir, destinationPath)) {
+        if (!isPathInside(installDir, destinationPath, { allowEqual: true })) {
             throw new Error(`Release entry escapes the install directory: ${entry.relativePath}`);
         }
 
@@ -153,7 +150,7 @@ function rollbackOverlay(installDir, state, logPath) {
 
     const backups = [...state.backups.entries()].sort(([left], [right]) => right.length - left.length);
     for (const [destinationPath, backupPath] of backups) {
-        if (!isPathInside(installDir, destinationPath)) {
+        if (!isPathInside(installDir, destinationPath, { allowEqual: true })) {
             continue;
         }
         removePath(destinationPath);
@@ -252,7 +249,7 @@ function validatePayload(payload) {
         throw new Error('ZIP update helper install directory is not a SillyBunny app folder.');
     }
 
-    if (!isPathInside(stagingRoot, releaseRoot) || !fs.existsSync(path.join(releaseRoot, 'package.json'))) {
+    if (!isPathInside(stagingRoot, releaseRoot, { allowEqual: true }) || !fs.existsSync(path.join(releaseRoot, 'package.json'))) {
         throw new Error('ZIP update helper release staging directory is invalid.');
     }
 

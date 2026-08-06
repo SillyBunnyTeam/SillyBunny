@@ -22,7 +22,7 @@
     --charNameFontSize: inherit;
     --userNameFontSize: inherit;
     --messageTextFontSize: 15px;
-    --messageLineHeight: calc(var(--mainFontSize) + .5rem);
+    --messageLineHeight: calc(var(--mainFontSize) + var(--lineSpacingDesktopLeading, .5rem));
     --messageTextLetterSpacing: inherit;
     --customlastInContext: 1px solid var(--customThemeColor);
     --custom-EchoAvatarWidth: 22%;
@@ -200,7 +200,7 @@ body.echostyle #chat {
                     left: 0;
                     width: var(--custom-EchoAvatarWidth, 25%);
                     height: var(--custom-EchoAvatarHeight, 30px);
-                    background: var(--mes-avatar-original-url, var(--mes-avatar-url)) center no-repeat;
+                    background: var(--mes-avatar-url, var(--sb-message-avatar)) center no-repeat;
                     background-size: cover;
                     background-attachment: fixed;
                     -webkit-mask-image:
@@ -252,7 +252,7 @@ body.echostyle #chat {
                     right: 0;
                     width: var(--custom-EchoAvatarWidth, 25%);
                     height: var(--custom-EchoAvatarHeight, 30px);
-                    background: var(--mes-avatar-original-url, var(--mes-avatar-url)) center no-repeat;
+                    background: var(--mes-avatar-url, var(--sb-message-avatar)) center no-repeat;
                     background-size: cover;
                     background-attachment: fixed;
                     -webkit-mask-image:
@@ -387,7 +387,7 @@ body.whisperstyle #chat {
             right: 0;
             width: var(--customWhisperAvatarWidth, 50%);
             height: 100px;
-            background: var(--mes-avatar-original-url, var(--mes-avatar-url)) var(--customWhisperAvatarAlign) no-repeat;
+            background: var(--mes-avatar-url, var(--sb-message-avatar)) var(--customWhisperAvatarAlign) no-repeat;
             background-size: cover;
             mask-image: linear-gradient(to bottom, black 60%, rgba(0, 0, 0, 0) 100%);
             mask-size: 100% 100%;
@@ -729,6 +729,7 @@ body.ripplestyle #chat {
         }
 
         .mesAvatarWrapper {
+            position: -webkit-sticky;
             position: sticky;
             top: 0;
             padding-bottom: 45px;
@@ -1522,6 +1523,7 @@ body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .
         min-width: 0 !important;
         overflow: visible !important;
         padding: 0 0 var(--moonlit-sb-ripple-left-bottom-gap) 0 !important;
+        position: -webkit-sticky;
         position: sticky !important;
         top: 0 !important;
         z-index: 2;

@@ -53,13 +53,29 @@ function addLaunchButton() {
     });
 }
 
-let inspectEnabled = localStorage.getItem('promptInspectorEnabled') === 'true' || false;
-let inspectFormat = localStorage.getItem('promptInspectorFormat') || 'json';
+let inspectEnabled = safeGetLocalStorageItem('promptInspectorEnabled') === 'true' || false;
+let inspectFormat = safeGetLocalStorageItem('promptInspectorFormat') || 'json';
+
+function safeGetLocalStorageItem(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch {
+        return null;
+    }
+}
+
+function safeSetLocalStorageItem(key, value) {
+    try {
+        localStorage.setItem(key, value);
+    } catch {
+        // Ignore storage write failures in Safari Private Browsing.
+    }
+}
 
 function toggleInspectNext() {
     inspectEnabled = !inspectEnabled;
     toastr.info(`Prompt inspection is now ${inspectEnabled ? 'enabled' : 'disabled'}`);
-    localStorage.setItem('promptInspectorEnabled', String(inspectEnabled));
+    safeSetLocalStorageItem('promptInspectorEnabled', String(inspectEnabled));
 }
 
 eventSource.on(event_types.CHAT_COMPLETION_PROMPT_READY, async (data) => {
@@ -164,7 +180,7 @@ async function showPromptInspector(input) {
     formatSelect.toggle(isChatCompletion());
     formatSelect.on('change', () => {
         inspectFormat = formatSelect.val();
-        localStorage.setItem('promptInspectorFormat', inspectFormat);
+        safeSetLocalStorageItem('promptInspectorFormat', inspectFormat);
 
         const currentValue = prompt.val();
         prompt.val(inspectFormat === 'yaml' ? jsonToYaml(currentValue) : yamlToJson(currentValue));
