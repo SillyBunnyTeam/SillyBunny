@@ -209,6 +209,7 @@ Conversation Mode is inspired by instant messaging apps like Discord, Telegram, 
 - PR #701 (2026-07-27) `fix(style): anchor bottom-positioned toasts to viewport on mobile`
 
 ### Merged Staging PRs
+- PR #136 (2026-05-18) `fix: stop post-gen agents re-running on mobile recovery events`
 - PR #702 (2026-07-28) `chore: prepare v1.7 pre-release cleanup`
 - PR #703 (2026-07-29) `feat: reuse Start Reply With for Kimi K3 partial prefill`
 - PR #704 (2026-07-30) `fix(ios): fix iOS crash startup logs not being detailed enough`
@@ -225,6 +226,7 @@ Conversation Mode is inspired by instant messaging apps like Discord, Telegram, 
 - PR #734 (2026-08-05) `fix: conversation mode selected character`
 - PR #736 (2026-08-05) `chore: update Quick Image Gen to 3.0.0`
 - PR #737 (2026-08-05) `chore: remove previous non-1.7.0 screenshots`
+- PR #738 (2026-08-06) `chore: merge 1.7.0 staging cleanly into main`
 
 ## v1.6.5
 
