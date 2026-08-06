@@ -116,7 +116,7 @@
         "type": "git",
         "url": "https://github.com/SillyBunnyTeam/SillyBunny.git"
     },
-    "version": "1.7.0",
+    "version": "1.7.1",
     "scripts": {
         "start": "bun server.js",
         "start:node": "node --no-warnings server.js",
