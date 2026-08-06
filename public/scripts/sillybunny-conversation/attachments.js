@@ -60,6 +60,7 @@ import {
     createConversationMessageRevisionEntries,
     createConversationQueueItem,
     createConversationQueueReplyTarget,
+    createForcedConversationQueueItem,
     getLastConversationQueueUserMessage,
     requeueConversationQueueItem,
     resolveConversationQueueReplyTarget,
@@ -767,7 +768,25 @@ export async function submitConversationInput() {
     if (!pendingFiles) {
         return;
     }
-    if (!avatar || (!text && !pendingFiles.length)) {
+    if (!avatar) {
+        return;
+    }
+
+    if (!text && !pendingFiles.length) {
+        const branchMessages = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
+        if (!branchMessages.some(message => message?.role === 'user')) {
+            return;
+        }
+
+        sendQueue.push(createForcedConversationQueueItem({
+            avatar,
+            branchId,
+            groupId,
+            personaId,
+            threadKey: getConversationThreadKey(avatar, groupId, { personaId }),
+            createdAt: Date.now(),
+        }, branchMessages));
+        void processSendQueue();
         return;
     }
 

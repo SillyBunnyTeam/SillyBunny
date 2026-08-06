@@ -120,7 +120,8 @@ export async function generateConversationReply(directive, settings, { responseL
 export function editConversationMessage(messageId) {
     const avatar = getCurrentCharAvatar();
     const groupId = getConversationGroupIdForAvatar(avatar);
-    const message = getConversationThread(avatar, { groupId }).find(item => item.id === messageId);
+    const personaId = getConversationPersonaId();
+    const message = getConversationThread(avatar, { create: false, groupId, personaId }).find(item => item.id === messageId);
     if (!avatar || !message) {
         return;
     }
@@ -166,7 +167,7 @@ export function editConversationMessage(messageId) {
     saveButton.onclick = () => {
         const value = textarea.value.trim();
         if (value && value !== message.mes) {
-            updateConversationThreadMessage(avatar, messageId, value, null, { groupId });
+            updateConversationThreadMessage(avatar, messageId, value, null, { groupId, personaId });
         } else {
             scheduleTimelineRender();
         }
