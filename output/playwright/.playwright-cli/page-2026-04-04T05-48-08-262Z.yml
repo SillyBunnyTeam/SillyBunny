@@ -1,0 +1,320 @@
+- generic [ref=e1]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - text: 
+      - button "Open workspace tools" [ref=e7] [cursor=pointer]:
+        - generic [ref=e8]: 
+        - generic [ref=e9]: Navigate
+    - generic "SillyBunny" [ref=e11]
+    - generic [ref=e12]:
+      - button "Open character management" [ref=e13] [cursor=pointer]:
+        - generic [ref=e14]: 
+        - generic [ref=e15]: Characters
+      - button "Open customization tools" [ref=e16] [cursor=pointer]:
+        - generic [ref=e17]: 
+        - generic [ref=e18]: Customize
+  - generic:
+    - generic:                                               + No items                         ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰                                  + No items      ☰ ☰ ☰ ☰ ☰ ☰ ☰  ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰  ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰  ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰                  +     No items                                                                                                                                    +         
+    - generic:
+      - text: 
+      - generic:
+        - generic:
+          - tablist "Customize sections" [ref=e19]:
+            - tab "Settings App behavior, appearance, and quality-of-life controls start here." [selected] [ref=e20] [cursor=pointer]:
+              - generic [ref=e21]: 
+              - generic [ref=e22]:
+                - strong [ref=e23]: Settings
+                - generic [ref=e24]: App behavior, appearance, and quality-of-life controls start here.
+            - tab "Extensions Manage installed tools, optional features, and extension-specific settings." [ref=e25] [cursor=pointer]:
+              - generic [ref=e26]: 
+              - generic [ref=e27]:
+                - strong [ref=e28]: Extensions
+                - generic [ref=e29]: Manage installed tools, optional features, and extension-specific settings.
+            - tab "Persona Edit personas, switch identities faster, and manage persona connections." [ref=e30] [cursor=pointer]:
+              - generic [ref=e31]: 
+              - generic [ref=e32]:
+                - strong [ref=e33]: Persona
+                - generic [ref=e34]: Edit personas, switch identities faster, and manage persona connections.
+            - tab "Background Set the mood with backgrounds, fitting modes, and quick filtering." [ref=e35] [cursor=pointer]:
+              - generic [ref=e36]: 
+              - generic [ref=e37]:
+                - strong [ref=e38]: Background
+                - generic [ref=e39]: Set the mood with backgrounds, fitting modes, and quick filtering.
+          - generic:
+            - generic [ref=e40]:
+              - text: 
+              - generic: Customize
+              - heading "Settings" [level=2]
+              - paragraph: App behavior, appearance, and quality-of-life controls start here.
+              - paragraph: Personalize the workspace, extensions, persona flow, and atmosphere.
+              - generic [ref=e41]:
+                - generic [ref=e42]: 
+                - searchbox "Quick find themes, personas, backgrounds, extensions..."
+            - generic:
+              - tabpanel:
+                - generic [ref=e43]:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - heading "User Settings " [level=3] [ref=e46]:
+                          - text: User Settings
+                          - link "" [ref=e47] [cursor=pointer]:
+                            - /url: https://docs.sillytavern.app/usage/user-settings/
+                            - generic [ref=e48]: 
+                        - generic [ref=e49]:
+                          - generic [ref=e50]: "Language:"
+                          - combobox [ref=e51]:
+                            - option "Default" [selected]
+                            - option "English"
+                      - generic [ref=e53]:
+                        - generic [ref=e54] [cursor=pointer]:
+                          - generic [ref=e55]: 
+                          - generic [ref=e56]: Account
+                        - generic [ref=e57] [cursor=pointer]:
+                          - generic [ref=e58]: 
+                          - generic [ref=e59]: Admin Panel
+                        - generic [ref=e60] [cursor=pointer]:
+                          - generic [ref=e61]: 
+                          - generic [ref=e62]: Logout
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic [ref=e63] [cursor=pointer]:
+                            - generic [ref=e64]:
+                              - generic [ref=e65]: 
+                              - text: Appearance
+                            - generic [ref=e66]: 
+                          - generic [ref=e67]:
+                            - generic [ref=e68]:
+                              - generic [ref=e69]:
+                                - generic:
+                                  - strong: Shell Style
+                                  - paragraph: Switch the new navigation shell between three built-in visual directions.
+                                - generic:
+                                  - button "Modern Glass Premium glass panels, layered depth, and a more cinematic desktop feel." [pressed] [ref=e70] [cursor=pointer]:
+                                    - generic [ref=e71]: Modern Glass
+                                    - generic [ref=e72]: Premium glass panels, layered depth, and a more cinematic desktop feel.
+                                  - button "Clean Minimal Softer surfaces, calmer contrast, and lower visual noise for long sessions." [ref=e73] [cursor=pointer]:
+                                    - generic [ref=e74]: Clean Minimal
+                                    - generic [ref=e75]: Softer surfaces, calmer contrast, and lower visual noise for long sessions.
+                                  - button "Bold Stylized Sharper accents, stronger contrast, and more expressive active states." [ref=e76] [cursor=pointer]:
+                                    - generic [ref=e77]: Bold Stylized
+                                    - generic [ref=e78]: Sharper accents, stronger contrast, and more expressive active states.
+                                - paragraph: Premium glass panels, layered depth, and a more cinematic desktop feel.
+                              - heading "UI Theme   " [level=4] [ref=e79]:
+                                - generic [ref=e80]: UI Theme
+                                - generic:
+                                  - generic "Import a theme file" [ref=e81] [cursor=pointer]:
+                                    - generic [ref=e82]: 
+                                  - generic "Export a theme file" [ref=e83] [cursor=pointer]:
+                                    - generic [ref=e84]: 
+                                  - generic "Delete a theme" [ref=e85] [cursor=pointer]:
+                                    - generic [ref=e86]: 
+                              - generic:
+                                - combobox [ref=e87]
+                                - generic "Update a theme file" [ref=e88] [cursor=pointer]:
+                                  - generic [ref=e89]: 
+                                - generic "Save as a new theme" [ref=e90] [cursor=pointer]:
+                                  - generic [ref=e91]: 
+                              - generic:
+                                - generic: SillyBunny palettes
+                                - generic:
+                                  - button " Forest Dusk" [ref=e92] [cursor=pointer]:
+                                    - generic [ref=e93]: 
+                                    - generic [ref=e94]: Forest Dusk
+                                  - button " Forest Dawn" [ref=e95] [cursor=pointer]:
+                                    - generic [ref=e96]: 
+                                    - generic [ref=e97]: Forest Dawn
+                                  - button " Rose Glow" [ref=e98] [cursor=pointer]:
+                                    - generic [ref=e99]: 
+                                    - generic [ref=e100]: Rose Glow
+                            - generic:
+                              - generic:
+                                - generic "This style applies to all avatars globaly, including your Persona, Character Management, Account selection, etc.":
+                                  - generic [ref=e101]: "Avatars:"
+                                  - combobox [ref=e102]:
+                                    - option "Circle" [selected]
+                                    - option "Square"
+                                    - option "Rounded"
+                                    - option "Rectangle"
+                                - generic:
+                                  - generic [ref=e103]: "Chat Style:"
+                                  - combobox [ref=e104]:
+                                    - option "Flat" [selected]
+                                    - option "Bubbles"
+                                    - option "Document"
+                                - generic "Default display style for media attachments in chat messages. Extensions can override this setting.":
+                                  - generic [ref=e105]: "Media Style:"
+                                  - combobox [ref=e106]:
+                                    - option "List" [selected]
+                                    - option "Gallery"
+                                - generic:
+                                  - generic [ref=e107]: "Notifications:"
+                                  - combobox [ref=e108]:
+                                    - option "Top Left" [selected]
+                                    - option "Top Center"
+                                    - option "Top Right"
+                                    - option "Bottom Left"
+                                    - option "Bottom Center"
+                                    - option "Bottom Right"
+                              - generic "Specify colors for your theme." [ref=e109] [cursor=pointer]:
+                                - generic [ref=e110]: Theme Colors
+                                - generic [ref=e111]: 
+                              - separator
+                              - generic:
+                                - generic "Tune layout width, typography scale, blur strength, and text shadow." [ref=e112] [cursor=pointer]:
+                                  - generic [ref=e113]: Layout & Clarity
+                                  - generic [ref=e114]: 
+                                - text:     
+                              - separator
+                              - generic:
+                                - generic "Toggle motion, blur, timestamps, and other interface extras." [ref=e115] [cursor=pointer]:
+                                  - generic [ref=e116]: Visual Toggles
+                                  - generic [ref=e117]: 
+                                - text:   
+                      - generic:
+                        - generic:
+                          - generic [ref=e118] [cursor=pointer]:
+                            - generic [ref=e119]:
+                              - generic [ref=e120]: 
+                              - text: Chat & Characters
+                            - generic [ref=e121]: 
+                          - generic [ref=e122]:
+                            - generic:
+                              - heading "Character Handling" [level=4] [ref=e123]
+                              - generic "If set in the advanced character definitions, this field will be displayed in the characters list.":
+                                - generic [ref=e124]: Char List Subheader
+                                - combobox "Char List Subheader" [ref=e125]:
+                                  - option "Character Version" [selected]
+                                  - option "Created by"
+                              - generic "Defines on importing cards which action should be chosen for importing its listed tags. 'Ask' will always display the dialog.":
+                                - generic [ref=e126]: Import Card Tags
+                                - combobox "Import Card Tags" [ref=e127]:
+                                  - option "Ask" [selected]
+                                  - option "None"
+                                  - option "All"
+                                  - option "Existing"
+                              - generic "Use fuzzy matching, and search characters in the list by all data fields, not just by a name substring.":
+                                - checkbox "Advanced Character Search" [ref=e128] [cursor=pointer]
+                                - generic [ref=e129]: Advanced Character Search
+                              - generic "If checked and the character card contains a prompt override (System Prompt), use that instead.":
+                                - checkbox "Prefer Char. Prompt" [ref=e130] [cursor=pointer]
+                                - generic [ref=e131]: Prefer Char. Prompt
+                              - generic "If checked and the character card contains a Post-History Instructions override, use that instead.":
+                                - checkbox "Prefer Char. Instructions" [ref=e132] [cursor=pointer]
+                                - generic [ref=e133]: Prefer Char. Instructions
+                              - generic "Avoid cropping and resizing imported character images. When off, crop/resize to 512x768. This will disable the upload cropping popup for avatars.":
+                                - checkbox "Never resize avatars" [ref=e134] [cursor=pointer]
+                                - generic [ref=e135]: Never resize avatars
+                              - generic "Allow animations for WEBP backgrounds. This is only a change for the selection menu.":
+                                - checkbox "Animated background thumbnails" [ref=e136] [cursor=pointer]
+                                - generic [ref=e137]: Animated background thumbnails
+                              - generic "Show actual file names on the disk, in the characters list display only.":
+                                - checkbox "Show avatar filenames" [ref=e138] [cursor=pointer]
+                                - generic [ref=e139]: Show avatar filenames
+                              - generic "Hide character definitions from the editor panel behind a spoiler button.":
+                                - checkbox "Spoiler Free Mode" [ref=e140] [cursor=pointer]
+                                - generic [ref=e141]: Spoiler Free Mode
+                            - generic:
+                              - heading "Miscellaneous" [level=4] [ref=e142]
+                              - generic:
+                                - generic "Reload and redraw the currently open chat." [ref=e143] [cursor=pointer]:
+                                  - generic [ref=e144]: Reload Chat
+                                - generic [ref=e146] [cursor=pointer]: Debug Menu
+                                - generic "Find and delete backups, unused chats, files, images, etc." [ref=e147] [cursor=pointer]:
+                                  - generic [ref=e148]: Clean-Up
+                              - generic:
+                                - checkbox "Smooth Streaming" [ref=e149] [cursor=pointer]
+                                - generic [ref=e150]: Smooth Streaming
+                              - generic "Fade in streamed text when it appears, instead of it just popping in.":
+                                - checkbox "Stream Fade-In " [ref=e151] [cursor=pointer]
+                                - generic [ref=e152]: Stream Fade-In
+                                - generic "Experimental feature. May not work for all backends." [ref=e153]: 
+                              - generic "Play a sound when a message generation finishes.":
+                                - checkbox "Message Sound" [ref=e154] [cursor=pointer]
+                                - generic [ref=e155]: Message Sound
+                              - generic "Only play a sound when ST's browser tab is unfocused.":
+                                - checkbox "Background Sound Only" [ref=e156] [cursor=pointer]
+                                - generic [ref=e157]: Background Sound Only
+                              - generic "Reduce the formatting requirements on API URLs.":
+                                - checkbox "Relaxed API URLs" [ref=e158] [cursor=pointer]
+                                - generic [ref=e159]: Relaxed API URLs
+                              - generic "Ask to import the World Info/Lorebook for every new character with embedded lorebook. If unchecked, a brief message will be shown instead.":
+                                - checkbox "Lorebook Import Dialog" [ref=e160] [cursor=pointer]
+                                - generic [ref=e161]: Lorebook Import Dialog
+                              - generic "Enable auto-select of input text in some text fields when clicking/selecting them. Applies to popup input textboxes, and possible other custom input fields.":
+                                - checkbox [ref=e162] [cursor=pointer]
+                                - generic [ref=e163]: Auto-select Input Text
+                              - generic "Enable hotkeys for inserting markdown format characters in certain text input boxes. See '/help hotkeys'.":
+                                - checkbox "Markdown Hotkeys " [ref=e164] [cursor=pointer]
+                                - generic [ref=e165]:
+                                  - text: Markdown Hotkeys
+                                  - generic [ref=e166]: 
+                              - generic "Restore unsaved user input on page refresh.":
+                                - checkbox "Restore User Input" [ref=e167] [cursor=pointer]
+                                - generic [ref=e168]: Restore User Input
+                              - generic:
+                                - generic "Allow repositioning certain UI elements by dragging them. PC only, no effect on mobile." [ref=e169]:
+                                  - checkbox "MovingUI " [ref=e170] [cursor=pointer]
+                                  - generic [ref=e171]:
+                                    - text: MovingUI
+                                    - generic [ref=e172]: 
+                                - generic "Reset MovingUI panel sizes/locations." [ref=e173] [cursor=pointer]:
+                                  - generic [ref=e174]: 
+                                  - generic [ref=e175]: Reset
+                              - generic:
+                                - generic:
+                                  - generic "MovingUI preset. Predefined/saved draggable positions." [ref=e176]:
+                                    - text: "MovingUI Preset:"
+                                    - combobox "MovingUI Preset:" [ref=e178]
+                                  - generic "Save changes to a new MovingUI preset file." [ref=e179] [cursor=pointer]: 
+                              - generic:
+                                - generic "Apply a custom CSS style to the whole SillyBunny interface." [ref=e180] [cursor=pointer]:
+                                  - generic [ref=e181]: Custom CSS
+                                  - generic [ref=e182]: 
+                                - text: 
+                          - generic [ref=e183]:
+                            - generic [ref=e184]:
+                              - generic [ref=e185] [cursor=pointer]:
+                                - generic [ref=e187]: Chat/Message Handling
+                                - generic [ref=e188]: 
+                              - text:        
+                            - generic "Options for the various autocomplete input boxes." [ref=e190] [cursor=pointer]:
+                              - generic [ref=e191]: AutoComplete Settings
+                              - generic [ref=e192]: 
+                            - generic [ref=e193]:
+                              - heading "STscript Settings" [level=4] [ref=e194]
+                              - generic "Sets default flags for the STscript parser." [ref=e195]:
+                                - generic [ref=e197]: Parser Flags
+                                - generic "Switch to stricter escaping, allowing all delimiting characters to be escaped with a backslash, and backslashes to be escaped as well." [ref=e198]:
+                                  - checkbox "STRICT_ESCAPING " [ref=e199] [cursor=pointer]
+                                  - generic [ref=e200]: STRICT_ESCAPING
+                                  - link "" [ref=e201] [cursor=pointer]:
+                                    - /url: https://docs.sillytavern.app/usage/st-script/#strict-escaping
+                                    - generic [ref=e202]: 
+                                - 'generic "Prevents {{getvar::}} {{getglobalvar::}} macros from having literal macro-like values auto-evaluated. e.g. \"{{newline}}\" remains as literal string \"{{newline}}\" (This is done by internally replacing {{getvar::}} {{getglobalvar::}} macros with scoped variables.)" [ref=e203]':
+                                  - checkbox "REPLACE_GETVAR " [ref=e204] [cursor=pointer]
+                                  - generic [ref=e205]: REPLACE_GETVAR
+                                  - link "" [ref=e206] [cursor=pointer]:
+                                    - /url: https://docs.sillytavern.app/usage/st-script/#replace-variable-macros
+                                    - generic [ref=e207]: 
+              - text:                            +    
+    - generic:           Back  Favorite  Advanced                                  Group is empty.  No characters available         
+  - generic:                      +                                                                                +    + +                  
+  - generic:                  
+  - generic [ref=e208]:
+    - text: 
+    - generic [ref=e211]:
+      - text:  
+      - generic [ref=e212]:
+        - generic [ref=e214] [cursor=pointer]: 
+        - textbox "Not connected to API!" [ref=e215]
+        - generic:       
+  - text:               
+  - dialog [active] [ref=e216]:
+    - generic [ref=e219]:
+      - img "SillyBunny Badge" [ref=e220]
+      - generic [ref=e221]: 
+      - heading "Initializing…" [level=2] [ref=e222]
+    - text: 
+  - text:          

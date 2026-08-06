@@ -1,0 +1,571 @@
+- generic [ref=e1]:
+  - generic [ref=e543]:
+    - generic [ref=e544]:
+      - text: 
+      - button "Open workspace tools" [expanded] [active] [ref=e545] [cursor=pointer]:
+        - generic [ref=e546]: 
+        - generic [ref=e547]: Navigate
+      - button "Return to the landing page" [ref=e548] [cursor=pointer]:
+        - generic [ref=e549]: 
+        - generic [ref=e550]: Home
+    - generic "SillyBunny" [ref=e552]
+    - generic [ref=e553]:
+      - button "Open character management" [ref=e554] [cursor=pointer]:
+        - generic [ref=e555]: 
+        - generic [ref=e556]: Characters
+      - button "Open customization tools" [ref=e557] [cursor=pointer]:
+        - generic [ref=e558]: 
+        - generic [ref=e559]: Customize
+  - generic:
+    - generic [ref=e678]:
+      - tablist "Workspace sections" [ref=e679]:
+        - tab "Presets Swap presets, tune generation controls, and keep your most-used setups close." [selected] [ref=e680] [cursor=pointer]:
+          - generic [ref=e681]: 
+          - generic [ref=e682]:
+            - strong [ref=e683]: Presets
+            - generic [ref=e684]: Swap presets, tune generation controls, and keep your most-used setups close.
+        - tab "API Connect providers, select models, and manage backend-specific options." [ref=e685] [cursor=pointer]:
+          - generic [ref=e686]: 
+          - generic [ref=e687]:
+            - strong [ref=e688]: API
+            - generic [ref=e689]: Connect providers, select models, and manage backend-specific options.
+        - tab "Advanced Formatting Fine-tune instruct templates, formatting rules, and prompt shaping." [ref=e690] [cursor=pointer]:
+          - generic [ref=e691]: 
+          - generic [ref=e692]:
+            - strong [ref=e693]: Advanced Formatting
+            - generic [ref=e694]: Fine-tune instruct templates, formatting rules, and prompt shaping.
+        - tab "World Info Edit lorebooks, world entries, and retrieval-friendly context." [ref=e695] [cursor=pointer]:
+          - generic [ref=e696]: 
+          - generic [ref=e697]:
+            - strong [ref=e698]: World Info
+            - generic [ref=e699]: Edit lorebooks, world entries, and retrieval-friendly context.
+        - tab "Agents Configure retrieval, memory, and lorebook helpers in one place." [ref=e700] [cursor=pointer]:
+          - generic [ref=e701]: 
+          - generic [ref=e702]:
+            - strong [ref=e703]: Agents
+            - generic [ref=e704]: Configure retrieval, memory, and lorebook helpers in one place.
+      - generic [ref=e705]:
+        - generic [ref=e706]:
+          - text: 
+          - generic [ref=e707]: Workspace
+          - heading "Presets" [level=2] [ref=e708]
+          - paragraph [ref=e709]: Swap presets, tune generation controls, and keep your most-used setups close.
+          - paragraph [ref=e710]: Model behavior, presets, lore, and agent tools live here.
+          - generic [ref=e711]:
+            - generic [ref=e712]: 
+            - searchbox "Quick find presets, samplers, lorebooks, agents..." [ref=e713]
+        - generic [ref=e714]:
+          - tabpanel [ref=e715]:
+            - generic [ref=e717]:
+              - generic [ref=e718]: 
+              - generic "Locked = AI Configuration panel will stay open" [ref=e719]:
+                - generic [ref=e720]:
+                  - text: 
+                  - button "" [ref=e721] [cursor=pointer]
+              - generic [ref=e722]: Click slider numbers to input manually.
+              - link "" [ref=e723] [cursor=pointer]:
+                - /url: https://docs.sillytavern.app/usage/common-settings/
+                - generic [ref=e724]: 
+              - generic [ref=e726]:
+                - generic [ref=e727]:
+                  - text:               
+                  - generic [ref=e729]:
+                    - generic [ref=e730]:
+                      - strong [ref=e731]: Chat Completion Presets
+                      - generic [ref=e732]:
+                        - button "" [ref=e733] [cursor=pointer]:
+                          - text: 
+                          - generic [ref=e734]: 
+                        - button "" [ref=e735] [cursor=pointer]:
+                          - generic [ref=e736]: 
+                        - button "" [ref=e737] [cursor=pointer]:
+                          - generic [ref=e738]: 
+                        - button "" [ref=e739] [cursor=pointer]:
+                          - generic [ref=e740]: 
+                    - generic [ref=e741]:
+                      - combobox [ref=e742]:
+                        - option "✦ fawnie v3"
+                        - option "🌙✧˖°. HawThorne Lowlight .°˖✧🌙"
+                        - option "📋✧˖°. Chibi Gram Pacer Test .°˖✧📋"
+                        - option "🔮✧˖°. HawThorne V.1 .°˖✧🔮"
+                        - option "avanijb"
+                        - option "Chatstream v2.1 Cold"
+                        - option "Chatstream v2.1 Warm"
+                        - option "Default Assistant"
+                        - option "Default"
+                        - option "DefaultRP (2)"
+                        - option "Frankenstein 3.6 - Little Feller"
+                        - option "Freaky Frankenstein 4.2 - Fat Man"
+                        - option "Geechan - Roleplay v3.3 (Chat Completions)"
+                        - option "Geechan - Universal Roleplay (Chat Completions) (v4.1) (test)"
+                        - option "Geechan - Universal Roleplay (Chat Completions) (v4.1)"
+                        - option "Geechan - Universal Roleplay (Chat Completions) (v4.3)"
+                        - option "Geechan - Universal Roleplay (v4.0)"
+                        - option "GGSytemPrompt"
+                        - option "Izumi Preset V2.82"
+                        - option "Lucid Loom v3.0"
+                        - option "Marinara's Spaghetti Recipe"
+                        - option "NemoEngine 7.0 Official"
+                        - option "NemoLorePreset"
+                        - option "pixijb-v18.2"
+                        - option "Poppet 1.7.1"
+                        - option "Poppet v1.2"
+                        - option "Poppet v1.4.2"
+                        - option "Pura's Director Preset 11.0" [selected]
+                        - option "Purapreset"
+                        - 'option "RE (´｡• ᵕ •｡`) Celia V4.9a"'
+                        - option "RPG Companion Trackers"
+                        - option "SKN Game Master Oneshot"
+                        - option "SmileyGPT 1.3.1"
+                        - option "SoftPlot v. 0.0.16.2"
+                        - option "TLD Card Conversion Preset (Standalone)"
+                      - generic [ref=e743]:
+                        - button "" [ref=e744] [cursor=pointer]:
+                          - generic [ref=e745]: 
+                        - button "" [ref=e746] [cursor=pointer]:
+                          - generic [ref=e747]: 
+                        - button "" [ref=e748] [cursor=pointer]:
+                          - generic [ref=e749]: 
+                  - text:       
+                - text:   
+                - generic [ref=e750]:
+                  - text:  + No items
+                  - generic [ref=e751]:
+                    - generic [ref=e752]:
+                      - generic [ref=e753] [cursor=pointer]:
+                        - generic [ref=e754]:
+                          - generic [ref=e755]: Token Budget
+                          - generic [ref=e756]: Context, response limits, swipes, costs, seed
+                        - button "" [ref=e757]
+                      - text: 
+                    - generic [ref=e759] [cursor=pointer]:
+                      - generic [ref=e760]:
+                        - generic [ref=e761]: Sampling
+                        - generic [ref=e762]: Temperature, penalties, and probability controls
+                      - button "" [ref=e763]
+                    - generic [ref=e764]:
+                      - generic [ref=e765] [cursor=pointer]:
+                        - generic [ref=e766]:
+                          - generic [ref=e767]: Output
+                          - generic [ref=e768]: Streaming, prompt templates, names, and continue behavior
+                        - button "" [ref=e769]
+                      - text:               
+                    - generic [ref=e770]:
+                      - generic [ref=e771] [cursor=pointer]:
+                        - generic [ref=e772]:
+                          - generic [ref=e773]: Advanced & Reasoning
+                          - generic [ref=e774]: Tools, media, reasoning, bias, and prompt manager
+                        - button "" [ref=e775]
+                      - text:              +     No items 
+                - generic [ref=e776]:
+                  - text:             ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☐ ☰ ☐ ☰ ☐ ☰                                  +                  ☰ ☰ ☰ ☰ ☰ ☰ ☰  ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰  ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰  ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰
+                  - generic [ref=e780]:
+                    - generic [ref=e781]:
+                      - generic [ref=e783]: Prompts
+                      - generic [ref=e784]: "Total Tokens: 0"
+                    - generic [ref=e785]:
+                      - combobox [ref=e786]:
+                        - option "!README!" [selected]
+                        - option "⭐─+ Main"
+                        - option "⭐─+ Optional Randomiser Toggles (Choose two max)"
+                        - option "⭐─+ Prefills"
+                        - option "⭐─+ Primary Toggles"
+                        - option "⭐─+ Tracker Toggles"
+                        - option "Achievements Tracker"
+                        - option "Banned Patterns"
+                        - option "Banned Patterns (XML Edition)"
+                        - option "Chaos Mode"
+                        - option "Combined Director’s Cut (Combination of all the above. Choose only this if you want the above ones.)"
+                        - option "CYOA Choices"
+                        - option "Dead Dove Escalation"
+                        - option "Difficulty Increase"
+                        - option "Don’t Write for User"
+                        - option "Force Gemini To Think Less"
+                        - option "Formatting"
+                        - option "Gemini Prefill"
+                        - option "Genre"
+                        - option "Genre Randomiser"
+                        - option "Gooner Mode"
+                        - option "GPT Assistant Prefill"
+                        - option "Grounded Complication"
+                        - option "HTML Toggle"
+                        - option "Item Tracker"
+                        - option "NPC Profile Sheets"
+                        - option "NSFW On"
+                        - option "Parallel Off-Screen Tracker"
+                        - option "Pending Events Tracker"
+                        - option "Relationship Tracker"
+                        - option "Reputation Tracker"
+                        - option "Scene Driving Force"
+                        - option "Scene Pressure Cocktail"
+                        - option "Scene Tracker"
+                        - option "Secrets Tracker"
+                        - option "Status and Conditions Tracker"
+                        - option "Summary"
+                        - option "Time Tracker"
+                        - option "World Detail Tracker"
+                        - option "Write for User"
+                      - button "" [ref=e787] [cursor=pointer]
+                      - button "X" [ref=e788] [cursor=pointer]
+                      - button "" [ref=e789] [cursor=pointer]
+                      - button "" [ref=e790] [cursor=pointer]
+                      - button "" [ref=e791] [cursor=pointer]
+                      - button "" [ref=e792] [cursor=pointer]
+                    - generic [ref=e793]:
+                      - searchbox "Search prompts by name or content" [ref=e794]
+                      - generic [ref=e795]:
+                        - button "" [ref=e796] [cursor=pointer]:
+                          - generic [ref=e797]: 
+                        - button "" [ref=e798] [cursor=pointer]:
+                          - generic [ref=e799]: 
+                        - button "" [ref=e800] [cursor=pointer]:
+                          - generic [ref=e801]: 
+                        - button "" [ref=e802] [cursor=pointer]:
+                          - generic [ref=e803]: 
+                    - list [ref=e804]:
+                      - listitem [ref=e805]:
+                        - generic [ref=e806]: Name
+                        - generic [ref=e808]: Tokens
+                      - listitem [ref=e809]:
+                        - separator [ref=e810]
+                      - listitem [ref=e811]:
+                        - generic [ref=e812]:
+                          - generic "Preset Prompt" [ref=e813]: "*"
+                          - text: "!README!"
+                        - generic [ref=e815]:
+                          - generic "Remove" [ref=e816] [cursor=pointer]: 
+                          - generic "edit" [ref=e817] [cursor=pointer]: 
+                          - generic [ref=e818] [cursor=pointer]: 
+                        - generic [ref=e819]: "-"
+                      - button "Toggle Main" [expanded] [ref=e820] [cursor=pointer]:
+                        - button "Toggle section" [ref=e821]:
+                          - generic [ref=e822]: 
+                        - generic [ref=e823]: Main
+                        - generic [ref=e824]: 12/12
+                      - text: "*   "
+                      - listitem [ref=e825]:
+                        - generic [ref=e826]:
+                          - generic "Important Prompt" [ref=e827]: 
+                          - text: Director Main Prompt
+                        - generic [ref=e829]:
+                          - generic "edit" [ref=e831] [cursor=pointer]: 
+                          - generic [ref=e832] [cursor=pointer]: 
+                        - generic [ref=e833]: "-"
+                      - listitem [ref=e834]:
+                        - generic [ref=e835]:
+                          - generic "In-Chat Injection" [ref=e836]: 
+                          - text: Formatting @ 1
+                        - generic [ref=e838]:
+                          - generic "Remove" [ref=e839] [cursor=pointer]: 
+                          - generic "edit" [ref=e840] [cursor=pointer]: 
+                          - generic [ref=e841] [cursor=pointer]: 
+                        - generic [ref=e842]: "-"
+                      - listitem [ref=e843]:
+                        - generic [ref=e844]:
+                          - generic "Preset Prompt" [ref=e845]: "*"
+                          - text: Genre
+                        - generic [ref=e847]:
+                          - generic "Remove" [ref=e848] [cursor=pointer]: 
+                          - generic "edit" [ref=e849] [cursor=pointer]: 
+                          - generic [ref=e850] [cursor=pointer]: 
+                        - generic [ref=e851]: "-"
+                      - listitem [ref=e852]:
+                        - generic [ref=e853]:
+                          - generic "Marker" [ref=e854]: 
+                          - text: Persona Description
+                        - generic [ref=e856]:
+                          - generic "edit" [ref=e858] [cursor=pointer]: 
+                          - generic [ref=e859] [cursor=pointer]: 
+                        - generic [ref=e860]: "-"
+                      - listitem [ref=e861]:
+                        - generic [ref=e862]:
+                          - generic "Marker" [ref=e863]: 
+                          - text: Char Description
+                        - generic [ref=e865]:
+                          - generic "edit" [ref=e867] [cursor=pointer]: 
+                          - generic [ref=e868] [cursor=pointer]: 
+                        - generic [ref=e869]: "-"
+                      - listitem [ref=e870]:
+                        - generic [ref=e871]:
+                          - generic "Marker" [ref=e872]: 
+                          - text: Char Personality
+                        - generic [ref=e874]:
+                          - generic "edit" [ref=e876] [cursor=pointer]: 
+                          - generic [ref=e877] [cursor=pointer]: 
+                        - generic [ref=e878]: "-"
+                      - listitem [ref=e879]:
+                        - generic [ref=e880]:
+                          - generic "Marker" [ref=e881]: 
+                          - text: World Info (before)
+                        - generic [ref=e883]:
+                          - generic "edit" [ref=e885] [cursor=pointer]: 
+                          - generic [ref=e886] [cursor=pointer]: 
+                        - generic [ref=e887]: "-"
+                      - listitem [ref=e888]:
+                        - generic [ref=e889]:
+                          - generic "Marker" [ref=e890]: 
+                          - text: Scenario
+                        - generic [ref=e892]:
+                          - generic "edit" [ref=e894] [cursor=pointer]: 
+                          - generic [ref=e895] [cursor=pointer]: 
+                        - generic [ref=e896]: "-"
+                      - listitem [ref=e897]:
+                        - generic [ref=e898]:
+                          - generic "Marker" [ref=e899]: 
+                          - text: World Info (after)
+                        - generic [ref=e901]:
+                          - generic "edit" [ref=e903] [cursor=pointer]: 
+                          - generic [ref=e904] [cursor=pointer]: 
+                        - generic [ref=e905]: "-"
+                      - listitem [ref=e906]:
+                        - generic [ref=e907]:
+                          - generic "Marker" [ref=e908]: 
+                          - text: Chat Examples
+                        - generic [ref=e913] [cursor=pointer]: 
+                        - generic [ref=e914]: "-"
+                      - listitem [ref=e915]:
+                        - generic [ref=e916]:
+                          - generic "Marker" [ref=e917]: 
+                          - text: Chat History
+                        - generic [ref=e922] [cursor=pointer]: 
+                        - generic [ref=e923]: "-"
+                      - listitem [ref=e924]:
+                        - generic [ref=e925]:
+                          - generic "Important Prompt" [ref=e926]: 
+                          - text: Grounded Prose Rules (Post-History Instructions)
+                        - generic [ref=e928]:
+                          - generic "edit" [ref=e930] [cursor=pointer]: 
+                          - generic [ref=e931] [cursor=pointer]: 
+                        - generic [ref=e932]: "-"
+                      - button "Toggle Primary Toggles" [ref=e933] [cursor=pointer]:
+                        - button "Toggle section" [ref=e934]:
+                          - generic [ref=e935]: 
+                        - generic [ref=e936]: Primary Toggles
+                        - generic [ref=e937]: 2/9
+                      - text: "*    *    *          *    *    *    *    *   "
+                      - button "Toggle Optional Randomiser Toggles (Choose two max)" [expanded] [ref=e938] [cursor=pointer]:
+                        - button "Toggle section" [ref=e939]:
+                          - generic [ref=e940]: 
+                        - generic [ref=e941]: Optional Randomiser Toggles (Choose two max)
+                        - generic [ref=e942]: 0/7
+                      - text: "*   "
+                      - listitem [ref=e943]:
+                        - generic [ref=e944]:
+                          - generic "In-Chat Injection" [ref=e945]: 
+                          - text: Grounded Complication
+                          - generic "Prompt will be sent as User" [ref=e946]: 
+                          - text: "@ 0"
+                        - generic [ref=e948]:
+                          - generic "Remove" [ref=e949] [cursor=pointer]: 
+                          - generic "edit" [ref=e950] [cursor=pointer]: 
+                          - generic [ref=e951] [cursor=pointer]: 
+                        - generic [ref=e952]: "-"
+                      - listitem [ref=e953]:
+                        - generic [ref=e954]:
+                          - generic "In-Chat Injection" [ref=e955]: 
+                          - text: Chaos Mode
+                          - generic "Prompt will be sent as User" [ref=e956]: 
+                          - text: "@ 0"
+                        - generic [ref=e958]:
+                          - generic "Remove" [ref=e959] [cursor=pointer]: 
+                          - generic "edit" [ref=e960] [cursor=pointer]: 
+                          - generic [ref=e961] [cursor=pointer]: 
+                        - generic [ref=e962]: "-"
+                      - listitem [ref=e963]:
+                        - generic [ref=e964]:
+                          - generic "In-Chat Injection" [ref=e965]: 
+                          - text: Genre Randomiser
+                          - generic "Prompt will be sent as User" [ref=e966]: 
+                          - text: "@ 0"
+                        - generic [ref=e968]:
+                          - generic "Remove" [ref=e969] [cursor=pointer]: 
+                          - generic "edit" [ref=e970] [cursor=pointer]: 
+                          - generic [ref=e971] [cursor=pointer]: 
+                        - generic [ref=e972]: "-"
+                      - listitem [ref=e973]:
+                        - generic [ref=e974]:
+                          - generic "In-Chat Injection" [ref=e975]: 
+                          - text: Scene Driving Force
+                          - generic "Prompt will be sent as User" [ref=e976]: 
+                          - text: "@ 0"
+                        - generic [ref=e978]:
+                          - generic "Remove" [ref=e979] [cursor=pointer]: 
+                          - generic "edit" [ref=e980] [cursor=pointer]: 
+                          - generic [ref=e981] [cursor=pointer]: 
+                        - generic [ref=e982]: "-"
+                      - listitem [ref=e983]:
+                        - generic [ref=e984]:
+                          - generic "In-Chat Injection" [ref=e985]: 
+                          - text: Scene Pressure Cocktail
+                          - generic "Prompt will be sent as User" [ref=e986]: 
+                          - text: "@ 0"
+                        - generic [ref=e988]:
+                          - generic "Remove" [ref=e989] [cursor=pointer]: 
+                          - generic "edit" [ref=e990] [cursor=pointer]: 
+                          - generic [ref=e991] [cursor=pointer]: 
+                        - generic [ref=e992]: "-"
+                      - listitem [ref=e993]:
+                        - generic [ref=e994]:
+                          - generic "In-Chat Injection" [ref=e995]: 
+                          - text: Combined Director’s Cut (Combination of all the above. Choose only this if you want the above ones.)
+                          - generic "Prompt will be sent as User" [ref=e996]: 
+                          - text: "@ 0"
+                        - generic [ref=e998]:
+                          - generic "Remove" [ref=e999] [cursor=pointer]: 
+                          - generic "edit" [ref=e1000] [cursor=pointer]: 
+                          - generic [ref=e1001] [cursor=pointer]: 
+                        - generic [ref=e1002]: "-"
+                      - listitem [ref=e1003]:
+                        - generic [ref=e1004]:
+                          - generic "In-Chat Injection" [ref=e1005]: 
+                          - text: Dead Dove Escalation
+                          - generic "Prompt will be sent as User" [ref=e1006]: 
+                          - text: "@ 0"
+                        - generic [ref=e1008]:
+                          - generic "Remove" [ref=e1009] [cursor=pointer]: 
+                          - generic "edit" [ref=e1010] [cursor=pointer]: 
+                          - generic [ref=e1011] [cursor=pointer]: 
+                        - generic [ref=e1012]: "-"
+                      - button "Toggle Tracker Toggles" [ref=e1013] [cursor=pointer]:
+                        - button "Toggle section" [ref=e1014]:
+                          - generic [ref=e1015]: 
+                        - generic [ref=e1016]: Tracker Toggles
+                        - generic [ref=e1017]: 6/13
+                      - text: "*    *    *    *    *    *    *    *    *    *    *    *    *    *   "
+                      - button "Toggle Prefills" [ref=e1018] [cursor=pointer]:
+                        - button "Toggle section" [ref=e1019]:
+                          - generic [ref=e1020]: 
+                        - generic [ref=e1021]: Prefills
+                        - generic [ref=e1022]: 0/2
+                      - text: "*    *     *    "
+          - text:                                                                                                                                       +         
+    - generic:                                                              +               +                                    +   + +  +     +        +        +        +                                                                                                                                                                                                                                                                                                                                       +                                             
+    - generic:           Back  Favorite  Advanced                                            Group is empty.          No characters available                                                                                                                                                                                                                                 
+  - generic:                       +                                                                                 +     + +                  
+  - generic:                  
+  - generic [ref=e528]:
+    - generic [ref=e560]: 
+    - generic [ref=e561]:
+      - generic [ref=e562]:
+        - generic [ref=e563]:
+          - generic [ref=e564]: Home
+          - generic [ref=e565]:
+            - paragraph [ref=e567]: A SillyTavern fork with bun instead. Bunny!
+            - generic [ref=e568]:
+              - text: 
+              - button "" [ref=e569] [cursor=pointer]:
+                - generic [ref=e570]: 
+          - generic [ref=e571]:
+            - button " Temporary Chat Open a quick throwaway session when you want to test without committing." [ref=e572] [cursor=pointer]:
+              - generic [ref=e573]: 
+              - generic [ref=e574]:
+                - strong [ref=e575]: Temporary Chat
+                - generic [ref=e576]: Open a quick throwaway session when you want to test without committing.
+            - button " Open Assistant Keep the landing page clean until you actually want help, guidance, or a scratch conversation." [ref=e577] [cursor=pointer]:
+              - generic [ref=e578]: 
+              - generic [ref=e579]:
+                - strong [ref=e580]: Open Assistant
+                - generic [ref=e581]: Keep the landing page clean until you actually want help, guidance, or a scratch conversation.
+          - text:     
+        - img "Animated SillyBunny bunny mascot" [ref=e584]
+      - generic [ref=e585]:
+        - generic [ref=e587]:
+          - generic [ref=e588]: Recent Chats
+          - paragraph [ref=e589]: Jump back into a thread, pin the keepers, or start fresh when inspiration changes direction.
+        - list [ref=e591]:
+          - listitem [ref=e592] [cursor=pointer]:
+            - 'generic "[Character] Kaveh & Alhaitham File: Kaveh & Alhaitham.png" [ref=e593]':
+              - img "Kaveh & Alhaitham" [ref=e594]
+            - generic [ref=e595]:
+              - generic [ref=e596]:
+                - 'generic "Kaveh & Alhaitham - 2026-04-04@14h54m55s009ms - Branch #1.jsonl" [ref=e597]':
+                  - strong [ref=e598]: Kaveh & Alhaitham
+                  - text: "– Kaveh & Alhaitham - 2026-04-04@14h54m55s009ms - Branch #1"
+                - generic "April 4, 2026 6:32 PM" [ref=e599]: 4/4/2026
+                - generic [ref=e600]:
+                  - button "" [ref=e601]:
+                    - generic [ref=e602]: 
+                  - button "" [ref=e603]:
+                    - generic [ref=e604]: 
+                  - button "" [ref=e605]:
+                    - generic [ref=e606]: 
+              - generic [ref=e607]:
+                - generic [ref=e608]
+                - generic [ref=e609]:
+                  - generic [ref=e610]:
+                    - generic [ref=e611]: 
+                    - generic [ref=e612]: "5"
+                    - text: "|"
+                  - generic [ref=e613]: 135.02KB
+          - listitem [ref=e614] [cursor=pointer]:
+            - 'generic "[Character] Kaveh & Alhaitham File: Kaveh & Alhaitham.png" [ref=e615]':
+              - img "Kaveh & Alhaitham" [ref=e616]
+            - generic [ref=e617]:
+              - generic [ref=e618]:
+                - generic "Kaveh & Alhaitham - 2026-04-04@14h54m55s009ms.jsonl" [ref=e619]:
+                  - strong [ref=e620]: Kaveh & Alhaitham
+                  - text: – Kaveh & Alhaitham - 2026-04-04@14h54m55s009ms
+                - generic "April 4, 2026 4:00 PM" [ref=e621]: 4/4/2026
+                - generic [ref=e622]:
+                  - button "" [ref=e623]:
+                    - generic [ref=e624]: 
+                  - button "" [ref=e625]:
+                    - generic [ref=e626]: 
+                  - button "" [ref=e627]:
+                    - generic [ref=e628]: 
+              - generic [ref=e629]:
+                - generic [ref=e630]
+                - generic [ref=e631]:
+                  - generic [ref=e632]:
+                    - generic [ref=e633]: 
+                    - generic [ref=e634]: "7"
+                    - text: "|"
+                  - generic [ref=e635]: 168KB
+          - listitem [ref=e636] [cursor=pointer]:
+            - 'generic "[Character] Kaeya File: Kaeya.png" [ref=e637]':
+              - img "Kaeya" [ref=e638]
+            - generic [ref=e639]:
+              - generic [ref=e640]:
+                - 'generic "Kaeya - 2026-03-23@01h31m25s495ms - Branch #1.jsonl" [ref=e641]':
+                  - strong [ref=e642]: Kaeya
+                  - text: "– Kaeya - 2026-03-23@01h31m25s495ms - Branch #1"
+                - generic "April 4, 2026 1:34 PM" [ref=e643]: 4/4/2026
+                - generic [ref=e644]:
+                  - button "" [ref=e645]:
+                    - generic [ref=e646]: 
+                  - button "" [ref=e647]:
+                    - generic [ref=e648]: 
+                  - button "" [ref=e649]:
+                    - generic [ref=e650]: 
+              - generic [ref=e651]:
+                - generic [ref=e652]
+                - generic [ref=e653]:
+                  - generic [ref=e654]:
+                    - generic [ref=e655]: 
+                    - generic [ref=e656]: "5"
+                    - text: "|"
+                  - generic [ref=e657]: 72.2KB
+          - button "" [ref=e658] [cursor=pointer]:
+            - generic [ref=e659]: 
+    - generic [ref=e531]:
+      - text:  
+      - generic [ref=e532]:
+        - generic "Extensions" [ref=e660] [cursor=pointer]
+        - textbox "Type a message, or /? for help" [ref=e661]
+        - generic [ref=e662]:
+          - text:    
+          - generic "Send a message" [ref=e663] [cursor=pointer]
+  - text:                            1   
+  - generic [ref=e664]: 
+  - status [ref=e665]
+  - status [ref=e666]
+  - status [ref=e667]
+  - status [ref=e668]
+  - status [ref=e669]
+  - status [ref=e670]
+  - status [ref=e671]
+  - status [ref=e672]
+  - status [ref=e673]
+  - status [ref=e674]
+  - status [ref=e675]
+  - status [ref=e676]
