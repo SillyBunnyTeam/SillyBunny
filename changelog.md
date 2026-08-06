@@ -2,16 +2,63 @@
 
 ## v1.7.0
 
-Status: Unreleased. Human release copy is required before publication.
+**SillyBunny version 1.7.0 has released**
+This update features comprehensive bug fixes all across the board, as well as a new feature, Conversation Mode!
 
-### Release Summary
-lorum ipsum
+**New: Conversation Mode**
+Conversation Mode is inspired by instant messaging apps like Discord, Telegram, and Signal. Interface is more inspired by Telegram and Signal than Discord, however. Among a few features includes: solo messaging, group messaging, selfies, reminders, scheduling, and more! Based heavily on TheLonelyDevil's [Discord Pals](https://github.com/TheLonelyDevil9/discord-pals), check it out!
 
-### Highlights
-lorum ipsum
+### Fixed
+- Companion Agent fixes for regeneration, the fix trackers buttons, the general HTML regexes, and added more customisation options for Companion Agents, both in the Companion Agent drawer and the settings themselves.
+- Fixed sampling profile, custom endpoint, secret binding, proxy isolation, and connection profile issues.
+- Hardened chat saving, backups, renaming, metadata preservation, and unnecessary resaving. There should now be less backups overall, and your chat suddenly deleting and moving to the greeting while the rest disappears are now highly mitigated, as much as possible.
+- Fixed compatibility for third-party extensions CharacterLibrary and ST-Copilot. Should be future-proofed for other third-party SillyTavern extensions but it depends. Open an issue on Github for specific extensions and we can take a look.
+- Corrected Claude responses, Gemini thought signatures, Grok dialogue, and SillyTavern version mapping for extensions by hard-coding it to the latest version, 1.18.0.
+- Fixed TTS extension reading the font color tags and HTML tags.
+- Fixed multiple platforms' device issues with starting SillyBunny in either node or bun.
+- Corrected some WebKit layout issues.
+- Termux bun launch should now work better due to reordering of how dependencies are found and installed.
+- Fixed UI bugs such as button and tag truncations.
 
-### Upgrade Notes
-lorum ipsum
+### Added
+- Conversation Mode for DM-style RPs with your characters.
+- Added the hardcoding for the latest new models for different backends at the time of release. They should still be automatically updated via your API, this is just for UI/cleaning purposes.
+- LinkAPI-specific backend with auto-routing, and Custom Endpoint Profiles for Custom OpenAI-compatible backend, similar to the Reverse Proxy option in other backends like AI Studio.
+- Option to add more desktop top bar quick shortcuts.
+- Option to include every page icon on the desktop and mobile top bar.
+- Companion Agent settings - adding the ability for agents to depend on each other, send context to each other, and wait for other agents to finish before starting a specific one.
+- A wand icon in the Custom CSS menu that allows you to request your equipped LLM what to add or change.
+- Locks on every dropdown for Bunny Preset Tools to prevent random reopening and reclosing when using mobile devices, as well as allowing dropdown reordering.
+- Delete-and-add swipe and TTS stop actions.
+- Verbose console logging.
+- Sorting by newest added character.
+- Optional disabling of core extensions.
+- New model/provider icons, control labels, model variants, and Kimi K3 partial-prefill support.
+- Opt-in `bun --smol` launcher support on devices that need arguments before the start command. Use `SILLYBUNNY_BUN_SMOL=1 ./start.sh` to launch a small device-friendly SillyBunny.
+- New agents: Level Up Companion, User-based Stats, and CYOA Choices with Skill Checks.
+
+### Changed
+- Reworked the home screen.
+- Updated Quick Image Gen to upstream `v3.0.0`, with SillyBunny-specific compatibility.
+- Updated Pura’s Director Preset, Grounded Prose Rules, TLD Card Conversion, and Memory Shard agent.
+- Reorganized custom agent templates into content and tracker categories.
+- Changed the default window size to Snap to Chat Width behavior.
+- Main LLM messages by default now output before pre-generation intercept agents change them.
+- Updated non-English README files to reference SillyBunny.
+
+### Improvements
+- Improved Android mobile performance.
+- Improved mobile shell loading, touch behavior, horizontal navigation, and keyboard handling.
+- Added more accent profiles.
+- Added clearer iOS startup diagnostics.
+- Improved accessibility labels and compact mobile controls.
+- Improved documentation.
+
+### Removed
+- Removed deprecated model entries.
+- Removed dead code.
+- Removed placeholder text from the UI.
+- Deprecated Group DMs from Group Chats, as they are now delegated to Conversation Mode.
 
 ### Supporting Mechanical Staging PR Ledger
 - PR #495 (2026-06-15) `chore: bump version to 1.7.0`
