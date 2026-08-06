@@ -165,20 +165,22 @@ export function editConversationMessage(messageId) {
 
     textElement.textContent = '';
     textElement.append(textarea, buttonContainer);
-    textarea.focus({ preventScroll: true });
+
+    const closeEditor = () => {
+        delete messageElement.dataset.sbConversationMessageFingerprint;
+        scheduleTimelineRender();
+    };
 
     saveButton.onclick = () => {
         const value = textarea.value.trim();
         if (value && value !== message.mes) {
-            updateConversationThreadMessage(avatar, messageId, value, null, { groupId, personaId });
+            updateConversationThreadMessage(avatar, message.id, value, null, { groupId, personaId });
         } else {
-            scheduleTimelineRender();
+            closeEditor();
         }
     };
 
-    cancelButton.onclick = () => {
-        scheduleTimelineRender();
-    };
+    cancelButton.onclick = closeEditor;
 
     textarea.onkeydown = (event) => {
         if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
@@ -189,6 +191,8 @@ export function editConversationMessage(messageId) {
             cancelButton.click();
         }
     };
+
+    textarea.focus({ preventScroll: true });
 }
 
 export function applyScheduleUpdateCommand(avatar, rawArgs, { personaId = getConversationPersonaId() } = {}) {

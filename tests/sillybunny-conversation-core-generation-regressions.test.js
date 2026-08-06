@@ -1,8 +1,11 @@
+/* global globalThis */
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 const appendConversationMessage = jest.fn();
 const addConversationReminder = jest.fn();
 const generateConversationImage = jest.fn();
+const scheduleTimelineRender = jest.fn();
+const updateConversationThreadMessage = jest.fn();
 const runtimeStatusOverrides = new Map();
 const threadMessages = [{ id: 'user-1', role: 'user', name: 'User', mes: 'hello', extra: {} }];
 
@@ -41,7 +44,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/prompt
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/shared-helpers.js', () => ({
     formatPromptText: value => String(value || ''),
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({ scheduleTimelineRender: jest.fn() }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({ scheduleTimelineRender }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/schedule.js', () => ({
     clamp: (value, min, max) => Math.min(max, Math.max(min, value)),
     getConversationReplyMaxTokens: () => 100,
@@ -56,7 +59,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/thread
     getImageCooldownRemainingSeconds: () => 0,
     hasConversationMessageContent: message => Boolean(message?.id && message?.mes),
     markImageGenerated: jest.fn(),
-    updateConversationThreadMessage: jest.fn(),
+    updateConversationThreadMessage,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({
     splitChatroomMessages: value => String(value || '').split(/\n\s*\n+/).map(part => part.trim()).filter(Boolean),
@@ -65,6 +68,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing
 }));
 
 const {
+    editConversationMessage,
     postCharacterReply,
 } = await import('../public/scripts/sillybunny-conversation/generation.js');
 
@@ -79,7 +83,10 @@ describe('Conversation core generated reply regressions', () => {
         appendConversationMessage.mockReset().mockImplementation(async (text, options) => ({ id: `message-${appendConversationMessage.mock.calls.length}`, mes: text, ...options }));
         addConversationReminder.mockClear();
         generateConversationImage.mockClear();
+        scheduleTimelineRender.mockClear();
+        updateConversationThreadMessage.mockClear();
         runtimeStatusOverrides.clear();
+        delete globalThis.document;
     });
 
     test('keeps native selfie command metadata when image generation is disabled', async () => {
@@ -142,6 +149,52 @@ describe('Conversation core generated reply regressions', () => {
         });
         expect(addConversationReminder).toHaveBeenCalledWith('char.png', '', '15m', 'check in', {
             branchId: 'branch-a',
+            personaId: 'persona-a.png',
+        });
+    });
+
+    test('closes unchanged editors and preserves legacy message identity when saving', () => {
+        const textElement = {
+            append: jest.fn(),
+            querySelector: jest.fn(() => null),
+            textContent: 'hello',
+        };
+        const messageElement = {
+            dataset: {
+                messageId: '42',
+                sbConversationMessageFingerprint: 'fingerprint',
+            },
+            querySelector: jest.fn(() => textElement),
+        };
+        const createdElements = [];
+        globalThis.document = {
+            createElement: jest.fn(() => {
+                const element = {
+                    append: jest.fn(),
+                    children: [],
+                    focus: jest.fn(),
+                    value: '',
+                };
+                element.append.mockImplementation((...children) => element.children.push(...children));
+                createdElements.push(element);
+                return element;
+            }),
+            querySelectorAll: jest.fn(() => [messageElement]),
+        };
+        threadMessages.splice(0, threadMessages.length, { id: 42, role: 'user', name: 'User', mes: 'hello', extra: {} });
+
+        editConversationMessage('42');
+
+        const [textarea, buttonContainer] = createdElements;
+        const [saveButton, cancelButton] = buttonContainer.children;
+        cancelButton.onclick();
+        expect(messageElement.dataset.sbConversationMessageFingerprint).toBeUndefined();
+        expect(scheduleTimelineRender).toHaveBeenCalledTimes(1);
+
+        textarea.value = 'updated';
+        saveButton.onclick();
+        expect(updateConversationThreadMessage).toHaveBeenCalledWith('char.png', 42, 'updated', null, {
+            groupId: '',
             personaId: 'persona-a.png',
         });
     });
