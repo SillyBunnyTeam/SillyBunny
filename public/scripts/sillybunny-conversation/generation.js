@@ -121,12 +121,15 @@ export function editConversationMessage(messageId) {
     const avatar = getCurrentCharAvatar();
     const groupId = getConversationGroupIdForAvatar(avatar);
     const personaId = getConversationPersonaId();
-    const message = getConversationThread(avatar, { create: false, groupId, personaId }).find(item => item.id === messageId);
+    const normalizedMessageId = String(messageId || '');
+    const message = getConversationThread(avatar, { create: false, groupId, personaId })
+        .find(item => String(item.id || '') === normalizedMessageId);
     if (!avatar || !message) {
         return;
     }
 
-    const messageElement = document.querySelector(`.sb-conversation-message[data-message-id="${messageId}"]`);
+    const messageElement = Array.from(document.querySelectorAll('.sb-conversation-message'))
+        .find(element => element.dataset.messageId === normalizedMessageId);
     if (!messageElement) {
         return;
     }
