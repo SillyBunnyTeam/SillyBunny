@@ -1,0 +1,34 @@
+[     454ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://127.0.0.1:8001/:0
+[     807ms] [WARNING] No input elements found for key: api_key_comfy_runpod @ http://127.0.0.1:8001/scripts/secrets.js:570
+[     809ms] [WARNING] Unsupported language: en-us @ http://127.0.0.1:8001/scripts/i18n.js:142
+[    1000ms] [LOG] OpenAI model changed to gpt-4-turbo @ http://127.0.0.1:8001/scripts/openai.js:5587
+[    1613ms] [INFO] Using default TTS Provider settings @ http://127.0.0.1:8001/scripts/extensions/tts/system.js:119
+[    1645ms] [LOG] [QR2] sets:  [QuickReplySet] @ http://127.0.0.1:8001/scripts/extensions/quick-reply/index.js:18
+[    1646ms] [LOG] [QR2] settings:  QuickReplySettings @ http://127.0.0.1:8001/scripts/extensions/quick-reply/index.js:18
+[    1675ms] [WARNING] Failed to process stylesheet on initial load: SecurityError: Failed to read the 'cssRules' property from 'CSSStyleSheet': Cannot access rules
+    at applyDynamicFocusStyles (http://127.0.0.1:8001/scripts/dynamic-styles.js:111:29)
+    at http://127.0.0.1:8001/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8001/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8001/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8001/script.js:12492:5) @ http://127.0.0.1:8001/scripts/dynamic-styles.js:193
+[    1684ms] [WARNING] Failed to insert focus rule: SyntaxError: Failed to execute 'insertRule' on 'CSSStyleSheet': Failed to parse the rule '::-webkit-scrollbar-track:focus-visible { background-color: color-mix(in srgb, var(--color-background, #130f0d) 70%, transparent); }'.
+    at http://127.0.0.1:8001/scripts/dynamic-styles.js:144:34
+    at Array.forEach (<anonymous>)
+    at applyDynamicFocusStyles (http://127.0.0.1:8001/scripts/dynamic-styles.js:117:16)
+    at http://127.0.0.1:8001/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8001/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8001/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8001/script.js:12492:5) @ http://127.0.0.1:8001/scripts/dynamic-styles.js:145
+[    1685ms] [WARNING] Failed to insert focus rule: SyntaxError: Failed to execute 'insertRule' on 'CSSStyleSheet': Failed to parse the rule '::-webkit-scrollbar-thumb:focus-visible { background-image: ; background-position-x: ; background-position-y: ; background-size: ; background-repeat: ; background-attachment: ; background-origin: ; background-color: ; border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }'.
+    at http://127.0.0.1:8001/scripts/dynamic-styles.js:144:34
+    at Array.forEach (<anonymous>)
+    at applyDynamicFocusStyles (http://127.0.0.1:8001/scripts/dynamic-styles.js:117:16)
+    at http://127.0.0.1:8001/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8001/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8001/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8001/script.js:12492:5) @ http://127.0.0.1:8001/scripts/dynamic-styles.js:145
+[   30474ms] [LOG] Character not found for avatar ID: default_Assistant.png. Creating new assistant. @ http://127.0.0.1:8001/scripts/welcome-screen.js:655
+[   30662ms] [ERROR] Character not found for avatar ID: default_Assistant.png. Cannot create. @ http://127.0.0.1:8001/scripts/welcome-screen.js:650
