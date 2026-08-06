@@ -2245,7 +2245,11 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
     z-index: calc(var(--sb-z-popout, 4000) - 1);
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
+    /* Icon-only handle: hold the drag/tap target at the touch minimum. */
+    min-inline-size: var(--sb-mobile-touch-target, 44px);
+    min-block-size: var(--sb-mobile-touch-target, 44px);
     padding: 10px 7px;
     margin: 0;
     border: 1px solid var(--SmartThemeBorderColor, #555);
@@ -2275,21 +2279,9 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
     outline: none;
 }
 
-.ica--tpanel-handle span {
-    font-size: calc(var(--mainFontSize) * 0.72);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-}
-
 .ica--tpanel-handle[data-edge="right"],
 .ica--tpanel-handle[data-edge="left"] {
     flex-direction: column;
-}
-
-.ica--tpanel-handle[data-edge="right"] span,
-.ica--tpanel-handle[data-edge="left"] span {
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
 }
 
 .ica--tpanel-handle[data-edge="right"] {

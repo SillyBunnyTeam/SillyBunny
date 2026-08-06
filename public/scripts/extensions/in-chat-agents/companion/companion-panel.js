@@ -1127,7 +1127,6 @@ export function initCompanionPanel() {
     $(document.body).append(`
         <button type="button" id="ica--tracker-panel-handle" class="ica--tpanel-handle" data-edge="right" title="Open the companion panel" aria-label="Open the companion panel" style="display:none">
             <i class="fa-solid fa-user-astronaut"></i>
-            <span>Companion</span>
         </button>
     `);
 
