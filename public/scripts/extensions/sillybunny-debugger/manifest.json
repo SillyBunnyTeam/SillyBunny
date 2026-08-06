@@ -1,0 +1,17 @@
+{
+    "display_name": "Bunny Debugger",
+    "author": "platberlitz",
+    "version": "0.1.1",
+    "description": "In-app devtools (console, network, element inspector) and one-tap diagnostic reports for devices without a desktop console.",
+    "js": "index.js",
+    "css": "style.css",
+    "loading_order": 0,
+    "bundled_opt_in": true,
+    "requires": [],
+    "optional": [],
+    "hooks": {
+        "activate": "init",
+        "enable": "init",
+        "disable": "deactivate"
+    }
+}

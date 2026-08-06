@@ -1,0 +1,175 @@
+diff --git a/src/Console/Console.js b/src/Console/Console.js
+index 2186431..a680d52 100644
+--- a/src/Console/Console.js
++++ b/src/Console/Console.js
+@@ -49,0 +50 @@ export default class Console extends Tool {
++    if (this._consoleHook) this.restoreConsole()
+@@ -51,0 +53,5 @@ export default class Console extends Tool {
++    const hook = (this._consoleHook = {
++      active: true,
++      descriptors: {},
++      wrappers: {},
++    })
+@@ -54,0 +61 @@ export default class Console extends Tool {
++      hook.descriptors[name] = Object.getOwnPropertyDescriptor(winConsole, name)
+@@ -56 +63 @@ export default class Console extends Tool {
+-        origin = origConsole[name] = winConsole[name].bind(winConsole)
++        origin = origConsole[name] = winConsole[name]
+@@ -59,3 +66,3 @@ export default class Console extends Tool {
+-      winConsole[name] = (...args) => {
+-        this[name](...args)
+-        origin(...args)
++      const wrapped = (...args) => {
++        if (hook.active) this[name](...args)
++        origin.apply(winConsole, args)
+@@ -62,0 +70,2 @@ export default class Console extends Tool {
++      hook.wrappers[name] = wrapped
++      winConsole[name] = wrapped
+@@ -71 +80 @@ export default class Console extends Tool {
+-    if (!this._origConsole) return this
++    if (!this._origConsole || !this._consoleHook) return this
+@@ -73,3 +82,9 @@ export default class Console extends Tool {
+-    CONSOLE_METHOD.forEach(
+-      (name) => (window.console[name] = this._origConsole[name])
+-    )
++    const hook = this._consoleHook
++    hook.active = false
++    CONSOLE_METHOD.forEach((name) => {
++      if (window.console[name] === hook.wrappers[name]) {
++        const descriptor = hook.descriptors[name]
++        if (descriptor) Object.defineProperty(window.console, name, descriptor)
++        else delete window.console[name]
++      }
++    })
+@@ -76,0 +92 @@ export default class Console extends Tool {
++    delete this._consoleHook
+diff --git a/src/DevTools/DevTools.js b/src/DevTools/DevTools.js
+index 39902b8..c3087be 100644
+--- a/src/DevTools/DevTools.js
++++ b/src/DevTools/DevTools.js
+@@ -252,0 +253,2 @@ export default class DevTools extends Emitter {
++    this._endResize()
++    theme.off('change', this._themeListener)
+@@ -391,0 +394 @@ export default class DevTools extends Emitter {
++    this._endResize = endListener
+@@ -401 +404 @@ export default class DevTools extends Emitter {
+-    theme.on('change', () => {
++    this._themeListener = () => {
+@@ -406 +409,2 @@ export default class DevTools extends Emitter {
+-    })
++    }
++    theme.on('change', this._themeListener)
+diff --git a/src/Elements/Elements.js b/src/Elements/Elements.js
+index 375b160..3c7406a 100644
+--- a/src/Elements/Elements.js
++++ b/src/Elements/Elements.js
+@@ -85,0 +86 @@ export default class Elements extends Tool {
++    chobitsu.domain('Overlay').setInspectMode({ mode: 'none' })
+@@ -86,0 +88 @@ export default class Elements extends Tool {
++    this._splitMediaQuery._mql.removeListener(this._splitMediaQuery._listener)
+diff --git a/src/EntryBtn/EntryBtn.js b/src/EntryBtn/EntryBtn.js
+index bf208f2..bc31316 100644
+--- a/src/EntryBtn/EntryBtn.js
++++ b/src/EntryBtn/EntryBtn.js
+@@ -45,0 +46,5 @@ export default class EntryBtn extends Emitter {
++    const $document = $(document)
++    $document.off(pointerEvent('move'), this._onDragMove)
++    $document.off(pointerEvent('up'), this._onDragEnd)
++    orientation.off('change', this._orientationListener)
++    window.removeEventListener('resize', this._resizeListener)
+@@ -155,2 +160,4 @@ export default class EntryBtn extends Emitter {
+-    orientation.on('change', () => this._resetPos(true))
+-    window.addEventListener('resize', () => this._resetPos())
++    this._orientationListener = () => this._resetPos(true)
++    this._resizeListener = () => this._resetPos()
++    orientation.on('change', this._orientationListener)
++    window.addEventListener('resize', this._resizeListener)
+diff --git a/src/Network/Network.js b/src/Network/Network.js
+index eb8988f..d5614cc 100644
+--- a/src/Network/Network.js
++++ b/src/Network/Network.js
+@@ -22,0 +23,2 @@ import { curlStr } from './util'
++const MAX_REQUESTS = 100
++
+@@ -106,0 +109 @@ export default class Network extends Tool {
++    if (Object.keys(this._requests).length >= MAX_REQUESTS) this.clear()
+@@ -348,0 +352 @@ export default class Network extends Tool {
++    this._splitMediaQuery._mql.removeListener(this._splitMediaQuery._listener)
+@@ -355,0 +360,4 @@ export default class Network extends Tool {
++    network.off('loadingFailed', this._loadingFailed)
++    network.disable()
++    this._requests = {}
++    this._selectedRequest = null
+diff --git a/src/eruda.js b/src/eruda.js
+index 3c3f01a..8eff159 100644
+--- a/src/eruda.js
++++ b/src/eruda.js
+@@ -48,16 +48,21 @@ export default {
+-
+-    this._initContainer(container, useShadowDom)
+-    this._initStyle()
+-    this._initDevTools(defaults, inline)
+-    this._initEntryBtn()
+-    this._initSettings()
+-    this._initTools(tool)
+-    this._registerListener()
+-
+-    if (autoScale) {
+-      this._autoScale()
+-    }
+-    if (inline) {
+-      this._entryBtn.hide()
+-      this._$el.addClass('eruda-inline')
+-      this.show()
++    try {
++      this._initContainer(container, useShadowDom)
++      this._initStyle()
++      this._initDevTools(defaults, inline)
++      this._initEntryBtn()
++      this._initSettings()
++      chobitsu.domain('DOM').enable()
++      this._initTools(tool)
++      this._registerListener()
++
++      if (autoScale) {
++        this._autoScale()
++      }
++      if (inline) {
++        this._entryBtn.hide()
++        this._$el.addClass('eruda-inline')
++        this.show()
++      }
++    } catch (e) {
++      this.destroy()
++      throw e
+@@ -67,0 +73 @@ export default {
++  sillyBunnyDebuggerBuild: 'eruda-3.4.3-chobitsu-1.8.6-sbdbg',
+@@ -140 +146,7 @@ export default {
+-    this._devTools.destroy()
++    if (!this._isInit) return
++    this._isInit = false
++
++    safely(() => this._devTools && this._devTools.destroy())
++    safely(() => chobitsu.domain('Network').disable())
++    safely(() => chobitsu.domain('Overlay').disable())
++    safely(() => chobitsu.domain('DOM').disable())
+@@ -142 +154 @@ export default {
+-    this._entryBtn.destroy()
++    safely(() => this._entryBtn && this._entryBtn.destroy())
+@@ -144,4 +156,3 @@ export default {
+-    this._unregisterListener()
+-    $(this._container).remove()
+-    evalCss.clear()
+-    this._isInit = false
++    safely(() => this._unregisterListener())
++    safely(() => $(this._container).remove())
++    safely(() => evalCss.clear())
+@@ -322,0 +334,8 @@ export default {
++
++function safely(fn) {
++  try {
++    fn()
++  } catch {
++    // Teardown must continue after a partially initialized tool fails.
++  }
++}

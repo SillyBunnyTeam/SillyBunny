@@ -467,7 +467,11 @@ function applyBundledOptInDefaults({ migrateLegacy = false, initializeProcessedI
             continue;
         }
 
-        if (!extension_settings.disabledExtensions.some(name => areExtensionIdsEqual(name, extensionName))) {
+        // SillyBunny: promoting an installed third-party extension must preserve its enabled state.
+        const hasExternalInstall = extensionNames.some(name => name !== extensionName
+            && areExtensionIdsEqual(name, extensionName)
+            && ['local', 'global'].includes(extensionTypes[name]));
+        if (!hasExternalInstall && !extension_settings.disabledExtensions.some(name => areExtensionIdsEqual(name, extensionName))) {
             extension_settings.disabledExtensions.push(extensionName);
         }
 
@@ -2285,7 +2289,8 @@ export async function loadExtensionSettings(settings, versionChanged, enableAuto
     // Clean stale entries from disabledExtensions list
     const originalDisabledCount = extension_settings.disabledExtensions.length;
     extension_settings.disabledExtensions = extension_settings.disabledExtensions.filter(name => {
-        const exists = extensionNames.includes(name);
+        // SillyBunny: normalized aliases survive third-party-to-bundled promotion.
+        const exists = extensionNames.some(extensionName => areExtensionIdsEqual(name, extensionName));
         if (!exists) {
             console.log(`[Extensions] Removed stale disabled extension: ${name}`);
         }

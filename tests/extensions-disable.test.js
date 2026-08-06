@@ -334,6 +334,64 @@ describe('disabled extensions', () => {
         expect(saveSettingsDebounced).toHaveBeenCalledTimes(1);
     });
 
+    test('keeps an enabled third-party extension enabled when it becomes bundled', async () => {
+        installExtensionModuleMocks();
+        installExtensionDiscovery([
+            { name: 'sillybunny-debugger', type: 'core', manifest: { bundled_opt_in: true } },
+            { name: 'third-party/SillyBunny-Debugger', type: 'local' },
+        ]);
+
+        const { extension_settings, findExtension, loadExtensionSettings } = await import('../public/scripts/extensions.js');
+        await loadExtensionSettings({
+            extension_settings: {
+                lockedExtensionsUnlockApplied: true,
+                bundledOptInProcessedExtensions: [],
+                disabledExtensions: [],
+            },
+        }, false, false);
+
+        expect(extension_settings.disabledExtensions).toEqual([]);
+        expect(extension_settings.bundledOptInProcessedExtensions).toEqual(['sillybunny-debugger']);
+        expect(findExtension('sillybunny-debugger')).toEqual({ name: 'sillybunny-debugger', enabled: true });
+
+        installExtensionDiscovery([
+            { name: 'sillybunny-debugger', type: 'core', manifest: { bundled_opt_in: true } },
+        ]);
+        await loadExtensionSettings({ extension_settings: { ...extension_settings } }, false, false);
+
+        expect(extension_settings.disabledExtensions).toEqual([]);
+        expect(findExtension('sillybunny-debugger')).toEqual({ name: 'sillybunny-debugger', enabled: true });
+    });
+
+    test('keeps a disabled third-party alias disabling its bundled replacement', async () => {
+        installExtensionModuleMocks();
+        installExtensionDiscovery([
+            { name: 'sillybunny-debugger', type: 'core', manifest: { bundled_opt_in: true } },
+            { name: 'third-party/SillyBunny-Debugger', type: 'local' },
+        ]);
+
+        const { extension_settings, findExtension, loadExtensionSettings } = await import('../public/scripts/extensions.js');
+        await loadExtensionSettings({
+            extension_settings: {
+                lockedExtensionsUnlockApplied: true,
+                bundledOptInProcessedExtensions: [],
+                disabledExtensions: ['third-party/SillyBunny-Debugger'],
+            },
+        }, false, false);
+
+        expect(extension_settings.disabledExtensions).toEqual(['third-party/SillyBunny-Debugger']);
+        expect(extension_settings.bundledOptInProcessedExtensions).toEqual(['sillybunny-debugger']);
+        expect(findExtension('sillybunny-debugger')).toEqual({ name: 'sillybunny-debugger', enabled: false });
+
+        installExtensionDiscovery([
+            { name: 'sillybunny-debugger', type: 'core', manifest: { bundled_opt_in: true } },
+        ]);
+        await loadExtensionSettings({ extension_settings: { ...extension_settings } }, false, false);
+
+        expect(extension_settings.disabledExtensions).toEqual(['third-party/SillyBunny-Debugger']);
+        expect(findExtension('sillybunny-debugger')).toEqual({ name: 'sillybunny-debugger', enabled: false });
+    });
+
     test('Summarize exposes a disable hook that clears the memory prompt', async () => {
         const manifest = JSON.parse(await readFile(new URL('../public/scripts/extensions/memory/manifest.json', import.meta.url), 'utf8'));
         const source = await readFile(new URL('../public/scripts/extensions/memory/index.js', import.meta.url), 'utf8');
