@@ -14,6 +14,20 @@ const ENTRY_LIMIT = 1000;
 const STACK_LIMIT = 2000;
 const STACK_LINES = 10;
 const CONSOLE_METHODS = ['log', 'info', 'warn', 'error', 'debug'];
+const REDACTED = '[redacted]';
+const TEXT_REDACTED = '[text redacted]';
+const STRUCTURED_REDACTED = '[structured data redacted]';
+const UNSUPPORTED_URL = '[unsupported URL]';
+const SAFE_METHODS = new Set(['DELETE', 'GET', 'HEAD', 'OPTIONS', 'PATCH', 'POST', 'PUT']);
+const SAFE_ERROR_NAMES = new Set([
+    'AbortError', 'AggregateError', 'DataCloneError', 'Error', 'EvalError',
+    'IndexSizeError', 'InvalidCharacterError', 'InvalidModificationError',
+    'InvalidStateError', 'NamespaceError', 'NetworkError', 'NotAllowedError',
+    'NotFoundError', 'NotReadableError', 'NotSupportedError', 'OperationError',
+    'QuotaExceededError', 'RangeError', 'ReferenceError', 'SecurityError',
+    'SuppressedError', 'SyntaxError', 'TimeoutError', 'TypeError', 'URIError',
+]);
+const STACK_LOCATION_PATTERN = /((?:[a-z][a-z\d+.-]*:\/\/|\/)[^\s()]*)\)?$/i;
 
 export function createRing(limit) {
     const items = [];
@@ -43,24 +57,66 @@ function truncate(text, limit = TEXT_LIMIT) {
 }
 
 function cropStack(stack) {
-    return truncate(String(stack ?? '').split('\n').slice(0, STACK_LINES).join('\n'), STACK_LIMIT);
+    const lines = String(stack ?? '').split('\n');
+    const firstLine = lines[0]?.trim() ?? '';
+    const firstIsFrame = STACK_LOCATION_PATTERN.test(firstLine)
+        && (/^at\s/i.test(firstLine) || firstLine.includes('@') || /^(?:[a-z][a-z\d+.-]*:\/\/|\/)/i.test(firstLine));
+    const start = firstIsFrame ? 0 : 1;
+    const frames = lines.slice(start, start + STACK_LINES);
+    const sanitized = frames.map((frame) => {
+        const trimmed = frame.trim();
+        const locationMatch = trimmed.match(STACK_LOCATION_PATTERN);
+        if (!locationMatch) return '    at [frame redacted]';
+
+        return `    at ${sanitizeUrl(locationMatch[1])}`;
+    }).join('\n');
+    return truncate(sanitized, STACK_LIMIT);
+}
+
+export function redactSensitiveText(value) {
+    const sample = String(value ?? '').slice(0, 256).trimStart();
+    const structured = sample.startsWith('{')
+        || /^\[\s*(?:[[{"\d-]|true\b|false\b|null\b)/.test(sample);
+    return structured ? STRUCTURED_REDACTED : TEXT_REDACTED;
+}
+
+export function sanitizeMethod(value) {
+    const method = String(value ?? '').toUpperCase();
+    return SAFE_METHODS.has(method) ? method : 'OTHER';
+}
+
+function safeErrorName(value) {
+    const name = String(value || 'Error');
+    return SAFE_ERROR_NAMES.has(name) ? name : 'Error';
+}
+
+function getErrorDetails(value) {
+    try {
+        const isDomException = typeof DOMException !== 'undefined' && value instanceof DOMException;
+        if (!(value instanceof Error) && !isDomException) return null;
+        return {
+            name: safeErrorName(value.name),
+            stack: typeof value.stack === 'string' ? value.stack : '',
+        };
+    } catch {
+        return null;
+    }
 }
 
 export function serializeArg(value) {
     if (typeof value === 'string') {
-        return truncate(value);
+        return redactSensitiveText(value);
     }
-    if (typeof value === 'bigint') {
-        return `${value}n`;
+    const error = getErrorDetails(value);
+    if (error) {
+        return `${error.name}: [message redacted]`;
     }
-    if (typeof value === 'function') {
-        return '[function]';
-    }
+    if (value === null) return '[null]';
     if (value && typeof value === 'object') {
         // Do not inspect application objects: getters, proxies and toJSON can execute code.
         return '[object]';
     }
-    return String(value);
+    return `[${typeof value}]`;
 }
 
 /** Builds one ring entry from console-style arguments. Pure. */
@@ -90,36 +146,50 @@ function record(kind, args, stack) {
         return;
     }
     try {
+        const error = args.map(getErrorDetails).find(Boolean);
         counters.total += 1;
-        entries.push(makeEntry(kind, args, Date.now(), stack));
+        entries.push(makeEntry(kind, args, Date.now(), stack || error?.stack));
     } catch {
         // Capture must never break the app.
     }
+}
+
+function recordSafe(kind, text, stack) {
+    if (!recording) return;
+    counters.total += 1;
+    entries.push({
+        ts: Date.now(),
+        kind,
+        text: truncate(text, ENTRY_LIMIT),
+        stack: stack ? cropStack(stack) : undefined,
+    });
 }
 
 export function sanitizeUrl(value) {
     try {
         const raw = String(value);
         if (!raw) return '[missing URL]';
+        if (raw === UNSUPPORTED_URL) return raw;
         const absolute = /^[a-z][a-z\d+.-]*:/i.test(raw) || raw.startsWith('//');
         const url = new URL(raw, globalThis.location?.href ?? 'http://localhost');
         if (!['http:', 'https:'].includes(url.protocol)) {
-            return `${url.protocol}[redacted]`;
+            return UNSUPPORTED_URL;
         }
         url.username = '';
         url.password = '';
-        const path = `${url.pathname}${url.search ? '?[redacted]' : ''}`;
+        const pathname = url.pathname === '/' ? '/' : `/${REDACTED}`;
+        const path = `${pathname}${url.search ? '?[redacted]' : ''}`;
         return truncate(absolute ? `${url.origin}${path}` : path);
     } catch {
         return '[invalid URL]';
     }
 }
 
-function recordRequest(method, url, status, generation) {
+function recordRequest(method, sanitizedUrl, status, generation) {
     if (!recording || generation !== captureGeneration) {
         return;
     }
-    requests.push({ ts: Date.now(), method, url: sanitizeUrl(url), status });
+    requests.push({ ts: Date.now(), method, url: sanitizedUrl, status });
 }
 
 export function getEntries() {
@@ -166,13 +236,20 @@ export function installCapture() {
         const onError = (event) => {
             if (event.target && event.target !== window && !(event instanceof ErrorEvent)) {
                 const source = sanitizeUrl(event.target.src ?? event.target.href ?? '');
-                record('resource-error', [`${String(event.target.nodeName).toLowerCase()} failed to load: ${source}`]);
+                const nodeName = String(event.target.nodeName || 'resource').toLowerCase().replace(/[^a-z-]/g, '') || 'resource';
+                recordSafe('resource-error', `${nodeName} failed to load: ${source}`);
                 return;
             }
-            const location = event.filename ? ` (${sanitizeUrl(event.filename)}:${event.lineno}:${event.colno})` : '';
-            record('window-error', [`${event.message || 'unknown error'}${location}`]);
+            const location = event.filename ? ` (${sanitizeUrl(event.filename)})` : '';
+            const error = getErrorDetails(event.error);
+            if (error) record('window-error', [event.error], error.stack);
+            else recordSafe('window-error', `Script error${location}`);
         };
-        const onRejection = (event) => record('rejection', [event.reason ?? 'unknown reason']);
+        const onRejection = (event) => {
+            const error = getErrorDetails(event.reason);
+            if (error) record('rejection', [event.reason], error.stack);
+            else recordSafe('rejection', 'Non-Error rejection reason redacted');
+        };
         window.addEventListener('error', onError, true);
         window.addEventListener('unhandledrejection', onRejection);
         undo.push(() => window.removeEventListener('error', onError, true));
@@ -181,8 +258,8 @@ export function installCapture() {
         const nativeFetch = window.fetch;
         const wrappedFetch = function (input, options) {
             const generation = captureGeneration;
-            const method = String(options?.method ?? input?.method ?? 'GET').toUpperCase();
-            const url = typeof input === 'string' ? input : input?.url ?? String(input);
+            const method = sanitizeMethod(options?.method ?? input?.method ?? 'GET');
+            const url = sanitizeUrl(typeof input === 'string' ? input : input?.url ?? String(input));
             return Reflect.apply(nativeFetch, this, [input, options]).then(
                 (response) => {
                     if (isFailedStatus(response.status)) recordRequest(method, url, response.status, generation);
@@ -204,7 +281,7 @@ export function installCapture() {
         // The host still drives plenty of traffic through jQuery, hence XHR too.
         const nativeOpen = XMLHttpRequest.prototype.open;
         const wrappedOpen = function (method, url, ...rest) {
-            xhrRequests.set(this, { method: String(method).toUpperCase(), url: String(url) });
+            xhrRequests.set(this, { method: sanitizeMethod(method), url: sanitizeUrl(url) });
             return Reflect.apply(nativeOpen, this, [method, url, ...rest]);
         };
         XMLHttpRequest.prototype.open = wrappedOpen;
@@ -217,6 +294,7 @@ export function installCapture() {
             const request = xhrRequests.get(this);
             const generation = captureGeneration;
             const cleanup = () => {
+                xhrRequests.delete(this);
                 this.removeEventListener('load', onLoad);
                 this.removeEventListener('error', onFailure);
                 this.removeEventListener('timeout', onFailure);

@@ -8,10 +8,12 @@ import { getCounters, getEntries, getRequests } from './capture.js';
 import { buildReport, formatLayoutRows } from './report.js';
 
 const DRAWER_ID = 'sbdbg-settings';
+const DRAWER_CONTENT_ID = 'sbdbg-settings-content';
 const MENU_ITEM_ID = 'sbdbg-menu-item';
 const ENTRY_KEY = 'SBDebugger_showEntry';
 const FETCH_TIMEOUT = 5000;
 const ERUDA_BUILD = 'eruda-3.4.3-chobitsu-1.8.6-sbdbg';
+const ERUDA_BUNDLE_SLOT = '__sillyBunnyDebuggerEruda';
 const ERUDA_TOOLS = ['console', 'elements', 'network', 'info'];
 const LAYOUT_SELECTORS = [
     'body', '#top-bar', '#left-nav-panel', '#right-nav-panel', '#sheld',
@@ -22,6 +24,10 @@ let active = false;
 let activationGeneration = 0;
 let debugFunctionsRegistered = false;
 let erudaLoading = null;
+let cancelErudaLoad = null;
+let pendingBundleLoad = null;
+let bundleSlotInstalled = false;
+let bundleLoadSequence = 0;
 let erudaInstance = null;
 let erudaScript = null;
 let erudaOwned = false;
@@ -38,12 +44,80 @@ export function setActive(value) {
 
 // --- eruda -----------------------------------------------------------------
 
+function cleanupBundleInstance(instance) {
+    try {
+        instance?.chobitsu?.domain?.('Overlay')?.setInspectMode?.({ mode: 'none' });
+    } catch {
+        // Inspect-mode cleanup must not prevent the remaining teardown.
+    }
+    try {
+        if (instance?._isInit) instance.destroy();
+    } catch {
+        // Continue through domain and DOM cleanup after a partial load.
+    }
+    disableErudaDomains(instance);
+    instance?._container?.remove();
+}
+
+function finishBundleLoad(load, error, instance) {
+    if (pendingBundleLoad !== load) return;
+    pendingBundleLoad = null;
+    erudaLoading = null;
+    cancelErudaLoad = null;
+    erudaScript = null;
+    load.script.onload = null;
+    load.script.onerror = null;
+    load.script.remove();
+    if (error) load.reject(error);
+    else load.resolve(instance);
+}
+
+function acceptBundleInstance(value) {
+    if (value?.sillyBunnyDebuggerBuild !== ERUDA_BUILD) return;
+    const load = pendingBundleLoad;
+    if (!active || !load || document.currentScript !== load.script) {
+        cleanupBundleInstance(value);
+        return;
+    }
+    if ('eruda' in globalThis && globalThis.eruda !== value) {
+        cleanupBundleInstance(value);
+        finishBundleLoad(load, new Error('another Eruda instance already exists'));
+        return;
+    }
+    if (!Reflect.set(globalThis, 'eruda', value)) {
+        cleanupBundleInstance(value);
+        finishBundleLoad(load, new Error('could not expose the Eruda instance'));
+        return;
+    }
+    erudaInstance = value;
+    erudaOwned = true;
+    finishBundleLoad(load, null, value);
+}
+
+function ensureBundleSlot() {
+    if (bundleSlotInstalled) return true;
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, ERUDA_BUNDLE_SLOT);
+    if (descriptor) return false;
+    try {
+        Object.defineProperty(globalThis, ERUDA_BUNDLE_SLOT, {
+            configurable: false,
+            enumerable: false,
+            get: () => undefined,
+            set: acceptBundleInstance,
+        });
+        bundleSlotInstalled = true;
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 function loadEruda() {
     if (erudaInstance) {
-        if (globalThis.eruda && globalThis.eruda !== erudaInstance) {
+        if ('eruda' in globalThis && globalThis.eruda !== erudaInstance) {
             return Promise.reject(new Error('another Eruda instance already exists'));
         }
-        if (!globalThis.eruda && erudaOwned && !Reflect.set(globalThis, 'eruda', erudaInstance)) {
+        if (!Reflect.set(globalThis, 'eruda', erudaInstance)) {
             return Promise.reject(new Error('could not expose the Eruda instance'));
         }
         return Promise.resolve(erudaInstance);
@@ -52,82 +126,38 @@ function loadEruda() {
     if ('eruda' in globalThis) {
         return Promise.reject(new Error('another Eruda instance already exists'));
     }
-
-    let loadedInstance;
-    let foreignInstance;
-    let foreignAssigned = false;
-    let slotActive = true;
-    const restoreSlot = () => {
-        if (!slotActive) return;
-        slotActive = false;
-        Reflect.deleteProperty(globalThis, 'eruda');
-        const exposed = foreignAssigned ? foreignInstance : loadedInstance;
-        if (foreignAssigned || exposed !== undefined) Reflect.set(globalThis, 'eruda', exposed);
-    };
-    try {
-        Object.defineProperty(globalThis, 'eruda', {
-            configurable: true,
-            enumerable: true,
-            get: () => (foreignAssigned ? foreignInstance : loadedInstance),
-            set: (value) => {
-                if (value?.sillyBunnyDebuggerBuild === ERUDA_BUILD) loadedInstance = value;
-                else {
-                    foreignAssigned = true;
-                    foreignInstance = value;
-                }
-            },
-        });
-    } catch {
-        return Promise.reject(new Error('could not reserve the Eruda global'));
+    if (!ensureBundleSlot()) {
+        return Promise.reject(new Error('could not reserve the debugger bundle slot'));
     }
 
     const script = document.createElement('script');
-    erudaScript = script;
-    script.src = new URL('../lib/eruda.js', import.meta.url).href;
-    let resolveLoad;
-    let rejectLoad;
+    const bundleUrl = new URL('../lib/eruda.js', import.meta.url);
+    bundleUrl.searchParams.set('load', String(++bundleLoadSequence));
+    script.src = bundleUrl.href;
     const loading = new Promise((resolve, reject) => {
-        resolveLoad = resolve;
-        rejectLoad = reject;
+        pendingBundleLoad = { script, resolve, reject };
     });
+    const load = pendingBundleLoad;
+    erudaScript = script;
     erudaLoading = loading;
+    cancelErudaLoad = () => {
+        if (pendingBundleLoad !== load) return;
+        finishBundleLoad(load, new Error('debugger disabled while loading'));
+    };
     script.onload = () => {
-        erudaLoading = null;
-        restoreSlot();
-        erudaInstance = loadedInstance ?? null;
-        erudaOwned = Boolean(erudaInstance);
-        if (!erudaInstance) {
-            erudaScript = null;
-            script.remove();
-            rejectLoad(new Error('eruda.js loaded without the expected Eruda instance'));
-            return;
+        if (pendingBundleLoad === load) {
+            finishBundleLoad(load, new Error('eruda.js loaded without the expected Eruda instance'));
         }
-        if (foreignAssigned) {
-            releaseOwnedEruda();
-            rejectLoad(new Error('another Eruda instance appeared while loading'));
-            return;
-        }
-        if (!active) {
-            releaseOwnedEruda();
-            rejectLoad(new Error('debugger disabled while loading'));
-            return;
-        }
-        resolveLoad(erudaInstance);
     };
     script.onerror = () => {
-        erudaLoading = null;
-        erudaScript = null;
-        restoreSlot();
-        script.remove();
-        rejectLoad(new Error('failed to load eruda.js'));
+        if (pendingBundleLoad === load) {
+            finishBundleLoad(load, new Error('failed to load eruda.js'));
+        }
     };
     try {
         document.body.appendChild(script);
     } catch (error) {
-        erudaLoading = null;
-        erudaScript = null;
-        restoreSlot();
-        rejectLoad(error);
+        finishBundleLoad(load, error);
     }
     return loading;
 }
@@ -207,6 +237,7 @@ function disableErudaDomains(instance) {
 }
 
 function releaseOwnedEruda() {
+    cancelErudaLoad?.();
     const instance = erudaInstance;
     const owned = erudaOwned;
     const root = instance?._container;
@@ -217,17 +248,20 @@ function releaseOwnedEruda() {
 
     try {
         instance.chobitsu?.domain?.('Overlay')?.setInspectMode?.({ mode: 'none' });
+    } catch {
+        // Inspect-mode cleanup must not prevent the remaining teardown.
+    }
+    try {
         if (instance._isInit) instance.destroy();
     } catch {
         // Continue with domain cleanup after partial initialization.
-    } finally {
-        disableErudaDomains(instance);
-        root?.remove();
-        erudaScript?.remove();
-        erudaScript = null;
-        if (globalThis.eruda === instance) {
-            Reflect.deleteProperty(globalThis, 'eruda');
-        }
+    }
+    disableErudaDomains(instance);
+    root?.remove();
+    erudaScript?.remove();
+    erudaScript = null;
+    if (globalThis.eruda === instance) {
+        Reflect.deleteProperty(globalThis, 'eruda');
     }
 }
 
@@ -385,6 +419,7 @@ async function showReportPopup() {
         content.appendChild(actions);
         const textarea = el('textarea', 'sbdbg-report-text');
         textarea.readOnly = true;
+        textarea.setAttribute('aria-label', 'Diagnostic report');
         textarea.value = report;
         content.appendChild(textarea);
         textPopup(content);
@@ -403,6 +438,7 @@ async function copyLayoutSnapshot() {
     const content = el('div', 'sbdbg-report');
     const textarea = el('textarea', 'sbdbg-report-text');
     textarea.readOnly = true;
+    textarea.setAttribute('aria-label', 'Layout snapshot');
     textarea.value = text;
     content.appendChild(textarea);
     textPopup(content);
@@ -421,12 +457,21 @@ function ensureDrawer() {
     // Strongest key for the fork's settings-drawer dedupe guard.
     drawer.dataset.extensionName = 'SillyBunny-Debugger';
 
-    const toggle = el('div', 'inline-drawer-toggle inline-drawer-header');
+    const toggle = el('button', 'inline-drawer-toggle inline-drawer-header');
+    toggle.type = 'button';
+    toggle.setAttribute('aria-controls', DRAWER_CONTENT_ID);
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.addEventListener('click', () => {
+        toggle.setAttribute('aria-expanded', String(toggle.getAttribute('aria-expanded') !== 'true'));
+    });
     toggle.appendChild(el('b', undefined, 'Bunny Debugger'));
-    toggle.appendChild(el('div', 'inline-drawer-icon fa-solid fa-circle-chevron-down down'));
+    const toggleIcon = el('span', 'inline-drawer-icon fa-solid fa-circle-chevron-down down');
+    toggleIcon.setAttribute('aria-hidden', 'true');
+    toggle.appendChild(toggleIcon);
     drawer.appendChild(toggle);
 
     const content = el('div', 'inline-drawer-content');
+    content.id = DRAWER_CONTENT_ID;
 
     const actions = el('div', 'sbdbg-actions');
     actions.appendChild(button('menu_button', 'Open debugger', () => openDebugger()));
@@ -455,8 +500,8 @@ function ensureDrawer() {
     content.appendChild(checkboxLabel);
 
     content.appendChild(el('div', 'sbdbg-hint',
-        'Console output, errors and failed requests are recorded from the moment this extension loads. '
-        + 'Reports include serialized warning/error excerpts and redacted failed-request URLs — read one before sharing it.'));
+        'Reports include event types, error classes, sanitized stack locations, and failed-request origins. '
+        + 'Console values and request bodies are omitted; read a report before sharing it.'));
 
     drawer.appendChild(content);
     host.appendChild(drawer);

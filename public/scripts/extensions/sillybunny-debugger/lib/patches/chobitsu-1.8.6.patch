@@ -34,18 +34,51 @@ index 618798e..c35a9da 100644
 +          root: nodeManager.wrap(shadowRoot, { depth: 1 }),
 +        })
 diff --git a/src/domains/Network.ts b/src/domains/Network.ts
-index cf540b2..786cb70 100644
+index cf540b2..e8a5693 100644
 --- a/src/domains/Network.ts
 +++ b/src/domains/Network.ts
-@@ -12 +11,0 @@ import isUndef from 'licia/isUndef'
+@@ -1,3 +0,0 @@
+-import trim from 'licia/trim'
+-import each from 'licia/each'
+-import decodeUriComponent from 'licia/decodeUriComponent'
+@@ -10 +6,0 @@ import isStr from 'licia/isStr'
+-import isBlob from 'licia/isBlob'
+@@ -12,3 +8,7 @@ import isUndef from 'licia/isUndef'
 -import types from 'licia/types'
-@@ -43,0 +43 @@ const resTxtMap = new Map()
+-import convertBin from 'licia/convertBin'
+-import { XhrRequest, FetchRequest } from '../lib/request'
++import {
++  XhrRequest,
++  FetchRequest,
++  REDACTED,
++  redactHeaders,
++  sanitizeUrl,
++} from '../lib/request'
+@@ -25,16 +25 @@ export function getCookies(): Network.GetCookiesResponse {
+-  const cookies: any[] = []
+-
+-  const cookie = document.cookie
+-  if (trim(cookie) !== '') {
+-    each(cookie.split(';'), function (value: any) {
+-      value = value.split('=')
+-      const name = trim(value.shift())
+-      value = decodeUriComponent(value.join('='))
+-      cookies.push({
+-        name,
+-        value,
+-      })
+-    })
+-  }
+-
+-  return { cookies }
++  return { cookies: [] }
+@@ -43,0 +29 @@ const resTxtMap = new Map()
 +const MAX_RESPONSE_BODIES = 100
-@@ -45,0 +46 @@ let isEnable = false
+@@ -45,0 +32 @@ let isEnable = false
 +let generation = 0
-@@ -47,0 +49 @@ export const enable = function () {
+@@ -47,0 +35 @@ export const enable = function () {
 +  if (!isEnable) generation += 1
-@@ -49,2 +51,6 @@ export const enable = function () {
+@@ -49,2 +37,6 @@ export const enable = function () {
 -  each(triggers, trigger => trigger())
 -  triggers = []
 +}
@@ -54,9 +87,9 @@ index cf540b2..786cb70 100644
 +  if (isEnable) generation += 1
 +  isEnable = false
 +  resTxtMap.clear()
-@@ -63,0 +70 @@ function enableXhr() {
+@@ -63,0 +56 @@ function enableXhr() {
 +  const requests = new WeakMap<XMLHttpRequest, XhrRequest>()
-@@ -70,2 +77,19 @@ function enableXhr() {
+@@ -70,2 +63,19 @@ function enableXhr() {
 -    if (!isValidUrl(url)) {
 -      return origOpen.apply(this, arguments)
 +    const result = origOpen.apply(this, arguments)
@@ -78,7 +111,7 @@ index cf540b2..786cb70 100644
 +        { once: true }
 +      )
 +      bindRequestEvent(req, 'XHR')
-@@ -73,12 +97 @@ function enableXhr() {
+@@ -73,12 +83 @@ function enableXhr() {
 -
 -    const xhr = this
 -
@@ -92,20 +125,20 @@ index cf540b2..786cb70 100644
 -
 -    origOpen.apply(this, arguments)
 +    return result
-@@ -88,2 +101,2 @@ function enableXhr() {
+@@ -88,2 +87,2 @@ function enableXhr() {
 -    const req = (this as any).chobitsuRequest
 -    if (req) req.handleSend(data)
 +    const req = requests.get(this)
 +    if (isEnable && req) req.handleSend(data)
-@@ -95,2 +108,2 @@ function enableXhr() {
+@@ -95,2 +94,2 @@ function enableXhr() {
 -    const req = (this as any).chobitsuRequest
 -    if (req) {
 +    const req = requests.get(this)
 +    if (isEnable && req) {
-@@ -123,2 +135,0 @@ function enableFetch() {
+@@ -123,2 +121,0 @@ function enableFetch() {
 -    const req = new FetchRequest(...args)
 -    bindRequestEvent(req, 'Fetch')
-@@ -126 +137,14 @@ function enableFetch() {
+@@ -126 +123,14 @@ function enableFetch() {
 -    req.send(fetchResult)
 +    if (isEnable) {
 +      const requestGeneration = generation
@@ -121,46 +154,98 @@ index cf540b2..786cb70 100644
 +        // Instrumentation must not break an otherwise valid fetch.
 +      }
 +    }
-@@ -133,0 +158 @@ function bindRequestEvent(req: Emitter, type: string) {
+@@ -133,0 +144 @@ function bindRequestEvent(req: Emitter, type: string) {
 +    if (!isEnable) return
-@@ -150,0 +176 @@ function bindRequestEvent(req: Emitter, type: string) {
+@@ -136,2 +147,2 @@ function bindRequestEvent(req: Emitter, type: string) {
+-      url: data.url,
+-      headers: data.reqHeaders,
++      url: sanitizeUrl(data.url),
++      headers: redactHeaders(data.reqHeaders),
+@@ -140 +151 @@ function bindRequestEvent(req: Emitter, type: string) {
+-      request.postData = data.data
++      request.postData = REDACTED
+@@ -150,0 +162 @@ function bindRequestEvent(req: Emitter, type: string) {
 +    if (!isEnable) return
-@@ -157,0 +184 @@ function bindRequestEvent(req: Emitter, type: string) {
+@@ -154 +166 @@ function bindRequestEvent(req: Emitter, type: string) {
+-      headers: data.resHeaders,
++      headers: redactHeaders(data.resHeaders),
+@@ -157,0 +170 @@ function bindRequestEvent(req: Emitter, type: string) {
 +    if (!isEnable) return
-@@ -170,0 +198,3 @@ function bindRequestEvent(req: Emitter, type: string) {
+@@ -162 +175 @@ function bindRequestEvent(req: Emitter, type: string) {
+-      response.headers = data.resHeaders
++      response.headers = redactHeaders(data.resHeaders)
+@@ -171 +184,4 @@ function bindRequestEvent(req: Emitter, type: string) {
+-    resTxtMap.set(id, data.resTxt)
 +    if (resTxtMap.size >= MAX_RESPONSE_BODIES) {
 +      resTxtMap.delete(resTxtMap.keys().next().value)
 +    }
-@@ -178,0 +209 @@ function bindRequestEvent(req: Emitter, type: string) {
++    resTxtMap.set(id, REDACTED)
+@@ -178,0 +195 @@ function bindRequestEvent(req: Emitter, type: string) {
 +    if (!isEnable) return
-@@ -193 +224 @@ function enableWebSocket() {
+@@ -193 +210 @@ function enableWebSocket() {
 -    if (!isValidUrl(url)) {
 +    if (!isEnable || !isValidUrl(url)) {
-@@ -196,0 +228,3 @@ function enableWebSocket() {
+@@ -196,0 +214,3 @@ function enableWebSocket() {
 +    const socketGeneration = generation
 +    const shouldCapture = () =>
 +      isEnable && generation === socketGeneration
-@@ -204,0 +239 @@ function enableWebSocket() {
+@@ -201 +221 @@ function enableWebSocket() {
+-      url,
++      url: sanitizeUrl(url),
+@@ -204,0 +225 @@ function enableWebSocket() {
 +      if (!shouldCapture()) return
-@@ -222,0 +258 @@ function enableWebSocket() {
+@@ -222,14 +243,3 @@ function enableWebSocket() {
+-    ws.addEventListener('message', async function (e) {
+-      let payloadData = e.data
+-      if (isUndef(payloadData)) {
+-        return
+-      }
+-
+-      let opcode = 1
+-      if (!isStr(payloadData)) {
+-        opcode = 2
+-        if (isBlob(payloadData)) {
+-          payloadData = await convertBin.blobToArrBuffer(payloadData)
+-        }
+-        payloadData = convertBin(payloadData, 'base64')
+-      }
++    ws.addEventListener('message', function (e) {
 +      if (!shouldCapture()) return
-@@ -233,0 +270 @@ function enableWebSocket() {
-+        if (!shouldCapture()) return
-@@ -249 +286 @@ function enableWebSocket() {
++      if (isUndef(e.data)) return
+@@ -241,2 +251,2 @@ function enableWebSocket() {
+-          opcode,
+-          payloadData,
++          opcode: isStr(e.data) ? 1 : 2,
++          payloadData: REDACTED,
+@@ -249 +259 @@ function enableWebSocket() {
 -      if (!isUndef(data)) {
 +      if (shouldCapture() && !isUndef(data)) {
-@@ -256,0 +294 @@ function enableWebSocket() {
+@@ -256,10 +266,2 @@ function enableWebSocket() {
+-    async function frameSent(data: any) {
+-      let opcode = 1
+-      let payloadData = data
+-      if (!isStr(data)) {
+-        opcode = 2
+-        if (isBlob(payloadData)) {
+-          payloadData = await convertBin.blobToArrBuffer(payloadData)
+-        }
+-        payloadData = convertBin(data, 'base64')
+-      }
++    function frameSent(data: any) {
 +      if (!shouldCapture()) return
-@@ -263,0 +302 @@ function enableWebSocket() {
-+        if (!shouldCapture()) return
-@@ -277,0 +317 @@ function enableWebSocket() {
+@@ -271,2 +273,2 @@ function enableWebSocket() {
+-          opcode,
+-          payloadData,
++          opcode: isStr(data) ? 1 : 2,
++          payloadData: REDACTED,
+@@ -277,0 +280 @@ function enableWebSocket() {
 +      if (!shouldCapture()) return
-@@ -284,0 +325 @@ function enableWebSocket() {
+@@ -284,0 +288 @@ function enableWebSocket() {
 +      if (!shouldCapture()) return
-@@ -306,2 +346,0 @@ function isValidUrl(url: string) {
+@@ -306,2 +309,0 @@ function isValidUrl(url: string) {
 -let triggers: types.AnyFn[] = []
 -
-@@ -309,5 +348 @@ function trigger(method: string, params: any) {
+@@ -309,5 +311 @@ function trigger(method: string, params: any) {
 -  if (isEnable) {
 -    connector.trigger(method, params)
 -  } else {
@@ -245,17 +330,113 @@ index 526989a..df49fad 100644
 +  if (shadowRoot) {
 +    ret.shadowRoots = [wrap(shadowRoot, { depth: 1 })]
 diff --git a/src/lib/request.ts b/src/lib/request.ts
-index 7130da2..bdbb43b 100644
+index 7130da2..e49c6e8 100644
 --- a/src/lib/request.ts
 +++ b/src/lib/request.ts
-@@ -12,0 +13,6 @@ import { createId } from './util'
-+const BODY_LIMIT = 256 * 1024
+@@ -2 +1,0 @@ import Emitter from 'licia/Emitter'
+-import isStr from 'licia/isStr'
+@@ -9 +7,0 @@ import each from 'licia/each'
+-import startWith from 'licia/startWith'
+@@ -12,0 +11,98 @@ import { createId } from './util'
++export const REDACTED = '[redacted]'
++export const UNSUPPORTED_URL = '[unsupported URL]'
 +
-+function limitBody(value: string) {
-+  return value.length > BODY_LIMIT ? value.slice(0, BODY_LIMIT) : value
++const SAFE_METHODS = new Set([
++  'DELETE',
++  'GET',
++  'HEAD',
++  'OPTIONS',
++  'PATCH',
++  'POST',
++  'PUT',
++])
++const SAFE_MEDIA_FAMILIES = new Set([
++  'application',
++  'audio',
++  'font',
++  'image',
++  'multipart',
++  'text',
++  'video',
++])
++const SAFE_MEDIA_TYPES = new Set([
++  'application/json',
++  'application/octet-stream',
++  'application/x-www-form-urlencoded',
++  'multipart/form-data',
++  'text/css',
++  'text/event-stream',
++  'text/html',
++  'text/javascript',
++  'text/plain',
++])
++
++export function sanitizeMethod(value: any) {
++  const method = String(value == null ? '' : value).toUpperCase()
++  return SAFE_METHODS.has(method) ? method : 'OTHER'
 +}
 +
-@@ -19 +25,7 @@ export class XhrRequest extends Emitter {
++function sanitizeMediaType(value: any) {
++  const text = String(value).trim()
++  const mediaType = text.split(';', 1)[0].trim().toLowerCase()
++  if (SAFE_MEDIA_TYPES.has(mediaType)) return mediaType
++
++  const separator = mediaType.indexOf('/')
++  const family = separator < 0 ? '' : mediaType.slice(0, separator)
++  if (SAFE_MEDIA_FAMILIES.has(family)) {
++    return `${family}/${REDACTED}`
++  }
++  return REDACTED
++}
++
++function sanitizeContentLength(value: any) {
++  const text = String(value)
++  return /^\d{1,15}$/.test(text)
++    ? text.replace(/^0+(?=\d)/, '')
++    : REDACTED
++}
++
++function getContentLength(value: any) {
++  const text = sanitizeContentLength(value)
++  return text === REDACTED ? 0 : toNum(text)
++}
++
++function setRedactedHeader(ret: any, name: any, value: any) {
++  const key = String(name).toLowerCase()
++  if (key === 'content-type') {
++    ret[key] = sanitizeMediaType(value)
++  } else if (key === 'content-length') {
++    ret[key] = sanitizeContentLength(value)
++  }
++}
++
++export function redactHeaders(headers: any) {
++  const ret: any = {}
++  if (!headers) return ret
++
++  const setHeader = (value: any, name: string) => {
++    setRedactedHeader(ret, name, value)
++  }
++
++  if (Array.isArray(headers)) {
++    each(headers, header => {
++      if (Array.isArray(header) && header.length > 1) {
++        setHeader(header[1], header[0])
++      }
++    })
++    return ret
++  }
++
++  if (typeof headers.forEach === 'function') {
++    headers.forEach(setHeader)
++    return ret
++  }
++
++  each(headers, setHeader)
++  return ret
++}
++
+@@ -19 +115,7 @@ export class XhrRequest extends Emitter {
 -  constructor(xhr: XMLHttpRequest, method: string, url: string) {
 +  private shouldCapture: () => boolean
 +  constructor(
@@ -264,55 +445,260 @@ index 7130da2..bdbb43b 100644
 +    url: string,
 +    shouldCapture: () => boolean = () => true
 +  ) {
-@@ -26,0 +39 @@ export class XhrRequest extends Emitter {
+@@ -24,2 +126,2 @@ export class XhrRequest extends Emitter {
+-    this.method = method
+-    this.url = fullUrl(url)
++    this.method = sanitizeMethod(method)
++    this.url = sanitizeUrl(url)
+@@ -26,0 +129 @@ export class XhrRequest extends Emitter {
 +    this.shouldCapture = shouldCapture
-@@ -28 +41,5 @@ export class XhrRequest extends Emitter {
+@@ -28 +131,5 @@ export class XhrRequest extends Emitter {
 -    xhr.addEventListener('readystatechange', () => {
 +    const onReadyStateChange = () => {
 +      if (xhr.readyState === 4) {
 +        xhr.removeEventListener('readystatechange', onReadyStateChange)
 +      }
 +      if (!this.shouldCapture()) return
-@@ -38 +55,2 @@ export class XhrRequest extends Emitter {
+@@ -38 +145,2 @@ export class XhrRequest extends Emitter {
 -    })
 +    }
 +    xhr.addEventListener('readystatechange', onReadyStateChange)
-@@ -48,0 +67 @@ export class XhrRequest extends Emitter {
+@@ -49 +157,2 @@ export class XhrRequest extends Emitter {
+-    if (!isStr(data)) data = ''
 +    if (!this.shouldCapture()) return
-@@ -49,0 +69 @@ export class XhrRequest extends Emitter {
-+    data = limitBody(data)
-@@ -64,0 +85 @@ export class XhrRequest extends Emitter {
++    data = data == null ? '' : REDACTED
+@@ -64,0 +174 @@ export class XhrRequest extends Emitter {
 +    if (!this.shouldCapture()) return
-@@ -86,0 +108 @@ export class XhrRequest extends Emitter {
-+      if (!this.shouldCapture()) return
-@@ -103 +125 @@ export class XhrRequest extends Emitter {
+@@ -66 +176 @@ export class XhrRequest extends Emitter {
+-      this.reqHeaders[key] = val
++      setRedactedHeader(this.reqHeaders, key, val)
+@@ -72 +182 @@ export class XhrRequest extends Emitter {
+-    const type = getType(xhr.getResponseHeader('Content-Type') || '')
++    const type = getType(sanitizeMediaType(xhr.getResponseHeader('Content-Type')))
+@@ -76 +186 @@ export class XhrRequest extends Emitter {
+-      size: getSize(xhr, true, this.url),
++      size: getSize(xhr),
+@@ -83,29 +193,7 @@ export class XhrRequest extends Emitter {
+-    const resType = xhr.responseType
+-    let resTxt = ''
+-
+-    const update = () => {
+-      this.emit('done', this.id, {
+-        status: xhr.status,
+-        size: getSize(xhr, false, this.url),
+-        time: now(),
+-        resTxt,
+-      })
+-    }
+-
+-    const type = getType(xhr.getResponseHeader('Content-Type') || '')
+-    if (
+-      resType === 'blob' &&
+-      (type.type === 'text' ||
+-        type.subType === 'javascript' ||
+-        type.subType === 'json')
+-    ) {
+-      readBlobAsText(xhr.response, (err: Error, result: string) => {
 -        if (result) resTxt = result
-+        if (result) resTxt = limitBody(result)
-@@ -107,2 +129,3 @@ export class XhrRequest extends Emitter {
+-        update()
+-      })
+-    } else {
 -      if (resType === '' || resType === 'text') resTxt = xhr.responseText
 -      if (resType === 'json') resTxt = JSON.stringify(xhr.response)
-+      if (resType === '' || resType === 'text')
-+        resTxt = limitBody(xhr.responseText)
-+      if (resType === 'json') resTxt = limitBody(JSON.stringify(xhr.response))
-@@ -127 +150,6 @@ export class FetchRequest extends Emitter {
+-
+-      update()
+-    }
++    if (!this.shouldCapture()) return
++    this.emit('done', this.id, {
++      status: xhr.status,
++      size: getSize(xhr),
++      time: now(),
++      resTxt: REDACTED,
++    })
+@@ -125 +212,0 @@ export class FetchRequest extends Emitter {
+-  private options: any
+@@ -127 +214,7 @@ export class FetchRequest extends Emitter {
 -  constructor(input: any, options: any = {}) {
++  private hasBody: boolean
 +  private shouldCapture: () => boolean
 +  constructor(
 +    input: any,
 +    options: any = {},
 +    shouldCapture: () => boolean = () => true
 +  ) {
-@@ -137,0 +166 @@ export class FetchRequest extends Emitter {
+@@ -133 +226 @@ export class FetchRequest extends Emitter {
+-    this.url = fullUrl(url)
++    this.url = sanitizeUrl(url)
+@@ -135,3 +228,9 @@ export class FetchRequest extends Emitter {
+-    this.options = options
+-    this.reqHeaders = options.headers || (isRequest ? input.headers : {})
+-    this.method = options.method || (isRequest ? input.method : 'GET')
++    this.reqHeaders = redactHeaders(
++      options.headers || (isRequest ? input.headers : {})
++    )
++    this.method = sanitizeMethod(
++      options.method || (isRequest ? input.method : 'GET')
++    )
++    this.hasBody =
++      'body' in options || (isRequest && !/^(?:GET|HEAD)$/.test(this.method))
 +    this.shouldCapture = shouldCapture
-@@ -139,0 +169 @@ export class FetchRequest extends Emitter {
-+    if (!this.shouldCapture()) return
-@@ -142 +172 @@ export class FetchRequest extends Emitter {
+@@ -140,3 +239,2 @@ export class FetchRequest extends Emitter {
+-    const options = this.options
+-
 -    const data = isStr(options.body) ? options.body : ''
-+    const data = isStr(options.body) ? limitBody(options.body) : ''
-@@ -154,0 +185 @@ export class FetchRequest extends Emitter {
++    if (!this.shouldCapture()) return
++    const data = this.hasBody ? REDACTED : ''
+@@ -155,18 +253,16 @@ export class FetchRequest extends Emitter {
+-        res = res.clone()
+-
+-        const type = getType(res.headers.get('Content-Type'))
+-        res.text().then((resTxt: string) => {
+-          const data: any = {
+-            type: type.type,
+-            subType: type.subType,
+-            time: now(),
+-            size: getFetchSize(res, resTxt),
+-            resTxt,
+-            resHeaders: getFetchHeaders(res),
+-            status: res.status,
+-          }
+-          if (!isEmpty(this.reqHeaders)) {
+-            data.reqHeaders = this.reqHeaders
+-          }
+-          this.emit('done', this.id, data)
+-        })
 +        if (!this.shouldCapture()) return
-@@ -158,0 +190,2 @@ export class FetchRequest extends Emitter {
-+          if (!this.shouldCapture()) return
-+          resTxt = limitBody(resTxt)
-@@ -176,0 +210 @@ export class FetchRequest extends Emitter {
++
++        const type = getType(sanitizeMediaType(res.headers.get('Content-Type')))
++        const data: any = {
++          type: type.type,
++          subType: type.subType,
++          time: now(),
++          size: getFetchSize(res),
++          resTxt: REDACTED,
++          resHeaders: getFetchHeaders(res),
++          status: res.status,
++        }
++        if (!isEmpty(this.reqHeaders)) {
++          data.reqHeaders = this.reqHeaders
++        }
++        this.emit('done', this.id, data)
+@@ -176 +272,2 @@ export class FetchRequest extends Emitter {
+-      .catch((err: any) => {
++      .catch(() => {
 +        if (!this.shouldCapture()) return
+@@ -178 +275 @@ export class FetchRequest extends Emitter {
+-          errorText: err.message,
++          errorText: 'Network error',
+@@ -185,12 +282,2 @@ export class FetchRequest extends Emitter {
+-function getFetchSize(res: any, resTxt: string) {
+-  let size = 0
+-
+-  const contentLen = res.headers.get('Content-length')
+-
+-  if (contentLen) {
+-    size = toNum(contentLen)
+-  } else {
+-    size = lenToUtf8Bytes(resTxt)
+-  }
+-
+-  return size
++function getFetchSize(res: any) {
++  return getContentLength(res.headers.get('Content-length'))
+@@ -202 +289,3 @@ function getFetchHeaders(res: any) {
+-  res.headers.forEach((val: string, key: string) => (ret[key] = val))
++  res.headers.forEach((val: string, key: string) => {
++    setRedactedHeader(ret, key, val)
++  })
+@@ -220 +309 @@ function getHeaders(xhr: XMLHttpRequest) {
+-    ret[key] = trim(val)
++    setRedactedHeader(ret, key, trim(val))
+@@ -226,11 +315,5 @@ function getHeaders(xhr: XMLHttpRequest) {
+-function getSize(xhr: XMLHttpRequest, headersOnly: boolean, url: string) {
+-  let size = 0
+-
+-  function getStrSize() {
+-    if (!headersOnly) {
+-      const resType = xhr.responseType
+-      let resTxt = ''
+-
+-      if (resType === '' || resType === 'text') resTxt = xhr.responseText
+-      if (resTxt) size = lenToUtf8Bytes(resTxt)
+-    }
++function getSize(xhr: XMLHttpRequest) {
++  try {
++    return getContentLength(xhr.getResponseHeader('Content-Length'))
++  } catch (e) {
++    return 0
+@@ -237,0 +321 @@ function getSize(xhr: XMLHttpRequest, headersOnly: boolean, url: string) {
++}
+@@ -239,8 +323,9 @@ function getSize(xhr: XMLHttpRequest, headersOnly: boolean, url: string) {
+-  if (isCrossOrig(url)) {
+-    getStrSize()
+-  } else {
+-    try {
+-      size = toNum(xhr.getResponseHeader('Content-Length'))
+-    } catch (e) {
+-      getStrSize()
+-    }
++export function fullUrl(href: string) {
++  const link = document.createElement('a')
++  try {
++    link.href = href
++    return (
++      link.protocol + '//' + link.host + link.pathname + link.search + link.hash
++    )
++  } finally {
++    link.removeAttribute('href')
+@@ -248,4 +332,0 @@ function getSize(xhr: XMLHttpRequest, headersOnly: boolean, url: string) {
+-
+-  if (size === 0) getStrSize()
+-
+-  return size
+@@ -254 +335,5 @@ function getSize(xhr: XMLHttpRequest, headersOnly: boolean, url: string) {
+-const link = document.createElement('a')
++export function sanitizeUrl(href: string) {
++  if (href === UNSUPPORTED_URL) return href
++  const link = document.createElement('a')
++  try {
++    link.href = href
+@@ -256,2 +341,3 @@ const link = document.createElement('a')
+-export function fullUrl(href: string) {
+-  link.href = href
++    if (!/^(?:https?|wss?):$/.test(link.protocol)) {
++      return UNSUPPORTED_URL
++    }
+@@ -259,3 +345,6 @@ export function fullUrl(href: string) {
+-  return (
+-    link.protocol + '//' + link.host + link.pathname + link.search + link.hash
+-  )
++    const query = link.search ? `?${REDACTED}` : ''
++    const path = link.pathname === '/' ? '/' : `/${REDACTED}`
++    return link.protocol + '//' + link.host + path + query
++  } finally {
++    link.removeAttribute('href')
++  }
+@@ -291,23 +379,0 @@ function getType(contentType: string) {
+-
+-function readBlobAsText(blob: Blob, callback: any) {
+-  const reader = new FileReader()
+-  reader.onload = () => {
+-    callback(null, reader.result)
+-  }
+-  reader.onerror = err => {
+-    callback(err)
+-  }
+-  reader.readAsText(blob)
+-}
+-
+-const origin = window.location.origin
+-
+-function isCrossOrig(url: string) {
+-  return !startWith(url, origin)
+-}
+-
+-function lenToUtf8Bytes(str: string) {
+-  const m = encodeURIComponent(str).match(/%[89ABab]/g)
+-
+-  return str.length + (m ? m.length : 0)
+-}
