@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 const appendConversationMessage = jest.fn();
 const addConversationReminder = jest.fn();
 const generateConversationImage = jest.fn();
-const scheduleTimelineRender = jest.fn();
 const updateConversationThreadMessage = jest.fn();
 const runtimeStatusOverrides = new Map();
 const threadMessages = [{ id: 'user-1', role: 'user', name: 'User', mes: 'hello', extra: {} }];
@@ -44,7 +43,6 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/prompt
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/shared-helpers.js', () => ({
     formatPromptText: value => String(value || ''),
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({ scheduleTimelineRender }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/schedule.js', () => ({
     clamp: (value, min, max) => Math.min(max, Math.max(min, value)),
     getConversationReplyMaxTokens: () => 100,
@@ -83,7 +81,6 @@ describe('Conversation core generated reply regressions', () => {
         appendConversationMessage.mockReset().mockImplementation(async (text, options) => ({ id: `message-${appendConversationMessage.mock.calls.length}`, mes: text, ...options }));
         addConversationReminder.mockClear();
         generateConversationImage.mockClear();
-        scheduleTimelineRender.mockClear();
         updateConversationThreadMessage.mockClear();
         runtimeStatusOverrides.clear();
         delete globalThis.document;
@@ -154,9 +151,13 @@ describe('Conversation core generated reply regressions', () => {
     });
 
     test('saves only changed content and closes the editor in all cases', () => {
+        const originalTextElement = {};
         const textElement = {
             append: jest.fn(),
+            cloneNode: jest.fn(() => originalTextElement),
+            isConnected: true,
             querySelector: jest.fn(() => null),
+            replaceWith: jest.fn(),
             textContent: 'hello',
         };
         const actionBar = { classList: { remove: jest.fn() } };
@@ -194,14 +195,11 @@ describe('Conversation core generated reply regressions', () => {
         const [textarea, buttonContainer] = createdElements;
         const [saveButton, cancelButton] = buttonContainer.children;
         cancelButton.onclick();
-        expect(messageElement.dataset.sbConversationMessageFingerprint).toBeUndefined();
-        expect(scheduleTimelineRender).toHaveBeenCalledTimes(1);
+        expect(textElement.replaceWith).toHaveBeenCalledWith(originalTextElement);
+        expect(messageElement.classList.remove).toHaveBeenCalledWith('is-editing');
 
-        messageElement.dataset.sbConversationMessageFingerprint = 'fingerprint';
         saveButton.onclick();
         expect(updateConversationThreadMessage).not.toHaveBeenCalled();
-        expect(messageElement.dataset.sbConversationMessageFingerprint).toBeUndefined();
-        expect(scheduleTimelineRender).toHaveBeenCalledTimes(2);
 
         textarea.value = 'updated';
         saveButton.onclick();
@@ -209,19 +207,27 @@ describe('Conversation core generated reply regressions', () => {
             groupId: '',
             personaId: 'persona-a.png',
         });
-        expect(scheduleTimelineRender).toHaveBeenCalledTimes(3);
     });
 
     test('cancels an existing editor before opening another', () => {
-        const originalText = { querySelector: jest.fn(() => null) };
+        const restoredText = {};
+        const originalText = {
+            append: jest.fn(),
+            cloneNode: jest.fn(() => restoredText),
+            isConnected: true,
+            querySelector: jest.fn(() => null),
+            replaceWith: jest.fn(),
+            textContent: 'first',
+        };
         const originalActions = { classList: { remove: jest.fn() } };
         const previousMessageElement = {
-            classList: { remove: jest.fn() },
-            dataset: { sbConversationMessageFingerprint: 'previous-fingerprint' },
+            classList: { add: jest.fn(), remove: jest.fn() },
+            dataset: { messageId: '42', sbConversationMessageFingerprint: 'previous-fingerprint' },
             querySelector: jest.fn(selector => selector === '.sb-conversation-message-actions' ? originalActions : originalText),
         };
         const nextText = {
             append: jest.fn(),
+            cloneNode: jest.fn(() => ({})),
             querySelector: jest.fn(() => null),
             textContent: 'hello',
         };
@@ -231,7 +237,6 @@ describe('Conversation core generated reply regressions', () => {
             dataset: { messageId: '43' },
             querySelector: jest.fn(selector => selector === '.sb-conversation-message-actions' ? nextActions : nextText),
         };
-        const activeEditor = { closest: jest.fn(() => previousMessageElement) };
         globalThis.document = {
             createElement: jest.fn(() => ({
                 append: jest.fn(),
@@ -241,15 +246,19 @@ describe('Conversation core generated reply regressions', () => {
                 setAttribute: jest.fn(),
                 value: '',
             })),
-            querySelectorAll: jest.fn(selector => selector === '.sb-conversation-message-edit-textarea' ? [activeEditor] : [nextMessageElement]),
+            querySelectorAll: jest.fn(() => [previousMessageElement]),
         };
-        threadMessages.splice(0, threadMessages.length, { id: 43, role: 'user', name: 'User', mes: 'hello', extra: {} });
+        threadMessages.splice(0, threadMessages.length,
+            { id: 42, role: 'user', name: 'User', mes: 'first', extra: {} },
+            { id: 43, role: 'user', name: 'User', mes: 'hello', extra: {} },
+        );
 
+        editConversationMessage('42');
+        globalThis.document.querySelectorAll.mockReturnValue([nextMessageElement]);
         editConversationMessage('43');
 
         expect(previousMessageElement.classList.remove).toHaveBeenCalledWith('is-editing');
-        expect(previousMessageElement.dataset.sbConversationMessageFingerprint).toBeUndefined();
+        expect(originalText.replaceWith).toHaveBeenCalledWith(restoredText);
         expect(originalActions.classList.remove).toHaveBeenCalledWith('open');
-        expect(scheduleTimelineRender).toHaveBeenCalledTimes(1);
     });
 });

@@ -23,7 +23,6 @@ import { getSpeakerPrefixMatch } from './partners-utils.js';
 import { getConnectionProfiles } from './personas.js';
 import { buildConversationPromptMessages, buildConversationSystemPrompt } from './prompt.js';
 import { formatPromptText } from './shared-helpers.js';
-import { scheduleTimelineRender } from './render-scheduler.js';
 import { clamp, getConversationReplyMaxTokens, getConversationRuntimeStatusKey, parseDurationToMs } from './schedule.js';
 import { runtimeStatusOverrides } from './state.js';
 import {
@@ -36,6 +35,8 @@ import {
     updateConversationThreadMessage,
 } from './thread-store.js';
 import { splitChatroomMessages, waitForReplyDelay, withTypingParticipant } from './typing.js';
+
+let activeConversationEditor = null;
 
 export {
     extractCharacterReplyCommandParts,
@@ -139,22 +140,12 @@ export function editConversationMessage(messageId) {
         return;
     }
 
-    if (textElement.querySelector('.sb-conversation-message-edit-textarea')) {
+    if (activeConversationEditor?.messageElement === messageElement) {
         return;
     }
 
-    let closedExistingEditor = false;
-    document.querySelectorAll('.sb-conversation-message-edit-textarea').forEach((editor) => {
-        const previousMessageElement = editor.closest?.('.sb-conversation-message');
-        if (!previousMessageElement || previousMessageElement === messageElement) {
-            return;
-        }
-
-        previousMessageElement.classList.remove('is-editing');
-        previousMessageElement.querySelector('.sb-conversation-message-actions')?.classList.remove('open');
-        delete previousMessageElement.dataset.sbConversationMessageFingerprint;
-        closedExistingEditor = true;
-    });
+    activeConversationEditor?.close();
+    const originalTextElement = textElement.cloneNode(true);
 
     const textarea = document.createElement('textarea');
     textarea.className = 'sb-conversation-message-edit-textarea';
@@ -189,23 +180,26 @@ export function editConversationMessage(messageId) {
     textElement.append(textarea, buttonContainer);
     messageElement.classList.add('is-editing');
     messageElement.querySelector('.sb-conversation-message-actions')?.classList.remove('open');
-    if (closedExistingEditor) {
-        scheduleTimelineRender();
-    }
 
     const closeEditor = () => {
+        if (textElement.isConnected) {
+            textElement.replaceWith(originalTextElement);
+        }
         messageElement.classList.remove('is-editing');
         messageElement.querySelector('.sb-conversation-message-actions')?.classList.remove('open');
-        delete messageElement.dataset.sbConversationMessageFingerprint;
-        scheduleTimelineRender();
+        if (activeConversationEditor?.messageElement === messageElement) {
+            activeConversationEditor = null;
+        }
     };
+
+    activeConversationEditor = { messageElement, close: closeEditor };
 
     saveButton.onclick = () => {
         const value = textarea.value;
+        closeEditor();
         if (value !== message.mes) {
             updateConversationThreadMessage(avatar, message.id, value, null, { groupId, personaId });
         }
-        closeEditor();
     };
 
     cancelButton.onclick = closeEditor;
