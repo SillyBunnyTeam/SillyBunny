@@ -72,6 +72,10 @@ const STARTER_PACK_EXTENSIONS = Object.freeze({
         id: 'third-party/SillyBunny-MoonlitEchoesTheme',
         repoUrl: 'https://github.com/platberlitz/SillyBunny-MoonlitEchoesTheme',
     }),
+    terminalUi: Object.freeze({
+        id: 'third-party/SillyBunny-Terminal-UI',
+        repoUrl: 'https://github.com/SillyBunnyTeam/SillyBunny-Terminal-UI',
+    }),
     groupUtilities: Object.freeze({
         id: 'third-party/SB-GroupUtilities',
         repoUrl: 'https://github.com/aracnai/SB-GroupUtilities',
@@ -983,6 +987,12 @@ function buildStarterPackItems() {
                 body: 'A popular CSS theme originally designed for SillyTavern with a clean and modern design, adapted for use in SillyBunny.',
                 icon: 'fa-moon',
                 extensionName: STARTER_PACK_EXTENSIONS.moonlitEchoes.id,
+            }),
+            buildExtensionStarterPackItem({
+                title: 'SillyBunny Terminal UI',
+                body: 'A CSS theme that mimics a traditional terminal emulator interface. This keeps the native chat window and implements a forward-facing slash-command system, reducing the surrounding UI to a tmux-style statusline.',
+                icon: 'fa-terminal',
+                extensionName: STARTER_PACK_EXTENSIONS.terminalUi.id,
             }),
             buildExtensionStarterPackItem({
                 title: 'Prompting Lab',
