@@ -159,12 +159,14 @@ describe('Conversation core generated reply regressions', () => {
             querySelector: jest.fn(() => null),
             textContent: 'hello',
         };
+        const actionBar = { classList: { remove: jest.fn() } };
         const messageElement = {
+            classList: { add: jest.fn(), remove: jest.fn() },
             dataset: {
                 messageId: '42',
                 sbConversationMessageFingerprint: 'fingerprint',
             },
-            querySelector: jest.fn(() => textElement),
+            querySelector: jest.fn(selector => selector === '.sb-conversation-message-actions' ? actionBar : textElement),
         };
         const createdElements = [];
         globalThis.document = {
@@ -172,7 +174,11 @@ describe('Conversation core generated reply regressions', () => {
                 const element = {
                     append: jest.fn(),
                     children: [],
+                    classList: { add: jest.fn(), remove: jest.fn() },
+                    closest: jest.fn(() => null),
+                    dataset: {},
                     focus: jest.fn(),
+                    setAttribute: jest.fn(),
                     value: '',
                 };
                 element.append.mockImplementation((...children) => element.children.push(...children));
@@ -197,5 +203,47 @@ describe('Conversation core generated reply regressions', () => {
             groupId: '',
             personaId: 'persona-a.png',
         });
+        expect(scheduleTimelineRender).toHaveBeenCalledTimes(2);
+    });
+
+    test('cancels an existing editor before opening another', () => {
+        const originalText = { querySelector: jest.fn(() => null) };
+        const originalActions = { classList: { remove: jest.fn() } };
+        const previousMessageElement = {
+            classList: { remove: jest.fn() },
+            dataset: { sbConversationMessageFingerprint: 'previous-fingerprint' },
+            querySelector: jest.fn(selector => selector === '.sb-conversation-message-actions' ? originalActions : originalText),
+        };
+        const nextText = {
+            append: jest.fn(),
+            querySelector: jest.fn(() => null),
+            textContent: 'hello',
+        };
+        const nextActions = { classList: { remove: jest.fn() } };
+        const nextMessageElement = {
+            classList: { add: jest.fn() },
+            dataset: { messageId: '43' },
+            querySelector: jest.fn(selector => selector === '.sb-conversation-message-actions' ? nextActions : nextText),
+        };
+        const activeEditor = { closest: jest.fn(() => previousMessageElement) };
+        globalThis.document = {
+            createElement: jest.fn(() => ({
+                append: jest.fn(),
+                classList: { add: jest.fn(), remove: jest.fn() },
+                dataset: {},
+                focus: jest.fn(),
+                setAttribute: jest.fn(),
+                value: '',
+            })),
+            querySelectorAll: jest.fn(selector => selector === '.sb-conversation-message-edit-textarea' ? [activeEditor] : [nextMessageElement]),
+        };
+        threadMessages.splice(0, threadMessages.length, { id: 43, role: 'user', name: 'User', mes: 'hello', extra: {} });
+
+        editConversationMessage('43');
+
+        expect(previousMessageElement.classList.remove).toHaveBeenCalledWith('is-editing');
+        expect(previousMessageElement.dataset.sbConversationMessageFingerprint).toBeUndefined();
+        expect(originalActions.classList.remove).toHaveBeenCalledWith('open');
+        expect(scheduleTimelineRender).toHaveBeenCalledTimes(1);
     });
 });

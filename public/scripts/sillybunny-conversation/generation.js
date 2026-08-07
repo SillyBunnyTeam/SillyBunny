@@ -139,10 +139,22 @@ export function editConversationMessage(messageId) {
         return;
     }
 
-    // If an editor is already open in this element, do nothing.
     if (textElement.querySelector('.sb-conversation-message-edit-textarea')) {
         return;
     }
+
+    let closedExistingEditor = false;
+    document.querySelectorAll('.sb-conversation-message-edit-textarea').forEach((editor) => {
+        const previousMessageElement = editor.closest?.('.sb-conversation-message');
+        if (!previousMessageElement || previousMessageElement === messageElement) {
+            return;
+        }
+
+        previousMessageElement.classList.remove('is-editing');
+        previousMessageElement.querySelector('.sb-conversation-message-actions')?.classList.remove('open');
+        delete previousMessageElement.dataset.sbConversationMessageFingerprint;
+        closedExistingEditor = true;
+    });
 
     const textarea = document.createElement('textarea');
     textarea.className = 'sb-conversation-message-edit-textarea';
@@ -153,31 +165,47 @@ export function editConversationMessage(messageId) {
 
     const saveButton = document.createElement('button');
     saveButton.type = 'button';
-    saveButton.className = 'menu_button sb-conversation-message-edit-save';
-    saveButton.textContent = 'Save';
+    saveButton.className = 'menu_button sb-conversation-message-edit-control sb-conversation-message-edit-save mes_edit_done fa-solid fa-check';
+    saveButton.title = 'Save message changes';
+    saveButton.setAttribute('aria-label', 'Save message changes');
 
     const cancelButton = document.createElement('button');
     cancelButton.type = 'button';
-    cancelButton.className = 'menu_button sb-conversation-message-edit-cancel';
-    cancelButton.textContent = 'Cancel';
+    cancelButton.className = 'menu_button sb-conversation-message-edit-control sb-conversation-message-edit-cancel mes_edit_cancel fa-solid fa-xmark';
+    cancelButton.title = 'Discard message changes';
+    cancelButton.setAttribute('aria-label', 'Discard message changes');
 
-    buttonContainer.append(saveButton, cancelButton);
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'menu_button sb-conversation-message-edit-control sb-conversation-message-edit-delete mes_edit_delete fa-solid fa-trash-can';
+    deleteButton.title = 'Delete message';
+    deleteButton.setAttribute('aria-label', 'Delete message');
+    deleteButton.dataset.sbConversationAction = 'delete-message';
+    deleteButton.dataset.messageId = message.id;
+
+    buttonContainer.append(saveButton, cancelButton, deleteButton);
 
     textElement.textContent = '';
     textElement.append(textarea, buttonContainer);
+    messageElement.classList.add('is-editing');
+    messageElement.querySelector('.sb-conversation-message-actions')?.classList.remove('open');
+    if (closedExistingEditor) {
+        scheduleTimelineRender();
+    }
 
     const closeEditor = () => {
+        messageElement.classList.remove('is-editing');
+        messageElement.querySelector('.sb-conversation-message-actions')?.classList.remove('open');
         delete messageElement.dataset.sbConversationMessageFingerprint;
         scheduleTimelineRender();
     };
 
     saveButton.onclick = () => {
-        const value = textarea.value.trim();
-        if (value && value !== message.mes) {
+        const value = textarea.value;
+        if (value !== message.mes) {
             updateConversationThreadMessage(avatar, message.id, value, null, { groupId, personaId });
-        } else {
-            closeEditor();
         }
+        closeEditor();
     };
 
     cancelButton.onclick = closeEditor;
