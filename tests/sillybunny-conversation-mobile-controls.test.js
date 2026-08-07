@@ -65,4 +65,19 @@ describe('Conversation mobile controls', () => {
             '--sb-conversation-edit-action-color': 'var(--sb-color-danger)',
         });
     });
+
+    test('edit controls layer their tint over the themeable button background', () => {
+        // Themes may define --sb-button-bg as a gradient, which color-mix() rejects outright,
+        // so it has to stay its own background layer rather than become a mix operand.
+        const selectors = [
+            '.sb-conversation-message-edit-control.menu_button',
+            '.sb-conversation-message-edit-control.menu_button:hover',
+        ];
+
+        for (const selector of selectors) {
+            const background = getRuleDeclarations(selector).background;
+            expect(background).toContain('var(--sb-button-bg)');
+            expect(background.trim().endsWith('var(--sb-button-bg)')).toBe(true);
+        }
+    });
 });

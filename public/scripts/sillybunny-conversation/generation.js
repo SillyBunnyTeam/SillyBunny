@@ -144,7 +144,10 @@ export function editConversationMessage(messageId) {
         return;
     }
 
-    activeConversationEditor?.close();
+    if (activeConversationEditor && !activeConversationEditor.requestClose()) {
+        return;
+    }
+
     const originalTextElement = textElement.cloneNode(true);
 
     const textarea = document.createElement('textarea');
@@ -192,12 +195,26 @@ export function editConversationMessage(messageId) {
         }
     };
 
-    activeConversationEditor = { messageElement, close: closeEditor };
+    // Switching editors drops whatever is in the textarea, so confirm first when it differs
+    // from the stored message. Falls through when no confirm() exists (non-browser hosts).
+    const requestClose = () => {
+        if (textarea.value !== message.mes
+            && typeof globalThis.confirm === 'function'
+            && !globalThis.confirm('Discard unsaved changes to the message being edited?')) {
+            return false;
+        }
+
+        closeEditor();
+        return true;
+    };
+
+    activeConversationEditor = { messageElement, requestClose };
 
     saveButton.onclick = () => {
         const value = textarea.value;
         closeEditor();
-        if (value !== message.mes) {
+        // A blanked textarea is not an edit: the delete control is the only way to drop a message.
+        if (value.trim() && value !== message.mes) {
             updateConversationThreadMessage(avatar, message.id, value, null, { groupId, personaId });
         }
     };
