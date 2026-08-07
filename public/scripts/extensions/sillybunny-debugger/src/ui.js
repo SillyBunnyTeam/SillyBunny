@@ -292,7 +292,7 @@ async function gatherExtensions() {
         }
         const names = (await response.json()).map((item) => (typeof item === 'string' ? item : item.name));
         const disabled = ctx().extensionSettings?.disabledExtensions ?? [];
-        const thirdParty = names.filter((name) => name.includes('third-party/') && !disabled.includes(name));
+        const thirdParty = getEnabledThirdPartyExtensions(names, disabled);
         return {
             enabled: thirdParty.join(', ') || 'none',
             disabled: disabled.join(', ') || 'none',
@@ -300,6 +300,15 @@ async function gatherExtensions() {
     } catch {
         return { enabled: 'unavailable', disabled: 'unavailable' };
     }
+}
+
+export function getEnabledThirdPartyExtensions(names, disabled) {
+    const normalize = (name) => String(name ?? '').replace(/^third-party\//i, '').toLowerCase();
+    const disabledIds = new Set(disabled.map(normalize));
+    const debuggerId = normalize('sillybunny-debugger');
+    return names.filter((name) => name.includes('third-party/')
+        && normalize(name) !== debuggerId
+        && !disabledIds.has(normalize(name)));
 }
 
 async function extensionVersion() {

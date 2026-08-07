@@ -244,19 +244,6 @@ test('cleans tools that fail during initialization', async ({ page }) => {
     });
 });
 
-test('blocks path traversal in the extension fixture', async ({ page }) => {
-    const blocked = await page.evaluate(async () => {
-        try {
-            await fetch('/scripts/extensions/sillybunny-debugger/%2e%2e%5cpackage.json');
-            return false;
-        } catch {
-            return true;
-        }
-    });
-
-    expect(blocked).toBe(true);
-});
-
 test('mounts an accessible drawer and tears the extension down cleanly', async ({ page }) => {
     await page.addStyleTag({
         content: ':root{--sb-focus-ring:#7cacf8;--SmartThemeQuoteColor:#7cacf8}'

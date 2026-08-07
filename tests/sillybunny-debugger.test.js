@@ -11,6 +11,7 @@ import {
     serializeArg,
 } from '../public/scripts/extensions/sillybunny-debugger/src/capture.js';
 import { buildReport } from '../public/scripts/extensions/sillybunny-debugger/src/report.js';
+import { getEnabledThirdPartyExtensions } from '../public/scripts/extensions/sillybunny-debugger/src/ui.js';
 
 const extensionRoot = new URL('../public/scripts/extensions/sillybunny-debugger/', import.meta.url);
 
@@ -180,6 +181,20 @@ describe('SillyBunny Debugger', () => {
         expect(report).not.toContain('ordinary log');
         expect(report).toContain('error 299');
         expect(report.length).toBeLessThanOrEqual(15000);
+    });
+
+    test('reports normalized third-party extension states without listing its shadowed alias', () => {
+        const enabled = getEnabledThirdPartyExtensions([
+            'third-party/Enabled-Extension',
+            'third-party/Disabled-Extension',
+            'third-party/SillyBunny-Debugger',
+            'vectors',
+        ], [
+            'DISABLED-EXTENSION',
+            'sillybunny-debugger',
+        ]);
+
+        expect(enabled).toEqual(['third-party/Enabled-Extension']);
     });
 
     test('is a default-off lifecycle extension with the safe Eruda tool profile', async () => {
