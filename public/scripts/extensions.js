@@ -423,7 +423,7 @@ function clearStaleLockedExtensionDisables() {
 
 function applyBundledOptInDefaults({ migrateLegacy = false, initializeProcessedIds = false } = {}) {
     const bundledOptInExtensions = Object.entries(manifests)
-        .filter(([, manifest]) => manifest?.bundled_opt_in === true)
+        .filter(([name, manifest]) => manifest?.bundled_opt_in === true && ['core', 'bundled'].includes(getExtensionType(name)))
         .map(([name]) => name);
 
     const storedProcessedIds = Array.isArray(extension_settings.bundledOptInProcessedExtensions)
@@ -585,9 +585,10 @@ function areExtensionIdsEqual(left, right) {
 }
 
 function resolveExtensionName(name) {
-    return extensionNames.find(extName => {
+    const matches = extensionNames.filter(extName => {
         return equalsIgnoreCaseAndAccents(extName, name) || equalsIgnoreCaseAndAccents(extName, `third-party/${name}`);
-    }) ?? name;
+    });
+    return matches.find(extName => Object.hasOwn(manifests, extName)) ?? matches[0] ?? name;
 }
 
 function isExtensionDisabled(externalId) {
@@ -846,10 +847,7 @@ export function findExtension(name) {
  * @returns {object|null} Cloned manifest, or null if not found
  */
 export function getExtensionManifest(name) {
-    const internalExtensionName = extensionNames.find(extName => {
-        return equalsIgnoreCaseAndAccents(extName, name) || equalsIgnoreCaseAndAccents(extName, `third-party/${name}`);
-    });
-
+    const internalExtensionName = resolveExtensionName(name);
     const manifest = internalExtensionName ? manifests[internalExtensionName] : null;
     return manifest ? structuredClone(manifest) : null;
 }
@@ -1020,6 +1018,7 @@ async function getManifests(names) {
 
     const obj = {};
     const loadedManifestKeys = new Set();
+    const loadedManifestNames = new Map();
 
     for (const result of results) {
         if (!result.ok) {
@@ -1031,11 +1030,22 @@ async function getManifests(names) {
             existingKeys: loadedManifestKeys,
         });
         if (!registrationState.shouldRegister) {
+            const existingName = loadedManifestNames.get(registrationState.dedupeKey);
+            const existingManifest = obj[existingName];
+            const preferExternal = existingManifest?.bundled_opt_in === true && isExternalExtension(result.name);
+            if (preferExternal) {
+                delete obj[existingName];
+                obj[result.name] = result.manifest;
+                loadedManifestNames.set(registrationState.dedupeKey, result.name);
+                console.warn(`[Extensions] Using installed extension "${result.name}" instead of bundled opt-in "${existingName}"`);
+                continue;
+            }
             console.warn(`[Extensions] Skipping duplicate manifest entry for "${result.name}"`);
             continue;
         }
 
         loadedManifestKeys.add(registrationState.dedupeKey);
+        loadedManifestNames.set(registrationState.dedupeKey, result.name);
         obj[result.name] = result.manifest;
     }
 
@@ -2285,7 +2295,8 @@ export async function loadExtensionSettings(settings, versionChanged, enableAuto
     // Clean stale entries from disabledExtensions list
     const originalDisabledCount = extension_settings.disabledExtensions.length;
     extension_settings.disabledExtensions = extension_settings.disabledExtensions.filter(name => {
-        const exists = extensionNames.includes(name);
+        // SillyBunny: normalized aliases survive third-party-to-bundled promotion.
+        const exists = extensionNames.some(extensionName => areExtensionIdsEqual(name, extensionName));
         if (!exists) {
             console.log(`[Extensions] Removed stale disabled extension: ${name}`);
         }

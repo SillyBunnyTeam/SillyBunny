@@ -271,15 +271,16 @@ describe('disabled extensions', () => {
     test('migrates legacy opt-ins without changing their choices and disables new diagnostics', async () => {
         const { saveSettingsDebounced } = installExtensionModuleMocks();
         installExtensionDiscovery([
-            { name: 'third-party/sillytavern-character-colors', manifest: { bundled_opt_in: true } },
-            { name: 'third-party/sillytavern-image-gen', manifest: { bundled_opt_in: true } },
-            { name: 'performance-diagnostics', manifest: { bundled_opt_in: true } },
+            { name: 'third-party/sillytavern-character-colors', type: 'bundled', manifest: { bundled_opt_in: true } },
+            { name: 'third-party/sillytavern-image-gen', type: 'bundled', manifest: { bundled_opt_in: true } },
+            { name: 'performance-diagnostics', type: 'core', manifest: { bundled_opt_in: true } },
         ]);
 
         const { extension_settings, loadExtensionSettings } = await import('../public/scripts/extensions.js');
         await loadExtensionSettings({
             extension_settings: {
                 bundledOptInDefaultsApplied: true,
+                lockedExtensionsUnlockApplied: true,
                 disabledExtensions: ['third-party/sillytavern-image-gen'],
             },
         }, false, false);
@@ -297,7 +298,7 @@ describe('disabled extensions', () => {
     test('preserves an explicit diagnostics choice after its ID was processed', async () => {
         installExtensionModuleMocks();
         installExtensionDiscovery([
-            { name: 'performance-diagnostics', manifest: { bundled_opt_in: true } },
+            { name: 'performance-diagnostics', type: 'core', manifest: { bundled_opt_in: true } },
         ]);
 
         const { extension_settings, loadExtensionSettings } = await import('../public/scripts/extensions.js');
@@ -316,8 +317,8 @@ describe('disabled extensions', () => {
     test('defaults each future bundled opt-in only on its first encounter', async () => {
         const { saveSettingsDebounced } = installExtensionModuleMocks();
         installExtensionDiscovery([
-            { name: 'legacy-enabled', manifest: { bundled_opt_in: true } },
-            { name: 'future-opt-in', manifest: { bundled_opt_in: true } },
+            { name: 'legacy-enabled', type: 'bundled', manifest: { bundled_opt_in: true } },
+            { name: 'future-opt-in', type: 'bundled', manifest: { bundled_opt_in: true } },
         ]);
 
         const { extension_settings, loadExtensionSettings } = await import('../public/scripts/extensions.js');
@@ -332,6 +333,72 @@ describe('disabled extensions', () => {
         expect(extension_settings.disabledExtensions).toEqual(['future-opt-in']);
         expect(extension_settings.bundledOptInProcessedExtensions).toEqual(['legacy-enabled', 'future-opt-in']);
         expect(saveSettingsDebounced).toHaveBeenCalledTimes(1);
+    });
+
+    test('keeps an enabled third-party implementation active when a bundled copy is added', async () => {
+        installExtensionModuleMocks();
+        installExtensionDiscovery([
+            { name: 'sillybunny-debugger', type: 'core', manifest: { bundled_opt_in: true, generate_interceptor: 'core_debugger_interceptor' } },
+            { name: 'third-party/SillyBunny-Debugger', type: 'local', manifest: { bundled_opt_in: true, generate_interceptor: 'external_debugger_interceptor' } },
+        ]);
+
+        const { extension_settings, findExtension, getExtensionManifest, loadExtensionSettings, runGenerationInterceptors } = await import('../public/scripts/extensions.js');
+        await loadExtensionSettings({
+            extension_settings: {
+                lockedExtensionsUnlockApplied: true,
+                bundledOptInProcessedExtensions: [],
+                disabledExtensions: [],
+            },
+        }, false, false);
+
+        expect(extension_settings.disabledExtensions).toEqual([]);
+        expect(extension_settings.bundledOptInProcessedExtensions).toEqual([]);
+        expect(findExtension('sillybunny-debugger')).toEqual({ name: 'third-party/SillyBunny-Debugger', enabled: true });
+        expect(getExtensionManifest('sillybunny-debugger').generate_interceptor).toBe('external_debugger_interceptor');
+
+        globalThis.core_debugger_interceptor = jest.fn();
+        globalThis.external_debugger_interceptor = jest.fn();
+        await runGenerationInterceptors([], 4096, 'normal');
+
+        expect(globalThis.external_debugger_interceptor).toHaveBeenCalledTimes(1);
+        expect(globalThis.core_debugger_interceptor).not.toHaveBeenCalled();
+
+        installExtensionDiscovery([
+            { name: 'sillybunny-debugger', type: 'core', manifest: { bundled_opt_in: true } },
+        ]);
+        await loadExtensionSettings({ extension_settings: { ...extension_settings } }, false, false);
+
+        expect(extension_settings.disabledExtensions).toEqual(['sillybunny-debugger']);
+        expect(findExtension('sillybunny-debugger')).toEqual({ name: 'sillybunny-debugger', enabled: false });
+    });
+
+    test('keeps a disabled third-party alias disabling its bundled replacement', async () => {
+        installExtensionModuleMocks();
+        installExtensionDiscovery([
+            { name: 'sillybunny-debugger', type: 'core', manifest: { bundled_opt_in: true } },
+            { name: 'third-party/SillyBunny-Debugger', type: 'local' },
+        ]);
+
+        const { extension_settings, findExtension, loadExtensionSettings } = await import('../public/scripts/extensions.js');
+        await loadExtensionSettings({
+            extension_settings: {
+                lockedExtensionsUnlockApplied: true,
+                bundledOptInProcessedExtensions: [],
+                disabledExtensions: ['third-party/SillyBunny-Debugger'],
+            },
+        }, false, false);
+
+        expect(extension_settings.disabledExtensions).toEqual(['third-party/SillyBunny-Debugger']);
+        expect(extension_settings.bundledOptInProcessedExtensions).toEqual([]);
+        expect(findExtension('sillybunny-debugger')).toEqual({ name: 'third-party/SillyBunny-Debugger', enabled: false });
+
+        installExtensionDiscovery([
+            { name: 'sillybunny-debugger', type: 'core', manifest: { bundled_opt_in: true } },
+        ]);
+        await loadExtensionSettings({ extension_settings: { ...extension_settings } }, false, false);
+
+        expect(extension_settings.disabledExtensions).toEqual(['third-party/SillyBunny-Debugger']);
+        expect(findExtension('sillybunny-debugger')).toEqual({ name: 'sillybunny-debugger', enabled: false });
     });
 
     test('Summarize exposes a disable hook that clears the memory prompt', async () => {

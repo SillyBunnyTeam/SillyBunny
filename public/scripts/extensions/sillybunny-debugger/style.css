@@ -1,0 +1,55 @@
+/* Bunny Debugger — drawer and report popup. */
+
+#sbdbg-menu-item {
+    width: 100%;
+    border: 0;
+    background: none;
+    color: var(--SmartThemeBodyColor);
+    padding: 5px;
+    font: inherit;
+    text-align: left;
+    column-gap: 10px;
+    cursor: pointer;
+    align-items: baseline;
+}
+
+#sbdbg-settings > .inline-drawer-toggle {
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+    color: inherit;
+    font: inherit;
+    text-align: inherit;
+}
+
+#sbdbg-settings > .inline-drawer-toggle.inline-drawer-header {
+    min-height: 44px;
+}
+
+#sbdbg-settings > .inline-drawer-toggle:focus,
+#sbdbg-settings > .inline-drawer-toggle:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--sb-focus-ring, var(--SmartThemeQuoteColor, currentColor));
+}
+
+#sbdbg-settings .sbdbg-actions,
+.sbdbg-report .sbdbg-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin: 5px 0;
+}
+
+#sbdbg-settings .sbdbg-hint {
+    margin-top: 5px;
+    font-size: 0.85em;
+    opacity: 0.75;
+}
+
+.sbdbg-report-text {
+    width: 100%;
+    min-height: 40vh;
+    font-family: monospace;
+    font-size: 0.8em;
+    white-space: pre;
+}

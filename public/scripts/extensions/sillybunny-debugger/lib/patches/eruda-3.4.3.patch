@@ -1,0 +1,531 @@
+diff --git a/build/webpack.base.js b/build/webpack.base.js
+index 2016537..aebd741 100644
+--- a/build/webpack.base.js
++++ b/build/webpack.base.js
+@@ -52 +52 @@ module.exports = {
+-    library: 'eruda',
++    library: '__sillyBunnyDebuggerEruda',
+diff --git a/src/Console/Console.js b/src/Console/Console.js
+index 2186431..1607117 100644
+--- a/src/Console/Console.js
++++ b/src/Console/Console.js
+@@ -20 +20 @@ import LunaModal from 'luna-modal'
+-import { classPrefix as c } from '../lib/util'
++import { classPrefix as c, safely } from '../lib/util'
+@@ -49,0 +50 @@ export default class Console extends Tool {
++    if (this._consoleHook) this.restoreConsole()
+@@ -51,0 +53,5 @@ export default class Console extends Tool {
++    const hook = (this._consoleHook = {
++      active: true,
++      descriptors: {},
++      wrappers: {},
++    })
+@@ -54,0 +61 @@ export default class Console extends Tool {
++      hook.descriptors[name] = Object.getOwnPropertyDescriptor(winConsole, name)
+@@ -56 +63 @@ export default class Console extends Tool {
+-        origin = origConsole[name] = winConsole[name].bind(winConsole)
++        origin = origConsole[name] = winConsole[name]
+@@ -59,3 +66,3 @@ export default class Console extends Tool {
+-      winConsole[name] = (...args) => {
+-        this[name](...args)
+-        origin(...args)
++      const wrapped = (...args) => {
++        if (hook.active) this[name](...args)
++        origin.apply(winConsole, args)
+@@ -62,0 +70,2 @@ export default class Console extends Tool {
++      hook.wrappers[name] = wrapped
++      winConsole[name] = wrapped
+@@ -71 +80 @@ export default class Console extends Tool {
+-    if (!this._origConsole) return this
++    if (!this._origConsole || !this._consoleHook) return this
+@@ -73,3 +82,9 @@ export default class Console extends Tool {
+-    CONSOLE_METHOD.forEach(
+-      (name) => (window.console[name] = this._origConsole[name])
+-    )
++    const hook = this._consoleHook
++    hook.active = false
++    CONSOLE_METHOD.forEach((name) => {
++      if (window.console[name] === hook.wrappers[name]) {
++        const descriptor = hook.descriptors[name]
++        if (descriptor) Object.defineProperty(window.console, name, descriptor)
++        else delete window.console[name]
++      }
++    })
+@@ -76,0 +92 @@ export default class Console extends Tool {
++    delete this._consoleHook
+@@ -106,2 +122,2 @@ export default class Console extends Tool {
+-    this._logger.destroy()
+-    super.destroy()
++    safely(() => this._logger.destroy())
++    safely(() => super.destroy())
+@@ -109 +125 @@ export default class Console extends Tool {
+-    this._container.off('show', this._handleShow)
++    safely(() => this._container.off('show', this._handleShow))
+@@ -112 +128 @@ export default class Console extends Tool {
+-      evalCss.remove(this._style)
++      safely(() => evalCss.remove(this._style))
+@@ -114,3 +130,3 @@ export default class Console extends Tool {
+-    this.ignoreGlobalErr()
+-    this.restoreConsole()
+-    this._rmCfg()
++    safely(() => this.ignoreGlobalErr())
++    safely(() => this.restoreConsole())
++    safely(() => this._rmCfg())
+diff --git a/src/DevTools/DevTools.js b/src/DevTools/DevTools.js
+index 39902b8..3587e2b 100644
+--- a/src/DevTools/DevTools.js
++++ b/src/DevTools/DevTools.js
+@@ -29,0 +30 @@ import {
++  safely,
+@@ -55,0 +57 @@ export default class DevTools extends Emitter {
++    this._transitionTimer = null
+@@ -72,2 +74,2 @@ export default class DevTools extends Emitter {
+-    // Need a delay after show to enable transition effect.
+-    setTimeout(() => {
++    this._clearTransitionTimer()
++    const show = () => {
+@@ -75 +77,4 @@ export default class DevTools extends Emitter {
+-    }, 50)
++      this._transitionTimer = null
++    }
++    if (this._prefersReducedMotion()) show()
++    else this._transitionTimer = setTimeout(show, 50)
+@@ -88,0 +94 @@ export default class DevTools extends Emitter {
++    this._clearTransitionTimer()
+@@ -90 +96,6 @@ export default class DevTools extends Emitter {
+-    setTimeout(() => this._$el.hide(), 300)
++    const hide = () => {
++      this._$el.hide()
++      this._transitionTimer = null
++    }
++    if (this._prefersReducedMotion()) hide()
++    else this._transitionTimer = setTimeout(hide, 300)
+@@ -96,0 +108,10 @@ export default class DevTools extends Emitter {
++  _prefersReducedMotion() {
++    return (
++      window.matchMedia &&
++      window.matchMedia('(prefers-reduced-motion: reduce)').matches
++    )
++  }
++  _clearTransitionTimer() {
++    if (this._transitionTimer) clearTimeout(this._transitionTimer)
++    this._transitionTimer = null
++  }
+@@ -116 +137,8 @@ export default class DevTools extends Emitter {
+-    tool.init(this._$tools.find(`.${c(id)}.${c('tool')}`), this)
++    const $tool = this._$tools.find(`.${c(id)}.${c('tool')}`)
++    try {
++      tool.init($tool, this)
++    } catch (error) {
++      safely(() => tool.destroy())
++      safely(() => $tool.remove())
++      throw error
++    }
+@@ -152 +180,5 @@ export default class DevTools extends Emitter {
+-    each(this._tools, (tool) => this.remove(tool.name))
++    each(keys(this._tools), (name) => {
++      const tool = this._tools[name]
++      delete this._tools[name]
++      safely(() => tool.destroy())
++    })
+@@ -253,6 +285,9 @@ export default class DevTools extends Emitter {
+-    evalCss.remove(this._style)
+-    this.removeAll()
+-    this._tab.destroy()
+-    this._$el.remove()
+-    window.removeEventListener('resize', this._checkSafeArea)
+-    emitter.off(emitter.SCALE, this._updateTabHeight)
++    safely(() => this._endResize())
++    safely(() => this._clearTransitionTimer())
++    safely(() => theme.off('change', this._themeListener))
++    safely(() => evalCss.remove(this._style))
++    safely(() => this.removeAll())
++    safely(() => this._tab.destroy())
++    safely(() => this._$el.remove())
++    safely(() => window.removeEventListener('resize', this._checkSafeArea))
++    safely(() => emitter.off(emitter.SCALE, this._updateTabHeight))
+@@ -391,0 +427 @@ export default class DevTools extends Emitter {
++    this._endResize = endListener
+@@ -401 +437 @@ export default class DevTools extends Emitter {
+-    theme.on('change', () => {
++    this._themeListener = () => {
+@@ -406 +442,2 @@ export default class DevTools extends Emitter {
+-    })
++    }
++    theme.on('change', this._themeListener)
+diff --git a/src/DevTools/DevTools.scss b/src/DevTools/DevTools.scss
+index a2014a1..bd26b1c 100644
+--- a/src/DevTools/DevTools.scss
++++ b/src/DevTools/DevTools.scss
+@@ -15,0 +16,3 @@
++  @media (prefers-reduced-motion: reduce) {
++    transition: none;
++  }
+diff --git a/src/Elements/Elements.js b/src/Elements/Elements.js
+index 375b160..58e8f2a 100644
+--- a/src/Elements/Elements.js
++++ b/src/Elements/Elements.js
+@@ -14 +14,6 @@ import LunaDomViewer from 'luna-dom-viewer'
+-import { isErudaEl, classPrefix as c, isChobitsuEl } from '../lib/util'
++import {
++  isErudaEl,
++  classPrefix as c,
++  isChobitsuEl,
++  safely,
++} from '../lib/util'
+@@ -78 +83 @@ export default class Elements extends Tool {
+-    super.destroy()
++    safely(() => super.destroy())
+@@ -80,8 +85,15 @@ export default class Elements extends Tool {
+-    emitter.off(emitter.SCALE, this._updateScale)
+-    evalCss.remove(this._style)
+-    this._detail.destroy()
+-    chobitsu
+-      .domain('Overlay')
+-      .off('inspectNodeRequested', this._inspectNodeRequested)
+-    chobitsu.domain('Overlay').disable()
+-    this._splitMediaQuery.removeAllListeners()
++    safely(() => emitter.off(emitter.SCALE, this._updateScale))
++    safely(() => evalCss.remove(this._style))
++    safely(() => this._detail.destroy())
++    const overlay = safely(() => chobitsu.domain('Overlay'))
++    safely(() =>
++      overlay.off('inspectNodeRequested', this._inspectNodeRequested)
++    )
++    safely(() => overlay.setInspectMode({ mode: 'none' }))
++    safely(() => overlay.disable())
++    safely(() =>
++      this._splitMediaQuery._mql.removeListener(
++        this._splitMediaQuery._listener
++      )
++    )
++    safely(() => this._splitMediaQuery.removeAllListeners())
+diff --git a/src/EntryBtn/EntryBtn.js b/src/EntryBtn/EntryBtn.js
+index bf208f2..f6e36b6 100644
+--- a/src/EntryBtn/EntryBtn.js
++++ b/src/EntryBtn/EntryBtn.js
+@@ -8 +8 @@ import pointerEvent from 'licia/pointerEvent'
+-import { pxToNum, classPrefix as c, eventClient } from '../lib/util'
++import { pxToNum, classPrefix as c, eventClient, safely } from '../lib/util'
+@@ -46,3 +46,14 @@ export default class EntryBtn extends Emitter {
+-    evalCss.remove(this._style)
+-    this._unregisterListener()
+-    this._$el.remove()
++    const $document = $(document)
++    safely(() => $document.off(pointerEvent('move'), this._onDragMove))
++    safely(() => $document.off(pointerEvent('up'), this._onDragEnd))
++    safely(() => orientation.off('change', this._orientationListener))
++    safely(() => window.removeEventListener('resize', this._resizeListener))
++    safely(() =>
++      this._visualViewport.removeEventListener('resize', this._resizeListener)
++    )
++    safely(() =>
++      this._visualViewport.removeEventListener('scroll', this._resizeListener)
++    )
++    safely(() => evalCss.remove(this._style))
++    safely(() => this._unregisterListener())
++    safely(() => this._$el.remove())
+@@ -52 +63 @@ export default class EntryBtn extends Emitter {
+-    const defPos = this._getDefPos()
++    const bounds = this._getPositionBounds()
+@@ -55 +66,4 @@ export default class EntryBtn extends Emitter {
+-      pos.x > defPos.x + 10 || pos.x < 0 || pos.y < 0 || pos.y > defPos.y + 10
++      pos.x < bounds.minX ||
++      pos.x > bounds.maxX ||
++      pos.y < bounds.minY ||
++      pos.y > bounds.maxY
+@@ -72 +86,3 @@ export default class EntryBtn extends Emitter {
+-      c('<div class="entry-btn"><span class="icon-tool"></span></div>')
++      c(
++        '<button type="button" class="entry-btn" aria-label="Open debugger"><span class="icon-tool" aria-hidden="true"></span></button>'
++      )
+@@ -101,3 +117 @@ export default class EntryBtn extends Emitter {
+-    const btnSize = this._$el.get(0).offsetWidth
+-    const maxWidth = this._$container.get(0).offsetWidth
+-    const maxHeight = this._$container.get(0).offsetHeight
++    const bounds = this._getPositionBounds()
+@@ -113,4 +127,4 @@ export default class EntryBtn extends Emitter {
+-    if (newX < 0) {
+-      newX = 0
+-    } else if (newX > maxWidth - btnSize) {
+-      newX = maxWidth - btnSize
++    if (newX < bounds.minX) {
++      newX = bounds.minX
++    } else if (newX > bounds.maxX) {
++      newX = bounds.maxX
+@@ -118,4 +132,4 @@ export default class EntryBtn extends Emitter {
+-    if (newY < 0) {
+-      newY = 0
+-    } else if (newY > maxHeight - btnSize) {
+-      newY = maxHeight - btnSize
++    if (newY < bounds.minY) {
++      newY = bounds.minY
++    } else if (newY > bounds.maxY) {
++      newY = bounds.maxY
+@@ -131,4 +144,0 @@ export default class EntryBtn extends Emitter {
+-    if (this._isClick) {
+-      this.emit('click')
+-    }
+-
+@@ -153,0 +164,3 @@ export default class EntryBtn extends Emitter {
++    $el.on('click', (e) => {
++      if (this._isClick || e.origEvent.detail === 0) this.emit('click')
++    })
+@@ -155,2 +168,7 @@ export default class EntryBtn extends Emitter {
+-    orientation.on('change', () => this._resetPos(true))
+-    window.addEventListener('resize', () => this._resetPos())
++    this._orientationListener = () => this._resetPos(true)
++    this._resizeListener = () => this._resetPos()
++    this._visualViewport = window.visualViewport
++    orientation.on('change', this._orientationListener)
++    window.addEventListener('resize', this._resizeListener)
++    this._visualViewport?.addEventListener('resize', this._resizeListener)
++    this._visualViewport?.addEventListener('scroll', this._resizeListener)
+@@ -169 +187 @@ export default class EntryBtn extends Emitter {
+-    const minWidth = this._$el.get(0).offsetWidth + 10
++    const bounds = this._getPositionBounds()
+@@ -172,2 +190,43 @@ export default class EntryBtn extends Emitter {
+-      x: window.innerWidth - minWidth,
+-      y: window.innerHeight - minWidth,
++      x: Math.max(bounds.minX, bounds.maxX - 10),
++      y: Math.max(bounds.minY, bounds.maxY - 10),
++    }
++  }
++  _getPositionBounds() {
++    const btnSize = this._$el.get(0).offsetWidth
++    const maxWidth = this._$container.get(0).offsetWidth
++    const maxHeight = this._$container.get(0).offsetHeight
++    const viewport = window.visualViewport
++    const viewportLeft = Math.max(0, viewport?.offsetLeft || 0)
++    const viewportTop = Math.max(0, viewport?.offsetTop || 0)
++    const viewportRight = Math.min(
++      maxWidth,
++      viewportLeft + (viewport?.width || maxWidth)
++    )
++    const viewportBottom = Math.min(
++      maxHeight,
++      viewportTop + (viewport?.height || maxHeight)
++    )
++    const safeArea = this._getSafeAreaInsets()
++    return {
++      minX: viewportLeft + safeArea.left,
++      minY: viewportTop + safeArea.top,
++      maxX: Math.max(
++        viewportLeft + safeArea.left,
++        viewportRight - btnSize - safeArea.right
++      ),
++      maxY: Math.max(
++        viewportTop + safeArea.top,
++        viewportBottom - btnSize - safeArea.bottom
++      ),
++    }
++  }
++  _getSafeAreaInsets() {
++    const style = window.getComputedStyle(this._$el.get(0))
++    return {
++      top: pxToNum(style.getPropertyValue('--eruda-safe-area-inset-top')) || 0,
++      right:
++        pxToNum(style.getPropertyValue('--eruda-safe-area-inset-right')) || 0,
++      bottom:
++        pxToNum(style.getPropertyValue('--eruda-safe-area-inset-bottom')) || 0,
++      left:
++        pxToNum(style.getPropertyValue('--eruda-safe-area-inset-left')) || 0,
+diff --git a/src/EntryBtn/EntryBtn.scss b/src/EntryBtn/EntryBtn.scss
+index 2d71c23..6a82f3e 100644
+--- a/src/EntryBtn/EntryBtn.scss
++++ b/src/EntryBtn/EntryBtn.scss
+@@ -2,0 +3,4 @@
++    --eruda-safe-area-inset-top: env(safe-area-inset-top, 0px);
++    --eruda-safe-area-inset-right: env(safe-area-inset-right, 0px);
++    --eruda-safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
++    --eruda-safe-area-inset-left: env(safe-area-inset-left, 0px);
+@@ -4,2 +8,8 @@
+-    width: 40px;
+-    height: 40px;
++    width: 44px;
++    min-width: 44px;
++    height: 44px;
++    min-height: 44px;
++    padding: 0;
++    border: 0;
++    -webkit-appearance: none;
++    appearance: none;
+@@ -7 +17,4 @@
+-    background: #000;
++    background: var(
++      --color-background,
++      var(--SmartThemeBlurTintColor, var(--darker-background, #000))
++    );
+@@ -13 +26,4 @@
+-    color: #fff;
++    color: var(
++      --color-text,
++      var(--SmartThemeBodyColor, var(--primary, #fff))
++    );
+@@ -20,0 +37,27 @@
++    &:focus-visible {
++      outline: none;
++      box-shadow: inset 0 0 0 2px
++        var(
++          --sb-focus-ring,
++          var(
++            --color-focus-ring,
++            var(--SmartThemeQuoteColor, var(--accent, currentColor))
++          )
++        );
++      box-shadow: inset 0 0 0 2px
++        color-mix(
++          in srgb,
++          var(
++              --sb-focus-ring,
++              var(
++                --color-focus-ring,
++                var(--SmartThemeQuoteColor, var(--accent, currentColor))
++              )
++            )
++            70%,
++          transparent
++        );
++    }
++    @media (prefers-reduced-motion: reduce) {
++      transition: none;
++    }
+diff --git a/src/Info/defInfo.js b/src/Info/defInfo.js
+index e85a1ed..442485a 100644
+--- a/src/Info/defInfo.js
++++ b/src/Info/defInfo.js
+@@ -12 +12 @@ export default [
+-      return escape(location.href)
++      return escape(location.origin)
+diff --git a/src/Network/Network.js b/src/Network/Network.js
+index eb8988f..0309234 100644
+--- a/src/Network/Network.js
++++ b/src/Network/Network.js
+@@ -8 +8 @@ import throttle from 'licia/throttle'
+-import { getFileName, classPrefix as c } from '../lib/util'
++import { getFileName, classPrefix as c, safely } from '../lib/util'
+@@ -17 +16,0 @@ import copy from 'licia/copy'
+-import extend from 'licia/extend'
+@@ -22,0 +22,2 @@ import { curlStr } from './util'
++const MAX_REQUESTS = 100
++
+@@ -106,0 +108 @@ export default class Network extends Tool {
++    if (Object.keys(this._requests).length >= MAX_REQUESTS) this.clear()
+@@ -232,4 +233,0 @@ export default class Network extends Tool {
+-          extend(reqHeaders, {
+-            'User-Agent': navigator.userAgent,
+-            Referer: location.href,
+-          })
+@@ -345,5 +343,10 @@ export default class Network extends Tool {
+-    super.destroy()
+-
+-    this._resizeSensor.destroy()
+-    evalCss.remove(this._style)
+-    this._splitMediaQuery.removeAllListeners()
++    safely(() => super.destroy())
++
++    safely(() => this._resizeSensor.destroy())
++    safely(() => evalCss.remove(this._style))
++    safely(() =>
++      this._splitMediaQuery._mql.removeListener(
++        this._splitMediaQuery._listener
++      )
++    )
++    safely(() => this._splitMediaQuery.removeAllListeners())
+@@ -351,5 +354,11 @@ export default class Network extends Tool {
+-    const network = chobitsu.domain('Network')
+-    network.off('requestWillBeSent', this._reqWillBeSent)
+-    network.off('responseReceivedExtraInfo', this._resReceivedExtraInfo)
+-    network.off('responseReceived', this._resReceived)
+-    network.off('loadingFinished', this._loadingFinished)
++    const network = safely(() => chobitsu.domain('Network'))
++    safely(() => network.off('requestWillBeSent', this._reqWillBeSent))
++    safely(() =>
++      network.off('responseReceivedExtraInfo', this._resReceivedExtraInfo)
++    )
++    safely(() => network.off('responseReceived', this._resReceived))
++    safely(() => network.off('loadingFinished', this._loadingFinished))
++    safely(() => network.off('loadingFailed', this._loadingFailed))
++    safely(() => network.disable())
++    this._requests = {}
++    this._selectedRequest = null
+@@ -357 +366 @@ export default class Network extends Tool {
+-    emitter.off(emitter.SCALE, this._updateScale)
++    safely(() => emitter.off(emitter.SCALE, this._updateScale))
+diff --git a/src/eruda.js b/src/eruda.js
+index 3c3f01a..33abad4 100644
+--- a/src/eruda.js
++++ b/src/eruda.js
+@@ -48,16 +48,21 @@ export default {
+-
+-    this._initContainer(container, useShadowDom)
+-    this._initStyle()
+-    this._initDevTools(defaults, inline)
+-    this._initEntryBtn()
+-    this._initSettings()
+-    this._initTools(tool)
+-    this._registerListener()
+-
+-    if (autoScale) {
+-      this._autoScale()
+-    }
+-    if (inline) {
+-      this._entryBtn.hide()
+-      this._$el.addClass('eruda-inline')
+-      this.show()
++    try {
++      this._initContainer(container, useShadowDom)
++      this._initStyle()
++      this._initDevTools(defaults, inline)
++      this._initEntryBtn()
++      this._initSettings()
++      chobitsu.domain('DOM').enable()
++      this._initTools(tool)
++      this._registerListener()
++
++      if (autoScale) {
++        this._autoScale()
++      }
++      if (inline) {
++        this._entryBtn.hide()
++        this._$el.addClass('eruda-inline')
++        this.show()
++      }
++    } catch (e) {
++      this.destroy()
++      throw e
+@@ -67,0 +73 @@ export default {
++  sillyBunnyDebuggerBuild: 'eruda-3.4.3-chobitsu-1.8.6-sbdbg',
+@@ -140 +146,7 @@ export default {
+-    this._devTools.destroy()
++    if (!this._isInit) return
++    this._isInit = false
++
++    util.safely(() => this._devTools && this._devTools.destroy())
++    util.safely(() => chobitsu.domain('Network').disable())
++    util.safely(() => chobitsu.domain('Overlay').disable())
++    util.safely(() => chobitsu.domain('DOM').disable())
+@@ -142 +154 @@ export default {
+-    this._entryBtn.destroy()
++    util.safely(() => this._entryBtn && this._entryBtn.destroy())
+@@ -144,4 +156,3 @@ export default {
+-    this._unregisterListener()
+-    $(this._container).remove()
+-    evalCss.clear()
+-    this._isInit = false
++    util.safely(() => this._unregisterListener())
++    util.safely(() => $(this._container).remove())
++    util.safely(() => evalCss.clear())
+diff --git a/src/lib/util.js b/src/lib/util.js
+index e9e280a..e32aaab 100644
+--- a/src/lib/util.js
++++ b/src/lib/util.js
+@@ -11,0 +12,8 @@ import html from 'licia/html'
++export function safely(fn) {
++  try {
++    return fn()
++  } catch {
++    return undefined
++  }
++}
++

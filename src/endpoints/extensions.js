@@ -26,6 +26,7 @@ const CORE_EXTENSIONS = new Set([
     'token-counter',
     'vectors',
     'in-chat-agents',
+    'sillybunny-debugger',
 ]);
 const BUNDLED_THIRD_PARTY_EXTENSIONS = new Set([
     'bunnypresettools',
