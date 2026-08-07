@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.7.1
+
+### Merged Staging PRs
+- PR #743 (2026-08-07) `fix: conversation mode send/save/cancel buttons non-functional`
+
 ## v1.7.0
 
 **SillyBunny version 1.7.0 has released**
