@@ -153,7 +153,7 @@ describe('Conversation core generated reply regressions', () => {
         });
     });
 
-    test('closes unchanged editors and preserves legacy message identity when saving', () => {
+    test('saves only changed content and closes the editor in all cases', () => {
         const textElement = {
             append: jest.fn(),
             querySelector: jest.fn(() => null),
@@ -197,13 +197,19 @@ describe('Conversation core generated reply regressions', () => {
         expect(messageElement.dataset.sbConversationMessageFingerprint).toBeUndefined();
         expect(scheduleTimelineRender).toHaveBeenCalledTimes(1);
 
+        messageElement.dataset.sbConversationMessageFingerprint = 'fingerprint';
+        saveButton.onclick();
+        expect(updateConversationThreadMessage).not.toHaveBeenCalled();
+        expect(messageElement.dataset.sbConversationMessageFingerprint).toBeUndefined();
+        expect(scheduleTimelineRender).toHaveBeenCalledTimes(2);
+
         textarea.value = 'updated';
         saveButton.onclick();
         expect(updateConversationThreadMessage).toHaveBeenCalledWith('char.png', 42, 'updated', null, {
             groupId: '',
             personaId: 'persona-a.png',
         });
-        expect(scheduleTimelineRender).toHaveBeenCalledTimes(2);
+        expect(scheduleTimelineRender).toHaveBeenCalledTimes(3);
     });
 
     test('cancels an existing editor before opening another', () => {

@@ -165,19 +165,19 @@ export function editConversationMessage(messageId) {
 
     const saveButton = document.createElement('button');
     saveButton.type = 'button';
-    saveButton.className = 'menu_button sb-conversation-message-edit-control sb-conversation-message-edit-save mes_edit_done fa-solid fa-check';
+    saveButton.className = 'menu_button sb-conversation-message-edit-control sb-conversation-message-edit-save fa-solid fa-check';
     saveButton.title = 'Save message changes';
     saveButton.setAttribute('aria-label', 'Save message changes');
 
     const cancelButton = document.createElement('button');
     cancelButton.type = 'button';
-    cancelButton.className = 'menu_button sb-conversation-message-edit-control sb-conversation-message-edit-cancel mes_edit_cancel fa-solid fa-xmark';
+    cancelButton.className = 'menu_button sb-conversation-message-edit-control sb-conversation-message-edit-cancel fa-solid fa-xmark';
     cancelButton.title = 'Discard message changes';
     cancelButton.setAttribute('aria-label', 'Discard message changes');
 
     const deleteButton = document.createElement('button');
     deleteButton.type = 'button';
-    deleteButton.className = 'menu_button sb-conversation-message-edit-control sb-conversation-message-edit-delete mes_edit_delete fa-solid fa-trash-can';
+    deleteButton.className = 'menu_button sb-conversation-message-edit-control sb-conversation-message-edit-delete fa-solid fa-trash-can';
     deleteButton.title = 'Delete message';
     deleteButton.setAttribute('aria-label', 'Delete message');
     deleteButton.dataset.sbConversationAction = 'delete-message';
