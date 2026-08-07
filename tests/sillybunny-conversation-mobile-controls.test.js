@@ -18,6 +18,14 @@ function getDeclarations(media, selector) {
         .map(declaration => [declaration.property, declaration.value]));
 }
 
+function getRuleDeclarations(selector) {
+    const rule = ast.stylesheet.rules.find(candidate => candidate.type === 'rule' && candidate.selectors.includes(selector));
+    expect(rule).toBeDefined();
+    return Object.fromEntries(rule.declarations
+        .filter(declaration => declaration.type === 'declaration')
+        .map(declaration => [declaration.property, declaration.value]));
+}
+
 describe('Conversation mobile controls', () => {
     test('44px touch targets apply to coarse pointers and the 1000px project mobile breakpoint', () => {
         const media = findMediaRule(query => query.includes('pointer: coarse') && query.includes('max-width: 1000px'));
@@ -44,5 +52,17 @@ describe('Conversation mobile controls', () => {
             .flatMap(rule => rule.selectors);
         expect(phoneSelectors).not.toContain('.sb-conversation-selfie-action');
         expect(phoneSelectors).not.toContain('.sb-conversation-reply-cancel');
+    });
+
+    test('edit controls override the base button color with semantic states', () => {
+        expect(getRuleDeclarations('.sb-conversation-message-edit-save.menu_button')).toMatchObject({
+            '--sb-conversation-edit-action-color': 'var(--sb-color-success)',
+        });
+        expect(getRuleDeclarations('.sb-conversation-message-edit-cancel.menu_button')).toMatchObject({
+            '--sb-conversation-edit-action-color': 'var(--sb-color-warning)',
+        });
+        expect(getRuleDeclarations('.sb-conversation-message-edit-delete.menu_button')).toMatchObject({
+            '--sb-conversation-edit-action-color': 'var(--sb-color-danger)',
+        });
     });
 });

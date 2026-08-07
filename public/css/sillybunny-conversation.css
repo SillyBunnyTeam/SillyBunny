@@ -1218,15 +1218,15 @@
     opacity: 0.92;
 }
 
-.sb-conversation-message-edit-save {
+.sb-conversation-message-edit-save.menu_button {
     --sb-conversation-edit-action-color: var(--sb-color-success);
 }
 
-.sb-conversation-message-edit-cancel {
+.sb-conversation-message-edit-cancel.menu_button {
     --sb-conversation-edit-action-color: var(--sb-color-warning);
 }
 
-.sb-conversation-message-edit-delete {
+.sb-conversation-message-edit-delete.menu_button {
     --sb-conversation-edit-action-color: var(--sb-color-danger);
 }
 

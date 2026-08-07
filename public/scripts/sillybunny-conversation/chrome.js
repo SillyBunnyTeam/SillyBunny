@@ -91,7 +91,7 @@ import {
 } from './timeline-render.js';
 import { setLastConversationPreview } from './typing.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20260808a';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20260808b';
 const CONVERSATION_STYLESHEET_ID = 'sb-conversation-css';
 
 function ensureConversationStylesheet() {
