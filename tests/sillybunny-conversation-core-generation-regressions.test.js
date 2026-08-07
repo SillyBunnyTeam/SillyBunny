@@ -1,8 +1,10 @@
+/* global globalThis */
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 const appendConversationMessage = jest.fn();
 const addConversationReminder = jest.fn();
 const generateConversationImage = jest.fn();
+const updateConversationThreadMessage = jest.fn();
 const runtimeStatusOverrides = new Map();
 const threadMessages = [{ id: 'user-1', role: 'user', name: 'User', mes: 'hello', extra: {} }];
 
@@ -41,7 +43,6 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/prompt
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/shared-helpers.js', () => ({
     formatPromptText: value => String(value || ''),
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({ scheduleTimelineRender: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/schedule.js', () => ({
     clamp: (value, min, max) => Math.min(max, Math.max(min, value)),
     getConversationReplyMaxTokens: () => 100,
@@ -56,7 +57,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/thread
     getImageCooldownRemainingSeconds: () => 0,
     hasConversationMessageContent: message => Boolean(message?.id && message?.mes),
     markImageGenerated: jest.fn(),
-    updateConversationThreadMessage: jest.fn(),
+    updateConversationThreadMessage,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({
     splitChatroomMessages: value => String(value || '').split(/\n\s*\n+/).map(part => part.trim()).filter(Boolean),
@@ -65,6 +66,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing
 }));
 
 const {
+    editConversationMessage,
     postCharacterReply,
 } = await import('../public/scripts/sillybunny-conversation/generation.js');
 
@@ -79,7 +81,10 @@ describe('Conversation core generated reply regressions', () => {
         appendConversationMessage.mockReset().mockImplementation(async (text, options) => ({ id: `message-${appendConversationMessage.mock.calls.length}`, mes: text, ...options }));
         addConversationReminder.mockClear();
         generateConversationImage.mockClear();
+        updateConversationThreadMessage.mockClear();
         runtimeStatusOverrides.clear();
+        delete globalThis.document;
+        delete globalThis.confirm;
     });
 
     test('keeps native selfie command metadata when image generation is disabled', async () => {
@@ -144,5 +149,225 @@ describe('Conversation core generated reply regressions', () => {
             branchId: 'branch-a',
             personaId: 'persona-a.png',
         });
+    });
+
+    test('saves only changed content and closes the editor in all cases', () => {
+        const originalTextElement = {};
+        const textElement = {
+            append: jest.fn(),
+            cloneNode: jest.fn(() => originalTextElement),
+            isConnected: true,
+            querySelector: jest.fn(() => null),
+            replaceWith: jest.fn(),
+            textContent: 'hello',
+        };
+        const actionBar = { classList: { remove: jest.fn() } };
+        const messageElement = {
+            classList: { add: jest.fn(), remove: jest.fn() },
+            dataset: {
+                messageId: '42',
+                sbConversationMessageFingerprint: 'fingerprint',
+            },
+            querySelector: jest.fn(selector => selector === '.sb-conversation-message-actions' ? actionBar : textElement),
+        };
+        const createdElements = [];
+        globalThis.document = {
+            createElement: jest.fn(() => {
+                const element = {
+                    append: jest.fn(),
+                    children: [],
+                    classList: { add: jest.fn(), remove: jest.fn() },
+                    closest: jest.fn(() => null),
+                    dataset: {},
+                    focus: jest.fn(),
+                    setAttribute: jest.fn(),
+                    value: '',
+                };
+                element.append.mockImplementation((...children) => element.children.push(...children));
+                createdElements.push(element);
+                return element;
+            }),
+            querySelectorAll: jest.fn(() => [messageElement]),
+        };
+        threadMessages.splice(0, threadMessages.length, { id: 42, role: 'user', name: 'User', mes: 'hello', extra: {} });
+
+        editConversationMessage('42');
+
+        const [textarea, buttonContainer] = createdElements;
+        const [saveButton, cancelButton] = buttonContainer.children;
+        cancelButton.onclick();
+        expect(textElement.replaceWith).toHaveBeenCalledWith(originalTextElement);
+        expect(messageElement.classList.remove).toHaveBeenCalledWith('is-editing');
+
+        saveButton.onclick();
+        expect(updateConversationThreadMessage).not.toHaveBeenCalled();
+
+        textarea.value = 'updated';
+        saveButton.onclick();
+        expect(updateConversationThreadMessage).toHaveBeenCalledWith('char.png', 42, 'updated', null, {
+            groupId: '',
+            personaId: 'persona-a.png',
+        });
+    });
+
+    test('cancels an existing editor before opening another', () => {
+        const restoredText = {};
+        const originalText = {
+            append: jest.fn(),
+            cloneNode: jest.fn(() => restoredText),
+            isConnected: true,
+            querySelector: jest.fn(() => null),
+            replaceWith: jest.fn(),
+            textContent: 'first',
+        };
+        const originalActions = { classList: { remove: jest.fn() } };
+        const previousMessageElement = {
+            classList: { add: jest.fn(), remove: jest.fn() },
+            dataset: { messageId: '42', sbConversationMessageFingerprint: 'previous-fingerprint' },
+            querySelector: jest.fn(selector => selector === '.sb-conversation-message-actions' ? originalActions : originalText),
+        };
+        const nextText = {
+            append: jest.fn(),
+            cloneNode: jest.fn(() => ({})),
+            querySelector: jest.fn(() => null),
+            textContent: 'hello',
+        };
+        const nextActions = { classList: { remove: jest.fn() } };
+        const nextMessageElement = {
+            classList: { add: jest.fn(), remove: jest.fn() },
+            dataset: { messageId: '43' },
+            querySelector: jest.fn(selector => selector === '.sb-conversation-message-actions' ? nextActions : nextText),
+        };
+        globalThis.document = {
+            createElement: jest.fn(() => ({
+                append: jest.fn(),
+                classList: { add: jest.fn(), remove: jest.fn() },
+                dataset: {},
+                focus: jest.fn(),
+                setAttribute: jest.fn(),
+                value: '',
+            })),
+            querySelectorAll: jest.fn(() => [previousMessageElement]),
+        };
+        threadMessages.splice(0, threadMessages.length,
+            { id: 42, role: 'user', name: 'User', mes: 'first', extra: {} },
+            { id: 43, role: 'user', name: 'User', mes: 'hello', extra: {} },
+        );
+
+        editConversationMessage('42');
+        globalThis.document.querySelectorAll.mockReturnValue([nextMessageElement]);
+        editConversationMessage('43');
+
+        expect(previousMessageElement.classList.remove).toHaveBeenCalledWith('is-editing');
+        expect(originalText.replaceWith).toHaveBeenCalledWith(restoredText);
+        expect(originalActions.classList.remove).toHaveBeenCalledWith('open');
+    });
+
+    test('does not persist a blanked message so deletion stays explicit', () => {
+        const textElement = {
+            append: jest.fn(),
+            cloneNode: jest.fn(() => ({})),
+            isConnected: true,
+            querySelector: jest.fn(() => null),
+            replaceWith: jest.fn(),
+            textContent: 'hello',
+        };
+        const actionBar = { classList: { remove: jest.fn() } };
+        const messageElement = {
+            classList: { add: jest.fn(), remove: jest.fn() },
+            dataset: { messageId: '42' },
+            querySelector: jest.fn(selector => selector === '.sb-conversation-message-actions' ? actionBar : textElement),
+        };
+        const createdElements = [];
+        globalThis.document = {
+            createElement: jest.fn(() => {
+                const element = {
+                    append: jest.fn(),
+                    children: [],
+                    classList: { add: jest.fn(), remove: jest.fn() },
+                    dataset: {},
+                    focus: jest.fn(),
+                    setAttribute: jest.fn(),
+                    value: '',
+                };
+                element.append.mockImplementation((...children) => element.children.push(...children));
+                createdElements.push(element);
+                return element;
+            }),
+            querySelectorAll: jest.fn(() => [messageElement]),
+        };
+        threadMessages.splice(0, threadMessages.length, { id: 42, role: 'user', name: 'User', mes: 'hello', extra: {} });
+
+        editConversationMessage('42');
+
+        const [textarea, buttonContainer] = createdElements;
+        const [saveButton] = buttonContainer.children;
+        textarea.value = '   ';
+        saveButton.onclick();
+
+        expect(updateConversationThreadMessage).not.toHaveBeenCalled();
+        expect(messageElement.classList.remove).toHaveBeenCalledWith('is-editing');
+    });
+
+    test('keeps the open editor when discarding unsaved changes is declined', () => {
+        const originalText = {
+            append: jest.fn(),
+            cloneNode: jest.fn(() => ({})),
+            isConnected: true,
+            querySelector: jest.fn(() => null),
+            replaceWith: jest.fn(),
+            textContent: 'first',
+        };
+        const previousMessageElement = {
+            classList: { add: jest.fn(), remove: jest.fn() },
+            dataset: { messageId: '42' },
+            querySelector: jest.fn(selector => selector === '.sb-conversation-message-actions'
+                ? { classList: { remove: jest.fn() } }
+                : originalText),
+        };
+        const nextText = {
+            append: jest.fn(),
+            cloneNode: jest.fn(() => ({})),
+            querySelector: jest.fn(() => null),
+            textContent: 'hello',
+        };
+        const nextMessageElement = {
+            classList: { add: jest.fn() },
+            dataset: { messageId: '43' },
+            querySelector: jest.fn(selector => selector === '.sb-conversation-message-actions'
+                ? { classList: { remove: jest.fn() } }
+                : nextText),
+        };
+        const createdElements = [];
+        globalThis.document = {
+            createElement: jest.fn(() => {
+                const element = {
+                    append: jest.fn(),
+                    classList: { add: jest.fn(), remove: jest.fn() },
+                    dataset: {},
+                    focus: jest.fn(),
+                    setAttribute: jest.fn(),
+                    value: '',
+                };
+                createdElements.push(element);
+                return element;
+            }),
+            querySelectorAll: jest.fn(() => [previousMessageElement]),
+        };
+        globalThis.confirm = jest.fn(() => false);
+        threadMessages.splice(0, threadMessages.length,
+            { id: 42, role: 'user', name: 'User', mes: 'first', extra: {} },
+            { id: 43, role: 'user', name: 'User', mes: 'hello', extra: {} },
+        );
+
+        editConversationMessage('42');
+        const [textarea] = createdElements;
+        textarea.value = 'edited but unsaved';
+        globalThis.document.querySelectorAll.mockReturnValue([nextMessageElement]);
+        editConversationMessage('43');
+
+        expect(globalThis.confirm).toHaveBeenCalled();
+        expect(originalText.replaceWith).not.toHaveBeenCalled();
+        expect(nextMessageElement.classList.add).not.toHaveBeenCalled();
     });
 });
