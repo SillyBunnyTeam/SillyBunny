@@ -52,11 +52,14 @@ import {
 } from './tool-action-registry.js';
 import {
     getSettings as getPathfinderRuntimeSettings,
+    replaceSettings as replacePathfinderRuntimeSettings,
     setSettings as setPathfinderRuntimeSettings,
     deleteTree as deletePathfinderTree,
     syncTrackerUidsForLorebook,
     isPathfinderSelfWrite,
 } from './pathfinder/tree-store.js';
+import { initializePromptStore, setPromptStorePersistHook } from './pathfinder/prompts/prompt-store.js';
+import { getDefaultPrompts, getDefaultPipelines } from './pathfinder/prompts/default-prompts.js';
 import { getPathfinderToolDefinitions } from './pathfinder/tool-definitions.js';
 import { getContextualLorebooks } from './pathfinder/pathfinder-tool-bridge.js';
 import { PATHFINDER_RETRIEVAL_PROMPT_KEYS, runSidecarRetrieval } from './pathfinder/sidecar-retrieval.js';
@@ -533,7 +536,7 @@ function getAgentToolByName(agent, toolName) {
         : null;
 }
 
-function isPathfinderToolEnabledForAgent(agent, toolName) {
+export function isPathfinderToolEnabledForAgent(agent, toolName) {
     const states = agent?.settings?.toolStates;
     if (states && typeof states === 'object' && Object.prototype.hasOwnProperty.call(states, toolName)) {
         return states[toolName] !== false;
@@ -549,21 +552,39 @@ function getPathfinderToolStateMap(agent) {
     );
 }
 
+let pathfinderPromptStoreHydrated = false;
+
 function syncPathfinderRuntimeSettings(agent = getPathfinderRuntimeAgent()) {
     const currentRuntimeSettings = getPathfinderRuntimeSettings();
+    // On the first sync with a saved agent, adopt its persisted prompt store
+    // and rebuild the prompt cache: initPathfinder ran before agent settings
+    // were available, so the cache only holds bundled defaults until now.
+    // After hydration the in-memory prompt cache is the source of truth.
+    const hydratePrompts = !pathfinderPromptStoreHydrated && Boolean(agent?.settings);
+    const pipelinePrompts = hydratePrompts ? (agent.settings.pipelinePrompts ?? {}) : currentRuntimeSettings.pipelinePrompts;
+    const pipelines = hydratePrompts ? (agent.settings.pipelines ?? {}) : currentRuntimeSettings.pipelines;
+
+    // Replace, not merge: merging can never clear a key, so switching
+    // Pathfinder agents would inherit the previous agent's lorebooks
+    // and permissions.
     const nextRuntimeSettings = agent?.settings
         ? {
             ...agent.settings,
             toolStates: getPathfinderToolStateMap(agent),
-            pipelinePrompts: currentRuntimeSettings.pipelinePrompts,
-            pipelines: currentRuntimeSettings.pipelines,
+            pipelinePrompts,
+            pipelines,
         }
         : {
-            pipelinePrompts: currentRuntimeSettings.pipelinePrompts,
-            pipelines: currentRuntimeSettings.pipelines,
+            pipelinePrompts,
+            pipelines,
         };
 
-    setPathfinderRuntimeSettings(nextRuntimeSettings);
+    replacePathfinderRuntimeSettings(nextRuntimeSettings);
+
+    if (hydratePrompts) {
+        pathfinderPromptStoreHydrated = true;
+        initializePromptStore(getDefaultPrompts(), getDefaultPipelines());
+    }
 }
 
 function getRegisterableAgentTools(agent) {
@@ -5041,6 +5062,19 @@ export async function redoPromptTransform(messageIndex) {
 /**
  * Registers all event listeners for the agent runner.
  */
+async function persistPathfinderRuntimeSettingsToAgent() {
+    const agent = getPathfinderRuntimeAgent();
+    if (!agent) {
+        return;
+    }
+
+    agent.settings = {
+        ...(agent.settings || {}),
+        ...getPathfinderRuntimeSettings(),
+    };
+    await saveAgent(agent);
+}
+
 export function initAgentRunner() {
     if (agentRunnerInitialized) {
         return;
@@ -5048,6 +5082,7 @@ export function initAgentRunner() {
 
     agentRunnerInitialized = true;
     initPostGenerationRecoveryHooks();
+    setPromptStorePersistHook(() => { void persistPathfinderRuntimeSettingsToAgent(); });
 
     eventSource.on(event_types.GENERATION_STARTED, onGenerationStarted);
     eventSource.on(event_types.GENERATION_AFTER_COMMANDS, onGenerationAfterCommands);

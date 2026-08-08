@@ -60,7 +60,7 @@ export function getSettings() {
 
 export function setSettings(newSettings) {
     const nextSettings = { ...SETTING_DEFAULTS, ...settings, ...(newSettings || {}) };
-    for (const key of ['toolStates', 'bookPermissions', 'confirmTools', 'pipelinePrompts', 'pipelines']) {
+    for (const key of ['toolStates', 'bookPermissions', 'pipelinePrompts', 'pipelines']) {
         nextSettings[key] = {
             ...(SETTING_DEFAULTS[key] || {}),
             ...(settings?.[key] || {}),
@@ -68,6 +68,16 @@ export function setSettings(newSettings) {
         };
     }
     settings = nextSettings;
+}
+
+/**
+ * Replace the settings wholesale instead of merging over the previous
+ * object. setSettings can never clear a key, so switching Pathfinder
+ * agents would leak the previous agent's lorebooks and permissions.
+ */
+export function replaceSettings(newSettings) {
+    settings = { ...SETTING_DEFAULTS };
+    setSettings(newSettings);
 }
 
 const trees = new Map();

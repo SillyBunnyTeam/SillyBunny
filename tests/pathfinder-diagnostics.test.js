@@ -38,6 +38,14 @@ await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/agen
 await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/agent-runner.js', () => ({
     getPathfinderRuntimeAgent: jest.fn(() => mockRuntimeAgent),
     getToolRecursionState: jest.fn(() => ({ depth: 0, limit: 5, registeredToolNames: TOOL_NAMES })),
+    isPathfinderToolEnabledForAgent: jest.fn((agent, toolName) => {
+        const states = agent?.settings?.toolStates;
+        if (states && Object.prototype.hasOwnProperty.call(states, toolName)) {
+            return states[toolName] !== false;
+        }
+        const savedTool = agent?.tools?.find(tool => tool?.name === toolName);
+        return savedTool?.enabled !== false;
+    }),
     syncToolAgentRegistrations: jest.fn(() => mockSyncToolAgentRegistrations()),
 }));
 

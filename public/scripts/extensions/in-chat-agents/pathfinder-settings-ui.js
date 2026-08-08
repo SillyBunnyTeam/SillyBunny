@@ -1507,17 +1507,27 @@ function updateDualModeWarning() {
 }
 
 /**
- * Update agent settings object and trigger save
+ * Update agent settings object and trigger save.
+ * Serialized: many toggle handlers call this without awaiting, and
+ * overlapping saveAgent calls on the same agent have no ordering guarantee.
  */
-async function updateAgentSettings() {
-    if (!currentAgent) return;
+let agentSettingsSaveChain = Promise.resolve();
 
-    const s = getPathfinderSettings();
-    currentAgent.settings = { ...s };
+function updateAgentSettings() {
+    agentSettingsSaveChain = agentSettingsSaveChain
+        .then(async () => {
+            if (!currentAgent) return;
 
-    await saveAgent(currentAgent);
-    persistAgentGlobalSettings();
-    saveSettingsDebounced();
+            const s = getPathfinderSettings();
+            currentAgent.settings = { ...s };
+
+            await saveAgent(currentAgent);
+            persistAgentGlobalSettings();
+            saveSettingsDebounced();
+        })
+        .catch(err => console.warn('[Pathfinder] Failed to save agent settings:', err));
+
+    return agentSettingsSaveChain;
 }
 
 /**
