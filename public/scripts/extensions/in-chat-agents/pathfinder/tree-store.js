@@ -111,6 +111,11 @@ export function deleteTree(bookName) {
     trees.delete(bookName);
 }
 
+export function clearAllTrees() {
+    trees.clear();
+    trackerUids.clear();
+}
+
 export function findNodeById(tree, nodeId) {
     if (!tree || !nodeId) return null;
     if (tree.id === nodeId) return tree;

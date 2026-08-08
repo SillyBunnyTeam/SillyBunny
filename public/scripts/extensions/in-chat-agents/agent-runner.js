@@ -63,7 +63,7 @@ import { getDefaultPrompts, getDefaultPipelines } from './pathfinder/prompts/def
 import { getPathfinderToolDefinitions } from './pathfinder/tool-definitions.js';
 import { getContextualLorebooks } from './pathfinder/pathfinder-tool-bridge.js';
 import { PATHFINDER_RETRIEVAL_PROMPT_KEYS, runSidecarRetrieval } from './pathfinder/sidecar-retrieval.js';
-import { shouldAutoSummarize } from './pathfinder/auto-summary.js';
+import { resetAutoSummaryCount, shouldAutoSummarize } from './pathfinder/auto-summary.js';
 import { buildRegexScriptRefsForAgent, cacheAgentRegexScripts, migrateLegacyRegexSnapshotsInMessages } from './regex-snapshot-store.js';
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from './regex-scripts.js';
 import { getCompanionReferenceIds } from './companion/companion-shared.js';
@@ -618,6 +618,9 @@ export function getToolRecursionState() {
     };
 }
 
+// Counterpart of syncAutoAttachedLorebooks (pathfinder-settings-ui.js), which
+// handles the panel-open trigger from the same contextual-lorebook source;
+// keep the two in sync.
 export async function syncPathfinderAgentLorebooksForCurrentChat(agent = getPathfinderRuntimeAgent(), { persist = false } = {}) {
     if (!isPathfinderSubmoduleEnabled()) {
         return false;
@@ -4990,6 +4993,9 @@ function onChatChangedToolSync() {
     requestAnimationFrame(() => {
         _onChatChangedToolSync = false;
         toolRecursionDepth = 0;
+        // The counter is per-chat: messages from the previous chat must not
+        // trigger a summary in the new one.
+        resetAutoSummaryCount();
         void (async () => {
             const pathfinderAgent = getPathfinderRuntimeAgent();
             if (pathfinderAgent) {

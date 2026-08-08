@@ -5,9 +5,20 @@ import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.j
 import { isPathfinderSubmoduleEnabled } from '../agent-store.js';
 import { getTree, findNodeById } from './tree-store.js';
 import { createEntry } from './entry-manager.js';
-import { getActiveTunnelVisionBooks } from './pathfinder-tool-bridge.js';
+import { getActiveTunnelVisionBooks, getWritableBooks } from './pathfinder-tool-bridge.js';
 
 const registeredCommands = [];
+
+function findNodesByName(tree, lowerQuery, matches = []) {
+    if (!tree) return matches;
+    if (String(tree.name || '').toLowerCase().includes(lowerQuery)) {
+        matches.push(tree);
+    }
+    for (const child of tree.children || []) {
+        findNodesByName(child, lowerQuery, matches);
+    }
+    return matches;
+}
 
 function buildCommand(props) {
     return SlashCommand.fromProps({
@@ -58,8 +69,8 @@ export function initCommands(registerSlashCommand) {
             }
             content = String(content || '').trim();
             if (!content) return 'Nothing to remember.';
-            const books = getActiveTunnelVisionBooks();
-            if (books.length === 0) return 'No Pathfinder-enabled lorebooks.';
+            const books = getWritableBooks();
+            if (books.length === 0) return 'No writable Pathfinder-enabled lorebooks.';
             const bookName = books[0];
             try {
                 await createEntry(bookName, content.slice(0, 50), content);
@@ -80,12 +91,16 @@ export function initCommands(registerSlashCommand) {
             }
             query = String(query || '').trim();
             if (!query) return 'No search query.';
+            const q = query.toLowerCase();
             const results = [];
             for (const bookName of getActiveTunnelVisionBooks()) {
                 const tree = getTree(bookName);
                 if (!tree) continue;
-                const found = findNodeById(tree, query);
-                if (found) results.push(`${bookName}: ${found.name} (${(found.entries || []).length} entries)`);
+                const exact = findNodeById(tree, query);
+                const matches = exact ? [exact] : findNodesByName(tree, q);
+                for (const node of matches) {
+                    results.push(`${bookName}: ${node.name} (${(node.entries || []).length} entries)${node.id ? ` [id: ${node.id}]` : ''}`);
+                }
             }
             return results.length > 0 ? results.join('\n') : 'No waypoints found matching query.';
         },
