@@ -1,6 +1,7 @@
 'use strict';
 
 import {
+    clearChat,
     characterGroupOverlay,
     characters,
     event_types,
@@ -9,16 +10,30 @@ import {
     getRequestHeaders,
     buildAvatarList,
     characterToEntity,
+    groupToEntity,
+    printMessages,
     printCharactersDebounced,
     deleteCharacter,
+    resetChatState,
 } from '../script.js';
 
 import { favsToHotswap } from './RossAscends-mods.js';
 import { loader } from './action-loader.js';
+// SillyBunny: group-list bulk actions share the upstream character overlay.
+import { groups, resetSelectedGroup, selected_group } from './group-chats.js';
 import { convertCharacterToPersona } from './personas.js';
 import { callGenericPopup, POPUP_TYPE } from './popup.js';
 import { createTagInput, getTagKeyForEntity, getTagsList, printTagList, tag_map, compareTagsForSort, removeTagFromMap, importTags, tag_import_setting } from './tags.js';
 import { t } from './i18n.js';
+
+function getBulkEntity(id) {
+    if (typeof id === 'number') {
+        return characters[id] ? characterToEntity(characters[id], id) : null;
+    }
+
+    const group = groups.find(item => String(item.id) === id);
+    return group ? groupToEntity(group) : null;
+}
 
 /**
  * Static object representing the actions of the
@@ -29,7 +44,7 @@ class CharacterContextMenu {
      * Tag one or more characters,
      * opens a popup.
      *
-     * @param {Array<number>} selectedCharacters
+     * @param {Array<number|string>} selectedCharacters
      */
     static tag = (selectedCharacters) => {
         characterGroupOverlay.bulkTagPopupHandler.show(selectedCharacters);
@@ -170,8 +185,8 @@ class CharacterContextMenu {
  */
 class BulkTagPopupHandler {
     /**
-     * The characters for this popup
-     * @type {number[]}
+     * The entity keys for this popup
+     * @type {Array<number|string>}
      */
     characterIds;
 
@@ -195,11 +210,20 @@ class BulkTagPopupHandler {
      */
     #getHtml = () => {
         const characterData = JSON.stringify({ characterIds: this.characterIds });
+        const isGroups = this.characterIds.some(id => typeof id === 'string');
+        const noun = isGroups ? 'groups' : 'characters';
+        const importButtons = isGroups ? '' : `
+                        <div id="bulk_tag_popup_import_all_tags" class="menu_button" title="Import all tags from selected characters" data-i18n="[title]Import all tags from selected characters">
+                            Import All
+                        </div>
+                        <div id="bulk_tag_popup_import_existing_tags" class="menu_button" title="Import existing tags from selected characters" data-i18n="[title]Import existing tags from selected characters">
+                            Import Existing
+                        </div>`;
         return `<div id="bulk_tag_shadow_popup">
             <div id="bulk_tag_popup" class="wider_dialogue_popup">
                 <div id="bulk_tag_popup_holder">
-                    <h3 class="marginBot5">Modify tags of ${this.characterIds.length} characters</h3>
-                    <small class="bulk_tags_desc m-b-1">Add or remove the mutual tags of all selected characters. Import all or existing tags for all selected characters.</small>
+                    <h3 class="marginBot5">Modify tags of ${this.characterIds.length} ${noun}</h3>
+                    <small class="bulk_tags_desc m-b-1">Add or remove the mutual tags of all selected ${noun}.${isGroups ? '' : ' Import all or existing tags for all selected characters.'}</small>
                     <div id="bulk_tags_avatars_block" class="avatars_inline avatars_inline_small tags tags_inline"></div>
                     <br>
                     <div id="bulk_tags_div" class="marginBot5" data-characters='${characterData}'>
@@ -210,20 +234,15 @@ class BulkTagPopupHandler {
                         <div id="bulkTagList" class="m-t-1 tags"></div>
                     </div>
                     <div id="dialogue_popup_controls" class="m-t-1">
-                        <div id="bulk_tag_popup_reset" class="menu_button" title="Remove all tags from the selected characters" data-i18n="[title]Remove all tags from the selected characters">
+                        <div id="bulk_tag_popup_reset" class="menu_button" title="Remove all tags from the selected ${noun}" data-i18n="[title]Remove all tags from the selected characters">
                             <i class="fa-solid fa-trash-can margin-right-10px"></i>
                             All
                         </div>
-                        <div id="bulk_tag_popup_remove_mutual" class="menu_button" title="Remove all mutual tags from the selected characters" data-i18n="[title]Remove all mutual tags from the selected characters">
+                        <div id="bulk_tag_popup_remove_mutual" class="menu_button" title="Remove all mutual tags from the selected ${noun}" data-i18n="[title]Remove all mutual tags from the selected characters">
                             <i class="fa-solid fa-trash-can margin-right-10px"></i>
                             Mutual
                         </div>
-                        <div id="bulk_tag_popup_import_all_tags" class="menu_button" title="Import all tags from selected characters" data-i18n="[title]Import all tags from selected characters">
-                            Import All
-                        </div>
-                        <div id="bulk_tag_popup_import_existing_tags" class="menu_button" title="Import existing tags from selected characters" data-i18n="[title]Import existing tags from selected characters">
-                            Import Existing
-                        </div>
+                        ${importButtons}
                         <div id="bulk_tag_popup_cancel" class="menu_button" data-i18n="Cancel">Close</div>
                     </div>
                 </div>
@@ -234,20 +253,20 @@ class BulkTagPopupHandler {
     /**
      * Append and show the tag control
      *
-     * @param {number[]} characterIds - The characters that are shown inside the popup
+     * @param {Array<number|string>} characterIds - The entities that are shown inside the popup
      */
     show(characterIds) {
         // shallow copy character ids persistently into this tooltip
         this.characterIds = characterIds.slice();
 
         if (this.characterIds.length == 0) {
-            console.log('No characters selected for bulk edit tags.');
+            console.log('No entities selected for bulk edit tags.');
             return;
         }
 
         document.body.insertAdjacentHTML('beforeend', this.#getHtml());
 
-        const entities = this.characterIds.map(id => characterToEntity(characters[id], id)).filter(entity => entity.item !== undefined);
+        const entities = this.characterIds.map(getBulkEntity).filter(Boolean);
         buildAvatarList($('#bulk_tags_avatars_block'), entities);
 
         // Print the tag list with all mutuable tags, marking them as removable. That is the initial fill
@@ -259,8 +278,8 @@ class BulkTagPopupHandler {
         document.querySelector('#bulk_tag_popup_reset').addEventListener('click', this.resetTags.bind(this));
         document.querySelector('#bulk_tag_popup_remove_mutual').addEventListener('click', this.removeMutual.bind(this));
         document.querySelector('#bulk_tag_popup_cancel').addEventListener('click', this.hide.bind(this));
-        document.querySelector('#bulk_tag_popup_import_all_tags').addEventListener('click', this.importAllTags.bind(this));
-        document.querySelector('#bulk_tag_popup_import_existing_tags').addEventListener('click', this.importExistingTags.bind(this));
+        document.querySelector('#bulk_tag_popup_import_all_tags')?.addEventListener('click', this.importAllTags.bind(this));
+        document.querySelector('#bulk_tag_popup_import_existing_tags')?.addEventListener('click', this.importExistingTags.bind(this));
     }
 
     /**
@@ -397,7 +416,7 @@ class BulkEditOverlay {
 
     /**
      * @typedef {object} LastSelected - An object noting the last selected character and its state.
-     * @property {number} [characterId] - The character id of the last selected character.
+     * @property {number|string} [characterId] - The key of the last selected entity.
      * @property {boolean} [select] - The selected state of the last selected character. <c>true</c> if it was selected, <c>false</c> if it was deselected.
      */
 
@@ -460,7 +479,7 @@ class BulkEditOverlay {
 
     /**
      *
-     * @returns {number[]}
+     * @returns {Array<number|string>}
      */
     get selectedCharacters() {
         return this.#selectedCharacters;
@@ -544,7 +563,7 @@ class BulkEditOverlay {
                 this.container.classList.remove(BulkEditOverlay.selectModeClass);
                 this.#contextMenuOpen = false;
                 this.#enableClickEventsForCharacters();
-                this.#enableClickEventsForGroups();
+                this.#enableClickEventsForDisabledElements();
                 this.clearSelectedCharacters();
                 this.disableContextMenu();
                 this.#disableBulkEditButtonHighlight();
@@ -553,7 +572,7 @@ class BulkEditOverlay {
             case BulkEditOverlayState.select:
                 this.container.classList.add(BulkEditOverlay.selectModeClass);
                 this.#disableClickEventsForCharacters();
-                this.#disableClickEventsForGroups();
+                this.#disableClickEventsForDisabledElements();
                 this.enableContextMenu();
                 this.#enableBulkEditButtonHighlight();
                 break;
@@ -658,9 +677,9 @@ class BulkEditOverlay {
         event.stopPropagation();
     };
 
-    #enableClickEventsForGroups = () => this.#getDisabledElements().forEach((element) => element.removeEventListener('click', this.#stopEventPropagation));
+    #enableClickEventsForDisabledElements = () => this.#getDisabledElements().forEach((element) => element.removeEventListener('click', this.#stopEventPropagation));
 
-    #disableClickEventsForGroups = () => this.#getDisabledElements().forEach((element) => element.addEventListener('click', this.#stopEventPropagation));
+    #disableClickEventsForDisabledElements = () => this.#getDisabledElements().forEach((element) => element.addEventListener('click', this.#stopEventPropagation));
 
     #enableClickEventsForCharacters = () => this.#getEnabledElements().forEach(element => element.removeEventListener('click', this.toggleCharacterSelected));
 
@@ -670,9 +689,14 @@ class BulkEditOverlay {
 
     #disableBulkEditButtonHighlight = () => document.getElementById('bulkEditButton').classList.remove('bulk_edit_overlay_active');
 
-    #getEnabledElements = () => [...this.container.getElementsByClassName(BulkEditOverlay.characterClass)];
+    // SillyBunny: group cards use data-grid but otherwise follow the same overlay flow.
+    #getEnabledElements = () => [...this.container.getElementsByClassName(BulkEditOverlay.characterClass), ...this.container.getElementsByClassName(BulkEditOverlay.groupClass)];
 
-    #getDisabledElements = () => [...this.container.getElementsByClassName(BulkEditOverlay.groupClass), ...this.container.getElementsByClassName(BulkEditOverlay.bogusFolderClass)];
+    #getDisabledElements = () => [...this.container.getElementsByClassName(BulkEditOverlay.bogusFolderClass)];
+
+    #getEntityKey = element => element.hasAttribute('data-chid')
+        ? Number(element.getAttribute('data-chid'))
+        : element.getAttribute('data-grid');
 
     toggleCharacterSelected = event => {
         event.stopPropagation();
@@ -703,10 +727,10 @@ class BulkEditOverlay {
      * @param {HTMLElement} currentCharacter - The html element of the currently toggled character
      */
     handleShiftClick = (currentCharacter) => {
-        const characterId = Number(currentCharacter.getAttribute('data-chid'));
+        const characterId = this.#getEntityKey(currentCharacter);
         const select = !this.selectedCharacters.includes(characterId);
 
-        if (this.lastSelected.characterId >= 0 && this.lastSelected.select !== undefined) {
+        if (this.lastSelected.characterId !== undefined && this.lastSelected.select !== undefined) {
             // Only if select state and the last select state match we execute the range select
             if (select === this.lastSelected.select) {
                 this.toggleCharactersInRange(currentCharacter, select);
@@ -722,7 +746,7 @@ class BulkEditOverlay {
      * @param {boolean} [param1.markState] - Whether the toggle of this character should be remembered as the last done toggle
      */
     toggleSingleCharacter = (character, { markState = true } = {}) => {
-        const characterId = Number(character.getAttribute('data-chid'));
+        const characterId = this.#getEntityKey(character);
 
         const select = !this.selectedCharacters.includes(characterId);
         const legacyBulkEditCheckbox = /** @type {HTMLInputElement} */ (character.querySelector('.' + BulkEditOverlay.legacySelectedClass));
@@ -752,7 +776,7 @@ class BulkEditOverlay {
      */
     updateSelectedCount = (countOverride = undefined) => {
         const count = countOverride ?? this.selectedCharacters.length;
-        $(`#${BulkEditOverlay.bulkSelectedCountId}`).text(count).attr('title', `${count} characters selected`);
+        $(`#${BulkEditOverlay.bulkSelectedCountId}`).text(count).attr('title', `${count} selected`);
     };
 
     /**
@@ -763,21 +787,21 @@ class BulkEditOverlay {
      * @param {boolean} select - <c>true</c> if the characters in the range are to be selected, <c>false</c> if deselected
      */
     toggleCharactersInRange = (currentCharacter, select) => {
-        const currentCharacterId = Number(currentCharacter.getAttribute('data-chid'));
-        const characters = Array.from(document.querySelectorAll('#' + BulkEditOverlay.containerId + ' .' + BulkEditOverlay.characterClass));
+        const currentCharacterId = this.#getEntityKey(currentCharacter);
+        const characters = this.#getEnabledElements();
 
-        const startIndex = characters.findIndex(c => Number(c.getAttribute('data-chid')) === Number(this.lastSelected.characterId));
-        const endIndex = characters.findIndex(c => Number(c.getAttribute('data-chid')) === currentCharacterId);
+        const startIndex = characters.findIndex(c => this.#getEntityKey(c) === this.lastSelected.characterId);
+        const endIndex = characters.findIndex(c => this.#getEntityKey(c) === currentCharacterId);
 
         for (let i = Math.min(startIndex, endIndex); i <= Math.max(startIndex, endIndex); i++) {
             const character = characters[i];
-            const characterId = Number(character.getAttribute('data-chid'));
+            const characterId = this.#getEntityKey(character);
             const isCharacterSelected = this.selectedCharacters.includes(characterId);
 
             // Only toggle the character if it wasn't on the state we have are toggling towards.
             // Also doing a weird type check, because typescript checker doesn't like the return of 'querySelectorAll'.
             if ((select && !isCharacterSelected || !select && isCharacterSelected) && character instanceof HTMLElement) {
-                this.toggleSingleCharacter(character, { markState: currentCharacterId == characterId });
+                this.toggleSingleCharacter(character, { markState: currentCharacterId === characterId });
             }
         }
     };
@@ -840,24 +864,68 @@ class BulkEditOverlay {
     /**
      * Gets the HTML as a string that is displayed inside the popup for the bulk delete
      *
-     * @param {Array<number>} characterIds - The characters that are shown inside the popup
+     * @param {Array<number|string>} entityIds - The entities that are shown inside the popup
+     * @param {boolean} isGroups - Whether the entities are groups
      * @returns String containing the html for the popup content
      */
-    static #getDeletePopupContentHtml = (characterIds) => {
+    static #getDeletePopupContentHtml = (entityIds, isGroups) => {
+        const noun = isGroups ? 'groups' : 'characters';
+        const deleteOptions = isGroups
+            ? '<p>This will also delete all your chats with that group. If you want to delete a single conversation, select a "View past chats" option in the lower left menu.</p>'
+            : `<div id="bulk_delete_options" class="m-b-1">
+                <label for="del_char_checkbox" class="checkbox_label justifyCenter">
+                    <input type="checkbox" id="del_char_checkbox" />
+                    <span>Also delete the chat files</span>
+                </label>
+            </div>`;
         return `
-            <h3 class="marginBot5">Delete ${characterIds.length} characters?</h3>
+            <h3 class="marginBot5">Delete ${entityIds.length} ${noun}?</h3>
             <span class="bulk_delete_note">
                 <i class="fa-solid fa-triangle-exclamation warning margin-r5"></i>
                 <b>THIS IS PERMANENT!</b>
             </span>
             <div id="bulk_delete_avatars_block" class="avatars_inline avatars_inline_small tags tags_inline m-t-1"></div>
             <br>
-            <div id="bulk_delete_options" class="m-b-1">
-                <label for="del_char_checkbox" class="checkbox_label justifyCenter">
-                    <input type="checkbox" id="del_char_checkbox" />
-                    <span>Also delete the chat files</span>
-                </label>
-            </div>`;
+            ${deleteOptions}`;
+    };
+
+    #deleteGroups = async (groupIds) => {
+        let deletedSelectedGroup = false;
+
+        try {
+            for (const id of groupIds) {
+                const group = groups.find(item => String(item.id) === id);
+                const response = await fetch('/api/groups/delete', {
+                    method: 'POST',
+                    headers: getRequestHeaders(),
+                    body: JSON.stringify({ id }),
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Could not delete group ${id}`);
+                }
+
+                if (Array.isArray(group?.chats)) {
+                    for (const chatId of group.chats) {
+                        await eventSource.emit(event_types.GROUP_CHAT_DELETED, chatId);
+                    }
+                }
+
+                delete tag_map[id];
+                deletedSelectedGroup ||= String(selected_group) === id;
+            }
+        } finally {
+            if (deletedSelectedGroup) {
+                await clearChat();
+                resetSelectedGroup();
+                resetChatState();
+                await printMessages();
+                $('#rm_button_selected_ch').children('h2').text('');
+            }
+
+            await getCharacters();
+            this.browseState();
+        }
     };
 
     /**
@@ -867,8 +935,9 @@ class BulkEditOverlay {
      * @returns {Promise<number>}
      */
     handleContextMenuDelete = () => {
-        const characterIds = this.selectedCharacters;
-        const popupContent = $(BulkEditOverlay.#getDeletePopupContentHtml(characterIds));
+        const entityIds = this.selectedCharacters;
+        const isGroups = entityIds.some(id => typeof id === 'string');
+        const popupContent = $(BulkEditOverlay.#getDeletePopupContentHtml(entityIds, isGroups));
         const checkbox = popupContent.find('#del_char_checkbox');
         const promise = callGenericPopup(popupContent, POPUP_TYPE.CONFIRM)
             .then((accept) => {
@@ -879,17 +948,19 @@ class BulkEditOverlay {
                 const loaderHandle = loader.show({
                     slug: 'bulk-delete',
                     title: t`Bulk Delete`,
-                    message: t`Deleting ${characterIds.length} character(s)…`,
+                    message: isGroups ? t`Deleting ${entityIds.length} group(s)…` : t`Deleting ${entityIds.length} character(s)…`,
                     toastMode: loader.ToastMode.STATIC,
                 });
-                const avatarList = characterIds.map(id => characters[id]?.avatar).filter(a => a);
-                return CharacterContextMenu.delete(avatarList, deleteChats)
-                    .then(() => this.browseState())
+                const deleteRequest = isGroups
+                    ? this.#deleteGroups(entityIds.filter(id => typeof id === 'string'))
+                    : CharacterContextMenu.delete(entityIds.map(id => characters[id]?.avatar).filter(Boolean), deleteChats)
+                        .then(() => this.browseState());
+                return deleteRequest
                     .finally(() => loaderHandle.hide());
             });
 
         // At this moment the popup is already changed in the dom, but not yet closed/resolved. We build the avatar list here
-        const entities = characterIds.map(id => characterToEntity(characters[id], id)).filter(entity => entity.item !== undefined);
+        const entities = entityIds.map(getBulkEntity).filter(Boolean);
         buildAvatarList($('#bulk_delete_avatars_block'), entities);
 
         return promise;

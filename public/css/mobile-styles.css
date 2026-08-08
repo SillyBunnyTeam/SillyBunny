@@ -505,13 +505,13 @@
         margin: 0;
     }
 
-    #rm_print_characters_block.bulk_select > .character_select {
+    #rm_print_characters_block.bulk_select > :is(.character_select, .group_select) {
         display: grid;
         grid-template-columns: minmax(var(--sb-checkbox-size, 1rem), auto) var(--avatar-base-width) minmax(0, 1fr) !important;
         gap: 8px;
     }
 
-    #rm_print_characters_block.bulk_select > .character_select > .bulk_select_checkbox {
+    #rm_print_characters_block.bulk_select > :is(.character_select, .group_select) > .bulk_select_checkbox {
         grid-column: 1;
         grid-row: 1 / span 2;
         align-self: center;
@@ -519,11 +519,11 @@
         margin: 0;
     }
 
-    #rm_print_characters_block.bulk_select > .character_select > .avatar {
+    #rm_print_characters_block.bulk_select > :is(.character_select, .group_select) > .avatar {
         grid-column: 2;
     }
 
-    #rm_print_characters_block.bulk_select > .character_select > .character_select_container {
+    #rm_print_characters_block.bulk_select > :is(.character_select, .group_select) > :is(.character_select_container, .group_select_container) {
         grid-column: 3;
         min-width: 0;
     }
@@ -594,7 +594,7 @@
         min-width: 0;
     }
 
-    body #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > .character_select {
+    body #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) {
         display: grid !important;
         grid-template-columns: 24px var(--avatar-base-width) minmax(0, 1fr) !important;
         align-items: center;
@@ -603,7 +603,7 @@
         padding: 8px;
     }
 
-    body #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > .character_select > .bulk_select_checkbox {
+    body #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) > .bulk_select_checkbox {
         grid-column: 1 !important;
         grid-row: 1 / -1 !important;
         align-self: center !important;
@@ -612,7 +612,7 @@
         position: static !important;
     }
 
-    body #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > .character_select > .avatar {
+    body #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) > .avatar {
         grid-column: 2 !important;
         grid-row: 1 / -1 !important;
         align-self: center !important;
@@ -620,7 +620,7 @@
         margin: 0 !important;
     }
 
-    body #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > .character_select > .character_select_container {
+    body #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) > :is(.character_select_container, .group_select_container) {
         grid-column: 3 !important;
         grid-row: 1 !important;
         display: grid !important;

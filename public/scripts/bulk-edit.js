@@ -43,7 +43,8 @@ function onEditButtonClick() {
  */
 function onSelectAllButtonClick() {
     console.log('Bulk select all button clicked');
-    const characters = Array.from(document.querySelectorAll('#' + BulkEditOverlay.containerId + ' .' + BulkEditOverlay.characterClass));
+    // SillyBunny: the shell's groups view shares the upstream bulk edit controls.
+    const characters = Array.from(document.querySelectorAll('#' + BulkEditOverlay.containerId + ' .' + BulkEditOverlay.characterClass + ', #' + BulkEditOverlay.containerId + ' .' + BulkEditOverlay.groupClass));
     let atLeastOneSelected = false;
     for (const character of characters) {
         const checked = $(character).find('.bulk_select_checkbox:checked').length > 0;
@@ -78,7 +79,8 @@ async function onDeleteButtonClick() {
  * Enables bulk selection by adding a checkbox next to each character.
  */
 function enableBulkSelect() {
-    $('#rm_print_characters_block .character_select').each((i, el) => {
+    // SillyBunny: group cards participate in bulk selection alongside character cards.
+    $('#rm_print_characters_block .character_select, #rm_print_characters_block .group_select').each((i, el) => {
         // Prevent checkbox from adding multiple times (because of stage change callback)
         if ($(el).find('.bulk_select_checkbox').length > 0) {
             return;
@@ -89,7 +91,7 @@ function enableBulkSelect() {
         });
         $(el).prepend(checkbox);
     });
-    $('#rm_print_characters_block.group_overlay_mode_select .bogus_folder_select, #rm_print_characters_block.group_overlay_mode_select .group_select')
+    $('#rm_print_characters_block.group_overlay_mode_select .bogus_folder_select')
         .addClass('disabled');
 
     $('#rm_print_characters_block').addClass('bulk_select');
@@ -104,7 +106,7 @@ function enableBulkSelect() {
  */
 function disableBulkSelect() {
     $('.bulk_select_checkbox').remove();
-    $('#rm_print_characters_block.group_overlay_mode_select .bogus_folder_select, #rm_print_characters_block.group_overlay_mode_select .group_select')
+    $('#rm_print_characters_block.group_overlay_mode_select .bogus_folder_select')
         .removeClass('disabled');
     $('#rm_print_characters_block').removeClass('bulk_select');
 }
