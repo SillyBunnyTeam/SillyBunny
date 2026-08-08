@@ -304,6 +304,10 @@ export class DataMaidService {
             });
             const files = await fs.promises.readdir(this.directories.files, { withFileTypes: true });
             for (const file of files) {
+                // SillyBunny: Chat Archive organization metadata is app state, not a loose upload.
+                if (file.name === '_sbca_organization.json') {
+                    continue;
+                }
                 const filePath = path.join(this.directories.files, file.name);
                 if (file.isFile() && !knownFileFullPaths.has(filePath)) {
                     result.push(filePath);
