@@ -1,5 +1,5 @@
 import { createWorldInfoEntry as createWorldInfoEntryFallback } from '../../../world-info.js';
-import { getTree, saveTree, findNodeById, addEntryToNode, removeEntryFromTree, createTreeNode, isTrackerTitle, setTrackerUid } from './tree-store.js';
+import { getTree, saveTree, findNodeById, addEntryToNode, removeEntryFromTree, createTreeNode, isTrackerTitle, setTrackerUid, beginPathfinderSelfWrite, endPathfinderSelfWrite } from './tree-store.js';
 
 let _loadWorldInfo = null;
 let _createWorldInfoEntry = null;
@@ -31,9 +31,14 @@ function assertCreatedEntry(newEntry, bookName) {
 }
 
 async function saveWI(name, data, immediate) {
-    if (_saveWorldInfo) return _saveWorldInfo(name, data, immediate);
-    const ctx = window?.SillyTavern?.getContext?.();
-    return ctx?.saveWorldInfo?.(name, data, immediate);
+    beginPathfinderSelfWrite();
+    try {
+        if (_saveWorldInfo) return await _saveWorldInfo(name, data, immediate);
+        const ctx = window?.SillyTavern?.getContext?.();
+        return await ctx?.saveWorldInfo?.(name, data, immediate);
+    } finally {
+        endPathfinderSelfWrite();
+    }
 }
 
 // Serializes all lorebook writes: each operation does an independent

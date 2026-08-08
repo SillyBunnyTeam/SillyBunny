@@ -53,6 +53,9 @@ import {
 import {
     getSettings as getPathfinderRuntimeSettings,
     setSettings as setPathfinderRuntimeSettings,
+    deleteTree as deletePathfinderTree,
+    syncTrackerUidsForLorebook,
+    isPathfinderSelfWrite,
 } from './pathfinder/tree-store.js';
 import { getPathfinderToolDefinitions } from './pathfinder/tool-definitions.js';
 import { getContextualLorebooks } from './pathfinder/pathfinder-tool-bridge.js';
@@ -4976,7 +4979,14 @@ function onChatChangedToolSync() {
     });
 }
 
-function onWorldInfoUpdatedToolSync() {
+function onWorldInfoUpdatedToolSync(name, data) {
+    // External lorebook edits invalidate the cached waypoint tree; it is
+    // rebuilt on demand. Pathfinder's own saves maintain the tree in place.
+    if (typeof name === 'string' && name && !isPathfinderSelfWrite()) {
+        deletePathfinderTree(name);
+        syncTrackerUidsForLorebook(name, data);
+    }
+
     if (!areAgentsGloballyEnabled()) {
         syncToolAgentRegistrations();
         return;

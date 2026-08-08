@@ -72,6 +72,23 @@ export function setSettings(newSettings) {
 
 const trees = new Map();
 
+// Lets the WORLDINFO_UPDATED handler distinguish Pathfinder's own saves
+// (tree already maintained in place) from external edits (tree must be
+// invalidated). Relies on the host emitting the event within the awaited save.
+let selfWriteDepth = 0;
+
+export function beginPathfinderSelfWrite() {
+    selfWriteDepth++;
+}
+
+export function endPathfinderSelfWrite() {
+    selfWriteDepth = Math.max(0, selfWriteDepth - 1);
+}
+
+export function isPathfinderSelfWrite() {
+    return selfWriteDepth > 0;
+}
+
 export function getTree(bookName) {
     return trees.get(bookName) ?? null;
 }
