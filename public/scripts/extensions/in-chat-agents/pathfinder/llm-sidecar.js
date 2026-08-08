@@ -80,12 +80,3 @@ export async function sidecarGenerateWithProfile(prompt, systemPrompt = '', prof
     return '';
 }
 
-export function isSidecarConfigured() {
-    return true;
-}
-
-export function getSidecarModelLabel() {
-    const s = getSettings();
-    if (s.connectionProfile) return `profile: ${s.connectionProfile}`;
-    return 'main model';
-}

@@ -5,7 +5,7 @@ import { isPathfinderSubmoduleEnabled } from '../agent-store.js';
 import { getTree, findNodeById, getAllEntryUids, getSettings } from './tree-store.js';
 import { getReadableBooks, getAllEntriesWithContent } from './pathfinder-tool-bridge.js';
 import { sidecarGenerate } from './llm-sidecar.js';
-import { logPathfinderRetrievalDetail, logSidecarRetrieval, logPipelineStart, logPipelineComplete, setSidecarActive } from './activity-feed.js';
+import { logPathfinderRetrievalDetail, logSidecarRetrieval, logPipelineStart, logPipelineComplete } from './activity-feed.js';
 import { buildTreeFromMetadata } from './tree-builder.js';
 import { runPipeline } from './prompts/pipeline-runner.js';
 import { isSummaryMemoryEntry, markSummaryMemoryInjected } from './summary-memory-store.js';
@@ -530,8 +530,6 @@ export async function runSidecarRetrieval(setExtensionPrompt, extensionPromptTyp
     const books = getReadableBooks();
     if (books.length === 0) return;
 
-    setSidecarActive(true);
-
     const mode = s.pipelineEnabled ? 'pipeline' : 'tool-retrieval';
 
     try {
@@ -559,7 +557,5 @@ export async function runSidecarRetrieval(setExtensionPrompt, extensionPromptTyp
         } else if (!isAbortLikeError(err, signal)) {
             console.warn('[Pathfinder] Retrieval failed:', err);
         }
-    } finally {
-        setSidecarActive(false);
     }
 }

@@ -609,7 +609,6 @@ function loadSettingsIntoUI() {
 
     // Tool settings
     settingsEl.find('#pf--enable-tools').prop('checked', s.sidecarEnabled || false);
-    settingsEl.find('#pf--mandatory-tools').prop('checked', s.mandatoryTools || false);
     settingsEl.find('#pf--auto-use-attached').prop('checked', s.autoUseAttachedLorebook || false);
     settingsEl.find('#pf--auto-sync-lorebooks').prop('checked', s.autoSyncLorebooksOnChatChange !== false);
     settingsEl.find('#pf--dedupe-natural-activation').prop('checked', s.dedupeNaturalActivation !== false);
@@ -1031,13 +1030,6 @@ function bindEvents() {
     });
 
     // Tool settings
-    settingsEl.find('#pf--mandatory-tools').on('change', function () {
-        const s = getPathfinderSettings();
-        s.mandatoryTools = $(this).prop('checked');
-        setPathfinderSettings(s);
-        updateAgentSettings();
-    });
-
     settingsEl.on('change', '.pf--tool-list input[data-tool]', async function () {
         const toolName = $(this).data('tool');
         const enabled = $(this).prop('checked');

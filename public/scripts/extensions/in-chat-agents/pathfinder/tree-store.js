@@ -13,16 +13,12 @@ export const createTreeNode = (name = '', description = '', entries = [], childr
 export const createEmptyTree = () => createTreeNode('Root', 'Top-level waypoint map');
 
 export const SETTING_DEFAULTS = {
-    globalEnable: false,
     searchMode: 'traversal',
     recurseLimit: 5,
-    mandatoryTools: false,
     dedupDetection: false,
     dedupThreshold: 0.85,
     autoSummary: false,
     autoSummaryInterval: 20,
-    multiBookMode: 'unified',
-    ephemeralResults: true,
     sidecarEnabled: false,
     enabledLorebooks: [],
     includeContextualLorebooks: true,
@@ -31,7 +27,6 @@ export const SETTING_DEFAULTS = {
     dedupeNaturalActivation: true,
     toolStates: {},
     bookPermissions: {},
-    confirmTools: {},
     // Pipeline settings
     pipelineEnabled: false,
     pipelineId: 'default',

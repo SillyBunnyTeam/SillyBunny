@@ -18,15 +18,6 @@ export const TOOL_NAMES = {
 
 export const ALL_TOOL_NAMES = Object.values(TOOL_NAMES);
 
-export const CONFIRMABLE_TOOLS = new Set([
-    TOOL_NAMES.REMEMBER,
-    TOOL_NAMES.UPDATE,
-    TOOL_NAMES.FORGET,
-    TOOL_NAMES.SUMMARIZE,
-    TOOL_NAMES.REORGANIZE,
-    TOOL_NAMES.MERGE_SPLIT,
-]);
-
 export function getActiveTunnelVisionBooks() {
     if (!isPathfinderSubmoduleEnabled()) {
         return [];
