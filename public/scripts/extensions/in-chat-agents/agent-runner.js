@@ -4919,8 +4919,11 @@ function onMessageSwipeDeleted(data) {
 
 /**
  * Handles CHAT_COMPLETION_SETTINGS_READY for tool-category agents.
- * Converts registered tools to Anthropic format when needed,
- * and strips tools on the final recursion pass to force narrative output.
+ * Strips tools on the final recursion pass to force narrative output.
+ * Tools must stay in OpenAI format here: the server backends convert
+ * per-provider themselves (e.g. sendClaudeRequest filters on
+ * tool.type === 'function'), so any client-side format conversion would
+ * make the server drop every tool.
  * @param {object} data Generation data being prepared for the API call
  */
 function onChatCompletionSettingsReady(data) {
@@ -4931,34 +4934,7 @@ function onChatCompletionSettingsReady(data) {
     const recurseLimit = ToolManager.RECURSE_LIMIT ?? 5;
     if (toolRecursionDepth >= recurseLimit - 1) {
         delete data.tools;
-        data.tool_choice = 'none';
-        return;
-    }
-
-    if (!Array.isArray(data.tools) || data.tools.length === 0) {
-        return;
-    }
-
-    const isClaude = String(data.model ?? '').startsWith('claude') ||
-        data.chat_completion_source === 'claude';
-
-    if (isClaude && Array.isArray(data.tools)) {
-        data.tools = data.tools.map(tool => {
-            if (tool.type === 'function' && tool.function) {
-                return {
-                    name: tool.function.name,
-                    description: tool.function.description,
-                    input_schema: tool.function.parameters,
-                };
-            }
-            return tool;
-        });
-
-        if (data.tool_choice === 'auto') {
-            data.tool_choice = { type: 'auto' };
-        } else if (typeof data.tool_choice === 'object' && data.tool_choice?.function?.name) {
-            data.tool_choice = { type: 'tool', name: data.tool_choice.function.name };
-        }
+        delete data.tool_choice;
     }
 }
 
