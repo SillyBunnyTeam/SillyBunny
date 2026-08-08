@@ -1,28 +1,26 @@
-#rm_print_characters_block.group_overlay_mode_select .character_select {
+#rm_print_characters_block.group_overlay_mode_select :is(.character_select, .group_select) {
     transition: background-color var(--sb-transition-slow);
     background-color: rgba(170, 170, 170, 0.15);
 }
 
-#rm_print_characters_block.group_overlay_mode_select .bogus_folder_select,
-#rm_print_characters_block.group_overlay_mode_select .group_select {
+#rm_print_characters_block.group_overlay_mode_select .bogus_folder_select {
     cursor: auto;
     filter: saturate(0.3);
 }
 
-#rm_print_characters_block.group_overlay_mode_select .bogus_folder_select:hover,
-#rm_print_characters_block.group_overlay_mode_select .group_select:hover {
+#rm_print_characters_block.group_overlay_mode_select .bogus_folder_select:hover {
     background: none;
 }
 
-#rm_print_characters_block.group_overlay_mode_select .character_select input.bulk_select_checkbox {
+#rm_print_characters_block.group_overlay_mode_select :is(.character_select, .group_select) input.bulk_select_checkbox {
     display: none !important;
 }
 
-#rm_print_characters_block.group_overlay_mode_select .character_select.character_selected {
+#rm_print_characters_block.group_overlay_mode_select :is(.character_select, .group_select).character_selected {
     background-color: var(--SmartThemeQuoteColor);
 }
 
-#rm_print_characters_block.group_overlay_mode_select .character_select .bulk_select_checkbox {
+#rm_print_characters_block.group_overlay_mode_select :is(.character_select, .group_select) .bulk_select_checkbox {
     visibility: hidden;
     height: 0 !important;
 }

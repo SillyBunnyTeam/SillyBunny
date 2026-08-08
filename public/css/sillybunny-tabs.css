@@ -7552,7 +7552,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
         white-space: normal;
     }
 
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > .character_select > .bulk_select_checkbox {
+    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) > .bulk_select_checkbox {
         position: absolute !important;
         top: 8px !important;
         left: 8px !important;
