@@ -2397,9 +2397,7 @@ body.sb-shell-resizing * {
 }
 
 #right-nav-panel:not([data-menu-type="groups"]) #rm_button_group_chats,
-#right-nav-panel[data-menu-type="groups"] #rm_button_create,
-#right-nav-panel[data-menu-type="groups"] #bulkSelectAllButton,
-#right-nav-panel[data-menu-type="groups"] #bulkDeleteButton {
+#right-nav-panel[data-menu-type="groups"] #rm_button_create {
     display: none !important;
 }
 
@@ -2627,13 +2625,12 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     display: none !important;
 }
 
-#right-nav-panel:not([data-menu-type="groups"]) .sb-character-create-bar #rm_button_group_chats {
+#right-nav-panel[data-menu-type="groups"]:has(#bulkEditButton.bulk_edit_overlay_active) .sb-character-create-bar #rm_button_group_chats {
     display: none !important;
 }
 
-#right-nav-panel[data-menu-type="groups"] .sb-character-create-bar #bulkEditButton.disabled {
-    opacity: 0.54;
-    cursor: not-allowed;
+#right-nav-panel:not([data-menu-type="groups"]) .sb-character-create-bar #rm_button_group_chats {
+    display: none !important;
 }
 
 #right-nav-panel[data-menu-type="characters"] > #rm_PinAndTabs,

@@ -7925,11 +7925,16 @@ function syncCharacterListControls(view) {
         }
     }
 
+    for (const actionId of ['character_context_menu_favorite', 'character_context_menu_duplicate', 'character_context_menu_persona']) {
+        const action = document.getElementById(actionId)?.closest('li');
+        if (action instanceof HTMLElement) {
+            action.hidden = normalizedView === 'groups';
+        }
+    }
+
     if (bulkEditButton instanceof HTMLElement) {
-        bulkEditButton.classList.toggle('disabled', normalizedView === 'groups');
-        bulkEditButton.setAttribute('aria-disabled', String(normalizedView === 'groups'));
         bulkEditButton.title = normalizedView === 'groups'
-            ? 'Bulk edit for groups is not available yet'
+            ? 'Bulk actions for group chats'
             : 'Bulk edit characters\n\nClick to toggle characters\nShift + Click to select/deselect a range of characters\nRight-click for actions';
     }
 }
@@ -7979,19 +7984,6 @@ function ensureCharacterListToolbarLayout() {
 
     if (searchButton instanceof HTMLElement && searchButton.parentElement !== buttonBar) {
         buttonBar.appendChild(searchButton);
-    }
-
-    const bulkEditButton = document.getElementById('bulkEditButton');
-    if (bulkEditButton instanceof HTMLElement && bulkEditButton.dataset.sbGroupsGuardBound !== 'true') {
-        bulkEditButton.dataset.sbGroupsGuardBound = 'true';
-        bulkEditButton.addEventListener('click', (event) => {
-            const panel = getCharacterPanel();
-            if (panel instanceof HTMLElement && panel.dataset.menuType === 'groups') {
-                event.preventDefault();
-                event.stopImmediatePropagation();
-                globalThis.toastr?.info?.('Bulk edit for groups is not available yet.');
-            }
-        }, { capture: true });
     }
 }
 
