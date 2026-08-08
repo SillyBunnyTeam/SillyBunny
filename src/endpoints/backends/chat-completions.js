@@ -1,5 +1,7 @@
 /* eslint-disable dot-notation */
 import process from 'node:process';
+import https from 'node:https';
+import { text } from 'node:stream/consumers';
 import nodeUtil from 'node:util';
 import express from 'express';
 import fetch from 'node-fetch';
@@ -61,6 +63,7 @@ import {
     addOpenRouterSignatures,
 } from '../../prompt-converters.js';
 import { applyReasoningEffortNormalization } from '../../reasoning-effort.js';
+import { isBunRuntime } from '../../runtime.js';
 
 import { readSecret, SECRET_KEYS } from '../secrets.js';
 import {
@@ -320,6 +323,26 @@ function setJsonObjectFormat(bodyParams, messages, jsonSchema) {
     messages.push(message);
 }
 
+function fetchBunLinkApiStream(url, options) {
+    return new Promise((resolve, reject) => {
+        const { body, ...requestOptions } = options;
+        const upstreamRequest = https.request(url, requestOptions, upstreamResponse => {
+            upstreamRequest.setTimeout(0);
+            const status = upstreamResponse.statusCode ?? 500;
+            resolve({
+                ok: status >= 200 && status < 300,
+                status,
+                statusText: upstreamResponse.statusMessage ?? '',
+                body: upstreamResponse,
+                text: () => text(upstreamResponse),
+            });
+        });
+
+        upstreamRequest.once('error', reject);
+        upstreamRequest.end(body);
+    });
+}
+
 /**
  * Sends a request to Claude API.
  * @param {express.Request} request Express request
@@ -510,7 +533,8 @@ async function sendClaudeRequest(request, response) {
 
         logVerboseGenerationRequest('Claude', request, requestBody);
 
-        const generateResponse = await fetch(apiUrl + '/messages', {
+        const requestUrl = apiUrl + '/messages';
+        const requestOptions = {
             method: 'POST',
             signal: controller.signal,
             body: JSON.stringify(requestBody),
@@ -520,7 +544,11 @@ async function sendClaudeRequest(request, response) {
                 'x-api-key': apiKey,
                 ...additionalHeaders,
             },
-        });
+        };
+        // SillyBunny: node-fetch's stream pipeline leaks Bun timeout rejections; direct HTTPS preserves global agents.
+        const generateResponse = isBunRuntime() && request.body.stream && request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.LINKAPI
+            ? await fetchBunLinkApiStream(requestUrl, requestOptions)
+            : await fetch(requestUrl, requestOptions);
 
         if (request.body.stream) {
             // Pipe remote SSE stream to Express response
