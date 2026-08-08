@@ -552,15 +552,15 @@ function getPathfinderToolStateMap(agent) {
     );
 }
 
-let pathfinderPromptStoreHydrated = false;
+let pathfinderPromptStoreAgentId = null;
 
 function syncPathfinderRuntimeSettings(agent = getPathfinderRuntimeAgent()) {
     const currentRuntimeSettings = getPathfinderRuntimeSettings();
-    // On the first sync with a saved agent, adopt its persisted prompt store
-    // and rebuild the prompt cache: initPathfinder ran before agent settings
-    // were available, so the cache only holds bundled defaults until now.
-    // After hydration the in-memory prompt cache is the source of truth.
-    const hydratePrompts = !pathfinderPromptStoreHydrated && Boolean(agent?.settings);
+    // Adopt each newly active agent's persisted prompt store and rebuild the
+    // cache. For repeated syncs of the same agent, the cache remains the
+    // source of truth so unsaved in-memory edits are not overwritten.
+    const agentId = agent?.id ?? null;
+    const hydratePrompts = Boolean(agent?.settings) && agentId !== pathfinderPromptStoreAgentId;
     const pipelinePrompts = hydratePrompts ? (agent.settings.pipelinePrompts ?? {}) : currentRuntimeSettings.pipelinePrompts;
     const pipelines = hydratePrompts ? (agent.settings.pipelines ?? {}) : currentRuntimeSettings.pipelines;
 
@@ -582,7 +582,7 @@ function syncPathfinderRuntimeSettings(agent = getPathfinderRuntimeAgent()) {
     replacePathfinderRuntimeSettings(nextRuntimeSettings);
 
     if (hydratePrompts) {
-        pathfinderPromptStoreHydrated = true;
+        pathfinderPromptStoreAgentId = agentId;
         initializePromptStore(getDefaultPrompts(), getDefaultPipelines());
     }
 }

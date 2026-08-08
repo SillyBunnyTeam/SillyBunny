@@ -1,6 +1,6 @@
 import { getSettings } from '../tree-store.js';
 import { createEntry } from '../entry-manager.js';
-import { getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-tool-bridge.js';
+import { getUnknownBookError, getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-tool-bridge.js';
 import { registerToolAction, registerToolFormatter } from '../../tool-action-registry.js';
 import { logToolCallStarted, logToolCallCompleted, logToolCallError } from '../activity-feed.js';
 
@@ -35,6 +35,12 @@ async function rememberAction(args) {
     }
 
     const writableBooks = getWritableBooks();
+    const bookError = getUnknownBookError(bookName, writableBooks);
+    if (bookError) {
+        logToolCallError(TOOL_NAMES.REMEMBER, `Unknown book: ${bookName}`);
+        return bookError;
+    }
+
     const targetBook = resolveTargetBook(bookName, writableBooks);
 
     if (!targetBook) {

@@ -85,6 +85,18 @@ describe('Pathfinder write tool actions', () => {
         expect(updateEntryMock).toHaveBeenCalledWith('Memory Book', 3, 'new', undefined);
     });
 
+    test('remember refuses an explicitly named book that is not available instead of retargeting', async () => {
+        const result = await getToolAction('pathfinder_remember')({
+            title: 'Dragon',
+            content: 'The dragon guards the northern pass every night.',
+            book: 'Wrong Book',
+        });
+
+        expect(result).toContain('"Wrong Book" is not available');
+        expect(result).toContain('Memory Book');
+        expect(createEntryMock).not.toHaveBeenCalled();
+    });
+
     test('remember reports a skipped save when dedup finds a similar entry', async () => {
         mockSettings.dedupDetection = true;
         mockBookData = {
