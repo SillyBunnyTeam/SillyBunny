@@ -155,6 +155,24 @@ export function resolveTargetBook(requestedBook, writableBooks = null) {
     return books[0];
 }
 
+/**
+ * For UID-addressed operations an explicitly named book must not silently
+ * fall back to another book — UIDs are per-book, so the fallback would hit
+ * an unrelated entry. Returns an error string, or null when the request is
+ * fine (no book named, or the named book is allowed).
+ * @param {string} requestedBook - Book name from the tool call, may be empty
+ * @param {string[]} allowedBooks - Books the operation may target
+ * @returns {string|null}
+ */
+export function getUnknownBookError(requestedBook, allowedBooks) {
+    const name = String(requestedBook ?? '').trim();
+    if (!name || allowedBooks.includes(name)) {
+        return null;
+    }
+
+    return `Error: Lorebook "${name}" is not available for this operation. Available: ${allowedBooks.join(', ') || 'none'}.`;
+}
+
 export function getBookListWithDescriptions() {
     const books = getActiveTunnelVisionBooks();
     return books.map(b => {

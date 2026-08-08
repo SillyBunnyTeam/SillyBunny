@@ -51,7 +51,8 @@ async function rememberAction(args) {
                     if (entry && !entry.disable) {
                         const sim = trigramSimilarity(entry.content || '', content);
                         if (sim >= (settings.dedupThreshold || 0.85)) {
-                            return `⚠️ Similar entry already exists: "${entry.comment || entry.key?.[0]}" (similarity: ${(sim * 100).toFixed(0)}%). Consider using the Update tool instead. Entry was still saved.`;
+                            logToolCallError(TOOL_NAMES.REMEMBER, `Duplicate of UID ${entry.uid}`);
+                            return `⚠️ Not saved: a similar entry already exists — "${entry.comment || entry.key?.[0]}" (UID: ${entry.uid}, similarity: ${(sim * 100).toFixed(0)}%). Use the Update tool with that UID to add the new details instead.`;
                         }
                     }
                 }
