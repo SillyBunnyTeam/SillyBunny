@@ -334,6 +334,7 @@ describe('in-chat agent post-processing runner', () => {
         }));
 
         await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
+            escapeHtml: jest.fn(value => String(value)),
             regexFromString: jest.fn(value => {
                 const match = String(value ?? '').match(/^\/([\s\S]*)\/([a-z]*)$/i);
                 return match ? new RegExp(match[1], match[2]) : new RegExp(String(value ?? ''));
@@ -421,7 +422,9 @@ describe('in-chat agent post-processing runner', () => {
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/pathfinder-tool-bridge.js', () => ({
+            CONFIRMABLE_TOOLS: new Set(),
             getContextualLorebooks: jest.fn(() => []),
+            getForcedToolChoice: jest.fn(() => null),
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/sidecar-retrieval.js', () => ({

@@ -18,6 +18,7 @@ export const TOOL_NAMES = {
 
 export const ALL_TOOL_NAMES = Object.values(TOOL_NAMES);
 
+/** Tools that modify lorebook data and can be gated behind a confirmation dialog. */
 export const CONFIRMABLE_TOOLS = new Set([
     TOOL_NAMES.REMEMBER,
     TOOL_NAMES.UPDATE,
@@ -26,6 +27,28 @@ export const CONFIRMABLE_TOOLS = new Set([
     TOOL_NAMES.REORGANIZE,
     TOOL_NAMES.MERGE_SPLIT,
 ]);
+
+/**
+ * Resolve the tool_choice value that forces tool use, when the user enabled
+ * "require tool use on every response". The server backends translate:
+ * the Claude backend wraps the string as {type: <value>} where 'any' is the
+ * forced-tool mode; every other backend speaks OpenAI's 'required' (Gemini
+ * translates it to functionCallingConfig mode ANY server-side).
+ * @param {string} chatCompletionSource - Source id from the generation data
+ * @returns {string|null} Value for tool_choice, or null when not forcing
+ */
+export function getForcedToolChoice(chatCompletionSource) {
+    if (!isPathfinderSubmoduleEnabled()) {
+        return null;
+    }
+
+    const s = getSettings();
+    if (!s.sidecarEnabled || !s.mandatoryTools) {
+        return null;
+    }
+
+    return chatCompletionSource === 'claude' ? 'any' : 'required';
+}
 
 export function getActiveTunnelVisionBooks() {
     if (!isPathfinderSubmoduleEnabled()) {

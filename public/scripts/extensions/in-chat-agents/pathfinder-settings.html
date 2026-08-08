@@ -326,11 +326,17 @@
             </div>
 
             <div class="pf--setting-group">
+                <label class="pf--setting-label">Ask Before Executing</label>
+                <div class="pf--setting-help">Show a confirmation dialog before the checked tools change lorebook data. Denying a call tells the AI to continue without it.</div>
+                <div class="pf--tool-list" id="pf--confirm-tool-list"></div>
+            </div>
+
+            <div class="pf--setting-group">
                 <label class="checkbox_label">
                     <input type="checkbox" id="pf--mandatory-tools" />
                     <span>Require tool use on every response</span>
                 </label>
-                <div class="pf--setting-help">Forces the AI to use at least one Pathfinder tool each turn</div>
+                <div class="pf--setting-help">Forces the AI to call at least one tool at the start of each response. The follow-up pass that writes the reply is not forced.</div>
             </div>
         </div>
     </div>

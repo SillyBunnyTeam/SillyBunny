@@ -26,7 +26,7 @@ import {
 } from './pathfinder/tree-store.js';
 import { buildTreeFromMetadata } from './pathfinder/tree-builder.js';
 import { syncToolAgentRegistrations } from './agent-runner.js';
-import { ALL_TOOL_NAMES, getContextualLorebookDetails } from './pathfinder/pathfinder-tool-bridge.js';
+import { ALL_TOOL_NAMES, CONFIRMABLE_TOOLS, getContextualLorebookDetails } from './pathfinder/pathfinder-tool-bridge.js';
 import { getPrompt, savePrompt } from './pathfinder/prompts/prompt-store.js';
 import { getDefaultPrompts } from './pathfinder/prompts/default-prompts.js';
 import { clearFeed, getFeedItems } from './pathfinder/activity-feed.js';
@@ -553,6 +553,30 @@ function renderToolToggles() {
     }
 }
 
+function renderConfirmToggles() {
+    const confirmList = settingsEl.find('#pf--confirm-tool-list');
+    if (!confirmList.length) {
+        return;
+    }
+
+    const confirmTools = getPathfinderSettings().confirmTools ?? {};
+    confirmList.empty();
+    for (const toolName of ALL_TOOL_NAMES) {
+        if (!CONFIRMABLE_TOOLS.has(toolName)) {
+            continue;
+        }
+
+        const item = $(`
+            <label class="checkbox_label">
+                <input type="checkbox" data-confirm-tool="${escapeHtml(toolName)}" />
+                <span>${escapeHtml(getToolLabel(toolName))}</span>
+            </label>
+        `);
+        item.find('input').prop('checked', confirmTools[toolName] === true);
+        confirmList.append(item);
+    }
+}
+
 function renderPermissionMatrix(lorebooks = null) {
     const matrix = settingsEl.find('#pf--permission-matrix');
     if (!matrix.length) {
@@ -618,6 +642,7 @@ function loadSettingsIntoUI() {
 
     // Load tool states from agent
     renderToolToggles();
+    renderConfirmToggles();
     settingsEl.find('input[data-tool]').each(function () {
         const toolName = $(this).data('tool');
         $(this).prop('checked', isPathfinderToolEnabled(toolName));
@@ -1015,6 +1040,17 @@ function bindEvents() {
     settingsEl.find('#pf--mandatory-tools').on('change', function () {
         const s = getPathfinderSettings();
         s.mandatoryTools = $(this).prop('checked');
+        setPathfinderSettings(s);
+        updateAgentSettings();
+    });
+
+    settingsEl.on('change', '#pf--confirm-tool-list input[data-confirm-tool]', function () {
+        const toolName = $(this).data('confirmTool');
+        const s = getPathfinderSettings();
+        if (!s.confirmTools || typeof s.confirmTools !== 'object') {
+            s.confirmTools = {};
+        }
+        s.confirmTools[toolName] = $(this).prop('checked');
         setPathfinderSettings(s);
         updateAgentSettings();
     });
