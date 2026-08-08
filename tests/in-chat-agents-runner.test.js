@@ -411,6 +411,10 @@ describe('in-chat agent post-processing runner', () => {
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/tree-store.js', () => ({
             getSettings: jest.fn(() => ({ pipelinePrompts: {}, pipelines: [] })),
             setSettings: jest.fn(),
+            replaceSettings: jest.fn(),
+            deleteTree: jest.fn(),
+            syncTrackerUidsForLorebook: jest.fn(),
+            isPathfinderSelfWrite: jest.fn(() => false),
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/tool-definitions.js', () => ({
@@ -431,6 +435,7 @@ describe('in-chat agent post-processing runner', () => {
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/auto-summary.js', () => ({
             markAutoSummaryComplete: jest.fn(),
+            resetAutoSummaryCount: jest.fn(),
             shouldAutoSummarize: jest.fn(() => false),
         }));
     });
