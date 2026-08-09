@@ -1,4 +1,4 @@
-import { getSettings, setSettings, isLorebookEnabled, setLorebookEnabled } from './pathfinder/tree-store.js';
+import { getSettings, setSettings, isLorebookEnabled, setLorebookEnabled, clearAllTrees } from './pathfinder/tree-store.js';
 import { initEntryManagerAPIs } from './pathfinder/entry-manager.js';
 import { initActivityFeed } from './pathfinder/activity-feed.js';
 import { isPathfinderSubmoduleEnabled } from './agent-store.js';
@@ -90,6 +90,9 @@ export function teardownPathfinder() {
     unregisterPathfinderToolActions();
     deinitAutoSummary();
     removeCommands();
+    // Stale trees would survive a disable/enable cycle and shadow any
+    // lorebook edits made while Pathfinder was off.
+    clearAllTrees();
     initialized = false;
     console.info('[Pathfinder] Disabled and unregistered.');
 }

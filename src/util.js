@@ -835,6 +835,9 @@ export async function forwardFetchResponse(from, to, request = null, onDisconnec
                 }
                 return;
             }
+
+            console.warn('Streaming request failed:', error?.message ?? error);
+            to.end();
         });
     } else {
         to.end();

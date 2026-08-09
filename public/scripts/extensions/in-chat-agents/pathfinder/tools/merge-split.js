@@ -1,5 +1,5 @@
 import { mergeEntries, splitEntry } from '../entry-manager.js';
-import { getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-tool-bridge.js';
+import { getUnknownBookError, getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-tool-bridge.js';
 import { registerToolAction, registerToolFormatter } from '../../tool-action-registry.js';
 import { logToolCallStarted, logToolCallCompleted, logToolCallError } from '../activity-feed.js';
 
@@ -17,6 +17,12 @@ async function mergeSplitAction(args) {
     }
 
     const writableBooks = getWritableBooks();
+    const bookError = getUnknownBookError(bookName, writableBooks);
+    if (bookError) {
+        logToolCallError(TOOL_NAMES.MERGE_SPLIT, `Unknown book: ${bookName}`);
+        return bookError;
+    }
+
     const targetBook = resolveTargetBook(bookName, writableBooks);
     if (!targetBook) {
         logToolCallError(TOOL_NAMES.MERGE_SPLIT, 'No writable lorebooks');

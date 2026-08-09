@@ -106,10 +106,15 @@ describe('Pathfinder forced tool choice', () => {
         expect(getForcedToolChoice('openai')).toBeNull();
     });
 
-    test('maps the Claude source to "any" and everything else to "required"', () => {
-        expect(getForcedToolChoice('claude')).toBe('any');
-        expect(getForcedToolChoice('openai')).toBe('required');
-        expect(getForcedToolChoice('makersuite')).toBe('required');
-        expect(getForcedToolChoice(undefined)).toBe('required');
+    test.each([
+        ['claude', 'claude-sonnet-4-6', 'any'],
+        ['linkapi', 'claude-sonnet-4-6', 'any'],
+        ['linkapi', '[SP]claude-sonnet-4-6', 'required'],
+        ['openai', 'gpt-5', 'required'],
+        ['makersuite', 'gemini-2.5-pro', 'required'],
+        ['cohere', 'command-r-plus', 'required'],
+        ['ai21', 'jamba-large', null],
+    ])('maps %s model %s to %s', (source, model, expected) => {
+        expect(getForcedToolChoice(source, model)).toBe(expected);
     });
 });

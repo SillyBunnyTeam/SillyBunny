@@ -29,6 +29,7 @@ describe('in-chat agent post-processing runner', () => {
     let chatMetadata;
     let extensionPrompts;
     let enabledAgents;
+    let enabledToolAgents;
     let eventSource;
     let eventTypes;
     let saveChatDebounced;
@@ -55,6 +56,10 @@ describe('in-chat agent post-processing runner', () => {
     let contextGroups;
     let contextGroupId;
     let getWorldInfoPrompt;
+    let pathfinderRuntimeSettings;
+    let replacePathfinderSettings;
+    let getToolAction;
+    let getForcedToolChoice;
 
     beforeEach(async () => {
         jest.resetModules();
@@ -64,6 +69,7 @@ describe('in-chat agent post-processing runner', () => {
         chatMetadata = {};
         extensionPrompts = {};
         enabledAgents = [];
+        enabledToolAgents = [];
         eventSource = createEventSource();
         eventTypes = {
             GENERATION_STARTED: 'generation_started',
@@ -140,6 +146,12 @@ describe('in-chat agent post-processing runner', () => {
         contextGroups = [];
         contextGroupId = null;
         getWorldInfoPrompt = jest.fn(async () => ({ worldInfoString: '' }));
+        pathfinderRuntimeSettings = { pipelinePrompts: {}, pipelines: {} };
+        replacePathfinderSettings = jest.fn(settings => {
+            pathfinderRuntimeSettings = settings;
+        });
+        getToolAction = jest.fn(() => null);
+        getForcedToolChoice = jest.fn(() => null);
 
         const addListener = (listeners, event, handler) => {
             const eventListeners = listeners.get(event) ?? [];
@@ -380,7 +392,7 @@ describe('in-chat agent post-processing runner', () => {
             })),
             getAgentRegexScripts: jest.fn(agent => Array.isArray(agent?.regexScripts) ? agent.regexScripts : []),
             getEnabledAgents: jest.fn(() => [...enabledAgents]),
-            getEnabledToolAgents: jest.fn(() => []),
+            getEnabledToolAgents: jest.fn(() => [...enabledToolAgents]),
             getGlobalSettings: jest.fn(() => globalSettings),
             getHiddenAgentIds: jest.fn(() => new Set(globalSettings.hiddenCompanionAgentIds ?? [])),
             getPromptTransformMode: jest.fn(agent => agent?.postProcess?.promptTransformMode === 'append' ? 'append' : 'rewrite'),
@@ -405,13 +417,17 @@ describe('in-chat agent post-processing runner', () => {
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/tool-action-registry.js', () => ({
-            getToolAction: jest.fn(() => null),
+            getToolAction,
             getToolFormatter: jest.fn(() => null),
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/tree-store.js', () => ({
-            getSettings: jest.fn(() => ({ pipelinePrompts: {}, pipelines: [] })),
+            getSettings: jest.fn(() => pathfinderRuntimeSettings),
             setSettings: jest.fn(),
+            replaceSettings: replacePathfinderSettings,
+            deleteTree: jest.fn(),
+            syncTrackerUidsForLorebook: jest.fn(),
+            isPathfinderSelfWrite: jest.fn(() => false),
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/tool-definitions.js', () => ({
@@ -424,7 +440,7 @@ describe('in-chat agent post-processing runner', () => {
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/pathfinder-tool-bridge.js', () => ({
             CONFIRMABLE_TOOLS: new Set(),
             getContextualLorebooks: jest.fn(() => []),
-            getForcedToolChoice: jest.fn(() => null),
+            getForcedToolChoice,
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/sidecar-retrieval.js', () => ({
@@ -434,6 +450,7 @@ describe('in-chat agent post-processing runner', () => {
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/auto-summary.js', () => ({
             markAutoSummaryComplete: jest.fn(),
+            resetAutoSummaryCount: jest.fn(),
             shouldAutoSummarize: jest.fn(() => false),
         }));
     });
@@ -3714,6 +3731,79 @@ describe('in-chat agent post-processing runner', () => {
 
         expect(extensionPrompts.pathfinder_pipeline_retrieval).toEqual({ value: 'retrieved lore' });
         expect(extensionPrompts['inchat_agent_agent-pre-prompt']).toEqual({ value: 'Use the current scene style.', name: 'Pre Prompt' });
+    });
+
+    test('hydrates prompt settings when the active Pathfinder agent changes', async () => {
+        const toolStates = {
+            Pathfinder_Search: false,
+            Pathfinder_Summarize: false,
+        };
+        enabledToolAgents = [{
+            id: 'pathfinder-a',
+            name: 'Pathfinder',
+            category: 'tool',
+            sourceTemplateId: 'tpl-pathfinder',
+            settings: {
+                pipelinePrompts: { promptA: { id: 'promptA' } },
+                pipelines: { pipelineA: { id: 'pipelineA' } },
+                toolStates,
+            },
+            tools: [],
+        }];
+
+        const { syncToolAgentRegistrations } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        syncToolAgentRegistrations();
+
+        enabledToolAgents = [{
+            id: 'pathfinder-b',
+            name: 'Pathfinder',
+            category: 'tool',
+            sourceTemplateId: 'tpl-pathfinder',
+            settings: {
+                pipelinePrompts: { promptB: { id: 'promptB' } },
+                pipelines: { pipelineB: { id: 'pipelineB' } },
+                toolStates,
+            },
+            tools: [],
+        }];
+        syncToolAgentRegistrations();
+
+        expect(replacePathfinderSettings).toHaveBeenLastCalledWith(expect.objectContaining({
+            pipelinePrompts: { promptB: { id: 'promptB' } },
+            pipelines: { pipelineB: { id: 'pipelineB' } },
+        }));
+    });
+
+    test('forces tool use only when the recursion budget leaves a tool pass', async () => {
+        enabledToolAgents = [{
+            id: 'pathfinder-a',
+            name: 'Pathfinder',
+            category: 'tool',
+            sourceTemplateId: 'tpl-pathfinder',
+            settings: { sidecarEnabled: true, mandatoryTools: true },
+            tools: [],
+        }];
+        getToolAction.mockReturnValue(jest.fn(async () => 'ok'));
+        getForcedToolChoice.mockReturnValue('required');
+
+        const { initAgentRunner, syncToolAgentRegistrations } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        const { ToolManager } = await import('../public/scripts/tool-calling.js');
+        syncToolAgentRegistrations();
+        initAgentRunner();
+
+        const initialPass = { tools: [{}], chat_completion_source: 'openai', model: 'gpt-5' };
+        await eventSource.emit(eventTypes.CHAT_COMPLETION_SETTINGS_READY, initialPass);
+
+        expect(initialPass.tool_choice).toBe('required');
+        expect(getForcedToolChoice).toHaveBeenCalledWith('openai', 'gpt-5');
+
+        ToolManager.RECURSE_LIMIT = 1;
+        const finalPass = { tools: [{}], tool_choice: 'required' };
+        await eventSource.emit(eventTypes.CHAT_COMPLETION_SETTINGS_READY, finalPass);
+
+        expect(finalPass).not.toHaveProperty('tools');
+        expect(finalPass).not.toHaveProperty('tool_choice');
+        expect(getForcedToolChoice).toHaveBeenCalledTimes(1);
     });
 
     test('reuses cached Pathfinder retrieval when swiping the same assistant message', async () => {

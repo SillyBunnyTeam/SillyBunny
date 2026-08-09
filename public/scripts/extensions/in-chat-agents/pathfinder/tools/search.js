@@ -88,6 +88,7 @@ async function searchAction(args) {
         return output;
     }
 
+    let childListing = '';
     let allEntries = [];
     for (const bookName of books) {
         const tree = await getTreeWithAutoBuild(bookName);
@@ -95,10 +96,14 @@ async function searchAction(args) {
         const node = findNodeById(tree, nodeId);
         if (!node) continue;
 
-        if (node.children?.length > 0 && node.entries?.length === 0) {
-            const output = `🧭 ${node.name}\n\n${formatNodeChildren(node)}\n\nDrill further by calling with one of the sub-waypoint or entry IDs.`;
-            logToolCallCompleted(TOOL_NAMES.SEARCH, output);
-            return output;
+        // A node can hold both sub-waypoints and entries: list the children
+        // for navigation AND return the entry contents below.
+        if (node.children?.length > 0) {
+            childListing = `🧭 ${node.name}\n\n${formatNodeChildren(node)}\n\nDrill further by calling with one of the sub-waypoint IDs.`;
+            if (!node.entries?.length) {
+                logToolCallCompleted(TOOL_NAMES.SEARCH, childListing);
+                return childListing;
+            }
         }
 
         const bookData = await loadWorldInfoSafe(bookName);
@@ -113,11 +118,16 @@ async function searchAction(args) {
     }
 
     if (allEntries.length === 0) {
+        if (childListing) {
+            logToolCallCompleted(TOOL_NAMES.SEARCH, childListing);
+            return childListing;
+        }
         logToolCallCompleted(TOOL_NAMES.SEARCH, 'No entries found at this waypoint.');
         return 'No entries found at this waypoint. Try navigating to a different node.';
     }
 
-    const output = allEntries.map(e => `--- ${e.title} (UID:${e.uid}) [${e.bookName}] ---\n${e.content}`).join('\n\n');
+    const contents = allEntries.map(e => `--- ${e.title} (UID:${e.uid}) [${e.bookName}] ---\n${e.content}`).join('\n\n');
+    const output = childListing ? `${childListing}\n\n${contents}` : contents;
     logToolCallCompleted(TOOL_NAMES.SEARCH, output);
     return output;
 }
@@ -125,7 +135,9 @@ async function searchAction(args) {
 async function loadWorldInfoSafe(name) {
     try {
         const ctx = window?.SillyTavern?.getContext?.();
-        return ctx?.loadWorldInfo?.(name);
+        // await inside the try: a rejected promise returned without await
+        // would bypass this catch entirely
+        return await ctx?.loadWorldInfo?.(name);
     } catch {
         return null;
     }

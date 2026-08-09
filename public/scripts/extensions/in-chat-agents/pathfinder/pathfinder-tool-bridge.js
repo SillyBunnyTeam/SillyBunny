@@ -1,4 +1,5 @@
 import { isPathfinderSubmoduleEnabled } from '../agent-store.js';
+import { getLinkApiRequestFormat } from '../../../linkapi-utils.js';
 import { getSettings, getTree, isLorebookEnabled, canReadBook, canWriteBook, canDeleteBook } from './tree-store.js';
 
 const CHAT_LOREBOOK_METADATA_KEY = 'world_info';
@@ -31,13 +32,12 @@ export const CONFIRMABLE_TOOLS = new Set([
 /**
  * Resolve the tool_choice value that forces tool use, when the user enabled
  * "require tool use on every response". The server backends translate:
- * the Claude backend wraps the string as {type: <value>} where 'any' is the
- * forced-tool mode; every other backend speaks OpenAI's 'required' (Gemini
- * translates it to functionCallingConfig mode ANY server-side).
+ * Anthropic-format backends use 'any'; OpenAI-format backends use 'required'.
  * @param {string} chatCompletionSource - Source id from the generation data
+ * @param {string} model - Model id used to resolve format-switching providers
  * @returns {string|null} Value for tool_choice, or null when not forcing
  */
-export function getForcedToolChoice(chatCompletionSource) {
+export function getForcedToolChoice(chatCompletionSource, model) {
     if (!isPathfinderSubmoduleEnabled()) {
         return null;
     }
@@ -47,7 +47,13 @@ export function getForcedToolChoice(chatCompletionSource) {
         return null;
     }
 
-    return chatCompletionSource === 'claude' ? 'any' : 'required';
+    if (chatCompletionSource === 'ai21') {
+        return null;
+    }
+
+    const usesAnthropicFormat = chatCompletionSource === 'claude'
+        || (chatCompletionSource === 'linkapi' && getLinkApiRequestFormat(model) === 'anthropic');
+    return usesAnthropicFormat ? 'any' : 'required';
 }
 
 export function getActiveTunnelVisionBooks() {
@@ -176,6 +182,24 @@ export function resolveTargetBook(requestedBook, writableBooks = null) {
     }
 
     return books[0];
+}
+
+/**
+ * For UID-addressed operations an explicitly named book must not silently
+ * fall back to another book — UIDs are per-book, so the fallback would hit
+ * an unrelated entry. Returns an error string, or null when the request is
+ * fine (no book named, or the named book is allowed).
+ * @param {string} requestedBook - Book name from the tool call, may be empty
+ * @param {string[]} allowedBooks - Books the operation may target
+ * @returns {string|null}
+ */
+export function getUnknownBookError(requestedBook, allowedBooks) {
+    const name = String(requestedBook ?? '').trim();
+    if (!name || allowedBooks.includes(name)) {
+        return null;
+    }
+
+    return `Error: Lorebook "${name}" is not available for this operation. Available: ${allowedBooks.join(', ') || 'none'}.`;
 }
 
 export function getBookListWithDescriptions() {

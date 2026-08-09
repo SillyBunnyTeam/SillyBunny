@@ -1,6 +1,6 @@
 import { getSettings } from '../tree-store.js';
 import { createEntry } from '../entry-manager.js';
-import { getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-tool-bridge.js';
+import { getUnknownBookError, getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-tool-bridge.js';
 import { registerToolAction, registerToolFormatter } from '../../tool-action-registry.js';
 import { logToolCallStarted, logToolCallCompleted, logToolCallError } from '../activity-feed.js';
 
@@ -35,6 +35,12 @@ async function rememberAction(args) {
     }
 
     const writableBooks = getWritableBooks();
+    const bookError = getUnknownBookError(bookName, writableBooks);
+    if (bookError) {
+        logToolCallError(TOOL_NAMES.REMEMBER, `Unknown book: ${bookName}`);
+        return bookError;
+    }
+
     const targetBook = resolveTargetBook(bookName, writableBooks);
 
     if (!targetBook) {
@@ -51,7 +57,8 @@ async function rememberAction(args) {
                     if (entry && !entry.disable) {
                         const sim = trigramSimilarity(entry.content || '', content);
                         if (sim >= (settings.dedupThreshold || 0.85)) {
-                            return `⚠️ Similar entry already exists: "${entry.comment || entry.key?.[0]}" (similarity: ${(sim * 100).toFixed(0)}%). Consider using the Update tool instead. Entry was still saved.`;
+                            logToolCallError(TOOL_NAMES.REMEMBER, `Duplicate of UID ${entry.uid}`);
+                            return `⚠️ Not saved: a similar entry already exists — "${entry.comment || entry.key?.[0]}" (UID: ${entry.uid}, similarity: ${(sim * 100).toFixed(0)}%). Use the Update tool with that UID to add the new details instead.`;
                         }
                     }
                 }

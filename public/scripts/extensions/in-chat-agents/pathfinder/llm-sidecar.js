@@ -3,6 +3,17 @@ import { isAbortLikeError } from '../../../util/abort-error.js';
 import { extractProfileResponseText } from '../llm-utils.js';
 import { getSettings } from './tree-store.js';
 
+// Throttled so a multi-stage pipeline failure doesn't stack toasts
+let lastSidecarIssueToastAt = 0;
+function notifySidecarIssue(message, level = 'warning') {
+    const now = Date.now();
+    if (now - lastSidecarIssueToastAt < 60000) {
+        return;
+    }
+    lastSidecarIssueToastAt = now;
+    globalThis.toastr?.[level]?.(message, 'Pathfinder sidecar');
+}
+
 /**
  * Generate using the default connection profile from settings
  * @param {string} prompt - User prompt
@@ -47,6 +58,7 @@ export async function sidecarGenerateWithProfile(prompt, systemPrompt = '', prof
                 throw err;
             }
             console.warn(`[Pathfinder] Sidecar via profile "${profileId}" failed:`, err);
+            notifySidecarIssue('Connection profile request failed; falling back to the main model.');
         }
     }
 
@@ -62,17 +74,9 @@ export async function sidecarGenerateWithProfile(prompt, systemPrompt = '', prof
             throw err;
         }
         console.warn('[Pathfinder] Sidecar via main model failed:', err);
+        notifySidecarIssue('Sidecar generation failed; Pathfinder retrieval was skipped.', 'error');
     }
 
     return '';
 }
 
-export function isSidecarConfigured() {
-    return true;
-}
-
-export function getSidecarModelLabel() {
-    const s = getSettings();
-    if (s.connectionProfile) return `profile: ${s.connectionProfile}`;
-    return 'main model';
-}
