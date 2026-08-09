@@ -100,27 +100,34 @@ export async function createSummaryMemoryEntry(args = {}, options = {}) {
             });
         }
 
-        const tree = getTree(targetBook);
-        if (tree && arc) {
-            let summaryWaypoint = (tree.children || []).find(c => /summar/i.test(c.name));
-            if (!summaryWaypoint) {
-                summaryWaypoint = createTreeNode('Summaries', 'Event summaries and recaps');
-                tree.children.push(summaryWaypoint);
-            }
+        // Arc filing is best-effort: the entry is already saved, so a tree
+        // problem must not fail the tool (that skipped the auto-summary
+        // counter reset and produced duplicate summaries).
+        try {
+            const tree = getTree(targetBook);
+            if (tree && arc) {
+                let summaryWaypoint = (tree.children || []).find(c => /summar/i.test(c.name));
+                if (!summaryWaypoint) {
+                    summaryWaypoint = createTreeNode('Summaries', 'Event summaries and recaps');
+                    if (!Array.isArray(tree.children)) tree.children = [];
+                    tree.children.push(summaryWaypoint);
+                }
 
-            if (arc) {
                 let arcNode = (summaryWaypoint.children || []).find(c => c.name.toLowerCase() === arc.toLowerCase());
                 if (!arcNode) {
                     arcNode = createTreeNode(`Arc: ${arc}`, `Narrative arc: ${arc}`);
-                    if (!summaryWaypoint.children) summaryWaypoint.children = [];
+                    if (!Array.isArray(summaryWaypoint.children)) summaryWaypoint.children = [];
                     summaryWaypoint.children.push(arcNode);
                 }
-                if (arcNode.entries && !arcNode.entries.includes(result.uid)) {
+                if (!Array.isArray(arcNode.entries)) arcNode.entries = [];
+                if (!arcNode.entries.includes(result.uid)) {
                     arcNode.entries.push(result.uid);
                 }
-            }
 
-            saveTree(targetBook, tree);
+                saveTree(targetBook, tree);
+            }
+        } catch (treeErr) {
+            console.warn('[Pathfinder] Failed to file summary under its arc waypoint:', treeErr);
         }
 
         logToolCallCompleted(TOOL_NAMES.SUMMARIZE, `Summarized: ${title}`);

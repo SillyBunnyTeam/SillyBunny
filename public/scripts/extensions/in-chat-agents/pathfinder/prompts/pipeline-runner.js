@@ -5,7 +5,7 @@
 import { getPrompt, getPipeline } from './prompt-store.js';
 import { sidecarGenerateWithProfile } from '../llm-sidecar.js';
 import { getSettings, getTree, getAllEntryUids } from '../tree-store.js';
-import { getReadableBooks, getEntryContent } from '../pathfinder-tool-bridge.js';
+import { getReadableBooks, getAllEntriesWithContent } from '../pathfinder-tool-bridge.js';
 import { logPipelineStageStart, logPipelineStageComplete, logPipelineError } from '../activity-feed.js';
 import { isAbortLikeError } from '../../../../util/abort-error.js';
 
@@ -197,7 +197,8 @@ async function buildPipelineContext(chatMessages, maxMessages) {
         })
         .join('\n\n');
 
-    // Gather all entries from enabled lorebooks
+    // Gather all entries from enabled lorebooks (one load per book;
+    // per-UID fetches re-loaded the whole book for every entry)
     const entriesByName = new Map();
     const entryNames = [];
 
@@ -207,14 +208,14 @@ async function buildPipelineContext(chatMessages, maxMessages) {
             continue;
         }
 
-        const uids = getAllEntryUids(tree);
-        for (const uid of uids) {
-            const entry = await getEntryContent(bookName, uid);
-            if (entry && entry.comment) {
-                const name = entry.comment;
-                entriesByName.set(name, { ...entry, bookName, uid });
-                entryNames.push(`- ${name}`);
+        const treeUids = new Set(getAllEntryUids(tree));
+        const entries = await getAllEntriesWithContent(bookName);
+        for (const entry of entries) {
+            if (!treeUids.has(entry.uid) || !entry.comment) {
+                continue;
             }
+            entriesByName.set(entry.comment, { ...entry, bookName });
+            entryNames.push(`- ${entry.comment}`);
         }
     }
 
@@ -328,7 +329,8 @@ function resolveEntryName(name, entriesByName) {
 function substituteTemplate(template, values) {
     let result = template;
     for (const [key, value] of Object.entries(values)) {
-        result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+        // Function replacer: chat text may contain $&/$1 replacement patterns
+        result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), () => value);
     }
     return result;
 }

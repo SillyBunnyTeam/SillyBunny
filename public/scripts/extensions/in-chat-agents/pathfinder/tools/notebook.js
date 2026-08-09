@@ -8,11 +8,12 @@ const COMPACT_DESCRIPTION = 'Write to or read from a private AI scratchpad for p
 
 function getNotebookData() {
     const ctx = window?.SillyTavern?.getContext?.();
-    if (!ctx?.chatMetadata) return null;
-    if (!ctx.chatMetadata[NOTEBOOK_KEY]) {
-        ctx.chatMetadata[NOTEBOOK_KEY] = { entries: [], updated: Date.now() };
+    const metadata = ctx?.chatMetadata ?? ctx?.chat_metadata;
+    if (!metadata) return null;
+    if (!metadata[NOTEBOOK_KEY]) {
+        metadata[NOTEBOOK_KEY] = { entries: [], updated: Date.now() };
     }
-    return ctx.chatMetadata[NOTEBOOK_KEY];
+    return metadata[NOTEBOOK_KEY];
 }
 
 function saveNotebookData() {

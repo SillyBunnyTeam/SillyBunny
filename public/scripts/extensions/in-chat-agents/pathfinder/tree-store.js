@@ -13,16 +13,12 @@ export const createTreeNode = (name = '', description = '', entries = [], childr
 export const createEmptyTree = () => createTreeNode('Root', 'Top-level waypoint map');
 
 export const SETTING_DEFAULTS = {
-    globalEnable: false,
     searchMode: 'traversal',
     recurseLimit: 5,
-    mandatoryTools: false,
     dedupDetection: false,
     dedupThreshold: 0.85,
     autoSummary: false,
     autoSummaryInterval: 20,
-    multiBookMode: 'unified',
-    ephemeralResults: true,
     sidecarEnabled: false,
     enabledLorebooks: [],
     includeContextualLorebooks: true,
@@ -31,7 +27,6 @@ export const SETTING_DEFAULTS = {
     dedupeNaturalActivation: true,
     toolStates: {},
     bookPermissions: {},
-    confirmTools: {},
     // Pipeline settings
     pipelineEnabled: false,
     pipelineId: 'default',
@@ -60,7 +55,7 @@ export function getSettings() {
 
 export function setSettings(newSettings) {
     const nextSettings = { ...SETTING_DEFAULTS, ...settings, ...(newSettings || {}) };
-    for (const key of ['toolStates', 'bookPermissions', 'confirmTools', 'pipelinePrompts', 'pipelines']) {
+    for (const key of ['toolStates', 'bookPermissions', 'pipelinePrompts', 'pipelines']) {
         nextSettings[key] = {
             ...(SETTING_DEFAULTS[key] || {}),
             ...(settings?.[key] || {}),
@@ -70,7 +65,34 @@ export function setSettings(newSettings) {
     settings = nextSettings;
 }
 
+/**
+ * Replace the settings wholesale instead of merging over the previous
+ * object. setSettings can never clear a key, so switching Pathfinder
+ * agents would leak the previous agent's lorebooks and permissions.
+ */
+export function replaceSettings(newSettings) {
+    settings = { ...SETTING_DEFAULTS };
+    setSettings(newSettings);
+}
+
 const trees = new Map();
+
+// Lets the WORLDINFO_UPDATED handler distinguish Pathfinder's own saves
+// (tree already maintained in place) from external edits (tree must be
+// invalidated). Relies on the host emitting the event within the awaited save.
+let selfWriteDepth = 0;
+
+export function beginPathfinderSelfWrite() {
+    selfWriteDepth++;
+}
+
+export function endPathfinderSelfWrite() {
+    selfWriteDepth = Math.max(0, selfWriteDepth - 1);
+}
+
+export function isPathfinderSelfWrite() {
+    return selfWriteDepth > 0;
+}
 
 export function getTree(bookName) {
     return trees.get(bookName) ?? null;
@@ -82,6 +104,11 @@ export function saveTree(bookName, tree) {
 
 export function deleteTree(bookName) {
     trees.delete(bookName);
+}
+
+export function clearAllTrees() {
+    trees.clear();
+    trackerUids.clear();
 }
 
 export function findNodeById(tree, nodeId) {

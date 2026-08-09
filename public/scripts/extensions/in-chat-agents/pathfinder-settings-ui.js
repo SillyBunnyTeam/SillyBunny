@@ -45,6 +45,7 @@ let settingsEl = null;
 let currentAgent = null;
 let retrievalLogMode = safeGetAccountStorageItem(PATHFINDER_LOG_MODE_KEY) === 'detailed' ? 'detailed' : 'summary';
 let summaryMemoryUnsubscribe = null;
+let summaryMemoryPanelSeenConnected = false;
 
 function safeGetAccountStorageItem(key) {
     try {
@@ -239,6 +240,9 @@ async function ensureLorebookTree(bookName) {
     }
 }
 
+// Counterpart of syncPathfinderAgentLorebooksForCurrentChat (agent-runner.js),
+// which handles the CHAT_CHANGED trigger; both derive the book set from
+// getContextualLorebookDetails, so keep the two in sync.
 async function syncAutoAttachedLorebooks(lorebooks, settings) {
     if (!settings.autoUseAttachedLorebook && !settings.autoSyncLorebooksOnChatChange) {
         return [];
@@ -318,6 +322,7 @@ export async function openPathfinderSettings(agent) {
     if (summaryMemoryUnsubscribe) {
         summaryMemoryUnsubscribe();
     }
+    summaryMemoryPanelSeenConnected = false;
     summaryMemoryUnsubscribe = onSummaryMemoryChanged(renderSummaryMemoryEditor);
 
     // Initialize UI
@@ -604,7 +609,6 @@ function loadSettingsIntoUI() {
 
     // Tool settings
     settingsEl.find('#pf--enable-tools').prop('checked', s.sidecarEnabled || false);
-    settingsEl.find('#pf--mandatory-tools').prop('checked', s.mandatoryTools || false);
     settingsEl.find('#pf--auto-use-attached').prop('checked', s.autoUseAttachedLorebook || false);
     settingsEl.find('#pf--auto-sync-lorebooks').prop('checked', s.autoSyncLorebooksOnChatChange !== false);
     settingsEl.find('#pf--dedupe-natural-activation').prop('checked', s.dedupeNaturalActivation !== false);
@@ -654,6 +658,20 @@ function formatSummaryTimestamp(timestamp) {
 
 function renderSummaryMemoryEditor() {
     if (!settingsEl) {
+        return;
+    }
+
+    // The panel is created detached and mounted by the caller; nothing fires
+    // on close. Track the first time it is seen in the DOM, and once it is
+    // gone again drop the listener so it stops holding the detached panel.
+    if (settingsEl[0]?.isConnected) {
+        summaryMemoryPanelSeenConnected = true;
+    } else if (summaryMemoryPanelSeenConnected) {
+        if (summaryMemoryUnsubscribe) {
+            summaryMemoryUnsubscribe();
+            summaryMemoryUnsubscribe = null;
+        }
+        settingsEl = null;
         return;
     }
 
@@ -1012,13 +1030,6 @@ function bindEvents() {
     });
 
     // Tool settings
-    settingsEl.find('#pf--mandatory-tools').on('change', function () {
-        const s = getPathfinderSettings();
-        s.mandatoryTools = $(this).prop('checked');
-        setPathfinderSettings(s);
-        updateAgentSettings();
-    });
-
     settingsEl.on('change', '.pf--tool-list input[data-tool]', async function () {
         const toolName = $(this).data('tool');
         const enabled = $(this).prop('checked');
@@ -1507,17 +1518,27 @@ function updateDualModeWarning() {
 }
 
 /**
- * Update agent settings object and trigger save
+ * Update agent settings object and trigger save.
+ * Serialized: many toggle handlers call this without awaiting, and
+ * overlapping saveAgent calls on the same agent have no ordering guarantee.
  */
-async function updateAgentSettings() {
-    if (!currentAgent) return;
+let agentSettingsSaveChain = Promise.resolve();
 
-    const s = getPathfinderSettings();
-    currentAgent.settings = { ...s };
+function updateAgentSettings() {
+    agentSettingsSaveChain = agentSettingsSaveChain
+        .then(async () => {
+            if (!currentAgent) return;
 
-    await saveAgent(currentAgent);
-    persistAgentGlobalSettings();
-    saveSettingsDebounced();
+            const s = getPathfinderSettings();
+            currentAgent.settings = { ...s };
+
+            await saveAgent(currentAgent);
+            persistAgentGlobalSettings();
+            saveSettingsDebounced();
+        })
+        .catch(err => console.warn('[Pathfinder] Failed to save agent settings:', err));
+
+    return agentSettingsSaveChain;
 }
 
 /**

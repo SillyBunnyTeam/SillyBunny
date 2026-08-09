@@ -72,13 +72,6 @@ export function logPathfinderRetrievalDetail(detail) {
     });
 }
 
-export function logConditionalEvaluations(evaluations) {
-    addFeedItem({
-        type: 'conditional_evaluations',
-        evaluations,
-    });
-}
-
 // Pipeline logging functions
 
 export function logPipelineStart(pipelineName, stageCount) {
@@ -126,8 +119,3 @@ export function logPipelineError(pipelineName, stageName, error) {
     });
 }
 
-export function setSidecarActive(isActive) {
-}
-
-export function refreshHiddenToolCallMessages() {
-}

@@ -52,12 +52,18 @@ import {
 } from './tool-action-registry.js';
 import {
     getSettings as getPathfinderRuntimeSettings,
+    replaceSettings as replacePathfinderRuntimeSettings,
     setSettings as setPathfinderRuntimeSettings,
+    deleteTree as deletePathfinderTree,
+    syncTrackerUidsForLorebook,
+    isPathfinderSelfWrite,
 } from './pathfinder/tree-store.js';
+import { initializePromptStore, setPromptStorePersistHook } from './pathfinder/prompts/prompt-store.js';
+import { getDefaultPrompts, getDefaultPipelines } from './pathfinder/prompts/default-prompts.js';
 import { getPathfinderToolDefinitions } from './pathfinder/tool-definitions.js';
 import { getContextualLorebooks } from './pathfinder/pathfinder-tool-bridge.js';
 import { PATHFINDER_RETRIEVAL_PROMPT_KEYS, runSidecarRetrieval } from './pathfinder/sidecar-retrieval.js';
-import { shouldAutoSummarize } from './pathfinder/auto-summary.js';
+import { resetAutoSummaryCount, shouldAutoSummarize } from './pathfinder/auto-summary.js';
 import { buildRegexScriptRefsForAgent, cacheAgentRegexScripts, migrateLegacyRegexSnapshotsInMessages } from './regex-snapshot-store.js';
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from './regex-scripts.js';
 import { getCompanionReferenceIds } from './companion/companion-shared.js';
@@ -530,7 +536,7 @@ function getAgentToolByName(agent, toolName) {
         : null;
 }
 
-function isPathfinderToolEnabledForAgent(agent, toolName) {
+export function isPathfinderToolEnabledForAgent(agent, toolName) {
     const states = agent?.settings?.toolStates;
     if (states && typeof states === 'object' && Object.prototype.hasOwnProperty.call(states, toolName)) {
         return states[toolName] !== false;
@@ -546,21 +552,39 @@ function getPathfinderToolStateMap(agent) {
     );
 }
 
+let pathfinderPromptStoreAgentId = null;
+
 function syncPathfinderRuntimeSettings(agent = getPathfinderRuntimeAgent()) {
     const currentRuntimeSettings = getPathfinderRuntimeSettings();
+    // Adopt each newly active agent's persisted prompt store and rebuild the
+    // cache. For repeated syncs of the same agent, the cache remains the
+    // source of truth so unsaved in-memory edits are not overwritten.
+    const agentId = agent?.id ?? null;
+    const hydratePrompts = Boolean(agent?.settings) && agentId !== pathfinderPromptStoreAgentId;
+    const pipelinePrompts = hydratePrompts ? (agent.settings.pipelinePrompts ?? {}) : currentRuntimeSettings.pipelinePrompts;
+    const pipelines = hydratePrompts ? (agent.settings.pipelines ?? {}) : currentRuntimeSettings.pipelines;
+
+    // Replace, not merge: merging can never clear a key, so switching
+    // Pathfinder agents would inherit the previous agent's lorebooks
+    // and permissions.
     const nextRuntimeSettings = agent?.settings
         ? {
             ...agent.settings,
             toolStates: getPathfinderToolStateMap(agent),
-            pipelinePrompts: currentRuntimeSettings.pipelinePrompts,
-            pipelines: currentRuntimeSettings.pipelines,
+            pipelinePrompts,
+            pipelines,
         }
         : {
-            pipelinePrompts: currentRuntimeSettings.pipelinePrompts,
-            pipelines: currentRuntimeSettings.pipelines,
+            pipelinePrompts,
+            pipelines,
         };
 
-    setPathfinderRuntimeSettings(nextRuntimeSettings);
+    replacePathfinderRuntimeSettings(nextRuntimeSettings);
+
+    if (hydratePrompts) {
+        pathfinderPromptStoreAgentId = agentId;
+        initializePromptStore(getDefaultPrompts(), getDefaultPipelines());
+    }
 }
 
 function getRegisterableAgentTools(agent) {
@@ -594,6 +618,9 @@ export function getToolRecursionState() {
     };
 }
 
+// Counterpart of syncAutoAttachedLorebooks (pathfinder-settings-ui.js), which
+// handles the panel-open trigger from the same contextual-lorebook source;
+// keep the two in sync.
 export async function syncPathfinderAgentLorebooksForCurrentChat(agent = getPathfinderRuntimeAgent(), { persist = false } = {}) {
     if (!isPathfinderSubmoduleEnabled()) {
         return false;
@@ -4919,8 +4946,11 @@ function onMessageSwipeDeleted(data) {
 
 /**
  * Handles CHAT_COMPLETION_SETTINGS_READY for tool-category agents.
- * Converts registered tools to Anthropic format when needed,
- * and strips tools on the final recursion pass to force narrative output.
+ * Strips tools on the final recursion pass to force narrative output.
+ * Tools must stay in OpenAI format here: the server backends convert
+ * per-provider themselves (e.g. sendClaudeRequest filters on
+ * tool.type === 'function'), so any client-side format conversion would
+ * make the server drop every tool.
  * @param {object} data Generation data being prepared for the API call
  */
 function onChatCompletionSettingsReady(data) {
@@ -4931,34 +4961,7 @@ function onChatCompletionSettingsReady(data) {
     const recurseLimit = ToolManager.RECURSE_LIMIT ?? 5;
     if (toolRecursionDepth >= recurseLimit - 1) {
         delete data.tools;
-        data.tool_choice = 'none';
-        return;
-    }
-
-    if (!Array.isArray(data.tools) || data.tools.length === 0) {
-        return;
-    }
-
-    const isClaude = String(data.model ?? '').startsWith('claude') ||
-        data.chat_completion_source === 'claude';
-
-    if (isClaude && Array.isArray(data.tools)) {
-        data.tools = data.tools.map(tool => {
-            if (tool.type === 'function' && tool.function) {
-                return {
-                    name: tool.function.name,
-                    description: tool.function.description,
-                    input_schema: tool.function.parameters,
-                };
-            }
-            return tool;
-        });
-
-        if (data.tool_choice === 'auto') {
-            data.tool_choice = { type: 'auto' };
-        } else if (typeof data.tool_choice === 'object' && data.tool_choice?.function?.name) {
-            data.tool_choice = { type: 'tool', name: data.tool_choice.function.name };
-        }
+        delete data.tool_choice;
     }
 }
 
@@ -4990,6 +4993,9 @@ function onChatChangedToolSync() {
     requestAnimationFrame(() => {
         _onChatChangedToolSync = false;
         toolRecursionDepth = 0;
+        // The counter is per-chat: messages from the previous chat must not
+        // trigger a summary in the new one.
+        resetAutoSummaryCount();
         void (async () => {
             const pathfinderAgent = getPathfinderRuntimeAgent();
             if (pathfinderAgent) {
@@ -5000,7 +5006,14 @@ function onChatChangedToolSync() {
     });
 }
 
-function onWorldInfoUpdatedToolSync() {
+function onWorldInfoUpdatedToolSync(name, data) {
+    // External lorebook edits invalidate the cached waypoint tree; it is
+    // rebuilt on demand. Pathfinder's own saves maintain the tree in place.
+    if (typeof name === 'string' && name && !isPathfinderSelfWrite()) {
+        deletePathfinderTree(name);
+        syncTrackerUidsForLorebook(name, data);
+    }
+
     if (!areAgentsGloballyEnabled()) {
         syncToolAgentRegistrations();
         return;
@@ -5055,6 +5068,19 @@ export async function redoPromptTransform(messageIndex) {
 /**
  * Registers all event listeners for the agent runner.
  */
+async function persistPathfinderRuntimeSettingsToAgent() {
+    const agent = getPathfinderRuntimeAgent();
+    if (!agent) {
+        return;
+    }
+
+    agent.settings = {
+        ...(agent.settings || {}),
+        ...getPathfinderRuntimeSettings(),
+    };
+    await saveAgent(agent);
+}
+
 export function initAgentRunner() {
     if (agentRunnerInitialized) {
         return;
@@ -5062,6 +5088,7 @@ export function initAgentRunner() {
 
     agentRunnerInitialized = true;
     initPostGenerationRecoveryHooks();
+    setPromptStorePersistHook(() => { void persistPathfinderRuntimeSettingsToAgent(); });
 
     eventSource.on(event_types.GENERATION_STARTED, onGenerationStarted);
     eventSource.on(event_types.GENERATION_AFTER_COMMANDS, onGenerationAfterCommands);

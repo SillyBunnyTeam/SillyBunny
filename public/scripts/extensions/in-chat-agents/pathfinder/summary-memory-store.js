@@ -95,7 +95,7 @@ export async function saveSummaryMemoryContent(content) {
 }
 
 export function markSummaryMemoryInjected({ mode = '' } = {}) {
-    if (!state.uid) {
+    if (state.uid === null) {
         return;
     }
 
@@ -108,7 +108,7 @@ export function markSummaryMemoryInjected({ mode = '' } = {}) {
 }
 
 export function isSummaryMemoryEntry(entry) {
-    if (!entry || !state.uid) {
+    if (!entry || state.uid === null) {
         return false;
     }
 
