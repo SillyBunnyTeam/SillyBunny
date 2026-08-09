@@ -5,6 +5,7 @@
 ### Merged Staging PRs
 - PR #743 (2026-08-07) `fix: conversation mode send/save/cancel buttons non-functional`
 - PR #748 (2026-08-09) `fix: Pathfinder bug fixes + making two features that weren't tied to anything real`
+- PR #749 (2026-08-09) `feat: implement Pathfinder tool confirmation and mandatory tool use`
 
 ## v1.7.0
 
