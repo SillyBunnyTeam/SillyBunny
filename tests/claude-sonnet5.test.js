@@ -63,6 +63,7 @@ describe('Claude 5 backend request handling', () => {
         tempDirs.push(userRoot);
         userDirectories = { root: userRoot, backups: userRoot };
         new SecretManager(userDirectories).writeSecret(SECRET_KEYS.LINKAPI, 'linkapi-test-key');
+        new SecretManager(userDirectories).writeSecret(SECRET_KEYS.COHERE, 'cohere-test-key');
 
         const app = express();
         app.use(express.json());
@@ -225,6 +226,22 @@ describe('Claude 5 backend request handling', () => {
         const lastMessage = body.messages[body.messages.length - 1];
         // noPrefillModel: last assistant role must have been converted to user
         expect(lastMessage.role).not.toBe('assistant');
+    });
+
+    test.each([
+        ['required', 'REQUIRED'],
+        ['auto', undefined],
+    ])('Cohere maps tool_choice=%s to %s', async (toolChoice, expected) => {
+        const getBody = captureClaudePayload();
+        const res = await makeRequest({
+            chat_completion_source: CHAT_COMPLETION_SOURCES.COHERE,
+            model: 'command-r-plus',
+            tool_choice: toolChoice,
+            tools: [{ type: 'function', function: { name: 'search', parameters: { type: 'object' } } }],
+        });
+
+        expect(res.status).toBe(200);
+        expect(getBody().tool_choice).toBe(expected);
     });
 
     test('Bun LinkAPI streams bypass the leaking node-fetch pipeline', async () => {

@@ -58,6 +58,8 @@ describe('in-chat agent post-processing runner', () => {
     let getWorldInfoPrompt;
     let pathfinderRuntimeSettings;
     let replacePathfinderSettings;
+    let getToolAction;
+    let getForcedToolChoice;
 
     beforeEach(async () => {
         jest.resetModules();
@@ -148,6 +150,8 @@ describe('in-chat agent post-processing runner', () => {
         replacePathfinderSettings = jest.fn(settings => {
             pathfinderRuntimeSettings = settings;
         });
+        getToolAction = jest.fn(() => null);
+        getForcedToolChoice = jest.fn(() => null);
 
         const addListener = (listeners, event, handler) => {
             const eventListeners = listeners.get(event) ?? [];
@@ -342,6 +346,7 @@ describe('in-chat agent post-processing runner', () => {
         }));
 
         await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
+            escapeHtml: jest.fn(value => String(value)),
             regexFromString: jest.fn(value => {
                 const match = String(value ?? '').match(/^\/([\s\S]*)\/([a-z]*)$/i);
                 return match ? new RegExp(match[1], match[2]) : new RegExp(String(value ?? ''));
@@ -412,7 +417,7 @@ describe('in-chat agent post-processing runner', () => {
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/tool-action-registry.js', () => ({
-            getToolAction: jest.fn(() => null),
+            getToolAction,
             getToolFormatter: jest.fn(() => null),
         }));
 
@@ -433,7 +438,9 @@ describe('in-chat agent post-processing runner', () => {
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/pathfinder-tool-bridge.js', () => ({
+            CONFIRMABLE_TOOLS: new Set(),
             getContextualLorebooks: jest.fn(() => []),
+            getForcedToolChoice,
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/sidecar-retrieval.js', () => ({
@@ -3765,6 +3772,38 @@ describe('in-chat agent post-processing runner', () => {
             pipelinePrompts: { promptB: { id: 'promptB' } },
             pipelines: { pipelineB: { id: 'pipelineB' } },
         }));
+    });
+
+    test('forces tool use only when the recursion budget leaves a tool pass', async () => {
+        enabledToolAgents = [{
+            id: 'pathfinder-a',
+            name: 'Pathfinder',
+            category: 'tool',
+            sourceTemplateId: 'tpl-pathfinder',
+            settings: { sidecarEnabled: true, mandatoryTools: true },
+            tools: [],
+        }];
+        getToolAction.mockReturnValue(jest.fn(async () => 'ok'));
+        getForcedToolChoice.mockReturnValue('required');
+
+        const { initAgentRunner, syncToolAgentRegistrations } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        const { ToolManager } = await import('../public/scripts/tool-calling.js');
+        syncToolAgentRegistrations();
+        initAgentRunner();
+
+        const initialPass = { tools: [{}], chat_completion_source: 'openai', model: 'gpt-5' };
+        await eventSource.emit(eventTypes.CHAT_COMPLETION_SETTINGS_READY, initialPass);
+
+        expect(initialPass.tool_choice).toBe('required');
+        expect(getForcedToolChoice).toHaveBeenCalledWith('openai', 'gpt-5');
+
+        ToolManager.RECURSE_LIMIT = 1;
+        const finalPass = { tools: [{}], tool_choice: 'required' };
+        await eventSource.emit(eventTypes.CHAT_COMPLETION_SETTINGS_READY, finalPass);
+
+        expect(finalPass).not.toHaveProperty('tools');
+        expect(finalPass).not.toHaveProperty('tool_choice');
+        expect(getForcedToolChoice).toHaveBeenCalledTimes(1);
     });
 
     test('reuses cached Pathfinder retrieval when swiping the same assistant message', async () => {

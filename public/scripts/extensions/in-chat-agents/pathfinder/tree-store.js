@@ -15,6 +15,7 @@ export const createEmptyTree = () => createTreeNode('Root', 'Top-level waypoint 
 export const SETTING_DEFAULTS = {
     searchMode: 'traversal',
     recurseLimit: 5,
+    mandatoryTools: false,
     dedupDetection: false,
     dedupThreshold: 0.85,
     autoSummary: false,
@@ -26,6 +27,7 @@ export const SETTING_DEFAULTS = {
     autoSyncLorebooksOnChatChange: true,
     dedupeNaturalActivation: true,
     toolStates: {},
+    confirmTools: {},
     bookPermissions: {},
     // Pipeline settings
     pipelineEnabled: false,
@@ -55,7 +57,7 @@ export function getSettings() {
 
 export function setSettings(newSettings) {
     const nextSettings = { ...SETTING_DEFAULTS, ...settings, ...(newSettings || {}) };
-    for (const key of ['toolStates', 'bookPermissions', 'pipelinePrompts', 'pipelines']) {
+    for (const key of ['toolStates', 'confirmTools', 'bookPermissions', 'pipelinePrompts', 'pipelines']) {
         nextSettings[key] = {
             ...(SETTING_DEFAULTS[key] || {}),
             ...(settings?.[key] || {}),

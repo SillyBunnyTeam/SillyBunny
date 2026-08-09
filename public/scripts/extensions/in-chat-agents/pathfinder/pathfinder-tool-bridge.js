@@ -1,4 +1,5 @@
 import { isPathfinderSubmoduleEnabled } from '../agent-store.js';
+import { getLinkApiRequestFormat } from '../../../linkapi-utils.js';
 import { getSettings, getTree, isLorebookEnabled, canReadBook, canWriteBook, canDeleteBook } from './tree-store.js';
 
 const CHAT_LOREBOOK_METADATA_KEY = 'world_info';
@@ -17,6 +18,43 @@ export const TOOL_NAMES = {
 };
 
 export const ALL_TOOL_NAMES = Object.values(TOOL_NAMES);
+
+/** Tools that modify lorebook data and can be gated behind a confirmation dialog. */
+export const CONFIRMABLE_TOOLS = new Set([
+    TOOL_NAMES.REMEMBER,
+    TOOL_NAMES.UPDATE,
+    TOOL_NAMES.FORGET,
+    TOOL_NAMES.SUMMARIZE,
+    TOOL_NAMES.REORGANIZE,
+    TOOL_NAMES.MERGE_SPLIT,
+]);
+
+/**
+ * Resolve the tool_choice value that forces tool use, when the user enabled
+ * "require tool use on every response". The server backends translate:
+ * Anthropic-format backends use 'any'; OpenAI-format backends use 'required'.
+ * @param {string} chatCompletionSource - Source id from the generation data
+ * @param {string} model - Model id used to resolve format-switching providers
+ * @returns {string|null} Value for tool_choice, or null when not forcing
+ */
+export function getForcedToolChoice(chatCompletionSource, model) {
+    if (!isPathfinderSubmoduleEnabled()) {
+        return null;
+    }
+
+    const s = getSettings();
+    if (!s.sidecarEnabled || !s.mandatoryTools) {
+        return null;
+    }
+
+    if (chatCompletionSource === 'ai21') {
+        return null;
+    }
+
+    const usesAnthropicFormat = chatCompletionSource === 'claude'
+        || (chatCompletionSource === 'linkapi' && getLinkApiRequestFormat(model) === 'anthropic');
+    return usesAnthropicFormat ? 'any' : 'required';
+}
 
 export function getActiveTunnelVisionBooks() {
     if (!isPathfinderSubmoduleEnabled()) {

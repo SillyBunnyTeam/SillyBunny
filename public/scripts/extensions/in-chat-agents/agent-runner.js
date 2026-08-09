@@ -61,7 +61,8 @@ import {
 import { initializePromptStore, setPromptStorePersistHook } from './pathfinder/prompts/prompt-store.js';
 import { getDefaultPrompts, getDefaultPipelines } from './pathfinder/prompts/default-prompts.js';
 import { getPathfinderToolDefinitions } from './pathfinder/tool-definitions.js';
-import { getContextualLorebooks } from './pathfinder/pathfinder-tool-bridge.js';
+import { getContextualLorebooks, getForcedToolChoice } from './pathfinder/pathfinder-tool-bridge.js';
+import { confirmToolCall, shouldConfirmToolCall } from './pathfinder/tool-confirmation.js';
 import { PATHFINDER_RETRIEVAL_PROMPT_KEYS, runSidecarRetrieval } from './pathfinder/sidecar-retrieval.js';
 import { resetAutoSummaryCount, shouldAutoSummarize } from './pathfinder/auto-summary.js';
 import { buildRegexScriptRefsForAgent, cacheAgentRegexScripts, migrateLegacyRegexSnapshotsInMessages } from './regex-snapshot-store.js';
@@ -711,7 +712,15 @@ export function syncToolAgentRegistrations() {
                 displayName: toolDef.displayName,
                 description: toolDef.description,
                 parameters: toolDef.parameters,
-                action,
+                action: async (args) => {
+                    if (shouldConfirmToolCall(toolDef.name)) {
+                        const approved = await confirmToolCall(toolDef.displayName ?? toolDef.name, args);
+                        if (!approved) {
+                            return 'The user declined this tool call. Continue the response without it and do not retry.';
+                        }
+                    }
+                    return action(args);
+                },
                 formatMessage,
                 shouldRegister: async () => true,
                 stealth: toolDef.stealth ?? false,
@@ -4962,6 +4971,17 @@ function onChatCompletionSettingsReady(data) {
     if (toolRecursionDepth >= recurseLimit - 1) {
         delete data.tools;
         delete data.tool_choice;
+        return;
+    }
+
+    // "Require tool use on every response": force only the first pass of a
+    // turn. Forcing recursive passes too would make every turn consume the
+    // whole recursion budget before the model may write its reply.
+    if (toolRecursionDepth === 0) {
+        const forcedToolChoice = getForcedToolChoice(data.chat_completion_source, data.model);
+        if (forcedToolChoice) {
+            data.tool_choice = forcedToolChoice;
+        }
     }
 }
 

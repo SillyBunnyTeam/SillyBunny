@@ -1109,6 +1109,7 @@ async function sendCohereRequest(request, response) {
     try {
         const convertedHistory = convertCohereMessages(request.body.messages, getPromptNames(request));
         const tools = [];
+        const toolChoice = String(request.body.tool_choice ?? '').toUpperCase();
 
         if (Array.isArray(request.body.tools) && request.body.tools.length > 0) {
             tools.push(...request.body.tools);
@@ -1134,6 +1135,7 @@ async function sendCohereRequest(request, response) {
             presence_penalty: request.body.presence_penalty,
             documents: [],
             tools: tools,
+            tool_choice: ['REQUIRED', 'NONE'].includes(toolChoice) ? toolChoice : undefined,
         };
 
         const canDoSafetyMode = String(request.body.model).endsWith('08-2024');
