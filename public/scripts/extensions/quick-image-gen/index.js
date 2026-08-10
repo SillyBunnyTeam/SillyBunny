@@ -110,6 +110,7 @@ import {
 } from "./lib/provider-adapters.js";
 import {
     buildNanoGptReferenceFields,
+    getClosestSupportedImageSize,
     getFalEffectiveGuidance,
     getFalEffectiveSteps,
     getGlmImageResolution,
@@ -453,11 +454,10 @@ const QIG_DEFAULT_COLLAPSED_SECTIONS = {
     sectionCreate: true,
     sectionContext: true,
     sectionAutomation: true,
-    providerSettings: false,
     promptAdvanced: true,
     injectOptions: true,
     advancedSettings: true,
-    setupPanel: false,
+    setupPanel: true,
 };
 let qigKeyboardShortcutsBound = false;
 
@@ -633,7 +633,6 @@ function setupSettingsSearch() {
             ["sectionCreate", "qig-section-create-toggle", "qig-section-create-content"],
             ["sectionContext", "qig-section-context-toggle", "qig-section-context-content"],
             ["sectionAutomation", "qig-section-automation-toggle", "qig-section-automation-content"],
-            ["providerSettings", "qig-provider-settings-toggle", "qig-provider-settings-content"],
             ["promptAdvanced", "qig-prompt-advanced-toggle", "qig-prompt-advanced-content"],
             ["injectOptions", "qig-inject-options-toggle", "qig-inject-options"],
             ["advancedSettings", "qig-advanced-settings-toggle", "qig-advanced-settings"],
@@ -3539,12 +3538,10 @@ function setGenerationActiveUI(active, { disableGenerateButton = false } = {}) {
             paletteBtn.classList.remove("fa-palette");
             paletteBtn.classList.add("fa-spinner", "fa-spin");
             paletteBtn.title = "Cancel Generation";
-            paletteBtn.style.opacity = "0.7";
         } else {
             paletteBtn.classList.remove("fa-spinner", "fa-spin");
             paletteBtn.classList.add("fa-palette");
             paletteBtn.title = "Generate Image (right-click for presets)";
-            paletteBtn.style.opacity = "0.7";
         }
     }
 
@@ -7184,7 +7181,7 @@ async function genNovelAI(prompt, negative, s, signal) {
             ? proxyUrl
             : buildNovelAIProxyRequestUrl(proxyUrl, "chat");
         assertSafeConfigurableEndpoint(v1Url, "NovelAI proxy URL");
-        const v1Size = s.width > s.height ? "1216:832" : s.width < s.height ? "832:1216" : "1024:1024";
+        const v1Size = getClosestSupportedImageSize(s, NAI_RESOLUTIONS.map(r => `${r.w}x${r.h}`)).replace("x", ":");
         const [v1Width, v1Height] = v1Size.split(":").map(Number);
         const v1Payload = {
             model: s.naiModel,
@@ -7291,56 +7288,6 @@ function getConfiguredImageSize(settings = getSettings()) {
     const width = Number(settings?.width) || 1024;
     const height = Number(settings?.height) || 1024;
     return `${width}x${height}`;
-}
-
-function parseSupportedImageSizeOption(option, targetPixels) {
-    const size = String(option || "").trim();
-    const dimensionMatch = size.match(/^(\d+)x(\d+)$/i);
-    if (dimensionMatch) {
-        const width = Number(dimensionMatch[1]);
-        const height = Number(dimensionMatch[2]);
-        if (width > 0 && height > 0) return { size, ratio: width / height, pixels: width * height };
-    }
-
-    const ratioMatch = size.match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/);
-    if (ratioMatch) {
-        const width = Number(ratioMatch[1]);
-        const height = Number(ratioMatch[2]);
-        if (width > 0 && height > 0) return { size, ratio: width / height, pixels: targetPixels };
-    }
-
-    return null;
-}
-
-function getClosestSupportedImageSize(settings, supportedSizes) {
-    const width = Number(settings?.width) || 1024;
-    const height = Number(settings?.height) || 1024;
-    const configuredSize = `${width}x${height}`;
-    if (!Array.isArray(supportedSizes) || !supportedSizes.length) return configuredSize;
-
-    const targetPixels = width * height;
-    const targetRatio = width / height;
-    const parsedSizes = supportedSizes
-        .map(size => parseSupportedImageSizeOption(size, targetPixels))
-        .filter(Boolean);
-    if (!parsedSizes.length) return configuredSize;
-
-    const exact = parsedSizes.find(size => size.size.toLowerCase() === configuredSize.toLowerCase());
-    if (exact) return exact.size;
-
-    let best = parsedSizes[0];
-    let bestScore = Infinity;
-    for (const size of parsedSizes) {
-        const ratioScore = Math.abs(Math.log(size.ratio / targetRatio));
-        const pixelScore = Math.abs(Math.log(size.pixels / targetPixels));
-        const score = (ratioScore * 3) + pixelScore;
-        if (score < bestScore) {
-            best = size;
-            bestScore = score;
-        }
-    }
-
-    return best.size;
 }
 
 function getOpenAICompatibleImageSize(provider, model, settings = getSettings()) {
@@ -8929,7 +8876,10 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
                 headers: {},
                 signal: controller.signal,
                 fetchImpl: corsFetch,
-                allowBrowserFallback: false,
+                allowBrowserFallback: true,
+                forceFetch: true,
+                allowedHostSuffixes: [new URL(requestUrl).hostname],
+                materializeBytes: createTransientImageObjectUrl,
             });
         };
         if (endpointMode === "images_generations"
@@ -17278,8 +17228,6 @@ function createUI() {
     const sectionContextExpanded = collapsed.sectionContext ? "false" : "true";
     const sectionAutomationHidden = collapsed.sectionAutomation ? "hidden" : "";
     const sectionAutomationExpanded = collapsed.sectionAutomation ? "false" : "true";
-    const providerSettingsHidden = collapsed.providerSettings ? "hidden" : "";
-    const providerSettingsExpanded = collapsed.providerSettings ? "false" : "true";
     const promptAdvancedHidden = collapsed.promptAdvanced ? "hidden" : "";
     const promptAdvancedExpanded = collapsed.promptAdvanced ? "false" : "true";
     const injectOptionsCollapsed = collapsed.injectOptions && !s.injectEnabled;
@@ -17425,22 +17373,14 @@ function createUI() {
                         <div class="qig-card-title">Output</div>
                         <small class="qig-muted">Set image dimensions and count. Unsupported controls are hidden for the active provider.</small>
                     </div>
-                    <div class="qig-provider-card qig-collapsible">
-                        <button id="qig-provider-settings-toggle" type="button" class="qig-collapsible__header" aria-expanded="${providerSettingsExpanded}" aria-controls="qig-provider-settings-content">
-                            <span>
-                                <span class="qig-card-title">Active Provider Settings</span>
-                                <small>Credentials, model IDs, and provider-specific options for ${esc(activeProviderName)}.</small>
-                            </span>
-                            <span class="qig-collapsible__icon fa-solid ${collapsed.providerSettings ? "fa-chevron-right" : "fa-chevron-down"}" aria-hidden="true"></span>
-                        </button>
-                        <div id="qig-provider-settings-content" class="qig-collapsible__content" ${providerSettingsHidden}>
+                    <div class="qig-provider-card">
                 <div id="qig-pollinations-settings" class="qig-provider-section">
                     <label>Pollinations API Key <small>(optional, required for paid models)</small></label>
                     <input id="qig-pollinations-key" type="password" value="${esc(s.pollinationsKey)}" placeholder="pk_... or sk_...">
-                    <small style="opacity:0.6;font-size:10px;">Latest Pollinations paid access uses API keys. Use <code>pk_</code> keys for browser/client-side use when possible.</small>
+                    <small>Latest Pollinations paid access uses API keys. Use <code>pk_</code> keys for browser/client-side use when possible.</small>
                     <label>Model</label>
                     ${pollinationsModelInput(s.pollinationsModel)}
-                    <small style="opacity:0.6;font-size:10px;">Suggestions include current free and paid Pollinations image models. You can also type any custom model ID manually.</small>
+                    <small>Suggestions include current free and paid Pollinations image models. You can also type any custom model ID manually.</small>
                 </div>
                 
                 <div id="qig-novelai-settings" class="qig-provider-section">
@@ -17459,7 +17399,7 @@ function createUI() {
                     <input id="qig-gpt-image-key" type="password" value="${esc(s.gptImageKey)}" placeholder="sk-...">
                     <label>Model</label>
                     ${gptImageModelInput(s.gptImageModel)}
-                    <small style="opacity:0.6;font-size:10px;">Defaults to <code>gpt-image-2</code>. You can type any compatible model ID for proxies.</small>
+                    <small>Defaults to <code>gpt-image-2</code>. You can type any compatible model ID for proxies.</small>
                     <label>Proxy URL <small>(optional — leave blank to use official OpenAI API)</small></label>
                     <input id="qig-gpt-image-proxy-url" type="text" value="${esc(s.gptImageProxyUrl)}" placeholder="https://your-proxy-url/v1">
                     <small>A URL ending in <code>/v1</code> expands to OpenAI's image route. Other paths are tried exactly as entered; Comfy-style <code>/proxy/openai</code> namespaces can retry the standard image route when required.</small>
@@ -17501,7 +17441,7 @@ function createUI() {
                             </select>
                         </div>
                     </div>
-                    <small style="opacity:0.6;font-size:10px;">QIG maps the shared size controls to GPT Image sizes: square, landscape, or portrait. Transparent background works with PNG/WebP. Negative prompt text is appended as an avoid instruction.</small>
+                    <small>QIG maps the shared size controls to GPT Image sizes: square, landscape, or portrait. Transparent background works with PNG/WebP. Negative prompt text is appended as an avoid instruction.</small>
                 </div>
                 
                 <div id="qig-arliai-settings" class="qig-provider-section">
@@ -17516,7 +17456,7 @@ function createUI() {
                     <input id="qig-routeway-key" type="password" value="${esc(s.routewayKey)}" placeholder="clsk-...">
                     <label>Model</label>
                     ${routewayModelInput(s.routewayModel)}
-                    <small style="opacity:0.6;font-size:10px;">Suggestions include known Routeway image models. Custom model IDs are supported. Known models auto-map the shared size controls to the nearest supported API size.</small>
+                    <small>Suggestions include known Routeway image models. Custom model IDs are supported. Known models auto-map the shared size controls to the nearest supported API size.</small>
                 </div>
 
                 <div id="qig-navy-settings" class="qig-provider-section">
@@ -17524,7 +17464,7 @@ function createUI() {
                     <input id="qig-navy-key" type="password" value="${esc(s.navyKey)}">
                     <label>Model</label>
                     ${navyModelInput(s.navyModel)}
-                    <small style="opacity:0.6;font-size:10px;">Suggestions include known Navy.ai image models. Custom model IDs are supported.</small>
+                    <small>Suggestions include known Navy.ai image models. Custom model IDs are supported.</small>
                 </div>
 
                 <div id="qig-nanogpt-settings" class="qig-provider-section">
@@ -17560,7 +17500,7 @@ function createUI() {
                     <input id="qig-civitai-key" type="password" value="${esc(s.civitaiKey)}">
                     <label>Model URN</label>
                     <input id="qig-civitai-model" type="text" value="${esc(s.civitaiModel)}" placeholder="urn:air:sd1:checkpoint:civitai:4201@130072">
-                    <small style="opacity:0.6;font-size:10px;">Find this on the model page → API tab → copy the URN</small>
+                    <small>Find this on the model page → API tab → copy the URN</small>
                     <label>Scheduler</label>
                     <select id="qig-civitai-scheduler">
                         <option value="EulerA" ${s.civitaiScheduler === "EulerA" ? "selected" : ""}>Euler A</option>
@@ -17569,7 +17509,7 @@ function createUI() {
                         <option value="DDIM" ${s.civitaiScheduler === "DDIM" ? "selected" : ""}>DDIM</option>
                     </select>
                     <label>LoRAs (URN:weight, comma-separated)</label>
-                    <small style="opacity:0.6;font-size:10px;">Always applied. For scene-specific LoRAs, use Contextual Filters.</small>
+                    <small>Always applied. For scene-specific LoRAs, use Contextual Filters.</small>
                     <input id="qig-civitai-loras" type="text" value="${esc(s.civitaiLoras || "")}" placeholder="urn:air:sd1:lora:civitai:82098@87153:0.8, urn:air:sdxl:lora:civitai:12345@67890:1.0">
                 </div>
                 
@@ -17657,7 +17597,7 @@ function createUI() {
                     <input id="qig-replicate-key" type="password" value="${esc(s.replicateKey)}">
                     <label>Model Version</label>
                     <input id="qig-replicate-model" type="text" value="${esc(s.replicateModel)}" placeholder="stability-ai/sdxl:...">
-                    <small style="opacity:0.6;font-size:10px;">owner/model:version format from the Replicate model page</small>
+                    <small>owner/model:version format from the Replicate model page</small>
                 </div>
 
                 <div id="qig-fal-settings" class="qig-provider-section">
@@ -17665,7 +17605,7 @@ function createUI() {
                     <input id="qig-fal-key" type="password" value="${esc(s.falKey)}">
                     <label>Model Endpoint</label>
                     <input id="qig-fal-model" type="text" value="${esc(s.falModel)}" placeholder="fal-ai/flux/schnell">
-                    <small style="opacity:0.6;font-size:10px;">Model path from the Fal.ai dashboard (e.g., fal-ai/flux/schnell)</small>
+                    <small>Model path from the Fal.ai dashboard (e.g., fal-ai/flux/schnell)</small>
                 </div>
 
                 <div id="qig-together-settings" class="qig-provider-section">
@@ -17711,53 +17651,53 @@ function createUI() {
                          </div>
                          <div class="form-hint">Click Refresh to load only models supported by the selected loader.</div>
                          <div class="qig-row">
-                            <div><label>Denoise</label><input id="qig-comfy-denoise" type="number" value="${esc(s.comfyDenoise ?? 1.0)}" min="0" max="1" step="0.05"><small style="opacity:0.6;font-size:10px;">1.0 = full txt2img. For img2img: upload a Reference Image below and set Denoise &lt; 1.0</small></div>
-                            <div><label>CLIP Skip</label><input id="qig-comfy-clip" type="number" value="${esc(s.comfyClipSkip || 1)}" min="1" max="12" step="1"><small style="opacity:0.6;font-size:10px;">1 for most models, 2 for anime/NAI-based</small></div>
+                            <div><label>Denoise</label><input id="qig-comfy-denoise" type="number" value="${esc(s.comfyDenoise ?? 1.0)}" min="0" max="1" step="0.05"><small>1.0 = full txt2img. For img2img: upload a Reference Image below and set Denoise &lt; 1.0</small></div>
+                            <div><label>CLIP Skip</label><input id="qig-comfy-clip" type="number" value="${esc(s.comfyClipSkip || 1)}" min="1" max="12" step="1"><small>1 for most models, 2 for anime/NAI-based</small></div>
                          </div>
                          <label>Scheduler</label>
                          <select id="qig-comfy-scheduler">${COMFY_SCHEDULERS.map(x => `<option value="${x}" ${s.comfyScheduler === x ? "selected" : ""}>${x}</option>`).join("")}</select>
-                         <small style="opacity:0.6;font-size:10px;">Noise schedule for the sampler — karras is popular for DPM++, normal for others</small>
+                         <small>Noise schedule for the sampler — karras is popular for DPM++, normal for others</small>
                          <label>Timeout (seconds)</label>
                          <input id="qig-comfy-timeout" type="number" value="${esc(s.comfyTimeout || 300)}" min="10" max="1800">
-                         <small style="opacity:0.6;font-size:10px;">How long SillyTavern waits for ComfyUI to finish before giving up.</small>
+                         <small>How long SillyTavern waits for ComfyUI to finish before giving up.</small>
                          <div class="qig-row">
-                            <div><label>Output Node IDs</label><input id="qig-comfy-output-nodes" type="text" value="${esc(s.comfyOutputNodeIds || "")}" placeholder="9, 42"><small style="opacity:0.6;font-size:10px;">Comma-separated. Empty returns images from every output node.</small></div>
-                            <div><label>Image Index</label><input id="qig-comfy-output-index" type="number" value="${esc(s.comfyOutputImageIndex ?? -1)}" min="-1" step="1"><small style="opacity:0.6;font-size:10px;">-1 returns every image; 0 selects the first.</small></div>
+                            <div><label>Output Node IDs</label><input id="qig-comfy-output-nodes" type="text" value="${esc(s.comfyOutputNodeIds || "")}" placeholder="9, 42"><small>Comma-separated. Empty returns images from every output node.</small></div>
+                            <div><label>Image Index</label><input id="qig-comfy-output-index" type="number" value="${esc(s.comfyOutputImageIndex ?? -1)}" min="-1" step="1"><small>-1 returns every image; 0 selects the first.</small></div>
                          </div>
                          <label style="display:flex;align-items:flex-start;gap:6px;margin:6px 0;cursor:pointer;">
                             <input id="qig-comfy-legacy-interrupt" type="checkbox" ${s.comfyAllowLegacyInterrupt ? "checked" : ""}>
-                            <span>Allow targeted legacy interrupt<br><small style="opacity:0.6;font-size:10px;">Off is safest on shared servers. Older ComfyUI versions may treat even a targeted interrupt as global.</small></span>
+                            <span>Allow targeted legacy interrupt<br><small>Off is safest on shared servers. Older ComfyUI versions may treat even a targeted interrupt as global.</small></span>
                          </label>
                          <label style="display:flex;align-items:center;gap:6px;margin:6px 0;cursor:pointer;">
                             <input id="qig-comfy-upscale" type="checkbox" ${s.comfyUpscale ? "checked" : ""}>
                             <span>Upscale Output</span>
-                            <small style="opacity:0.6;font-size:10px;">(run upscale model after generation)</small>
+                            <small>(run upscale model after generation)</small>
                          </label>
                          <div id="qig-comfy-upscale-opts" style="display:${s.comfyUpscale ? 'block' : 'none'}; margin-left:24px; border-left:2px solid rgba(255,255,255,0.1); padding-left:10px;">
                              <label>Upscale Model</label>
                              <input id="qig-comfy-upscale-model" type="text" value="${esc(s.comfyUpscaleModel || "RealESRGAN_x4plus.pth")}" placeholder="RealESRGAN_x4plus.pth">
-                             <small style="opacity:0.6;font-size:10px;">Must match filename in ComfyUI models/upscale_models/</small>
+                             <small>Must match filename in ComfyUI models/upscale_models/</small>
                          </div>
                          <label style="display:flex;align-items:center;gap:6px;margin:6px 0;cursor:pointer;">
                              <input id="qig-comfy-skip-neg" type="checkbox" ${s.comfySkipNegativePrompt ? "checked" : ""}>
                              <span>Skip Negative Prompt</span>
-                             <small style="opacity:0.6;font-size:10px;">(reuse positive conditioning for models that do not use negatives)</small>
+                             <small>(reuse positive conditioning for models that do not use negatives)</small>
                          </label>
                          <div id="qig-comfy-flux-opts" style="display:${normalizeComfyModelLoader(s.comfyModelLoader, s) === "unet" ? "block" : "none"}; margin-left:24px; border-left:2px solid rgba(255,255,255,0.1); padding-left:10px;">
                             <div class="form-hint">Diffusion/UNET models require separate CLIP and VAE filenames before generation.</div>
                             <div class="qig-row">
-                                <div><label>CLIP Model 1</label><input id="qig-comfy-flux-clip1" type="text" value="${esc(s.comfyFluxClipModel1 || "")}" placeholder="t5xxl_fp16.safetensors"><small style="opacity:0.6;font-size:10px;">From models/text_encoders/</small></div>
-                                <div><label>CLIP Model 2</label><input id="qig-comfy-flux-clip2" type="text" value="${esc(s.comfyFluxClipModel2 || "")}" placeholder="clip_l.safetensors"><small style="opacity:0.6;font-size:10px;">From models/text_encoders/ (leave blank if single-CLIP)</small></div>
+                                <div><label>CLIP Model 1</label><input id="qig-comfy-flux-clip1" type="text" value="${esc(s.comfyFluxClipModel1 || "")}" placeholder="t5xxl_fp16.safetensors"><small>From models/text_encoders/</small></div>
+                                <div><label>CLIP Model 2</label><input id="qig-comfy-flux-clip2" type="text" value="${esc(s.comfyFluxClipModel2 || "")}" placeholder="clip_l.safetensors"><small>From models/text_encoders/ (leave blank if single-CLIP)</small></div>
                             </div>
                             <label>CLIP Type</label>
                             <input id="qig-comfy-flux-clip-type" type="text" value="${esc(s.comfyFluxClipType || "flux")}" placeholder="flux">
-                            <small style="opacity:0.6;font-size:10px;">DualCLIP (2 models): flux, sdxl, sd3, hunyuan_video. SingleCLIP (1 model): flux2, sd3, stable_diffusion, qwen_image, hunyuan_image, etc.</small>
+                            <small>DualCLIP (2 models): flux, sdxl, sd3, hunyuan_video. SingleCLIP (1 model): flux2, sd3, stable_diffusion, qwen_image, hunyuan_image, etc.</small>
                             <label>VAE Model</label>
                             <input id="qig-comfy-flux-vae" type="text" value="${esc(s.comfyFluxVaeModel || "")}" placeholder="ae.safetensors">
-                            <small style="opacity:0.6;font-size:10px;">From models/vae/. Required for UNET-only models.</small>
+                            <small>From models/vae/. Required for UNET-only models.</small>
                          </div>
                          <label>LoRAs (filename:weight, comma-separated)</label>
-                         <small style="opacity:0.6;font-size:10px;">Applied only to the built-in workflow. Custom workflows must include their own LoRA nodes. Filename must match your ComfyUI loras folder.</small>
+                         <small>Applied only to the built-in workflow. Custom workflows must include their own LoRA nodes. Filename must match your ComfyUI loras folder.</small>
                          <input id="qig-comfy-loras" type="text" value="${esc(s.comfyLoras || "")}" placeholder="my_lora.safetensors:0.8, style_lora.safetensors:0.6">
                          <label>Workflow Preset</label>
                          <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
@@ -17767,7 +17707,7 @@ function createUI() {
                              <button id="qig-comfy-workflow-update" class="menu_button" style="padding:2px 8px;">♻️ Update</button>
                              <button id="qig-comfy-workflow-del" class="menu_button" style="padding:2px 8px;">🗑️</button>
                          </div>
-                         <small style="opacity:0.6;font-size:10px;">Use presets for quick graph switching (e.g., with LoRA / without LoRA). Profiles save provider settings; workflow presets focus on Comfy graph fields.</small>
+                         <small>Use presets for quick graph switching (e.g., with LoRA / without LoRA). Profiles save provider settings; workflow presets focus on Comfy graph fields.</small>
                          <label>Custom Workflow JSON</label>
                          <textarea id="qig-comfy-workflow" rows="3" placeholder='Paste workflow from ComfyUI "Save (API Format)". Tokens include %prompt%, %negative%, %seed%, %width%, %height%, %steps%, %cfg%, %denoise%, %clip_stop_at_layer%, %sampler%, %scheduler%, %model%, %reference_image%'>${esc(s.comfyWorkflow || "")}</textarea>
                          <div class="form-hint">Optional: built-in standard and Flux/UNET workflows are available without JSON. Custom graphs use only settings represented by placeholders, and all matching output images are returned. Export from ComfyUI using Save (API Format). Executable workflow JSON is omitted from full settings exports for safety.</div>
@@ -17781,16 +17721,16 @@ function createUI() {
                              <button id="qig-a1111-model-refresh" class="menu_button" style="padding:4px 8px;" title="Refresh model list">🔄</button>
                          </div>
                          <label>LoRAs (name:weight, comma-separated)</label>
-                         <small style="opacity:0.6;font-size:10px;">Always applied. For scene-specific LoRAs, use Contextual Filters.</small>
+                         <small>Always applied. For scene-specific LoRAs, use Contextual Filters.</small>
                          <input id="qig-a1111-loras" type="text" value="${esc(s.a1111Loras || "")}" placeholder="my_lora:0.8, detail_lora:0.6">
                          <label>VAE</label>
                          <select id="qig-a1111-vae">
                              <option value="" ${!s.a1111Vae ? "selected" : ""}>Automatic</option>
                          </select>
-                         <small style="opacity:0.6;font-size:10px;">Override model's built-in VAE. Click Refresh to populate list.</small>
+                         <small>Override model's built-in VAE. Click Refresh to populate list.</small>
                          <div class="qig-row" style="margin-top:8px;">
-                            <div><label>CLIP Skip</label><input id="qig-a1111-clip" type="number" value="${esc(s.a1111ClipSkip || 1)}" min="1" max="12" step="1"><small style="opacity:0.6;font-size:10px;">1 for most models, 2 for anime/NAI-based</small></div>
-                            <div><label>Scheduler</label><select id="qig-a1111-scheduler">${A1111_SCHEDULERS.map(x => `<option value="${x}" ${s.a1111Scheduler === x ? "selected" : ""}>${x}</option>`).join("")}</select><small style="opacity:0.6;font-size:10px;">Noise schedule (A1111 1.6+)</small></div>
+                            <div><label>CLIP Skip</label><input id="qig-a1111-clip" type="number" value="${esc(s.a1111ClipSkip || 1)}" min="1" max="12" step="1"><small>1 for most models, 2 for anime/NAI-based</small></div>
+                            <div><label>Scheduler</label><select id="qig-a1111-scheduler">${A1111_SCHEDULERS.map(x => `<option value="${x}" ${s.a1111Scheduler === x ? "selected" : ""}>${x}</option>`).join("")}</select><small>Noise schedule (A1111 1.6+)</small></div>
                          </div>
                          <div class="qig-row" style="margin-top:4px;">
                             <label class="checkbox_label" style="flex:1;">
@@ -17803,8 +17743,8 @@ function createUI() {
                             </label>
                          </div>
                          <div class="qig-row" style="margin-top:4px;">
-                             <div><label>Variation Seed</label><input id="qig-a1111-subseed" type="number" value="${esc(s.a1111Subseed ?? -1)}"><small style="opacity:0.6;font-size:10px;">-1 = random. Blends with main seed</small></div>
-                             <div><label>Variation Strength</label><input id="qig-a1111-subseed-strength" type="number" value="${esc(s.a1111SubseedStrength ?? 0)}" min="0" max="1" step="0.05"><small style="opacity:0.6;font-size:10px;">0 = no effect, 1 = full variation</small></div>
+                             <div><label>Variation Seed</label><input id="qig-a1111-subseed" type="number" value="${esc(s.a1111Subseed ?? -1)}"><small>-1 = random. Blends with main seed</small></div>
+                             <div><label>Variation Strength</label><input id="qig-a1111-subseed-strength" type="number" value="${esc(s.a1111SubseedStrength ?? 0)}" min="0" max="1" step="0.05"><small>0 = no effect, 1 = full variation</small></div>
                          </div>
                          <label class="checkbox_label" style="margin-top:8px;">
                              <input id="qig-a1111-hires" type="checkbox" ${s.a1111HiresFix ? "checked" : ""}>
@@ -17853,12 +17793,12 @@ function createUI() {
                              <label>ADetailer Negative (optional)</label>
                              <input id="qig-a1111-ad-negative" type="text" value="${esc(s.a1111AdetailerNegative || "")}" placeholder="Leave empty to use main negative">
                              <div class="qig-row" style="margin-top:4px;">
-                                 <div><label>Denoise</label><input id="qig-a1111-ad-denoise" type="number" value="${esc(s.a1111AdetailerDenoise ?? 0.4)}" min="0" max="1" step="0.05"><small style="opacity:0.6;font-size:10px;">Inpaint strength for detected regions</small></div>
-                                 <div><label>Confidence</label><input id="qig-a1111-ad-confidence" type="number" value="${esc(s.a1111AdetailerConfidence ?? 0.3)}" min="0" max="1" step="0.05"><small style="opacity:0.6;font-size:10px;">Detection threshold (lower = more detections)</small></div>
+                                 <div><label>Denoise</label><input id="qig-a1111-ad-denoise" type="number" value="${esc(s.a1111AdetailerDenoise ?? 0.4)}" min="0" max="1" step="0.05"><small>Inpaint strength for detected regions</small></div>
+                                 <div><label>Confidence</label><input id="qig-a1111-ad-confidence" type="number" value="${esc(s.a1111AdetailerConfidence ?? 0.3)}" min="0" max="1" step="0.05"><small>Detection threshold (lower = more detections)</small></div>
                              </div>
                              <div class="qig-row" style="margin-top:4px;">
                                  <div><label>Mask Blur</label><input id="qig-a1111-ad-mask-blur" type="number" value="${esc(s.a1111AdetailerMaskBlur ?? 4)}" min="0" max="64" step="1"></div>
-                                 <div><label>Dilate/Erode</label><input id="qig-a1111-ad-dilate" type="number" value="${esc(s.a1111AdetailerDilateErode ?? 4)}" min="-128" max="128" step="1"><small style="opacity:0.6;font-size:10px;">Positive = expand mask, negative = shrink</small></div>
+                                 <div><label>Dilate/Erode</label><input id="qig-a1111-ad-dilate" type="number" value="${esc(s.a1111AdetailerDilateErode ?? 4)}" min="-128" max="128" step="1"><small>Positive = expand mask, negative = shrink</small></div>
                              </div>
                              <div class="qig-row" style="margin-top:4px;">
                                  <div><label>Inpaint Padding</label><input id="qig-a1111-ad-inpaint-padding" type="number" value="${esc(s.a1111AdetailerInpaintPadding ?? 32)}" min="0" max="256" step="4"></div>
@@ -18082,12 +18022,12 @@ function createUI() {
                         <span>ComfyUI Proxy Mode</span>
                     </label>
                     <div id="qig-proxy-comfy-opts" style="display:${s.proxyComfyMode ? "block" : "none"}">
-                        <small style="opacity:0.6;font-size:10px;">Connects to a ComfyUI proxy server (GET /prompt/{text}?token=key → PNG). URL and API Key above are reused as the proxy address and token.</small>
+                        <small>Connects to a ComfyUI proxy server (GET /prompt/{text}?token=key → PNG). URL and API Key above are reused as the proxy address and token.</small>
                         <label>Timeout (seconds)</label>
                         <input id="qig-proxy-comfy-timeout" type="number" value="${esc(s.proxyComfyTimeout || 300)}" min="10" max="600">
                         <label>Prompt Node ID (optional)</label>
                         <input id="qig-proxy-comfy-node-id" type="text" value="${esc(s.proxyComfyNodeId || "")}" placeholder="e.g. 972">
-                        <small style="opacity:0.6;font-size:10px;">Sent as query param if your proxy supports it</small>
+                        <small>Sent as query param if your proxy supports it</small>
                         <label>Workflow JSON (optional)</label>
                         <textarea id="qig-proxy-comfy-workflow" rows="3" placeholder="Paste workflow_api.json or leave empty to use server default">${esc(s.proxyComfyWorkflow || "")}</textarea>
                     </div>
@@ -18096,7 +18036,7 @@ function createUI() {
                     <input id="qig-proxy-model" type="text" value="${esc(s.proxyModel)}" placeholder="PixAI model ID">
                     <label>Request Timeout (seconds)</label>
                     <input id="qig-proxy-timeout" type="number" value="${esc(s.proxyTimeout || 600)}" min="30" max="1800">
-                    <small style="opacity:0.6;font-size:10px;">Some image proxies keep long jobs open. Use 600 for Link-style slow image generations.</small>
+                    <small>Some image proxies keep long jobs open. Use 600 for Link-style slow image generations.</small>
                     <div class="qig-row">
                         <div><label>Endpoint Mode</label>
                             <select id="qig-proxy-endpoint-mode">
@@ -18127,7 +18067,7 @@ function createUI() {
                     </select>
                     <div id="qig-proxy-compat-hint" class="form-hint" style="margin-top:4px;"></div>
                     <label>LoRAs (id:weight, comma-separated)</label>
-                    <small style="opacity:0.6;font-size:10px;">Always applied. For scene-specific LoRAs, use Contextual Filters.</small>
+                    <small>Always applied. For scene-specific LoRAs, use Contextual Filters.</small>
                     <input id="qig-proxy-loras" type="text" value="${esc(s.proxyLoras || "")}" placeholder="123456:0.8, 789012:0.6">
                     <label class="checkbox_label">
                         <input id="qig-proxy-facefix" type="checkbox" ${s.proxyFacefix ? "checked" : ""}>
@@ -18228,7 +18168,6 @@ function createUI() {
                         <small class="qig-muted">Use reference tokens in the template. Multipart mode converts inline images to uploaded file parts; JSON mode sends data URLs.</small>
                     </div>
                 </div>
-                        </div>
                     </div>
                     </div>
                 </section>
@@ -18341,21 +18280,21 @@ function createUI() {
                                     <button id="qig-llm-custom-insert-natural" type="button" class="menu_button">Insert Natural default</button>
                                     <button id="qig-llm-custom-reset" type="button" class="menu_button">Reset</button>
                                 </div>
-                                <small style="opacity:0.6;font-size:10px;">Supports {{scene}}, {{char}}, {{user}}, {{charDesc}}, and {{userDesc}}. Identity rules and the quality/lighting/artist toggles above are appended automatically. Reset clears the override so the built-in adaptive instruction is used.</small>
+                                <small>Supports {{scene}}, {{char}}, {{user}}, {{charDesc}}, and {{userDesc}}. Identity rules and the quality/lighting/artist toggles above are appended automatically. Reset clears the override so the built-in adaptive instruction is used.</small>
                             </div>
                             <label class="checkbox_label" style="margin-top:8px;">
                                 <input id="qig-two-step-prompt" type="checkbox" ${s.twoStepPrompt ? "checked" : ""}>
                                 <span>Use two-step prompt pipeline for chat scenes</span>
                             </label>
                             <div id="qig-two-step-options" class="qig-dependent-panel" style="display:${s.twoStepPrompt ? "block" : "none"};margin-top:6px;">
-                                <small style="opacity:0.6;font-size:10px;">For chat-based direct generation, QIG first asks Text AI for a plain visual scene description, then converts that description through the selected LLM prompt style.</small>
+                                <small>For chat-based direct generation, QIG first asks Text AI for a plain visual scene description, then converts that description through the selected LLM prompt style.</small>
                                 <label>Scene description instruction (optional)</label>
                                 <textarea id="qig-two-step-instruction" rows="3" style="width:100%;resize:vertical;" placeholder="Empty = the built-in visual summary instruction. Insert the default below to see and edit it.">${esc(s.twoStepInstruction || "")}</textarea>
                                 <div class="qig-template-actions">
                                     <button id="qig-two-step-insert-default" type="button" class="menu_button">Insert default</button>
                                     <button id="qig-two-step-reset" type="button" class="menu_button">Reset</button>
                                 </div>
-                                <small style="opacity:0.6;font-size:10px;">Supports {{scene}}, {{char}}, {{user}}, {{charDesc}}, and {{userDesc}}. Reset clears the override so the built-in adaptive instruction is used.</small>
+                                <small>Supports {{scene}}, {{char}}, {{user}}, {{charDesc}}, and {{userDesc}}. Reset clears the override so the built-in adaptive instruction is used.</small>
                             </div>
                         </div>
                     </div>
@@ -18466,7 +18405,7 @@ function createUI() {
                             <input id="qig-generate-shortcut" type="text" readonly value="${esc(formatGenerateShortcutLabel())}" placeholder="Press keys..." style="flex:1;cursor:pointer;" title="Click, then press the new key combination">
                             <button id="qig-generate-shortcut-reset" type="button" class="menu_button" title="Reset to Ctrl+Enter">Reset</button>
                         </div>
-                        <small style="opacity:0.6;font-size:10px;">Click the field and press a combination. Must include Ctrl or Alt (or be a function key). Esc cancels.</small>
+                        <small>Click the field and press a combination. Must include Ctrl or Alt (or be a function key). Esc cancels.</small>
                     </div>
                     <div id="qig-inject-shell" style="display:${promptSourceMode === "tags" ? "block" : "none"};margin-top:8px;">
                     <small class="qig-muted">AI-tagged prompt source is active. QIG injects tag instructions into chat completions and generates from extracted tags.</small>
@@ -18478,29 +18417,29 @@ function createUI() {
                         <span class="qig-collapsible__icon fa-solid ${injectOptionsCollapsed ? "fa-chevron-right" : "fa-chevron-down"}" aria-hidden="true"></span>
                     </button>
                     <div id="qig-inject-options" class="qig-collapsible__content qig-dependent-panel" ${injectOptionsHidden}>
-                        <small style="opacity:0.6;font-size:10px;">Active only when Auto-generate is enabled. QIG injects instructions into chat completions, extracts image tags from AI replies, and turns them into images.</small>
+                        <small>Active only when Auto-generate is enabled. QIG injects instructions into chat completions, extracts image tags from AI replies, and turns them into images.</small>
                         <label>Tag name</label>
                         <input id="qig-inject-tag-name" type="text" value="${esc(getInjectTagName(s))}" placeholder="image" style="width:100%;text-transform:lowercase;">
-                        <small style="opacity:0.6;font-size:10px;">Preview: <code id="qig-inject-tag-preview">${esc(getInjectTagPreview(getInjectTagName(s)))}</code>. Change this if your preset/model tends to swallow &lt;image&gt; tags inside reasoning.</small>
+                        <small>Preview: <code id="qig-inject-tag-preview">${esc(getInjectTagPreview(getInjectTagName(s)))}</code>. Change this if your preset/model tends to swallow &lt;image&gt; tags inside reasoning.</small>
                         <label>Inject prompt template</label>
                         <textarea id="qig-inject-prompt" rows="3" style="width:100%;resize:vertical;">${esc(s.injectPrompt || "")}</textarea>
                         <div class="qig-template-actions">
                             <button id="qig-inject-prompt-reset" type="button" class="menu_button">Reset to default</button>
                         </div>
-                        <small style="opacity:0.6;font-size:10px;">Supports {{char}}, {{user}}. Default prompt tells the AI to put the image tag in the final visible reply, not inside reasoning or &lt;think&gt;.</small>
+                        <small>Supports {{char}}, {{user}}. Default prompt tells the AI to put the image tag in the final visible reply, not inside reasoning or &lt;think&gt;.</small>
                         <label>Extraction regex</label>
                         <input id="qig-inject-regex" type="text" value="${esc(s.injectRegex || '')}" style="width:100%;font-family:monospace;font-size:11px;">
                         <div class="qig-template-actions">
                             <button id="qig-inject-regex-reset" type="button" class="menu_button">Reset to default</button>
                         </div>
-                        <small style="opacity:0.6;font-size:10px;">Capture groups extract the image prompt. Default matches your custom paired tag plus legacy &lt;pic prompt="..."&gt; tags.</small>
+                        <small>Capture groups extract the image prompt. Default matches your custom paired tag plus legacy &lt;pic prompt="..."&gt; tags.</small>
                         <label>Injection position</label>
                         <select id="qig-inject-position">
                             <option value="afterScenario" ${s.injectPosition === "afterScenario" ? "selected" : ""}>After Scenario</option>
                             <option value="inUser" ${s.injectPosition === "inUser" ? "selected" : ""}>Before User Message</option>
                             <option value="atDepth" ${s.injectPosition === "atDepth" ? "selected" : ""}>At Depth</option>
                         </select>
-                        <small style="opacity:0.6;font-size:10px;">Before User Message may interfere with thinking/reasoning presets.</small>
+                        <small>Before User Message may interfere with thinking/reasoning presets.</small>
                         <div id="qig-inject-depth-wrap" style="display:${s.injectPosition === "atDepth" ? "block" : "none"};">
                             <label>Depth</label>
                             <input id="qig-inject-depth" type="number" value="${esc(s.injectDepth || 0)}" min="0" max="100">
@@ -18510,7 +18449,7 @@ function createUI() {
                             <option value="replace" ${normalizeInjectInsertMode(s.injectInsertMode) === "replace" ? "selected" : ""}>Replace tag and attach to tagged message</option>
                             <option value="new" ${s.injectInsertMode === "new" ? "selected" : ""}>Separate generated-image message</option>
                         </select>
-                        <small style="opacity:0.6;font-size:10px;">Replace always removes generated tags. Separate message leaves them in the source unless auto-clean is enabled.</small>
+                        <small>Replace always removes generated tags. Separate message leaves them in the source unless auto-clean is enabled.</small>
                         <label class="checkbox_label">
                             <input id="qig-inject-autoclean" type="checkbox" ${s.injectAutoClean !== false ? "checked" : ""}>
                             <span>Auto-clean tags when using a separate message</span>
@@ -18531,14 +18470,14 @@ function createUI() {
                         <option value="inject" ${normalizePaletteMode(s.paletteMode) === "inject" ? "selected" : ""}>Inject (image tags)</option>
                     </select>
                 </div>
-                <small style="opacity:0.6;font-size:10px;">Direct uses the selected scene settings. Inject extracts image tags from the latest tagged AI message, or asks the LLM for one tag from the selected scene.</small>
+                <small>Direct uses the selected scene settings. Inject extracts image tags from the latest tagged AI message, or asks the LLM for one tag from the selected scene.</small>
 
                 <div id="qig-text-ai-routing" class="qig-dependent-panel">
                     <label class="checkbox_label">
                         <input id="qig-llm-override" type="checkbox" ${s.llmOverrideEnabled ? "checked" : ""}>
                         <span>Use separate AI for image prompts</span>
                     </label>
-                    <small style="opacity:0.6;font-size:10px;">Route image prompt generation to a different AI model than your main chat</small>
+                    <small>Route image prompt generation to a different AI model than your main chat</small>
                     <div id="qig-llm-override-options" style="display:${s.llmOverrideEnabled ? 'block' : 'none'};margin-top:6px;">
                         <label style="font-size:11px;">Connection Profile</label>
                         <select id="qig-llm-override-profile" style="width:100%;"></select>
@@ -18701,7 +18640,6 @@ function createUI() {
     setupQigCollapsibleSection("sectionCreate", "qig-section-create-toggle", "qig-section-create-content");
     setupQigCollapsibleSection("sectionContext", "qig-section-context-toggle", "qig-section-context-content");
     setupQigCollapsibleSection("sectionAutomation", "qig-section-automation-toggle", "qig-section-automation-content");
-    setupQigCollapsibleSection("providerSettings", "qig-provider-settings-toggle", "qig-provider-settings-content");
     setupQigCollapsibleSection("promptAdvanced", "qig-prompt-advanced-toggle", "qig-prompt-advanced-content");
     setupQigCollapsibleSection("injectOptions", "qig-inject-options-toggle", "qig-inject-options");
     setupQigCollapsibleSection("advancedSettings", "qig-advanced-settings-toggle", "qig-advanced-settings");
@@ -19901,7 +19839,8 @@ function getMessageGenerateActionMount(messageElement) {
 
 function createMessageGenerateActionButton(messageIndex) {
     const button = createAccessibleIconButton(document, {
-        className: `mes_button fa-solid fa-palette ${QIG_MESSAGE_ACTION_CLASS}`,
+        tagName: "div",
+        className: `mes_button fa-solid fa-palette interactable ${QIG_MESSAGE_ACTION_CLASS}`,
         label: `Generate image from message ${messageIndex + 1} with Quick Image Gen`,
         title: "Generate image from this message with Quick Image Gen",
     });
@@ -20085,6 +20024,7 @@ function addInputButton() {
     if (getSettings().disablePaletteButton) return;
 
     const btn = createAccessibleIconButton(document, {
+        tagName: "div",
         id: "qig-input-btn",
         className: "fa-solid fa-palette interactable",
         label: "Generate image; right-click for presets",
