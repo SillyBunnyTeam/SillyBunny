@@ -1823,6 +1823,21 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     background: transparent;
 }
 
+/* A bare <pre> keeps the UA `white-space: pre`, so a message wrapped in one
+   runs past the message block in every chat style. Fenced code keeps its own
+   horizontal scroll from style.css instead of wrapping. */
+.mes_text pre,
+.mes_reasoning pre {
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    max-width: 100%;
+}
+
+.mes_text pre code,
+.mes_reasoning pre code {
+    white-space: pre;
+}
+
 @media screen and (max-width: 1000px) {
     .mes .mes_media_wrapper,
     .mes .mes_img_container,
