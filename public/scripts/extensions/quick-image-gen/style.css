@@ -8,6 +8,14 @@
     --qig-line-strong: color-mix(in srgb, var(--SmartThemeBorderColor) 45%, var(--SmartThemeBodyColor) 55%);
     --qig-text-soft: color-mix(in srgb, var(--SmartThemeBodyColor) 82%, var(--SmartThemeBlurTintColor) 18%);
     --qig-success: color-mix(in srgb, var(--qig-accent) 76%, var(--SmartThemeBodyColor) 24%);
+    --qig-danger: #e94560;
+    --qig-warning: #c98b2e;
+    --qig-scrim: rgba(0, 0, 0, 0.72);
+    --qig-backdrop: rgba(0, 0, 0, 0.9);
+    --qig-badge-global: #3572b8;
+    --qig-badge-card: #b06010;
+    --qig-badge-char: #35793c;
+    --qig-speed: 180ms;
     --qig-ease: cubic-bezier(0.22, 1, 0.36, 1);
     --qig-radius: 8px;
 }
@@ -342,7 +350,7 @@
 .qig-settings-search-status {
     font-size: 11px;
     font-weight: 600;
-    color: var(--qig-text-muted);
+    color: var(--qig-text-soft);
     padding-left: 2px;
 }
 
@@ -626,7 +634,7 @@
     width: 40px;
     height: 40px;
     object-fit: cover;
-    border: 1px solid #333;
+    border: 1px solid var(--qig-line);
     border-radius: 4px;
 }
 
@@ -639,7 +647,7 @@
     padding: 0;
     border: 0;
     border-radius: 50%;
-    background: #e94560;
+    background: var(--qig-danger);
     color: var(--SmartThemeBodyColor);
     font-size: 13px;
     line-height: 1;
@@ -648,7 +656,7 @@
 
 .qig-reference-image--invalid img,
 .qig-reference-image--invalid {
-    border-color: #e94560;
+    border-color: var(--qig-danger);
 }
 
 .qig-row {
@@ -951,7 +959,7 @@
     border: 0;
     border-radius: 50%;
     color: var(--SmartThemeBodyColor);
-    background: color-mix(in srgb, #e94560 72%, transparent);
+    background: color-mix(in srgb, var(--qig-danger) 72%, transparent);
     cursor: pointer;
 }
 
@@ -1000,35 +1008,6 @@
     line-height: 1.2;
 }
 
-#qig-input-btn {
-    appearance: none;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    cursor: pointer;
-    padding: 2px 5px;
-    font-size: 1em;
-    line-height: 1;
-    opacity: 0.7;
-}
-#qig-input-btn:hover {
-    opacity: 1;
-}
-
-#qig-input-btn:focus-visible,
-.qig-message-generate:focus-visible {
-    outline: 2px solid var(--SmartThemeQuoteColor);
-    outline-offset: 2px;
-}
-
-button.qig-message-generate {
-    appearance: none;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-}
-
 .qig-message-generate--fallback {
     margin-left: 4px;
 }
@@ -1067,7 +1046,7 @@ button.qig-message-generate {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0,0,0,0.9);
+    background: var(--qig-backdrop);
     z-index: 99999;
     justify-content: center;
     align-items: center;
@@ -1120,7 +1099,7 @@ button.qig-message-generate {
 }
 
 .qig-close-btn:hover {
-    background: rgba(255,255,255,0.1);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
 }
 
 .qig-gallery-panel {
@@ -1170,7 +1149,7 @@ button.qig-message-generate {
     padding: 0;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 6px;
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--qig-surface);
     color: var(--SmartThemeBodyColor);
     cursor: pointer;
 }
@@ -1194,15 +1173,15 @@ button.qig-message-generate {
     left: 0;
     overflow: hidden;
     padding: 3px 5px;
-    background: rgba(0, 0, 0, 0.72);
-    color: #ddd;
+    background: var(--qig-scrim);
+    color: #fff;
     font-size: 9px;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .qig-gallery-card--ephemeral {
-    border-color: #c98b2e;
+    border-color: var(--qig-warning);
 }
 
 .qig-gallery-unavailable {
@@ -1255,7 +1234,7 @@ button.qig-message-generate {
     max-height: 60vh;
     overflow-y: auto;
     white-space: pre-wrap;
-    background: rgba(0,0,0,0.3);
+    background: var(--qig-surface);
     padding: 12px;
     margin: 0;
     font-family: monospace;
@@ -1312,7 +1291,7 @@ button.qig-message-generate {
 .qig-form-section {
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 10px;
-    background: rgba(0, 0, 0, 0.18);
+    background: var(--qig-surface);
     padding: 14px;
 }
 
@@ -1360,7 +1339,7 @@ button.qig-message-generate {
     padding: 8px 10px;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--qig-surface-soft);
     font-size: 11px;
 }
 
@@ -1383,22 +1362,22 @@ button.qig-message-generate {
 }
 
 .qig-scope-badge--global {
-    background: #4a90d9;
+    background: var(--qig-badge-global);
 }
 
 .qig-scope-badge--card {
-    background: #d9822b;
+    background: var(--qig-badge-card);
 }
 
 .qig-scope-badge--char {
-    background: #5cb85c;
+    background: var(--qig-badge-char);
 }
 
 .qig-filter-summary {
     padding: 12px;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 10px;
-    background: rgba(0, 0, 0, 0.18);
+    background: var(--qig-surface);
 }
 
 .qig-filter-summary-grid {
@@ -1410,8 +1389,8 @@ button.qig-message-generate {
 .qig-filter-summary-card {
     padding: 8px 10px;
     border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--qig-line);
+    background: var(--qig-surface-soft);
 }
 
 .qig-filter-summary-label {
@@ -1522,7 +1501,7 @@ button.qig-message-generate {
     flex-direction: column;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 10px;
-    background: rgba(0, 0, 0, 0.18);
+    background: var(--qig-surface);
     overflow: hidden;
 }
 
@@ -1750,29 +1729,9 @@ button.qig-message-generate {
         grid-template-columns: 1fr;
     }
 
-    .qig-action-bar {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 6px;
-    }
-
-    #qig-generate-btn.qig-primary-action {
-        grid-column: 1 / -1;
-    }
-
-    .qig-action-bar__secondary,
-    .qig-action-bar__prominent,
-    #qig-generate-btn.qig-primary-action {
-        width: 100%;
-        min-height: 44px;
-    }
-
     .qig-shortcut-hint,
     .qig-hero-note {
         display: none;
-    }
-
-    #qig-generate-btn.qig-primary-action {
-        width: 100%;
     }
 
     .qig-action-strip {
@@ -1816,12 +1775,6 @@ button.qig-message-generate {
 
     #qig-settings textarea {
         font-size: 16px;
-    }
-
-    #qig-settings #qig-profile-del {
-        width: 44px;
-        min-width: 44px;
-        min-height: 44px;
     }
 
     .qig-size-row {

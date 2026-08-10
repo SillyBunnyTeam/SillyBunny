@@ -143,6 +143,56 @@ export function getNanoGptReferenceConstraints(metadata = null) {
     return { maxImages, mimeTypes, maxBytes };
 }
 
+function parseSupportedImageSizeOption(option, targetPixels) {
+    const size = String(option || "").trim();
+    const dimensionMatch = size.match(/^(\d+)x(\d+)$/i);
+    if (dimensionMatch) {
+        const width = Number(dimensionMatch[1]);
+        const height = Number(dimensionMatch[2]);
+        if (width > 0 && height > 0) return { size, ratio: width / height, pixels: width * height };
+    }
+
+    const ratioMatch = size.match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/);
+    if (ratioMatch) {
+        const width = Number(ratioMatch[1]);
+        const height = Number(ratioMatch[2]);
+        if (width > 0 && height > 0) return { size, ratio: width / height, pixels: targetPixels };
+    }
+
+    return null;
+}
+
+export function getClosestSupportedImageSize(settings, supportedSizes) {
+    const width = Number(settings?.width) || 1024;
+    const height = Number(settings?.height) || 1024;
+    const configuredSize = `${width}x${height}`;
+    if (!Array.isArray(supportedSizes) || !supportedSizes.length) return configuredSize;
+
+    const targetPixels = width * height;
+    const targetRatio = width / height;
+    const parsedSizes = supportedSizes
+        .map(size => parseSupportedImageSizeOption(size, targetPixels))
+        .filter(Boolean);
+    if (!parsedSizes.length) return configuredSize;
+
+    const exact = parsedSizes.find(size => size.size.toLowerCase() === configuredSize.toLowerCase());
+    if (exact) return exact.size;
+
+    let best = parsedSizes[0];
+    let bestScore = Infinity;
+    for (const size of parsedSizes) {
+        const ratioScore = Math.abs(Math.log(size.ratio / targetRatio));
+        const pixelScore = Math.abs(Math.log(size.pixels / targetPixels));
+        const score = (ratioScore * 3) + pixelScore;
+        if (score < bestScore) {
+            best = size;
+            bestScore = score;
+        }
+    }
+
+    return best.size;
+}
+
 export function getNanoGptResolution(width, height, metadata = null) {
     const resolutionParameter = metadata?.supported_parameters?.resolution
         || metadata?.endpoints?.[0]?.supported_parameters?.resolution;
