@@ -47,7 +47,7 @@ const DEFAULT_NEUTRAL_ASSISTANT_NAME = 'Assistant';
 
 const AGENT_MESSAGE_EXTRA_KEY = 'inChatAgents';
 const AGENT_PROMPT_TRANSFORM_HISTORY_KEY = 'inChatAgentTransformHistory';
-const STARTER_PACK_PRESET_NAME_SILLYBUNNY = 'Pura\'s Director Preset 15.0 (SillyBunny)';
+const STARTER_PACK_PRESET_NAME_SILLYBUNNY = 'Pura\'s Director Preset 15.1 (SillyBunny)';
 const STARTER_PACK_PRESET_TITLE = 'Pura\'s Director Preset';
 const TLD_PRESET_NAME = 'TLD Card Conversion Preset (Standalone)';
 const STARTER_PACK_SITE_URL = 'https://platberlitz.github.io/';
@@ -865,7 +865,7 @@ function buildPresetStarterPackItem() {
     const selectedPresetName = isOpenAiStyleApi ? presetManager?.getSelectedPresetName() : '';
     const isSelected = selectedPresetName === STARTER_PACK_PRESET_NAME_SILLYBUNNY;
     const hasBundledPreset = Boolean(sillyBunnyPreset);
-    const body = 'Purachina\'s Director v15.0 preset is fully bundled with SillyBunny as a preset option. This preset is ideal if you want the LLM to have maximum control over the story, the characters, *and* your persona. Simply go to the Presets menu to find it. If you wish to see more of Pura\'s character cards and other projects, check out the link below!';
+    const body = 'Purachina\'s Director v15.1 preset is fully bundled with SillyBunny as a preset option. This preset is ideal if you want the LLM to have maximum control over the story, the characters, *and* your persona. Simply go to the Presets menu to find it. If you wish to see more of Pura\'s character cards and other projects, check out the link below!';
 
     if (!isOpenAiStyleApi) {
         return {
