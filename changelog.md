@@ -8,6 +8,7 @@
 - PR #749 (2026-08-09) `feat: implement Pathfinder tool confirmation and mandatory tool use`
 - PR #750 (2026-08-10) `fix: messages wrapped in <pre> wrap over instead of going beyond bounds`
 - PR #751 (2026-08-10) `chore: update Pura's Director Preset to 15.1 and the corresponding trackers`
+- PR #752 (2026-08-10) `chore: update Quick Image Gen to 3.0.1`
 
 ## v1.7.0
 
