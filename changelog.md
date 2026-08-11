@@ -9,6 +9,7 @@
 - PR #750 (2026-08-10) `fix: messages wrapped in <pre> wrap over instead of going beyond bounds`
 - PR #751 (2026-08-10) `chore: update Pura's Director Preset to 15.1 and the corresponding trackers`
 - PR #752 (2026-08-10) `chore: update Quick Image Gen to 3.0.1`
+- PR #753 (2026-08-11) `fix: no redundant ICA toasts when updating bundled agents`
 
 ## v1.7.0
 
