@@ -785,6 +785,15 @@ export function getBundledAgentLatestTemplatePlan(agentList = [], templateList =
             }
         }
 
+        const keepAgentVersion = Number(keepAgent?.version ?? 1);
+        const templateVersion = Number(template?.version ?? 1);
+        if (
+            (Number.isFinite(keepAgentVersion) ? keepAgentVersion : 1) >=
+            (Number.isFinite(templateVersion) ? templateVersion : 1)
+        ) {
+            continue;
+        }
+
         const latestAgent = buildLatestBundledAgentSnapshot(keepAgent, template);
         if (normalizedAgentJson(latestAgent) !== normalizedAgentJson(keepAgent)) {
             updates.push({
