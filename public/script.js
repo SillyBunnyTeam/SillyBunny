@@ -3364,6 +3364,10 @@ export function incrementChatGeneration() {
     chatGeneration++;
 }
 
+export function getChatGeneration() {
+    return chatGeneration;
+}
+
 function setChatSaveActive(isActive) {
     chatSaveActivityCount += isActive ? 1 : -1;
     chatSaveActivityCount = Math.max(0, chatSaveActivityCount);

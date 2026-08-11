@@ -1,6 +1,6 @@
 import { DOMPurify, Popper } from '../lib.js';
 
-import { eventSource, event_types, saveSettings, saveSettingsDebounced, getRequestHeaders, animation_duration, CLIENT_VERSION } from '../script.js';
+import { eventSource, event_types, saveSettings, saveSettingsDebounced, getRequestHeaders, animation_duration, CLIENT_VERSION, getChatGeneration } from '../script.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
 import { renderTemplate, renderTemplateAsync } from './templates.js';
 import { delay, deleteValueByPath, equalsIgnoreCaseAndAccents, escapeHtml, sanitizeSelector, setValueByPath, versionCompare } from './utils.js';
@@ -250,6 +250,7 @@ export function saveMetadataDebounced() {
     const groupId = context.groupId;
     const characterId = context.characterId;
     const chatId = context.chatId;
+    const generation = getChatGeneration();
 
     cancelDebouncedMetadataSave();
 
@@ -268,6 +269,14 @@ export function saveMetadataDebounced() {
 
         if (!groupId && characterId !== newContext.characterId) {
             console.warn('Character changed, not saving metadata');
+            return;
+        }
+
+        // SillyBunny: reopening or reloading the same chat keeps every check above satisfied while
+        // the messages are cleared and not yet reloaded. Saving there writes an empty chat over the
+        // populated file, which the server refuses. The generation changes on every chat load.
+        if (generation !== getChatGeneration()) {
+            console.warn('Chat reloaded, not saving metadata');
             return;
         }
 
