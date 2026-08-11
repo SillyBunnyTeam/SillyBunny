@@ -281,6 +281,22 @@ function isSameChatSaveContent(left, right, options = {}) {
     return leftRecords !== null && rightRecords !== null && isDeepStrictEqual(leftRecords, rightRecords);
 }
 
+// SillyBunny: true when the incoming save keeps every existing message unchanged and in order,
+// so it can only append. Messages are compared without the header record because chat_metadata
+// legitimately drifts between saves while history must not.
+function isChatSaveExtension(newSerializedChat, existingSerializedChat, options = {}) {
+    const incomingRecords = getChatSaveComparisonRecords(newSerializedChat, options);
+    const existingRecords = getChatSaveComparisonRecords(existingSerializedChat, options);
+    if (incomingRecords === null || existingRecords === null) {
+        return false;
+    }
+
+    const incomingMessages = incomingRecords.slice(1);
+    const existingMessages = existingRecords.slice(1);
+    return incomingMessages.length >= existingMessages.length
+        && isDeepStrictEqual(incomingMessages.slice(0, existingMessages.length), existingMessages);
+}
+
 function getLatestBackupFilePath(directory, prefix) {
     const backupFiles = fs.readdirSync(directory)
         .filter(fileName => fileName.startsWith(prefix))
@@ -1126,7 +1142,12 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
 
         const currentChatData = currentSnapshot?.data ?? null;
         const existingIntegrity = currentChatData === null ? '' : getSerializedChatIntegrity(currentChatData);
-        if (doIntegrityCheck && existingIntegrity && existingIntegrity !== chatIntegritySlug) {
+        // SillyBunny: the slug rotates on every save and only reaches the client in the response
+        // body, so a dropped response leaves a remote client holding the previous slug forever.
+        // Accept that retry when it merely appends to what is on disk, because a superset save
+        // cannot lose history; a genuinely divergent save still fails the check.
+        if (doIntegrityCheck && existingIntegrity && existingIntegrity !== chatIntegritySlug
+            && !isChatSaveExtension(jsonlData, currentChatData, { ignoreDerivedMetadata: !persistDerivedMetadata })) {
             throw new IntegrityMismatchError(`Chat integrity check failed for "${filePath}". The expected integrity slug was "${chatIntegritySlug}".`);
         }
 
