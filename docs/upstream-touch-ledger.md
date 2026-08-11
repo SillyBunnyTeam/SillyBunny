@@ -50,17 +50,17 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-06 in-chat agent stop-button wiring. |
 | Owner | Refactor integrator. |
 
-### `src/endpoints/chats.js`, `public/script.js`, and `public/scripts/group-chats.js` - chat save integrity
+### `src/endpoints/chats.js`, `public/script.js`, `public/scripts/group-chats.js`, and `public/scripts/extensions.js` - chat save integrity
 | Field | Value |
 | --- | --- |
 | Area | Chat persistence and data-loss prevention. |
 | Divergence reason | SillyBunny must reject stale cross-device chat saves instead of allowing last-write-wins overwrites that destroy newer messages. |
 | Target seam | None yet; keep the save-contract adapter minimal until chat persistence has a dedicated fork seam. |
-| Adapter shape | Rotate chat metadata integrity in `trySaveChat()`, return the new token from normal and group save routes, and store the returned token in the active client metadata after successful saves. |
+| Adapter shape | Rotate chat metadata integrity in `trySaveChat()`, return the new token from normal and group save routes, store the returned token in the active client metadata after successful saves, and bind debounced metadata saves to the active chat generation. |
 | Protecting tests | `tests/chat-integrity-rotation.test.js`; manual two-instance stale-save smoke before release. |
-| Validation | `npm run test:unit --prefix tests -- chat-integrity-rotation.test.js`, `node --check src/endpoints/chats.js`, `node --check public/script.js`, `node --check public/scripts/group-chats.js`, `npm run lint`, Node/Bun server smoke. |
+| Validation | `npm run test:unit --prefix tests -- chat-integrity-rotation.test.js chat-save-guard.test.js`, `node --check src/endpoints/chats.js`, `node --check public/script.js`, `node --check public/scripts/group-chats.js`, `node --check public/scripts/extensions.js`, `npm run lint`, Node/Bun server smoke. |
 | Rollback path | Revert the integrity rotation response contract and client adoption to the prior per-load integrity behavior. |
-| Last reviewed | 2026-06-06 chat integrity rotation fix. |
+| Last reviewed | 2026-08-11 PR #754 remote-save integrity fix. |
 | Owner | Bugfix integrator. |
 
 ### `public/index.html`, `public/style.css`, `public/css/mobile-styles.css`, `public/script.js`, and `public/scripts/group-chats.js` - group chat branch creation

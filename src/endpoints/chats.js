@@ -281,9 +281,8 @@ function isSameChatSaveContent(left, right, options = {}) {
     return leftRecords !== null && rightRecords !== null && isDeepStrictEqual(leftRecords, rightRecords);
 }
 
-// SillyBunny: true when the incoming save keeps every existing message unchanged and in order,
-// so it can only append. Messages are compared without the header record because chat_metadata
-// legitimately drifts between saves while history must not.
+// SillyBunny: true when the incoming save keeps the existing metadata and every message unchanged
+// and in order, so it can only append without rolling back another client's metadata changes.
 function isChatSaveExtension(newSerializedChat, existingSerializedChat, options = {}) {
     const incomingRecords = getChatSaveComparisonRecords(newSerializedChat, options);
     const existingRecords = getChatSaveComparisonRecords(existingSerializedChat, options);
@@ -291,9 +290,10 @@ function isChatSaveExtension(newSerializedChat, existingSerializedChat, options 
         return false;
     }
 
-    const incomingMessages = incomingRecords.slice(1);
-    const existingMessages = existingRecords.slice(1);
-    return incomingMessages.length >= existingMessages.length
+    const [incomingHeader, ...incomingMessages] = incomingRecords;
+    const [existingHeader, ...existingMessages] = existingRecords;
+    return isDeepStrictEqual(incomingHeader, existingHeader)
+        && incomingMessages.length >= existingMessages.length
         && isDeepStrictEqual(incomingMessages.slice(0, existingMessages.length), existingMessages);
 }
 

@@ -715,6 +715,33 @@ describe('chat integrity rotation', () => {
         expect((await readHeader(chatFile)).chat_metadata.integrity).toBe(result.integrity);
     });
 
+    test('rejects a stale append that would overwrite newer chat metadata', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-stale-metadata-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        const onDisk = chatWithMessages('current-integrity', ['one', 'two', 'three']);
+        onDisk[0].chat_metadata.variables = { owner: 'newer-client' };
+        const originalContent = onDisk.map(JSON.stringify).join('\n');
+        await fs.writeFile(chatFile, originalContent);
+
+        const staleAppend = chatWithMessages('stale-integrity', ['one', 'two', 'three', 'four']);
+        staleAppend[0].chat_metadata.variables = { owner: 'stale-client' };
+        await expect(trySaveChat(
+            staleAppend,
+            chatFile,
+            false,
+            'stale-metadata-user',
+            'Test Card',
+            backupDir,
+        )).rejects.toThrow(/integrity/i);
+
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(originalContent);
+        await expect(fs.readdir(backupDir)).resolves.toHaveLength(0);
+    });
+
     test('reports an unloaded chat save as destructive rather than as an integrity mismatch', async () => {
         const { trySaveChat } = await import('../src/endpoints/chats.js');
         const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-unloaded-save-'));
