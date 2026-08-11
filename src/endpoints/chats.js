@@ -1142,6 +1142,19 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
 
         const currentChatData = currentSnapshot?.data ?? null;
         const existingIntegrity = currentChatData === null ? '' : getSerializedChatIntegrity(currentChatData);
+        const destructiveReason = currentChatData ? getDestructiveChatSaveReason(savedChatData, currentChatData) : '';
+
+        // SillyBunny: classify a history-destroying save before the integrity check, so the client is
+        // told what is actually wrong with it. A client that lost its slug and a client sending an
+        // unloaded chat both fail the slug comparison, but only the second is destructive, and
+        // reporting it as a slug mismatch sends the client into a reload loop it cannot resolve:
+        // reloading never repopulates the chat it failed to send.
+        // Reject before the pre-write ring runs, so a rejected save cannot evict the last good state.
+        // Deliberate message deletion sets allowShrink, which is not the same confirmation as an integrity overwrite.
+        if (destructiveReason && !skipIntegrityCheck && !allowShrink) {
+            throw new DestructiveChatSaveError(destructiveReason, `Refused a destructive chat save for "${cardName}" (${destructiveReason}): incoming payload has ${savedChatData.length} JSONL rows, existing file has ${countSerializedChatLines(currentChatData)} rows.`);
+        }
+
         // SillyBunny: the slug rotates on every save and only reaches the client in the response
         // body, so a dropped response leaves a remote client holding the previous slug forever.
         // Accept that retry when it merely appends to what is on disk, because a superset save
@@ -1152,14 +1165,7 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
         }
 
         if (currentChatData) {
-            const destructiveReason = getDestructiveChatSaveReason(savedChatData, currentChatData);
             const existingLines = countSerializedChatLines(currentChatData);
-
-            // SillyBunny: reject before the pre-write ring runs, so a rejected save cannot evict the last good state.
-            // Deliberate message deletion sets allowShrink, which is not the same confirmation as an integrity overwrite.
-            if (destructiveReason && !skipIntegrityCheck && !allowShrink) {
-                throw new DestructiveChatSaveError(destructiveReason, `Refused a destructive chat save for "${cardName}" (${destructiveReason}): incoming payload has ${savedChatData.length} JSONL rows, existing file has ${existingLines} rows.`);
-            }
 
             // SillyBunny: compare parsed records because loading canonicalizes legacy JSONL formatting.
             // Replacing equivalent content through atomic temp-and-rename would swap the file identity

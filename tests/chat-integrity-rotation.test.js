@@ -715,6 +715,32 @@ describe('chat integrity rotation', () => {
         expect((await readHeader(chatFile)).chat_metadata.integrity).toBe(result.integrity);
     });
 
+    test('reports an unloaded chat save as destructive rather than as an integrity mismatch', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-unloaded-save-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        const originalContent = chatWithMessages('current-integrity', ['one', 'two', 'three']).map(JSON.stringify).join('\n');
+        await fs.writeFile(chatFile, originalContent);
+
+        // A client that has cleared the old chat and not yet loaded the new one sends a bare header
+        // with no slug. That fails the slug comparison too, but calling it an integrity mismatch makes
+        // the client reload, which cannot repopulate the chat it failed to send, so it loops forever.
+        await expect(trySaveChat(
+            [{ chat_metadata: {}, user_name: 'unused', character_name: 'unused' }],
+            chatFile,
+            false,
+            'unloaded-save-user',
+            'Test Card',
+            backupDir,
+        )).rejects.toMatchObject({ reason: 'emptied' });
+
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(originalContent);
+        await expect(fs.readdir(backupDir)).resolves.toHaveLength(0);
+    });
+
     test('still rejects a stale writer that rewrites an existing message', async () => {
         const { trySaveChat } = await import('../src/endpoints/chats.js');
         const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-stale-divergent-'));
