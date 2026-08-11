@@ -49,6 +49,7 @@ function installExtensionModuleMocks() {
         animation_duration: 0,
         eventSource: { emit: jest.fn(async () => {}) },
         event_types: { EXTENSIONS_FIRST_LOAD: 'extensions_first_load', EXTRAS_CONNECTED: 'extras_connected', EXTENSION_SETTINGS_LOADED: 'extension_settings_loaded' },
+        getChatGeneration: jest.fn(() => 0),
         getRequestHeaders: jest.fn(() => ({})),
         saveSettings: jest.fn(async () => {}),
         saveSettingsDebounced,

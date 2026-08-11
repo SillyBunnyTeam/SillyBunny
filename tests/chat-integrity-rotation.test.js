@@ -656,7 +656,7 @@ describe('chat integrity rotation', () => {
         )).rejects.toThrow(/integrity/i);
     });
 
-    test('still rejects a stale writer whose payload matches the file', async () => {
+    test('resyncs a stale writer whose payload matches the file without writing', async () => {
         const { trySaveChat } = await import('../src/endpoints/chats.js');
         const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-unchanged-stale-'));
         const chatFile = path.join(tempDir, 'chat.jsonl');
@@ -666,16 +666,130 @@ describe('chat integrity rotation', () => {
         const { payload, serialized } = noncanonicalChat('current-integrity');
         payload[0].chat_metadata.integrity = 'stale-integrity';
         await fs.writeFile(chatFile, serialized);
+        const before = await fs.stat(chatFile);
 
-        // The integrity check runs before the content comparison, so identical content cannot bypass it.
-        await expect(trySaveChat(
+        // A client that lost the response to its own save holds the previous slug while its history
+        // already matches the file, so it is handed the real slug rather than a forced page reload.
+        const result = await trySaveChat(
             payload,
             chatFile,
             false,
             'stale-writer-user',
             'Test Card',
             backupDir,
+        );
+        jest.runOnlyPendingTimers();
+        const after = await fs.stat(chatFile);
+
+        expect(result).toEqual({ integrity: 'current-integrity' });
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(serialized);
+        expect(after.ino).toBe(before.ino);
+        expect(after.mtimeMs).toBe(before.mtimeMs);
+    });
+
+    test('accepts a stale writer that only appends to the chat on disk', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-stale-append-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        const onDisk = chatWithMessages('current-integrity', ['one', 'two', 'three']);
+        await fs.writeFile(chatFile, onDisk.map(JSON.stringify).join('\n'));
+
+        const result = await trySaveChat(
+            chatWithMessages('stale-integrity', ['one', 'two', 'three', 'four']),
+            chatFile,
+            false,
+            'stale-append-user',
+            'Test Card',
+            backupDir,
+        );
+
+        expect(result.integrity).toEqual(expect.any(String));
+        expect(result.integrity).not.toBe('current-integrity');
+        expect(result.integrity).not.toBe('stale-integrity');
+        const saved = await fs.readFile(chatFile, 'utf8');
+        expect(saved).toContain('"mes":"four"');
+        expect(saved).toContain('"mes":"one"');
+        expect((await readHeader(chatFile)).chat_metadata.integrity).toBe(result.integrity);
+    });
+
+    test('rejects a stale append that would overwrite newer chat metadata', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-stale-metadata-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        const onDisk = chatWithMessages('current-integrity', ['one', 'two', 'three']);
+        onDisk[0].chat_metadata.variables = { owner: 'newer-client' };
+        const originalContent = onDisk.map(JSON.stringify).join('\n');
+        await fs.writeFile(chatFile, originalContent);
+
+        const staleAppend = chatWithMessages('stale-integrity', ['one', 'two', 'three', 'four']);
+        staleAppend[0].chat_metadata.variables = { owner: 'stale-client' };
+        await expect(trySaveChat(
+            staleAppend,
+            chatFile,
+            false,
+            'stale-metadata-user',
+            'Test Card',
+            backupDir,
         )).rejects.toThrow(/integrity/i);
+
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(originalContent);
+        await expect(fs.readdir(backupDir)).resolves.toHaveLength(0);
+    });
+
+    test('reports an unloaded chat save as destructive rather than as an integrity mismatch', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-unloaded-save-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        const originalContent = chatWithMessages('current-integrity', ['one', 'two', 'three']).map(JSON.stringify).join('\n');
+        await fs.writeFile(chatFile, originalContent);
+
+        // A client that has cleared the old chat and not yet loaded the new one sends a bare header
+        // with no slug. That fails the slug comparison too, but calling it an integrity mismatch makes
+        // the client reload, which cannot repopulate the chat it failed to send, so it loops forever.
+        await expect(trySaveChat(
+            [{ chat_metadata: {}, user_name: 'unused', character_name: 'unused' }],
+            chatFile,
+            false,
+            'unloaded-save-user',
+            'Test Card',
+            backupDir,
+        )).rejects.toMatchObject({ reason: 'emptied' });
+
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(originalContent);
+        await expect(fs.readdir(backupDir)).resolves.toHaveLength(0);
+    });
+
+    test('still rejects a stale writer that rewrites an existing message', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-stale-divergent-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        const originalContent = chatWithMessages('current-integrity', ['one', 'two', 'three']).map(JSON.stringify).join('\n');
+        await fs.writeFile(chatFile, originalContent);
+
+        // Appending is safe because it cannot drop history; editing an existing message can.
+        await expect(trySaveChat(
+            chatWithMessages('stale-integrity', ['one', 'rewritten by another device', 'three', 'four']),
+            chatFile,
+            false,
+            'stale-divergent-user',
+            'Test Card',
+            backupDir,
+        )).rejects.toThrow(/integrity/i);
+
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(originalContent);
+        await expect(fs.readdir(backupDir)).resolves.toHaveLength(0);
     });
 
     test('still rejects a stale writer when the existing chat body is corrupt', async () => {
