@@ -1056,11 +1056,12 @@ describe('SillyBunny Chats Archive integration', () => {
         expect(ui).toMatch(/getThumbnailUrl\('avatar', choice\.avatar\)/);
         expect(ui).toMatch(/Search characters and groups/);
         expect(ui).toMatch(/Character: \{name\}/);
-        expect(ui).toMatch(/listToolsPanel\.append\(ownerField\.wrap, sortPills, selectionBar\)/);
+        expect(ui).toMatch(/const listTools = el\('div', 'sbca-list-tools'\)/);
+        expect(ui).toMatch(/listTools\.append\(ownerField\.wrap, sortPills, selectionBar\)/);
         expect(ui).toMatch(/listTop\.append\(listHeading, listTools\)/);
         expect(ui).toMatch(/listPanel\.append\(listTop, list\)/);
         expect(ui).toMatch(/sbca-list-tools/);
-        expect(ui).toMatch(/listTools\.open = true/);
+        expect(ui).not.toMatch(/listTools\.open/);
         expect(ui).toMatch(/option\.addEventListener\('pointerdown', event => \{\s*if \(event\.button !== 0 \|\| event\.pointerType === 'touch'\)/);
         expect(ui).toMatch(/option\.addEventListener\('click', select\)/);
         expect(ui).toMatch(/sbca-sortpill/);
@@ -1084,6 +1085,11 @@ describe('SillyBunny Chats Archive integration', () => {
         expect(ui).toMatch(/findMatchingSnippetInJsonlAsync\(raw, query, \{ signal \}\)/);
         expect(ui).not.toMatch(/findExistingGroupFiles/);
         expect(ui).toMatch(/sbca-browse-options/);
+        expect(ui).toMatch(/options\.append\(el\('summary', undefined, tr\(ctx, 'Filters'\)\)\)/);
+        expect(ui).toMatch(/const organizationTools = el\('details', 'sbca-organization-tools'\)/);
+        expect(ui).toMatch(/Manage organization/);
+        expect(ui).not.toMatch(/SORT_OPTIONS/);
+        expect(ui).not.toMatch(/sortField/);
         expect(ui).toMatch(/Clear filters/);
         expect(ui).not.toMatch(/sbca-row-selection-label/);
         expect(ui).not.toMatch(/\browKey\(/);

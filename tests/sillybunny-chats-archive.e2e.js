@@ -257,6 +257,43 @@ test('keeps a balanced master-detail workspace on desktop', async ({ page }) => 
     expect(layout.noHorizontalOverflow).toBe(true);
 });
 
+test('keeps filters concise and organization management full width when expanded', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await routeOrganization(page);
+    await page.route('**/api/chats/archive/inventory', route => fulfillJson(route, archivePage([
+        linkedRow('organization-chat'),
+    ], null, null, 1)));
+
+    await openArchive(page);
+    await expect(page.getByText('Sort', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('List tools', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Filters', { exact: true })).toBeVisible();
+    await expect(page.getByText('Manage organization', { exact: true })).toBeVisible();
+
+    const layout = await page.locator('.sbca-toolbar').evaluate(toolbar => {
+        const root = toolbar.closest('.sbca-root');
+        const organization = toolbar.querySelector('.sbca-organization-tools');
+        const panel = toolbar.querySelector('.sbca-organization-tools-panel');
+        organization.open = true;
+        const toolbarStyle = getComputedStyle(toolbar);
+        const panelRect = panel.getBoundingClientRect();
+        const toolbarRect = toolbar.getBoundingClientRect();
+        return {
+            panelWidth: panelRect.width,
+            toolbarWidth: toolbarRect.width,
+            toolbarOverflowY: toolbarStyle.overflowY,
+            toolbarMaxBlockSize: toolbarStyle.maxBlockSize,
+            rootScrollHeight: root.scrollHeight,
+            rootClientHeight: root.clientHeight,
+        };
+    });
+
+    expect(layout.panelWidth).toBeGreaterThan(layout.toolbarWidth * 0.9);
+    expect(layout.toolbarOverflowY).not.toBe('auto');
+    expect(layout.toolbarMaxBlockSize).toBe('none');
+    expect(layout.rootScrollHeight).toBeGreaterThanOrEqual(layout.rootClientHeight);
+});
+
 test('keeps the tablet and Safari popup layout bounded', async ({ page }) => {
     await page.setViewportSize({ width: 820, height: 740 });
     await page.goto(baseUrl);

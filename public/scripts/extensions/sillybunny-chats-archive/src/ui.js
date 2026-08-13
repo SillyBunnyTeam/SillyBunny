@@ -35,18 +35,6 @@ const KINDS = [
     ['orphan', 'Orphaned'],
 ];
 
-const SORT_OPTIONS = [
-    ['recent', 'Recent'],
-    ['oldest', 'Oldest'],
-    ['size', 'Largest'],
-    ['smallest', 'Smallest'],
-    ['count', 'Most messages'],
-    ['fewest', 'Fewest messages'],
-    ['name', 'Name A-Z'],
-    ['name-reverse', 'Name Z-A'],
-    ['owner', 'Owner'],
-];
-
 const GROUP_OPTIONS = [
     ['flat', 'Flat'],
     ['owner', 'Owner'],
@@ -461,9 +449,11 @@ function buildRoot(ctx, state) {
     const savedViewField = selectControl(ctx, 'Saved view', [['', 'Current view']], 'sbca-sort sbca-browse-field');
     const groupField = selectControl(ctx, 'Group', GROUP_OPTIONS, 'sbca-sort sbca-browse-field');
     const densityField = selectControl(ctx, 'Density', DENSITY_OPTIONS, 'sbca-sort sbca-browse-field');
-    const sortField = selectControl(ctx, 'Sort', SORT_OPTIONS, 'sbca-sort sbca-browse-field');
+    const sort = document.createElement('input');
+    sort.type = 'hidden';
+    sort.value = 'recent';
     markOrganizationControl(savedViewField.select);
-    browseStrip.append(savedViewField.wrap, groupField.wrap, densityField.wrap, sortField.wrap);
+    browseStrip.append(savedViewField.wrap, groupField.wrap, densityField.wrap);
     const browseOptions = el('details', 'sbca-browse-options');
     const browseSummary = el('summary', undefined, tr(ctx, 'Browse options'));
     browseOptions.open = !mobileQuery.matches;
@@ -478,7 +468,7 @@ function buildRoot(ctx, state) {
     organizationState.append(organizationStatus, organizationRetry);
 
     const options = el('details', 'sbca-options');
-    options.append(el('summary', undefined, tr(ctx, 'Filters and organization')));
+    options.append(el('summary', undefined, tr(ctx, 'Filters')));
     const optionsPanel = el('div', 'sbca-options-panel');
     const filterTools = el('div', 'sbca-filter-tools');
     const clearFilters = button('sbca-control sbca-clear-filters', tr(ctx, 'Clear filters'));
@@ -519,17 +509,13 @@ function buildRoot(ctx, state) {
     tagField.input.setAttribute('list', tagOptions.id);
     const minDateField = inputControl(ctx, 'From date', 'date');
     const maxDateField = inputControl(ctx, 'To date', 'date');
-    const minSizeField = inputControl(ctx, 'Minimum size (MB)', 'number');
-    const maxSizeField = inputControl(ctx, 'Maximum size (MB)', 'number');
-    const minMessagesField = inputControl(ctx, 'Minimum messages', 'number');
-    const maxMessagesField = inputControl(ctx, 'Maximum messages', 'number');
-    for (const input of [minSizeField.input, maxSizeField.input]) {
-        input.min = '0';
-        input.step = 'any';
-    }
-    for (const input of [minMessagesField.input, maxMessagesField.input]) {
-        input.min = '0';
-        input.step = '1';
+    // Keep legacy saved-view constraints applicable without keeping their low-value controls in the toolbar.
+    const minSize = document.createElement('input');
+    const maxSize = document.createElement('input');
+    const minMessages = document.createElement('input');
+    const maxMessages = document.createElement('input');
+    for (const input of [minSize, maxSize, minMessages, maxMessages]) {
+        input.type = 'hidden';
     }
     for (const control of [favoriteField.select, folderField.select, collectionField.select, tagField.input]) {
         markOrganizationControl(control);
@@ -540,6 +526,8 @@ function buildRoot(ctx, state) {
     scanButton.title = tr(ctx, 'Scan for chats belonging to deleted characters or unlinked groups. This can take a while.');
     const archiveActions = el('div', 'sbca-archive-actions');
     archiveActions.append(clearFilters, refreshButton, scanButton);
+    const organizationTools = el('details', 'sbca-organization-tools');
+    organizationTools.append(el('summary', undefined, tr(ctx, 'Manage organization')));
     const management = el('div', 'sbca-management');
     const managers = {
         folders: buildNamedManager(ctx, 'folders', 'Folders', 'Folder name'),
@@ -548,25 +536,19 @@ function buildRoot(ctx, state) {
     };
     management.append(managers.folders.root, managers.collections.root, managers.views.root);
     const backup = buildBackupControls(ctx);
+    const organizationPanel = el('div', 'sbca-organization-tools-panel');
+    organizationPanel.append(management, backup.root);
+    organizationTools.append(organizationPanel);
     optionsPanel.append(
         kinds,
         orphanField.wrap,
         favoriteField.wrap,
-        folderField.wrap,
-        collectionField.wrap,
-        tagField.wrap,
         tagOptions,
         minDateField.wrap,
         maxDateField.wrap,
-        minSizeField.wrap,
-        maxSizeField.wrap,
-        minMessagesField.wrap,
-        maxMessagesField.wrap,
-        management,
-        backup.root,
     );
     options.append(optionsPanel);
-    filterTools.append(options, archiveActions);
+    filterTools.append(options, organizationTools, archiveActions);
 
     const status = el('div', 'sbca-status');
     status.setAttribute('role', 'status');
@@ -604,11 +586,8 @@ function buildRoot(ctx, state) {
     }
     const list = el('ul', 'sbca-list');
     list.setAttribute('aria-labelledby', listHeading.id);
-    const listTools = el('details', 'sbca-list-tools');
-    const listToolsSummary = el('summary', undefined, tr(ctx, 'List tools'));
-    const listToolsPanel = el('div', 'sbca-list-tools-panel');
-    listToolsPanel.append(ownerField.wrap, sortPills, selectionBar);
-    listTools.append(listToolsSummary, listToolsPanel);
+    const listTools = el('div', 'sbca-list-tools');
+    listTools.append(ownerField.wrap, sortPills, selectionBar);
     listTop.append(listHeading, listTools);
     listPanel.append(listTop, list);
 
@@ -633,7 +612,7 @@ function buildRoot(ctx, state) {
         savedView: savedViewField.select,
         group: groupField.select,
         density: densityField.select,
-        sort: sortField.select,
+        sort,
         owner: ownerField.input,
         ownerField,
         orphan: orphanField.select,
@@ -644,10 +623,10 @@ function buildRoot(ctx, state) {
         tagOptions,
         minDate: minDateField.input,
         maxDate: maxDateField.input,
-        minSize: minSizeField.input,
-        maxSize: maxSizeField.input,
-        minMessages: minMessagesField.input,
-        maxMessages: maxMessagesField.input,
+        minSize,
+        maxSize,
+        minMessages,
+        maxMessages,
         deepButton,
         searchMode,
         searchModeText,
@@ -859,10 +838,6 @@ function buildRoot(ctx, state) {
         ui.collection,
         ui.minDate,
         ui.maxDate,
-        ui.minSize,
-        ui.maxSize,
-        ui.minMessages,
-        ui.maxMessages,
     ]) {
         control.addEventListener('change', () => {
             if (control === ui.density) {
@@ -938,8 +913,6 @@ function buildRoot(ctx, state) {
         state.selectionMode = !state.selectionMode;
         if (!state.selectionMode) {
             state.selectedBatchKeys.clear();
-        } else {
-            listTools.open = true;
         }
         renderList(ctx, state, ui);
         updateSelectionControls(ctx, state, ui);

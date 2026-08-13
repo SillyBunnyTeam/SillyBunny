@@ -261,6 +261,7 @@
 }
 
 .sbca-options > summary,
+.sbca-organization-tools > summary,
 .sbca-json-details > summary {
     inline-size: fit-content;
     cursor: pointer;
@@ -274,6 +275,12 @@
     gap: var(--sbca-space-sm) var(--sbca-space-md);
     align-items: end;
     padding-block-start: var(--sbca-space-md);
+}
+
+.sbca-options[open],
+.sbca-organization-tools[open] {
+    flex-basis: 100%;
+    inline-size: 100%;
 }
 
 .sbca-kinds {
@@ -314,7 +321,7 @@
 
 .sbca-browse-strip {
     display: grid;
-    grid-template-columns: repeat(4, minmax(130px, 1fr));
+    grid-template-columns: repeat(3, minmax(130px, 1fr));
     gap: var(--sbca-space-sm);
 }
 
@@ -528,10 +535,21 @@
     font-size: 0.875em;
 }
 
+.sbca-organization-tools {
+    flex: 0 1 auto;
+}
+
+.sbca-organization-tools-panel {
+    display: grid;
+    grid-column: 1 / -1;
+    gap: var(--sbca-space-lg);
+    inline-size: 100%;
+    padding-block-start: var(--sbca-space-md);
+}
+
 .sbca-management,
 .sbca-organization-backup {
     display: grid;
-    grid-column: 1 / -1;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: var(--sbca-space-lg);
     inline-size: 100%;
@@ -618,25 +636,16 @@
 }
 
 .sbca-list-tools {
-    margin-inline-start: auto;
-}
-
-.sbca-list-tools[open] {
-    flex-basis: 100%;
-}
-
-.sbca-list-tools > summary {
-    inline-size: fit-content;
-    margin-inline-start: auto;
-    cursor: pointer;
-    color: var(--sbca-muted);
-    font-weight: 600;
-}
-
-.sbca-list-tools-panel {
     display: grid;
-    gap: var(--sbca-space-sm);
-    padding-block-start: var(--sbca-space-sm);
+    grid-template-columns: minmax(180px, 1fr) auto;
+    gap: var(--sbca-space-sm) var(--sbca-space-md);
+    align-items: end;
+    flex-basis: 100%;
+    inline-size: 100%;
+}
+
+.sbca-list-tools .sbca-selection-bar {
+    grid-column: 1 / -1;
 }
 
 .sbca-list,
@@ -1066,16 +1075,6 @@
     }
 }
 
-@media (min-width: 1001px) {
-    .sbca-toolbar:has(.sbca-options[open]) {
-        min-block-size: 0;
-        max-block-size: min(50%, 32rem);
-        padding: var(--sbca-space-xs) var(--sbca-space-sm) var(--sbca-space-sm);
-        overflow-y: auto;
-        overscroll-behavior: contain;
-    }
-}
-
 @media (max-width: 1000px) {
     .sbca-root {
         block-size: 78vh;
@@ -1122,6 +1121,7 @@
     }
 
     .sbca-filter-tools > .sbca-options,
+    .sbca-filter-tools > .sbca-organization-tools,
     .sbca-clear-filters,
     .sbca-archive-actions {
         inline-size: 100%;
@@ -1138,6 +1138,15 @@
 
     .sbca-options-panel {
         align-items: stretch;
+    }
+
+    .sbca-list-tools {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .sbca-sortpills,
+    .sbca-list-tools .sbca-selection-bar {
+        grid-column: 1;
     }
 
     .sbca-owner-menu {
