@@ -119,12 +119,10 @@ function inputControl(ctx, label, type = 'text', className = 'sbca-filter') {
 function ownerControl(ctx) {
     const id = `sbca_owner_${++renderId}`;
     const wrap = el('div', 'sbca-owner-selector');
-    const label = el('span', 'sbca-label', tr(ctx, 'Character or group'));
-    label.id = `${id}_label`;
     const details = el('details', 'sbca-owner-details');
     const summary = el('summary', 'text_pole sbca-owner-summary');
     const summaryTextId = `${id}_value`;
-    summary.setAttribute('aria-labelledby', `${label.id} ${summaryTextId}`);
+    summary.setAttribute('aria-label', tr(ctx, 'Character or group'));
     const menu = el('div', 'sbca-owner-menu');
     const search = document.createElement('input');
     search.type = 'search';
@@ -134,14 +132,14 @@ function ownerControl(ctx) {
     search.autocomplete = 'off';
     const list = el('div', 'sbca-owner-options');
     list.setAttribute('role', 'group');
-    list.setAttribute('aria-labelledby', label.id);
+    list.setAttribute('aria-label', tr(ctx, 'Character or group'));
     const empty = el('p', 'sbca-owner-empty', tr(ctx, 'No characters or groups match.'));
     empty.hidden = true;
     const input = document.createElement('input');
     input.type = 'hidden';
     menu.append(search, list, empty);
     details.append(summary, menu);
-    wrap.append(label, details, input);
+    wrap.append(details, input);
     return { wrap, details, summary, summaryTextId, search, list, empty, input, choices: new Map() };
 }
 
@@ -195,9 +193,6 @@ function setOwnerValue(ctx, ui, value) {
     copy.id = ui.ownerField.summaryTextId;
     const name = el('span', 'sbca-owner-choice-name', choice.label);
     copy.append(name);
-    if (choice.meta) {
-        copy.append(el('span', 'sbca-owner-choice-meta', choice.meta));
-    }
     ui.ownerField.summary.replaceChildren(ownerChoiceVisual(ctx, choice), copy);
     for (const option of ui.ownerField.list.querySelectorAll('.sbca-owner-option')) {
         option.setAttribute('aria-pressed', String(option.dataset.sbcaOwner === selected));

@@ -1048,7 +1048,8 @@ describe('SillyBunny Chats Archive integration', () => {
         expect(ui).toMatch(/sbca-selection-toggle/);
         expect(ui).toMatch(/sbca-organizer/);
         expect(ui).toMatch(/physicalChatKey/);
-        expect(ui).toMatch(/'Character or group'/);
+        expect(ui).toMatch(/summary\.setAttribute\('aria-label', tr\(ctx, 'Character or group'\)\)/);
+        expect(ui).not.toMatch(/el\('span', 'sbca-label', tr\(ctx, 'Character or group'\)\)/);
         expect(ui).toMatch(/'All characters and groups'/);
         expect(ui).toMatch(/sbca-owner-selector/);
         expect(ui).toMatch(/const ownerField = ownerControl\(ctx\)/);

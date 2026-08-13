@@ -206,6 +206,8 @@ test('keeps a balanced master-detail workspace on desktop', async ({ page }) => 
         const viewer = dialog.querySelector('.sbca-viewer');
         const search = dialog.querySelector('.sbca-search input');
         const deepSearch = dialog.querySelector('.sbca-deep');
+        const ownerSummary = dialog.querySelector('.sbca-owner-summary');
+        const sortPill = dialog.querySelector('.sbca-sortpill');
         const clearFilters = dialog.querySelector('.sbca-clear-filters');
         const refresh = dialog.querySelector('.sbca-archive-actions > :nth-child(2)');
         const scan = dialog.querySelector('.sbca-archive-actions > :nth-child(3)');
@@ -218,6 +220,8 @@ test('keeps a balanced master-detail workspace on desktop', async ({ page }) => 
         const viewerRect = viewer.getBoundingClientRect();
         const searchRect = search.getBoundingClientRect();
         const deepSearchRect = deepSearch.getBoundingClientRect();
+        const ownerSummaryRect = ownerSummary.getBoundingClientRect();
+        const sortPillRect = sortPill.getBoundingClientRect();
         const detailsRect = viewerDetails.getBoundingClientRect();
         const organizerRect = organizer.getBoundingClientRect();
         return {
@@ -226,6 +230,8 @@ test('keeps a balanced master-detail workspace on desktop', async ({ page }) => 
             contentInset: rootRect.left - dialogRect.left,
             controlsAligned: Math.abs(searchRect.top - deepSearchRect.top) <= 0.5
                 && Math.abs(searchRect.bottom - deepSearchRect.bottom) <= 0.5,
+            listToolsAligned: Math.abs(ownerSummaryRect.top - sortPillRect.top) <= 0.5
+                && Math.abs(ownerSummaryRect.height - sortPillRect.height) <= 2,
             detailsRadius: parseFloat(getComputedStyle(viewerDetails).borderRadius),
             dialogHeightRatio: dialogRect.height / innerHeight,
             dialogWidthRatio: dialogRect.width / innerWidth,
@@ -246,6 +252,7 @@ test('keeps a balanced master-detail workspace on desktop', async ({ page }) => 
     expect(layout.contentInset).toBeGreaterThanOrEqual(16);
     expect(layout.contentInset).toBeLessThanOrEqual(18);
     expect(layout.controlsAligned).toBe(true);
+    expect(layout.listToolsAligned).toBe(true);
     expect(layout.actionOrder).toEqual(['Clear filters', 'Refresh', 'Find orphaned files']);
     expect(layout.listRadius).toBeGreaterThan(0);
     expect(layout.viewerRadius).toBeGreaterThan(0);
