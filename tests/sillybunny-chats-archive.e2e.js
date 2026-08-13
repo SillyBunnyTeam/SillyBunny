@@ -1,4 +1,4 @@
-/* global getComputedStyle */
+/* global getComputedStyle, innerHeight, innerWidth */
 import { expect, test } from '@playwright/test';
 import fs from 'node:fs/promises';
 import http from 'node:http';
@@ -111,6 +111,184 @@ test('shows a resilient label with at least a 44px mobile touch target', async (
     expect(control.labelHeight).toBeGreaterThan(0);
     expect(control.buttonFits).toBe(true);
     expect(control.labelFits).toBe(true);
+});
+
+test('owns the popup frame spacing and keeps mobile controls inside the viewport', async ({ page }) => {
+    await routeOrganization(page);
+    await page.route('**/api/chats/archive/inventory', route => fulfillJson(route, archivePage([
+        linkedRow('a-long-chat-name-that-must-wrap-without-widening-the-popup'),
+    ], null, null, 1)));
+
+    await openArchive(page);
+    const frame = await page.locator('.sbca-dialog').evaluate(dialog => {
+        const body = dialog.querySelector('.popup-body');
+        const content = dialog.querySelector('.popup-content');
+        const root = dialog.querySelector('.sbca-root');
+        const controls = dialog.querySelector('.popup-controls');
+        const close = dialog.querySelector('.popup-button-close');
+        const dialogStyle = getComputedStyle(dialog);
+        const bodyStyle = getComputedStyle(body);
+        const contentStyle = getComputedStyle(content);
+        const rootStyle = getComputedStyle(root);
+        const dialogRect = dialog.getBoundingClientRect();
+        const bodyRect = body.getBoundingClientRect();
+        const rootRect = root.getBoundingClientRect();
+        const controlsRect = controls.getBoundingClientRect();
+        const closeRect = close.getBoundingClientRect();
+        return {
+            bodyPaddingBottom: parseFloat(bodyStyle.paddingBottom),
+            bodyPaddingLeft: parseFloat(bodyStyle.paddingLeft),
+            bodyPaddingRight: parseFloat(bodyStyle.paddingRight),
+            bodyPaddingTop: parseFloat(bodyStyle.paddingTop),
+            closeHeight: closeRect.height,
+            closeRight: dialogRect.right - closeRect.right,
+            closeTop: closeRect.top - dialogRect.top,
+            closeWidth: closeRect.width,
+            contentMarginTop: contentStyle.marginTop,
+            contentPaddingLeft: contentStyle.paddingLeft,
+            controlsInsideBody: controlsRect.bottom <= bodyRect.bottom + 0.5,
+            dialogPadding: dialogStyle.padding,
+            rootGap: rootStyle.gap,
+            rootInsideBody: rootRect.left >= bodyRect.left && rootRect.right <= bodyRect.right,
+            rootNoHorizontalOverflow: root.scrollWidth <= root.clientWidth,
+            viewportFit: dialogRect.left >= 0 && dialogRect.right <= innerWidth,
+        };
+    });
+
+    expect(frame.dialogPadding).toBe('0px');
+    expect(frame.contentMarginTop).toBe('0px');
+    expect(frame.contentPaddingLeft).toBe('0px');
+    expect(frame.rootGap).toBe('16px');
+    expect(frame.bodyPaddingTop).toBeGreaterThanOrEqual(12);
+    expect(frame.bodyPaddingRight).toBeGreaterThanOrEqual(12);
+    expect(frame.bodyPaddingBottom).toBeGreaterThanOrEqual(8);
+    expect(frame.bodyPaddingLeft).toBeGreaterThanOrEqual(12);
+    expect(frame.closeHeight).toBeGreaterThanOrEqual(44);
+    expect(frame.closeWidth).toBeGreaterThanOrEqual(44);
+    expect(frame.closeTop).toBeGreaterThanOrEqual(4);
+    expect(frame.closeRight).toBeGreaterThanOrEqual(4);
+    expect(frame.controlsInsideBody).toBe(true);
+    expect(frame.rootInsideBody).toBe(true);
+    expect(frame.rootNoHorizontalOverflow).toBe(true);
+    expect(frame.viewportFit).toBe(true);
+});
+
+test('keeps a balanced master-detail workspace on desktop', async ({ page }) => {
+    let releaseExport;
+    const exportGate = new Promise(resolve => { releaseExport = resolve; });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await routeOrganization(page);
+    await page.route('**/api/chats/archive/inventory', route => fulfillJson(route, archivePage([
+        linkedRow('desktop-chat'),
+    ], null, null, 1)));
+    await page.route('**/api/chats/export', async route => {
+        await exportGate;
+        await fulfillJson(route, {
+            result: [
+                JSON.stringify({ chat_metadata: { source: 'desktop' } }),
+                JSON.stringify({ name: 'Alice', mes: 'desktop message' }),
+            ].join('\n'),
+        });
+    });
+
+    await openArchive(page);
+    await page.getByText('desktop-chat', { exact: true }).click();
+    await expect(page.locator('.sbca-viewer-content')).toContainText('Loading chat...');
+    const loadingOrder = await page.locator('.sbca-viewer-content').evaluate(content => (
+        [...content.children].map(child => child.className)
+    ));
+    expect(loadingOrder).toEqual(['sbca-organizer', 'sbca-viewer-details']);
+    releaseExport();
+    await expect(page.locator('.sbca-viewer-content')).toContainText('desktop message');
+    const layout = await page.locator('.sbca-dialog').evaluate(dialog => {
+        const root = dialog.querySelector('.sbca-root');
+        const list = dialog.querySelector('.sbca-list-panel');
+        const viewer = dialog.querySelector('.sbca-viewer');
+        const search = dialog.querySelector('.sbca-search input');
+        const deepSearch = dialog.querySelector('.sbca-deep');
+        const clearFilters = dialog.querySelector('.sbca-clear-filters');
+        const refresh = dialog.querySelector('.sbca-archive-actions > :nth-child(2)');
+        const scan = dialog.querySelector('.sbca-archive-actions > :nth-child(3)');
+        const viewerContent = dialog.querySelector('.sbca-viewer-content');
+        const viewerDetails = dialog.querySelector('.sbca-viewer-details');
+        const organizer = dialog.querySelector('.sbca-organizer');
+        const dialogRect = dialog.getBoundingClientRect();
+        const rootRect = root.getBoundingClientRect();
+        const listRect = list.getBoundingClientRect();
+        const viewerRect = viewer.getBoundingClientRect();
+        const searchRect = search.getBoundingClientRect();
+        const deepSearchRect = deepSearch.getBoundingClientRect();
+        const detailsRect = viewerDetails.getBoundingClientRect();
+        const organizerRect = organizer.getBoundingClientRect();
+        return {
+            actionOrder: [clearFilters, refresh, scan].map(control => control.textContent.trim()),
+            detailOrder: [...viewerContent.children].map(child => child.className),
+            contentInset: rootRect.left - dialogRect.left,
+            controlsAligned: Math.abs(searchRect.top - deepSearchRect.top) <= 0.5
+                && Math.abs(searchRect.bottom - deepSearchRect.bottom) <= 0.5,
+            detailsRadius: parseFloat(getComputedStyle(viewerDetails).borderRadius),
+            dialogHeightRatio: dialogRect.height / innerHeight,
+            dialogWidthRatio: dialogRect.width / innerWidth,
+            listRadius: parseFloat(getComputedStyle(list).borderRadius),
+            listWidth: listRect.width,
+            noHorizontalOverflow: root.scrollWidth <= root.clientWidth,
+            organizerBeforeInformation: organizerRect.bottom <= detailsRect.top,
+            viewerRadius: parseFloat(getComputedStyle(viewer).borderRadius),
+            viewerStartsAfterList: viewerRect.left > listRect.right,
+            viewerWidth: viewerRect.width,
+        };
+    });
+
+    expect(layout.dialogWidthRatio).toBeGreaterThan(0.9);
+    expect(layout.dialogWidthRatio).toBeLessThanOrEqual(0.95);
+    expect(layout.dialogHeightRatio).toBeGreaterThan(0.85);
+    expect(layout.dialogHeightRatio).toBeLessThanOrEqual(0.93);
+    expect(layout.contentInset).toBeGreaterThanOrEqual(16);
+    expect(layout.contentInset).toBeLessThanOrEqual(18);
+    expect(layout.controlsAligned).toBe(true);
+    expect(layout.actionOrder).toEqual(['Clear filters', 'Refresh', 'Find orphaned files']);
+    expect(layout.listRadius).toBeGreaterThan(0);
+    expect(layout.viewerRadius).toBeGreaterThan(0);
+    expect(layout.viewerStartsAfterList).toBe(true);
+    expect(layout.viewerWidth).toBeGreaterThan(layout.listWidth);
+    expect(layout.detailOrder).toEqual(['sbca-viewer-actions', 'sbca-organizer', 'sbca-viewer-details']);
+    expect(layout.detailsRadius).toBeGreaterThan(0);
+    expect(layout.organizerBeforeInformation).toBe(true);
+    expect(layout.noHorizontalOverflow).toBe(true);
+});
+
+test('keeps the tablet and Safari popup layout bounded', async ({ page }) => {
+    await page.setViewportSize({ width: 820, height: 740 });
+    await page.goto(baseUrl);
+    await expect(page.locator('html')).toHaveAttribute('data-archive-ready', 'true');
+    await page.locator('body').evaluate(body => body.classList.add('safari'));
+    await routeOrganization(page);
+    await page.route('**/api/chats/archive/inventory', route => fulfillJson(route, archivePage([
+        linkedRow('tablet-chat'),
+    ], null, null, 1)));
+
+    await page.locator('#sbca_drawer_button').click();
+    await expect(page.locator('.sbca-root')).toBeVisible();
+    const layout = await page.locator('.sbca-dialog').evaluate(dialog => {
+        const body = dialog.querySelector('.popup-body');
+        const root = dialog.querySelector('.sbca-root');
+        const dialogRect = dialog.getBoundingClientRect();
+        const bodyRect = body.getBoundingClientRect();
+        const rootRect = root.getBoundingClientRect();
+        return {
+            bodyHeight: bodyRect.height,
+            dialogHeight: dialogRect.height,
+            rootInsideBody: rootRect.left >= bodyRect.left && rootRect.right <= bodyRect.right,
+            rootNoHorizontalOverflow: root.scrollWidth <= root.clientWidth,
+            viewportFit: dialogRect.top >= 0 && dialogRect.bottom <= innerHeight,
+        };
+    });
+
+    expect(layout.dialogHeight).toBeLessThanOrEqual(740);
+    expect(layout.bodyHeight).toBeLessThanOrEqual(layout.dialogHeight);
+    expect(layout.rootInsideBody).toBe(true);
+    expect(layout.rootNoHorizontalOverflow).toBe(true);
+    expect(layout.viewportFit).toBe(true);
 });
 
 test('renders the first archive page and progress before the next page resolves', async ({ page }) => {
@@ -285,6 +463,12 @@ test('replaces orphan scan tokens and views the active orphan through the archiv
 
     await page.getByText('current-orphan', { exact: true }).click();
     await expect(page.locator('.sbca-viewer-content')).toContainText('orphan body');
+    const mobileDetail = await page.locator('.sbca-viewer-content').evaluate(content => ({
+        noHorizontalOverflow: content.scrollWidth <= content.clientWidth,
+        order: [...content.children].map(child => child.className),
+    }));
+    expect(mobileDetail.order).toEqual(['sbca-viewer-actions', 'sbca-organizer', 'sbca-viewer-details']);
+    expect(mobileDetail.noHorizontalOverflow).toBe(true);
     expect(viewedUrls).toHaveLength(1);
     const viewed = new URL(viewedUrls[0]);
     expect(viewed.pathname).toBe('/api/chats/archive/view');
@@ -351,6 +535,7 @@ function fixtureHtml(useLongLabel) {
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="/public/style.css">
+    <link rel="stylesheet" href="/public/css/sillybunny-theme.css">
     <link rel="stylesheet" href="/public/css/mobile-styles.css" media="(max-width: 768px)">
     <link rel="stylesheet" href="/public/css/sillybunny-tabs.css">
     <link rel="stylesheet" href="/public/css/sillybunny-mobile-shell.css" media="(max-width: 768px)">
@@ -395,18 +580,33 @@ function fixtureHtml(useLongLabel) {
                     Popup: class {
                         constructor(content) {
                             this.dlg = document.createElement('dialog');
-                            this.dlg.setAttribute('open', '');
+                            this.dlg.className = 'popup large_dialogue_popup';
                             this.dlg.tabIndex = -1;
+                            this.body = document.createElement('div');
+                            this.body.className = 'popup-body';
+                            this.content = document.createElement('div');
+                            this.content.className = 'popup-content';
+                            this.controls = document.createElement('div');
+                            this.controls.className = 'popup-controls';
                             this.okButton = document.createElement('button');
                             this.okButton.type = 'button';
-                            this.okButton.className = 'popup-close';
+                            this.okButton.className = 'menu_button popup-button-ok';
                             this.okButton.textContent = 'Close';
-                            this.dlg.append(content, this.okButton);
+                            this.closeButton = document.createElement('div');
+                            this.closeButton.className = 'popup-button-close';
+                            this.closeButton.setAttribute('aria-label', 'Close popup');
+                            this.closeButton.tabIndex = 0;
+                            this.content.append(content);
+                            this.controls.append(this.okButton);
+                            this.body.append(this.content, this.controls);
+                            this.dlg.append(this.body, this.closeButton);
                             this.shown = new Promise(resolve => { this.resolve = resolve; });
                             this.okButton.addEventListener('click', () => this.completeCancelled());
+                            this.closeButton.addEventListener('click', () => this.completeCancelled());
                         }
                         show() {
                             document.body.append(this.dlg);
+                            this.dlg.showModal();
                             return this.shown;
                         }
                         async completeCancelled() {

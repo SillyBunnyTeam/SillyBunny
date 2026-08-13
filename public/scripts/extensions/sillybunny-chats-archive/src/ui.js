@@ -539,7 +539,7 @@ function buildRoot(ctx, state) {
     const scanButton = button('sbca-control', tr(ctx, 'Find orphaned files'));
     scanButton.title = tr(ctx, 'Scan for chats belonging to deleted characters or unlinked groups. This can take a while.');
     const archiveActions = el('div', 'sbca-archive-actions');
-    archiveActions.append(refreshButton, scanButton);
+    archiveActions.append(clearFilters, refreshButton, scanButton);
     const management = el('div', 'sbca-management');
     const managers = {
         folders: buildNamedManager(ctx, 'folders', 'Folders', 'Folder name'),
@@ -566,7 +566,7 @@ function buildRoot(ctx, state) {
         backup.root,
     );
     options.append(optionsPanel);
-    filterTools.append(options, clearFilters, archiveActions);
+    filterTools.append(options, archiveActions);
 
     const status = el('div', 'sbca-status');
     status.setAttribute('role', 'status');
@@ -2196,11 +2196,12 @@ async function openViewer(ctx, state, row, ui) {
     state.viewerAbort = controller;
     state.selectedRow = row;
     ui.viewerTitle.textContent = row.file_id;
-    ui.viewerContent.replaceChildren(
-        buildChatOrganizer(ctx, state, row, ui),
+    const loadingDetails = el('div', 'sbca-viewer-details');
+    loadingDetails.append(
         buildSummary(ctx, row),
         el('p', 'sbca-placeholder', tr(ctx, 'Loading chat...')),
     );
+    ui.viewerContent.replaceChildren(buildChatOrganizer(ctx, state, row, ui), loadingDetails);
     ui.viewer.setAttribute('aria-busy', 'true');
     showDetail(ui);
 
@@ -2243,7 +2244,9 @@ async function openViewer(ctx, state, row, ui) {
             errorMessage.setAttribute('role', 'alert');
             const retry = button('sbca-control', tr(ctx, 'Try again'));
             retry.addEventListener('click', () => void openViewer(ctx, state, row, ui));
-            ui.viewerContent.replaceChildren(buildChatOrganizer(ctx, state, row, ui), buildSummary(ctx, row), errorMessage, retry);
+            const details = el('div', 'sbca-viewer-details');
+            details.append(buildSummary(ctx, row), errorMessage, retry);
+            ui.viewerContent.replaceChildren(buildChatOrganizer(ctx, state, row, ui), details);
             if (!state.searchAbort && state.deepRows === null) {
                 setStatus(ui, tr(ctx, 'Could not open {name}', { name: row.file_id }));
             }
@@ -2487,14 +2490,12 @@ function renderViewer(ctx, state, row, raw, shaped, ui) {
         latest?.focus({ preventScroll: true });
         latest?.scrollIntoView({ block: 'start' });
     } : null;
-    const content = [
-        buildChatOrganizer(ctx, state, row, ui),
-        buildSummary(ctx, row),
-        buildViewerActions(ctx, state, row, raw, true, showLatest),
-    ];
+    const actions = buildViewerActions(ctx, state, row, raw, true, showLatest);
+    const details = el('div', 'sbca-viewer-details');
+    details.append(buildSummary(ctx, row));
     const metadata = shaped.header?.chat_metadata;
     if (metadata && Object.keys(metadata).length > 0) {
-        content.push(jsonDetails(ctx, 'Chat metadata', metadata));
+        details.append(jsonDetails(ctx, 'Chat metadata', metadata));
     }
 
     if (shaped.messages.length === 0) {
@@ -2508,8 +2509,8 @@ function renderViewer(ctx, state, row, raw, shaped, ui) {
     rawView.hidden = true;
     const rawToggle = buildRawToggle(ctx, raw, rawView, messages);
 
-    content.push(rawToggle, messages, rawView);
-    ui.viewerContent.replaceChildren(...content);
+    details.append(rawToggle, messages, rawView);
+    ui.viewerContent.replaceChildren(actions, buildChatOrganizer(ctx, state, row, ui), details);
     const match = messages.querySelector('.sbca-msg-match');
     match?.focus({ preventScroll: true });
     match?.scrollIntoView({ block: 'center' });
@@ -2548,13 +2549,17 @@ function renderMalformedViewer(ctx, state, row, raw, ui) {
     const rawView = el('pre', 'sbca-raw');
     rawView.id = `sbca_raw_${++renderId}`;
     rawView.hidden = true;
-    ui.viewerContent.replaceChildren(
-        buildChatOrganizer(ctx, state, row, ui),
+    const details = el('div', 'sbca-viewer-details');
+    details.append(
         buildSummary(ctx, row),
-        buildViewerActions(ctx, state, row, raw, false),
         warning,
         buildRawToggle(ctx, raw, rawView),
         rawView,
+    );
+    ui.viewerContent.replaceChildren(
+        buildViewerActions(ctx, state, row, raw, false),
+        buildChatOrganizer(ctx, state, row, ui),
+        details,
     );
 }
 
