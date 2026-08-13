@@ -41,7 +41,10 @@ function ensureButton() {
         const icon = document.createElement('i');
         icon.className = 'fa-solid fa-box-archive';
         icon.setAttribute('aria-hidden', 'true');
-        button.append(icon);
+        const text = document.createElement('span');
+        text.className = 'sbca-drawer-button-label';
+        text.textContent = label;
+        button.append(icon, text);
         button.addEventListener('click', onOpen);
     }
     if (button.parentElement !== container) {

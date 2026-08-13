@@ -120,7 +120,7 @@ export function parseLastMes(value, toMoment) {
 }
 
 /**
- * Normalizes one /api/chats/recent row against the loaded character and group lists.
+ * Normalizes one archive-compatible row against the loaded character and group lists.
  * Rows carry `avatar` (character chats), `group` (group chats), or neither (root orphans).
  * @param {object} row Raw ChatInfo row from the server
  * @param {Array<{avatar: string, name?: string}>|Map<string, object>} characters
@@ -135,6 +135,8 @@ export function normalizeRow(row, characters = [], groups = [], toMoment = undef
         || (row.group != null && typeof row.group !== 'string' && typeof row.group !== 'number')
         || (row.chatFolder != null && typeof row.chatFolder !== 'string')
         || (row.file_name != null && typeof row.file_name !== 'string')
+        || (row.orphan_type != null && !ORPHAN_TYPES.has(row.orphan_type))
+        || (row.archive_hash != null && typeof row.archive_hash !== 'string')
         || (row.file_id != null && typeof row.file_id !== 'string' && typeof row.file_id !== 'number')) {
         return null;
     }
@@ -165,6 +167,11 @@ export function normalizeRow(row, characters = [], groups = [], toMoment = undef
         ownerName = String(groupId);
         orphanType = 'missing-group';
     }
+    if (row.orphan_type) {
+        kind = 'orphan';
+        orphanType = row.orphan_type;
+        ownerName = row.orphan_type === 'missing-character' ? chatFolder ?? '' : ownerName;
+    }
 
     const fileName = typeof row.file_name === 'string' ? row.file_name : '';
     const sizeBytes = parseHumanSize(row.file_size);
@@ -191,42 +198,7 @@ export function normalizeRow(row, characters = [], groups = [], toMoment = undef
         mtime,
         mtimeKnown: mtime !== 0,
         snippet: previewText(row.mes, PREVIEW_LENGTH),
-    };
-}
-
-/**
- * Maps a Data Maid orphan record into the normalized archive row shape.
- * @param {{name?: string, hash?: string, parent?: string, size?: number, mtime?: number}} record
- * @param {'missing-character'|'unlinked-group'} orphanType
- */
-export function dataMaidRecordToRow(record, orphanType) {
-    if (!isRecord(record) || typeof record.name !== 'string' || typeof record.hash !== 'string') {
-        return null;
-    }
-    const fileName = String(record.name ?? '');
-    const rawSize = Number(record.size);
-    const hasSize = Number.isFinite(rawSize) && rawSize >= 0;
-    const sizeBytes = hasSize ? rawSize : 0;
-    const mtime = parseLastMes(record.mtime);
-    const chatFolder = orphanType === 'missing-character' ? String(record.parent ?? '') : null;
-    return {
-        kind: 'orphan',
-        orphanType,
-        source: 'data-maid',
-        ownerName: chatFolder ?? '',
-        avatar: null,
-        chatFolder,
-        groupId: null,
-        file_id: fileName.replace(/\.jsonl$/i, ''),
-        file_name: fileName,
-        sizeText: hasSize ? formatBytes(sizeBytes) : '',
-        sizeBytes,
-        sizeKnown: hasSize,
-        count: null,
-        mtime,
-        mtimeKnown: mtime !== 0,
-        snippet: '',
-        dataMaidHash: String(record.hash ?? ''),
+        archiveHash: row.archive_hash ?? null,
     };
 }
 
@@ -461,7 +433,7 @@ export function parseOrganization(text) {
 
 /**
  * Maps one /api/chats/search result (whose `file_name` is actually extension-less)
- * into the /api/chats/recent row shape so normalizeRow can consume it.
+ * into the archive row shape so normalizeRow can consume it.
  * @param {object} result Search result from the server
  * @param {{avatar_url?: string, group_id?: string}} scope The scope the search ran against
  */

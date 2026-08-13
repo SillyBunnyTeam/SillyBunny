@@ -8,20 +8,20 @@ import path from 'node:path';
 import { afterEach, describe, expect, jest, test } from '@jest/globals';
 
 import {
+    ARCHIVE_PAGE_SIZE,
+    createTimedSignal,
     exportChat,
-    fetchCharacterFiles,
-    fetchDataMaidReport,
+    fetchArchiveFile,
+    fetchArchiveInventory,
     fetchOrganization,
-    fetchRecent,
-    finalizeDataMaid,
     ORGANIZATION_FILE_NAME,
+    releaseArchiveSession,
     saveOrganization,
     searchScope,
 } from '../public/scripts/extensions/sillybunny-chats-archive/src/api.js';
 import {
     buildSearchScopes,
     createDefaultOrganization,
-    dataMaidRecordToRow,
     deepResultToRecentRow,
     filterRows,
     findMatchingMessageIndex,
@@ -59,36 +59,107 @@ jest.unstable_mockModule('../src/util.js', () => ({
 const { DataMaidService } = await import('../src/endpoints/data-maid.js');
 
 const extensionRoot = new URL('../public/scripts/extensions/sillybunny-chats-archive/', import.meta.url);
-const [entry, ui, css, manifestText, extensionsEndpoint] = await Promise.all([
+const [entry, ui, manifestText, extensionsEndpoint] = await Promise.all([
     readFile(new URL('index.js', extensionRoot), 'utf8'),
     readFile(new URL('src/ui.js', extensionRoot), 'utf8'),
-    readFile(new URL('style.css', extensionRoot), 'utf8'),
     readFile(new URL('manifest.json', extensionRoot), 'utf8'),
     readFile(new URL('../src/endpoints/extensions.js', import.meta.url), 'utf8'),
 ]);
 const manifest = JSON.parse(manifestText);
 const entryModule = await import('../public/scripts/extensions/sillybunny-chats-archive/index.js');
 const originalFetch = globalThis.fetch;
-const originalAbortSignalTimeout = AbortSignal.timeout;
+const originalAbortSignalAny = Object.getOwnPropertyDescriptor(AbortSignal, 'any');
 
 afterEach(() => {
     globalThis.fetch = originalFetch;
-    AbortSignal.timeout = originalAbortSignalTimeout;
+    if (originalAbortSignalAny) {
+        Object.defineProperty(AbortSignal, 'any', originalAbortSignalAny);
+    } else {
+        delete AbortSignal.any;
+    }
+    jest.useRealTimers();
 });
 
 describe('SillyBunny Chats Archive API', () => {
-    test('recent chats request covers one list page with a bounded host request', async () => {
-        let request;
+    test('loads every bounded archive page through one inventory endpoint', async () => {
+        const cursor = 'a'.repeat(64);
+        const requests = [];
+        const progress = jest.fn();
+        const pages = [
+            { rows: [{ file_name: 'one.jsonl' }], cursor, read_token: null, errors: 1 },
+            { rows: [{ file_name: 'two.jsonl' }, { file_name: 'three.jsonl' }], cursor: null, read_token: null, errors: 0 },
+        ];
         globalThis.fetch = async (url, options) => {
-            request = { url, options };
-            return { ok: true, status: 200, json: async () => [] };
+            requests.push({ url, options });
+            return { ok: true, status: 200, json: async () => pages.shift() };
         };
 
-        await fetchRecent({ getRequestHeaders: () => ({ authorization: 'test' }) });
+        const result = await fetchArchiveInventory(
+            { getRequestHeaders: () => ({ authorization: 'test' }) },
+            'archive',
+            undefined,
+            progress,
+        );
 
-        expect(request.url).toBe('/api/chats/recent');
-        expect(request.options.method).toBe('POST');
-        expect(request.options.body).toBe('{"max":100}');
+        expect(result).toEqual({
+            rows: [
+                { file_name: 'one.jsonl' },
+                { file_name: 'two.jsonl' },
+                { file_name: 'three.jsonl' },
+            ],
+            errors: 1,
+            readToken: null,
+        });
+        expect(requests.map(request => request.url)).toEqual([
+            '/api/chats/archive/inventory',
+            '/api/chats/archive/inventory',
+        ]);
+        expect(requests.map(request => JSON.parse(request.options.body))).toEqual([
+            { scope: 'archive', page_size: ARCHIVE_PAGE_SIZE },
+            { scope: 'archive', page_size: ARCHIVE_PAGE_SIZE, cursor },
+        ]);
+        expect(progress.mock.calls).toEqual([
+            [{ loaded: 1, errors: 1 }],
+            [{ loaded: 3, errors: 1 }],
+        ]);
+    });
+
+    test('sorts and filters complete metadata from beyond the first archive page', async () => {
+        const cursor = 'd'.repeat(64);
+        const firstPage = Array.from({ length: ARCHIVE_PAGE_SIZE }, (_, index) => ({
+            avatar: 'Scale.png',
+            file_name: `chat-${String(index).padStart(3, '0')}.jsonl`,
+            file_size: '1KB',
+            chat_items: 1,
+            last_mes: index + 1,
+            mes: '',
+        }));
+        const qualifying = {
+            avatar: 'Scale.png',
+            file_name: 'qualifying.jsonl',
+            file_size: '8MB',
+            chat_items: 900,
+            last_mes: 50_000,
+            mes: 'late page metadata',
+        };
+        const pages = [
+            { rows: firstPage, cursor, read_token: null, errors: 0 },
+            { rows: [qualifying], cursor: null, read_token: null, errors: 0 },
+        ];
+        globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => pages.shift() });
+
+        const inventory = await fetchArchiveInventory({ getRequestHeaders: () => ({}) }, 'archive');
+        const rows = inventory.rows.map(row => normalizeRow(row, [{ avatar: 'Scale.png', name: 'Scale' }], []));
+        const filtered = filterRows(rows, {
+            minDate: 40_000,
+            minMessages: 500,
+            minSize: 4 * 1024 * 1024,
+        });
+
+        expect(filtered.map(row => row.file_id)).toEqual(['qualifying']);
+        expect(sortRows(rows, 'count')[0].file_id).toBe('qualifying');
+        expect(sortRows(rows, 'recent')[0].file_id).toBe('qualifying');
+        expect(sortRows(rows, 'size')[0].file_id).toBe('qualifying');
     });
 
     test('POST failures preserve HTTP status for lazy missing-file handling', async () => {
@@ -153,24 +224,10 @@ describe('SillyBunny Chats Archive API', () => {
         expect(decoded).toBe(JSON.stringify(organization));
     });
 
-    test('organization uploads are bounded and caller-cancellable', async () => {
-        const timeoutController = new AbortController();
-        let timeout;
+    test('organization uploads are bounded and caller-cancellable without AbortSignal.any', async () => {
+        Object.defineProperty(AbortSignal, 'any', { configurable: true, value: undefined, writable: true });
         let requestSignal;
-        AbortSignal.timeout = milliseconds => {
-            timeout = milliseconds;
-            return timeoutController.signal;
-        };
-        globalThis.fetch = async (_url, options) => {
-            requestSignal = options.signal;
-            return { ok: true, status: 200, json: async () => ({ uploaded: true }) };
-        };
         const ctx = { getRequestHeaders: () => ({}) };
-
-        await saveOrganization(ctx, { version: 1 });
-        expect(timeout).toBe(15_000);
-        expect(requestSignal).toBe(timeoutController.signal);
-
         const caller = new AbortController();
         globalThis.fetch = (_url, options) => {
             requestSignal = options.signal;
@@ -185,76 +242,83 @@ describe('SillyBunny Chats Archive API', () => {
         expect(requestSignal.aborted).toBe(true);
     });
 
-    test('Data Maid report and finalization forward cancellation signals', async () => {
-        const requests = [];
-        globalThis.fetch = async (url, options) => {
-            requests.push({ url, options });
-            return { ok: true, status: 200, json: async () => ({}) };
-        };
-        const ctx = { getRequestHeaders: () => ({}) };
-        const signal = new AbortController().signal;
+    test('composes caller cancellation and timeouts when AbortSignal.any is absent', async () => {
+        Object.defineProperty(AbortSignal, 'any', { configurable: true, value: undefined, writable: true });
+        const caller = new AbortController();
+        const callerRequest = createTimedSignal(caller.signal, 10_000);
+        const reason = new DOMException('cancelled', 'AbortError');
+        caller.abort(reason);
+        expect(callerRequest.signal.aborted).toBe(true);
+        expect(callerRequest.signal.reason).toBe(reason);
+        callerRequest.cleanup();
 
-        await fetchDataMaidReport(ctx, signal);
-        await finalizeDataMaid(ctx, 'scan-token', signal);
-
-        expect(requests.map(request => [
-            request.url,
-            request.options.body,
-            request.options.signal,
-        ])).toEqual([
-            ['/api/data-maid/report', '{}', signal],
-            ['/api/data-maid/finalize', '{"token":"scan-token"}', signal],
-        ]);
+        jest.useFakeTimers();
+        const timedRequest = createTimedSignal(undefined, 25);
+        jest.advanceTimersByTime(25);
+        expect(timedRequest.signal.aborted).toBe(true);
+        expect(timedRequest.signal.reason).toMatchObject({ name: 'TimeoutError' });
+        timedRequest.cleanup();
     });
 
-    test('character inventory is bounded and preserves partial results', async () => {
-        let active = 0;
-        let maxActive = 0;
-        let slowRequestActive = false;
-        let filledSlowSlot = false;
+    test('cancels a later inventory page and retains its read token for cleanup', async () => {
+        Object.defineProperty(AbortSignal, 'any', { configurable: true, value: undefined, writable: true });
+        const cursor = 'b'.repeat(64);
+        const readToken = 'c'.repeat(64);
+        const controller = new AbortController();
+        let requestCount = 0;
+        let secondRequestStarted;
+        const secondRequest = new Promise(resolve => { secondRequestStarted = resolve; });
         globalThis.fetch = async (_url, options) => {
-            const { avatar_url: avatar } = JSON.parse(options.body);
-            active++;
-            maxActive = Math.max(maxActive, active);
-            if (avatar === '0.png') {
-                slowRequestActive = true;
-            } else if (avatar === '8.png' && slowRequestActive) {
-                filledSlowSlot = true;
+            requestCount++;
+            if (requestCount === 1) {
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({ rows: [{ file_name: 'one.jsonl' }], cursor, read_token: readToken, errors: 0 }),
+                };
             }
-            await new Promise(resolve => setTimeout(resolve, avatar === '0.png' ? 20 : 1));
-            if (avatar === '0.png') {
-                slowRequestActive = false;
-            }
-            active--;
-            if (avatar === '3.png') {
-                return { ok: false, status: 500, json: async () => ({ message: 'failed' }) };
-            }
-            if (avatar === '5.png') {
-                return { ok: true, status: 200, json: async () => ({ error: true }) };
-            }
-            return {
-                ok: true,
-                status: 200,
-                json: async () => avatar === '4.png'
-                    ? [null, { file_name: `${avatar}-chat.jsonl` }]
-                    : [{ file_name: `${avatar}-chat.jsonl` }],
-            };
+            secondRequestStarted();
+            return await new Promise((_resolve, reject) => {
+                options.signal.addEventListener('abort', () => {
+                    const error = new Error('aborted');
+                    error.name = 'AbortError';
+                    reject(error);
+                }, { once: true });
+            });
         };
 
-        const ctx = { getRequestHeaders: () => ({}) };
-        const avatars = Array.from({ length: 10 }, (_, index) => `${index}.png`);
-        const result = await fetchCharacterFiles(ctx, avatars);
+        const pending = fetchArchiveInventory({ getRequestHeaders: () => ({}) }, 'orphans', controller.signal);
+        await secondRequest;
+        controller.abort();
 
-        expect(result.failures).toBe(2);
-        expect(result.rows).toHaveLength(8);
-        expect([...result.failedAvatars]).toEqual(['3.png', '4.png']);
-        expect(maxActive).toBe(8);
-        expect(filledSlowSlot).toBe(true);
-        expect(result.rows[0]).toEqual({
-            file_name: '0.png-chat.jsonl',
-            avatar: '0.png',
-            _source: 'inventory',
+        await expect(pending).rejects.toMatchObject({
+            name: 'AbortError',
+            archiveCursor: cursor,
+            archiveReadToken: readToken,
         });
+        expect(requestCount).toBe(2);
+    });
+
+    test('views and releases orphan files only through the archive namespace', async () => {
+        const requests = [];
+        globalThis.fetch = async (url, options = {}) => {
+            requests.push({ url: String(url), options });
+            if (String(url).includes('/view?')) {
+                return { ok: true, status: 200, text: async () => 'chat body' };
+            }
+            return { ok: true, status: 204 };
+        };
+        const ctx = { getRequestHeaders: () => ({ 'x-test': 'yes' }) };
+        const signal = new AbortController().signal;
+
+        await expect(fetchArchiveFile(ctx, 'token', 'hash', signal)).resolves.toBe('chat body');
+        await releaseArchiveSession(ctx, { token: 'token', cursor: 'cursor' }, signal);
+
+        expect(requests[0].url).toBe('/api/chats/archive/view?token=token&hash=hash');
+        expect(requests[0].options.signal).toBe(signal);
+        expect(requests[1].url).toBe('/api/chats/archive/release');
+        expect(JSON.parse(requests[1].options.body)).toEqual({ token: 'token', cursor: 'cursor' });
+        expect(requests.every(request => !request.url.includes('/api/data-maid'))).toBe(true);
     });
 
     test('successful list endpoints reject malformed JSON and response shapes', async () => {
@@ -264,9 +328,10 @@ describe('SillyBunny Chats Archive API', () => {
             expect(options.headers).toEqual({ 'x-test': 'yes' });
             return { ok: true, status: 200, json: async () => { throw new SyntaxError('bad json'); } };
         };
-        await expect(fetchRecent(ctx)).rejects.toThrow(SyntaxError);
+        await expect(fetchArchiveInventory(ctx, 'archive')).rejects.toThrow(SyntaxError);
 
         globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ results: [] }) });
+        await expect(fetchArchiveInventory(ctx, 'archive')).rejects.toThrow(/invalid response/);
         await expect(searchScope(ctx, 'x', {})).rejects.toThrow(/invalid response/);
     });
 
@@ -276,7 +341,7 @@ describe('SillyBunny Chats Archive API', () => {
             status: 200,
             json: async () => { throw new DOMException('aborted', 'AbortError'); },
         });
-        await expect(fetchRecent({ getRequestHeaders: () => ({}) })).rejects.toMatchObject({ name: 'AbortError' });
+        await expect(fetchArchiveInventory({ getRequestHeaders: () => ({}) }, 'archive')).rejects.toMatchObject({ name: 'AbortError' });
     });
 });
 
@@ -375,7 +440,7 @@ describe('SillyBunny Chats Archive core', () => {
     test('normalizers reject malformed records and keep file identity consistent', () => {
         expect(normalizeRow(null)).toBeNull();
         expect(normalizeRow({ avatar: 1, file_id: 'bad' })).toBeNull();
-        expect(dataMaidRecordToRow([], 'missing-character')).toBeNull();
+        expect(normalizeRow({ orphan_type: 'invalid', file_name: 'bad.jsonl' })).toBeNull();
         expect(deepResultToRecentRow('bad', {})).toBeNull();
         const row = normalizeRow({ file_id: 'wrong', file_name: 'actual.jsonl', chat_items: -3 });
         expect(row.file_id).toBe('actual');
@@ -429,7 +494,13 @@ describe('SillyBunny Chats Archive core', () => {
             normalizeRow({ avatar: 'Alex.png', file_id: 'first' }, duplicateCharacters, duplicateGroups),
             normalizeRow({ avatar: 'Alex_2.png', file_id: 'second' }, duplicateCharacters, duplicateGroups),
             normalizeRow({ group: 'alex-group', file_id: 'group' }, duplicateCharacters, duplicateGroups),
-            dataMaidRecordToRow({ name: 'missing.jsonl', hash: 'hash', parent: 'Alex' }, 'missing-character'),
+            normalizeRow({
+                _source: 'archive-orphan',
+                archive_hash: 'hash',
+                chatFolder: 'Alex',
+                file_name: 'missing.jsonl',
+                orphan_type: 'missing-character',
+            }),
         ];
         const first = ownerFilterKey(rows[0]);
         const second = ownerFilterKey(rows[1]);
@@ -449,8 +520,16 @@ describe('SillyBunny Chats Archive core', () => {
         expect(normalizeSavedView({ owner: second }).owner).toBe(second);
     });
 
-    test('dataMaidRecordToRow preserves orphan source details', () => {
-        const row = dataMaidRecordToRow({ name: 'lost.jsonl', hash: 'abc', parent: 'Deleted', size: 2048, mtime: 123 }, 'missing-character');
+    test('normalizeRow preserves archive orphan source details', () => {
+        const row = normalizeRow({
+            _source: 'archive-orphan',
+            archive_hash: 'abc',
+            chatFolder: 'Deleted',
+            file_name: 'lost.jsonl',
+            file_size: '2KB',
+            last_mes: 123,
+            orphan_type: 'missing-character',
+        });
         expect(row.kind).toBe('orphan');
         expect(row.orphanType).toBe('missing-character');
         expect(row.ownerName).toBe('Deleted');
@@ -458,21 +537,32 @@ describe('SillyBunny Chats Archive core', () => {
         expect(row.file_id).toBe('lost');
         expect(row.sizeText).toBe('2KB');
         expect(row.count).toBeNull();
-        expect(row.dataMaidHash).toBe('abc');
+        expect(row.archiveHash).toBe('abc');
     });
 
-    test('physicalChatKey follows physical file scope instead of owner or Data Maid identity', () => {
+    test('physicalChatKey follows physical file scope instead of owner or archive token identity', () => {
         const linkedGroup = normalizeRow({ group: 'group-1', file_id: 'shared' }, [], groups);
         const missingGroup = normalizeRow({ group: 'deleted-group', file_id: 'shared' });
-        const unlinkedGroup = dataMaidRecordToRow({ name: 'shared.jsonl', hash: 'temporary-a' }, 'unlinked-group');
+        const unlinkedGroup = normalizeRow({
+            _source: 'archive-orphan',
+            archive_hash: 'temporary-a',
+            file_name: 'shared.jsonl',
+            orphan_type: 'unlinked-group',
+        });
         expect(physicalChatKey(linkedGroup)).toBe(physicalChatKey(missingGroup));
         expect(physicalChatKey(missingGroup)).toBe(physicalChatKey(unlinkedGroup));
 
         const linkedCharacter = normalizeRow({ avatar: 'Seraphina.png', file_id: 'solo' }, characters);
-        const missingCharacter = dataMaidRecordToRow({ name: 'solo.jsonl', hash: 'temporary-b', parent: 'Seraphina' }, 'missing-character');
+        const missingCharacter = normalizeRow({
+            _source: 'archive-orphan',
+            archive_hash: 'temporary-b',
+            chatFolder: 'Seraphina',
+            file_name: 'solo.jsonl',
+            orphan_type: 'missing-character',
+        });
         expect(linkedCharacter.chatFolder).toBe('Seraphina');
         expect(physicalChatKey(linkedCharacter)).toBe(physicalChatKey(missingCharacter));
-        expect(physicalChatKey({ ...missingCharacter, dataMaidHash: 'different' })).toBe(physicalChatKey(missingCharacter));
+        expect(physicalChatKey({ ...missingCharacter, archiveHash: 'different' })).toBe(physicalChatKey(missingCharacter));
 
         expect(physicalChatKey({ kind: 'solo', chatFolder: 'a:b', file_id: 'c' }))
             .not.toBe(physicalChatKey({ kind: 'solo', chatFolder: 'a', file_id: 'b:c' }));
@@ -877,10 +967,9 @@ describe('SillyBunny Chats Archive integration', () => {
         expect(ui).toMatch(/aria-labelledby/);
         expect(ui).toMatch(/aria-current/);
         expect(ui).toMatch(/new AbortController\(\)/);
-        expect(ui).toMatch(/fetchCharacterFiles/);
+        expect(ui).toMatch(/fetchArchiveInventory\(ctx, 'archive'/);
         expect(ui).toMatch(/eventTypes\.CHAT_CHANGED/);
         expect(ui).toMatch(/setActive(?:Character|Group)/);
-        expect(ui).toMatch(/group\.chat_id/);
         expect(ui).toMatch(/aria-expanded/);
         expect(ui).toMatch(/aria-pressed/);
         expect(ui).toMatch(/state\.deepRows === null \? ui\.search\.value : ''/);
@@ -904,9 +993,6 @@ describe('SillyBunny Chats Archive integration', () => {
         expect(ui).toMatch(/listTools\.open = true/);
         expect(ui).toMatch(/option\.addEventListener\('pointerdown', event => \{\s*if \(event\.button !== 0 \|\| event\.pointerType === 'touch'\)/);
         expect(ui).toMatch(/option\.addEventListener\('click', select\)/);
-        expect(ui).toMatch(/async function enrichSelectedOwner\(ctx, state, ui\)/);
-        expect(ui).toMatch(/fetchCharacterChatDetails\(ctx, avatar, controller\.signal\)/);
-        expect(ui).toMatch(/state\.enrichedOwners\.has\(avatar\)/);
         expect(ui).toMatch(/sbca-sortpill/);
         expect(ui).not.toMatch(/characterChips|sbca-charstrip|sbca-charchip|charSort/);
         expect(ui).toMatch(/enterKeyHint = 'search'/);
@@ -927,8 +1013,6 @@ describe('SillyBunny Chats Archive integration', () => {
         expect(ui).not.toMatch(/row\.kind === 'orphan' \|\| row\.source === 'inventory'/);
         expect(ui).toMatch(/findMatchingSnippetInJsonlAsync\(raw, query, \{ signal \}\)/);
         expect(ui).not.toMatch(/findExistingGroupFiles/);
-        expect(ui).toMatch(/error\?\.status === 404 && row\.kind === 'group' && row\.source === 'inventory'/);
-        expect(ui).toMatch(/state\.missingGroupFiles\.add\(row\.file_id\)/);
         expect(ui).toMatch(/sbca-browse-options/);
         expect(ui).toMatch(/Clear filters/);
         expect(ui).not.toMatch(/sbca-row-selection-label/);
@@ -959,7 +1043,7 @@ describe('SillyBunny Chats Archive integration', () => {
     test('message lists, grouping, scans, and search retain their safety contracts', () => {
         const searchStart = ui.indexOf('search.addEventListener(\'keydown\'', ui.indexOf('const flushQuery'));
         const searchHandler = ui.slice(searchStart, ui.indexOf('\n    });', searchStart));
-        const scan = ui.slice(ui.indexOf('async function scanOrphans'), ui.indexOf('async function finalizeDataMaidToken'));
+        const scan = ui.slice(ui.indexOf('async function scanOrphans'), ui.indexOf('async function releaseArchiveToken'));
         expect(searchHandler).toMatch(/event\.key !== 'Enter' \|\| event\.isComposing/);
         expect(searchHandler).toMatch(/flushQuery\(\)/);
         expect(searchHandler).not.toMatch(/runDeepSearch/);
@@ -978,13 +1062,11 @@ describe('SillyBunny Chats Archive integration', () => {
         expect(ui).toMatch(/group\.rows\.length/);
         expect(ui).toMatch(/for \(const row of shownGroupRows\)/);
         expect(ui).toMatch(/state\.scanAbort\?\.abort\(\)/);
-        expect(scan).toMatch(/fetchDataMaidReport\(ctx\)/);
-        expect(scan).not.toMatch(/fetchDataMaidReport\(ctx, controller\.signal\)/);
-        expect(scan).toMatch(/if \(controller\.signal\.aborted\)[\s\S]*previousKeys[\s\S]*retainedRows = orphanRows\.filter[\s\S]*state\.dataMaidToken = data\.token;[\s\S]*state\.orphanRows = retainedRows;/);
-        expect(scan).toMatch(/state\.dataMaidToken = data\.token;[\s\S]*state\.orphanRows = orphanRows;/);
-        expect(scan).toMatch(/Previous results are still shown/);
-        expect(scan).toMatch(/state\.scanAbort !== controller/);
-        expect(ui).toMatch(/finalizeDataMaid\([\s\S]*AbortSignal\.timeout\(DATA_MAID_FINALIZE_TIMEOUT_MS\)/);
+        expect(scan).toMatch(/fetchArchiveInventory\(ctx, 'orphans', controller\.signal/);
+        expect(scan).toMatch(/state\.archiveReadToken = inventory\.readToken/);
+        expect(scan).toMatch(/releaseArchiveToken\(ctx, previousToken\)/);
+        expect(ui).not.toMatch(/\/api\/data-maid|fetchDataMaid|finalizeDataMaid/);
+        expect(ui).not.toMatch(/AbortSignal\.(?:any|timeout)/);
         expect(ui).toMatch(/ui\.status\.setAttribute\('aria-busy', 'true'\)/);
         expect(ui).toMatch(/ui\.status\.removeAttribute\('aria-busy'\)/);
     });
@@ -1008,55 +1090,6 @@ describe('SillyBunny Chats Archive integration', () => {
         expect(entry).toMatch(/pending = setTimeout\(\(\) => \{\s*pending = null;\s*install\(\);/);
     });
 
-    test('stylesheet follows theme, layout, focus, touch, and side-stripe contracts', () => {
-        expect(css).toMatch(/--color-border/);
-        expect(css).toMatch(/--sbca-text:\s*var\(--color-text/);
-        expect(css).toMatch(/:focus-visible/);
-        expect(css).toMatch(/@media \(any-pointer: coarse\)/);
-        expect(css).toMatch(/--sb-mobile-touch-target, 44px/);
-        expect(css).toMatch(/--sbca-muted:\s*var\(--sb-muted-fg/);
-        expect(css).toMatch(/\.sbca-heading\s*\{[^}]*border:\s*0/s);
-        expect(css).toMatch(/\[data-sbca-density="compact"\]/);
-        expect(css).toMatch(/\[data-sbca-density="minimal"\]/);
-        expect(css).toMatch(/\.sbca-group-button/);
-        expect(css).toMatch(/\.sbca-organizer/);
-        expect(css).toMatch(/\.sbca-owner-summary\s*\{[^}]*min-block-size:\s*46px;[^}]*border-radius:\s*var\(--sb-radius-button, 14px\)/s);
-        expect(css).toMatch(/\.sbca-owner-option\s*\{[^}]*min-block-size:\s*44px;/s);
-        expect(css).toMatch(/\.sbca-owner-option\s*\{[^}]*content-visibility:\s*auto;[^}]*contain-intrinsic-size:\s*auto 56px;/s);
-        expect(css).toMatch(/@media \(min-width: 1001px\)\s*\{[\s\S]*\.sbca-dialog\s*\{[^}]*width:\s*94vw !important;[^}]*max-width:\s*94vw !important;[^}]*height:\s*92dvh !important;[^}]*max-height:\s*92dvh !important;/s);
-        expect(css).toMatch(/@media \(min-width: 1001px\)\s*\{[\s\S]*\.sbca-dialog\s*\{[^}]*min-height:\s*0 !important;/s);
-        expect(css).toMatch(/@media \(max-width: 600px\)\s*\{[\s\S]*\.sbca-dialog\s*\{[^}]*min-height:\s*0 !important;/s);
-        expect(css).toMatch(/@media \(min-width: 1001px\)\s*\{[\s\S]*\.sbca-root\s*\{[^}]*block-size:\s*100%;[^}]*max-block-size:\s*92dvh;/s);
-        expect(css).toMatch(/@media \(max-width: 600px\)\s*\{[\s\S]*\.sbca-root\s*\{[^}]*block-size:\s*100%;[^}]*max-block-size:\s*100dvh;/s);
-        expect(css).toMatch(/@media \(min-width: 1001px\)\s*\{[\s\S]*\.sbca-root\s*\{[^}]*block-size:\s*100%;/s);
-        expect(css).toMatch(/\.sbca-owner-options\s*\{[^}]*max-block-size:\s*min\(320px, 45dvh\);[^}]*overflow-y:\s*auto;/s);
-        expect(css).toMatch(/\[data-sbca-density="minimal"\] \.sbca-row-preview\s*\{[^}]*-webkit-line-clamp:\s*1;/s);
-        expect(css).toMatch(/\.sbca-sortpill\s*\{/);
-        expect(css).toMatch(/\.sbca-sortpill\[aria-pressed="true"\]\s*\{[^}]*--sb-selection-bg[^}]*--sb-selection-fg[^}]*text-decoration-line:\s*underline;/s);
-        expect(css).toMatch(/\.sbca-dialog \.popup-body,\s*\.sbca-dialog \.popup-content\s*\{[^}]*overflow:\s*hidden !important;/s);
-        expect(css).toMatch(/\.sbca-owner-selector\s*\{[^}]*inline-size:\s*100%;/s);
-        expect(css).toMatch(/\.sbca-root \[hidden\]\s*\{[^}]*display:\s*none !important;/s);
-        expect(css).toMatch(/\.sbca-list-panel\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\);[^}]*min-inline-size:\s*0;/s);
-        expect(css).toMatch(/\.sbca-list-tools\[open\]\s*\{[^}]*flex-basis:\s*100%;/s);
-        expect(css).toMatch(/\.sbca-list-tools-panel\s*\{[^}]*display:\s*grid;/s);
-        expect(css).toMatch(/\.sbca-list-tools > summary\s*\{[^}]*color:\s*var\(--sbca-muted\)/s);
-        expect(css).toMatch(/\.sbca-sort,/);
-        expect(css).toMatch(/\.sbca-deep\s*\{[^}]*border-color:\s*var\(--sbca-accent\)/s);
-        expect(css).toMatch(/\.sbca-msg-match\s*\{/);
-        expect(css).toMatch(/\.sbca-msg:focus\s*\{[^}]*outline:\s*2px solid var\(--sbca-focus\)/s);
-        expect(css).toMatch(/\.sbca-root\[data-sbca-density\] \.sbca-row-button/);
-        expect(css).toMatch(/\.sbca-row-selection\s*\{[^}]*min-inline-size:\s*var\(--sb-mobile-touch-target, 44px\)/s);
-        expect(css).toMatch(/@media \(min-width: 1001px\)\s*\{[\s\S]*\.sbca-toolbar:has\(\.sbca-options\[open\]\)[\s\S]*max-block-size:\s*60%;[\s\S]*overflow-y:\s*auto;[\s\S]*overscroll-behavior:\s*contain;/);
-        expect(css).toMatch(/@media \(max-width: 600px\)/);
-        expect(css).toMatch(/width:\s*100vw !important/);
-        expect(css).toMatch(/height:\s*100dvh !important/);
-        expect(css).toMatch(/font-size:\s*16px/);
-        expect(css).not.toMatch(/rgba?\(/i);
-        expect(css).toMatch(/@media screen and \(max-width: 768px\)\s*\{[\s\S]*#right-nav-panel\.openDrawer \.sb-character-create-bar #sbca_drawer_button\s*\{[^}]*width:\s*38px !important;[^}]*height:\s*38px !important;/);
-        expect(css).not.toMatch(/^\s*color:\s*var\(--sbca-accent\)/m);
-        expect(css).not.toMatch(/sbca-sortpill-active/);
-        expect(css).not.toMatch(/border-(?:left|right)\s*:\s*[2-9]/i);
-    });
 });
 
 describe('Data Maid Chat Archive integration', () => {

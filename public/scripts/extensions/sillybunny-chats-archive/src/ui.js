@@ -1,7 +1,6 @@
 import {
     buildSearchScopes,
     createDefaultOrganization,
-    dataMaidRecordToRow,
     deepResultToRecentRow,
     filterRows,
     findMatchingMessageIndex,
@@ -22,14 +21,10 @@ import {
 import {
     fetchOrganization,
     exportChat,
-    fetchCharacterChatDetails,
-    fetchCharacterFiles,
-    fetchDataMaidFile,
-    fetchDataMaidReport,
-    fetchRecent,
-    fetchRootFiles,
-    finalizeDataMaid,
+    fetchArchiveFile,
+    fetchArchiveInventory,
     ORGANIZATION_FILE_NAME,
+    releaseArchiveSession,
     saveOrganization,
     searchScope,
 } from './api.js';
@@ -76,7 +71,6 @@ const SORT_PILLS = [
 const LIST_PAGE_SIZE = 100;
 const MESSAGE_PAGE_SIZE = 100;
 const NAVIGATION_TIMEOUT_MS = 15_000;
-const DATA_MAID_FINALIZE_TIMEOUT_MS = 15_000;
 const LAST_VIEW_SAVE_DELAY_MS = 500;
 const SEARCH_DEBOUNCE_MS = 150;
 const MAX_ORGANIZATION_IMPORT_BYTES = 5 * 1024 * 1024;
@@ -85,7 +79,6 @@ const UNFILED_VALUE = '__sbca_unfiled__';
 
 let popup = null;
 let renderId = 0;
-let dataMaidQueue = Promise.resolve();
 let hostNavigationPending = null;
 
 function el(tag, className, text) {
@@ -353,10 +346,8 @@ export async function openArchive(ctx, opener = null) {
         searchAbort: null,
         scanAbort: null,
         orphanScanComplete: false,
-        rootScanFailed: false,
-        recentScanFailed: false,
         inventoryFailures: 0,
-        dataMaidToken: null,
+        archiveReadToken: null,
         navigationPending: false,
         navigationAbort: null,
         navigationControl: null,
@@ -371,10 +362,6 @@ export async function openArchive(ctx, opener = null) {
         matchingRows: [],
         charactersByAvatar: new Map((ctx.characters ?? []).filter(character => character?.avatar).map(character => [character.avatar, character])),
         groupsById: new Map((ctx.groups ?? []).filter(group => group?.id !== undefined && group?.id !== null).map(group => [String(group.id), group])),
-        missingGroupFiles: new Set(),
-        enrichedOwners: new Set(),
-        enrichmentAbort: null,
-        enrichmentOwner: '',
         organization: null,
         organizationLoadState: 'loading',
         organizationLoadAbort: null,
@@ -421,11 +408,10 @@ export async function openArchive(ctx, opener = null) {
         state.searchAbort?.abort();
         state.navigationAbort?.abort();
         state.scanAbort?.abort();
-        state.enrichmentAbort?.abort();
         state.organizationLoadAbort?.abort();
         state.cleanup?.();
         await flushOrganization(ctx, state, ui);
-        const releasing = releaseDataMaid(ctx, state);
+        const releasing = releaseArchiveReadSession(ctx, state);
         if (popup === instance) {
             popup = null;
         }
@@ -885,7 +871,6 @@ function buildRoot(ctx, state) {
             }
             if (control === ui.owner) {
                 exitDeepSearch(ctx, state, ui);
-                void enrichSelectedOwner(ctx, state, ui);
             }
             applyViewOptions();
             noteViewEdit();
@@ -1245,7 +1230,6 @@ function applySavedView(ctx, state, ui, value, selectedViewId = null, persist = 
     updateBrowseStatus(ctx, state, ui);
     updateDeepButton(state, ui);
     updateSelectionControls(ctx, state, ui);
-    void enrichSelectedOwner(ctx, state, ui);
     if (persist) {
         state.viewTouched = true;
         if (state.organizationWritable) {
@@ -1458,74 +1442,6 @@ function refreshOwnerOptions(ctx, state, ui) {
         choices.push(fallbackOwnerChoice(ctx, current));
     }
     renderOwnerOptions(ctx, ui, choices, current);
-}
-
-// SillyBunny's simple inventory omits message previews; enrich the selected
-// character only, so browsing stays cheap for everyone else.
-async function enrichSelectedOwner(ctx, state, ui) {
-    const owner = ui.owner.value;
-    const identity = parseOwnerFilter(owner);
-    if (!identity || identity.kind !== 'character') {
-        state.enrichmentAbort?.abort();
-        state.enrichmentAbort = null;
-        state.enrichmentOwner = '';
-        return;
-    }
-    const avatar = `${identity.id}.png`;
-    if (state.enrichedOwners.has(avatar)
-        || (state.enrichmentOwner === avatar && state.enrichmentAbort)) {
-        return;
-    }
-    const needsDetails = state.rows.some(row => (
-        row.source === 'inventory' && ownerFilterKey(row) === owner
-    ));
-    if (!needsDetails) {
-        return;
-    }
-    state.enrichmentAbort?.abort();
-    const controller = new AbortController();
-    state.enrichmentAbort = controller;
-    state.enrichmentOwner = avatar;
-    let details;
-    try {
-        details = await fetchCharacterChatDetails(ctx, avatar, controller.signal);
-    } catch (error) {
-        if (error?.name !== 'AbortError') {
-            console.warn('[Chat Archive] failed to load chat previews for the selected character:', error);
-        }
-        return;
-    } finally {
-        if (state.enrichmentAbort === controller) {
-            state.enrichmentAbort = null;
-            state.enrichmentOwner = '';
-        }
-    }
-    if (controller.signal.aborted || state.closed || ui.owner.value !== owner) {
-        return;
-    }
-    state.enrichedOwners.add(avatar);
-    const rowsByKey = new Map(state.rows.map(row => [physicalChatKey(row), row]));
-    let merged = false;
-    for (const detail of details) {
-        const rich = normalizeRow({ ...detail, avatar }, state.charactersByAvatar, state.groupsById, ctx.timestampToMoment);
-        const row = rich && rowsByKey.get(physicalChatKey(rich));
-        if (row) {
-            Object.assign(row, {
-                sizeText: rich.sizeText,
-                sizeBytes: rich.sizeBytes,
-                sizeKnown: rich.sizeKnown,
-                count: rich.count,
-                mtime: rich.mtime,
-                mtimeKnown: rich.mtimeKnown,
-                snippet: rich.snippet,
-            });
-            merged = true;
-        }
-    }
-    if (merged) {
-        renderList(ctx, state, ui);
-        updateBrowseStatus(ctx, state, ui);
-    }
 }
 
 function refreshOrganizationUI(ctx, state, ui) {
@@ -1862,10 +1778,6 @@ async function loadRows(ctx, state, ui) {
     exitDeepSearch(ctx, state, ui);
     cancelViewer(state);
     cancelNavigation(state);
-    state.enrichmentAbort?.abort();
-    state.enrichmentAbort = null;
-    state.enrichmentOwner = '';
-    state.enrichedOwners.clear();
     state.selectedBatchKeys.clear();
     updateSelectionControls(ctx, state, ui);
     state.listAbort?.abort();
@@ -1880,84 +1792,27 @@ async function loadRows(ctx, state, ui) {
     updateDeepButton(state, ui);
 
     try {
-        let rootScanFailed = false;
-        let recentScanFailed = false;
-        let characterError = null;
-        const avatars = (ctx.characters ?? []).map(character => character?.avatar).filter(Boolean);
-        const characterFilesPromise = fetchCharacterFiles(ctx, avatars, controller.signal).catch(error => {
-            characterError = error;
-            return null;
-        });
-        const [rows, rootFiles] = await Promise.all([
-            fetchRecent(ctx, controller.signal).catch(error => {
-                if (error?.name === 'AbortError') {
-                    throw error;
-                }
-                recentScanFailed = true;
-                console.warn('[Chat Archive] failed to load the recent chat index:', error);
-                return [];
-            }),
-            fetchRootFiles(ctx, controller.signal).catch(error => {
-                if (error?.name === 'AbortError') {
-                    throw error;
-                }
-                rootScanFailed = true;
-                console.warn('[Chat Archive] failed to check root chat files:', error);
-                return [];
-            }),
-        ]);
+        const inventory = await fetchArchiveInventory(ctx, 'archive', controller.signal);
         if (state.listAbort !== controller || state.closed) {
             return;
         }
-        const previousRows = state.rows;
         const nextRows = [];
         const known = new Set();
-        let inventoryFailures = 0;
-        const addRow = raw => {
+        let inventoryFailures = inventory.errors;
+        for (const raw of inventory.rows) {
             const row = normalizeRow(raw, state.charactersByAvatar, state.groupsById, ctx.timestampToMoment);
             if (!row?.file_id) {
-                return false;
-            }
-            const key = physicalChatKey(row);
-            if (!known.has(key)) {
-                known.add(key);
-                if (row.kind === 'group') {
-                    state.missingGroupFiles.delete(row.file_id);
-                }
-                nextRows.push(row);
-            }
-            return true;
-        };
-        const preserveRow = row => {
-            const key = physicalChatKey(row);
-            if (!known.has(key)) {
-                known.add(key);
-                nextRows.push(row);
-            }
-        };
-        for (const raw of rows) {
-            if (!addRow(raw)) {
-                recentScanFailed = true;
-            }
-        }
-        for (const rootFile of rootFiles) {
-            if (!addRow(rootFile)) {
-                rootScanFailed = true;
                 inventoryFailures++;
+                continue;
+            }
+            const key = physicalChatKey(row);
+            if (!known.has(key)) {
+                known.add(key);
+                nextRows.push(row);
             }
         }
-        if (recentScanFailed || rootScanFailed) {
-            for (const row of previousRows) {
-                if ((recentScanFailed && row.source === 'recent')
-                    || (rootScanFailed && row.orphanType === 'root')) {
-                    preserveRow(row);
-                }
-            }
-        }
-        state.rootScanFailed = rootScanFailed;
-        state.recentScanFailed = recentScanFailed;
-        state.inventoryFailures = 0;
         state.rows = nextRows;
+        state.inventoryFailures = inventoryFailures;
         state.selectedKey = null;
         state.selectedRow = null;
         state.selectedButton = null;
@@ -1965,77 +1820,13 @@ async function loadRows(ctx, state, ui) {
         state.listState = 'ready';
         refreshOwnerOptions(ctx, state, ui);
         renderList(ctx, state, ui);
-        updateSelectionControls(ctx, state, ui);
-        setStatus(ui, tr(ctx, 'Loading linked chat folders...'));
-
-        const characterFiles = await characterFilesPromise;
-        if (characterError) {
-            throw characterError;
-        }
-        if (state.listAbort !== controller || state.closed) {
-            return;
-        }
-        inventoryFailures += characterFiles.failures;
-        for (const characterFile of characterFiles.rows) {
-            if (!addRow(characterFile)) {
-                characterFiles.failedAvatars.add(characterFile.avatar);
-                inventoryFailures++;
-            }
-        }
-        for (const row of previousRows) {
-            if (characterFiles.failedAvatars.has(row.avatar)) {
-                preserveRow(row);
-            }
-        }
-        const knownGroupFiles = new Set(nextRows.filter(row => row.kind === 'group').map(row => row.file_id));
-        for (const group of ctx.groups ?? []) {
-            if (!group || (typeof group.id !== 'string' && typeof group.id !== 'number')) {
-                inventoryFailures++;
-                continue;
-            }
-            const files = new Set(Array.isArray(group.chats) ? group.chats : []);
-            if (group.chat_id !== undefined && group.chat_id !== null && group.chat_id !== '') {
-                files.add(group.chat_id);
-            }
-            for (const file of files) {
-                if (typeof file !== 'string' && typeof file !== 'number') {
-                    inventoryFailures++;
-                    continue;
-                }
-                const fileId = String(file).replace(/\.jsonl$/i, '');
-                if (!fileId) {
-                    inventoryFailures++;
-                    continue;
-                }
-                if (state.missingGroupFiles.has(fileId)) {
-                    continue;
-                }
-                if (!knownGroupFiles.has(fileId)) {
-                    knownGroupFiles.add(fileId);
-                    const row = normalizeRow({
-                        _source: 'inventory',
-                        group: group.id,
-                        file_id: fileId,
-                        file_name: `${fileId}.jsonl`,
-                    }, state.charactersByAvatar, state.groupsById, ctx.timestampToMoment);
-                    if (row) {
-                        preserveRow(row);
-                    } else {
-                        inventoryFailures++;
-                    }
-                }
-            }
-        }
-        state.rootScanFailed = rootScanFailed;
-        state.recentScanFailed = recentScanFailed;
-        state.inventoryFailures = inventoryFailures;
-        refreshOwnerOptions(ctx, state, ui);
-        renderList(ctx, state, ui);
         updateBrowseStatus(ctx, state, ui);
         updateSelectionControls(ctx, state, ui);
-        void enrichSelectedOwner(ctx, state, ui);
     } catch (error) {
         controller.abort();
+        if (error?.archiveCursor) {
+            void releaseArchiveToken(ctx, error.archiveReadToken, error.archiveCursor);
+        }
         if (error?.name === 'AbortError') {
             return;
         }
@@ -2079,14 +1870,8 @@ function updateBrowseStatus(ctx, state, ui) {
     let text = filtered
         ? tr(ctx, '{matching} of {total} indexed chat files', { matching, total })
         : tr(ctx, '{total} indexed chat files', { total });
-    if (state.rootScanFailed) {
-        text += ` ${tr(ctx, 'Some root files could not be checked.')}`;
-    }
-    if (state.recentScanFailed) {
-        text += ` ${tr(ctx, 'Some indexed chats could not be loaded.')}`;
-    }
     if (state.inventoryFailures > 0) {
-        text += ` ${tr(ctx, 'Some linked chat folders could not be checked.')}`;
+        text += ` ${tr(ctx, 'Some indexed chats could not be loaded.')}`;
     }
     if (!state.orphanScanComplete) {
         text += ` ${tr(ctx, 'Use Find orphaned files to include chats with deleted owners.')}`;
@@ -2419,11 +2204,6 @@ async function openViewer(ctx, state, row, ui) {
         if (error?.name === 'AbortError') {
             return;
         }
-        if (error?.status === 404 && row.kind === 'group' && row.source === 'inventory') {
-            state.missingGroupFiles.add(row.file_id);
-            state.rows = state.rows.filter(candidate => physicalChatKey(candidate) !== physicalChatKey(row));
-            renderList(ctx, state, ui);
-        }
         console.error('[Chat Archive] failed to load chat:', error);
         if (state.viewerAbort === controller) {
             const errorMessage = el('div', 'sbca-viewer-error', tr(ctx, 'Could not read this chat. Refresh the archive or scan for orphaned files again.'));
@@ -2602,11 +2382,11 @@ function refreshOpenOrganizer(ctx, state, ui) {
 }
 
 async function loadRawChat(ctx, state, row, signal) {
-    if (row.source === 'data-maid') {
-        if (!state.dataMaidToken || !row.dataMaidHash) {
+    if (row.source === 'archive-orphan') {
+        if (!state.archiveReadToken || !row.archiveHash) {
             throw new Error('Orphan scan expired');
         }
-        return fetchDataMaidFile(ctx, state.dataMaidToken, row.dataMaidHash, signal);
+        return fetchArchiveFile(ctx, state.archiveReadToken, row.archiveHash, signal);
     }
 
     const isGroup = row.kind === 'group' || row.orphanType === 'missing-group';
@@ -2639,7 +2419,7 @@ function buildSummary(ctx, row) {
         summary.append(el('div', 'sbca-summary-line', facts.join(' | ')));
     }
     if (row.mtime) {
-        const label = row.source === 'data-maid' ? tr(ctx, 'Modified') : tr(ctx, 'Last message');
+        const label = row.source === 'archive-orphan' ? tr(ctx, 'Modified') : tr(ctx, 'Last message');
         summary.append(el('div', 'sbca-summary-line', `${label}: ${new Date(row.mtime).toLocaleString()}`));
     }
     return summary;
@@ -2856,12 +2636,6 @@ function formatSendDate(ctx, sendDate) {
     return String(sendDate);
 }
 
-function withDataMaidLock(operation) {
-    const run = dataMaidQueue.then(operation, operation);
-    dataMaidQueue = run.catch(() => {});
-    return run;
-}
-
 async function scanOrphans(ctx, state, ui) {
     if (state.scanAbort || state.listAbort) {
         return;
@@ -2878,69 +2652,29 @@ async function scanOrphans(ctx, state, ui) {
     setStatus(ui, tr(ctx, 'Scanning for missing-character and unlinked-group chats...'));
     updateDeepButton(state, ui);
 
-    let unclaimedToken = null;
     try {
-        // Data Maid replaces the prior token when a report completes, so consume the response before honoring local cancellation.
-        const data = await withDataMaidLock(() => fetchDataMaidReport(ctx));
-        unclaimedToken = data?.token && data.token !== state.dataMaidToken ? data.token : null;
-        if (!data?.token || !data?.report) {
-            throw new Error('Orphan scan returned an invalid response');
-        }
-        if (state.scanAbort !== controller || state.closed) {
+        const inventory = await fetchArchiveInventory(ctx, 'orphans', controller.signal);
+        if (controller.signal.aborted || state.scanAbort !== controller || state.closed) {
+            void releaseArchiveToken(ctx, inventory.readToken);
+            if (!state.closed && state.scanAbort === controller) {
+                setStatus(ui, tr(ctx, state.orphanScanComplete
+                    ? 'Scan stopped. Previous results are still shown.'
+                    : 'Scan stopped.'));
+            }
             return;
         }
-        const linkedGroupFiles = new Set(state.rows.filter(row => row.kind === 'group').map(row => row.file_id));
         const orphanRows = [];
-        let invalidRecords = 0;
-        for (const [records, orphanType] of [
-            [data.report.chats, 'missing-character'],
-            [data.report.groupChats, 'unlinked-group'],
-        ]) {
-            if (!Array.isArray(records)) {
+        let invalidRecords = inventory.errors;
+        for (const raw of inventory.rows) {
+            const row = normalizeRow(raw, state.charactersByAvatar, state.groupsById, ctx.timestampToMoment);
+            if (!row?.file_id || !row.archiveHash || row.kind !== 'orphan') {
                 invalidRecords++;
                 continue;
             }
-            for (const record of records) {
-                const row = dataMaidRecordToRow(record, orphanType);
-                if (!row?.file_id || !row.dataMaidHash) {
-                    invalidRecords++;
-                } else if (orphanType !== 'unlinked-group' || !linkedGroupFiles.has(row.file_id)) {
-                    orphanRows.push(row);
-                }
-            }
+            orphanRows.push(row);
         }
-        if (controller.signal.aborted) {
-            if (state.orphanScanComplete) {
-                const previousKeys = new Set(state.orphanRows.map(physicalChatKey));
-                const retainedRows = orphanRows.filter(row => previousKeys.has(physicalChatKey(row)));
-                const retainedKeys = new Set(retainedRows.map(physicalChatKey));
-                for (const key of previousKeys) {
-                    if (!retainedKeys.has(key)) {
-                        state.selectedBatchKeys.delete(key);
-                    }
-                }
-                state.dataMaidToken = data.token;
-                unclaimedToken = null;
-                state.orphanRows = retainedRows;
-                if (state.selectedRow?.source === 'data-maid') {
-                    state.selectedRow = retainedRows.find(row => physicalChatKey(row) === state.selectedKey) ?? null;
-                    state.selectedButton = null;
-                    if (!state.selectedRow) {
-                        state.selectedKey = null;
-                        resetViewer(ctx, ui);
-                    }
-                }
-                refreshOwnerOptions(ctx, state, ui);
-                renderList(ctx, state, ui);
-                updateSelectionControls(ctx, state, ui);
-                setStatus(ui, tr(ctx, 'Scan stopped. Previous results that still exist are shown.'));
-            } else {
-                setStatus(ui, tr(ctx, 'Scan stopped.'));
-            }
-            return;
-        }
-        state.dataMaidToken = data.token;
-        unclaimedToken = null;
+        const previousToken = state.archiveReadToken;
+        state.archiveReadToken = inventory.readToken;
         state.orphanRows = orphanRows;
         state.orphanScanComplete = true;
         state.selectedKey = null;
@@ -2958,7 +2692,11 @@ async function scanOrphans(ctx, state, ui) {
         if (invalidRecords > 0) {
             setStatus(ui, `${ui.status.textContent} ${tr(ctx, 'Some orphan records could not be read.')}`);
         }
+        void releaseArchiveToken(ctx, previousToken);
     } catch (error) {
+        if (error?.archiveReadToken || error?.archiveCursor) {
+            void releaseArchiveToken(ctx, error.archiveReadToken, error.archiveCursor);
+        }
         if (!state.closed && state.scanAbort === controller) {
             if (error?.name === 'AbortError') {
                 setStatus(ui, tr(ctx, state.orphanScanComplete
@@ -2972,9 +2710,6 @@ async function scanOrphans(ctx, state, ui) {
             }
         }
     } finally {
-        if (unclaimedToken) {
-            void finalizeDataMaidToken(ctx, unclaimedToken);
-        }
         if (state.scanAbort === controller) {
             state.scanAbort = null;
             if (!state.closed) {
@@ -2990,25 +2725,21 @@ async function scanOrphans(ctx, state, ui) {
     }
 }
 
-async function finalizeDataMaidToken(ctx, token) {
-    if (!token) {
+async function releaseArchiveToken(ctx, token, cursor = null) {
+    if (!token && !cursor) {
         return;
     }
     try {
-        await withDataMaidLock(() => finalizeDataMaid(
-            ctx,
-            token,
-            AbortSignal.timeout(DATA_MAID_FINALIZE_TIMEOUT_MS),
-        ));
+        await releaseArchiveSession(ctx, { token, cursor });
     } catch (error) {
         console.warn('[Chat Archive] orphan scan token already expired:', error);
     }
 }
 
-async function releaseDataMaid(ctx, state) {
-    const token = state.dataMaidToken;
-    state.dataMaidToken = null;
-    await finalizeDataMaidToken(ctx, token);
+async function releaseArchiveReadSession(ctx, state) {
+    const token = state.archiveReadToken;
+    state.archiveReadToken = null;
+    await releaseArchiveToken(ctx, token);
 }
 
 async function runDeepSearch(ctx, state, ui) {

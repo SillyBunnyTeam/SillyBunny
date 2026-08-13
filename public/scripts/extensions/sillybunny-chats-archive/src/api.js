@@ -36,6 +36,9 @@ async function postArray(ctx, url, body, signal) {
 
 export const ORGANIZATION_FILE_NAME = '_sbca_organization.json';
 const ORGANIZATION_UPLOAD_TIMEOUT_MS = 15_000;
+const ARCHIVE_RELEASE_TIMEOUT_MS = 15_000;
+export const ARCHIVE_PAGE_SIZE = 250;
+const ARCHIVE_TOKEN_PATTERN = /^[a-f0-9]{64}$/;
 
 function utf8ToBase64(text) {
     const bytes = new TextEncoder().encode(text);
@@ -46,27 +49,110 @@ function utf8ToBase64(text) {
     return btoa(binary);
 }
 
-async function fetchChatFiles(ctx, avatar, signal, simple = true) {
-    const url = '/api/characters/chats';
-    const data = await post(ctx, url, { avatar_url: avatar, simple }, signal);
-    if (data?.error === true) {
-        return [];
+export const searchScope = (ctx, query, scope, signal) => postArray(ctx, '/api/chats/search', { query, ...scope }, signal);
+export const exportChat = (ctx, body, signal) => post(ctx, '/api/chats/export', body, signal);
+
+function abortReason(signal) {
+    return signal?.reason ?? new DOMException('The operation was aborted.', 'AbortError');
+}
+
+export function createTimedSignal(signal, timeoutMs) {
+    const controller = new AbortController();
+    const onAbort = () => controller.abort(abortReason(signal));
+    const timer = setTimeout(() => {
+        controller.abort(new DOMException('The operation timed out.', 'TimeoutError'));
+    }, timeoutMs);
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) {
+        onAbort();
     }
-    if (!Array.isArray(data)) {
-        throw new Error(`${url} returned an invalid response`);
+    return {
+        signal: controller.signal,
+        cleanup() {
+            clearTimeout(timer);
+            signal?.removeEventListener('abort', onAbort);
+        },
+    };
+}
+
+function parseArchivePage(data, expectedToken) {
+    if (!data || typeof data !== 'object' || Array.isArray(data) || !Array.isArray(data.rows)) {
+        throw new Error('/api/chats/archive/inventory returned an invalid response');
+    }
+    if (data.cursor !== null && (typeof data.cursor !== 'string' || !ARCHIVE_TOKEN_PATTERN.test(data.cursor))) {
+        throw new Error('/api/chats/archive/inventory returned an invalid cursor');
+    }
+    if (data.read_token !== null
+        && data.read_token !== undefined
+        && (typeof data.read_token !== 'string' || !ARCHIVE_TOKEN_PATTERN.test(data.read_token))) {
+        throw new Error('/api/chats/archive/inventory returned an invalid read token');
+    }
+    if (expectedToken && data.read_token !== expectedToken) {
+        throw new Error('/api/chats/archive/inventory changed read tokens mid-scan');
+    }
+    if (!Number.isSafeInteger(data.errors) || data.errors < 0) {
+        throw new Error('/api/chats/archive/inventory returned an invalid error count');
     }
     return data;
 }
 
-// The host may balance up to twice max across group and solo chats; 100 still bounds startup while covering the first list page.
-export const fetchRecent = (ctx, signal) => postArray(ctx, '/api/chats/recent', { max: 100 }, signal);
-export const fetchRootFiles = (ctx, signal) => fetchChatFiles(ctx, '', signal);
-// Full per-file stats (previews, counts, sizes); reads each of the character's files, so call it for one character at a time.
-export const fetchCharacterChatDetails = (ctx, avatar, signal) => fetchChatFiles(ctx, avatar, signal, false);
-export const searchScope = (ctx, query, scope, signal) => postArray(ctx, '/api/chats/search', { query, ...scope }, signal);
-export const exportChat = (ctx, body, signal) => post(ctx, '/api/chats/export', body, signal);
-export const fetchDataMaidReport = (ctx, signal) => post(ctx, '/api/data-maid/report', {}, signal);
-export const finalizeDataMaid = (ctx, token, signal) => post(ctx, '/api/data-maid/finalize', { token }, signal);
+export async function fetchArchiveInventory(ctx, scope, signal, onPage = null) {
+    if (!['archive', 'orphans'].includes(scope)) {
+        throw new TypeError(`Unsupported archive inventory scope: ${String(scope)}`);
+    }
+
+    const rows = [];
+    let cursor = null;
+    let readToken = null;
+    let errors = 0;
+    let pages = 0;
+    try {
+        do {
+            if (signal?.aborted) {
+                throw abortReason(signal);
+            }
+            const body = { scope, page_size: ARCHIVE_PAGE_SIZE };
+            if (cursor) {
+                body.cursor = cursor;
+            }
+            const page = parseArchivePage(
+                await post(ctx, '/api/chats/archive/inventory', body, signal),
+                readToken,
+            );
+            readToken ??= page.read_token ?? null;
+            if (signal?.aborted) {
+                throw abortReason(signal);
+            }
+            rows.push(...page.rows);
+            errors += page.errors;
+            onPage?.({ loaded: rows.length, errors });
+            cursor = page.cursor;
+            pages++;
+            if (cursor && page.rows.length === 0) {
+                throw new Error('/api/chats/archive/inventory returned an empty partial page');
+            }
+            if (pages > 100_000) {
+                throw new Error('/api/chats/archive/inventory exceeded the page limit');
+            }
+        } while (cursor);
+    } catch (error) {
+        if (readToken && error && typeof error === 'object') {
+            error.archiveReadToken = readToken;
+        }
+        if (cursor && error && typeof error === 'object') {
+            error.archiveCursor = cursor;
+        }
+        throw error;
+    }
+
+    if (scope === 'orphans' && !readToken) {
+        throw new Error('/api/chats/archive/inventory omitted the orphan read token');
+    }
+    if (scope === 'archive' && readToken) {
+        throw new Error('/api/chats/archive/inventory exposed a read token for linked chats');
+    }
+    return { rows, errors, readToken };
+}
 
 export async function fetchOrganization(ctx, signal) {
     const url = `/user/files/${ORGANIZATION_FILE_NAME}`;
@@ -85,68 +171,41 @@ export async function fetchOrganization(ctx, signal) {
     return response.json();
 }
 
-export function saveOrganization(ctx, organization, signal) {
+export async function saveOrganization(ctx, organization, signal) {
     const data = utf8ToBase64(JSON.stringify(organization));
-    const timeout = AbortSignal.timeout(ORGANIZATION_UPLOAD_TIMEOUT_MS);
-    const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
-    return post(ctx, '/api/files/upload', { name: ORGANIZATION_FILE_NAME, data }, requestSignal);
-}
-
-export async function fetchCharacterFiles(ctx, avatars, signal) {
-    const rows = [];
-    const failedAvatars = new Set();
-    let failures = 0;
-    const results = new Array(avatars.length);
-    let nextIndex = 0;
-    const worker = async () => {
-        while (!signal?.aborted) {
-            const index = nextIndex++;
-            if (index >= avatars.length) {
-                return;
-            }
-            try {
-                results[index] = { status: 'fulfilled', value: await fetchChatFiles(ctx, avatars[index], signal) };
-            } catch (reason) {
-                results[index] = { status: 'rejected', reason };
-            }
-        }
-    };
-    await Promise.all(Array.from({ length: Math.min(8, avatars.length) }, worker));
-    if (signal?.aborted) {
-        throw signal.reason ?? new DOMException('The operation was aborted.', 'AbortError');
+    const request = createTimedSignal(signal, ORGANIZATION_UPLOAD_TIMEOUT_MS);
+    try {
+        return await post(ctx, '/api/files/upload', { name: ORGANIZATION_FILE_NAME, data }, request.signal);
+    } finally {
+        request.cleanup();
     }
-    results.forEach((result, index) => {
-        const avatar = avatars[index];
-        if (result.status === 'fulfilled') {
-            for (const row of result.value) {
-                if (!row || typeof row !== 'object' || Array.isArray(row)) {
-                    failures++;
-                    failedAvatars.add(avatar);
-                    continue;
-                }
-                rows.push({ ...row, avatar, _source: 'inventory' });
-            }
-        } else {
-            if (result.reason?.name === 'AbortError') {
-                throw result.reason;
-            }
-            if (!failedAvatars.has(avatar)) {
-                failures++;
-                failedAvatars.add(avatar);
-            }
-        }
-    });
-    return { rows, failures, failedAvatars };
 }
 
-export async function fetchDataMaidFile(ctx, token, hash, signal) {
+export async function fetchArchiveFile(ctx, token, hash, signal) {
     const query = new URLSearchParams({ token, hash });
-    const response = await fetch(`/api/data-maid/view?${query}`, {
+    const response = await fetch(`/api/chats/archive/view?${query}`, {
         headers: ctx.getRequestHeaders(),
         signal,
     });
     if (!response.ok) {
-        throw new Error(`/api/data-maid/view failed with status ${response.status}`);
+        const error = new Error(`/api/chats/archive/view failed with status ${response.status}`);
+        error.status = response.status;
+        throw error;
     }
     return response.text();
+}
+
+export async function releaseArchiveSession(ctx, { token = null, cursor = null } = {}, signal) {
+    if (!token && !cursor) {
+        return;
+    }
+    const request = createTimedSignal(signal, ARCHIVE_RELEASE_TIMEOUT_MS);
+    try {
+        await post(ctx, '/api/chats/archive/release', {
+            ...(token ? { token } : {}),
+            ...(cursor ? { cursor } : {}),
+        }, request.signal);
+    } finally {
+        request.cleanup();
+    }
 }
