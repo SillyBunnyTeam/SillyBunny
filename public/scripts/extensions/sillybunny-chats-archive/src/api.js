@@ -75,7 +75,7 @@ export function createTimedSignal(signal, timeoutMs) {
     };
 }
 
-function parseArchivePage(data, expectedToken) {
+function parseArchivePage(data, expectedToken, expectedTotal) {
     if (!data || typeof data !== 'object' || Array.isArray(data) || !Array.isArray(data.rows)) {
         throw new Error('/api/chats/archive/inventory returned an invalid response');
     }
@@ -93,19 +93,27 @@ function parseArchivePage(data, expectedToken) {
     if (!Number.isSafeInteger(data.errors) || data.errors < 0) {
         throw new Error('/api/chats/archive/inventory returned an invalid error count');
     }
+    if (!Number.isSafeInteger(data.total) || data.total < data.rows.length) {
+        throw new Error('/api/chats/archive/inventory returned an invalid total');
+    }
+    if (expectedTotal !== null && data.total !== expectedTotal) {
+        throw new Error('/api/chats/archive/inventory changed totals mid-scan');
+    }
     return data;
 }
 
-export async function fetchArchiveInventory(ctx, scope, signal, onPage = null) {
+export async function* iterateArchiveInventoryPages(ctx, scope, signal) {
     if (!['archive', 'orphans'].includes(scope)) {
         throw new TypeError(`Unsupported archive inventory scope: ${String(scope)}`);
     }
 
-    const rows = [];
     let cursor = null;
     let readToken = null;
+    let total = null;
+    let loaded = 0;
     let errors = 0;
     let pages = 0;
+    let complete = false;
     try {
         do {
             if (signal?.aborted) {
@@ -118,23 +126,46 @@ export async function fetchArchiveInventory(ctx, scope, signal, onPage = null) {
             const page = parseArchivePage(
                 await post(ctx, '/api/chats/archive/inventory', body, signal),
                 readToken,
+                total,
             );
             readToken ??= page.read_token ?? null;
+            total ??= page.total;
+            cursor = page.cursor;
+            if (scope === 'orphans' && !readToken) {
+                throw new Error('/api/chats/archive/inventory omitted the orphan read token');
+            }
+            if (scope === 'archive' && readToken) {
+                throw new Error('/api/chats/archive/inventory exposed a read token for linked chats');
+            }
             if (signal?.aborted) {
                 throw abortReason(signal);
             }
-            rows.push(...page.rows);
+            loaded += page.rows.length;
             errors += page.errors;
-            onPage?.({ loaded: rows.length, errors });
-            cursor = page.cursor;
             pages++;
+            if (loaded > total) {
+                throw new Error('/api/chats/archive/inventory exceeded its declared total');
+            }
             if (cursor && page.rows.length === 0) {
                 throw new Error('/api/chats/archive/inventory returned an empty partial page');
             }
             if (pages > 100_000) {
                 throw new Error('/api/chats/archive/inventory exceeded the page limit');
             }
+            yield {
+                rows: page.rows,
+                loaded,
+                errors,
+                pageErrors: page.errors,
+                cursor,
+                readToken,
+                total,
+            };
         } while (cursor);
+        if (loaded !== total) {
+            throw new Error('/api/chats/archive/inventory completed before its declared total');
+        }
+        complete = true;
     } catch (error) {
         if (readToken && error && typeof error === 'object') {
             error.archiveReadToken = readToken;
@@ -143,13 +174,26 @@ export async function fetchArchiveInventory(ctx, scope, signal, onPage = null) {
             error.archiveCursor = cursor;
         }
         throw error;
+    } finally {
+        if (!complete && (readToken || cursor)) {
+            try {
+                await releaseArchiveSession(ctx, { token: readToken, cursor });
+            } catch {
+                // The server also discards an inventory when its request is aborted.
+            }
+        }
     }
+}
 
-    if (scope === 'orphans' && !readToken) {
-        throw new Error('/api/chats/archive/inventory omitted the orphan read token');
-    }
-    if (scope === 'archive' && readToken) {
-        throw new Error('/api/chats/archive/inventory exposed a read token for linked chats');
+export async function fetchArchiveInventory(ctx, scope, signal, onPage = null) {
+    const rows = [];
+    let errors = 0;
+    let readToken = null;
+    for await (const page of iterateArchiveInventoryPages(ctx, scope, signal)) {
+        rows.push(...page.rows);
+        errors = page.errors;
+        readToken = page.readToken;
+        onPage?.(page);
     }
     return { rows, errors, readToken };
 }

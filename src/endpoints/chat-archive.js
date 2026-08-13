@@ -15,8 +15,12 @@ const INVENTORY_TTL_MS = 5 * 60 * 1000;
 const READ_TOKEN_TTL_MS = 15 * 60 * 1000;
 const INVENTORY_CONCURRENCY = 8;
 const METADATA_READ_BUFFER_SIZE = 64 * 1024;
+const METADATA_CACHE_TTL_MS = 5 * 60 * 1000;
+const MAX_METADATA_CACHE_ENTRIES = 2_048;
 const MAX_ARCHIVE_SESSIONS_PER_USER = 8;
 const TOKEN_PATTERN = /^[a-f0-9]{64}$/;
+const PROC_FD_DIRECTORY = '/proc/self/fd';
+const PROCFS_UNAVAILABLE_CODES = new Set(['EACCES', 'ENOENT', 'ENOTDIR', 'ENOSYS', 'EPERM']);
 
 function abortError(signal) {
     if (signal?.reason instanceof Error) {
@@ -38,34 +42,151 @@ function isPlainObject(value) {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function forbiddenArchivePath() {
-    const error = new Error('Archive file is outside the user directory.');
+function forbiddenArchivePath(message = 'Archive file is outside the user directory.', cause) {
+    const error = new Error(message, cause ? { cause } : undefined);
     error.code = 'ARCHIVE_PATH_FORBIDDEN';
     return error;
 }
 
+function sameFileIdentity(firstStats, secondStats) {
+    return firstStats.dev === secondStats.dev
+        && firstStats.ino !== 0n
+        && firstStats.ino === secondStats.ino;
+}
+
+async function resolveProcFileDescriptor(fileDescriptor) {
+    try {
+        await fs.promises.realpath(PROC_FD_DIRECTORY);
+    } catch (error) {
+        if (PROCFS_UNAVAILABLE_CODES.has(error?.code)) {
+            return null;
+        }
+        throw error;
+    }
+
+    try {
+        return await fs.promises.realpath(path.join(PROC_FD_DIRECTORY, String(fileDescriptor)));
+    } catch (error) {
+        if (PROCFS_UNAVAILABLE_CODES.has(error?.code)) {
+            return null;
+        }
+        throw forbiddenArchivePath('Archive file descriptor could not be verified.', error);
+    }
+}
+
 async function openRegularArchiveFile(filePath, rootDirectory = null) {
-    let pathToOpen = filePath;
+    let canonicalRoot = null;
+    let expectedIdentity = null;
     if (rootDirectory) {
-        const canonicalRoot = path.resolve(rootDirectory);
-        const canonicalFile = await fs.promises.realpath(filePath);
-        if (!isPathUnderParent(canonicalRoot, canonicalFile)) {
+        canonicalRoot = await fs.promises.realpath(rootDirectory);
+    }
+    let pathToOpen = await fs.promises.realpath(filePath);
+    if (canonicalRoot) {
+        if (!isPathUnderParent(canonicalRoot, pathToOpen)) {
             throw forbiddenArchivePath();
         }
-        pathToOpen = canonicalFile;
+        const canonicalStats = await fs.promises.stat(pathToOpen, { bigint: true });
+        if (!canonicalStats.isFile()) {
+            throw new Error('Archive inventory entry is not a regular file.');
+        }
+        expectedIdentity = canonicalStats;
     }
 
     const noFollow = typeof fs.constants.O_NOFOLLOW === 'number' ? fs.constants.O_NOFOLLOW : 0;
     const fileHandle = await fs.promises.open(pathToOpen, fs.constants.O_RDONLY | noFollow);
     try {
-        const stats = await fileHandle.stat();
-        if (!stats.isFile()) {
+        const [stats, openedIdentity] = await Promise.all([
+            fileHandle.stat(),
+            fileHandle.stat({ bigint: true }),
+        ]);
+        if (!stats.isFile() || !openedIdentity.isFile()) {
             throw new Error('Archive inventory entry is not a regular file.');
         }
-        return { fileHandle, pathToOpen, stats };
+
+        if (canonicalRoot) {
+            const descriptorPath = await resolveProcFileDescriptor(fileHandle.fd);
+            if (descriptorPath && !isPathUnderParent(canonicalRoot, descriptorPath)) {
+                throw forbiddenArchivePath();
+            }
+
+            let currentCanonicalFile;
+            let currentIdentity;
+            try {
+                currentCanonicalFile = await fs.promises.realpath(filePath);
+                if (!isPathUnderParent(canonicalRoot, currentCanonicalFile) || currentCanonicalFile !== pathToOpen) {
+                    throw forbiddenArchivePath('Archive file path changed while it was being opened.');
+                }
+                currentIdentity = await fs.promises.stat(currentCanonicalFile, { bigint: true });
+            } catch (error) {
+                if (error?.code === 'ARCHIVE_PATH_FORBIDDEN') {
+                    throw error;
+                }
+                throw forbiddenArchivePath('Archive file path changed while it was being opened.', error);
+            }
+
+            if (!sameFileIdentity(expectedIdentity, openedIdentity)
+                || !sameFileIdentity(openedIdentity, currentIdentity)) {
+                throw forbiddenArchivePath('Archive file identity changed while it was being opened.');
+            }
+            pathToOpen = currentCanonicalFile;
+        }
+
+        return { fileHandle, pathToOpen, stats, cacheStats: openedIdentity };
     } catch (error) {
         await fileHandle.close();
         throw error;
+    }
+}
+
+export class ArchiveMetadataCache {
+    static ENTRIES = new Map();
+
+    static cleanup(now = Date.now()) {
+        for (const [key, entry] of this.ENTRIES) {
+            if (entry.expiresAt <= now) {
+                this.ENTRIES.delete(key);
+            }
+        }
+    }
+
+    static key(canonicalPath, stats) {
+        const modifiedTime = stats.mtimeNs === undefined
+            ? `ms:${String(stats.mtimeMs)}`
+            : `ns:${String(stats.mtimeNs)}`;
+        return [
+            canonicalPath,
+            String(stats.dev),
+            String(stats.ino),
+            String(stats.size),
+            modifiedTime,
+        ].join('\0');
+    }
+
+    static get(canonicalPath, stats, now = Date.now()) {
+        const key = this.key(canonicalPath, stats);
+        const entry = this.ENTRIES.get(key);
+        if (!entry || entry.expiresAt <= now) {
+            this.ENTRIES.delete(key);
+            return null;
+        }
+        this.ENTRIES.delete(key);
+        this.ENTRIES.set(key, entry);
+        return entry.metadata;
+    }
+
+    static set(canonicalPath, stats, metadata, now = Date.now()) {
+        const key = this.key(canonicalPath, stats);
+        this.ENTRIES.delete(key);
+        if (this.ENTRIES.size >= MAX_METADATA_CACHE_ENTRIES) {
+            this.cleanup(now);
+        }
+        while (this.ENTRIES.size >= MAX_METADATA_CACHE_ENTRIES) {
+            this.ENTRIES.delete(this.ENTRIES.keys().next().value);
+        }
+        this.ENTRIES.set(key, {
+            metadata,
+            expiresAt: now + METADATA_CACHE_TTL_MS,
+        });
     }
 }
 
@@ -125,7 +246,13 @@ function archiveIdentity(descriptor) {
  */
 export async function readArchiveChatMetadata(filePath, signal, rootDirectory = null) {
     throwIfAborted(signal);
-    const { fileHandle, stats } = await openRegularArchiveFile(filePath, rootDirectory);
+    const { fileHandle, pathToOpen, stats, cacheStats } = await openRegularArchiveFile(filePath, rootDirectory);
+    const cachedMetadata = ArchiveMetadataCache.get(pathToOpen, cacheStats);
+    if (cachedMetadata) {
+        await fileHandle.close();
+        throwIfAborted(signal);
+        return cachedMetadata;
+    }
 
     const metadata = {
         file_size: formatBytes(stats.size),
@@ -191,6 +318,7 @@ export async function readArchiveChatMetadata(filePath, signal, rootDirectory = 
             : '[The message is empty]';
     }
 
+    ArchiveMetadataCache.set(pathToOpen, cacheStats, metadata);
     return metadata;
 }
 
@@ -501,6 +629,7 @@ export class ArchiveInventoryService {
                 errors,
                 cursor: complete ? null : cursor,
                 readToken: inventory.readToken,
+                total: inventory.descriptors.length,
             };
         } finally {
             inventory.busy = false;
@@ -584,6 +713,7 @@ router.post('/inventory', async (request, response) => {
             cursor: page.cursor,
             read_token: page.readToken,
             errors: page.errors,
+            total: page.total,
         });
     } catch (error) {
         if (error?.name === 'AbortError' || cancellation.signal.aborted) {

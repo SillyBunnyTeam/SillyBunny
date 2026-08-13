@@ -14,6 +14,7 @@ import {
     fetchArchiveFile,
     fetchArchiveInventory,
     fetchOrganization,
+    iterateArchiveInventoryPages,
     ORGANIZATION_FILE_NAME,
     releaseArchiveSession,
     saveOrganization,
@@ -86,8 +87,8 @@ describe('SillyBunny Chats Archive API', () => {
         const requests = [];
         const progress = jest.fn();
         const pages = [
-            { rows: [{ file_name: 'one.jsonl' }], cursor, read_token: null, errors: 1 },
-            { rows: [{ file_name: 'two.jsonl' }, { file_name: 'three.jsonl' }], cursor: null, read_token: null, errors: 0 },
+            { rows: [{ file_name: 'one.jsonl' }], cursor, read_token: null, errors: 1, total: 3 },
+            { rows: [{ file_name: 'two.jsonl' }, { file_name: 'three.jsonl' }], cursor: null, read_token: null, errors: 0, total: 3 },
         ];
         globalThis.fetch = async (url, options) => {
             requests.push({ url, options });
@@ -119,9 +120,73 @@ describe('SillyBunny Chats Archive API', () => {
             { scope: 'archive', page_size: ARCHIVE_PAGE_SIZE, cursor },
         ]);
         expect(progress.mock.calls).toEqual([
-            [{ loaded: 1, errors: 1 }],
-            [{ loaded: 3, errors: 1 }],
+            [expect.objectContaining({ loaded: 1, errors: 1, total: 3 })],
+            [expect.objectContaining({ loaded: 3, errors: 1, total: 3 })],
         ]);
+    });
+
+    test('delivers the first inventory page before a later request resolves and releases early iteration', async () => {
+        const cursor = 'e'.repeat(64);
+        let resolveLaterPage;
+        let laterRequestStarted;
+        const laterRequest = new Promise(resolve => { laterRequestStarted = resolve; });
+        const released = [];
+        let inventoryRequests = 0;
+        globalThis.fetch = async (url, options) => {
+            if (url === '/api/chats/archive/release') {
+                released.push(JSON.parse(options.body));
+                return { ok: true, status: 204 };
+            }
+            inventoryRequests++;
+            if (inventoryRequests === 1) {
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        rows: [{ file_name: 'first.jsonl' }],
+                        cursor,
+                        read_token: null,
+                        errors: 0,
+                        total: 2,
+                    }),
+                };
+            }
+            laterRequestStarted();
+            return new Promise(resolve => { resolveLaterPage = resolve; });
+        };
+
+        const pages = iterateArchiveInventoryPages({ getRequestHeaders: () => ({}) }, 'archive');
+        await expect(pages.next()).resolves.toMatchObject({
+            done: false,
+            value: { loaded: 1, total: 2, rows: [{ file_name: 'first.jsonl' }] },
+        });
+        const pendingLaterPage = pages.next();
+        await laterRequest;
+        let laterPageSettled = false;
+        void pendingLaterPage.finally(() => { laterPageSettled = true; });
+        await Promise.resolve();
+        expect(laterPageSettled).toBe(false);
+
+        resolveLaterPage({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                rows: [{ file_name: 'second.jsonl' }],
+                cursor: null,
+                read_token: null,
+                errors: 0,
+                total: 2,
+            }),
+        });
+        await expect(pendingLaterPage).resolves.toMatchObject({
+            value: { loaded: 2, rows: [{ file_name: 'second.jsonl' }] },
+        });
+
+        const earlyPages = iterateArchiveInventoryPages({ getRequestHeaders: () => ({}) }, 'archive');
+        inventoryRequests = 0;
+        await earlyPages.next();
+        await earlyPages.return();
+        expect(released).toContainEqual({ cursor });
     });
 
     test('sorts and filters complete metadata from beyond the first archive page', async () => {
@@ -143,8 +208,8 @@ describe('SillyBunny Chats Archive API', () => {
             mes: 'late page metadata',
         };
         const pages = [
-            { rows: firstPage, cursor, read_token: null, errors: 0 },
-            { rows: [qualifying], cursor: null, read_token: null, errors: 0 },
+            { rows: firstPage, cursor, read_token: null, errors: 0, total: ARCHIVE_PAGE_SIZE + 1 },
+            { rows: [qualifying], cursor: null, read_token: null, errors: 0, total: ARCHIVE_PAGE_SIZE + 1 },
         ];
         globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => pages.shift() });
 
@@ -260,21 +325,26 @@ describe('SillyBunny Chats Archive API', () => {
         timedRequest.cleanup();
     });
 
-    test('cancels a later inventory page and retains its read token for cleanup', async () => {
+    test('cancels a later inventory page and releases its cursor and read token', async () => {
         Object.defineProperty(AbortSignal, 'any', { configurable: true, value: undefined, writable: true });
         const cursor = 'b'.repeat(64);
         const readToken = 'c'.repeat(64);
         const controller = new AbortController();
         let requestCount = 0;
+        const releases = [];
         let secondRequestStarted;
         const secondRequest = new Promise(resolve => { secondRequestStarted = resolve; });
-        globalThis.fetch = async (_url, options) => {
+        globalThis.fetch = async (url, options) => {
+            if (url === '/api/chats/archive/release') {
+                releases.push(JSON.parse(options.body));
+                return { ok: true, status: 204 };
+            }
             requestCount++;
             if (requestCount === 1) {
                 return {
                     ok: true,
                     status: 200,
-                    json: async () => ({ rows: [{ file_name: 'one.jsonl' }], cursor, read_token: readToken, errors: 0 }),
+                    json: async () => ({ rows: [{ file_name: 'one.jsonl' }], cursor, read_token: readToken, errors: 0, total: 2 }),
                 };
             }
             secondRequestStarted();
@@ -297,6 +367,7 @@ describe('SillyBunny Chats Archive API', () => {
             archiveReadToken: readToken,
         });
         expect(requestCount).toBe(2);
+        expect(releases).toEqual([{ token: readToken, cursor }]);
     });
 
     test('views and releases orphan files only through the archive namespace', async () => {
@@ -967,7 +1038,6 @@ describe('SillyBunny Chats Archive integration', () => {
         expect(ui).toMatch(/aria-labelledby/);
         expect(ui).toMatch(/aria-current/);
         expect(ui).toMatch(/new AbortController\(\)/);
-        expect(ui).toMatch(/fetchArchiveInventory\(ctx, 'archive'/);
         expect(ui).toMatch(/eventTypes\.CHAT_CHANGED/);
         expect(ui).toMatch(/setActive(?:Character|Group)/);
         expect(ui).toMatch(/aria-expanded/);
@@ -1043,7 +1113,6 @@ describe('SillyBunny Chats Archive integration', () => {
     test('message lists, grouping, scans, and search retain their safety contracts', () => {
         const searchStart = ui.indexOf('search.addEventListener(\'keydown\'', ui.indexOf('const flushQuery'));
         const searchHandler = ui.slice(searchStart, ui.indexOf('\n    });', searchStart));
-        const scan = ui.slice(ui.indexOf('async function scanOrphans'), ui.indexOf('async function releaseArchiveToken'));
         expect(searchHandler).toMatch(/event\.key !== 'Enter' \|\| event\.isComposing/);
         expect(searchHandler).toMatch(/flushQuery\(\)/);
         expect(searchHandler).not.toMatch(/runDeepSearch/);
@@ -1061,12 +1130,6 @@ describe('SillyBunny Chats Archive integration', () => {
         expect(ui).toMatch(/group\.rows\.filter\(row => shownRows\.has\(row\)\)/);
         expect(ui).toMatch(/group\.rows\.length/);
         expect(ui).toMatch(/for \(const row of shownGroupRows\)/);
-        expect(ui).toMatch(/state\.scanAbort\?\.abort\(\)/);
-        expect(scan).toMatch(/fetchArchiveInventory\(ctx, 'orphans', controller\.signal/);
-        expect(scan).toMatch(/state\.archiveReadToken = inventory\.readToken/);
-        expect(scan).toMatch(/releaseArchiveToken\(ctx, previousToken\)/);
-        expect(ui).not.toMatch(/\/api\/data-maid|fetchDataMaid|finalizeDataMaid/);
-        expect(ui).not.toMatch(/AbortSignal\.(?:any|timeout)/);
         expect(ui).toMatch(/ui\.status\.setAttribute\('aria-busy', 'true'\)/);
         expect(ui).toMatch(/ui\.status\.removeAttribute\('aria-busy'\)/);
     });

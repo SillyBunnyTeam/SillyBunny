@@ -204,6 +204,12 @@
     justify-content: space-between;
 }
 
+.sbca-archive-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 .sbca-options > summary,
 .sbca-json-details > summary {
     inline-size: fit-content;
@@ -1029,8 +1035,13 @@
     }
 
     .sbca-filter-tools > .sbca-options,
-    .sbca-clear-filters {
+    .sbca-clear-filters,
+    .sbca-archive-actions {
         inline-size: 100%;
+    }
+
+    .sbca-archive-actions > .sbca-control {
+        flex: 1 1 140px;
     }
 
     .sbca-root input,

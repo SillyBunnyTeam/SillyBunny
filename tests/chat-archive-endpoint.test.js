@@ -12,6 +12,7 @@ setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
 
 const {
     ArchiveInventoryService,
+    ArchiveMetadataCache,
     ArchiveReadTokenService,
     MAX_ARCHIVE_PAGE_SIZE,
     readArchiveChatMetadata,
@@ -89,6 +90,7 @@ describe('Chat Archive endpoint', () => {
             fs.mkdirSync(directory, { recursive: true });
         }
         ArchiveInventoryService.INVENTORIES.clear();
+        ArchiveMetadataCache.ENTRIES.clear();
         ArchiveReadTokenService.TOKENS.clear();
         DataMaidService.TOKENS.clear();
         createArchiveFixtures();
@@ -97,6 +99,7 @@ describe('Chat Archive endpoint', () => {
     afterEach(() => {
         jest.restoreAllMocks();
         ArchiveInventoryService.INVENTORIES.clear();
+        ArchiveMetadataCache.ENTRIES.clear();
         ArchiveReadTokenService.TOKENS.clear();
         DataMaidService.TOKENS.clear();
         fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -125,6 +128,7 @@ describe('Chat Archive endpoint', () => {
 
         expect(pages).toHaveLength(2);
         expect(pages.every(page => page.rows.length <= 2)).toBe(true);
+        expect(pages.every(page => page.total === 4)).toBe(true);
         expect(rows.map(row => [row.avatar, row.group, row.orphan_type, row.file_name])).toEqual([
             ['Alice.png', undefined, undefined, 'a-first.jsonl'],
             ['Alice.png', undefined, undefined, 'a-second.jsonl'],
@@ -165,6 +169,134 @@ describe('Chat Archive endpoint', () => {
             mes: 'last preview',
         });
         expect(readFileSpy).not.toHaveBeenCalled();
+    });
+
+    test('rejects an opened file handle that does not match the validated in-root path', async () => {
+        const inRootPath = path.join(directories.chats, 'root-chat.jsonl');
+        const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-chat-archive-race-'));
+        const outsidePath = path.join(outsideRoot, 'outside.jsonl');
+        fs.writeFileSync(outsidePath, jsonl('outside replacement', 4));
+        const originalOpen = fs.promises.open.bind(fs.promises);
+        jest.spyOn(fs.promises, 'open').mockImplementation((filePath, flags, mode) => (
+            path.resolve(filePath) === path.resolve(inRootPath)
+                ? originalOpen(outsidePath, flags, mode)
+                : originalOpen(filePath, flags, mode)
+        ));
+
+        try {
+            await expect(readArchiveChatMetadata(inRootPath, undefined, directories.root)).rejects.toMatchObject({
+                code: 'ARCHIVE_PATH_FORBIDDEN',
+            });
+        } finally {
+            fs.rmSync(outsideRoot, { recursive: true, force: true });
+        }
+    });
+
+    test('rejects an opened identity mismatch when procfs descriptor paths are unavailable', async () => {
+        const inRootPath = path.join(directories.chats, 'root-chat.jsonl');
+        const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-chat-archive-fallback-'));
+        const outsidePath = path.join(outsideRoot, 'outside.jsonl');
+        fs.writeFileSync(outsidePath, jsonl('fallback replacement', 3));
+        const originalOpen = fs.promises.open.bind(fs.promises);
+        const originalRealpath = fs.promises.realpath.bind(fs.promises);
+        jest.spyOn(fs.promises, 'open').mockImplementation((filePath, flags, mode) => (
+            path.resolve(filePath) === path.resolve(inRootPath)
+                ? originalOpen(outsidePath, flags, mode)
+                : originalOpen(filePath, flags, mode)
+        ));
+        jest.spyOn(fs.promises, 'realpath').mockImplementation(filePath => {
+            if (path.resolve(filePath) === path.resolve('/proc/self/fd')) {
+                return Promise.reject(Object.assign(new Error('procfs unavailable'), { code: 'ENOENT' }));
+            }
+            return originalRealpath(filePath);
+        });
+
+        try {
+            await expect(readArchiveChatMetadata(inRootPath, undefined, directories.root)).rejects.toMatchObject({
+                code: 'ARCHIVE_PATH_FORBIDDEN',
+            });
+        } finally {
+            fs.rmSync(outsideRoot, { recursive: true, force: true });
+        }
+    });
+
+    test('rejects symlinks that resolve outside the canonical archive root', async () => {
+        const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-chat-archive-symlink-'));
+        const outsidePath = path.join(outsideRoot, 'outside.jsonl');
+        const linkedPath = path.join(directories.chats, 'outside-link.jsonl');
+        fs.writeFileSync(outsidePath, jsonl('outside symlink', 1));
+        fs.symlinkSync(outsidePath, linkedPath);
+
+        try {
+            await expect(readArchiveChatMetadata(linkedPath, undefined, directories.root)).rejects.toMatchObject({
+                code: 'ARCHIVE_PATH_FORBIDDEN',
+            });
+        } finally {
+            fs.rmSync(outsideRoot, { recursive: true, force: true });
+        }
+    });
+
+    test('reuses unchanged metadata on refresh and rereads files whose metadata changed', async () => {
+        const probe = await fs.promises.open(path.join(directories.chats, 'root-chat.jsonl'), 'r');
+        const fileHandlePrototype = Object.getPrototypeOf(probe);
+        await probe.close();
+        const readSpy = jest.spyOn(fileHandlePrototype, 'read');
+
+        const firstRows = (await collectInventory('archive', MAX_ARCHIVE_PAGE_SIZE)).flatMap(page => page.rows);
+        const readsAfterFirstRefresh = readSpy.mock.calls.length;
+        const secondRows = (await collectInventory('archive', MAX_ARCHIVE_PAGE_SIZE)).flatMap(page => page.rows);
+
+        expect(readsAfterFirstRefresh).toBeGreaterThan(0);
+        expect(readSpy).toHaveBeenCalledTimes(readsAfterFirstRefresh);
+        expect(secondRows).toEqual(firstRows);
+
+        const rootChatPath = path.join(directories.chats, 'root-chat.jsonl');
+        fs.writeFileSync(rootChatPath, jsonl('root changed', 4));
+        const changedTime = new Date(Date.now() + 2_000);
+        fs.utimesSync(rootChatPath, changedTime, changedTime);
+
+        const changedRows = (await collectInventory('archive', MAX_ARCHIVE_PAGE_SIZE)).flatMap(page => page.rows);
+        const changedRoot = changedRows.find(row => row.file_name === 'root-chat.jsonl');
+        expect(readSpy.mock.calls.length).toBeGreaterThan(readsAfterFirstRefresh);
+        expect(changedRoot).toMatchObject({
+            chat_items: 4,
+            chat_metadata: { label: 'root changed' },
+            mes: 'root changed message 3',
+        });
+    });
+
+    test('rereads metadata when a path is replaced with the same size and mtime', async () => {
+        const filePath = path.join(directories.chats, 'cached-replacement.jsonl');
+        const replacementPath = path.join(directories.chats, 'cached-replacement.next.jsonl');
+        const originalContents = jsonl('original', 2);
+        const replacementContents = jsonl('replaced', 2);
+        const fixedTime = new Date('2026-03-04T05:06:07.000Z');
+        expect(Buffer.byteLength(replacementContents)).toBe(Buffer.byteLength(originalContents));
+        fs.writeFileSync(filePath, originalContents);
+        fs.utimesSync(filePath, fixedTime, fixedTime);
+
+        const originalStats = fs.statSync(filePath, { bigint: true });
+        const originalMetadata = await readArchiveChatMetadata(filePath);
+
+        fs.writeFileSync(replacementPath, replacementContents);
+        fs.utimesSync(replacementPath, fixedTime, fixedTime);
+        fs.renameSync(replacementPath, filePath);
+        const replacementStats = fs.statSync(filePath, { bigint: true });
+        expect(replacementStats.size).toBe(originalStats.size);
+        expect(replacementStats.mtimeMs).toBe(originalStats.mtimeMs);
+        expect(replacementStats.dev).toBe(originalStats.dev);
+        expect(replacementStats.ino).not.toBe(originalStats.ino);
+
+        const replacementMetadata = await readArchiveChatMetadata(filePath);
+
+        expect(originalMetadata).toMatchObject({
+            chat_metadata: { label: 'original' },
+            mes: 'original message 1',
+        });
+        expect(replacementMetadata).toMatchObject({
+            chat_metadata: { label: 'replaced' },
+            mes: 'replaced message 1',
+        });
     });
 
     test('returns deterministic bounded pages for twenty thousand descriptors', async () => {
@@ -217,6 +349,49 @@ describe('Chat Archive endpoint', () => {
         expect(rows.at(-1).file_name).toBe('chat-19999.jsonl');
         expect(rows.map(row => row.file_name)).toEqual([...rows.map(row => row.file_name)].sort());
         expect(ArchiveInventoryService.INVENTORIES.has(cursor)).toBe(false);
+    });
+
+    test('limits metadata reads to eight concurrent files', async () => {
+        const cursor = 'c'.repeat(64);
+        const descriptors = Array.from({ length: 24 }, (_, index) => ({
+            avatar: 'Concurrency.png',
+            chatFolder: 'Concurrency',
+            fileName: `${String(index).padStart(2, '0')}.jsonl`,
+            filePath: `/virtual/${index}.jsonl`,
+            orphanType: null,
+        }));
+        ArchiveInventoryService.INVENTORIES.set(cursor, {
+            handle: 'concurrency-user',
+            scope: 'archive',
+            descriptors,
+            offset: 0,
+            readToken: null,
+            root: directories.root,
+            busy: false,
+            expiresAt: Date.now() + 60_000,
+        });
+        let active = 0;
+        let maxActive = 0;
+        const metadataReader = async () => {
+            active++;
+            maxActive = Math.max(maxActive, active);
+            await new Promise(resolve => setImmediate(resolve));
+            active--;
+            return { file_size: '1 B', chat_items: 0, last_mes: 0, mes: '' };
+        };
+
+        const page = await ArchiveInventoryService.page(
+            cursor,
+            'concurrency-user',
+            MAX_ARCHIVE_PAGE_SIZE,
+            undefined,
+            undefined,
+            metadataReader,
+        );
+
+        expect(page.rows).toHaveLength(descriptors.length);
+        expect(page.total).toBe(descriptors.length);
+        expect(maxActive).toBe(8);
     });
 
     test('aborted pages do not advance their cursor offset', async () => {
