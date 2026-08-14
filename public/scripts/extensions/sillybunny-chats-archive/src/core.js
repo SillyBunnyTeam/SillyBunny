@@ -748,8 +748,12 @@ export function filterRows(rows, options = {}, organization = null) {
     const owner = trimmed(options.owner);
     const collection = trimmed(options.collection);
     const tag = trimmed(options.tag).toLowerCase();
+    // Runtime-only flag: an active Favorites category keeps favorites listed even when their own chat type is off.
+    const favoritesSelected = options.favoritesSelected === true;
     return rows.filter(row => {
-        if (options.kinds && !options.kinds.includes(row.kind)) {
+        const metadata = chatMetadata(row, organization);
+        const isFavorite = metadata.favorite === true;
+        if (options.kinds && !options.kinds.includes(row.kind) && !(favoritesSelected && isFavorite)) {
             return false;
         }
         if (owner && !matchesOwner(row, owner)) {
@@ -759,8 +763,7 @@ export function filterRows(rows, options = {}, organization = null) {
             return false;
         }
 
-        const metadata = chatMetadata(row, organization);
-        if (typeof options.favorite === 'boolean' && (metadata.favorite === true) !== options.favorite) {
+        if (typeof options.favorite === 'boolean' && isFavorite !== options.favorite) {
             return false;
         }
         if (hasFolderFilter && (options.folder === null ? !!metadata.folder : metadata.folder !== options.folder)) {
@@ -858,7 +861,15 @@ export function groupRows(rows, mode = 'flat', organization = null) {
         }
         groups.get(key).rows.push(row);
     }
-    return [...groups.values()];
+    const result = [...groups.values()];
+    if (selectedMode !== 'folder') {
+        return result;
+    }
+    const unfiledKey = JSON.stringify(['folder', null]);
+    return [
+        ...result.filter(group => group.key !== unfiledKey),
+        ...result.filter(group => group.key === unfiledKey),
+    ];
 }
 
 /**

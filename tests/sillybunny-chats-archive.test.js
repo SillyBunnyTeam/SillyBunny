@@ -262,7 +262,14 @@ describe('SillyBunny Chats Archive API', () => {
         response = { ok: false, status: 503 };
         await expect(fetchOrganization(ctx)).rejects.toThrow(/_sbca_organization\.json failed with status 503/);
 
-        response = { ok: true, status: 200, json: async () => { throw new SyntaxError('bad sidecar'); } };
+        const organization = { version: 1, folders: [], collections: [], views: [], chats: {} };
+        response = { ok: true, status: 200, text: async () => JSON.stringify(organization) };
+        await expect(fetchOrganization(ctx)).resolves.toEqual(organization);
+
+        response = { ok: true, status: 200, text: async () => btoa(JSON.stringify(organization)) };
+        await expect(fetchOrganization(ctx)).resolves.toEqual(organization);
+
+        response = { ok: true, status: 200, text: async () => 'bad sidecar' };
         await expect(fetchOrganization(ctx)).rejects.toThrow(SyntaxError);
     });
 
@@ -781,6 +788,36 @@ describe('SillyBunny Chats Archive core', () => {
         expect(filterRows(normalized, { text: 'lost', kinds: ['solo'] })).toHaveLength(0);
     });
 
+    test('an active Favorites category outranks deselected chat types', () => {
+        const organization = {
+            folders: [],
+            collections: [],
+            chats: {
+                [physicalChatKey(normalized[0])]: { favorite: true },
+                [physicalChatKey(normalized[2])]: { favorite: true },
+            },
+        };
+
+        expect(filterRows(normalized, { kinds: [], favoritesSelected: true }, organization).map(row => row.file_id))
+            .toEqual(['dragon tavern', 'abc-123']);
+        expect(filterRows(normalized, { kinds: ['orphan'], favoritesSelected: true }, organization).map(row => row.file_id))
+            .toEqual(['dragon tavern', 'lost chat', 'abc-123', 'stray']);
+        expect(filterRows(normalized, { kinds: [], favoritesSelected: true }, null)).toHaveLength(0);
+        expect(filterRows(normalized, { kinds: [] }, organization)).toHaveLength(0);
+        expect(filterRows(normalized, { kinds: ['solo'], favoritesSelected: true }, organization).map(row => row.file_id))
+            .toEqual(['dragon tavern', 'abc-123']);
+        expect(filterRows(normalized, {
+            kinds: [],
+            favoritesSelected: true,
+            owner: 'Tavern Night',
+        }, organization).map(row => row.file_id)).toEqual(['abc-123']);
+        expect(filterRows(normalized, {
+            kinds: [],
+            favorite: false,
+            favoritesSelected: true,
+        }, organization)).toHaveLength(0);
+    });
+
     test('filterRows applies organization labels, facets, and metadata bounds', () => {
         const organization = {
             folders: [{ id: 'quests', name: 'Heroic Quests' }],
@@ -867,7 +904,8 @@ describe('SillyBunny Chats Archive core', () => {
             ['solo', ['dragon tavern']],
             ['orphan', ['stray', 'lost chat']],
         ]);
-        expect(groupRows(rows, 'folder', organization).map(group => [group.label, group.rows.map(row => row.file_id)])).toEqual([
+        const folderRows = [normalized[1], normalized[2], normalized[0], normalized[3]];
+        expect(groupRows(folderRows, 'folder', organization).map(group => [group.label, group.rows.map(row => row.file_id)])).toEqual([
             ['Beta', ['abc-123', 'stray']],
             ['Alpha', ['dragon tavern']],
             ['Unfiled', ['lost chat']],
@@ -1042,13 +1080,14 @@ describe('SillyBunny Chats Archive integration', () => {
         expect(ui).toMatch(/setActive(?:Character|Group)/);
         expect(ui).toMatch(/aria-expanded/);
         expect(ui).toMatch(/aria-pressed/);
-        expect(ui).toMatch(/state\.deepRows === null \? ui\.search\.value : ''/);
+        expect(ui).toMatch(/const search = mentionSearchState\(ui\.search\.value, ui\.characterMentions\);[\s\S]*state\.deepRows === null \? search\.text : ''/);
+        expect(ui).toMatch(/favoritesSelected: ui\.favorite\.checked/);
         expect(ui).toMatch(/ORGANIZATION_FILE_NAME/);
-        expect(ui).toMatch(/Do not delete \{name\} through host Data Maid/);
+        expect(ui).not.toMatch(/Do not delete \{name\} through host Data Maid/);
         expect(ui).toMatch(/sbca-selection-toggle/);
         expect(ui).toMatch(/sbca-organizer/);
         expect(ui).toMatch(/physicalChatKey/);
-        expect(ui).toMatch(/summary\.setAttribute\('aria-label', tr\(ctx, 'Character or group'\)\)/);
+        expect(ui).toMatch(/summary\.setAttribute\('aria-label', `\$\{tr\(ctx, 'Character or group'\)\}: \$\{choice\.label\}`\)/);
         expect(ui).not.toMatch(/el\('span', 'sbca-label', tr\(ctx, 'Character or group'\)\)/);
         expect(ui).toMatch(/'All characters and groups'/);
         expect(ui).toMatch(/sbca-owner-selector/);
@@ -1068,8 +1107,13 @@ describe('SillyBunny Chats Archive integration', () => {
         expect(ui).toMatch(/sbca-sortpill/);
         expect(ui).not.toMatch(/characterChips|sbca-charstrip|sbca-charchip|charSort/);
         expect(ui).toMatch(/enterKeyHint = 'search'/);
-        expect(ui).toMatch(/SEARCH_DEBOUNCE_MS = 150/);
-        expect(ui).toMatch(/search\.addEventListener\('input', \(\) => \{\s*exitDeepSearch\(ctx, state, ui\);\s*noteViewEdit\(\);/);
+        expect(ui).toMatch(/Type to search chats\. Mention character names with @\./);
+        expect(ui).toMatch(/role', 'listbox'/);
+        expect(ui).toMatch(/function fuzzyMentionChoices/);
+        expect(ui).toMatch(/function mentionedRows/);
+        expect(ui).toMatch(/SEARCH_CONTENT_DEBOUNCE_MS = 600/);
+        expect(ui).toMatch(/state\.listState !== 'ready' \|\| state\.scanAbort \|\| state\.searchAbort/);
+        expect(ui).toMatch(/search\.addEventListener\('input',[\s\S]*?applyQuery\(\);[\s\S]*?runDeepSearch/);
         expect(ui).toMatch(/buildSearchScopes\(ctx\.characters, ctx\.groups, ui\.owner\.value\)/);
         expect(ui).toMatch(/findMatchingMessageIndex/);
         expect(ui).toMatch(/First search match/);
@@ -1079,19 +1123,23 @@ describe('SillyBunny Chats Archive integration', () => {
         expect(ui).toMatch(/more\.click\(\)/);
         expect(ui).toMatch(/showPage\(shaped\.messages\.length - MESSAGE_PAGE_SIZE\)/);
         expect(ui).toMatch(/state\.deepRows !== null && state\.deepQuery === matchQuery/);
-        expect(ui).toMatch(/search result verification failed/);
+        expect(ui).not.toMatch(/search result verification failed/);
+        expect(ui).toMatch(/const found = new Map\(filterRows\(mentionedRows\(allRows\(state\), search\.mentions\), \{ text: query \}/);
         expect(ui).toMatch(/search items had errors/);
-        expect(ui).toMatch(/allRows\(state\)\.filter\(row => row\.kind === 'orphan'\)/);
+        expect(ui).toMatch(/mentionedRows\(allRows\(state\), search\.mentions\)\.filter\(row => row\.kind === 'orphan'\)/);
         expect(ui).not.toMatch(/row\.kind === 'orphan' \|\| row\.source === 'inventory'/);
         expect(ui).toMatch(/findMatchingSnippetInJsonlAsync\(raw, query, \{ signal \}\)/);
         expect(ui).not.toMatch(/findExistingGroupFiles/);
-        expect(ui).toMatch(/sbca-browse-options/);
-        expect(ui).toMatch(/options\.append\(el\('summary', undefined, tr\(ctx, 'Filters'\)\)\)/);
-        expect(ui).toMatch(/const organizationTools = el\('details', 'sbca-organization-tools'\)/);
+        expect(ui).toMatch(/savedViewField\.wrap\.hidden = true/);
+        expect(ui).toMatch(/ui\.savedViewWrap\.hidden = organization\.views\.length === 0/);
+        expect(ui).toMatch(/filterToggle\.setAttribute\('aria-controls', optionsPanel\.id\)/);
+        expect(ui).toMatch(/filterToggle\.setAttribute\('aria-expanded'/);
+        expect(ui).toMatch(/organizationToggle\.setAttribute\('aria-controls', organizationPanel\.id\)/);
         expect(ui).toMatch(/Manage organization/);
         expect(ui).not.toMatch(/SORT_OPTIONS/);
         expect(ui).not.toMatch(/sortField/);
-        expect(ui).toMatch(/Clear filters/);
+        expect(ui).not.toMatch(/Clear filters/);
+        expect(ui).not.toMatch(/Search message content/);
         expect(ui).not.toMatch(/sbca-row-selection-label/);
         expect(ui).not.toMatch(/\browKey\(/);
         expect(ui).not.toMatch(/menu_button/);
@@ -1101,7 +1149,7 @@ describe('SillyBunny Chats Archive integration', () => {
     test('archive preserves focus and exposes item-specific actions', () => {
         expect(ui).toMatch(/function preserveArchiveFocus\(ui, update\)/);
         expect(ui).toMatch(/organizationFocusKey\('manager', type, item\.id, 'rename'\)/);
-        expect(ui).toMatch(/organizationFocusKey\('organizer', key, 'favorite'\)/);
+        expect(ui).toMatch(/organizationFocusKey\('viewer-action', key, 'favorite'\)/);
         expect(ui).toMatch(/control\.dataset\.sbcaFocusKey === snapshot\.fallback/);
         expect(ui).toMatch(/snapshot\.viewer \? ui\.viewerTitle : snapshot\.list \? ui\.listHeading/);
         expect(ui).toMatch(/preserveArchiveFocus\(ui, \(\) => \{\s*refreshOrganizationUI/s);
@@ -1109,9 +1157,14 @@ describe('SillyBunny Chats Archive integration', () => {
         expect(ui).toMatch(/Delete \{name\}/);
         expect(ui).toMatch(/Select \{name\} for \{owner\}/);
         expect(ui).toMatch(/Delete saved view \{name\}\?/);
-        expect(ui).toMatch(/const active = document\.activeElement;\s*const focusInBrowse = browseStrip\.contains\(active\);\s*browseOptions\.open/s);
-        expect(ui).toMatch(/focusInBrowse\) \{\s*browseSummary\.focus/s);
-        expect(ui).toMatch(/active === browseSummary\) \{\s*groupField\.select\.focus/s);
+        expect(ui).toMatch(/const focusInFilters = optionsPanel\.contains\(active\);\s*const organizationExpanded = organizationToggle\.getAttribute\('aria-expanded'\) === 'true';\s*const showDesktopFilters = !event\.matches && !organizationExpanded;\s*optionsPanel\.hidden = !showDesktopFilters/s);
+        expect(ui).toMatch(/focusInFilters\) \{[\s\S]*?restoreFilterFocusOnDesktop = true;[\s\S]*?filterToggle\.focus/s);
+        expect(ui).toMatch(/focusInBrowse\) \{\s*groupField\.select\.focus/s);
+        expect(ui).toMatch(/const folder = el\('div', 'sbca-organizer-folder'\)/);
+        expect(ui).toMatch(/folder\.setAttribute\('aria-labelledby', folderLabel\.id\)/);
+        expect(ui).toMatch(/folderLabel\.classList\.add\('sbca-organizer-section-title'\)/);
+        expect(ui).toMatch(/const collectionsField = selectControl\(ctx, 'Collections'/);
+        expect(ui).toMatch(/Remove collection \{name\}/);
         const cancelViewer = ui.slice(ui.indexOf('function cancelViewer'), ui.indexOf('function cancelNavigation'));
         expect(cancelViewer).toMatch(/state\.viewerAbort\?\.abort\(\)/);
         expect(cancelViewer).not.toMatch(/state\.viewerAbort = null/);
@@ -1122,8 +1175,10 @@ describe('SillyBunny Chats Archive integration', () => {
         const searchHandler = ui.slice(searchStart, ui.indexOf('\n    });', searchStart));
         expect(searchHandler).toMatch(/event\.key !== 'Enter' \|\| event\.isComposing/);
         expect(searchHandler).toMatch(/flushQuery\(\)/);
-        expect(searchHandler).not.toMatch(/runDeepSearch/);
-        expect(ui).toMatch(/deepButton\.addEventListener\('click',[\s\S]*?runDeepSearch/);
+        expect(ui).not.toMatch(/deepButton/);
+        expect(ui).toMatch(/control === ui\.owner && mentionSearchState\(ui\.search\.value, ui\.characterMentions\)\.text[\s\S]*state\.listState === 'ready' && !state\.scanAbort/);
+        expect(ui).toMatch(/function applySavedView[\s\S]*mentionSearchState\(ui\.search\.value, ui\.characterMentions\)\.text && state\.listState === 'ready' && !state\.scanAbort[\s\S]*runDeepSearch/);
+        expect(ui).toMatch(/ui\.scanButton\.textContent = tr[\s\S]*if \(mentionSearchState\(ui\.search\.value, ui\.characterMentions\)\.text\) \{[\s\S]*runDeepSearch/);
         expect(ui).toMatch(/const messageList = el\('div', 'sbca-message-list'\);/);
         expect(ui).toMatch(/messageList\.setAttribute\('role', 'list'\)/);
         expect(ui).toMatch(/messages\.append\(messageList, el\('p', 'sbca-placeholder'/);

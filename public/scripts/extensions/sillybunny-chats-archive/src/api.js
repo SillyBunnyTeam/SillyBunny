@@ -49,6 +49,24 @@ function utf8ToBase64(text) {
     return btoa(binary);
 }
 
+function base64ToUtf8(value) {
+    const binary = atob(value.trim());
+    const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+}
+
+function parseOrganizationResponse(text) {
+    try {
+        return JSON.parse(text);
+    } catch (error) {
+        try {
+            return JSON.parse(base64ToUtf8(text));
+        } catch {
+            throw error;
+        }
+    }
+}
+
 export const searchScope = (ctx, query, scope, signal) => postArray(ctx, '/api/chats/search', { query, ...scope }, signal);
 export const exportChat = (ctx, body, signal) => post(ctx, '/api/chats/export', body, signal);
 
@@ -212,7 +230,7 @@ export async function fetchOrganization(ctx, signal) {
     if (!response.ok) {
         throw new Error(`${url} failed with status ${response.status}`);
     }
-    return response.json();
+    return parseOrganizationResponse(await response.text());
 }
 
 export async function saveOrganization(ctx, organization, signal) {

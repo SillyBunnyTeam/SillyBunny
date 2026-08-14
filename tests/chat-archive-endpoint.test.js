@@ -90,6 +90,7 @@ describe('Chat Archive endpoint', () => {
             fs.mkdirSync(directory, { recursive: true });
         }
         ArchiveInventoryService.INVENTORIES.clear();
+        ArchiveInventoryService.CREATION_LOCKS.clear();
         ArchiveMetadataCache.ENTRIES.clear();
         ArchiveReadTokenService.TOKENS.clear();
         DataMaidService.TOKENS.clear();
@@ -99,6 +100,7 @@ describe('Chat Archive endpoint', () => {
     afterEach(() => {
         jest.restoreAllMocks();
         ArchiveInventoryService.INVENTORIES.clear();
+        ArchiveInventoryService.CREATION_LOCKS.clear();
         ArchiveMetadataCache.ENTRIES.clear();
         ArchiveReadTokenService.TOKENS.clear();
         DataMaidService.TOKENS.clear();
@@ -169,6 +171,33 @@ describe('Chat Archive endpoint', () => {
             mes: 'last preview',
         });
         expect(readFileSpy).not.toHaveBeenCalled();
+    });
+
+    test('bounds cached last-message previews', async () => {
+        const filePath = path.join(directories.chats, 'large-preview.jsonl');
+        const preview = 'x'.repeat(4096);
+        fs.writeFileSync(filePath, [
+            JSON.stringify({ chat_metadata: { complete: true } }),
+            JSON.stringify({ mes: preview, send_date: '2026-02-04T04:05:06.000Z' }),
+        ].join('\n'));
+
+        const metadata = await readArchiveChatMetadata(filePath);
+
+        expect(metadata.mes).toHaveLength(512);
+    });
+
+    test('serializes concurrent inventory creation before enforcing per-user limits', async () => {
+        for (let index = 0; index < 8; index++) {
+            await ArchiveInventoryService.create('alice', directories, 'archive');
+        }
+
+        await Promise.all([
+            ArchiveInventoryService.create('alice', directories, 'archive'),
+            ArchiveInventoryService.create('alice', directories, 'archive'),
+        ]);
+
+        expect([...ArchiveInventoryService.INVENTORIES.values()]
+            .filter(entry => entry.handle === 'alice')).toHaveLength(8);
     });
 
     test('rejects an opened file handle that does not match the validated in-root path', async () => {

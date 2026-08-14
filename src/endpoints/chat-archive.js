@@ -15,6 +15,7 @@ const INVENTORY_TTL_MS = 5 * 60 * 1000;
 const READ_TOKEN_TTL_MS = 15 * 60 * 1000;
 const INVENTORY_CONCURRENCY = 8;
 const METADATA_READ_BUFFER_SIZE = 64 * 1024;
+const MAX_METADATA_PREVIEW_CHARS = 512;
 const METADATA_CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_METADATA_CACHE_ENTRIES = 2_048;
 const MAX_ARCHIVE_SESSIONS_PER_USER = 8;
@@ -314,7 +315,7 @@ export async function readArchiveChatMetadata(filePath, signal, rootDirectory = 
     if (isPlainObject(lastRecord) && (!hasHeader || lastLine !== firstLine)) {
         metadata.last_mes = lastRecord.send_date || stats.mtimeMs;
         metadata.mes = typeof lastRecord.mes === 'string' && lastRecord.mes
-            ? lastRecord.mes
+            ? lastRecord.mes.slice(0, MAX_METADATA_PREVIEW_CHARS)
             : '[The message is empty]';
     }
 
@@ -515,6 +516,8 @@ export class ArchiveReadTokenService {
 export class ArchiveInventoryService {
     static INVENTORIES = new Map();
 
+    static CREATION_LOCKS = new Map();
+
     static cleanup(now = Date.now()) {
         for (const [cursor, entry] of this.INVENTORIES) {
             if (entry.expiresAt <= now) {
@@ -527,31 +530,45 @@ export class ArchiveInventoryService {
     }
 
     static async create(handle, directories, scope, signal) {
-        this.cleanup();
-        const userInventories = [...this.INVENTORIES]
-            .filter(([, entry]) => entry.handle === handle)
-            .map(([cursor]) => cursor);
-        while (userInventories.length >= MAX_ARCHIVE_SESSIONS_PER_USER) {
-            this.discard(userInventories.shift(), handle);
-        }
-        const canonicalRoot = await fs.promises.realpath(directories.root);
-        const descriptors = await collectArchiveDescriptors(directories, scope, signal);
-        throwIfAborted(signal);
-        const cursor = crypto.randomBytes(32).toString('hex');
-        const readToken = scope === 'orphans'
-            ? ArchiveReadTokenService.create(handle, canonicalRoot, descriptors)
-            : null;
-        this.INVENTORIES.set(cursor, {
-            handle,
-            scope,
-            descriptors,
-            offset: 0,
-            readToken,
-            root: canonicalRoot,
-            busy: false,
-            expiresAt: Date.now() + INVENTORY_TTL_MS,
+        const previous = this.CREATION_LOCKS.get(handle) ?? Promise.resolve();
+        let release;
+        const current = new Promise(resolve => {
+            release = resolve;
         });
-        return cursor;
+        this.CREATION_LOCKS.set(handle, current);
+        await previous;
+        try {
+            this.cleanup();
+            const userInventories = [...this.INVENTORIES]
+                .filter(([, entry]) => entry.handle === handle)
+                .map(([cursor]) => cursor);
+            while (userInventories.length >= MAX_ARCHIVE_SESSIONS_PER_USER) {
+                this.discard(userInventories.shift(), handle);
+            }
+            const canonicalRoot = await fs.promises.realpath(directories.root);
+            const descriptors = await collectArchiveDescriptors(directories, scope, signal);
+            throwIfAborted(signal);
+            const cursor = crypto.randomBytes(32).toString('hex');
+            const readToken = scope === 'orphans'
+                ? ArchiveReadTokenService.create(handle, canonicalRoot, descriptors)
+                : null;
+            this.INVENTORIES.set(cursor, {
+                handle,
+                scope,
+                descriptors,
+                offset: 0,
+                readToken,
+                root: canonicalRoot,
+                busy: false,
+                expiresAt: Date.now() + INVENTORY_TTL_MS,
+            });
+            return cursor;
+        } finally {
+            release();
+            if (this.CREATION_LOCKS.get(handle) === current) {
+                this.CREATION_LOCKS.delete(handle);
+            }
+        }
     }
 
     static get(cursor, handle) {

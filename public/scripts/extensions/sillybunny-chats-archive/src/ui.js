@@ -61,6 +61,7 @@ const MESSAGE_PAGE_SIZE = 100;
 const NAVIGATION_TIMEOUT_MS = 15_000;
 const LAST_VIEW_SAVE_DELAY_MS = 500;
 const SEARCH_DEBOUNCE_MS = 150;
+const SEARCH_CONTENT_DEBOUNCE_MS = 600;
 const MAX_ORGANIZATION_IMPORT_BYTES = 5 * 1024 * 1024;
 const RAW_PREVIEW_CHARS = 200_000;
 const UNFILED_VALUE = '__sbca_unfiled__';
@@ -84,6 +85,17 @@ function button(className, text) {
     const node = el('button', className, text);
     node.type = 'button';
     return node;
+}
+
+function createOrganizationId() {
+    if (globalThis.crypto?.randomUUID) {
+        return globalThis.crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, character => {
+        const random = Math.random() * 16 | 0;
+        const value = character === 'x' ? random : (random & 0x3 | 0x8);
+        return value.toString(16);
+    });
 }
 
 function appendOption(select, value, text) {
@@ -114,6 +126,92 @@ function inputControl(ctx, label, type = 'text', className = 'sbca-filter') {
     input.className = 'text_pole';
     wrap.append(input);
     return { wrap, input };
+}
+
+function mentionSearchState(value, choices) {
+    const source = String(value ?? '');
+    const completeMentions = [];
+    const mentionPattern = /(?:^|\s)@(?:"((?:\\.|[^"\\])*)"|([^\s]+))/g;
+    for (const match of source.matchAll(mentionPattern)) {
+        let label = match[1] ?? match[2];
+        if (match[1] !== undefined) {
+            try {
+                label = JSON.parse(`"${match[1]}"`);
+            } catch {
+                label = match[1].replace(/\\(["\\])/g, '$1');
+            }
+        }
+        const choice = choices.find(item => item.name.localeCompare(label, undefined, { sensitivity: 'accent' }) === 0);
+        completeMentions.push(choice ?? { name: label, avatars: [], missing: true });
+    }
+    const activeMatch = source.match(/(?:^|\s)@(?:"((?:\\.|[^"\\])*)|([^\s]*))$/);
+    const active = activeMatch
+        ? {
+            fragment: (activeMatch[1] ?? activeMatch[2] ?? '').replace(/\\(["\\])/g, '$1'),
+            start: activeMatch.index + activeMatch[0].lastIndexOf('@'),
+        }
+        : null;
+    const searchableSource = active ? source.slice(0, active.start) : source;
+    const text = searchableSource.replace(mentionPattern, ' ');
+    return { text: text.trim(), mentions: completeMentions, active };
+}
+
+function mentionedRows(rows, mentions) {
+    const valid = mentions.filter(mention => !mention.missing);
+    if (valid.length === 0) {
+        return mentions.some(mention => mention.missing) ? [] : rows;
+    }
+    const avatars = new Set(valid.flatMap(mention => mention.avatars));
+    return rows.filter(row => row.kind === 'solo' && avatars.has(row.avatar));
+}
+
+function mentionChoices(ctx) {
+    const choices = new Map();
+    for (const character of ctx.characters ?? []) {
+        const name = typeof character?.name === 'string' ? character.name.trim() : '';
+        if (!name || !character.avatar) {
+            continue;
+        }
+        const key = name.toLocaleLowerCase();
+        const choice = choices.get(key) ?? { name, avatars: [] };
+        choice.avatars.push(character.avatar);
+        choices.set(key, choice);
+    }
+    return [...choices.values()].sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function fuzzyMentionChoices(choices, query, limit = 8) {
+    const needle = String(query ?? '').trim().toLocaleLowerCase();
+    if (!needle) {
+        return choices.slice(0, limit);
+    }
+    const ranked = [];
+    for (const choice of choices) {
+        const name = choice.name.toLocaleLowerCase();
+        const direct = name.indexOf(needle);
+        if (direct >= 0) {
+            ranked.push({ choice, score: direct * 10 + name.length - needle.length });
+            continue;
+        }
+        let cursor = 0;
+        let gaps = 0;
+        for (const character of needle) {
+            const match = name.indexOf(character, cursor);
+            if (match < 0) {
+                cursor = -1;
+                break;
+            }
+            gaps += match - cursor;
+            cursor = match + 1;
+        }
+        if (cursor >= 0) {
+            ranked.push({ choice, score: 100 + gaps * 10 + name.length - needle.length });
+        }
+    }
+    return ranked
+        .sort((left, right) => left.score - right.score || left.choice.name.localeCompare(right.choice.name))
+        .slice(0, limit)
+        .map(item => item.choice);
 }
 
 function ownerControl(ctx) {
@@ -194,6 +292,7 @@ function setOwnerValue(ctx, ui, value) {
     const name = el('span', 'sbca-owner-choice-name', choice.label);
     copy.append(name);
     ui.ownerField.summary.replaceChildren(ownerChoiceVisual(ctx, choice), copy);
+    ui.ownerField.summary.setAttribute('aria-label', `${tr(ctx, 'Character or group')}: ${choice.label}`);
     for (const option of ui.ownerField.list.querySelectorAll('.sbca-owner-option')) {
         option.setAttribute('aria-pressed', String(option.dataset.sbcaOwner === selected));
     }
@@ -419,59 +518,52 @@ function buildRoot(ctx, state) {
     heading.tabIndex = -1;
 
     const toolbar = el('div', 'sbca-toolbar');
-    const searchLabel = el('label', 'sbca-search');
-    searchLabel.append(el('span', 'sbca-label', tr(ctx, 'Filter indexed chats')));
+    const searchLabel = el('div', 'sbca-search');
+    const searchLabelText = el('label', 'sbca-label', tr(ctx, 'Search indexed chats'));
     const search = document.createElement('input');
+    search.id = `sbca_search_${++renderId}`;
     search.type = 'search';
     search.className = 'text_pole';
-    search.placeholder = tr(ctx, 'File, owner, or latest message');
+    search.setAttribute('role', 'combobox');
+    search.placeholder = tr(ctx, 'Type to search chats. Mention character names with @.');
     search.autocomplete = 'off';
     search.enterKeyHint = 'search';
+    searchLabelText.htmlFor = search.id;
+    const characterMentions = mentionChoices(ctx);
+    const mentionMenu = el('div', 'sbca-mention-menu');
+    mentionMenu.id = `sbca_mentions_${++renderId}`;
+    mentionMenu.setAttribute('role', 'listbox');
+    mentionMenu.setAttribute('aria-label', tr(ctx, 'Character mentions'));
+    mentionMenu.hidden = true;
+    search.setAttribute('aria-controls', mentionMenu.id);
+    search.setAttribute('aria-expanded', 'false');
+    search.setAttribute('aria-autocomplete', 'list');
     (avoidSoftwareKeyboard.matches ? heading : search).setAttribute('autofocus', '');
-    searchLabel.append(search);
-
-    const deepButton = button('sbca-control sbca-deep', tr(ctx, 'Search message content'));
-    deepButton.title = tr(ctx, 'Search every message in linked chats and orphaned files already shown in the archive.');
-    deepButton.disabled = true;
-
-    const searchMode = el('div', 'sbca-search-mode');
-    searchMode.hidden = true;
-    const searchModeText = el('span', 'sbca-search-mode-text');
-    const searchModeClear = button('sbca-control sbca-search-mode-clear', tr(ctx, 'Exit message results'));
-    searchMode.append(searchModeText, searchModeClear);
+    searchLabel.append(searchLabelText, search, mentionMenu);
 
     const browseStrip = el('div', 'sbca-browse-strip');
-    const savedViewField = selectControl(ctx, 'Saved view', [['', 'Current view']], 'sbca-sort sbca-browse-field');
-    const groupField = selectControl(ctx, 'Group', GROUP_OPTIONS, 'sbca-sort sbca-browse-field');
-    const densityField = selectControl(ctx, 'Density', DENSITY_OPTIONS, 'sbca-sort sbca-browse-field');
+    browseStrip.setAttribute('role', 'group');
+    browseStrip.setAttribute('aria-label', tr(ctx, 'Browse options'));
+    const savedViewField = selectControl(ctx, 'Saved view', [['', 'Current view']], 'sbca-view-setting sbca-saved-view');
+    const groupField = selectControl(ctx, 'Group', GROUP_OPTIONS, 'sbca-view-setting');
+    const densityField = selectControl(ctx, 'Density', DENSITY_OPTIONS, 'sbca-view-setting');
     const sort = document.createElement('input');
     sort.type = 'hidden';
     sort.value = 'recent';
     markOrganizationControl(savedViewField.select);
+    savedViewField.wrap.hidden = true;
     browseStrip.append(savedViewField.wrap, groupField.wrap, densityField.wrap);
-    const browseOptions = el('details', 'sbca-browse-options');
-    const browseSummary = el('summary', undefined, tr(ctx, 'Browse options'));
-    browseOptions.open = !mobileQuery.matches;
-    browseOptions.append(browseSummary, browseStrip);
 
-    const organizationState = el('div', 'sbca-organization-state');
-    const organizationStatus = el('span', 'sbca-organization-status', tr(ctx, 'Loading organization...'));
-    organizationStatus.setAttribute('role', 'status');
-    organizationStatus.setAttribute('aria-live', 'polite');
-    const organizationRetry = button('sbca-control sbca-organization-retry', tr(ctx, 'Retry'));
-    organizationRetry.hidden = true;
-    organizationState.append(organizationStatus, organizationRetry);
-
-    const options = el('details', 'sbca-options');
-    options.append(el('summary', undefined, tr(ctx, 'Filters')));
     const optionsPanel = el('div', 'sbca-options-panel');
+    optionsPanel.id = `sbca_filters_${++renderId}`;
     const filterTools = el('div', 'sbca-filter-tools');
-    const clearFilters = button('sbca-control sbca-clear-filters', tr(ctx, 'Clear filters'));
-
+    const filterToggle = button('sbca-control sbca-filter-toggle', tr(ctx, 'Filters'));
+    filterToggle.setAttribute('aria-controls', optionsPanel.id);
+    filterToggle.setAttribute('aria-expanded', String(!mobileQuery.matches));
     const kinds = el('fieldset', 'sbca-kinds');
     kinds.append(el('legend', undefined, tr(ctx, 'Chat types')));
     for (const [kind, label] of KINDS) {
-        const wrap = el('label', 'checkbox_label');
+        const wrap = el('label', 'sbca-kind-pill');
         const box = document.createElement('input');
         box.type = 'checkbox';
         box.checked = true;
@@ -479,6 +571,13 @@ function buildRoot(ctx, state) {
         wrap.append(box, document.createTextNode(tr(ctx, label)));
         kinds.append(wrap);
     }
+    const favoriteWrap = el('label', 'sbca-kind-pill sbca-favorite-filter');
+    const favorite = document.createElement('input');
+    favorite.type = 'checkbox';
+    favorite.checked = true;
+    const favoriteLabel = el('span', undefined, tr(ctx, 'Favorites'));
+    favoriteWrap.append(favorite, favoriteLabel);
+    kinds.append(favoriteWrap);
 
     const ownerField = ownerControl(ctx);
     const orphanField = selectControl(ctx, 'Orphan reason', [
@@ -488,11 +587,7 @@ function buildRoot(ctx, state) {
         ['unlinked-group', 'Unlinked group'],
         ['root', 'Root file'],
     ]);
-    const favoriteField = selectControl(ctx, 'Favorite', [
-        ['', 'Any'],
-        ['true', 'Favorite'],
-        ['false', 'Not favorite'],
-    ]);
+    orphanField.wrap.classList.add('sbca-orphan-filter', 'sbca-view-setting');
     const folderField = selectControl(ctx, 'Folder', [
         ['', 'Any folder'],
         [UNFILED_VALUE, 'Unfiled'],
@@ -504,6 +599,8 @@ function buildRoot(ctx, state) {
     tagField.input.setAttribute('list', tagOptions.id);
     const minDateField = inputControl(ctx, 'From date', 'date');
     const maxDateField = inputControl(ctx, 'To date', 'date');
+    minDateField.wrap.classList.add('sbca-date-filter');
+    maxDateField.wrap.classList.add('sbca-date-filter');
     // Keep legacy saved-view constraints applicable without keeping their low-value controls in the toolbar.
     const minSize = document.createElement('input');
     const maxSize = document.createElement('input');
@@ -512,7 +609,7 @@ function buildRoot(ctx, state) {
     for (const input of [minSize, maxSize, minMessages, maxMessages]) {
         input.type = 'hidden';
     }
-    for (const control of [favoriteField.select, folderField.select, collectionField.select, tagField.input]) {
+    for (const control of [folderField.select, collectionField.select, tagField.input]) {
         markOrganizationControl(control);
     }
 
@@ -520,9 +617,11 @@ function buildRoot(ctx, state) {
     const scanButton = button('sbca-control', tr(ctx, 'Find orphaned files'));
     scanButton.title = tr(ctx, 'Scan for chats belonging to deleted characters or unlinked groups. This can take a while.');
     const archiveActions = el('div', 'sbca-archive-actions');
-    archiveActions.append(clearFilters, refreshButton, scanButton);
-    const organizationTools = el('details', 'sbca-organization-tools');
-    organizationTools.append(el('summary', undefined, tr(ctx, 'Manage organization')));
+    archiveActions.append(refreshButton, browseStrip);
+    const orphanActions = el('div', 'sbca-orphan-actions');
+    orphanActions.append(orphanField.wrap, scanButton);
+    const organizationToggle = button('sbca-control sbca-organization-toggle', tr(ctx, 'Manage organization'));
+    organizationToggle.setAttribute('aria-expanded', 'false');
     const management = el('div', 'sbca-management');
     const managers = {
         folders: buildNamedManager(ctx, 'folders', 'Folders', 'Folder name'),
@@ -532,24 +631,25 @@ function buildRoot(ctx, state) {
     management.append(managers.folders.root, managers.collections.root, managers.views.root);
     const backup = buildBackupControls(ctx);
     const organizationPanel = el('div', 'sbca-organization-tools-panel');
+    organizationPanel.id = `sbca_organization_${++renderId}`;
+    organizationPanel.hidden = true;
+    organizationToggle.setAttribute('aria-controls', organizationPanel.id);
     organizationPanel.append(management, backup.root);
-    organizationTools.append(organizationPanel);
     optionsPanel.append(
         kinds,
-        orphanField.wrap,
-        favoriteField.wrap,
         tagOptions,
         minDateField.wrap,
         maxDateField.wrap,
     );
-    options.append(optionsPanel);
-    filterTools.append(options, organizationTools, archiveActions);
+    const secondaryActions = el('div', 'sbca-archive-secondary-actions');
+    secondaryActions.append(orphanActions, organizationToggle);
+    filterTools.append(archiveActions, filterToggle, optionsPanel, secondaryActions, organizationPanel);
 
     const status = el('div', 'sbca-status');
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
     status.setAttribute('aria-atomic', 'true');
-    toolbar.append(searchLabel, deepButton, searchMode, browseOptions, organizationState, filterTools, status);
+    toolbar.append(searchLabel, filterTools, status);
 
     const body = el('div', 'sbca-body');
     const listPanel = el('section', 'sbca-list-panel');
@@ -603,15 +703,19 @@ function buildRoot(ctx, state) {
         root,
         heading,
         search,
+        characterMentions,
+        mentionMenu,
         kinds,
         savedView: savedViewField.select,
+        savedViewWrap: savedViewField.wrap,
         group: groupField.select,
         density: densityField.select,
         sort,
         owner: ownerField.input,
         ownerField,
         orphan: orphanField.select,
-        favorite: favoriteField.select,
+        favorite,
+        favoriteLabel,
         folder: folderField.select,
         collection: collectionField.select,
         tag: tagField.input,
@@ -622,18 +726,13 @@ function buildRoot(ctx, state) {
         maxSize,
         minMessages,
         maxMessages,
-        deepButton,
-        searchMode,
-        searchModeText,
-        searchModeClear,
-        browseOptions,
-        options,
-        clearFilters,
+        optionsPanel,
+        filterToggle,
+        organizationToggle,
+        organizationPanel,
         refreshButton,
         scanButton,
         status,
-        organizationStatus,
-        organizationRetry,
         managers,
         backup,
         list,
@@ -711,7 +810,7 @@ function buildRoot(ctx, state) {
     backup.exportButton.addEventListener('click', () => exportOrganization(ctx, state));
     backup.importButton.addEventListener('click', () => backup.fileInput.click());
     backup.fileInput.addEventListener('change', () => void importOrganization(ctx, state, ui));
-    organizationRetry.addEventListener('click', () => {
+    backup.retryButton.addEventListener('click', () => {
         if (state.organizationLoadState === 'error') {
             void loadOrganization(ctx, state, ui);
         } else {
@@ -720,40 +819,141 @@ function buildRoot(ctx, state) {
     });
 
     let queryTimer = null;
+    let tagTimer = null;
+    let mentionActiveIndex = -1;
+    let restoreFilterFocusOnDesktop = false;
+    filterToggle.addEventListener('focus', () => {
+        restoreFilterFocusOnDesktop = true;
+    });
+    filterToggle.addEventListener('blur', event => {
+        if (event.relatedTarget) {
+            restoreFilterFocusOnDesktop = false;
+        }
+    });
     const handleBreakpoint = event => {
         const active = document.activeElement;
         const focusInBrowse = browseStrip.contains(active);
-        browseOptions.open = !event.matches;
+        const focusInFilters = optionsPanel.contains(active);
+        const organizationExpanded = organizationToggle.getAttribute('aria-expanded') === 'true';
+        const showDesktopFilters = !event.matches && !organizationExpanded;
+        optionsPanel.hidden = !showDesktopFilters;
+        filterToggle.setAttribute('aria-expanded', String(showDesktopFilters));
         if (state.closed) {
             return;
         }
         if (!event.matches) {
-            if (active === browseSummary) {
-                groupField.select.focus({ preventScroll: true });
+            if (restoreFilterFocusOnDesktop && showDesktopFilters) {
+                optionsPanel.querySelector('input, select, button')?.focus({ preventScroll: true });
+                restoreFilterFocusOnDesktop = false;
             }
             return;
         }
-        if (root.dataset.sbcaView === 'detail' && (active === document.body || toolbar.contains(active) || listPanel.contains(active))) {
+        if (root.dataset.sbcaView === 'list' && focusInFilters) {
+            restoreFilterFocusOnDesktop = true;
+            filterToggle.focus({ preventScroll: true });
+        } else if (root.dataset.sbcaView === 'detail' && (active === document.body || toolbar.contains(active) || listPanel.contains(active))) {
             viewerTitle.focus({ preventScroll: true });
         } else if (root.dataset.sbcaView === 'list' && focusInBrowse) {
-            browseSummary.focus({ preventScroll: true });
+            groupField.select.focus({ preventScroll: true });
         } else if (root.dataset.sbcaView === 'list' && (active === document.body || viewer.contains(active))) {
             search.focus({ preventScroll: true });
         }
     };
     mobileQuery.addEventListener('change', handleBreakpoint);
+    optionsPanel.hidden = mobileQuery.matches;
+    filterToggle.addEventListener('click', () => {
+        const expanded = filterToggle.getAttribute('aria-expanded') !== 'true';
+        filterToggle.setAttribute('aria-expanded', String(expanded));
+        optionsPanel.hidden = !expanded;
+        if (expanded) {
+            organizationToggle.setAttribute('aria-expanded', 'false');
+            organizationPanel.hidden = true;
+        }
+    });
+    organizationToggle.addEventListener('click', () => {
+        const expanded = organizationToggle.getAttribute('aria-expanded') !== 'true';
+        organizationToggle.setAttribute('aria-expanded', String(expanded));
+        organizationPanel.hidden = !expanded;
+        if (expanded) {
+            filterToggle.setAttribute('aria-expanded', 'false');
+            optionsPanel.hidden = true;
+        } else if (!mobileQuery.matches) {
+            filterToggle.setAttribute('aria-expanded', 'true');
+            optionsPanel.hidden = false;
+        }
+    });
     state.cleanup = () => {
         clearTimeout(queryTimer);
+        clearTimeout(tagTimer);
         mobileQuery.removeEventListener('change', handleBreakpoint);
         document.removeEventListener('pointerdown', closeOwnerOnOutside);
     };
+
+    const closeMentionMenu = () => {
+        mentionMenu.hidden = true;
+        mentionActiveIndex = -1;
+        search.removeAttribute('aria-activedescendant');
+        search.setAttribute('aria-expanded', 'false');
+    };
+    const chooseMention = choice => {
+        const active = mentionSearchState(search.value, characterMentions).active;
+        if (!active) {
+            return;
+        }
+        const token = /[\s"\\]/.test(choice.name) ? `@${JSON.stringify(choice.name)}` : `@${choice.name}`;
+        search.value = `${search.value.slice(0, active.start)}${token} `;
+        closeMentionMenu();
+        search.focus({ preventScroll: true });
+        search.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const renderMentionMenu = () => {
+        const active = mentionSearchState(search.value, characterMentions).active;
+        mentionMenu.replaceChildren();
+        if (!active) {
+            closeMentionMenu();
+            return;
+        }
+        const matches = fuzzyMentionChoices(characterMentions, active.fragment);
+        for (const choice of matches) {
+            const option = button('sbca-mention-option', choice.name);
+            option.id = `sbca_mention_${++renderId}`;
+            option.setAttribute('role', 'option');
+            option.setAttribute('aria-selected', 'false');
+            option.tabIndex = -1;
+            option.addEventListener('click', () => chooseMention(choice));
+            mentionMenu.append(option);
+        }
+        mentionActiveIndex = -1;
+        search.removeAttribute('aria-activedescendant');
+        mentionMenu.hidden = matches.length === 0;
+        search.setAttribute('aria-expanded', String(matches.length > 0));
+    };
+    const moveMentionSelection = direction => {
+        const options = [...mentionMenu.querySelectorAll('.sbca-mention-option')];
+        if (options.length === 0) {
+            return;
+        }
+        mentionActiveIndex = mentionActiveIndex < 0
+            ? (direction > 0 ? 0 : options.length - 1)
+            : (mentionActiveIndex + direction + options.length) % options.length;
+        options.forEach((option, index) => option.setAttribute('aria-selected', String(index === mentionActiveIndex)));
+        const active = options[mentionActiveIndex];
+        search.setAttribute('aria-activedescendant', active.id);
+        active.scrollIntoView({ block: 'nearest' });
+    };
+    searchLabel.addEventListener('focusout', () => {
+        setTimeout(() => {
+            if (!searchLabel.contains(document.activeElement)) {
+                closeMentionMenu();
+            }
+        });
+    });
 
     const applyQuery = () => {
         exitDeepSearch(ctx, state, ui);
         state.visibleLimit = LIST_PAGE_SIZE;
         renderList(ctx, state, ui);
         updateBrowseStatus(ctx, state, ui);
-        updateDeepButton(state, ui);
         updateSelectionControls(ctx, state, ui);
     };
     const applyViewOptions = () => {
@@ -785,7 +985,7 @@ function buildRoot(ctx, state) {
         }
         clearTimeout(queryTimer);
         queryTimer = null;
-        applyQuery();
+        void runDeepSearch(ctx, state, ui);
     };
     const syncSortPills = () => {
         for (const pill of ui.sortPills.querySelectorAll('.sbca-sortpill')) {
@@ -801,24 +1001,50 @@ function buildRoot(ctx, state) {
         });
     }
     search.addEventListener('input', () => {
-        exitDeepSearch(ctx, state, ui);
+        renderMentionMenu();
         noteViewEdit();
-        updateSearchMode(ctx, state, ui);
-        updateDeepButton(state, ui);
         clearTimeout(queryTimer);
-        queryTimer = setTimeout(() => {
-            queryTimer = null;
-            applyQuery();
-        }, SEARCH_DEBOUNCE_MS);
+        queryTimer = null;
+        applyQuery();
+        if (mentionSearchState(search.value, characterMentions).text && state.listState === 'ready' && !state.scanAbort) {
+            queryTimer = setTimeout(() => {
+                queryTimer = null;
+                const query = mentionSearchState(search.value, characterMentions).text;
+                if (!query || state.listState !== 'ready' || state.scanAbort || state.searchAbort
+                    || (state.deepRows !== null && state.deepQuery === query)) {
+                    return;
+                }
+                void runDeepSearch(ctx, state, ui);
+            }, SEARCH_CONTENT_DEBOUNCE_MS);
+        }
     });
     search.addEventListener('keydown', event => {
+        if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && !mentionMenu.hidden) {
+            event.preventDefault();
+            moveMentionSelection(event.key === 'ArrowDown' ? 1 : -1);
+            return;
+        }
+        if (event.key === 'Escape' && !mentionMenu.hidden) {
+            event.preventDefault();
+            closeMentionMenu();
+            return;
+        }
+        if (event.key === 'Enter' && !mentionMenu.hidden && mentionActiveIndex >= 0) {
+            event.preventDefault();
+            const option = mentionMenu.querySelectorAll('.sbca-mention-option')[mentionActiveIndex];
+            option?.click();
+            return;
+        }
         if (event.key !== 'Enter' || event.isComposing) {
             return;
         }
         event.preventDefault();
         flushQuery();
     });
-    kinds.addEventListener('change', () => {
+    kinds.addEventListener('change', event => {
+        if (event.target === ui.favorite) {
+            ui.favorite.indeterminate = false;
+        }
         applyViewOptions();
         noteViewEdit();
     });
@@ -828,7 +1054,6 @@ function buildRoot(ctx, state) {
         ui.sort,
         ui.owner,
         ui.orphan,
-        ui.favorite,
         ui.folder,
         ui.collection,
         ui.minDate,
@@ -845,13 +1070,17 @@ function buildRoot(ctx, state) {
             }
             applyViewOptions();
             noteViewEdit();
+            if (control === ui.owner && mentionSearchState(ui.search.value, ui.characterMentions).text
+                && state.listState === 'ready' && !state.scanAbort) {
+                void runDeepSearch(ctx, state, ui);
+            }
         });
     }
     ui.tag.addEventListener('input', () => {
         noteViewEdit();
-        clearTimeout(queryTimer);
-        queryTimer = setTimeout(() => {
-            queryTimer = null;
+        clearTimeout(tagTimer);
+        tagTimer = setTimeout(() => {
+            tagTimer = null;
             applyViewOptions();
         }, SEARCH_DEBOUNCE_MS);
     });
@@ -881,28 +1110,6 @@ function buildRoot(ctx, state) {
         } else {
             void scanOrphans(ctx, state, ui);
         }
-    });
-    deepButton.addEventListener('click', () => {
-        if (state.searchAbort) {
-            state.searchAbort.abort();
-        } else {
-            flushQuery();
-            void runDeepSearch(ctx, state, ui);
-        }
-    });
-    searchModeClear.addEventListener('click', () => {
-        applyQuery();
-        search.focus({ preventScroll: true });
-    });
-    clearFilters.addEventListener('click', () => {
-        clearTimeout(queryTimer);
-        queryTimer = null;
-        applySavedView(ctx, state, ui, {
-            sort: ui.sort.value,
-            group: ui.group.value,
-            density: ui.density.value,
-        });
-        search.focus({ preventScroll: true });
     });
     selectionToggle.addEventListener('click', () => {
         state.selectionMode = !state.selectionMode;
@@ -1078,6 +1285,8 @@ function buildBackupControls(ctx) {
     root.append(el('h5', 'sbca-manager-heading', tr(ctx, 'Organization backup')));
     const exportButton = button('sbca-control', tr(ctx, 'Export organization'));
     const importButton = button('sbca-control', tr(ctx, 'Import organization'));
+    const retryButton = button('sbca-control', tr(ctx, 'Retry'));
+    retryButton.hidden = true;
     markOrganizationControl(exportButton);
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
@@ -1085,12 +1294,8 @@ function buildBackupControls(ctx) {
     fileInput.hidden = true;
     const status = el('div', 'sbca-import-status');
     status.setAttribute('role', 'alert');
-    const warning = el('p', 'sbca-organization-warning', tr(ctx,
-        'Do not delete {name} through host Data Maid; it stores Chat Archive organization.',
-        { name: ORGANIZATION_FILE_NAME },
-    ));
-    root.append(exportButton, importButton, fileInput, status, warning);
-    return { root, exportButton, importButton, fileInput, status };
+    root.append(exportButton, importButton, retryButton, fileInput, status);
+    return { root, exportButton, importButton, retryButton, fileInput, status };
 }
 
 function commaValues(value) {
@@ -1125,7 +1330,7 @@ function inputDate(input, endOfDay = false) {
 function currentSavedView(state, ui) {
     const view = {
         query: ui.search.value,
-        kinds: [...ui.kinds.querySelectorAll('input:checked')].map(box => box.dataset.sbcaKind),
+        kinds: [...ui.kinds.querySelectorAll('input[data-sbca-kind]:checked')].map(box => box.dataset.sbcaKind),
         sort: ui.sort.value,
         group: ui.group.value,
         density: ui.density.value,
@@ -1139,8 +1344,8 @@ function currentSavedView(state, ui) {
         minMessages: inputNumber(ui.minMessages, 1, true),
         maxMessages: inputNumber(ui.maxMessages, 1, true),
     };
-    if (ui.favorite.value) {
-        view.favorite = ui.favorite.value === 'true';
+    if (!ui.favorite.checked) {
+        view.favorite = false;
     }
     if (ui.folder.value) {
         view.folder = ui.folder.value === UNFILED_VALUE ? null : ui.folder.value;
@@ -1189,7 +1394,9 @@ function applySavedView(ctx, state, ui, value, selectedViewId = null, persist = 
         refreshOwnerOptions(ctx, state, ui);
     }
     ui.orphan.value = view.orphan ?? '';
-    ui.favorite.value = typeof view.favorite === 'boolean' ? String(view.favorite) : '';
+    ui.favorite.checked = view.favorite !== false;
+    ui.favorite.indeterminate = false;
+    ui.favoriteLabel.textContent = tr(ctx, 'Favorites');
     ui.folder.value = view.folder === null ? UNFILED_VALUE : view.folder ?? '';
     ui.collection.value = view.collection ?? '';
     ui.tag.value = view.tag ?? '';
@@ -1205,8 +1412,10 @@ function applySavedView(ctx, state, ui, value, selectedViewId = null, persist = 
     state.visibleLimit = LIST_PAGE_SIZE;
     renderList(ctx, state, ui);
     updateBrowseStatus(ctx, state, ui);
-    updateDeepButton(state, ui);
     updateSelectionControls(ctx, state, ui);
+    if (mentionSearchState(ui.search.value, ui.characterMentions).text && state.listState === 'ready' && !state.scanAbort) {
+        void runDeepSearch(ctx, state, ui);
+    }
     if (persist) {
         state.viewTouched = true;
         if (state.organizationWritable) {
@@ -1223,20 +1432,14 @@ function setOrganizationControlsEnabled(ui, enabled) {
 }
 
 function updateOrganizationStatus(ctx, state, ui) {
-    let text = 'Saved';
-    if (state.organizationLoadState === 'loading') {
-        text = 'Loading organization...';
-    } else if (state.organizationSaveRunning) {
-        text = 'Saving...';
-    } else if (state.organizationLoadError) {
-        text = 'Unsaved - organization could not be loaded. Retry or import a backup.';
-    } else if (state.organizationSaveError) {
-        text = 'Unsaved - save failed. Retry to keep these changes.';
-    } else if (state.organizationRevision > state.organizationSavedRevision) {
-        text = 'Unsaved';
+    ui.backup.retryButton.hidden = !state.organizationLoadError && !state.organizationSaveError;
+    if (state.organizationSaveError) {
+        ui.backup.status.textContent = tr(ctx, 'Organization changes could not be saved. Retry to keep these changes.');
+        ui.backup.status.dataset.sbcaOrganizationError = 'save';
+    } else if (ui.backup.status.dataset.sbcaOrganizationError === 'save') {
+        ui.backup.status.textContent = '';
+        delete ui.backup.status.dataset.sbcaOrganizationError;
     }
-    ui.organizationStatus.textContent = tr(ctx, text);
-    ui.organizationRetry.hidden = !state.organizationLoadError && !state.organizationSaveError;
     setOrganizationControlsEnabled(ui, state.organizationWritable);
     updateSelectionControls(ctx, state, ui);
 }
@@ -1249,6 +1452,7 @@ async function loadOrganization(ctx, state, ui) {
     state.organizationLoadError = null;
     state.organizationWritable = false;
     ui.backup.status.textContent = '';
+    delete ui.backup.status.dataset.sbcaOrganizationError;
     updateOrganizationStatus(ctx, state, ui);
     try {
         const value = await fetchOrganization(ctx, controller.signal);
@@ -1266,8 +1470,25 @@ async function loadOrganization(ctx, state, ui) {
             if (state.viewTouched) {
                 state.organization = { ...state.organization, lastView: currentSavedView(state, ui) };
                 markOrganizationDirty(ctx, state, ui, true);
+                renderList(ctx, state, ui);
+                if (!state.searchAbort) {
+                    if (state.deepRows === null) {
+                        updateBrowseStatus(ctx, state, ui);
+                    } else {
+                        setStatus(ui, tr(ctx, '{matching} of {total} matching chats', {
+                            matching: state.matchingRows.length,
+                            total: state.deepRows.length,
+                        }));
+                    }
+                }
+                updateSelectionControls(ctx, state, ui);
             } else {
                 applySavedView(ctx, state, ui, state.organization.lastView, null, false);
+            }
+            if (mentionSearchState(ui.search.value, ui.characterMentions).text
+                && state.listState === 'ready'
+                && !state.scanAbort) {
+                void runDeepSearch(ctx, state, ui);
             }
             refreshOpenOrganizer(ctx, state, ui);
             updateOrganizationStatus(ctx, state, ui);
@@ -1282,6 +1503,7 @@ async function loadOrganization(ctx, state, ui) {
             state.organizationLoadError = error;
             state.organizationWritable = false;
             ui.backup.status.textContent = tr(ctx, 'Organization could not be loaded. Retry or import a backup.');
+            ui.backup.status.dataset.sbcaOrganizationError = 'load';
             updateOrganizationStatus(ctx, state, ui);
             refreshOpenOrganizer(ctx, state, ui);
         });
@@ -1428,6 +1650,7 @@ function refreshOrganizationUI(ctx, state, ui) {
     }
     const folders = organization.folders.map(item => [item.id, item.name]);
     const collections = organization.collections.map(item => [item.id, item.name]);
+    ui.savedViewWrap.hidden = organization.views.length === 0;
     replaceSelectOptions(ui.savedView, [
         ['', tr(ctx, 'Current view')],
         ...organization.views.map(view => [view.id, view.name]),
@@ -1480,7 +1703,7 @@ function wireNamedManager(ctx, state, ui, type, manager) {
             manager.status.textContent = tr(ctx, 'That name is already in use.');
             return;
         }
-        const item = { id: crypto.randomUUID(), name };
+        const item = { id: createOrganizationId(), name };
         if (type === 'views') {
             item.view = currentSavedView(state, ui);
         }
@@ -1642,6 +1865,7 @@ async function importOrganization(ctx, state, ui) {
         refreshOrganizationUI(ctx, state, ui);
         applySavedView(ctx, state, ui, organization.lastView, null, false);
         ui.backup.status.textContent = tr(ctx, 'Imported organization. Saving replacement...');
+        delete ui.backup.status.dataset.sbcaOrganizationError;
         refreshOpenOrganizer(ctx, state, ui);
         markOrganizationDirty(ctx, state, ui);
     });
@@ -1685,29 +1909,6 @@ function mutateSelectedChats(ctx, state, ui, mutation) {
     commitChatMetadataChange(ctx, state, ui);
 }
 
-function updateDeepButton(state, ui) {
-    if (!state.searchAbort) {
-        ui.deepButton.disabled = state.listState !== 'ready' || !ui.search.value.trim() || !!state.scanAbort;
-    }
-}
-
-function updateSearchMode(ctx, state, ui) {
-    const searching = !!state.searchAbort;
-    const active = searching || state.deepRows !== null;
-    ui.searchMode.hidden = !active;
-    if (!active) {
-        return;
-    }
-    const query = state.deepQuery || ui.search.value.trim();
-    ui.searchModeText.textContent = searching
-        ? tr(ctx, 'Searching all message content for "{query}"...', { query })
-        : tr(ctx, 'Message content results for "{query}": {count} chats', {
-            query,
-            count: state.deepRows.length,
-        });
-    ui.searchModeClear.hidden = searching;
-}
-
 function clearViewerMatch(ui) {
     for (const match of ui.viewerContent.querySelectorAll('.sbca-msg-match')) {
         match.classList.remove('sbca-msg-match');
@@ -1732,7 +1933,6 @@ function cancelSearch(ctx, state, ui) {
         setStatus(ui, '');
     }
     ui.status.removeAttribute('aria-busy');
-    ui.deepButton.textContent = tr(ctx, 'Search message content');
 }
 
 function cancelViewer(state) {
@@ -1778,7 +1978,6 @@ async function loadRows(ctx, state, ui) {
     resetViewer(ctx, ui);
     renderList(ctx, state, ui);
     setStatus(ui, tr(ctx, 'Loading chats...'));
-    updateDeepButton(state, ui);
 
     try {
         for await (const page of iterateArchiveInventoryPages(ctx, 'archive', controller.signal)) {
@@ -1814,6 +2013,9 @@ async function loadRows(ctx, state, ui) {
         renderList(ctx, state, ui);
         updateBrowseStatus(ctx, state, ui);
         updateSelectionControls(ctx, state, ui);
+        if (mentionSearchState(ui.search.value, ui.characterMentions).text) {
+            void runDeepSearch(ctx, state, ui);
+        }
     } catch (error) {
         if (error?.name === 'AbortError') {
             if (state.listAbort === controller && !state.closed) {
@@ -1822,6 +2024,9 @@ async function loadRows(ctx, state, ui) {
                 renderList(ctx, state, ui);
                 updateSelectionControls(ctx, state, ui);
                 setStatus(ui, `${tr(ctx, 'Scan stopped.')} ${tr(ctx, '{total} indexed chat files', { total: state.rows.length })}`);
+                if (mentionSearchState(ui.search.value, ui.characterMentions).text) {
+                    void runDeepSearch(ctx, state, ui);
+                }
             }
             return;
         }
@@ -1835,6 +2040,9 @@ async function loadRows(ctx, state, ui) {
             setStatus(ui, tr(ctx, state.listState === 'ready'
                 ? 'Could not refresh chats. Showing the previous results.'
                 : 'Could not load chats. Try again.'));
+            if (state.listState === 'ready' && mentionSearchState(ui.search.value, ui.characterMentions).text) {
+                void runDeepSearch(ctx, state, ui);
+            }
         }
     } finally {
         if (state.listAbort === controller) {
@@ -1843,15 +2051,15 @@ async function loadRows(ctx, state, ui) {
             ui.refreshButton.disabled = false;
             ui.refreshButton.textContent = tr(ctx, 'Refresh');
             ui.scanButton.disabled = false;
-            updateDeepButton(state, ui);
         }
     }
 }
 
 function visibleRows(state, ui) {
-    const source = state.deepRows ?? allRows(state);
-    const text = state.deepRows === null ? ui.search.value : '';
-    const options = { ...currentSavedView(state, ui), text };
+    const search = mentionSearchState(ui.search.value, ui.characterMentions);
+    const source = mentionedRows(state.deepRows ?? allRows(state), search.mentions);
+    const text = state.deepRows === null ? search.text : '';
+    const options = { ...currentSavedView(state, ui), text, favoritesSelected: ui.favorite.checked };
     delete options.query;
     delete options.sort;
     delete options.group;
@@ -1872,14 +2080,10 @@ function updateBrowseStatus(ctx, state, ui) {
     if (state.inventoryFailures > 0) {
         text += ` ${tr(ctx, 'Some indexed chats could not be loaded.')}`;
     }
-    if (!state.orphanScanComplete) {
-        text += ` ${tr(ctx, 'Use Find orphaned files to include chats with deleted owners.')}`;
-    }
     setStatus(ui, text);
 }
 
 function renderList(ctx, state, ui) {
-    updateSearchMode(ctx, state, ui);
     ui.list.replaceChildren();
     state.selectedButton = null;
     if (state.listState === 'loading') {
@@ -2233,18 +2437,11 @@ function buildChatOrganizer(ctx, state, row, ui) {
     const key = physicalChatKey(row);
     const tagInputKey = organizationFocusKey('organizer', key, 'tag-input');
     const metadata = state.organization?.chats?.[key] ?? {};
-    const favorite = button('sbca-control sbca-favorite-toggle', tr(ctx, metadata.favorite ? 'Unfavorite' : 'Favorite'));
-    favorite.setAttribute('aria-pressed', String(metadata.favorite === true));
-    markOrganizationControl(favorite, organizationFocusKey('organizer', key, 'favorite'));
-    favorite.addEventListener('click', () => mutateChatMetadata(ctx, state, ui, row, value => {
-        if (value.favorite) {
-            delete value.favorite;
-        } else {
-            value.favorite = true;
-        }
-    }));
 
     const folderField = selectControl(ctx, 'Folder', [['', 'Unfiled']]);
+    const folderLabel = folderField.wrap.querySelector('.sbca-label');
+    folderLabel.classList.add('sbca-organizer-section-title');
+    folderLabel.id = `sbca_organizer_folder_${++renderId}`;
     for (const folder of state.organization?.folders ?? []) {
         appendOption(folderField.select, folder.id, folder.name);
     }
@@ -2258,33 +2455,48 @@ function buildChatOrganizer(ctx, state, row, ui) {
         }
     }));
 
-    const collections = el('fieldset', 'sbca-organizer-collections');
-    collections.append(el('legend', undefined, tr(ctx, 'Collections')));
+    const collectionsField = selectControl(ctx, 'Collections', [['', 'Collections']]);
+    const collectionsLabel = collectionsField.wrap.querySelector('.sbca-label');
+    collectionsLabel.classList.add('sbca-organizer-section-title');
+    collectionsLabel.id = `sbca_organizer_collections_${++renderId}`;
+    const collections = el('div', 'sbca-organizer-collections');
+    collections.setAttribute('role', 'group');
+    collections.setAttribute('aria-labelledby', collectionsLabel.id);
     const selectedCollections = new Set(metadata.collections ?? []);
-    if ((state.organization?.collections.length ?? 0) === 0) {
-        collections.append(el('p', 'sbca-placeholder', tr(ctx, 'No collections yet.')));
-    }
     for (const collection of state.organization?.collections ?? []) {
-        const label = el('label', 'checkbox_label');
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = selectedCollections.has(collection.id);
-        markOrganizationControl(checkbox, organizationFocusKey('organizer', key, 'collection', collection.id));
-        checkbox.addEventListener('change', () => mutateChatMetadata(ctx, state, ui, row, value => {
-            const ids = new Set(value.collections ?? []);
-            if (checkbox.checked) {
-                ids.add(collection.id);
-            } else {
-                ids.delete(collection.id);
-            }
-            value.collections = [...ids];
-        }));
-        label.append(checkbox, document.createTextNode(collection.name));
-        collections.append(label);
+        appendOption(collectionsField.select, collection.id, collection.name);
     }
+    collectionsField.select.value = '';
+    markOrganizationControl(collectionsField.select, organizationFocusKey('organizer', key, 'collection'));
+    collectionsField.select.addEventListener('change', () => mutateChatMetadata(ctx, state, ui, row, value => {
+        value.collections = [...new Set([...(value.collections ?? []), collectionsField.select.value])].filter(Boolean);
+    }));
+    collections.append(collectionsField.wrap);
+    const collectionList = el('div', 'sbca-tag-list sbca-collection-list');
+    for (const collection of state.organization?.collections ?? []) {
+        if (!selectedCollections.has(collection.id)) {
+            continue;
+        }
+        const item = el('span', 'sbca-tag-item sbca-collection-item');
+        const remove = button('sbca-control sbca-tag-remove', tr(ctx, 'Remove'));
+        remove.setAttribute('aria-label', tr(ctx, 'Remove collection {name}', { name: collection.name }));
+        remove.title = collection.name;
+        markOrganizationControl(remove, organizationFocusKey('organizer', key, 'collection', collection.id));
+        remove.addEventListener('click', () => mutateChatMetadata(ctx, state, ui, row, value => {
+            value.collections = (value.collections ?? []).filter(id => id !== collection.id);
+        }));
+        item.append(el('span', 'sbca-tag-text', collection.name), remove);
+        collectionList.append(item);
+    }
+    collections.append(collectionList);
 
     const tags = el('div', 'sbca-organizer-tags');
-    tags.append(el('span', 'sbca-label', tr(ctx, 'Tags')));
+    const tagsLabel = el('span', 'sbca-label', tr(ctx, 'Tags'));
+    tagsLabel.classList.add('sbca-organizer-section-title');
+    tagsLabel.id = `sbca_organizer_tags_${++renderId}`;
+    tags.setAttribute('role', 'group');
+    tags.setAttribute('aria-labelledby', tagsLabel.id);
+    tags.append(tagsLabel);
     const tagList = el('div', 'sbca-tag-list');
     for (const tag of metadata.tags ?? []) {
         const item = el('span', 'sbca-tag-item');
@@ -2294,7 +2506,7 @@ function buildChatOrganizer(ctx, state, row, ui) {
         remove.addEventListener('click', () => mutateChatMetadata(ctx, state, ui, row, value => {
             value.tags = (value.tags ?? []).filter(name => name.toLocaleLowerCase() !== tag.toLocaleLowerCase());
         }));
-        item.append(el('span', undefined, tag), remove);
+        item.append(el('span', 'sbca-tag-text', tag), remove);
         tagList.append(item);
     }
     const tagCreate = el('div', 'sbca-tag-create');
@@ -2319,7 +2531,11 @@ function buildChatOrganizer(ctx, state, row, ui) {
     });
     tagCreate.append(tagField.wrap, tagAdd);
     tags.append(tagList, tagCreate);
-    organizer.append(favorite, folderField.wrap, collections, tags);
+    const folder = el('div', 'sbca-organizer-folder');
+    folder.setAttribute('role', 'group');
+    folder.setAttribute('aria-labelledby', folderLabel.id);
+    folder.append(folderField.wrap);
+    organizer.append(folder, collections, tags);
     for (const control of organizer.querySelectorAll('[data-sbca-organization-control]')) {
         control.disabled = !state.organizationWritable;
     }
@@ -2382,6 +2598,10 @@ function refreshOpenOrganizer(ctx, state, ui) {
     const current = ui.viewerContent.querySelector('.sbca-organizer');
     if (current) {
         current.replaceWith(buildChatOrganizer(ctx, state, state.selectedRow, ui));
+    }
+    const favoriteAction = ui.viewerContent.querySelector('.sbca-favorite-action');
+    if (favoriteAction) {
+        syncViewerFavoriteAction(state, state.selectedRow, favoriteAction);
     }
 }
 
@@ -2458,7 +2678,7 @@ function renderViewer(ctx, state, row, raw, shaped, ui) {
         latest?.focus({ preventScroll: true });
         latest?.scrollIntoView({ block: 'start' });
     } : null;
-    const actions = buildViewerActions(ctx, state, row, raw, true, showLatest);
+    const actions = buildViewerActions(ctx, state, row, raw, true, showLatest, ui);
     const details = el('div', 'sbca-viewer-details');
     details.append(buildSummary(ctx, row));
     const metadata = shaped.header?.chat_metadata;
@@ -2484,7 +2704,7 @@ function renderViewer(ctx, state, row, raw, shaped, ui) {
     match?.scrollIntoView({ block: 'center' });
 }
 
-function buildViewerActions(ctx, state, row, raw, allowText, showLatest = null) {
+function buildViewerActions(ctx, state, row, raw, allowText, showLatest, ui) {
     const actions = el('div', 'sbca-viewer-actions');
     if (showLatest) {
         const latestButton = actionButton(ctx, 'Latest messages', 'fa-angles-down');
@@ -2508,7 +2728,33 @@ function buildViewerActions(ctx, state, row, raw, allowText, showLatest = null) 
         jumpButton.addEventListener('click', () => void jumpToChat(ctx, state, row, jumpButton));
         actions.append(jumpButton);
     }
+    actions.append(buildViewerFavoriteAction(ctx, state, row, ui));
     return actions;
+}
+
+function buildViewerFavoriteAction(ctx, state, row, ui) {
+    const key = physicalChatKey(row);
+    const control = actionButton(ctx, 'Favorite', 'fa-heart');
+    control.classList.add('sbca-favorite-action');
+    markOrganizationControl(control, organizationFocusKey('viewer-action', key, 'favorite'));
+    syncViewerFavoriteAction(state, row, control);
+    control.addEventListener('click', () => {
+        const pressed = state.organization?.chats?.[key]?.favorite === true;
+        mutateChatMetadata(ctx, state, ui, row, value => {
+            if (pressed) {
+                delete value.favorite;
+            } else {
+                value.favorite = true;
+            }
+        });
+    });
+    return control;
+}
+
+function syncViewerFavoriteAction(state, row, control) {
+    const key = physicalChatKey(row);
+    control.setAttribute('aria-pressed', String(state.organization?.chats?.[key]?.favorite === true));
+    control.disabled = !state.organizationWritable;
 }
 
 function renderMalformedViewer(ctx, state, row, raw, ui) {
@@ -2525,7 +2771,7 @@ function renderMalformedViewer(ctx, state, row, raw, ui) {
         rawView,
     );
     ui.viewerContent.replaceChildren(
-        buildViewerActions(ctx, state, row, raw, false),
+        buildViewerActions(ctx, state, row, raw, false, null, ui),
         buildChatOrganizer(ctx, state, row, ui),
         details,
     );
@@ -2657,7 +2903,6 @@ async function scanOrphans(ctx, state, ui) {
     ui.scanButton.removeAttribute('aria-disabled');
     ui.scanButton.textContent = tr(ctx, 'Stop scan');
     setStatus(ui, tr(ctx, 'Scanning for missing-character and unlinked-group chats...'));
-    updateDeepButton(state, ui);
 
     const previousRows = state.orphanRows;
     const previousToken = state.archiveReadToken;
@@ -2744,8 +2989,10 @@ async function scanOrphans(ctx, state, ui) {
                 ui.scanButton.textContent = tr(ctx, state.orphanScanComplete
                     ? 'Rescan orphaned files'
                     : 'Find orphaned files');
+                if (mentionSearchState(ui.search.value, ui.characterMentions).text) {
+                    void runDeepSearch(ctx, state, ui);
+                }
             }
-            updateDeepButton(state, ui);
         }
     }
 }
@@ -2771,30 +3018,33 @@ async function releaseArchiveReadSession(ctx, state) {
 }
 
 async function runDeepSearch(ctx, state, ui) {
-    const query = ui.search.value.trim();
+    const search = mentionSearchState(ui.search.value, ui.characterMentions);
+    const query = search.text;
     if (!query) {
-        globalThis.toastr?.warning(tr(ctx, 'Enter a filter before searching message content.'));
         return;
     }
 
+    cancelSearch(ctx, state, ui);
     const controller = new AbortController();
     state.searchAbort = controller;
     state.deepRows = null;
     state.deepQuery = query;
     clearViewerMatch(ui);
     const { signal } = controller;
-    ui.deepButton.disabled = false;
-    ui.deepButton.textContent = tr(ctx, 'Stop search');
     ui.status.setAttribute('aria-busy', 'true');
     renderList(ctx, state, ui);
 
-    const scopes = buildSearchScopes(ctx.characters, ctx.groups, ui.owner.value);
+    const mentionedAvatars = new Set(search.mentions.filter(mention => !mention.missing).flatMap(mention => mention.avatars));
+    const hasMentions = search.mentions.length > 0;
+    const scopes = buildSearchScopes(ctx.characters, ctx.groups, ui.owner.value)
+        .filter(scope => !hasMentions || (scope.avatar_url && mentionedAvatars.has(scope.avatar_url)));
     const localFiles = filterRows(
-        allRows(state).filter(row => row.kind === 'orphan'),
+        mentionedRows(allRows(state), search.mentions).filter(row => row.kind === 'orphan'),
         { owner: ui.owner.value },
     );
     const total = scopes.length + localFiles.length;
-    const found = new Map();
+    const found = new Map(filterRows(mentionedRows(allRows(state), search.mentions), { text: query }, state.organization)
+        .map(row => [physicalChatKey(row), row]));
     let completed = 0;
     let errors = 0;
 
@@ -2817,22 +3067,7 @@ async function runDeepSearch(ctx, state, ui) {
                     if (found.has(physicalChatKey(row))) {
                         continue;
                     }
-                    try {
-                        const raw = await loadRawChat(ctx, state, row, signal);
-                        const { snippet, invalidLines } = await findMatchingSnippetInJsonlAsync(raw, query, { signal });
-                        if (invalidLines > 0) {
-                            errors++;
-                        }
-                        if (snippet !== null) {
-                            found.set(physicalChatKey(row), { ...row, snippet, matchSnippet: true });
-                        }
-                    } catch (error) {
-                        if (error?.name === 'AbortError') {
-                            throw error;
-                        }
-                        errors++;
-                        console.warn('[Chat Archive] search result verification failed:', error);
-                    }
+                    found.set(physicalChatKey(row), { ...row, matchSnippet: true });
                 }
                 if (malformed) {
                     errors++;
@@ -2896,9 +3131,6 @@ async function runDeepSearch(ctx, state, ui) {
         if (state.searchAbort === controller) {
             state.searchAbort = null;
             ui.status.removeAttribute('aria-busy');
-            ui.deepButton.textContent = tr(ctx, 'Search message content');
-            updateDeepButton(state, ui);
-            updateSearchMode(ctx, state, ui);
         }
     }
 }
