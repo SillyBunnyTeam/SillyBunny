@@ -12,6 +12,7 @@
 - PR #753 (2026-08-11) `fix: no redundant ICA toasts when updating bundled agents`
 - PR #754 (2026-08-11) `fix: hardens save path for remote servers`
 - PR #755 (2026-08-14) `fix(linkapi): prevent sending presencePenalty and frequencyPenalty samplers to Grok`
+- PR #756 (2026-08-14) `fix(tokeniser): count every message all at once instead of one by one`
 
 ## v1.7.0
 
