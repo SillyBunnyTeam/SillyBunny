@@ -417,6 +417,20 @@
     min-inline-size: min(180px, 100%);
 }
 
+/* iOS Safari sizes native date fields from their intrinsic content and ignores
+   the declared width, so the field runs past the panel and gets clipped. */
+.sbca-root input[type="date"] {
+    -webkit-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
+    inline-size: 100%;
+    min-inline-size: 0;
+}
+
+.sbca-root input[type="date"]::-webkit-date-and-time-value {
+    text-align: start;
+}
+
 @media (min-width: 1001px) {
     .sbca-kinds legend {
         flex-basis: 100%;
