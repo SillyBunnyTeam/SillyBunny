@@ -11,6 +11,7 @@
 - PR #752 (2026-08-10) `chore: update Quick Image Gen to 3.0.1`
 - PR #753 (2026-08-11) `fix: no redundant ICA toasts when updating bundled agents`
 - PR #754 (2026-08-11) `fix: hardens save path for remote servers`
+- PR #755 (2026-08-14) `fix(linkapi): prevent sending presencePenalty and frequencyPenalty samplers to Grok`
 
 ## v1.7.0
 
