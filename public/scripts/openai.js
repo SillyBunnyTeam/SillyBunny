@@ -70,7 +70,7 @@ import {
     textValueMatcher,
     uuidv4,
 } from './utils.js';
-import { countChatCompletionPayloadTokensOpenAIAsync, countTokensOpenAIAsync, getTokenizerModel } from './tokenizers.js';
+import { countChatCompletionPayloadTokensOpenAIAsync, countTokensOpenAIAsync, getTokenizerModel, primeOpenAITokenCache } from './tokenizers.js';
 import { isMobile } from './RossAscends-mods.js';
 import { saveLogprobsForActiveMessage } from './logprobs.js';
 import { SlashCommandParser } from './slash-commands/SlashCommandParser.js';
@@ -1149,6 +1149,44 @@ async function populationInjectionPrompts(prompts, messages) {
 }
 
 /**
+ * How many chat messages are prepared and counted per batched request. Larger windows save
+ * more round trips; smaller ones waste less work when the context budget runs out early.
+ * @type {number}
+ */
+const CHAT_HISTORY_PRIME_WINDOW = 64;
+
+/**
+ * Counts a window of chat history in one request so the per-message counting below hits the cache.
+ * Mirrors the exact message shapes buildChatMessage produces: Message replaces a falsy role
+ * with 'system' and only counts content when it is a non-empty string, and setName counts a
+ * second shape that carries the name. A shape that stops matching costs a cache miss, not a
+ * wrong count - the unbatched path still counts whatever it is actually given.
+ * @param {{prompt: object, prepared: object}[]} preparedChatPrompts - Prompts prepared ahead of the loop.
+ * @returns {Promise<void>}
+ */
+async function primeChatHistoryTokenCache(preparedChatPrompts) {
+    const candidates = [];
+
+    for (const { prompt, prepared } of preparedChatPrompts) {
+        const role = prepared.role || 'system';
+        const content = prepared.content;
+
+        if (typeof content !== 'string' || content.length === 0) {
+            continue;
+        }
+
+        candidates.push({ role, content });
+
+        if (promptManager.serviceSettings.names_behavior === character_names_behavior.COMPLETION && prompt.name) {
+            const name = promptManager.isValidName(prompt.name) ? prompt.name : promptManager.sanitizeName(prompt.name);
+            candidates.push({ role, content, name });
+        }
+    }
+
+    await primeOpenAITokenCache(candidates);
+}
+
+/**
  * Populates the chat history of the conversation.
  * @param {object[]} messages - Array containing all messages.
  * @param {import('./PromptManager').PromptCollection} prompts - Map object containing all prompts where the key is the prompt identifier and the value is the prompt object.
@@ -1220,12 +1258,43 @@ async function populateChatHistory(messages, prompts, chatCompletion, type = nul
 
     // Insert chat messages as long as there is budget available
     const chatPool = [...messages].reverse();
+
+    // SillyBunny divergence from upstream: prepare and count a window of chat prompts at a
+    // time. Upstream prepares and counts inside the loop below, which costs a round trip per
+    // message (two once names are enabled) - free on localhost, but the dominant cost of
+    // building a prompt against a remotely hosted server. Windowing rather than doing the
+    // whole pool matters because the loop stops as soon as the budget is spent, so priming
+    // everything would tokenize a long history that was never going to be used. Preparing
+    // here instead of inside the loop is also what keeps the primed cache keys exact:
+    // substituteParams is macro-driven, so preparing the same prompt twice can produce
+    // different content and the prime would silently miss.
+    const preparedChatPrompts = new Array(chatPool.length);
+    const prepareChatPromptWindow = async (start) => {
+        const end = Math.min(start + CHAT_HISTORY_PRIME_WINDOW, chatPool.length);
+
+        for (let i = start; i < end; i++) {
+            if (preparedChatPrompts[i]) {
+                continue;
+            }
+
+            // We do not want to mutate the prompt
+            const prompt = new Prompt(chatPool[i]);
+            prompt.identifier = `chatHistory-${messages.length - i}`;
+            preparedChatPrompts[i] = { prompt, prepared: promptManager.preparePrompt(prompt) };
+        }
+
+        await primeChatHistoryTokenCache(preparedChatPrompts.slice(start, end));
+    };
+
     for (let index = 0; index < chatPool.length; index++) {
+        if (index % CHAT_HISTORY_PRIME_WINDOW === 0) {
+            await prepareChatPromptWindow(index);
+        }
+
         const chatPrompt = chatPool[index];
 
-        // We do not want to mutate the prompt
-        const prompt = new Prompt(chatPrompt);
-        prompt.identifier = `chatHistory-${messages.length - index}`;
+        const { prompt } = preparedChatPrompts[index];
+        let preparedPrompt = preparedChatPrompts[index].prepared;
         let survivingContributions = Array.isArray(chatPrompt.agentContributions)
             ? structuredClone(chatPrompt.agentContributions)
             : [];
@@ -1254,7 +1323,11 @@ async function populateChatHistory(messages, prompts, chatCompletion, type = nul
         };
 
         const buildChatMessage = async () => {
-            const message = await Message.fromPromptAsync(promptManager.preparePrompt(prompt));
+            // The first build reuses the prompt prepared (and counted) before the loop; the
+            // trimming path below mutates prompt.content, so those rebuilds prepare again.
+            const prepared = preparedPrompt ?? promptManager.preparePrompt(prompt);
+            preparedPrompt = null;
+            const message = await Message.fromPromptAsync(prepared);
             if (survivingContributions.length > 0) {
                 message.agentContributions = survivingContributions;
             }
