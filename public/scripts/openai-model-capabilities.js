@@ -28,6 +28,28 @@ export function applyClaudeModelParameterConstraints(generateData, { preserveRea
 }
 
 /**
+ * Removes penalty samplers that Grok reasoning models reject.
+ * xAI errors the request instead of ignoring them, and proxies that relay Grok through an
+ * OpenAI-compatible endpoint forward whatever they are given. Matches the model set the native
+ * xAI path already strips these for, including provider-prefixed and tag-prefixed IDs.
+ *
+ * @param {Record<string, any>} generateData Chat Completion request data
+ * @returns {Record<string, any>} The request data
+ */
+export function applyGrokModelParameterConstraints(generateData) {
+    const model = String(generateData?.model ?? '').toLowerCase();
+
+    if (!/grok-(?:3-mini|4|code)/.test(model)) {
+        return generateData;
+    }
+
+    delete generateData.frequency_penalty;
+    delete generateData.presence_penalty;
+
+    return generateData;
+}
+
+/**
  * Checks whether a model ID targets Kimi K3, including provider-prefixed IDs.
  *
  * @param {unknown} model Model identifier

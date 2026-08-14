@@ -8,7 +8,7 @@ import fetch from 'node-fetch';
 import urlJoin from 'url-join';
 import { getLocalPromptCacheValue, isLikelyLocalServerUrl } from '../../../public/scripts/local-url-utils.js';
 import { getLinkApiBaseUrl, getLinkApiRequestFormat } from '../../../public/scripts/linkapi-utils.js';
-import { applyKimiK3ModelParameterConstraints, isKimiK3Model } from '../../../public/scripts/openai-model-capabilities.js';
+import { applyGrokModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model } from '../../../public/scripts/openai-model-capabilities.js';
 
 import {
     AIMLAPI_HEADERS,
@@ -3293,6 +3293,13 @@ export async function handleChatCompletionsGenerate(request, response) {
             'n': request.body.n,
             ...bodyParams,
         };
+
+        // LinkAPI relays Grok verbatim, so penalty samplers reach a reasoning model and error the
+        // request. Stripped here rather than frontend-side to also cover the Conversation REST API,
+        // which forwards a caller-supplied payload straight into this handler.
+        if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.LINKAPI) {
+            applyGrokModelParameterConstraints(requestBody);
+        }
 
         const isKimiK3Request = !isTextCompletion
             && [CHAT_COMPLETION_SOURCES.CUSTOM, CHAT_COMPLETION_SOURCES.MOONSHOT, CHAT_COMPLETION_SOURCES.NANOGPT, CHAT_COMPLETION_SOURCES.OPENROUTER].includes(request.body.chat_completion_source)
