@@ -4,11 +4,13 @@ import { fileURLToPath } from 'node:url';
 
 import {
     applyClaudeModelParameterConstraints,
+    applyGrokModelParameterConstraints,
     applyKimiK3ModelParameterConstraints,
     isKimiK3Model,
 } from '../public/scripts/openai-model-capabilities.js';
 
 const openAiSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/openai.js', import.meta.url)), 'utf8');
+const chatCompletionsSource = fs.readFileSync(fileURLToPath(new URL('../src/endpoints/backends/chat-completions.js', import.meta.url)), 'utf8');
 const indexSource = fs.readFileSync(fileURLToPath(new URL('../public/index.html', import.meta.url)), 'utf8');
 const powerUserSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/power-user.js', import.meta.url)), 'utf8');
 const presetManagerSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/preset-manager.js', import.meta.url)), 'utf8');
@@ -58,6 +60,53 @@ describe('OpenAI-compatible Claude model capabilities', () => {
         expect(openAiSource).toContain('applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model');
         expect(openAiSource).toContain('applyClaudeModelParameterConstraints(generate_data, {');
         expect(openAiSource).toContain('preserveReasoning: [chat_completion_sources.CLAUDE, chat_completion_sources.LINKAPI].includes(settings.chat_completion_source)');
+    });
+});
+
+describe('Grok model capabilities', () => {
+    test('removes penalty samplers from Grok reasoning model requests', () => {
+        for (const model of ['grok-4.6', 'grok-4.5', 'grok-4-0709', 'grok-code-fast-1', 'grok-3-mini', 'x-ai/Grok-4.6', '[SP]grok-4.6']) {
+            const payload = {
+                model,
+                temperature: 0.8,
+                top_p: 0.9,
+                frequency_penalty: 0.2,
+                presence_penalty: 0.3,
+                reasoning_effort: 'high',
+            };
+
+            applyGrokModelParameterConstraints(payload);
+
+            expect(payload).toEqual({
+                model,
+                temperature: 0.8,
+                top_p: 0.9,
+                reasoning_effort: 'high',
+            });
+        }
+    });
+
+    test('leaves payloads for other models unchanged', () => {
+        for (const model of ['grok-3', 'grok-2-vision', 'gpt-5.1', 'claude-sonnet-5', '', undefined]) {
+            const payload = {
+                model,
+                frequency_penalty: 0.2,
+                presence_penalty: 0.3,
+            };
+
+            applyGrokModelParameterConstraints(payload);
+
+            expect(payload).toEqual({
+                model,
+                frequency_penalty: 0.2,
+                presence_penalty: 0.3,
+            });
+        }
+    });
+
+    test('applies Grok constraints to LinkAPI requests only', () => {
+        expect(chatCompletionsSource).toContain('applyGrokModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model');
+        expect(chatCompletionsSource).toContain('if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.LINKAPI) {\n            applyGrokModelParameterConstraints(requestBody);');
     });
 });
 
