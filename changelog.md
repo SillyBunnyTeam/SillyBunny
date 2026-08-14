@@ -15,6 +15,7 @@
 - PR #755 (2026-08-14) `fix(linkapi): prevent sending presencePenalty and frequencyPenalty samplers to Grok`
 - PR #756 (2026-08-14) `fix(tokeniser): count every message all at once instead of one by one`
 - PR #757 (2026-08-14) `chore: remove remaining graphify artifacts`
+- PR #758 (2026-08-14) `fix(ui): bulk edit no longer bunches up characters together`
 
 ## v1.7.0
 
