@@ -59,4 +59,10 @@ describe('mobile character drawer entity row css', () => {
         expect(entityRowRules).toContain('flex: 0 0 auto;');
         expect(entityRowRules).toContain('overflow: hidden;');
     });
+
+    test('keeps bulk-edit rows from shrinking inside the scroller', () => {
+        const bulkEntityRowRule = getRuleBody(mobileStylesCss, '#rm_print_characters_block.bulk_select > :is(.character_select, .group_select)');
+
+        expect(bulkEntityRowRule).toContain('flex: 0 0 auto;');
+    });
 });

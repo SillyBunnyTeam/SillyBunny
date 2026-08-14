@@ -507,6 +507,7 @@
 
     #rm_print_characters_block.bulk_select > :is(.character_select, .group_select) {
         display: grid;
+        flex: 0 0 auto;
         grid-template-columns: minmax(var(--sb-checkbox-size, 1rem), auto) var(--avatar-base-width) minmax(0, 1fr) !important;
         gap: 8px;
     }
