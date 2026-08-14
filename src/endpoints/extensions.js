@@ -27,6 +27,8 @@ const CORE_EXTENSIONS = new Set([
     'vectors',
     'in-chat-agents',
     'sillybunny-debugger',
+    // SillyBunny: ship Chats Archive as a built-in core extension.
+    'sillybunny-chats-archive',
 ]);
 const BUNDLED_THIRD_PARTY_EXTENSIONS = new Set([
     'bunnypresettools',
