@@ -16,6 +16,7 @@
 - PR #756 (2026-08-14) `fix(tokeniser): count every message all at once instead of one by one`
 - PR #757 (2026-08-14) `chore: remove remaining graphify artifacts`
 - PR #758 (2026-08-14) `fix(ui): bulk edit no longer bunches up characters together`
+- PR #760 (2026-08-15) `fix(mobile): stop the viewport jumping while typing on mobile`
 
 ## v1.7.0
 
