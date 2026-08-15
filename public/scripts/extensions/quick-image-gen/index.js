@@ -183,6 +183,7 @@ import {
 import {
     appendWorldInfoToRequest,
     createPromptPipelineState,
+    dedupePromptTags,
     getPromptPipelineResult,
     setAuthoritativeFinalPrompt,
     updatePromptPipelineState,
@@ -515,6 +516,10 @@ function isEditableShortcutTarget(target) {
     return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
 }
 
+function plural(count, noun) {
+    return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
 const GENERATE_SHORTCUT_DEFAULT = "ctrl+enter";
 
 function normalizeShortcutKeyName(key) {
@@ -569,12 +574,17 @@ function updateGenerateShortcutHints() {
 }
 
 function handleQigKeyboardShortcut(event) {
-    if (isEditableShortcutTarget(event.target)) return;
+    // Editable fields outside QIG's own panel (the chat compose box, other extensions) keep their keys.
+    if (isEditableShortcutTarget(event.target) && !event.target?.closest?.("#qig-settings")) return;
     if (event.target?.closest?.(".qig-popup")) return;
+    // The shortcut recorder must see the combo it is recording, not run it.
+    if (event.target?.id === "qig-generate-shortcut") return;
     if (eventMatchesGenerateShortcut(event)) {
         const generateBtn = document.getElementById("qig-generate-btn");
         if (!generateBtn || generateBtn.disabled || isGenerating) return;
         event.preventDefault();
+        // The host binds Ctrl+Enter to "regenerate message"; stop it from double-firing.
+        event.stopPropagation();
         runConfiguredPaletteGeneration();
         return;
     }
@@ -582,9 +592,11 @@ function handleQigKeyboardShortcut(event) {
     const key = String(event.key || "").toLowerCase();
     if (key === "g") {
         event.preventDefault();
+        event.stopPropagation();
         showGallery();
     } else if (key === "h") {
         event.preventDefault();
+        event.stopPropagation();
         showPromptHistory();
     }
 }
@@ -592,7 +604,16 @@ function handleQigKeyboardShortcut(event) {
 function bindQigKeyboardShortcuts() {
     if (qigKeyboardShortcutsBound) return;
     qigKeyboardShortcutsBound = true;
-    document.addEventListener("keydown", handleQigKeyboardShortcut);
+    // Capture phase: the host's own document-level keydown handlers must not run first.
+    document.addEventListener("keydown", handleQigKeyboardShortcut, { capture: true });
+}
+
+// Groups that start closed for a fresh install, so a dense provider panel opens calm.
+const DEFAULT_COLLAPSED_SECTIONS = { a1111Tuning: true };
+
+function isQigSectionCollapsed(collapsed, key) {
+    const stored = collapsed?.[key];
+    return stored === undefined ? Boolean(DEFAULT_COLLAPSED_SECTIONS[key]) : Boolean(stored);
 }
 
 function setupQigCollapsibleSection(sectionId, buttonId, contentId) {
@@ -636,12 +657,13 @@ function setupSettingsSearch() {
             ["promptAdvanced", "qig-prompt-advanced-toggle", "qig-prompt-advanced-content"],
             ["injectOptions", "qig-inject-options-toggle", "qig-inject-options"],
             ["advancedSettings", "qig-advanced-settings-toggle", "qig-advanced-settings"],
+            ["a1111Tuning", "qig-a1111-tuning-toggle", "qig-a1111-tuning-content"],
         ];
         pairs.forEach(([key, btnId, contentId]) => {
             const button = document.getElementById(btnId);
             const content = document.getElementById(contentId);
             if (!button || !content) return;
-            const isCollapsed = Boolean(collapsed[key]);
+            const isCollapsed = isQigSectionCollapsed(collapsed, key);
             button.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
             content.hidden = isCollapsed;
             content.classList.toggle("qig-collapsible__content--collapsed", isCollapsed);
@@ -705,11 +727,14 @@ function setupSettingsSearch() {
                 section.classList.remove("qig-search-hidden");
                 totalMatches += sectionMatches;
 
-                const content = section.querySelector(".qig-collapsible__content");
-                if (content) {
+                // Open every disclosure in the section, nested ones included, so a match inside a
+                // closed group is actually visible and not just counted.
+                section.querySelectorAll(".qig-collapsible__content").forEach(content => {
                     content.hidden = false;
                     content.classList.remove("qig-collapsible__content--collapsed");
-                    const toggleBtn = section.querySelector(".qig-section-header-toggle, .qig-collapsible__header");
+                    const toggleBtn = content.id
+                        ? section.querySelector(`[aria-controls="${content.id}"]`)
+                        : section.querySelector(".qig-section-header-toggle, .qig-collapsible__header");
                     if (toggleBtn) {
                         toggleBtn.setAttribute("aria-expanded", "true");
                         const icon = toggleBtn.querySelector(".qig-collapsible__icon");
@@ -718,7 +743,7 @@ function setupSettingsSearch() {
                             icon.classList.add("fa-chevron-down");
                         }
                     }
-                }
+                });
             } else {
                 section.classList.add("qig-search-hidden");
             }
@@ -751,9 +776,15 @@ const PROMPT_SOURCE_LABELS = {
     tags: "AI-tagged (auto)",
 };
 
+const PROMPT_FIELD_HELP = {
+    manual: "Sent as your image prompt. The optional LLM rewrite still applies if enabled.",
+    chat: "Not used while Chat scene is selected; the selected chat messages become the scene.",
+    tags: "Not used while AI-tagged is selected; prompts come from the tags your Text AI emits.",
+};
+
 const PROMPT_SOURCE_HELP = {
     manual: "The prompt box above is sent as-is. Optional LLM rewrite still applies if enabled below.",
-    chat: "The selected chat message(s) become the scene. Optionally let your Text AI rewrite them into an image prompt.",
+    chat: "The selected chat messages become the scene. Optionally let your Text AI rewrite them into an image prompt.",
     tags: "Your Text AI is instructed to emit image tags in replies; QIG extracts them and generates automatically. Auto-generate is kept on for this mode.",
 };
 
@@ -774,6 +805,11 @@ function updatePromptSourceUI(s = getSettings()) {
     });
     const help = document.getElementById("qig-prompt-source-help");
     if (help) help.textContent = PROMPT_SOURCE_HELP[mode] || "";
+    // Keep the Prompt field honest: in chat/tags modes it is not what gets sent.
+    const promptHelp = document.getElementById("qig-prompt-help");
+    if (promptHelp) promptHelp.textContent = PROMPT_FIELD_HELP[mode] || PROMPT_FIELD_HELP.manual;
+    const promptField = document.getElementById("qig-prompt");
+    if (promptField) promptField.style.opacity = mode === "manual" ? "" : "0.55";
     const chatPanel = document.getElementById("qig-chat-source-panel");
     if (chatPanel) chatPanel.style.display = mode === "chat" ? "block" : "none";
     const llmSubsection = document.getElementById("qig-llm-subsection");
@@ -901,7 +937,7 @@ function updateQigStatusLine() {
         warnEl.style.display = warnings.length ? "" : "none";
     }
     const eyebrow = document.getElementById("qig-status-eyebrow");
-    if (eyebrow) eyebrow.textContent = warnings.length ? "Needs attention" : "Ready to generate";
+    if (eyebrow) eyebrow.textContent = isGenerating ? "Generating" : (warnings.length ? "Needs attention" : "Ready to generate");
 }
 
 function getNanobananaAspectRatio(settings = getSettings()) {
@@ -3532,6 +3568,7 @@ function showStatus(msg) {
 const hideStatus = () => showStatus();
 
 function setGenerationActiveUI(active, { disableGenerateButton = false } = {}) {
+    updateQigStatusLine();
     const paletteBtn = getOrCacheElement("qig-input-btn");
     if (paletteBtn) {
         if (active) {
@@ -6007,11 +6044,14 @@ async function prepareQigFinalPrompt({
     forcePromptWasLLM = false,
 } = {}) {
     let pipelineState = createPromptPipelineState({ sourceText: sourcePrompt, worldInfoText });
+    // Filled by the first pass; later passes (Back from the final review) reuse it.
+    const reviewedRequest = { request: "", prefill: "" };
 
     while (true) {
         const generatedPrompt = await generateLLMPrompt(settings, sourcePrompt, signal, {
             isMultiMessageScene,
             worldInfoText,
+            reviewedRequest,
         });
         if (signal?.aborted) throw getAbortError(signal);
         const promptWasLLM = forcePromptWasLLM || (settings.useLLMPrompt && generatedPrompt !== sourcePrompt);
@@ -6036,8 +6076,8 @@ async function prepareQigFinalPrompt({
         });
         if (signal?.aborted) throw getAbortError(signal);
         pipelineState = updatePromptPipelineState(pipelineState, {
-            positive: contextualApplied.prompt,
-            negative: contextualApplied.negative,
+            positive: dedupePromptTags(contextualApplied.prompt),
+            negative: dedupePromptTags(contextualApplied.negative),
             finalPromptEdited: false,
         });
 
@@ -6312,21 +6352,21 @@ function logLLMHelperResponseMeta(meta, label = "LLM helper") {
 function buildLLMEmptyPromptWarning(meta, rawText, cleanedText) {
     const routeLabel = getLLMHelperRouteDescription(meta?.route);
     if (meta?.finishReason === "length") {
-        return `${routeLabel} hit finish_reason=length — using raw prompt. Consider raising max tokens.`;
+        return `${routeLabel}'s reply was cut off before it finished, so the raw prompt was used. Raise Max Tokens in the LLM rewrite options to give it more room.`;
     }
 
     switch (meta?.extractionStatus) {
         case "null_content":
-            return `${routeLabel} returned empty/null content — using raw prompt.`;
+            return `${routeLabel} returned an empty reply, so the raw prompt was used.`;
         case "no_text_parts":
-            return `${routeLabel} returned structured content with no text parts — using raw prompt.`;
+            return `${routeLabel} replied without any usable text, so the raw prompt was used.`;
         case "unsupported_shape":
-            return `${routeLabel} returned an unsupported response shape — using raw prompt.`;
+            return `${routeLabel} replied in a format QIG does not recognize, so the raw prompt was used.`;
         default:
             if (rawText && !String(cleanedText || "").trim()) {
-                return `${routeLabel} returned no usable text after cleanup — using raw prompt.`;
+                return `${routeLabel} returned no usable text after cleanup, so the raw prompt was used.`;
             }
-            return `${routeLabel} returned no text — using raw prompt.`;
+            return `${routeLabel} returned no text, so the raw prompt was used.`;
     }
 }
 
@@ -6924,7 +6964,18 @@ Tags:`;
 
         let effectivePrefill = resolvedPrefill;
         instructionWithEntropy = appendWorldInfoToRequest(instructionWithEntropy, options.worldInfoText);
-        if (s.reviewBeforeGenerate || !!options.worldInfoText) {
+        // Going back from the final prompt review re-runs the Text AI with the request the user
+        // already reviewed; it must not make them sit through the request window a second time.
+        const reviewedRequest = options.reviewedRequest;
+        if (reviewedRequest?.request) {
+            // Keep the user's edits, but the previous pass's cache-busting stamp with them would
+            // hand back the cached answer; swap in this pass's stamp so "Re-run" actually re-runs.
+            instructionWithEntropy = reviewedRequest.request
+                .replace(/^\[\d{10,}\]\n/, `[${timestamp}]\n`)
+                .replace(/\{\{\d{10,}_[a-z0-9]+\}\}/, entropyInline)
+                .replace(/\[ref:[a-z0-9]+\]/, `[ref:${randomPart}]`);
+            effectivePrefill = reviewedRequest.prefill ?? effectivePrefill;
+        } else if (s.reviewBeforeGenerate || !!options.worldInfoText) {
             const reviewed = await reviewTextAIRequest(instructionWithEntropy, {
                 title: "Review Image Prompt Request",
                 description: "Review the exact QIG instruction and assistant prefill sent to Text AI. The selected scene, character context, enabled identity rules, and matched lore are editable here.",
@@ -6933,6 +6984,10 @@ Tags:`;
             });
             instructionWithEntropy = reviewed.request;
             effectivePrefill = reviewed.prefill;
+            if (reviewedRequest) {
+                reviewedRequest.request = instructionWithEntropy;
+                reviewedRequest.prefill = effectivePrefill;
+            }
         }
 
         log(isCustom ? "Custom instruction mode" : "Built-in instruction mode");
@@ -9079,13 +9134,59 @@ function bindPopupDismiss(popup, onClose, { closeOnBackdrop = true } = {}) {
 function hidePopup(popup, { restoreFocus = true } = {}) {
     if (!popup) return;
     popup.style.display = "none";
+    noteQigPopupHidden(popup);
     if (restoreFocus && popup._qigReturnFocus?.isConnected) {
         popup._qigReturnFocus.focus?.();
     }
 }
 
+let qigPopupKeydownBound = false;
+
+// Popups are cached by id and never move in the document, so DOM order says nothing about
+// which one is on top. Track the order they were shown in instead.
+const openQigPopups = [];
+
+function noteQigPopupShown(popup) {
+    const at = openQigPopups.indexOf(popup);
+    if (at !== -1) openQigPopups.splice(at, 1);
+    openQigPopups.push(popup);
+}
+
+function noteQigPopupHidden(popup) {
+    const at = openQigPopups.indexOf(popup);
+    if (at !== -1) openQigPopups.splice(at, 1);
+}
+
+function handleQigPopupKeydown(event) {
+    if (event.key !== "Escape" && event.key !== "Tab") return;
+    // A host dialog (a SillyTavern confirm opened from inside a QIG popup, for instance) sits
+    // above us and owns the keyboard until it closes.
+    if (document.querySelector("dialog[open]")) return;
+    const openPopups = openQigPopups.filter(p => p.isConnected && p.style.display === "flex");
+    if (!openPopups.length) return;
+    const top = openPopups[openPopups.length - 1];
+    if (event.key === "Escape") {
+        event.preventDefault();
+        // Capture phase: the host also binds Escape (it closes the drawer behind the dialog).
+        event.stopPropagation();
+        top._qigDismiss?.(event);
+        return;
+    }
+    if (!top.contains(document.activeElement)) {
+        // Focus escaped the modal (the host re-focuses the launcher button after click); pull it back.
+        event.preventDefault();
+        event.stopPropagation();
+        const focusable = top.querySelector('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+        (focusable || top).focus?.();
+    }
+}
+
 function createPopup(id, title, content, onShow, options = {}) {
     const previouslyFocused = options.returnFocusElement || document.activeElement;
+    if (!qigPopupKeydownBound) {
+        qigPopupKeydownBound = true;
+        document.addEventListener("keydown", handleQigPopupKeydown, { capture: true });
+    }
     let popup = document.getElementById(id);
     if (!popup) {
         popup = document.createElement("div");
@@ -9147,18 +9248,25 @@ function createPopup(id, title, content, onShow, options = {}) {
         }
     };
     popup.style.display = "flex";
+    noteQigPopupShown(popup);
     if (onShow) onShow(popup);
     queueMicrotask(() => {
         if (!popup.contains(document.activeElement)) {
             popup.querySelector('button, input, select, textarea, [tabindex]:not([tabindex="-1"])')?.focus?.();
         }
     });
+    // The host re-focuses the launcher button a task later; re-assert so Esc/Tab reach the dialog.
+    setTimeout(() => {
+        if (popup.style.display !== "none" && !popup.contains(document.activeElement)) {
+            (popup.querySelector('button, input, select, textarea, [tabindex]:not([tabindex="-1"])') || popup).focus?.();
+        }
+    }, 60);
     return popup;
 }
 
 function showLogs() {
     createPopup("qig-logs-popup", "Generation Logs", `<pre id="qig-logs-content"></pre>`, (popup) => {
-        document.getElementById("qig-logs-content").textContent = logs.join("\n") || "No logs yet";
+        document.getElementById("qig-logs-content").textContent = logs.entries.join("\n") || "No activity yet. Generate an image and each step will be recorded here.";
     });
 }
 
@@ -9166,10 +9274,10 @@ function showPromptHistory() {
     createPopup("qig-prompt-history-popup", "Prompt History", `<div id="qig-prompt-history-content"></div>`, (popup) => {
         const container = document.getElementById("qig-prompt-history-content");
         if (!promptHistory.length) {
-            container.innerHTML = '<p class="qig-muted">No prompts yet</p>';
+            container.innerHTML = '<p class="qig-muted">No prompts yet. Every prompt you generate from is saved here, so you can reuse a wording you liked.</p>';
             return;
         }
-        container.innerHTML = `<div style="text-align:right;margin-bottom:8px;"><button id="qig-clear-history" class="menu_button" style="padding:2px 8px;font-size:11px;">Clear History</button></div>` +
+        container.innerHTML = `<div style="text-align:right;margin-bottom:8px;"><button id="qig-clear-history" class="menu_button" style="padding:2px 8px;font-size: 12px;">Clear History</button></div>` +
         promptHistory.map((entry, i) => `
             <div class="qig-history-entry">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -9206,7 +9314,7 @@ function showPromptHistory() {
                     log(`Prompt history could not be cleared from browser storage: ${error.message}`);
                     qigToast.warning("Prompt history was cleared for this session, but browser storage could not be updated.");
                 }
-                container.innerHTML = '<p class="qig-muted">No prompts yet</p>';
+                container.innerHTML = '<p class="qig-muted">No prompts yet. Every prompt you generate from is saved here, so you can reuse a wording you liked.</p>';
             }
         };
     });
@@ -9336,12 +9444,7 @@ async function useImageAsReference(source, popup) {
 
     s.localRefImage = persistedSource;
     saveSettingsDebounced();
-    const preview = document.getElementById("qig-local-ref-preview");
-    if (preview) { preview.src = persistedSource; preview.style.display = "block"; }
-    const clearBtn = document.getElementById("qig-local-ref-clear");
-    if (clearBtn) clearBtn.style.display = "block";
-    const denoiseWrap = document.getElementById("qig-local-denoise-wrap");
-    if (denoiseWrap) denoiseWrap.style.display = s.localType === "a1111" ? "block" : "none";
+    syncLocalReferencePreview(s);
     hidePopup(popup);
 }
 
@@ -9559,12 +9662,18 @@ function restoreMessageExtra(message, hadExtra, previousExtra) {
     else delete message.extra;
 }
 
+function canRerenderMessageMedia(ctx, message, index, expectedChat = ctx?.chat) {
+    if (!isChatIdentitySnapshotCurrent(createChatIdentitySnapshot(ctx), { requireMetadata: true })) return false;
+    if (getContext?.()?.chat !== expectedChat || expectedChat[index] !== message) return false;
+    return typeof ctx.appendMediaToMessage === "function";
+}
+
 function rerenderMessageMedia(ctx, message, index, expectedChat = ctx?.chat) {
-    if (!isChatIdentitySnapshotCurrent(createChatIdentitySnapshot(ctx), { requireMetadata: true })) return;
-    if (getContext?.()?.chat !== expectedChat || expectedChat[index] !== message) return;
-    if (typeof ctx.appendMediaToMessage !== "function") return;
+    if (!canRerenderMessageMedia(ctx, message, index, expectedChat)) return false;
     const messageElement = $(`.mes[mesid="${index}"]`);
-    if (messageElement.length) ctx.appendMediaToMessage(message, messageElement, "adjust");
+    if (!messageElement.length) return false;
+    ctx.appendMediaToMessage(message, messageElement, "adjust");
+    return true;
 }
 
 function rollbackInsertedMessage(ctx, chat, message, expectedIndex) {
@@ -9576,6 +9685,51 @@ function rollbackInsertedMessage(ctx, chat, message, expectedIndex) {
     const renderedIndex = index >= 0 ? index : expectedIndex;
     const messageElement = $(`.mes[mesid="${renderedIndex}"]`);
     if (messageElement.length) messageElement.remove();
+}
+
+// Taking an image back out of the chat. Each insert records how to reverse itself; the
+// reversal refuses to act unless the exact thing it added is still there, so an undo can
+// never eat a later edit or a different image.
+let lastChatInsertUndo = null;
+
+function rememberChatInsertUndo(undo) {
+    lastChatInsertUndo = typeof undo === "function" ? undo : null;
+}
+
+function hasChatInsertUndo() {
+    return typeof lastChatInsertUndo === "function";
+}
+
+// Each toast is bound to the undo that was current when it was shown, so two toasts on screen
+// at once each reverse their own insert instead of both reversing the newest one.
+async function runChatInsertUndo(event = null, undo = lastChatInsertUndo) {
+    // toastr keeps the toast open when it has an onclick, so close it ourselves and make a
+    // second click before it fades a harmless no-op.
+    const toast = event?.currentTarget || event?.target?.closest?.(".toast");
+    if (toast) globalThis.toastr?.clear?.($(toast));
+    if (lastChatInsertUndo === undo) lastChatInsertUndo = null;
+    if (typeof undo !== "function") return false;
+    try {
+        const removed = await undo();
+        if (removed) qigToast.info("Image removed from the chat.", "Quick Image Gen");
+        else qigToast.warning("That image can no longer be removed automatically; the chat has changed since it was added.", "Quick Image Gen");
+        return removed;
+    } catch (error) {
+        qigToast.error(`Could not undo the insert: ${error.message}`, "Quick Image Gen");
+        return false;
+    }
+}
+
+function announceChatInsert(message) {
+    if (!hasChatInsertUndo()) {
+        qigToast.success(message, "Quick Image Gen");
+        return;
+    }
+    const undo = lastChatInsertUndo;
+    qigToast.success(`${message} Click here to undo.`, "Quick Image Gen", {
+        timeOut: 8000,
+        onclick: (event) => { void runChatInsertUndo(event, undo); },
+    });
 }
 
 async function insertImageIntoMessage(entryOrUrl, targetMessageIndex = null, options = {}) {
@@ -9633,6 +9787,7 @@ async function insertImageIntoMessage(entryOrUrl, targetMessageIndex = null, opt
     }
 
     const title = entry.prompt || lastPrompt || 'Generated Image';
+    let undoInsert = null;
 
     try {
         // Use modern media API if available
@@ -9644,26 +9799,55 @@ async function insertImageIntoMessage(entryOrUrl, targetMessageIndex = null, opt
                 message.extra.media_display = 'gallery';
             }
 
-            message.extra.media.push({
+            const mediaEntry = {
                 url: url,
                 type: 'image',
                 title: title,
                 source: 'generated',
-            });
+            };
+            message.extra.media.push(mediaEntry);
             message.extra.inline_image = true;
             message.extra.media_index = message.extra.media.length - 1;
 
             rerenderMessageMedia(ctx, message, idx, chat);
+            undoInsert = async () => {
+                if (getContext?.()?.chat !== chat || chat[idx] !== message) return false;
+                // If the message can no longer be re-rendered (chat metadata replaced, element gone),
+                // refuse before touching anything rather than save a change the screen won't show.
+                if (!canRerenderMessageMedia(ctx, message, idx, chat) || !$(`.mes[mesid="${idx}"]`).length) return false;
+                const media = Array.isArray(message.extra?.media) ? message.extra.media : null;
+                const at = media ? media.lastIndexOf(mediaEntry) : -1;
+                if (at === -1) return false;
+                media.splice(at, 1);
+                if (!media.length) {
+                    delete message.extra.media_display;
+                    message.extra.inline_image = false;
+                }
+                message.extra.media_index = Math.max(0, media.length - 1);
+                rerenderMessageMedia(ctx, message, idx, chat);
+                await ctx.saveChat();
+                return true;
+            };
         } else {
             // Legacy fallback for older ST versions
             message.extra.image = url;
             message.extra.inline_image = true;
             message.extra.title = title;
+            undoInsert = async () => {
+                if (getContext?.()?.chat !== chat || chat[idx] !== message) return false;
+                if (message.extra?.image !== url) return false;
+                if (!isChatIdentitySnapshotCurrent(createChatIdentitySnapshot(ctx), { requireMetadata: true })) return false;
+                restoreMessageExtra(message, hadExtra, previousExtra);
+                rerenderMessageMedia(ctx, message, idx, chat);
+                await ctx.saveChat();
+                return true;
+            };
         }
 
         await ctx.saveChat();
         options.commitGuard?.();
         assertMessageTargetSnapshot(mutationTargetSnapshot, "Image insertion target changed while saving chat");
+        rememberChatInsertUndo(undoInsert);
     } catch (error) {
         restoreMessageExtra(message, hadExtra, previousExtra);
         try {
@@ -9720,6 +9904,16 @@ async function insertImageAsNewMessage(entryOrUrl, options = {}) {
         if (getContext?.()?.chat !== chat || chat[messageIndex] !== message) {
             throw new DOMException("Chat changed while saving inserted image", "AbortError");
         }
+        rememberChatInsertUndo(async () => {
+            if (getContext?.()?.chat !== chat || chat[messageIndex] !== message) return false;
+            // Only ever remove the last message. Splicing out of the middle would leave every later
+            // rendered message with a stale index; if the chat has moved on, refuse instead.
+            if (chat.length !== messageIndex + 1) return false;
+            if (checkpointRegistered) unregisterConversationCheckpointInsertion(options.conversationCheckpoint, message);
+            rollbackInsertedMessage(ctx, chat, message, messageIndex);
+            await ctx.saveChat?.();
+            return true;
+        });
     } catch (error) {
         if (checkpointRegistered) unregisterConversationCheckpointInsertion(options.conversationCheckpoint, message);
         rollbackInsertedMessage(ctx, chat, message, messageIndex);
@@ -9772,6 +9966,16 @@ async function insertImageAsHiddenReply(entryOrUrl, options = {}) {
         if (getContext?.()?.chat !== chat || chat[messageIndex] !== message) {
             throw new DOMException("Chat changed while saving hidden image", "AbortError");
         }
+        rememberChatInsertUndo(async () => {
+            if (getContext?.()?.chat !== chat || chat[messageIndex] !== message) return false;
+            // Only ever remove the last message. Splicing out of the middle would leave every later
+            // rendered message with a stale index; if the chat has moved on, refuse instead.
+            if (chat.length !== messageIndex + 1) return false;
+            if (checkpointRegistered) unregisterConversationCheckpointInsertion(options.conversationCheckpoint, message);
+            rollbackInsertedMessage(ctx, chat, message, messageIndex);
+            await ctx.saveChat?.();
+            return true;
+        });
     } catch (error) {
         if (checkpointRegistered) unregisterConversationCheckpointInsertion(options.conversationCheckpoint, message);
         rollbackInsertedMessage(ctx, chat, message, messageIndex);
@@ -9795,9 +9999,18 @@ async function autoInsertInjectImage(entryOrUrl, { messageIndex, insertMode, com
 // a multi-tag reply reports its insert outcome once rather than once per image.
 function reportAutoInsertOutcome(insertedCount, failedResults) {
     if (insertedCount > 0) {
-        qigToast.success(`${insertedCount === 1 ? "Image" : `${insertedCount} images`} inserted into chat`, "", {
-            throttleKey: "auto-insert-ok",
-        });
+        const insertedLabel = insertedCount === 1 ? "Image inserted into the chat." : `${insertedCount} images inserted into the chat.`;
+        if (insertedCount === 1 && hasChatInsertUndo()) {
+            // No throttle here: each toast is bound to a specific undo, and a suppressed toast would
+            // leave an older visible one pointing at the newer image.
+            const undo = lastChatInsertUndo;
+            qigToast.success(`${insertedLabel} Click here to undo.`, "Quick Image Gen", {
+                timeOut: 8000,
+                onclick: (event) => { void runChatInsertUndo(event, undo); },
+            });
+        } else {
+            qigToast.success(insertedLabel, "Quick Image Gen", { throttleKey: "auto-insert-ok" });
+        }
     }
     if (!failedResults.length) return;
     qigToast.warning(`${failedResults.length === 1 ? "One image" : `${failedResults.length} images`} could not be inserted and remain available in the result viewer.`, "", {
@@ -9981,7 +10194,7 @@ async function addContextMediaRemoteUrls(rawValue, target) {
         owner.media.push(...inserted);
         if (!await commitContextMediaMutation(previous)) throw new Error("Remote media links could not be saved");
     });
-    if (rejected.length) qigToast.warning(`${rejected.length} link(s) were skipped. ${rejected[0]}`, "Context Media", { escapeHtml: true });
+    if (rejected.length) qigToast.warning(`${plural(rejected.length, "link")} skipped. ${rejected[0]}`, "Context Media", { escapeHtml: true });
     return inserted;
 }
 
@@ -10268,7 +10481,7 @@ async function uploadContextMediaFiles(files, target) {
         }
         throw new Error("Media persistence and rollback both failed; server files were retained to avoid broken references");
     });
-    if (rejected.length) qigToast.warning(`${rejected.length} file(s) were skipped. ${rejected[0]}`, "Context Media", { escapeHtml: true });
+    if (rejected.length) qigToast.warning(`${plural(rejected.length, "file")} skipped. ${rejected[0]}`, "Context Media", { escapeHtml: true });
     return accepted;
 }
 
@@ -10468,7 +10681,7 @@ function showContextMediaManager() {
                         button.disabled = true;
                         try {
                             const accepted = await uploadContextMediaFiles(input.files, owner);
-                            if (accepted.length) qigToast.success(`Added ${accepted.length} Context Media item(s)`);
+                            if (accepted.length) qigToast.success(`Added ${plural(accepted.length, "Context Media item")}`);
                             render();
                         } catch (error) {
                             log(`Context Media upload failed: ${error.message}`);
@@ -10484,7 +10697,7 @@ function showContextMediaManager() {
                     button.disabled = true;
                     try {
                         const accepted = await addContextMediaRemoteUrls(rawLinks, owner);
-                        if (accepted.length) qigToast.success(`Added ${accepted.length} remote Context Media link(s)`);
+                        if (accepted.length) qigToast.success(`Added ${plural(accepted.length, "remote Context Media link")}`);
                         render();
                         renderContextMediaSummary();
                     } catch (error) {
@@ -11297,28 +11510,28 @@ function displayImage(entryOrUrl, skipGallery, returnFocusElement = null) {
 
     const popup = createPopup("qig-popup", "Generated Image", `
         <img id="qig-result-img" src="" alt="Generated image result">
-        <button id="qig-toggle-prompt-editor" type="button" aria-expanded="false" aria-controls="qig-result-prompt-editor" style="width: calc(100% - 32px); margin: 8px 16px; padding: 6px; background: var(--SmartThemeBlurTintColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; cursor: pointer; font-size: 11px;">
-            ✏️ Edit Prompt
+        <button id="qig-toggle-prompt-editor" type="button" aria-expanded="false" aria-controls="qig-result-prompt-editor" style="width: calc(100% - 32px); margin: 8px 16px; padding: 6px; background: var(--SmartThemeBlurTintColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; cursor: pointer; font-size: 12px;">
+            <span class="fa-solid fa-pen-to-square" aria-hidden="true"></span> Edit Prompt
         </button>
         <div id="qig-result-prompt-editor" class="qig-prompt-editor" style="display:none;">
             <div style="padding: 8px 16px;">
-                <span id="qig-result-prompt-source-label" style="font-size: 10px; opacity: 0.7; display: block; margin-bottom: 4px;"></span>
-                <label for="qig-preview-prompt" style="font-size: 11px; color: var(--SmartThemeBodyColor); display: block; margin-bottom: 4px;">Prompt:</label>
+                <span id="qig-result-prompt-source-label" style="font-size: 11px; opacity: 0.7; display: block; margin-bottom: 4px;"></span>
+                <label for="qig-preview-prompt" style="font-size: 12px; color: var(--SmartThemeBodyColor); display: block; margin-bottom: 4px;">Prompt:</label>
                 <textarea id="qig-preview-prompt" style="width: 100%; height: 80px; resize: vertical; background: var(--SmartThemeBlurTintColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 8px; font-size: 12px; font-family: monospace;"></textarea>
-                <label for="qig-preview-negative" style="font-size: 11px; color: var(--SmartThemeBodyColor); display: block; margin: 8px 0 4px;">Negative Prompt:</label>
+                <label for="qig-preview-negative" style="font-size: 12px; color: var(--SmartThemeBodyColor); display: block; margin: 8px 0 4px;">Negative Prompt:</label>
                 <textarea id="qig-preview-negative" style="width: 100%; height: 60px; resize: vertical; background: var(--SmartThemeBlurTintColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 8px; font-size: 12px; font-family: monospace;"></textarea>
                 <div style="display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end;">
-                    <button id="qig-reset-prompt" class="menu_button" style="padding: 4px 10px; font-size: 11px;">Reset to Original</button>
+                    <button id="qig-reset-prompt" class="menu_button" style="padding: 4px 10px; font-size: 12px;">Reset to Original</button>
                 </div>
             </div>
         </div>
         <div class="qig-popup-actions">
-            <button id="qig-regenerate-btn" title="Generate a new image with the same settings">🔄 Regenerate</button>
-            <button id="qig-use-as-ref" title="Use this image as reference for img2img">🖼 Use as Reference</button>
-            <button id="qig-insert-btn" title="Insert this image into the chat">📌 Insert</button>
-            <button id="qig-background-btn" title="Set this image as the current chat background">🖼 Background</button>
-            <button id="qig-gallery-btn" title="Open Gallery">🖼️ Open Gallery</button>
-            <button id="qig-download-btn" title="Download image with metadata">💾 Download</button>
+            <button id="qig-insert-btn" class="qig-popup-action--primary" title="Insert this image into the chat"><span class="fa-solid fa-paper-plane" aria-hidden="true"></span> Insert into Chat</button>
+            <button id="qig-regenerate-btn" title="Generate a new image with the same settings"><span class="fa-solid fa-rotate" aria-hidden="true"></span> Regenerate</button>
+            <button id="qig-use-as-ref" title="Use this image as reference for img2img"><span class="fa-solid fa-clone" aria-hidden="true"></span> Use as Reference</button>
+            <button id="qig-background-btn" title="Set this image as the current chat background"><span class="fa-solid fa-panorama" aria-hidden="true"></span> Background</button>
+            <button id="qig-gallery-btn" title="Open Gallery"><span class="fa-solid fa-images" aria-hidden="true"></span> Gallery</button>
+            <button id="qig-download-btn" title="Download image with metadata"><span class="fa-solid fa-download" aria-hidden="true"></span> Download</button>
             <button id="qig-close-popup" title="Close without inserting">Close</button>
         </div>`, (popup) => {
         // Reset any previous inline resize styles
@@ -11341,12 +11554,12 @@ function displayImage(entryOrUrl, skipGallery, returnFocusElement = null) {
         if (promptTextarea) promptTextarea.value = imagePrompt;
         if (negativeTextarea) negativeTextarea.value = imageNegative;
         const sourceLabel = popup.querySelector("#qig-result-prompt-source-label");
-        if (sourceLabel) sourceLabel.textContent = imagePromptWasLLM ? "🤖 AI-Enhanced Prompt" : "📝 Direct Prompt";
+        if (sourceLabel) sourceLabel.textContent = imagePromptWasLLM ? "AI-enhanced prompt" : "Direct prompt";
         toggleBtn.onclick = (e) => {
             e.stopPropagation();
             const isVisible = editorDiv.style.display !== "none";
             editorDiv.style.display = isVisible ? "none" : "block";
-            toggleBtn.textContent = isVisible ? "✏️ Edit Prompt" : "▲ Hide Prompt";
+            toggleBtn.innerHTML = isVisible ? '<span class="fa-solid fa-pen-to-square" aria-hidden="true"></span> Edit Prompt' : '<span class="fa-solid fa-chevron-up" aria-hidden="true"></span> Hide Prompt';
             toggleBtn.setAttribute("aria-expanded", isVisible ? "false" : "true");
         };
         resetBtn.onclick = (e) => {
@@ -11397,8 +11610,12 @@ function displayImage(entryOrUrl, skipGallery, returnFocusElement = null) {
                 if (s.insertAsHiddenReply) {
                     await insertImageAsHiddenReply(entry);
                 } else {
-                    await insertImageIntoMessage(entry, resolveManualInsertFallbackIndex(getContext()?.chat, s), { ignoreSourceIdentity: true });
+                    // No explicit index: the entry carries the message it was generated from
+                    // (per-message palette button), and insertImageIntoMessage prefers that over
+                    // the "latest message" fallback setting.
+                    await insertImageIntoMessage(entry, popupInsertTargetIndex, { ignoreSourceIdentity: true });
                 }
+                announceChatInsert("Image inserted into the chat.");
             } catch (err) {
                 console.error("[Quick Image Gen] Insert failed:", err);
                 qigToast.error("Failed to insert image: " + err.message);
@@ -11451,30 +11668,30 @@ function displayBatchResults(results, returnFocusElement = null) {
             <button id="qig-batch-next" type="button" aria-label="Next generated image">▶</button>
         </div>
         <div class="qig-batch-thumbs">${thumbsHtml}</div>
-        <button id="qig-batch-toggle-prompt-editor" type="button" aria-expanded="false" aria-controls="qig-batch-prompt-editor" style="width: calc(100% - 32px); margin: 8px 16px; padding: 6px; background: var(--SmartThemeBlurTintColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; cursor: pointer; font-size: 11px;">
-            ✏️ Edit Prompt
+        <button id="qig-batch-toggle-prompt-editor" type="button" aria-expanded="false" aria-controls="qig-batch-prompt-editor" style="width: calc(100% - 32px); margin: 8px 16px; padding: 6px; background: var(--SmartThemeBlurTintColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; cursor: pointer; font-size: 12px;">
+            <span class="fa-solid fa-pen-to-square" aria-hidden="true"></span> Edit Prompt
         </button>
         <div id="qig-batch-prompt-editor" class="qig-prompt-editor" style="display:none;">
             <div style="padding: 8px 16px;">
-                <span id="qig-batch-prompt-source-label" style="font-size: 10px; opacity: 0.7; display: block; margin-bottom: 4px;"></span>
-                <label for="qig-batch-preview-prompt" style="font-size: 11px; color: var(--SmartThemeBodyColor); display: block; margin-bottom: 4px;">Prompt:</label>
+                <span id="qig-batch-prompt-source-label" style="font-size: 11px; opacity: 0.7; display: block; margin-bottom: 4px;"></span>
+                <label for="qig-batch-preview-prompt" style="font-size: 12px; color: var(--SmartThemeBodyColor); display: block; margin-bottom: 4px;">Prompt:</label>
                 <textarea id="qig-batch-preview-prompt" style="width: 100%; height: 80px; resize: vertical; background: var(--SmartThemeBlurTintColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 8px; font-size: 12px; font-family: monospace;"></textarea>
-                <label for="qig-batch-preview-negative" style="font-size: 11px; color: var(--SmartThemeBodyColor); display: block; margin: 8px 0 4px;">Negative Prompt:</label>
+                <label for="qig-batch-preview-negative" style="font-size: 12px; color: var(--SmartThemeBodyColor); display: block; margin: 8px 0 4px;">Negative Prompt:</label>
                 <textarea id="qig-batch-preview-negative" style="width: 100%; height: 60px; resize: vertical; background: var(--SmartThemeBlurTintColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 8px; font-size: 12px; font-family: monospace;"></textarea>
                 <div style="display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end;">
-                    <button id="qig-batch-reset-prompt" class="menu_button" style="padding: 4px 10px; font-size: 11px;">Reset to Original</button>
+                    <button id="qig-batch-reset-prompt" class="menu_button" style="padding: 4px 10px; font-size: 12px;">Reset to Original</button>
                 </div>
             </div>
         </div>
         <div class="qig-popup-actions">
-            <button id="qig-batch-regenerate" title="Regenerate all images in this batch">🔄 Regenerate</button>
-            <button id="qig-batch-use-as-ref" title="Use selected image as reference for img2img">🖼 Use as Reference</button>
-            <button id="qig-batch-insert" title="Insert selected image into chat">📌 Insert</button>
-            <button id="qig-batch-insert-all" title="Insert all images into chat">📌 Insert All</button>
-            <button id="qig-batch-background" title="Set selected image as the current chat background">🖼 Background</button>
-            <button id="qig-batch-gallery" title="Open Gallery">🖼️ Open Gallery</button>
-            <button id="qig-batch-download" title="Download selected image">💾 Download</button>
-            <button id="qig-batch-save-all" title="Download all images">💾 Save All</button>
+            <button id="qig-batch-insert" class="qig-popup-action--primary" title="Insert selected image into chat"><span class="fa-solid fa-paper-plane" aria-hidden="true"></span> Insert This</button>
+            <button id="qig-batch-insert-all" title="Insert all images into chat"><span class="fa-solid fa-paper-plane" aria-hidden="true"></span> Insert All</button>
+            <button id="qig-batch-regenerate" title="Regenerate all images in this batch"><span class="fa-solid fa-rotate" aria-hidden="true"></span> Regenerate</button>
+            <button id="qig-batch-use-as-ref" title="Use selected image as reference for img2img"><span class="fa-solid fa-clone" aria-hidden="true"></span> Use as Reference</button>
+            <button id="qig-batch-background" title="Set selected image as the current chat background"><span class="fa-solid fa-panorama" aria-hidden="true"></span> Background</button>
+            <button id="qig-batch-gallery" title="Open Gallery"><span class="fa-solid fa-images" aria-hidden="true"></span> Gallery</button>
+            <button id="qig-batch-download" title="Download selected image"><span class="fa-solid fa-download" aria-hidden="true"></span> Download</button>
+            <button id="qig-batch-save-all" title="Download all images"><span class="fa-solid fa-file-zipper" aria-hidden="true"></span> Save All</button>
             <button id="qig-batch-close" title="Close without inserting">Close</button>
         </div>`, (popup) => {
         const content = popup.querySelector('.qig-popup-content');
@@ -11496,7 +11713,7 @@ function displayBatchResults(results, returnFocusElement = null) {
             originalNegative = activeEntry.negative;
             if (batchPromptTextarea) batchPromptTextarea.value = originalPrompt;
             if (batchNegativeTextarea) batchNegativeTextarea.value = originalNegative;
-            if (batchSourceLabel) batchSourceLabel.textContent = activeEntry.promptWasLLM ? "🤖 AI-Enhanced Prompt" : "📝 Direct Prompt";
+            if (batchSourceLabel) batchSourceLabel.textContent = activeEntry.promptWasLLM ? "AI-enhanced prompt" : "Direct prompt";
         };
 
         // Initialize prompt editor
@@ -11511,7 +11728,7 @@ function displayBatchResults(results, returnFocusElement = null) {
             e.stopPropagation();
             const isVisible = batchEditorDiv.style.display !== "none";
             batchEditorDiv.style.display = isVisible ? "none" : "block";
-            batchToggleBtn.textContent = isVisible ? "✏️ Edit Prompt" : "▲ Hide Prompt";
+            batchToggleBtn.innerHTML = isVisible ? '<span class="fa-solid fa-pen-to-square" aria-hidden="true"></span> Edit Prompt' : '<span class="fa-solid fa-chevron-up" aria-hidden="true"></span> Hide Prompt';
             batchToggleBtn.setAttribute("aria-expanded", isVisible ? "false" : "true");
         };
         batchResetBtn.onclick = (e) => {
@@ -11567,10 +11784,11 @@ function displayBatchResults(results, returnFocusElement = null) {
         if (batchKeyHandler) document.removeEventListener("keydown", batchKeyHandler);
         batchKeyHandler = keyHandler;
         document.addEventListener("keydown", keyHandler);
-        const origOnClick = popup.onclick;
-        popup.onclick = (e) => {
+        // Detach arrow-key nav only when the popup actually closes, not on every click.
+        const origDismiss = popup._qigDismiss;
+        popup._qigDismiss = (e) => {
             document.removeEventListener("keydown", keyHandler);
-            if (origOnClick) origOnClick(e);
+            origDismiss?.(e);
         };
 
         document.getElementById("qig-batch-download").onclick = async (e) => {
@@ -11603,8 +11821,11 @@ function displayBatchResults(results, returnFocusElement = null) {
             e.stopPropagation();
             try {
                 for (const entry of entries) {
-                    await insertImageIntoMessage(entry, resolveManualInsertFallbackIndex(getContext()?.chat, getSettings()), { ignoreSourceIdentity: true });
+                    await insertImageIntoMessage(entry, null, { ignoreSourceIdentity: true });
                 }
+                // Undo only reverses the last one, so don't offer it for a multi-image insert.
+                rememberChatInsertUndo(null);
+                qigToast.success(`${plural(entries.length, "image")} inserted into the chat.`, "Quick Image Gen");
             } catch (err) {
                 console.error("[Quick Image Gen] Insert all failed:", err);
                 qigToast.error("Failed to insert images: " + err.message);
@@ -11642,7 +11863,8 @@ function displayBatchResults(results, returnFocusElement = null) {
             e.stopPropagation();
             try {
                 const activeEntry = getCurrentEntry();
-                await insertImageIntoMessage(activeEntry, resolveManualInsertFallbackIndex(getContext()?.chat, getSettings()), { ignoreSourceIdentity: true });
+                await insertImageIntoMessage(activeEntry, null, { ignoreSourceIdentity: true });
+                announceChatInsert("Image inserted into the chat.");
             } catch (err) {
                 console.error("[Quick Image Gen] Insert failed:", err);
                 qigToast.error("Failed to insert image: " + err.message);
@@ -11698,7 +11920,7 @@ async function showGallery(returnFocusElement = null) {
             if (!sessionGallery.length) {
                 const empty = document.createElement("p");
                 empty.className = "qig-muted";
-                empty.textContent = "No images yet";
+                empty.textContent = "No images yet. Close this and press Generate to make your first one; every image you generate is kept here.";
                 grid.appendChild(empty);
                 return;
             }
@@ -11838,6 +12060,8 @@ function showPromptReviewStage({
     signal = null,
 }) {
     return new Promise((resolve) => {
+        // The pulsing status would otherwise keep claiming "Generating..." while we wait on the user.
+        showStatus("📝 Waiting for your review...");
         const isRequest = mode === "request";
         const isResult = mode === "result";
         const isFinal = mode === "final";
@@ -11854,9 +12078,11 @@ function showPromptReviewStage({
                     <textarea id="qig-review-text" rows="16" spellcheck="false"></textarea>
                     ${hasPrefill ? `<label for="qig-review-prefill">Assistant prefill</label>
                     <textarea id="qig-review-prefill" class="qig-review-prefill" rows="3" spellcheck="false"></textarea>
-                    <p class="qig-review-field-note">Sent as a separate assistant prefix when supported. Fallback routes convert this reviewed value into an explicit continuation instruction.</p>` : ""}
+                    <p class="qig-review-field-note">When the connection supports it, this becomes the assistant's starting words; otherwise it is sent as an instruction to continue from this text.</p>` : ""}
                 </div>`;
-        const backLabel = isResult ? "Re-run Text AI" : "Back";
+        // On the final review, Back re-runs the Text AI with the request already reviewed
+        // (no second request window), so name it for what it does.
+        const backLabel = (isResult || isFinal) ? "Re-run Text AI" : "Back";
         const primaryLabel = isRequest ? "Run Text AI" : (isFinal ? "Generate" : "Continue");
         const activeStage = isFinal ? 3 : (isResult ? 2 : 1);
         const popup = createPopup("qig-prompt-review-popup", title, `
@@ -12072,8 +12298,8 @@ function showParagraphPicker(messageText, signal) {
         const popup = createPopup("qig-paragraph-picker-popup", "Select Paragraphs", `
             <div style="padding:12px 16px;">
                 <div style="display:flex;gap:8px;margin-bottom:10px;">
-                    <button id="qig-para-select-all" class="menu_button" style="padding:2px 10px;font-size:11px;">Select All</button>
-                    <button id="qig-para-deselect-all" class="menu_button" style="padding:2px 10px;font-size:11px;">Deselect All</button>
+                    <button id="qig-para-select-all" class="menu_button" style="padding:2px 10px;font-size: 12px;">Select All</button>
+                    <button id="qig-para-deselect-all" class="menu_button" style="padding:2px 10px;font-size: 12px;">Deselect All</button>
                 </div>
                 <div class="qig-paragraph-list">${listHtml}</div>
                 <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
@@ -14063,41 +14289,22 @@ function renderContextualFiltersSummary(container, viewState = getContextualFilt
         ? `${viewState.currentCardLabel || "Current card"} + character scope`
         : (viewState.currentCharId != null ? (viewState.charName || "Current character") : "Global-only context");
     const scopeParts = [];
-    if (viewState.cardFilters.length) scopeParts.push(`${viewState.cardFilters.length} card-only`);
-    if (viewState.charFilters.length) scopeParts.push(`${viewState.charFilters.length} character-wide`);
+    if (viewState.cardFilters.length) scopeParts.push(plural(viewState.cardFilters.length, "card-only filter"));
+    if (viewState.charFilters.length) scopeParts.push(plural(viewState.charFilters.length, "character-wide filter"));
     const hiddenNote = scopeParts.length
-        ? `Current context includes ${scopeParts.join(" and ")} filter(s), plus global filters.${viewState.otherScopeCount > 0 ? ` Manage Filters can browse ${viewState.otherScopeCount} other saved scope(s).` : ""}`
+        ? `Current context includes ${scopeParts.join(" and ")}, plus global filters.${viewState.otherScopeCount > 0 ? ` Manage Filters can browse ${plural(viewState.otherScopeCount, "other saved scope")}.` : ""}`
         : (viewState.otherScopeCount > 0
-            ? `Manage Filters can browse ${viewState.otherScopeCount} other saved scope(s) without switching chats.`
+            ? `Manage Filters can browse ${plural(viewState.otherScopeCount, "other saved scope")} without switching chats.`
             : "This summary is showing filters available in the current context.");
+    const seedPart = viewState.seededFilterCount ? `, ${viewState.seededFilterCount} with seed overrides` : "";
+    const summaryLine = `${plural(viewState.visibleFilters.length, "filter")} in ${scopeLabel}: ${viewState.activeVisibleCount} active${seedPart}, ${plural(viewState.enabledPoolIds.size, "enabled pool")} of ${totalPools}.`;
     container.innerHTML = `
         <div class="qig-filter-summary">
-            <div class="qig-filter-summary-grid">
-                <div class="qig-filter-summary-card">
-                    <span class="qig-filter-summary-label">Visible Filters</span>
-                    <strong data-qig-summary="visible"></strong>
-                    <small data-qig-summary="scope"></small>
-                </div>
-                <div class="qig-filter-summary-card">
-                    <span class="qig-filter-summary-label">Active Now</span>
-                    <strong data-qig-summary="active"></strong>
-                    <small data-qig-summary="enabled-pools"></small>
-                </div>
-                <div class="qig-filter-summary-card">
-                    <span class="qig-filter-summary-label">Seed Overrides</span>
-                    <strong data-qig-summary="seeds"></strong>
-                    <small data-qig-summary="total-pools"></small>
-                </div>
-            </div>
+            <p class="qig-filter-summary-line" data-qig-summary="line"></p>
             <p class="qig-filter-summary-note" data-qig-summary="note"></p>
             <button id="qig-manage-filters-btn-inline" class="menu_button">Manage Filters</button>
         </div>`;
-    container.querySelector('[data-qig-summary="visible"]').textContent = String(viewState.visibleFilters.length);
-    container.querySelector('[data-qig-summary="scope"]').textContent = scopeLabel;
-    container.querySelector('[data-qig-summary="active"]').textContent = String(viewState.activeVisibleCount);
-    container.querySelector('[data-qig-summary="enabled-pools"]').textContent = `${viewState.enabledPoolIds.size} enabled pool(s)`;
-    container.querySelector('[data-qig-summary="seeds"]').textContent = String(viewState.seededFilterCount);
-    container.querySelector('[data-qig-summary="total-pools"]').textContent = `${totalPools} pool(s) available`;
+    container.querySelector('[data-qig-summary="line"]').textContent = summaryLine;
     container.querySelector('[data-qig-summary="note"]').textContent = hiddenNote;
     container.querySelector("#qig-manage-filters-btn-inline").addEventListener("click", showContextualFilterManager);
 }
@@ -15843,12 +16050,49 @@ function seedStarterPresets() {
     saveSettingsDebounced();
 }
 
+function expandQigCollapsible(sectionKey, buttonId, contentId) {
+    const button = document.getElementById(buttonId);
+    const content = document.getElementById(contentId);
+    if (!button || !content) return;
+    setCollapsedSection(sectionKey, false);
+    button.setAttribute("aria-expanded", "true");
+    content.hidden = false;
+    content.classList.remove("qig-collapsible__content--collapsed");
+    const icon = button.querySelector(".qig-collapsible__icon");
+    if (icon) {
+        icon.classList.remove("fa-chevron-right");
+        icon.classList.add("fa-chevron-down");
+    }
+}
+
+// Quick Setup names the section a provider still needs; this actually takes the user there
+// instead of leaving them to find it.
+function revealProviderSettings() {
+    // Rebuilding the panel leaves SillyTavern's own drawer closed, so open that first;
+    // everything below it has no layout until it is.
+    const drawerContent = document.querySelector("#qig-settings .inline-drawer-content");
+    if (drawerContent && getComputedStyle(drawerContent).display === "none") {
+        document.querySelector("#qig-settings .inline-drawer-toggle")?.click();
+    }
+    expandQigCollapsible("setupPanel", "qig-setup-toggle", "qig-setup-panel");
+    expandQigCollapsible("sectionProvider", "qig-section-provider-toggle", "qig-section-provider-content");
+    // The drawer opens with a slide, so let it settle before scrolling to the target.
+    setTimeout(() => {
+        const section = document.getElementById(`qig-${getSettings()?.provider}-settings`);
+        const target = section || document.getElementById("qig-section-provider-content");
+        if (!target) return;
+        target.scrollIntoView({ block: "start", behavior: "smooth" });
+        const firstField = section?.querySelector("input:not([type=hidden]), select, textarea");
+        if (firstField) setTimeout(() => firstField.focus({ preventScroll: true }), 350);
+    }, 260);
+}
+
 function showSetupWizard() {
     const s = getSettings();
     if (!s) return;
     const providerOpts = buildOptions(Object.entries(PROVIDERS), s.provider, v => v.name);
     const styleOpts = buildOptions(Object.entries(STYLES), s.style, v => v.name);
-    createPopup("qig-setup-wizard", "Quick Image Gen — Quick Setup", `
+    createPopup("qig-setup-wizard", "Set up Quick Image Gen", `
         <div class="qig-wizard">
             <p class="qig-muted">Pick a backend and a style; everything else has working defaults. Pollinations is free and needs no key.</p>
             <label for="qig-wizard-provider">Provider</label>
@@ -15857,7 +16101,7 @@ function showSetupWizard() {
                 <label id="qig-wizard-key-label" for="qig-wizard-key">API Key</label>
                 <input id="qig-wizard-key" type="password" autocomplete="off" placeholder="Paste your API key">
             </div>
-            <div id="qig-wizard-extra-note" class="qig-muted" style="display:none;">This provider has more required settings (server URL, models). Finish here, then open More settings → Image Provider &amp; Output.</div>
+            <div id="qig-wizard-extra-note" class="qig-muted" style="display:none;">This provider needs a couple more details (server address, model). Saving here will take you straight to them.</div>
             <label for="qig-wizard-style">Style</label>
             <select id="qig-wizard-style">${styleOpts}</select>
             <div class="qig-wizard-actions">
@@ -15895,11 +16139,17 @@ function showSetupWizard() {
             settings.style = popup.querySelector("#qig-wizard-style").value;
             saveSettingsDebounced();
         };
+        const needsMoreSetup = () => ["local", "proxy", "custom"].includes(getSettings()?.provider);
         const finishWizard = ({ generate = false } = {}) => {
             hidePopup(popup, { restoreFocus: false });
             createUI();
-            document.querySelector(".qig-wizard-btn")?.focus();
-            if (generate) runConfiguredPaletteGeneration();
+            if (generate) {
+                document.querySelector(".qig-wizard-btn")?.focus();
+                runConfiguredPaletteGeneration();
+                return;
+            }
+            if (needsMoreSetup()) revealProviderSettings();
+            else document.querySelector(".qig-wizard-btn")?.focus();
         };
         popup.querySelector("#qig-wizard-skip").onclick = () => hidePopup(popup);
         popup.querySelector("#qig-wizard-save").onclick = () => { applyWizard(); finishWizard(); };
@@ -16073,17 +16323,8 @@ function refreshAllUI(s) {
         populateConnectionProfiles("qig-llm-override-profile", s.llmOverrideProfileId);
         populatePresetList("qig-llm-override-preset-select", s.llmOverridePreset);
     }
-    const nbpOptions = document.getElementById("qig-nanobanana-nbp-options");
-    if (nbpOptions) nbpOptions.style.display = s.nanobananaNbpMode !== false ? "block" : "none";
-    const nbpCustom = document.getElementById("qig-nanobanana-custom-director-wrap");
-    if (nbpCustom) nbpCustom.style.display = normalizeNbpDirectorPreset(s.nanobananaNbpPreset) === "custom" ? "block" : "none";
-    const localRefPreview = document.getElementById("qig-local-ref-preview");
-    if (localRefPreview) {
-        localRefPreview.src = s.localRefImage || "";
-        localRefPreview.style.display = s.localRefImage ? "block" : "none";
-    }
-    const localRefClear = document.getElementById("qig-local-ref-clear");
-    if (localRefClear) localRefClear.style.display = s.localRefImage ? "block" : "none";
+    syncNanobananaNbpVisibility(s);
+    syncLocalReferencePreview(s);
     const paletteButton = document.getElementById("qig-input-btn");
     if (paletteButton) paletteButton.style.display = s.disablePaletteButton ? "none" : "";
     const shortcutInput = document.getElementById("qig-generate-shortcut");
@@ -16443,8 +16684,35 @@ function syncGenerationSettingsControls(settings = getSettings()) {
     }
 }
 
+// The local reference preview lives inside the Local provider section, which may be parked;
+// every write goes through here so it lands on the real node after re-attachment.
+function syncLocalReferencePreview(s = getSettings()) {
+    ensureProviderSectionAttached("local");
+    const preview = document.getElementById("qig-local-ref-preview");
+    if (preview) {
+        if (s.localRefImage) preview.src = s.localRefImage;
+        else preview.removeAttribute("src");
+        preview.style.display = s.localRefImage ? "block" : "none";
+    }
+    const clearBtn = document.getElementById("qig-local-ref-clear");
+    if (clearBtn) clearBtn.style.display = s.localRefImage ? "block" : "none";
+    const denoiseWrap = document.getElementById("qig-local-denoise-wrap");
+    if (denoiseWrap) denoiseWrap.style.display = s.localRefImage && s.localType === "a1111" ? "block" : "none";
+}
+
+function syncNanobananaNbpVisibility(s = getSettings()) {
+    ensureProviderSectionAttached("nanobanana");
+    const nbpOptions = document.getElementById("qig-nanobanana-nbp-options");
+    if (nbpOptions) nbpOptions.style.display = s.nanobananaNbpMode !== false ? "block" : "none";
+    const nbpCustom = document.getElementById("qig-nanobanana-custom-director-wrap");
+    if (nbpCustom) nbpCustom.style.display = normalizeNbpDirectorPreset(s.nanobananaNbpPreset) === "custom" ? "block" : "none";
+}
+
 function refreshProviderInputs(provider, { updateProviderVisibility = true } = {}) {
     const s = getSettings();
+    // This provider's fields may be parked out of the document; they have to be back in it
+    // before anything below can find them by id.
+    ensureProviderSectionAttached(provider);
     const map = {
         pollinations: [["qig-pollinations-model", "pollinationsModel"]],
         novelai: [["qig-nai-key", "naiKey"], ["qig-nai-model", "naiModel"], ["qig-nai-proxy-url", "naiProxyUrl"], ["qig-nai-proxy-key", "naiProxyKey"]],
@@ -16574,6 +16842,7 @@ function refreshProviderInputs(provider, { updateProviderVisibility = true } = {
         if (hiresDenoise) hiresDenoise.textContent = String(s.a1111HiresDenoise ?? 0.55);
         const ipWeight = document.getElementById("qig-a1111-ipadapter-weight-val");
         if (ipWeight) ipWeight.textContent = String(s.a1111IpAdapterWeight ?? 0.7);
+        syncLocalReferencePreview(s);
     }
 
     // Update reference images display
@@ -16600,7 +16869,10 @@ function refreshProviderInputs(provider, { updateProviderVisibility = true } = {
         renderRefImages();
         updateProxyCompatibilityUI();
     }
-    if (provider === "nanobanana") renderNanobananaRefImages();
+    if (provider === "nanobanana") {
+        renderNanobananaRefImages();
+        syncNanobananaNbpVisibility(s);
+    }
     if (provider === "nanogpt") {
         renderNanogptRefImages();
         const model = String(s.nanogptModel || "").trim();
@@ -16619,11 +16891,38 @@ function refreshProviderInputs(provider, { updateProviderVisibility = true } = {
     if (updateProviderVisibility) updateProviderUI();
 }
 
+// Only the active provider's controls stay in the document. The other seventeen sections are
+// parked out of it, keeping their nodes, values, and listeners, so they cannot be reached by
+// the settings search, the tab order, or a screen reader. Detaching preserves everything;
+// ensureProviderSectionAttached must run before any code reads that provider's fields by id.
+const parkedProviderSections = new Map();
+
+function ensureProviderSectionAttached(provider) {
+    const id = `qig-${provider}-settings`;
+    const parked = parkedProviderSections.get(id);
+    if (parked) {
+        parked.placeholder.replaceWith(parked.node);
+        parkedProviderSections.delete(id);
+    }
+    return document.getElementById(id);
+}
+
+function parkInactiveProviderSections(activeProvider) {
+    const activeId = `qig-${activeProvider}-settings`;
+    document.querySelectorAll(".qig-provider-section").forEach(node => {
+        if (!node.id || node.id === activeId) return;
+        const placeholder = document.createComment(node.id);
+        node.replaceWith(placeholder);
+        parkedProviderSections.set(node.id, { node, placeholder });
+    });
+}
+
 function updateProviderUI() {
     const s = getSettings();
+    const section = ensureProviderSectionAttached(s.provider);
     document.querySelectorAll(".qig-provider-section").forEach(el => el.style.display = "none");
-    const section = document.getElementById(`qig-${s.provider}-settings`);
     if (section) section.style.display = "block";
+    parkInactiveProviderSections(s.provider);
 
     const advancedSettingsEl = document.getElementById("qig-advanced-settings");
     const advancedShell = advancedSettingsEl?.closest(".qig-advanced-settings-shell");
@@ -17215,6 +17514,10 @@ function buildOptions(items, selectedValue, labelFn) {
 
 function createUI() {
     clearCache();
+    // The old panel is torn down below; parked provider sections belonged to it and must not be
+    // re-attached into the new one, or the new panel's freshly built section stays parked and
+    // refreshProviderInputs would write into a detached node.
+    parkedProviderSections.clear();
     document.querySelectorAll("#qig-settings").forEach(el => el.remove());
     const s = getSettings();
     if (s.provider === "novelai") normalizeSize(s);
@@ -17228,6 +17531,9 @@ function createUI() {
     const sectionContextExpanded = collapsed.sectionContext ? "false" : "true";
     const sectionAutomationHidden = collapsed.sectionAutomation ? "hidden" : "";
     const sectionAutomationExpanded = collapsed.sectionAutomation ? "false" : "true";
+    const a1111TuningCollapsed = isQigSectionCollapsed(collapsed, "a1111Tuning");
+    const a1111TuningHidden = a1111TuningCollapsed ? "hidden" : "";
+    const a1111TuningExpanded = a1111TuningCollapsed ? "false" : "true";
     const promptAdvancedHidden = collapsed.promptAdvanced ? "hidden" : "";
     const promptAdvancedExpanded = collapsed.promptAdvanced ? "false" : "true";
     const injectOptionsCollapsed = collapsed.injectOptions && !s.injectEnabled;
@@ -17285,7 +17591,6 @@ function createUI() {
                 <div class="qig-menu-hero">
                     <div class="qig-menu-hero__summary">
                         <span id="qig-status-eyebrow" class="qig-menu-eyebrow">Ready to generate</span>
-                        <div class="qig-menu-title">Quick Image Gen</div>
                         <div id="qig-status-meta" class="qig-menu-meta">
                             <span>${esc(activeProviderName)}</span>
                             <span>${esc(activeStyleName)}</span>
@@ -17302,12 +17607,12 @@ function createUI() {
                             <select id="qig-preset-select" class="qig-inline-control__main"></select>
                             <button id="qig-preset-save-quick" class="menu_button" title="Save current settings as a new preset"><span class="fa-solid fa-bookmark" aria-hidden="true"></span></button>
                         </div>
-                        <small>Recipes bundling provider, style, and prompt behavior. Pick one, tweak the prompt, hit Generate.</small>
+                        <small>Presets bundle provider, style, and prompt behavior. Pick one, tweak the prompt, hit Generate.</small>
                     </div>
                     <div class="qig-field">
                         <label for="qig-prompt">Prompt</label>
                         <textarea id="qig-prompt" rows="3" aria-describedby="qig-prompt-help">${esc(s.prompt)}</textarea>
-                        <small id="qig-prompt-help">Used for manual generation, or as scene context when LLM prompt is enabled.</small>
+                        <small id="qig-prompt-help">Sent as your image prompt. The optional LLM rewrite still applies if enabled.</small>
                     </div>
                     <div class="qig-field">
                         <label id="qig-prompt-source-label">Prompt source</label>
@@ -17483,7 +17788,7 @@ function createUI() {
                         <input type="file" id="qig-nanogpt-ref-input" accept="image/*" multiple style="display:none">
                         <div style="display:flex;gap:4px;align-items:center;">
                             <button id="qig-nanogpt-ref-btn" class="menu_button" style="padding:4px 8px;">📎 Files</button>
-                            <input id="qig-nanogpt-ref-url" type="text" placeholder="Paste image URL and press Enter" style="flex:1;font-size:11px;">
+                            <input id="qig-nanogpt-ref-url" type="text" placeholder="Paste image URL and press Enter" style="flex:1;font-size: 12px;">
                         </div>
                     </div>
                 </div>
@@ -17673,7 +17978,7 @@ function createUI() {
                             <span>Upscale Output</span>
                             <small>(run upscale model after generation)</small>
                          </label>
-                         <div id="qig-comfy-upscale-opts" style="display:${s.comfyUpscale ? 'block' : 'none'}; margin-left:24px; border-left:2px solid rgba(255,255,255,0.1); padding-left:10px;">
+                         <div id="qig-comfy-upscale-opts" style="display:${s.comfyUpscale ? 'block' : 'none'}; margin-left:24px; border-left:2px solid var(--qig-line); padding-left:10px;">
                              <label>Upscale Model</label>
                              <input id="qig-comfy-upscale-model" type="text" value="${esc(s.comfyUpscaleModel || "RealESRGAN_x4plus.pth")}" placeholder="RealESRGAN_x4plus.pth">
                              <small>Must match filename in ComfyUI models/upscale_models/</small>
@@ -17683,7 +17988,7 @@ function createUI() {
                              <span>Skip Negative Prompt</span>
                              <small>(reuse positive conditioning for models that do not use negatives)</small>
                          </label>
-                         <div id="qig-comfy-flux-opts" style="display:${normalizeComfyModelLoader(s.comfyModelLoader, s) === "unet" ? "block" : "none"}; margin-left:24px; border-left:2px solid rgba(255,255,255,0.1); padding-left:10px;">
+                         <div id="qig-comfy-flux-opts" style="display:${normalizeComfyModelLoader(s.comfyModelLoader, s) === "unet" ? "block" : "none"}; margin-left:24px; border-left:2px solid var(--qig-line); padding-left:10px;">
                             <div class="form-hint">Diffusion/UNET models require separate CLIP and VAE filenames before generation.</div>
                             <div class="qig-row">
                                 <div><label>CLIP Model 1</label><input id="qig-comfy-flux-clip1" type="text" value="${esc(s.comfyFluxClipModel1 || "")}" placeholder="t5xxl_fp16.safetensors"><small>From models/text_encoders/</small></div>
@@ -17723,6 +18028,14 @@ function createUI() {
                          <label>LoRAs (name:weight, comma-separated)</label>
                          <small>Always applied. For scene-specific LoRAs, use Contextual Filters.</small>
                          <input id="qig-a1111-loras" type="text" value="${esc(s.a1111Loras || "")}" placeholder="my_lora:0.8, detail_lora:0.6">
+                         <button id="qig-a1111-tuning-toggle" type="button" class="qig-collapsible__header qig-inline-collapsible" aria-expanded="${a1111TuningExpanded}" aria-controls="qig-a1111-tuning-content">
+                             <span>
+                                 <span class="qig-card-title">Model tuning</span>
+                                 <small>VAE, CLIP skip, scheduler, face restore, tiling, and variation seed.</small>
+                             </span>
+                             <span class="qig-collapsible__icon fa-solid ${a1111TuningCollapsed ? "fa-chevron-right" : "fa-chevron-down"}" aria-hidden="true"></span>
+                         </button>
+                         <div id="qig-a1111-tuning-content" class="qig-collapsible__content" ${a1111TuningHidden}>
                          <label>VAE</label>
                          <select id="qig-a1111-vae">
                              <option value="" ${!s.a1111Vae ? "selected" : ""}>Automatic</option>
@@ -17745,6 +18058,7 @@ function createUI() {
                          <div class="qig-row" style="margin-top:4px;">
                              <div><label>Variation Seed</label><input id="qig-a1111-subseed" type="number" value="${esc(s.a1111Subseed ?? -1)}"><small>-1 = random. Blends with main seed</small></div>
                              <div><label>Variation Strength</label><input id="qig-a1111-subseed-strength" type="number" value="${esc(s.a1111SubseedStrength ?? 0)}" min="0" max="1" step="0.05"><small>0 = no effect, 1 = full variation</small></div>
+                         </div>
                          </div>
                          <label class="checkbox_label" style="margin-top:8px;">
                              <input id="qig-a1111-hires" type="checkbox" ${s.a1111HiresFix ? "checked" : ""}>
@@ -17812,7 +18126,7 @@ function createUI() {
                                  <input id="qig-a1111-ad2-enable" type="checkbox" ${s.a1111Adetailer2 ? "checked" : ""}>
                                  <span>ADetailer Unit 2 (e.g. hands)</span>
                              </label>
-                             <div id="qig-a1111-ad2-opts" style="display:${s.a1111Adetailer2 ? 'block' : 'none'}; margin-left:12px; border-left:2px solid rgba(255,255,255,0.1); padding-left:10px;">
+                             <div id="qig-a1111-ad2-opts" style="display:${s.a1111Adetailer2 ? 'block' : 'none'}; margin-left:12px; border-left:2px solid var(--qig-line); padding-left:10px;">
                                  <label>Model</label>
                                  <select id="qig-a1111-ad2-model">
                                      <option value="face_yolov8n.pt" ${s.a1111Adetailer2Model === "face_yolov8n.pt" ? "selected" : ""}>Face YOLOv8n</option>
@@ -17952,9 +18266,9 @@ function createUI() {
                              </div>
                              <label>Control Image</label>
                              <div style="display:flex;gap:4px;align-items:center;">
-                                 <img id="qig-a1111-cn-preview" src="${esc(s.a1111ControlNetImage || '')}" alt="ControlNet reference preview" style="width:40px;height:40px;object-fit:cover;border-radius:4px;display:${s.a1111ControlNetImage ? 'block' : 'none'};background:var(--qig-surface-soft);">
+                                 <img id="qig-a1111-cn-preview"${s.a1111ControlNetImage ? ` src="${esc(s.a1111ControlNetImage)}"` : ""} alt="ControlNet reference preview" style="width:40px;height:40px;object-fit:cover;border-radius:4px;display:${s.a1111ControlNetImage ? 'block' : 'none'};background:var(--qig-surface-soft);">
                                  <button id="qig-a1111-cn-upload-btn" class="menu_button" style="flex:1;">📎 Upload Control Image</button>
-                                 <button id="qig-a1111-cn-clear-btn" class="menu_button" style="width:30px;color:#e94560;display:${s.a1111ControlNetImage ? 'block' : 'none'};">×</button>
+                                 <button id="qig-a1111-cn-clear-btn" class="menu_button" style="width:30px;color:var(--qig-danger);display:${s.a1111ControlNetImage ? 'block' : 'none'};">×</button>
                              </div>
                              <input type="file" id="qig-a1111-cn-upload" accept="image/*" style="display:none">
                              <div class="form-hint">Upload a preprocessed control image (edge map, depth map, pose, etc.) or let the preprocessor extract it</div>
@@ -17963,9 +18277,9 @@ function createUI() {
                     <hr style="margin:8px 0;opacity:0.2;">
                     <label>Reference Image</label>
                     <div style="display:flex;gap:4px;align-items:center;">
-                        <img id="qig-local-ref-preview" src="${esc(s.localRefImage || '')}" alt="Local reference image preview" style="width:40px;height:40px;object-fit:cover;border-radius:4px;display:${s.localRefImage ? 'block' : 'none'};background:var(--qig-surface-soft);">
+                        <img id="qig-local-ref-preview"${s.localRefImage ? ` src="${esc(s.localRefImage)}"` : ""} alt="Local reference image preview" style="width:40px;height:40px;object-fit:cover;border-radius:4px;display:${s.localRefImage ? 'block' : 'none'};background:var(--qig-surface-soft);">
                         <button id="qig-local-ref-btn" class="menu_button" style="flex:1;">📎 Upload Source</button>
-                        <button id="qig-local-ref-clear" class="menu_button" style="width:30px;color:#e94560;display:${s.localRefImage ? 'block' : 'none'};">×</button>
+                        <button id="qig-local-ref-clear" class="menu_button" style="width:30px;color:var(--qig-danger);display:${s.localRefImage ? 'block' : 'none'};">×</button>
                     </div>
                     <input type="file" id="qig-local-ref-input" accept="image/*" style="display:none">
                     <div id="qig-local-denoise-wrap" style="display:${s.localType === "a1111" && s.localRefImage ? "block" : "none"};margin-top:4px;">
@@ -18080,7 +18394,7 @@ function createUI() {
                     <input type="file" id="qig-proxy-ref-input" accept="image/*" multiple style="display:none">
                     <div style="display:flex;gap:4px;align-items:center;">
                         <button id="qig-proxy-ref-btn" class="menu_button" style="padding:4px 8px;">📎 Files</button>
-                        <input id="qig-proxy-ref-url" type="text" placeholder="Paste image URL and press Enter" style="flex:1;font-size:11px;">
+                        <input id="qig-proxy-ref-url" type="text" placeholder="Paste image URL and press Enter" style="flex:1;font-size: 12px;">
                     </div>
                     </div>
                 </div>
@@ -18117,7 +18431,7 @@ function createUI() {
                     <input id="qig-custom-key" type="password" value="${esc(s.customApiKey)}" autocomplete="off">
                     <small id="qig-custom-auth-hint" class="qig-muted">Credentials and trusted URLs stay local and are omitted when importing shared settings.</small>
 
-                    <div class="qig-card-title" style="margin-top:12px;">Request mapping <small>(saved in generation recipes)</small></div>
+                    <div class="qig-card-title" style="margin-top:12px;">Request mapping <small>(saved in generation presets)</small></div>
                     <div class="qig-row">
                         <div>
                             <label>Starter</label>
@@ -18175,8 +18489,8 @@ function createUI() {
                 <section class="qig-menu-section qig-menu-section--prompt qig-menu-section--collapsible qig-flow-create" aria-labelledby="qig-prompt-heading">
                     <button id="qig-section-create-toggle" type="button" class="qig-collapsible__header qig-section-header-toggle" aria-expanded="${sectionCreateExpanded}" aria-controls="qig-section-create-content">
                         <span class="qig-section-header-text">
-                            <h3 id="qig-prompt-heading" class="qig-section-kicker">Recipes &amp; Prompting</h3>
-                            <small class="qig-section-subtitle">Manage generation recipes, plain descriptions, presets, and LLM prompt rewriting.</small>
+                            <h3 id="qig-prompt-heading" class="qig-section-kicker">Presets &amp; Prompting</h3>
+                            <small class="qig-section-subtitle">Manage generation presets, plain descriptions, and LLM prompt rewriting.</small>
                         </span>
                         <span class="qig-collapsible__icon fa-solid ${collapsed.sectionCreate ? "fa-chevron-right" : "fa-chevron-down"}" aria-hidden="true"></span>
                     </button>
@@ -18184,12 +18498,12 @@ function createUI() {
                     <div class="qig-action-strip">
                         <button id="qig-chatgpt-nbp-setup" class="menu_button qig-inline-action" title="Set QIG for ChatGPT prompt writing and Nano Banana Pro image rendering"><span class="fa-solid fa-wand-magic-sparkles"></span><span>ChatGPT + NBP</span></button>
                         <button id="qig-plain-desc-btn" class="menu_button" title="Write a plain-language image description and let the AI turn it into a prompt"><span class="fa-solid fa-pen-to-square"></span><span>Plain Description</span></button>
-                        <button id="qig-save-preset" class="menu_button" title="Save the current generation recipe"><span class="fa-solid fa-bookmark"></span><span>Save Recipe</span></button>
+                        <button id="qig-save-preset" class="menu_button" title="Save the current settings as a preset"><span class="fa-solid fa-bookmark"></span><span>Save Preset</span></button>
                         <button id="qig-export-btn" class="menu_button"><span class="fa-solid fa-file-export"></span><span>Export</span></button>
                         <button id="qig-import-btn" class="menu_button"><span class="fa-solid fa-file-import"></span><span>Import</span></button>
                     </div>
                     <div id="qig-presets" class="qig-presets"></div>
-                    <small class="qig-muted">Recipes save generation behavior, not credentials or every provider option. Connection profiles save the active provider's private setup.</small>
+                    <small class="qig-muted">Presets save generation behavior, not credentials or every provider option. Connection profiles save the active provider's private setup.</small>
 
                     <button id="qig-prompt-advanced-toggle" type="button" class="qig-collapsible__header qig-inline-collapsible" aria-expanded="${promptAdvancedExpanded}" aria-controls="qig-prompt-advanced-content">
                         <span>
@@ -18428,7 +18742,7 @@ function createUI() {
                         </div>
                         <small>Supports {{char}}, {{user}}. Default prompt tells the AI to put the image tag in the final visible reply, not inside reasoning or &lt;think&gt;.</small>
                         <label>Extraction regex</label>
-                        <input id="qig-inject-regex" type="text" value="${esc(s.injectRegex || '')}" style="width:100%;font-family:monospace;font-size:11px;">
+                        <input id="qig-inject-regex" type="text" value="${esc(s.injectRegex || '')}" style="width:100%;font-family:monospace;font-size: 12px;">
                         <div class="qig-template-actions">
                             <button id="qig-inject-regex-reset" type="button" class="menu_button">Reset to default</button>
                         </div>
@@ -18479,11 +18793,11 @@ function createUI() {
                     </label>
                     <small>Route image prompt generation to a different AI model than your main chat</small>
                     <div id="qig-llm-override-options" style="display:${s.llmOverrideEnabled ? 'block' : 'none'};margin-top:6px;">
-                        <label style="font-size:11px;">Connection Profile</label>
+                        <label style="font-size: 12px;">Connection Profile</label>
                         <select id="qig-llm-override-profile" style="width:100%;"></select>
-                        <label style="font-size:11px;margin-top:4px;">Completion Preset (optional)</label>
+                        <label style="font-size: 12px;margin-top:4px;">Completion Preset (optional)</label>
                         <select id="qig-llm-override-preset-select" style="width:100%;"></select>
-                        <label style="font-size:11px;margin-top:4px;">Max Tokens</label>
+                        <label style="font-size: 12px;margin-top:4px;">Max Tokens</label>
                         <input id="qig-llm-override-max" type="number" value="${esc(s.llmOverrideMaxTokens || 500)}" min="50" max="4096" style="width:100%;">
                     </div>
                     </div>
@@ -18643,6 +18957,7 @@ function createUI() {
     setupQigCollapsibleSection("promptAdvanced", "qig-prompt-advanced-toggle", "qig-prompt-advanced-content");
     setupQigCollapsibleSection("injectOptions", "qig-inject-options-toggle", "qig-inject-options");
     setupQigCollapsibleSection("advancedSettings", "qig-advanced-settings-toggle", "qig-advanced-settings");
+    setupQigCollapsibleSection("a1111Tuning", "qig-a1111-tuning-toggle", "qig-a1111-tuning-content");
     setupSettingsSearch();
     bindQigKeyboardShortcuts();
     renderPresets();
@@ -19755,6 +20070,8 @@ function showPalettePresetMenu(event) {
     const menu = document.createElement("div");
     menu.id = "qig-palette-preset-menu";
     menu.className = "qig-palette-preset-menu";
+    menu.setAttribute("role", "menu");
+    menu.setAttribute("aria-label", "Generation presets");
 
     const title = document.createElement("div");
     title.className = "qig-palette-preset-menu__title";
@@ -19764,12 +20081,13 @@ function showPalettePresetMenu(event) {
     if (!generationPresets.length) {
         const emptyState = document.createElement("div");
         emptyState.className = "qig-palette-preset-menu__empty";
-        emptyState.textContent = "No presets saved yet.";
+        emptyState.textContent = "No presets saved yet. Save one with the bookmark button next to Preset.";
         menu.appendChild(emptyState);
     } else {
         for (const [index, preset] of generationPresets.entries()) {
             const button = document.createElement("button");
             button.type = "button";
+            button.setAttribute("role", "menuitem");
             button.className = `menu_button qig-palette-preset-menu__item${preset?.id === activePresetId ? " qig-palette-preset-menu__item--active" : ""}`;
             button.textContent = `${preset?.id === activePresetId ? "✓ " : ""}${preset?.name || `Preset ${index + 1}`}`;
             button.onclick = (clickEvent) => {
@@ -19780,6 +20098,21 @@ function showPalettePresetMenu(event) {
             menu.appendChild(button);
         }
     }
+
+    menu.onkeydown = (keyEvent) => {
+        const items = [...menu.querySelectorAll(".qig-palette-preset-menu__item")];
+        if (!items.length) return;
+        const current = items.indexOf(document.activeElement);
+        let next = -1;
+        if (keyEvent.key === "ArrowDown") next = current < items.length - 1 ? current + 1 : 0;
+        else if (keyEvent.key === "ArrowUp") next = current > 0 ? current - 1 : items.length - 1;
+        else if (keyEvent.key === "Home") next = 0;
+        else if (keyEvent.key === "End") next = items.length - 1;
+        if (next >= 0) {
+            keyEvent.preventDefault();
+            items[next].focus();
+        }
+    };
 
     menu.style.visibility = "hidden";
     document.body.appendChild(menu);
@@ -19800,6 +20133,15 @@ function showPalettePresetMenu(event) {
         menu.style.visibility = "visible";
     };
     placeMenu();
+    // Keyboard users can only drive the menu once focus is inside it. preventScroll matters:
+    // the menu closes itself on any scroll event.
+    menu.querySelector(".qig-palette-preset-menu__item")?.focus({ preventScroll: true });
+    // The host's a11y observer stamps role="button" on every .menu_button after insertion,
+    // clobbering the menuitem role set at build time; re-assert it once that has run.
+    setTimeout(() => {
+        if (!menu.isConnected) return;
+        menu.querySelectorAll(".qig-palette-preset-menu__item").forEach(item => item.setAttribute("role", "menuitem"));
+    }, 0);
 
     const closeOnPointerDown = (pointerEvent) => {
         if (menu.contains(pointerEvent.target) || anchor?.contains(pointerEvent.target)) return;
@@ -20256,7 +20598,7 @@ async function generateImageInjectPalette() {
         // Reported once for the whole message rather than once per matched tag.
         if (generatedCount > 0) {
             const failedSuffix = failedCount > 0 ? `; ${failedCount} failed` : "";
-            qigToast.success(`Palette inject: ${generatedCount} image(s) generated${failedSuffix}`);
+            qigToast.success(`Palette inject: ${plural(generatedCount, "image")} generated${failedSuffix}`);
         }
         return {
             status: failedCount > 0 ? "partial" : "success",
@@ -20529,7 +20871,7 @@ async function generateImage() {
 
     debugLog(`Base prompt: ${basePrompt.substring(0, 100)}...`);
     const batchCount = normalizeBatchCount(s.batchCount);
-    showStatus(`🎨 Generating ${batchCount} image(s)...`);
+    showStatus(`🎨 Generating ${plural(batchCount, "image")}...`);
 
     const originalLLMPromptSource = scenePrompt || basePrompt;
     let llmPromptSource = originalLLMPromptSource;
