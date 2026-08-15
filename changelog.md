@@ -19,6 +19,7 @@
 - PR #760 (2026-08-15) `fix(mobile): stop the viewport jumping while typing on mobile`
 - PR #761 (2026-08-15) `chore: fix the graphify guard regex matching its own filename`
 - PR #762 (2026-08-15) `fix(server): reworks port handling on Windows+Bun (#710)`
+- PR #763 (2026-08-15) `chore: update Quick Image Gen to 3.1.1`
 
 ## v1.7.0
 
