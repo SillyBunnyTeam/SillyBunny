@@ -597,18 +597,18 @@ describe('mobile shell lifecycle wiring', () => {
     test('settles mobile viewport reset without reapplying the fixed-position workaround', () => {
         expect(browserFixesSource).toContain('import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from \'./mobile-send-button.js\';');
         expect(browserFixesSource).toContain('function addDocumentViewportAnchorPatch({ suspendWhileEditing = false } = {}) {');
-        expect(browserFixesSource).toContain('function isMobileShellPanelEditable(element) {');
+        expect(browserFixesSource).toContain('const wouldResetHideFocusedEditable = () => {');
         expect(browserFixesSource).toContain('const shouldSuspendDocumentScrollReset = () => suspendWhileEditing');
         expect(browserFixesSource).toContain('&& isEditableFocusTarget(document.activeElement)');
-        expect(browserFixesSource).toContain('&& !isMobileShellPanelEditable(document.activeElement)');
         expect(browserFixesSource).toContain('const isComposerHeldAboveKeyboard = () => isLegacyIOSWebKitPlatform()');
-        expect(browserFixesSource).toContain('&& !isComposerHeldAboveKeyboard();');
+        expect(browserFixesSource).toContain('&& !isComposerHeldAboveKeyboard()');
+        expect(browserFixesSource).toContain('&& wouldResetHideFocusedEditable();');
         expect(browserFixesSource).toContain('if (shouldSuspendDocumentScrollReset()) {');
         expect(browserFixesSource).toContain('if (resetScheduled || shouldSuspendDocumentScrollReset()) {');
         expect(browserFixesSource).toContain('document.addEventListener(\'focusout\', scheduleDocumentScrollReset, true);');
         expect(browserFixesSource).toContain('const isMobileViewport = isMobile();');
         expect(browserFixesSource).toContain('const isIOSWebKit = isIOSWebKitPlatform();');
-        expect(browserFixesSource).toContain('addDocumentViewportAnchorPatch({ suspendWhileEditing: isIOSWebKit });');
+        expect(browserFixesSource).toContain('addDocumentViewportAnchorPatch({ suspendWhileEditing: true });');
         expect(browserFixesSource).toContain('const viewportResetSettleMs = 360;');
         expect(browserFixesSource).toContain('const resetTransientViewportPosition = ({ restoreScroll = false } = {}) => {');
         expect(browserFixesSource).toContain('const scheduleViewportReset = ({ restoreScroll = false } = {}) => {');
@@ -617,6 +617,18 @@ describe('mobile shell lifecycle wiring', () => {
         expect(browserFixesSource).toContain('resetTransientViewportPosition({ restoreScroll });');
         expect(browserFixesSource).toContain('if (!force && viewportResetScheduled) {');
         expect(browserFixesSource).toContain('}, viewportResetSettleMs);');
+    });
+
+    test('keeps the document anchor from fighting the virtual keyboard', () => {
+        // Suspending by container let the anchor undo a caret reveal the focused
+        // field still depended on, so the browser revealed it again every
+        // keystroke. Visibility decides instead, and no container may reintroduce
+        // a blanket carve-out.
+        expect(browserFixesSource).not.toContain('isMobileShellPanelEditable');
+        expect(browserFixesSource).not.toContain('sb-shell-panel-scroller');
+        expect(browserFixesSource).toContain('if ((window.innerHeight || 0) - viewport.height <= 80 && viewport.offsetTop <= 2) {');
+        expect(browserFixesSource).toContain('const scrollTop = Math.max(window.scrollY || 0, document.scrollingElement?.scrollTop || 0);');
+        expect(browserFixesSource).toContain('return activeElement.getBoundingClientRect().bottom + scrollTop > viewport.height - 8;');
     });
 
     test('dedupes rail quick actions against all built-in rail actions', () => {
