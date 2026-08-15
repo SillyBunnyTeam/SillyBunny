@@ -46,7 +46,14 @@ import {
     SUPERVISED_ENV as RESTART_SUPERVISED_ENV,
 } from '../server-supervisor.js';
 
-const GIT_OPTIONS = Object.freeze({ timeout: { block: 10 * 60 * 1000 } });
+const GIT_OPTIONS = Object.freeze({
+    timeout: { block: 10 * 60 * 1000 },
+    // Keep update-time git from detaching background maintenance: under
+    // released Bun builds on Windows a detached child inherits the listen
+    // socket handle and keeps the port bound across the restart (#710,
+    // oven-sh/bun#36936).
+    config: ['gc.auto=0', 'maintenance.auto=false'],
+});
 const RESTART_RESPONSE_DELAY_MS = 200;
 const CHAT_COMPLETION_CONFIG_DEFAULTS = Object.freeze({
     claude: Object.freeze({
@@ -422,7 +429,7 @@ function scheduleRestart(response, { reloadSupervisor = false } = {}) {
             const canReloadSupervisor = process.env[RESTART_LAUNCHER_ENV] === '1';
             const exitCode = reloadSupervisor && canReloadSupervisor ? SUPERVISOR_RELOAD_EXIT_CODE : RESTART_EXIT_CODE;
             if (reloadSupervisor && !canReloadSupervisor) {
-                console.warn('No outer launcher detected; restarting the server child, but a top-level restart is required to load updated supervisor code.');
+                console.info('Restarting the server with the updated code now. The lightweight supervisor process keeps its current code until the next full stop/start; launching through Start.bat or start.sh lets updates reload it automatically.');
             }
             console.info(`Restart requested; exiting with code ${exitCode} for relaunch.`);
             requestGracefulExit(exitCode);

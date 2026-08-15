@@ -147,7 +147,7 @@ describe('listen retry on an occupied port', () => {
 
         expect(attemptFn).toHaveBeenCalledTimes(3);
         expect(onRetry).toHaveBeenCalledTimes(2);
-        expect(onRetry).toHaveBeenNthCalledWith(1, 1, 10);
+        expect(onRetry).toHaveBeenNthCalledWith(1, 1, 40);
     });
 
     test('gives up after the attempt cap and rethrows the original error', async () => {
@@ -170,11 +170,80 @@ describe('listen retry on an occupied port', () => {
         expect(onRetry).not.toHaveBeenCalled();
     });
 
-    test('defaults to a bounded multi-second window', async () => {
+    test('defaults to a bounded window of about a minute', async () => {
         const { LISTEN_RETRY_ATTEMPTS, LISTEN_RETRY_DELAY_MS } = await loadListenModule();
 
-        expect(LISTEN_RETRY_ATTEMPTS).toBe(10);
-        expect(LISTEN_RETRY_DELAY_MS).toBe(500);
+        expect(LISTEN_RETRY_ATTEMPTS).toBe(40);
+        expect(LISTEN_RETRY_DELAY_MS).toBe(1500);
+        // Long enough to outlast an update straggler holding an inherited
+        // socket handle, short enough that a genuine conflict still surfaces.
+        const windowMs = (LISTEN_RETRY_ATTEMPTS - 1) * LISTEN_RETRY_DELAY_MS;
+        expect(windowMs).toBeGreaterThanOrEqual(45_000);
+        expect(windowMs).toBeLessThanOrEqual(120_000);
+    });
+});
+
+describe('port holder diagnostics', () => {
+    const NETSTAT_OUTPUT = [
+        'Active Connections',
+        '',
+        '  Proto  Local Address          Foreign Address        State           PID',
+        '  TCP    127.0.0.1:4444         0.0.0.0:0              LISTENING       4321',
+        '  TCP    127.0.0.1:4444         127.0.0.1:52001        TIME_WAIT       0',
+        '  TCP    127.0.0.1:44440       0.0.0.0:0              LISTENING       9999',
+        '  TCP    [::1]:4444             [::]:0                 LISTENING       4321',
+        '  UDP    0.0.0.0:5353           *:*                                    777',
+    ].join('\r\n');
+
+    test('parses only the TCP rows of the requested port', async () => {
+        const { parseNetstatPortRows } = await loadListenModule();
+
+        const rows = parseNetstatPortRows(NETSTAT_OUTPUT, 4444);
+
+        expect(rows).toEqual([
+            { local: '127.0.0.1:4444', state: 'LISTENING', pid: 4321 },
+            { local: '127.0.0.1:4444', state: 'TIME_WAIT', pid: 0 },
+            { local: '[::1]:4444', state: 'LISTENING', pid: 4321 },
+        ]);
+    });
+
+    test('reads a process name from tasklist CSV output and misses cleanly', async () => {
+        const { parseTasklistProcessName } = await loadListenModule();
+
+        expect(parseTasklistProcessName('"bun.exe","4321","Console","1","120,000 K"', 4321)).toBe('bun.exe');
+        expect(parseTasklistProcessName('INFO: No tasks are running which match the specified criteria.', 4321)).toBeNull();
+        expect(parseTasklistProcessName('', 4321)).toBeNull();
+    });
+
+    test('names a live Windows holder and flags a dead one as an inherited handle', async () => {
+        const { describePortHolders, BUN_SOCKET_INHERIT_ISSUE_URL } = await loadListenModule();
+        const liveRunner = jest.fn(async (command) => command === 'netstat'
+            ? '  TCP    127.0.0.1:4444    0.0.0.0:0    LISTENING    4321'
+            : '"bun.exe","4321","Console","1","120,000 K"');
+        const deadRunner = jest.fn(async (command) => command === 'netstat'
+            ? '  TCP    127.0.0.1:4444    0.0.0.0:0    LISTENING    4321'
+            : 'INFO: No tasks are running which match the specified criteria.');
+
+        const liveLines = await describePortHolders(4444, { runCommand: liveRunner, platform: 'win32' });
+        expect(liveLines).toEqual(['Port 4444 is held open by "bun.exe" (PID 4321).']);
+
+        const deadLines = await describePortHolders(4444, { runCommand: deadRunner, platform: 'win32' });
+        expect(deadLines).toHaveLength(1);
+        expect(deadLines[0]).toContain('no longer running');
+        expect(deadLines[0]).toContain(BUN_SOCKET_INHERIT_ISSUE_URL);
+    });
+
+    test('relays raw socket tool output on POSIX and stays quiet when tools fail', async () => {
+        const { describePortHolders } = await loadListenModule();
+        const ssRunner = jest.fn(async (command) => command === 'ss'
+            ? 'LISTEN 0 511 127.0.0.1:4444 0.0.0.0:* users:(("node",pid=4321,fd=20))\n'
+            : '');
+        const failingRunner = jest.fn(async () => '');
+
+        const lines = await describePortHolders(4444, { runCommand: ssRunner, platform: 'linux' });
+        expect(lines).toEqual(['Port 4444: LISTEN 0 511 127.0.0.1:4444 0.0.0.0:* users:(("node",pid=4321,fd=20))']);
+
+        await expect(describePortHolders(4444, { runCommand: failingRunner, platform: 'linux' })).resolves.toEqual([]);
     });
 });
 
