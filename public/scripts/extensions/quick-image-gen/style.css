@@ -39,7 +39,7 @@
     margin: 0;
     font-size: 12px;
     font-weight: 700;
-    line-height: 1.25;
+    line-height: 1.35;
     color: var(--SmartThemeBodyColor);
 }
 
@@ -48,7 +48,7 @@
 .qig-muted {
     display: block;
     margin-top: 4px;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.45;
     color: var(--qig-text-soft, var(--SmartThemeBodyColor));
     opacity: 1;
@@ -121,7 +121,6 @@
     align-items: stretch;
     padding: 10px 0 8px;
     margin: -10px 0 -4px;
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent);
     border-bottom: 1px solid var(--qig-line);
 }
 
@@ -137,18 +136,26 @@
     position: absolute;
     inset: 0 -2px;
     z-index: -1;
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent);
+    background: var(--SmartThemeBlurTintColor);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
 }
 
 .qig-action-bar__secondary {
     min-width: 92px;
 }
 
+/* Anything scrolled to programmatically must clear the sticky action bar above it. */
+.qig-provider-section,
+.qig-menu-section {
+    scroll-margin-top: 116px;
+}
+
 .qig-shortcut-hint {
     padding: 2px 5px;
     border-radius: 5px;
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     line-height: 1;
 }
@@ -172,7 +179,7 @@
     align-self: center;
     max-width: 22ch;
     color: var(--qig-text-soft);
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.45;
 }
 
@@ -191,13 +198,6 @@
     margin: 0;
 }
 
-.qig-menu-title {
-    margin-top: 3px;
-    font-size: 16px;
-    font-weight: 750;
-    line-height: 1.2;
-}
-
 .qig-menu-meta {
     display: flex;
     flex-wrap: wrap;
@@ -213,7 +213,7 @@
     border-radius: 999px;
     color: var(--qig-text-soft);
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 74%, transparent);
-    font-size: 10px;
+    font-size: 11px;
     line-height: 1.2;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -265,7 +265,7 @@
     gap: 6px;
     min-width: 0;
     padding: 6px 8px;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.2;
     white-space: normal;
 }
@@ -279,7 +279,7 @@
 
 .qig-template-actions .menu_button {
     padding: 3px 10px;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.2;
 }
 
@@ -348,7 +348,7 @@
 }
 
 .qig-settings-search-status {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--qig-text-soft);
     padding-left: 2px;
@@ -407,7 +407,7 @@
 }
 
 .qig-section-header-text .qig-section-subtitle {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--qig-text-soft);
     line-height: 1.3;
 }
@@ -431,7 +431,7 @@
 .qig-section-header p {
     margin: 3px 0 0;
     color: var(--qig-text-soft);
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.5;
 }
 
@@ -613,7 +613,7 @@
 .qig-preset-chip .menu_button,
 .qig-preset-clear {
     padding: 2px 6px;
-    font-size: 10px;
+    font-size: 11px;
 }
 
 .qig-preset-chip .qig-preset-chip__delete {
@@ -690,7 +690,7 @@
 .qig-provider-ready strong {
     display: block;
     font-size: 12px;
-    line-height: 1.25;
+    line-height: 1.35;
 }
 
 .qig-status-pill {
@@ -700,7 +700,7 @@
     border-radius: 999px;
     color: var(--qig-text-soft);
     background: var(--qig-surface-soft);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 800;
     line-height: 1.2;
     white-space: nowrap;
@@ -788,7 +788,7 @@
     display: block;
     margin-bottom: 4px;
     color: var(--qig-text-soft);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
 }
 
@@ -921,7 +921,7 @@
     border: 1px solid var(--qig-line);
     border-radius: 999px;
     background: var(--qig-surface-soft);
-    font-size: 11px;
+    font-size: 12px;
 }
 
 .qig-context-media-item > span[title]:not(.fa-solid) {
@@ -1004,7 +1004,7 @@
     justify-content: center;
     gap: 6px;
     padding: 6px 10px;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.2;
 }
 
@@ -1175,7 +1175,7 @@
     padding: 3px 5px;
     background: var(--qig-scrim);
     color: #fff;
-    font-size: 9px;
+    font-size: 11px;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -1190,7 +1190,7 @@
     place-items: center;
     padding: 8px;
     color: var(--SmartThemeEmColor);
-    font-size: 11px;
+    font-size: 12px;
 }
 
 #qig-result-img {
@@ -1223,6 +1223,12 @@
     background: var(--SmartThemeQuoteColor);
 }
 
+.qig-popup-actions .qig-popup-action--primary {
+    background: color-mix(in srgb, var(--qig-accent) 24%, var(--SmartThemeBlurTintColor));
+    border-color: color-mix(in srgb, var(--qig-accent) 60%, transparent);
+    font-weight: 600;
+}
+
 #qig-logs-popup .qig-popup-content {
     width: 90vw;
     max-width: 600px;
@@ -1230,7 +1236,7 @@
 
 #qig-logs-content {
     text-align: left;
-    font-size: 11px;
+    font-size: 12px;
     max-height: 60vh;
     overflow-y: auto;
     white-space: pre-wrap;
@@ -1247,7 +1253,7 @@
 .qig-popup-form label {
     display: block;
     margin: 0;
-    font-size: 11px;
+    font-size: 12px;
     color: var(--SmartThemeBodyColor);
 }
 
@@ -1283,9 +1289,9 @@
 
 .qig-help {
     display: block;
-    font-size: 10px;
+    font-size: 12px;
     line-height: 1.45;
-    opacity: 0.72;
+    opacity: 0.85;
 }
 
 .qig-form-section {
@@ -1340,7 +1346,7 @@
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 8px;
     background: var(--qig-surface-soft);
-    font-size: 11px;
+    font-size: 12px;
 }
 
 .qig-pool-choice-name {
@@ -1356,7 +1362,7 @@
     padding: 2px 6px;
     border-radius: 999px;
     color: #fff;
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 700;
     line-height: 1;
 }
@@ -1380,44 +1386,16 @@
     background: var(--qig-surface);
 }
 
-.qig-filter-summary-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-}
-
-.qig-filter-summary-card {
-    padding: 8px 10px;
-    border-radius: 8px;
-    border: 1px solid var(--qig-line);
-    background: var(--qig-surface-soft);
-}
-
-.qig-filter-summary-label {
-    display: block;
-    font-size: 10px;
-    letter-spacing: 0.04em;
-    opacity: 0.72;
-    text-transform: uppercase;
-}
-
-.qig-filter-summary-card strong {
-    display: block;
-    margin-top: 4px;
-    font-size: 18px;
-    line-height: 1.1;
-}
-
-.qig-filter-summary-card small {
-    display: block;
-    margin-top: 4px;
-    font-size: 10px;
-    opacity: 0.68;
+.qig-filter-summary-line {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.4;
 }
 
 .qig-filter-summary-note {
     margin: 10px 0 12px;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.4;
     opacity: 0.76;
 }
@@ -1459,7 +1437,7 @@
     flex-direction: column;
     gap: 4px;
     min-width: min(280px, 100%);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.04em;
     opacity: 0.78;
@@ -1477,11 +1455,11 @@
 
 .qig-filter-manager-actions .menu_button {
     padding: 4px 10px;
-    font-size: 11px;
+    font-size: 12px;
 }
 
 .qig-filter-manager-summary {
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.4;
     opacity: 0.76;
 }
@@ -1520,7 +1498,7 @@
 
 .qig-manager-section-title {
     margin: 0 0 8px;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.04em;
     opacity: 0.72;
@@ -1532,7 +1510,7 @@
     align-items: center;
     gap: 6px;
     margin-bottom: 6px;
-    font-size: 11px;
+    font-size: 12px;
     padding: 2px 0;
     border-top: 2px solid transparent;
     border-bottom: 2px solid transparent;
@@ -1558,7 +1536,7 @@
     flex: 1;
     text-align: left;
     padding: 4px 8px;
-    font-size: 11px;
+    font-size: 12px;
 }
 
 .qig-manager-main-button--active {
@@ -1571,7 +1549,7 @@
 
 .qig-manager-icon-button {
     padding: 4px 6px;
-    font-size: 11px;
+    font-size: 12px;
 }
 
 .qig-filter-drag-handle {
@@ -1596,27 +1574,27 @@
 
 .qig-manager-copy-button {
     padding: 4px 8px;
-    font-size: 10px;
+    font-size: 11px;
     white-space: nowrap;
 }
 
 .qig-filter-status {
     min-width: 130px;
     text-align: right;
-    font-size: 10px;
+    font-size: 11px;
     opacity: 0.68;
 }
 
 .qig-manager-muted {
     margin-top: 8px;
-    font-size: 10px;
+    font-size: 12px;
     font-style: italic;
-    opacity: 0.58;
+    opacity: 0.8;
 }
 
 .qig-manager-muted-inline {
-    font-size: 10px;
-    opacity: 0.6;
+    font-size: 12px;
+    opacity: 0.8;
     white-space: nowrap;
 }
 
@@ -1670,6 +1648,14 @@
         max-width: 95%;
     }
 
+    /* Delete/remove controls inside popups need thumb-sized targets too. */
+    .qig-context-media-item button,
+    .qig-reference-image > button,
+    .qig-manager-icon-button {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
     .qig-popup-content--wide,
     .qig-popup-content--editor {
         width: 95%;
@@ -1714,7 +1700,6 @@
 
     .qig-form-grid,
     .qig-control-grid:not(.qig-generation-advanced-grid),
-    .qig-filter-summary-grid,
     .qig-filter-manager-grid,
     .qig-pool-choice-grid {
         grid-template-columns: 1fr;
@@ -1826,6 +1811,11 @@
     .qig-action-bar {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 6px;
+    }
+
+    .qig-provider-section,
+    .qig-menu-section {
+        scroll-margin-top: 180px;
     }
 
     #qig-generate-btn.qig-primary-action {
@@ -2010,7 +2000,7 @@
 }
 
 .qig-palette-preset-menu__title {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -2272,7 +2262,7 @@
 }
 
 .qig-status-warning {
-    font-size: 11px;
+    font-size: 12px;
     padding: 6px 10px;
     border-radius: 6px;
     border: 1px solid color-mix(in srgb, orange 45%, var(--qig-line));
@@ -2339,11 +2329,6 @@
     overflow-y: auto;
 }
 
-#qig-settings small[style*="font-size:10px"] {
-    font-size: 11px !important;
-    opacity: 0.85 !important;
-}
-
 /* Content rendered inside SillyTavern's own popups, which supply the frame. */
 .qig-dialog-title {
     margin: 0 0 8px;
@@ -2362,7 +2347,7 @@
     margin: 8px 0 0;
     padding: 6px 10px;
     border-radius: 6px;
-    font-size: 11px;
+    font-size: 12px;
     border: 1px solid color-mix(in srgb, orangered 50%, var(--qig-line));
     background: color-mix(in srgb, orangered 12%, transparent);
     color: var(--SmartThemeBodyColor);
