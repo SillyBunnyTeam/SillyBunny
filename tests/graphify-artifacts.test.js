@@ -22,6 +22,8 @@ describe('graphify artifacts', () => {
     });
 
     test('no generated graphify output is tracked', () => {
-        expect(trackedFiles.filter(file => /graphify/i.test(file))).toEqual([]);
+        // Match the generated directory, not the word: a bare /graphify/ also matches
+        // this file, so the guard failed on every branch that carried it.
+        expect(trackedFiles.filter(file => /(^|\/)graphify-out\//i.test(file))).toEqual([]);
     });
 });
