@@ -18,6 +18,7 @@
 - PR #758 (2026-08-14) `fix(ui): bulk edit no longer bunches up characters together`
 - PR #760 (2026-08-15) `fix(mobile): stop the viewport jumping while typing on mobile`
 - PR #761 (2026-08-15) `chore: fix the graphify guard regex matching its own filename`
+- PR #762 (2026-08-15) `fix(server): reworks port handling on Windows+Bun (#710)`
 
 ## v1.7.0
 
