@@ -20,6 +20,7 @@
 - PR #761 (2026-08-15) `chore: fix the graphify guard regex matching its own filename`
 - PR #762 (2026-08-15) `fix(server): reworks port handling on Windows+Bun (#710)`
 - PR #763 (2026-08-15) `chore: update Quick Image Gen to 3.1.1`
+- PR #764 (2026-08-16) `fix(ica): harden the separation between Companion Agent and Pre-generation Inline Agent trackers`
 
 ## v1.7.0
 
