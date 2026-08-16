@@ -1893,7 +1893,7 @@ describe('in-chat agent post-processing runner', () => {
         const reputationPrompt = extensionPrompts['inchat_agent_companion_reputation-companion'].value;
         const eventPrompt = extensionPrompts['inchat_agent_companion_event-companion'].value;
 
-        expect(reputationPrompt).toContain('HARD STOP for your reply: the bracket-format tracker notes above are read-only reference. A separate side-channel agent writes them and re-attaches them automatically after your reply, so any copy you write is a duplicate the user has to delete by hand. Do NOT reproduce, paraphrase, update, restate, or wrap any reply content in those tracker formats. Specifically, do not emit any of: [REP|...], [/REP], [EVENT|...], [/EVENT] (or variations of them). Partial, renamed, and unclosed versions count too: an opening tag with no closing tag is still a violation. Never repeat an "[... - auxiliary notes]" label. Produce your normal story reply only - never inline tracker blocks of your own.');
+        expect(reputationPrompt).toContain('HARD STOP for your reply: the Companion-owned bracket formats listed here are read-only reference. A separate side-channel agent writes and re-attaches those formats automatically after your reply, so copying them creates duplicates the user has to delete by hand. Do NOT reproduce, paraphrase, update, restate, or wrap reply content in the listed formats. Do not emit any of: [REP|...], [/REP], [EVENT|...], [/EVENT]. Opening one of these tags without its closing tag is still a violation. This restriction applies only to the exact tags listed here; continue following any separate instructions that require other pre-generation inline tracker formats. Never repeat an "[... - auxiliary notes]" label. Produce your normal story reply, including any other required inline tracker blocks.');
         expect(eventPrompt).not.toContain('HARD STOP');
         expect(extensionPrompts.inchat_agent_companion_tracker_echo_guard).toBeUndefined();
         expect(reputationPrompt).toContain('[REP|Guild|Warm|Trusted]');
@@ -1919,7 +1919,7 @@ describe('in-chat agent post-processing runner', () => {
         companionRunner.injectCompanionFeedbackPrompts([cyoaCompanion]);
         const injected = extensionPrompts['inchat_agent_companion_cyoa-companion'].value;
 
-        expect(injected).toContain('do not emit any of: [CHOICES], [/CHOICES] (');
+        expect(injected).toContain('Do not emit any of: [CHOICES], [/CHOICES].');
         expect(injected).not.toContain('[CHOICES|...]');
     });
 
@@ -1943,7 +1943,7 @@ describe('in-chat agent post-processing runner', () => {
         const injected = extensionPrompts['inchat_agent_companion_skill-check-companion'].value;
 
         // The tag list stays [CHOICES] only; the mid-line skill brackets in the note body are not tags.
-        expect(injected).toContain('do not emit any of: [CHOICES], [/CHOICES] (');
+        expect(injected).toContain('Do not emit any of: [CHOICES], [/CHOICES].');
         expect(injected).not.toContain('[/STEALTH]');
         expect(injected).not.toContain('[SPEECH');
     });
@@ -1980,7 +1980,7 @@ describe('in-chat agent post-processing runner', () => {
         companionRunner.injectCompanionFeedbackPrompts([cyoaCompanion]);
         const guard = extensionPrompts.inchat_agent_companion_tracker_echo_guard;
 
-        expect(guard.value).toContain('do not emit any of: [CHOICES], [/CHOICES] (');
+        expect(guard.value).toContain('Do not emit any of: [CHOICES], [/CHOICES].');
         expect(guard.value).not.toContain('[STATUS|...]');
         expect(guard.depth).toBe(0);
         expect(guard.role).toBe(0);
@@ -2039,7 +2039,7 @@ describe('in-chat agent post-processing runner', () => {
 
         expect(extensionPrompts.inchat_agent_companion_tracker_echo_guard).toBeUndefined();
         expect(extensionPrompts['inchat_agent_companion_rep-feedback-companion'].value)
-            .toContain('do not emit any of: [REP|...], [/REP], [CHOICES], [/CHOICES] (');
+            .toContain('Do not emit any of: [REP|...], [/REP], [CHOICES], [/CHOICES].');
     });
 
     test('does not guard tracker tags owned by active inline trackers', async () => {
@@ -2394,7 +2394,10 @@ describe('in-chat agent post-processing runner', () => {
         const injected = extensionPrompts['inchat_agent_companion_cyoa-companion'].value;
         const guard = injected.slice(0, injected.indexOf('[CHOICES]\n1.'));
 
-        expect(guard).toContain('Specifically, do not emit any of: [CHOICES], [/CHOICES]');
+        expect(guard).toContain('Do not emit any of: [CHOICES], [/CHOICES].');
+        expect(guard).toContain('continue following any separate instructions that require other pre-generation inline tracker formats');
+        expect(guard).toContain('including any other required inline tracker blocks');
+        expect(guard).not.toContain('never inline tracker blocks');
         for (const tag of inlineTags) {
             expect(guard).not.toContain(`[${tag}`);
             expect(guard).not.toContain(`[/${tag}]`);

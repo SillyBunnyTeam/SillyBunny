@@ -906,13 +906,14 @@ function formatTrackerTagExamples(shapes) {
 }
 
 function buildTrackerEchoGuard(shapes) {
-    return 'HARD STOP for your reply: the bracket-format tracker notes above are read-only reference. '
-        + 'A separate side-channel agent writes them and re-attaches them automatically after your reply, so any copy you write is a duplicate the user has to delete by hand. '
-        + 'Do NOT reproduce, paraphrase, update, restate, or wrap any reply content in those tracker formats. '
-        + 'Specifically, do not emit any of: ' + formatTrackerTagExamples(shapes) + ' (or variations of them). '
-        + 'Partial, renamed, and unclosed versions count too: an opening tag with no closing tag is still a violation. '
+    return 'HARD STOP for your reply: the Companion-owned bracket formats listed here are read-only reference. '
+        + 'A separate side-channel agent writes and re-attaches those formats automatically after your reply, so copying them creates duplicates the user has to delete by hand. '
+        + 'Do NOT reproduce, paraphrase, update, restate, or wrap reply content in the listed formats. '
+        + 'Do not emit any of: ' + formatTrackerTagExamples(shapes) + '. '
+        + 'Opening one of these tags without its closing tag is still a violation. '
+        + 'This restriction applies only to the exact tags listed here; continue following any separate instructions that require other pre-generation inline tracker formats. '
         + 'Never repeat an "[... - auxiliary notes]" label. '
-        + 'Produce your normal story reply only - never inline tracker blocks of your own.';
+        + 'Produce your normal story reply, including any other required inline tracker blocks.';
 }
 
 function collectRetainedTrackerTagShapes({ excludeMessage = null } = {}) {
