@@ -869,6 +869,16 @@ function extractTrackerTags(text) {
     return [...extractTrackerTagShapes(text).keys()];
 }
 
+function getOwnedCompanionTrackerShape(agent, text) {
+    if (!isCompanionAgent(agent)) {
+        return null;
+    }
+
+    const tag = String(inspectTrackerState(agent).tag ?? '').trim().toUpperCase();
+    const shape = tag ? extractTrackerTagShapes(text).get(tag) : null;
+    return shape ? { tag, shape } : null;
+}
+
 function getActiveInlineTrackerTags(activeAgents = []) {
     const tags = new Set();
 
@@ -912,12 +922,12 @@ function collectRetainedTrackerTagShapes({ excludeMessage = null } = {}) {
         if (message === excludeMessage) {
             continue;
         }
-        for (const result of Object.values(getCompanionResults(message))) {
+        for (const [agentId, result] of Object.entries(getCompanionResults(message))) {
             if (result?.status !== 'done' || result.includeInChatHistory !== true) continue;
-            for (const [tag, shape] of extractTrackerTagShapes(result.content)) {
-                if (!shapes.has(tag) || shape === 'piped') {
-                    shapes.set(tag, shape);
-                }
+
+            const trackerShape = getOwnedCompanionTrackerShape(getAgentById(agentId), result.content);
+            if (trackerShape && (!shapes.has(trackerShape.tag) || trackerShape.shape === 'piped')) {
+                shapes.set(trackerShape.tag, trackerShape.shape);
             }
         }
     }
@@ -1963,9 +1973,11 @@ export function injectCompanionFeedbackPrompts(activeAgents = [], { excludeMessa
             continue;
         }
 
-        const blockShapes = extractTrackerTagShapes(body);
-        const trackerTags = [...blockShapes.keys()].filter(tag => !inlineTrackerTags.has(tag));
-        trackerTags.forEach(tag => feedbackTrackerShapes.set(tag, blockShapes.get(tag)));
+        const trackerShape = getOwnedCompanionTrackerShape(agent, body);
+        const trackerTags = trackerShape && !inlineTrackerTags.has(trackerShape.tag) ? [trackerShape.tag] : [];
+        if (trackerTags.length > 0) {
+            feedbackTrackerShapes.set(trackerShape.tag, trackerShape.shape);
+        }
         feedbackPrompts.push({ agent, body, trackerTags });
     }
 

@@ -1867,10 +1867,12 @@ describe('in-chat agent post-processing runner', () => {
     test('prepends one delimiter-specific anti-echo guard to tracker feedback', async () => {
         const reputationCompanion = createCompanionAgent({
             id: 'reputation-companion',
+            prompt: 'Return [REP|Faction|Standing|Trend] notes ending with [/REP].',
             companion: { feedback: { enabled: true, depth: 2 } },
         });
         const eventCompanion = createCompanionAgent({
             id: 'event-companion',
+            prompt: 'Return [EVENT|Type|Name|Timing] notes ending with [/EVENT].',
             companion: { feedback: { enabled: true, depth: 2 } },
         });
         enabledAgents = [reputationCompanion, eventCompanion];
@@ -1901,6 +1903,7 @@ describe('in-chat agent post-processing runner', () => {
     test('builds bare-tag examples for delimiter-free companion trackers', async () => {
         const cyoaCompanion = createCompanionAgent({
             id: 'cyoa-companion',
+            prompt: 'Return choices inside [CHOICES] and [/CHOICES].',
             companion: { feedback: { enabled: true, depth: 1 } },
         });
         enabledAgents = [cyoaCompanion];
@@ -1923,6 +1926,7 @@ describe('in-chat agent post-processing runner', () => {
     test('does not treat inline skill-check brackets as tracker tags', async () => {
         const cyoaCompanion = createCompanionAgent({
             id: 'skill-check-companion',
+            prompt: 'Return choices inside [CHOICES] and [/CHOICES].',
             companion: { feedback: { enabled: true, depth: 1 } },
         });
         enabledAgents = [cyoaCompanion];
@@ -1944,12 +1948,22 @@ describe('in-chat agent post-processing runner', () => {
         expect(injected).not.toContain('[SPEECH');
     });
 
-    test('injects a standalone echo guard for retained-history companions without feedback', async () => {
+    test('injects a standalone echo guard only for current retained Companion trackers', async () => {
         const cyoaCompanion = createCompanionAgent({
             id: 'retained-cyoa-companion',
+            prompt: 'Return choices inside [CHOICES] and [/CHOICES].',
             companion: { includeInChatHistory: true, feedback: { enabled: false, depth: 1 } },
         });
-        enabledAgents = [cyoaCompanion];
+        const statusInlineTracker = {
+            ...createCompanionAgent({
+                id: 'retained-status-inline-tracker',
+                category: 'tracker',
+                prompt: 'Return [STATUS|Character|Condition|Severity] notes ending with [/STATUS].',
+                companion: { includeInChatHistory: true },
+            }),
+            execution: 'inline',
+        };
+        enabledAgents = [cyoaCompanion, statusInlineTracker];
         const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
 
         const reply = { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
@@ -1958,11 +1972,16 @@ describe('in-chat agent post-processing runner', () => {
             status: 'done',
             content: '[CHOICES]\n1. Push the door.\n2. Wait.\n[/CHOICES]',
         });
+        companionRunner.setCompanionResult(reply, statusInlineTracker, {
+            status: 'done',
+            content: '[STATUS|Hero|Ready|Mild]\nStable.\n[/STATUS]',
+        });
 
         companionRunner.injectCompanionFeedbackPrompts([cyoaCompanion]);
         const guard = extensionPrompts.inchat_agent_companion_tracker_echo_guard;
 
         expect(guard.value).toContain('do not emit any of: [CHOICES], [/CHOICES] (');
+        expect(guard.value).not.toContain('[STATUS|...]');
         expect(guard.depth).toBe(0);
         expect(guard.role).toBe(0);
     });
@@ -1970,6 +1989,7 @@ describe('in-chat agent post-processing runner', () => {
     test('clears the standalone echo guard when retained tracker notes disappear', async () => {
         const cyoaCompanion = createCompanionAgent({
             id: 'retained-cyoa-companion',
+            prompt: 'Return choices inside [CHOICES] and [/CHOICES].',
             companion: { includeInChatHistory: true, feedback: { enabled: false, depth: 1 } },
         });
         enabledAgents = [cyoaCompanion];
@@ -1993,10 +2013,12 @@ describe('in-chat agent post-processing runner', () => {
     test('folds retained tracker tags into the guard a feedback block already hosts', async () => {
         const feedbackCompanion = createCompanionAgent({
             id: 'rep-feedback-companion',
+            prompt: 'Return [REP|Faction|Standing|Trend] notes ending with [/REP].',
             companion: { feedback: { enabled: true, depth: 1 } },
         });
         const retainedCompanion = createCompanionAgent({
             id: 'retained-cyoa-companion',
+            prompt: 'Return choices inside [CHOICES] and [/CHOICES].',
             companion: { includeInChatHistory: true, feedback: { enabled: false, depth: 1 } },
         });
         enabledAgents = [feedbackCompanion, retainedCompanion];
@@ -2026,6 +2048,7 @@ describe('in-chat agent post-processing runner', () => {
         const statusCompanion = createCompanionAgent({
             id: 'status-companion',
             category: 'tracker',
+            prompt: 'Return [STATUS|Character|Condition|Severity] notes ending with [/STATUS].',
             companion: { feedback: { enabled: true, depth: 1 } },
         });
         enabledAgents = [inlineTracker, statusCompanion];
@@ -2050,6 +2073,7 @@ describe('in-chat agent post-processing runner', () => {
         const statusCompanion = createCompanionAgent({
             id: 'status-companion',
             category: 'tracker',
+            prompt: 'Return [STATUS|Character|Condition|Severity] notes ending with [/STATUS].',
             companion: { feedback: { enabled: true, depth: 1 } },
         });
         enabledAgents = [statusCompanion];
@@ -2244,10 +2268,12 @@ describe('in-chat agent post-processing runner', () => {
     test('removes echoed retained Companion trackers before post-processing the reply', async () => {
         const tracker = createCompanionAgent({
             id: 'parallel-tracker',
+            prompt: 'Return [PARALLEL|Location|Event] notes ending with [/PARALLEL].',
             companion: { includeInChatHistory: true },
         });
         const cyoaTracker = createCompanionAgent({
             id: 'cyoa-tracker',
+            prompt: 'Return choices inside [CHOICES] and [/CHOICES].',
             companion: { includeInChatHistory: true },
         });
         enabledAgents = [tracker, cyoaTracker];
@@ -2286,6 +2312,7 @@ describe('in-chat agent post-processing runner', () => {
         const retainedTracker = createCompanionAgent({
             id: 'retained-status-tracker',
             category: 'tracker',
+            prompt: 'Return [STATUS|Character|Condition|Severity] notes ending with [/STATUS].',
             companion: { includeInChatHistory: true },
         });
         enabledAgents = [inlineTracker, retainedTracker];
@@ -2338,27 +2365,41 @@ describe('in-chat agent post-processing runner', () => {
         expect(injected).toContain('The scene has a tense, hushed tone.');
     });
 
-    test('ignores inline-only tracker tags absent from the feedback body', async () => {
-        const mixedCompanion = createCompanionAgent({
-            id: 'mixed-companion',
+    test('guards only the Companion-owned format when feedback echoes inactive inline trackers', async () => {
+        const inlineTags = ['METER', 'PARALLEL', 'STATUS', 'TIME', 'SCENE'];
+        const cyoaCompanion = createCompanionAgent({
+            id: 'cyoa-companion',
+            category: 'tracker',
+            prompt: 'Return choices inside [CHOICES] and [/CHOICES].',
             companion: { feedback: { enabled: true, depth: 2 } },
         });
-        enabledAgents = [mixedCompanion];
+        const inlineTrackers = inlineTags.map(tag => ({
+            id: `${tag.toLowerCase()}-inline-tracker`,
+            category: 'tracker',
+            execution: 'inline',
+            prompt: `Return [${tag}|Context|Value] notes ending with [/${tag}].`,
+        }));
+        enabledAgents = [cyoaCompanion, ...inlineTrackers];
         const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
 
         const reply = { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
         chat.push(reply, { mes: 'Continue.', name: 'User', is_user: true, is_system: false, extra: {} });
-        companionRunner.setCompanionResult(reply, mixedCompanion, {
+        const inlineBlocks = inlineTags.map(tag => `[${tag}|Context|Value]\nRead-only context.\n[/${tag}]`).join('\n');
+        companionRunner.setCompanionResult(reply, cyoaCompanion, {
             status: 'done',
-            content: '[REP|Thieves Guild|+10|Liked]\nStole the amulet.\n[/REP]\n[STATUS|Hero|Poisoned|Moderate]\nNeeds antidote.\n[/STATUS]',
+            content: `[CHOICES]\n1. Push the door.\n2. Wait.\n[/CHOICES]\n${inlineBlocks}`,
         });
 
-        companionRunner.injectCompanionFeedbackPrompts([mixedCompanion]);
-        const injected = extensionPrompts['inchat_agent_companion_mixed-companion'].value;
+        companionRunner.injectCompanionFeedbackPrompts([cyoaCompanion]);
+        const injected = extensionPrompts['inchat_agent_companion_cyoa-companion'].value;
+        const guard = injected.slice(0, injected.indexOf('[CHOICES]\n1.'));
 
-        expect(injected).toContain('[REP|Thieves Guild|+10|Liked]');
-        expect(injected).toContain('[STATUS|Hero|Poisoned|Moderate]');
-        expect(injected).toContain('Specifically, do not emit any of: [REP|...], [/REP], [STATUS|...], [/STATUS]');
+        expect(guard).toContain('Specifically, do not emit any of: [CHOICES], [/CHOICES]');
+        for (const tag of inlineTags) {
+            expect(guard).not.toContain(`[${tag}`);
+            expect(guard).not.toContain(`[/${tag}]`);
+            expect(injected).toContain(`[${tag}|Context|Value]`);
+        }
         expect(extensionPrompts.inchat_agent_companion_tracker_echo_guard).toBeUndefined();
     });
 
