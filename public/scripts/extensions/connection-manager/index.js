@@ -42,11 +42,15 @@ const ALLOW_EMPTY = [
     'custom-reasoning-param-name',
     'custom-reasoning-enabled-value',
     'custom-reasoning-disabled-value',
+    'custom-include-body',
+    'custom-exclude-body',
+    'custom-include-headers',
 ];
 
 const CLEAR_ON_EMPTY_RESULT = [
     'api-url',
     'secret-id',
+    'custom-endpoint-profile',
 ];
 
 const CC_COMMANDS = [
@@ -55,6 +59,9 @@ const CC_COMMANDS = [
     // Do not fix; CC needs to set the API twice because it could be overridden by the preset
     'api',
     'secret-id',
+    // SillyBunny: re-select the Custom endpoint profile by name after the secret (secret ids are shared between
+    // endpoint profiles) and before the URL/model so the recorded values win over the endpoint profile's.
+    'custom-endpoint-profile',
     'api-url',
     'model',
     'proxy',
@@ -74,6 +81,9 @@ const CC_COMMANDS = [
     'custom-reasoning-param-name',
     'custom-reasoning-enabled-value',
     'custom-reasoning-disabled-value',
+    'custom-include-body',
+    'custom-exclude-body',
+    'custom-include-headers',
     'prompt-post-processing',
     'regex-preset',
 ];
@@ -102,6 +112,7 @@ const FANCY_NAMES = {
     'preset': 'Settings Preset',
     'model': 'Model',
     'proxy': 'Proxy Preset',
+    'custom-endpoint-profile': 'Custom Endpoint Profile',
     'sysprompt-state': 'Use System Prompt',
     'sysprompt': 'System Prompt Name',
     'instruct-state': 'Instruct Mode',
@@ -123,6 +134,9 @@ const FANCY_NAMES = {
     'custom-reasoning-param-name': 'Custom Reasoning Parameter Name',
     'custom-reasoning-enabled-value': 'Custom Reasoning Enabled Value',
     'custom-reasoning-disabled-value': 'Custom Reasoning Disabled Value',
+    'custom-include-body': 'Custom Include Body Parameters',
+    'custom-exclude-body': 'Custom Exclude Body Parameters',
+    'custom-include-headers': 'Custom Include Request Headers',
     'prompt-post-processing': 'Prompt Post-Processing',
     'secret-id': 'Secret',
     'regex-preset': 'Regex Preset',
@@ -228,6 +242,7 @@ const profilesProvider = () => [
  * @property {string} [preset] Settings Preset
  * @property {string} [model] Model
  * @property {string} [proxy] Proxy Preset
+ * @property {string} [custom-endpoint-profile] Custom endpoint profile name
  * @property {string} [instruct] Instruct Template
  * @property {string} [context] Context Template
  * @property {string} [instruct-state] Instruct Mode
@@ -247,6 +262,9 @@ const profilesProvider = () => [
  * @property {string} [custom-reasoning-param-name] Custom reasoning parameter name
  * @property {string} [custom-reasoning-enabled-value] Custom reasoning enabled value
  * @property {string} [custom-reasoning-disabled-value] Custom reasoning disabled value
+ * @property {string} [custom-include-body] Custom endpoint include body parameters (YAML)
+ * @property {string} [custom-exclude-body] Custom endpoint exclude body parameters (YAML)
+ * @property {string} [custom-include-headers] Custom endpoint include request headers (YAML)
  * @property {string} [prompt-post-processing] Prompt Post-Processing
  * @property {string} [sysprompt] System Prompt Name
  * @property {string} [sysprompt-state] Use System Prompt

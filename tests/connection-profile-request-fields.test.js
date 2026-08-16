@@ -66,6 +66,9 @@ const mappedRequestFieldNames = [
     'custom_reasoning_param_name',
     'custom_reasoning_enabled_value',
     'custom_reasoning_disabled_value',
+    'custom_include_body',
+    'custom_exclude_body',
+    'custom_include_headers',
 ];
 
 function createReasoningProfile(overrides = {}) {
@@ -87,6 +90,9 @@ function createReasoningProfile(overrides = {}) {
         'custom-reasoning-param-name': 'thinking',
         'custom-reasoning-enabled-value': 'enabled',
         'custom-reasoning-disabled-value': 'disabled',
+        'custom-include-body': '  top_k: 20\n  min_p: 0.05',
+        'custom-exclude-body': '- frequency_penalty',
+        'custom-include-headers': '',
         ...overrides,
     };
 }
@@ -142,6 +148,9 @@ describe('Connection Profile chat-completion request field mapping', () => {
                 custom_reasoning_param_name: 'thinking',
                 custom_reasoning_enabled_value: 'enabled',
                 custom_reasoning_disabled_value: 'disabled',
+                custom_include_body: '  top_k: 20\n  min_p: 0.05',
+                custom_exclude_body: '- frequency_penalty',
+                custom_include_headers: '',
             },
             profileFieldNames: mappedRequestFieldNames,
         });
@@ -166,6 +175,9 @@ describe('Connection Profile chat-completion request field mapping', () => {
             custom_reasoning_param_format: 'thinking_object',
             custom_reasoning_enabled_value: 'enabled',
             custom_reasoning_disabled_value: 'disabled',
+            custom_include_body: '  top_k: 20\n  min_p: 0.05',
+            custom_exclude_body: '- frequency_penalty',
+            custom_include_headers: '',
         });
         expect(result.profileFieldNames).toEqual(mappedRequestFieldNames.filter(field => !Object.hasOwn(overridePayload, field)));
         expect({ ...result.overrides, ...overridePayload }).toEqual(expect.objectContaining(overridePayload));

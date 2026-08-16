@@ -9745,7 +9745,8 @@ export async function loadCustomEndpointPresets(settings) {
 
     $('#custom_endpoint_preset').val(selected_custom_endpoint_preset?.name || 'None');
 
-    if (selected_custom_endpoint_preset) {
+    // SillyBunny: 'None' means "use the URL/model typed in the fields"; applying it at load would blank them.
+    if (selected_custom_endpoint_preset && selected_custom_endpoint_preset.name !== 'None') {
         // SillyBunny: load-time apply must not rotate or write secrets; requests send secret_id explicitly.
         await setCustomEndpointPreset(
             selected_custom_endpoint_preset.name,
@@ -9789,7 +9790,11 @@ async function activateCustomEndpointPresetSecret(preset, { forceWrite = false }
 
     if (preset.secretId && (!forceWrite || !preset.key)) {
         // SillyBunny: rotate to the bound profile secret instead of writing duplicate or accidental empty keys.
-        await rotateSecret(SECRET_KEYS.CUSTOM, preset.secretId);
+        // Skip when it is already active (e.g. a connection profile just rotated it): rotating re-triggers a full API reconnect.
+        const isAlreadyActive = secret_state[SECRET_KEYS.CUSTOM]?.some(secret => secret.id === preset.secretId && secret.active);
+        if (!isAlreadyActive) {
+            await rotateSecret(SECRET_KEYS.CUSTOM, preset.secretId);
+        }
         return;
     }
 
@@ -9949,6 +9954,32 @@ $('#delete_custom_endpoint').on('click', async function () {
     }
 });
 
+// SillyBunny: connection profiles record the selected Custom endpoint profile by name, like /proxy does for
+// reverse proxies. Secret ids are not unique across endpoint profiles (saving one without retyping the key binds it
+// to the active secret), so re-selecting by secret alone lands on the first profile that shares it.
+async function runCustomEndpointPresetCallback(_, value) {
+    if (!value) {
+        return oai_settings.chat_completion_source === chat_completion_sources.CUSTOM
+            ? (selected_custom_endpoint_preset?.name || 'None')
+            : '';
+    }
+
+    const name = String(value).trim();
+    // Exact match only: a fuzzy hit could silently route a profile to a different endpoint.
+    const preset = custom_endpoint_presets.find(p => p.name === name)
+        ?? (name.toLowerCase() === 'none' ? custom_endpoint_presets.find(p => p.name === 'None') : undefined);
+
+    if (!preset) {
+        toastr.warning(t`Custom endpoint profile '${name}' not found`);
+        return '';
+    }
+
+    $('#custom_endpoint_preset').val(preset.name);
+    await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId });
+    saveSettingsDebounced();
+    return preset.name;
+}
+
 function runProxyCallback(_, value) {
     if (!value) {
         return selected_proxy?.name || '';
@@ -10099,6 +10130,21 @@ function runStringChatCompletionSettingCallback(commandName, settingName, select
     };
 }
 
+// SillyBunny: the Custom endpoint additional parameters are YAML, which is indentation-sensitive, so unlike the
+// other string settings the value is stored verbatim instead of trimmed.
+function runCustomEndpointParameterCallback(settingName, selector) {
+    return (args, value) => {
+        if (!hasSlashCommandValue(args, value)) {
+            return getSlashCommandStringValue(oai_settings[settingName]);
+        }
+
+        oai_settings[settingName] = getSlashCommandStringValue(value);
+        $(selector).val(oai_settings[settingName]);
+        saveSettingsDebounced();
+        return oai_settings[settingName];
+    };
+}
+
 const REQUEST_IMAGE_RESOLUTION_VALUES = ['', '1K', '2K', '4K'];
 const REQUEST_IMAGE_ASPECT_RATIO_VALUES = ['', '1:1', '9:16', '16:9', '3:4', '4:3', '3:2', '2:3', '5:4', '4:5', '21:9'];
 
@@ -10202,6 +10248,21 @@ function registerChatCompletionProfileSlashCommands() {
         name: 'custom-reasoning-disabled-value',
         callback: runStringChatCompletionSettingCallback('custom-reasoning-disabled-value', 'custom_reasoning_disabled_value', '#custom_reasoning_disabled_value', markCustomReasoningPresetForManualCommand),
         description: 'custom reasoning disabled value',
+    });
+    registerChatCompletionProfileSlashCommand({
+        name: 'custom-include-body',
+        callback: runCustomEndpointParameterCallback('custom_include_body', '#custom_include_body'),
+        description: 'custom endpoint include body parameters (YAML)',
+    });
+    registerChatCompletionProfileSlashCommand({
+        name: 'custom-exclude-body',
+        callback: runCustomEndpointParameterCallback('custom_exclude_body', '#custom_exclude_body'),
+        description: 'custom endpoint exclude body parameters (YAML)',
+    });
+    registerChatCompletionProfileSlashCommand({
+        name: 'custom-include-headers',
+        callback: runCustomEndpointParameterCallback('custom_include_headers', '#custom_include_headers'),
+        description: 'custom endpoint include request headers (YAML)',
     });
 }
 
@@ -10370,6 +10431,21 @@ export function initOpenAI() {
             }),
         ],
         helpString: 'Sets a proxy preset by name.',
+    }));
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name: 'custom-endpoint-profile',
+        callback: runCustomEndpointPresetCallback,
+        returns: 'current custom endpoint profile',
+        namedArgumentList: [],
+        unnamedArgumentList: [
+            SlashCommandArgument.fromProps({
+                description: 'name',
+                typeList: [ARGUMENT_TYPE.STRING],
+                isRequired: false,
+                enumProvider: () => custom_endpoint_presets.map(preset => new SlashCommandEnumValue(preset.name, preset.url)),
+            }),
+        ],
+        helpString: 'Sets a Custom OpenAI-compatible endpoint profile by name. Gets the current one if no name is provided.',
     }));
     // SillyBunny: Connection Manager snapshots Chat Completion request behavior via slash commands.
     registerChatCompletionProfileSlashCommands();
