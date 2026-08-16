@@ -869,6 +869,16 @@ function extractTrackerTags(text) {
     return [...extractTrackerTagShapes(text).keys()];
 }
 
+function getOwnedCompanionTrackerShape(agent, text) {
+    if (!isCompanionAgent(agent)) {
+        return null;
+    }
+
+    const tag = String(inspectTrackerState(agent).tag ?? '').trim().toUpperCase();
+    const shape = tag ? extractTrackerTagShapes(text).get(tag) : null;
+    return shape ? { tag, shape } : null;
+}
+
 function getActiveInlineTrackerTags(activeAgents = []) {
     const tags = new Set();
 
@@ -896,13 +906,14 @@ function formatTrackerTagExamples(shapes) {
 }
 
 function buildTrackerEchoGuard(shapes) {
-    return 'HARD STOP for your reply: the bracket-format tracker notes above are read-only reference. '
-        + 'A separate side-channel agent writes them and re-attaches them automatically after your reply, so any copy you write is a duplicate the user has to delete by hand. '
-        + 'Do NOT reproduce, paraphrase, update, restate, or wrap any reply content in those tracker formats. '
-        + 'Specifically, do not emit any of: ' + formatTrackerTagExamples(shapes) + ' (or variations of them). '
-        + 'Partial, renamed, and unclosed versions count too: an opening tag with no closing tag is still a violation. '
+    return 'HARD STOP for your reply: the Companion-owned bracket formats listed here are read-only reference. '
+        + 'A separate side-channel agent writes and re-attaches those formats automatically after your reply, so copying them creates duplicates the user has to delete by hand. '
+        + 'Do NOT reproduce, paraphrase, update, restate, or wrap reply content in the listed formats. '
+        + 'Do not emit any of: ' + formatTrackerTagExamples(shapes) + '. '
+        + 'Opening one of these tags without its closing tag is still a violation. '
+        + 'This restriction applies only to the exact tags listed here; continue following any separate instructions that require other pre-generation inline tracker formats. '
         + 'Never repeat an "[... - auxiliary notes]" label. '
-        + 'Produce your normal story reply only - never inline tracker blocks of your own.';
+        + 'Produce your normal story reply, including any other required inline tracker blocks.';
 }
 
 function collectRetainedTrackerTagShapes({ excludeMessage = null } = {}) {
@@ -912,12 +923,12 @@ function collectRetainedTrackerTagShapes({ excludeMessage = null } = {}) {
         if (message === excludeMessage) {
             continue;
         }
-        for (const result of Object.values(getCompanionResults(message))) {
+        for (const [agentId, result] of Object.entries(getCompanionResults(message))) {
             if (result?.status !== 'done' || result.includeInChatHistory !== true) continue;
-            for (const [tag, shape] of extractTrackerTagShapes(result.content)) {
-                if (!shapes.has(tag) || shape === 'piped') {
-                    shapes.set(tag, shape);
-                }
+
+            const trackerShape = getOwnedCompanionTrackerShape(getAgentById(agentId), result.content);
+            if (trackerShape && (!shapes.has(trackerShape.tag) || trackerShape.shape === 'piped')) {
+                shapes.set(trackerShape.tag, trackerShape.shape);
             }
         }
     }
@@ -1963,9 +1974,11 @@ export function injectCompanionFeedbackPrompts(activeAgents = [], { excludeMessa
             continue;
         }
 
-        const blockShapes = extractTrackerTagShapes(body);
-        const trackerTags = [...blockShapes.keys()].filter(tag => !inlineTrackerTags.has(tag));
-        trackerTags.forEach(tag => feedbackTrackerShapes.set(tag, blockShapes.get(tag)));
+        const trackerShape = getOwnedCompanionTrackerShape(agent, body);
+        const trackerTags = trackerShape && !inlineTrackerTags.has(trackerShape.tag) ? [trackerShape.tag] : [];
+        if (trackerTags.length > 0) {
+            feedbackTrackerShapes.set(trackerShape.tag, trackerShape.shape);
+        }
         feedbackPrompts.push({ agent, body, trackerTags });
     }
 
