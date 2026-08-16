@@ -257,7 +257,7 @@ describe('OpenAI proxy preset wiring', () => {
     test('preserves legacy Custom endpoint settings until a profile is selected', () => {
         const loadCustomEndpointSource = getFunctionSource('loadCustomEndpointPresets');
         const selectedAssignmentIndex = loadCustomEndpointSource.indexOf('selected_custom_endpoint_preset = savedSelectedName');
-        const applyBranchIndex = loadCustomEndpointSource.indexOf('if (selected_custom_endpoint_preset) {');
+        const applyBranchIndex = loadCustomEndpointSource.indexOf('if (selected_custom_endpoint_preset && selected_custom_endpoint_preset.name !== \'None\') {');
         const applyPresetIndex = loadCustomEndpointSource.indexOf('await setCustomEndpointPreset(', applyBranchIndex);
         const fallbackNameIndex = loadCustomEndpointSource.indexOf('$(\'#custom_endpoint_preset_name\').val(\'\');');
 
@@ -287,5 +287,44 @@ describe('OpenAI proxy preset wiring', () => {
         const initSource = getFunctionSource('initOpenAI');
 
         expect(initSource).toContain('$(\'#custom_endpoint_preset\').on(\'change\', onCustomEndpointPresetChange);');
+    });
+
+    test('skips the load-time apply for the None profile so typed URL and model survive reloads', () => {
+        const loadCustomEndpointSource = getFunctionSource('loadCustomEndpointPresets');
+
+        expect(loadCustomEndpointSource).toContain('if (selected_custom_endpoint_preset && selected_custom_endpoint_preset.name !== \'None\') {');
+    });
+
+    test('does not rotate a Custom endpoint profile secret that is already active', () => {
+        const activationSource = getFunctionSource('activateCustomEndpointPresetSecret');
+        const activeCheckIndex = activationSource.indexOf('secret_state[SECRET_KEYS.CUSTOM]?.some(secret => secret.id === preset.secretId && secret.active)');
+        const rotateIndex = activationSource.indexOf('await rotateSecret(SECRET_KEYS.CUSTOM, preset.secretId);');
+
+        expect(activeCheckIndex).toBeGreaterThanOrEqual(0);
+        expect(rotateIndex).toBeGreaterThan(activeCheckIndex);
+        expect(activationSource).toContain('if (!isAlreadyActive) {');
+    });
+
+    test('exposes /custom-endpoint-profile that selects saved profiles by exact name', () => {
+        const callbackSource = getFunctionSource('runCustomEndpointPresetCallback');
+        const initSource = getFunctionSource('initOpenAI');
+
+        expect(initSource).toContain('name: \'custom-endpoint-profile\',');
+        expect(initSource).toContain('callback: runCustomEndpointPresetCallback,');
+        expect(callbackSource).toContain('oai_settings.chat_completion_source === chat_completion_sources.CUSTOM');
+        expect(callbackSource).toContain('custom_endpoint_presets.find(p => p.name === name)');
+        expect(callbackSource).not.toContain('new Fuse(');
+        expect(callbackSource).toContain('$(\'#custom_endpoint_preset\').val(preset.name);');
+        expect(callbackSource).toContain('await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId });');
+    });
+
+    test('stores Custom endpoint additional parameters verbatim through their slash commands', () => {
+        const callbackSource = getFunctionSource('runCustomEndpointParameterCallback');
+
+        expect(callbackSource).toContain('oai_settings[settingName] = getSlashCommandStringValue(value);');
+        expect(callbackSource).not.toContain('.trim()');
+        expect(openAiSource).toContain('name: \'custom-include-body\',\n        callback: runCustomEndpointParameterCallback(\'custom_include_body\', \'#custom_include_body\'),');
+        expect(openAiSource).toContain('name: \'custom-exclude-body\',\n        callback: runCustomEndpointParameterCallback(\'custom_exclude_body\', \'#custom_exclude_body\'),');
+        expect(openAiSource).toContain('name: \'custom-include-headers\',\n        callback: runCustomEndpointParameterCallback(\'custom_include_headers\', \'#custom_include_headers\'),');
     });
 });
