@@ -119,6 +119,7 @@ import {
     openai_messages_count,
     chat_completion_sources,
     getChatCompletionModel,
+    getCurrentReasoningEffort,
     proxies,
     loadProxyPresets,
     selected_proxy,
@@ -3875,7 +3876,8 @@ function insertSVGIcon(mes, extra) {
 
     const insertOrReplaceSVG = (image, className, targetSelector, insertBefore) => {
         image.onload = async function () {
-            let existingSVG = insertBefore ? mes.find(targetSelector).prev(`.${className}`) : mes.find(targetSelector).next(`.${className}`);
+            // The model name label can sit between the timestamp and its icon, so match past it.
+            let existingSVG = insertBefore ? mes.find(targetSelector).prevAll(`.${className}`).first() : mes.find(targetSelector).nextAll(`.${className}`).first();
             if (existingSVG.length) {
                 existingSVG.replaceWith(image);
             } else {
@@ -3956,6 +3958,46 @@ function inferCustomModelIconName(model) {
     return '';
 }
 
+/**
+ * Writes the model name label after a message's timestamp icon, or after the
+ * timestamp itself when icons are turned off.
+ *
+ * @param {JQuery<HTMLElement>} mes - The message element.
+ * @param {ChatMessageExtra} [extra] - Contains the API, model and reasoning effort details.
+ */
+function insertModelLabel(mes, extra) {
+    mes.find('.timestamp-model').remove();
+
+    const label = getMessageIconLabel(extra);
+
+    if (!label) {
+        return;
+    }
+
+    const icon = mes.find('.timestamp-icon').first();
+    $('<small class="timestamp-model"></small>').text(label).insertAfter(icon.length ? icon : mes.find('.timestamp'));
+}
+
+/**
+ * Builds the text written after a message's timestamp icon.
+ *
+ * @param {ChatMessageExtra} [extra] - Contains the API, model and reasoning effort details.
+ * @returns {string} Label text, empty when nothing should be written
+ */
+function getMessageIconLabel(extra) {
+    const parts = [];
+
+    if (power_user.timestamp_model_name) {
+        parts.push(String(extra?.model ?? '').trim());
+    }
+
+    if (power_user.timestamp_reasoning_effort && extra?.reasoning_effort) {
+        parts.push(`(${extra.reasoning_effort})`);
+    }
+
+    return parts.filter(Boolean).join(' ');
+}
+
 function getMessageIconName(extra) {
     const apiName = String(extra?.api ?? '').trim().toLowerCase();
 
@@ -3976,13 +4018,13 @@ export function refreshMessageModelIcons() {
         const messageId = Number.parseInt(String(messageElement.attr('mesid') ?? ''), 10);
         const message = Number.isInteger(messageId) ? chat[messageId] : null;
 
-        messageElement.find('.timestamp-icon, .thinking-icon').remove();
+        messageElement.find('.timestamp-icon, .thinking-icon, .timestamp-model').remove();
 
-        if (!power_user.timestamp_model_icon || !message?.extra?.api) {
-            return;
+        if (power_user.timestamp_model_icon && message?.extra?.api) {
+            insertSVGIcon(messageElement, message.extra);
         }
 
-        insertSVGIcon(messageElement, message.extra);
+        insertModelLabel(messageElement, message?.extra);
     });
 }
 
@@ -4738,6 +4780,8 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
     if (power_user.timestamp_model_icon && mes.extra?.api) {
         insertSVGIcon(messageElement, mes.extra);
     }
+
+    insertModelLabel(messageElement, mes.extra);
 
     if (mes?.extra?.isSmallSys === true) {
         messageElement.addClass('smallSysMes');
@@ -9720,6 +9764,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
             lastMessage.send_date = getMessageTimeStamp();
             lastMessage.extra.api = getGeneratingApi();
             lastMessage.extra.model = getGeneratingModel();
+            lastMessage.extra.reasoning_effort = getCurrentReasoningEffort();
             lastMessage.extra.reasoning = reasoning;
             lastMessage.extra.reasoning_duration = null;
             lastMessage.extra.reasoning_signature = reasoningSignature;
@@ -9744,6 +9789,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
         lastMessage.send_date = getMessageTimeStamp();
         lastMessage.extra.api = getGeneratingApi();
         lastMessage.extra.model = getGeneratingModel();
+        lastMessage.extra.reasoning_effort = getCurrentReasoningEffort();
         lastMessage.extra.reasoning = reasoning;
         lastMessage.extra.reasoning_duration = null;
         lastMessage.extra.reasoning_signature = reasoningSignature;
@@ -9763,6 +9809,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
         lastMessage.send_date = getMessageTimeStamp();
         lastMessage.extra.api = getGeneratingApi();
         lastMessage.extra.model = getGeneratingModel();
+        lastMessage.extra.reasoning_effort = getCurrentReasoningEffort();
         lastMessage.extra.reasoning += reasoning;
         lastMessage.extra.reasoning_signature = reasoningSignature;
         await processImageAttachment(lastMessage, { imageUrls });
@@ -9785,6 +9832,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
         newMessage.send_date = getMessageTimeStamp();
         newMessage.extra.api = getGeneratingApi();
         newMessage.extra.model = getGeneratingModel();
+        newMessage.extra.reasoning_effort = getCurrentReasoningEffort();
         newMessage.extra.reasoning = reasoning;
         newMessage.extra.reasoning_duration = null;
         newMessage.extra.reasoning_signature = reasoningSignature;

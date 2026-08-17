@@ -35,6 +35,7 @@ import {
     settingsReady,
     updateMessageMetaBadges,
     updateMessageTokenAccounting,
+    refreshMessageModelIcons,
 } from '../script.js';
 import { isMobile, initMovingUI, favsToHotswap } from './RossAscends-mods.js';
 import { normalizeContextRetentionDepth } from './ooc-blocks.js';
@@ -391,6 +392,8 @@ export const power_user = {
     timer_enabled: true,
     timestamps_enabled: true,
     timestamp_model_icon: false,
+    timestamp_model_name: false,
+    timestamp_reasoning_effort: false,
     mesIDDisplay_enabled: false,
     hideChatAvatars_enabled: false,
     max_context_unlocked: true,
@@ -2491,6 +2494,8 @@ export async function loadPowerUserSettings(settings, data) {
     $('#messageTimerEnabled').prop('checked', power_user.timer_enabled);
     $('#messageTimestampsEnabled').prop('checked', power_user.timestamps_enabled);
     $('#messageModelIconEnabled').prop('checked', power_user.timestamp_model_icon);
+    $('#messageModelNameEnabled').prop('checked', power_user.timestamp_model_name);
+    $('#messageReasoningEffortEnabled').prop('checked', power_user.timestamp_reasoning_effort);
     $('#mesIDDisplayEnabled').prop('checked', power_user.mesIDDisplay_enabled);
     $('#hideChatAvatarsEnabled').prop('checked', power_user.hideChatAvatars_enabled);
     $('#prefer_character_prompt').prop('checked', power_user.prefer_character_prompt);
@@ -4723,6 +4728,18 @@ jQuery(async () => {
         const value = !!$(this).prop('checked');
         power_user.timestamp_model_icon = value;
         switchIcons();
+        saveSettingsDebounced();
+    });
+
+    $('#messageModelNameEnabled').on('input', function () {
+        power_user.timestamp_model_name = !!$(this).prop('checked');
+        refreshMessageModelIcons();
+        saveSettingsDebounced();
+    });
+
+    $('#messageReasoningEffortEnabled').on('input', function () {
+        power_user.timestamp_reasoning_effort = !!$(this).prop('checked');
+        refreshMessageModelIcons();
         saveSettingsDebounced();
     });
 

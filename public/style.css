@@ -6650,7 +6650,8 @@ body:not(.movingUI) .drawer-content.maximized {
 
 
 
-.timestamp {
+.timestamp,
+.timestamp-model {
     font-size: calc(var(--mainFontSize) * 0.7);
     font-weight: 400;
 }
