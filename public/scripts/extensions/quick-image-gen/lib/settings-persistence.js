@@ -6,6 +6,8 @@ function isPlainObject(value) {
 
 const persistenceQueues = new WeakMap();
 
+export const PENDING_SYNC_MARKER_PREFIX = "qig_sync_pending:";
+
 export function cloneSynchronizedValue(value) {
     if (value === undefined) return undefined;
     if (typeof structuredClone === "function") return structuredClone(value);
@@ -55,6 +57,7 @@ async function persistSynchronizedStoresNow({
     settings,
     stores,
     save,
+    acknowledge = null,
 }) {
     if (!storage || !settings || !Array.isArray(stores) || !stores.length || typeof save !== "function") {
         throw new Error("Synchronized store persistence is unavailable");
@@ -86,8 +89,19 @@ async function persistSynchronizedStoresNow({
         settings[record.backupKey] = cloneSynchronizedValue(record.value);
     }
 
+    let confirmed = true;
+    let confirmationError = null;
     try {
         await save();
+        if (typeof acknowledge === "function") {
+            try {
+                const result = await acknowledge();
+                if (result === false) confirmed = false;
+            } catch (error) {
+                confirmed = false;
+                confirmationError = error;
+            }
+        }
     } catch (error) {
         const rollbackErrors = [];
         for (const record of records) {
@@ -101,10 +115,38 @@ async function persistSynchronizedStoresNow({
                 }
             }
         }
+        // The remote commit may have succeeded before the rejection (lost response);
+        // persist the restored state so the server cannot remain ahead of local data.
+        try {
+            await save();
+        } catch (compensationError) {
+            rollbackErrors.push(compensationError);
+        }
         if (rollbackErrors.length) {
-            throw new AggregateError([error, ...rollbackErrors], "Server synchronization failed and the local cache could not be fully rolled back");
+            throw new AggregateError(
+                [error, ...rollbackErrors],
+                `Server synchronization failed: ${String(error?.message || error)}; the rollback could not be fully persisted`,
+            );
         }
         throw error;
+    }
+
+    // The save resolved but was not positively confirmed: the server copy may
+    // still hold the old value, so mark the local cache authoritative for the
+    // next reconciliation instead of letting a stale server value win.
+    if (!confirmed) {
+        for (const record of records) {
+            if (!record.cacheWritten) continue;
+            try {
+                storage.setItem(`${PENDING_SYNC_MARKER_PREFIX}${record.localKey}`, "1");
+            } catch { /* best effort */ }
+        }
+    } else {
+        for (const record of records) {
+            try {
+                storage.removeItem(`${PENDING_SYNC_MARKER_PREFIX}${record.localKey}`);
+            } catch { /* best effort */ }
+        }
     }
 
     return {
@@ -113,6 +155,8 @@ async function persistSynchronizedStoresNow({
         cacheErrors: records
             .filter(record => record.cacheError)
             .map(record => ({ localKey: record.localKey, error: record.cacheError })),
+        confirmed,
+        confirmationError,
     };
 }
 
@@ -142,10 +186,13 @@ export async function persistSynchronizedStore(options) {
             value: options.value,
         }],
         save: options.save,
+        acknowledge: options.acknowledge,
     });
     return {
         value: result.values[0],
         cacheSaved: result.cacheSaved,
         cacheError: result.cacheErrors[0]?.error || null,
+        confirmed: result.confirmed,
+        confirmationError: result.confirmationError,
     };
 }

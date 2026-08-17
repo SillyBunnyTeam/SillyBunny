@@ -48,6 +48,7 @@ const SETTINGS_NUMBER_BOUNDS = Object.freeze({
     comfyDenoise: [0, 1, false], comfyTimeout: [10, 1800, true],
     comfyOutputImageIndex: [-1, 10_000, true], injectDepth: [0, 100, true],
     llmOverrideMaxTokens: [50, 4096, true],
+    llmOverrideChatDepth: [0, 1000, true],
     priority: [Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, true],
     seedOverride: [0, 0xffffffff, true, true], sortOrder: [0, Number.MAX_SAFE_INTEGER, true, true],
 });
@@ -63,7 +64,8 @@ const SETTINGS_BOOLEAN_FIELDS = new Set([
     "nanobananaNbpUseNegative", "a1111RestoreFaces", "a1111Tiling", "a1111Adetailer",
     "a1111AdetailerInpaintOnlyMasked", "a1111Adetailer2", "a1111Adetailer2InpaintOnlyMasked",
     "a1111HiresFix", "a1111SaveToWebUI", "a1111IpAdapter", "a1111IpAdapterPixelPerfect",
-    "a1111ControlNet", "a1111ControlNetPixelPerfect", "comfyUpscale", "comfyAllowLegacyInterrupt",
+    "a1111ControlNet", "a1111ControlNetPixelPerfect", "a1111InterruptServer",
+    "comfyUpscale", "comfyAllowLegacyInterrupt",
     "comfySkipNegativePrompt", "useSTStyle", "injectEnabled", "injectAutoClean", "llmOverrideEnabled",
 ]);
 
@@ -117,6 +119,11 @@ const STORE_SHAPES = Object.freeze({
 
 const EXPORTED_STORE_NAMES = Object.freeze(Object.keys(STORE_SHAPES).filter((name) =>
     name !== "charRefImages" && name !== "promptReplacements"
+));
+
+export const SETTINGS_BOOLEAN_KEYS = SETTINGS_BOOLEAN_FIELDS;
+export const SETTINGS_ENUM_KEYS = Object.freeze(Object.fromEntries(
+    Object.entries(SETTINGS_ENUM_VALUES).map(([key, values]) => [key, Object.freeze([...values])])
 ));
 
 function isPlainObject(value) {
@@ -176,7 +183,7 @@ export function coerceSettingsFieldValue(key, value, options = {}) {
 
 function isPrivateField(key) {
     if (/cardkey$/i.test(key)) return false;
-    return key.startsWith("_backup") || key.startsWith("_sync") || CUSTOM_API_FIELD.test(key) || COMFY_EXECUTABLE_FIELD.test(key) || COMFY_LOCAL_TRUST_FIELD.test(key) || isCredentialFieldName(key) || PRIVATE_FIELD.test(key) || KNOWN_PRIVATE_FIELD.test(key) || DELIMITED_PRIVATE_FIELD.test(key);
+    return key.startsWith("_") || CUSTOM_API_FIELD.test(key) || COMFY_EXECUTABLE_FIELD.test(key) || COMFY_LOCAL_TRUST_FIELD.test(key) || isCredentialFieldName(key) || PRIVATE_FIELD.test(key) || KNOWN_PRIVATE_FIELD.test(key) || DELIMITED_PRIVATE_FIELD.test(key);
 }
 
 function isComfyWorkflowPrivateField(key) {
@@ -195,40 +202,56 @@ function isStructuredSettingsField(key) {
     return /workflow/i.test(key) || key === "customApiRequestTemplate";
 }
 
-function sanitizeForExport(value, key = "", seen = new WeakSet(), depth = 0, isOmittedField = isPrivateField) {
-    if (isOmittedField(key) || depth > MAX_DEPTH) return undefined;
+function sanitizeForExport(value, key = "", seen = new WeakSet(), depth = 0, isOmittedField = isPrivateField, state = null) {
+    const currentPath = state ? state.path : "";
+    const childState = (childPath) => (state ? { omissions: state.omissions, path: childPath } : null);
+    const omit = (path, reason) => {
+        if (state) state.omissions.push(`${path || "(root)"}: ${reason}`);
+        return undefined;
+    };
+
+    if (isOmittedField(key) || depth > MAX_DEPTH) {
+        return depth > MAX_DEPTH ? omit(currentPath, `nested too deeply (limit ${MAX_DEPTH})`) : undefined;
+    }
     if (value == null || typeof value === "boolean") return value;
-    if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+    if (typeof value === "number") return Number.isFinite(value) ? value : omit(currentPath, "non-finite number");
     if (typeof value === "string") {
         if (/^(?:data:image\/|blob:)/i.test(value)) return undefined;
         if (isStructuredSettingsField(key) && /^\s*[\[{]/.test(value)) {
             try {
                 const parsed = JSON.parse(value);
-                const sanitized = sanitizeForExport(parsed, key, seen, depth + 1, isOmittedField);
+                const sanitized = sanitizeForExport(parsed, key, seen, depth + 1, isOmittedField, childState(currentPath));
                 return sanitized === undefined ? undefined : JSON.stringify(sanitized);
             } catch {
                 if (/["'](?:api[_-]?key|access[_-]?token|auth|authorization|token|secret|password|passwd)["']\s*:/i.test(value)) {
                     return undefined;
                 }
+                return omit(currentPath, "invalid structured string");
             }
         }
-        if (byteLength(value) > MAX_STRING_BYTES) return undefined;
+        if (byteLength(value) > MAX_STRING_BYTES) return omit(currentPath, `string over ${MAX_STRING_BYTES} bytes`);
         return /model$/i.test(key) ? sanitizeReproducibleModel(value) : redactUrlCredentials(value);
     }
-    if (typeof value !== "object" || seen.has(value)) return undefined;
+    if (typeof value !== "object" || seen.has(value)) {
+        return seen.has(value) ? omit(currentPath, "repeated object reference") : omit(currentPath, `unsupported ${typeof value} value`);
+    }
     seen.add(value);
 
     if (Array.isArray(value)) {
+        if (value.length > MAX_ARRAY_ITEMS) omit(currentPath, `array truncated from ${value.length} to ${MAX_ARRAY_ITEMS} items`);
         return value.slice(0, MAX_ARRAY_ITEMS)
-            .map((item) => sanitizeForExport(item, key, seen, depth + 1, isOmittedField))
+            .map((item, index) => sanitizeForExport(item, key, seen, depth + 1, isOmittedField, childState(`${currentPath}[${index}]`)))
             .filter((item) => item !== undefined);
     }
-    if (!isPlainObject(value)) return undefined;
+    if (!isPlainObject(value)) return omit(currentPath, "non-plain object");
 
+    const entries = Object.entries(value);
+    if (entries.length > MAX_OBJECT_KEYS) omit(currentPath, `object truncated from ${entries.length} to ${MAX_OBJECT_KEYS} fields`);
     const result = {};
-    for (const [childKey, childValue] of Object.entries(value).slice(0, MAX_OBJECT_KEYS)) {
+    for (const [childKey, childValue] of entries.slice(0, MAX_OBJECT_KEYS)) {
         if (FORBIDDEN_KEYS.has(childKey)) continue;
-        const sanitized = sanitizeForExport(childValue, childKey, seen, depth + 1, isOmittedField);
+        const childPath = currentPath ? `${currentPath}.${childKey}` : childKey;
+        const sanitized = sanitizeForExport(childValue, childKey, seen, depth + 1, isOmittedField, childState(childPath));
         if (sanitized !== undefined) result[childKey] = sanitized;
     }
     if (String(value.provider || "").toLowerCase() === "custom") delete result.model;
@@ -372,6 +395,8 @@ function normalizeImportedSettingsValues(value, key = "", depth = 0, provider = 
 }
 
 export function createSettingsExport(source, options = {}) {
+    const omissions = [];
+    const state = { omissions, path: "" };
     const payload = {
         version: SETTINGS_TRANSFER_VERSION,
         exportDate: (options.now || new Date()).toISOString(),
@@ -379,7 +404,7 @@ export function createSettingsExport(source, options = {}) {
             secrets: "omitted",
             privateImages: "omitted",
         },
-        activeSettings: sanitizeForExport(source?.activeSettings || {}) || {},
+        activeSettings: sanitizeForExport(source?.activeSettings || {}, "", new WeakSet(), 0, isPrivateField, state) || {},
     };
     for (const name of EXPORTED_STORE_NAMES) {
         let store = source?.[name];
@@ -394,9 +419,13 @@ export function createSettingsExport(source, options = {}) {
             new WeakSet(),
             0,
             name === "comfyWorkflows" ? isComfyWorkflowPrivateField : isPrivateField,
+            { omissions, path: name },
         );
         if (name === "contextMedia" && sanitized !== undefined) sanitized = sanitizeContextMedia(sanitized);
         if (sanitized !== undefined) payload[name] = sanitized;
+    }
+    if (omissions.length && typeof options.onOmission === "function") {
+        options.onOmission(omissions.slice());
     }
     return payload;
 }
@@ -501,24 +530,39 @@ export function mergeSettingsImportStores(current = {}, imported = {}) {
         const portableProfiles = isPlainObject(imported.connectionProfiles)
             ? Object.fromEntries(Object.entries(imported.connectionProfiles).filter(([provider]) => provider !== "custom"))
             : {};
-        const mergedProfiles = mergePreservingPrivateFields(current.connectionProfiles || {}, portableProfiles);
-        if (isPlainObject(current.connectionProfiles)
-            && Object.prototype.hasOwnProperty.call(current.connectionProfiles, "custom")) {
-            mergedProfiles.custom = cloneLocalRecord(current.connectionProfiles.custom);
+        const mergedProfiles = {};
+        for (const [provider, importedRecords] of Object.entries(portableProfiles)) {
+            const currentRecords = isPlainObject(current.connectionProfiles?.[provider]) ? current.connectionProfiles[provider] : {};
+            const merged = mergePreservingPrivateFields(currentRecords, importedRecords);
+            for (const [name, record] of Object.entries(currentRecords)) {
+                if (!Object.prototype.hasOwnProperty.call(importedRecords, name)) merged[name] = cloneLocalRecord(record);
+            }
+            mergedProfiles[provider] = merged;
+        }
+        if (isPlainObject(current.connectionProfiles)) {
+            for (const [provider, records] of Object.entries(current.connectionProfiles)) {
+                if (provider === "custom" || portableProfiles[provider] !== undefined) continue;
+                mergedProfiles[provider] = cloneLocalRecord(records);
+            }
+            if (Object.prototype.hasOwnProperty.call(current.connectionProfiles, "custom")) {
+                mergedProfiles.custom = cloneLocalRecord(current.connectionProfiles.custom);
+            }
         }
         result.connectionProfiles = mergedProfiles;
     }
     if (imported.generationPresets !== undefined) {
+        const localPortable = Array.isArray(current.generationPresets)
+            ? current.generationPresets.filter(record => record?.provider !== "custom").map(cloneLocalRecord)
+            : [];
+        const importedPortable = Array.isArray(imported.generationPresets)
+            ? imported.generationPresets.filter(record => record?.provider !== "custom").map(cloneLocalRecord)
+            : [];
+        const importedIds = new Set(importedPortable.map(record => record?.id).filter(id => typeof id === "string" && id));
+        const retainedLocal = localPortable.filter(record => !(typeof record?.id === "string" && importedIds.has(record.id)));
         const localCustom = Array.isArray(current.generationPresets)
             ? current.generationPresets.filter(record => record?.provider === "custom").map(cloneLocalRecord)
             : [];
-        const localCustomIds = new Set(localCustom.map(record => record?.id).filter(id => typeof id === "string" && id));
-        const portablePresets = Array.isArray(imported.generationPresets)
-            ? imported.generationPresets
-                .filter(record => record?.provider !== "custom" && !localCustomIds.has(record?.id))
-                .map(cloneLocalRecord)
-            : [];
-        result.generationPresets = [...portablePresets, ...localCustom];
+        result.generationPresets = [...importedPortable, ...retainedLocal, ...localCustom];
     }
     return result;
 }

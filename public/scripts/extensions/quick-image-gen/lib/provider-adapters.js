@@ -76,12 +76,22 @@ function editUrlPath(value, editPath) {
 }
 
 function removeUrlQueryParameter(value, name) {
+    const raw = String(value || '');
     try {
-        const url = new URL(value);
+        const url = new URL(raw);
         url.searchParams.delete(name);
         return url.toString();
     } catch {
-        return value;
+        if (!raw.includes('?')) return raw;
+        try {
+            // Relative endpoints never reach the absolute parse above; use a synthetic base so
+            // credential query parameters are stripped from those too.
+            const synthetic = new URL(raw, 'http://qig.invalid/');
+            synthetic.searchParams.delete(name);
+            return `${synthetic.pathname}${synthetic.search}${synthetic.hash}`;
+        } catch {
+            return raw;
+        }
     }
 }
 
@@ -220,7 +230,8 @@ export function getNanobananaApiUrl(proxyUrl = '', model = 'gemini-3-pro-image',
         const versioned = /\/v1beta$/i.test(base) ? base : `${base}/v1beta`;
         return `${versioned}/models/${model}:generateContent`;
     });
-    return endpoint;
+    // A key left in the proxy base's query string must not survive into the final endpoint.
+    return removeUrlQueryParameter(endpoint, 'key');
 }
 
 export function getNanobananaAuthHeaders(endpointUrl, apiKey = '') {
@@ -313,29 +324,41 @@ function extractImageFromString(value, defaultMime) {
 }
 
 function extractImageValue(candidate, defaultMime) {
-    if (!candidate) return null;
-    if (Array.isArray(candidate)) {
-        for (const item of candidate) {
-            const source = extractImageValue(item, defaultMime);
-            if (source) return source;
+    const MAX_NODES = 4096;
+    const MAX_DEPTH = 64;
+    const stack = [{ value: candidate, depth: 0 }];
+    let visited = 0;
+    while (stack.length) {
+        const { value, depth } = stack.pop();
+        if (++visited > MAX_NODES) return null;
+        if (!value) continue;
+        if (Array.isArray(value)) {
+            if (depth >= MAX_DEPTH) continue;
+            for (let index = value.length - 1; index >= 0; index -= 1) {
+                stack.push({ value: value[index], depth: depth + 1 });
+            }
+            continue;
         }
-        return null;
-    }
-    if (typeof candidate === 'string') return extractImageFromString(candidate, defaultMime);
-    if (typeof candidate !== 'object') return null;
-    if (typeof candidate.image_url === 'string') return candidate.image_url;
-    if (candidate.image_url?.url) return candidate.image_url.url;
-    if (candidate.url) return candidate.url;
-    if (candidate.fileData?.fileUri) return candidate.fileData.fileUri;
-    if (candidate.file_data?.file_uri) return candidate.file_data.file_uri;
-    if (candidate.b64_json) return `data:${defaultMime};base64,${candidate.b64_json}`;
-    if (candidate.base64) return `data:${defaultMime};base64,${candidate.base64}`;
-    if (candidate.source?.data) return `data:${candidate.source.media_type || defaultMime};base64,${candidate.source.data}`;
-    if (candidate.inline_data?.data) return `data:${candidate.inline_data.mime_type || defaultMime};base64,${candidate.inline_data.data}`;
-    if (candidate.inlineData?.data) return `data:${candidate.inlineData.mimeType || defaultMime};base64,${candidate.inlineData.data}`;
-    for (const value of [candidate.image, candidate.text, candidate.content]) {
-        const source = extractImageFromString(value, defaultMime);
-        if (source) return source;
+        if (typeof value === 'string') {
+            const source = extractImageFromString(value, defaultMime);
+            if (source) return source;
+            continue;
+        }
+        if (typeof value !== 'object') continue;
+        if (typeof value.image_url === 'string') return value.image_url;
+        if (value.image_url?.url) return value.image_url.url;
+        if (value.url) return value.url;
+        if (value.fileData?.fileUri) return value.fileData.fileUri;
+        if (value.file_data?.file_uri) return value.file_data.file_uri;
+        if (value.b64_json) return `data:${defaultMime};base64,${value.b64_json}`;
+        if (value.base64) return `data:${defaultMime};base64,${value.base64}`;
+        if (value.source?.data) return `data:${value.source.media_type || defaultMime};base64,${value.source.data}`;
+        if (value.inline_data?.data) return `data:${value.inline_data.mime_type || defaultMime};base64,${value.inline_data.data}`;
+        if (value.inlineData?.data) return `data:${value.inlineData.mimeType || defaultMime};base64,${value.inlineData.data}`;
+        if (depth >= MAX_DEPTH) continue;
+        for (const field of [value.image, value.text, value.content]) {
+            stack.push({ value: field, depth: depth + 1 });
+        }
     }
     return null;
 }
@@ -476,12 +499,16 @@ export async function materializeProviderImageSource(source, {
             signal,
         });
     } catch (error) {
-        if (error instanceof TypeError && !signal?.aborted && allowBrowserFallback) return normalized;
+        // Forced retrieval must never degrade into letting <img> follow redirects or contact
+        // hosts the bounded fetch was supposed to enforce; browser fallback applies only to
+        // optional fetches.
+        if (error instanceof TypeError && !signal?.aborted && allowBrowserFallback && !forceFetch) return normalized;
         const sourceDescription = describeProviderImageSource(normalized);
         const detail = String(error?.message || 'request failed').split(normalized).join(sourceDescription);
         throw new Error(`Could not retrieve generated image from ${sourceDescription}: ${detail}`);
     }
     if (!response.ok) {
+        try { await response.body?.cancel?.(); } catch { /* best-effort disposal */ }
         throw new Error(`Generated image URL returned HTTP ${response.status}`);
     }
 
@@ -489,6 +516,7 @@ export async function materializeProviderImageSource(source, {
     const mime = contentType.split(';', 1)[0].trim();
     if (mime && !mime.startsWith('image/') && mime !== 'application/octet-stream') {
         const detail = await readResponseText(response, 64 * 1024).catch(() => '');
+        try { await response.body?.cancel?.(); } catch { /* best-effort disposal */ }
         const preview = detail.replace(/\s+/g, ' ').trim().slice(0, 200);
         throw new Error(`Generated image URL returned ${contentType}${preview ? `: ${preview}` : ''}`);
     }

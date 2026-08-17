@@ -73,7 +73,10 @@ export class PrivacyLogBuffer {
 
     append(message, { diagnostic = false, debugEnabled = false } = {}) {
         if (diagnostic && debugEnabled !== true) return null;
-        const redactedMessage = redactLogMessage(message);
+        // Bound the raw input BEFORE redaction so hostile provider payloads cannot
+        // drive megabytes of regex work; the bounded value is also what callers print.
+        const boundedInput = truncateLogEntry(message, this.maxEntryBytes * 8);
+        const redactedMessage = redactLogMessage(boundedInput);
         const timestamp = String(this.formatTimestamp?.() ?? "");
         const prefix = timestamp ? `[${timestamp}] ` : "";
         const entry = truncateLogEntry(`${prefix}${redactedMessage}`, this.maxEntryBytes);

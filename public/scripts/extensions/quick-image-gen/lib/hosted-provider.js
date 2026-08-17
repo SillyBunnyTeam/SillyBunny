@@ -356,14 +356,17 @@ export async function readSseDataStream(response, onEvent, {
     let lastValue;
     let sawProvisionalValue = false;
     let eventCount = 0;
+    let eventName = null;
 
     async function dispatch() {
         if (!dataLines.length) return false;
         const data = dataLines.join("\n");
         dataLines = [];
         eventCount += 1;
+        const currentEvent = eventName;
+        eventName = null;
         if (data.trim() === "[DONE]") return true;
-        const result = await onEvent(data);
+        const result = await onEvent(data, currentEvent);
         if (result && Object.prototype.hasOwnProperty.call(result, "value") && result.value != null) {
             if (result.provisional === true) sawProvisionalValue = true;
             else lastValue = result.value;
@@ -375,6 +378,10 @@ export async function readSseDataStream(response, onEvent, {
         const normalized = line.endsWith("\r") ? line.slice(0, -1) : line;
         if (!normalized) return dispatch();
         if (normalized.startsWith(":")) return false;
+        if (normalized.startsWith("event:")) {
+            eventName = normalized.slice(6).replace(/^ /, "") || null;
+            return false;
+        }
         if (normalized === "data") dataLines.push("");
         else if (normalized.startsWith("data:")) dataLines.push(normalized.slice(5).replace(/^ /, ""));
         return false;

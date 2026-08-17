@@ -14,6 +14,14 @@ export function createAccessibleIconButton(documentRef, {
     } else {
         button.setAttribute("role", "button");
         button.setAttribute("tabindex", "0");
+        // The host "interactable" class handles Enter for non-native buttons; add the
+        // missing Space activation so keyboard users reach every action control.
+        button.addEventListener("keydown", (event) => {
+            if (event.key !== " ") return;
+            event.preventDefault();
+            event.stopPropagation();
+            button.click();
+        });
     }
     if (id) button.id = id;
     if (className) button.className = className;

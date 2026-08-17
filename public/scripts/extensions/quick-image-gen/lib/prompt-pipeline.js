@@ -71,10 +71,14 @@ export function setAuthoritativeFinalPrompt(state, { positive, negative } = {}) 
 // text) where a repeat may be deliberate, so those pass through in place. Multi-line prompts
 // are left entirely alone: re-joining would flatten the author's line breaks.
 const MAX_TAG_SEGMENT_WORDS = 4;
+const PROSE_CLAUSE_START = /^(?:a|an|the|she|he|it|they|we|i|you|her|his|him|my|our|their|your|this|that|those|these)\b/i;
 
 export function isTagSegment(segment) {
     const part = String(segment ?? "").trim();
-    return part.length > 0 && part.split(/\s+/).length <= MAX_TAG_SEGMENT_WORDS;
+    if (part.length === 0 || part.split(/\s+/).length > MAX_TAG_SEGMENT_WORDS) return false;
+    // Short clauses that begin like prose ("A bell rings", "She turns") are sentences,
+    // not tags; repeating them may be deliberate and must never be deduplicated.
+    return !PROSE_CLAUSE_START.test(part);
 }
 
 export function looksLikeTagList(text) {
