@@ -192,7 +192,7 @@ function parseManifest(storage, key) {
     }
     return {
       version: GALLERY_MANIFEST_VERSION,
-      revision: Number.isInteger(parsed.revision) ? parsed.revision : 0,
+      revision: Number.isSafeInteger(parsed.revision) && parsed.revision >= 0 ? parsed.revision : 0,
       legacyMigrated: parsed.legacyMigrated === true,
       cleared: parsed.cleared === true,
       pendingAssetIds: Array.isArray(parsed.pendingAssetIds)
@@ -369,7 +369,7 @@ export class GalleryRepository {
         }
       });
 
-      if (!novelEntries.length) return results;
+      if (!novelEntries.length) return results.map(entry => (entry ? clone(entry) : entry));
 
       const prepared = await this.#prepareEntries(
         novelEntries.map(item => item.entry),
@@ -465,7 +465,7 @@ export class GalleryRepository {
       this.entries = this.#sortAndLimit(runtimeCandidates);
       await this.#removeTrimmedAssets();
       this.#notifyEvictions(this.#findEvictions(runtimeCandidates, this.entries));
-      return results;
+      return results.map(entry => (entry ? clone(entry) : entry));
     });
   }
 
@@ -510,7 +510,7 @@ export class GalleryRepository {
   }
 
   list() {
-    return this.entries.slice();
+    return this.entries.map(clone);
   }
 
   async close() {

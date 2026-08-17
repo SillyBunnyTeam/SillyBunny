@@ -11,6 +11,33 @@ const COMMON_REPRODUCIBLE_FIELDS = Object.freeze([
     "batchCount", "sequentialSeeds",
 ]);
 
+const LOCAL_REPRODUCIBLE_BASE_FIELDS = Object.freeze(["localType", "localModel", "localDenoise"]);
+const LOCAL_A1111_FIELDS = Object.freeze([
+    "a1111Model", "a1111ClipSkip", "a1111Scheduler", "a1111RestoreFaces", "a1111Tiling",
+    "a1111Subseed", "a1111SubseedStrength", "a1111Adetailer", "a1111AdetailerModel",
+    "a1111AdetailerPrompt", "a1111AdetailerNegative", "a1111AdetailerDenoise",
+    "a1111AdetailerConfidence", "a1111AdetailerMaskBlur", "a1111AdetailerDilateErode",
+    "a1111AdetailerInpaintOnlyMasked", "a1111AdetailerInpaintPadding", "a1111Adetailer2",
+    "a1111Adetailer2Model", "a1111Adetailer2Prompt", "a1111Adetailer2Negative",
+    "a1111Adetailer2Denoise", "a1111Adetailer2Confidence", "a1111Adetailer2MaskBlur",
+    "a1111Adetailer2DilateErode", "a1111Adetailer2InpaintOnlyMasked", "a1111Adetailer2InpaintPadding",
+    "a1111Loras", "a1111Vae", "a1111HiresFix", "a1111HiresUpscaler", "a1111HiresScale",
+    "a1111HiresSteps", "a1111HiresDenoise", "a1111HiresSampler", "a1111HiresScheduler",
+    "a1111HiresPrompt", "a1111HiresNegative", "a1111HiresResizeX", "a1111HiresResizeY",
+    "a1111SaveToWebUI", "a1111IpAdapter", "a1111IpAdapterMode", "a1111IpAdapterWeight",
+    "a1111IpAdapterPixelPerfect", "a1111IpAdapterResizeMode", "a1111IpAdapterControlMode",
+    "a1111IpAdapterStartStep", "a1111IpAdapterEndStep", "a1111ControlNet", "a1111ControlNetModel",
+    "a1111ControlNetModule", "a1111ControlNetWeight", "a1111ControlNetResizeMode",
+    "a1111ControlNetControlMode", "a1111ControlNetPixelPerfect", "a1111ControlNetGuidanceStart",
+    "a1111ControlNetGuidanceEnd", "a1111InterruptServer",
+]);
+const LOCAL_COMFY_FIELDS = Object.freeze([
+    "comfyModelLoader", "comfyClipSkip", "comfyDenoise",
+    "comfyScheduler", "comfyTimeout", "comfyUpscale", "comfyUpscaleModel", "comfyLoras",
+    "comfyOutputNodeIds", "comfyOutputImageIndex", "comfySkipNegativePrompt",
+    "comfyFluxClipModel1", "comfyFluxClipModel2", "comfyFluxVaeModel", "comfyFluxClipType",
+]);
+
 const PROVIDER_REPRODUCIBLE_FIELDS = Object.freeze({
     pollinations: ["pollinationsModel"],
     novelai: ["naiModel"],
@@ -30,29 +57,7 @@ const PROVIDER_REPRODUCIBLE_FIELDS = Object.freeze({
     fal: ["falModel"],
     together: ["togetherModel"],
     zai: ["zaiModel", "zaiQuality"],
-    local: [
-        "localType", "localModel", "localDenoise",
-        "a1111Model", "a1111ClipSkip", "a1111Scheduler", "a1111RestoreFaces", "a1111Tiling",
-        "a1111Subseed", "a1111SubseedStrength", "a1111Adetailer", "a1111AdetailerModel",
-        "a1111AdetailerPrompt", "a1111AdetailerNegative", "a1111AdetailerDenoise",
-        "a1111AdetailerConfidence", "a1111AdetailerMaskBlur", "a1111AdetailerDilateErode",
-        "a1111AdetailerInpaintOnlyMasked", "a1111AdetailerInpaintPadding", "a1111Adetailer2",
-        "a1111Adetailer2Model", "a1111Adetailer2Prompt", "a1111Adetailer2Negative",
-        "a1111Adetailer2Denoise", "a1111Adetailer2Confidence", "a1111Adetailer2MaskBlur",
-        "a1111Adetailer2DilateErode", "a1111Adetailer2InpaintOnlyMasked", "a1111Adetailer2InpaintPadding",
-        "a1111Loras", "a1111Vae", "a1111HiresFix", "a1111HiresUpscaler", "a1111HiresScale",
-        "a1111HiresSteps", "a1111HiresDenoise", "a1111HiresSampler", "a1111HiresScheduler",
-        "a1111HiresPrompt", "a1111HiresNegative", "a1111HiresResizeX", "a1111HiresResizeY",
-        "a1111SaveToWebUI", "a1111IpAdapter", "a1111IpAdapterMode", "a1111IpAdapterWeight",
-        "a1111IpAdapterPixelPerfect", "a1111IpAdapterResizeMode", "a1111IpAdapterControlMode",
-        "a1111IpAdapterStartStep", "a1111IpAdapterEndStep", "a1111ControlNet", "a1111ControlNetModel",
-        "a1111ControlNetModule", "a1111ControlNetWeight", "a1111ControlNetResizeMode",
-        "a1111ControlNetControlMode", "a1111ControlNetPixelPerfect", "a1111ControlNetGuidanceStart",
-        "a1111ControlNetGuidanceEnd", "comfyModelLoader", "comfyClipSkip", "comfyDenoise",
-        "comfyScheduler", "comfyTimeout", "comfyUpscale", "comfyUpscaleModel", "comfyLoras",
-        "comfyOutputNodeIds", "comfyOutputImageIndex", "comfySkipNegativePrompt",
-        "comfyFluxClipModel1", "comfyFluxClipModel2", "comfyFluxVaeModel", "comfyFluxClipType",
-    ],
+    local: LOCAL_REPRODUCIBLE_BASE_FIELDS,
     proxy: [
         "proxyModel", "proxyLoras", "proxyFacefix", "proxySteps", "proxyCfg", "proxySampler", "proxySeed",
         "proxyExtraInstructions", "proxyEndpointMode", "proxyPayloadMode", "proxyRefImageMode", "proxySse",
@@ -73,8 +78,8 @@ const textEncoder = new TextEncoder();
 
 function sanitizeEffectiveParameter(key, value, provider) {
     const numericBounds = {
-        width: [256, 2048, true],
-        height: [256, 2048, true],
+        width: [256, provider === "routeway" ? 4096 : 2048, true],
+        height: [256, provider === "routeway" ? 4096 : 2048, true],
         steps: [1, 150, true],
         cfgScale: [provider === "proxy" ? 0 : 1, 30, false],
         seed: [0, 0xffffffff, true],
@@ -124,9 +129,18 @@ export function sanitizeReproducibleSettings(settings, options = {}) {
     const provider = Object.prototype.hasOwnProperty.call(PROVIDER_REPRODUCIBLE_FIELDS, requestedProvider)
         ? requestedProvider
         : "";
+    // A1111 and ComfyUI are two different local backends: never record the inactive
+    // backend's stale controls in effective metadata, and never let them crowd the
+    // bounded snapshot budget.
+    const localType = provider === "local"
+        ? String(Object.prototype.hasOwnProperty.call(options, "localType") ? options.localType || "" : source.localType || "").toLowerCase()
+        : "";
+    const providerFields = provider === "local"
+        ? [...LOCAL_REPRODUCIBLE_BASE_FIELDS, ...(localType === "comfyui" ? LOCAL_COMFY_FIELDS : LOCAL_A1111_FIELDS)]
+        : (PROVIDER_REPRODUCIBLE_FIELDS[provider] || []);
     const allowedFields = new Set([
         ...COMMON_REPRODUCIBLE_FIELDS,
-        ...(PROVIDER_REPRODUCIBLE_FIELDS[provider] || []),
+        ...providerFields,
     ]);
     const result = {};
     for (const key of allowedFields) {

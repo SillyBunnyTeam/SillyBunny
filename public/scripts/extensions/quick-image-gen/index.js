@@ -19,20 +19,25 @@ import {
 import { GenerationRunManager, OwnedTransientValue, snapshotGenerationRunSettings, snapshotGenerationSettings } from "./lib/generation-run.js";
 import { normalizeProviderResult, sanitizeEffectiveRequest } from "./lib/provider-contract.js";
 import {
+    coerceSettingsFieldValue,
     createSettingsExport,
     MAX_SETTINGS_IMPORT_BYTES,
     mergePreservingPrivateFields,
     mergeSettingsImportStores,
     parseSettingsImport,
+    SETTINGS_BOOLEAN_KEYS,
+    SETTINGS_ENUM_KEYS,
     stageStorageTransaction,
 } from "./lib/settings-transfer.js";
 import {
     canSeedSynchronizedStoreFromLocal,
     cloneSynchronizedValue,
+    PENDING_SYNC_MARKER_PREFIX,
     persistSynchronizedStore,
     persistSynchronizedStores,
     reconcileSynchronizedStore,
 } from "./lib/settings-persistence.js";
+import { confirmSettingsSyncCacheId, createSettingsSaveEventConfirmer } from "./lib/host-persistence.js";
 import { clearGalleryRepositoryStorage, GalleryRepository } from "./lib/gallery-repository.js";
 import {
     detectImageFormat,
@@ -155,6 +160,7 @@ import {
 } from "./lib/context-media.js";
 import {
     applyStateBeforePersistence,
+    buildChatHistoryMessages,
     createAccountStorageScope,
     createAbortableSerializedRunner,
     createConversationCheckpoint,
@@ -576,15 +582,19 @@ function updateGenerateShortcutHints() {
 function handleQigKeyboardShortcut(event) {
     // Editable fields outside QIG's own panel (the chat compose box, other extensions) keep their keys.
     if (isEditableShortcutTarget(event.target) && !event.target?.closest?.("#qig-settings")) return;
-    if (event.target?.closest?.(".qig-popup")) return;
+    if (event.target?.closest?.(".qig-popup")) {
+        // Popup-local handlers own their keys (they stop propagation themselves).
+        return;
+    }
     // The shortcut recorder must see the combo it is recording, not run it.
     if (event.target?.id === "qig-generate-shortcut") return;
     if (eventMatchesGenerateShortcut(event)) {
+        // Own the shortcut before checking whether generation may start: the host binds
+        // Ctrl+Enter to "regenerate message", which must never double-fire while QIG is busy.
+        event.preventDefault();
+        event.stopPropagation();
         const generateBtn = document.getElementById("qig-generate-btn");
         if (!generateBtn || generateBtn.disabled || isGenerating) return;
-        event.preventDefault();
-        // The host binds Ctrl+Enter to "regenerate message"; stop it from double-firing.
-        event.stopPropagation();
         runConfiguredPaletteGeneration();
         return;
     }
@@ -1225,6 +1235,7 @@ const defaultSettings = {
     a1111ControlNetGuidanceEnd: 1,
     a1111ControlNetImage: "",
     a1111SaveToWebUI: true,
+    a1111InterruptServer: false,
     // ComfyUI specific
     comfyWorkflow: "",
     comfyModelLoader: "checkpoint",
@@ -1254,6 +1265,7 @@ const defaultSettings = {
     llmOverrideProfileId: "",
     llmOverridePreset: "",
     llmOverrideMaxTokens: 500,
+    llmOverrideChatDepth: 0,
     // ComfyUI Flux/UNET support
     comfySkipNegativePrompt: false,
     comfyFluxClipModel1: "",
@@ -1348,12 +1360,79 @@ async function flushSettingsBackup() {
     saveSettingsDebounced?.();
 }
 
+// The host's saveSettings() fulfills with undefined on both success and common
+// failures, so a generated account identity must be confirmed via server
+// readback before gallery/history are allowed to use it durably.
+let syncCacheIdClaimed = false;
+let syncCacheIdClaimInFlight = false;
+
+async function confirmSyncCacheIdSaved(expectedId) {
+    return confirmSettingsSyncCacheId({
+        fetchImpl: globalThis.fetch,
+        getRequestHeaders: typeof getRequestHeaders === "function" ? getRequestHeaders : null,
+        settingsKey: extensionName,
+        expectedSyncCacheId: expectedId,
+    });
+}
+
+async function retrySyncCacheIdClaim() {
+    if (syncCacheIdClaimed || syncCacheIdClaimInFlight) return syncCacheIdClaimed;
+    const id = getSettings()?._syncCacheId;
+    if (typeof id !== "string" || !id) return false;
+    syncCacheIdClaimInFlight = true;
+    try {
+        const confirmed = await confirmSyncCacheIdSaved(id);
+        if (confirmed) {
+            syncCacheIdClaimed = true;
+            safeSetStorage(SYNC_CACHE_ID_KEY, id);
+            accountStorageScope = createAccountStorageScope(id);
+            promptHistory = accountStorageScope
+                ? normalizePromptHistory(safeParse(accountStorageScope.promptHistoryKey, []))
+                : [];
+            await initializeGalleryRepository();
+            log("Account sync identity confirmed; gallery and prompt history are now account-scoped");
+        }
+        return confirmed;
+    } finally {
+        syncCacheIdClaimInFlight = false;
+    }
+}
+
+function confirmSettingsSaveEvent(timeoutMs = 2500) {
+    const confirmer = createSettingsSaveEventConfirmer({
+        eventSource: hostScriptModule?.eventSource,
+        eventTypes: hostScriptModule?.event_types,
+        timeoutMs,
+    });
+    return confirmer();
+}
+
+function getPendingSyncMarkerKeys() {
+    const keys = [];
+    try {
+        for (let index = 0; index < localStorage.length; index++) {
+            const key = localStorage.key(index);
+            if (key?.startsWith(PENDING_SYNC_MARKER_PREFIX)) keys.push(key);
+        }
+    } catch { /* best effort */ }
+    return keys;
+}
+
+function clearPendingSyncMarkers() {
+    for (const key of getPendingSyncMarkerKeys()) {
+        try {
+            localStorage.removeItem(key);
+        } catch { /* best effort */ }
+    }
+}
+
 async function saveBackupToSettings(localKey, data) {
     if (!writeBackupToSettings(localKey, data)) {
         return false;
     }
 
     await flushSettingsBackup();
+    if (!syncCacheIdClaimed) await retrySyncCacheIdClaim();
     return true;
 }
 
@@ -1381,11 +1460,17 @@ async function saveLocalStoreBackupNow(localKey, data, errorMessage) {
             backupKey,
             value: data,
             save: flushSettingsBackup,
+            acknowledge: () => confirmSettingsSaveEvent(),
         });
         if (!result.cacheSaved) {
             log(`Local cache write failed for ${localKey}: ${result.cacheError?.message || "unknown error"}`);
             qigToast.warning("Saved to your SillyTavern account, but this browser's local cache could not be updated.");
         }
+        if (result.confirmed === false) {
+            log(`Server synchronization for ${localKey} was not positively confirmed; the local copy stays authoritative until retry`);
+            qigToast.warning("Saved in this browser; server synchronization is pending and will retry automatically.");
+        }
+        if (!syncCacheIdClaimed) await retrySyncCacheIdClaim();
         return true;
     } catch (error) {
         log(`Server synchronization failed for ${localKey}: ${error.message}`);
@@ -1463,11 +1548,39 @@ let activeFilterPoolIdsGlobal = safeParse("qig_active_pool_ids_global", []);
 let activeFilterPoolIdsByCard = safeParse("qig_active_pool_ids_by_card", {});
 let activeFilterPoolIdsByChar = safeParse("qig_active_pool_ids_by_char", {});
 let contextMediaLibrary;
+let contextMediaQuarantined = false;
+let contextMediaTestController = null;
+function quarantineContextMediaData(reason) {
+    contextMediaQuarantined = true;
+    try {
+        const existing = safeParse("qig_context_media_quarantined", null);
+        const previous = existing && typeof existing === "object" && !Array.isArray(existing) ? existing : {};
+        let serverRaw = null;
+        try {
+            const backup = extension_settings?.[extensionName]?._backupContextMedia;
+            serverRaw = backup === undefined || backup === null ? null : JSON.stringify(backup);
+        } catch { /* host settings not loaded yet */ }
+        let localRaw = null;
+        try {
+            localRaw = localStorage.getItem(CONTEXT_MEDIA_STORE_KEY);
+        } catch { /* storage unavailable */ }
+        const next = {
+            ...previous,
+            reason: String(reason?.message || reason || "unsupported"),
+            localRaw,
+            serverRaw,
+            at: new Date().toISOString(),
+        };
+        safeSetStorage("qig_context_media_quarantined", JSON.stringify(next), "Failed to quarantine unsupported Context Media data.");
+    } catch (quarantineError) {
+        console.warn(`[Quick Image Gen] Failed to quarantine Context Media data: ${quarantineError.message}`);
+    }
+}
 try {
     contextMediaLibrary = normalizeContextMediaLibrary(safeParse(CONTEXT_MEDIA_STORE_KEY, {}));
 } catch (error) {
-    console.warn(`[Quick Image Gen] Ignoring invalid Context Media storage: ${error.message}`);
-    try { localStorage.removeItem(CONTEXT_MEDIA_STORE_KEY); } catch { /* restore from backup when available */ }
+    console.warn(`[Quick Image Gen] Quarantining unsupported Context Media storage: ${error.message}`);
+    quarantineContextMediaData(error);
     contextMediaLibrary = normalizeContextMediaLibrary({});
 }
 let selectedComfyWorkflowId = "";
@@ -1477,6 +1590,7 @@ const runSerializedTextAITask = createAbortableSerializedRunner();
 const regenerationReferenceStore = new RegenerationReferenceStore();
 let regenerationReferenceAccountId = null;
 let activeGenerationRun = null;
+const a1111SubmittedRunIds = new Set();
 let activeComfyPrompt = null;
 let activeExternalGenerationRun = null;
 let externalGenerationTail = Promise.resolve();
@@ -1495,6 +1609,8 @@ const _autoInjectTimeouts = new Map();
 let _autoGenerateEligibleCount = 0;
 let _autoGenerateLastEligibleMessageIndex = null;
 let _contextMediaTimeout = null;
+let _contextMediaPendingSnapshot = null;
+let _contextMediaActiveSnapshot = null;
 let _contextMediaController = null;
 let _contextMediaEligibleCount = 0;
 let _contextMediaLastEligibleMessage = null;
@@ -1563,19 +1679,35 @@ function generateRandomSeed() {
     return Math.floor(Math.random() * 2147483647);
 }
 
+// Providers accept unsigned 32-bit seeds (or -1 for random). Everything else is
+// normalized here so metadata never records a different seed than the one sent.
+const SEED_MAX = 0xffffffff;
+
+function normalizeGenerationSeed(value) {
+    if (value == null || value === "") return -1;
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return -1;
+    if (numeric < -1) return -1;
+    if (numeric > SEED_MAX) return SEED_MAX;
+    return Math.floor(numeric);
+}
+
+function seedForBatchIndex(baseSeed, index) {
+    if (baseSeed < 0) return baseSeed;
+    return (baseSeed + index) % (SEED_MAX + 1);
+}
+
 function resolveRandomSeed(seedValue = -1, target = null) {
-    const numericSeed = Number(seedValue);
-    if (Number.isFinite(numericSeed) && numericSeed >= 0) return numericSeed;
+    const numericSeed = normalizeGenerationSeed(seedValue);
+    if (numericSeed >= 0) return numericSeed;
     const resolvedSeed = generateRandomSeed();
     if (target && typeof target === "object") target.__qigResolvedSeed = resolvedSeed;
     return resolvedSeed;
 }
 
 function normalizeSeedOverride(seedValue) {
-    if (seedValue == null || seedValue === "") return null;
-    const numericSeed = Number(seedValue);
-    if (!Number.isFinite(numericSeed) || numericSeed < 0) return null;
-    return Math.floor(numericSeed);
+    const normalized = normalizeGenerationSeed(seedValue);
+    return normalized >= 0 ? normalized : null;
 }
 
 function getGenerationSeedKey(settings = getSettings()) {
@@ -1584,8 +1716,7 @@ function getGenerationSeedKey(settings = getSettings()) {
 
 function getGenerationSeedValue(settings = getSettings()) {
     const source = settings || getSettings();
-    const value = Number(source?.[getGenerationSeedKey(source)]);
-    return Number.isFinite(value) ? value : -1;
+    return normalizeGenerationSeed(source?.[getGenerationSeedKey(source)]);
 }
 
 function setGenerationSeedValue(settings, value) {
@@ -1710,18 +1841,9 @@ async function runInternalQuietPromptRequest(instruction, {
         quietToLoud: false,
     };
 
-    try {
-        return await runSerializedTextAITask(() => generateQuietPrompt(quietOptions), signal);
-    } catch (e) {
-        if (e.name === "AbortError") throw e;
-        log(`${requestLabel}: generateQuietPrompt with options failed: ${e.message}, using simple call`);
-        return await runSerializedTextAITask(() => generateQuietPrompt({
-            quietPrompt,
-            skipWIAN: true,
-            quietName: quietName || `ImageGen_${Date.now()}`,
-            quietToLoud: false,
-        }), signal);
-    }
+    // No retry: the "simple call" previously used the same options object and could
+    // only duplicate a failed request (double latency, double billing).
+    return await runSerializedTextAITask(() => generateQuietPrompt(quietOptions), signal);
 }
 
 async function callInternalQuietPrompt(instruction, { signal = null, quietName, label = "internal quiet prompt", prefill = "" } = {}) {
@@ -2540,10 +2662,11 @@ function normalizeProxyChatImageSettings(target, source = target) {
 }
 
 function inferProxyEndpointMode(proxyUrl) {
+    // Default to the documented images endpoint. Only an explicit chat path or
+    // Chat Image mode routes to chat/completions; a bare "/v1" base must never
+    // be reclassified as a chat endpoint.
     const trimmed = String(proxyUrl || "").trim().replace(/\/$/, "");
     if (/\/chat\/completions$/i.test(trimmed)) return "chat_completions";
-    if (/\/images(?:\/generations)?$/i.test(trimmed)) return "images_generations";
-    if (trimmed.includes("/v1") && !trimmed.includes("/images")) return "chat_completions";
     return "images_generations";
 }
 
@@ -2818,7 +2941,7 @@ function buildProxyImagesPayload(prompt, negative, s, refImages, payloadMode, pr
     const promptText = normalizedPrompt.promptText || getProxyPromptFallback(allRefImages.length > 0);
     const strictPrompt = payloadMode === "openai_strict"
         ? [promptText, negative ? `Avoid: ${negative}` : "", s.proxyExtraInstructions || ""].filter(Boolean).join("\n")
-        : promptText;
+        : [promptText, s.proxyExtraInstructions || ""].filter(Boolean).join("\n");
     const payload = {
         model: s.proxyModel,
         prompt: strictPrompt,
@@ -3293,8 +3416,7 @@ async function replicateFetch(action, payload, signal) {
 
 function isExactReplicateApiUrl(value) {
     try {
-        const url = new URL(value);
-        return url.protocol === "https:" && url.hostname.toLowerCase().replace(/\.$/, "") === "api.replicate.com";
+        return new URL(value).origin === "https://api.replicate.com";
     } catch {
         return false;
     }
@@ -3605,7 +3727,7 @@ function setGenerationActiveUI(active, { disableGenerateButton = false } = {}) {
 
 function beginGeneration({ settings = getGenerationSettingsForRun(), context = getContext?.(), messageSnapshots = [], conversationCheckpoint = null, disableGenerateButton = false, clearPendingAuto = false, preserveRegenerationReferences = false } = {}) {
     closePalettePresetMenu();
-    cancelContextMediaWork();
+    deferContextMediaWorkForGeneration();
     if (!preserveRegenerationReferences) clearRegenerationReferenceState();
     if (clearPendingAuto) {
         resetAutoGenerateCadence({ clearTimer: true });
@@ -3627,6 +3749,7 @@ function beginGeneration({ settings = getGenerationSettingsForRun(), context = g
 
 function endGeneration(run, { disableGenerateButton = false } = {}) {
     if (!generationRunManager.finish(run)) return false;
+    a1111SubmittedRunIds.delete(run.id);
     if (activeComfyPrompt?.runId === run.id) activeComfyPrompt = null;
     activeGenerationRun = null;
     currentAbortController = null;
@@ -3654,10 +3777,10 @@ function normalizeComfyPromptState(value) {
     return "unknown";
 }
 
-async function getComfyPromptState(baseUrl, promptId) {
+async function getComfyPromptState(baseUrl, promptId, signal = null) {
     const normalizedBaseUrl = String(baseUrl || "").replace(/\/+$/, "");
     try {
-        const response = await corsFetch(`${normalizedBaseUrl}/queue`, { redirect: "error" });
+        const response = await corsFetch(`${normalizedBaseUrl}/queue`, { redirect: "error", signal });
         if (response.ok) {
             const queue = await readResponseJson(response, MAX_DISCOVERY_RESPONSE_BYTES);
             if (comfyQueueContainsPrompt(queue?.queue_pending, promptId)) return "queued";
@@ -3666,7 +3789,7 @@ async function getComfyPromptState(baseUrl, promptId) {
     } catch { /* fall through to the jobs API when queue inspection is unavailable */ }
 
     try {
-        const response = await corsFetch(`${normalizedBaseUrl}/api/jobs/${encodeURIComponent(promptId)}`, { redirect: "error" });
+        const response = await corsFetch(`${normalizedBaseUrl}/api/jobs/${encodeURIComponent(promptId)}`, { redirect: "error", signal });
         if (!response.ok) return "unknown";
         const job = await readResponseJson(response, MAX_DISCOVERY_RESPONSE_BYTES);
         const candidates = [
@@ -3686,13 +3809,18 @@ async function getComfyPromptState(baseUrl, promptId) {
 }
 
 async function cancelTrackedComfyPrompt(tracked) {
-    const promptState = await getComfyPromptState(tracked.baseUrl, tracked.promptId);
+    // Bound the state probe and the cancellation independently: a hanging /queue or
+    // jobs endpoint must not leave the background cleanup promise pending forever.
+    const probeDeadline = createAbortDeadline(null, 3000, "ComfyUI state probe timed out");
+    const promptState = await getComfyPromptState(tracked.baseUrl, tracked.promptId, probeDeadline.signal);
+    const cancelDeadline = createAbortDeadline(null, 8000, "ComfyUI cancellation timed out");
     return cancelComfyPrompt(tracked.promptId, {
         baseUrl: tracked.baseUrl,
         fetchImpl: corsFetch,
         tryJobsCancel: true,
         promptState,
         allowLegacyInterrupt: tracked.allowLegacyInterrupt === true,
+        signal: cancelDeadline.signal,
     });
 }
 
@@ -3776,6 +3904,7 @@ function requestGenerationCancel(reason = "Generation cancelled by user", { forc
     cancelRequested = true;
     cancelRequestSerial += 1;
     const settings = run.settings;
+    const a1111WorkSubmitted = a1111SubmittedRunIds.has(run.id);
     const trackedComfyPrompt = activeComfyPrompt?.runId === run.id
         ? { ...activeComfyPrompt }
         : null;
@@ -3805,7 +3934,7 @@ function requestGenerationCancel(reason = "Generation cancelled by user", { forc
                         if (result.cancelled === false) log(`ComfyUI: ${result.reason || "prompt could not be safely cancelled"}`);
                     }).catch(error => log(`ComfyUI cancellation failed: ${error.message}`));
                 }
-            } else {
+            } else if (settings.a1111InterruptServer === true && a1111WorkSubmitted) {
                 const interruptController = new AbortController();
                 const timeoutId = setTimeout(() => interruptController.abort(), 2000);
                 const barrier = corsFetch(`${baseUrl}/sdapi/v1/interrupt`, {
@@ -3817,9 +3946,12 @@ function requestGenerationCancel(reason = "Generation cancelled by user", { forc
                 barrier.finally(() => {
                     if (localCancellationBarriers.get(baseUrl) === barrier) localCancellationBarriers.delete(baseUrl);
                 }).catch(() => {});
+            } else {
+                log("A1111: Skipped global server interrupt (no owned request submitted or shared-server interrupt disabled)");
             }
         }
     } catch (e) { /* best-effort */ }
+    a1111SubmittedRunIds.delete(run.id);
 
     qigToast.info("Stopped waiting. Remote work may continue if the provider cannot cancel it.", "Image Gen", { timeOut: 3500 });
     return true;
@@ -4068,6 +4200,23 @@ async function loadSettings() {
     s.manualInsertTarget = normalizeManualInsertTarget(s.manualInsertTarget);
     normalizeGenerationNumericSettings(s);
     cleanupLegacyTemplateStores(s);
+    for (const key of SETTINGS_BOOLEAN_KEYS) {
+        if (!(key in s) || typeof s[key] === "boolean") continue;
+        const coerced = coerceSettingsFieldValue(key, s[key]);
+        if (typeof coerced !== "boolean") {
+            log(`Resetting malformed persisted setting ${key}`);
+            s[key] = defaultSettings[key];
+        } else {
+            s[key] = coerced;
+        }
+    }
+    for (const [key, values] of Object.entries(SETTINGS_ENUM_KEYS)) {
+        if (!(key in s)) continue;
+        if (typeof s[key] !== "string" || !values.includes(s[key])) {
+            log(`Resetting malformed persisted setting ${key}`);
+            s[key] = defaultSettings[key];
+        }
+    }
     // Server settings are authoritative; localStorage is only a same-device cache.
     const savedCacheId = typeof saved?._syncCacheId === "string" ? saved._syncCacheId : "";
     let localCacheId = "";
@@ -4154,12 +4303,26 @@ async function loadSettings() {
             ? Array.isArray(localValue) && localValue.length > 0
             : localValue && typeof localValue === "object" && !Array.isArray(localValue) && Object.keys(localValue).length > 0;
         if (legacySeedDeclined && localHasData) quarantinedLegacyCacheKeys.add(localKey);
-        const reconciled = reconcileSynchronizedStore({
-            serverValue: s[backupKey],
-            localValue: maySeedFromLocal ? localValues.get(localKey) : undefined,
-            fallback,
-            expectedType,
-        });
+        const pendingMarkerKey = `${PENDING_SYNC_MARKER_PREFIX}${localKey}`;
+        const storePendingSync = localStorage.getItem(pendingMarkerKey) === "1";
+        const localIsValidStore = expectedType === "array"
+            ? Array.isArray(localValue)
+            : localValue && typeof localValue === "object" && !Array.isArray(localValue);
+        let reconciled;
+        if (storePendingSync && maySeedFromLocal && localIsValidStore) {
+            // A previous save was never positively confirmed, so the local cache
+            // is the newest copy we know of; push it again instead of letting a
+            // stale server value win. An intentionally empty local store is a
+            // legitimate newer state too.
+            reconciled = { value: cloneSynchronizedValue(localValue), source: "local", serverNeedsUpdate: true };
+        } else {
+            reconciled = reconcileSynchronizedStore({
+                serverValue: s[backupKey],
+                localValue: maySeedFromLocal ? localValues.get(localKey) : undefined,
+                fallback,
+                expectedType,
+            });
+        }
         setter(reconciled.value);
         if (localCacheWritesAllowed && !quarantinedLegacyCacheKeys.has(localKey)) {
             localCachesRefreshed = safeSetStorage(localKey, JSON.stringify(reconciled.value)) && localCachesRefreshed;
@@ -4176,17 +4339,25 @@ async function loadSettings() {
     }
     if (synchronizedFromServer > 0) log(`Synchronized ${synchronizedFromServer} setting store(s) from SillyTavern`);
     if (serverStoresSeeded > 0) log(`Seeded ${serverStoresSeeded} setting store(s) into SillyTavern`);
+    let contextMediaSupported = false;
     try {
         contextMediaLibrary = normalizeContextMediaLibrary(contextMediaLibrary);
+        contextMediaSupported = true;
     } catch (error) {
-        log(`Context Media backup is invalid: ${error.message}`);
+        log(`Context Media library is unsupported or invalid: ${error.message}`);
+        quarantineContextMediaData(error);
         contextMediaLibrary = normalizeContextMediaLibrary({});
-        qigToast.error("Invalid Context Media data was reset so Quick Image Gen could continue. Your saved media library was discarded.");
+        qigToast.error("Context Media data uses an unsupported format and was quarantined for safety. Editing is disabled until it can be read again; no data was discarded.");
     }
-    if (localCacheWritesAllowed && !quarantinedLegacyCacheKeys.has(CONTEXT_MEDIA_STORE_KEY)) {
+    if (contextMediaSupported && contextMediaQuarantined) {
+        contextMediaQuarantined = false;
+        try { localStorage.removeItem("qig_context_media_quarantined"); } catch { /* stale quarantine is harmless */ }
+        log("Context Media data is readable again; quarantine cleared.");
+    }
+    if (localCacheWritesAllowed && !quarantinedLegacyCacheKeys.has(CONTEXT_MEDIA_STORE_KEY) && !contextMediaQuarantined) {
         localCachesRefreshed = safeSetStorage(CONTEXT_MEDIA_STORE_KEY, JSON.stringify(contextMediaLibrary), "Failed to migrate Context Media. Browser storage may be full.") && localCachesRefreshed;
     }
-    backupToSettings(CONTEXT_MEDIA_STORE_KEY, contextMediaLibrary);
+    if (!contextMediaQuarantined) backupToSettings(CONTEXT_MEDIA_STORE_KEY, contextMediaLibrary);
     const normalizedPresets = normalizeGenerationPresetStore(generationPresets);
     ensureGenerationPresetIds({ persist: !quarantinedLegacyCacheKeys.has("qig_gen_presets") });
     if (normalizedPresets) {
@@ -4222,8 +4393,11 @@ async function loadSettings() {
     const legacyReplacementMigrationPending = !s._replacementMapsMigrated;
     migrateLegacyReplacementStores(s, { allowLocalStore: maySeedFromLocal });
     if (legacyReplacementMigrationPending) serverSettingsNeedSave = true;
+    syncCacheIdClaimed = Boolean(savedCacheId);
     let initialServerSaveSucceeded = !serverSettingsNeedSave;
+    let initialSaveConfirmed = true;
     if (serverSettingsNeedSave) {
+        const confirmation = confirmSettingsSaveEvent();
         try {
             await flushSettingsBackup();
             initialServerSaveSucceeded = true;
@@ -4232,8 +4406,24 @@ async function loadSettings() {
             qigToast.warning("Quick Image Gen loaded, but synchronized settings could not be saved to SillyTavern yet.");
             saveSettingsDebounced?.();
         }
+        if (initialServerSaveSucceeded) {
+            initialSaveConfirmed = await confirmation;
+            if (initialSaveConfirmed === false) {
+                log("Initial settings save was not positively confirmed by the server; local stores will stay authoritative");
+            }
+        }
     } else {
         saveSettingsDebounced?.();
+    }
+    if (initialServerSaveSucceeded && initialSaveConfirmed === true) {
+        clearPendingSyncMarkers();
+    }
+    if (!syncCacheIdClaimed && serverSettingsNeedSave && initialServerSaveSucceeded) {
+        syncCacheIdClaimed = await confirmSyncCacheIdSaved(s._syncCacheId);
+        if (!syncCacheIdClaimed) {
+            log("Account sync identity is not yet confirmed on the server; gallery and prompt history will remain session-only until it is.");
+            saveSettingsDebounced?.();
+        }
     }
     if (initialServerSaveSucceeded && maySeedFromLocal && legacyReplacementMigrationPending) {
         cleanupLegacyReplacementLocalStores();
@@ -4242,10 +4432,11 @@ async function loadSettings() {
         localCachesRefreshed = true;
         for (const { localKey, getter } of restoreTargets) {
             if (quarantinedLegacyCacheKeys.has(localKey)) continue;
+            if (localKey === CONTEXT_MEDIA_STORE_KEY && contextMediaQuarantined) continue;
             localCachesRefreshed = safeSetStorage(localKey, JSON.stringify(getter())) && localCachesRefreshed;
         }
     }
-    if (initialServerSaveSucceeded && localCachesRefreshed && !legacySeedDeclined) {
+    if (initialServerSaveSucceeded && syncCacheIdClaimed && localCachesRefreshed && !legacySeedDeclined) {
         safeSetStorage(SYNC_CACHE_ID_KEY, s._syncCacheId);
     } else if (!localCachesRefreshed) {
         log("Synchronized cache ownership marker was not updated because one or more local cache writes failed");
@@ -6374,6 +6565,26 @@ function extractLLMResponse(response) {
     return extractLLMResponseDetails(response).text;
 }
 
+// Recent chat turns for the separate AI. Off (0) by default: helper requests are standalone,
+// and the override profile may point at a different provider than the chat does. The history
+// ends at the scene being illustrated and skips hidden messages and QIG's own image messages.
+function buildOverrideChatHistory(s, ctx) {
+    const sceneEntries = shouldUseChatMessageScene(s, ctx) ? getSceneMessageEntries(s, ctx) : [];
+    const throughIndex = sceneEntries.reduce((latest, entry) => (
+        Number.isInteger(entry?.index) ? Math.max(latest, entry.index) : latest
+    ), -1);
+    return buildChatHistoryMessages(ctx?.chat, {
+        depth: s?.llmOverrideChatDepth,
+        throughIndex: throughIndex >= 0 ? throughIndex : null,
+        formatMessage: (message) => {
+            if (!message || message.is_system || isGeneratedImageMessage(message)) return null;
+            const text = resolveSceneMessageSource(message)?.text;
+            if (!text) return null;
+            return { role: message.is_user ? "user" : "assistant", content: `${getSceneMessageSpeakerName(message, ctx)}: ${text}` };
+        },
+    });
+}
+
 async function callOverrideLLM(instruction, systemPrompt = "", signal = null, { assistantPrefill = "", context = null, returnMeta = false, settings = null } = {}) {
     const s = settings || activeGenerationRun?.settings || getSettings();
     const requestedMaxTokens = s.llmOverrideMaxTokens || 500;
@@ -6408,13 +6619,15 @@ async function callOverrideLLM(instruction, systemPrompt = "", signal = null, { 
         return returnMeta ? fallbackMeta : fallbackText;
     }
 
+    // SillyBunny divergence: scoped runs pass their own context, so history comes from it.
+    const history = buildOverrideChatHistory(s, requestContext);
     const messages = [];
     if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
-    messages.push({ role: "user", content: instruction });
+    messages.push(...history, { role: "user", content: instruction });
     if (assistantPrefill) messages.push({ role: "assistant", content: assistantPrefill });
 
     const requestedPreset = s.llmOverridePreset || "";
-    log(`LLM Override: Using connection profile '${s.llmOverrideProfileId}' (preset: ${requestedPreset || "profile default"})`);
+    log(`LLM Override: Using connection profile '${s.llmOverrideProfileId}' (preset: ${requestedPreset || "profile default"}${history.length ? `, ${plural(history.length, "chat message")} of history` : ""})`);
 
     try {
         const response = await runWithInternalLLMRequest("LLM override profile request", () =>
@@ -6440,29 +6653,7 @@ async function callOverrideLLM(instruction, systemPrompt = "", signal = null, { 
     } catch (e) {
         if (e.name === "AbortError") throw e;
         log(`LLM Override failed (profile: ${s.llmOverrideProfileId}): ${e.message}`);
-        log("Falling back to main chat AI. Check your Connection Manager profile's API type, endpoint, and API key.");
-        const recoveryOptions = {
-            signal,
-            quietName: `ImageGen_${Date.now()}`,
-            label: "LLM override recovery request",
-            prefill: assistantPrefill,
-        };
-        const fallbackText = assistantPrefill
-            ? await callInternalStandaloneLLM(instruction, recoveryOptions)
-            : await callInternalQuietPrompt(instruction, recoveryOptions);
-        const fallbackMeta = {
-            text: fallbackText,
-            route: "override_failed_main_chat",
-            sourcePath: "response",
-            extractionStatus: fallbackText ? "text" : "empty_string",
-            finishReason: null,
-            requestedMaxTokens,
-            responseShape: summarizeLLMValueShape(fallbackText),
-            contentShape: summarizeLLMValueShape(fallbackText),
-            error: e.message,
-            profileId: s.llmOverrideProfileId,
-        };
-        return returnMeta ? fallbackMeta : fallbackText;
+        throw new Error(`The selected separate AI profile '${s.llmOverrideProfileId}' failed: ${e.message} Check the profile's API type, endpoint, and API key in Connection Manager. The request was NOT sent to the main chat AI.`);
     }
 }
 
@@ -7239,13 +7430,16 @@ async function genNovelAI(prompt, negative, s, signal) {
         const v1Size = getClosestSupportedImageSize(s, NAI_RESOLUTIONS.map(r => `${r.w}x${r.h}`)).replace("x", ":");
         const [v1Width, v1Height] = v1Size.split(":").map(Number);
         const v1Payload = {
-            model: s.naiModel,
+            model,
             messages: [{ role: "user", content: prompt }],
             size: v1Size,
             negative_prompt: negative,
             sampler: v1SamplerMap[sampler] || "Euler Ancestral",
+            steps: s.steps,
+            scale: s.cfgScale,
+            seed,
             return_base64: true,
-            stream: false
+            stream: false,
         };
         debugLog(`NAI v1 proxy request to ${v1Url}: ${JSON.stringify(v1Payload).substring(0, 200)}...`);
         const res = await fetch(v1Url, {
@@ -7262,7 +7456,13 @@ async function genNovelAI(prompt, negative, s, signal) {
         const json = await readResponseJson(res);
         const source = extractProviderImageSource(json);
         if (source) {
-            return withEffectiveDimensions(resolveNovelAIProxyImageUrl(source, v1Url), { width: v1Width, height: v1Height });
+            return withEffectiveDimensions(resolveNovelAIProxyImageUrl(source, v1Url), {
+                width: v1Width,
+                height: v1Height,
+                steps: s.steps,
+                scale: s.cfgScale,
+                seed,
+            });
         }
         throw new Error(`NovelAI proxy returned no image: ${JSON.stringify(json ?? null).substring(0, 300)}`);
     }
@@ -7660,24 +7860,34 @@ async function genArliAI(prompt, negative, s, signal) {
 
 const NANOGPT_MAX_ENCODED_INPUT_BYTES = 4 * 1024 * 1024;
 const nanoGptModelMetadataCache = new Map();
+const nanoGptMetadataInFlight = new Map();
 
 async function getNanoGptModelMetadata(model, signal) {
     const id = String(model || "").trim();
     if (!id) return null;
     if (nanoGptModelMetadataCache.has(id)) return nanoGptModelMetadataCache.get(id);
+    if (nanoGptMetadataInFlight.has(id)) return nanoGptMetadataInFlight.get(id);
+    const pending = (async () => {
+        try {
+            const response = await fetch(`https://nano-gpt.com/api/v1/images/models/${encodeURIComponent(id)}/endpoints`, {
+                signal,
+                redirect: "error",
+            });
+            if (!response.ok) return null;
+            const endpoints = await readResponseJson(response, MAX_DISCOVERY_RESPONSE_BYTES);
+            const metadata = { id, endpoints: endpoints?.endpoints || [] };
+            nanoGptModelMetadataCache.set(id, metadata);
+            return metadata;
+        } catch (error) {
+            if (error?.name === "AbortError") throw error;
+            return null;
+        }
+    })();
+    nanoGptMetadataInFlight.set(id, pending);
     try {
-        const response = await fetch(`https://nano-gpt.com/api/v1/images/models/${encodeURIComponent(id)}/endpoints`, {
-            signal,
-            redirect: "error",
-        });
-        if (!response.ok) return null;
-        const endpoints = await readResponseJson(response, MAX_DISCOVERY_RESPONSE_BYTES);
-        const metadata = { id, endpoints: endpoints?.endpoints || [] };
-        nanoGptModelMetadataCache.set(id, metadata);
-        return metadata;
-    } catch (error) {
-        if (error?.name === "AbortError") throw error;
-        return null;
+        return await pending;
+    } finally {
+        nanoGptMetadataInFlight.delete(id);
     }
 }
 
@@ -7825,7 +8035,8 @@ async function genChutes(prompt, negative, s, signal) {
         throw new Error(`Chutes error ${res.status}: ${message || res.statusText}`);
     }
     const contentType = res.headers.get("content-type") || "";
-    if (contentType.includes("image/")) {
+    const responseMime = contentType.split(";", 1)[0].trim().toLowerCase();
+    if (responseMime.startsWith("image/") || responseMime === "application/octet-stream") {
         return createTransientImageObjectUrl(await readResponseArrayBuffer(res, MAX_IMAGE_BYTES));
     }
     const data = await readResponseJson(res);
@@ -8290,8 +8501,7 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
                     outputNodeIds: outputNodeIds.length ? outputNodeIds : undefined,
                     imageIndex: outputImageIndex,
                 });
-                const images = [];
-                for (const image of historyResult.images) {
+                const { results: images, errors } = await collectSequentialResults(historyResult.images, async (image) => {
                     const materializedUrl = await runComfyRequest("output download", async requestSignal => {
                         const response = await corsFetch(image.url, {
                             signal: requestSignal,
@@ -8303,7 +8513,7 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
                         if (!format) throw new Error("ComfyUI output is not a supported image format");
                         return `data:${format.mime};base64,${arrayBufferToBase64(buffer)}`;
                     });
-                    images.push({
+                    return {
                         url: materializedUrl,
                         effectiveRequest: {
                             parameters: {
@@ -8313,12 +8523,17 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
                                 comfySourceUrl: image.url,
                             },
                         },
-                    });
-                }
-                return {
+                    };
+                });
+                if (!images.length && errors.length) throw errors[0].error;
+                const result = {
                     images,
                     effectiveRequest: { parameters: effectiveParameters },
                 };
+                // Keep successful siblings when a later output fails; failures travel the
+                // shared partial-result channel instead of discarding completed images.
+                attachResultFailures(result, errors);
+                return result;
             } catch (error) {
                 if (error?.name === "AbortError" || error?.code === "COMFY_HISTORY_TIMEOUT" || error?.code === "COMFY_DEADLINE_TIMEOUT") {
                     try {
@@ -8744,6 +8959,7 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
     });
 
     let requestPayload = payload;
+    if (generationOwnerId) a1111SubmittedRunIds.add(generationOwnerId);
     let res = await postA1111(requestPayload);
         let responseDetail;
         if (!res.ok && controlNetUnits.length > 0 && res.status === 422) {
@@ -8928,7 +9144,7 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
             return materializeProviderImageSource(source, {
                 requestUrl,
                 responseUrl: responseBaseUrl,
-                headers: {},
+                headers,
                 signal: controller.signal,
                 fetchImpl: corsFetch,
                 allowBrowserFallback: true,
@@ -8944,7 +9160,7 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
             const streamResponse = plainTextResponse == null
                 ? res
                 : new Response(plainTextResponse, { headers: { "content-type": "text/event-stream" } });
-            const streamed = await readSseDataStream(streamResponse, async eventData => {
+            const streamed = await readSseDataStream(streamResponse, async (eventData, sseEventName) => {
                 let parsed = null;
                 try {
                     parsed = JSON.parse(eventData);
@@ -8952,19 +9168,23 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
                     // Some proxies send a bare URL or data URL as an SSE data event.
                 }
                 const status = String(parsed?.status || parsed?.type || parsed?.event || "").toLowerCase();
+                const sseKind = String(sseEventName || "").toLowerCase();
                 const failed = ["failed", "error", "expired", "timeout", "timed_out", "canceled", "cancelled"].includes(status)
-                    || /(?:^|[._-])(?:failed|error|expired|timeout|timed_out|canceled|cancelled)$/i.test(status);
+                    || /(?:^|[._-])(?:failed|error|expired|timeout|timed_out|canceled|cancelled)$/i.test(status)
+                    || /(?:^|[._-])(?:failed|error|expired|timeout|timed_out|canceled|cancelled)$/i.test(sseKind);
                 if (failed) {
-                    throw new Error(extractProviderErrorMessage(parsed) || parsed?.reason || parsed?.blockedReason || `Proxy SSE generation ${status}`);
+                    throw new Error(extractProviderErrorMessage(parsed) || parsed?.reason || parsed?.blockedReason || `Proxy SSE generation ${status || sseKind || "failed"}`);
                 }
                 const image = parsed
                     ? extractProxyImageFromJson(parsed, responseOptions)
                     : extractProxyImageFromString(eventData, responseOptions);
                 const terminal = parsed?.done === true
                     || ["done", "completed", "complete", "succeeded", "success"].includes(status)
-                    || /(?:^|[._-])completed$|(?:^|[._-])succeeded$/i.test(status);
+                    || /(?:^|[._-])completed$|(?:^|[._-])succeeded$/i.test(status)
+                    || /(?:^|[._-])(?:completed|succeeded)$/i.test(sseKind);
                 const provisional = !terminal && (["queued", "pending", "processing", "running", "preview"].includes(status)
-                    || /(?:^|[._-])(?:partial_image|preview|progress|processing|running)$/i.test(status));
+                    || /(?:^|[._-])(?:partial_image|preview|progress|processing|running)$/i.test(status)
+                    || /(?:^|[._-])(?:partial_image|preview|progress|processing|running)$/i.test(sseKind));
                 return { value: image || undefined, provisional, terminal };
             }, { signal: controller.signal });
             if (streamed.value) return withEffectiveProxyRequest(await materializeProxyResult(streamed.value));
@@ -9707,14 +9927,17 @@ async function runChatInsertUndo(event = null, undo = lastChatInsertUndo) {
     // second click before it fades a harmless no-op.
     const toast = event?.currentTarget || event?.target?.closest?.(".toast");
     if (toast) globalThis.toastr?.clear?.($(toast));
-    if (lastChatInsertUndo === undo) lastChatInsertUndo = null;
     if (typeof undo !== "function") return false;
+    if (lastChatInsertUndo === undo) lastChatInsertUndo = null;
     try {
         const removed = await undo();
         if (removed) qigToast.info("Image removed from the chat.", "Quick Image Gen");
         else qigToast.warning("That image can no longer be removed automatically; the chat has changed since it was added.", "Quick Image Gen");
         return removed;
     } catch (error) {
+        // A failed save must not burn the undo: restore the token unless a newer insert
+        // has since claimed it, so the user can retry after the transient failure.
+        if (!lastChatInsertUndo) lastChatInsertUndo = undo;
         qigToast.error(`Could not undo the insert: ${error.message}`, "Quick Image Gen");
         return false;
     }
@@ -9747,21 +9970,24 @@ async function insertImageIntoMessage(entryOrUrl, targetMessageIndex = null, opt
     } else if (targetMessageIndex != null) {
         idx = Number(targetMessageIndex);
         if (!Number.isInteger(idx) || idx < 0 || idx >= chat.length) throw new Error("Image insertion target no longer exists");
-    } else if (Number.isInteger(entry.sourceMessageIndex)) {
-        idx = entry.sourceMessageIndex;
-        if (idx < 0 || idx >= chat.length) throw new Error("Generated image source message no longer exists");
     } else {
+        // Provenance never acts as an implicit target: resolve the configured manual fallback.
+        if (!Number.isInteger(fallbackIdx)) throw new Error("Image insertion target no longer exists");
         idx = fallbackIdx;
     }
     const message = chat[idx];
     if (!message) throw new Error("Could not find target message");
+    // Provenance is verified, not followed: a generated image may only enter the chat it
+    // came from, and message-level identity is enforced when inserting back into the
+    // originating message. Inserting elsewhere follows the user's configured target.
+    const targetsOriginatingMessage = Number.isInteger(entry.sourceMessageIndex) && entry.sourceMessageIndex === idx;
     if (!options.ignoreSourceIdentity && entry.sourceChatId && entry.sourceChatId !== getContextMediaChatId(ctx)) {
         throw new DOMException("Generated image belongs to a different chat", "AbortError");
     }
-    if (!options.ignoreSourceIdentity && entry.sourceMessageId && getMessagePersistentId(message) !== entry.sourceMessageId) {
+    if (!options.ignoreSourceIdentity && targetsOriginatingMessage && entry.sourceMessageId && getMessagePersistentId(message) !== entry.sourceMessageId) {
         throw new DOMException("Generated image source message changed", "AbortError");
     }
-    if (!options.ignoreSourceIdentity && entry.sourceMessageSignature && getMessageContentSignature(message) !== entry.sourceMessageSignature) {
+    if (!options.ignoreSourceIdentity && targetsOriginatingMessage && entry.sourceMessageSignature && getMessageContentSignature(message) !== entry.sourceMessageSignature) {
         throw new DOMException("Generated image source message changed", "AbortError");
     }
     const mutationTargetSnapshot = options.targetSnapshot || createMessageTargetSnapshot(chat, idx);
@@ -9779,19 +10005,55 @@ async function insertImageIntoMessage(entryOrUrl, targetMessageIndex = null, opt
     options.commitGuard?.();
 
     const hadExtra = Object.prototype.hasOwnProperty.call(message, "extra");
-    const previousExtra = hadExtra && message.extra && typeof message.extra === "object"
-        ? snapshotGenerationSettings(message.extra)
-        : message.extra;
     if (!message.extra || typeof message.extra !== 'object') {
         message.extra = {};
     }
+    const previousMediaDisplay = message.extra.media_display;
+    const previousInlineImage = message.extra.inline_image;
+    const previousMediaIndex = message.extra.media_index;
 
     const title = entry.prompt || lastPrompt || 'Generated Image';
+    let mediaEntry = null;
+    let legacyImage = null;
     let undoInsert = null;
+
+    // Roll back only what this call added; concurrent edits to other extra fields survive.
+    const removeOwnedInsert = () => {
+        if (mediaEntry && Array.isArray(message.extra?.media)) {
+            const at = message.extra.media.lastIndexOf(mediaEntry);
+            if (at !== -1) message.extra.media.splice(at, 1);
+            if (message.extra.media.length === 0) delete message.extra.media;
+        }
+        if (legacyImage !== null && message.extra?.image === legacyImage) delete message.extra.image;
+        if (legacyImage !== null && message.extra?.title === title) delete message.extra.title;
+        const touchedInline = mediaEntry !== null || legacyImage !== null;
+        if (touchedInline && message.extra?.inline_image === true) {
+            if (previousInlineImage === undefined) delete message.extra.inline_image;
+            else message.extra.inline_image = previousInlineImage;
+        }
+        if (mediaEntry) {
+            if (Array.isArray(message.extra?.media)) {
+                if (previousMediaIndex === undefined) delete message.extra.media_index;
+                else message.extra.media_index = previousMediaIndex;
+            } else if (message.extra?.media_index !== undefined) {
+                if (previousMediaIndex === undefined) delete message.extra.media_index;
+                else message.extra.media_index = previousMediaIndex;
+            }
+        }
+        if (mediaEntry && message.extra?.media_display === 'gallery' && !Array.isArray(message.extra?.media)) {
+            if (previousMediaDisplay === undefined) delete message.extra.media_display;
+            else message.extra.media_display = previousMediaDisplay;
+        }
+        if (!hadExtra && message.extra && Object.keys(message.extra).length === 0) {
+            delete message.extra;
+        }
+    };
 
     try {
         // Use modern media API if available
         if (typeof ctx.appendMediaToMessage === 'function') {
+            const createdMediaArray = !Array.isArray(message.extra.media);
+            const createdMediaDisplay = (!Array.isArray(message.extra.media) || message.extra.media.length === 0) && !message.extra.media_display;
             if (!Array.isArray(message.extra.media)) {
                 message.extra.media = [];
             }
@@ -9799,7 +10061,7 @@ async function insertImageIntoMessage(entryOrUrl, targetMessageIndex = null, opt
                 message.extra.media_display = 'gallery';
             }
 
-            const mediaEntry = {
+            mediaEntry = {
                 url: url,
                 type: 'image',
                 title: title,
@@ -9818,18 +10080,45 @@ async function insertImageIntoMessage(entryOrUrl, targetMessageIndex = null, opt
                 const media = Array.isArray(message.extra?.media) ? message.extra.media : null;
                 const at = media ? media.lastIndexOf(mediaEntry) : -1;
                 if (at === -1) return false;
-                media.splice(at, 1);
-                if (!media.length) {
-                    delete message.extra.media_display;
-                    message.extra.inline_image = false;
+                const applyUndo = () => {
+                    media.splice(at, 1);
+                    if (!media.length && createdMediaArray) delete message.extra.media;
+                    if (!media.length && createdMediaDisplay) delete message.extra.media_display;
+                    if (message.extra.inline_image === true) {
+                        if (previousInlineImage === undefined) delete message.extra.inline_image;
+                        else message.extra.inline_image = previousInlineImage;
+                    }
+                    if (message.extra.media_index === at) {
+                        if (previousMediaIndex === undefined) delete message.extra.media_index;
+                        else message.extra.media_index = previousMediaIndex;
+                    }
+                    rerenderMessageMedia(ctx, message, idx, chat);
+                };
+                const applyRestore = () => {
+                    if (!Array.isArray(message.extra.media)) message.extra.media = media;
+                    if (!media.includes(mediaEntry)) media.splice(at, 0, mediaEntry);
+                    if (createdMediaDisplay && !message.extra.media_display) message.extra.media_display = 'gallery';
+                    if (message.extra.inline_image !== true) message.extra.inline_image = true;
+                    if (message.extra.media_index !== at) message.extra.media_index = at;
+                    rerenderMessageMedia(ctx, message, idx, chat);
+                };
+                applyUndo();
+                let saved;
+                try {
+                    saved = await ctx.saveChat();
+                } catch (error) {
+                    applyRestore();
+                    throw error;
                 }
-                message.extra.media_index = Math.max(0, media.length - 1);
-                rerenderMessageMedia(ctx, message, idx, chat);
-                await ctx.saveChat();
+                if (saved === false) {
+                    applyRestore();
+                    throw new Error("Undo could not be saved to the chat server");
+                }
                 return true;
             };
         } else {
             // Legacy fallback for older ST versions
+            legacyImage = url;
             message.extra.image = url;
             message.extra.inline_image = true;
             message.extra.title = title;
@@ -9837,19 +10126,64 @@ async function insertImageIntoMessage(entryOrUrl, targetMessageIndex = null, opt
                 if (getContext?.()?.chat !== chat || chat[idx] !== message) return false;
                 if (message.extra?.image !== url) return false;
                 if (!isChatIdentitySnapshotCurrent(createChatIdentitySnapshot(ctx), { requireMetadata: true })) return false;
-                restoreMessageExtra(message, hadExtra, previousExtra);
-                rerenderMessageMedia(ctx, message, idx, chat);
-                await ctx.saveChat();
+                const applyUndo = () => {
+                    if (message.extra?.image === url) delete message.extra.image;
+                    if (message.extra?.title === title) delete message.extra.title;
+                    if (message.extra?.inline_image === true) {
+                        if (previousInlineImage === undefined) delete message.extra.inline_image;
+                        else message.extra.inline_image = previousInlineImage;
+                    }
+                    rerenderMessageMedia(ctx, message, idx, chat);
+                };
+                const applyRestore = () => {
+                    message.extra.image = url;
+                    message.extra.title = title;
+                    if (message.extra.inline_image !== true) message.extra.inline_image = true;
+                    rerenderMessageMedia(ctx, message, idx, chat);
+                };
+                applyUndo();
+                let saved;
+                try {
+                    saved = await ctx.saveChat();
+                } catch (error) {
+                    applyRestore();
+                    throw error;
+                }
+                if (saved === false) {
+                    applyRestore();
+                    throw new Error("Undo could not be saved to the chat server");
+                }
                 return true;
             };
         }
 
-        await ctx.saveChat();
+        let saved;
+        try {
+            saved = await ctx.saveChat();
+        } catch (error) {
+            removeOwnedInsert();
+            try {
+                rerenderMessageMedia(ctx, message, idx, chat);
+            } catch (rollbackError) {
+                log(`Failed to refresh message after insert rollback: ${rollbackError.message}`);
+            }
+            await rethrowAfterRollbackPersistence(error, () => ctx.saveChat?.(), "Image insertion failed and its rollback could not be persisted");
+            return;
+        }
+        if (saved === false) {
+            removeOwnedInsert();
+            try {
+                rerenderMessageMedia(ctx, message, idx, chat);
+            } catch (rollbackError) {
+                log(`Failed to refresh message after insert rollback: ${rollbackError.message}`);
+            }
+            throw new Error("Image insertion could not be saved to the chat server");
+        }
         options.commitGuard?.();
         assertMessageTargetSnapshot(mutationTargetSnapshot, "Image insertion target changed while saving chat");
         rememberChatInsertUndo(undoInsert);
     } catch (error) {
-        restoreMessageExtra(message, hadExtra, previousExtra);
+        removeOwnedInsert();
         try {
             rerenderMessageMedia(ctx, message, idx, chat);
         } catch (rollbackError) {
@@ -9865,6 +10199,9 @@ async function insertImageAsNewMessage(entryOrUrl, options = {}) {
     if (!chat) throw new Error("No active chat");
 
     const entry = normalizeGenerationEntry(entryOrUrl);
+    if (entry.sourceChatId && entry.sourceChatId !== getContextMediaChatId(ctx)) {
+        throw new DOMException("Generated image belongs to a different chat", "AbortError");
+    }
     let url = await resolveChatInsertImageUrl(entry, options.outputMode);
     if (url.startsWith('blob:')) {
         url = await blobUrlToDataUrl(url);
@@ -9899,7 +10236,8 @@ async function insertImageAsNewMessage(entryOrUrl, options = {}) {
         if (typeof ctx.addOneMessage === 'function') {
             ctx.addOneMessage(message);
         }
-        await ctx.saveChat();
+        const saved = await ctx.saveChat();
+        if (saved === false) throw new Error("New image message could not be saved to the chat server");
         options.commitGuard?.();
         if (getContext?.()?.chat !== chat || chat[messageIndex] !== message) {
             throw new DOMException("Chat changed while saving inserted image", "AbortError");
@@ -9911,7 +10249,21 @@ async function insertImageAsNewMessage(entryOrUrl, options = {}) {
             if (chat.length !== messageIndex + 1) return false;
             if (checkpointRegistered) unregisterConversationCheckpointInsertion(options.conversationCheckpoint, message);
             rollbackInsertedMessage(ctx, chat, message, messageIndex);
-            await ctx.saveChat?.();
+            let saved;
+            try {
+                saved = await ctx.saveChat?.();
+            } catch (error) {
+                chat.splice(messageIndex, 0, message);
+                if (checkpointRegistered) registerConversationCheckpointInsertion(options.conversationCheckpoint, message);
+                if (typeof ctx.addOneMessage === 'function') ctx.addOneMessage(message);
+                throw error;
+            }
+            if (saved === false) {
+                chat.splice(messageIndex, 0, message);
+                if (checkpointRegistered) registerConversationCheckpointInsertion(options.conversationCheckpoint, message);
+                if (typeof ctx.addOneMessage === 'function') ctx.addOneMessage(message);
+                throw new Error("Undo could not be saved to the chat server");
+            }
             return true;
         });
     } catch (error) {
@@ -9927,6 +10279,9 @@ async function insertImageAsHiddenReply(entryOrUrl, options = {}) {
     if (!chat) throw new Error("No active chat");
 
     const entry = normalizeGenerationEntry(entryOrUrl);
+    if (entry.sourceChatId && entry.sourceChatId !== getContextMediaChatId(ctx)) {
+        throw new DOMException("Generated image belongs to a different chat", "AbortError");
+    }
     let url = await resolveChatInsertImageUrl(entry, options.outputMode);
     if (url.startsWith('blob:')) {
         url = await blobUrlToDataUrl(url);
@@ -9961,7 +10316,8 @@ async function insertImageAsHiddenReply(entryOrUrl, options = {}) {
         if (typeof ctx.addOneMessage === 'function') {
             ctx.addOneMessage(message);
         }
-        await ctx.saveChat();
+        const saved = await ctx.saveChat();
+        if (saved === false) throw new Error("Hidden image message could not be saved to the chat server");
         options.commitGuard?.();
         if (getContext?.()?.chat !== chat || chat[messageIndex] !== message) {
             throw new DOMException("Chat changed while saving hidden image", "AbortError");
@@ -9973,7 +10329,21 @@ async function insertImageAsHiddenReply(entryOrUrl, options = {}) {
             if (chat.length !== messageIndex + 1) return false;
             if (checkpointRegistered) unregisterConversationCheckpointInsertion(options.conversationCheckpoint, message);
             rollbackInsertedMessage(ctx, chat, message, messageIndex);
-            await ctx.saveChat?.();
+            let saved;
+            try {
+                saved = await ctx.saveChat?.();
+            } catch (error) {
+                chat.splice(messageIndex, 0, message);
+                if (checkpointRegistered) registerConversationCheckpointInsertion(options.conversationCheckpoint, message);
+                if (typeof ctx.addOneMessage === 'function') ctx.addOneMessage(message);
+                throw error;
+            }
+            if (saved === false) {
+                chat.splice(messageIndex, 0, message);
+                if (checkpointRegistered) registerConversationCheckpointInsertion(options.conversationCheckpoint, message);
+                if (typeof ctx.addOneMessage === 'function') ctx.addOneMessage(message);
+                throw new Error("Undo could not be saved to the chat server");
+            }
             return true;
         });
     } catch (error) {
@@ -10023,32 +10393,35 @@ function reportAutoInsertOutcome(insertedCount, failedResults) {
 async function deliverInjectResults(results, { settings, sourceMessageIndex, targetSnapshot, run } = {}) {
     const entries = Array.isArray(results) ? results : [];
     if (!entries.length) return { inserted: 0, failed: [] };
-    if (!settings?.autoInsert) {
+    if (!settings?.autoInsert || entries.length > 1) {
+        // Multi-image batches open the picker even with auto-insert enabled: serial
+        // insertion is non-atomic and only the last insert could be undone.
         if (entries.length === 1) displayImage(entries[0]);
         else displayBatchResults(entries);
         return { inserted: 0, failed: [] };
     }
+    return deliverInjectResultsSingle(entries[0], { settings, sourceMessageIndex, targetSnapshot, run });
+}
 
+async function deliverInjectResultsSingle(entry, { settings, sourceMessageIndex, targetSnapshot, run } = {}) {
     let inserted = 0;
     const failed = [];
     const insertMode = settings.insertAsHiddenReply ? "hidden" : settings.injectInsertMode;
-    for (const entry of entries) {
-        void addToGallery(entry);
-        try {
-            await autoInsertInjectImage(entry, {
-                messageIndex: sourceMessageIndex,
-                insertMode,
-                targetSnapshot,
-                outputMode: settings.outputMode,
-                commitGuard: run ? () => assertGenerationCanCommit(run) : null,
-                conversationCheckpoint: run?.context?.conversationCheckpoint,
-            });
-            inserted += 1;
-        } catch (error) {
-            if (error.name === "AbortError") throw error;
-            log(`Inject: Auto-insert failed: ${error.message}`);
-            failed.push(entry);
-        }
+    void addToGallery(entry);
+    try {
+        await autoInsertInjectImage(entry, {
+            messageIndex: sourceMessageIndex,
+            insertMode,
+            targetSnapshot,
+            outputMode: settings.outputMode,
+            commitGuard: run ? () => assertGenerationCanCommit(run) : null,
+            conversationCheckpoint: run?.context?.conversationCheckpoint,
+        });
+        inserted += 1;
+    } catch (error) {
+        if (error.name === "AbortError") throw error;
+        log(`Inject: Auto-insert failed: ${error.message}`);
+        failed.push(entry);
     }
     reportAutoInsertOutcome(inserted, failed);
     return { inserted, failed };
@@ -10357,6 +10730,10 @@ function getActiveContextMediaProfile(ctx = getContext?.()) {
 }
 
 function persistContextMediaLibrary({ immediate = false } = {}) {
+    if (contextMediaQuarantined) {
+        log("Blocked Context Media persistence while its data is quarantined");
+        return false;
+    }
     contextMediaLibrary = normalizeContextMediaLibrary(contextMediaLibrary);
     _contextMediaRevision += 1;
     const message = "Failed to save Context Media. Browser storage may be full.";
@@ -10388,7 +10765,7 @@ async function restoreContextMediaLibrary(previous) {
     } catch (error) {
         log(`Context Media backup rollback failed: ${error.message}`);
     }
-    return localRestored && backupRestored;
+    return { localRestored, backupRestored };
 }
 
 async function commitContextMediaMutation(previous) {
@@ -10441,7 +10818,7 @@ async function uploadContextMediaFiles(files, target) {
             if (typeof file.arrayBuffer !== "function") throw new Error("file is unreadable");
             const buffer = await file.arrayBuffer();
             if (buffer.byteLength !== file.size) throw new Error("file size changed while it was being read");
-            if (!contextMediaBytesMatchFormat(buffer, validation.format)) throw new Error("file bytes do not match its declared format");
+            if (!(await contextMediaBytesMatchFormat(buffer, validation.format))) throw new Error("file bytes do not match its declared format");
             const base64 = arrayBufferToBase64(buffer);
             const cleanBase = String(file.name || "media").replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 80) || "media";
             const fileName = `qig_media_${Date.now()}_${generateUUID().slice(0, 8)}_${cleanBase}`;
@@ -10475,11 +10852,11 @@ async function uploadContextMediaFiles(files, target) {
         }
         if (saved) return;
         const rolledBack = await restoreContextMediaLibrary(previous);
-        if (rolledBack) {
+        if (rolledBack.backupRestored) {
             await Promise.allSettled(accepted.map((media) => deleteContextMediaServerPath(media.path)));
             throw new Error("Media was uploaded but the library could not be saved; uploaded files were cleaned up");
         }
-        throw new Error("Media persistence and rollback both failed; server files were retained to avoid broken references");
+        throw new Error("Media persistence and account rollback both failed; server files were retained to avoid broken references");
     });
     if (rejected.length) qigToast.warning(`${plural(rejected.length, "file")} skipped. ${rejected[0]}`, "Context Media", { escapeHtml: true });
     return accepted;
@@ -10575,6 +10952,10 @@ function contextMediaNodeOptions(profile) {
 }
 
 function showContextMediaManager() {
+    if (contextMediaQuarantined) {
+        qigToast.error("Context Media is read-only right now: stored data uses an unsupported format and was quarantined for safety. Update the extension to access it again.");
+        return;
+    }
     const popup = createPopup("qig-context-media-manager", "Context Media", `
         <div class="qig-context-media-manager">
             <div class="qig-context-media-toolbar">
@@ -10784,6 +11165,7 @@ function showContextMediaManager() {
             renderContextMediaSummary();
         };
         popupElement.querySelector("#qig-context-media-test").onclick = async (event) => {
+            const testButton = event.currentTarget;
             const ctx = getContext?.();
             const chat = ctx?.chat;
             let index = Array.isArray(chat) ? chat.length - 1 : -1;
@@ -10814,7 +11196,8 @@ function showContextMediaManager() {
                 }
                 for (const snapshot of contextSnapshots) assertMessageTargetSnapshot(snapshot, "Context Media test scene changed");
             };
-            event.currentTarget.disabled = true;
+            testButton.disabled = true;
+            contextMediaTestController = controller;
             try {
                 const result = await classifyAndInsertContextMedia({
                     chat,
@@ -10836,11 +11219,20 @@ function showContextMediaManager() {
             } catch (error) {
                 qigToast.error(error.message, "Context Media test", { escapeHtml: true });
             } finally {
-                event.currentTarget.disabled = false;
+                if (contextMediaTestController === controller) contextMediaTestController = null;
+                testButton.disabled = false;
             }
         };
         render();
     }, { popupClass: "wide", contentClass: "qig-popup-content--wide", resizable: false });
+    const priorDismiss = popup._qigDismiss;
+    popup._qigDismiss = (event) => {
+        if (contextMediaTestController) {
+            contextMediaTestController.abort();
+            contextMediaTestController = null;
+        }
+        if (typeof priorDismiss === "function") priorDismiss(event);
+    };
     return popup;
 }
 
@@ -10859,12 +11251,37 @@ function renderContextMediaItems(owner) {
 function cancelContextMediaWork({ resetCadence = false } = {}) {
     if (_contextMediaTimeout) clearTimeout(_contextMediaTimeout);
     _contextMediaTimeout = null;
+    _contextMediaPendingSnapshot = null;
+    _contextMediaActiveSnapshot = null;
     _contextMediaController?.abort();
     _contextMediaController = null;
+    if (contextMediaTestController) {
+        contextMediaTestController.abort();
+        contextMediaTestController = null;
+    }
     if (resetCadence) {
         _contextMediaEligibleCount = 0;
         _contextMediaLastEligibleMessage = null;
         _contextMediaPreviousMediaId = null;
+    }
+}
+
+function deferContextMediaWorkForGeneration() {
+    // Generation takes priority over Context Media, but starting it must not burn the
+    // cadence slot this reply already consumed. A scheduled-but-unfired job already
+    // defers at fire time (its guard reschedules every 250 ms while generation is
+    // busy), so keep its timer intact; only an in-flight classification is aborted,
+    // and its snapshot is requeued so the reply is still served later.
+    if (_contextMediaTimeout && _contextMediaPendingSnapshot) return;
+    const queued = _contextMediaPendingSnapshot || _contextMediaActiveSnapshot;
+    if (_contextMediaController) {
+        _contextMediaController.abort();
+        _contextMediaController = null;
+    }
+    if (queued && !queued.signal.aborted) {
+        _contextMediaPendingSnapshot = null;
+        _contextMediaActiveSnapshot = null;
+        scheduleContextMediaJob(queued, 250);
     }
 }
 
@@ -10920,8 +11337,11 @@ async function classifyAndInsertContextMedia(snapshot, { testOnly = false } = {}
 
 function scheduleContextMediaJob(snapshot, delayMs) {
     if (snapshot.signal.aborted) return;
+    _contextMediaPendingSnapshot = snapshot;
     _contextMediaTimeout = setTimeout(async () => {
         _contextMediaTimeout = null;
+        if (_contextMediaPendingSnapshot === snapshot) _contextMediaPendingSnapshot = null;
+        _contextMediaActiveSnapshot = snapshot;
         if (snapshot.signal.aborted) return;
         const liveSettings = getSettings();
         if (!liveSettings?.contextMediaEnabled) {
@@ -10944,6 +11364,7 @@ function scheduleContextMediaJob(snapshot, delayMs) {
             }
         } finally {
             if (_contextMediaController === snapshot.controller) _contextMediaController = null;
+            if (_contextMediaActiveSnapshot === snapshot) _contextMediaActiveSnapshot = null;
         }
     }, delayMs);
 }
@@ -10956,7 +11377,7 @@ function scheduleContextMediaForMessage(messageIndex) {
     const index = Number(messageIndex);
     if (!Array.isArray(chat) || !Number.isInteger(index) || index < 0 || index >= chat.length) return;
     const message = chat?.[index];
-    if (!message || message.is_user || isGeneratedImageMessage(message) || !shouldScheduleContextMedia(message, settings)) return;
+    if (!message || message.is_user || message.is_system || isGeneratedImageMessage(message) || !shouldScheduleContextMedia(message, settings)) return;
     const profile = getActiveContextMediaProfile(ctx);
     if (!profile || !buildContextMediaCandidates(contextMediaLibrary, { profileIds: profile.id }).length) return;
     cancelContextMediaWork();
@@ -11317,9 +11738,14 @@ export function teardownQuickImageGen() {
         batchKeyHandler = null;
     }
     if (qigKeyboardShortcutsBound) {
-        document.removeEventListener("keydown", handleQigKeyboardShortcut);
+        document.removeEventListener("keydown", handleQigKeyboardShortcut, { capture: true });
         qigKeyboardShortcutsBound = false;
     }
+    if (qigPopupKeydownBound) {
+        document.removeEventListener("keydown", handleQigPopupKeydown, { capture: true });
+        qigPopupKeydownBound = false;
+    }
+    _processedInjectIndices?.clear?.();
     if (isGenerating) {
         cancelRequested = true;
         cancelRequestSerial += 1;
@@ -11344,7 +11770,12 @@ function installLifecycleCleanup() {
     if (lifecycleCleanupInstalled) return;
     lifecycleCleanupInstalled = true;
     pageLifecycleScope = createLifecycleScope();
-    pageLifecycleScope.listen(window, "pagehide", teardownQuickImageGen);
+    // bfcache navigation keeps the page (and this extension) alive; only a real
+    // unload should tear down. The "unload" listener covers genuine closes.
+    pageLifecycleScope.listen(window, "pagehide", (event) => {
+        if (event?.persisted) return;
+        teardownQuickImageGen();
+    });
     pageLifecycleScope.listen(window, "unload", teardownQuickImageGen);
 }
 
@@ -11610,10 +12041,9 @@ function displayImage(entryOrUrl, skipGallery, returnFocusElement = null) {
                 if (s.insertAsHiddenReply) {
                     await insertImageAsHiddenReply(entry);
                 } else {
-                    // No explicit index: the entry carries the message it was generated from
-                    // (per-message palette button), and insertImageIntoMessage prefers that over
-                    // the "latest message" fallback setting.
-                    await insertImageIntoMessage(entry, popupInsertTargetIndex, { ignoreSourceIdentity: true });
+                    // Provenance stays checked; the target is resolved from the current chat at
+                    // click time so the configured fallback (not the old scene) receives the image.
+                    await insertImageIntoMessage(entry, null, {});
                 }
                 announceChatInsert("Image inserted into the chat.");
             } catch (err) {
@@ -11819,16 +12249,27 @@ function displayBatchResults(results, returnFocusElement = null) {
         };
         document.getElementById("qig-batch-insert-all").onclick = async (e) => {
             e.stopPropagation();
+            const insertAllButton = e.currentTarget;
+            const insertOneButton = document.getElementById("qig-batch-insert");
+            if (insertAllButton.disabled) return;
+            insertAllButton.disabled = true;
+            if (insertOneButton) insertOneButton.disabled = true;
             try {
-                for (const entry of entries) {
-                    await insertImageIntoMessage(entry, null, { ignoreSourceIdentity: true });
+                const batchEntries = entries.map(entry => entry);
+                let inserted = 0;
+                for (const entry of batchEntries) {
+                    await insertImageIntoMessage(entry, null, {});
+                    inserted++;
                 }
                 // Undo only reverses the last one, so don't offer it for a multi-image insert.
                 rememberChatInsertUndo(null);
-                qigToast.success(`${plural(entries.length, "image")} inserted into the chat.`, "Quick Image Gen");
+                qigToast.success(`${plural(batchEntries.length, "image")} inserted into the chat.`, "Quick Image Gen");
             } catch (err) {
                 console.error("[Quick Image Gen] Insert all failed:", err);
-                qigToast.error("Failed to insert images: " + err.message);
+                qigToast.warning(`Insert all stopped: ${err.message} Images inserted before the failure were kept; the remaining images are still available in the batch viewer.`, "Quick Image Gen");
+            } finally {
+                insertAllButton.disabled = false;
+                if (insertOneButton) insertOneButton.disabled = false;
             }
         };
         document.getElementById("qig-batch-regenerate").onclick = (e) => {
@@ -11861,13 +12302,18 @@ function displayBatchResults(results, returnFocusElement = null) {
         };
         document.getElementById("qig-batch-insert").onclick = async (e) => {
             e.stopPropagation();
+            const insertOneButton = e.currentTarget;
+            if (insertOneButton.disabled) return;
+            insertOneButton.disabled = true;
             try {
                 const activeEntry = getCurrentEntry();
-                await insertImageIntoMessage(activeEntry, null, { ignoreSourceIdentity: true });
+                await insertImageIntoMessage(activeEntry, null, {});
                 announceChatInsert("Image inserted into the chat.");
             } catch (err) {
                 console.error("[Quick Image Gen] Insert failed:", err);
                 qigToast.error("Failed to insert image: " + err.message);
+            } finally {
+                insertOneButton.disabled = false;
             }
         };
         document.getElementById("qig-batch-background").onclick = async (e) => {
@@ -12167,6 +12613,7 @@ function showPromptReviewStage({
                 textarea.onkeydown = (event) => {
                     if (event.key === "Enter" && event.ctrlKey) {
                         event.preventDefault();
+                        event.stopPropagation();
                         submit();
                     }
                 };
@@ -12270,6 +12717,7 @@ function showPlainDescriptionDialog() {
             textEl.onkeydown = (e) => {
                 if (e.key === "Enter" && e.ctrlKey) {
                     e.preventDefault();
+                    e.stopPropagation();
                     use();
                 }
                 if (e.key === "Escape") {
@@ -12609,7 +13057,8 @@ async function genOpenAICompatibleImageProvider(provider, providerName, apiUrl, 
     }
 
     const contentType = res.headers.get("content-type") || "";
-    if (contentType.includes("image/")) {
+    const responseMime = contentType.split(";", 1)[0].trim().toLowerCase();
+    if (responseMime.startsWith("image/") || responseMime === "application/octet-stream") {
         return withEffectiveRequest(createTransientImageObjectUrl(await readResponseArrayBuffer(res, MAX_IMAGE_BYTES)));
     }
 
@@ -13273,7 +13722,7 @@ async function regenerateImage(effectiveRequest = lastEffectiveRequest, returnFo
             const baseSeed = generateRandomSeed();
             const outcome = await collectBatchResults(batchCount, async (i) => {
                 checkAborted(cancelCheckpoint);
-                if (s.sequentialSeeds) setGenerationSeedValue(s, baseSeed + i);
+                if (s.sequentialSeeds) setGenerationSeedValue(s, seedForBatchIndex(baseSeed, i));
                 showStatus(`🔄 Regenerating ${i + 1}/${batchCount}...`);
                 const expandedPrompt = expandWildcards(regenerationPrompt);
                 const expandedNegative = expandWildcards(regenerationNegative);
@@ -15351,13 +15800,22 @@ async function performLoadCharSettings(isCurrent) {
     const normalizedRefRecord = normalizeCharacterReferenceRecord(rawRefs, s.provider);
     if (rawRefs && Array.isArray(rawRefs)) {
         nextRefs = cloneSynchronizedValue(nextRefs);
-        if (Object.keys(normalizedRefRecord).length) nextRefs[storageKey] = normalizedRefRecord;
-        else delete nextRefs[storageKey];
+        if (Object.keys(normalizedRefRecord).length) {
+            nextRefs[storageKey] = normalizedRefRecord;
+        } else {
+            log(`Preserving legacy character reference images for ${storageKey}: the current provider (${s.provider}) cannot own them. Assign references under a concrete provider to adopt them.`);
+            nextRefs[storageKey] = { __legacyRefImages: [...rawRefs] };
+        }
         storesChanged = true;
     }
     if (storesChanged) {
-        await persistCharacterStores(nextSettings, nextRefs);
-        if (!isCurrent()) return false;
+        const persisted = await persistCharacterStores(nextSettings, nextRefs);
+        if (!persisted) {
+            log("Legacy character store migration could not be persisted; keeping the live state intact and retrying later.");
+            saveSettingsDebounced?.();
+        } else if (!isCurrent()) {
+            return false;
+        }
     }
     const settingsRecord = getCharacterStoreRecord(charSettings, storageKey);
     const hasSettings = !!settingsRecord;
@@ -15470,10 +15928,15 @@ async function saveConnectionProfileNow() {
         qigToast.warning("Profile name cannot be empty");
         return;
     }
+    if (["__proto__", "prototype", "constructor"].includes(name)) {
+        qigToast.warning("This profile name is reserved and cannot be used");
+        return;
+    }
     const keys = PROVIDER_KEYS[provider] || [];
     const profile = {};
     keys.forEach(k => profile[k] = cloneSynchronizedValue(s[k]));
-    const existing = !!connectionProfiles[provider]?.[name];
+    const providerProfiles = connectionProfiles[provider] || {};
+    const existing = Object.prototype.hasOwnProperty.call(providerProfiles, name);
     if (existing && !(await qigConfirm(`Profile "${name}" already exists. Overwrite it?`, { okButton: "Overwrite" }))) return;
     const nextProfiles = cloneSynchronizedValue(connectionProfiles);
     if (!nextProfiles[provider]) nextProfiles[provider] = {};
@@ -16266,6 +16729,7 @@ function refreshAllUI(s) {
         "qig-llm-override-profile": "llmOverrideProfileId",
         "qig-llm-override-preset-select": "llmOverridePreset",
         "qig-llm-override-max": "llmOverrideMaxTokens",
+        "qig-llm-override-history": "llmOverrideChatDepth",
         "qig-proxy-chat-system": "proxyChatImageSystemPrompt",
         "qig-proxy-chat-max-tokens": "proxyChatImageMaxTokens"
     };
@@ -16348,6 +16812,7 @@ function refreshAllUI(s) {
 
 // === Export / Import Settings ===
 function exportAllSettings() {
+    const omissions = [];
     const data = createSettingsExport({
         activeSettings: getSettings(),
         connectionProfiles,
@@ -16360,7 +16825,11 @@ function exportAllSettings() {
         activeFilterPoolIdsByCard,
         activeFilterPoolIdsByChar,
         contextMedia: contextMediaLibrary,
-    });
+    }, { onOmission: (items) => omissions.push(...items) });
+    if (omissions.length) {
+        qigToast.error(`Settings export is incomplete and was cancelled: ${omissions.length} value(s) would be omitted (first: ${omissions[0]}). Trim or remove the oversized data before exporting.`);
+        return;
+    }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -16464,7 +16933,6 @@ async function commitSettingsImportNow(data) {
 
     try {
         if (data.activeSettings !== undefined) {
-            const previousAutoGenerate = !!currentSettings.autoGenerate;
             const activeCharacterOverride = charSettingsOverrideApplied ? cloneCharScopedState(currentSettings) : null;
             const importBase = charSettingsOverrideApplied && charSettingsBaseState
                 ? { ...currentSettings, ...cloneCharScopedState(charSettingsBaseState) }
@@ -16476,8 +16944,11 @@ async function commitSettingsImportNow(data) {
                 rememberCharSettingsBaseState(currentSettings, currentSettings);
                 applyCharScopedState(activeCharacterOverride, currentSettings, { forcePrompt: true });
             }
-            if (previousAutoGenerate && !currentSettings.autoGenerate) {
-                _automationRevision += 1;
+            // Pending automation jobs snapshot their settings at scheduling time;
+            // any import that touches active settings or stores must invalidate them
+            // so a queued job never runs with pre-import provider/prompt state.
+            _automationRevision += 1;
+            if (!currentSettings.autoGenerate) {
                 resetAutoGenerateCadence({ clearTimer: true });
             }
         }
@@ -16568,11 +17039,14 @@ function commitSettingsImport(data) {
     return runSynchronizedStoreMutations(
         Object.keys(BACKUP_KEYS),
         async () => {
+            const panel = document.getElementById("qig-settings");
+            if (panel) panel.inert = true;
             settingsImportInProgress = true;
             try {
                 return await queueContextMediaMutation(() => commitSettingsImportNow(data));
             } finally {
                 settingsImportInProgress = false;
+                if (panel) panel.inert = false;
             }
         },
         { throwIfBusy: true },
@@ -16595,7 +17069,7 @@ function importSettings() {
             const legacyPrivateImages = data.charRefImages !== undefined
                 ? " This legacy file includes private reference images."
                 : "";
-            if (!(await qigConfirm(`Import validated settings from ${data.exportDate || "unknown date"}? Existing API keys and locally trusted executable workflows are kept; credentials and executable workflow bodies in the file are ignored.${legacyPrivateImages}`, { okButton: "Import Settings", wide: true }))) return;
+            if (!(await qigConfirm(`Import validated settings from ${data.exportDate || "unknown date"}? Records are merged: your existing profiles, presets, and API keys are kept even when the file does not include them. Credentials and executable workflow bodies in the file are ignored.${legacyPrivateImages}`, { okButton: "Import Settings", wide: true }))) return;
             await commitSettingsImport(data);
             const contextMediaManager = document.getElementById("qig-context-media-manager");
             if (contextMediaManager) hidePopup(contextMediaManager);
@@ -17283,14 +17757,15 @@ function normalizeGenerationNumericSettings(settings) {
     normalize("height", defaultSettings.height, SIZE_MIN, SIZE_MAX, SIZE_STEP, SIZE_MIN);
     normalize("steps", defaultSettings.steps, 1, 150, 1, 1);
     normalize("cfgScale", defaultSettings.cfgScale, 1, 30, 0.5, 1);
-    normalize("seed", defaultSettings.seed, -Infinity, Infinity, 1, 0);
+    normalize("seed", defaultSettings.seed, -1, SEED_MAX, 1, 0);
     normalize("proxySteps", defaultSettings.proxySteps, 1, 150, 1, 1);
     normalize("proxyCfg", defaultSettings.proxyCfg, 0, 30, 0.5, 0);
-    normalize("proxySeed", defaultSettings.proxySeed, -Infinity, Infinity, 1, 0);
+    normalize("proxySeed", defaultSettings.proxySeed, -1, SEED_MAX, 1, 0);
     normalize("proxyTimeout", defaultSettings.proxyTimeout, 30, 1800, 1, 30);
     normalize("proxyComfyTimeout", defaultSettings.proxyComfyTimeout, 10, 600, 1, 10);
     normalize("proxyChatImageMaxTokens", defaultSettings.proxyChatImageMaxTokens, PROXY_CHAT_IMAGE_MAX_TOKENS_MIN, PROXY_CHAT_IMAGE_MAX_TOKENS_MAX, 1, PROXY_CHAT_IMAGE_MAX_TOKENS_MIN);
     normalize("llmOverrideMaxTokens", defaultSettings.llmOverrideMaxTokens, 50, 4096, 1, 50);
+    normalize("llmOverrideChatDepth", defaultSettings.llmOverrideChatDepth, 0, 1000, 1, 0);
     normalize("batchCount", defaultSettings.batchCount, 1, 10, 1, 1);
     normalize("hostedTimeout", defaultSettings.hostedTimeout, 30, 1800, 1, 30);
     return settings;
@@ -17307,6 +17782,7 @@ function bind(id, key, isNum = false, isCheckbox = false, onChange = null) {
     const el = getOrCacheElement(id);
     if (!el) return;
     el.oninput = (e) => {
+        if (settingsImportInProgress) return;
         const settings = getSettings();
         const parsed = isNum ? readFiniteNumericControl(e.target, settings[key]) : null;
         if (isNum && !parsed.valid) return;
@@ -17323,6 +17799,7 @@ function bind(id, key, isNum = false, isCheckbox = false, onChange = null) {
     };
     if (isNum) {
         el.onchange = (e) => {
+            if (settingsImportInProgress) return;
             const settings = getSettings();
             const parsed = readFiniteNumericControl(e.target, settings[key]);
             if (!parsed.valid) {
@@ -18157,10 +18634,14 @@ function createUI() {
                                  </div>
                              </div>
                          </div>
-                         <label class="checkbox_label" style="margin-top:8px;">
-                             <input id="qig-a1111-save-webui" type="checkbox" ${s.a1111SaveToWebUI ? "checked" : ""}>
-                             <span>Save images to WebUI output folder</span>
-                         </label>
+                          <label class="checkbox_label" style="margin-top:8px;">
+                              <input id="qig-a1111-save-webui" type="checkbox" ${s.a1111SaveToWebUI ? "checked" : ""}>
+                              <span>Save images to WebUI output folder</span>
+                          </label>
+                          <label class="checkbox_label" style="margin-top:8px;">
+                              <input id="qig-a1111-interrupt-server" type="checkbox" ${s.a1111InterruptServer ? "checked" : ""}>
+                              <span>Interrupt the server when cancelling (this A1111 is not shared with other users)</span>
+                          </label>
                          <label class="checkbox_label" style="margin-top:8px;">
                              <input id="qig-a1111-ipadapter" type="checkbox" ${s.a1111IpAdapter ? "checked" : ""}>
                              <span>IP-Adapter (use a reference image to guide style/composition)</span>
@@ -18799,6 +19280,9 @@ function createUI() {
                         <select id="qig-llm-override-preset-select" style="width:100%;"></select>
                         <label style="font-size: 12px;margin-top:4px;">Max Tokens</label>
                         <input id="qig-llm-override-max" type="number" value="${esc(s.llmOverrideMaxTokens || 500)}" min="50" max="4096" style="width:100%;">
+                        <label style="font-size: 12px;margin-top:4px;">Chat history messages</label>
+                        <input id="qig-llm-override-history" type="number" value="${esc(s.llmOverrideChatDepth || 0)}" min="0" max="1000" style="width:100%;">
+                        <small>Recent chat messages sent ahead of the request, for instructions that refer to the conversation so far. 0 sends the request on its own.</small>
                     </div>
                     </div>
                 </div>
@@ -19021,9 +19505,17 @@ function createUI() {
     bind("qig-navy-model", "navyModel");
     bind("qig-nanogpt-key", "nanogptKey");
     bind("qig-nanogpt-model", "nanogptModel", (value) => {
-        void getNanoGptModelMetadata(value).then(() => updateGenerationCapabilitiesUI());
         updateGenerationCapabilitiesUI();
     });
+    const nanoGptModelInput = getOrCacheElement("qig-nanogpt-model");
+    if (nanoGptModelInput) {
+        // Discovery is network-bound: fetch once per committed change instead of
+        // once per keystroke; getNanoGptModelMetadata dedupes in-flight requests.
+        nanoGptModelInput.addEventListener("change", () => {
+            const value = String(getSettings()?.nanogptModel || "").trim();
+            void getNanoGptModelMetadata(value).then(() => updateGenerationCapabilitiesUI());
+        });
+    }
     bind("qig-nanogpt-strength", "nanogptStrength", true, false, (value) => {
         const label = document.getElementById("qig-nanogpt-strength-val");
         if (label) label.textContent = value;
@@ -19257,6 +19749,7 @@ function createUI() {
 
     // Save to WebUI binding
     bindCheckbox("qig-a1111-save-webui", "a1111SaveToWebUI");
+    bindCheckbox("qig-a1111-interrupt-server", "a1111InterruptServer");
 
     // IP-Adapter bindings
     bind("qig-a1111-ipadapter-mode", "a1111IpAdapterMode");
@@ -19947,6 +20440,7 @@ function createUI() {
         saveSettingsDebounced();
     };
     bind("qig-llm-override-max", "llmOverrideMaxTokens", true);
+    bind("qig-llm-override-history", "llmOverrideChatDepth", true);
     const widthEl = document.getElementById("qig-width");
     const heightEl = document.getElementById("qig-height");
     const onSizeChange = () => {
@@ -20405,6 +20899,8 @@ async function generateImageInjectPalette() {
     if (isGenerating) return { status: "busy", generated: 0, failed: 0 };
     const initialSettings = getGenerationSettingsForRun();
     if (initialSettings.confirmBeforeGenerate && !(await qigConfirm("Generate image?", { okButton: "Generate" }))) return { status: "cancelled", generated: 0, failed: 0 };
+    // A second confirmation could have been approved while this dialog was open.
+    if (isGenerating) return { status: "busy", generated: 0, failed: 0 };
 
     const mySerial = ++_paletteInjectSerial;
     const run = beginGeneration({ settings: initialSettings, disableGenerateButton: true, clearPendingAuto: true });
@@ -20557,7 +21053,7 @@ async function generateImageInjectPalette() {
                 const baseSeed = getBatchBaseSeed(s, batchCount, seedOverride);
                 const outcome = await collectBatchResults(batchCount, async (i) => {
                     checkAborted(cancelCheckpoint);
-                    setGenerationSeedValue(s, useSequentialSeeds ? baseSeed + i : baseSeed);
+                    setGenerationSeedValue(s, useSequentialSeeds ? seedForBatchIndex(baseSeed, i) : baseSeed);
                     showStatus(`🖼️ Generating palette-inject image ${i + 1}/${batchCount}...`);
                     const expandedPrompt = expandWildcards(prompt);
                     const expandedNegative = expandWildcards(negative);
@@ -20584,13 +21080,13 @@ async function generateImageInjectPalette() {
                     if (sourceTargetSnapshot) assertMessageTargetSnapshot(sourceTargetSnapshot);
                     if (sourceInjectMessage) consumedMessagePrompts.add(extractedPrompt);
                     await maybeAutoSetBackground(results, s, run);
-                    await deliverInjectResults(results, {
+                                        await deliverInjectResults(results, {
                         settings: s,
                         sourceMessageIndex: Number.isInteger(sourceMessageIndex) ? sourceMessageIndex : undefined,
                         targetSnapshot: sourceTargetSnapshot,
                         run,
                     });
-                }
+                                    }
             } finally {
                 setGenerationSeedValue(s, originalSeed);
             }
@@ -20652,6 +21148,10 @@ async function generateImageFromPlainDescription() {
         return;
     }
     if (getSettings().confirmBeforeGenerate && !(await qigConfirm("Generate image?", { okButton: "Generate" }))) return;
+    if (isGenerating) {
+        qigToast.warning("Generation already in progress");
+        return;
+    }
 
     let run = null;
     let s = null;
@@ -20709,7 +21209,7 @@ async function generateImageFromPlainDescription() {
         debugLog(`Plain description final prompt: ${prompt.substring(0, 100)}...`);
         const outcome = await collectBatchResults(batchCount, async (i) => {
             checkAborted(cancelCheckpoint);
-            setGenerationSeedValue(s, useSequentialSeeds ? baseSeed + i : baseSeed);
+            setGenerationSeedValue(s, useSequentialSeeds ? seedForBatchIndex(baseSeed, i) : baseSeed);
             showStatus(`🖼️ Generating image ${i + 1}/${batchCount}...`);
             const expandedPrompt = expandWildcards(prompt);
             const expandedNegative = expandWildcards(negative);
@@ -20782,6 +21282,8 @@ async function generateImage() {
     const usingTransientSettingsOverride = !!transientGenerationSettingsState.current;
     const initialSettings = getGenerationSettingsForRun();
     if (initialSettings.confirmBeforeGenerate && !(await qigConfirm("Generate image?", { okButton: "Generate" }))) return { status: "cancelled", generated: 0, failed: 0 };
+    // A second confirmation could have been approved while this dialog was open.
+    if (isGenerating) return { status: "busy", generated: 0, failed: 0 };
     const ctx = getContext();
     const activeMessageTarget = getTransientGenerationTarget(ctx);
     if (activeMessageTarget?.stale) {
@@ -20800,8 +21302,12 @@ async function generateImage() {
     const sourceMessageIndexForEntries = Number.isInteger(activeMessageTarget?.messageIndex)
         ? activeMessageTarget.messageIndex
         : sceneSelectionMessageIndex;
+    // Provenance: where this image conceptually came from. Never treated as an insertion target.
     const sourceTargetSnapshot = activeMessageTarget?.targetSnapshot
         || createMessageTargetSnapshot(ctx?.chat, sourceMessageIndexForEntries)
+        || null;
+    // Insertion target: only per-message actions carry one; panel generation resolves the configured fallback.
+    const insertTargetSnapshot = activeMessageTarget?.targetSnapshot
         || (initialSettings.autoInsert
             ? createMessageTargetSnapshot(ctx?.chat, resolveManualInsertFallbackIndex(ctx?.chat, initialSettings))
             : null);
@@ -20930,7 +21436,7 @@ async function generateImage() {
             const baseSeed = getBatchBaseSeed(s, batchCount, seedOverride);
             const outcome = await collectBatchResults(batchCount, async (i) => {
                 checkAborted(cancelCheckpoint);
-                setGenerationSeedValue(s, useSequentialSeeds ? baseSeed + i : baseSeed);
+                setGenerationSeedValue(s, useSequentialSeeds ? seedForBatchIndex(baseSeed, i) : baseSeed);
                 showStatus(`🖼️ Generating image ${i + 1}/${batchCount}...`);
                 const expandedPrompt = expandWildcards(prompt);
                 const expandedNegative = expandWildcards(negative);
@@ -20957,43 +21463,49 @@ async function generateImage() {
             if (results.length > 0) {
                 commitSuccessfulPrompt(run, { prompt, negative, promptWasLLM, addHistory: true });
             }
-            await maybeAutoSetBackground(results, s, run);
+                        await maybeAutoSetBackground(results, s, run);
             if (s.autoInsert) {
-                let insertedCount = 0;
-                const failedResults = [];
-                for (const r of results) {
-                    void addToGallery(r);
-                    try {
-                        if (s.insertAsHiddenReply) {
-                            await insertImageAsHiddenReply(r, {
-                                commitGuard: () => assertGenerationCanCommit(run),
-                                conversationCheckpoint: run.context.conversationCheckpoint,
-                                outputMode: s.outputMode,
-                                signal: run.signal,
-                            });
-                        } else if (shouldAutoInsertChatImageAsAssistant(s)) {
-                            await insertImageAsNewMessage(r, {
-                                commitGuard: () => assertGenerationCanCommit(run),
-                                conversationCheckpoint: run.context.conversationCheckpoint,
-                                outputMode: s.outputMode,
-                                signal: run.signal,
-                            });
-                        } else {
-                            await insertImageIntoMessage(r, sourceTargetSnapshot?.index, {
-                                commitGuard: () => assertGenerationCanCommit(run),
-                                targetSnapshot: sourceTargetSnapshot,
-                                outputMode: s.outputMode,
-                                signal: run.signal,
-                            });
+                // Multi-image batches open the picker even with auto-insert enabled:
+                // serial insertion is non-atomic and only the last insert could be undone.
+                if (results.length > 1) {
+                    displayBatchResults(results);
+                } else {
+                    let insertedCount = 0;
+                    const failedResults = [];
+                                        for (const r of results) {
+                        void addToGallery(r);
+                                                try {
+                            if (s.insertAsHiddenReply) {
+                                await insertImageAsHiddenReply(r, {
+                                    commitGuard: () => assertGenerationCanCommit(run),
+                                    conversationCheckpoint: run.context.conversationCheckpoint,
+                                    outputMode: s.outputMode,
+                                    signal: run.signal,
+                                });
+                            } else if (shouldAutoInsertChatImageAsAssistant(s)) {
+                                await insertImageAsNewMessage(r, {
+                                    commitGuard: () => assertGenerationCanCommit(run),
+                                    conversationCheckpoint: run.context.conversationCheckpoint,
+                                    outputMode: s.outputMode,
+                                    signal: run.signal,
+                                });
+                            } else {
+                                await insertImageIntoMessage(r, insertTargetSnapshot?.index ?? null, {
+                                    commitGuard: () => assertGenerationCanCommit(run),
+                                    targetSnapshot: insertTargetSnapshot,
+                                    outputMode: s.outputMode,
+                                    signal: run.signal,
+                                });
+                            }
+                            insertedCount++;
+                        } catch (err) {
+                            if (err.name === "AbortError" && run.signal?.aborted) throw err;
+                            console.error("[Quick Image Gen] Auto-insert failed:", err);
+                            failedResults.push(r);
                         }
-                        insertedCount++;
-                    } catch (err) {
-                        if (err.name === "AbortError") throw err;
-                        console.error("[Quick Image Gen] Auto-insert failed:", err);
-                        failedResults.push(r);
                     }
+                    reportAutoInsertOutcome(insertedCount, failedResults);
                 }
-                reportAutoInsertOutcome(insertedCount, failedResults);
             } else if (results.length === 1) {
                 displayImage(results[0]);
             } else {
@@ -21006,7 +21518,7 @@ async function generateImage() {
             };
     } catch (e) {
         if (e.name === "AbortError") {
-            log("Generation cancelled by user");
+                        log("Generation cancelled by user");
             qigToast.info("Generation cancelled");
             return { status: "cancelled", generated: 0, failed: 0 };
         } else {
@@ -21363,12 +21875,19 @@ function onChatCompletionPromptReady(eventData) {
                 prompts.push(injectMsg);
             }
         } else if (position === "inUser") {
-            // Insert as system message before the last user message
+            // Insert as system message before the last user message; when the
+            // prompt has no user turn, append it so the instruction still arrives.
+            let inserted = false;
             for (let i = prompts.length - 1; i >= 0; i--) {
                 if (prompts[i].role === "user") {
                     prompts.splice(i, 0, injectMsg);
+                    inserted = true;
                     break;
                 }
+            }
+            if (!inserted) {
+                prompts.push(injectMsg);
+                log("Inject: No user message found; appended the inject instruction at the end of the prompt");
             }
         } else if (position === "atDepth") {
             // Insert at specific depth from the end
@@ -21525,7 +22044,7 @@ async function processInjectMessage(messageText, messageIndex, job = null) {
                 const baseSeed = getBatchBaseSeed(s, batchCount, seedOverride);
                 const outcome = await collectBatchResults(batchCount, async (i) => {
                     checkAborted(cancelCheckpoint);
-                    setGenerationSeedValue(s, useSequentialSeeds ? baseSeed + i : baseSeed);
+                    setGenerationSeedValue(s, useSequentialSeeds ? seedForBatchIndex(baseSeed, i) : baseSeed);
                     showStatus(`🖼️ Generating inject image ${i + 1}/${batchCount}...`);
                     const expandedPrompt = expandWildcards(prompt);
                     const expandedNegative = expandWildcards(negative);
@@ -21851,7 +22370,7 @@ function handleHostMessageReceived(messageIndex) {
     const idx = clampChatMessageIndex(preferredIdx, Array.isArray(chat) ? chat.length : 0);
     if (!Number.isInteger(idx) || idx < 0) return;
     const msg = chat?.[idx];
-    if (!msg || msg.is_user || msg.extra?.inline_image) return;
+    if (!msg || msg.is_user || msg.is_system || msg.extra?.inline_image) return;
     const dedupeKey = msg;
     if (s.injectEnabled && _processedInjectIndices.has(dedupeKey)) return;
     if (!shouldRunAutoGenerateForEligibleMessage(idx, s)) return;
@@ -21868,11 +22387,14 @@ function handleHostMessageReceived(messageIndex) {
             conversationCheckpoint: createConversationCheckpoint(chat),
             dedupeKey,
             revision: _automationRevision,
+            // Capture the reply text at event time: tag normalization by other
+            // extensions before the delay fires must not rewrite what we inject.
+            eventText: msg.mes || "",
         };
         _processedInjectIndices.add(dedupeKey);
         const timeoutId = setTimeout(() => {
             _autoInjectTimeouts.delete(timeoutId);
-            void processInjectMessage(msg.mes || "", idx, job);
+            void processInjectMessage(job.eventText, idx, job);
         }, delayMs);
         _autoInjectTimeouts.set(timeoutId, dedupeKey);
         return;
@@ -21989,12 +22511,14 @@ function initializeQuickImageGen() {
             }
 
             await loadSettings();
-            accountStorageScope = createAccountStorageScope(getSettings()?._syncCacheId);
+            accountStorageScope = syncCacheIdClaimed
+                ? createAccountStorageScope(getSettings()?._syncCacheId)
+                : null;
             promptHistory = accountStorageScope
                 ? normalizePromptHistory(safeParse(accountStorageScope.promptHistoryKey, []))
                 : [];
             if (!accountStorageScope) {
-                log("Account storage identity is unavailable; gallery and prompt history will remain session-only");
+                log("Account storage identity is unconfirmed; gallery and prompt history will remain session-only until the server acknowledges it");
             }
             galleryInitializationPromise = initializeGalleryRepository();
             installLifecycleCleanup();
@@ -22367,8 +22891,16 @@ async function handleMetadataDrop(e) {
         }
         if (structuredRequest) {
             const effectiveParameters = structuredRequest.parameters || {};
+            const reproducibleSettings = structuredRequest.settings || {};
             for (const key of ["model", "width", "height", "steps", "cfgScale", "sampler", "seed"]) {
-                if (Object.prototype.hasOwnProperty.call(effectiveParameters, key)) params[key] = effectiveParameters[key];
+                if (Object.prototype.hasOwnProperty.call(effectiveParameters, key)) {
+                    params[key] = effectiveParameters[key];
+                } else if ((key === "width" || key === "height") && Object.prototype.hasOwnProperty.call(reproducibleSettings, key)) {
+                    // Symbolic-resolution providers (Nanobanana aspectRatio/imageSize, NanoGPT
+                    // symbolic sizes) have no effective pixel dimensions; restore the requested
+                    // dimensions from the reproducible settings instead of losing them.
+                    params[key] = reproducibleSettings[key];
+                }
             }
             if (Object.prototype.hasOwnProperty.call(effectiveParameters, "schedule")) params.scheduler = effectiveParameters.schedule;
             if (structuredRequest.provider && PROVIDERS[structuredRequest.provider]) params.provider = structuredRequest.provider;

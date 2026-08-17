@@ -538,7 +538,7 @@ async function readCustomResponse(response, config, fallbackUrl) {
         throw new Error(`Custom API error ${response.status}: ${detail.replace(/\s+/g, " ").trim().slice(0, 500) || response.statusText}`);
     }
     const contentType = (response.headers.get("content-type") || "").split(";", 1)[0].trim().toLowerCase();
-    if (contentType.startsWith("image/")) {
+    if (contentType.startsWith("image/") || contentType === "application/octet-stream") {
         const buffer = await readResponseArrayBuffer(response, MAX_IMAGE_BYTES);
         const format = await validateImageData(buffer);
         if (!format) throw new Error("Custom API response is not a supported image format");
@@ -603,8 +603,23 @@ function normalizeJobId(value) {
     return jobId;
 }
 
-function waitForPoll(ms, signal, sleep) {
-    if (sleep) return sleep(ms, signal);
+function isTransientPollStatus(status) {
+    return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+function pollRetryDelayMs(response, fallbackMs) {
+    const raw = String(response.headers?.get?.("retry-after") || "").trim();
+    if (/^\d+$/.test(raw)) {
+        return Math.min(60_000, Math.max(0, parseInt(raw, 10) * 1000));
+    }
+    const retryDate = Date.parse(raw);
+    if (!Number.isNaN(retryDate)) {
+        return Math.min(60_000, Math.max(0, retryDate - Date.now()));
+    }
+    return fallbackMs;
+}
+
+function waitForPoll(ms, signal, sleep) {    if (sleep) return sleep(ms, signal);
     return new Promise((resolve, reject) => {
         if (signal?.aborted) {
             reject(new DOMException("The operation was aborted", "AbortError"));
@@ -673,6 +688,13 @@ export async function executeCustomBackend(config, input, options = {}) {
                 credentials: "omit",
                 referrerPolicy: "no-referrer",
             });
+            if (!pollResponse.ok && isTransientPollStatus(pollResponse.status)) {
+                // A running job behind a busy proxy is still running; retry within
+                // the overall timeout instead of failing the generation.
+                try { await pollResponse.body?.cancel?.(); } catch { /* best effort */ }
+                await waitForPoll(pollRetryDelayMs(pollResponse, request.config.pollIntervalMs), controller.signal, options.sleep);
+                continue;
+            }
             const polled = await readCustomResponse(pollResponse, request.config, pollUrl.href);
             if (polled.buffer) return polled;
             const status = String(resolveJsonPointer(polled.data, request.config.statusPath) ?? "").trim().toLowerCase();

@@ -1,5 +1,5 @@
-import { normalizeImageSource } from "./security.js";
-import { detectImageFormat, MAX_IMAGE_DIMENSION, MAX_IMAGE_PIXELS } from "./image-metadata.js";
+import { normalizeImageSource, MAX_IMAGE_BYTES } from "./security.js";
+import { detectImageFormat, MAX_IMAGE_DIMENSION, MAX_IMAGE_PIXELS, validateImageData } from "./image-metadata.js";
 
 export const CONTEXT_MEDIA_LIBRARY_VERSION = 1;
 export const DEFAULT_CONTEXT_MEDIA_MAX_BYTES = 50 * 1024 * 1024;
@@ -56,7 +56,8 @@ function claimId(kind, scope, value, usedIds) {
     let id = baseId;
     let suffix = 2;
     while (usedIds.has(id)) {
-        id = `${baseId}-${suffix}`;
+        const suffixText = `-${suffix}`;
+        id = `${baseId.slice(0, 128 - suffixText.length)}${suffixText}`;
         suffix += 1;
     }
     usedIds.add(id);
@@ -543,10 +544,16 @@ function isStructurallyValidWebm(bytes) {
     return false;
 }
 
-export function contextMediaBytesMatchFormat(value, format) {
+export async function contextMediaBytesMatchFormat(value, format) {
     const bytes = asMediaBytes(value);
     if (!bytes || !bytes.length || bytes.length > DEFAULT_CONTEXT_MEDIA_MAX_BYTES) return false;
-    if (format?.type === "image") return detectImageFormat(bytes)?.mime === format.mimeType;
+    if (format?.type === "image") {
+        // Images get full decompression validation (not just header detection) and the
+        // same 25 MiB cap used everywhere else; videos keep the larger context limit.
+        if (bytes.length > MAX_IMAGE_BYTES) return false;
+        const validated = await validateImageData(bytes);
+        return validated ? String(validated.mime || "").toLowerCase() === format.mimeType : false;
+    }
     if (format?.mimeType === "video/mp4") return isStructurallyValidMp4(bytes);
     if (format?.mimeType === "video/webm") return isStructurallyValidWebm(bytes);
     return false;
@@ -619,6 +626,8 @@ export function validateContextMediaFile(file, options = {}) {
     }
     if (!Number.isSafeInteger(file?.size) || file.size < 0) {
         errors.push("Media size must be a non-negative safe integer");
+    } else if (expectedType === "image" && file.size > Math.min(maxBytes, MAX_IMAGE_BYTES)) {
+        errors.push(`Images cannot exceed ${Math.min(maxBytes, MAX_IMAGE_BYTES)} bytes`);
     } else if (file.size > maxBytes) {
         errors.push(`Media exceeds the ${maxBytes} byte limit`);
     }
