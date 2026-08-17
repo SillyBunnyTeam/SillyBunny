@@ -25,6 +25,7 @@
 - PR #766 (2026-08-16) `fix(markdown): ensure markdown text wraps around as usual`
 - PR #767 (2026-08-17) `feat: add the model name and reasoning effort after the icon`
 - PR #768 (2026-08-17) `chore: update Quick Image Gen to 3.2.0`
+- PR #769 (2026-08-17) `chore: gitignore the Quick Image Gen sync's leftover merge folder`
 
 ## v1.7.0
 
