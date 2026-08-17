@@ -137,6 +137,74 @@ test.describe('issue 167 chat scroll regressions', () => {
 
         expect(after.scrollTop).toBeGreaterThan(before.scrollTop + 100);
     });
+
+    test('chat-load bottom lock yields when the view moves above the last pin', async ({ page }) => {
+        await installSyntheticLongChat(page, { messageCount: 96, visibleCount: 24 });
+        const renderedIds = await getRenderedMessageIds(page);
+        const anchorId = renderedIds.at(6);
+
+        await scrollMessageNearTop(page, anchorId, 32);
+        const before = await getChatScrollSnapshot(page);
+        await waitForAnimationFrames(page, 6);
+        await page.waitForTimeout(500);
+        const after = await getChatScrollSnapshot(page);
+
+        expect(after.firstVisibleMesId).toBe(before.firstVisibleMesId);
+        expect(Math.abs(after.firstVisibleOffsetTop - before.firstVisibleOffsetTop)).toBeLessThanOrEqual(3);
+        expect(after.bottomDelta).toBeGreaterThan(200);
+    });
+
+    test('message growth right after a tap keeps the bottom-pinned view still', async ({ page }) => {
+        await installSyntheticLongChat(page, { messageCount: 48 });
+        await page.waitForTimeout(2800);
+        const renderedIds = await getRenderedMessageIds(page);
+        const lastId = renderedIds.at(-1);
+
+        await page.locator(`#chat .mes[mesid="${lastId}"] .mes_text`).click();
+
+        const before = await getChatScrollSnapshot(page);
+        await growMessageBlockAboveViewport(page, lastId, { height: 300 });
+        const after = await getChatScrollSnapshot(page);
+
+        expect(Math.abs(after.firstVisibleOffsetTop - before.firstVisibleOffsetTop)).toBeLessThanOrEqual(3);
+        expect(after.bottomDelta).toBeGreaterThanOrEqual(250);
+
+        await page.evaluate(() => window.SillyTavern.getContext().scrollChatToBottom({ force: true }));
+        await page.waitForTimeout(450);
+        await growMessageBlockAboveViewport(page, lastId, { height: 300 });
+        await waitForAnimationFrames(page, 4);
+        const settled = await getChatScrollSnapshot(page);
+
+        expect(settled.bottomDelta).toBeLessThanOrEqual(16);
+    });
+
+    test('tail append prunes the top without shifting the view', async ({ page }) => {
+        await installSyntheticLongChat(page, { messageCount: 96, visibleCount: 24 });
+        const renderedIds = await getRenderedMessageIds(page);
+        const anchorId = renderedIds.at(6);
+
+        await scrollMessageNearTop(page, anchorId, 32);
+
+        const before = await getChatScrollSnapshot(page);
+        await page.evaluate(() => {
+            const context = window.SillyTavern.getContext();
+            const messageId = context.chat.length;
+            context.chat.push({
+                name: 'Bunny Guide',
+                is_user: false,
+                is_system: false,
+                send_date: new Date().toISOString(),
+                mes: `issue 167 tail append ${messageId}`,
+                extra: {},
+            });
+            context.addOneMessage(context.chat.at(-1), { scroll: false });
+        });
+        await waitForAnimationFrames(page, 6);
+        const after = await getChatScrollSnapshot(page);
+
+        expect(after.firstVisibleMesId).toBe(before.firstVisibleMesId);
+        expect(Math.abs(after.firstVisibleOffsetTop - before.firstVisibleOffsetTop)).toBeLessThanOrEqual(3);
+    });
 });
 
 test.describe('issue 167 mobile chat scroll regressions', () => {
@@ -171,5 +239,29 @@ test.describe('issue 167 mobile chat scroll regressions', () => {
         expect(after.firstVisibleMesId).toBe(before.firstVisibleMesId);
         expect(Math.abs(after.scrollTop - before.scrollTop)).toBeLessThanOrEqual(12);
         expect(after.bottomDelta).toBeGreaterThan(96);
+    });
+
+    test('message growth right after a tap keeps the bottom-pinned mobile view still', async ({ page }) => {
+        await installSyntheticLongChat(page, { messageCount: 48 });
+        await page.waitForTimeout(2800);
+        const renderedIds = await getRenderedMessageIds(page);
+        const lastId = renderedIds.at(-1);
+
+        await page.locator(`#chat .mes[mesid="${lastId}"] .mes_text`).tap();
+
+        const before = await getChatScrollSnapshot(page);
+        await growMessageBlockAboveViewport(page, lastId, { height: 300 });
+        const after = await getChatScrollSnapshot(page);
+
+        expect(Math.abs(after.firstVisibleOffsetTop - before.firstVisibleOffsetTop)).toBeLessThanOrEqual(3);
+        expect(after.bottomDelta).toBeGreaterThanOrEqual(250);
+
+        await page.evaluate(() => window.SillyTavern.getContext().scrollChatToBottom({ force: true }));
+        await page.waitForTimeout(1500);
+        await growMessageBlockAboveViewport(page, lastId, { height: 300 });
+        await waitForAnimationFrames(page, 4);
+        const settled = await getChatScrollSnapshot(page);
+
+        expect(settled.bottomDelta).toBeLessThanOrEqual(16);
     });
 });

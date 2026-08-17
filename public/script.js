@@ -629,6 +629,7 @@ const MOBILE_CHAT_VIEWPORT_SCROLL_SUPPRESS_MS = 500;
 const MOBILE_CHAT_BOTTOM_PIN_MS = 1500;
 const MOBILE_STREAMING_SCROLL_MIN_INTERVAL_MS = 750;
 const CHAT_SCROLL_BOTTOM_THRESHOLD_PX = 24;
+const CHAT_TAP_RESIZE_GRACE_MS = 400;
 const CHAT_LOAD_BOTTOM_LOCK_EXTRA_MS = 250;
 const CHAT_LOAD_SCROLL_SETTLE_DELAYS_MS = Object.freeze([80, 250, MOBILE_CHAT_LOAD_SCROLL_SETTLE_MS, 900, 1600, 2400]);
 const SHOW_MORE_DUPLICATE_EVENT_GUARD_MS = 750;
@@ -672,6 +673,13 @@ let mobileStreamingBottomPinSmooth = false;
 let lastMobileStreamingBottomPinAt = 0;
 let chatLoadBottomLockUntil = 0;
 let chatLoadBottomPinFrame = 0;
+let chatLastBottomPinScrollTop = 0;
+let lastChatPointerUpAt = 0;
+
+// ponytail: pointerup only — a touch scroll ends in pointercancel, so scrolling never arms the window.
+function isRecentChatTap() {
+    return Date.now() - lastChatPointerUpAt < CHAT_TAP_RESIZE_GRACE_MS;
+}
 export let abortStatusCheck = new AbortController();
 export let charDragDropHandler = null;
 export let chatDragDropHandler = null;
@@ -1988,6 +1996,8 @@ function isChatLoadBottomLockActive() {
 
 function clearChatLoadBottomLock() {
     chatLoadBottomLockUntil = 0;
+    // SillyBunny: leaving the load lock means user intent took over; do not let the scroll handler immediately re-arm autoscroll.
+    scrollLockImmunityUntil = 0;
 
     if (chatLoadBottomPinFrame) {
         cancelAnimationFrame(chatLoadBottomPinFrame);
@@ -2580,7 +2590,10 @@ async function applyChatMessageResizeAction(element, entry, metadata) {
 
     if (shouldApplyChatBottomScrollAction(action)) {
         // SillyBunny: coalesce media resize pins with the shared bottom-scroll rAF lane.
-        scrollChatToBottom({ waitForFrame: true, isNearBottom: true });
+        // ponytail: growth right after a completed tap is user-caused, not late media; pinning then drags the view. Keyboard-toggled details still pin, and late media landing inside the 400 ms window won't.
+        if (!isRecentChatTap()) {
+            scrollChatToBottom({ waitForFrame: true, isNearBottom: true });
+        }
         requestAnimationFrame(() => refreshChatMessageResizeState(element, metadata, entry));
         return;
     }
@@ -2910,6 +2923,9 @@ function pruneRenderedChatMessagesToWindow({ windowSize, pruneFrom }) {
         return;
     }
 
+    // SillyBunny: pin the first visible message so a top prune cannot shift the view.
+    const anchor = pruneFrom === 'start' ? captureVisibleChatMessageAnchor() : null;
+
     const removedMessages = pruneFrom === 'end'
         ? renderedMessages.slice(-excessMessageCount)
         : renderedMessages.slice(0, excessMessageCount);
@@ -2919,6 +2935,7 @@ function pruneRenderedChatMessagesToWindow({ windowSize, pruneFrom }) {
     removedMessageElements.remove();
     syncRenderedChatLastMessageClass();
     syncChatHistoryWindowControls();
+    restoreVisibleChatMessageAnchor(anchor);
 }
 
 function removeRenderedChatMessages() {
@@ -4262,6 +4279,10 @@ export function appendMediaToMessage(mes, messageElement, scrollBehavior = SCROL
     const chatHeight = (hasMedia || hasFiles) ? chatElement.prop('scrollHeight') : 0;
     const scrollPosition = (hasMedia || hasFiles) ? chatElement.scrollTop() : 0;
     const doAdjustScroll = () => {
+        // SillyBunny: the block's resize observer already keeps the viewport; a late relative restore would revert it.
+        if (chatMessageResizeStates.has(getMessageBlockElement(messageElement))) {
+            return;
+        }
         if (!hasMedia && !hasFiles) {
             return;
         }
@@ -4992,10 +5013,12 @@ function scrollChatElementToBottom({ behavior = 'auto' } = {}) {
     const element = chatElement[0];
     if (behavior === 'smooth' && typeof element?.scrollTo === 'function') {
         element.scrollTo({ top: position, behavior });
+        chatLastBottomPinScrollTop = position;
         return;
     }
 
     chatElement.scrollTop(position);
+    chatLastBottomPinScrollTop = element.scrollTop;
 }
 
 /**
@@ -12583,7 +12606,8 @@ export async function messageEdit(editMessageId) {
         markMobileChatManualScroll();
     }
 
-    const shouldRestoreChatScroll = shouldGuardMobileChatScroll() || Number(this_edit_mes_id) === chat.length - 1;
+    // SillyBunny: on desktop the message resize observer owns the edit-open layout change and focus already has preventScroll; restoring here reverts it.
+    const shouldRestoreChatScroll = shouldGuardMobileChatScroll();
     const restoreChatScroll = () => {
         if (shouldRestoreChatScroll) {
             chatElement.scrollTop(chatScrollPosition);
@@ -16518,6 +16542,7 @@ jQuery(async function () {
     chatElementScroll.addEventListener('touchend', releaseMobileChatTouchScroll, { passive: true });
     chatElementScroll.addEventListener('touchcancel', releaseMobileChatTouchScroll, { passive: true });
     chatElementScroll.addEventListener('wheel', markMobileChatWheelScroll, { passive: true });
+    chatElementScroll.addEventListener('pointerup', () => { lastChatPointerUpAt = Date.now(); }, { passive: true, capture: true });
     document.addEventListener('wheel', routeShellWheelToChat, { passive: false, capture: true });
     setupMobileChatViewportObserver(markMobileViewportScroll);
 
@@ -16525,8 +16550,13 @@ jQuery(async function () {
         refreshObservedChatMessageResizeViewportStates();
 
         if (isChatLoadBottomLockActive() && !isChatScrolledNearBottom()) {
-            pinChatLoadToBottom();
-            return;
+            // SillyBunny: load pins only ever land at the bottom; sitting above the last pin means the user (or a jump) took over.
+            if (chatElementScroll.scrollTop < chatLastBottomPinScrollTop) {
+                clearChatLoadBottomLock();
+            } else {
+                pinChatLoadToBottom();
+                return;
+            }
         }
 
         if (power_user.waifuMode) {

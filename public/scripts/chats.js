@@ -2302,7 +2302,7 @@ export function initChatUtilities() {
         if ($('.edit_textarea').length) return;
         $(this).closest('.mes').find('.mes_edit').trigger('click');
         if ($(event.target).closest('.mes_reasoning').length) {
-            $('.reasoning_edit_textarea').trigger('focus');
+            $('.reasoning_edit_textarea')[0]?.focus({ preventScroll: true }); // SillyBunny: reasoning.js already reveals the textarea; a scrolling focus double-jumps.
         }
     });
 
