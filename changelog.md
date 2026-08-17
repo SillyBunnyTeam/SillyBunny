@@ -23,6 +23,7 @@
 - PR #764 (2026-08-16) `fix(ica): harden the separation between Companion Agent and Pre-generation Inline Agent trackers`
 - PR #765 (2026-08-16) `fix(connection_profiles): harden custom endpoint switches and additional parameter saving`
 - PR #766 (2026-08-16) `fix(markdown): ensure markdown text wraps around as usual`
+- PR #767 (2026-08-17) `feat: add the model name and reasoning effort after the icon`
 
 ## v1.7.0
 
