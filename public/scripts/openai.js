@@ -5197,6 +5197,19 @@ function getReasoningEffort(settings = null, model = null) {
 }
 
 /**
+ * Get the reasoning effort a chat completion request would send right now.
+ * Stamped onto received messages so the UI can show what a message was generated with.
+ * @returns {string} Reasoning effort, empty when none is sent
+ */
+export function getCurrentReasoningEffort() {
+    if (main_api !== 'openai') {
+        return '';
+    }
+
+    return String(getReasoningEffort() ?? '');
+}
+
+/**
  * Get the verbosity from chat completion settings
  * @param {ChatCompletionSettings} settings Chat completion settings
  * @returns {string} Verbosity level, if present
