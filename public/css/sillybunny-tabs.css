@@ -2526,6 +2526,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 #right-nav-panel .sb-character-create-bar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: flex-start;
     gap: var(--sb-shell-space-sm);
@@ -2608,7 +2609,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 #right-nav-panel .sb-character-create-bar #rm_print_characters_pagination {
     flex: 0 1 auto;
-    min-width: 0;
     margin-left: auto !important;
     justify-content: flex-start;
     padding: 0;
@@ -2616,6 +2616,10 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 #right-nav-panel .sb-character-create-bar .paginationjs {
     justify-content: flex-start;
+}
+
+#right-nav-panel .sb-character-create-bar .paginationjs-nav {
+    white-space: nowrap;
 }
 
 #right-nav-panel[data-menu-type="groups"] .sb-character-create-bar {
@@ -8154,4 +8158,24 @@ body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.gr
     padding: 0 var(--sb-shell-space-lg) !important;
     aspect-ratio: auto;
     flex: 0 0 auto;
+}
+
+/* Below the laptop breakpoint the character shell is ~600px wide, which cannot fit the labelled
+   create button, sort/search cluster, and pagination on one line; go icon-only so the wrapped
+   bar stays at two rows. The padding above is an important declaration (it beats the theme's
+   icon-button squaring), so it is shrunk through its token rather than another one. */
+@media screen and (max-width: 1180px) {
+    #right-nav-panel .sb-character-create-bar #rm_button_create,
+    #right-nav-panel .sb-character-create-bar #rm_button_group_chats {
+        --sb-shell-space-lg: 0px;
+        width: 44px;
+        inline-size: 44px;
+        min-width: 44px;
+        min-inline-size: 44px;
+    }
+
+    #right-nav-panel .sb-character-create-bar #rm_button_create::after,
+    #right-nav-panel .sb-character-create-bar #rm_button_group_chats::after {
+        content: none;
+    }
 }
