@@ -191,6 +191,7 @@ describe('chat render lifecycle script wiring', () => {
         expect(source).toContain('pruneRenderedChatMessagesToWindow({ windowSize, pruneFrom: \'start\' });');
         expect(source).toContain('syncRenderedChatLastMessageClass();');
         expect(source).toContain('syncChatHistoryWindowControls();');
+        expect(getSource(findFunctionDeclaration('pruneRenderedChatMessagesToWindow'))).toContain('captureVisibleChatMessageAnchor()');
         expect(source).toContain('applyCharacterTagsToMessageDivs({ mesIds: renderedMessageIds });');
         expect(source).toContain('refreshSwipeButtons();');
         expect(source).toContain('applyStylePins();');
@@ -582,6 +583,7 @@ describe('chat render lifecycle script wiring', () => {
         expect(source).toContain('isManualScrollSuppressed: shouldSuppressMobileChatAutoScroll()');
         expect(source).toContain('shouldApplyChatBottomScrollAction(action)');
         expect(source).toContain('scrollChatToBottom({ waitForFrame: true, isNearBottom: true });');
+        expect(source).toContain('isRecentChatTap()');
         expect(source).toContain('action.action === CHAT_SCROLL_ACTION.PRESERVE_ANCHOR');
         expect(source).toContain('await settleVisibleChatMessageAnchor(resizeState.anchor);');
         expect(source).toContain('refreshChatMessageResizeState(element, metadata, entry);');
@@ -686,6 +688,10 @@ describe('chat render lifecycle script wiring', () => {
         expect(initSource).toContain('clearChatLoadBottomLock();');
         expect(initSource).toContain('if (isChatLoadBottomLockActive() && !isChatScrolledNearBottom())');
         expect(initSource).toContain('pinChatLoadToBottom();');
+        expect(initSource).toContain('lastChatPointerUpAt = Date.now();');
+
+        const clearLockSource = getSource(findFunctionDeclaration('clearChatLoadBottomLock'));
+        expect(clearLockSource).toContain('scrollLockImmunityUntil = 0;');
     });
 
     test('mobile viewport lifecycle route preserves existing scroll suppression policy', () => {

@@ -17430,6 +17430,9 @@ function initAll() {
     applyTopbarIconsOnlyPreference();
     bindLandingPageObserver();
     buildBottomChatBar();
+    // SillyBunny: user input ends the ⬇ scroll-to-bottom ladder so a mid-ladder flick is not snapped back.
+    getChatScrollElement()?.addEventListener('wheel', cancelPendingBottomChatScroll, { passive: true });
+    getChatScrollElement()?.addEventListener('touchstart', cancelPendingBottomChatScroll, { passive: true });
     // Refresh again after the current JS task — APP_READY may have already
     // fired before this listener was registered, so the initial call in
     // buildBottomChatBar() may have found no active chat yet.
