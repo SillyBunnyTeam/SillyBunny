@@ -27,6 +27,7 @@
 - PR #768 (2026-08-17) `chore: update Quick Image Gen to 3.2.0`
 - PR #769 (2026-08-17) `chore: gitignore the Quick Image Gen sync's leftover merge folder`
 - PR #771 (2026-08-18) `fix: hardens chat scroll jumping`
+- PR #772 (2026-08-18) `fix: list only mode now gets bigger and stretches to screen`
 
 ## v1.7.0
 
