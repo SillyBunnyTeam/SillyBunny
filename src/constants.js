@@ -532,6 +532,21 @@ export const NANOGPT_REASONING_EFFORT_MAP = {
     max: 'xhigh',
 };
 
+/**
+ * Moonshot exposes `reasoning_effort` on Kimi K3 only, and documents just low, high and max.
+ * Unlike DeepSeek it does not advertise aliasing of the rungs it omits, so medium and xhigh
+ * are folded here rather than forwarded as values the API does not list. Values absent from
+ * this table are omitted entirely by the caller.
+ */
+export const MOONSHOT_REASONING_EFFORT_MAP = {
+    min: 'low',
+    low: 'low',
+    medium: 'high',
+    high: 'high',
+    xhigh: 'high',
+    max: 'max',
+};
+
 export const LOG_LEVELS = {
     DEBUG: 0,
     INFO: 1,
