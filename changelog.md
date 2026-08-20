@@ -32,6 +32,7 @@
 - PR #774 (2026-08-20) `fix(ui): Manage extensions and Install Extension are now on their own rows`
 - PR #775 (2026-08-20) `fix(mobile): message box text that says "Type a message, or /? for help" is no longer truncated`
 - PR #777 (2026-08-20) `chore: add reasoning effort levels in ZAI and MoonshotAI backends`
+- PR #778 (2026-08-20) `fix(nanogpt): make reasoning types no longer switch to a different one`
 
 ## v1.7.0
 
