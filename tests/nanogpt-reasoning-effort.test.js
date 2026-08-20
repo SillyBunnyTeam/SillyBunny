@@ -96,15 +96,15 @@ describe('reasoning effort on outgoing chat completions', () => {
         });
     }
 
-    // NanoGPT documents none < minimal < low < medium < high < xhigh, the same number of rungs
-    // as this fork's min < low < medium < high < xhigh < max, so the ladder maps one-to-one and
-    // Maximum reaches NanoGPT's real ceiling rather than stopping a rung short at high.
+    // NanoGPT documents none < minimal < low < medium < high < xhigh. low, medium, high and
+    // xhigh are spelled the same here, so they go out untouched instead of being shifted a rung
+    // down. min and max are the only names NanoGPT does not have, so they take its nearest rungs.
     test.each([
-        ['min', 'none'],
-        ['low', 'minimal'],
-        ['medium', 'low'],
-        ['high', 'medium'],
-        ['xhigh', 'high'],
+        ['min', 'minimal'],
+        ['low', 'low'],
+        ['medium', 'medium'],
+        ['high', 'high'],
+        ['xhigh', 'xhigh'],
         ['max', 'xhigh'],
     ])('NanoGPT sends %s as %s', async (effort, expected) => {
         const response = await makeRequest(CHAT_COMPLETION_SOURCES.NANOGPT, { reasoning_effort: effort });
@@ -131,8 +131,8 @@ describe('reasoning effort on outgoing chat completions', () => {
     });
 
     test.each([
-        ['XHigh', 'high'],
-        [' xhigh ', 'high'],
+        ['XHigh', 'xhigh'],
+        [' xhigh ', 'xhigh'],
         [' Max ', 'xhigh'],
         ['MAX', 'xhigh'],
     ])('NanoGPT normalizes %p before the table lookup and sends %s', async (effort, expected) => {
