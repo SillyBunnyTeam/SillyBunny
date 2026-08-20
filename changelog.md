@@ -31,6 +31,7 @@
 - PR #773 (2026-08-18) `fix: character menu controls no longer spill out of non-wide browsers`
 - PR #774 (2026-08-20) `fix(ui): Manage extensions and Install Extension are now on their own rows`
 - PR #775 (2026-08-20) `fix(mobile): message box text that says "Type a message, or /? for help" is no longer truncated`
+- PR #776 (2026-08-20) `fix(ui): increase hitbox for holding for swipe selector`
 - PR #777 (2026-08-20) `chore: add reasoning effort levels in ZAI and MoonshotAI backends`
 - PR #778 (2026-08-20) `fix(nanogpt): make reasoning types no longer switch to a different one`
 - PR #779 (2026-08-20) `feat(kimi): add a Partial Prefill field that only Kimi K3 uses`
