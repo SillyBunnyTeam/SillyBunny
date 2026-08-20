@@ -66,8 +66,11 @@
         border-radius: 0 !important;
     }
 
+    /* The composer's text column is roughly 130px on a 360px phone, so this string cannot fit
+       on one line at any readable size. Upstream sets white-space: nowrap, which clipped it. */
     #send_textarea::placeholder {
         font-size: 14px;
+        white-space: normal;
     }
 
     #nonQRFormItems {
