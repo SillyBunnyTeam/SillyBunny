@@ -13,6 +13,7 @@ import {
 import { MAX_CONTEXT_DEFAULT, MAX_RESPONSE_DEFAULT, power_user } from './power-user.js';
 import { getTextTokens, tokenizers } from './tokenizers.js';
 import { getEventSourceStream } from './sse-stream.js';
+import { fetchResumable } from './resumable-generation.js';
 import {
     getSortableDelay,
     getStringHash,
@@ -772,7 +773,7 @@ function tryParseStreamingError(response, decoded) {
 export async function generateNovelWithStreaming(generate_data, signal) {
     generate_data.streaming = nai_settings.streaming_novel;
 
-    const response = await fetch('/api/novelai/generate', {
+    const response = await fetchResumable('/api/novelai/generate', {
         headers: getRequestHeaders(),
         body: JSON.stringify(generate_data),
         method: 'POST',

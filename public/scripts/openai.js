@@ -48,6 +48,7 @@ import { forceCharacterEditorTokenize, getCustomStoppingStrings, persona_descrip
 import { rotateSecret, SECRET_KEYS, secret_state, writeSecret } from './secrets.js';
 
 import { getEventSourceStream } from './sse-stream.js';
+import { fetchResumable } from './resumable-generation.js';
 import {
     createThumbnail,
     delay,
@@ -5707,7 +5708,7 @@ async function sendOpenAIRequest(type, messages, signal, { jsonSchema = null, ca
     console.log(`[OpenAI frontend] sendOpenAIRequest: type=${type} source=${generate_data.chat_completion_source} model=${generate_data.model} stream=${generate_data.stream}`);
 
     const generate_url = '/api/backends/chat-completions/generate';
-    const response = await fetch(generate_url, {
+    const response = await fetchResumable(generate_url, {
         method: 'POST',
         body: JSON.stringify(generate_data),
         headers: getRequestHeaders(),

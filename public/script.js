@@ -330,6 +330,7 @@ import { compressRequest, setRequestCompressionConfig } from './scripts/request-
 import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker } from './scripts/swipe-picker.js';
 import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-send-button.js';
 import { formatMobileStreamingPreview, getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval, isAndroidStreamingPlatform, shouldReduceStreamingDomWork, shouldUsePlainTextStreamingPreview } from './scripts/mobile-streaming.js';
+import { fetchResumable } from './scripts/resumable-generation.js';
 import {
     CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
     CHAT_RENDER_LIFECYCLE_ROUTE,
@@ -6696,7 +6697,7 @@ export async function generateRawData({ prompt = '', api = null, instructOverrid
             data = await sendOpenAIRequest('quiet', generateData, abortController.signal, { jsonSchema, cacheScope });
         } else {
             const generateUrl = getGenerateUrl(api);
-            const response = await fetch(generateUrl, {
+            const response = await fetchResumable(generateUrl, {
                 method: 'POST',
                 headers: getRequestHeaders(),
                 cache: 'no-cache',
@@ -9121,7 +9122,7 @@ export async function sendGenerationRequest(type, data, options = {}) {
         return await generateHorde(data.prompt, data, abortController.signal, true);
     }
 
-    const response = await fetch(getGenerateUrl(main_api), {
+    const response = await fetchResumable(getGenerateUrl(main_api), {
         method: 'POST',
         headers: getRequestHeaders(),
         cache: 'no-cache',

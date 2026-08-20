@@ -13,6 +13,7 @@ import {
     OPENAI_KEYS,
 } from '../../constants.js';
 import { abortOnRequestClose, forwardFetchResponse, trimV1, getConfigValue, pollStreamingRequestConnection, summarizeLlmPayloadForLog } from '../../util.js';
+import { getResumableGeneration } from '../../resumable-generations.js';
 import { setAdditionalHeaders } from '../../additional-headers.js';
 import { createHash } from 'node:crypto';
 
@@ -78,7 +79,13 @@ async function parseOllamaStream(jsonStream, request, response, onDisconnect = n
             }
         });
 
-        request.socket.on('close', closeStream);
+        const resumableGeneration = getResumableGeneration(request);
+        if (resumableGeneration) {
+            // SillyBunny: a resumable generation finishes without the client; only an explicit cancel stops it.
+            resumableGeneration.onCancel(closeStream);
+        } else {
+            request.socket.on('close', closeStream);
+        }
 
         jsonStream.body.on('end', () => {
             if (done) {

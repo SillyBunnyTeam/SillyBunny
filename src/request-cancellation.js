@@ -1,4 +1,5 @@
 import { pollSocketConnection } from './connection-state-checker.js';
+import { getResumableGeneration } from './resumable-generations.js';
 
 export const REQUEST_CANCELLATION_ABORT_REASON = 'Client disconnected';
 const DEFAULT_ABORT_HOOK_TIMEOUT_MS = 5000;
@@ -189,21 +190,31 @@ export function observeRequestCancellation(request, response = null, {
         abort('response-close');
     }
 
-    cleanupCallbacks.push(
-        once(request, 'aborted', () => abort('request-aborted')),
-        once(request, 'close', handleRequestClose),
-        once(response, 'close', handleResponseClose),
-        once(response, 'finish', cleanup),
-        once(request?.socket, 'close', () => abort('socket-close')),
-        once(controller.signal, 'abort', cleanup),
-    );
+    const resumableGeneration = getResumableGeneration(request);
+    if (resumableGeneration) {
+        // SillyBunny: a resumable generation outlives its client; only an explicit cancel aborts upstream.
+        cleanupCallbacks.push(
+            resumableGeneration.onCancel(() => abort('resumable-cancel')),
+            once(response, 'finish', cleanup),
+            once(controller.signal, 'abort', cleanup),
+        );
+    } else {
+        cleanupCallbacks.push(
+            once(request, 'aborted', () => abort('request-aborted')),
+            once(request, 'close', handleRequestClose),
+            once(response, 'close', handleResponseClose),
+            once(response, 'finish', cleanup),
+            once(request?.socket, 'close', () => abort('socket-close')),
+            once(controller.signal, 'abort', cleanup),
+        );
 
-    if (pollConnection && request?.socket && typeof startConnectionPolling === 'function') {
-        cleanupCallbacks.push(startConnectionPolling(
-            request.socket,
-            normalizePositiveNumber(pollIntervalMs, DEFAULT_CONNECTION_POLL_INTERVAL_MS),
-            () => abort('socket-poll'),
-        ));
+        if (pollConnection && request?.socket && typeof startConnectionPolling === 'function') {
+            cleanupCallbacks.push(startConnectionPolling(
+                request.socket,
+                normalizePositiveNumber(pollIntervalMs, DEFAULT_CONNECTION_POLL_INTERVAL_MS),
+                () => abort('socket-poll'),
+            ));
+        }
     }
 
     return {

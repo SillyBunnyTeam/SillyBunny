@@ -42,6 +42,7 @@ import {
     summarizeLlmPayloadForLog,
 } from '../../util.js';
 import { isRequestCancellationError } from '../../request-cancellation.js';
+import { getResumableGeneration } from '../../resumable-generations.js';
 import {
     convertClaudeMessages,
     convertGooglePrompt,
@@ -2680,9 +2681,15 @@ function forwardResponsesApiStream(fetchResponse, expressResponse, request, onDi
         }
     });
 
-    expressResponse.on('close', () => {
-        closeStream();
-    });
+    const resumableGeneration = getResumableGeneration(request);
+    if (resumableGeneration) {
+        // SillyBunny: a resumable generation finishes without the client; only an explicit cancel stops it.
+        resumableGeneration.onCancel(closeStream);
+    } else {
+        expressResponse.on('close', () => {
+            closeStream();
+        });
+    }
 }
 
 /**

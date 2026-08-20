@@ -22,6 +22,7 @@ import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import { isFirefox } from './express-common.js';
 import { pollSocketConnection } from './connection-state-checker.js';
 import { isRequestCancellationError, observeRequestCancellation } from './request-cancellation.js';
+import { getResumableGeneration } from './resumable-generations.js';
 import { isBunRuntime } from './runtime.js';
 
 const DEFAULT_STREAMING_CONNECTION_POLLING_INTERVAL_MS = 150;
@@ -717,6 +718,11 @@ function getStreamingConnectionPollingInterval() {
  * @returns {() => void} Stops polling.
  */
 export function pollStreamingRequestConnection(request, response, onDisconnect) {
+    // SillyBunny: a resumable generation is never aborted by a client disconnect. See resumable-generations.js.
+    if (getResumableGeneration(request)) {
+        return () => undefined;
+    }
+
     if (!request?.socket || response?.writableEnded || response?.destroyed) {
         return () => undefined;
     }
@@ -739,6 +745,62 @@ export function pollStreamingRequestConnection(request, response, onDisconnect) 
         } catch (error) {
             console.warn('Error handling streaming client disconnect:', error);
         }
+    });
+}
+
+/**
+ * SillyBunny: drains the upstream body to the end even after the client has gone, so a resumable
+ * generation (see resumable-generations.js) can be picked up later. Only an explicit cancel stops it.
+ * @param {import('node-fetch').Response} from The Fetch API response to drain.
+ * @param {import('express').Response} to The Express response; writes after the client left are mirrored, not sent.
+ * @param {import('./resumable-generations.js').ResumableGeneration} generation The registered generation.
+ * @param {() => void | Promise<void>} [onDisconnect] Provider-specific abort hook, run on cancel.
+ */
+function forwardResumableFetchBody(from, to, generation, onDisconnect = null) {
+    const unregisterCancel = generation.onCancel(() => {
+        try {
+            const disconnectResult = onDisconnect?.();
+            if (disconnectResult && typeof disconnectResult.catch === 'function') {
+                disconnectResult.catch(error => console.warn('Error cancelling resumable generation:', error));
+            }
+        } catch (error) {
+            console.warn('Error cancelling resumable generation:', error);
+        }
+
+        try {
+            from.body?.destroy?.();
+        } catch {
+            // Best effort; the upstream stream is going away anyway.
+        }
+
+        if (!to.writableEnded) {
+            to.end();
+        }
+    });
+
+    const finish = () => {
+        unregisterCancel();
+        if (!to.writableEnded) {
+            to.end();
+        }
+    };
+
+    from.body.on('data', chunk => {
+        if (!to.writableEnded) {
+            to.write(chunk);
+        }
+    });
+
+    from.body.on('end', () => {
+        console.info('Streaming request finished');
+        finish();
+    });
+
+    from.body.on('error', error => {
+        if (!isRequestCancellationError(error)) {
+            console.warn('Streaming request failed:', error?.message ?? error);
+        }
+        finish();
     });
 }
 
@@ -782,6 +844,12 @@ export async function forwardFetchResponse(from, to, request = null, onDisconnec
     }
 
     if (from.body && to.socket) {
+        const resumableGeneration = getResumableGeneration(request);
+        if (resumableGeneration) {
+            forwardResumableFetchBody(from, to, resumableGeneration, onDisconnect);
+            return;
+        }
+
         const stopPolling = pollStreamingRequestConnection(request, to, () => {
             try {
                 const disconnectResult = onDisconnect?.();

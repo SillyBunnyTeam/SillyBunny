@@ -31,6 +31,7 @@ import {
 } from './samplerSelect.js';
 import { SECRET_KEYS, writeSecret } from './secrets.js';
 import { getEventSourceStream } from './sse-stream.js';
+import { fetchResumable } from './resumable-generation.js';
 import { getLocalPromptCacheValue, isLikelyLocalServerUrl } from './local-url-utils.js';
 import { getCurrentDreamGenModelTokenizer, getCurrentOpenRouterModelTokenizer, loadAphroditeModels, loadDreamGenModels, loadFeatherlessModels, loadGenericModels, loadInfermaticAIModels, loadLlamaCppModels, loadMancerModels, loadOllamaModels, loadOpenRouterModels, loadTabbyModels, loadTogetherAIModels, loadVllmModels, updateOpenRouterProvidersWarning } from './textgen-models.js';
 import { ENCODE_TOKENIZERS, TEXTGEN_TOKENIZERS, TOKENIZER_SUPPORTED_KEY, getTextTokens, getTokenizerBestMatch, tokenizers } from './tokenizers.js';
@@ -1387,7 +1388,7 @@ function setSettingByName(setting, value, trigger) {
 export async function generateTextGenWithStreaming(generate_data, signal) {
     generate_data.stream = true;
 
-    const response = await fetch('/api/backends/text-completions/generate', {
+    const response = await fetchResumable('/api/backends/text-completions/generate', {
         headers: {
             ...getRequestHeaders(),
         },
