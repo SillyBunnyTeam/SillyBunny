@@ -8,13 +8,14 @@ import fetch from 'node-fetch';
 import urlJoin from 'url-join';
 import { getLocalPromptCacheValue, isLikelyLocalServerUrl } from '../../../public/scripts/local-url-utils.js';
 import { getLinkApiBaseUrl, getLinkApiRequestFormat } from '../../../public/scripts/linkapi-utils.js';
-import { applyGrokModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model } from '../../../public/scripts/openai-model-capabilities.js';
+import { applyGrokModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model, zaiSupportsReasoningEffort } from '../../../public/scripts/openai-model-capabilities.js';
 
 import {
     AIMLAPI_HEADERS,
     AZURE_OPENAI_KEYS,
     CHAT_COMPLETION_SOURCES,
     GEMINI_SAFETY,
+    MOONSHOT_REASONING_EFFORT_MAP,
     NANOGPT_REASONING_EFFORT_MAP,
     OPENAI_FIXED_REASONING_EFFORT,
     OPENAI_REASONING_EFFORT_MAP,
@@ -3147,6 +3148,11 @@ export async function handleChatCompletionsGenerate(request, response) {
                     type: request.body.include_reasoning ? 'enabled' : 'disabled',
                 },
             };
+            // SillyBunny divergence: K3 always reasons and takes the depth from a top-level
+            // reasoning_effort instead of the thinking object the older Kimi models use.
+            if (isKimiK3Model(request.body.model) && Object.hasOwn(MOONSHOT_REASONING_EFFORT_MAP, request.body.reasoning_effort)) {
+                bodyParams['reasoning_effort'] = MOONSHOT_REASONING_EFFORT_MAP[request.body.reasoning_effort];
+            }
             request.body.json_schema
                 ? setJsonObjectFormat(bodyParams, request.body.messages, request.body.json_schema)
                 : addAssistantPrefix(request.body.messages, [], 'partial');
@@ -3170,6 +3176,12 @@ export async function handleChatCompletionsGenerate(request, response) {
                     type: request.body.include_reasoning ? 'enabled' : 'disabled',
                 },
             };
+            // SillyBunny divergence: Z.AI takes the reasoning depth alongside thinking.type from
+            // GLM-5.2 onwards. Its ladder matches this fork's apart from naming the bottom rung
+            // 'minimal', so only that one is translated.
+            if (zaiSupportsReasoningEffort(request.body.model) && request.body.reasoning_effort && !['auto', 'none'].includes(request.body.reasoning_effort)) {
+                bodyParams['reasoning_effort'] = request.body.reasoning_effort === 'min' ? 'minimal' : request.body.reasoning_effort;
+            }
             if (request.body.json_schema) {
                 setJsonObjectFormat(bodyParams, request.body.messages, request.body.json_schema);
             }
