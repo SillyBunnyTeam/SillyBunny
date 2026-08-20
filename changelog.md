@@ -29,6 +29,7 @@
 - PR #771 (2026-08-18) `fix: hardens chat scroll jumping`
 - PR #772 (2026-08-18) `fix: list only mode now gets bigger and stretches to screen`
 - PR #773 (2026-08-18) `fix: character menu controls no longer spill out of non-wide browsers`
+- PR #774 (2026-08-20) `fix(ui): Manage extensions and Install Extension are now on their own rows`
 
 ## v1.7.0
 
