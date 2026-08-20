@@ -1776,6 +1776,7 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
 }
 
 #chat .mes .swipes-counter {
+    position: relative;
     inline-size: 44px;
     min-inline-size: 44px;
     block-size: 18px;
@@ -1785,6 +1786,19 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     line-height: 1;
     box-sizing: border-box;
     border-radius: 8px;
+}
+
+/* The counter is what opens the swipe picker on a press and hold, but it is only 18px tall.
+   This grows the touch target to the 44px contract without moving anything on screen. It
+   reaches up alongside the arrow, which keeps its own taps through its higher z-index, and
+   sideways into the message gutter, but never below: the bottom bar sits directly under it. */
+@media (pointer: coarse) {
+    #chat .mes .swipes-counter::after {
+        content: '';
+        position: absolute;
+        inset: -26px -6px 0 -16px;
+        border-radius: inherit;
+    }
 }
 
 body.bubblechat .mes {
