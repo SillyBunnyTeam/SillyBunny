@@ -34,6 +34,7 @@
 - PR #777 (2026-08-20) `chore: add reasoning effort levels in ZAI and MoonshotAI backends`
 - PR #778 (2026-08-20) `fix(nanogpt): make reasoning types no longer switch to a different one`
 - PR #779 (2026-08-20) `feat(kimi): add a Partial Prefill field that only Kimi K3 uses`
+- PR #780 (2026-08-20) `chore: add GLM-5.3 in the ZAI backend dropdown`
 
 ## v1.7.0
 
