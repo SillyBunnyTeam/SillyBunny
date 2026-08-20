@@ -2095,10 +2095,13 @@
                                         </div>
                                     </div>
                                     <div class="range-block" data-source="custom,moonshot,nanogpt,openrouter">
-                                        <label for="openai_start_reply_with" class="range-block-title justifyLeft">
-                                            <span data-i18n="Start Reply With">Start Reply With</span>
+                                        <label for="openai_kimi_partial_prefill" class="range-block-title justifyLeft">
+                                            <span data-i18n="Partial Prefill">Partial Prefill</span>
                                         </label>
-                                        <textarea id="openai_start_reply_with" data-macros class="start-reply-with-input text_pole textarea_compact autoSetHeight" rows="2" aria-label="Start Reply With" data-i18n="[aria-label]Start Reply With"></textarea>
+                                        <textarea id="openai_kimi_partial_prefill" data-macros class="text_pole textarea_compact autoSetHeight" rows="2" aria-label="Partial Prefill" placeholder="Write your partial prefill text here..." data-i18n="[aria-label]Partial Prefill;[placeholder]Write your partial prefill text here..."></textarea>
+                                        <div class="toggle-description justifyLeft marginBot5" data-i18n="This sends a partial prefill with the parameter 'partial: true' that only Kimi K3 accepts as of time of writing.">
+                                            This sends a partial prefill with the parameter 'partial: true' that only Kimi K3 accepts as of time of writing.
+                                        </div>
                                     </div>
                                     <div class="flex-container flexFlowColumn wide100p textAlignCenter marginTop10" data-source="openai,custom,openrouter,claude,linkapi">
                                         <div class="flex-container oneline-dropdown sb-setting-inline-help sb-setting-inline-center">

@@ -120,6 +120,7 @@ import {
     chat_completion_sources,
     getChatCompletionModel,
     getCurrentReasoningEffort,
+    getEffectivePromptBias,
     proxies,
     loadProxyPresets,
     selected_proxy,
@@ -3631,7 +3632,9 @@ function prepareMessageDisplayText(mes, ch_name, isSystem, isUser, messageId, is
     }
 
     // Prompt bias replacement should be applied on the raw message
-    const replacedPromptBias = power_user.user_prompt_bias && substituteParams(power_user.user_prompt_bias);
+    // SillyBunny: read the prefill actually in effect, which is Kimi K3's own field on K3.
+    const promptBiasSource = getEffectivePromptBias();
+    const replacedPromptBias = promptBiasSource && substituteParams(promptBiasSource);
     if (!power_user.show_user_prompt_bias && ch_name && !isUser && !isSystem && replacedPromptBias && mes.startsWith(replacedPromptBias)) {
         mes = mes.slice(replacedPromptBias.length);
     }
@@ -8804,8 +8807,11 @@ export function getBiasStrings(textareaText, type) {
         }
     }
 
-    promptBias = messageBias || promptBias || power_user.user_prompt_bias || '';
-    const isUserPromptBias = promptBias === power_user.user_prompt_bias;
+    // SillyBunny: Kimi K3 draws its prefill from its own preset-scoped field instead of the
+    // global Start Reply With, so that value stops leaking into every other model.
+    const userPromptBias = getEffectivePromptBias();
+    promptBias = messageBias || promptBias || userPromptBias || '';
+    const isUserPromptBias = promptBias === userPromptBias;
 
     // Substitute params for everything
     messageBias = substituteParams(messageBias);
@@ -9557,14 +9563,17 @@ export function cleanUpMessage({ getMessage, isImpersonate, isContinue, displayI
     }
 
     // Add the prompt bias before anything else
+    // SillyBunny: a partial-mode model returns only the continuation, so this has to prepend
+    // the same prefill that was sent -- Kimi K3's own field on K3, the global one elsewhere.
+    const userPromptBias = getEffectivePromptBias();
     if (
         includeUserPromptBias &&
-        power_user.user_prompt_bias &&
+        userPromptBias &&
         !isImpersonate &&
         !isContinue &&
-        power_user.user_prompt_bias.length !== 0
+        userPromptBias.length !== 0
     ) {
-        getMessage = substituteParams(power_user.user_prompt_bias) + getMessage;
+        getMessage = substituteParams(userPromptBias) + getMessage;
     }
 
     // Allow for caching of stopping strings. getStoppingStrings is an expensive function, especially with macros
