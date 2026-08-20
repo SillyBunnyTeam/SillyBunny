@@ -193,9 +193,11 @@ input.extension_missing[type="checkbox"] {
     white-space: normal;
 }
 
+/* Own row each: the panel is a resizable drawer, so a viewport media query cannot tell when
+   these two have been squeezed narrower than their own labels. */
 #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > .menu_button,
 #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > .menu_button_icon {
-    flex: 0 1 auto;
+    flex: 1 0 100%;
 }
 
 #rm_extensions_block .inline-drawer {
@@ -261,11 +263,6 @@ input.extension_missing[type="checkbox"] {
     #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label[for='extensions_notify_updates'] {
         flex-basis: 100%;
         min-width: 100%;
-    }
-
-    #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > .menu_button,
-    #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > .menu_button_icon {
-        flex: 1 1 220px;
     }
 }
 

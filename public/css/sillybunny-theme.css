@@ -5287,7 +5287,8 @@ input[type='range']::-moz-range-thumb {
     grid-template-areas:
         'title title'
         'notify notify'
-        'manage install';
+        'manage manage'
+        'install install';
     gap: 12px 16px;
     align-items: center;
 }
