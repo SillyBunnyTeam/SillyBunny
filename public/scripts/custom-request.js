@@ -5,6 +5,7 @@ import { extractReasoningFromData } from './reasoning.js';
 import { formatInstructModeChat, formatInstructModePrompt, getInstructStoppingSequences } from './instruct-mode.js';
 import { chat_completion_sources, getStreamingReply, tryParseStreamingError, createGenerationParameters, settingsToUpdate, oai_settings } from './openai.js';
 import EventSourceStream from './sse-stream.js';
+import { fetchResumable } from './resumable-generation.js';
 
 const BOOLEAN_CHAT_COMPLETION_FIELDS = [
     'include_reasoning',
@@ -164,7 +165,7 @@ export class TextCompletionService {
      */
     static async sendRequest(data, extractData = true, signal = null) {
         if (!data.stream) {
-            const response = await fetch(getGenerateUrl(this.TYPE), {
+            const response = await fetchResumable(getGenerateUrl(this.TYPE), {
                 method: 'POST',
                 headers: getRequestHeaders(),
                 cache: 'no-cache',
@@ -191,7 +192,7 @@ export class TextCompletionService {
             };
         }
 
-        const response = await fetch('/api/backends/text-completions/generate', {
+        const response = await fetchResumable('/api/backends/text-completions/generate', {
             method: 'POST',
             headers: getRequestHeaders(),
             cache: 'no-cache',
@@ -523,7 +524,7 @@ export class ChatCompletionService {
     static async sendRequest(data, extractData = true, signal = null) {
         delete data.__connectionProfileRequestFields;
         delete data.modelOverride;
-        const response = await fetch('/api/backends/chat-completions/generate', {
+        const response = await fetchResumable('/api/backends/chat-completions/generate', {
             method: 'POST',
             headers: getRequestHeaders(),
             cache: 'no-cache',

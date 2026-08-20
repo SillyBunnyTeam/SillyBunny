@@ -1,7 +1,9 @@
 /* global globalThis */
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { readFileSync } from 'node:fs';
 
 const { fetchResumable, reconnectStaleGenerations } = await import('../public/scripts/resumable-generation.js');
+const customRequestSource = readFileSync(new URL('../public/scripts/custom-request.js', import.meta.url), 'utf8');
 
 const RESUME_URL = '/api/resumable-generations/resume';
 const CANCEL_URL = '/api/resumable-generations/cancel';
@@ -174,4 +176,12 @@ describe('fetchResumable', () => {
         expect(callsTo(RESUME_URL)).toHaveLength(1);
         expect(JSON.parse(callsTo(RESUME_URL)[0][1].body).offset).toBe('data: a\n\n'.length);
     });
+});
+
+test('routes all scoped-profile generation requests through fetchResumable', () => {
+    expect(customRequestSource).toContain('import { fetchResumable } from \'./resumable-generation.js\';');
+    expect(customRequestSource.match(/const response = await fetchResumable\(/g)).toHaveLength(3);
+    expect(customRequestSource).toContain('await fetchResumable(getGenerateUrl(this.TYPE), {');
+    expect(customRequestSource).toContain('await fetchResumable(\'/api/backends/text-completions/generate\', {');
+    expect(customRequestSource).toContain('await fetchResumable(\'/api/backends/chat-completions/generate\', {');
 });

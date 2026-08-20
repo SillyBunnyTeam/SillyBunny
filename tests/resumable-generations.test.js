@@ -103,6 +103,89 @@ describe('resumable generation registry', () => {
         await expect(collected).resolves.toBe('e,two,three');
     });
 
+    test('discards an overflowing generation and releases its buffered bytes', () => {
+        const { generation } = registerGeneration('overflow-1');
+        const subscriber = {
+            onChunk: jest.fn(),
+            onEnd: jest.fn(),
+            onFail: jest.fn(),
+        };
+        generation.subscribe(0, subscriber);
+        const cancelHook = jest.fn();
+        generation.onCancel(cancelHook);
+
+        generation.write(Buffer.alloc(testExports.MAX_BUFFER_BYTES));
+        generation.write('overflow');
+
+        expect(subscriber.onChunk).toHaveBeenCalledTimes(1);
+        expect(subscriber.onFail).toHaveBeenCalledTimes(1);
+        expect(subscriber.onEnd).not.toHaveBeenCalled();
+        expect(cancelHook).toHaveBeenCalledTimes(1);
+        expect(generation.cancelled).toBe(true);
+        expect(generation.done).toBe(true);
+        expect(testExports.generations.has('tester:overflow-1')).toBe(false);
+        expect(generation.chunks).toHaveLength(0);
+        expect(generation.size).toBe(0);
+    });
+
+    test('does not double-end the attached response when overflow cancellation ends it', async () => {
+        const { response, generation } = registerGeneration('overflow-response');
+        const errors = [];
+        response.on('error', error => errors.push(error));
+        generation.onCancel(() => response.end());
+
+        response.write(Buffer.alloc(testExports.MAX_BUFFER_BYTES));
+        response.end('overflow');
+        await new Promise(resolve => setImmediate(resolve));
+
+        expect(errors).toHaveLength(0);
+        expect(generation.done).toBe(true);
+    });
+
+    test('evicting an active generation cancels, finishes, and releases it', () => {
+        const { response, generation } = registerGeneration('capacity-active');
+        response.write('buffered');
+        const subscriber = {
+            onChunk: jest.fn(),
+            onEnd: jest.fn(),
+            onFail: jest.fn(),
+        };
+        generation.subscribe(0, subscriber);
+        const cancelHook = jest.fn(() => response.end());
+        generation.onCancel(cancelHook);
+
+        for (let index = 0; index < testExports.MAX_GENERATIONS; index++) {
+            registerGeneration(`capacity-${index}`);
+        }
+
+        expect(cancelHook).toHaveBeenCalledTimes(1);
+        expect(subscriber.onFail).toHaveBeenCalledTimes(1);
+        expect(subscriber.onEnd).not.toHaveBeenCalled();
+        expect(generation.cancelled).toBe(true);
+        expect(generation.done).toBe(true);
+        expect(testExports.generations.has('tester:capacity-active')).toBe(false);
+        expect(generation.chunks).toHaveLength(0);
+        expect(generation.size).toBe(0);
+    });
+
+    test('evicting a finished generation does not cancel it', () => {
+        const { response, generation } = registerGeneration('capacity-finished');
+        const cancelHook = jest.fn();
+        generation.onCancel(cancelHook);
+        response.end('buffered');
+
+        for (let index = 0; index < testExports.MAX_GENERATIONS; index++) {
+            registerGeneration(`finished-${index}`);
+        }
+
+        expect(cancelHook).not.toHaveBeenCalled();
+        expect(generation.cancelled).toBe(false);
+        expect(generation.done).toBe(true);
+        expect(testExports.generations.has('tester:capacity-finished')).toBe(false);
+        expect(generation.chunks).toHaveLength(0);
+        expect(generation.size).toBe(0);
+    });
+
     test('re-registering an id cancels the superseded generation', () => {
         jest.spyOn(console, 'info').mockImplementation(() => undefined);
         const first = registerGeneration('replayed-1');

@@ -150,11 +150,7 @@ export class ResumableGeneration {
         if (this.size + buffer.length > MAX_BUFFER_BYTES) {
             // ponytail: a text reply never gets here; if it does, forget it rather than eat the heap.
             this.overflowed = true;
-            generations.delete(this.key);
-            for (const subscriber of this.subscribers) {
-                subscriber.onFail?.();
-            }
-            this.subscribers.clear();
+            this.forceDiscard();
             return;
         }
         this.chunks.push(buffer);
@@ -175,6 +171,25 @@ export class ResumableGeneration {
             subscriber.onEnd();
         }
         this.subscribers.clear();
+    }
+
+    forceDiscard() {
+        if (generations.get(this.key) === this) {
+            generations.delete(this.key);
+        }
+        if (!this.done) {
+            const subscribers = [...this.subscribers];
+            this.subscribers.clear();
+            for (const subscriber of subscribers) {
+                subscriber.onFail?.();
+            }
+            this.cancel();
+            this.end();
+        } else {
+            this.subscribers.clear();
+        }
+        this.chunks = [];
+        this.size = 0;
     }
 
     /**
@@ -287,7 +302,7 @@ function registerGeneration(key) {
     generations.delete(key);
     generations.set(key, generation);
     while (generations.size > MAX_GENERATIONS) {
-        generations.delete(generations.keys().next().value);
+        generations.values().next().value.forceDiscard();
     }
     if (!sweepTimer) {
         sweepTimer = setInterval(sweepGenerations, SWEEP_INTERVAL_MS);
@@ -346,6 +361,12 @@ function attachResponse(response, generation) {
         }
         generation.captureHeaders(this);
         generation.write(chunk, encoding);
+        if (this.writableEnded) {
+            if (typeof callback === 'function') {
+                callback();
+            }
+            return this;
+        }
         generation.end();
         try {
             return end.call(this, chunk, encoding, callback);
@@ -450,6 +471,8 @@ router.post('/cancel', (request, response) => {
 export const testExports = {
     FINISHED_RETENTION_MS,
     MAX_LIFETIME_MS,
+    MAX_GENERATIONS,
+    MAX_BUFFER_BYTES,
     generations,
     sweepGenerations,
 };
