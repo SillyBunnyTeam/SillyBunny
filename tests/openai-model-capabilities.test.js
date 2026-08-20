@@ -167,16 +167,20 @@ describe('Kimi K3 model capabilities', () => {
         expect(openAiSource).toContain('&& !isKimiK3Request;');
     });
 
-    test('exposes a synchronized Start Reply With control only for K3 models', () => {
-        expect(indexSource).toMatch(/<div class="range-block" data-source="custom,moonshot,nanogpt,openrouter">[\s\S]*?id="openai_start_reply_with"/);
-        expect(indexSource).toContain('for="openai_start_reply_with" class="range-block-title justifyLeft"');
-        expect(indexSource.match(/class="start-reply-with-input [^"]*"/g)).toHaveLength(2);
-        expect(openAiSource).toContain('.range-block:has(#openai_start_reply_with)');
+    test('exposes a dedicated Partial Prefill control only for K3 models', () => {
+        expect(indexSource).toMatch(/<div class="range-block" data-source="custom,moonshot,nanogpt,openrouter">[\s\S]*?id="openai_kimi_partial_prefill"/);
+        expect(indexSource).toContain('for="openai_kimi_partial_prefill" class="range-block-title justifyLeft"');
+        expect(openAiSource).toContain('.range-block:has(#openai_kimi_partial_prefill)');
         expect(openAiSource).toContain('const supportedSources = [chat_completion_sources.CUSTOM, chat_completion_sources.MOONSHOT, chat_completion_sources.NANOGPT, chat_completion_sources.OPENROUTER];');
-        expect(openAiSource).toContain('.toggle(isSupportedSource && isKimiK3Model(getChatCompletionModel()))');
+        expect(openAiSource).toContain('return isSupportedSource && isKimiK3Model(getChatCompletionModel());');
+        expect(openAiSource).toContain('.toggle(isKimiK3PartialPrefillActive())');
         expect(openAiSource.match(/updateKimiK3PrefillVisibility\(\);/g)).toHaveLength(3);
+
+        // The K3 field replaced the chat completion mirror of Start Reply With, so only the
+        // Advanced Formatting input carries the class that keeps the global value in sync.
+        expect(indexSource.match(/class="start-reply-with-input [^"]*"/g)).toHaveLength(1);
+        expect(indexSource).toContain('id="start_reply_with"');
         expect(powerUserSource).toMatch(/\$\('\.start-reply-with-input'\)\.on\('input', function \(\) \{/);
-        expect(powerUserSource).toMatch(/\$\('\.start-reply-with-input'\)\.not\(this\)\.val\(value\);/);
         expect(presetManagerSource).toMatch(/\$\('\.start-reply-with-input'\)\.val\(power_user\.user_prompt_bias\);/);
     });
 });

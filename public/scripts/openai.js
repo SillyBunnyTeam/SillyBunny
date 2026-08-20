@@ -511,6 +511,7 @@ export const settingsToUpdate = {
     show_external_models: ['#openai_show_external_models', 'show_external_models', true, true],
     proxy_password: ['#openai_proxy_password', 'proxy_password', false, true],
     assistant_prefill: ['#claude_assistant_prefill', 'assistant_prefill', false, false],
+    kimi_partial_prefill: ['#openai_kimi_partial_prefill', 'kimi_partial_prefill', false, false],
     assistant_impersonation: ['#claude_assistant_impersonation', 'assistant_impersonation', false, false],
     use_sysprompt: ['#use_sysprompt', 'use_sysprompt', true, false],
     vertexai_auth_mode: ['#vertexai_auth_mode', 'vertexai_auth_mode', false, true],
@@ -628,6 +629,7 @@ const default_settings = {
     show_external_models: false,
     proxy_password: '',
     assistant_prefill: '',
+    kimi_partial_prefill: '',
     assistant_impersonation: default_assistant_impersonation,
     use_sysprompt: false,
     vertexai_auth_mode: 'express',
@@ -3701,7 +3703,7 @@ function groupOpenAISettingsIntoDrawers() {
                 '#openai_settings > div > .range-block:has(#openai_show_thoughts)',
                 '#openai_settings > div > .range-block:has(#openai_auto_append_reasoning_tags)',
                 '#openai_settings > div > .flex-container:has(#openai_reasoning_effort)',
-                '#openai_settings > div > .range-block:has(#openai_start_reply_with)',
+                '#openai_settings > div > .range-block:has(#openai_kimi_partial_prefill)',
                 '#openai_settings > div > .range-block:has(#openai_reasoning_tag_style)',
                 '#openai_settings > div > .flex-container:has(#openai_verbosity)',
                 '#openai_settings > div > .range-block:has(#claude_assistant_prefill)',
@@ -3770,10 +3772,30 @@ function updateOpenAISettingsGroupVisibility() {
     });
 }
 
-function updateKimiK3PrefillVisibility() {
+function isKimiK3PartialPrefillActive() {
     const supportedSources = [chat_completion_sources.CUSTOM, chat_completion_sources.MOONSHOT, chat_completion_sources.NANOGPT, chat_completion_sources.OPENROUTER];
     const isSupportedSource = supportedSources.includes(oai_settings.chat_completion_source);
-    $('#openai_start_reply_with').closest('.range-block').toggle(isSupportedSource && isKimiK3Model(getChatCompletionModel()));
+    return isSupportedSource && isKimiK3Model(getChatCompletionModel());
+}
+
+function updateKimiK3PrefillVisibility() {
+    $('#openai_kimi_partial_prefill').closest('.range-block').toggle(isKimiK3PartialPrefillActive());
+}
+
+/**
+ * Gets the prefill that should be sent ahead of the model's reply, and prepended back onto it.
+ * SillyBunny divergence: Kimi K3's partial prefill is a preset-scoped field of its own rather
+ * than the global Start Reply With, so it never reaches the models that reject a prefill.
+ * K3 falls back to the global value when its own field is empty, so setups that predate the
+ * field keep working until their text is moved across.
+ * @returns {string} The prefill in effect for the current API and model
+ */
+export function getEffectivePromptBias() {
+    if (main_api === 'openai' && isKimiK3PartialPrefillActive()) {
+        return oai_settings.kimi_partial_prefill || power_user.user_prompt_bias;
+    }
+
+    return power_user.user_prompt_bias;
 }
 
 function updateServerChatCompletionConfigSourceVisibility() {
@@ -10711,6 +10733,11 @@ export function initOpenAI() {
 
     $('#claude_assistant_prefill').on('input', function () {
         oai_settings.assistant_prefill = String($(this).val());
+        saveSettingsDebounced();
+    });
+
+    $('#openai_kimi_partial_prefill').on('input', function () {
+        oai_settings.kimi_partial_prefill = String($(this).val());
         saveSettingsDebounced();
     });
 

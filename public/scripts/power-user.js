@@ -4192,9 +4192,7 @@ jQuery(async () => {
     });
 
     $('.start-reply-with-input').on('input', function () {
-        const value = String($(this).val());
-        power_user.user_prompt_bias = value;
-        $('.start-reply-with-input').not(this).val(value);
+        power_user.user_prompt_bias = String($(this).val());
         saveSettingsDebounced();
     });
 
