@@ -13588,8 +13588,8 @@ async function displayChats(searchQuery, currentChat, displayName, avatarImg, se
             $('#select_chat_div').append(template);
 
             if (Array.isArray(highlightNames) && highlightNames.includes(chat.file_name)) {
-                const templateOffset = template.offset().top - template.parent().offset().top;
-                $('#select_chat_div').scrollTop(templateOffset);
+                // SillyBunny: Chat History scrolls the popup on mobile and the list on desktop.
+                template[0].scrollIntoView({ block: 'nearest' });
                 flashHighlight(template, debounce_timeout.extended);
             }
         }

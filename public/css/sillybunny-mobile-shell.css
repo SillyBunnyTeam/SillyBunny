@@ -3033,6 +3033,44 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     body.ripplestyle #chat .mes:not(.smallSysMes) .mes_block {
         padding: 8px 16px 28px 12px !important;
     }
+
+    /* SillyBunny: use one mobile scroller so Chat History controls can leave the viewport. */
+    #select_chat_popup {
+        align-items: stretch;
+        left: max(10px, env(safe-area-inset-left, 0px));
+        right: max(10px, env(safe-area-inset-right, 0px));
+        width: auto;
+        max-width: none;
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    #select_chat_div {
+        flex: 0 0 auto;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        height: auto;
+        overflow: visible;
+    }
+
+    #select_chat_popup .chat_cleanup_group {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    #select_chat_popup .chat_cleanup_field {
+        min-width: 0;
+        grid-template-columns: minmax(0, 1fr) minmax(4.5rem, 5.5rem);
+    }
+
+    #select_chat_popup :is(.chat_cleanup_field, .chat_cleanup_checkbox) span {
+        white-space: normal;
+    }
+
+    #select_chat_popup :is(.select_chat_block_filename, .chat_cleanup_status) {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
 }
 
 /* SillyBunny: streaming display (generation toast) density pass for phone. */
