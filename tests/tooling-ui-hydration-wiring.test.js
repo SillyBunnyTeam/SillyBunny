@@ -91,8 +91,38 @@ describe('tooling UI hydration wiring', () => {
 
         expect(source).toContain("backgroundClip.includes('text')");
         expect(source).toContain("computedStyle.backgroundImage !== 'none'");
-        expect(source).toContain("'-webkit-text-fill-color', computedStyle.color");
+        expect(source).toContain("'-webkit-text-fill-color', normalizeColorFunctionString(computedStyle.color)");
         expect(source).toContain("'background-image', 'none'");
+        expect(source.indexOf('for (const propertyName of computedStyle)')).toBeLessThan(source.indexOf('backgroundClip.includes'));
+    });
+
+    test('normalizes every modern color function through the platform color parser', () => {
+        expect(scriptSource).toContain('MODERN_COLOR_FUNCTION_TEST = /(?:\\b(?:color|oklch|oklab|lab|lch)\\s*\\()/i');
+        const source = getFunctionSource('normalizeColorFunctionString');
+
+        expect(source).toContain('MODERN_COLOR_FUNCTION_TEST.test(value)');
+        expect(source).toContain('convertModernColorToken');
+    });
+
+    test('patches pseudo-element colors and re-checks the html2canvas clone', () => {
+        const renderSource = getFunctionSource('renderMessageScreenshotCanvas');
+        const pseudoSource = getFunctionSource('normalizePseudoElementCaptureStyles');
+
+        expect(renderSource).toContain('normalizePseudoElementCaptureStyles(surface)');
+        expect(renderSource).toContain('onclone:');
+        expect(pseudoSource).toContain("'::before'");
+        expect(pseudoSource).toContain("!important");
+        expect(pseudoSource).toContain("contentValue === 'none' || contentValue === 'normal'");
+    });
+
+    test('filters computed style reads through the legacy color proxy during capture', () => {
+        const renderSource = getFunctionSource('renderMessageScreenshotCanvas');
+        const proxySource = getFunctionSource('createLegacyColorComputedStyleProxy');
+
+        expect(renderSource).toContain('createLegacyColorComputedStyleProxy(originalGetComputedStyle.call(window');
+        expect(renderSource).toContain('window.getComputedStyle = originalGetComputedStyle;');
+        expect(proxySource).toContain('normalizeColorFunctionString(value)');
+        expect(proxySource).toContain('Reflect.get(target, property, target)');
     });
 
     test('renders message screenshots inside the chat layout context', () => {

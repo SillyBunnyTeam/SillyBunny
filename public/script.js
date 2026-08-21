@@ -12094,22 +12094,6 @@ async function getMessageScreenshotLibrary() {
     return await messageScreenshotLibraryPromise;
 }
 
-function normalizeSrgbChannel(channel) {
-    const trimmedChannel = channel.trim();
-
-    if (trimmedChannel.endsWith('%')) {
-        const percent = Number.parseFloat(trimmedChannel.slice(0, -1));
-        return Number.isFinite(percent) ? Math.round(clamp(percent, 0, 100) * 2.55) : null;
-    }
-
-    const numericChannel = Number.parseFloat(trimmedChannel);
-    if (!Number.isFinite(numericChannel)) {
-        return null;
-    }
-
-    return Math.round(clamp(numericChannel, 0, 1) * 255);
-}
-
 function normalizeSrgbAlpha(alpha) {
     const trimmedAlpha = alpha.trim();
 
@@ -12159,7 +12143,7 @@ function normalizeCssHueToDegrees(hue) {
         return 0;
     }
 
-    const numericHue = Number.parseFloat(trimmedHue);
+    const numericHue = Number.parseFloat(hue);
     if (!Number.isFinite(numericHue)) {
         return null;
     }
@@ -12204,61 +12188,188 @@ function oklabToRgbString(lightness, a, b, alpha) {
         : `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
-function normalizeOklchFunctionString(value) {
-    return value.replace(/oklch\(\s*([^()]+?)\s*\)/gi, (_match, contents) => {
-        const [channelSection, alphaSection] = contents.split('/').map(section => section.trim());
-        const channels = channelSection.split(/\s+/).filter(Boolean);
+const MODERN_COLOR_TOKEN_PATTERN = /\b(?:color|oklch|oklab|lab|lch)\([^()]*\)/gi;
+const MODERN_COLOR_FUNCTION_TEST = /(?:\b(?:color|oklch|oklab|lab|lch)\s*\()/i;
 
-        if (channels.length < 2) {
-            return _match;
-        }
+// ponytail: nested parens inside color args (calc()) are left unconverted; recurse if capture ever hits one.
+function splitColorFunctionArgs(token) {
+    const openIndex = token.indexOf('(');
+    const name = token.slice(0, openIndex).trim().toLowerCase();
+    const contents = token.slice(openIndex + 1, token.lastIndexOf(')'));
+    const [channelSection, alphaSection] = contents.split('/').map(section => section.trim());
+    const channels = channelSection.split(/[\s,]+/).filter(Boolean);
+    return { name, channels, alpha: alphaSection ? normalizeSrgbAlpha(alphaSection) : 1 };
+}
 
+function normalizeColorChannel(channel, percentScale = 1) {
+    const trimmed = String(channel).trim().toLowerCase();
+    if (trimmed === 'none' || trimmed === '') {
+        return 0;
+    }
+
+    if (trimmed.endsWith('%')) {
+        const percent = Number.parseFloat(trimmed.slice(0, -1));
+        return Number.isFinite(percent) ? (percent / 100) * percentScale : null;
+    }
+
+    const numeric = Number.parseFloat(trimmed);
+    return Number.isFinite(numeric) ? numeric : null;
+}
+
+function applyMatrix3(matrix, vector) {
+    return matrix.map(row => row[0] * vector[0] + row[1] * vector[1] + row[2] * vector[2]);
+}
+
+// CSS Color 4 reference matrices; fractions kept verbatim from the spec sample code.
+const XYZ_D65_TO_LINEAR_SRGB = [
+    [12831 / 3959, -329 / 214, 1978 / 95947],
+    [-851781 / 878810, 1648619 / 878810, 36519 / 878810],
+    [705 / 12673, -2585 / 12673, 705 / 667],
+];
+const BRADFORD_D50_TO_D65 = [
+    [1.0478112, 0.0228866, -0.0501270],
+    [0.0295424, 0.9904844, -0.0170491],
+    [-0.0092345, 0.0150436, 0.7521316],
+];
+const LINEAR_SPACE_TO_XYZ_D65 = {
+    'display-p3': [
+        [0.4865709, 0.2656677, 0.1982173],
+        [0.2289746, 0.6917385, 0.0792869],
+        [0.0000000, 0.0451134, 1.0439444],
+    ],
+    'rec2020': [
+        [0.6369580, 0.1446169, 0.1688810],
+        [0.2627002, 0.6779981, 0.0593017],
+        [0.0000000, 0.0280727, 1.0609851],
+    ],
+    'a98-rgb': [
+        [0.5766690, 0.1855582, 0.1882287],
+        [0.2973469, 0.6273679, 0.0752900],
+        [0.0270329, 0.0706879, 0.9912373],
+    ],
+};
+const A98_GAMMA = 563 / 256;
+
+function decodeSrgbGamma(channel) {
+    const sign = Math.sign(channel);
+    const magnitude = Math.abs(channel);
+    const linear = magnitude <= 0.04045 ? magnitude / 12.92 : ((magnitude + 0.055) / 1.055) ** 2.4;
+    return sign * linear;
+}
+
+function linearToRgbString(linearChannels, alpha) {
+    const [red, green, blue] = linearChannels.map(linearSrgbToRgbChannel);
+    return alpha >= 1
+        ? `rgb(${red}, ${green}, ${blue})`
+        : `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function labToLinearSrgb(lightness, aAxis, bAxis) {
+    const fy = (lightness + 16) / 116;
+    const fx = fy + aAxis / 500;
+    const fz = fy - bAxis / 200;
+    const epsilon = 216 / 24389;
+    const kappa = 24389 / 27;
+    const decode = (f) => (f ** 3 > epsilon ? f ** 3 : (116 * f - 16) / kappa);
+    const xyzD50 = [0.9642957 * decode(fx), decode(fy), 0.8251046 * decode(fz)];
+    return applyMatrix3(XYZ_D65_TO_LINEAR_SRGB, applyMatrix3(BRADFORD_D50_TO_D65, xyzD50));
+}
+
+function lchToLinearSrgb(lightness, chroma, hueDegrees) {
+    const hueRadians = hueDegrees * Math.PI / 180;
+    return labToLinearSrgb(lightness, chroma * Math.cos(hueRadians), chroma * Math.sin(hueRadians));
+}
+
+function convertModernColorToken(token) {
+    const { name, channels, alpha } = splitColorFunctionArgs(token);
+
+    if (channels.length < 3 || !Number.isFinite(alpha)) {
+        return token;
+    }
+
+    if (name === 'oklch') {
         const lightness = normalizeOklabLightness(channels[0]);
         const chroma = normalizeOklchChroma(channels[1]);
-        const hue = normalizeCssHueToDegrees(channels[2] ?? '0');
-        const alpha = alphaSection ? normalizeSrgbAlpha(alphaSection) : 1;
-        if ([lightness, chroma, hue, alpha].some(channel => channel === null)) {
-            return _match;
+        const hue = normalizeCssHueToDegrees(channels[2]);
+        if ([lightness, chroma, hue].some(channel => channel === null)) {
+            return token;
+        }
+        const hueRadians = hue * Math.PI / 180;
+        return oklabToRgbString(lightness, chroma * Math.cos(hueRadians), chroma * Math.sin(hueRadians), alpha);
+    }
+
+    if (name === 'oklab') {
+        const lightness = normalizeOklabLightness(channels[0]);
+        const aAxis = normalizeColorChannel(channels[1], 0.4);
+        const bAxis = normalizeColorChannel(channels[2], 0.4);
+        if ([lightness, aAxis, bAxis].some(channel => channel === null)) {
+            return token;
+        }
+        return oklabToRgbString(lightness, aAxis, bAxis, alpha);
+    }
+
+    if (name === 'lab') {
+        const lightness = normalizeColorChannel(channels[0], 100);
+        const aAxis = normalizeColorChannel(channels[1], 125);
+        const bAxis = normalizeColorChannel(channels[2], 125);
+        if ([lightness, aAxis, bAxis].some(channel => channel === null)) {
+            return token;
+        }
+        return linearToRgbString(labToLinearSrgb(lightness, aAxis, bAxis), alpha);
+    }
+
+    if (name === 'lch') {
+        const lightness = normalizeColorChannel(channels[0], 100);
+        const chroma = normalizeColorChannel(channels[1], 150);
+        const hue = normalizeCssHueToDegrees(channels[2]);
+        if ([lightness, chroma, hue].some(channel => channel === null)) {
+            return token;
+        }
+        return linearToRgbString(lchToLinearSrgb(lightness, chroma, hue), alpha);
+    }
+
+    if (name === 'color') {
+        const space = String(channels[0]).toLowerCase();
+        const values = channels.slice(1, 4).map(channel => normalizeColorChannel(channel, 1));
+        if (values.some(channel => channel === null)) {
+            return token;
         }
 
-        const hueRadians = hue * Math.PI / 180;
-        const a = chroma * Math.cos(hueRadians);
-        const b = chroma * Math.sin(hueRadians);
-        return oklabToRgbString(lightness, a, b, alpha);
-    });
+        let linear;
+        if (space === 'srgb') {
+            linear = values.map(value => clamp(value, 0, 1));
+        } else if (space === 'srgb-linear') {
+            linear = values.map(value => clamp(value, 0, 1));
+        } else if (space === 'xyz-d50') {
+            linear = applyMatrix3(XYZ_D65_TO_LINEAR_SRGB, applyMatrix3(BRADFORD_D50_TO_D65, values));
+        } else if (space.startsWith('xyz')) {
+            linear = applyMatrix3(XYZ_D65_TO_LINEAR_SRGB, values);
+        } else if (LINEAR_SPACE_TO_XYZ_D65[space]) {
+            let gammaDecoded;
+            if (space === 'a98-rgb') {
+                gammaDecoded = values.map(value => Math.sign(value) * Math.abs(value) ** A98_GAMMA);
+            } else if (space === 'display-p3' || space === 'rec2020') {
+                gammaDecoded = values.map(decodeSrgbGamma);
+            } else {
+                gammaDecoded = values;
+            }
+            linear = applyMatrix3(XYZ_D65_TO_LINEAR_SRGB, applyMatrix3(LINEAR_SPACE_TO_XYZ_D65[space], gammaDecoded));
+        } else {
+            // ponytail: unknown color spaces fall back to plain sRGB numbers rather than crashing capture.
+            linear = values.map(value => clamp(value, 0, 1));
+        }
+        return linearToRgbString(linear, alpha);
+    }
+
+    return token;
 }
 
 function normalizeColorFunctionString(value) {
-    if (!/(?:color\(srgb|oklch\()/i.test(value)) {
+    if (!MODERN_COLOR_FUNCTION_TEST.test(value)) {
         return value;
     }
 
-    const normalizedSrgbValue = value.replace(/color\(srgb\s+([^()]+?)\)/gi, (_match, contents) => {
-        const [channelSection, alphaSection] = contents.split('/').map(section => section.trim());
-        const channels = channelSection.split(/\s+/).filter(Boolean);
-
-        if (channels.length < 3) {
-            return _match;
-        }
-
-        const [red, green, blue] = channels.slice(0, 3).map(normalizeSrgbChannel);
-        if ([red, green, blue].some(channel => channel === null)) {
-            return _match;
-        }
-
-        if (!alphaSection) {
-            return `rgb(${red}, ${green}, ${blue})`;
-        }
-
-        const alpha = normalizeSrgbAlpha(alphaSection);
-        if (alpha === null) {
-            return _match;
-        }
-
-        return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
-    });
-
-    return normalizeOklchFunctionString(normalizedSrgbValue);
+    return value.replace(MODERN_COLOR_TOKEN_PATTERN, convertModernColorToken);
 }
 
 function normalizeMessageScreenshotStyles(container) {
@@ -12271,21 +12382,13 @@ function normalizeMessageScreenshotStyles(container) {
 
         const computedStyle = getComputedStyle(element);
 
-        // html2canvas ignores background-clip: text and paints the gradient over the whole box,
-        // hiding the text. Flatten to the solid text color (gradient extensions set it as fallback).
-        const backgroundClip = `${computedStyle.backgroundClip || ''} ${computedStyle.webkitBackgroundClip || ''}`;
-        if (computedStyle.backgroundImage !== 'none' && backgroundClip.includes('text')) {
-            element.style.setProperty('-webkit-text-fill-color', computedStyle.color);
-            element.style.setProperty('background-image', 'none');
-        }
-
         for (const propertyName of computedStyle) {
             if (propertyName.startsWith('--')) {
                 continue;
             }
 
             const propertyValue = computedStyle.getPropertyValue(propertyName);
-            if (!/(?:color\(srgb|oklch\()/i.test(propertyValue)) {
+            if (!/(?:\b(?:color|oklch|oklab|lab|lch)\s*\()/i.test(propertyValue)) {
                 continue;
             }
 
@@ -12294,7 +12397,85 @@ function normalizeMessageScreenshotStyles(container) {
                 element.style.setProperty(propertyName, normalizedValue, computedStyle.getPropertyPriority(propertyName));
             }
         }
+
+        // html2canvas ignores background-clip: text and paints the gradient over the whole box,
+        // hiding the text. Flatten to the solid text color (gradient extensions set it as fallback).
+        // Runs after the loop so the loop cannot re-write background-image.
+        const backgroundClip = `${computedStyle.backgroundClip || ''} ${computedStyle.webkitBackgroundClip || ''}`;
+        if (computedStyle.backgroundImage !== 'none' && backgroundClip.includes('text')) {
+            element.style.setProperty('-webkit-text-fill-color', normalizeColorFunctionString(computedStyle.color));
+            element.style.setProperty('background-image', 'none');
+        }
     }
+}
+
+// Pseudo-element styles cannot be patched inline, so generated rules override any
+// modern color functions html2canvas would choke on. Lives inside the capture
+// shell and is discarded with it.
+function normalizePseudoElementCaptureStyles(container) {
+    const styleElement = document.createElement('style');
+    const rules = [];
+    let ruleIndex = 0;
+
+    for (const element of [container, ...container.querySelectorAll('*')]) {
+        for (const pseudoName of ['::before', '::after']) {
+            const pseudoStyle = getComputedStyle(element, pseudoName);
+            const contentValue = pseudoStyle.getPropertyValue('content');
+            if (!contentValue || contentValue === 'none' || contentValue === 'normal') {
+                continue;
+            }
+
+            let declarations = '';
+            for (const propertyName of pseudoStyle) {
+                if (propertyName.startsWith('--')) {
+                    continue;
+                }
+
+                const propertyValue = pseudoStyle.getPropertyValue(propertyName);
+                if (!MODERN_COLOR_FUNCTION_TEST.test(propertyValue)) {
+                    continue;
+                }
+
+                const normalizedValue = normalizeColorFunctionString(propertyValue);
+                if (normalizedValue !== propertyValue) {
+                    declarations += `${propertyName}:${normalizedValue} !important;`;
+                }
+            }
+
+            if (!declarations) {
+                continue;
+            }
+
+            const markerAttribute = `data-sb-capture-pseudo-${ruleIndex}`;
+            element.setAttribute(markerAttribute, '');
+            rules.push(`[${markerAttribute}]${pseudoName}{${declarations}}`);
+            ruleIndex++;
+        }
+    }
+
+    styleElement.textContent = rules.join('');
+    container.appendChild(styleElement);
+}
+
+// html2canvas throws on any color function outside rgb/hsl. Normalizing the
+// main-document styles is not enough because its iframe recomputes the cascade
+// from raw stylesheets, so every computed read during capture is filtered.
+function createLegacyColorComputedStyleProxy(computedStyle) {
+    return new Proxy(computedStyle, {
+        get(target, property) {
+            // Native declaration getters require the real object as receiver.
+            const value = Reflect.get(target, property, target);
+            if (typeof value === 'function') {
+                return value.bind(target);
+            }
+
+            if (typeof value === 'string') {
+                return MODERN_COLOR_FUNCTION_TEST.test(value) ? normalizeColorFunctionString(value) : value;
+            }
+
+            return value;
+        },
+    });
 }
 
 async function renderMessageScreenshotCanvas(startId, endId) {
@@ -12330,13 +12511,42 @@ async function renderMessageScreenshotCanvas(startId, endId) {
         await delay(50);
         await waitForMessageScreenshotAssets(surface);
         normalizeMessageScreenshotStyles(surface);
+        normalizePseudoElementCaptureStyles(surface);
 
-        return await html2canvas(surface, {
-            backgroundColor: null,
-            logging: false,
-            scale: Math.max(1, Math.min(window.devicePixelRatio || 1, 2)),
-            useCORS: true,
-        });
+        const originalGetComputedStyle = window.getComputedStyle;
+        window.getComputedStyle = function (node, pseudoElement) {
+            return createLegacyColorComputedStyleProxy(originalGetComputedStyle.call(window, node, pseudoElement));
+        };
+
+        try {
+            return await html2canvas(surface, {
+                backgroundColor: null,
+                logging: false,
+                scale: Math.max(1, Math.min(window.devicePixelRatio || 1, 2)),
+                useCORS: true,
+                onclone: (_clonedDocument, clonedSurface) => {
+                    if (!clonedSurface || clonedSurface.nodeType !== 1) {
+                        return;
+                    }
+
+                    // The iframe recomputes the cascade from raw stylesheets, so copy
+                    // the normalized inline declarations positionally; pseudo-element
+                    // fixes ride along via their cloned markers and <style> tag.
+                    const originals = [surface, ...surface.querySelectorAll('*')];
+                    const clones = [clonedSurface, ...clonedSurface.querySelectorAll('*')];
+                    // ponytail: assumes DocumentCloner emits a 1:1 ordered tree
+                    const sharedCount = Math.min(originals.length, clones.length);
+                    for (let index = 0; index < sharedCount; index++) {
+                        const cssText = originals[index].style && originals[index].style.cssText;
+                        if (cssText) {
+                            clones[index].style.cssText = cssText;
+                        }
+                    }
+                },
+            });
+        } finally {
+            window.getComputedStyle = originalGetComputedStyle;
+        }
     } finally {
         shell.remove();
     }

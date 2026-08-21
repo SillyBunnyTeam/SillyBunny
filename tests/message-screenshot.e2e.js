@@ -48,6 +48,19 @@ async function installScreenshotMessage(page, messageText) {
         }
 
         messageTextElement.style.color = 'oklch(70% 0.2 140)';
+
+        const gradientSpan = document.createElement('span');
+        gradientSpan.style.backgroundImage = 'linear-gradient(90deg, color(display-p3 1 0 0), color(xyz-d65 0.1 0.4 0.2))';
+        gradientSpan.style.webkitBackgroundClip = 'text';
+        gradientSpan.style.backgroundClip = 'text';
+        gradientSpan.style.webkitTextFillColor = 'transparent';
+        gradientSpan.textContent = text;
+        messageTextElement.appendChild(gradientSpan);
+
+        const assistantTextElement = document.querySelector('#chat .mes[mesid="1"] .mes_text');
+        if (assistantTextElement) {
+            assistantTextElement.style.color = 'lab(60% 20 -30)';
+        }
     }, messageText);
 }
 
