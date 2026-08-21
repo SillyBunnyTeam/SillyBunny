@@ -59,6 +59,7 @@ import { router as serverAdminRouter } from './endpoints/server-admin.js';
 import { router as inChatAgentsRouter } from './endpoints/in-chat-agents.js';
 // SillyBunny divergence: keep Conversation REST mounted here only; endpoint behavior stays isolated in its fork-owned router for upstream syncs.
 import { router as sillyBunnyConversationRouter } from './endpoints/sillybunny-conversation.js';
+import { resumableGenerationMiddleware, router as resumableGenerationsRouter } from './resumable-generations.js';
 
 /**
  * @typedef {object} ServerStartupResult
@@ -76,6 +77,9 @@ import { router as sillyBunnyConversationRouter } from './endpoints/sillybunny-c
  */
 export function setupPrivateEndpoints(app) {
     app.use('/', userDataRouter);
+    // SillyBunny: resumable generations. The router is mounted first so its own requests never register as generations.
+    app.use('/api/resumable-generations', resumableGenerationsRouter);
+    app.use(resumableGenerationMiddleware);
     app.use('/api/users', usersPrivateRouter);
     app.use('/api/users', usersAdminRouter);
     app.use('/api/moving-ui', movingUIRouter);

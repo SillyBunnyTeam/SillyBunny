@@ -13,6 +13,7 @@ import {
     OPENAI_KEYS,
 } from '../../constants.js';
 import { abortOnRequestClose, forwardFetchResponse, trimV1, getConfigValue, pollStreamingRequestConnection, summarizeLlmPayloadForLog } from '../../util.js';
+import { getResumableGeneration } from '../../resumable-generations.js';
 import { setAdditionalHeaders } from '../../additional-headers.js';
 import { createHash } from 'node:crypto';
 
@@ -78,7 +79,13 @@ async function parseOllamaStream(jsonStream, request, response, onDisconnect = n
             }
         });
 
-        request.socket.on('close', closeStream);
+        const resumableGeneration = getResumableGeneration(request);
+        if (resumableGeneration) {
+            // SillyBunny: a resumable generation finishes without the client; only an explicit cancel stops it.
+            resumableGeneration.onCancel(closeStream);
+        } else {
+            request.socket.on('close', closeStream);
+        }
 
         jsonStream.body.on('end', () => {
             if (done) {
@@ -92,8 +99,22 @@ async function parseOllamaStream(jsonStream, request, response, onDisconnect = n
             response.end();
         });
 
-        jsonStream.body.on('error', () => {
+        jsonStream.body.on('error', (error) => {
+            if (done) {
+                return;
+            }
+
+            done = true;
             stopPolling();
+            console.error('Ollama streaming request failed:', error);
+            try {
+                jsonStream.body?.destroy?.();
+            } catch {
+                // Best effort; the stream is already failing.
+            }
+            if (!response.writableEnded) {
+                response.end();
+            }
         });
     } catch (error) {
         console.error('Error forwarding streaming response:', error);

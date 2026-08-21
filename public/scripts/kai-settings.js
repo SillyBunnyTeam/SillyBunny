@@ -20,6 +20,7 @@ import {
     power_user,
 } from './power-user.js';
 import { getEventSourceStream } from './sse-stream.js';
+import { fetchResumable } from './resumable-generation.js';
 import { getSortableDelay, versionCompare } from './utils.js';
 
 export let koboldai_settings;
@@ -262,7 +263,7 @@ function tryParseStreamingError(response, decoded) {
 }
 
 export async function generateKoboldWithStreaming(generate_data, signal) {
-    const response = await fetch('/api/backends/kobold/generate', {
+    const response = await fetchResumable('/api/backends/kobold/generate', {
         headers: getRequestHeaders(),
         body: JSON.stringify(generate_data),
         method: 'POST',
