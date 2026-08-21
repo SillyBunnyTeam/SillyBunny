@@ -38,6 +38,7 @@
 - PR #780 (2026-08-20) `chore: add GLM-5.3 in the ZAI backend dropdown`
 - PR #781 (2026-08-21) `fix(generation): allow upstream responses to continue and finish`
 - PR #782 (2026-08-21) `fix(mobile): prevent overflow in mobile devices + giving the chat list more screen space in Chat History`
+- PR #783 (2026-08-21) `fix(mobile): prevent streaming and new content to cause the screen to jump up constantly`
 
 ## v1.7.0
 
