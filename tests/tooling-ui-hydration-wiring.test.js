@@ -86,6 +86,15 @@ describe('tooling UI hydration wiring', () => {
         expect(source).not.toContain('if (!messageScreenshotLibraryPromise)');
     });
 
+    test('flattens text-clipped gradient backgrounds before html2canvas capture', () => {
+        const source = getFunctionSource('normalizeMessageScreenshotStyles');
+
+        expect(source).toContain("backgroundClip.includes('text')");
+        expect(source).toContain("computedStyle.backgroundImage !== 'none'");
+        expect(source).toContain("'-webkit-text-fill-color', computedStyle.color");
+        expect(source).toContain("'background-image', 'none'");
+    });
+
     test('renders message screenshots inside the chat layout context', () => {
         const source = getFunctionSource('renderMessageScreenshotCanvas');
 

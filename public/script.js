@@ -12270,6 +12270,15 @@ function normalizeMessageScreenshotStyles(container) {
         }
 
         const computedStyle = getComputedStyle(element);
+
+        // html2canvas ignores background-clip: text and paints the gradient over the whole box,
+        // hiding the text. Flatten to the solid text color (gradient extensions set it as fallback).
+        const backgroundClip = `${computedStyle.backgroundClip || ''} ${computedStyle.webkitBackgroundClip || ''}`;
+        if (computedStyle.backgroundImage !== 'none' && backgroundClip.includes('text')) {
+            element.style.setProperty('-webkit-text-fill-color', computedStyle.color);
+            element.style.setProperty('background-image', 'none');
+        }
+
         for (const propertyName of computedStyle) {
             if (propertyName.startsWith('--')) {
                 continue;
