@@ -36,6 +36,7 @@
 - PR #778 (2026-08-20) `fix(nanogpt): make reasoning types no longer switch to a different one`
 - PR #779 (2026-08-20) `feat(kimi): add a Partial Prefill field that only Kimi K3 uses`
 - PR #780 (2026-08-20) `chore: add GLM-5.3 in the ZAI backend dropdown`
+- PR #781 (2026-08-21) `fix(generation): allow upstream responses to continue and finish`
 
 ## v1.7.0
 
