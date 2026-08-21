@@ -2103,7 +2103,7 @@ function requestMobileChatBottomPin({ requireNearBottom = true, durationMs = MOB
 }
 
 function shouldPinMobileChatToBottom() {
-    if (!shouldGuardMobileChatScroll() || isMobileChatManualScrollSuppressionActive()) {
+    if (!power_user.auto_scroll_chat_to_bottom || !shouldGuardMobileChatScroll() || isMobileChatManualScrollSuppressionActive()) {
         return false;
     }
 
@@ -6084,10 +6084,11 @@ class StreamingProcessor {
     async onProgressStreaming(messageId, text, isFinal) {
         const isImpersonate = this.type == 'impersonate';
         const isContinue = this.type == 'continue';
-        const shouldReduceIntermediateStreamingWork = !isFinal && shouldReduceStreamingDomWork(globalThis.navigator, {
+        const shouldReduceStreamingWork = shouldReduceStreamingDomWork(globalThis.navigator, {
             iosEnabled: power_user.ios_webkit_reduce_streaming_work,
             androidEnabled: power_user.android_reduce_streaming_work,
         });
+        const shouldReduceIntermediateStreamingWork = !isFinal && shouldReduceStreamingWork;
         const shouldBypassStreamingFadeIn = shouldReduceStreamingDomWork(globalThis.navigator, {
             iosEnabled: power_user.ios_webkit_disable_stream_fade_in,
             androidEnabled: power_user.android_disable_stream_fade_in,
@@ -6237,12 +6238,17 @@ class StreamingProcessor {
             }
         }
 
+        // SillyBunny: instant intermediate pins visibly jump on reduced-work mobile platforms; settle once when streaming finishes.
+        if (shouldReduceIntermediateStreamingWork && shouldUseMobileStreamingPin) {
+            return;
+        }
+
         if (shouldPinMobileBottom && shouldPinMobileChatToBottom()) {
             scheduleMobileStreamingBottomPin({ isFinal });
         } else if (!scrollLock && (!shouldUseMobileStreamingPin || !isMobileChatManualScrollSuppressionActive())) {
             scrollChatToBottom({
                 waitForFrame: true,
-                isNearBottom: shouldUseMobileStreamingPin ? shouldPinMobileBottom : true,
+                isNearBottom: shouldUseMobileStreamingPin ? shouldPinMobileBottom || (isFinal && shouldReduceStreamingWork) : true,
             });
         }
     }

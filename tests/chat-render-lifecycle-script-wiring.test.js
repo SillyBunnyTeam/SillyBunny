@@ -422,16 +422,21 @@ describe('chat render lifecycle script wiring', () => {
         expect(source).toContain('isFinal,');
     });
 
-    test('streaming progress throttles mobile bottom pins through the streaming scheduler', () => {
+    test('streaming progress skips reduced-work intermediate pins and settles once at completion', () => {
         const onProgressStreaming = findNode(scriptAst, node => node.type === 'MethodDefinition'
             && node.key?.name === 'onProgressStreaming');
         const source = getSource(onProgressStreaming.value);
 
         expect(source).toContain('const shouldUseMobileStreamingPin = !isImpersonate && shouldGuardMobileChatScroll();');
         expect(source).toContain('const shouldPinMobileBottom = shouldUseMobileStreamingPin && shouldPinMobileChatToBottom();');
+        expect(source).toContain('if (shouldReduceIntermediateStreamingWork && shouldUseMobileStreamingPin)');
         expect(source).toContain('if (shouldPinMobileBottom && shouldPinMobileChatToBottom())');
         expect(source).toContain('scheduleMobileStreamingBottomPin({ isFinal });');
+        expect(source).toContain('isNearBottom: shouldUseMobileStreamingPin ? shouldPinMobileBottom || (isFinal && shouldReduceStreamingWork) : true');
         expect(source).not.toContain('pinMobileChatToBottom({ waitForFrame: true, settle: isFinal });');
+
+        const shouldPinMobileChatToBottom = findFunctionDeclaration('shouldPinMobileChatToBottom');
+        expect(getSource(shouldPinMobileChatToBottom)).toContain('!power_user.auto_scroll_chat_to_bottom');
     });
 
     test('mobile streaming bottom pin scheduling coalesces smooth intermediate pins', () => {

@@ -317,6 +317,90 @@ describe('companion tracker panel', () => {
         expect(html).toMatch(/<section class="ica--tpanel-agent"[\s\S]*?data-message-index="0"[\s\S]*?data-action="panel-run-latest"[\s\S]*?<\/section>/);
     });
 
+    test('keeps the visible companion anchored while pending cards replace completed content', async () => {
+        const agentIds = ['agent-a', 'agent-b', 'agent-c', 'agent-d'];
+        agents = agentIds.map((id, index) => ({
+            id,
+            name: `Agent ${index + 1}`,
+            execution: 'companion',
+            enabled: true,
+            companion: { displayMode: 'panel' },
+        }));
+        const message = { is_user: false, is_system: false, mes: 'reply' };
+        chat.push(message);
+        const setResults = status => companionResultsByMessage.set(message, Object.fromEntries(agentIds.map(id => [id, {
+            status,
+            content: `${id} state`,
+            agentName: id,
+        }])));
+        setResults('done');
+        const panel = await importPanel();
+
+        let naturalHeights = [150, 150, 150, 150];
+        let sections = [];
+        let hasPendingCards = false;
+        let scrollTop = 0;
+        const panelNode = {
+            clientHeight: 200,
+            getBoundingClientRect: () => ({ top: 0, bottom: 200, height: 200 }),
+            querySelectorAll: () => sections,
+        };
+        const pendingNodes = [null, {}];
+        const getSectionHeight = section => Math.max(section.naturalHeight, Number.parseFloat(section.style.minHeight) || 0);
+        const getTotalHeight = () => sections.reduce((total, section) => total + getSectionHeight(section), 0);
+        Object.defineProperty(panelNode, 'scrollTop', {
+            get: () => scrollTop,
+            set: value => {
+                scrollTop = Math.max(0, Math.min(Number(value), Math.max(0, getTotalHeight() - panelNode.clientHeight)));
+            },
+        });
+        const createSection = (agentId, index) => {
+            const section = {
+                naturalHeight: naturalHeights[index],
+                style: {},
+                getAttribute: () => agentId,
+                querySelector: () => pendingNodes[Number(hasPendingCards)],
+                getBoundingClientRect: () => {
+                    const top = sections.slice(0, index).reduce((total, item) => total + getSectionHeight(item), 0) - panelNode.scrollTop;
+                    const height = getSectionHeight(section);
+                    return { top, bottom: top + height, height };
+                },
+            };
+            return section;
+        };
+        const panelElement = {
+            0: panelNode,
+            length: 1,
+            html: jest.fn(html => {
+                hasPendingCards = html.includes('ica--companion-pending');
+                sections = agentIds.map(createSection);
+                panelNode.scrollTop = scrollTop;
+                return panelElement;
+            }),
+            attr: jest.fn(() => panelElement),
+            addClass: jest.fn(() => panelElement),
+        };
+        const jqueryElements = new Map([['#ica--tracker-panel', panelElement]]);
+        globalThis.$ = jest.fn(selector => jqueryElements.get(selector) ?? { length: 0 });
+
+        panel.openCompanionPanel();
+        panelNode.scrollTop = 320;
+        const anchorOffset = sections[2].getBoundingClientRect().top;
+        expect(anchorOffset).toBe(-20);
+
+        naturalHeights = [40, 40, 40, 40];
+        setResults('pending');
+        panel.refreshCompanionPanel();
+        expect(sections[2].getBoundingClientRect().top).toBe(anchorOffset);
+        expect(sections.map(section => section.style.minHeight)).toEqual(['150px', '150px', '150px', '150px']);
+
+        naturalHeights = [90, 200, 100, 170];
+        setResults('done');
+        panel.refreshCompanionPanel();
+        expect(sections[2].getBoundingClientRect().top).toBe(anchorOffset);
+        expect(sections.map(section => section.style.minHeight)).toEqual([undefined, undefined, undefined, undefined]);
+    });
+
     test('keeps hidden companions unhideable from the collapsed panel row', async () => {
         const tracker = { id: 'tracker-1', name: 'Scene Tracker', execution: 'companion', enabled: true, companion: { displayMode: 'panel' } };
         agents = [tracker];
