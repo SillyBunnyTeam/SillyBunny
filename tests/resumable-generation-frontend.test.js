@@ -185,3 +185,16 @@ test('routes all scoped-profile generation requests through fetchResumable', () 
     expect(customRequestSource).toContain('await fetchResumable(\'/api/backends/text-completions/generate\', {');
     expect(customRequestSource).toContain('await fetchResumable(\'/api/backends/chat-completions/generate\', {');
 });
+
+test('routes Horde generation requests through fetchResumable', () => {
+    const hordeSource = readFileSync(new URL('../public/scripts/horde.js', import.meta.url), 'utf8');
+    expect(hordeSource).toContain('import { fetchResumable } from \'./resumable-generation.js\';');
+    expect(hordeSource).toContain('await fetchResumable(\'/api/horde/generate-text\', {');
+    expect(hordeSource).not.toContain('fetch(\'/api/horde/generate-text\'');
+});
+
+test('cancels in-flight generations on pagehide for browsers without beforeunload', () => {
+    const source = readFileSync(new URL('../public/scripts/resumable-generation.js', import.meta.url), 'utf8');
+    expect(source).toContain('window.addEventListener(\'beforeunload\', cancelActiveGenerations)');
+    expect(source).toContain('window.addEventListener(\'pagehide\', cancelActiveGenerations)');
+});

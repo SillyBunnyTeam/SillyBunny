@@ -18,13 +18,23 @@ const FINISHED_RETENTION_MS = 15 * 60 * 1000;
 /** A reply still running after this long is cancelled, attached client or not. */
 const MAX_LIFETIME_MS = 60 * 60 * 1000;
 const MAX_GENERATIONS = 200;
+/** One profile cannot hold more than this many replies, live or finished. */
+const MAX_GENERATIONS_PER_PROFILE = 20;
 const MAX_BUFFER_BYTES = 32 * 1024 * 1024;
+/** Every buffered reply together stays under this; finished replies hand their bytes back first. */
+const MAX_TOTAL_BUFFER_BYTES = 256 * 1024 * 1024;
+/** A reply serves at most this many concurrent resume readers, queued or attached. */
+const MAX_RESUME_CLIENTS = 8;
+/** A resume reader that falls behind by more than this gets dropped instead of buffered into. */
+const MAX_RESUME_BACKLOG_BYTES = 8 * 1024 * 1024;
 const SWEEP_INTERVAL_MS = 60 * 1000;
 
 /** @type {Map<string, ResumableGeneration>} */
 const generations = new Map();
 /** @type {ReturnType<typeof setInterval>|null} */
 let sweepTimer = null;
+/** Every byte currently mirrored into the registry, across all profiles. */
+let totalBufferedBytes = 0;
 
 /**
  * @param {unknown} chunk Anything a handler may pass to response.write()
@@ -91,7 +101,7 @@ export class ResumableGeneration {
         this.cancelHooks = new Set();
         /** @type {Set<ResumableSubscriber>} */
         this.subscribers = new Set();
-        /** @type {(() => void)[]} */
+        /** @type {{ resolve: () => void }[]} */
         this.headerWaiters = [];
     }
 
@@ -119,20 +129,46 @@ export class ResumableGeneration {
     }
 
     releaseHeaderWaiters() {
-        for (const resolve of this.headerWaiters.splice(0)) {
-            resolve();
+        for (const waiter of this.headerWaiters.splice(0)) {
+            waiter.resolve();
         }
     }
 
     /**
-     * Resolves once the handler has started answering (or given up).
-     * @returns {Promise<void>}
+     * Waits for the handler to start answering, with a handle for giving up when the waiting
+     * client disappears - otherwise an abandoned pre-header resume would hold its resources
+     * until the generation finishes on its own.
+     * @returns {{ promise: Promise<void>, cancel: () => void }}
      */
     waitForHeaders() {
         if (this.headersReady || this.done) {
-            return Promise.resolve();
+            return { promise: Promise.resolve(), cancel: () => undefined };
         }
-        return new Promise(resolve => this.headerWaiters.push(resolve));
+        let resolve;
+        const promise = new Promise(settle => {
+            resolve = settle;
+        });
+        const waiter = { resolve: () => resolve() };
+        this.headerWaiters.push(waiter);
+        return {
+            promise,
+            cancel: () => {
+                const index = this.headerWaiters.indexOf(waiter);
+                if (index !== -1) {
+                    this.headerWaiters.splice(index, 1);
+                    resolve();
+                }
+            },
+        };
+    }
+
+    /**
+     * Gives the buffered reply bytes back to the global budget. Safe to call twice.
+     */
+    freeBuffers() {
+        totalBufferedBytes -= this.size;
+        this.chunks = [];
+        this.size = 0;
     }
 
     /**
@@ -147,7 +183,8 @@ export class ResumableGeneration {
         if (!buffer?.length) {
             return;
         }
-        if (this.size + buffer.length > MAX_BUFFER_BYTES) {
+        if (this.size + buffer.length > MAX_BUFFER_BYTES ||
+            (totalBufferedBytes + buffer.length > MAX_TOTAL_BUFFER_BYTES && !fitGlobalByteBudget(buffer.length))) {
             // ponytail: a text reply never gets here; if it does, forget it rather than eat the heap.
             this.overflowed = true;
             this.forceDiscard();
@@ -155,6 +192,7 @@ export class ResumableGeneration {
         }
         this.chunks.push(buffer);
         this.size += buffer.length;
+        totalBufferedBytes += buffer.length;
         for (const subscriber of this.subscribers) {
             subscriber.onChunk(buffer);
         }
@@ -188,8 +226,7 @@ export class ResumableGeneration {
         } else {
             this.subscribers.clear();
         }
-        this.chunks = [];
-        this.size = 0;
+        this.freeBuffers();
     }
 
     /**
@@ -230,9 +267,12 @@ export class ResumableGeneration {
      * Replays everything from a byte offset, then forwards live chunks until the reply ends.
      * @param {number} offset Bytes the subscriber already has
      * @param {ResumableSubscriber} subscriber Sink
-     * @returns {() => void} Unsubscribe
+     * @returns {(() => void)|null} Unsubscribe, or null when too many readers are attached
      */
     subscribe(offset, subscriber) {
+        if (this.subscribers.size >= MAX_RESUME_CLIENTS) {
+            return null;
+        }
         let skip = Math.max(0, Math.min(offset, this.size));
         for (const chunk of this.chunks) {
             if (skip >= chunk.length) {
@@ -252,29 +292,77 @@ export class ResumableGeneration {
 }
 
 /**
+ * Tries to absorb upcoming bytes by dropping finished replies, oldest first. Live generations are
+ * never touched for the byte budget - losing a cached reply costs a resume, losing a live one
+ * costs the model call.
+ * @param {number} needed Bytes the caller wants to append
+ * @returns {boolean} Whether the budget can take the bytes now
+ */
+function fitGlobalByteBudget(needed) {
+    for (const generation of generations.values()) {
+        if (totalBufferedBytes + needed <= MAX_TOTAL_BUFFER_BYTES) {
+            return true;
+        }
+        if (generation.done) {
+            generation.forceDiscard();
+        }
+    }
+    return totalBufferedBytes + needed <= MAX_TOTAL_BUFFER_BYTES;
+}
+
+/**
+ * @param {import('express').Request} request Express request
+ * @returns {string} Profile handle the request is authenticated as
+ */
+function getProfileHandle(request) {
+    return request?.user?.profile?.handle ?? '';
+}
+
+/**
  * @param {import('express').Request} request Express request
  * @param {string} id Client-chosen generation id
  * @returns {string}
  */
 function getGenerationKey(request, id) {
-    return `${request?.user?.profile?.handle ?? ''}:${id}`;
+    return `${getProfileHandle(request)}:${id}`;
+}
+
+/**
+ * Makes room for a new registration. An over-cap profile gives up its own oldest entries,
+ * finished ones first; globally only finished replies are fair game. Another profile's live
+ * generation is never discarded to make room - that would let anyone cancel anyone else's
+ * model call.
+ * @param {string} handle Profile handle of the incoming registration
+ * @returns {boolean} Whether a new registration fits the global cap
+ */
+function trimRegistry(handle) {
+    const prefix = `${handle}:`;
+    let owned = [...generations.entries()].filter(([key]) => key.startsWith(prefix));
+    while (owned.length >= MAX_GENERATIONS_PER_PROFILE) {
+        const victim = (owned.find(([, generation]) => generation.done) ?? owned[0])[1];
+        victim.forceDiscard();
+        owned = owned.filter(([, generation]) => generation !== victim);
+    }
+    while (generations.size >= MAX_GENERATIONS) {
+        const oldestFinished = [...generations.values()].find(generation => generation.done);
+        if (!oldestFinished) {
+            return false;
+        }
+        oldestFinished.forceDiscard();
+    }
+    return true;
 }
 
 /**
  * @param {number} [now] Current time
  */
 function sweepGenerations(now = Date.now()) {
-    for (const [key, generation] of generations) {
+    for (const generation of generations.values()) {
         const expired = generation.done
             ? now - generation.finishedAt > FINISHED_RETENTION_MS
             : now - generation.createdAt > MAX_LIFETIME_MS;
-        if (!expired) {
-            continue;
-        }
-        generations.delete(key);
-        if (!generation.done) {
-            generation.cancel();
-            generation.end();
+        if (expired) {
+            generation.forceDiscard();
         }
     }
     if (generations.size === 0 && sweepTimer) {
@@ -284,10 +372,12 @@ function sweepGenerations(now = Date.now()) {
 }
 
 /**
+ * @param {string} handle Profile handle
  * @param {string} key Registry key
- * @returns {ResumableGeneration}
+ * @returns {ResumableGeneration|null} The new generation, or null when the registry is full of
+ * live replies and the request has to proceed without resume support
  */
-function registerGeneration(key) {
+function registerGeneration(handle, key) {
     // A flaky connection can make the browser replay a POST whose response never started. That
     // arrives as a second registration of the same id, and without this the superseded generation
     // would keep running upstream with nobody to read it - one client request, two model calls.
@@ -297,13 +387,18 @@ function registerGeneration(key) {
         superseded.cancel();
         superseded.end();
     }
+    if (superseded) {
+        superseded.freeBuffers();
+        generations.delete(key);
+    }
+
+    if (!trimRegistry(handle)) {
+        console.warn('Too many live resumable generations; serving this request without resume support');
+        return null;
+    }
 
     const generation = new ResumableGeneration(key);
-    generations.delete(key);
     generations.set(key, generation);
-    while (generations.size > MAX_GENERATIONS) {
-        generations.values().next().value.forceDiscard();
-    }
     if (!sweepTimer) {
         sweepTimer = setInterval(sweepGenerations, SWEEP_INTERVAL_MS);
         sweepTimer.unref?.();
@@ -388,7 +483,10 @@ export function resumableGenerationMiddleware(request, response, next) {
     if (!GENERATION_ID_PATTERN.test(id)) {
         return next();
     }
-    const generation = registerGeneration(getGenerationKey(request, id));
+    const generation = registerGeneration(getProfileHandle(request), getGenerationKey(request, id));
+    if (!generation) {
+        return next();
+    }
     request.resumableGeneration = generation;
     attachResponse(response, generation);
     return next();
@@ -419,7 +517,16 @@ router.post('/resume', async (request, response) => {
         return response.sendStatus(400);
     }
 
-    await generation.waitForHeaders();
+    // Queued waiters become readers, so they count against the same limit; otherwise a full
+    // queue would graduate into rejections after the headers finally arrive.
+    if (!generation.headersReady && !generation.done &&
+        generation.subscribers.size + generation.headerWaiters.length >= MAX_RESUME_CLIENTS) {
+        return response.sendStatus(503);
+    }
+
+    const wait = generation.waitForHeaders();
+    response.on('close', () => wait.cancel());
+    await wait.promise;
 
     if (response.destroyed || response.writableEnded) {
         return;
@@ -429,6 +536,9 @@ router.post('/resume', async (request, response) => {
     }
     if (offset > generation.size) {
         return response.sendStatus(416);
+    }
+    if (generation.subscribers.size >= MAX_RESUME_CLIENTS) {
+        return response.sendStatus(429);
     }
 
     response.status(200);
@@ -443,10 +553,17 @@ router.post('/resume', async (request, response) => {
     }
     response.flushHeaders();
 
-    const unsubscribe = generation.subscribe(offset, {
+    let unsubscribe = () => undefined;
+    unsubscribe = generation.subscribe(offset, {
         onChunk: chunk => {
-            if (!response.writableEnded && !response.destroyed) {
-                response.write(chunk);
+            if (response.writableEnded || response.destroyed) {
+                return;
+            }
+            response.write(chunk);
+            if (response.writableLength > MAX_RESUME_BACKLOG_BYTES) {
+                // This reader stopped draining; drop it instead of buffering the reply into RAM.
+                unsubscribe();
+                response.destroy();
             }
         },
         onEnd: () => {
@@ -472,7 +589,20 @@ export const testExports = {
     FINISHED_RETENTION_MS,
     MAX_LIFETIME_MS,
     MAX_GENERATIONS,
+    MAX_GENERATIONS_PER_PROFILE,
     MAX_BUFFER_BYTES,
+    MAX_TOTAL_BUFFER_BYTES,
+    MAX_RESUME_CLIENTS,
     generations,
     sweepGenerations,
+    get totalBufferedBytes() {
+        return totalBufferedBytes;
+    },
+    /**
+     * Test seam for simulating a loaded byte budget without allocating hundreds of megabytes.
+     * @param {number} value Absolute byte total to pretend is currently buffered
+     */
+    setTotalBufferedBytes(value) {
+        totalBufferedBytes = value;
+    },
 };

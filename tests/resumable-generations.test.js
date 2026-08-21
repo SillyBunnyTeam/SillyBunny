@@ -59,6 +59,7 @@ function collect(generation, offset = 0) {
 afterEach(() => {
     jest.restoreAllMocks();
     testExports.generations.clear();
+    testExports.setTotalBufferedBytes(0);
 });
 
 describe('resumable generation registry', () => {
@@ -87,6 +88,7 @@ describe('resumable generation registry', () => {
         expect(generation.statusCode).toBe(201);
         expect(generation.contentType).toBe('text/plain');
         expect(generation.size).toBe(11);
+        expect(testExports.totalBufferedBytes).toBe(11);
         await expect(collect(generation)).resolves.toBe('hello world');
         await expect(collect(generation, 6)).resolves.toBe('world');
         expect(testExports.generations.get('tester:mirror-1')).toBe(generation);
@@ -201,7 +203,7 @@ describe('resumable generation registry', () => {
         expect(testExports.generations.get('tester:replayed-1')).toBe(second.generation);
     });
 
-    test('re-registering an id leaves a finished reply alone', () => {
+    test('re-registering an id drops the finished reply\'s buffered copy', () => {
         const first = registerGeneration('replayed-2');
         first.response.end('all done');
         const cancelHook = jest.fn();
@@ -210,7 +212,9 @@ describe('resumable generation registry', () => {
         registerGeneration('replayed-2');
 
         expect(cancelHook).not.toHaveBeenCalled();
-        expect(first.generation.size).toBe('all done'.length);
+        expect(first.generation.done).toBe(true);
+        expect(first.generation.size).toBe(0);
+        expect(testExports.totalBufferedBytes).toBe(0);
     });
 
     test('cancel runs each hook once and does nothing once the reply finished', () => {
@@ -253,6 +257,141 @@ describe('resumable generation registry', () => {
         expect(hook).toHaveBeenCalledTimes(1);
         expect(running.done).toBe(true);
         expect(finished.done).toBe(true);
+    });
+
+    test('waiting for headers can be cancelled when the waiting client disappears', async () => {
+        const { generation } = registerGeneration('waiter-1');
+        const wait = generation.waitForHeaders();
+        expect(generation.headerWaiters).toHaveLength(1);
+
+        wait.cancel();
+        await expect(wait.promise).resolves.toBeUndefined();
+        expect(generation.headerWaiters).toHaveLength(0);
+
+        const late = generation.waitForHeaders();
+        generation.captureHeaders({ statusCode: 201, statusMessage: '', getHeader: () => undefined });
+        await expect(late.promise).resolves.toBeUndefined();
+        expect(generation.headerWaiters).toHaveLength(0);
+    });
+});
+
+describe('registry capacity', () => {
+    /**
+     * Registers a generation for a synthetic profile, bypassing the tester helper.
+     */
+    function registerFor(handle, id) {
+        const request = createMockRequest(id);
+        request.user = { profile: { handle } };
+        const response = createMockResponse();
+        const next = jest.fn();
+        resumableGenerationMiddleware(request, response, next);
+        expect(next).toHaveBeenCalledTimes(1);
+        return { request, response, generation: request.resumableGeneration };
+    }
+
+    let fillerCount = 0;
+
+    /**
+     * Adds a live filler registration spread over synthetic profiles.
+     */
+    function addLiveFiller() {
+        const bucket = Math.floor(fillerCount / testExports.MAX_GENERATIONS_PER_PROFILE);
+        fillerCount++;
+        return registerFor(`filler-${bucket}`, `filler${String(fillerCount).padStart(6, '0')}`);
+    }
+
+    afterEach(() => {
+        fillerCount = 0;
+    });
+
+    test('a full registry never discards another profile\'s live generation', () => {
+        jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const victim = registerGeneration('victim-1');
+        victim.response.write('live');
+        const cancelHook = jest.fn();
+        victim.generation.onCancel(cancelHook);
+
+        while (testExports.generations.size < testExports.MAX_GENERATIONS) {
+            addLiveFiller();
+        }
+        expect(testExports.generations.size).toBe(testExports.MAX_GENERATIONS);
+
+        const latecomer = registerFor('filler-late', 'latecomer-00001');
+
+        expect(latecomer.generation).toBeUndefined();
+        expect(cancelHook).not.toHaveBeenCalled();
+        expect(victim.generation.cancelled).toBe(false);
+        expect(testExports.generations.has('tester:victim-1')).toBe(true);
+        expect(testExports.generations.size).toBe(testExports.MAX_GENERATIONS);
+    });
+
+    test('an over-cap profile gives up its own oldest live generation', () => {
+        const first = registerGeneration('own-000000');
+        const cancelHook = jest.fn();
+        first.generation.onCancel(cancelHook);
+        for (let index = 1; index < testExports.MAX_GENERATIONS_PER_PROFILE; index++) {
+            registerGeneration(`own-${String(index).padStart(6, '0')}`);
+        }
+        expect(testExports.generations.size).toBe(testExports.MAX_GENERATIONS_PER_PROFILE);
+
+        registerGeneration('own-newest');
+
+        expect(cancelHook).toHaveBeenCalledTimes(1);
+        expect(first.generation.cancelled).toBe(true);
+        expect(first.generation.done).toBe(true);
+        expect(testExports.generations.has('tester:own-000000')).toBe(false);
+        expect(testExports.generations.has('tester:own-newest')).toBe(true);
+        expect(testExports.generations.size).toBe(testExports.MAX_GENERATIONS_PER_PROFILE);
+    });
+
+    test('global pressure drops finished replies before touching live ones', () => {
+        const finished = registerGeneration('finished-spare');
+        finished.response.end('cached');
+        const live = registerGeneration('live-keep');
+        live.response.write('running');
+
+        while (testExports.generations.size < testExports.MAX_GENERATIONS) {
+            addLiveFiller();
+        }
+        addLiveFiller();
+
+        expect(testExports.generations.has('tester:finished-spare')).toBe(false);
+        expect(finished.generation.cancelled).toBe(false);
+        expect(testExports.generations.has('tester:live-keep')).toBe(true);
+        expect(live.generation.cancelled).toBe(false);
+        expect(testExports.generations.size).toBe(testExports.MAX_GENERATIONS);
+    });
+
+    test('the global byte budget frees finished replies before overflowing a live one', () => {
+        const spare = registerGeneration('budget-spare');
+        spare.response.write(Buffer.alloc(1000));
+        spare.response.end();
+
+        const live = registerGeneration('budget-live');
+        testExports.setTotalBufferedBytes(testExports.MAX_TOTAL_BUFFER_BYTES - 500);
+
+        live.response.write(Buffer.alloc(800));
+
+        expect(testExports.generations.has('tester:budget-spare')).toBe(false);
+        expect(live.generation.overflowed).toBe(false);
+        expect(live.generation.size).toBe(800);
+        expect(testExports.totalBufferedBytes).toBe(testExports.MAX_TOTAL_BUFFER_BYTES - 700);
+    });
+
+    test('a live reply overflows instead of breaking the global byte budget', () => {
+        const live = registerGeneration('budget-overflow');
+        const subscriber = { onChunk: jest.fn(), onEnd: jest.fn(), onFail: jest.fn() };
+        live.generation.subscribe(0, subscriber);
+        testExports.setTotalBufferedBytes(testExports.MAX_TOTAL_BUFFER_BYTES);
+
+        live.generation.write('too much');
+
+        expect(live.generation.overflowed).toBe(true);
+        expect(subscriber.onFail).toHaveBeenCalledTimes(1);
+        expect(live.generation.size).toBe(0);
+        // Only the simulated outside pressure remains; the discarded reply gave its bytes back.
+        expect(testExports.totalBufferedBytes).toBe(testExports.MAX_TOTAL_BUFFER_BYTES);
+        expect(testExports.generations.has('tester:budget-overflow')).toBe(false);
     });
 });
 
@@ -326,6 +465,8 @@ describe('resumable generation routes', () => {
     let baseUrl;
     /** @type {Map<string, () => void>} */
     const pendingHandlers = new Map();
+    /** @type {Map<string, () => void>} */
+    const heldReleases = new Map();
     const cancelled = new Set();
 
     beforeAll(async () => {
@@ -345,11 +486,18 @@ describe('resumable generation routes', () => {
             });
             response.status(201);
             response.setHeader('Content-Type', 'text/plain');
-            response.write('first-');
-            pendingHandlers.set(id, () => {
-                response.write('second-');
-                response.end('done');
-            });
+            const release = () => {
+                response.write('first-');
+                pendingHandlers.set(id, () => {
+                    response.write('second-');
+                    response.end('done');
+                });
+            };
+            if (new URL(request.url, 'http://localhost').searchParams.has('hold')) {
+                heldReleases.set(id, release);
+            } else {
+                release();
+            }
         });
 
         await new Promise(resolve => {
@@ -362,12 +510,24 @@ describe('resumable generation routes', () => {
         await new Promise(resolve => server.close(resolve));
     });
 
-    function postJson(path, body) {
+    function postJson(path, body, init = {}) {
         return fetch(`${baseUrl}${path}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
+            ...init,
         });
+    }
+
+    async function startGeneration(id, query = '') {
+        const promise = fetch(`${baseUrl}/generate${query}`, { method: 'POST', headers: { 'X-Generation-Id': id } });
+        if (query) {
+            // A held handler writes nothing, so the response headers only arrive on release.
+            return promise;
+        }
+        const original = await promise;
+        await original.body.getReader().read();
+        return original;
     }
 
     test('resume is a 404 for a reply the server does not have', async () => {
@@ -425,5 +585,70 @@ describe('resumable generation routes', () => {
 
         const unknown = await postJson('/api/resumable-generations/cancel', { id: 'nobody-home' });
         expect(unknown.status).toBe(404);
+    });
+
+    test('a reply serves at most MAX_RESUME_CLIENTS concurrent resumes', async () => {
+        const id = 'route-subscriber-limit';
+        await startGeneration(id);
+
+        const openReaders = Array.from({ length: testExports.MAX_RESUME_CLIENTS }, () =>
+            postJson('/api/resumable-generations/resume', { id, offset: 0 }));
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        const rejected = await postJson('/api/resumable-generations/resume', { id, offset: 0 });
+        expect(rejected.status).toBe(429);
+
+        pendingHandlers.get(id)();
+        for (const reader of await Promise.all(openReaders)) {
+            expect(reader.status).toBe(200);
+            await expect(reader.text()).resolves.toBe('first-second-done');
+        }
+    });
+
+    test('at most MAX_RESUME_CLIENTS resumes may queue for a slow handler', async () => {
+        const id = 'route-waiter-limit';
+        const original = startGeneration(id, '?hold=1');
+
+        const waiting = Array.from({ length: testExports.MAX_RESUME_CLIENTS }, () =>
+            postJson('/api/resumable-generations/resume', { id, offset: 0 }));
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        const rejected = await postJson('/api/resumable-generations/resume', { id, offset: 0 });
+        expect(rejected.status).toBe(503);
+
+        heldReleases.get(id)();
+        pendingHandlers.get(id)();
+        await (await original).text();
+        for (const reader of await Promise.all(waiting)) {
+            expect(reader.status).toBe(200);
+            await expect(reader.text()).resolves.toBe('first-second-done');
+        }
+    });
+
+    test('a resume whose connection dies while waiting frees its waiter slot', async () => {
+        const id = 'route-waiter-gone';
+        const original = startGeneration(id, '?hold=1');
+
+        const waiting = Array.from({ length: testExports.MAX_RESUME_CLIENTS - 1 }, () =>
+            postJson('/api/resumable-generations/resume', { id, offset: 0 }));
+        const aborter = new AbortController();
+        const doomed = postJson('/api/resumable-generations/resume', { id, offset: 0 }, { signal: aborter.signal });
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        aborter.abort();
+        await expect(doomed).rejects.toThrow();
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        // The freed slot must admit a fresh waiter instead of answering 503.
+        const accepted = postJson('/api/resumable-generations/resume', { id, offset: 0 });
+        await new Promise(resolve => setTimeout(resolve, 50));
+        heldReleases.get(id)();
+        pendingHandlers.get(id)();
+        await (await original).text();
+
+        for (const reader of await Promise.all([...waiting, accepted])) {
+            expect(reader.status).toBe(200);
+            await expect(reader.text()).resolves.toBe('first-second-done');
+        }
     });
 });

@@ -334,7 +334,9 @@ if (typeof document !== 'undefined') {
 }
 
 if (typeof window !== 'undefined') {
-    // Desktop browsers fire this on reload and close. iOS Safari never does, which is exactly right:
-    // a backgrounded page keeps its reply, a closed tab does not keep the model busy.
+    // Desktop browsers fire beforeunload on reload and close. iOS Safari never does, but it does
+    // fire pagehide when the tab is actually going away - backgrounding only flips visibility,
+    // which stays silent here so a frozen tab keeps its reply.
     window.addEventListener('beforeunload', cancelActiveGenerations);
+    window.addEventListener('pagehide', cancelActiveGenerations);
 }

@@ -99,8 +99,22 @@ async function parseOllamaStream(jsonStream, request, response, onDisconnect = n
             response.end();
         });
 
-        jsonStream.body.on('error', () => {
+        jsonStream.body.on('error', (error) => {
+            if (done) {
+                return;
+            }
+
+            done = true;
             stopPolling();
+            console.error('Ollama streaming request failed:', error);
+            try {
+                jsonStream.body?.destroy?.();
+            } catch {
+                // Best effort; the stream is already failing.
+            }
+            if (!response.writableEnded) {
+                response.end();
+            }
         });
     } catch (error) {
         console.error('Error forwarding streaming response:', error);
