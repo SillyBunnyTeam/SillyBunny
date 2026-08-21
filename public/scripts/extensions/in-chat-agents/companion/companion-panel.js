@@ -1,5 +1,6 @@
 import { chat } from '../../../../script.js';
 import { hideChatMessageRange } from '../../../chats.js';
+import { captureVisibleMessageAnchor, restoreVisibleMessageAnchor } from '../../../chat-render-lifecycle/anchor.js';
 import { eventSource, event_types } from '../../../events.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
 import { accountStorage } from '../../../util/AccountStorage.js';
@@ -55,6 +56,10 @@ const HANDLE_POSITION_STORAGE_KEY = 'ica--tracker-panel-handle-top-v2';
 const PANEL_LOCK_STORAGE_KEY = 'ica--tracker-panel-locked';
 const HANDLE_DRAG_THRESHOLD_PX = 6;
 const HANDLE_EDGES = ['right', 'left', 'top', 'bottom'];
+const PANEL_ANCHOR_OPTIONS = {
+    messageSelector: '.ica--tpanel-agent[data-agent-id]',
+    keyAttribute: 'data-agent-id',
+};
 
 let panelInitialized = false;
 let panelOpen = false;
@@ -741,7 +746,23 @@ export function buildPanelHtml() {
 
 function renderPanel() {
     const panelElement = $('#ica--tracker-panel');
+    const panel = panelElement[0];
+    const anchor = captureVisibleMessageAnchor(panel, PANEL_ANCHOR_OPTIONS);
+    const previousHeights = new Map(Array.from(panel?.querySelectorAll(PANEL_ANCHOR_OPTIONS.messageSelector) ?? [], section => [
+        section.getAttribute(PANEL_ANCHOR_OPTIONS.keyAttribute),
+        section.getBoundingClientRect().height,
+    ]));
+
     panelElement.html(buildPanelHtml());
+
+    for (const section of panel?.querySelectorAll(PANEL_ANCHOR_OPTIONS.messageSelector) ?? []) {
+        const previousHeight = previousHeights.get(section.getAttribute(PANEL_ANCHOR_OPTIONS.keyAttribute));
+        if (previousHeight && section.querySelector('.ica--companion-pending')) {
+            section.style.minHeight = `${previousHeight}px`;
+        }
+    }
+
+    restoreVisibleMessageAnchor(panel, anchor, PANEL_ANCHOR_OPTIONS);
     setupPanelSortable();
 }
 
