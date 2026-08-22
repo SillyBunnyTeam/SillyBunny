@@ -8332,6 +8332,45 @@ function bindCharacterEditorFullscreenToggle() {
     syncCharacterEditorFullscreenAvailability();
 }
 
+async function openCreatorNotesFullscreen() {
+    const context = getSillyTavernContext();
+    const spoiler = document.getElementById('creator_notes_spoiler');
+
+    if (!context?.callGenericPopup || !spoiler) {
+        return;
+    }
+
+    // Move the rendered node instead of re-rendering it: formatCreatorNotes() scopes embedded
+    // <custom-style> rules to '#creator_notes_spoiler ', and the live textarea sync keeps writing
+    // to this same element while the popup is open.
+    const anchor = document.createComment('sb-creator-notes-fullscreen');
+    spoiler.replaceWith(anchor);
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'sb-creator-notes-fullscreen';
+    wrapper.append(spoiler);
+
+    try {
+        await context.callGenericPopup(wrapper, context.POPUP_TYPE.TEXT, '', { wide: true, large: true });
+    } finally {
+        if (anchor.isConnected) {
+            anchor.replaceWith(spoiler);
+        } else {
+            document.querySelector('.sb-character-creator-notes-preview-body')?.prepend(spoiler);
+        }
+    }
+}
+
+function bindCreatorNotesFullscreen() {
+    const button = document.getElementById('sb_creator_notes_maximize');
+    if (!(button instanceof HTMLButtonElement) || button.dataset.sbBound === 'true') {
+        return;
+    }
+
+    button.dataset.sbBound = 'true';
+    button.addEventListener('click', () => openCreatorNotesFullscreen());
+}
+
 function focusCharacterPanelTab(tabId) {
     const normalizedTabId = normalizeCharacterPanelTab(tabId);
     const button = getCharacterPanel()?.querySelector(`[data-sb-character-tab="${CSS.escape(normalizedTabId)}"]`);
@@ -16044,6 +16083,7 @@ function injectCharacterDrawerControls() {
     getCharacterPanel()?.classList.add('sb-character-drawer-root');
     ensureCharacterListToolbarLayout();
     bindCharacterEditorFullscreenToggle();
+    bindCreatorNotesFullscreen();
 
     const shellCloseButton = document.getElementById('sb_character_shell_close');
     if (shellCloseButton instanceof HTMLButtonElement && shellCloseButton.dataset.sbBound !== 'true') {
