@@ -695,21 +695,21 @@ export function shouldAutoCloseMobileNav({
 
 /**
  * Resolves page inert policy from active mobile modal roots.
+ * Every mobile surface docks below the top bar rather than covering it, so the bar
+ * stays interactive: its proxy buttons are how an open panel is closed again.
  * @param {object} options Options.
  * @param {string[]} [options.activeRootIds=[]] Active modal root ids.
- * @returns {{hasActiveMobileModal: boolean, shouldInertShell: boolean, shouldInertTopBar: boolean}}
+ * @returns {{hasActiveMobileModal: boolean, shouldInertShell: boolean}}
  */
 export function resolveMobileModalA11yState({
     activeRootIds = [],
 } = {}) {
     const ids = Array.isArray(activeRootIds) ? activeRootIds : [];
     const hasActiveMobileModal = ids.length > 0;
-    const shouldInertTopBar = ids.some(id => id !== 'sb-mobile-nav');
 
     return {
         hasActiveMobileModal,
         shouldInertShell: hasActiveMobileModal,
-        shouldInertTopBar,
     };
 }
 
