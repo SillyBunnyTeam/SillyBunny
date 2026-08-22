@@ -6886,6 +6886,22 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     min-width: 0;
 }
 
+/* SillyBunny: stack the strategy/handling pair on phones. The two-track grid above floors each
+   column at 150px, which overflows the panel scroller (overflow-x is hidden there, so it clips). */
+@media screen and (max-width: 768px), (pointer: coarse) {
+    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #rm_group_buttons {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #rm_group_buttons > .flex1 {
+        min-width: 0;
+    }
+
+    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #rm_group_buttons label {
+        white-space: normal;
+    }
+}
+
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack {
     display: grid;
     grid-template-columns: auto minmax(240px, 1fr);
