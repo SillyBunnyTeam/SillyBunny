@@ -109,6 +109,22 @@ describe('tooling UI hydration wiring', () => {
         expect(scriptSource).not.toContain('normalizeColorFunctionString');
     });
 
+    test('loads foreign-object screenshots through a bounded SVG data URI', () => {
+        const source = getFunctionSource('renderMessageScreenshotWithBoundedSvg');
+        const renderSource = getFunctionSource('renderMessageScreenshotCanvas');
+
+        expect(source).toContain("value.startsWith('<svg') && value.includes('<foreignObject')");
+        expect(source).toContain("new Blob([serializedSvg], { type: 'image/svg+xml;charset=utf-8' })");
+        expect(source).toContain('reader.readAsDataURL(svg)');
+        expect(source).toContain("nativeImageSource.set.call(image, reader.result)");
+        expect(source).toContain('setTimeout(() => fail(new Error(\'Timed out rendering screenshot SVG\')), 15000)');
+        expect(source).toContain('reader.abort()');
+        expect(source).toContain("document.querySelectorAll('.html2canvas-container')");
+        expect(source).toContain('window.Image = NativeImage');
+        expect(source).toContain('window.encodeURIComponent = nativeEncodeURIComponent');
+        expect(renderSource).toContain('renderMessageScreenshotWithBoundedSvg(html2canvas, surface, captureOptions)');
+    });
+
     test('stretches reasoning headers only inside screenshot surfaces', () => {
         expect(styleSource).toContain('.sb-message-screenshot-surface .mes_reasoning_header {\n    flex: 1;\n}');
     });

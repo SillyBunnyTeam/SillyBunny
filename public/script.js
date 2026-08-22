@@ -12106,6 +12106,7 @@ async function getMessageScreenshotIconFontStyle() {
 }
 
 let messageScreenshotLibraryPromise = null;
+let messageScreenshotDownloadQueue = Promise.resolve();
 
 async function getMessageScreenshotLibrary() {
     const hydrationState = resolveLazyToolingLibraryHydration({
@@ -12133,6 +12134,123 @@ async function getMessageScreenshotLibrary() {
     }
 
     return await messageScreenshotLibraryPromise;
+}
+
+async function renderMessageScreenshotWithBoundedSvg(html2canvas, surface, captureOptions) {
+    const NativeImage = window.Image;
+    const nativeEncodeURIComponent = window.encodeURIComponent;
+    const nativeImageSource = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    if (!nativeImageSource?.get || !nativeImageSource.set) {
+        return await html2canvas(surface, captureOptions);
+    }
+
+    const svgMarker = '__sillybunny_html2canvas_foreign_object__';
+    const markedSvgDataUrl = `data:image/svg+xml;charset=utf-8,${svgMarker}`;
+    const existingCloneContainers = new Set(document.querySelectorAll('.html2canvas-container'));
+    let serializedSvg = '';
+
+    function ScreenshotImage(...args) {
+        const image = new NativeImage(...args);
+        Object.defineProperty(image, 'src', {
+            configurable: true,
+            get: () => nativeImageSource.get.call(image),
+            set: (source) => {
+                if (source !== markedSvgDataUrl || !serializedSvg) {
+                    nativeImageSource.set.call(image, source);
+                    return;
+                }
+
+                const reader = new FileReader();
+                const onload = image.onload;
+                const onerror = image.onerror;
+                let settled = false;
+                const svg = new Blob([serializedSvg], { type: 'image/svg+xml;charset=utf-8' });
+                serializedSvg = '';
+
+                const cleanup = () => {
+                    image.onload = null;
+                    image.onerror = null;
+                    reader.onload = null;
+                    reader.onerror = null;
+                };
+                const fail = (error) => {
+                    if (settled) {
+                        return;
+                    }
+
+                    settled = true;
+                    clearTimeout(timeout);
+                    cleanup();
+                    if (reader.readyState === FileReader.LOADING) {
+                        reader.abort();
+                    }
+                    try {
+                        nativeImageSource.set.call(image, '');
+                    } catch {
+                        // The saved error handler still releases html2canvas if image cancellation fails.
+                    }
+                    onerror?.call(image, error instanceof Error ? error : new Error('Failed to render screenshot SVG'));
+                };
+                const timeout = setTimeout(() => fail(new Error('Timed out rendering screenshot SVG')), 15000);
+
+                image.onload = (event) => {
+                    if (settled) {
+                        return;
+                    }
+
+                    settled = true;
+                    clearTimeout(timeout);
+                    cleanup();
+                    onload?.call(image, event);
+                };
+                image.onerror = fail;
+                reader.onerror = () => fail(reader.error ?? new Error('Failed to encode screenshot SVG'));
+                reader.onload = () => {
+                    try {
+                        nativeImageSource.set.call(image, reader.result);
+                    } catch (error) {
+                        fail(error);
+                    }
+                };
+
+                try {
+                    reader.readAsDataURL(svg);
+                } catch (error) {
+                    fail(error);
+                }
+            },
+        });
+        return image;
+    }
+
+    ScreenshotImage.prototype = NativeImage.prototype;
+    const encodeURIComponentWithSvgData = (value) => {
+        if (typeof value === 'string' && value.startsWith('<svg') && value.includes('<foreignObject')) {
+            serializedSvg = value;
+            return svgMarker;
+        }
+
+        return nativeEncodeURIComponent(value);
+    };
+
+    // SB: html2canvas's unbounded percent-encoded SVG image load can stall indefinitely in Safari.
+    window.Image = ScreenshotImage;
+    window.encodeURIComponent = encodeURIComponentWithSvgData;
+    try {
+        return await html2canvas(surface, captureOptions);
+    } finally {
+        if (window.Image === ScreenshotImage) {
+            window.Image = NativeImage;
+        }
+        if (window.encodeURIComponent === encodeURIComponentWithSvgData) {
+            window.encodeURIComponent = nativeEncodeURIComponent;
+        }
+        document.querySelectorAll('.html2canvas-container').forEach(container => {
+            if (!existingCloneContainers.has(container)) {
+                container.remove();
+            }
+        });
+    }
 }
 
 async function renderMessageScreenshotCanvas(startId, endId) {
@@ -12210,7 +12328,7 @@ async function renderMessageScreenshotCanvas(startId, endId) {
             useCORS: true,
         };
 
-        return await html2canvas(surface, captureOptions);
+        return await renderMessageScreenshotWithBoundedSvg(html2canvas, surface, captureOptions);
     } finally {
         shell.remove();
     }
@@ -12316,6 +12434,11 @@ async function openMessageScreenshotDialog(messageId) {
         return;
     }
 
+    const previousDownload = messageScreenshotDownloadQueue;
+    let releaseDownload;
+    messageScreenshotDownloadQueue = new Promise(resolve => releaseDownload = resolve);
+    await previousDownload;
+
     try {
         await downloadMessageScreenshot(range.startId, range.endId);
         const successText = range.startId === range.endId
@@ -12325,6 +12448,8 @@ async function openMessageScreenshotDialog(messageId) {
     } catch (error) {
         console.error('Failed to create message screenshot', error);
         toastr.error(t`Couldn't create the screenshot. Check the browser console for details.`, t`Screenshot failed`);
+    } finally {
+        releaseDownload();
     }
 }
 

@@ -316,6 +316,24 @@ test.describe('message screenshots', () => {
         await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
         await dismissOnboardingIfPresent(page);
         await installScreenshotMessage(page, 'single screenshot oklch regression');
+        await page.evaluate(() => {
+            const imageSource = Object.getOwnPropertyDescriptor(window.HTMLImageElement.prototype, 'src');
+            if (!imageSource?.get || !imageSource.set) {
+                throw new Error('Image source descriptor unavailable');
+            }
+
+            window.messageScreenshotSvgDataCount = 0;
+            Object.defineProperty(window.HTMLImageElement.prototype, 'src', {
+                configurable: true,
+                get: imageSource.get,
+                set(value) {
+                    if (/^data:image\/svg\+xml.*;base64,/.test(String(value))) {
+                        window.messageScreenshotSvgDataCount++;
+                    }
+                    imageSource.set.call(this, value);
+                },
+            });
+        });
 
         const singleDownload = await exportScreenshotFromMessage(page, 0, 0, 0);
         expect(singleDownload.suggestedFilename()).toContain('message-0.png');
@@ -335,6 +353,7 @@ test.describe('message screenshots', () => {
         expect(companionMetaWidth).toBeGreaterThan(100);
         expect(redPixels).toBeLessThan(totalPixels * 0.01);
         expect(bluePixels).toBeLessThan(totalPixels * 0.01);
+        expect(await page.evaluate(() => window.messageScreenshotSvgDataCount)).toBeGreaterThan(0);
 
         const rangeDownload = await exportScreenshotFromMessage(page, 0, 0, 1);
         expect(rangeDownload.suggestedFilename()).toContain('messages-0-1.png');
@@ -378,5 +397,47 @@ test.describe('mobile message screenshots', () => {
         expect(width).toBeLessThanOrEqual(400);
         expect(width * height).toBeLessThanOrEqual(4_100_000);
         expect(height).toBeGreaterThan(8000);
+    });
+
+    test('reports a stalled foreign-object render instead of hanging', async ({ page }) => {
+        const screenshotErrors = [];
+        page.on('console', message => {
+            if (message.type() === 'error' && /screenshot/i.test(message.text())) {
+                screenshotErrors.push(message.text());
+            }
+        });
+
+        await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
+        await dismissOnboardingIfPresent(page);
+        await installScreenshotMessage(page, 'stalled mobile screenshot regression');
+        await page.evaluate(() => {
+            const imageSource = Object.getOwnPropertyDescriptor(window.HTMLImageElement.prototype, 'src');
+            if (!imageSource?.get || !imageSource.set) {
+                throw new Error('Image source descriptor unavailable');
+            }
+
+            Object.defineProperty(window.HTMLImageElement.prototype, 'src', {
+                configurable: true,
+                get: imageSource.get,
+                set(value) {
+                    if (!/^data:image\/svg\+xml.*;base64,/.test(String(value))) {
+                        imageSource.set.call(this, value);
+                    }
+                },
+            });
+
+            const nativeSetTimeout = window.setTimeout.bind(window);
+            window.setTimeout = (callback, timeout, ...args) => nativeSetTimeout(callback, timeout === 15000 ? 20 : timeout, ...args);
+        });
+
+        await page.locator('#chat .mes').first().locator('.mes_screenshot').dispatchEvent('click');
+        await page.locator('#message_screenshot_start_id').fill('0');
+        await page.locator('#message_screenshot_end_id').fill('0');
+        await page.locator('.message_screenshot_popup .popup-button-ok').dispatchEvent('click');
+
+        await expect(page.locator('.toast-error').filter({ hasText: 'Screenshot failed' })).toBeVisible({ timeout: 5000 });
+        expect(screenshotErrors).toHaveLength(1);
+        expect(await page.locator('.html2canvas-container').count()).toBe(0);
     });
 });
