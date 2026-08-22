@@ -7558,6 +7558,15 @@ body:not(.movingUI) .drawer-content.maximized {
     display: none !important;
 }
 
+/* Beats the #extensionsMenu>div:not(.extension_container) display rule without !important. */
+#extensionsMenu>#wand_group_speaker_controls {
+    display: none;
+}
+
+body.groupSpeakerControlsHidden #extensionsMenu>#wand_group_speaker_controls {
+    display: flex;
+}
+
 .group_typing_indicator {
     flex: 0 0 100%;
     width: 100%;
@@ -7615,8 +7624,8 @@ body:not(.movingUI) .drawer-content.maximized {
 @media screen and (max-width: 600px) {
     .group_speaker_controls {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 34px 34px;
-        grid-template-areas: "typing typing typing" "avatars greeting speak";
+        grid-template-columns: minmax(0, 1fr) 34px 34px 34px;
+        grid-template-areas: "typing typing typing typing" "avatars greeting speak hide";
         align-items: center;
         gap: 4px;
         padding: 4px 6px;
@@ -7660,7 +7669,8 @@ body:not(.movingUI) .drawer-content.maximized {
 
     .group_speaker_avatar span,
     #group_add_greeting span,
-    #group_speaker_now span {
+    #group_speaker_now span,
+    #group_speaker_hide span {
         display: none;
     }
 
@@ -7670,7 +7680,8 @@ body:not(.movingUI) .drawer-content.maximized {
     }
 
     #group_add_greeting,
-    #group_speaker_now {
+    #group_speaker_now,
+    #group_speaker_hide {
         width: 34px;
         min-width: 34px;
         max-width: 34px;
@@ -7691,15 +7702,20 @@ body:not(.movingUI) .drawer-content.maximized {
         grid-area: speak;
     }
 
+    #group_speaker_hide {
+        grid-area: hide;
+    }
+
 }
 
 @media screen and (max-width: 420px) {
     .group_speaker_controls {
-        grid-template-columns: minmax(0, 1fr) 30px 30px;
+        grid-template-columns: minmax(0, 1fr) 30px 30px 30px;
     }
 
     #group_add_greeting,
-    #group_speaker_now {
+    #group_speaker_now,
+    #group_speaker_hide {
         width: 30px;
         min-width: 30px;
         max-width: 30px;

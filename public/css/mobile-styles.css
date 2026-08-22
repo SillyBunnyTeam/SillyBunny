@@ -1930,8 +1930,8 @@
 
     .group_speaker_controls {
         display: grid !important;
-        grid-template-columns: minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px) !important;
-        grid-template-areas: "avatars greeting speak" !important;
+        grid-template-columns: minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px) !important;
+        grid-template-areas: "avatars greeting speak hide" !important;
         gap: 5px !important;
         align-items: center !important;
         min-height: calc(var(--sb-mobile-touch-target, 44px) + 8px) !important;
@@ -2010,12 +2010,14 @@
 
     .group_speaker_avatar span,
     #group_add_greeting span,
-    #group_speaker_now span {
+    #group_speaker_now span,
+    #group_speaker_hide span {
         display: none !important;
     }
 
     #group_add_greeting,
-    #group_speaker_now {
+    #group_speaker_now,
+    #group_speaker_hide {
         width: var(--sb-mobile-touch-target, 44px) !important;
         min-width: var(--sb-mobile-touch-target, 44px) !important;
         max-width: var(--sb-mobile-touch-target, 44px) !important;
@@ -2039,6 +2041,10 @@
 
     #group_speaker_now {
         grid-area: speak !important;
+    }
+
+    #group_speaker_hide {
+        grid-area: hide !important;
     }
 
     /* SillyBunny: Mobile-specific group member touch targets for Add Members screen */
