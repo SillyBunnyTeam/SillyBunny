@@ -243,6 +243,7 @@ async function runWithGroupMemberModelOverride(group, avatarId, callback) {
     }
 }
 
+const GROUP_SPEAKER_CONTROLS_HIDDEN_KEY = 'GroupSpeakerControlsHidden';
 let selectedGroupSpeakerAvatar = '';
 let groupSpeakerControlsInitialized = false;
 let activeGroupTypingName = '';
@@ -441,6 +442,15 @@ function setGroupTypingIndicator(characterName = '') {
     $('#group_speaker_controls').toggleClass('is-typing', Boolean(activeGroupTypingName));
 }
 
+function isGroupSpeakerControlsHidden() {
+    return accountStorage.getItem(GROUP_SPEAKER_CONTROLS_HIDDEN_KEY) === 'true';
+}
+
+function setGroupSpeakerControlsHidden(hidden) {
+    accountStorage.setItem(GROUP_SPEAKER_CONTROLS_HIDDEN_KEY, String(Boolean(hidden)));
+    updateGroupSpeakerControls();
+}
+
 function updateGroupSpeakerControls() {
     const container = $('#group_speaker_controls');
     if (!container.length) {
@@ -449,8 +459,13 @@ function updateGroupSpeakerControls() {
 
     const group = selected_group ? groups.find(x => x.id === selected_group) : null;
     const members = getGroupEnabledMembers(group);
-    container.toggleClass('displayNone', !group || members.length === 0);
-    if (!group || members.length === 0) {
+    const isAvailable = Boolean(group) && members.length > 0;
+    const isHidden = isGroupSpeakerControlsHidden();
+    container.toggleClass('displayNone', !isAvailable || isHidden);
+    // The wand entry is injected later than this runs, so gate it with a body class instead of a direct toggle.
+    // Keyed on the hidden flag alone: the way back must exist whenever the bar is hidden.
+    document.body.classList.toggle('groupSpeakerControlsHidden', isHidden);
+    if (!isAvailable) {
         clearSelectedGroupSpeaker();
         setGroupTypingIndicator('');
         groupSpeakerAvatarRenderKey = '';
@@ -524,6 +539,8 @@ function initGroupSpeakerControls() {
     });
 
     container.on('click', '#group_add_greeting', addSelectedGroupGreeting);
+    container.on('click', '#group_speaker_hide', () => setGroupSpeakerControlsHidden(true));
+    $(document).on('click', '#wand_group_speaker_controls', () => setGroupSpeakerControlsHidden(false));
 }
 
 export const group_activation_strategy = {
