@@ -92,8 +92,10 @@ describe('tooling UI hydration wiring', () => {
         expect(source).toContain('foreignObjectRendering: true');
         expect(source).toContain('!element.contains(surface) && !surface.contains(element)');
         expect(source).toContain("clonedDocument.documentElement.style.backgroundColor = 'transparent'");
-        expect(source).toContain('x: -bounds.left');
-        expect(source).toContain('y: -bounds.top');
+        expect(source).toContain('clonedDocument.body.replaceChildren(clonedSurface)');
+        expect(source).not.toContain('getBoundingClientRect()');
+        expect(source).not.toContain('x:');
+        expect(source).not.toContain('y:');
         expect(source).not.toContain('normalizeMessageScreenshotStyles');
         expect(scriptSource).not.toContain('normalizeColorFunctionString');
     });

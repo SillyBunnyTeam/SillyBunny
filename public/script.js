@@ -12150,20 +12150,22 @@ async function renderMessageScreenshotCanvas(startId, endId) {
         await waitForMessageScreenshotAssets(surface);
         await inlineMessageScreenshotImages(surface);
 
-        const bounds = surface.getBoundingClientRect();
         return await html2canvas(surface, {
             backgroundColor: null,
             foreignObjectRendering: true,
             ignoreElements: element => !element.contains(surface) && !surface.contains(element),
             logging: false,
-            onclone: clonedDocument => {
+            onclone: (clonedDocument, clonedSurface) => {
                 clonedDocument.documentElement.style.backgroundColor = 'transparent';
-                clonedDocument.body.style.backgroundColor = 'transparent';
+                clonedDocument.body.style.cssText = 'margin: 0; background: transparent;';
+                clonedSurface.style.position = 'relative';
+                clonedSurface.style.inset = '0';
+                clonedSurface.style.margin = '0';
+                clonedSurface.style.transform = 'none';
+                clonedDocument.body.replaceChildren(clonedSurface);
             },
             scale: Math.max(1, Math.min(window.devicePixelRatio || 1, 2)),
             useCORS: true,
-            x: -bounds.left,
-            y: -bounds.top,
         });
     } finally {
         shell.remove();
