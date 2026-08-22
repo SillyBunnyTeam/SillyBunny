@@ -466,17 +466,10 @@ function ensureDrawer() {
     // Strongest key for the fork's settings-drawer dedupe guard.
     drawer.dataset.extensionName = 'SillyBunny-Debugger';
 
-    const toggle = el('button', 'inline-drawer-toggle inline-drawer-header');
-    toggle.type = 'button';
-    toggle.setAttribute('aria-controls', DRAWER_CONTENT_ID);
-    toggle.setAttribute('aria-expanded', 'false');
-    toggle.addEventListener('click', () => {
-        toggle.setAttribute('aria-expanded', String(toggle.getAttribute('aria-expanded') !== 'true'));
-    });
+    // Same markup as every other extension drawer, so theme rules for headers reach it too.
+    const toggle = el('div', 'inline-drawer-toggle inline-drawer-header');
     toggle.appendChild(el('b', undefined, 'Bunny Debugger'));
-    const toggleIcon = el('span', 'inline-drawer-icon fa-solid fa-circle-chevron-down down');
-    toggleIcon.setAttribute('aria-hidden', 'true');
-    toggle.appendChild(toggleIcon);
+    toggle.appendChild(el('div', 'inline-drawer-icon fa-solid fa-circle-chevron-down down'));
     drawer.appendChild(toggle);
 
     const content = el('div', 'inline-drawer-content');
@@ -522,13 +515,11 @@ function ensureMenuItem() {
         return;
     }
 
-    const item = el('button', 'list-group-item flex-container flexGap5 interactable');
+    // Same markup as the other wand entries; a <button> shrinks when the menu overflows the screen.
+    const item = el('div', 'list-group-item flex-container flexGap5 interactable');
     item.id = MENU_ITEM_ID;
-    item.type = 'button';
     item.title = 'Open the in-app debugger console';
-    const icon = el('span', 'fa-solid fa-bug extensionsMenuExtensionButton');
-    icon.setAttribute('aria-hidden', 'true');
-    item.append(icon, el('span', undefined, 'Debugger'));
+    item.append(el('div', 'fa-solid fa-bug extensionsMenuExtensionButton'), el('span', undefined, 'Debugger'));
     item.addEventListener('click', () => openDebugger());
     host.appendChild(item);
 }
