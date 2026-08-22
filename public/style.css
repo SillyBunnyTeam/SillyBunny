@@ -5129,6 +5129,10 @@ input[type="range"]::-webkit-slider-thumb {
     padding-bottom: 0 !important;
 }
 
+.sb-message-screenshot-surface .mes_reasoning_header {
+    flex: 1;
+}
+
 .sb-message-screenshot-surface :is(.mes_button, .mes_buttons, .extraMesButtons, .extraMesButtonsHint, .mes_edit_buttons, .mes_reasoning_actions, .for_checkbox, .del_checkbox, .swipe_left, .swipe_right, .swipeRightBlock, .swipes-counter, .right_menu_button, .code-copy) {
     display: none !important;
 }

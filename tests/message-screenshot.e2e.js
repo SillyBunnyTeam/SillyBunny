@@ -49,10 +49,46 @@ async function installScreenshotMessage(page, messageText) {
         }
 
         messageTextElement.style.color = 'oklch(70% 0.2 140)';
-        messageTextElement.closest('.mes_block')?.style.setProperty('background-color', 'color(srgb 0.156863 0.164706 0.196078)', 'important');
+        const messageElement = messageTextElement.closest('.mes');
+        const messageBlock = messageTextElement.closest('.mes_block');
+        if (!messageElement || !messageBlock) {
+            throw new Error('Screenshot message layout not found');
+        }
+
+        messageElement.classList.add('message-screenshot-grid-probe', 'reasoning');
+        messageBlock.style.setProperty('background-color', 'color(srgb 0.156863 0.164706 0.196078)', 'important');
+
+        const reasoningDetails = document.createElement('details');
+        reasoningDetails.className = 'mes_reasoning_details';
+        reasoningDetails.open = true;
+        const reasoningSummary = document.createElement('summary');
+        reasoningSummary.className = 'mes_reasoning_summary flex-container';
+        const reasoningHeaderBlock = document.createElement('div');
+        reasoningHeaderBlock.className = 'mes_reasoning_header_block flex-container';
+        const reasoningHeader = document.createElement('div');
+        reasoningHeader.className = 'mes_reasoning_header flex-container';
+        reasoningHeader.style.backgroundColor = 'rgb(0 255 255)';
+        reasoningHeader.textContent = 'Thought for 3 minutes';
+        reasoningHeaderBlock.appendChild(reasoningHeader);
+        reasoningSummary.appendChild(reasoningHeaderBlock);
+        const reasoningText = document.createElement('div');
+        reasoningText.className = 'mes_reasoning';
+        reasoningText.textContent = 'Reasoning width probe.';
+        reasoningDetails.append(reasoningSummary, reasoningText);
+        messageBlock.prepend(reasoningDetails);
 
         const reflowStyle = document.createElement('style');
-        reflowStyle.textContent = '.message-screenshot-reflow-probe::first-line { font-size: 10px; }';
+        reflowStyle.textContent = `
+            .message-screenshot-grid-probe {
+                contain: content !important;
+                display: grid !important;
+                grid-template-columns: 100px minmax(0, 1fr) !important;
+                grid-template-rows: auto;
+            }
+            .message-screenshot-grid-probe > .mesAvatarWrapper { grid-area: 1 / 1 !important; }
+            .message-screenshot-grid-probe > .mes_block { grid-area: 1 / 2 !important; }
+            .message-screenshot-reflow-probe::first-line { font-size: 4px; }
+        `;
         document.head.appendChild(reflowStyle);
 
         const overlapProbe = document.createElement('div');
@@ -76,7 +112,7 @@ async function installScreenshotMessage(page, messageText) {
         overlapProbe.append(quoteLine, followingLine);
 
         const reflowProbe = document.createElement('div');
-        reflowProbe.style.cssText = 'width:485px;font:500 14px/24px Figtree,sans-serif;';
+        reflowProbe.style.cssText = 'width:485px;font:500 24px/24px Figtree,sans-serif;';
         const reflowLine = document.createElement('p');
         reflowLine.style.margin = '0';
         reflowLine.className = 'message-screenshot-reflow-probe';
@@ -89,12 +125,26 @@ async function installScreenshotMessage(page, messageText) {
         reflowMarker.style.cssText = followingLine.style.cssText;
         reflowMarker.textContent = 'Following reflow line.';
         reflowProbe.append(reflowLine, reflowMarker);
+        for (let index = 0; index < 6; index++) {
+            const extraReflowLine = document.createElement('p');
+            extraReflowLine.className = 'message-screenshot-reflow-probe';
+            extraReflowLine.style.margin = '0';
+            extraReflowLine.textContent = 'This source line fits narrowly but must wrap after foreign-object font reflow.';
+            reflowProbe.appendChild(extraReflowLine);
+        }
         messageTextElement.append(overlapProbe, reflowProbe);
+
+        const captureEndMarker = document.createElement('div');
+        captureEndMarker.style.cssText = 'width:200px;height:12px;background:rgb(255 0 255);';
+        messageBlock.appendChild(captureEndMarker);
 
         const assistantTextElement = document.querySelector('#chat .mes[mesid="1"] .mes_text');
         if (assistantTextElement) {
             assistantTextElement.style.color = 'lab(60% 20 -30)';
         }
+
+        await new Promise(resolve => window.requestAnimationFrame(resolve));
+        messageElement.style.gridTemplateRows = window.getComputedStyle(messageElement).gridTemplateRows;
     }, messageText);
 }
 
@@ -115,14 +165,19 @@ async function readScreenshotPixelStats(page, download) {
 
         const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
         let darkPixels = 0;
+        let endMarkerPixels = 0;
+        let endMarkerWidth = 0;
         let markerPixels = 0;
         let overlappingColorRows = 0;
+        let reasoningLeft = canvas.width;
+        let reasoningRight = -1;
         let redPixels = 0;
         let bluePixels = 0;
 
         for (let y = 0; y < canvas.height; y++) {
             let hasGradient = false;
             let hasMarker = false;
+            let markerRun = 0;
             for (let x = 0; x < canvas.width; x++) {
                 const index = (y * canvas.width + x) * 4;
                 const red = pixels[index];
@@ -144,11 +199,23 @@ async function readScreenshotPixelStats(page, download) {
                     markerPixels++;
                     hasMarker = true;
                 }
+                if (alpha > 200 && red > 220 && green < 30 && blue > 220) {
+                    endMarkerPixels++;
+                    markerRun++;
+                    endMarkerWidth = Math.max(endMarkerWidth, markerRun);
+                } else {
+                    markerRun = 0;
+                }
+                if (alpha > 200 && red < 30 && green > 220 && blue > 220) {
+                    reasoningLeft = Math.min(reasoningLeft, x);
+                    reasoningRight = Math.max(reasoningRight, x);
+                }
             }
             if (hasGradient && hasMarker) overlappingColorRows++;
         }
 
-        return { bluePixels, darkPixels, markerPixels, overlappingColorRows, redPixels, totalPixels: canvas.width * canvas.height };
+        const reasoningWidth = reasoningRight >= reasoningLeft ? reasoningRight - reasoningLeft + 1 : 0;
+        return { bluePixels, darkPixels, endMarkerPixels, endMarkerWidth, markerPixels, overlappingColorRows, reasoningWidth, redPixels, totalPixels: canvas.width * canvas.height };
     }, `data:image/png;base64,${imageData.toString('base64')}`);
 }
 
@@ -190,12 +257,15 @@ test.describe('message screenshots', () => {
 
         const singleDownload = await exportScreenshotFromMessage(page, 0, 0, 0);
         expect(singleDownload.suggestedFilename()).toContain('message-0.png');
-        const { bluePixels, darkPixels, markerPixels, overlappingColorRows, redPixels, totalPixels } = await readScreenshotPixelStats(page, singleDownload);
+        const { bluePixels, darkPixels, endMarkerPixels, endMarkerWidth, markerPixels, overlappingColorRows, reasoningWidth, redPixels, totalPixels } = await readScreenshotPixelStats(page, singleDownload);
         expect(darkPixels).toBeGreaterThan(totalPixels * 0.2);
         expect(redPixels).toBeGreaterThan(10);
         expect(bluePixels).toBeGreaterThan(10);
+        expect(endMarkerPixels).toBeGreaterThan(1000);
+        expect(endMarkerWidth).toBeGreaterThan(150);
         expect(markerPixels).toBeGreaterThan(10);
         expect(overlappingColorRows).toBe(0);
+        expect(reasoningWidth).toBeGreaterThan(250);
         expect(redPixels).toBeLessThan(totalPixels * 0.01);
         expect(bluePixels).toBeLessThan(totalPixels * 0.01);
 

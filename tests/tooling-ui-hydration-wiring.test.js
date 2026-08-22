@@ -5,6 +5,7 @@ import path from 'node:path';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const scriptSource = readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
+const styleSource = readFileSync(path.join(repoRoot, 'public', 'style.css'), 'utf8');
 
 function getFunctionSource(name) {
     const markers = [`function ${name}(`, `async function ${name}(`];
@@ -94,6 +95,7 @@ describe('tooling UI hydration wiring', () => {
         expect(source).toContain("clonedDocument.documentElement.style.backgroundColor = 'transparent'");
         expect(source).toContain("clonedSurface.style.height = 'auto'");
         expect(source).toContain(':is(.mes_text, .mes_reasoning) :is(p, blockquote, li, ul, ol, .dc-gradient-text)');
+        expect(source).toContain("element.style.gridTemplateRows = 'auto'");
         expect(source).toContain("clonedSurface.prepend(...clonedDocument.body.querySelectorAll(':scope > style'))");
         expect(source).toContain('clonedDocument.body.replaceChildren(clonedSurface)');
         expect(source).not.toContain('getBoundingClientRect()');
@@ -101,6 +103,10 @@ describe('tooling UI hydration wiring', () => {
         expect(source).not.toContain('y:');
         expect(source).not.toContain('normalizeMessageScreenshotStyles');
         expect(scriptSource).not.toContain('normalizeColorFunctionString');
+    });
+
+    test('stretches reasoning headers only inside screenshot surfaces', () => {
+        expect(styleSource).toContain('.sb-message-screenshot-surface .mes_reasoning_header {\n    flex: 1;\n}');
     });
 
     test('inlines screenshot images for foreign-object rendering', () => {

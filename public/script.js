@@ -12162,11 +12162,12 @@ async function renderMessageScreenshotCanvas(startId, endId) {
                 clonedSurface.style.inset = '0';
                 clonedSurface.style.margin = '0';
                 clonedSurface.style.transform = 'none';
-                // Foreign-object fonts can reflow after html2canvas freezes computed block heights.
+                // Foreign-object fonts can reflow after html2canvas freezes computed heights and grid tracks.
                 clonedSurface.style.height = 'auto';
                 clonedSurface
                     .querySelectorAll('.mes, .mes_block, .mes_text, .mes_reasoning, :is(.mes_text, .mes_reasoning) :is(p, blockquote, li, ul, ol, .dc-gradient-text)')
                     .forEach(element => element.style.height = 'auto');
+                clonedSurface.querySelectorAll('.mes').forEach(element => element.style.gridTemplateRows = 'auto');
                 // Keep html2canvas's pseudo-element suppression inside the serialized subtree.
                 clonedSurface.prepend(...clonedDocument.body.querySelectorAll(':scope > style'));
                 clonedDocument.body.replaceChildren(clonedSurface);
