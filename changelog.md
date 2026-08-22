@@ -44,6 +44,7 @@
 - PR #787 (2026-08-22) `feat(group_chat): add a hide and unhide button/option for the group chat-specific bottom bar`
 - PR #788 (2026-08-22) `fix(ui): remove the extra height on wand menu entries added as buttons`
 - PR #789 (2026-08-22) `fix(ui): prevent overflow on Group Controls in mobile`
+- PR #790 (2026-08-22) `fix(ui): render newlines in scenario notes in persona, add full screen button, and fix button spacing`
 
 ## v1.7.0
 
