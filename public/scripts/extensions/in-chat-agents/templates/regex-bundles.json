@@ -54,7 +54,7 @@
     {
       "id": "79104497-032b-4d27-9ab2-df2a8f5e5bfd",
       "scriptName": "Replace NPC Reference",
-      "findRegex": "/\\[NPC:REF\\|([^\\|]+)\\|([^\\|]+)\\|([^\\]]+)\\]/g",
+      "findRegex": "/\\[NPC:REF\\|([^\\|]+)\\|([^\\|]+)\\|([^\\]]+)\\](?:\\s*\\[\\/NPC\\])?/g",
       "replaceString": "<span style=\"display:inline-block;padding:4px 9px;background:linear-gradient(90deg,rgba(52,58,78,0.85),rgba(139,233,253,0.1));border-radius:999px;font-size:9px;color:#a7f3ff;border:1px solid rgba(139,233,253,0.18);margin:2px 4px 2px 0\">$1 <span style=\"color:#7d8cc8\">›</span> <span style=\"color:#ffd099\">$2</span> <span style=\"color:#7d8cc8\">›</span> <span style=\"color:#90ffb4\">$3</span></span>",
       "trimStrings": [],
       "placement": [
@@ -88,7 +88,7 @@
     {
       "id": "0766e9f5-7d1c-4bb8-ab43-e047a3c82794",
       "scriptName": "Replace NPC Relationship",
-      "findRegex": "/\\[NPC:REL\\|([^\\|]+)\\|([^\\]]+)\\]/g",
+      "findRegex": "/\\[NPC:REL\\|([^\\|]+)\\|([^\\]]+)\\](?:\\s*\\[\\/NPC\\])?/g",
       "replaceString": "<div style=\"display:inline-block;padding:5px 10px;background:linear-gradient(90deg,rgba(255,85,85,0.16),rgba(255,184,108,0.08));border-radius:999px;font-size:9px;border:1px solid rgba(255,85,85,0.28);margin:4px 0;color:#f8f8f2\"><span style=\"color:#ff7373\">⚡</span> <span>$1:</span> <span style=\"color:#ffd099\">$2</span></div>",
       "trimStrings": [],
       "placement": [
