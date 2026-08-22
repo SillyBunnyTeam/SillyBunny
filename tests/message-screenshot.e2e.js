@@ -273,6 +273,14 @@ async function readScreenshotPixelStats(page, download) {
     }, `data:image/png;base64,${imageData.toString('base64')}`);
 }
 
+async function readScreenshotDimensions(download) {
+    const bytes = await readFile(await download.path());
+    return {
+        width: bytes.readUInt32BE(16),
+        height: bytes.readUInt32BE(20),
+    };
+}
+
 async function completeScreenshotExport(page, startId, endId) {
     await page.locator('#message_screenshot_start_id').fill(String(startId));
     await page.locator('#message_screenshot_end_id').fill(String(endId));
@@ -335,5 +343,32 @@ test.describe('message screenshots', () => {
         expect(wandDownload.suggestedFilename()).toContain('message-1.png');
 
         expect(screenshotErrors).toEqual([]);
+    });
+});
+
+test.describe('mobile message screenshots', () => {
+    test.use({
+        deviceScaleFactor: 3,
+        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+        viewport: { width: 390, height: 844 },
+    });
+
+    test('bounds long screenshot raster memory on high-DPR phones', async ({ page }) => {
+        await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
+        await dismissOnboardingIfPresent(page);
+        await installScreenshotMessage(page, 'mobile screenshot raster budget regression');
+        await page.locator('#chat .mes[mesid="0"] .mes_text').evaluate(element => {
+            const spacer = document.createElement('div');
+            spacer.style.height = '11000px';
+            element.appendChild(spacer);
+        });
+
+        const download = await exportScreenshotFromMessage(page, 0, 0, 0);
+        const { width, height } = await readScreenshotDimensions(download);
+
+        expect(width).toBeLessThanOrEqual(400);
+        expect(width * height).toBeLessThanOrEqual(4_100_000);
+        expect(height).toBeGreaterThan(8000);
     });
 });

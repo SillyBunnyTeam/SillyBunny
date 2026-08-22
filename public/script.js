@@ -12162,8 +12162,11 @@ async function renderMessageScreenshotCanvas(startId, endId) {
         await waitForMessageScreenshotAssets(surface);
         await inlineMessageScreenshotImages(surface);
         const iconFontStyle = await getMessageScreenshotIconFontStyle();
+        const mobileCapture = isMobile();
+        const preferredScale = mobileCapture ? 1 : Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+        const pixelBudget = mobileCapture ? 4_000_000 : 16_000_000;
 
-        return await html2canvas(surface, {
+        const captureOptions = {
             backgroundColor: null,
             foreignObjectRendering: true,
             ignoreElements: element => !element.contains(surface) && !surface.contains(element),
@@ -12192,10 +12195,15 @@ async function renderMessageScreenshotCanvas(startId, endId) {
                 // Keep html2canvas's pseudo-element suppression inside the serialized subtree.
                 clonedSurface.prepend(...clonedDocument.body.querySelectorAll(':scope > style'));
                 clonedDocument.body.replaceChildren(clonedSurface);
+                // SB: html2canvas resolves scale after onclone, when the reflowed capture size is known.
+                const captureArea = Math.max(1, clonedSurface.scrollWidth * clonedSurface.scrollHeight);
+                captureOptions.scale = Math.min(preferredScale, Math.sqrt(pixelBudget / captureArea));
             },
-            scale: Math.max(1, Math.min(window.devicePixelRatio || 1, 2)),
+            scale: preferredScale,
             useCORS: true,
-        });
+        };
+
+        return await html2canvas(surface, captureOptions);
     } finally {
         shell.remove();
     }
@@ -12214,6 +12222,8 @@ async function downloadMessageScreenshot(startId, endId) {
         }, 'image/png');
     });
 
+    canvas.width = 0;
+    canvas.height = 0;
     download(blob, buildMessageScreenshotFilename(startId, endId), 'image/png');
 }
 
