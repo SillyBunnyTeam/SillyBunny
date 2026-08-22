@@ -359,9 +359,17 @@ test.describe('mobile message screenshots', () => {
         await dismissOnboardingIfPresent(page);
         await installScreenshotMessage(page, 'mobile screenshot raster budget regression');
         await page.locator('#chat .mes[mesid="0"] .mes_text').evaluate(element => {
+            const originalFetch = window.fetch.bind(window);
+            window.fetch = (input, init) => String(input).includes('screenshot-stall.png')
+                ? new Promise((_, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true }))
+                : originalFetch(input, init);
+            Object.defineProperty(document.fonts, 'ready', { configurable: true, value: new Promise(() => {}) });
+
             const spacer = document.createElement('div');
             spacer.style.height = '11000px';
-            element.appendChild(spacer);
+            const stalledImage = document.createElement('img');
+            stalledImage.src = '/screenshot-stall.png';
+            element.append(spacer, stalledImage);
         });
 
         const download = await exportScreenshotFromMessage(page, 0, 0, 0);

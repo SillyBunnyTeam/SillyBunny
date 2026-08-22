@@ -12065,25 +12065,32 @@ async function waitForMessageScreenshotAssets(container) {
 }
 
 async function inlineMessageScreenshotImages(container) {
-    await Promise.all(Array.from(container.querySelectorAll('img')).map(async (image) => {
-        const source = image.currentSrc || image.src;
-        if (!source || isDataURL(source)) {
-            return;
-        }
+    const abortController = new AbortController();
+    const abortTimer = setTimeout(() => abortController.abort(), 2000);
 
-        try {
-            const response = await fetch(source);
-            if (!response.ok) {
+    try {
+        await Promise.all(Array.from(container.querySelectorAll('img')).map(async (image) => {
+            const source = image.currentSrc || image.src;
+            if (!source || isDataURL(source)) {
                 return;
             }
 
-            image.srcset = '';
-            image.src = await getBase64Async(await response.blob());
-            await image.decode?.().catch(() => undefined);
-        } catch {
-            // Keep the original URL when the asset does not permit CORS fetching.
-        }
-    }));
+            try {
+                const response = await fetch(source, { signal: abortController.signal });
+                if (!response.ok) {
+                    return;
+                }
+
+                image.srcset = '';
+                image.src = await getBase64Async(await response.blob());
+                await image.decode?.().catch(() => undefined);
+            } catch {
+                // Keep the original URL when the asset does not permit CORS fetching.
+            }
+        }));
+    } finally {
+        clearTimeout(abortTimer);
+    }
 }
 
 let messageScreenshotIconFontStylePromise = null;
@@ -12155,7 +12162,7 @@ async function renderMessageScreenshotCanvas(startId, endId) {
         const html2canvas = await getMessageScreenshotLibrary();
 
         if (document.fonts?.ready) {
-            await document.fonts.ready;
+            await Promise.race([document.fonts.ready, delay(2000)]);
         }
 
         await delay(50);

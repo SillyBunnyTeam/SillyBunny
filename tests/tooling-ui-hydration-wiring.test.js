@@ -91,6 +91,7 @@ describe('tooling UI hydration wiring', () => {
         const source = getFunctionSource('renderMessageScreenshotCanvas');
 
         expect(source).toContain('foreignObjectRendering: true');
+        expect(source).toContain('await Promise.race([document.fonts.ready, delay(2000)])');
         expect(source).toContain('!element.contains(surface) && !surface.contains(element)');
         expect(source).toContain("clonedDocument.documentElement.style.backgroundColor = 'transparent'");
         expect(source).toContain("clonedSurface.style.height = 'auto'");
@@ -116,9 +117,11 @@ describe('tooling UI hydration wiring', () => {
         const source = getFunctionSource('inlineMessageScreenshotImages');
 
         expect(source).toContain("container.querySelectorAll('img')");
-        expect(source).toContain('await fetch(source)');
+        expect(source).toContain('setTimeout(() => abortController.abort(), 2000)');
+        expect(source).toContain('await fetch(source, { signal: abortController.signal })');
         expect(source).toContain('await getBase64Async(await response.blob())');
         expect(source).toContain("image.srcset = ''");
+        expect(source).toContain('clearTimeout(abortTimer)');
     });
 
     test('embeds the local icon font for foreign-object rendering', () => {
