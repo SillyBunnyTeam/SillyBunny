@@ -12337,7 +12337,10 @@ function convertModernColorToken(token) {
 
         let linear;
         if (space === 'srgb') {
-            linear = values.map(value => clamp(value, 0, 1));
+            const [red, green, blue] = values.map(value => Math.round(clamp(value, 0, 1) * 255));
+            return alpha >= 1
+                ? `rgb(${red}, ${green}, ${blue})`
+                : `rgba(${red}, ${green}, ${blue}, ${alpha})`;
         } else if (space === 'srgb-linear') {
             linear = values.map(value => clamp(value, 0, 1));
         } else if (space === 'xyz-d50') {
