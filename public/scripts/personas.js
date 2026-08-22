@@ -1251,6 +1251,25 @@ async function showPersonaAppendixEditor(appendixId = '') {
         },
     );
 
+    // Popup custom inputs are built without an expand affordance, so wire the shared
+    // .editor_maximize handler to the note body the way the Persona Description field does.
+    const noteField = popup.dlg.querySelector('#persona_appendix_description_input');
+    const noteLabel = noteField?.previousElementSibling;
+    if (noteLabel) {
+        noteLabel.classList.add('persona-appendix-editor-label');
+        const maximize = document.createElement('button');
+        maximize.type = 'button';
+        maximize.className = 'menu_button menu_button_icon editor_maximize margin0';
+        maximize.dataset.for = 'persona_appendix_description_input';
+        maximize.title = t`Expand the editor`;
+        maximize.setAttribute('aria-label', t`Expand the editor`);
+        const maximizeIcon = document.createElement('i');
+        maximizeIcon.className = 'fa-solid fa-maximize';
+        maximizeIcon.setAttribute('aria-hidden', 'true');
+        maximize.append(maximizeIcon);
+        noteLabel.append(maximize);
+    }
+
     const result = await popup.show();
     if (result !== POPUP_RESULT.AFFIRMATIVE) {
         return;
