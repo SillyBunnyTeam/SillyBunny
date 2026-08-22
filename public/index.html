@@ -6673,7 +6673,8 @@
                             <div id="spoiler_free_desc" class="flex-container flexFlowColumn flexNoGap sb-creator-notes-compact sb-character-creator-notes-preview">
                                 <div id="creators_notes_div" class="title_restorable flexGap5 wide100p sb-character-creator-notes-preview-title">
                                     <span class="flex1" data-i18n="Creator's Notes">Creator's Notes</span>
-                                    <button type="button" class="menu_button menu_button_icon editor_maximize margin0" data-for="creator_notes_textarea" title="Expand the editor" aria-label="Expand the editor" data-i18n="[title]Expand the editor;[aria-label]Expand the editor">
+                                    <!-- SillyBunny: this sits beside the rendered preview, so it opens the formatted notes rather than the raw textarea value; the editor's own .editor_maximize in Char Info still expands the source. -->
+                                    <button type="button" id="sb_creator_notes_maximize" class="menu_button menu_button_icon margin0" title="Expand the editor" aria-label="Expand the editor" data-i18n="[title]Expand the editor;[aria-label]Expand the editor">
                                         <i class="fa-solid fa-maximize" aria-hidden="true"></i>
                                     </button>
                                 </div>

@@ -6049,6 +6049,15 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     padding-inline-end: 4px;
 }
 
+.sb-creator-notes-fullscreen {
+    width: 100%;
+    height: 100%;
+    /* The popup centres its text; the preview does not, and notes carry their own alignment. */
+    text-align: start;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
 #right-nav-panel :is(#creator_notes_textarea, #tags_textarea) {
     min-height: 5.5rem;
     max-height: 7.5rem;
