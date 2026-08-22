@@ -46,6 +46,7 @@
 - PR #789 (2026-08-22) `fix(ui): prevent overflow on Group Controls in mobile`
 - PR #790 (2026-08-22) `fix(ui): render newlines in scenario notes in persona, add full screen button, and fix button spacing`
 - PR #791 (2026-08-22) `fix(ui): Creator Notes actually show the rendered text as is`
+- PR #792 (2026-08-22) `fix(ica): normalise full screen buttons`
 
 ## v1.7.0
 
