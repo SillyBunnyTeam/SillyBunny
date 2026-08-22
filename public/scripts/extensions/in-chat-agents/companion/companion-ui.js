@@ -4,6 +4,7 @@ import { encodeStyleTags, decodeStyleTags } from '../../../chats.js';
 import { eventSource, event_types } from '../../../events.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
 import { escapeHtml } from '../../../utils.js';
+import { attachTextareaFullscreen } from '../textarea-fullscreen.js';
 import {
     areAgentsGloballyEnabled,
     getAgentById,
@@ -755,6 +756,7 @@ export async function editCompanionResult(messageIndex, agentId, message, result
             <textarea class="text_pole textarea_compact" rows="12">${escapeHtml(result?.content ?? '')}</textarea>
         </div>
     `);
+    attachTextareaFullscreen(editor);
     const popupResult = await new Popup(editor, POPUP_TYPE.CONFIRM, '', {
         okButton: 'Save Note',
         cancelButton: 'Cancel',

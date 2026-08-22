@@ -6,6 +6,7 @@ import { renderExtensionTemplateAsync, getContext } from '../../extensions.js';
 import { saveSettingsDebounced } from '../../../script.js';
 import { accountStorage } from '../../util/AccountStorage.js';
 import { escapeHtml } from '../../utils.js';
+import { attachTextareaFullscreen } from './textarea-fullscreen.js';
 import { world_names, loadWorldInfo } from '../../world-info.js';
 import { isAgentEnabledForCurrentScope, isPathfinderSubmoduleEnabled, persistAgentGlobalSettings, saveAgent, setAgentEnabledForCurrentScope } from './agent-store.js';
 import {
@@ -336,6 +337,7 @@ export async function openPathfinderSettings(agent) {
     updateModeCardStates();
     renderRetrievalLog();
     renderSummaryMemoryEditor();
+    attachTextareaFullscreen(settingsEl);
 
     return settingsEl;
 }

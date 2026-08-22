@@ -97,7 +97,7 @@ import { getCompanionReferenceIds } from './companion/companion-shared.js';
 import { initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';
 import { configureCompanionDashboard, initCompanionWandMenuItem, openCompanionDashboard } from './companion/companion-dashboard.js';
 import { configureCompanionPanel, initCompanionPanel, refreshCompanionPanel, updateCompanionPanelHandleVisibility } from './companion/companion-panel.js';
-import { attachTextareaFullscreen, closeActiveTextareaFullscreen } from './textarea-fullscreen.js';
+import { attachTextareaFullscreen } from './textarea-fullscreen.js';
 
 const MODULE_NAME = 'in-chat-agents';
 const PATHFINDER_EXTENSIONS_HOST_ID = 'extension_settings_in_chat_agents_pathfinder';
@@ -2816,7 +2816,6 @@ async function openRegexScriptEditor(existingScript = null) {
         wide: true,
         large: true,
     }).show();
-    closeActiveTextareaFullscreen();
 
     if (result !== POPUP_RESULT.AFFIRMATIVE) {
         return null;
@@ -3556,7 +3555,6 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
             cancelButton: 'Cancel',
             wide: true,
         }).show();
-        closeActiveTextareaFullscreen();
 
         if (makerResult !== POPUP_RESULT.AFFIRMATIVE) {
             return;
@@ -3767,7 +3765,6 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         large: true,
     }).show();
 
-    closeActiveTextareaFullscreen();
     document.body.classList.remove('ica--editor-fullscreen-active');
 
     if (result !== POPUP_RESULT.AFFIRMATIVE) return;
