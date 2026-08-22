@@ -12162,6 +12162,8 @@ async function renderMessageScreenshotCanvas(startId, endId) {
                 clonedSurface.style.inset = '0';
                 clonedSurface.style.margin = '0';
                 clonedSurface.style.transform = 'none';
+                // Keep html2canvas's pseudo-element suppression inside the serialized subtree.
+                clonedSurface.prepend(...clonedDocument.body.querySelectorAll(':scope > style'));
                 clonedDocument.body.replaceChildren(clonedSurface);
             },
             scale: Math.max(1, Math.min(window.devicePixelRatio || 1, 2)),
