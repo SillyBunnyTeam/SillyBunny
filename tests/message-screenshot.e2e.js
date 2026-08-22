@@ -52,7 +52,10 @@ async function installScreenshotMessage(page, messageText) {
         messageTextElement.closest('.mes_block')?.style.setProperty('background-color', 'color(srgb 0.156863 0.164706 0.196078)', 'important');
 
         const gradientSpan = document.createElement('span');
-        gradientSpan.style.backgroundImage = 'linear-gradient(90deg, color(display-p3 1 0 0), color(xyz-d65 0.1 0.4 0.2))';
+        gradientSpan.style.display = 'inline-block';
+        gradientSpan.style.backgroundImage = 'linear-gradient(90deg, color(display-p3 1 0 0), color(display-p3 0 0 1))';
+        gradientSpan.style.backgroundRepeat = 'no-repeat';
+        gradientSpan.style.backgroundSize = '100% 100%';
         gradientSpan.style.webkitBackgroundClip = 'text';
         gradientSpan.style.backgroundClip = 'text';
         gradientSpan.style.webkitTextFillColor = 'transparent';
@@ -84,6 +87,7 @@ async function readScreenshotPixelStats(page, download) {
         const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
         let darkPixels = 0;
         let redPixels = 0;
+        let bluePixels = 0;
 
         for (let index = 0; index < pixels.length; index += 4) {
             const red = pixels[index];
@@ -96,9 +100,12 @@ async function readScreenshotPixelStats(page, download) {
             if (alpha > 200 && red > 170 && red > green * 1.4 && red > blue * 1.4) {
                 redPixels++;
             }
+            if (alpha > 200 && blue > 120 && blue > red * 1.4 && blue > green * 1.4) {
+                bluePixels++;
+            }
         }
 
-        return { darkPixels, redPixels, totalPixels: canvas.width * canvas.height };
+        return { bluePixels, darkPixels, redPixels, totalPixels: canvas.width * canvas.height };
     }, `data:image/png;base64,${imageData.toString('base64')}`);
 }
 
@@ -140,9 +147,12 @@ test.describe('message screenshots', () => {
 
         const singleDownload = await exportScreenshotFromMessage(page, 0, 0, 0);
         expect(singleDownload.suggestedFilename()).toContain('message-0.png');
-        const { darkPixels, redPixels, totalPixels } = await readScreenshotPixelStats(page, singleDownload);
+        const { bluePixels, darkPixels, redPixels, totalPixels } = await readScreenshotPixelStats(page, singleDownload);
         expect(darkPixels).toBeGreaterThan(totalPixels * 0.2);
-        expect(redPixels).toBeLessThan(totalPixels * 0.01);
+        expect(redPixels).toBeGreaterThan(10);
+        expect(bluePixels).toBeGreaterThan(10);
+        expect(redPixels).toBeLessThan(totalPixels * 0.002);
+        expect(bluePixels).toBeLessThan(totalPixels * 0.002);
 
         const rangeDownload = await exportScreenshotFromMessage(page, 0, 0, 1);
         expect(rangeDownload.suggestedFilename()).toContain('messages-0-1.png');

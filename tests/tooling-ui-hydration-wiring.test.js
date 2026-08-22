@@ -86,43 +86,25 @@ describe('tooling UI hydration wiring', () => {
         expect(source).not.toContain('if (!messageScreenshotLibraryPromise)');
     });
 
-    test('flattens text-clipped gradient backgrounds before html2canvas capture', () => {
-        const source = getFunctionSource('normalizeMessageScreenshotStyles');
+    test('renders native CSS from only the screenshot subtree', () => {
+        const source = getFunctionSource('renderMessageScreenshotCanvas');
 
-        expect(source).toContain("backgroundClip.includes('text')");
-        expect(source).toContain("computedStyle.backgroundImage !== 'none'");
-        expect(source).toContain("'-webkit-text-fill-color', normalizeColorFunctionString(computedStyle.color)");
-        expect(source).toContain("'background-image', 'none'");
-        expect(source.indexOf('for (const propertyName of computedStyle)')).toBeLessThan(source.indexOf('backgroundClip.includes'));
+        expect(source).toContain('foreignObjectRendering: true');
+        expect(source).toContain('!element.contains(surface) && !surface.contains(element)');
+        expect(source).toContain("clonedDocument.documentElement.style.backgroundColor = 'transparent'");
+        expect(source).toContain('x: -bounds.left');
+        expect(source).toContain('y: -bounds.top');
+        expect(source).not.toContain('normalizeMessageScreenshotStyles');
+        expect(scriptSource).not.toContain('normalizeColorFunctionString');
     });
 
-    test('normalizes every modern color function through the platform color parser', () => {
-        expect(scriptSource).toContain('MODERN_COLOR_FUNCTION_TEST = /(?:\\b(?:color|oklch|oklab|lab|lch)\\s*\\()/i');
-        const source = getFunctionSource('normalizeColorFunctionString');
+    test('inlines screenshot images for foreign-object rendering', () => {
+        const source = getFunctionSource('inlineMessageScreenshotImages');
 
-        expect(source).toContain('MODERN_COLOR_FUNCTION_TEST.test(value)');
-        expect(source).toContain('convertModernColorToken');
-    });
-
-    test('patches pseudo-element colors and re-checks the html2canvas clone', () => {
-        const renderSource = getFunctionSource('renderMessageScreenshotCanvas');
-        const pseudoSource = getFunctionSource('normalizePseudoElementCaptureStyles');
-
-        expect(renderSource).toContain('normalizePseudoElementCaptureStyles(surface)');
-        expect(renderSource).toContain('onclone:');
-        expect(pseudoSource).toContain("'::before'");
-        expect(pseudoSource).toContain("!important");
-        expect(pseudoSource).toContain("contentValue === 'none' || contentValue === 'normal'");
-    });
-
-    test('filters computed style reads through the legacy color proxy during capture', () => {
-        const renderSource = getFunctionSource('renderMessageScreenshotCanvas');
-        const proxySource = getFunctionSource('createLegacyColorComputedStyleProxy');
-
-        expect(renderSource).toContain('createLegacyColorComputedStyleProxy(originalGetComputedStyle.call(window');
-        expect(renderSource).toContain('window.getComputedStyle = originalGetComputedStyle;');
-        expect(proxySource).toContain('normalizeColorFunctionString(value)');
-        expect(proxySource).toContain('Reflect.get(target, property, target)');
+        expect(source).toContain("container.querySelectorAll('img')");
+        expect(source).toContain('await fetch(source)');
+        expect(source).toContain('await getBase64Async(await response.blob())');
+        expect(source).toContain("image.srcset = ''");
     });
 
     test('renders message screenshots inside the chat layout context', () => {
