@@ -1326,7 +1326,7 @@ body .panelControlBar {
 
 .options-content a,
 #extensionsMenu>.extension_container>div,
-#extensionsMenu>div:not(.extension_container),
+#extensionsMenu>*:not(.extension_container),
 .list-group>div,
 .list-group .list-group-item,
 #sd_dropdown .list-group span {
@@ -1340,17 +1340,29 @@ body .panelControlBar {
 }
 
 #extensionsMenu>.extension_container>div,
-#extensionsMenu>div:not(.extension_container),
+#extensionsMenu>*:not(.extension_container),
 .options-content a,
 .list-group-item {
     opacity: 0.5;
 }
 
 #extensionsMenu>.extension_container>div:hover,
-#extensionsMenu>div:not(.extension_container):hover,
+#extensionsMenu>*:not(.extension_container):hover,
 .options-content a:hover,
 .list-group-item:hover {
     opacity: 1;
+}
+
+/* SillyBunny: extensions may add a wand entry as a <button> so it is reachable by
+   keyboard and assistive tech. Drop the native chrome, the button font override and
+   the mobile touch-target floor so it lays out as the same row as the <div> entries. */
+#extensionsMenu>button {
+    -webkit-appearance: none;
+    appearance: none;
+    background: none;
+    border: 0;
+    font: inherit;
+    min-height: 0;
 }
 
 .options-content a div:first-child {
