@@ -48,6 +48,7 @@
 - PR #791 (2026-08-22) `fix(ui): Creator Notes actually show the rendered text as is`
 - PR #792 (2026-08-22) `fix(ica): normalise full screen buttons`
 - PR #793 (2026-08-22) `fix(ui): debugger inherits theme for dropdown + is the same button as the others in the wand menu + scroll feature when there are too many extensions in wand menu`
+- PR #794 (2026-08-22) `fix(mobile): re-clicking the top bar icons when the window is open closes them`
 
 ## v1.7.0
 
