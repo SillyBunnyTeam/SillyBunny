@@ -12078,14 +12078,16 @@ async function inlineMessageScreenshotImages(container) {
             try {
                 const response = await fetch(source, { signal: abortController.signal });
                 if (!response.ok) {
-                    return;
+                    throw new Error(`Unexpected ${response.status} response for ${source}`);
                 }
 
                 image.srcset = '';
                 image.src = await getBase64Async(await response.blob());
                 await image.decode?.().catch(() => undefined);
             } catch {
-                // Keep the original URL when the asset does not permit CORS fetching.
+                // Foreign-object SVG cannot load external images, and a pending one stalls the capture clone.
+                image.removeAttribute('srcset');
+                image.removeAttribute('src');
             }
         }));
     } finally {
@@ -12096,11 +12098,16 @@ async function inlineMessageScreenshotImages(container) {
 let messageScreenshotIconFontStylePromise = null;
 
 async function getMessageScreenshotIconFontStyle() {
-    messageScreenshotIconFontStylePromise ??= fetch('/webfonts/fa-solid-900.woff2')
-        .then(response => response.ok ? response.blob() : Promise.reject())
-        .then(getBase64Async)
-        .then(source => `@font-face { font-family: 'Font Awesome 6 Free'; font-style: normal; font-weight: 900; src: url('${source}') format('woff2'); }`)
-        .catch(() => '');
+    if (!messageScreenshotIconFontStylePromise) {
+        const abortController = new AbortController();
+        const abortTimer = setTimeout(() => abortController.abort(), 2000);
+        messageScreenshotIconFontStylePromise = fetch('/webfonts/fa-solid-900.woff2', { signal: abortController.signal })
+            .then(response => response.ok ? response.blob() : Promise.reject())
+            .then(getBase64Async)
+            .then(source => `@font-face { font-family: 'Font Awesome 6 Free'; font-style: normal; font-weight: 900; src: url('${source}') format('woff2'); }`)
+            .catch(() => '')
+            .finally(() => clearTimeout(abortTimer));
+    }
 
     return await messageScreenshotIconFontStylePromise;
 }
@@ -12148,6 +12155,18 @@ async function renderMessageScreenshotWithBoundedSvg(html2canvas, surface, captu
     const markedSvgDataUrl = `data:image/svg+xml;charset=utf-8,${svgMarker}`;
     const existingCloneContainers = new Set(document.querySelectorAll('.html2canvas-container'));
     let serializedSvg = '';
+
+    // SB: html2canvas awaits the clone's fonts.ready and, on WebKit, every cloned image with no
+    // timeout, which stalls iOS captures forever. The capture is already decoded before cloning.
+    const cloneObserver = new MutationObserver(mutations => mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
+        const cloneDocument = node instanceof HTMLIFrameElement && node.classList.contains('html2canvas-container')
+            ? node.contentDocument
+            : null;
+        if (cloneDocument) {
+            Object.defineProperty(cloneDocument, 'fonts', { configurable: true, value: { ready: Promise.resolve() } });
+            Object.defineProperty(cloneDocument, 'images', { configurable: true, value: [] });
+        }
+    })));
 
     function ScreenshotImage(...args) {
         const image = new NativeImage(...args);
@@ -12236,9 +12255,16 @@ async function renderMessageScreenshotWithBoundedSvg(html2canvas, surface, captu
     // SB: html2canvas's unbounded percent-encoded SVG image load can stall indefinitely in Safari.
     window.Image = ScreenshotImage;
     window.encodeURIComponent = encodeURIComponentWithSvgData;
+    cloneObserver.observe(document.body, { childList: true });
+    let watchdog;
     try {
-        return await html2canvas(surface, captureOptions);
+        return await Promise.race([
+            html2canvas(surface, captureOptions),
+            new Promise((_, reject) => watchdog = setTimeout(() => reject(new Error('Timed out capturing the screenshot')), 30000)),
+        ]);
     } finally {
+        clearTimeout(watchdog);
+        cloneObserver.disconnect();
         if (window.Image === ScreenshotImage) {
             window.Image = NativeImage;
         }

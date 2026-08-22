@@ -125,6 +125,17 @@ describe('tooling UI hydration wiring', () => {
         expect(renderSource).toContain('renderMessageScreenshotWithBoundedSvg(html2canvas, surface, captureOptions)');
     });
 
+    test('neutralizes unbounded clone-document waits during capture', () => {
+        const source = getFunctionSource('renderMessageScreenshotWithBoundedSvg');
+
+        expect(source).toContain("Object.defineProperty(cloneDocument, 'fonts', { configurable: true, value: { ready: Promise.resolve() } })");
+        expect(source).toContain("Object.defineProperty(cloneDocument, 'images', { configurable: true, value: [] })");
+        expect(source).toContain('cloneObserver.observe(document.body, { childList: true })');
+        expect(source).toContain("setTimeout(() => reject(new Error('Timed out capturing the screenshot')), 30000)");
+        expect(source).toContain('clearTimeout(watchdog)');
+        expect(source).toContain('cloneObserver.disconnect()');
+    });
+
     test('stretches reasoning headers only inside screenshot surfaces', () => {
         expect(styleSource).toContain('.sb-message-screenshot-surface .mes_reasoning_header {\n    flex: 1;\n}');
     });
@@ -137,13 +148,14 @@ describe('tooling UI hydration wiring', () => {
         expect(source).toContain('await fetch(source, { signal: abortController.signal })');
         expect(source).toContain('await getBase64Async(await response.blob())');
         expect(source).toContain("image.srcset = ''");
+        expect(source).toContain("image.removeAttribute('src')");
         expect(source).toContain('clearTimeout(abortTimer)');
     });
 
     test('embeds the local icon font for foreign-object rendering', () => {
         const source = getFunctionSource('getMessageScreenshotIconFontStyle');
 
-        expect(source).toContain("fetch('/webfonts/fa-solid-900.woff2')");
+        expect(source).toContain("fetch('/webfonts/fa-solid-900.woff2', { signal: abortController.signal })");
         expect(source).toContain("font-family: 'Font Awesome 6 Free'");
         expect(source).toContain('getBase64Async');
     });

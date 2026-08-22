@@ -399,6 +399,22 @@ test.describe('mobile message screenshots', () => {
         expect(height).toBeGreaterThan(8000);
     });
 
+    test('completes capture when a cloned image never finishes loading', async ({ page }) => {
+        await page.route('**/screenshot-hang.png', () => new Promise(() => {}));
+        await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
+        await dismissOnboardingIfPresent(page);
+        await installScreenshotMessage(page, 'hanging clone image regression');
+        await page.locator('#chat .mes[mesid="0"] .mes_text').evaluate(element => {
+            const hangingImage = document.createElement('img');
+            hangingImage.src = '/screenshot-hang.png';
+            element.append(hangingImage);
+        });
+
+        const download = await exportScreenshotFromMessage(page, 0, 0, 0);
+        expect(download.suggestedFilename()).toContain('message-0.png');
+    });
+
     test('reports a stalled foreign-object render instead of hanging', async ({ page }) => {
         const screenshotErrors = [];
         page.on('console', message => {
