@@ -97,8 +97,8 @@
         --sb-composer-action-size: clamp(34px, calc(38px * var(--sb-bottom-bar-scale, 1)), 40px);
         --sb-composer-send-width: var(--sb-composer-action-size);
         --sb-composer-action-icon-size: clamp(11px, calc(14px * var(--sb-bottom-bar-scale, 1)), 16px);
-        --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 2px);
-        --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 2px);
+        --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 4px);
+        --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 4px);
         gap: 0 clamp(8px, 2vw, 10px) !important;
     }
 
@@ -2931,7 +2931,7 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         --sb-composer-send-width: var(--sb-composer-action-size);
         --sb-composer-action-icon-size: clamp(13px, calc(16px * var(--sb-bottom-bar-scale, 1)), 18px);
         --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 4px);
-        --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 2px);
+        --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 4px);
         gap: 0 clamp(8px, 2vw, 10px) !important;
         min-height: calc(var(--sb-mobile-composer-input-height) + 3px) !important;
         padding: 1px 4px !important;
@@ -2961,10 +2961,6 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     #leftSendForm,
     #rightSendForm {
         gap: 2px !important;
-    }
-
-    #leftSendForm {
-        padding-left: 0;
     }
 
     #chat .mes:not(.smallSysMes) .mesAvatarWrapper {
