@@ -193,6 +193,26 @@ describe('in-chat agent bundled templates', () => {
         expect(() => new RegExp(trimScript.findRegex.slice(1, trimScript.findRegex.lastIndexOf('/')), 'g')).not.toThrow();
     });
 
+    test('renders NPC blocks without leaving closing tags behind', () => {
+        const scripts = readTemplate('regex-bundles.json')['tpl-npc-profiles'];
+        const samples = [
+            '[NPC:REF|Ava|red scarf|wary][/NPC]',
+            '[NPC:REF|Ava|red scarf|wary]\n[/NPC]',
+            '[NPC:REL|Ava|now trusts him][/NPC]',
+            '[NPC:REL|Ava|now trusts him]\n[/NPC]',
+            '[NPC:MINOR|Ava]\nb: Ava | 30s | Courier\na: Red scarf\np: Wary\n[/NPC]',
+        ];
+
+        for (const sample of samples) {
+            const html = applyRegexScriptList(sample, scripts, AGENT_REGEX_PLACEMENT.AI_OUTPUT, {
+                isMarkdown: true,
+            });
+
+            expect(html).toContain('Ava');
+            expect(html).not.toContain('[/NPC]');
+        }
+    });
+
     test('keeps Level Up and User-based Stats connected by default', () => {
         const catalog = readTemplate('index.json');
 
