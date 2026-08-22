@@ -96,6 +96,7 @@ describe('tooling UI hydration wiring', () => {
         expect(source).toContain("clonedSurface.style.height = 'auto'");
         expect(source).toContain(':is(.mes_text, .mes_reasoning) :is(p, blockquote, li, ul, ol, .dc-gradient-text)');
         expect(source).toContain("element.style.gridTemplateRows = 'auto'");
+        expect(source).toContain('.mes_reasoning_header_title, .ica--companion-title, .ica--companion-title > span, .ica--companion-meta, .ica--companion-summary-spacer');
         expect(source).toContain("element.style.width = 'auto'");
         expect(source).toContain('style.textContent = iconFontStyle');
         expect(source).toContain("clonedSurface.prepend(...clonedDocument.body.querySelectorAll(':scope > style'))");

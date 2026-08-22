@@ -95,6 +95,7 @@ async function installScreenshotMessage(page, messageText) {
             .message-screenshot-grid-probe > .mesAvatarWrapper { grid-area: 1 / 1 !important; }
             .message-screenshot-grid-probe > .mes_block { grid-area: 1 / 2 !important; }
             .message-screenshot-reflow-probe::first-line { font-size: 4px; }
+            .message-screenshot-card-width-probe::first-line { font-size: 4px; }
         `;
         document.head.appendChild(reflowStyle);
 
@@ -141,6 +142,25 @@ async function installScreenshotMessage(page, messageText) {
         }
         messageTextElement.append(overlapProbe, reflowProbe);
 
+        const companionLedger = document.createElement('div');
+        companionLedger.className = 'ica--companion-ledger';
+        companionLedger.style.cssText = 'width:520px;max-width:100%;';
+        companionLedger.innerHTML = `
+            <details class="ica--companion-card ica--companion-card--done" open>
+                <summary class="ica--companion-summary">
+                    <span class="ica--companion-title"><i class="fa-solid fa-user-astronaut"></i><span class="message-screenshot-card-width-probe" style="background:rgb(0 180 140)">World Details</span></span>
+                    <span class="ica--companion-summary-spacer"></span>
+                    <span class="ica--companion-meta message-screenshot-card-width-probe" style="background:rgb(180 80 180);opacity:1">companion-profile-label</span>
+                    <span class="ica--companion-status">Ready</span>
+                    <span class="ica--companion-actions">
+                        ${['fa-rotate-right', 'fa-pen-to-square', 'fa-copy', 'fa-trash'].map(icon => `<button class="ica--companion-action"><i class="fa-solid ${icon}"></i></button>`).join('')}
+                    </span>
+                </summary>
+                <div class="ica--companion-body">Companion content must remain visible.</div>
+            </details>
+        `;
+        messageBlock.appendChild(companionLedger);
+
         const captureEndMarker = document.createElement('div');
         captureEndMarker.style.cssText = 'width:200px;height:12px;background:rgb(255 0 255);';
         messageBlock.appendChild(captureEndMarker);
@@ -183,11 +203,15 @@ async function readScreenshotPixelStats(page, download) {
         let reasoningTitleTop = canvas.height;
         let redPixels = 0;
         let bluePixels = 0;
+        let companionMetaWidth = 0;
+        let companionTitleWidth = 0;
 
         for (let y = 0; y < canvas.height; y++) {
             let hasGradient = false;
             let hasMarker = false;
             let markerRun = 0;
+            let companionMetaRun = 0;
+            let companionTitleRun = 0;
             for (let x = 0; x < canvas.width; x++) {
                 const index = (y * canvas.width + x) * 4;
                 const red = pixels[index];
@@ -227,13 +251,25 @@ async function readScreenshotPixelStats(page, download) {
                 if (alpha > 200 && red > 220 && green < 40 && blue >= 80 && blue <= 190) {
                     reasoningIconPixels++;
                 }
+                if (alpha > 200 && red < 20 && green >= 160 && green <= 200 && blue >= 120 && blue <= 160) {
+                    companionTitleRun++;
+                    companionTitleWidth = Math.max(companionTitleWidth, companionTitleRun);
+                } else {
+                    companionTitleRun = 0;
+                }
+                if (alpha > 200 && red >= 160 && red <= 200 && green >= 60 && green <= 100 && blue >= 160 && blue <= 200) {
+                    companionMetaRun++;
+                    companionMetaWidth = Math.max(companionMetaWidth, companionMetaRun);
+                } else {
+                    companionMetaRun = 0;
+                }
             }
             if (hasGradient && hasMarker) overlappingColorRows++;
         }
 
         const reasoningWidth = reasoningRight >= reasoningLeft ? reasoningRight - reasoningLeft + 1 : 0;
         const reasoningTitleHeight = reasoningTitleBottom >= reasoningTitleTop ? reasoningTitleBottom - reasoningTitleTop + 1 : 0;
-        return { bluePixels, darkPixels, endMarkerPixels, endMarkerWidth, markerPixels, overlappingColorRows, reasoningIconPixels, reasoningTitleHeight, reasoningWidth, redPixels, totalPixels: canvas.width * canvas.height };
+        return { bluePixels, companionMetaWidth, companionTitleWidth, darkPixels, endMarkerPixels, endMarkerWidth, markerPixels, overlappingColorRows, reasoningIconPixels, reasoningTitleHeight, reasoningWidth, redPixels, totalPixels: canvas.width * canvas.height };
     }, `data:image/png;base64,${imageData.toString('base64')}`);
 }
 
@@ -275,7 +311,7 @@ test.describe('message screenshots', () => {
 
         const singleDownload = await exportScreenshotFromMessage(page, 0, 0, 0);
         expect(singleDownload.suggestedFilename()).toContain('message-0.png');
-        const { bluePixels, darkPixels, endMarkerPixels, endMarkerWidth, markerPixels, overlappingColorRows, reasoningIconPixels, reasoningTitleHeight, reasoningWidth, redPixels, totalPixels } = await readScreenshotPixelStats(page, singleDownload);
+        const { bluePixels, companionMetaWidth, companionTitleWidth, darkPixels, endMarkerPixels, endMarkerWidth, markerPixels, overlappingColorRows, reasoningIconPixels, reasoningTitleHeight, reasoningWidth, redPixels, totalPixels } = await readScreenshotPixelStats(page, singleDownload);
         expect(darkPixels).toBeGreaterThan(totalPixels * 0.2);
         expect(redPixels).toBeGreaterThan(10);
         expect(bluePixels).toBeGreaterThan(10);
@@ -287,6 +323,8 @@ test.describe('message screenshots', () => {
         expect(reasoningTitleHeight).toBeGreaterThan(0);
         expect(reasoningTitleHeight).toBeLessThan(20);
         expect(reasoningWidth).toBeGreaterThan(250);
+        expect(companionTitleWidth).toBeGreaterThan(70);
+        expect(companionMetaWidth).toBeGreaterThan(100);
         expect(redPixels).toBeLessThan(totalPixels * 0.01);
         expect(bluePixels).toBeLessThan(totalPixels * 0.01);
 

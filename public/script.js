@@ -12181,7 +12181,9 @@ async function renderMessageScreenshotCanvas(startId, endId) {
                     .querySelectorAll('.mes, .mes_block, .mes_text, .mes_reasoning, :is(.mes_text, .mes_reasoning) :is(p, blockquote, li, ul, ol, .dc-gradient-text)')
                     .forEach(element => element.style.height = 'auto');
                 clonedSurface.querySelectorAll('.mes').forEach(element => element.style.gridTemplateRows = 'auto');
-                clonedSurface.querySelectorAll('.mes_reasoning_header_title').forEach(element => element.style.width = 'auto');
+                clonedSurface
+                    .querySelectorAll('.mes_reasoning_header_title, .ica--companion-title, .ica--companion-title > span, .ica--companion-meta, .ica--companion-summary-spacer')
+                    .forEach(element => element.style.width = 'auto');
                 if (iconFontStyle) {
                     const style = clonedDocument.createElement('style');
                     style.textContent = iconFontStyle;
