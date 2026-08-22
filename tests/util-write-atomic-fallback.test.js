@@ -380,13 +380,21 @@ describe('tryWriteFileSync atomic fallback', () => {
         });
         expect(() => tryWriteFileSync(filePath, 'new-card-content', 'utf8', { preserveFileIdentity: true })).toThrow(/write recovery file/i);
         unlinkSpy.mockRestore();
+        // Stage the replacement while the original card is still on disk: two files that exist at
+        // the same time cannot share an inode, and renameSync carries that inode into place. Writing
+        // the replacement after the unlink instead leaves it free to land on the inode the original
+        // just released, which makes recovery see its own target and skip the refusal it is asserted
+        // on here. That reused-inode draw is rare on an idle machine and common under CI's parallel
+        // workers, so the test failed only on CI.
+        const replacementPath = `${filePath}.replacement`;
+        fs.writeFileSync(replacementPath, 'concurrent-card-content', 'utf8');
         fs.unlinkSync(filePath);
         const linkSync = fs.linkSync.bind(fs);
         let recreated = false;
         jest.spyOn(fs, 'linkSync').mockImplementation((existingPath, newPath) => {
             if (!recreated && newPath === filePath) {
                 recreated = true;
-                fs.writeFileSync(filePath, 'concurrent-card-content', 'utf8');
+                fs.renameSync(replacementPath, filePath);
             }
             return linkSync(existingPath, newPath);
         });
