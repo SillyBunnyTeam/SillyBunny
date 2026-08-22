@@ -51,6 +51,10 @@ async function installScreenshotMessage(page, messageText) {
         messageTextElement.style.color = 'oklch(70% 0.2 140)';
         messageTextElement.closest('.mes_block')?.style.setProperty('background-color', 'color(srgb 0.156863 0.164706 0.196078)', 'important');
 
+        const reflowStyle = document.createElement('style');
+        reflowStyle.textContent = '.message-screenshot-reflow-probe::first-line { font-size: 10px; }';
+        document.head.appendChild(reflowStyle);
+
         const overlapProbe = document.createElement('div');
         overlapProbe.style.cssText = 'width:270px;font:500 14px/24px sans-serif;';
 
@@ -70,7 +74,22 @@ async function installScreenshotMessage(page, messageText) {
         followingLine.style.cssText = 'margin:0;color:rgb(255 255 0);';
         followingLine.textContent = 'Following narrow line.';
         overlapProbe.append(quoteLine, followingLine);
-        messageTextElement.appendChild(overlapProbe);
+
+        const reflowProbe = document.createElement('div');
+        reflowProbe.style.cssText = 'width:485px;font:500 14px/24px Figtree,sans-serif;';
+        const reflowLine = document.createElement('p');
+        reflowLine.style.margin = '0';
+        reflowLine.className = 'message-screenshot-reflow-probe';
+        const gradientReflowText = document.createElement('span');
+        gradientReflowText.style.cssText = gradientQuote.style.cssText;
+        gradientReflowText.textContent = 'He fixed my glasses. His hand is warm. Why is his hand warm. Walls. Drainage. Load-bearing things.';
+        reflowLine.appendChild(gradientReflowText);
+
+        const reflowMarker = document.createElement('p');
+        reflowMarker.style.cssText = followingLine.style.cssText;
+        reflowMarker.textContent = 'Following reflow line.';
+        reflowProbe.append(reflowLine, reflowMarker);
+        messageTextElement.append(overlapProbe, reflowProbe);
 
         const assistantTextElement = document.querySelector('#chat .mes[mesid="1"] .mes_text');
         if (assistantTextElement) {
@@ -177,8 +196,8 @@ test.describe('message screenshots', () => {
         expect(bluePixels).toBeGreaterThan(10);
         expect(markerPixels).toBeGreaterThan(10);
         expect(overlappingColorRows).toBe(0);
-        expect(redPixels).toBeLessThan(totalPixels * 0.002);
-        expect(bluePixels).toBeLessThan(totalPixels * 0.002);
+        expect(redPixels).toBeLessThan(totalPixels * 0.01);
+        expect(bluePixels).toBeLessThan(totalPixels * 0.01);
 
         const rangeDownload = await exportScreenshotFromMessage(page, 0, 0, 1);
         expect(rangeDownload.suggestedFilename()).toContain('messages-0-1.png');
