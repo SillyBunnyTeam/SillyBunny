@@ -2292,7 +2292,12 @@ function recoverFileWriteOnceSync(filePath) {
     }
 
     const pathStats = fs.lstatSync(filePath, { bigint: true });
-    if (String(pathStats.dev) !== record.dev || String(pathStats.ino) !== record.ino) {
+    // A recycled inode makes a replacement card indistinguishable from the interrupted one, so the
+    // creation time is checked alongside dev/ino whenever the record carries one. Records written
+    // before this field existed, and those the write path could not vouch for, have none and fall
+    // back to dev/ino on its own.
+    if (String(pathStats.dev) !== record.dev || String(pathStats.ino) !== record.ino
+        || (record.birthtime !== undefined && String(pathStats.birthtimeNs) !== record.birthtime)) {
         throw Object.assign(new Error(`Refused to recover a replaced file: ${filePath}`), { code: 'ESTALE' });
     }
     if (!pathStats.isFile() || pathStats.nlink !== 1n) {
@@ -2516,14 +2521,33 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
                     }
                 } else {
                     recoveryPath = getFileWriteRecoveryPath(filePath);
-                    writeFileAtomicSync(recoveryPath, JSON.stringify({
+                    const recoveryRecord = {
                         version: 1,
                         dev: String(descriptorStats.dev),
                         ino: String(descriptorStats.ino),
                         originalHash: hashFileWriteData(originalData),
                         nextHash: hashFileWriteData(dataBuffer),
                         originalData: originalData.toString('base64'),
-                    }), 'utf8');
+                    };
+                    // SillyBunny: dev/ino alone does not survive the gap between the crash that
+                    // strands this record and the start that reads it. Deleting a card frees its
+                    // inode and the next file created in that directory can be handed the very same
+                    // one - on ext4 that is not a rare draw but the normal outcome - so a card the
+                    // user replaced in the meantime would look like the interrupted write and get
+                    // stamped back to the old bytes. A creation time is not recycled along with the
+                    // inode, so it tells the two apart.
+                    //
+                    // Only a creation time this file proves is real gets recorded. Filesystems
+                    // without one report ctime in its place, and every write moves that, so a
+                    // recovery reading it back would refuse the interrupted card it exists to
+                    // restore. A card already modified since it was created has the two apart and
+                    // settles it; a card still carrying its original bytes cannot, and its first
+                    // identity-preserving write falls back to dev/ino as before. That gap closes
+                    // for good on the write after it.
+                    if (descriptorStats.birthtimeNs !== descriptorStats.ctimeNs) {
+                        recoveryRecord.birthtime = String(descriptorStats.birthtimeNs);
+                    }
+                    writeFileAtomicSync(recoveryPath, JSON.stringify(recoveryRecord), 'utf8');
                     fsyncDirectorySync(path.dirname(recoveryPath));
 
                     targetMutated = true;
