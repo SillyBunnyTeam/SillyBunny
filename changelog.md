@@ -42,6 +42,7 @@
 - PR #785 (2026-08-22) `fix(ica): updates NPC Profile Cards agent regex`
 - PR #786 (2026-08-22) `fix(mobile): extend the left side of the message input bar so it's perfectly equal to the spacing on the right`
 - PR #787 (2026-08-22) `feat(group_chat): add a hide and unhide button/option for the group chat-specific bottom bar`
+- PR #788 (2026-08-22) `fix(ui): remove the extra height on wand menu entries added as buttons`
 
 ## v1.7.0
 
