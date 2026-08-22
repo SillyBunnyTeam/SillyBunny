@@ -7784,8 +7784,10 @@ function syncMobileModalState() {
         setMobileModalRootA11y(root, activeRootSet.has(root));
     }
 
+    // SillyBunny: only the chat is inerted. Mobile panels dock below the top bar instead of
+    // covering it, so its proxy buttons stay reachable and re-tapping one closes the panel,
+    // same as on desktop.
     setElementInertForMobileModal(document.getElementById('sheld'), modalState.shouldInertShell);
-    setElementInertForMobileModal(document.getElementById('top-bar'), modalState.shouldInertTopBar);
 }
 
 function queueMobileModalStateSync() {

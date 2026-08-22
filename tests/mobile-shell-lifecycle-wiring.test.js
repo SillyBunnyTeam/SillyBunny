@@ -544,8 +544,9 @@ describe('mobile shell lifecycle wiring', () => {
         expect(syncMobileModalStateSource).toContain('activeRootIds: activeRoots.map(root => root.id)');
         expect(syncMobileModalStateSource).toContain('modalState.hasActiveMobileModal');
         expect(syncMobileModalStateSource).toContain('modalState.shouldInertShell');
-        expect(syncMobileModalStateSource).toContain('modalState.shouldInertTopBar');
         expect(syncMobileModalStateSource).not.toContain('activeRoots.some(root => root.id !== \'sb-mobile-nav\')');
+        // Re-tapping a top bar proxy button has to close the panel it opened, so the bar is never inerted.
+        expect(syncMobileModalStateSource).not.toContain('getElementById(\'top-bar\')');
     });
 
     test('routes mobile nav outside-click auto-close through the lifecycle seam', () => {
