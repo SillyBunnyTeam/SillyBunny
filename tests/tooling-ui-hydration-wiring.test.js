@@ -96,6 +96,8 @@ describe('tooling UI hydration wiring', () => {
         expect(source).toContain("clonedSurface.style.height = 'auto'");
         expect(source).toContain(':is(.mes_text, .mes_reasoning) :is(p, blockquote, li, ul, ol, .dc-gradient-text)');
         expect(source).toContain("element.style.gridTemplateRows = 'auto'");
+        expect(source).toContain("element.style.width = 'auto'");
+        expect(source).toContain('style.textContent = iconFontStyle');
         expect(source).toContain("clonedSurface.prepend(...clonedDocument.body.querySelectorAll(':scope > style'))");
         expect(source).toContain('clonedDocument.body.replaceChildren(clonedSurface)');
         expect(source).not.toContain('getBoundingClientRect()');
@@ -116,6 +118,14 @@ describe('tooling UI hydration wiring', () => {
         expect(source).toContain('await fetch(source)');
         expect(source).toContain('await getBase64Async(await response.blob())');
         expect(source).toContain("image.srcset = ''");
+    });
+
+    test('embeds the local icon font for foreign-object rendering', () => {
+        const source = getFunctionSource('getMessageScreenshotIconFontStyle');
+
+        expect(source).toContain("fetch('/webfonts/fa-solid-900.woff2')");
+        expect(source).toContain("font-family: 'Font Awesome 6 Free'");
+        expect(source).toContain('getBase64Async');
     });
 
     test('renders message screenshots inside the chat layout context', () => {

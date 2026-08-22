@@ -68,7 +68,14 @@ async function installScreenshotMessage(page, messageText) {
         const reasoningHeader = document.createElement('div');
         reasoningHeader.className = 'mes_reasoning_header flex-container';
         reasoningHeader.style.backgroundColor = 'rgb(0 255 255)';
-        reasoningHeader.textContent = 'Thought for 3 minutes';
+        const reasoningTitle = document.createElement('span');
+        reasoningTitle.className = 'mes_reasoning_header_title';
+        reasoningTitle.style.color = 'rgb(255 128 0)';
+        reasoningTitle.textContent = 'Thought for 3 minutes';
+        const reasoningArrow = document.createElement('div');
+        reasoningArrow.className = 'mes_reasoning_arrow fa-solid fa-chevron-up';
+        reasoningArrow.style.color = 'rgb(255 0 128)';
+        reasoningHeader.append(reasoningTitle, reasoningArrow);
         reasoningHeaderBlock.appendChild(reasoningHeader);
         reasoningSummary.appendChild(reasoningHeaderBlock);
         const reasoningText = document.createElement('div');
@@ -171,6 +178,9 @@ async function readScreenshotPixelStats(page, download) {
         let overlappingColorRows = 0;
         let reasoningLeft = canvas.width;
         let reasoningRight = -1;
+        let reasoningIconPixels = 0;
+        let reasoningTitleBottom = -1;
+        let reasoningTitleTop = canvas.height;
         let redPixels = 0;
         let bluePixels = 0;
 
@@ -210,12 +220,20 @@ async function readScreenshotPixelStats(page, download) {
                     reasoningLeft = Math.min(reasoningLeft, x);
                     reasoningRight = Math.max(reasoningRight, x);
                 }
+                if (alpha > 200 && red > 220 && green >= 70 && green <= 180 && blue < 40) {
+                    reasoningTitleTop = Math.min(reasoningTitleTop, y);
+                    reasoningTitleBottom = Math.max(reasoningTitleBottom, y);
+                }
+                if (alpha > 200 && red > 220 && green < 40 && blue >= 80 && blue <= 190) {
+                    reasoningIconPixels++;
+                }
             }
             if (hasGradient && hasMarker) overlappingColorRows++;
         }
 
         const reasoningWidth = reasoningRight >= reasoningLeft ? reasoningRight - reasoningLeft + 1 : 0;
-        return { bluePixels, darkPixels, endMarkerPixels, endMarkerWidth, markerPixels, overlappingColorRows, reasoningWidth, redPixels, totalPixels: canvas.width * canvas.height };
+        const reasoningTitleHeight = reasoningTitleBottom >= reasoningTitleTop ? reasoningTitleBottom - reasoningTitleTop + 1 : 0;
+        return { bluePixels, darkPixels, endMarkerPixels, endMarkerWidth, markerPixels, overlappingColorRows, reasoningIconPixels, reasoningTitleHeight, reasoningWidth, redPixels, totalPixels: canvas.width * canvas.height };
     }, `data:image/png;base64,${imageData.toString('base64')}`);
 }
 
@@ -257,7 +275,7 @@ test.describe('message screenshots', () => {
 
         const singleDownload = await exportScreenshotFromMessage(page, 0, 0, 0);
         expect(singleDownload.suggestedFilename()).toContain('message-0.png');
-        const { bluePixels, darkPixels, endMarkerPixels, endMarkerWidth, markerPixels, overlappingColorRows, reasoningWidth, redPixels, totalPixels } = await readScreenshotPixelStats(page, singleDownload);
+        const { bluePixels, darkPixels, endMarkerPixels, endMarkerWidth, markerPixels, overlappingColorRows, reasoningIconPixels, reasoningTitleHeight, reasoningWidth, redPixels, totalPixels } = await readScreenshotPixelStats(page, singleDownload);
         expect(darkPixels).toBeGreaterThan(totalPixels * 0.2);
         expect(redPixels).toBeGreaterThan(10);
         expect(bluePixels).toBeGreaterThan(10);
@@ -265,6 +283,9 @@ test.describe('message screenshots', () => {
         expect(endMarkerWidth).toBeGreaterThan(150);
         expect(markerPixels).toBeGreaterThan(10);
         expect(overlappingColorRows).toBe(0);
+        expect(reasoningIconPixels).toBeGreaterThan(5);
+        expect(reasoningTitleHeight).toBeGreaterThan(0);
+        expect(reasoningTitleHeight).toBeLessThan(20);
         expect(reasoningWidth).toBeGreaterThan(250);
         expect(redPixels).toBeLessThan(totalPixels * 0.01);
         expect(bluePixels).toBeLessThan(totalPixels * 0.01);

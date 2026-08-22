@@ -12086,6 +12086,18 @@ async function inlineMessageScreenshotImages(container) {
     }));
 }
 
+let messageScreenshotIconFontStylePromise = null;
+
+async function getMessageScreenshotIconFontStyle() {
+    messageScreenshotIconFontStylePromise ??= fetch('/webfonts/fa-solid-900.woff2')
+        .then(response => response.ok ? response.blob() : Promise.reject())
+        .then(getBase64Async)
+        .then(source => `@font-face { font-family: 'Font Awesome 6 Free'; font-style: normal; font-weight: 900; src: url('${source}') format('woff2'); }`)
+        .catch(() => '');
+
+    return await messageScreenshotIconFontStylePromise;
+}
+
 let messageScreenshotLibraryPromise = null;
 
 async function getMessageScreenshotLibrary() {
@@ -12149,6 +12161,7 @@ async function renderMessageScreenshotCanvas(startId, endId) {
         await delay(50);
         await waitForMessageScreenshotAssets(surface);
         await inlineMessageScreenshotImages(surface);
+        const iconFontStyle = await getMessageScreenshotIconFontStyle();
 
         return await html2canvas(surface, {
             backgroundColor: null,
@@ -12168,6 +12181,12 @@ async function renderMessageScreenshotCanvas(startId, endId) {
                     .querySelectorAll('.mes, .mes_block, .mes_text, .mes_reasoning, :is(.mes_text, .mes_reasoning) :is(p, blockquote, li, ul, ol, .dc-gradient-text)')
                     .forEach(element => element.style.height = 'auto');
                 clonedSurface.querySelectorAll('.mes').forEach(element => element.style.gridTemplateRows = 'auto');
+                clonedSurface.querySelectorAll('.mes_reasoning_header_title').forEach(element => element.style.width = 'auto');
+                if (iconFontStyle) {
+                    const style = clonedDocument.createElement('style');
+                    style.textContent = iconFontStyle;
+                    clonedSurface.prepend(style);
+                }
                 // Keep html2canvas's pseudo-element suppression inside the serialized subtree.
                 clonedSurface.prepend(...clonedDocument.body.querySelectorAll(':scope > style'));
                 clonedDocument.body.replaceChildren(clonedSurface);
