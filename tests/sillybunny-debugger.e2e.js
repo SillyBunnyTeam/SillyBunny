@@ -244,11 +244,13 @@ test('cleans tools that fail during initialization', async ({ page }) => {
     });
 });
 
-test('mounts an accessible drawer and tears the extension down cleanly', async ({ page }) => {
+test('uses the host drawer and wand markup and tears the extension down cleanly', async ({ page }) => {
     await page.addStyleTag({
-        content: ':root{--sb-focus-ring:#7cacf8;--SmartThemeQuoteColor:#7cacf8}'
+        content: '.inline-drawer-header{font-family:cursive}'
             + '#extensions_settings2 .inline-drawer-toggle.inline-drawer-header{min-height:42px}'
-            + '.inline-drawer-content{display:none}',
+            + '.inline-drawer-content{display:none}'
+            + '#extensionsMenu{display:flex;flex-flow:column;max-height:40px;overflow-y:auto}'
+            + '#extensionsMenu>div{padding:5px}',
     });
     await page.addStyleTag({ path: stylePath });
     await page.evaluate(() => {
@@ -259,23 +261,31 @@ test('mounts an accessible drawer and tears the extension down cleanly', async (
         });
     });
     await initializeExtensionFixture(page);
+    await page.evaluate(() => {
+        document.getElementById('extensionsMenu').insertAdjacentHTML('afterbegin', '<div>Filler</div><div>Filler</div>');
+    });
 
-    const toggle = page.locator('#sbdbg-settings > .inline-drawer-toggle');
-    await expect(toggle).toHaveRole('button', { name: 'Bunny Debugger' });
-    await expect(toggle).toHaveAttribute('aria-controls', 'sbdbg-settings-content');
-    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(toggle).toHaveCSS('min-height', '44px');
+    // Theme rules written for the shared header markup must reach the debugger header too.
+    const toggle = page.locator('#sbdbg-settings > .inline-drawer-toggle.inline-drawer-header');
+    await expect(toggle).toHaveJSProperty('tagName', 'DIV');
+    await expect(toggle.locator(':scope > b')).toHaveText('Bunny Debugger');
+    await expect(toggle.locator(':scope > div.inline-drawer-icon.fa-circle-chevron-down.down')).toHaveCount(1);
+    await expect(toggle).toHaveCSS('font-family', 'cursive');
+    await expect(toggle).toHaveCSS('min-height', '42px');
     await expect(page.locator('#sbdbg-settings-content')).toBeHidden();
-    await page.evaluate(() => document.activeElement?.blur());
-    await page.keyboard.press('Tab');
-    await expect(toggle).toBeFocused();
-    await expect(toggle).toHaveCSS('box-shadow', /inset/);
-    await toggle.press('Enter');
-    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await toggle.click();
     await expect(page.locator('#sbdbg-settings-content')).toBeVisible();
-    await toggle.press('Enter');
-    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await toggle.click();
     await expect(page.locator('#sbdbg-settings-content')).toBeHidden();
+
+    // The wand entry is a plain div like its siblings, so it keeps its height when the menu overflows.
+    const menuItem = page.locator('#sbdbg-menu-item');
+    await expect(menuItem).toHaveJSProperty('tagName', 'DIV');
+    await expect(menuItem).toHaveClass(/\blist-group-item\b/);
+    await expect(menuItem.locator(':scope > div.fa-bug.extensionsMenuExtensionButton + span')).toHaveText('Debugger');
+    const [boxHeight, contentHeight] = await menuItem.evaluate(node => [node.getBoundingClientRect().height, node.scrollHeight]);
+    expect(boxHeight).toBeGreaterThan(0);
+    expect(boxHeight).toBeGreaterThanOrEqual(contentHeight);
 
     await page.locator('#sbdbg-menu-item').click();
     await expect.poll(() => page.evaluate(() => globalThis.eruda?._isInit)).toBe(true);
