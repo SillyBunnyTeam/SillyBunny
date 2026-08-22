@@ -45,6 +45,7 @@
 - PR #788 (2026-08-22) `fix(ui): remove the extra height on wand menu entries added as buttons`
 - PR #789 (2026-08-22) `fix(ui): prevent overflow on Group Controls in mobile`
 - PR #790 (2026-08-22) `fix(ui): render newlines in scenario notes in persona, add full screen button, and fix button spacing`
+- PR #791 (2026-08-22) `fix(ui): Creator Notes actually show the rendered text as is`
 
 ## v1.7.0
 
