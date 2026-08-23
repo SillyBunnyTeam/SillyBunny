@@ -54,6 +54,7 @@
 - PR #797 (2026-08-23) `chore: update Quick Image Gen to 3.3.0`
 - PR #798 (2026-08-23) `fix(connection-profile): send the reasoning effort saved in a profile's preset`
 - PR #799 (2026-08-23) `fix(reasoning-effort): send 'none' verbatim when the model supports it`
+- PR #800 (2026-08-23) `feat(prompt-manager): show token counts even when a prompt is injected or a variable`
 
 ## v1.7.0
 
