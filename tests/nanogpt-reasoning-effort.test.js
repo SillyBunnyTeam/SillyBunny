@@ -96,10 +96,12 @@ describe('reasoning effort on outgoing chat completions', () => {
         });
     }
 
-    // NanoGPT documents none < minimal < low < medium < high < xhigh. low, medium, high and
-    // xhigh are spelled the same here, so they go out untouched instead of being shifted a rung
-    // down. min and max are the only names NanoGPT does not have, so they take its nearest rungs.
+    // NanoGPT documents none < minimal < low < medium < high < xhigh. none, low, medium, high
+    // and xhigh are spelled the same here, so they go out untouched instead of being shifted a
+    // rung down. min and max are the only names NanoGPT does not have, so they take its nearest
+    // rungs. none goes out too: omitting it would let the model pick its own reasoning depth.
     test.each([
+        ['none', 'none'],
         ['min', 'minimal'],
         ['low', 'low'],
         ['medium', 'medium'],
@@ -113,7 +115,7 @@ describe('reasoning effort on outgoing chat completions', () => {
         expect(capturedBody.reasoning).toEqual({ effort: expected });
     });
 
-    test.each(['none', 'auto', 'banana', '   '])('NanoGPT omits the reasoning key entirely for %p', async (effort) => {
+    test.each(['auto', 'banana', '   '])('NanoGPT omits the reasoning key entirely for %p', async (effort) => {
         // Upstream emitted a bare `"reasoning": {}` for all of these, because the value is
         // truthy but has no NanoGPT equivalent. hasOwn, not toBeUndefined: an empty object
         // would also read as undefined on the nested effort.
@@ -135,6 +137,7 @@ describe('reasoning effort on outgoing chat completions', () => {
         [' xhigh ', 'xhigh'],
         [' Max ', 'xhigh'],
         ['MAX', 'xhigh'],
+        [' None ', 'none'],
     ])('NanoGPT normalizes %p before the table lookup and sends %s', async (effort, expected) => {
         const response = await makeRequest(CHAT_COMPLETION_SOURCES.NANOGPT, { reasoning_effort: effort });
 
@@ -169,6 +172,19 @@ describe('reasoning effort on outgoing chat completions', () => {
 
         expect(response.status).toBe(200);
         expect(capturedBody.reasoning_effort).toBe('UltraFast');
+    });
+
+    test('\'none\' reaches an OpenAI-compatible endpoint verbatim for a GPT-5.1+ model', async () => {
+        // The client only resolves 'none' for models that document it (GPT-5.1 and newer);
+        // the server's job is to pass it through untouched rather than dropping it.
+        const response = await makeRequest(CHAT_COMPLETION_SOURCES.CUSTOM, {
+            reasoning_effort: 'none',
+            custom_url: 'https://custom.test/v1',
+            model: 'gpt-5.2',
+        });
+
+        expect(response.status).toBe(200);
+        expect(capturedBody.reasoning_effort).toBe('none');
     });
 
     // Two representatives of the branches that assign this key unconditionally (CometAPI and
