@@ -52,6 +52,59 @@ export function getPromptDisplayTokenCounts(messages) {
     return { ...aggregateCounts, ...directCounts };
 }
 
+// Scoped {{//}}...{{///}} blocks must go first: their opener also reads as the start
+// of an inline comment, which would strip the delimiters but keep the body.
+const SCOPED_COMMENT_PATTERN = /{{\/\/}}[\s\S]*?{{\/\/\/}}/g;
+// Zero-output utility macros commonly appended to comments, e.g. {{// ...}}{{trim}}.
+const NO_OUTPUT_MACRO_PATTERN = /{{(?:trim|noop)}}/gi;
+
+// The macro lexer allows nested macros inside args, so a comment body can contain
+// balanced {{...}} pairs; a non-greedy regex would stop at the first '}}'. Walk the
+// braces instead, dropping each comment up to its matching close.
+function stripInlineComments(text) {
+    let result = '';
+    let i = 0;
+    while (i < text.length) {
+        const isComment = text.startsWith('{{//', i) || /^{{comment[\s:}]/i.test(text.slice(i, i + 10));
+        if (!isComment) {
+            result += text[i];
+            i++;
+            continue;
+        }
+
+        let depth = 0;
+        let j = i;
+        while (j < text.length) {
+            if (text.startsWith('{{', j)) {
+                depth++;
+                j += 2;
+            } else if (text.startsWith('}}', j)) {
+                depth--;
+                j += 2;
+                if (depth === 0) break;
+            } else {
+                j++;
+            }
+        }
+
+        if (depth !== 0) {
+            // Unterminated macro; keep the character and move on.
+            result += text[i];
+            i++;
+            continue;
+        }
+
+        i = j;
+    }
+
+    return result;
+}
+
+export function isCommentOnlyPromptContent(content) {
+    const withoutScoped = String(content ?? '').replace(SCOPED_COMMENT_PATTERN, '');
+    return !stripInlineComments(withoutScoped).replace(NO_OUTPUT_MACRO_PATTERN, '').trim();
+}
+
 export function mergePromptTokenCounts(sourceCounts, runtimeCounts) {
     const counts = { ...(sourceCounts ?? {}) };
 

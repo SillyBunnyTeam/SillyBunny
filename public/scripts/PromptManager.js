@@ -13,7 +13,7 @@ import { Popup } from './popup.js';
 import { t } from './i18n.js';
 import { isMobile } from './RossAscends-mods.js';
 import { accountStorage } from './util/AccountStorage.js';
-import { getPromptDisplayTokenCounts, getPromptSourceTokenCounts, mergePromptTokenCounts } from './prompt-token-counts.js';
+import { getPromptDisplayTokenCounts, getPromptSourceTokenCounts, isCommentOnlyPromptContent, mergePromptTokenCounts } from './prompt-token-counts.js';
 import { getRenderedMarkerPrompt } from './prompt-manager-marker-preview.js';
 import { clearPromptSetVariables } from './prompt-variable-cleanup.js';
 import { RUNTIME_AGENTS_IDENTIFIER, resolveInChatAgentTokenUsage } from './in-chat-agent-inspection.js';
@@ -2126,7 +2126,8 @@ class PromptManager {
         // identifier: in-chat injections are squashed into the chat history, and prompts
         // whose content substitutes to an empty string (e.g. variable setters) count as
         // zero. Estimate those from their source content; for the latter, count the raw
-        // content so the entry's size is visible at all.
+        // content so the entry's size is visible at all — except pure comments, which
+        // send nothing anywhere and keep showing '-'.
         const runtimeCounts = this.hasRuntimePromptTokenCounts() ? this.promptTokenCounts : {};
         const rawContentFallbacks = new Set();
         const prompts = this.getPromptsForCharacter(this.activeCharacter, true)
@@ -2134,7 +2135,7 @@ class PromptManager {
             .filter(prompt => !(Number(runtimeCounts[prompt.identifier]) > 0))
             .map(prompt => {
                 const prepared = this.preparePrompt(prompt);
-                if (!prepared.content && typeof prompt.content === 'string' && prompt.content) {
+                if (!prepared.content && typeof prompt.content === 'string' && prompt.content && !isCommentOnlyPromptContent(prompt.content)) {
                     prepared.content = prompt.content;
                     rawContentFallbacks.add(prompt.identifier);
                 }
