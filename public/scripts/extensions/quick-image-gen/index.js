@@ -15,6 +15,8 @@ import {
     collectSequentialResults,
     getResultFailures,
     normalizeBatchCount,
+    formatQuietSlashResult,
+    getQuietSlashOverrides,
 } from "./lib/generation.js";
 import { GenerationRunManager, OwnedTransientValue, snapshotGenerationRunSettings, snapshotGenerationSettings } from "./lib/generation-run.js";
 import { normalizeProviderResult, sanitizeEffectiveRequest } from "./lib/provider-contract.js";
@@ -21463,8 +21465,15 @@ async function generateImage() {
             if (results.length > 0) {
                 commitSuccessfulPrompt(run, { prompt, negative, promptWasLLM, addHistory: true });
             }
-                        await maybeAutoSetBackground(results, s, run);
-            if (s.autoInsert) {
+            if (s.__qigQuiet) {
+                // A quiet run hands the pictures back to whoever asked (slash `quiet=true`,
+                // other extensions): no background swap, nothing in the chat, no dialog.
+            } else {
+                await maybeAutoSetBackground(results, s, run);
+            }
+            if (s.__qigQuiet) {
+                // handled above
+            } else if (s.autoInsert) {
                 // Multi-image batches open the picker even with auto-insert enabled:
                 // serial insertion is non-atomic and only the last insert could be undone.
                 if (results.length > 1) {
@@ -21515,6 +21524,7 @@ async function generateImage() {
                 status: outcome.errors.length > 0 ? "partial" : "success",
                 generated: results.length,
                 failed: outcome.errors.length,
+                urls: results.map(result => (typeof result?.url === "string" ? result.url : "")).filter(Boolean),
             };
     } catch (e) {
         if (e.name === "AbortError") {
@@ -22163,6 +22173,21 @@ async function runQigSlashGenerateCommand(args = {}, unnamedPrompt = "") {
 
     const mode = normalizeSlashGenerationMode(args?.mode);
     const oneOffPrompt = stringifySlashCommandArgument(unnamedPrompt);
+    const quiet = hasSlashNamedArgument(args, "quiet") ? parseSlashBoolean(args.quiet, false) : false;
+    if (quiet === null) return "QIG: quiet must be true or false.";
+    if (quiet) {
+        // Another extension (or a Quick Reply) wants the picture back, not in the chat.
+        if (!oneOffPrompt) return "QIG: quiet=true needs a prompt.";
+        if (mode === "inject") return "QIG: quiet=true does not apply to inject mode.";
+        try {
+            const outcome = await withTransientGenerationSettings(getQuietSlashOverrides(oneOffPrompt), () => generateImage());
+            return formatQuietSlashResult(outcome);
+        } catch (e) {
+            const message = e?.message || String(e);
+            log(`Quiet slash generation failed: ${message}`);
+            return "QIG failed: " + message;
+        }
+    }
     const runGeneration = async () => {
         if (mode === "inject") return await generateImageInjectPalette();
         if (mode === "direct" || oneOffPrompt) return await generateImage();
@@ -22262,7 +22287,7 @@ async function registerQigSlashCommands() {
         SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             name: "qig",
             aliases: ["qig-generate", "quick-image-gen"],
-            returns: "Quick Image Gen status text",
+            returns: "Quick Image Gen status text, or with quiet=true the saved image path",
             callback: runQigSlashGenerateCommand,
             namedArgumentList: [
                 SlashCommandNamedArgument.fromProps({
@@ -22271,6 +22296,14 @@ async function registerQigSlashCommands() {
                     typeList: [ARGUMENT_TYPE.STRING],
                     enumList: modeEnums,
                     defaultValue: "palette",
+                    isRequired: false,
+                }),
+                SlashCommandNamedArgument.fromProps({
+                    name: "quiet",
+                    description: "true: generate one image from the prompt, save it, put nothing in the chat and return the image path (for other extensions and Quick Replies)",
+                    typeList: [ARGUMENT_TYPE.BOOLEAN],
+                    enumList: ["true", "false"].map(value => new SlashCommandEnumValue(value)),
+                    defaultValue: "false",
                     isRequired: false,
                 }),
             ],
@@ -22282,7 +22315,7 @@ async function registerQigSlashCommands() {
                     acceptsMultiple: true,
                 }),
             ],
-            helpString: `<div>Generate with Quick Image Gen. Examples: <code>/qig</code>, <code>/qig mode=direct portrait of {{char}}</code>, <code>/qig mode=inject</code>.</div>`,
+            helpString: `<div>Generate with Quick Image Gen. Examples: <code>/qig</code>, <code>/qig mode=direct portrait of {{char}}</code>, <code>/qig mode=inject</code>, <code>/qig quiet=true a lighthouse at dusk</code> (returns the saved image path instead of posting it).</div>`,
         }));
 
         SlashCommandParser.addCommandObject(SlashCommand.fromProps({
