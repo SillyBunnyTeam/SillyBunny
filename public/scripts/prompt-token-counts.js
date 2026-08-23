@@ -52,6 +52,21 @@ export function getPromptDisplayTokenCounts(messages) {
     return { ...aggregateCounts, ...directCounts };
 }
 
+export function mergePromptTokenCounts(sourceCounts, runtimeCounts) {
+    const counts = { ...(sourceCounts ?? {}) };
+
+    for (const [identifier, tokens] of Object.entries(runtimeCounts ?? {})) {
+        const tokenCount = Number(tokens);
+        // A runtime zero means the prompt never made it into the message tree under
+        // its own identifier; keep the source estimate instead of clobbering it.
+        if (Number.isFinite(tokenCount) && tokenCount > 0) {
+            counts[identifier] = tokenCount;
+        }
+    }
+
+    return counts;
+}
+
 export async function getPromptSourceTokenCounts(prompts, countPromptTokens) {
     const counts = {};
 
