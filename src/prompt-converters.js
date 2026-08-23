@@ -71,6 +71,36 @@ export function addAssistantPrefix(prompt, tools, property) {
     return prompt;
 }
 
+export const KIMI_K3_STOCK_REASONING = 'I have finished thinking and now continue the reply directly from its existing beginning.';
+
+/**
+ * Fills the reasoning slot of a trailing partial assistant message for Kimi K3.
+ * SillyBunny divergence: K3 must reason before it replies, so a partial message that prefills
+ * only `content` makes the model reason live and it can then stop without any reply tokens.
+ * A leading <think> block is moved into `reasoning_content` (kimi-k3-jb behavior); a plain
+ * prefill gets a stock `reasoning_content` so the model continues the reply directly.
+ * @param {any[]} prompt Prompt messages array
+ * @returns {any[]} Transformed messages array
+ */
+export function seedKimiK3PartialReasoning(prompt) {
+    if (!Array.isArray(prompt) || !prompt.length) {
+        return prompt;
+    }
+    const lastMessage = prompt[prompt.length - 1];
+    if (lastMessage?.role !== 'assistant' || lastMessage.partial !== true || typeof lastMessage.content !== 'string') {
+        return prompt;
+    }
+    const thinkMatch = lastMessage.content.match(/^\s*<think>(.*?)(?:<\/think>|$)/s);
+    if (thinkMatch) {
+        lastMessage.reasoning_content = thinkMatch[1].trim();
+        lastMessage.content = lastMessage.content.slice(thinkMatch[0].length).trimStart();
+    }
+    if (!lastMessage.reasoning_content && lastMessage.content.trim()) {
+        lastMessage.reasoning_content = KIMI_K3_STOCK_REASONING;
+    }
+    return prompt;
+}
+
 /**
  * Applies a post-processing step to the generated messages.
  * @param {object[]} messages Messages to post-process
