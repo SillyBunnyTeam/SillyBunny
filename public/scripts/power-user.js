@@ -2039,6 +2039,7 @@ function applyCustomThemeStyleEntries() {
 }
 
 function applyBlurStrength() {
+    document.body.classList.toggle('sb-theme-blur', Number(power_user.blur_strength) > 0);
     document.documentElement.style.setProperty('--blurStrength', String(power_user.blur_strength));
     $('#blur_strength_counter').val(power_user.blur_strength);
     $('#blur_strength').val(power_user.blur_strength);

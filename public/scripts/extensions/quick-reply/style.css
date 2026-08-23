@@ -680,8 +680,8 @@
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList {
   background-color: var(--stcdx--bgColor);
   border: 1px solid var(--SmartThemeBorderColor);
-  -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength));
-  backdrop-filter: blur(var(--SmartThemeBlurStrength));
+  -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
+  backdrop-filter: var(--SmartThemeBackdropFilter);
   border-radius: 10px;
   font-size: smaller;
   position: absolute;

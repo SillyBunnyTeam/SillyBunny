@@ -24,8 +24,8 @@ dialog {
     /* Overflow visible so elements (like toasts) can appear outside of the dialog. '.popup-body' is hiding overflow for the real content. */
     overflow: visible;
 
-    backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)));
-    -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)));
+    backdrop-filter: var(--SmartThemeBackdropFilter);
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
 
     /* Fix weird animation issue with font-scaling during popup open */
     backface-visibility: hidden;

@@ -83,11 +83,6 @@ body:not(.bubblechat):not(.echostyle):not(.whisperstyle):not(.hushstyle):not(.ri
     }
 }
 
-/* Fast UI Mode: body.no-blur * cannot reach a pseudo-element, so switch the chat column layer off explicitly. */
-body.no-blur #sheld::before {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-}
 body.hideChatAvatars.echostyle #chat,
 body.hideChatAvatars.whisperstyle #chat,
 body.hideChatAvatars.hushstyle #chat,
@@ -157,8 +152,8 @@ body.echostyle #chat {
             overflow: hidden;
             margin-top: calc(var(--custom-ChatAvatar) * 0.35);
             border-radius: 10px;
-            backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)));
-            -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)));
+            backdrop-filter: var(--SmartThemeBackdropFilter);
+            -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
             box-shadow: 3px 3px 8px rgba(0, 0, 0, 3%);
         }
 
