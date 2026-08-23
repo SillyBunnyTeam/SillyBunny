@@ -2,6 +2,7 @@ import { CONNECT_API_MAP, createModelIcon, getRequestHeaders } from '../../scrip
 import { extension_settings, openThirdPartyExtensionMenu } from '../extensions.js';
 import { t } from '../i18n.js';
 import { oai_settings, proxies, ZAI_ENDPOINT } from '../openai.js';
+import { getPresetManager } from '../preset-manager.js';
 import { SECRET_KEYS, secret_state } from '../secrets.js';
 import { textgen_types, textgenerationwebui_settings } from '../textgen-settings.js';
 import { getTokenCountAsync } from '../tokenizers.js';
@@ -25,6 +26,36 @@ const CHAT_COMPLETION_PROFILE_REQUEST_FIELDS = {
     'custom-include-headers': ['custom_include_headers', value => String(value ?? '')],
 };
 
+/**
+ * Reasoning settings a completion preset owns, keyed by the connection profile field that would
+ * override them. A profile can only capture what was set when it was saved, and profiles saved
+ * before these fields existed carry none of them, so the preset a profile points at is the
+ * fallback: that is where the setting is usually made.
+ * @type {Record<string, string>}
+ */
+const PRESET_BACKED_REASONING_FIELDS = Object.freeze({
+    'reasoning-effort': 'reasoning_effort',
+    'verbosity': 'verbosity',
+});
+
+/**
+ * Loads the completion preset a connection profile points at.
+ * @param {object} profile Connection profile
+ * @returns {object|null} Preset, if it can be read
+ */
+function getProfileCompletionPreset(profile) {
+    if (!profile?.preset) {
+        return null;
+    }
+
+    try {
+        return getPresetManager('openai')?.getCompletionPresetByName(profile.preset) ?? null;
+    } catch (error) {
+        console.warn('Could not read the completion preset of the connection profile', error);
+        return null;
+    }
+}
+
 export function getChatCompletionProfileRequestOverrides(profile, overridePayload) {
     const overrides = {};
     const profileFieldNames = [];
@@ -35,6 +66,25 @@ export function getChatCompletionProfileRequestOverrides(profile, overridePayloa
         }
 
         overrides[requestKey] = coerceValue(profile[profileKey]);
+        profileFieldNames.push(requestKey);
+    }
+
+    // SillyBunny: a profile that states no reasoning preference of its own inherits the one its
+    // preset carries, which is where the setting is usually made. An explicit value on the
+    // profile, and anything the caller passes, still wins.
+    const preset = getProfileCompletionPreset(profile);
+    for (const [profileKey, requestKey] of Object.entries(PRESET_BACKED_REASONING_FIELDS)) {
+        if (Object.hasOwn(profile, profileKey) || Object.hasOwn(overridePayload, requestKey)) {
+            continue;
+        }
+
+        const value = preset?.[requestKey];
+        if (value === undefined || value === null || value === '') {
+            continue;
+        }
+
+        const [, coerceValue] = CHAT_COMPLETION_PROFILE_REQUEST_FIELDS[profileKey];
+        overrides[requestKey] = coerceValue(value);
         profileFieldNames.push(requestKey);
     }
 
