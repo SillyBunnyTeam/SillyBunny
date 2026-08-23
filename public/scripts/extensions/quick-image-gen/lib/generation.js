@@ -1,4 +1,31 @@
 export const MAX_BATCH_COUNT = 10;
+
+/**
+ * A quiet run is one another extension (or a Quick Reply) asks for and wants the picture
+ * back from: one image from the given prompt, saved to the server so the path stays valid,
+ * no confirmation dialog, nothing inserted into the chat and no result dialog.
+ */
+export function getQuietSlashOverrides(prompt) {
+    return {
+        prompt: String(prompt ?? ""),
+        useLastMessage: false,
+        autoInsert: false,
+        confirmBeforeGenerate: false,
+        enableParagraphPicker: false,
+        batchCount: 1,
+        saveToServer: true,
+        __qigQuiet: true,
+    };
+}
+
+/** What a quiet slash run hands back through the pipe: the saved image path, or a "QIG ..." line saying why not. */
+export function formatQuietSlashResult(outcome) {
+    if (outcome?.status === "busy") return "QIG: generation is already running.";
+    if (outcome?.status === "cancelled") return "QIG: generation cancelled.";
+    const url = Array.isArray(outcome?.urls) ? outcome.urls.find(item => typeof item === "string" && item) : "";
+    if (url) return url;
+    return `QIG failed: ${outcome?.message || "no image was produced"}`;
+}
 const RESULT_FAILURES = Symbol("qigResultFailures");
 
 export function attachResultFailures(results, failures) {
