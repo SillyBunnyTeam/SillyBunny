@@ -52,6 +52,7 @@
 - PR #795 (2026-08-22) `fix: atomic card rewrite is no longer luck-based`
 - PR #797 (2026-08-23) `chore: update Quick Image Gen to 3.3.0`
 - PR #798 (2026-08-23) `fix(connection-profile): send the reasoning effort saved in a profile's preset`
+- PR #799 (2026-08-23) `fix(reasoning-effort): send 'none' verbatim when the model supports it`
 
 ## v1.7.0
 
