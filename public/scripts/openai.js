@@ -5174,7 +5174,12 @@ function getReasoningEffort(settings = null, model = null) {
     function resolveReasoningEffort() {
         switch (settings.reasoning_effort) {
             case reasoning_effort_types.none:
-                return undefined;
+                // GPT-5.1 and newer accept 'none' as a real value that pins thinking off;
+                // omitting the field instead lets the model pick its own default depth.
+                // Everywhere else 'none' stays unsent, since endpoints that do not list it reject it.
+                return [chat_completion_sources.OPENAI, chat_completion_sources.OPENAI_RESPONSES, chat_completion_sources.AZURE_OPENAI, chat_completion_sources.CUSTOM].includes(settings.chat_completion_source) && /^gpt-5\.([1-9]|\d{2,})/.test(model)
+                    ? reasoning_effort_types.none
+                    : undefined;
             case reasoning_effort_types.min:
                 if (chat_completion_sources.OPENROUTER === settings.chat_completion_source && !shouldRequestReasoning(settings)) {
                     return 'none';
