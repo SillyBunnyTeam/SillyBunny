@@ -57,10 +57,15 @@
     position: absolute;
     inset: 0;
     background: var(--sheldBackgroundColor, transparent);
-    backdrop-filter: blur(calc(var(--sheldBlurStrength, 0) * 1px));
-    -webkit-backdrop-filter: blur(calc(var(--sheldBlurStrength, 0) * 1px));
     z-index: -1 !important;
     pointer-events: none;
+}
+
+/* SillyBunny: a zero-strength backdrop-filter still creates a compositing layer over the whole chat column,
+   so the blur rule is attached only while the Sheld Blur slider is above 0 (body class from applyThemeEffects). */
+body.sb-sheld-blur #sheld::before {
+    backdrop-filter: blur(calc(var(--sheldBlurStrength, 0) * 1px));
+    -webkit-backdrop-filter: blur(calc(var(--sheldBlurStrength, 0) * 1px));
 }
 
 body:not(.bubblechat):not(.echostyle):not(.whisperstyle):not(.hushstyle):not(.ripplestyle):not(.tidestyle) #chat .mes:not(.smallSysMes) .mes_block {
@@ -72,10 +77,16 @@ body:not(.bubblechat):not(.echostyle):not(.whisperstyle):not(.hushstyle):not(.ri
 }
 
 @media screen and (max-width: 1000px) {
-    #sheld::before {
+    body.sb-sheld-blur #sheld::before {
         backdrop-filter: blur(calc(var(--mobileSheldBlurStrength, 0) * 1px));
         -webkit-backdrop-filter: blur(calc(var(--mobileSheldBlurStrength, 0) * 1px));
     }
+}
+
+/* Fast UI Mode: body.no-blur * cannot reach a pseudo-element, so switch the chat column layer off explicitly. */
+body.no-blur #sheld::before {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 body.hideChatAvatars.echostyle #chat,
 body.hideChatAvatars.whisperstyle #chat,

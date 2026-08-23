@@ -216,9 +216,9 @@ const THEME_COLOR_PROPERTIES = Object.freeze([
 ]);
 
 const THEME_EFFECT_PROPERTIES = Object.freeze([
-    { key: 'customCSS-bg-blur', selector: '#background_blur', counterSelector: '#background_blur_counter', cssVar: '--customCSS-bg-blur', defaultValue: 0, min: 0, max: 10 },
+    { key: 'customCSS-bg-blur', selector: '#background_blur', counterSelector: '#background_blur_counter', cssVar: '--customCSS-bg-blur', defaultValue: 0, min: 0, max: 10, activeClass: 'sb-bg-blur' },
     { key: 'customCSS-bg-opacity', selector: '#background_opacity', counterSelector: '#background_opacity_counter', cssVar: '--customCSS-bg-opacity', defaultValue: 1, min: 0, max: 1 },
-    { key: 'sheldBlurStrength', selector: '#sheld_blur_strength', counterSelector: '#sheld_blur_strength_counter', cssVar: '--sheldBlurStrength', linkedCssVars: ['--mobileSheldBlurStrength'], defaultValue: 0, min: 0, max: 10 },
+    { key: 'sheldBlurStrength', selector: '#sheld_blur_strength', counterSelector: '#sheld_blur_strength_counter', cssVar: '--sheldBlurStrength', linkedCssVars: ['--mobileSheldBlurStrength'], defaultValue: 0, min: 0, max: 10, activeClass: 'sb-sheld-blur' },
     { key: 'sheldBackgroundColor', cssVar: '--sheldBackgroundColor', defaultValue: 'transparent' },
 ]);
 
@@ -2072,6 +2072,11 @@ function applyThemeEffects() {
         document.documentElement.style.setProperty(property.cssVar, String(value));
         for (const cssVar of property.linkedCssVars || []) {
             document.documentElement.style.setProperty(cssVar, String(value));
+        }
+
+        // SillyBunny: a zero-strength blur still forces its own compositing layer, so the CSS only attaches the filter while the slider is above 0.
+        if (property.activeClass) {
+            document.body.classList.toggle(property.activeClass, Number(value) > 0);
         }
 
         if (property.selector) {

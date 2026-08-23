@@ -906,9 +906,9 @@ hr {
     position: absolute;
     border-bottom: 1px solid var(--color-border, var(--SmartThemeBorderColor));
     box-shadow: 0 4px 24px rgba(2, 8, 5, 0.25);
-    backdrop-filter: blur(20px);
+    backdrop-filter: blur(var(--SmartThemeBlurStrength));
     background-color: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, transparent);
-    -webkit-backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength));
     z-index: 3005;
     gap: 2px;
 }
@@ -1035,8 +1035,8 @@ body .panelControlBar {
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 0 0 1.65rem 1.65rem;
     background-color: var(--SmartThemeBlurTintColor);
-    -webkit-backdrop-filter: blur(20px);
-    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength));
+    backdrop-filter: blur(var(--SmartThemeBlurStrength));
 }
 
 #nonQRFormItems {
