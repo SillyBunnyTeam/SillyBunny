@@ -371,7 +371,12 @@ body.documentstyle #chat .mes_block .ch_name {
 
 /*FastUI blur removal*/
 
-body.no-blur * {
+body.no-blur *,
+body.no-blur::before,
+body.no-blur::after,
+body.no-blur *::before,
+body.no-blur *::after,
+body.no-blur *::backdrop {
     -webkit-backdrop-filter: unset !important;
     backdrop-filter: unset !important;
 }

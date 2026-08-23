@@ -489,8 +489,8 @@ body::before {
         var(--sb-topbar-surface-bg);
     border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
     box-shadow: 0 12px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: var(--SmartThemeBackdropFilter);
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
 }
 
 #top-bar::before {
@@ -1913,16 +1913,16 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     :root:not([data-sb-theme]) #top-bar,
     :root[data-sb-theme='clean-minimal'] #top-bar {
         background: var(--sb-topbar-surface-bg) !important;
-        backdrop-filter: blur(12px) saturate(110%);
-        -webkit-backdrop-filter: blur(12px) saturate(110%);
+        backdrop-filter: var(--SmartThemeBackdropFilterSaturated);
+        -webkit-backdrop-filter: var(--SmartThemeBackdropFilterSaturated);
     }
 
     :root:not([data-sb-theme]) #send_form,
     :root[data-sb-theme='clean-minimal'] #send_form {
         background: var(--sb-composer-surface-bg) !important;
         border-color: color-mix(in srgb, var(--SmartThemeBorderColor) 86%, transparent) !important;
-        backdrop-filter: blur(12px) saturate(110%);
-        -webkit-backdrop-filter: blur(12px) saturate(110%);
+        backdrop-filter: var(--SmartThemeBackdropFilterSaturated);
+        -webkit-backdrop-filter: var(--SmartThemeBackdropFilterSaturated);
     }
 
     :root:not([data-sb-theme]) #send_textarea,

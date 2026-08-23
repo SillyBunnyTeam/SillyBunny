@@ -11,6 +11,18 @@ describe('core message transparency wiring', () => {
     const styleSource = readSource('public', 'style.css');
     const powerUserSource = readSource('public', 'scripts', 'power-user.js');
     const indexSource = readSource('public', 'index.html');
+    const toggleDependentSource = readSource('public', 'css', 'toggle-dependent.css');
+    const themeBlurSources = [
+        styleSource,
+        readSource('public', 'css', 'character-group-overlay.css'),
+        readSource('public', 'css', 'mobile-styles.css'),
+        readSource('public', 'css', 'popup.css'),
+        readSource('public', 'css', 'select2-overrides.css'),
+        readSource('public', 'css', 'sillybunny-chat-styles.css'),
+        readSource('public', 'css', 'sillybunny-theme.css'),
+        readSource('public', 'scripts', 'extensions', 'quick-reply', 'style.css'),
+        readSource('public', 'scripts', 'extensions', 'stable-diffusion', 'style.css'),
+    ].join('\n');
 
     test('loads the native chat stylesheet during chat-display setup so default chat styles get core transparency', () => {
         expect(indexSource).not.toContain('id="sillybunny-native-chat-styles"');
@@ -36,6 +48,16 @@ describe('core message transparency wiring', () => {
         expect(backgroundsSource).toContain('opacity: var(--customCSS-bg-opacity, 1);');
         expect(backgroundsSource).toContain('filter: blur(calc(var(--customCSS-bg-blur, 0) * 1px));');
         expect(styleSource).toContain('@import url(css/backgrounds.css?v=20260606a);');
+    });
+
+    test('keeps zero-strength theme blur and Fast UI free of backdrop-filter layers', () => {
+        expect(powerUserSource).toContain('document.body.classList.toggle(\'sb-theme-blur\', Number(power_user.blur_strength) > 0);');
+        expect(styleSource).toContain('--SmartThemeBackdropFilter: none;');
+        expect(styleSource).toContain('body.sb-theme-blur {');
+        expect(themeBlurSources).not.toMatch(/backdrop-filter:\s*blur\((?:calc\()?var\(--SmartThemeBlurStrength\)/);
+        expect(toggleDependentSource).toContain('body.no-blur *::before,');
+        expect(toggleDependentSource).toContain('body.no-blur *::backdrop {');
+        expect(backgroundsSource).not.toContain('filter var(--sb-transition-slow)');
     });
 
     test('persists and applies the three core visual sliders', () => {

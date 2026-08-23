@@ -78,6 +78,9 @@
     --SmartThemeUserMesBlurTintColor: rgba(29, 33, 40, 0.9);
     --SmartThemeBotMesBlurTintColor: rgba(29, 33, 40, 0.9);
     --SmartThemeBlurStrength: calc(var(--blurStrength) * 1px);
+    --SmartThemeBackdropFilter: none;
+    --SmartThemeBackdropFilter2x: none;
+    --SmartThemeBackdropFilterSaturated: none;
     --SmartThemeShadowColor: rgba(0, 0, 0, 0.9);
     --SmartThemeBorderColor: rgba(0, 0, 0, 1);
     --SmartThemeCheckboxBgColorR: 207;
@@ -242,6 +245,13 @@ body {
     color-scheme: only light;
     /* SillyBunny: paired with html; stops scroll chaining off the document. */
     overscroll-behavior: none;
+}
+
+/* SillyBunny: `blur(0px)` still creates compositor layers, so only expose blur filters above zero. */
+body.sb-theme-blur {
+    --SmartThemeBackdropFilter: blur(var(--SmartThemeBlurStrength));
+    --SmartThemeBackdropFilter2x: blur(calc(var(--SmartThemeBlurStrength) * 2));
+    --SmartThemeBackdropFilterSaturated: blur(var(--SmartThemeBlurStrength)) saturate(110%);
 }
 
 /* SillyBunny: Firefox ignores WebKit scrollbar pseudo-elements. */
@@ -906,9 +916,9 @@ hr {
     position: absolute;
     border-bottom: 1px solid var(--color-border, var(--SmartThemeBorderColor));
     box-shadow: 0 4px 24px rgba(2, 8, 5, 0.25);
-    backdrop-filter: blur(20px);
+    backdrop-filter: var(--SmartThemeBackdropFilter);
     background-color: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, transparent);
-    -webkit-backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
     z-index: 3005;
     gap: 2px;
 }
@@ -998,9 +1008,9 @@ body .panelControlBar {
     overflow-y: scroll;
     display: flex;
     bottom: 10px;
-    backdrop-filter: blur(var(--SmartThemeBlurStrength));
+    backdrop-filter: var(--SmartThemeBackdropFilter);
     background-color: var(--SmartThemeChatTintColor);
-    -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength));
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
     text-shadow: 0px 0px calc(var(--shadowWidth) * 1px) var(--SmartThemeShadowColor);
     flex-direction: column;
     z-index: 30;
@@ -1035,8 +1045,8 @@ body .panelControlBar {
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 0 0 1.65rem 1.65rem;
     background-color: var(--SmartThemeBlurTintColor);
-    -webkit-backdrop-filter: blur(20px);
-    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
+    backdrop-filter: var(--SmartThemeBackdropFilter);
 }
 
 #nonQRFormItems {
@@ -1271,8 +1281,8 @@ body .panelControlBar {
        keeps these menus above zoomed avatars/MovingUI panels (9999) like before. */
     z-index: var(--sb-z-critical, 10000);
     background-color: var(--SmartThemeBlurTintColor);
-    -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength));
-    backdrop-filter: blur(var(--SmartThemeBlurStrength));
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
+    backdrop-filter: var(--SmartThemeBackdropFilter);
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
     flex-flow: column;
     border-radius: 10px;
@@ -2137,8 +2147,8 @@ body {
 
     --bottom: 50vh;
     background: var(--ac-color-background);
-    -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength));
-    backdrop-filter: blur(var(--SmartThemeBlurStrength));
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
+    backdrop-filter: var(--SmartThemeBackdropFilter);
     border: 1px solid var(--ac-color-border);
     border-radius: 3px;
     color: var(--ac-color-text);
@@ -4288,8 +4298,8 @@ grammarly-extension {
 }
 
 #shadow_popup {
-    backdrop-filter: blur(calc(var(--SmartThemeBlurStrength) * 2));
-    -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength) * 2));
+    backdrop-filter: var(--SmartThemeBackdropFilter2x);
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter2x);
     background-color: var(--black30a);
     display: none;
     opacity: 0.0;
@@ -5204,8 +5214,8 @@ body:is([data-generating="true"], [data-swiping="true"]) :is(
     z-index: 4100;
     top: 0;
     background-color: var(--black70a);
-    backdrop-filter: blur(var(--SmartThemeBlurStrength));
-    -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength));
+    backdrop-filter: var(--SmartThemeBackdropFilter);
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
 }
 
 #select_chat_popup {
@@ -5598,8 +5608,8 @@ body .ui-widget-content {
     border-radius: 10px;
     box-shadow: 0 0 3px var(--black50a);
     text-shadow: 0px 0px calc(var(--shadowWidth) * 1px) var(--SmartThemeShadowColor);
-    -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)*2));
-    backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)*2));
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter2x);
+    backdrop-filter: var(--SmartThemeBackdropFilter2x);
     color: var(--SmartThemeBodyColor);
 }
 
@@ -5779,8 +5789,8 @@ a:hover {
     margin-top: 0;
     overflow: hidden;
     background-color: var(--SmartThemeBlurTintColor);
-    -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)*2));
-    backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)*2));
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter2x);
+    backdrop-filter: var(--SmartThemeBackdropFilter2x);
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 10px;
     box-shadow: 0 0 5px black;
@@ -6270,8 +6280,8 @@ body:has(.drawer-content.open) #top-settings-holder:has(.drawer-content.openDraw
     right: 0;
     margin: 0 auto;
     height: 0;
-    backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)));
-    -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)));
+    backdrop-filter: var(--SmartThemeBackdropFilter);
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
     box-shadow: 0 18px 80px rgba(2, 8, 5, 0.35);
     transition-property: height, display;
     transition-duration: 200ms;
@@ -6587,8 +6597,8 @@ body:not(.movingUI) .drawer-content.maximized {
     border-radius: 10px;
     border: 1px solid var(--SmartThemeBorderColor);
     aspect-ratio: unset;
-    -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength));
-    backdrop-filter: blur(var(--SmartThemeBlurStrength));
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
+    backdrop-filter: var(--SmartThemeBackdropFilter);
     background-color: var(--SmartThemeBlurTintColor);
     padding: 5px;
 }
@@ -7273,8 +7283,8 @@ body:not(.movingUI) .drawer-content.maximized {
     border: 1px solid;
     background-color: var(--SmartThemeBlurTintColor);
     color: var(--SmartThemeBodyColor);
-    backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)));
-    -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)));
+    backdrop-filter: var(--SmartThemeBackdropFilter);
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
 }
 
 .info-block.hint {
