@@ -50,6 +50,7 @@
 - PR #793 (2026-08-22) `fix(ui): debugger inherits theme for dropdown + is the same button as the others in the wand menu + scroll feature when there are too many extensions in wand menu`
 - PR #794 (2026-08-22) `fix(mobile): re-clicking the top bar icons when the window is open closes them`
 - PR #795 (2026-08-22) `fix: atomic card rewrite is no longer luck-based`
+- PR #796 (2026-08-23) `fix: prevent the frontend from using so many resources to reduce GPU usage`
 - PR #797 (2026-08-23) `chore: update Quick Image Gen to 3.3.0`
 - PR #798 (2026-08-23) `fix(connection-profile): send the reasoning effort saved in a profile's preset`
 - PR #799 (2026-08-23) `fix(reasoning-effort): send 'none' verbatim when the model supports it`
