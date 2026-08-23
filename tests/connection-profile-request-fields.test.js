@@ -28,6 +28,14 @@ await jest.unstable_mockModule('../public/scripts/openai.js', () => ({
     },
 }));
 
+const mockPresets = new Map();
+
+await jest.unstable_mockModule('../public/scripts/preset-manager.js', () => ({
+    getPresetManager: jest.fn(() => ({
+        getCompletionPresetByName: (name) => mockPresets.get(name),
+    })),
+}));
+
 await jest.unstable_mockModule('../public/scripts/secrets.js', () => ({
     SECRET_KEYS: {},
     secret_state: {},
@@ -242,3 +250,57 @@ describe('Connection Profile reverse proxy request mapping', () => {
         expect(getChatCompletionProfileReverseProxy({}, 'openai')).toEqual({});
     });
 });
+
+describe('reasoning settings from the profile preset', () => {
+    beforeEach(() => {
+        mockPresets.clear();
+        mockPresets.set('Thinking Preset', { reasoning_effort: 'high', verbosity: 'low', temperature: 0.9, stop: ['\\n\\n'] });
+    });
+
+    test('a profile that captured no reasoning settings inherits the ones its preset carries', () => {
+        const profile = { id: 'profile-preset', mode: 'cc', name: 'Preset Profile', api: 'openai', model: 'gpt-5.2', preset: 'Thinking Preset' };
+
+        const { overrides, profileFieldNames } = getChatCompletionProfileRequestOverrides(profile, {});
+
+        expect(overrides.reasoning_effort).toBe('high');
+        expect(overrides.verbosity).toBe('low');
+        expect(profileFieldNames).toEqual(expect.arrayContaining(['reasoning_effort', 'verbosity']));
+    });
+
+    test('settings the preset does not own are never taken from it', () => {
+        const profile = { id: 'profile-preset', mode: 'cc', name: 'Preset Profile', api: 'openai', model: 'gpt-5.2', preset: 'Thinking Preset' };
+
+        const { overrides } = getChatCompletionProfileRequestOverrides(profile, {});
+
+        expect(overrides.temperature).toBeUndefined();
+        expect(overrides.stop).toBeUndefined();
+    });
+
+    test('a setting stated on the profile wins over the preset', () => {
+        const profile = { id: 'profile-preset', mode: 'cc', name: 'Preset Profile', api: 'openai', model: 'gpt-5.2', preset: 'Thinking Preset', 'reasoning-effort': 'min' };
+
+        const { overrides } = getChatCompletionProfileRequestOverrides(profile, {});
+
+        expect(overrides.reasoning_effort).toBe('min');
+        expect(overrides.verbosity).toBe('low');
+    });
+
+    test('a value the caller is already sending is left alone', () => {
+        const profile = { id: 'profile-preset', mode: 'cc', name: 'Preset Profile', api: 'openai', model: 'gpt-5.2', preset: 'Thinking Preset' };
+
+        const { overrides, profileFieldNames } = getChatCompletionProfileRequestOverrides(profile, { reasoning_effort: 'medium' });
+
+        expect(overrides.reasoning_effort).toBeUndefined();
+        expect(profileFieldNames).not.toContain('reasoning_effort');
+    });
+
+    test('an empty preset value, a missing preset and a profile without one send nothing extra', () => {
+        mockPresets.set('Empty Preset', { reasoning_effort: '', verbosity: undefined });
+        const base = { id: 'profile-preset', mode: 'cc', name: 'Preset Profile', api: 'openai', model: 'gpt-5.2' };
+
+        expect(getChatCompletionProfileRequestOverrides({ ...base, preset: 'Empty Preset' }, {}).overrides).toEqual({});
+        expect(getChatCompletionProfileRequestOverrides({ ...base, preset: 'Missing Preset' }, {}).overrides).toEqual({});
+        expect(getChatCompletionProfileRequestOverrides(base, {}).overrides).toEqual({});
+    });
+});
+
