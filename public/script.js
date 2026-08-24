@@ -8272,6 +8272,8 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                     displayIncompleteSentences: false,
                 });
 
+                const isReasoningOnlyStream = !getMessage.trim() && !!(activeStreamingProcessor.reasoningHandler.reasoning || activeStreamingProcessor.pendingReasoning);
+
                 if (isContinue) {
                     getMessage = continue_mag + getMessage;
                 }
@@ -8281,6 +8283,10 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                     || activeStreamingProcessor.abortController.signal.aborted;
                 const isStreamFinished = !isStreamCancelled && activeStreamingProcessor.isFinished;
                 const isStreamWithToolCalls = Array.isArray(activeStreamingProcessor.toolCalls) && activeStreamingProcessor.toolCalls.length;
+
+                if (isStreamFinished && !isStreamWithToolCalls && isReasoningOnlyStream) {
+                    toastr.warning(t`The model finished reasoning but returned no reply text.`);
+                }
                 if (canPerformToolCalls && isStreamFinished && isStreamWithToolCalls) {
                     const hasToolCalls = ToolManager.hasToolCalls(activeStreamingProcessor.toolCalls);
                     const lastMessage = chat[chat.length - 1];
@@ -8443,6 +8449,10 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
         if (power_user.trim_spaces) {
             reasoning = reasoning.trim();
+        }
+
+        if (!getMessage.trim() && reasoning && type !== 'quiet') {
+            toastr.warning(t`The model finished reasoning but returned no reply text.`);
         }
 
         if (isContinue) {

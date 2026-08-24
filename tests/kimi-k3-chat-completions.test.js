@@ -6,6 +6,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { CHAT_COMPLETION_SOURCES } from '../src/constants.js';
+
+// Imported dynamically after setConfigFilePath: prompt-converters reads config at module load.
+let KIMI_K3_STOCK_REASONING;
 import { setConfigFilePath } from '../src/util.js';
 
 const actualNodeFetch = (await import('node-fetch')).default;
@@ -28,6 +31,7 @@ describe('Kimi K3 chat completion requests', () => {
         fs.writeFileSync(configPath, defaultConfig);
         tempDirs.push(configRoot);
         setConfigFilePath(configPath);
+        ({ KIMI_K3_STOCK_REASONING } = await import('../src/prompt-converters.js'));
 
         const { router: chatCompletionsRouter } = await import('../src/endpoints/backends/chat-completions.js');
         const { SecretManager, SECRET_KEYS } = await import('../src/endpoints/secrets.js');
@@ -119,6 +123,7 @@ describe('Kimi K3 chat completion requests', () => {
         expect(capturedBody.messages.at(-1)).toEqual({
             role: 'assistant',
             content: 'Prefill',
+            reasoning_content: KIMI_K3_STOCK_REASONING,
             partial: true,
         });
         expect(capturedBody.thinking).toBeUndefined();
@@ -152,6 +157,24 @@ describe('Kimi K3 chat completion requests', () => {
         expect(capturedBody.messages.at(-1)).toEqual({
             role: 'assistant',
             content: 'YAML prefill',
+            reasoning_content: KIMI_K3_STOCK_REASONING,
+            partial: true,
+        });
+    });
+
+    test('moves a leading think block of the prefill into reasoning_content', async () => {
+        const response = await makeRequest(CHAT_COMPLETION_SOURCES.MOONSHOT, {
+            messages: [
+                { role: 'user', content: 'Question' },
+                { role: 'assistant', content: '<think>plan the scene</think>She stepped in.' },
+            ],
+        });
+
+        expect(response.status).toBe(200);
+        expect(capturedBody.messages.at(-1)).toEqual({
+            role: 'assistant',
+            content: 'She stepped in.',
+            reasoning_content: 'plan the scene',
             partial: true,
         });
     });
@@ -201,6 +224,7 @@ describe('Kimi K3 chat completion requests', () => {
         expect(capturedBody.messages.at(-1)).toEqual({
             role: 'assistant',
             content: 'Prefill',
+            reasoning_content: KIMI_K3_STOCK_REASONING,
             partial: true,
         });
         expectFixedParametersOmitted();
@@ -226,6 +250,7 @@ describe('Kimi K3 chat completion requests', () => {
         expect(capturedBody.messages.at(-1)).toEqual({
             role: 'assistant',
             content: 'Prefill',
+            reasoning_content: KIMI_K3_STOCK_REASONING,
             partial: true,
         });
         expectFixedParametersOmitted();

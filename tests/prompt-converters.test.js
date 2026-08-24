@@ -69,6 +69,62 @@ describe('addAssistantPrefix', () => {
 });
 
 
+describe('seedKimiK3PartialReasoning', () => {
+    test('seeds stock reasoning on a plain partial prefill', () => {
+        const prompt = [
+            { role: 'user', content: 'hi' },
+            { role: 'assistant', content: 'The door creaked open.', partial: true },
+        ];
+        mod.seedKimiK3PartialReasoning(prompt);
+        expect(prompt[1].reasoning_content).toBe(mod.KIMI_K3_STOCK_REASONING);
+        expect(prompt[1].content).toBe('The door creaked open.');
+    });
+
+    test('moves a leading think block into reasoning_content', () => {
+        const prompt = [
+            { role: 'assistant', content: '<think>plan the reply</think>The door creaked open.', partial: true },
+        ];
+        mod.seedKimiK3PartialReasoning(prompt);
+        expect(prompt[0].reasoning_content).toBe('plan the reply');
+        expect(prompt[0].content).toBe('The door creaked open.');
+    });
+
+    test('extracts an unclosed think block and leaves content empty', () => {
+        const prompt = [
+            { role: 'assistant', content: '<think>plan the reply', partial: true },
+        ];
+        mod.seedKimiK3PartialReasoning(prompt);
+        expect(prompt[0].reasoning_content).toBe('plan the reply');
+        expect(prompt[0].content).toBe('');
+    });
+
+    test('keeps authored reasoning_content instead of the stock line', () => {
+        const prompt = [
+            { role: 'assistant', content: 'reply start', reasoning_content: 'authored', partial: true },
+        ];
+        mod.seedKimiK3PartialReasoning(prompt);
+        expect(prompt[0].reasoning_content).toBe('authored');
+    });
+
+    test('does not touch a message that is not flagged partial', () => {
+        const prompt = [
+            { role: 'assistant', content: '<think>plan</think>hello' },
+        ];
+        mod.seedKimiK3PartialReasoning(prompt);
+        expect(prompt[0].reasoning_content).toBeUndefined();
+        expect(prompt[0].content).toBe('<think>plan</think>hello');
+    });
+
+    test('does not touch a trailing non-assistant message', () => {
+        const prompt = [
+            { role: 'user', content: 'hi', partial: true },
+        ];
+        mod.seedKimiK3PartialReasoning(prompt);
+        expect(prompt[0].reasoning_content).toBeUndefined();
+    });
+});
+
+
 describe('convertTextCompletionPrompt', () => {
     test('passes through string input unchanged', () => {
         expect(mod.convertTextCompletionPrompt('raw prompt')).toBe('raw prompt');
