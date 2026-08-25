@@ -12074,7 +12074,100 @@ async function waitForMessageScreenshotAssets(container) {
     ]);
 }
 
+async function inlineMessageScreenshotImages(container) {
+    const abortController = new AbortController();
+    const abortTimer = setTimeout(() => abortController.abort(), 2000);
+
+    try {
+        const fetchInlineSource = async (source) => {
+            const response = await fetch(source, { signal: abortController.signal });
+            if (!response.ok) {
+                throw new Error(`Unexpected ${response.status} response for ${source}`);
+            }
+
+            return await getBase64Async(await response.blob());
+        };
+        const pseudoImages = [];
+        // SB: html2canvas materializes generated-content images after its normal image wait.
+        [container, ...container.querySelectorAll('*')].forEach(element => {
+            ['::before', '::after'].forEach(pseudoElement => {
+                const content = getComputedStyle(element, pseudoElement).content;
+                const sources = Array.from(content.matchAll(/url\((?:"([^"]*)"|'([^']*)'|([^)]*))\)/g));
+                if (sources.length > 0) {
+                    pseudoImages.push({ content, element, pseudoElement, sources });
+                }
+            });
+        });
+
+        const pseudoStyleRules = [];
+        await Promise.all([
+            ...Array.from(container.querySelectorAll('img')).map(async (image) => {
+                const source = image.currentSrc || image.src;
+                if (!source || isDataURL(source)) {
+                    return;
+                }
+
+                try {
+                    image.srcset = '';
+                    image.src = await fetchInlineSource(source);
+                    await image.decode?.().catch(() => undefined);
+                } catch {
+                    // Foreign-object SVG cannot load external images, and a pending one stalls the capture clone.
+                    image.removeAttribute('srcset');
+                    image.removeAttribute('src');
+                }
+            }),
+            ...pseudoImages.map(async ({ content, element, pseudoElement, sources }, index) => {
+                let inlineContent = content;
+                try {
+                    for (const sourceMatch of sources) {
+                        const source = sourceMatch[1] ?? sourceMatch[2] ?? sourceMatch[3]?.trim();
+                        if (!source || isDataURL(source)) {
+                            continue;
+                        }
+
+                        inlineContent = inlineContent.replace(sourceMatch[0], `url("${await fetchInlineSource(source)}")`);
+                    }
+                } catch {
+                    inlineContent = 'none';
+                }
+
+                const pseudoName = pseudoElement.slice(2);
+                const attribute = `data-sb-screenshot-pseudo-${pseudoName}`;
+                element.setAttribute(attribute, String(index));
+                pseudoStyleRules.push(`[${attribute}="${index}"]${pseudoElement} { content: ${inlineContent} !important; }`);
+            }),
+        ]);
+
+        if (pseudoStyleRules.length > 0) {
+            const style = document.createElement('style');
+            style.textContent = pseudoStyleRules.join('\n');
+            container.prepend(style);
+        }
+    } finally {
+        clearTimeout(abortTimer);
+    }
+}
+
+let messageScreenshotIconFontStylePromise = null;
+
+async function getMessageScreenshotIconFontStyle() {
+    if (!messageScreenshotIconFontStylePromise) {
+        const abortController = new AbortController();
+        const abortTimer = setTimeout(() => abortController.abort(), 2000);
+        messageScreenshotIconFontStylePromise = fetch('/webfonts/fa-solid-900.woff2', { signal: abortController.signal })
+            .then(response => response.ok ? response.blob() : Promise.reject())
+            .then(getBase64Async)
+            .then(source => `@font-face { font-family: 'Font Awesome 6 Free'; font-style: normal; font-weight: 900; src: url('${source}') format('woff2'); }`)
+            .catch(() => '')
+            .finally(() => clearTimeout(abortTimer));
+    }
+
+    return await messageScreenshotIconFontStylePromise;
+}
+
 let messageScreenshotLibraryPromise = null;
+let messageScreenshotDownloadQueue = Promise.resolve();
 
 async function getMessageScreenshotLibrary() {
     const hydrationState = resolveLazyToolingLibraryHydration({
@@ -12104,197 +12197,139 @@ async function getMessageScreenshotLibrary() {
     return await messageScreenshotLibraryPromise;
 }
 
-function normalizeSrgbChannel(channel) {
-    const trimmedChannel = channel.trim();
-
-    if (trimmedChannel.endsWith('%')) {
-        const percent = Number.parseFloat(trimmedChannel.slice(0, -1));
-        return Number.isFinite(percent) ? Math.round(clamp(percent, 0, 100) * 2.55) : null;
+async function renderMessageScreenshotWithBoundedSvg(html2canvas, surface, captureOptions) {
+    const NativeImage = window.Image;
+    const nativeEncodeURIComponent = window.encodeURIComponent;
+    const nativeImageSource = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    if (!nativeImageSource?.get || !nativeImageSource.set) {
+        return await html2canvas(surface, captureOptions);
     }
 
-    const numericChannel = Number.parseFloat(trimmedChannel);
-    if (!Number.isFinite(numericChannel)) {
-        return null;
+    const svgMarker = '__sillybunny_html2canvas_foreign_object__';
+    const markedSvgDataUrl = `data:image/svg+xml;charset=utf-8,${svgMarker}`;
+    const existingCloneContainers = new Set(document.querySelectorAll('.html2canvas-container'));
+    let serializedSvg = '';
+
+    // SB: html2canvas awaits the clone's fonts.ready and, on WebKit, every cloned image with no
+    // timeout, which stalls iOS captures forever. The capture is already decoded before cloning.
+    const cloneObserver = new MutationObserver(mutations => mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
+        const cloneDocument = node instanceof HTMLIFrameElement && node.classList.contains('html2canvas-container')
+            ? node.contentDocument
+            : null;
+        if (cloneDocument) {
+            Object.defineProperty(cloneDocument, 'fonts', { configurable: true, value: { ready: Promise.resolve() } });
+            Object.defineProperty(cloneDocument, 'images', { configurable: true, value: [] });
+        }
+    })));
+
+    function ScreenshotImage(...args) {
+        const image = new NativeImage(...args);
+        Object.defineProperty(image, 'src', {
+            configurable: true,
+            get: () => nativeImageSource.get.call(image),
+            set: (source) => {
+                if (source !== markedSvgDataUrl || !serializedSvg) {
+                    nativeImageSource.set.call(image, source);
+                    return;
+                }
+
+                const reader = new FileReader();
+                const onload = image.onload;
+                const onerror = image.onerror;
+                let settled = false;
+                const svg = new Blob([serializedSvg], { type: 'image/svg+xml;charset=utf-8' });
+                serializedSvg = '';
+
+                const cleanup = () => {
+                    image.onload = null;
+                    image.onerror = null;
+                    reader.onload = null;
+                    reader.onerror = null;
+                };
+                const fail = (error) => {
+                    if (settled) {
+                        return;
+                    }
+
+                    settled = true;
+                    clearTimeout(timeout);
+                    cleanup();
+                    if (reader.readyState === FileReader.LOADING) {
+                        reader.abort();
+                    }
+                    try {
+                        nativeImageSource.set.call(image, '');
+                    } catch {
+                        // The saved error handler still releases html2canvas if image cancellation fails.
+                    }
+                    onerror?.call(image, error instanceof Error ? error : new Error('Failed to render screenshot SVG'));
+                };
+                const timeout = setTimeout(() => fail(new Error('Timed out rendering screenshot SVG')), 15000);
+
+                image.onload = (event) => {
+                    if (settled) {
+                        return;
+                    }
+
+                    settled = true;
+                    clearTimeout(timeout);
+                    cleanup();
+                    onload?.call(image, event);
+                };
+                image.onerror = fail;
+                reader.onerror = () => fail(reader.error ?? new Error('Failed to encode screenshot SVG'));
+                reader.onload = () => {
+                    try {
+                        nativeImageSource.set.call(image, reader.result);
+                    } catch (error) {
+                        fail(error);
+                    }
+                };
+
+                try {
+                    reader.readAsDataURL(svg);
+                } catch (error) {
+                    fail(error);
+                }
+            },
+        });
+        return image;
     }
 
-    return Math.round(clamp(numericChannel, 0, 1) * 255);
-}
-
-function normalizeSrgbAlpha(alpha) {
-    const trimmedAlpha = alpha.trim();
-
-    if (trimmedAlpha.endsWith('%')) {
-        const percent = Number.parseFloat(trimmedAlpha.slice(0, -1));
-        return Number.isFinite(percent) ? clamp(percent / 100, 0, 1) : null;
-    }
-
-    const numericAlpha = Number.parseFloat(trimmedAlpha);
-    return Number.isFinite(numericAlpha) ? clamp(numericAlpha, 0, 1) : null;
-}
-
-function normalizeOklabLightness(lightness) {
-    const trimmedLightness = lightness.trim();
-
-    if (trimmedLightness.endsWith('%')) {
-        const percent = Number.parseFloat(trimmedLightness.slice(0, -1));
-        return Number.isFinite(percent) ? clamp(percent / 100, 0, 1) : null;
-    }
-
-    const numericLightness = Number.parseFloat(trimmedLightness);
-    if (!Number.isFinite(numericLightness)) {
-        return null;
-    }
-
-    return clamp(numericLightness > 1 ? numericLightness / 100 : numericLightness, 0, 1);
-}
-
-function normalizeOklchChroma(chroma) {
-    const trimmedChroma = chroma.trim();
-    if (trimmedChroma === 'none') {
-        return 0;
-    }
-
-    if (trimmedChroma.endsWith('%')) {
-        const percent = Number.parseFloat(trimmedChroma.slice(0, -1));
-        return Number.isFinite(percent) ? Math.max(0, percent / 100 * 0.4) : null;
-    }
-
-    const numericChroma = Number.parseFloat(trimmedChroma);
-    return Number.isFinite(numericChroma) ? Math.max(0, numericChroma) : null;
-}
-
-function normalizeCssHueToDegrees(hue) {
-    const trimmedHue = hue.trim().toLowerCase();
-    if (trimmedHue === 'none') {
-        return 0;
-    }
-
-    const numericHue = Number.parseFloat(trimmedHue);
-    if (!Number.isFinite(numericHue)) {
-        return null;
-    }
-
-    if (trimmedHue.endsWith('turn')) {
-        return numericHue * 360;
-    }
-
-    if (trimmedHue.endsWith('rad')) {
-        return numericHue * 180 / Math.PI;
-    }
-
-    if (trimmedHue.endsWith('grad')) {
-        return numericHue * 0.9;
-    }
-
-    return numericHue;
-}
-
-function linearSrgbToRgbChannel(channel) {
-    const clampedChannel = clamp(channel, 0, 1);
-    const srgbChannel = clampedChannel <= 0.0031308
-        ? 12.92 * clampedChannel
-        : 1.055 * Math.pow(clampedChannel, 1 / 2.4) - 0.055;
-
-    return Math.round(clamp(srgbChannel, 0, 1) * 255);
-}
-
-function oklabToRgbString(lightness, a, b, alpha) {
-    const lPrime = lightness + 0.3963377774 * a + 0.2158037573 * b;
-    const mPrime = lightness - 0.1055613458 * a - 0.0638541728 * b;
-    const sPrime = lightness - 0.0894841775 * a - 1.2914855480 * b;
-    const l = lPrime ** 3;
-    const m = mPrime ** 3;
-    const s = sPrime ** 3;
-    const red = linearSrgbToRgbChannel(+4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s);
-    const green = linearSrgbToRgbChannel(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s);
-    const blue = linearSrgbToRgbChannel(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s);
-
-    return alpha >= 1
-        ? `rgb(${red}, ${green}, ${blue})`
-        : `rgba(${red}, ${green}, ${blue}, ${alpha})`;
-}
-
-function normalizeOklchFunctionString(value) {
-    return value.replace(/oklch\(\s*([^()]+?)\s*\)/gi, (_match, contents) => {
-        const [channelSection, alphaSection] = contents.split('/').map(section => section.trim());
-        const channels = channelSection.split(/\s+/).filter(Boolean);
-
-        if (channels.length < 2) {
-            return _match;
+    ScreenshotImage.prototype = NativeImage.prototype;
+    const encodeURIComponentWithSvgData = (value) => {
+        if (typeof value === 'string' && value.startsWith('<svg') && value.includes('<foreignObject')) {
+            serializedSvg = value;
+            return svgMarker;
         }
 
-        const lightness = normalizeOklabLightness(channels[0]);
-        const chroma = normalizeOklchChroma(channels[1]);
-        const hue = normalizeCssHueToDegrees(channels[2] ?? '0');
-        const alpha = alphaSection ? normalizeSrgbAlpha(alphaSection) : 1;
-        if ([lightness, chroma, hue, alpha].some(channel => channel === null)) {
-            return _match;
+        return nativeEncodeURIComponent(value);
+    };
+
+    // SB: html2canvas's unbounded percent-encoded SVG image load can stall indefinitely in Safari.
+    window.Image = ScreenshotImage;
+    window.encodeURIComponent = encodeURIComponentWithSvgData;
+    cloneObserver.observe(document.body, { childList: true });
+    let watchdog;
+    try {
+        return await Promise.race([
+            html2canvas(surface, captureOptions),
+            new Promise((_, reject) => watchdog = setTimeout(() => reject(new Error('Timed out capturing the screenshot')), 30000)),
+        ]);
+    } finally {
+        clearTimeout(watchdog);
+        cloneObserver.disconnect();
+        if (window.Image === ScreenshotImage) {
+            window.Image = NativeImage;
         }
-
-        const hueRadians = hue * Math.PI / 180;
-        const a = chroma * Math.cos(hueRadians);
-        const b = chroma * Math.sin(hueRadians);
-        return oklabToRgbString(lightness, a, b, alpha);
-    });
-}
-
-function normalizeColorFunctionString(value) {
-    if (!/(?:color\(srgb|oklch\()/i.test(value)) {
-        return value;
-    }
-
-    const normalizedSrgbValue = value.replace(/color\(srgb\s+([^()]+?)\)/gi, (_match, contents) => {
-        const [channelSection, alphaSection] = contents.split('/').map(section => section.trim());
-        const channels = channelSection.split(/\s+/).filter(Boolean);
-
-        if (channels.length < 3) {
-            return _match;
+        if (window.encodeURIComponent === encodeURIComponentWithSvgData) {
+            window.encodeURIComponent = nativeEncodeURIComponent;
         }
-
-        const [red, green, blue] = channels.slice(0, 3).map(normalizeSrgbChannel);
-        if ([red, green, blue].some(channel => channel === null)) {
-            return _match;
-        }
-
-        if (!alphaSection) {
-            return `rgb(${red}, ${green}, ${blue})`;
-        }
-
-        const alpha = normalizeSrgbAlpha(alphaSection);
-        if (alpha === null) {
-            return _match;
-        }
-
-        return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
-    });
-
-    return normalizeOklchFunctionString(normalizedSrgbValue);
-}
-
-function normalizeMessageScreenshotStyles(container) {
-    const elements = [container, ...container.querySelectorAll('*')];
-
-    for (const element of elements) {
-        if (!(element instanceof HTMLElement)) {
-            continue;
-        }
-
-        const computedStyle = getComputedStyle(element);
-        for (const propertyName of computedStyle) {
-            if (propertyName.startsWith('--')) {
-                continue;
+        document.querySelectorAll('.html2canvas-container').forEach(container => {
+            if (!existingCloneContainers.has(container)) {
+                container.remove();
             }
-
-            const propertyValue = computedStyle.getPropertyValue(propertyName);
-            if (!/(?:color\(srgb|oklch\()/i.test(propertyValue)) {
-                continue;
-            }
-
-            const normalizedValue = normalizeColorFunctionString(propertyValue);
-            if (normalizedValue !== propertyValue) {
-                element.style.setProperty(propertyName, normalizedValue, computedStyle.getPropertyPriority(propertyName));
-            }
-        }
+        });
     }
 }
 
@@ -12325,19 +12360,61 @@ async function renderMessageScreenshotCanvas(startId, endId) {
         const html2canvas = await getMessageScreenshotLibrary();
 
         if (document.fonts?.ready) {
-            await document.fonts.ready;
+            await Promise.race([document.fonts.ready, delay(2000)]);
         }
 
         await delay(50);
         await waitForMessageScreenshotAssets(surface);
-        normalizeMessageScreenshotStyles(surface);
+        await inlineMessageScreenshotImages(surface);
+        const iconFontStyle = await getMessageScreenshotIconFontStyle();
+        const mobileCapture = isMobile();
+        const preferredScale = mobileCapture ? 1 : Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+        const pixelBudget = mobileCapture ? 4_000_000 : 16_000_000;
+        const maxCanvasSide = mobileCapture ? 16_384 : 32_767;
 
-        return await html2canvas(surface, {
+        const captureOptions = {
             backgroundColor: null,
+            foreignObjectRendering: true,
+            ignoreElements: element => !element.contains(surface) && !surface.contains(element),
             logging: false,
-            scale: Math.max(1, Math.min(window.devicePixelRatio || 1, 2)),
+            onclone: (clonedDocument, clonedSurface) => {
+                clonedDocument.documentElement.style.backgroundColor = 'transparent';
+                clonedDocument.body.style.cssText = 'margin: 0; background: transparent;';
+                clonedSurface.style.position = 'relative';
+                clonedSurface.style.inset = '0';
+                clonedSurface.style.margin = '0';
+                clonedSurface.style.transform = 'none';
+                // Foreign-object fonts can reflow after html2canvas freezes computed heights and grid tracks.
+                clonedSurface.style.height = 'auto';
+                clonedSurface
+                    .querySelectorAll('.mes, .mes_block, .mes_text, .mes_reasoning, :is(.mes_text, .mes_reasoning) :is(p, blockquote, li, ul, ol, .dc-gradient-text)')
+                    .forEach(element => element.style.height = 'auto');
+                clonedSurface.querySelectorAll('.mes').forEach(element => element.style.gridTemplateRows = 'auto');
+                clonedSurface
+                    .querySelectorAll('.mes_reasoning_header_title, .ica--companion-title, .ica--companion-title > span, .ica--companion-meta, .ica--companion-summary-spacer')
+                    .forEach(element => element.style.width = 'auto');
+                if (iconFontStyle) {
+                    const style = clonedDocument.createElement('style');
+                    style.textContent = iconFontStyle;
+                    clonedSurface.prepend(style);
+                }
+                // Keep html2canvas's pseudo-element suppression inside the serialized subtree.
+                clonedSurface.prepend(...clonedDocument.body.querySelectorAll(':scope > style'));
+                clonedDocument.body.replaceChildren(clonedSurface);
+                // SB: bound the reflowed capture by both raster area and browser canvas-side limits.
+                const captureArea = Math.max(1, clonedSurface.scrollWidth * clonedSurface.scrollHeight);
+                captureOptions.scale = Math.min(
+                    preferredScale,
+                    Math.sqrt(pixelBudget / captureArea),
+                    maxCanvasSide / Math.max(1, clonedSurface.scrollWidth),
+                    maxCanvasSide / Math.max(1, clonedSurface.scrollHeight),
+                );
+            },
+            scale: preferredScale,
             useCORS: true,
-        });
+        };
+
+        return await renderMessageScreenshotWithBoundedSvg(html2canvas, surface, captureOptions);
     } finally {
         shell.remove();
     }
@@ -12356,6 +12433,8 @@ async function downloadMessageScreenshot(startId, endId) {
         }, 'image/png');
     });
 
+    canvas.width = 0;
+    canvas.height = 0;
     download(blob, buildMessageScreenshotFilename(startId, endId), 'image/png');
 }
 
@@ -12441,6 +12520,11 @@ async function openMessageScreenshotDialog(messageId) {
         return;
     }
 
+    const previousDownload = messageScreenshotDownloadQueue;
+    let releaseDownload;
+    messageScreenshotDownloadQueue = new Promise(resolve => releaseDownload = resolve);
+    await previousDownload;
+
     try {
         await downloadMessageScreenshot(range.startId, range.endId);
         const successText = range.startId === range.endId
@@ -12450,6 +12534,8 @@ async function openMessageScreenshotDialog(messageId) {
     } catch (error) {
         console.error('Failed to create message screenshot', error);
         toastr.error(t`Couldn't create the screenshot. Check the browser console for details.`, t`Screenshot failed`);
+    } finally {
+        releaseDownload();
     }
 }
 
