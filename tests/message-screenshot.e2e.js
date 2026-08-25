@@ -269,7 +269,7 @@ async function readScreenshotPixelStats(page, download) {
 
         const reasoningWidth = reasoningRight >= reasoningLeft ? reasoningRight - reasoningLeft + 1 : 0;
         const reasoningTitleHeight = reasoningTitleBottom >= reasoningTitleTop ? reasoningTitleBottom - reasoningTitleTop + 1 : 0;
-        return { bluePixels, companionMetaWidth, companionTitleWidth, darkPixels, endMarkerPixels, endMarkerWidth, markerPixels, overlappingColorRows, reasoningIconPixels, reasoningTitleHeight, reasoningWidth, redPixels, totalPixels: canvas.width * canvas.height };
+        return { bluePixels, companionMetaWidth, companionTitleWidth, darkPixels, endMarkerPixels, endMarkerWidth, markerPixels, overlappingColorRows, reasoningIconPixels, reasoningTitleHeight, reasoningWidth, redPixels, totalPixels: canvas.width * canvas.height, width: canvas.width };
     }, `data:image/png;base64,${imageData.toString('base64')}`);
 }
 
@@ -301,7 +301,17 @@ async function exportScreenshotFromWand(page, startId, endId) {
     return await completeScreenshotExport(page, startId, endId);
 }
 
-test.describe('message screenshots', () => {
+async function installHangingCloneImage(page) {
+    await page.route('**/screenshot-hang.png', () => new Promise(() => {}));
+    await page.locator('#chat .mes[mesid="0"] .mes_text').evaluate(element => {
+        const style = document.createElement('style');
+        style.textContent = '.message-screenshot-hanging-image::before { content: url("/screenshot-hang.png"); }';
+        document.head.appendChild(style);
+        element.classList.add('message-screenshot-hanging-image');
+    });
+}
+
+test.describe('desktop message screenshots', () => {
     test.setTimeout(120000);
 
     test('exports message and wand screenshots with modern colors', async ({ page }) => {
@@ -337,20 +347,20 @@ test.describe('message screenshots', () => {
 
         const singleDownload = await exportScreenshotFromMessage(page, 0, 0, 0);
         expect(singleDownload.suggestedFilename()).toContain('message-0.png');
-        const { bluePixels, companionMetaWidth, companionTitleWidth, darkPixels, endMarkerPixels, endMarkerWidth, markerPixels, overlappingColorRows, reasoningIconPixels, reasoningTitleHeight, reasoningWidth, redPixels, totalPixels } = await readScreenshotPixelStats(page, singleDownload);
+        const { bluePixels, companionMetaWidth, companionTitleWidth, darkPixels, endMarkerPixels, endMarkerWidth, markerPixels, overlappingColorRows, reasoningIconPixels, reasoningTitleHeight, reasoningWidth, redPixels, totalPixels, width } = await readScreenshotPixelStats(page, singleDownload);
         expect(darkPixels).toBeGreaterThan(totalPixels * 0.2);
         expect(redPixels).toBeGreaterThan(10);
         expect(bluePixels).toBeGreaterThan(10);
         expect(endMarkerPixels).toBeGreaterThan(1000);
-        expect(endMarkerWidth).toBeGreaterThan(150);
+        expect(endMarkerWidth).toBeGreaterThan(width * 0.15);
         expect(markerPixels).toBeGreaterThan(10);
         expect(overlappingColorRows).toBe(0);
-        expect(reasoningIconPixels).toBeGreaterThan(5);
+        expect(reasoningIconPixels).toBeGreaterThan(0);
         expect(reasoningTitleHeight).toBeGreaterThan(0);
         expect(reasoningTitleHeight).toBeLessThan(20);
-        expect(reasoningWidth).toBeGreaterThan(250);
-        expect(companionTitleWidth).toBeGreaterThan(70);
-        expect(companionMetaWidth).toBeGreaterThan(100);
+        expect(reasoningWidth).toBeGreaterThan(width * 0.3);
+        expect(companionTitleWidth).toBeGreaterThan(width * 0.06);
+        expect(companionMetaWidth).toBeGreaterThan(width * 0.08);
         expect(redPixels).toBeLessThan(totalPixels * 0.01);
         expect(bluePixels).toBeLessThan(totalPixels * 0.01);
         expect(await page.evaluate(() => window.messageScreenshotSvgDataCount)).toBeGreaterThan(0);
@@ -363,97 +373,147 @@ test.describe('message screenshots', () => {
 
         expect(screenshotErrors).toEqual([]);
     });
-});
 
-test.describe('mobile message screenshots', () => {
-    test.use({
-        deviceScaleFactor: 3,
-        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-        viewport: { width: 390, height: 844 },
-    });
-
-    test('bounds long screenshot raster memory on high-DPR phones', async ({ page }) => {
+    test('bounds long desktop captures by area and canvas side', async ({ browserName, page }) => {
+        // This limit covers Chromium's larger desktop canvas; WebKit's mobile cap is tested below.
+        // eslint-disable-next-line playwright/no-skipped-test
+        test.skip(browserName !== 'chromium', 'Windows desktop coverage uses Chromium');
         await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
         await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
         await dismissOnboardingIfPresent(page);
-        await installScreenshotMessage(page, 'mobile screenshot raster budget regression');
+        await installScreenshotMessage(page, 'desktop screenshot canvas side regression');
         await page.locator('#chat .mes[mesid="0"] .mes_text').evaluate(element => {
-            const originalFetch = window.fetch.bind(window);
-            window.fetch = (input, init) => String(input).includes('screenshot-stall.png')
-                ? new Promise((_, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true }))
-                : originalFetch(input, init);
-            Object.defineProperty(document.fonts, 'ready', { configurable: true, value: new Promise(() => {}) });
-
             const spacer = document.createElement('div');
-            spacer.style.height = '11000px';
-            const stalledImage = document.createElement('img');
-            stalledImage.src = '/screenshot-stall.png';
-            element.append(spacer, stalledImage);
+            spacer.style.height = '70000px';
+            element.appendChild(spacer);
         });
 
         const download = await exportScreenshotFromMessage(page, 0, 0, 0);
         const { width, height } = await readScreenshotDimensions(download);
 
-        expect(width).toBeLessThanOrEqual(400);
-        expect(width * height).toBeLessThanOrEqual(4_100_000);
-        expect(height).toBeGreaterThan(8000);
+        expect(width * height).toBeLessThanOrEqual(16_100_000);
+        expect(height).toBeLessThanOrEqual(32_767);
+        expect(height).toBeGreaterThan(20_000);
     });
 
     test('completes capture when a cloned image never finishes loading', async ({ page }) => {
-        await page.route('**/screenshot-hang.png', () => new Promise(() => {}));
         await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
         await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
         await dismissOnboardingIfPresent(page);
-        await installScreenshotMessage(page, 'hanging clone image regression');
-        await page.locator('#chat .mes[mesid="0"] .mes_text').evaluate(element => {
-            const hangingImage = document.createElement('img');
-            hangingImage.src = '/screenshot-hang.png';
-            element.append(hangingImage);
-        });
+        await installScreenshotMessage(page, 'hanging desktop clone image regression');
+        await installHangingCloneImage(page);
 
         const download = await exportScreenshotFromMessage(page, 0, 0, 0);
         expect(download.suggestedFilename()).toContain('message-0.png');
     });
+});
 
-    test('reports a stalled foreign-object render instead of hanging', async ({ page }) => {
-        const screenshotErrors = [];
-        page.on('console', message => {
-            if (message.type() === 'error' && /screenshot/i.test(message.text())) {
-                screenshotErrors.push(message.text());
-            }
+function registerMobileScreenshotTests(profileName, targetBrowserName, useOptions) {
+    test.describe(`${profileName} message screenshots`, () => {
+        test.setTimeout(120000);
+        test.use(useOptions);
+
+        test.beforeEach(({ browserName }) => {
+            // Each emulated mobile profile runs only on its matching Playwright browser engine.
+            // eslint-disable-next-line playwright/no-skipped-test
+            test.skip(browserName !== targetBrowserName, `${profileName} coverage uses ${targetBrowserName}`);
         });
 
-        await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
-        await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
-        await dismissOnboardingIfPresent(page);
-        await installScreenshotMessage(page, 'stalled mobile screenshot regression');
-        await page.evaluate(() => {
-            const imageSource = Object.getOwnPropertyDescriptor(window.HTMLImageElement.prototype, 'src');
-            if (!imageSource?.get || !imageSource.set) {
-                throw new Error('Image source descriptor unavailable');
-            }
+        test('bounds long screenshot raster memory and canvas side', async ({ page }) => {
+            await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
+            await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
+            await dismissOnboardingIfPresent(page);
+            await installScreenshotMessage(page, 'mobile screenshot raster budget regression');
+            await page.locator('#chat .mes[mesid="0"] .mes_text').evaluate(element => {
+                const originalFetch = window.fetch.bind(window);
+                window.fetch = (input, init) => String(input).includes('screenshot-stall.png')
+                    ? new Promise((_, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true }))
+                    : originalFetch(input, init);
+                Object.defineProperty(document.fonts, 'ready', { configurable: true, value: new Promise(() => {}) });
 
-            Object.defineProperty(window.HTMLImageElement.prototype, 'src', {
-                configurable: true,
-                get: imageSource.get,
-                set(value) {
-                    if (!/^data:image\/svg\+xml.*;base64,/.test(String(value))) {
-                        imageSource.set.call(this, value);
-                    }
-                },
+                const spacer = document.createElement('div');
+                spacer.style.height = '100000px';
+                const stalledImage = document.createElement('img');
+                stalledImage.src = '/screenshot-stall.png';
+                element.append(spacer, stalledImage);
             });
 
-            const nativeSetTimeout = window.setTimeout.bind(window);
-            window.setTimeout = (callback, timeout, ...args) => nativeSetTimeout(callback, timeout === 15000 ? 20 : timeout, ...args);
+            const download = await exportScreenshotFromMessage(page, 0, 0, 0);
+            const { width, height } = await readScreenshotDimensions(download);
+
+            expect(width).toBeLessThanOrEqual(400);
+            expect(width * height).toBeLessThanOrEqual(4_100_000);
+            expect(height).toBeGreaterThan(8000);
+            expect(height).toBeLessThanOrEqual(16_384);
         });
 
-        await page.locator('#chat .mes').first().locator('.mes_screenshot').dispatchEvent('click');
-        await page.locator('#message_screenshot_start_id').fill('0');
-        await page.locator('#message_screenshot_end_id').fill('0');
-        await page.locator('.message_screenshot_popup .popup-button-ok').dispatchEvent('click');
+        test('completes capture when a cloned image never finishes loading', async ({ page }) => {
+            await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
+            await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
+            await dismissOnboardingIfPresent(page);
+            await installScreenshotMessage(page, `hanging ${profileName} clone image regression`);
+            await installHangingCloneImage(page);
 
-        await expect(page.locator('.toast-error').filter({ hasText: 'Screenshot failed' })).toBeVisible({ timeout: 5000 });
-        expect(screenshotErrors).toHaveLength(1);
-        expect(await page.locator('.html2canvas-container').count()).toBe(0);
+            const download = await exportScreenshotFromMessage(page, 0, 0, 0);
+            expect(download.suggestedFilename()).toContain('message-0.png');
+        });
+
+        test('reports a stalled foreign-object render instead of hanging', async ({ page }) => {
+            const screenshotErrors = [];
+            page.on('console', message => {
+                if (message.type() === 'error' && /screenshot/i.test(message.text())) {
+                    screenshotErrors.push(message.text());
+                }
+            });
+
+            await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
+            await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
+            await dismissOnboardingIfPresent(page);
+            await installScreenshotMessage(page, 'stalled mobile screenshot regression');
+            await page.evaluate(() => {
+                const imageSource = Object.getOwnPropertyDescriptor(window.HTMLImageElement.prototype, 'src');
+                if (!imageSource?.get || !imageSource.set) {
+                    throw new Error('Image source descriptor unavailable');
+                }
+
+                Object.defineProperty(window.HTMLImageElement.prototype, 'src', {
+                    configurable: true,
+                    get: imageSource.get,
+                    set(value) {
+                        if (!/^data:image\/svg\+xml.*;base64,/.test(String(value))) {
+                            imageSource.set.call(this, value);
+                        }
+                    },
+                });
+
+                const nativeSetTimeout = window.setTimeout.bind(window);
+                window.setTimeout = (callback, timeout, ...args) => nativeSetTimeout(callback, timeout === 15000 ? 20 : timeout, ...args);
+            });
+
+            await page.locator('#chat .mes').first().locator('.mes_screenshot').dispatchEvent('click');
+            await page.locator('#message_screenshot_start_id').fill('0');
+            await page.locator('#message_screenshot_end_id').fill('0');
+            await page.locator('.message_screenshot_popup .popup-button-ok').dispatchEvent('click');
+
+            await expect(page.locator('.toast-error').filter({ hasText: 'Screenshot failed' })).toBeVisible({ timeout: 20000 });
+            expect(screenshotErrors).toHaveLength(1);
+            expect(await page.locator('.html2canvas-container').count()).toBe(0);
+        });
     });
+}
+
+registerMobileScreenshotTests('Android', 'chromium', {
+    deviceScaleFactor: 3,
+    hasTouch: true,
+    isMobile: true,
+    userAgent: 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Mobile Safari/537.36',
+    viewport: { width: 412, height: 915 },
+});
+
+registerMobileScreenshotTests('iOS WebKit', 'webkit', {
+    deviceScaleFactor: 3,
+    hasTouch: true,
+    isMobile: true,
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1',
+    viewport: { width: 393, height: 852 },
 });

@@ -12069,27 +12069,71 @@ async function inlineMessageScreenshotImages(container) {
     const abortTimer = setTimeout(() => abortController.abort(), 2000);
 
     try {
-        await Promise.all(Array.from(container.querySelectorAll('img')).map(async (image) => {
-            const source = image.currentSrc || image.src;
-            if (!source || isDataURL(source)) {
-                return;
+        const fetchInlineSource = async (source) => {
+            const response = await fetch(source, { signal: abortController.signal });
+            if (!response.ok) {
+                throw new Error(`Unexpected ${response.status} response for ${source}`);
             }
 
-            try {
-                const response = await fetch(source, { signal: abortController.signal });
-                if (!response.ok) {
-                    throw new Error(`Unexpected ${response.status} response for ${source}`);
+            return await getBase64Async(await response.blob());
+        };
+        const pseudoImages = [];
+        // SB: html2canvas materializes generated-content images after its normal image wait.
+        [container, ...container.querySelectorAll('*')].forEach(element => {
+            ['::before', '::after'].forEach(pseudoElement => {
+                const content = getComputedStyle(element, pseudoElement).content;
+                const sources = Array.from(content.matchAll(/url\((?:"([^"]*)"|'([^']*)'|([^)]*))\)/g));
+                if (sources.length > 0) {
+                    pseudoImages.push({ content, element, pseudoElement, sources });
+                }
+            });
+        });
+
+        const pseudoStyleRules = [];
+        await Promise.all([
+            ...Array.from(container.querySelectorAll('img')).map(async (image) => {
+                const source = image.currentSrc || image.src;
+                if (!source || isDataURL(source)) {
+                    return;
                 }
 
-                image.srcset = '';
-                image.src = await getBase64Async(await response.blob());
-                await image.decode?.().catch(() => undefined);
-            } catch {
-                // Foreign-object SVG cannot load external images, and a pending one stalls the capture clone.
-                image.removeAttribute('srcset');
-                image.removeAttribute('src');
-            }
-        }));
+                try {
+                    image.srcset = '';
+                    image.src = await fetchInlineSource(source);
+                    await image.decode?.().catch(() => undefined);
+                } catch {
+                    // Foreign-object SVG cannot load external images, and a pending one stalls the capture clone.
+                    image.removeAttribute('srcset');
+                    image.removeAttribute('src');
+                }
+            }),
+            ...pseudoImages.map(async ({ content, element, pseudoElement, sources }, index) => {
+                let inlineContent = content;
+                try {
+                    for (const sourceMatch of sources) {
+                        const source = sourceMatch[1] ?? sourceMatch[2] ?? sourceMatch[3]?.trim();
+                        if (!source || isDataURL(source)) {
+                            continue;
+                        }
+
+                        inlineContent = inlineContent.replace(sourceMatch[0], `url("${await fetchInlineSource(source)}")`);
+                    }
+                } catch {
+                    inlineContent = 'none';
+                }
+
+                const pseudoName = pseudoElement.slice(2);
+                const attribute = `data-sb-screenshot-pseudo-${pseudoName}`;
+                element.setAttribute(attribute, String(index));
+                pseudoStyleRules.push(`[${attribute}="${index}"]${pseudoElement} { content: ${inlineContent} !important; }`);
+            }),
+        ]);
+
+        if (pseudoStyleRules.length > 0) {
+            const style = document.createElement('style');
+            style.textContent = pseudoStyleRules.join('\n');
+            container.prepend(style);
+        }
     } finally {
         clearTimeout(abortTimer);
     }
@@ -12316,6 +12360,7 @@ async function renderMessageScreenshotCanvas(startId, endId) {
         const mobileCapture = isMobile();
         const preferredScale = mobileCapture ? 1 : Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
         const pixelBudget = mobileCapture ? 4_000_000 : 16_000_000;
+        const maxCanvasSide = mobileCapture ? 16_384 : 32_767;
 
         const captureOptions = {
             backgroundColor: null,
@@ -12346,9 +12391,14 @@ async function renderMessageScreenshotCanvas(startId, endId) {
                 // Keep html2canvas's pseudo-element suppression inside the serialized subtree.
                 clonedSurface.prepend(...clonedDocument.body.querySelectorAll(':scope > style'));
                 clonedDocument.body.replaceChildren(clonedSurface);
-                // SB: html2canvas resolves scale after onclone, when the reflowed capture size is known.
+                // SB: bound the reflowed capture by both raster area and browser canvas-side limits.
                 const captureArea = Math.max(1, clonedSurface.scrollWidth * clonedSurface.scrollHeight);
-                captureOptions.scale = Math.min(preferredScale, Math.sqrt(pixelBudget / captureArea));
+                captureOptions.scale = Math.min(
+                    preferredScale,
+                    Math.sqrt(pixelBudget / captureArea),
+                    maxCanvasSide / Math.max(1, clonedSurface.scrollWidth),
+                    maxCanvasSide / Math.max(1, clonedSurface.scrollHeight),
+                );
             },
             scale: preferredScale,
             useCORS: true,
