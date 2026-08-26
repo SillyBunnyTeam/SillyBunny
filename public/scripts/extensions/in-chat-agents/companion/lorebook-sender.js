@@ -82,6 +82,57 @@ function normalizeTitle(value) {
     return String(value ?? '').normalize().trim().replaceAll(/\s+/g, ' ').toLowerCase();
 }
 
+function getCurrentCharacters(context) {
+    const characters = Array.isArray(context.characters) ? context.characters : [];
+    const hasGroup = context.groupId !== null
+        && context.groupId !== undefined
+        && String(context.groupId).trim() !== '';
+    if (hasGroup) {
+        const group = context.groups?.find(group => String(group?.id ?? '') === String(context.groupId));
+        const members = new Set(Array.isArray(group?.members) ? group.members : []);
+        return characters.filter(character => members.has(character?.avatar));
+    }
+
+    const characterId = Number(context.characterId);
+    return Number.isInteger(characterId) && characters[characterId] ? [characters[characterId]] : [];
+}
+
+async function offerAuxiliaryLorebook(context, bookName) {
+    if (normalizeTitle(bookName) !== normalizeTitle(FALLBACK_BOOK_NAME)) {
+        return;
+    }
+
+    const charLore = Array.isArray(context.worldInfoSettings?.charLore) ? context.worldInfoSettings.charLore : [];
+    const missingCharacters = getCurrentCharacters(context).filter(character => {
+        const fileName = String(character?.avatar ?? '').replace(/\.[^/.]+$/, '');
+        const extraBooks = charLore.find(entry => entry?.name === fileName)?.extraBooks;
+        return !Array.isArray(extraBooks)
+            || !extraBooks.some(name => normalizeTitle(name) === normalizeTitle(bookName));
+    });
+    if (missingCharacters.length === 0) {
+        return;
+    }
+
+    if (typeof context.callGenericPopup !== 'function'
+        || !context.POPUP_TYPE
+        || typeof context.charUpdateAddAuxWorld !== 'function') {
+        console.warn('[In-Chat Agents] Auxiliary lorebook confirmation is unavailable.');
+        return;
+    }
+
+    const confirmed = await context.callGenericPopup(
+        'Add Lorebook Scout as an Auxiliary Lorebook to the current chat automatically?',
+        context.POPUP_TYPE.CONFIRM,
+    );
+    if (confirmed !== (context.POPUP_RESULT?.AFFIRMATIVE ?? 1)) {
+        return;
+    }
+
+    for (const character of missingCharacters) {
+        await context.charUpdateAddAuxWorld(character.avatar, bookName);
+    }
+}
+
 async function getTargetBook(context) {
     const attachedBook = String(context.chatMetadata?.world_info ?? '').trim();
     if (attachedBook) {
@@ -139,6 +190,7 @@ async function sendLorebookEntries(content, context, notifier) {
         }
 
         const bookName = await getTargetBook(context);
+        await offerAuxiliaryLorebook(context, bookName);
         const bookData = await context.loadWorldInfo(bookName);
         if (!bookData?.entries || typeof bookData.entries !== 'object') {
             throw new Error(`Lorebook "${bookName}" could not be loaded.`);

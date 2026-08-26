@@ -5,9 +5,12 @@ import {
     sendCompanionResultToLorebook,
 } from '../public/scripts/extensions/in-chat-agents/companion/lorebook-sender.js';
 
-function createContext({ attachedBook = '', existingTitles = [] } = {}) {
+function createContext({ attachedBook = '', existingTitles = [], auxiliaryBooks = [], confirmResult = 1 } = {}) {
     const names = attachedBook ? [attachedBook] : [];
     const books = {};
+    const worldInfoSettings = auxiliaryBooks.length > 0
+        ? { charLore: [{ name: 'Scout', extraBooks: [...auxiliaryBooks] }] }
+        : {};
     if (attachedBook) {
         books[attachedBook] = {
             entries: Object.fromEntries(existingTitles.map((comment, uid) => [uid, { uid, comment }])),
@@ -16,6 +19,14 @@ function createContext({ attachedBook = '', existingTitles = [] } = {}) {
 
     const context = {
         chatMetadata: attachedBook ? { world_info: attachedBook } : {},
+        characters: [{ avatar: 'Scout.png' }],
+        characterId: 0,
+        groupId: null,
+        groups: [],
+        worldInfoSettings,
+        POPUP_TYPE: { CONFIRM: 'confirm' },
+        POPUP_RESULT: { AFFIRMATIVE: 1 },
+        callGenericPopup: jest.fn(async () => confirmResult),
         getWorldInfoNames: jest.fn(() => [...names]),
         createNewWorldInfo: jest.fn(async name => {
             names.push(name);
@@ -32,6 +43,16 @@ function createContext({ attachedBook = '', existingTitles = [] } = {}) {
             return entry;
         }),
         saveWorldInfo: jest.fn(async () => {}),
+        charUpdateAddAuxWorld: jest.fn(async (avatar, name) => {
+            const fileName = avatar.replace(/\.[^/.]+$/, '');
+            worldInfoSettings.charLore ??= [];
+            let characterLore = worldInfoSettings.charLore.find(entry => entry.name === fileName);
+            if (!characterLore) {
+                characterLore = { name: fileName, extraBooks: [] };
+                worldInfoSettings.charLore.push(characterLore);
+            }
+            characterLore.extraBooks.push(name);
+        }),
     };
 
     return { books, context };
@@ -118,6 +139,7 @@ describe('Lorebook Scout sender', () => {
         });
         expect(context.saveWorldInfo).toHaveBeenCalledTimes(1);
         expect(context.createNewWorldInfo).not.toHaveBeenCalled();
+        expect(context.callGenericPopup).not.toHaveBeenCalled();
         expect(notifier.success).toHaveBeenCalledWith('Added 1 lorebook entry to "Campaign Lore". Skipped 1 duplicate.');
         expect(notifier.info).toHaveBeenCalledWith('No new entries added to "Campaign Lore"; 2 already exist.');
     });
@@ -135,5 +157,71 @@ describe('Lorebook Scout sender', () => {
         expect(context.updateChatMetadata).toHaveBeenCalledWith({ world_info: 'Lorebook Scout' });
         expect(context.saveMetadata).toHaveBeenCalledTimes(1);
         expect(books['Lorebook Scout'].entries[0].key).toEqual(['Sun Dial']);
+        expect(context.callGenericPopup).toHaveBeenCalledWith(
+            'Add Lorebook Scout as an Auxiliary Lorebook to the current chat automatically?',
+            'confirm',
+        );
+        expect(context.charUpdateAddAuxWorld).toHaveBeenCalledWith('Scout.png', 'Lorebook Scout');
+
+        await sendCompanionResultToLorebook(
+            '**Sun Dial**\nThe Sun Dial rings at noon when rain is coming.',
+            context,
+            notifier,
+        );
+        expect(context.callGenericPopup).toHaveBeenCalledTimes(1);
+        expect(context.charUpdateAddAuxWorld).toHaveBeenCalledTimes(1);
+    });
+
+    test('skips the confirmation when Lorebook Scout is already an auxiliary lorebook', async () => {
+        const { context } = createContext({
+            attachedBook: 'Lorebook Scout',
+            auxiliaryBooks: ['Lorebook Scout'],
+        });
+
+        await sendCompanionResultToLorebook(
+            '**Sun Dial**\nThe Sun Dial rings at noon when rain is coming.',
+            context,
+            notifier,
+        );
+
+        expect(context.callGenericPopup).not.toHaveBeenCalled();
+        expect(context.charUpdateAddAuxWorld).not.toHaveBeenCalled();
+    });
+
+    test('adds Lorebook Scout only to group members that do not already use it', async () => {
+        const { context } = createContext({
+            attachedBook: 'Lorebook Scout',
+            auxiliaryBooks: ['Lorebook Scout'],
+        });
+        context.characters.push({ avatar: 'Other.png' });
+        context.groupId = 'group-1';
+        context.groups = [{ id: 'group-1', members: ['Scout.png', 'Other.png'] }];
+
+        await sendCompanionResultToLorebook(
+            '**Sun Dial**\nThe Sun Dial rings at noon when rain is coming.',
+            context,
+            notifier,
+        );
+
+        expect(context.callGenericPopup).toHaveBeenCalledTimes(1);
+        expect(context.charUpdateAddAuxWorld).toHaveBeenCalledTimes(1);
+        expect(context.charUpdateAddAuxWorld).toHaveBeenCalledWith('Other.png', 'Lorebook Scout');
+    });
+
+    test('keeps the entry when auxiliary lorebook confirmation is declined', async () => {
+        const { books, context } = createContext({
+            attachedBook: 'Lorebook Scout',
+            confirmResult: 0,
+        });
+
+        await sendCompanionResultToLorebook(
+            '**Sun Dial**\nThe Sun Dial rings at noon when rain is coming.',
+            context,
+            notifier,
+        );
+
+        expect(books['Lorebook Scout'].entries[0].comment).toBe('Sun Dial');
+        expect(context.callGenericPopup).toHaveBeenCalledTimes(1);
+        expect(context.charUpdateAddAuxWorld).not.toHaveBeenCalled();
     });
 });
