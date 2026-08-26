@@ -99,7 +99,9 @@ describe('Lorebook Scout sender', () => {
         ]);
         expect(parseLorebookEntries('Lorebook has nothing durable this turn.')).toEqual([]);
         expect(() => parseLorebookEntries('A plain paragraph without a title.')).toThrow('title');
-        expect(() => parseLorebookEntries('**Gate**\nKeys: gate\nA gate.')).toThrow('2 to 5');
+        expect(() => parseLorebookEntries('**Gate**\nKeys: gate\nA gate.')).toThrow('at least 2');
+        expect(parseLorebookEntries('**Gate**\nKeys: one, two, three, four, five, six\nA gate.')[0].keys)
+            .toEqual(['one', 'two', 'three', 'four', 'five']);
     });
 
     test('writes new entries once and skips normalized duplicate titles on repeat sends', async () => {

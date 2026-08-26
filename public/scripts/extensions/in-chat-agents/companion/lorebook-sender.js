@@ -61,10 +61,11 @@ export function parseLorebookEntries(value) {
                 throw new Error('Lorebook Keys line is misplaced.');
             }
 
-            current.keys = [...new Set(keysMatch[1].split(',').map(key => key.trim()).filter(Boolean))];
-            if (current.keys.length < 2 || current.keys.length > 5) {
-                throw new Error('Lorebook Keys line must contain 2 to 5 keys.');
+            const keys = [...new Set(keysMatch[1].split(',').map(key => key.trim()).filter(Boolean))];
+            if (keys.length < 2) {
+                throw new Error('Lorebook Keys line must contain at least 2 keys.');
             }
+            current.keys = keys.slice(0, 5);
             continue;
         }
 
