@@ -2986,6 +2986,18 @@ function getWIOriginalDataIndex(data, uid) {
     return data.originalData?.entries?.findIndex(x => String(x.id ?? x.uid) === String(uid)) ?? -1;
 }
 
+// SillyBunny: built-in extension writers need one atomic resync after populating a new imported-book entry.
+export function syncWIOriginalDataEntry(data, uid) {
+    const entry = data.entries?.[uid];
+    const originalIndex = getWIOriginalDataIndex(data, uid);
+    if (!entry || originalIndex < 0) {
+        return;
+    }
+
+    const originalEntry = data.originalData.entries[originalIndex];
+    data.originalData.entries[originalIndex] = structuredClone(serializeWorldInfoEntry(entry, world_info_position, originalEntry));
+}
+
 function syncWIOriginalDataKeys(data, uid) {
     const entry = data.entries?.[uid];
     if (!entry) {

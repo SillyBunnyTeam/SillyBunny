@@ -225,6 +225,12 @@ async function sendLorebookEntries(content, context, notifier) {
             entry.selective = false;
             entry.constant = false;
             entry.disable = false;
+            if (bookData.originalData && Array.isArray(bookData.originalData.entries)) {
+                if (typeof context.syncWIOriginalDataEntry !== 'function') {
+                    throw new Error('Imported lorebook synchronization is unavailable.');
+                }
+                context.syncWIOriginalDataEntry(bookData, entry.uid);
+            }
             knownTitles.add(normalizedTitle);
             created++;
         }

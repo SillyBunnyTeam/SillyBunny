@@ -5,7 +5,7 @@ import {
     sendCompanionResultToLorebook,
 } from '../public/scripts/extensions/in-chat-agents/companion/lorebook-sender.js';
 
-function createContext({ attachedBook = '', existingTitles = [], auxiliaryBooks = [], confirmResult = 1 } = {}) {
+function createContext({ attachedBook = '', existingTitles = [], auxiliaryBooks = [], confirmResult = 1, importedBook = false } = {}) {
     const names = attachedBook ? [attachedBook] : [];
     const books = {};
     const worldInfoSettings = auxiliaryBooks.length > 0
@@ -15,6 +15,12 @@ function createContext({ attachedBook = '', existingTitles = [], auxiliaryBooks 
         books[attachedBook] = {
             entries: Object.fromEntries(existingTitles.map((comment, uid) => [uid, { uid, comment }])),
         };
+        if (importedBook) {
+            books[attachedBook].originalData = {
+                entries: existingTitles.map((comment, id) => ({ id, comment })),
+            };
+            books[attachedBook].originalDataUidMap = Object.fromEntries(existingTitles.map((_, uid) => [uid, uid]));
+        }
     }
 
     const context = {
@@ -38,9 +44,50 @@ function createContext({ attachedBook = '', existingTitles = [], auxiliaryBooks 
         loadWorldInfo: jest.fn(async name => books[name] ?? null),
         createWorldInfoEntry: jest.fn((_name, data) => {
             const uid = Object.keys(data.entries).length;
-            const entry = { uid };
+            const entry = {
+                uid,
+                key: [],
+                keysecondary: [],
+                comment: '',
+                content: '',
+                constant: false,
+                selective: true,
+                disable: false,
+            };
             data.entries[uid] = entry;
+            if (data.originalData && Array.isArray(data.originalData.entries)) {
+                data.originalDataUidMap ??= {};
+                data.originalDataUidMap[uid] = data.originalData.entries.length;
+                data.originalData.entries.push({
+                    id: uid,
+                    keys: [],
+                    secondary_keys: [],
+                    comment: '',
+                    content: '',
+                    constant: false,
+                    selective: true,
+                    enabled: true,
+                });
+            }
             return entry;
+        }),
+        syncWIOriginalDataEntry: jest.fn((data, uid) => {
+            const index = data.originalDataUidMap?.[uid];
+            const entry = data.entries[uid];
+            if (!Number.isInteger(index) || !entry) {
+                return;
+            }
+            data.originalData.entries[index] = {
+                ...data.originalData.entries[index],
+                id: uid,
+                keys: [...entry.key],
+                secondary_keys: [...entry.keysecondary],
+                comment: entry.comment,
+                content: entry.content,
+                constant: entry.constant,
+                selective: entry.selective,
+                enabled: !entry.disable,
+            };
         }),
         saveWorldInfo: jest.fn(async () => {}),
         charUpdateAddAuxWorld: jest.fn(async (avatar, name) => {
@@ -147,6 +194,30 @@ describe('Lorebook Scout sender', () => {
         expect(context.callGenericPopup).not.toHaveBeenCalled();
         expect(notifier.success).toHaveBeenCalledWith('Added 1 lorebook entry to "Campaign Lore". Skipped 1 duplicate.');
         expect(notifier.info).toHaveBeenCalledWith('No new entries added to "Campaign Lore"; 2 already exist.');
+    });
+
+    test('synchronizes new entries into imported character-book data', async () => {
+        const { books, context } = createContext({
+            attachedBook: 'Imported Lore',
+            importedBook: true,
+        });
+
+        await sendCompanionResultToLorebook(
+            '**Moon Well**\nKeys: Moon Well, silver water\nThe Moon Well reflects tomorrow night\'s sky.',
+            context,
+            notifier,
+        );
+
+        expect(books['Imported Lore'].originalData.entries[0]).toEqual(expect.objectContaining({
+            id: 0,
+            keys: ['Moon Well', 'silver water'],
+            secondary_keys: [],
+            comment: 'Moon Well',
+            content: 'The Moon Well reflects tomorrow night\'s sky.',
+            constant: false,
+            selective: false,
+            enabled: true,
+        }));
     });
 
     test('creates and attaches the fallback book when the chat has none', async () => {
