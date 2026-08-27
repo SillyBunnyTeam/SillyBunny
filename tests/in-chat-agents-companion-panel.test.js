@@ -443,6 +443,25 @@ describe('companion tracker panel', () => {
         expect(editNoteMatches).toHaveLength(3);
     });
 
+    test('shows lorebook actions on every stored state only for tagged agents', async () => {
+        const scout = { id: 'scout', name: 'Lorebook Scout', execution: 'companion', enabled: true, tags: ['LoreBook'] };
+        agents = [scout];
+        const panel = await importPanel();
+
+        for (let index = 0; index < 3; index++) {
+            const message = { is_user: false, is_system: false, mes: `reply ${index}` };
+            chat.push(message);
+            companionResultsByMessage.set(message, {
+                scout: { status: 'done', content: `state ${index}`, agentName: 'Lorebook Scout' },
+            });
+        }
+
+        expect(panel.buildPanelHtml().match(/data-action="panel-send-to-lorebook"/g)).toHaveLength(3);
+
+        scout.tags = ['notes'];
+        expect(panel.buildPanelHtml()).not.toContain('data-action="panel-send-to-lorebook"');
+    });
+
     test('shows enabled memory shard before threshold and offers shard compaction after a run', async () => {
         agents = [
             { id: 'memory-shard', name: 'Memory Shard', sourceTemplateId: 'tpl-memory-shard-companion', execution: 'companion', enabled: true, companion: { minContextTokens: 30000 } },

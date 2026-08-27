@@ -24,6 +24,7 @@ import {
     runCompanionAgentOnMessage,
     runCompanionsOnMessage,
 } from './companion-runner.js';
+import { isLorebookAgent, sendCompanionResultToLorebook } from './lorebook-sender.js';
 import {
     cleanCompanionAgentName,
     editCompanionResult,
@@ -618,6 +619,7 @@ function buildPanelAgentSection(state) {
     const name = getStateDisplayName(state);
     const icon = getStateIcon(state);
     const isHidden = isAgentHidden(agentId);
+    const canSendToLorebook = isLorebookAgent(state.agent);
 
     const settingsButton = state.agent
         ? '<button type="button" class="ica--cdash-action" data-action="panel-edit" title="Open this companion\'s agent settings" aria-label="Agent settings"><i class="fa-solid fa-gear"></i></button>'
@@ -657,6 +659,7 @@ function buildPanelAgentSection(state) {
                             <span>Message #${entry.messageIndex}</span>
                             ${buildAbsorbedPillHtml(entry)}
                             ${buildCompanionTokenUsagePillsHtml(entry.result)}
+                            ${canSendToLorebook && String(entry.result?.status ?? 'done') === 'done' ? '<button type="button" class="ica--cdash-action" data-action="panel-send-to-lorebook" title="Send this state to the attached lorebook" aria-label="Send history entry to lorebook"><i class="fa-solid fa-book-medical"></i></button>' : ''}
                             <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit this state's text" aria-label="Edit history entry"><i class="fa-solid fa-pen-to-square"></i></button>
                         </div>
                         <div class="ica--tpanel-agent-body">${buildPanelEntryBody(agentId, entry)}</div>
@@ -685,6 +688,7 @@ function buildPanelAgentSection(state) {
                     ${dragHandleButton}
                     ${hiddenButton}
                     ${runLatestButton}${rerunButtons}
+                    ${canSendToLorebook && String(latest.result?.status ?? 'done') === 'done' ? '<button type="button" class="ica--cdash-action" data-action="panel-send-to-lorebook" title="Send this state to the attached lorebook" aria-label="Send state to lorebook"><i class="fa-solid fa-book-medical"></i></button>' : ''}
                     <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit this state's text by hand (e.g. type your Plot Compass objective)" aria-label="Edit state text"><i class="fa-solid fa-pen-to-square"></i></button>
                     ${settingsButton}
                     <button type="button" class="ica--cdash-action" data-action="panel-jump" title="Scroll to the source message" aria-label="Scroll to source message"><i class="fa-solid fa-comment-dots"></i></button>
@@ -1099,6 +1103,22 @@ async function handlePanelAction(event) {
         await editCompanionResult(messageIndex, agentId, message, result);
         if (panelOpen) {
             renderPanel();
+        }
+        return;
+    }
+
+    if (action === 'panel-send-to-lorebook' && agentId && Number.isInteger(messageIndex)) {
+        const result = getCompanionResults(chat[messageIndex])[agentId];
+        if (!result) {
+            toastr.warning('No stored state to send.');
+            return;
+        }
+
+        button.prop('disabled', true);
+        try {
+            await sendCompanionResultToLorebook(result.content);
+        } finally {
+            button.prop('disabled', false);
         }
         return;
     }

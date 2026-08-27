@@ -112,7 +112,7 @@ import { ToolManager } from './tool-calling.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { timestampToMoment, uuidv4, importFromExternalUrl } from './utils.js';
 import { addGlobalVariable, addLocalVariable, decrementGlobalVariable, decrementLocalVariable, deleteGlobalVariable, deleteLocalVariable, existsGlobalVariable, existsLocalVariable, getGlobalVariable, getLocalVariable, incrementGlobalVariable, incrementLocalVariable, setGlobalVariable, setLocalVariable } from './variables.js';
-import { convertCharacterBook, createWorldInfoEntry, getWorldInfoPrompt, loadWorldInfo, reloadEditor, saveWorldInfo, updateWorldInfoList, world_info, world_names } from './world-info.js';
+import { charUpdateAddAuxWorld, convertCharacterBook, createNewWorldInfo, createWorldInfoEntry, getWorldInfoPrompt, loadWorldInfo, reloadEditor, saveWorldInfo, syncWIOriginalDataEntry, updateWorldInfoList, world_info, world_names } from './world-info.js';
 import { ChatCompletionService, TextCompletionService } from './custom-request.js';
 import { ConnectionManagerRequestService } from './extensions/shared.js';
 import { updateReasoningUI, parseReasoningFromString, getReasoningTemplateByName } from './reasoning.js';
@@ -296,10 +296,13 @@ export function getContext() {
                 has: existsGlobalVariable,
             },
         },
-        // SillyBunny: Pathfinder write tools need the lorebook entry factory in extension context.
+        // SillyBunny: Pathfinder and Companion lorebook writes use the core APIs through extension context.
         loadWorldInfo,
+        charUpdateAddAuxWorld,
+        createNewWorldInfo,
         createWorldInfoEntry,
         saveWorldInfo,
+        syncWIOriginalDataEntry,
         reloadWorldInfoEditor: reloadEditor,
         updateWorldInfoList,
         convertCharacterBook,

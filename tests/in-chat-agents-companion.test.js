@@ -35,6 +35,7 @@ describe('companion card ui', () => {
     let sanitize;
     let encodeStyleTags;
     let decodeStyleTags;
+    let jqueryObject;
 
     async function importCompanionUi() {
         jest.resetModules();
@@ -158,7 +159,7 @@ describe('companion card ui', () => {
             addEventListener: jest.fn(),
             querySelector: jest.fn(() => null),
         };
-        const jqueryObject = {};
+        jqueryObject = {};
         Object.assign(jqueryObject, {
             on: jest.fn(() => jqueryObject),
             each: jest.fn(),
@@ -188,7 +189,7 @@ describe('companion card ui', () => {
         expect(sanitize).toHaveBeenCalled();
     });
 
-    // DESIGN.md limits inline companion cards to regenerate, edit, copy, delete, and manual-run.
+    // Inline companion cards keep general actions small; tagged agents may add one purpose-built action.
     // Hiding an agent lives in the companion panel; agent settings live behind Workspace.
     test('keeps inline card actions within the documented vocabulary', () => {
         const source = fs.readFileSync(new URL('../public/scripts/extensions/in-chat-agents/companion/companion-ui.js', import.meta.url), 'utf8');
@@ -196,6 +197,35 @@ describe('companion card ui', () => {
         expect(source).not.toContain('data-action="hide"');
         expect(source).not.toContain('data-action="settings"');
         expect(source).not.toContain('configureCompanionCardUi');
+    });
+
+    test('shows the lorebook action only on tagged inline cards', async () => {
+        agents[0].tags = ['LoreBook'];
+        const message = {
+            is_user: false,
+            is_system: false,
+            name: 'Aria',
+            extra: {
+                inChatAgentCompanionResults: {
+                    'companion-tracker': {
+                        status: 'done',
+                        content: '**Moon Well**\nThe well reflects tomorrow\'s sky.',
+                        agentName: 'Lorebook Scout',
+                        displayMode: 'card',
+                    },
+                },
+            },
+        };
+        chat.push(message);
+        const ui = await importCompanionUi();
+        jqueryObject.length = 1;
+
+        ui.renderCompanionResultsForMessage(0);
+        expect(jqueryObject.html).toHaveBeenLastCalledWith(expect.stringContaining('data-action="send-to-lorebook"'));
+
+        agents[0].tags = ['notes'];
+        ui.renderCompanionResultsForMessage(0);
+        expect(jqueryObject.html).toHaveBeenLastCalledWith(expect.not.stringContaining('data-action="send-to-lorebook"'));
     });
 
     test('beautifies Chat Only transcript speaker turns before markdown conversion', async () => {
