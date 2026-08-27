@@ -1,7 +1,7 @@
 const EMPTY_RESULT = 'lorebook has nothing durable this turn.';
 const FALLBACK_BOOK_NAME = 'Lorebook Scout';
 const TITLE_PATTERN = /^\s*\*\*(?!keys\b)(.+?)\*\*\s*$/i;
-const KEYS_PATTERN = /^\s*(?:\*\*Keys:\*\*|\*\*Keys\*\*:|Keys:)\s*(.+?)\s*$/i;
+const KEYS_PATTERN = /^\s*(?:\*\*Keys:\*\*|\*\*Keys\*\*:|Keys:)\s*(.*?)\s*$/i;
 
 let writeChain = Promise.resolve();
 
@@ -24,6 +24,10 @@ export function parseLorebookEntries(value) {
             return;
         }
 
+        if (!current.keys) {
+            throw new Error('Lorebook Keys line is missing.');
+        }
+
         const content = current.body.join('\n').trim();
         if (!content) {
             throw new Error('Lorebook entry body is missing.');
@@ -31,7 +35,7 @@ export function parseLorebookEntries(value) {
 
         entries.push({
             title: current.title,
-            keys: current.keys ?? [current.title],
+            keys: current.keys,
             content,
         });
     };
@@ -176,7 +180,7 @@ async function sendLorebookEntries(content, context, notifier) {
         entries = parseLorebookEntries(content);
     } catch (error) {
         console.warn('[In-Chat Agents] Could not parse lorebook companion result.', error);
-        notifier?.warning?.('Could not read lorebook entries. Use a bold title, an optional Keys line, and a body for each entry.');
+        notifier?.warning?.('Could not read lorebook entries. Use a bold title, a Keys line with 2-5 comma-separated trigger keywords, and a body for each entry.');
         return null;
     }
 

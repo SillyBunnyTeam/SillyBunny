@@ -75,13 +75,14 @@ describe('Lorebook Scout sender', () => {
         expect(isLorebookAgent({ tags: ['notes', 'world info'] })).toBe(false);
     });
 
-    test('parses multiple drafts, bold Keys labels, and title key fallbacks', () => {
+    test('parses multiple drafts and bold Keys labels', () => {
         const entries = parseLorebookEntries([
             '**The Ember Gate**',
             '**Keys:** Ember Gate, ash gate, Cinder Road',
             'The Ember Gate seals the Cinder Road whenever its braziers go dark.',
             '',
             '**Moon Well:**',
+            'Keys: Moon Well, silver water',
             'The Moon Well reflects the sky of the next clear night.',
         ].join('\n'));
 
@@ -93,12 +94,14 @@ describe('Lorebook Scout sender', () => {
             },
             {
                 title: 'Moon Well',
-                keys: ['Moon Well'],
+                keys: ['Moon Well', 'silver water'],
                 content: 'The Moon Well reflects the sky of the next clear night.',
             },
         ]);
         expect(parseLorebookEntries('Lorebook has nothing durable this turn.')).toEqual([]);
         expect(() => parseLorebookEntries('A plain paragraph without a title.')).toThrow('title');
+        expect(() => parseLorebookEntries('**Gate**\nA gate.')).toThrow('Keys');
+        expect(() => parseLorebookEntries('**Gate**\nKeys:\nA gate.')).toThrow('at least 2');
         expect(() => parseLorebookEntries('**Gate**\nKeys: gate\nA gate.')).toThrow('at least 2');
         expect(parseLorebookEntries('**Gate**\nKeys: one, two, three, four, five, six\nA gate.')[0].keys)
             .toEqual(['one', 'two', 'three', 'four', 'five']);
@@ -150,7 +153,7 @@ describe('Lorebook Scout sender', () => {
         const { books, context } = createContext();
 
         await expect(sendCompanionResultToLorebook(
-            '**Sun Dial**\nThe Sun Dial rings at noon when rain is coming.',
+            '**Sun Dial**\nKeys: Sun Dial, rain omen\nThe Sun Dial rings at noon when rain is coming.',
             context,
             notifier,
         )).resolves.toEqual({ bookName: 'Lorebook Scout', created: 1, duplicates: 0 });
@@ -158,7 +161,7 @@ describe('Lorebook Scout sender', () => {
         expect(context.createNewWorldInfo).toHaveBeenCalledWith('Lorebook Scout');
         expect(context.updateChatMetadata).toHaveBeenCalledWith({ world_info: 'Lorebook Scout' });
         expect(context.saveMetadata).toHaveBeenCalledTimes(1);
-        expect(books['Lorebook Scout'].entries[0].key).toEqual(['Sun Dial']);
+        expect(books['Lorebook Scout'].entries[0].key).toEqual(['Sun Dial', 'rain omen']);
         expect(context.callGenericPopup).toHaveBeenCalledWith(
             'Add Lorebook Scout as an Auxiliary Lorebook to the current chat automatically?',
             'confirm',
@@ -166,7 +169,7 @@ describe('Lorebook Scout sender', () => {
         expect(context.charUpdateAddAuxWorld).toHaveBeenCalledWith('Scout.png', 'Lorebook Scout');
 
         await sendCompanionResultToLorebook(
-            '**Sun Dial**\nThe Sun Dial rings at noon when rain is coming.',
+            '**Sun Dial**\nKeys: Sun Dial, rain omen\nThe Sun Dial rings at noon when rain is coming.',
             context,
             notifier,
         );
@@ -181,7 +184,7 @@ describe('Lorebook Scout sender', () => {
         });
 
         await sendCompanionResultToLorebook(
-            '**Sun Dial**\nThe Sun Dial rings at noon when rain is coming.',
+            '**Sun Dial**\nKeys: Sun Dial, rain omen\nThe Sun Dial rings at noon when rain is coming.',
             context,
             notifier,
         );
@@ -200,7 +203,7 @@ describe('Lorebook Scout sender', () => {
         context.groups = [{ id: 'group-1', members: ['Scout.png', 'Other.png'] }];
 
         await sendCompanionResultToLorebook(
-            '**Sun Dial**\nThe Sun Dial rings at noon when rain is coming.',
+            '**Sun Dial**\nKeys: Sun Dial, rain omen\nThe Sun Dial rings at noon when rain is coming.',
             context,
             notifier,
         );
@@ -217,7 +220,7 @@ describe('Lorebook Scout sender', () => {
         });
 
         await sendCompanionResultToLorebook(
-            '**Sun Dial**\nThe Sun Dial rings at noon when rain is coming.',
+            '**Sun Dial**\nKeys: Sun Dial, rain omen\nThe Sun Dial rings at noon when rain is coming.',
             context,
             notifier,
         );
