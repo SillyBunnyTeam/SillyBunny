@@ -4,6 +4,7 @@ const TITLE_PATTERN = /^\s*\*\*(?!keys\b)(.+?)\*\*\s*$/i;
 const KEYS_PATTERN = /^\s*(?:\*\*Keys:\*\*|\*\*Keys\*\*:|Keys:)\s*(.*?)\s*$/i;
 
 let writeChain = Promise.resolve();
+const booksNeedingSaveRetry = new Set();
 
 export function isLorebookAgent(agent) {
     return Array.isArray(agent?.tags)
@@ -237,8 +238,10 @@ async function sendLorebookEntries(content, context, notifier) {
             created++;
         }
 
-        if (created > 0) {
+        if (created > 0 || booksNeedingSaveRetry.has(bookName)) {
+            booksNeedingSaveRetry.add(bookName);
             await context.saveWorldInfo(bookName, bookData, true);
+            booksNeedingSaveRetry.delete(bookName);
         }
 
         await offerFallbackLorebookAttachment(context, bookName, attachToChat);

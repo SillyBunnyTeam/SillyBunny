@@ -5,9 +5,10 @@ import {
     sendCompanionResultToLorebook,
 } from '../public/scripts/extensions/in-chat-agents/companion/lorebook-sender.js';
 
-function createContext({ attachedBook = '', existingTitles = [], auxiliaryBooks = [], confirmResult = 1, importedBook = false } = {}) {
+function createContext({ attachedBook = '', existingTitles = [], auxiliaryBooks = [], confirmResult = 1, importedBook = false, saveFailures = 0 } = {}) {
     const names = attachedBook ? [attachedBook] : [];
     const books = {};
+    let remainingSaveFailures = saveFailures;
     const worldInfoSettings = auxiliaryBooks.length > 0
         ? { charLore: [{ name: 'Scout', extraBooks: [...auxiliaryBooks] }] }
         : {};
@@ -89,7 +90,12 @@ function createContext({ attachedBook = '', existingTitles = [], auxiliaryBooks 
                 enabled: !entry.disable,
             };
         }),
-        saveWorldInfo: jest.fn(async () => {}),
+        saveWorldInfo: jest.fn(async () => {
+            if (remainingSaveFailures > 0) {
+                remainingSaveFailures--;
+                throw new Error('Simulated lorebook save failure.');
+            }
+        }),
         charUpdateAddAuxWorld: jest.fn(async (avatar, name) => {
             const fileName = avatar.replace(/\.[^/.]+$/, '');
             worldInfoSettings.charLore ??= [];
@@ -264,6 +270,28 @@ describe('Lorebook Scout sender', () => {
         expect(context.updateChatMetadata).not.toHaveBeenCalled();
         expect(context.saveMetadata).not.toHaveBeenCalled();
         expect(context.charUpdateAddAuxWorld).not.toHaveBeenCalled();
+    });
+
+    test('retries a failed fallback save before attaching its cached entry', async () => {
+        const { context } = createContext({ saveFailures: 1 });
+        const content = '**Sun Dial**\nKeys: Sun Dial, rain omen\nThe Sun Dial rings at noon when rain is coming.';
+        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        await expect(sendCompanionResultToLorebook(content, context, notifier)).resolves.toBeNull();
+        expect(consoleError).toHaveBeenCalled();
+        expect(context.saveWorldInfo).toHaveBeenCalledTimes(1);
+        expect(context.callGenericPopup).not.toHaveBeenCalled();
+        expect(context.updateChatMetadata).not.toHaveBeenCalled();
+
+        await expect(sendCompanionResultToLorebook(content, context, notifier)).resolves.toEqual({
+            bookName: 'Lorebook Scout',
+            created: 0,
+            duplicates: 1,
+        });
+        expect(context.saveWorldInfo).toHaveBeenCalledTimes(2);
+        expect(context.callGenericPopup).toHaveBeenCalledTimes(1);
+        expect(context.updateChatMetadata).toHaveBeenCalledWith({ world_info: 'Lorebook Scout' });
+        consoleError.mockRestore();
     });
 
     test('skips the confirmation when Lorebook Scout is already an auxiliary lorebook', async () => {
