@@ -102,7 +102,7 @@ function getCurrentCharacters(context) {
     return Number.isInteger(characterId) && characters[characterId] ? [characters[characterId]] : [];
 }
 
-async function offerAuxiliaryLorebook(context, bookName) {
+async function offerFallbackLorebookAttachment(context, bookName, attachToChat) {
     if (normalizeTitle(bookName) !== normalizeTitle(FALLBACK_BOOK_NAME)) {
         return;
     }
@@ -114,13 +114,19 @@ async function offerAuxiliaryLorebook(context, bookName) {
         return !Array.isArray(extraBooks)
             || !extraBooks.some(name => normalizeTitle(name) === normalizeTitle(bookName));
     });
-    if (missingCharacters.length === 0) {
+    if (missingCharacters.length === 0 && !attachToChat) {
         return;
     }
 
+    const canAttachToChat = !attachToChat
+        || ((typeof context.updateChatMetadata === 'function' || context.chatMetadata)
+            && typeof context.saveMetadata === 'function');
+    const canAttachToCharacters = missingCharacters.length === 0
+        || typeof context.charUpdateAddAuxWorld === 'function';
     if (typeof context.callGenericPopup !== 'function'
         || !context.POPUP_TYPE
-        || typeof context.charUpdateAddAuxWorld !== 'function') {
+        || !canAttachToChat
+        || !canAttachToCharacters) {
         console.warn('[In-Chat Agents] Auxiliary lorebook confirmation is unavailable.');
         return;
     }
@@ -133,6 +139,15 @@ async function offerAuxiliaryLorebook(context, bookName) {
         return;
     }
 
+    if (attachToChat) {
+        if (typeof context.updateChatMetadata === 'function') {
+            context.updateChatMetadata({ world_info: bookName });
+        } else {
+            context.chatMetadata.world_info = bookName;
+        }
+        await context.saveMetadata();
+    }
+
     for (const character of missingCharacters) {
         await context.charUpdateAddAuxWorld(character.avatar, bookName);
     }
@@ -141,7 +156,7 @@ async function offerAuxiliaryLorebook(context, bookName) {
 async function getTargetBook(context) {
     const attachedBook = String(context.chatMetadata?.world_info ?? '').trim();
     if (attachedBook) {
-        return attachedBook;
+        return { bookName: attachedBook, attachToChat: false };
     }
 
     const findFallback = () => context.getWorldInfoNames?.()
@@ -159,19 +174,7 @@ async function getTargetBook(context) {
         }
     }
 
-    if (typeof context.updateChatMetadata === 'function') {
-        context.updateChatMetadata({ world_info: bookName });
-    } else if (context.chatMetadata) {
-        context.chatMetadata.world_info = bookName;
-    } else {
-        throw new Error('Chat metadata is unavailable.');
-    }
-
-    if (typeof context.saveMetadata !== 'function') {
-        throw new Error('Chat metadata saving is unavailable.');
-    }
-    await context.saveMetadata();
-    return bookName;
+    return { bookName, attachToChat: true };
 }
 
 async function sendLorebookEntries(content, context, notifier) {
@@ -194,8 +197,7 @@ async function sendLorebookEntries(content, context, notifier) {
             throw new Error('Lorebook APIs are unavailable.');
         }
 
-        const bookName = await getTargetBook(context);
-        await offerAuxiliaryLorebook(context, bookName);
+        const { bookName, attachToChat } = await getTargetBook(context);
         const bookData = await context.loadWorldInfo(bookName);
         if (!bookData?.entries || typeof bookData.entries !== 'object') {
             throw new Error(`Lorebook "${bookName}" could not be loaded.`);
@@ -237,6 +239,10 @@ async function sendLorebookEntries(content, context, notifier) {
 
         if (created > 0) {
             await context.saveWorldInfo(bookName, bookData, true);
+        }
+
+        await offerFallbackLorebookAttachment(context, bookName, attachToChat);
+        if (created > 0) {
             const duplicateNote = duplicates > 0 ? ` Skipped ${duplicates} duplicate${duplicates === 1 ? '' : 's'}.` : '';
             notifier?.success?.(`Added ${created} lorebook entr${created === 1 ? 'y' : 'ies'} to "${bookName}".${duplicateNote}`);
         } else {

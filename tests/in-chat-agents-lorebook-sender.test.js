@@ -232,6 +232,8 @@ describe('Lorebook Scout sender', () => {
         expect(context.createNewWorldInfo).toHaveBeenCalledWith('Lorebook Scout');
         expect(context.updateChatMetadata).toHaveBeenCalledWith({ world_info: 'Lorebook Scout' });
         expect(context.saveMetadata).toHaveBeenCalledTimes(1);
+        expect(context.saveWorldInfo.mock.invocationCallOrder[0])
+            .toBeLessThan(context.updateChatMetadata.mock.invocationCallOrder[0]);
         expect(books['Lorebook Scout'].entries[0].key).toEqual(['Sun Dial', 'rain omen']);
         expect(context.callGenericPopup).toHaveBeenCalledWith(
             'Add Lorebook Scout as an Auxiliary Lorebook to the current chat automatically?',
@@ -246,6 +248,22 @@ describe('Lorebook Scout sender', () => {
         );
         expect(context.callGenericPopup).toHaveBeenCalledTimes(1);
         expect(context.charUpdateAddAuxWorld).toHaveBeenCalledTimes(1);
+    });
+
+    test('keeps a declined fallback book detached from the current chat', async () => {
+        const { books, context } = createContext({ confirmResult: 0 });
+
+        await sendCompanionResultToLorebook(
+            '**Sun Dial**\nKeys: Sun Dial, rain omen\nThe Sun Dial rings at noon when rain is coming.',
+            context,
+            notifier,
+        );
+
+        expect(books['Lorebook Scout'].entries[0].comment).toBe('Sun Dial');
+        expect(context.callGenericPopup).toHaveBeenCalledTimes(1);
+        expect(context.updateChatMetadata).not.toHaveBeenCalled();
+        expect(context.saveMetadata).not.toHaveBeenCalled();
+        expect(context.charUpdateAddAuxWorld).not.toHaveBeenCalled();
     });
 
     test('skips the confirmation when Lorebook Scout is already an auxiliary lorebook', async () => {
