@@ -96,10 +96,10 @@ describe('reasoning effort on outgoing chat completions', () => {
         });
     }
 
-    // NanoGPT documents none < minimal < low < medium < high < xhigh. none, low, medium, high
-    // and xhigh are spelled the same here, so they go out untouched instead of being shifted a
-    // rung down. min and max are the only names NanoGPT does not have, so they take its nearest
-    // rungs. none goes out too: omitting it would let the model pick its own reasoning depth.
+    // NanoGPT documents none < minimal < low < medium < high < xhigh, and some models accept
+    // max. Everything but min is spelled the same here, so it goes out untouched instead of
+    // being shifted a rung down. min is the only name NanoGPT does not have, so it takes the
+    // nearest rung. none goes out too: omitting it would let the model pick its own depth.
     test.each([
         ['none', 'none'],
         ['min', 'minimal'],
@@ -107,7 +107,7 @@ describe('reasoning effort on outgoing chat completions', () => {
         ['medium', 'medium'],
         ['high', 'high'],
         ['xhigh', 'xhigh'],
-        ['max', 'xhigh'],
+        ['max', 'max'],
     ])('NanoGPT sends %s as %s', async (effort, expected) => {
         const response = await makeRequest(CHAT_COMPLETION_SOURCES.NANOGPT, { reasoning_effort: effort });
 
@@ -135,8 +135,8 @@ describe('reasoning effort on outgoing chat completions', () => {
     test.each([
         ['XHigh', 'xhigh'],
         [' xhigh ', 'xhigh'],
-        [' Max ', 'xhigh'],
-        ['MAX', 'xhigh'],
+        [' Max ', 'max'],
+        ['MAX', 'max'],
         [' None ', 'none'],
     ])('NanoGPT normalizes %p before the table lookup and sends %s', async (effort, expected) => {
         const response = await makeRequest(CHAT_COMPLETION_SOURCES.NANOGPT, { reasoning_effort: effort });

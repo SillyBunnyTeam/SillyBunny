@@ -516,14 +516,13 @@ export const OPENAI_FIXED_REASONING_EFFORT = {
 };
 
 /**
- * NanoGPT's vocabulary is none < minimal < low < medium < high < xhigh. Five of this fork's
- * seven rungs are spelled identically there and are forwarded untouched, so the level the user
- * picks is the level NanoGPT receives; that includes `none`, which pins thinking off instead
- * of leaving the model to pick its own default depth.
+ * NanoGPT's vocabulary is none < minimal < low < medium < high < xhigh, and some models there
+ * also take max. Six of this fork's seven rungs are spelled identically and are forwarded
+ * untouched, so the level the user picks is the level NanoGPT receives; that includes `none`,
+ * which pins thinking off instead of leaving the model to pick its own default depth.
  * SillyBunny divergence: upstream shifted the whole ladder down one rung, which made "Medium"
- * arrive as `low`. `min` and `max` are the only two names NanoGPT has no equivalent for, so
- * they resolve to its nearest real rungs; that puts `xhigh` and `max` on the same ceiling.
- * Values absent here are omitted entirely by the caller.
+ * arrive as `low`. `min` is the only name with no NanoGPT spelling, so it resolves to the
+ * nearest real rung. Values absent here are omitted entirely by the caller.
  */
 export const NANOGPT_REASONING_EFFORT_MAP = {
     none: 'none',
@@ -532,7 +531,7 @@ export const NANOGPT_REASONING_EFFORT_MAP = {
     medium: 'medium',
     high: 'high',
     xhigh: 'xhigh',
-    max: 'xhigh',
+    max: 'max',
 };
 
 /**
