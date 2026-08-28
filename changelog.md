@@ -62,6 +62,7 @@
 - PR #805 (2026-08-28) `chore: update Quick Image Gen to 3.4.0`
 - PR #806 (2026-08-28) `fix: decode base64 explicitly on bun runtimes`
 - PR #807 (2026-08-28) `fix: keep the comments trimmed even when pipes are inside`
+- PR #808 (2026-08-28) `feat(ica): add The Ethereality Express trackers as pre-generation agents`
 
 ## v1.7.0
 
