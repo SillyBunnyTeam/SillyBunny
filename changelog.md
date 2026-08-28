@@ -61,6 +61,7 @@
 - PR #804 (2026-08-28) `fix(backends): send all reasoning efforts verbatim`
 - PR #805 (2026-08-28) `chore: update Quick Image Gen to 3.4.0`
 - PR #806 (2026-08-28) `fix: decode base64 explicitly on bun runtimes`
+- PR #807 (2026-08-28) `fix: keep the comments trimmed even when pipes are inside`
 
 ## v1.7.0
 
