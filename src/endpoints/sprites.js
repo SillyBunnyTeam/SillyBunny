@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -102,7 +103,8 @@ export function importRisuSprites(directories, data) {
 
             const filename = label + '.png';
             const pathToFile = path.join(spritesPath, sanitize(filename));
-            writeFileAtomicSync(pathToFile, fileBase64, { encoding: 'base64' });
+            // SillyBunny: Bun before 1.4 ignores fs.writeSync string encodings, so decode before the atomic write.
+            writeFileAtomicSync(pathToFile, Buffer.from(String(fileBase64), 'base64'));
         }
 
         // Remove additionalAssets and emotions from data (they are now in the sprites folder)
