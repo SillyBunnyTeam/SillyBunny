@@ -1631,5 +1631,11 @@
     "Deleting chat…": "채팅 삭제 중…",
     "Loading chat…": "채팅 불러오는 중…",
     "Bulk Delete": "대량 삭제",
-    "Deleting ${0} character(s)…": "${0}개 캐릭터 삭제 중…"
+    "Deleting ${0} character(s)…": "${0}개 캐릭터 삭제 중…",
+    "OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.": "OpenAI 방식 옵션: low, medium, high, xhigh. 각 단계는 선택한 그대로 전송되며, Minimum만 'minimal'로 전송됩니다. None은 GPT-5.1 이상에 그대로 전송되고, 그 외 모델에는 단계가 전송되지 않습니다.",
+    "Sets a dynamic reasoning depth level for thinking (Flash 3/Pro 3). Every effort is sent exactly as picked, so a level the model does not accept is rejected rather than lowered. Auto lets the model decide.": "사고 깊이 단계를 동적으로 설정합니다 (Flash 3/Pro 3). 각 단계는 선택한 그대로 전송되므로, 모델이 받아들이지 않는 단계는 낮춰지지 않고 거부됩니다. Auto는 모델이 결정하도록 맡깁니다.",
+    "DeepSeek documents low, high and max reasoning efforts. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'.": "DeepSeek이 문서화한 단계는 low, high, max입니다. 각 단계는 선택한 그대로 전송되므로 그 외의 값은 거부될 수 있습니다. Minimum은 'minimal'로 전송됩니다.",
+    "Only GLM-5.2 and newer accept reasoning efforts. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. GLM-5.3 specifically only accepts 'low', 'high', and 'max'.": "추론 단계는 GLM-5.2 이상에서만 지원됩니다. 각 단계는 선택한 그대로 전송되며, Minimum만 'minimal'로 전송됩니다. GLM-5.3은 'low', 'high', 'max'만 받아들입니다.",
+    "Only Kimi K3 accepts reasoning efforts, and documents low, high and max. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'. Reasoning cannot be turned off for K3.": "추론 단계는 Kimi K3에서만 지원되며, 문서화된 값은 low, high, max입니다. 각 단계는 선택한 그대로 전송되므로 그 외의 값은 거부될 수 있습니다. Minimum은 'minimal'로 전송됩니다. K3에서는 추론을 끌 수 없습니다.",
+    "Reasoning efforts are sent exactly, aside from minimum which is sent as 'minimal'.": "추론 단계는 그대로 전송되며, Minimum만 'minimal'로 전송됩니다."
 }

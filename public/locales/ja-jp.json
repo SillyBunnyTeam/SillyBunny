@@ -1457,5 +1457,11 @@
     "Deleting chat…": "チャットを削除中…",
     "Loading chat…": "チャットを読み込み中…",
     "Bulk Delete": "一括削除",
-    "Deleting ${0} character(s)…": "${0}人のキャラクターを削除中…"
+    "Deleting ${0} character(s)…": "${0}人のキャラクターを削除中…",
+    "OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.": "OpenAI 形式のオプション: low、medium、high、xhigh。各レベルは選択したとおりに送信されます。ただし Minimum は 'minimal' として送信されます。None は GPT-5.1 以降にはそのまま送信され、それ以外のモデルにはレベルが送信されません。",
+    "Sets a dynamic reasoning depth level for thinking (Flash 3/Pro 3). Every effort is sent exactly as picked, so a level the model does not accept is rejected rather than lowered. Auto lets the model decide.": "思考の深さのレベルを動的に設定します (Flash 3/Pro 3)。各レベルは選択したとおりに送信されるため、モデルが受け付けないレベルは引き下げられずに拒否されます。Auto はモデルに判断を任せます。",
+    "DeepSeek documents low, high and max reasoning efforts. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'.": "DeepSeek が公表しているレベルは low、high、max です。各レベルは選択したとおりに送信されるため、それ以外は拒否される場合があります。Minimum は 'minimal' として送信されます。",
+    "Only GLM-5.2 and newer accept reasoning efforts. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. GLM-5.3 specifically only accepts 'low', 'high', and 'max'.": "推論レベルに対応しているのは GLM-5.2 以降のみです。各レベルは選択したとおりに送信されます。ただし Minimum は 'minimal' として送信されます。GLM-5.3 は 'low'、'high'、'max' のみを受け付けます。",
+    "Only Kimi K3 accepts reasoning efforts, and documents low, high and max. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'. Reasoning cannot be turned off for K3.": "推論レベルに対応しているのは Kimi K3 のみで、公表されているレベルは low、high、max です。各レベルは選択したとおりに送信されるため、それ以外は拒否される場合があります。Minimum は 'minimal' として送信されます。K3 では推論を無効にできません。",
+    "Reasoning efforts are sent exactly, aside from minimum which is sent as 'minimal'.": "推論レベルはそのまま送信されます。ただし Minimum は 'minimal' として送信されます。"
 }
