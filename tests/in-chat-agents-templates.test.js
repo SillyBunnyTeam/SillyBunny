@@ -19,18 +19,30 @@ const indexSourceUrl = new URL('../public/scripts/extensions/in-chat-agents/inde
 const sourceFilenames = [
     'achievements-tracker.json',
     'actor-interview-companion.json',
+    'afflictions-blessings.json',
+    'almanac-generator.json',
     'chat-only-companion.json',
     'chatroom-companion.json',
+    'clock-is-lying.json',
     'continuity-companion.json',
     'cyoa-choices-skill-checks.json',
     'directors-commentary-companion.json',
+    'doors-fate-checks.json',
+    'doors.json',
+    'drift-tracker.json',
+    'entanglement-tracker.json',
     'event-tracker.json',
+    'four-winds.json',
+    'improbable-effects.json',
     'item-tracker.json',
     'lorebook-scout-companion.json',
+    'meanwhile-impossibly.json',
     'memory-shard-companion.json',
     'message-inbox-companion.json',
+    'motif-tracker.json',
     'npc-motivator.json',
     'npc-profiles.json',
+    'omen-tracker.json',
     'parallel-tracker.json',
     'plot-compass-companion.json',
     'relationship-lens-companion.json',
@@ -38,8 +50,18 @@ const sourceFilenames = [
     'reputation-tracker.json',
     'scene-tracker.json',
     'secrets-tracker.json',
+    'small-miracles.json',
     'status-tracker.json',
+    'the-becoming.json',
+    'the-census.json',
+    'the-committee.json',
+    'the-ledger.json',
+    'the-turning.json',
+    'thin-places-tracker.json',
+    'thought-cabinet.json',
     'time-tracker.json',
+    'unscheduled-phenomena.json',
+    'what-the-town-knows.json',
     'world-detail.json',
 ];
 
@@ -175,6 +197,28 @@ describe('in-chat agent bundled templates', () => {
             ['tpl-time-tracker', '[TIME|Day 2|Tuesday|Dusk]\nnote: later\n[/TIME]'],
             ['tpl-world-detail', '[WORLD|CULTURE|Harbor]\ndetail: bells\n[/WORLD]'],
             ['tpl-cyoa-choices-skill-checks', '[CHOICES]\n1. Continue\n[/CHOICES]'],
+            ['tpl-afflictions-blessings', '[AFFLICT|Ava|Weightless|WORSENING]\nnote: rising\n[/AFFLICT]'],
+            ['tpl-almanac-generator', '[ALMANAC]\nName: Ava\n[/ALMANAC]'],
+            ['tpl-clock-is-lying', '[HOUR|Noon|Dusk|LOOSE]\nnote: slipping\n[/HOUR]'],
+            ['tpl-doors', '[DOORS]\n1. Continue\n[/DOORS]'],
+            ['tpl-doors-fate-checks', '[DOORS]\n1. Continue\n[/DOORS]'],
+            ['tpl-drift-tracker', '[DRIFT|3|RISING]\nnote: odd\n[/DRIFT]'],
+            ['tpl-entanglement-tracker', '[THREAD|Ava and Ben|Rope|Fraying]\nnote: strain\n[/THREAD]'],
+            ['tpl-four-winds', '[WINDS]\nA. North\n[/WINDS]'],
+            ['tpl-improbable-effects', '[EFFECT|Held|Brass Key|Smug]\nnote: hums\n[/EFFECT]'],
+            ['tpl-meanwhile-impossibly', '[ELSEWHERE|Harbor|Closing]\n- A\n- B\n- C\n[/ELSEWHERE]'],
+            ['tpl-motif-tracker', '[MOTIF|Bells|3|Warning]\nnote: heard\n[/MOTIF]'],
+            ['tpl-omen-tracker', '[OMEN|Crows|Ill|Soon]\ncontext: dusk\n[/OMEN]'],
+            ['tpl-small-miracles', '[CERT|First Door|MINOR|Section 3]\nstamp: sealed\n[/CERT]'],
+            ['tpl-the-becoming', '[BECOMING|Ava|The Quiet One|Rising]\nnote: earned\n[/BECOMING]'],
+            ['tpl-the-census', '[CENSUS:PASSERBY|Ava]\nb: Ava | 30s | Courier\na: Red scarf\np: Wary\n[/CENSUS]'],
+            ['tpl-the-committee', '[VOICE|Logic|Doubt|FAIL]\nsays: no\n[/VOICE]'],
+            ['tpl-the-ledger', '[LEDGER|Ava|One name|Dusk]\ncontext: bargain\n[/LEDGER]'],
+            ['tpl-the-turning', '[TURNING]\nAva reaches 2\n[/TURNING]'],
+            ['tpl-thin-places-tracker', '[THIN|Harbor|Bells|OPEN]\nnote: leaks\n[/THIN]'],
+            ['tpl-thought-cabinet', '[THOUGHT|The Bells|Forming|2 of 3]\nnote: settling\n[/THOUGHT]'],
+            ['tpl-unscheduled-phenomena', '[UNSCHEDULED|Vector|Scope|MILD]\nwas: a\nnow: b\nnote: c\n[/UNSCHEDULED]'],
+            ['tpl-what-the-town-knows', '[RUMOR|Ava|Walks on water|GROWING]\ncause: witness\n[/RUMOR]'],
         ]);
         const catalog = readTemplate('index.json');
 
@@ -210,6 +254,34 @@ describe('in-chat agent bundled templates', () => {
 
             expect(html).toContain('Ava');
             expect(html).not.toContain('[/NPC]');
+        }
+    });
+
+    test('renders Ethereality blocks without leaving closing tags behind', () => {
+        const bundles = readTemplate('regex-bundles.json');
+        const samples = [
+            ['tpl-drift-tracker', '[DRIFT|3|RISING]\nnote: odd\n[/DRIFT]'],
+            ['tpl-the-census', '[CENSUS:PASSERBY|Ava]\nb: Ava | 30s | Courier\na: Red scarf\np: Wary\n[/CENSUS]'],
+            ['tpl-the-census', '[CENSUS:SIGHTING|Ava|red scarf|wary]'],
+            ['tpl-the-census', '[CENSUS:AMENDED|Ava|now trusts him]'],
+            ['tpl-doors', '[DOORS]\n1. Continue\n2. Wait\n[/DOORS]'],
+            ['tpl-doors-fate-checks', '[DOORS]\n1. Continue\n2. Wait\n[/DOORS]'],
+            ['tpl-four-winds', '[WINDS]\nA. North\nB. South\nC. East\nD. West\n[/WINDS]'],
+            ['tpl-the-turning', '[TURNING]\nAva reaches 2\n[/TURNING]'],
+            ['tpl-almanac-generator', '[ALMANAC]\nName: Ava\n[/ALMANAC]'],
+            ['tpl-unscheduled-phenomena', '[UNSCHEDULED|Vector|Scope|MILD]\nwas: a\nnow: b\nnote: c\n[/UNSCHEDULED]'],
+        ];
+
+        for (const [templateId, sample] of samples) {
+            const scripts = bundles[templateId];
+            expect(Array.isArray(scripts)).toBe(true);
+
+            const html = applyRegexScriptList(sample, scripts, AGENT_REGEX_PLACEMENT.AI_OUTPUT, {
+                isMarkdown: true,
+            });
+
+            expect(html).not.toMatch(/\[\/?[A-Z]+[:|\]]/);
+            expect(html).toContain('<');
         }
     });
 

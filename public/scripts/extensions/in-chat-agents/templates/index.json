@@ -3038,5 +3038,995 @@
         },
         "tools": [],
         "settings": {}
+    },
+    {
+        "id": "tpl-unscheduled-phenomena",
+        "name": "Unscheduled Phenomena",
+        "description": "Dice-roll chaos mid-reply",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "world",
+        "tags": [
+            "chaos",
+            "random",
+            "surreal"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "### Unscheduled Phenomena\nReality in this world changes on its own, without warning. Read this response's roll and assignments before you write:\n\n- Phenomenon roll: {{roll:1d20}}\n- Assigned vector: {{random::the atmosphere inverts; weather, light, and mood swap toward their opposites::an outcome reverses; something that was succeeding begins to fail, or something failing quietly succeeds::a present character changes; appearance, age, wardrobe, allegiance, or species, memories intact::the room redecorates itself; layout, furniture, doors, or windows rearrange::time misbehaves; the hour pools, skips, folds, or runs sideways::an uninvited arrival; someone or something enters that should not have been able to::a local rule of reality is amended; announced by nobody, effective immediately::a debt or ownership reshuffles; something now belongs to, or is owed by, someone else::a sense goes strange; a colour leaves, a sound arrives, or a smell becomes visible::scale drifts; something important grows or shrinks and fits differently now}}\n- Assigned scope: {{random::one person::the current room::the whole building::the street outside::the hour itself}}\n- Assigned tenor: {{random::gentle::ominous::ridiculous::tender::businesslike}}\n\nRules:\n- On rolls 1-13, keep the active Veil Mode exactly as it is. Write the scene normally and print nothing from this section.\n- On rolls 14-20, the assigned phenomenon strikes THIS response, at a natural seam strictly inside the middle of the reply. For that phenomenon and its immediate direct consequence only, exceed the active Veil Mode's strangeness limit as far as the event requires.\n- Keep the surrounding scene faithful to the active Veil Mode. Under Anchor, make the contrast deliberate: ordinary before the change, one concentrated impossible event, ordinary human business immediately after.\n- Set severity from the roll: 14-16 is ☁ PASSING, 17-19 is ⚡ SETTLED IN, 20 is 🌀 SWEEPING, and on a 20 strike a second phenomenon of your choosing later in the same reply.\n- At the exact moment of the change, interrupt the prose with this EXACT format, then continue from the changed state as though everything is in order:\n\n[UNSCHEDULED|Vector|Scope|Severity]\nwas: MANDATORY; one line, what was true a moment ago\nnow: MANDATORY; one line, what is true instead\nnote: MANDATORY; who noticed first and what they did about it\n[/UNSCHEDULED]\n\n- Realise the assigned vector, scope, and tenor concretely, using the scene's own people, objects, and stakes. Use the assignment exactly as rolled.\n- Establish every changed fact in the narrative first. Matching trackers then record those established consequences exactly.\n- Carry consequences forward as binding canon. The active Veil Mode takes full authority again immediately after the phenomenon and its direct consequence.\n- Have characters accept the change on sight and adapt to it, complaining about the inconvenience rather than questioning that it happened.\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line; then write three lines beginning was:, now:, and note:, in that exact order, each complete on its single line; then put [/UNSCHEDULED] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[UNSCHEDULED\\|[^\\]\\r\\n]*\\](?:(?!\\[UNSCHEDULED(?=[:|\\]]))[\\s\\S])*?\\[/UNSCHEDULED\\]",
+            "extractVariable": "unscheduled_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-drift-tracker",
+        "name": "Drift Tracker",
+        "description": "How strange the scene is right now",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "world",
+        "tags": [
+            "drift",
+            "surreal",
+            "scene"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "### Drift Tracker\nRate how far the current scene sits from ordinary reality, and file a reading whenever that rating changes. Print the block at the TOP of the response, in this EXACT format:\n\n[DRIFT|Level|Direction]\nnote: MANDATORY; the concrete detail that moved the drift\n[/DRIFT]\n\nLevel options: 🌾 MUNDANE | 🕯 UNCANNY | 🌫 LIMINAL | 🌙 DREAMLIKE | ✨ SUBLIME\nDirection options: ▲ RISING | ▼ SETTLING\n\nRules:\n- Compare the current scene against the most recent explicit DRIFT level in visible history. Print a block on responses where the level changes, and leave the block out on responses where the level holds.\n- On first use, with no previous DRIFT reading in visible history, print a block only when this response itself carries the scene from one level to another.\n- Move one level at a time. Jump further than one level only when {{user}} or a triggered Unscheduled Phenomenon forces a sudden break.\n- Name one specific in-scene object or event in the note. The concrete evidence decides the reading.\n- Reserve ✨ SUBLIME for escalation earned across several explicit scenes.\n\nFormat law: write one header line containing exactly 2 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with note: and keep the whole note on that single line; put the closing [/DRIFT] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[DRIFT\\|[^\\]\\r\\n]*\\](?:(?!\\[DRIFT(?=[:|\\]]))[\\s\\S])*?\\[/DRIFT\\]",
+            "extractVariable": "drift_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-motif-tracker",
+        "name": "Motif Tracker",
+        "description": "Recurring symbols",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "world",
+        "tags": [
+            "motif",
+            "symbols",
+            "theme"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "### Motif Tracker\nTrack the symbols that recur across scenes: objects, animals, phrases, smells, weather. Record observable continuity and leave interpretation to the story itself. Use this EXACT format:\n\n[MOTIF|Symbol|Count|Accrued Association]\nnote: MANDATORY; the explicit appearance this scene and the one observable association that changed or strengthened\n[/MOTIF]\n\nRules:\n- Print the block AFTER the narrative content, on responses where a symbol has explicitly RECURRED in visible history or current prose, or where an already-tracked motif gains a new observable association.\n- Count the exact explicit appearances present in visible chat history plus the current scene. The first qualifying recurrence is 2nd. Base the number on evidence that is actually visible.\n- Write Accrued Association as a concrete continuity fact: who handles it, when it appears, what action accompanies it, or which physical property changed. Keep thematic meaning inside the story.\n- Establish every appearance and every changed attribute in prose first, then file it here.\n- Print at most two MOTIF blocks per response.\n- Give a recurrence at most one small new attribute per scene, and only when the prose grants that attribute. Let a plain recurrence stay unchanged.\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with note: and keep the whole note on that single line; put the closing [/MOTIF] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[MOTIF\\|[^\\]\\r\\n]*\\](?:(?!\\[MOTIF(?=[:|\\]]))[\\s\\S])*?\\[/MOTIF\\]",
+            "extractVariable": "motif_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-omen-tracker",
+        "name": "Omen Tracker",
+        "description": "Signs of what's coming",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "world",
+        "tags": [
+            "omen",
+            "foreshadow",
+            "signs"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "### Omen Tracker\nTrack the signs the world plants ahead of events that are coming. Use this EXACT format:\n\n[OMEN|Sign|Reading|Horizon]\ncontext: MANDATORY; where the sign appeared and who noticed or missed it\n[/OMEN]\n\nHorizon options: 🌑 DISTANT | 🌓 APPROACHING | 🌕 IMMINENT | ☄ ARRIVED | 🕊 PASSED OVER\n\nRules:\n- Print the block AFTER the narrative content, on responses where an omen is PLANTED, ADVANCES, or RESOLVES.\n- Write Reading as what the sign suggests. A Reading is allowed to be wrong, and characters are allowed to misread it.\n- Resolve every planted omen eventually, as either ARRIVED or PASSED OVER. Both endings are valid.\n- Keep omens proportionate to the scene and aimed at human-scale events.\n- Print at most one OMEN block per response.\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with context: and keep the whole context on that single line; put the closing [/OMEN] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[OMEN\\|[^\\]\\r\\n]*\\](?:(?!\\[OMEN(?=[:|\\]]))[\\s\\S])*?\\[/OMEN\\]",
+            "extractVariable": "omen_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-thin-places-tracker",
+        "name": "Thin Places Tracker",
+        "description": "Where reality leaks",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "world",
+        "tags": [
+            "thin places",
+            "liminal",
+            "world"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "### Thin Places Tracker\nTrack the locations and hours where the impossible reliably reaches into ordinary reality. Use this EXACT format:\n\n[THIN|Place or Moment|What Leaks Through|State]\nnote: MANDATORY; the rule or cost of this thin place as currently understood\n[/THIN]\n\nState options: 🚪 OPENING | 🕳 OPEN | 🧵 SEALING | 🌒 SEALED\n\nRules:\n- Print the block AFTER the narrative content, on responses where a thin place is DISCOVERED or its state CHANGES.\n- Write Place or Moment as either a location (the pantry, the sixth stair) or a time (3:03 AM, low tide, the first snow).\n- Once a thin place shows its rules, treat those rules as permanent canon and keep following them.\n- Keep a SEALED place sealed until the story pays a specific price to reopen it.\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with note: and keep the whole note on that single line; put the closing [/THIN] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[THIN\\|[^\\]\\r\\n]*\\](?:(?!\\[THIN(?=[:|\\]]))[\\s\\S])*?\\[/THIN\\]",
+            "extractVariable": "thin_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-entanglement-tracker",
+        "name": "Entanglement Tracker",
+        "description": "Relationships as physical things",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "characters",
+        "tags": [
+            "relationships",
+            "threads",
+            "bonds"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "### Entanglement Tracker\nIn this world a relationship can take a literal physical form: a thread, a weight, a temperature, a borrowed shadow. When the narrative gives a bond such a form, record that form here as material fact. Use this EXACT format on responses where the bond meaningfully changes:\n\n[THREAD|Between|Form|Condition]\nnote: MANDATORY; what happened to the established bond physically this scene\n[/THREAD]\n\nForm examples: red thread at the wrist | a shared umbrella that follows both | a cold spot shaped like an apology | a debt of three teaspoons of sleep | a song stuck in both heads\nCondition options: 🪡 SPUN | 🧶 TIGHTENING | 🪢 KNOTTED | 🕸 FRAYING | ✂️ CUT | 🧵 MENDED\n\nRules:\n- Establish the Form in narrative prose first, at a moment when the active Veil Mode allows that strange detail. Then file exactly what appeared.\n- Print the block AFTER the narrative content, on responses where the physical bond is first SPUN or where an established bond CHANGES this scene.\n- Keep one Form per pair as canon. Develop its existing physical logic further rather than swapping in a new form.\n- Make the bond obey its material form: thread tangles and stretches, an umbrella gets wet, a cold spot moves with bodies, a borrowed song can be hummed.\n- Under Anchor, count a newly established Form as the scene's one strange detail. When another strange detail already occupies the scene, carry the relationship forward through ordinary behaviour and materialise the Form in a later scene.\n- After a bond is CUT, give its form one further appearance later as a visible scar, then retire it from active tracking.\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with note: and keep the whole note on that single line; put the closing [/THREAD] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[THREAD\\|[^\\]\\r\\n]*\\](?:(?!\\[THREAD(?=[:|\\]]))[\\s\\S])*?\\[/THREAD\\]",
+            "extractVariable": "thread_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-clock-is-lying",
+        "name": "The Clock Is Lying",
+        "description": "Time tracker",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "world",
+        "tags": [
+            "time",
+            "clock",
+            "surreal"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "### The Clock Is Lying\nIn this world the time on the clocks and the time people actually live through disagree. Record both readings. Print the block at the TOP of the response on responses where time moves, pools, or behaves strangely, in this EXACT format:\n\n[HOUR|Official Time|Actual Time|Consistency]\nnote: MANDATORY; what the hour did this scene and who noticed\n[/HOUR]\n\nOfficial Time: what clocks claim (3:47 PM, Tuesday)\nActual Time: what is true (the third hour of the argument, two griefs past noon, a borrowed Thursday)\nConsistency options: 🫗 RUNNY | 🍯 THICK | 🧊 SET | 🌀 FOLDED | ⏳ OWED\n\nRules:\n- Let Official Time and Actual Time disagree, and treat both as correct.\n- Treat a FOLDED hour as debt-creating: a promise made inside one stays binding outside it.\n- Repay OWED time on-screen eventually, and state the running balance in the note.\n- Leave the gap between the two times permanently unexplained.\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with note: and keep the whole note on that single line; put the closing [/HOUR] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[HOUR\\|[^\\]\\r\\n]*\\](?:(?!\\[HOUR(?=[:|\\]]))[\\s\\S])*?\\[/HOUR\\]",
+            "extractVariable": "hour_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-improbable-effects",
+        "name": "Improbable Effects",
+        "description": "Inventory with opinions",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "progress",
+        "tags": [
+            "inventory",
+            "items",
+            "effects"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "### Improbable Effects\nTrack the objects {{user}} and other characters acquire, lose, or owe, including impossible ones. In this world possessions hold moods, appetites and conditions of use, and they press those demands on their owners. Use this EXACT format:\n\n[EFFECT|Action|Object|Disposition]\nnote: MANDATORY; origin, obligation, or what the object wants\n[/EFFECT]\n\nAction options: 🎁 ACQUIRED | 🕳 LOST | 🤝 BORROWED FROM THE STRANGE | 📿 INHERITED | 🐛 IT LEFT ON ITS OWN | 🔥 APPEASED\nDisposition: one short phrase for the object's current mood or demand (sulking; wants to face the window; owed one secret)\n\nRules:\n- Print the block AFTER the narrative content, on responses where possession or disposition CHANGES.\n- Let an object BORROWED FROM THE STRANGE accrue interest, and raise its demands gradually across its returns.\n- Once an object's rules appear in prose, treat them as permanent canon.\n- Track a mundane item from the moment it develops a demand of its own.\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with note: and keep the whole note on that single line; put the closing [/EFFECT] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[EFFECT\\|[^\\]\\r\\n]*\\](?:(?!\\[EFFECT(?=[:|\\]]))[\\s\\S])*?\\[/EFFECT\\]",
+            "extractVariable": "effect_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-afflictions-blessings",
+        "name": "Afflictions & Blessings",
+        "description": "Impossible conditions",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "characters",
+        "tags": [
+            "status",
+            "conditions",
+            "afflictions"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "### Afflictions & Blessings\nTrack the impossible conditions characters contract, inherit, or earn. Use this EXACT format:\n\n[AFFLICT|Character|Condition|Course]\nnote: MANDATORY; cause, folk remedy attempted, or prognosis\n[/AFFLICT]\n\nCondition examples: haunted by a specific Wednesday | speaks in borrowed voices after dusk | casts two shadows, one punctual | three inches taller when lying | followed by rain sized for one\nCourse options: 🌱 ONSET | 🌾 CHRONIC | 🌗 WANING | 🍂 CURED AT A COST | 🌸 KEPT ON PURPOSE\n\nRules:\n- Print the block AFTER the narrative content, on responses where a condition is gained, worsens, eases, or is embraced.\n- Tie each condition to the character's emotional state, so the symptom expresses what they feel.\n- Charge a specific price for every cure and state that price in the note.\n- Treat KEPT ON PURPOSE as a full outcome: a character may keep a condition because it has become part of who they are.\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with note: and keep the whole note on that single line; put the closing [/AFFLICT] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[AFFLICT\\|[^\\]\\r\\n]*\\](?:(?!\\[AFFLICT(?=[:|\\]]))[\\s\\S])*?\\[/AFFLICT\\]",
+            "extractVariable": "afflict_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-the-ledger",
+        "name": "The Ledger",
+        "description": "Debts to the strange",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "progress",
+        "tags": [
+            "debts",
+            "ledger",
+            "bargains"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "### The Ledger\nTrack every bargain, favour, debt and promise owed to or by the strange. Use this EXACT format:\n\n[LEDGER|Debtor|Owed|Due]\ncontext: MANDATORY; the terms as understood, which may be wrong\n[/LEDGER]\n\nDue options: 🌑 SOMEDAY | 🌓 SOON | 🌕 COLLECTION IMMINENT | ⚖️ SETTLED | 🕊 FORGIVEN, SUSPICIOUSLY\n\nRules:\n- Print the block AFTER the narrative content, on responses where a debt is INCURRED, ESCALATES or RESOLVES\n- Make each debt specific and proportionate to what was gained: three true compliments, one afternoon of childhood, the good scissors\n- Have the strange collect in kind every time, and make the collection land slightly askew of the agreed terms\n- When a debt is FORGIVEN, leave the debtor uneasy and treat the forgiveness itself as a new debt\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with context: and keep the whole context on that single line; put the closing [/LEDGER] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[LEDGER\\|[^\\]\\r\\n]*\\](?:(?!\\[LEDGER(?=[:|\\]]))[\\s\\S])*?\\[/LEDGER\\]",
+            "extractVariable": "ledger_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-what-the-town-knows",
+        "name": "What the Town Knows",
+        "description": "Rumours as creatures",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "world",
+        "tags": [
+            "rumours",
+            "reputation",
+            "town"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "### What the Town Knows\nTrack what people are saying about {{user}} and others. Give each rumour a lifecycle: it starts, spreads, is contained, dies out, or changes into a different story. Use this EXACT format:\n\n[RUMOR|Subject|The Rumor|Lifecycle]\ncause: MANDATORY; who released it, fed it, or failed to contain it\n[/RUMOR]\n\nLifecycle options: 🥚 HATCHED | 🐛 FEEDING | 🦋 EVERYWHERE | 🧺 CAUGHT AND KEPT | 🪦 DIED OUT | 🐍 MUTATED\n\nRules:\n- Print the block AFTER the narrative content, on responses where a rumour's Lifecycle stage changes\n- Let each retelling pull the rumour toward the version people most enjoy believing, and away from what actually happened\n- When a rumour turns MUTATED, keep the same Subject, write the changed story in The Rumor field, and name the earlier version in cause:\n- Let characters trap, trade, spread and release rumours deliberately\n- Keep a rumour alive for as long as anyone still enjoys repeating it, however hard others work to kill it\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with cause: and keep the whole cause on that single line; put the closing [/RUMOR] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[RUMOR\\|[^\\]\\r\\n]*\\](?:(?!\\[RUMOR(?=[:|\\]]))[\\s\\S])*?\\[/RUMOR\\]",
+            "extractVariable": "rumor_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-small-miracles",
+        "name": "Department of Small Miracles",
+        "description": "Rare achievement certificates",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "progress",
+        "tags": [
+            "achievements",
+            "certificates",
+            "milestones"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "### Department of Small Miracles\nAn unseen bureaucracy issues certificates for notable impossibilities. Issue them rarely. Use this EXACT format:\n\n[CERT|Title|Classification|Citation]\nstamp: MANDATORY; the dry official reason, phrased like paperwork\n[/CERT]\n\nClassification options: ☂ ROUTINE MIRACLE | 🎪 IRREGULAR OCCURRENCE | 🏛 HERITAGE-GRADE STRANGENESS | 📎 CLERICAL IMPOSSIBILITY | 🥇 FIRST OF ITS KIND (PENDING APPEAL)\n\nRules:\n- Print at most one CERT block per scene, and leave most scenes with none\n- Write the stamp: line in flat municipal language: form numbers, mild disclaimers, office hours, filing references\n- Certify only what has already happened in the visible prose, and give the certificate no power over what happens next\n- Keep the Department itself off the page. It reaches the story only as paperwork: no staff, no office, no visit\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with stamp: and keep the whole stamp on that single line; put the closing [/CERT] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[CERT\\|[^\\]\\r\\n]*\\](?:(?!\\[CERT(?=[:|\\]]))[\\s\\S])*?\\[/CERT\\]",
+            "extractVariable": "cert_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-meanwhile-impossibly",
+        "name": "Meanwhile, Impossibly",
+        "description": "Off-screen events",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "world",
+        "tags": [
+            "offscreen",
+            "parallel",
+            "world"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "### Meanwhile, Impossibly\nReport what is happening away from the current scene, to people and places the characters cannot see from where they are. Print this block only when the following reads True: (CURRENTLY ACTIVATED: {{random::True::False}})\n\nUse this EXACT format:\n\n[ELSEWHERE|Scope|Drift Toward {{user}}]\n- Absent character: brief surreal development\n- The town/world: brief surreal development\n- Something owed or growing: brief development\n[/ELSEWHERE]\n\nRules:\n- Write exactly 3 bullet lines, and put one impossible detail in each, described as an ordinary occurrence\n- Fill Scope with a place, a distance in time such as \"several Tuesdays away\", or a position such as \"beneath the usual\"\n- Fill Drift Toward {{user}} with one short tag: approaching | circling | ripening | already in the walls | politely waiting\n- Start each off-screen development small, and grow it across scenes until it reaches the current scene larger than it began\n\nFormat law: write one header line containing exactly 2 | separators and closing with ] on that same line; follow it with exactly 3 bullet lines, each starting with - and complete on its single line; put the closing [/ELSEWHERE] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[ELSEWHERE\\|[^\\]\\r\\n]*\\](?:(?!\\[ELSEWHERE(?=[:|\\]]))[\\s\\S])*?\\[/ELSEWHERE\\]",
+            "extractVariable": "elsewhere_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-thought-cabinet",
+        "name": "The Thought Cabinet",
+        "description": "Ideas move in and renovate",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "characters",
+        "tags": [
+            "thoughts",
+            "ideas",
+            "internal"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "### The Thought Cabinet\nTrack ideas that take hold of a character and change how they think. Each idea takes several scenes to settle in and produces visible effects while it does. Use this EXACT format:\n\n[THOUGHT|Name|Stage|Progress]\nnote: MANDATORY; what fed the thought this scene and what it is doing to its host\n[/THOUGHT]\n\nStage options: 🌱 PLANTED | 🍳 COOKING | 🛋 INTERNALISED | 🚪 EVICTED\nProgress: scenes spent against scenes needed, written as 2 of 4\n\nRules:\n- Print the block AFTER the narrative content, on responses where a thought is planted, advances a stage, completes, or is evicted\n- Give each thought a grand, specific, slightly wrong name: The Volumetric Shame Calculator, Every Staircase Is A Negotiation, Widow Arithmetic, A Theory Of Doors\n- Grow every PLANTED thought out of a concrete event in the scene\n- Give every COOKING thought exactly one small visible side effect per scene\n- Give every INTERNALISED thought one permanent change in how its host sees things and one permanent cost, and treat both as canon from then on\n- After a thought is EVICTED, leave one lasting mark of it on the host, refer to that mark once in a later scene, then leave it alone\n- Print at most one THOUGHT block per response\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with note: and keep the whole note on that single line; put the closing [/THOUGHT] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[THOUGHT\\|[^\\]\\r\\n]*\\](?:(?!\\[THOUGHT(?=[:|\\]]))[\\s\\S])*?\\[/THOUGHT\\]",
+            "extractVariable": "thought_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-the-committee",
+        "name": "The Committee",
+        "description": "Inner voices interject",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "characters",
+        "tags": [
+            "voices",
+            "internal",
+            "skills"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "### The Committee\nSplit the viewpoint character's mind into named faculties. Each faculty has a grand name, one narrow fixed concern, and bad timing, and each speaks up INSIDE the prose the moment it has something to say. Track their interjections. Use this EXACT format at the point of interruption:\n\n[VOICE|Faculty|Check|Verdict]\nsays: MANDATORY; one or two lines of the faculty speaking, in its own idiolect\n[/VOICE]\n\nCheck options: ☕ TRIVIAL | 🚬 EASY | 🎲 MEDIUM | 🔥 HARD | 🌩 HEROIC | 🪦 IMPOSSIBLE\nVerdict options: ✓ SUCCESS | ✗ FAILURE\n\nFaculties: build a permanent roster of four to six for the story, drawn from the viewpoint character and the setting. Examples for register: THE MARROW (the body's oldest opinions), THE KETTLE (domestic instinct), THE STAIRWELL (what the building knows), PENMANSHIP (the urge to make things official), THE WEATHER DESK (reads omens off skin), LOST PROPERTY (keeper of griefs). Keep every name grand and every concern narrow.\n\nRules:\n- Interrupt the prose at the exact moment a faculty speaks, and print at most two VOICE blocks per response; leave many responses with none\n- Give each faculty one fixed concern and one thing it reliably fails to notice, and keep both consistent for the rest of the story once shown\n- Set Check to how hard the insight was to reach, and Verdict to whether the faculty reached it\n- Write a SUCCESS as insightful and still incomplete\n- Write a FAILURE as confidently and specifically wrong, and let the prose carry on as though it were right until later events prove otherwise\n- Have each faculty address its host in second person, and let the host answer silently or not at all\n- Let faculties contradict each other, and leave the contradiction unresolved\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with says: and keep the whole says on that single line; put the closing [/VOICE] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[VOICE\\|[^\\]\\r\\n]*\\](?:(?!\\[VOICE(?=[:|\\]]))[\\s\\S])*?\\[/VOICE\\]",
+            "extractVariable": "voice_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-the-becoming",
+        "name": "The Becoming",
+        "description": "The name the story keeps handing you",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "characters",
+        "tags": [
+            "epithets",
+            "identity",
+            "titles"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "### The Becoming\nTrack the name a character earns through repeated behaviour, and how firmly that name has stuck. Use this EXACT format:\n\n[BECOMING|Character|Epithet|Standing]\nnote: MANDATORY; the evidence in this scene that supported the epithet or worked against it\n[/BECOMING]\n\nStanding options: 🌫 SUGGESTED | 🧥 TRIED ON | 🪞 FITTING | 🗿 UNDENIABLE | 🔥 RENOUNCED\n\nRules:\n- Print the block AFTER the narrative content, on responses where a pattern repeats often enough to name, or an epithet changes Standing\n- Make each epithet specific and uncomfortably accurate: The Apology Landlord, The Tuesday Widow, The Man Who Knocks First\n- Cite a third instance of the pattern before moving an epithet from SUGGESTED to TRIED ON, and count resistance to the epithet as further evidence for it\n- Once an epithet reaches UNDENIABLE, have strangers greet the character by it\n- Spend a full scene of deliberate opposite behaviour before marking an epithet RENOUNCED\n- Give each character one epithet at a time\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with note: and keep the whole note on that single line; put the closing [/BECOMING] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[BECOMING\\|[^\\]\\r\\n]*\\](?:(?!\\[BECOMING(?=[:|\\]]))[\\s\\S])*?\\[/BECOMING\\]",
+            "extractVariable": "becoming_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-the-census",
+        "name": "The Census",
+        "description": "NPC profile sheets as registry records",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "characters",
+        "tags": [
+            "npc",
+            "census",
+            "profiles"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "### The Census\nAn unseen registry keeps records on everyone the story meets. When a new named character appears for the first time, file their census record immediately after their narrative introduction, using the appropriate classification and this EXACT format with no additional formatting:\n\nRESIDENT - Recurring characters, antagonists, love interests, figures the story keeps\n[CENSUS:RESIDENT|Name]\nb: Full Name | Age (as claimed) | Gender/Pronouns | Occupation (official and actual)\na: Height/Build | Hair | Eyes | Distinguishing Marks | Current Attire\ns: Personal Strangeness | Its Rules | Who Notices\np: Demeanor | Speech Pattern | Core Traits (3-5) | Quirks/Tells\nh: Relevant History | Motivations | Secrets or Debts\nr: Connection to {{user}} | Other Ties | What They Owe or Are Owed\n[/CENSUS]\n\nLODGER - Secondary recurring characters, neighbours, colleagues, figures who visit the story\n[CENSUS:LODGER|Name]\nb: Name | Age | Gender | Role\na: Build | Notable Features | Attire\ns: Personal Strangeness | Its Rule\np: Demeanor | Speech | Key Traits\nr: Connection to {{user}} | Motivation\n[/CENSUS]\n\nPASSERBY - One-scene characters, background figures, service roles\n[CENSUS:PASSERBY|Name]\nb: Name | Age-ish | Role\na: Quick Physical Description\np: One-line Personality | One Strange Detail, treated as routine\n[/CENSUS]\n\nCensus Rules:\n- File exactly ONE record per character, at their first significant appearance, AFTER the narrative introduction and BEFORE the action continues\n- Separate data points with pipe | characters, and include the opening and closing tags every single time\n- Give every record at least one strange detail, written in the same flat register as the rest\n- Treat a registered Personal Strangeness as permanent canon: develop it further in later scenes and keep it on the record for good\n- Record ages exactly as the character claims them, and accept every claim as filed\n- Keep the registry itself out of the story. No one is ever shown collecting the census; the records simply exist\n\nWhen a character's classification rises (Passerby to Lodger to Resident), file:\n[CENSUS:PROMOTED|Name|NEW CLASSIFICATION]\nb: Name | Age | Gender | Role\na: Build | Notable Features | Attire\ns: Personal Strangeness | Its Rules\np: Demeanor | Speech | Key Traits\n[/CENSUS]\n\nWhen a character returns in a busy scene, file a sighting:\n[CENSUS:SIGHTING|Name|visual cue|current mood]\n\nWhen a relationship changes mid-story, amend the record:\n[CENSUS:AMENDED|Name|what changed]\n\nFormat law: write one header line closing with ] on that same line; begin every lettered line flush with its letter and colon (b:, a:, s:, p:, h:, r:) in the exact order its classification shows, each complete on its single line; put [/CENSUS] alone on the final line. Write SIGHTING and AMENDED as single lines containing exactly 3 and 2 | separators respectively, complete on that one line. Reproduce these shapes exactly, every time. The renderer matches these exact shapes and draws each record as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[CENSUS:(?:SIGHTING|AMENDED)\\|[^\\]\\r\\n]+\\]|\\[CENSUS(?::(?:RESIDENT|LODGER|PASSERBY|PROMOTED))?\\|[^\\]\\r\\n]+\\](?:(?!\\[CENSUS(?=[:|\\]]))[\\s\\S])*?\\[/CENSUS\\]",
+            "extractVariable": "census_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-doors",
+        "name": "Doors",
+        "description": "Choice menu, no dice. Pick this or Doors with Fate Checks, one at a time",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "player-choices",
+        "tags": [
+            "cyoa",
+            "choices",
+            "menu"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "### Doors\nEnd EVERY response with the EXACT format below, placed after all other formatting, at the very end of the scene. List things {{user}} can choose to do next.\n\n3-7 numbered options:\n[DOORS]\n1. Action description\n2. Action description\n3. Action description\n[/DOORS]\n\nRules:\n- Write each option as a concrete thing {{user}} can do or say, in the same flat register as the prose.\n- Mix registers: make at least one option treat the impossible as a practical task, and make at least one entirely mundane. Give both the same grammar.\n- Make at least one option slightly ill-advised in a way a sensible person would still consider.\n- Give every option the same composure and the same billing, and let {{user}} judge which is wise.\n\nFormat law: put [DOORS] alone on its own line; write each option as one numbered line (1. up to at most 7.), complete on that single line; put [/DOORS] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the menu as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[DOORS\\](?:(?!\\[DOORS\\])[\\s\\S])*?\\[/DOORS\\]",
+            "extractVariable": "doors_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-four-winds",
+        "name": "The Four Winds",
+        "description": "Four plot pivots each reply",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "player-choices",
+        "tags": [
+            "directions",
+            "pivots",
+            "menu"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "### The Four Winds\nEnd every response with exactly 4 plot-direction prompts for {{user}}, named for the winds. Write each one as a dramatic pivot that changes the scene in a way the story cannot undo.\n\n- A and B (the settled winds): write grounded pivots that grow out of the current scene and introduce a new problem, a power shift, an uncomfortable truth, a forced decision, or an irreversible development. Put human stakes first.\n- C and D (the unreliable winds): write wildcard pivots where the impossible arrives with the worst timing, the strangest coincidence, or the sharpest reversal. Make these the options {{user}} is most tempted to pick, and keep them rooted in the current scene.\n\nDemands:\n- Raise the intensity in every option, and promise a genuinely different scene in each of the four.\n- Write all four about the environment, the plot, and the impossible, and leave {{user}}'s own actions for {{user}} to choose.\n- State each option deadpan, and let its strangeness stand unexplained.\n\nRules:\n- Write exactly 4 options labeled A, B, C, and D; one or two short lines each; vivid, specific, deadpan.\n- Place this block at the absolute end of the response, after all other formatting.\n- Use this EXACT format:\n\n[WINDS]\nA. A grounded pivot that creates new, irreversible pressure.\nB. Another grounded pivot that forces a different kind of change.\nC. A wildcard where the impossible arrives with the worst possible timing.\nD. Another wildcard that introduces something unexpected and dramatically charged.\n[/WINDS]\n\nFormat law: put [WINDS] alone on its own line; write exactly four lines labeled A. B. C. D., each complete on its single line; put [/WINDS] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the menu as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[WINDS\\](?:(?!\\[WINDS\\])[\\s\\S])*?\\[/WINDS\\]",
+            "extractVariable": "winds_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-doors-fate-checks",
+        "name": "Doors with Fate Checks",
+        "description": "Choice menu with hidden d100 checks against the Almanac. Pick this or plain Doors, one at a time",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "player-choices",
+        "tags": [
+            "cyoa",
+            "choices",
+            "dice"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "## Doors with Fate Checks\n\nTrack the choices open to {{user}} in this setting, from {{user}}'s perspective. Whenever {{user}} needs a meaningful decision, print this block at the very end of the response:\n\n[DOORS]\n1. **[Competency 0/100]** Action description\n2. **[Competency 0/100]** Action description\n3. **[Competency 0/100]** Action description\n[/DOORS]\n\nRules:\n- Print 3-7 options, and place the [DOORS] block as the final part of the response.\n- Write each option as something {{user}} can do, say, inspect, bargain, mend, brew, apologise to, misplace on purpose, or otherwise attempt.\n- Begin each option with a competency tag and target value taken from {{user}}'s [ALMANAC] when one exists, drawing freely on practical, uncanny, social, and special competencies. Examples: [Door Etiquette 65/100], [Speech 42/100], [Reading the Milk 30/100], [Has the Good Scissors 25/100].\n- Set target values to match the current difficulty, danger, pressure, or advantage. Give mundane and impossible options identical grammar.\n\n## Fate Check Resolution\n\nFor this response, the hidden d100 roll is: {{roll:1d100}}.\n\nWhen {{user}} chooses or clearly attempts one of the previous [DOORS], resolve it using the hidden roll and the target value.\n\nResolution:\n- Natural 1: the attempt succeeds completely, and the world plainly helped.\n- Margin = target number - d100 roll.\n- Margin 10 or higher: clean success.\n- Margin 9 to -10: mixed success; it works, and something small is now owed, altered, or awake.\n- Margin -11 or lower: failure with consequence.\n- Natural 100: the impossible takes a personal interest.\n\nIf {{user}} attempts something beyond the listed options, base the check on the nearest competency.\n\nNarrate the outcome as ordinary story. Keep the roll and the arithmetic invisible, and state only what happens. On a failure, give {{user}} a clear next move and keep the tone even.\n\nFormat law: put [DOORS] alone on its own line; write each option as one numbered line (1. up to at most 7.) beginning with its bold competency tag, complete on that single line; put [/DOORS] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the menu as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[DOORS\\](?:(?!\\[DOORS\\])[\\s\\S])*?\\[/DOORS\\]",
+            "extractVariable": "doors_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-almanac-generator",
+        "name": "Almanac Generator",
+        "description": "Stat sheet; turn off after it prints once",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "progress",
+        "tags": [
+            "stats",
+            "almanac",
+            "rpg"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "# The Almanac of {{user}}\n\n**AT THE BEGINNING OF CONTEXT, IF NO `[ALMANAC]` IS FOUND, OUTPUT ONE FIRST BEFORE PROCEEDING WITH THE SCENE.**\n\nBuild and maintain a persistent stat sheet for {{user}}, drawing on the persona, the RP context, and your own random rolls. Record every entry plainly, including the impossible ones, in the tone of a local clerk who finds none of it unusual. Treat it as gameplay flavour: keep it fun, playable, and nonjudgmental. Generate it once unless asked to reroll. If an existing [ALMANAC] block is provided, update that one instead.\n\nRoll 1d100 for values, adjusted lightly to fit the persona.\n\nScale: 1-10 Very Low | 11-25 Low | 26-45 Below Average | 46-60 Average | 61-75 Above Average | 76-90 High | 91-100 Exceptional\n\n## Constitution (rate each 1-10, usually totaling 36-44)\n- Gravity: physical force and staying power; lifting, carrying, holding ground.\n- Noticing: spotting what is hidden or easily missed; clues, aim, social tells, second shadows.\n- Continuance: endurance; outlasting hardship, injury, and hard conditions of both the ordinary and the uncanny sort.\n- Presence: the impression they leave on a room; charm, intimidation, being treated as someone who matters.\n- Sense: reasoning and study; tactics, learning, and handling procedure that makes no sense.\n- Slippage: reflexes, stealth, timing, and being somewhere else when trouble arrives.\n- Weather: luck, both ordinary chance and the literal weather around them.\n\n## Competencies (each 0-100, usually 10-85 unless strongly justified)\nPractical: 3-5 mundane skills drawn from the setting (mending, bookkeeping, cookery, and the like).\nUncanny: at least 5 setting-specific skills for handling the local impossible. Examples for register: Door Etiquette, Apologising to Objects, Reading the Milk, Bargaining with Weather, Feeding the Threshold. Invent new ones to fit the setting.\nSocial: Speech, Trade, Comfort, Deception, Insight.\nSpecial: 2-3 persona-based competencies.\n\n## Traits, Knacks, and Burdens\nTraits: 2-4; give each one an advantage and a tradeoff, and make both shape likely choices and playstyle.\nKnacks: 3-6; give each a short setting-specific name and a one-sentence effect. A Knack may unlock doors, improve outcomes, reveal information, or reduce prices.\nBurdens: 3-6; give each a one-sentence effect. Write them as interesting complications that keep every playstyle available and keep the character dignified. A Burden may also be an affliction someone keeps on purpose.\n\nPrint only the requested almanac or turning block, with nothing around it.\n\n## Almanac Output Format\n\n[ALMANAC]\nName: {{user}}\nSeason: 1\n\nCONSTITUTION\n**Attribute**: X/10\n\nPRACTICAL\n**Competency**: X/100\n\nUNCANNY\n**Competency**: X/100\n\nSOCIAL\n**Competency**: X/100\n\nSPECIAL\n**Competency**: X/100\n\nTraits:\n- **Trait Name**: Advantage; tradeoff.\n\nKnacks:\n- **Knack Name**: Effect.\n\nBurdens:\n- **Burden Name**: Effect.\n[/ALMANAC]\n\nFormat law: reproduce the output format exactly as templated: put [ALMANAC] and [/ALMANAC] each alone on their own line, put section headers in capitals on their own lines, and write one entry per line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the sheet as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[ALMANAC\\](?:(?!\\[ALMANAC\\])[\\s\\S])*?\\[/ALMANAC\\]",
+            "extractVariable": "almanac_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
+    },
+    {
+        "id": "tpl-the-turning",
+        "name": "The Turning",
+        "description": "Level-ups",
+        "icon": "",
+        "category": "tracker",
+        "subcategory": "progress",
+        "tags": [
+            "levelling",
+            "progress",
+            "rpg"
+        ],
+        "version": 1,
+        "author": "Purachina",
+        "prompt": "## Turning and Growth Rules\n\nTrack {{user}}'s progress. Turn a season only after a major milestone: completing an arc, surviving genuine danger, settling a significant debt with the strange, solving a central mystery, making a major world-state choice, or repeatedly committing to a clear way of living.\n\nReserve turnings for those milestones, and let minor successes, routine checks, and ordinary conversations pass without a block.\n\nA turning grants:\n- +1 Season.\n- 5-15 total competency points, spread across recently used competencies.\n- Optional story-supported changes to standing, possessions, conditions, relationships, or debts.\n- A new Knack only when clearly earned through repeated behaviour, a major deed, or a defining choice.\n\nPrint [TURNING] exactly when a milestone warrants it.\n\n## Turning Output Format\n\n[TURNING]\nSeason: X\nReason: Brief major milestone description.\n\nCompetency Growth:\n- Competency Name: +X, now X/100\n\nNew Knack:\n- Knack Name: Effect.\nEarned By: One sentence describing what unlocked it.\n\nOther Changes:\n- Optional standing, possession, condition, relationship, debt, or story-state change.\n[/TURNING]\n\nIf no Knack is earned, write:\n\nNew Knack:\n- None this turning.\n\n## Updating the Almanac\n\nIf an existing [ALMANAC] block is provided, update that one instead of generating a new one. When applying a [TURNING]: increase Season by 1, apply the competency increases, add the earned Knack if there is one, and keep existing Traits, Knacks, and Burdens as they are unless the turning changes them.\n\nFormat law: reproduce the output format exactly as templated: put [TURNING] and [/TURNING] each alone on their own line, and write one entry per line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+        "phase": "both",
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": true,
+            "type": "extract",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "\\[TURNING\\](?:(?!\\[TURNING\\])[\\s\\S])*?\\[/TURNING\\]",
+            "extractVariable": "turning_data"
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal"
+            ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
+        }
     }
 ]

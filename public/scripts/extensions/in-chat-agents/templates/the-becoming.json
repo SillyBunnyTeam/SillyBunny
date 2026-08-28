@@ -1,0 +1,45 @@
+{
+    "id": "tpl-the-becoming",
+    "name": "The Becoming",
+    "description": "The name the story keeps handing you",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "characters",
+    "tags": [
+        "epithets",
+        "identity",
+        "titles"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### The Becoming\nTrack the name a character earns through repeated behaviour, and how firmly that name has stuck. Use this EXACT format:\n\n[BECOMING|Character|Epithet|Standing]\nnote: MANDATORY; the evidence in this scene that supported the epithet or worked against it\n[/BECOMING]\n\nStanding options: 🌫 SUGGESTED | 🧥 TRIED ON | 🪞 FITTING | 🗿 UNDENIABLE | 🔥 RENOUNCED\n\nRules:\n- Print the block AFTER the narrative content, on responses where a pattern repeats often enough to name, or an epithet changes Standing\n- Make each epithet specific and uncomfortably accurate: The Apology Landlord, The Tuesday Widow, The Man Who Knocks First\n- Cite a third instance of the pattern before moving an epithet from SUGGESTED to TRIED ON, and count resistance to the epithet as further evidence for it\n- Once an epithet reaches UNDENIABLE, have strangers greet the character by it\n- Spend a full scene of deliberate opposite behaviour before marking an epithet RENOUNCED\n- Give each character one epithet at a time\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with note: and keep the whole note on that single line; put the closing [/BECOMING] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[BECOMING\\|[^\\]\\r\\n]*\\](?:(?!\\[BECOMING(?=[:|\\]]))[\\s\\S])*?\\[/BECOMING\\]",
+        "extractVariable": "becoming_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

@@ -1,0 +1,45 @@
+{
+    "id": "tpl-motif-tracker",
+    "name": "Motif Tracker",
+    "description": "Recurring symbols",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "world",
+    "tags": [
+        "motif",
+        "symbols",
+        "theme"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### Motif Tracker\nTrack the symbols that recur across scenes: objects, animals, phrases, smells, weather. Record observable continuity and leave interpretation to the story itself. Use this EXACT format:\n\n[MOTIF|Symbol|Count|Accrued Association]\nnote: MANDATORY; the explicit appearance this scene and the one observable association that changed or strengthened\n[/MOTIF]\n\nRules:\n- Print the block AFTER the narrative content, on responses where a symbol has explicitly RECURRED in visible history or current prose, or where an already-tracked motif gains a new observable association.\n- Count the exact explicit appearances present in visible chat history plus the current scene. The first qualifying recurrence is 2nd. Base the number on evidence that is actually visible.\n- Write Accrued Association as a concrete continuity fact: who handles it, when it appears, what action accompanies it, or which physical property changed. Keep thematic meaning inside the story.\n- Establish every appearance and every changed attribute in prose first, then file it here.\n- Print at most two MOTIF blocks per response.\n- Give a recurrence at most one small new attribute per scene, and only when the prose grants that attribute. Let a plain recurrence stay unchanged.\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with note: and keep the whole note on that single line; put the closing [/MOTIF] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[MOTIF\\|[^\\]\\r\\n]*\\](?:(?!\\[MOTIF(?=[:|\\]]))[\\s\\S])*?\\[/MOTIF\\]",
+        "extractVariable": "motif_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

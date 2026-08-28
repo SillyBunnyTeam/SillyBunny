@@ -1,0 +1,45 @@
+{
+    "id": "tpl-thought-cabinet",
+    "name": "The Thought Cabinet",
+    "description": "Ideas move in and renovate",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "characters",
+    "tags": [
+        "thoughts",
+        "ideas",
+        "internal"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### The Thought Cabinet\nTrack ideas that take hold of a character and change how they think. Each idea takes several scenes to settle in and produces visible effects while it does. Use this EXACT format:\n\n[THOUGHT|Name|Stage|Progress]\nnote: MANDATORY; what fed the thought this scene and what it is doing to its host\n[/THOUGHT]\n\nStage options: 🌱 PLANTED | 🍳 COOKING | 🛋 INTERNALISED | 🚪 EVICTED\nProgress: scenes spent against scenes needed, written as 2 of 4\n\nRules:\n- Print the block AFTER the narrative content, on responses where a thought is planted, advances a stage, completes, or is evicted\n- Give each thought a grand, specific, slightly wrong name: The Volumetric Shame Calculator, Every Staircase Is A Negotiation, Widow Arithmetic, A Theory Of Doors\n- Grow every PLANTED thought out of a concrete event in the scene\n- Give every COOKING thought exactly one small visible side effect per scene\n- Give every INTERNALISED thought one permanent change in how its host sees things and one permanent cost, and treat both as canon from then on\n- After a thought is EVICTED, leave one lasting mark of it on the host, refer to that mark once in a later scene, then leave it alone\n- Print at most one THOUGHT block per response\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with note: and keep the whole note on that single line; put the closing [/THOUGHT] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[THOUGHT\\|[^\\]\\r\\n]*\\](?:(?!\\[THOUGHT(?=[:|\\]]))[\\s\\S])*?\\[/THOUGHT\\]",
+        "extractVariable": "thought_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

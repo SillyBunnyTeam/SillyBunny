@@ -1,0 +1,45 @@
+{
+    "id": "tpl-unscheduled-phenomena",
+    "name": "Unscheduled Phenomena",
+    "description": "Dice-roll chaos mid-reply",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "world",
+    "tags": [
+        "chaos",
+        "random",
+        "surreal"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### Unscheduled Phenomena\nReality in this world changes on its own, without warning. Read this response's roll and assignments before you write:\n\n- Phenomenon roll: {{roll:1d20}}\n- Assigned vector: {{random::the atmosphere inverts; weather, light, and mood swap toward their opposites::an outcome reverses; something that was succeeding begins to fail, or something failing quietly succeeds::a present character changes; appearance, age, wardrobe, allegiance, or species, memories intact::the room redecorates itself; layout, furniture, doors, or windows rearrange::time misbehaves; the hour pools, skips, folds, or runs sideways::an uninvited arrival; someone or something enters that should not have been able to::a local rule of reality is amended; announced by nobody, effective immediately::a debt or ownership reshuffles; something now belongs to, or is owed by, someone else::a sense goes strange; a colour leaves, a sound arrives, or a smell becomes visible::scale drifts; something important grows or shrinks and fits differently now}}\n- Assigned scope: {{random::one person::the current room::the whole building::the street outside::the hour itself}}\n- Assigned tenor: {{random::gentle::ominous::ridiculous::tender::businesslike}}\n\nRules:\n- On rolls 1-13, keep the active Veil Mode exactly as it is. Write the scene normally and print nothing from this section.\n- On rolls 14-20, the assigned phenomenon strikes THIS response, at a natural seam strictly inside the middle of the reply. For that phenomenon and its immediate direct consequence only, exceed the active Veil Mode's strangeness limit as far as the event requires.\n- Keep the surrounding scene faithful to the active Veil Mode. Under Anchor, make the contrast deliberate: ordinary before the change, one concentrated impossible event, ordinary human business immediately after.\n- Set severity from the roll: 14-16 is ☁ PASSING, 17-19 is ⚡ SETTLED IN, 20 is 🌀 SWEEPING, and on a 20 strike a second phenomenon of your choosing later in the same reply.\n- At the exact moment of the change, interrupt the prose with this EXACT format, then continue from the changed state as though everything is in order:\n\n[UNSCHEDULED|Vector|Scope|Severity]\nwas: MANDATORY; one line, what was true a moment ago\nnow: MANDATORY; one line, what is true instead\nnote: MANDATORY; who noticed first and what they did about it\n[/UNSCHEDULED]\n\n- Realise the assigned vector, scope, and tenor concretely, using the scene's own people, objects, and stakes. Use the assignment exactly as rolled.\n- Establish every changed fact in the narrative first. Matching trackers then record those established consequences exactly.\n- Carry consequences forward as binding canon. The active Veil Mode takes full authority again immediately after the phenomenon and its direct consequence.\n- Have characters accept the change on sight and adapt to it, complaining about the inconvenience rather than questioning that it happened.\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line; then write three lines beginning was:, now:, and note:, in that exact order, each complete on its single line; then put [/UNSCHEDULED] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[UNSCHEDULED\\|[^\\]\\r\\n]*\\](?:(?!\\[UNSCHEDULED(?=[:|\\]]))[\\s\\S])*?\\[/UNSCHEDULED\\]",
+        "extractVariable": "unscheduled_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}
