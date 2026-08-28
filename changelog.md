@@ -60,6 +60,7 @@
 - PR #803 (2026-08-27) `feat(ica): lorebook scout now directly sends to lorebook`
 - PR #804 (2026-08-28) `fix(backends): send all reasoning efforts verbatim`
 - PR #805 (2026-08-28) `chore: update Quick Image Gen to 3.4.0`
+- PR #806 (2026-08-28) `fix: decode base64 explicitly on bun runtimes`
 
 ## v1.7.0
 
