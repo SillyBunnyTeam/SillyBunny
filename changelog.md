@@ -58,6 +58,7 @@
 - PR #800 (2026-08-23) `feat(prompt-manager): show token counts even when a prompt is injected or a variable`
 - PR #801 (2026-08-24) `fix(kimi): make Kimi partial prefills reply directly after finishing reasoning`
 - PR #803 (2026-08-27) `feat(ica): lorebook scout now directly sends to lorebook`
+- PR #804 (2026-08-28) `fix(backends): send all reasoning efforts verbatim`
 
 ## v1.7.0
 
