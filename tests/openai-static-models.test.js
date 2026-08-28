@@ -129,7 +129,8 @@ test('GPT-5.6 supports distinct max reasoning effort and one-million-token conte
         expect(constants).toContain(`'${model}'`);
     }
     expect(openAiScript).toContain('value.startsWith(\'gpt-5.4\') || value.startsWith(\'gpt-5.6\')');
-    expect(openAiScript).toMatch(/case reasoning_effort_types\.max:[\s\S]*?\^gpt-5\\\.6[\s\S]*?return reasoning_effort_types\.max/);
+    // max reaches the wire untouched now, so there is no per-model case left to assert.
+    expect(openAiScript).not.toContain('case reasoning_effort_types.max:');
 });
 
 test('Claude pickers include current Claude 5 models and omit all retired Claude IDs', () => {

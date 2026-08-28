@@ -115,14 +115,23 @@ describe('reasoning effort on outgoing chat completions', () => {
         expect(capturedBody.reasoning).toEqual({ effort: expected });
     });
 
-    test.each(['auto', 'banana', '   '])('NanoGPT omits the reasoning key entirely for %p', async (effort) => {
-        // Upstream emitted a bare `"reasoning": {}` for all of these, because the value is
-        // truthy but has no NanoGPT equivalent. hasOwn, not toBeUndefined: an empty object
-        // would also read as undefined on the nested effort.
+    test.each(['auto', '   '])('NanoGPT omits the reasoning key entirely for %p', async (effort) => {
+        // Upstream emitted a bare `"reasoning": {}` for both, because the value is truthy but
+        // means "unset". hasOwn, not toBeUndefined: an empty object would also read as
+        // undefined on the nested effort.
         const response = await makeRequest(CHAT_COMPLETION_SOURCES.NANOGPT, { reasoning_effort: effort });
 
         expect(response.status).toBe(200);
         expect(Object.hasOwn(capturedBody, 'reasoning')).toBe(false);
+    });
+
+    test('NanoGPT forwards a value it does not recognize instead of dropping it', async () => {
+        // A rung NanoGPT rejects earns an error the user can read, rather than a silent
+        // downgrade to whatever the model felt like doing.
+        const response = await makeRequest(CHAT_COMPLETION_SOURCES.NANOGPT, { reasoning_effort: 'banana' });
+
+        expect(response.status).toBe(200);
+        expect(capturedBody.reasoning).toEqual({ effort: 'banana' });
     });
 
     test('NanoGPT omits the reasoning key when no effort is supplied', async () => {

@@ -157,14 +157,14 @@ describe('reasoning effort on Z.AI and Moonshot requests', () => {
     });
 
     describe('Moonshot', () => {
-        // Moonshot documents low, high and max for Kimi K3 and nothing else, so the rungs it
-        // omits are folded rather than forwarded.
+        // Moonshot documents low, high and max for Kimi K3, but the rungs it omits are
+        // forwarded anyway: a K3 that refuses one says so, which beats quietly thinking less.
         test.each([
-            ['min', 'low'],
+            ['min', 'minimal'],
             ['low', 'low'],
-            ['medium', 'high'],
+            ['medium', 'medium'],
             ['high', 'high'],
-            ['xhigh', 'high'],
+            ['xhigh', 'xhigh'],
             ['max', 'max'],
         ])('sends %s as %s on Kimi K3', async (effort, expected) => {
             const response = await makeRequest(CHAT_COMPLETION_SOURCES.MOONSHOT, { model: 'kimi-k3', reasoning_effort: effort });
@@ -185,7 +185,7 @@ describe('reasoning effort on Z.AI and Moonshot requests', () => {
             expect(capturedBody.reasoning_effort).toBe('max');
         });
 
-        test.each(['none', 'auto', 'banana', '   '])('omits the effort entirely for %p', async (effort) => {
+        test.each(['none', 'auto', '   '])('omits the effort entirely for %p', async (effort) => {
             const response = await makeRequest(CHAT_COMPLETION_SOURCES.MOONSHOT, { model: 'kimi-k3', reasoning_effort: effort });
 
             expect(response.status).toBe(200);
@@ -205,11 +205,11 @@ describe('reasoning effort on Z.AI and Moonshot requests', () => {
             expect(capturedBody.thinking).toEqual({ type: 'enabled' });
         });
 
-        test('normalizes UI casing before the table lookup', async () => {
+        test('normalizes UI casing before forwarding', async () => {
             const response = await makeRequest(CHAT_COMPLETION_SOURCES.MOONSHOT, { model: 'kimi-k3', reasoning_effort: ' XHigh ' });
 
             expect(response.status).toBe(200);
-            expect(capturedBody.reasoning_effort).toBe('high');
+            expect(capturedBody.reasoning_effort).toBe('xhigh');
         });
     });
 

@@ -503,52 +503,6 @@ export const OPENAI_REASONING_EFFORT_MODELS = [
     'gpt-5.6-luna',
 ];
 
-export const OPENAI_REASONING_EFFORT_MAP = {
-    min: 'minimal',
-};
-
-/**
- * Models that only accept a single fixed reasoning effort value.
- * @type {Record<string, string>}
- */
-export const OPENAI_FIXED_REASONING_EFFORT = {
-    'gpt-5.3-chat-latest': 'medium',
-};
-
-/**
- * NanoGPT's vocabulary is none < minimal < low < medium < high < xhigh, and some models there
- * also take max. Six of this fork's seven rungs are spelled identically and are forwarded
- * untouched, so the level the user picks is the level NanoGPT receives; that includes `none`,
- * which pins thinking off instead of leaving the model to pick its own default depth.
- * SillyBunny divergence: upstream shifted the whole ladder down one rung, which made "Medium"
- * arrive as `low`. `min` is the only name with no NanoGPT spelling, so it resolves to the
- * nearest real rung. Values absent here are omitted entirely by the caller.
- */
-export const NANOGPT_REASONING_EFFORT_MAP = {
-    none: 'none',
-    min: 'minimal',
-    low: 'low',
-    medium: 'medium',
-    high: 'high',
-    xhigh: 'xhigh',
-    max: 'max',
-};
-
-/**
- * Moonshot exposes `reasoning_effort` on Kimi K3 only, and documents just low, high and max.
- * Unlike DeepSeek it does not advertise aliasing of the rungs it omits, so medium and xhigh
- * are folded here rather than forwarded as values the API does not list. Values absent from
- * this table are omitted entirely by the caller.
- */
-export const MOONSHOT_REASONING_EFFORT_MAP = {
-    min: 'low',
-    low: 'low',
-    medium: 'high',
-    high: 'high',
-    xhigh: 'high',
-    max: 'max',
-};
-
 export const LOG_LEVELS = {
     DEBUG: 0,
     INFO: 1,

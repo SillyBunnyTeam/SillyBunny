@@ -5181,27 +5181,9 @@ function getReasoningEffort(settings = null, model = null) {
                     ? reasoning_effort_types.none
                     : undefined;
             case reasoning_effort_types.min:
-                if (chat_completion_sources.OPENROUTER === settings.chat_completion_source && !shouldRequestReasoning(settings)) {
-                    return 'none';
-                }
-
-                return [chat_completion_sources.OPENAI, chat_completion_sources.OPENAI_RESPONSES, chat_completion_sources.AZURE_OPENAI].includes(settings.chat_completion_source) && /^gpt-5/.test(model)
-                    ? reasoning_effort_types.min
-                    : reasoning_effort_types.low;
-            case reasoning_effort_types.max: {
-                const nativeOpenAISource = [chat_completion_sources.OPENAI, chat_completion_sources.OPENAI_RESPONSES, chat_completion_sources.AZURE_OPENAI].includes(settings.chat_completion_source);
-                // SillyBunny: GPT-5.6 exposes max separately from xhigh.
-                if (nativeOpenAISource && /^gpt-5\.6(?:-|$)/.test(model)) {
-                    return reasoning_effort_types.max;
-                }
-
-                // xhigh is supported on OpenAI models after gpt-5.1-codex-max and on xAI grok-4.20-multi-agent
-                const xhighOpenAI = nativeOpenAISource
-                    && /^gpt-5\.([2-9]|\d{2,})/.test(model);
-                const xhighXAI = settings.chat_completion_source === chat_completion_sources.XAI
-                    && model.includes('grok-4.20-multi-agent');
-                return (xhighOpenAI || xhighXAI) ? reasoning_effort_types.xhigh : reasoning_effort_types.high;
-            }
+                // SillyBunny divergence: no endpoint accepts the literal 'min', and 'minimal' is how
+                // OpenAI-compatible ones spell this rung. Every other rung is sent exactly as picked.
+                return 'minimal';
             default:
                 return settings.reasoning_effort;
         }

@@ -2071,35 +2071,32 @@
                                                 <option data-i18n="openai_reasoning_effort_xhigh" value="xhigh">Extra High</option>
                                                 <option data-i18n="openai_reasoning_effort_maximum" value="max">Maximum</option>
                                             </select>
-                                            <div class="toggle-description justifyLeft marginBot5" data-source="openai,custom,xai,aimlapi,openrouter,pollinations,perplexity,cometapi,electronhub,azure_openai,chutes" data-i18n="OpenAI-style options: low, medium, high, xhigh. Minimum and maximum are adaptive aliases. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.">
-                                                OpenAI-style options: low, medium, high, xhigh. Minimum and maximum are adaptive aliases. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.
+                                            <div class="toggle-description justifyLeft marginBot5" data-source="openai,custom,xai,aimlapi,openrouter,pollinations,perplexity,cometapi,electronhub,azure_openai,chutes" data-i18n="OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.">
+                                                OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.
                                             </div>
-                                            <strong class="toggle-description justifyLeft marginBot5" data-source="openrouter">
-                                                Request model reasoning = Off with Reasoning Effort = Minimum disables reasoning entirely on models that support that, but can cause errors with some models.
-                                            </strong>
                                             <div class="toggle-description justifyLeft marginBot5" data-source="claude" data-i18n="Allocates a portion of the response length for thinking (min: 1024 tokens, low: 10%, medium: 25%, high: 50%, max: 95%), but minimum 1024 tokens. Auto does not request thinking.">
                                                 Allocates a portion of the response length for thinking (min: 1024 tokens, low: 10%, medium: 25%, high: 50%, max: 95%), but minimum 1024 tokens. Auto does not request thinking.
                                             </div>
                                             <div class="toggle-description justifyLeft marginBot5" data-source="makersuite,vertexai">
-                                                <span data-i18n="Sets a dynamic reasoning depth level for thinking (Flash 3/Pro 3). High and low are supported by both, minimal and medium are Flash 3 only. Auto lets the model decide.">
-                                                    Sets a dynamic reasoning depth level for thinking (Flash 3/Pro 3). High and low are supported by both, minimal and medium are Flash 3 only. Auto lets the model decide.
+                                                <span data-i18n="Sets a dynamic reasoning depth level for thinking (Flash 3/Pro 3). Every effort is sent exactly as picked, so a level the model does not accept is rejected rather than lowered. Auto lets the model decide.">
+                                                    Sets a dynamic reasoning depth level for thinking (Flash 3/Pro 3). Every effort is sent exactly as picked, so a level the model does not accept is rejected rather than lowered. Auto lets the model decide.
                                                 </span>
                                                 <br>
                                                 <span data-i18n="Allocates a portion of the response length for thinking (Flash 2.5/Pro 2.5) (min: 0/128 tokens, low: 10%, medium: 25%, high: 50%, max: 24576/32768 tokens). Auto lets the model decide.">
                                                     Allocates a portion of the response length for thinking (Flash 2.5/Pro 2.5) (min: 0/128 tokens, low: 10%, medium: 25%, high: 50%, max: 24576/32768 tokens). Auto lets the model decide.
                                                 </span>
                                             </div>
-                                            <div class="toggle-description justifyLeft marginBot5" data-source="deepseek" data-i18n="DeepSeek only accepts low, high, and max reasoning efforts. Medium and xhigh alias to high. Minimum aliases to low.">
-                                                DeepSeek only accepts low, high, and max reasoning efforts. Medium and xhigh alias to high. Minimum aliases to low.
+                                            <div class="toggle-description justifyLeft marginBot5" data-source="deepseek" data-i18n="DeepSeek documents low, high and max reasoning efforts. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'.">
+                                                DeepSeek documents low, high and max reasoning efforts. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'.
                                             </div>
-                                            <div class="toggle-description justifyLeft marginBot5" data-source="zai" data-i18n="Only GLM-5.2 and newer accept reasoning efforts. Minimum is aliased to 'minimal'. GLM-5.3 specifically only accepts 'low', 'high', and 'max'.">
-                                                Only GLM-5.2 and newer accept reasoning efforts. Minimum is aliased to 'minimal'. GLM-5.3 specifically only accepts 'low', 'high', and 'max'.
+                                            <div class="toggle-description justifyLeft marginBot5" data-source="zai" data-i18n="Only GLM-5.2 and newer accept reasoning efforts. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. GLM-5.3 specifically only accepts 'low', 'high', and 'max'.">
+                                                Only GLM-5.2 and newer accept reasoning efforts. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. GLM-5.3 specifically only accepts 'low', 'high', and 'max'.
                                             </div>
-                                            <div class="toggle-description justifyLeft marginBot5" data-source="moonshot" data-i18n="Only Kimi K3 accepts reasoning efforts: low, high, and max. Minimum is aliased to low, and Medium and Extra High are aliased to high. Reasoning cannot be turned off for K3.">
-                                                Only Kimi K3 accepts reasoning efforts: low, high, and max. Minimum is aliased to low, and Medium and Extra High are aliased to high. Reasoning cannot be turned off for K3.
+                                            <div class="toggle-description justifyLeft marginBot5" data-source="moonshot" data-i18n="Only Kimi K3 accepts reasoning efforts, and documents low, high and max. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'. Reasoning cannot be turned off for K3.">
+                                                Only Kimi K3 accepts reasoning efforts, and documents low, high and max. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'. Reasoning cannot be turned off for K3.
                                             </div>
-                                            <div class="toggle-description justifyLeft marginBot5" data-source="nanogpt" data-i18n="Reasoning efforts are sent exactly, aside from minimum which is sent as 'minimal'. Maximum is aliased to extra high.">
-                                                Reasoning efforts are sent exactly, aside from minimum which is sent as 'minimal'. Maximum is aliased to extra high.
+                                            <div class="toggle-description justifyLeft marginBot5" data-source="nanogpt" data-i18n="Reasoning efforts are sent exactly, aside from minimum which is sent as 'minimal'.">
+                                                Reasoning efforts are sent exactly, aside from minimum which is sent as 'minimal'.
                                             </div>
                                         </div>
                                     </div>

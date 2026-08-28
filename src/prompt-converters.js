@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 // SillyBunny divergence: the effort vocabulary moved to its own leaf module so the
 // chat-completions backend can normalize incoming values against the same source of truth.
-import { REASONING_EFFORT } from './reasoning-effort.js';
+import { REASONING_EFFORT, toWireReasoningEffort } from './reasoning-effort.js';
 import { getConfigValue, tryParse } from './util.js';
 
 const PROMPT_PLACEHOLDER = getConfigValue('promptPlaceholder', 'Let\'s get started.');
@@ -1160,31 +1160,17 @@ export function cachingSystemPromptForOpenRouter(messages, ttl = undefined) {
  * @param {string} reasoningEffort Reasoning effort
  * @param {boolean} stream If streaming is enabled
  * @param {boolean} isAdaptiveModel If the model supports adaptive thinking (Opus 4.6+)
- * @param {boolean} supportsXhigh If the adaptive model accepts the xhigh effort value
  * @returns {number|string|null} Budget tokens, effort string, or null
  */
-export function calculateClaudeBudgetTokens(maxTokens, reasoningEffort, stream, isAdaptiveModel, supportsXhigh = false) {
+export function calculateClaudeBudgetTokens(maxTokens, reasoningEffort, stream, isAdaptiveModel) {
     // Adaptive thinking for Opus 4.6+: return effort string (like Gemini 3)
     if (isAdaptiveModel) {
-        switch (reasoningEffort) {
-            case REASONING_EFFORT.auto:
-            case REASONING_EFFORT.none:
-                return null;
-            case REASONING_EFFORT.min:
-                return 'low';
-            case REASONING_EFFORT.low:
-                return 'low';
-            case REASONING_EFFORT.medium:
-                return 'medium';
-            case REASONING_EFFORT.high:
-                return 'high';
-            case REASONING_EFFORT.xhigh:
-                // SillyBunny: fall back for adaptive Claude models whose API rejects xhigh.
-                return supportsXhigh ? 'xhigh' : 'max';
-            case REASONING_EFFORT.max:
-                return 'max';
+        // SillyBunny divergence: the picked effort is forwarded as-is rather than folded onto the
+        // rungs a given adaptive model is known to list, so a refusal is reported, not hidden.
+        if (!reasoningEffort || [REASONING_EFFORT.auto, REASONING_EFFORT.none].includes(reasoningEffort)) {
+            return null;
         }
-        return null;
+        return toWireReasoningEffort(reasoningEffort);
     }
 
     let budgetTokens = 0;
@@ -1316,54 +1302,18 @@ export function calculateGoogleBudgetTokens(maxTokens, reasoningEffort, model) {
         return budgetTokens;
     }
 
-    function getGemini3FlashBudget() {
-        switch (reasoningEffort) {
-            case REASONING_EFFORT.auto:
-            case REASONING_EFFORT.none:
-                return null;
-            case REASONING_EFFORT.min:
-                return 'minimal';
-            case REASONING_EFFORT.low:
-                return 'low';
-            case REASONING_EFFORT.medium:
-                return 'medium';
-            case REASONING_EFFORT.high:
-                return 'high';
-            case REASONING_EFFORT.max:
-            case REASONING_EFFORT.xhigh:
-                return 'high';
+    // SillyBunny divergence: Gemini 3 takes a thinking level rather than a token budget, and the
+    // picked rung is forwarded as-is for both Pro and Flash instead of being folded onto the
+    // shorter list each one documents, so a refusal is reported rather than hidden.
+    function getGemini3ThinkingLevel() {
+        if (!reasoningEffort || [REASONING_EFFORT.auto, REASONING_EFFORT.none].includes(reasoningEffort)) {
+            return null;
         }
-
-        return null;
+        return toWireReasoningEffort(reasoningEffort);
     }
 
-    function getGemini3ProBudget() {
-        switch (reasoningEffort) {
-            case REASONING_EFFORT.auto:
-            case REASONING_EFFORT.none:
-                return null;
-            case REASONING_EFFORT.min:
-                return 'low';
-            case REASONING_EFFORT.low:
-                return 'low';
-            case REASONING_EFFORT.medium:
-                return 'low';
-            case REASONING_EFFORT.high:
-                return 'high';
-            case REASONING_EFFORT.max:
-            case REASONING_EFFORT.xhigh:
-                return 'high';
-        }
-
-        return null;
-    }
-
-    if (/gemini-3[.\d]*-pro/.test(model)) {
-        return getGemini3ProBudget();
-    }
-
-    if (/gemini-3[.\d]*-flash/.test(model)) {
-        return getGemini3FlashBudget();
+    if (/gemini-3[.\d]*-(?:pro|flash)/.test(model)) {
+        return getGemini3ThinkingLevel();
     }
 
     if (/flash-lite/.test(model)) {

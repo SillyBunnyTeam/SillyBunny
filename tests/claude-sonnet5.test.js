@@ -137,24 +137,16 @@ describe('Claude 5 backend request handling', () => {
         expect(body.output_config?.effort).toBe(reasoningEffort);
     });
 
-    test('Sonnet 4.6 maps unsupported xhigh effort to max', async () => {
-        const getBody = captureClaudePayload();
-        const res = await makeRequest({ model: 'claude-sonnet-4-6', reasoning_effort: 'xhigh' });
-        expect(res.status).toBe(200);
-        const body = getBody();
-
-        expect(body.thinking).toEqual({ type: 'adaptive' });
-        expect(body.output_config?.effort).toBe('max');
-    });
-
-    test.each(['claude-opus-4-8', 'claude-fable-5'])('%s does not inherit Claude 5 xhigh support', async (model) => {
+    test.each(['claude-sonnet-4-6', 'claude-opus-4-8', 'claude-fable-5'])('%s receives xhigh verbatim', async (model) => {
+        // Older adaptive models used to have xhigh folded onto max. The picked rung now goes
+        // out as-is, so a model that rejects it returns an error instead of thinking less.
         const getBody = captureClaudePayload();
         const res = await makeRequest({ model, reasoning_effort: 'xhigh' });
         expect(res.status).toBe(200);
         const body = getBody();
 
         expect(body.thinking).toEqual({ type: 'adaptive' });
-        expect(body.output_config?.effort).toBe('max');
+        expect(body.output_config?.effort).toBe('xhigh');
     });
 
     test.each(currentClaude5Models)('%s with effort=none sends thinking.type disabled and omits sampling params', async (model) => {

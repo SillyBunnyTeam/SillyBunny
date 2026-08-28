@@ -14,9 +14,9 @@ describe('DeepSeek reasoning effort', () => {
 
         expect(wrapper).not.toBeNull();
         expect(wrapper[1].split(',')).toContain('deepseek');
-        expect(indexSource).toMatch(/data-source="deepseek"[^>]*>\s*DeepSeek only accepts low, high, and max reasoning efforts\./);
+        expect(indexSource).toMatch(/data-source="deepseek"[^>]*>\s*DeepSeek documents low, high and max reasoning efforts\./);
 
-        // The generic OpenAI-style caption describes tiers DeepSeek does not have, so it must not claim DeepSeek.
+        // DeepSeek carries its own hint, so the generic OpenAI-style caption must not claim it.
         const genericCaption = indexSource.match(/data-source="([^"]*)"[^>]*>\s*OpenAI-style options: low, medium, high, xhigh\./);
         expect(genericCaption).not.toBeNull();
         expect(genericCaption[1].split(',')).not.toContain('deepseek');
@@ -35,7 +35,7 @@ describe('DeepSeek reasoning effort', () => {
         expect(handler).not.toBeNull();
         expect(handler[1]).toContain('const isThinkingModel = /(?:^|-)reasoner$|deepseek-v4/i.test(String(request.body.model || \'\'));');
         expect(handler[1]).toContain('if (isThinkingModel && request.body.reasoning_effort && ![\'auto\', \'none\'].includes(request.body.reasoning_effort)) {');
-        expect(handler[1]).toContain('bodyParams[\'reasoning_effort\'] = request.body.reasoning_effort === \'min\' ? \'low\' : request.body.reasoning_effort;');
+        expect(handler[1]).toContain('bodyParams[\'reasoning_effort\'] = toWireReasoningEffort(request.body.reasoning_effort);');
     });
 
     test('offers the current V4 model ids, both of which the server treats as thinking models', () => {
