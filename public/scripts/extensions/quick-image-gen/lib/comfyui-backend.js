@@ -320,8 +320,133 @@ export function renderComfyWorkflow(workflow, tokenValues = {}) {
     return renderValue(parseComfyWorkflow(workflow), tokenValues);
 }
 
-export function buildComfyPromptRequest(workflow, tokenValues = {}) {
-    const rendered = renderComfyWorkflow(workflow, tokenValues);
+const MAX_COMPONENT_VALUE_BYTES = 4096;
+const MAX_COMPONENT_OVERRIDE_ENTRIES = 256;
+const MAX_COMPONENT_CHOICES = 10_000;
+
+/**
+ * Collect direct string inputs from an API-format graph. ComfyUI object_info, not this local scan,
+ * decides which candidates are COMBO inputs.
+ */
+export function collectComfyWorkflowStringInputCandidates(workflow) {
+    const nodes = getPromptNodes(parseComfyWorkflow(workflow));
+    const found = [];
+    for (const [nodeId, node] of Object.entries(nodes)) {
+        for (const [inputName, rawValue] of Object.entries(node.inputs)) {
+            if (typeof rawValue !== "string") continue;
+            if (byteLength(rawValue) > MAX_COMPONENT_VALUE_BYTES) continue;
+            found.push({
+                nodeId,
+                classType: node.class_type,
+                inputName,
+                rawValue,
+                title: typeof node._meta?.title === "string" ? node._meta.title : "",
+            });
+        }
+    }
+    return found;
+}
+
+// Kept for the existing caller; this now returns candidates, not inferred component eligibility.
+export const discoverComfyWorkflowComponents = collectComfyWorkflowStringInputCandidates;
+
+export function parseComfyObjectInfoComboInputs(value, classType) {
+    if (!isRecord(value) || typeof classType !== "string" || !hasOwn(value, classType)) return [];
+    const input = value[classType]?.input;
+    if (!isRecord(input)) return [];
+    const sections = [
+        ["required", input.required],
+        ["optional", input.optional],
+    ].filter(([_name, definitions]) => isRecord(definitions));
+    if (sections.reduce((count, [_name, definitions]) => count + Object.keys(definitions).length, 0)
+        > MAX_WORKFLOW_NODES) return [];
+
+    const found = [];
+    for (const [section, definitions] of sections) {
+        for (const [inputName, declaration] of Object.entries(definitions)) {
+            if (!Array.isArray(declaration) || declaration.length < 1 || declaration.length > 2) continue;
+            const [choices, options] = declaration;
+            if (!Array.isArray(choices) || choices.length > MAX_COMPONENT_CHOICES) continue;
+            let totalBytes = 0;
+            if (!choices.every(choice => {
+                if (typeof choice !== "string") return false;
+                const bytes = byteLength(choice);
+                totalBytes += bytes;
+                return bytes <= MAX_COMPONENT_VALUE_BYTES && totalBytes <= MAX_WORKFLOW_BYTES;
+            })) continue;
+            if ((options !== undefined && !isRecord(options)) || options?.forceInput === true) continue;
+            found.push({ inputName, required: section === "required", choices: [...choices] });
+            if (found.length >= MAX_WORKFLOW_NODES) return found;
+        }
+    }
+    return found;
+}
+
+export function normalizeComfyWorkflowComponentOverrides(value) {
+    const hasVersion = isRecord(value) && hasOwn(value, "version");
+    if (hasVersion && value.version !== 1) return { version: 1, entries: [] };
+    const canTrustVerification = isRecord(value) && value.version === 1;
+    const entries = [];
+    const source = isRecord(value) && Array.isArray(value.entries) ? value.entries : [];
+    const seen = new Set();
+    for (const entry of source) {
+        if (!isRecord(entry)) continue;
+        const { nodeId, classType, inputName, rawValue, value: override } = entry;
+        if ([nodeId, classType, inputName, rawValue, override].some(part => typeof part !== "string")) continue;
+        if (!nodeId || !classType || !inputName || override === rawValue) continue;
+        if (byteLength(override) > MAX_COMPONENT_VALUE_BYTES) continue;
+        const key = `${nodeId}\u0000${classType}\u0000${inputName}\u0000${rawValue}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        entries.push({ nodeId, classType, inputName, rawValue, value: override, verified: canTrustVerification && entry.verified === true });
+        if (entries.length >= MAX_COMPONENT_OVERRIDE_ENTRIES) break;
+    }
+    return { version: 1, entries };
+}
+
+function matchesRawComponentInput(rawNodes, entry) {
+    const rawNode = hasOwn(rawNodes, entry.nodeId) ? rawNodes[entry.nodeId] : null;
+    return isRecord(rawNode)
+        && rawNode.class_type === entry.classType
+        && isRecord(rawNode.inputs)
+        && hasOwn(rawNode.inputs, entry.inputName)
+        && rawNode.inputs[entry.inputName] === entry.rawValue;
+}
+
+export function pruneComfyWorkflowComponentOverrides(workflow, overrides) {
+    const rawNodes = getPromptNodes(parseComfyWorkflow(workflow));
+    const normalized = normalizeComfyWorkflowComponentOverrides(overrides);
+    return {
+        ...normalized,
+        entries: normalized.entries.filter(entry => matchesRawComponentInput(rawNodes, entry)),
+    };
+}
+
+/**
+ * Replace matching literal inputs in an already-rendered node map. Never touches links, classes or
+ * topology. An entry whose node, class, input or original value changed is ignored, so a replaced
+ * graph falls back to its own values instead of writing an override onto the wrong node.
+ */
+function applyComponentOverrides(renderedNodes, rawWorkflow, overrides) {
+    const { entries } = normalizeComfyWorkflowComponentOverrides(overrides);
+    if (!entries.length) return;
+    const rawNodes = getPromptNodes(rawWorkflow);
+    for (const entry of entries) {
+        if (!entry.verified) continue;
+        if (!matchesRawComponentInput(rawNodes, entry)) continue;
+        const node = hasOwn(renderedNodes, entry.nodeId) ? renderedNodes[entry.nodeId] : null;
+        if (!isRecord(node) || node.class_type !== entry.classType || !isRecord(node.inputs)) continue;
+        if (typeof node.inputs[entry.inputName] !== "string") continue;
+        node.inputs[entry.inputName] = entry.value;
+    }
+}
+
+export function buildComfyPromptRequest(workflow, tokenValues = {}, componentOverrides = null) {
+    if (!isRecord(tokenValues)) throw new Error("ComfyUI placeholder values must be an object");
+    const parsed = parseComfyWorkflow(workflow);
+    const rendered = renderValue(parsed, tokenValues);
+    // Overrides run after placeholders so an override value is always a literal, never a second substitution pass.
+    applyComponentOverrides(getPromptNodes(rendered), parsed, componentOverrides);
     return getPromptNodes(rendered) === rendered ? { prompt: rendered } : rendered;
 }
 

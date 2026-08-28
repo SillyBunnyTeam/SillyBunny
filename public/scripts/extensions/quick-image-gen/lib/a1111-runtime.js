@@ -87,6 +87,7 @@ export async function materializeA1111ReferenceBase64(source, {
 
 export function isCurrentA1111ModelRefresh({ requestId, latestRequestId, baseUrl, settings }) {
     return requestId === latestRequestId
+        && settings?.provider === "local"
         && settings?.localType === "a1111"
         && normalizeA1111BaseUrl(settings?.localUrl) === normalizeA1111BaseUrl(baseUrl);
 }

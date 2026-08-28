@@ -11,9 +11,9 @@ const COMMON_REPRODUCIBLE_FIELDS = Object.freeze([
     "batchCount", "sequentialSeeds",
 ]);
 
-const LOCAL_REPRODUCIBLE_BASE_FIELDS = Object.freeze(["localType", "localModel", "localDenoise"]);
+const LOCAL_REPRODUCIBLE_BASE_FIELDS = Object.freeze(["localType"]);
 const LOCAL_A1111_FIELDS = Object.freeze([
-    "a1111Model", "a1111ClipSkip", "a1111Scheduler", "a1111RestoreFaces", "a1111Tiling",
+    "localDenoise", "a1111Model", "a1111ClipSkip", "a1111Scheduler", "a1111RestoreFaces", "a1111Tiling",
     "a1111Subseed", "a1111SubseedStrength", "a1111Adetailer", "a1111AdetailerModel",
     "a1111AdetailerPrompt", "a1111AdetailerNegative", "a1111AdetailerDenoise",
     "a1111AdetailerConfidence", "a1111AdetailerMaskBlur", "a1111AdetailerDilateErode",
@@ -24,15 +24,15 @@ const LOCAL_A1111_FIELDS = Object.freeze([
     "a1111Loras", "a1111Vae", "a1111HiresFix", "a1111HiresUpscaler", "a1111HiresScale",
     "a1111HiresSteps", "a1111HiresDenoise", "a1111HiresSampler", "a1111HiresScheduler",
     "a1111HiresPrompt", "a1111HiresNegative", "a1111HiresResizeX", "a1111HiresResizeY",
-    "a1111SaveToWebUI", "a1111IpAdapter", "a1111IpAdapterMode", "a1111IpAdapterWeight",
+    "a1111IpAdapter", "a1111IpAdapterMode", "a1111IpAdapterWeight",
     "a1111IpAdapterPixelPerfect", "a1111IpAdapterResizeMode", "a1111IpAdapterControlMode",
     "a1111IpAdapterStartStep", "a1111IpAdapterEndStep", "a1111ControlNet", "a1111ControlNetModel",
     "a1111ControlNetModule", "a1111ControlNetWeight", "a1111ControlNetResizeMode",
     "a1111ControlNetControlMode", "a1111ControlNetPixelPerfect", "a1111ControlNetGuidanceStart",
-    "a1111ControlNetGuidanceEnd", "a1111InterruptServer",
+    "a1111ControlNetGuidanceEnd",
 ]);
 const LOCAL_COMFY_FIELDS = Object.freeze([
-    "comfyModelLoader", "comfyClipSkip", "comfyDenoise",
+    "localModel", "comfyModelLoader", "comfyClipSkip", "comfyDenoise",
     "comfyScheduler", "comfyTimeout", "comfyUpscale", "comfyUpscaleModel", "comfyLoras",
     "comfyOutputNodeIds", "comfyOutputImageIndex", "comfySkipNegativePrompt",
     "comfyFluxClipModel1", "comfyFluxClipModel2", "comfyFluxVaeModel", "comfyFluxClipType",
