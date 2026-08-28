@@ -14,11 +14,14 @@ const FORBIDDEN_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const PRIVATE_FIELD = /(?:ApiKey|Key|Token|Secret|Password|RefImages?|RefImage|ControlNetImage|LocalRefImage|ImageBase64)$/;
 const KNOWN_PRIVATE_FIELD = /^(?:apiKey|key|token|secret|password|(?:proxy|nai|gptImage|pollinations|arli|routeway|navy|nanoGpt|chutes|civitai|nanobanana|stability|replicate|fal|together|zai|gemini|comfy)(?:Proxy|Api)?Key)$/i;
 const DELIMITED_PRIVATE_FIELD = /^(?:api[_-]?key|access[_-]?token|auth|authorization|token|secret|password|passwd)$/i;
-const TRUSTED_ENDPOINT_FIELD = /(?:Url|Endpoint)$/;
+const TRUSTED_ENDPOINT_FIELD = /(?:Url|Uri)$/i;
 const CUSTOM_API_FIELD = /^customApi/;
-const COMFY_EXECUTABLE_FIELD = /^(?:comfyWorkflow|proxyComfyWorkflow)$/i;
+// Unanchored on purpose: covers comfyWorkflowComponentOverrides, which points at node IDs inside a
+// local executable graph and must never travel to a different install.
+const COMFY_EXECUTABLE_FIELD = /^(?:comfyWorkflow|proxyComfyWorkflow)/i;
 const COMFY_WORKFLOW_BODY_FIELD = /^(?:workflow|request)$/i;
 const COMFY_LOCAL_TRUST_FIELD = /^comfyAllowLegacyInterrupt$/i;
+const SERVER_INTERRUPT_FIELD = /^a1111InterruptServer$/i;
 const CONTEXT_MEDIA_PRIVATE_FIELD = /^(?:base64|binary|binaryData|blob|buffer|bytes?|content|data|file|fileName|filePath|href|imageData|localMediaRef|localRef|mediaData|mediaIds?|mediaRef|mime|mimeType|path|payload|serverPath|src|storageKey|uri|url)$|(?:Uri|Url)$/i;
 const CONTEXT_MEDIA_PRIVATE_STRING = /(?:\b(?:blob|data|file|https?):|^(?:[A-Za-z][A-Za-z0-9!#$&^_.+-]*\/[A-Za-z0-9!#$&^_.+-]+$|\/|\\|\.\.?(?:\/|\\)|~(?:\/|\\)|[A-Za-z]:[\\/]))/i;
 
@@ -183,7 +186,17 @@ export function coerceSettingsFieldValue(key, value, options = {}) {
 
 function isPrivateField(key) {
     if (/cardkey$/i.test(key)) return false;
-    return key.startsWith("_") || CUSTOM_API_FIELD.test(key) || COMFY_EXECUTABLE_FIELD.test(key) || COMFY_LOCAL_TRUST_FIELD.test(key) || isCredentialFieldName(key) || PRIVATE_FIELD.test(key) || KNOWN_PRIVATE_FIELD.test(key) || DELIMITED_PRIVATE_FIELD.test(key);
+    return key.startsWith("_")
+        || CUSTOM_API_FIELD.test(key)
+        || COMFY_EXECUTABLE_FIELD.test(key)
+        || COMFY_LOCAL_TRUST_FIELD.test(key)
+        || SERVER_INTERRUPT_FIELD.test(key)
+        || TRUSTED_ENDPOINT_FIELD.test(key)
+        || /^(?:url|uri|endpoint)$/i.test(key)
+        || isCredentialFieldName(key)
+        || PRIVATE_FIELD.test(key)
+        || KNOWN_PRIVATE_FIELD.test(key)
+        || DELIMITED_PRIVATE_FIELD.test(key);
 }
 
 function isComfyWorkflowPrivateField(key) {
@@ -191,7 +204,7 @@ function isComfyWorkflowPrivateField(key) {
 }
 
 function isLocalTrustField(key) {
-    return CUSTOM_API_FIELD.test(key) || isPrivateField(key) || TRUSTED_ENDPOINT_FIELD.test(key) || key === "url" || key === "endpoint";
+    return isPrivateField(key);
 }
 
 function isComfyWorkflowLocalTrustField(key) {
@@ -348,28 +361,28 @@ function validateIdMap(value, path) {
     for (const [scope, ids] of Object.entries(value)) validateIdList(ids, `${path}.${scope}`);
 }
 
-function removeImportedPrivateFields(value, key = "", depth = 0, isOmittedField = isLocalTrustField) {
+function removeImportedPrivateFields(value, key = "", depth = 0, isOmittedField = isLocalTrustField, allowCustomProvider = false) {
     if (isOmittedField(key) || depth > MAX_DEPTH) return undefined;
     if (typeof value === "string" && /^(?:data:image\/|blob:)/i.test(value)) return undefined;
     if (typeof value === "string" && /model$/i.test(key)) return sanitizeReproducibleModel(value);
     if (typeof value === "string" && isStructuredSettingsField(key) && /^\s*[\[{]/.test(value)) {
         try {
             const parsed = JSON.parse(value);
-            const sanitized = removeImportedPrivateFields(parsed, key, depth + 1, isOmittedField);
+            const sanitized = removeImportedPrivateFields(parsed, key, depth + 1, isOmittedField, allowCustomProvider);
             return sanitized === undefined ? undefined : JSON.stringify(sanitized);
         } catch {
             return undefined;
         }
     }
     if (Array.isArray(value)) {
-        return value.map((item) => removeImportedPrivateFields(item, key, depth + 1, isOmittedField))
+        return value.map((item) => removeImportedPrivateFields(item, key, depth + 1, isOmittedField, allowCustomProvider))
             .filter((item) => item !== undefined);
     }
     if (!isPlainObject(value)) return value;
     const result = {};
     for (const [childKey, childValue] of Object.entries(value)) {
-        if (childKey === "provider" && String(childValue).toLowerCase() === "custom") continue;
-        const sanitized = removeImportedPrivateFields(childValue, childKey, depth + 1, isOmittedField);
+        if (childKey === "provider" && String(childValue).toLowerCase() === "custom" && !allowCustomProvider) continue;
+        const sanitized = removeImportedPrivateFields(childValue, childKey, depth + 1, isOmittedField, allowCustomProvider);
         if (sanitized !== undefined) result[childKey] = sanitized;
     }
     if (String(value.provider || "").toLowerCase() === "custom") delete result.model;
@@ -410,8 +423,6 @@ export function createSettingsExport(source, options = {}) {
         let store = source?.[name];
         if (name === "connectionProfiles" && isPlainObject(store)) {
             store = Object.fromEntries(Object.entries(store).filter(([provider]) => provider !== "custom"));
-        } else if (name === "generationPresets" && Array.isArray(store)) {
-            store = store.filter(record => record?.provider !== "custom");
         }
         let sanitized = sanitizeForExport(
             store,
@@ -469,12 +480,19 @@ export function parseSettingsImport(text, options = {}) {
     for (const [name, shape] of Object.entries(STORE_SHAPES)) {
         if (parsed[name] === undefined) continue;
         if (name === "charRefImages" && version >= 6) continue;
-        if (name === "comfyWorkflows") continue;
         assertShape(parsed[name], shape, name);
         let cloned = cloneValidated(parsed[name], name, state);
         if (name === "connectionProfiles" && isPlainObject(cloned)) delete cloned.custom;
         if (name === "generationPresets" && Array.isArray(cloned)) {
-            cloned = cloned.filter(record => record?.provider !== "custom");
+            for (const [index, record] of cloned.entries()) {
+                if (!isPlainObject(record)) continue;
+                const provider = record.provider;
+                if (provider === undefined || provider === "") {
+                    record.provider = "pollinations";
+                } else if (typeof provider !== "string" || !SETTINGS_ENUM_VALUES.provider.includes(provider)) {
+                    throw new Error(`generationPresets[${index}] contains an unsupported provider`);
+                }
+            }
         }
         const portable = name === "charRefImages"
             ? cloned
@@ -483,6 +501,7 @@ export function parseSettingsImport(text, options = {}) {
                 "",
                 0,
                 name === "comfyWorkflows" ? isComfyWorkflowLocalTrustField : isLocalTrustField,
+                name === "generationPresets",
             );
         result[name] = normalizeImportedSettingsValues(portable) ?? (shape === "array" ? [] : {});
         if (name === "contextMedia") result[name] = sanitizeContextMedia(result[name]) || {};
@@ -524,6 +543,18 @@ function cloneLocalRecord(value) {
     return JSON.parse(JSON.stringify(value));
 }
 
+export function configurationRecordsShareIdentity(current, imported) {
+    if (!isPlainObject(current) || !isPlainObject(imported)) return false;
+    const currentProvider = typeof current.provider === "string" ? current.provider : "";
+    const importedProvider = typeof imported.provider === "string" ? imported.provider : "";
+    if (!currentProvider || currentProvider !== importedProvider) return false;
+    if (currentProvider !== "local") return true;
+    const localTypes = new Set(["a1111", "comfyui"]);
+    return localTypes.has(current.localType)
+        && localTypes.has(imported.localType)
+        && current.localType === imported.localType;
+}
+
 export function mergeSettingsImportStores(current = {}, imported = {}) {
     const result = {};
     if (imported.connectionProfiles !== undefined) {
@@ -552,17 +583,27 @@ export function mergeSettingsImportStores(current = {}, imported = {}) {
     }
     if (imported.generationPresets !== undefined) {
         const localPortable = Array.isArray(current.generationPresets)
-            ? current.generationPresets.filter(record => record?.provider !== "custom").map(cloneLocalRecord)
+            ? current.generationPresets.map(cloneLocalRecord)
             : [];
         const importedPortable = Array.isArray(imported.generationPresets)
-            ? imported.generationPresets.filter(record => record?.provider !== "custom").map(cloneLocalRecord)
+            ? imported.generationPresets.map(cloneLocalRecord)
             : [];
-        const importedIds = new Set(importedPortable.map(record => record?.id).filter(id => typeof id === "string" && id));
+        const localById = new Map(localPortable
+            .filter(record => typeof record?.id === "string" && record.id)
+            .map(record => [record.id, record]));
+        const importedIds = new Set();
+        const mergedImported = importedPortable.map(record => {
+            const id = typeof record?.id === "string" ? record.id : "";
+            if (id) importedIds.add(id);
+            const local = id ? localById.get(id) : null;
+            if (!local) return record;
+            // An ID must never move private fields between providers or between Local backends.
+            // Treat an incomplete/mismatched identity as corrupt and retain local trust unchanged.
+            if (!configurationRecordsShareIdentity(local, record)) return cloneLocalRecord(local);
+            return mergePreservingPrivateFields(local, record);
+        });
         const retainedLocal = localPortable.filter(record => !(typeof record?.id === "string" && importedIds.has(record.id)));
-        const localCustom = Array.isArray(current.generationPresets)
-            ? current.generationPresets.filter(record => record?.provider === "custom").map(cloneLocalRecord)
-            : [];
-        result.generationPresets = [...importedPortable, ...retainedLocal, ...localCustom];
+        result.generationPresets = [...mergedImported, ...retainedLocal];
     }
     return result;
 }

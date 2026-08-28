@@ -22,6 +22,7 @@ import { GenerationRunManager, OwnedTransientValue, snapshotGenerationRunSetting
 import { normalizeProviderResult, sanitizeEffectiveRequest } from "./lib/provider-contract.js";
 import {
     coerceSettingsFieldValue,
+    configurationRecordsShareIdentity,
     createSettingsExport,
     MAX_SETTINGS_IMPORT_BYTES,
     mergePreservingPrivateFields,
@@ -63,11 +64,15 @@ import {
     buildComfyBuiltinWorkflow,
     buildComfyPromptRequest,
     cancelComfyPrompt,
+    collectComfyWorkflowStringInputCandidates,
     getComfyWorkflowCapabilities,
     normalizeComfyModelLoader,
     normalizeComfySettings,
+    normalizeComfyWorkflowComponentOverrides,
+    parseComfyObjectInfoComboInputs,
     parseComfyPromptResponse,
     pollComfyHistory,
+    pruneComfyWorkflowComponentOverrides,
     selectComfyModelList,
 } from "./lib/comfyui-backend.js";
 import {
@@ -650,6 +655,8 @@ function setupQigCollapsibleSection(sectionId, buttonId, contentId) {
     };
 }
 
+let rerunSettingsSearch = () => {};
+
 function setupSettingsSearch() {
     const searchInput = document.getElementById("qig-settings-search");
     const clearBtn = document.getElementById("qig-settings-search-clear");
@@ -687,6 +694,16 @@ function setupSettingsSearch() {
         });
     };
 
+    const isUnavailable = (element) => {
+        for (let node = element; node && node !== setupPanel; node = node.parentElement) {
+            // A collapsed disclosure is searchable because a match opens it. Provider- or
+            // capability-hidden controls are not, because opening a disclosure cannot reveal them.
+            if (node.hidden && !node.classList?.contains("qig-collapsible__content")) return true;
+            if (node.style?.display === "none") return true;
+        }
+        return false;
+    };
+
     const handleSearch = () => {
         const query = String(searchInput.value || "").trim().toLowerCase();
         if (clearBtn) {
@@ -708,11 +725,19 @@ function setupSettingsSearch() {
             let sectionMatches = 0;
 
             items.forEach(item => {
+                // Controls hidden because they do not apply to the active provider must not be
+                // findable by search; they would otherwise inflate the match count invisibly.
+                if (isUnavailable(item)) {
+                    item.classList.add("qig-search-hidden");
+                    return;
+                }
                 const textParts = [];
                 item.querySelectorAll("label, legend, small, button, span, option, p, h4, h5").forEach(el => {
+                    if (isUnavailable(el)) return;
                     textParts.push(el.textContent || "");
                 });
                 item.querySelectorAll("input, select, textarea").forEach(el => {
+                    if (isUnavailable(el)) return;
                     if (el.placeholder) textParts.push(el.placeholder);
                     if (el.title) textParts.push(el.title);
                 });
@@ -731,8 +756,9 @@ function setupSettingsSearch() {
             const sectionHeaderMatch = kickerText.includes(query) || subtitleText.includes(query);
 
             if (sectionHeaderMatch) {
-                items.forEach(item => item.classList.remove("qig-search-hidden"));
-                sectionMatches = Math.max(sectionMatches, items.length || 1);
+                const availableItems = [...items].filter(item => !isUnavailable(item));
+                availableItems.forEach(item => item.classList.remove("qig-search-hidden"));
+                sectionMatches = Math.max(sectionMatches, availableItems.length || 1);
             }
 
             if (sectionMatches > 0) {
@@ -768,6 +794,7 @@ function setupSettingsSearch() {
         }
     };
 
+    rerunSettingsSearch = handleSearch;
     searchInput.oninput = handleSearch;
     if (clearBtn) {
         clearBtn.onclick = () => {
@@ -785,7 +812,7 @@ function setupSettingsSearch() {
 const PROMPT_SOURCE_LABELS = {
     manual: "Manual prompt",
     chat: "Chat scene",
-    tags: "AI-tagged (auto)",
+    tags: "AI-tagged",
 };
 
 const PROMPT_FIELD_HELP = {
@@ -797,7 +824,7 @@ const PROMPT_FIELD_HELP = {
 const PROMPT_SOURCE_HELP = {
     manual: "The prompt box above is sent as-is. Optional LLM rewrite still applies if enabled below.",
     chat: "The selected chat messages become the scene. Optionally let your Text AI rewrite them into an image prompt.",
-    tags: "Your Text AI is instructed to emit image tags in replies; QIG extracts them and generates automatically. Auto-generate is kept on for this mode.",
+    tags: "Your Text AI is instructed to emit image tags in replies. Turn on Auto-generate separately for QIG to extract and generate from them.",
 };
 
 function derivePromptSource(s = getSettings()) {
@@ -858,7 +885,7 @@ function applyPromptSource(mode, { persist = true } = {}) {
     if (paletteModeEl) paletteModeEl.value = s.paletteMode;
     updatePromptSourceUI(s);
     updateQigStatusLine();
-    syncGenerationPresetIndicators();
+    syncConfigurationIndicators();
     if (persist) saveSettingsDebounced();
 }
 
@@ -1240,6 +1267,7 @@ const defaultSettings = {
     a1111InterruptServer: false,
     // ComfyUI specific
     comfyWorkflow: "",
+    comfyWorkflowComponentOverrides: { version: 1, entries: [] },
     comfyModelLoader: "checkpoint",
     comfyClipSkip: 1,
     comfyDenoise: 1.0,
@@ -1276,6 +1304,7 @@ const defaultSettings = {
     comfyFluxClipType: "flux",
     _replacementMapsMigrated: false,
     _legacyTemplatesIgnored: false,
+    _configurationMigrationVersion: 0,
     _charSettingsBaseState: null,
     _syncCacheId: "",
     // Backups of localStorage stores (survive browser storage wipes)
@@ -1284,6 +1313,7 @@ const defaultSettings = {
     _backupCharRefImages: null,
     _backupGenPresets: null,
     _backupComfyWorkflows: null,
+    _backupConfigurations: null,
     _backupContextualFilters: null,
     _backupFilterPools: null,
     _backupActiveFilterPoolIdsByCard: null,
@@ -1325,6 +1355,7 @@ const BACKUP_KEYS = {
     qig_char_ref_images: "_backupCharRefImages",
     qig_gen_presets: "_backupGenPresets",
     qig_comfy_workflows: "_backupComfyWorkflows",
+    qig_configurations: "_backupConfigurations",
     qig_contextual_filters: "_backupContextualFilters",
     qig_filter_pools: "_backupFilterPools",
     qig_active_pool_ids_global: "_backupActiveFilterPoolIdsGlobal",
@@ -1544,6 +1575,7 @@ let connectionProfiles = safeParse("qig_profiles", {});
 let charRefImages = safeParse("qig_char_ref_images", {});
 let generationPresets = safeParse("qig_gen_presets", []);
 let comfyWorkflows = safeParse("qig_comfy_workflows", []);
+let configurations = safeParse("qig_configurations", []);
 let contextualFilters = safeParse("qig_contextual_filters", []);
 let filterPools = safeParse("qig_filter_pools", []);
 let activeFilterPoolIdsGlobal = safeParse("qig_active_pool_ids_global", []);
@@ -1585,7 +1617,6 @@ try {
     quarantineContextMediaData(error);
     contextMediaLibrary = normalizeContextMediaLibrary({});
 }
-let selectedComfyWorkflowId = "";
 let isGenerating = false;
 const generationRunManager = new GenerationRunManager();
 const runSerializedTextAITask = createAbortableSerializedRunner();
@@ -2318,7 +2349,7 @@ const PROVIDER_KEYS = {
     fal: ["falKey", "falModel"],
     together: ["togetherKey", "togetherModel"],
     zai: ["zaiKey", "zaiModel", "zaiQuality"],
-    local: ["localUrl", "localType", "localModel", "localRefImage", "localDenoise", "a1111Model", "a1111ClipSkip", "a1111Scheduler", "a1111RestoreFaces", "a1111Tiling", "a1111Subseed", "a1111SubseedStrength", "a1111Adetailer", "a1111AdetailerModel", "a1111AdetailerPrompt", "a1111AdetailerNegative", "a1111AdetailerDenoise", "a1111AdetailerConfidence", "a1111AdetailerMaskBlur", "a1111AdetailerDilateErode", "a1111AdetailerInpaintOnlyMasked", "a1111AdetailerInpaintPadding", "a1111Adetailer2", "a1111Adetailer2Model", "a1111Adetailer2Prompt", "a1111Adetailer2Negative", "a1111Adetailer2Denoise", "a1111Adetailer2Confidence", "a1111Adetailer2MaskBlur", "a1111Adetailer2DilateErode", "a1111Adetailer2InpaintOnlyMasked", "a1111Adetailer2InpaintPadding", "a1111Loras", "a1111Vae", "a1111HiresFix", "a1111HiresUpscaler", "a1111HiresScale", "a1111HiresSteps", "a1111HiresDenoise", "a1111HiresSampler", "a1111HiresScheduler", "a1111HiresPrompt", "a1111HiresNegative", "a1111HiresResizeX", "a1111HiresResizeY", "a1111SaveToWebUI", "a1111IpAdapter", "a1111IpAdapterMode", "a1111IpAdapterWeight", "a1111IpAdapterPixelPerfect", "a1111IpAdapterResizeMode", "a1111IpAdapterControlMode", "a1111IpAdapterStartStep", "a1111IpAdapterEndStep", "a1111ControlNet", "a1111ControlNetModel", "a1111ControlNetModule", "a1111ControlNetWeight", "a1111ControlNetResizeMode", "a1111ControlNetControlMode", "a1111ControlNetPixelPerfect", "a1111ControlNetGuidanceStart", "a1111ControlNetGuidanceEnd", "a1111ControlNetImage", "comfyWorkflow", "comfyModelLoader", "comfyClipSkip", "comfyDenoise", "comfyScheduler", "comfyTimeout", "comfyUpscale", "comfyUpscaleModel", "comfyLoras", "comfyOutputNodeIds", "comfyOutputImageIndex", "comfyAllowLegacyInterrupt", "comfySkipNegativePrompt", "comfyFluxClipModel1", "comfyFluxClipModel2", "comfyFluxVaeModel", "comfyFluxClipType"],
+    local: ["localUrl", "localType", "localModel", "localRefImage", "localDenoise", "a1111Model", "a1111ClipSkip", "a1111Scheduler", "a1111RestoreFaces", "a1111Tiling", "a1111Subseed", "a1111SubseedStrength", "a1111Adetailer", "a1111AdetailerModel", "a1111AdetailerPrompt", "a1111AdetailerNegative", "a1111AdetailerDenoise", "a1111AdetailerConfidence", "a1111AdetailerMaskBlur", "a1111AdetailerDilateErode", "a1111AdetailerInpaintOnlyMasked", "a1111AdetailerInpaintPadding", "a1111Adetailer2", "a1111Adetailer2Model", "a1111Adetailer2Prompt", "a1111Adetailer2Negative", "a1111Adetailer2Denoise", "a1111Adetailer2Confidence", "a1111Adetailer2MaskBlur", "a1111Adetailer2DilateErode", "a1111Adetailer2InpaintOnlyMasked", "a1111Adetailer2InpaintPadding", "a1111Loras", "a1111Vae", "a1111HiresFix", "a1111HiresUpscaler", "a1111HiresScale", "a1111HiresSteps", "a1111HiresDenoise", "a1111HiresSampler", "a1111HiresScheduler", "a1111HiresPrompt", "a1111HiresNegative", "a1111HiresResizeX", "a1111HiresResizeY", "a1111SaveToWebUI", "a1111IpAdapter", "a1111IpAdapterMode", "a1111IpAdapterWeight", "a1111IpAdapterPixelPerfect", "a1111IpAdapterResizeMode", "a1111IpAdapterControlMode", "a1111IpAdapterStartStep", "a1111IpAdapterEndStep", "a1111ControlNet", "a1111ControlNetModel", "a1111ControlNetModule", "a1111ControlNetWeight", "a1111ControlNetResizeMode", "a1111ControlNetControlMode", "a1111ControlNetPixelPerfect", "a1111ControlNetGuidanceStart", "a1111ControlNetGuidanceEnd", "a1111ControlNetImage", "comfyWorkflow", "comfyModelLoader", "comfyClipSkip", "comfyDenoise", "comfyScheduler", "comfyTimeout", "comfyUpscale", "comfyUpscaleModel", "comfyLoras", "comfyOutputNodeIds", "comfyOutputImageIndex", "comfyAllowLegacyInterrupt", "comfySkipNegativePrompt", "comfyFluxClipModel1", "comfyFluxClipModel2", "comfyFluxVaeModel", "comfyFluxClipType", "a1111InterruptServer", "comfyWorkflowComponentOverrides"],
     proxy: ["proxyUrl", "proxyKey", "proxyModel", "proxyLoras", "proxyFacefix", "proxyExtraInstructions", "proxyRefImages", "proxyTimeout", "proxyComfyMode", "proxyComfyTimeout", "proxyComfyNodeId", "proxyComfyWorkflow"],
     custom: ["customApiUrl", "customApiKey", "customApiAuthType", "customApiAuthName", "customApiModel", "customApiPollUrl", "customApiRefImages"]
 };
@@ -3220,6 +3251,28 @@ function hasComfyConnectionProfileSignals(profile) {
         || (!!profile.comfySkipNegativePrompt && !!String(profile.comfyFluxClipModel1 || "").trim());
 }
 
+function inferLegacyLocalBackend(settings) {
+    if (settings?.localType === "a1111" || settings?.localType === "comfyui") return settings.localType;
+    if (!settings || typeof settings !== "object" || Array.isArray(settings)) return "";
+    const hasComfy = hasComfyConnectionProfileSignals(settings);
+    const hasA1111 = [
+        "a1111Model",
+        "a1111Vae",
+        "a1111Loras",
+        "a1111AdetailerModel",
+        "a1111Adetailer2Model",
+        "a1111HiresUpscaler",
+        "a1111IpAdapterMode",
+        "a1111ControlNetModel",
+        "a1111ControlNetModule",
+        "a1111ControlNetImage",
+    ].some(key => String(settings[key] || "").trim())
+        || ["a1111Adetailer", "a1111Adetailer2", "a1111HiresFix", "a1111IpAdapter", "a1111ControlNet"]
+            .some(key => settings[key] === true);
+    if (hasComfy === hasA1111) return "";
+    return hasComfy ? "comfyui" : "a1111";
+}
+
 function normalizeAutoGenerateEveryMessages(value) {
     return Math.trunc(clampNumber(value, AUTO_GENERATE_EVERY_MIN, AUTO_GENERATE_EVERY_MAX, AUTO_GENERATE_EVERY_DEFAULT));
 }
@@ -3481,22 +3534,23 @@ async function corsFetch(url, opts = {}) {
 
 // A1111 Model API helpers
 let a1111ControlNetScriptKey = "ControlNet";
-async function fetchA1111Models(url) {
+async function fetchA1111Models(url, signal = null) {
     try {
         const baseUrl = normalizeA1111BaseUrl(url);
-        const res = await corsFetch(`${baseUrl}/sdapi/v1/sd-models`, { redirect: "error" });
+        const res = await corsFetch(`${baseUrl}/sdapi/v1/sd-models`, { redirect: "error", signal });
         if (!res.ok) throw new Error(`Failed to fetch models: ${res.status}`);
         const models = await readResponseJson(res, MAX_DISCOVERY_RESPONSE_BYTES);
         const normalizedModels = models.map(m => ({ title: m.title, name: m.model_name }));
         log(`A1111: Found ${normalizedModels.length} models`);
         return normalizedModels;
     } catch (e) {
+        if (signal?.aborted) throw signal.reason || e;
         log(`A1111: Error fetching models: ${e.message}`);
         return [];
     }
 }
 
-async function fetchControlNetModels(url) {
+async function fetchControlNetModels(url, signal = null) {
     const baseUrl = normalizeA1111BaseUrl(url);
     const endpoints = [
         `${baseUrl}/controlnet/model_list`,
@@ -3504,71 +3558,57 @@ async function fetchControlNetModels(url) {
     ];
     for (const endpoint of endpoints) {
         try {
-            const res = await corsFetch(endpoint, { redirect: "error" });
+            const res = await corsFetch(endpoint, { redirect: "error", signal });
             if (!res.ok) continue;
             const data = await readResponseJson(res, MAX_DISCOVERY_RESPONSE_BYTES);
             if (Array.isArray(data?.model_list)) return data.model_list;
-        } catch {}
+        } catch (error) {
+            if (signal?.aborted) throw signal.reason || error;
+        }
     }
     return [];
 }
 
-async function switchA1111Model(url, modelTitle) {
+async function getCurrentA1111Model(url, signal = null) {
     try {
         const baseUrl = normalizeA1111BaseUrl(url);
-        log(`A1111: Switching to model: ${modelTitle}`);
-        const res = await corsFetch(`${baseUrl}/sdapi/v1/options`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sd_model_checkpoint: modelTitle }),
-            redirect: "error",
-        });
-        if (!res.ok) throw new Error(`Failed to switch model: ${res.status}`);
-        log(`A1111: Model switched successfully`);
-        return true;
-    } catch (e) {
-        log(`A1111: Error switching model: ${e.message}`);
-        return false;
-    }
-}
-
-async function getCurrentA1111Model(url) {
-    try {
-        const baseUrl = normalizeA1111BaseUrl(url);
-        const res = await corsFetch(`${baseUrl}/sdapi/v1/options`, { redirect: "error" });
+        const res = await corsFetch(`${baseUrl}/sdapi/v1/options`, { redirect: "error", signal });
         if (!res.ok) return null;
         const opts = await readResponseJson(res, MAX_DISCOVERY_RESPONSE_BYTES);
         return opts.sd_model_checkpoint || null;
-    } catch {
+    } catch (error) {
+        if (signal?.aborted) throw signal.reason || error;
         return null;
     }
 }
 
-async function fetchA1111Upscalers(url) {
+async function fetchA1111Upscalers(url, signal = null) {
     try {
-        const res = await corsFetch(`${normalizeA1111BaseUrl(url)}/sdapi/v1/upscalers`, { redirect: "error" });
+        const res = await corsFetch(`${normalizeA1111BaseUrl(url)}/sdapi/v1/upscalers`, { redirect: "error", signal });
         if (!res.ok) throw new Error(`${res.status}`);
         return (await readResponseJson(res, MAX_DISCOVERY_RESPONSE_BYTES)).map(u => u.name);
     } catch (e) {
+        if (signal?.aborted) throw signal.reason || e;
         return ["Latent", "Latent (antialiased)", "Latent (bicubic)",
                 "Latent (bicubic antialiased)", "Latent (nearest)",
                 "Latent (nearest-exact)", "None"];
     }
 }
 
-async function fetchA1111VAEs(url) {
+async function fetchA1111VAEs(url, signal = null) {
     try {
-        const res = await corsFetch(`${normalizeA1111BaseUrl(url)}/sdapi/v1/sd-vae`, { redirect: "error" });
+        const res = await corsFetch(`${normalizeA1111BaseUrl(url)}/sdapi/v1/sd-vae`, { redirect: "error", signal });
         if (!res.ok) throw new Error(`${res.status}`);
         return (await readResponseJson(res, MAX_DISCOVERY_RESPONSE_BYTES)).map(v => v.model_name);
     } catch (e) {
+        if (signal?.aborted) throw signal.reason || e;
         log("Failed to fetch VAE list: " + e.message);
         return [];
     }
 }
 
-async function fetchComfyNodeModelList(baseUrl, nodeClass, inputKey) {
-    const res = await corsFetch(`${baseUrl}/object_info/${nodeClass}`, { redirect: "error" });
+async function fetchComfyNodeModelList(baseUrl, nodeClass, inputKey, signal = null) {
+    const res = await corsFetch(`${baseUrl}/object_info/${nodeClass}`, { redirect: "error", signal });
     if (!res.ok) {
         if (res.status === 403) {
             throw new Error("ComfyUI returned 403 Forbidden. This is usually caused by ComfyUI-Manager's security check. Fix: in ComfyUI-Manager settings, set Security Level to 'normal', then restart ComfyUI. Also ensure ComfyUI is launched with --enable-cors-header.");
@@ -3580,24 +3620,71 @@ async function fetchComfyNodeModelList(baseUrl, nodeClass, inputKey) {
     return Array.isArray(values) ? values : [];
 }
 
-async function fetchComfyUIModels(url, modelLoader = "checkpoint") {
+async function fetchComfyUIModels(url, modelLoader = "checkpoint", signal = null) {
     const rethrow403 = (e) => { if (e.message?.includes("403 Forbidden")) throw e; return []; };
     try {
         const baseUrl = url.replace(/\/+$/, "");
         const [ckpts, unets] = await Promise.all([
-            fetchComfyNodeModelList(baseUrl, "CheckpointLoaderSimple", "ckpt_name").catch(rethrow403),
-            fetchComfyNodeModelList(baseUrl, "UNETLoader", "unet_name").catch(rethrow403)
+            fetchComfyNodeModelList(baseUrl, "CheckpointLoaderSimple", "ckpt_name", signal).catch(rethrow403),
+            fetchComfyNodeModelList(baseUrl, "UNETLoader", "unet_name", signal).catch(rethrow403)
         ]);
 
         return selectComfyModelList({ checkpoints: ckpts, unets }, modelLoader);
     } catch (e) {
+        if (signal?.aborted) throw signal.reason || e;
         log("Failed to fetch ComfyUI models: " + e.message);
         if (e.message?.includes("403 Forbidden")) throw e;
         return [];
     }
 }
 
+const COMFY_COMPONENT_SOURCES = [
+    { kind: "clip", nodeClass: "CLIPLoader", inputKey: "clip_name" },
+    { kind: "clip", nodeClass: "DualCLIPLoader", inputKey: "clip_name1" },
+    { kind: "clip", nodeClass: "DualCLIPLoader", inputKey: "clip_name2" },
+    { kind: "vae", nodeClass: "VAELoader", inputKey: "vae_name" },
+];
+
+async function fetchComfyComponentCatalog(url, signal = null) {
+    const baseUrl = String(url || "").replace(/\/+$/, "");
+    const lists = await Promise.all(COMFY_COMPONENT_SOURCES.map(source =>
+        fetchComfyNodeModelList(baseUrl, source.nodeClass, source.inputKey, signal).catch(error => {
+            if (signal?.aborted) throw signal.reason || error;
+            return [];
+        })
+    ));
+    const collect = kind => [...new Set(lists.flatMap((values, index) =>
+        COMFY_COMPONENT_SOURCES[index].kind === kind ? values.filter(value => typeof value === "string") : []
+    ))].sort((a, b) => a.localeCompare(b));
+    return { clip: collect("clip"), vae: collect("vae") };
+}
+
+function fillDatalist(id, values) {
+    const list = document.getElementById(id);
+    if (!list) return;
+    list.replaceChildren();
+    for (const value of values) {
+        const option = list.ownerDocument.createElement("option");
+        option.value = value;
+        list.appendChild(option);
+    }
+}
+
+/** Build select options from a discovered catalogue, keeping a configured value that the server did not report. */
+function catalogSelectOptions(values, configured, leadingOption = null) {
+    const options = leadingOption ? [leadingOption] : [];
+    for (const value of values) {
+        options.push(value && typeof value === "object" ? { ...value } : { value, label: value });
+    }
+    const kept = String(configured ?? "");
+    if (kept && !options.some(option => String(option.value ?? "") === kept)) {
+        options.push({ value: kept, label: `${kept} (not on server)` });
+    }
+    return options;
+}
+
 let comfyModelRefreshSerial = 0;
+let comfyModelRefreshController = null;
 
 async function refreshComfyModelCatalog() {
     const s = getSettings();
@@ -3605,25 +3692,39 @@ async function refreshComfyModelCatalog() {
     if (!s || !modelSelect) return;
 
     const requestId = ++comfyModelRefreshSerial;
+    comfyModelRefreshController?.abort();
+    const controller = new AbortController();
+    comfyModelRefreshController = controller;
+    const deadline = createAbortDeadline(controller.signal, 10_000, "ComfyUI catalogue discovery timed out");
     const baseUrl = String(s.localUrl || "").replace(/\/+$/, "");
     const modelLoader = normalizeComfyModelLoader(s.comfyModelLoader, s);
     const loadedModel = String(s.localModel || "");
+    fillDatalist("qig-comfy-clip-catalog", []);
+    fillDatalist("qig-comfy-vae-catalog", []);
     const loadingOptions = loadedModel
         ? [{ value: loadedModel, label: loadedModel }, { value: "", label: "Loading...", disabled: true }]
         : [{ value: "", label: "Loading..." }];
     replaceSelectOptions(modelSelect, loadingOptions, loadedModel);
 
     let models;
+    let components = { clip: [], vae: [] };
     let error = null;
     try {
-        models = await fetchComfyUIModels(baseUrl, modelLoader);
+        [models, components] = await Promise.all([
+            fetchComfyUIModels(baseUrl, modelLoader, deadline.signal),
+            fetchComfyComponentCatalog(baseUrl, deadline.signal),
+        ]);
     } catch (caught) {
         error = caught;
         models = [];
+    } finally {
+        deadline.dispose();
+        if (comfyModelRefreshController === controller) comfyModelRefreshController = null;
     }
 
     const current = getSettings();
     const isCurrentRequest = requestId === comfyModelRefreshSerial
+        && current?.provider === "local"
         && current?.localType === "comfyui"
         && String(current?.localUrl || "").replace(/\/+$/, "") === baseUrl
         && normalizeComfyModelLoader(current?.comfyModelLoader, current) === modelLoader;
@@ -3642,17 +3743,325 @@ async function refreshComfyModelCatalog() {
         qigToast.error(error.message, "ComfyUI Connection Error", { timeOut: 0, extendedTimeOut: 0, escapeHtml: true });
         return;
     }
+    fillDatalist("qig-comfy-clip-catalog", components.clip);
+    fillDatalist("qig-comfy-vae-catalog", components.vae);
+
     if (models.length > 0) {
+        // Never substitute a different model: an unavailable saved value stays selected so a saved
+        // configuration keeps producing the same request once the backend has that file again.
         const currentModel = String(current.localModel || "");
-        const selectedModel = models.includes(currentModel) ? currentModel : models[0];
-        replaceSelectOptions(modelSelect, models.map(model => ({ value: model, label: model })), selectedModel);
-        if (current.localModel !== selectedModel) {
-            current.localModel = selectedModel;
-            saveSettingsDebounced();
-        }
+        replaceSelectOptions(modelSelect, catalogSelectOptions(models, currentModel, { value: "", label: "-- Select model --" }), currentModel);
         return;
     }
     showCatalogStatus("-- Failed to load (check if ComfyUI running) --");
+}
+
+const COMFY_CHOICE_DISCOVERY_BATCH = 64;
+const COMFY_CHOICE_DISCOVERY_CONCURRENCY = 4;
+const COMFY_CHOICE_DISCOVERY_TIMEOUT_MS = 10_000;
+const COMFY_CHOICE_CACHE_LIMIT = 64;
+const comfyClassInfoCache = new Map();
+let comfyWorkflowChoiceRequestSerial = 0;
+let comfyWorkflowChoiceController = null;
+let comfyWorkflowChoiceState = {
+    signature: "",
+    catalogues: new Map(),
+    errors: new Map(),
+    inspected: new Set(),
+    loading: false,
+    refreshCursor: 0,
+};
+
+function getComfyWorkflowChoiceContext() {
+    const s = getSettings();
+    const workflow = String(s?.comfyWorkflow || "");
+    const baseUrl = String(s?.localUrl || "").replace(/\/+$/, "");
+    const signature = `${baseUrl}\u0000${workflow}`;
+    let candidates = [];
+    let error = null;
+    try {
+        candidates = workflow ? collectComfyWorkflowStringInputCandidates(workflow) : [];
+    } catch (caught) {
+        error = caught;
+    }
+    if (comfyWorkflowChoiceState.signature !== signature) {
+        comfyWorkflowChoiceController?.abort();
+        comfyWorkflowChoiceController = null;
+        comfyWorkflowChoiceRequestSerial += 1;
+        comfyWorkflowChoiceState = {
+            signature,
+            catalogues: new Map(),
+            errors: new Map(),
+            inspected: new Set(),
+            loading: false,
+            refreshCursor: 0,
+        };
+    }
+    return { baseUrl, candidates, error, signature };
+}
+
+function isLikelyComfyComponent(row) {
+    return /(?:loader|model|checkpoint|unet|vae|clip|encoder|lora)/i.test(`${row.classType} ${row.inputName}`)
+        || /\.(?:safetensors|ckpt|pt|pth|bin|gguf|onnx|vae)$/i.test(row.rawValue);
+}
+
+function getCachedComfyClassChoices(cacheKey) {
+    if (!comfyClassInfoCache.has(cacheKey)) return null;
+    const value = comfyClassInfoCache.get(cacheKey);
+    comfyClassInfoCache.delete(cacheKey);
+    comfyClassInfoCache.set(cacheKey, value);
+    return value;
+}
+
+function cacheComfyClassChoices(cacheKey, value) {
+    comfyClassInfoCache.delete(cacheKey);
+    comfyClassInfoCache.set(cacheKey, value);
+    while (comfyClassInfoCache.size > COMFY_CHOICE_CACHE_LIMIT) {
+        comfyClassInfoCache.delete(comfyClassInfoCache.keys().next().value);
+    }
+}
+
+async function fetchComfyClassChoices(baseUrl, classType, { refresh = false, signal = null } = {}) {
+    const cacheKey = `${baseUrl}\u0000${classType}`;
+    const cached = !refresh ? getCachedComfyClassChoices(cacheKey) : null;
+    if (cached) return { cacheKey, byInput: cached, fromCache: true };
+    const deadline = createAbortDeadline(signal, COMFY_CHOICE_DISCOVERY_TIMEOUT_MS, `Timed out loading ${classType} choices`);
+    try {
+        const response = await corsFetch(`${baseUrl}/object_info/${encodeURIComponent(classType)}`, {
+            redirect: "error",
+            signal: deadline.signal,
+        });
+        if (!response.ok) throw new Error(`${classType}: HTTP ${response.status}`);
+        const parsed = parseComfyObjectInfoComboInputs(
+            await readResponseJson(response, MAX_DISCOVERY_RESPONSE_BYTES),
+            classType,
+        );
+        const byInput = new Map(parsed.map(entry => [entry.inputName, entry.choices]));
+        return { cacheKey, byInput, fromCache: false };
+    } finally {
+        deadline.dispose();
+    }
+}
+
+async function discoverComfyWorkflowChoices() {
+    const context = getComfyWorkflowChoiceContext();
+    if (!context.baseUrl || context.error || !context.candidates.length || comfyWorkflowChoiceState.loading) return;
+    const classTypes = [...new Set(context.candidates.map(row => row.classType))]
+        .sort((a, b) => {
+            const aLikely = context.candidates.some(row => row.classType === a && isLikelyComfyComponent(row));
+            const bLikely = context.candidates.some(row => row.classType === b && isLikelyComfyComponent(row));
+            return Number(bLikely) - Number(aLikely) || a.localeCompare(b);
+        });
+    let batch = classTypes.filter(classType => !comfyWorkflowChoiceState.inspected.has(classType))
+        .slice(0, COMFY_CHOICE_DISCOVERY_BATCH);
+    const refresh = batch.length === 0;
+    if (refresh) {
+        const start = comfyWorkflowChoiceState.refreshCursor % classTypes.length;
+        batch = [...classTypes.slice(start), ...classTypes.slice(0, start)].slice(0, COMFY_CHOICE_DISCOVERY_BATCH);
+        comfyWorkflowChoiceState.refreshCursor = (start + batch.length) % classTypes.length;
+    }
+    if (!batch.length) return;
+
+    comfyWorkflowChoiceController?.abort();
+    const controller = new AbortController();
+    comfyWorkflowChoiceController = controller;
+    const requestId = ++comfyWorkflowChoiceRequestSerial;
+    comfyWorkflowChoiceState.loading = true;
+    renderComfyComponentOverrides();
+    let cursor = 0;
+    const worker = async () => {
+        while (cursor < batch.length) {
+            const classType = batch[cursor++];
+            try {
+                const result = await fetchComfyClassChoices(context.baseUrl, classType, { refresh, signal: controller.signal });
+                if (requestId !== comfyWorkflowChoiceRequestSerial || context.signature !== comfyWorkflowChoiceState.signature) return;
+                if (!result.fromCache) cacheComfyClassChoices(result.cacheKey, result.byInput);
+                comfyWorkflowChoiceState.catalogues.set(classType, result.byInput);
+                comfyWorkflowChoiceState.errors.delete(classType);
+            } catch (error) {
+                if (requestId !== comfyWorkflowChoiceRequestSerial || context.signature !== comfyWorkflowChoiceState.signature) return;
+                comfyWorkflowChoiceState.catalogues.delete(classType);
+                comfyWorkflowChoiceState.errors.set(classType, String(error?.message || error).slice(0, 300));
+            } finally {
+                if (requestId === comfyWorkflowChoiceRequestSerial && context.signature === comfyWorkflowChoiceState.signature) {
+                    comfyWorkflowChoiceState.inspected.add(classType);
+                }
+            }
+        }
+    };
+    await Promise.all(Array.from(
+        { length: Math.min(COMFY_CHOICE_DISCOVERY_CONCURRENCY, batch.length) },
+        () => worker(),
+    ));
+    if (requestId !== comfyWorkflowChoiceRequestSerial || context.signature !== comfyWorkflowChoiceState.signature) return;
+    if (comfyWorkflowChoiceController === controller) comfyWorkflowChoiceController = null;
+    comfyWorkflowChoiceState.loading = false;
+    renderComfyComponentOverrides();
+}
+
+function renderComfyComponentOverrides() {
+    const container = document.getElementById("qig-comfy-component-overrides");
+    if (!container) return;
+    container.replaceChildren();
+    const context = getComfyWorkflowChoiceContext();
+    const s = getSettings();
+    if (!String(s?.comfyWorkflow || "")) {
+        container.hidden = true;
+        return;
+    }
+    container.hidden = false;
+    if (context.error) {
+        const error = document.createElement("div");
+        error.className = "qig-comfy-discovery-error";
+        error.textContent = `Workflow choices unavailable: ${context.error.message}`;
+        container.append(error);
+        return;
+    }
+    if (!context.candidates.length) {
+        const empty = document.createElement("div");
+        empty.className = "form-hint";
+        empty.textContent = "This workflow has no direct text inputs to inspect.";
+        container.append(empty);
+        return;
+    }
+
+    const stored = normalizeComfyWorkflowComponentOverrides(s.comfyWorkflowComponentOverrides);
+    let pruned = pruneComfyWorkflowComponentOverrides(s.comfyWorkflow, stored);
+    if (JSON.stringify(stored) !== JSON.stringify(pruned)) {
+        s.comfyWorkflowComponentOverrides = pruned;
+        saveSettingsDebounced();
+    }
+    const overrideKey = row => `${row.nodeId}\u0000${row.classType}\u0000${row.inputName}\u0000${row.rawValue}`;
+    const candidateByKey = new Map(context.candidates.map(row => [overrideKey(row), row]));
+    const reconciled = normalizeComfyWorkflowComponentOverrides({
+        version: 1,
+        entries: pruned.entries.map(entry => {
+            const row = candidateByKey.get(overrideKey(entry));
+            const choices = row && comfyWorkflowChoiceState.catalogues.get(row.classType)?.get(row.inputName);
+            if (!comfyWorkflowChoiceState.inspected.has(entry.classType)) return entry;
+            return { ...entry, verified: Boolean(choices?.includes(entry.value)) };
+        }),
+    });
+    if (JSON.stringify(pruned) !== JSON.stringify(reconciled)) {
+        pruned = reconciled;
+        s.comfyWorkflowComponentOverrides = reconciled;
+        saveSettingsDebounced();
+    }
+    const confirmed = context.candidates
+        .map(row => ({ row, choices: comfyWorkflowChoiceState.catalogues.get(row.classType)?.get(row.inputName) || null }))
+        .filter(entry => entry.choices)
+        .sort((a, b) => Number(isLikelyComfyComponent(b.row)) - Number(isLikelyComfyComponent(a.row))
+             || a.row.nodeId.localeCompare(b.row.nodeId, undefined, { numeric: true })
+             || a.row.inputName.localeCompare(b.row.inputName));
+    const confirmedKeys = new Set(confirmed.map(({ row }) => overrideKey(row)));
+    const active = new Map(pruned.entries.filter(entry => entry.verified).map(entry => [overrideKey(entry), entry.value]));
+
+    const details = document.createElement("details");
+    details.open = active.size > 0 || comfyWorkflowChoiceState.inspected.size > 0;
+    const summary = document.createElement("summary");
+    summary.textContent = `Custom workflow choices (${confirmed.length})`;
+    details.append(summary);
+
+    const hint = document.createElement("div");
+    hint.className = "form-hint";
+    hint.textContent = "QIG only exposes direct text choices advertised by each installed node. Custom-node choices may have side effects; review the node before changing them.";
+    details.append(hint);
+
+    const actions = document.createElement("div");
+    actions.className = "qig-comfy-discovery-actions";
+    const inspect = document.createElement("button");
+    inspect.type = "button";
+    inspect.className = "menu_button";
+    inspect.disabled = comfyWorkflowChoiceState.loading;
+    const remaining = new Set(context.candidates.map(row => row.classType)).size - comfyWorkflowChoiceState.inspected.size;
+    inspect.textContent = comfyWorkflowChoiceState.loading
+        ? "Inspecting..."
+        : (remaining > 0 ? `Inspect workflow choices (${remaining} class${remaining === 1 ? "" : "es"})` : "Refresh workflow choices");
+    inspect.onclick = () => void discoverComfyWorkflowChoices();
+    actions.append(inspect);
+    details.append(actions);
+
+    for (const [classType, message] of comfyWorkflowChoiceState.errors) {
+        const error = document.createElement("div");
+        error.className = "qig-comfy-discovery-error";
+        error.textContent = `${classType}: ${message}`;
+        details.append(error);
+    }
+
+    for (const entry of pruned.entries.filter(item => !item.verified || !confirmedKeys.has(overrideKey(item)))) {
+        const field = document.createElement("div");
+        field.className = "qig-comfy-override";
+        const label = document.createElement("div");
+        label.className = "form-hint";
+        label.textContent = entry.verified
+            ? `Saved active override: node ${entry.nodeId} · ${entry.classType} · ${entry.inputName} = ${entry.value}. Inspect this class to check it again, or remove it.`
+            : `Inactive saved override: node ${entry.nodeId} · ${entry.classType} · ${entry.inputName} = ${entry.value}. Inspect this class to verify it, or remove it.`;
+        const reset = document.createElement("button");
+        reset.type = "button";
+        reset.className = "menu_button";
+        reset.textContent = "Remove saved override";
+        reset.onclick = () => {
+            const next = getSettings();
+            const key = overrideKey(entry);
+            next.comfyWorkflowComponentOverrides = normalizeComfyWorkflowComponentOverrides({
+                version: 1,
+                entries: normalizeComfyWorkflowComponentOverrides(next.comfyWorkflowComponentOverrides)
+                    .entries.filter(item => overrideKey(item) !== key),
+            });
+            saveSettingsDebounced();
+            renderComfyComponentOverrides();
+        };
+        field.append(label, reset);
+        details.append(field);
+    }
+
+    if (comfyWorkflowChoiceState.inspected.size > 0 && confirmed.length === 0 && !comfyWorkflowChoiceState.loading) {
+        const empty = document.createElement("div");
+        empty.className = "form-hint";
+        empty.textContent = "No direct workflow inputs were confirmed as selectable string choices.";
+        details.append(empty);
+    }
+
+    for (const { row, choices } of confirmed) {
+        const key = overrideKey(row);
+        const field = document.createElement("div");
+        field.className = "qig-comfy-override";
+        const label = document.createElement("label");
+        label.textContent = `${isLikelyComfyComponent(row) ? "Likely component" : "Workflow choice"}: ${row.title || row.classType} · ${row.inputName}`;
+        label.title = `Node ${row.nodeId} · ${row.classType} · ${row.inputName}`;
+        const select = document.createElement("select");
+        select.id = `qig-comfy-override-${row.nodeId}-${row.inputName}`;
+        label.htmlFor = select.id;
+        const selected = active.get(key) ?? row.rawValue;
+        const options = [{ value: row.rawValue, label: `${row.rawValue} (workflow value)` }];
+        for (const value of choices) {
+            if (value !== row.rawValue) options.push({ value, label: value });
+        }
+        if (selected !== row.rawValue && !choices.includes(selected)) {
+            options.push({ value: selected, label: `${selected} (not currently advertised)` });
+        }
+        replaceSelectOptions(select, options, selected);
+        select.addEventListener("change", () => {
+            const next = getSettings();
+            const kept = normalizeComfyWorkflowComponentOverrides(next.comfyWorkflowComponentOverrides)
+                .entries.filter(entry => overrideKey(entry) !== key);
+            if (select.value !== row.rawValue && choices.includes(select.value)) {
+                kept.push({
+                    nodeId: row.nodeId,
+                    classType: row.classType,
+                    inputName: row.inputName,
+                    rawValue: row.rawValue,
+                    value: select.value,
+                    verified: true,
+                });
+            }
+            next.comfyWorkflowComponentOverrides = normalizeComfyWorkflowComponentOverrides({ version: 1, entries: kept });
+            saveSettingsDebounced();
+        });
+        field.append(label, select);
+        details.append(field);
+    }
+    container.append(details);
 }
 
 const cachedElements = {};
@@ -3702,7 +4111,7 @@ function setGenerationActiveUI(active, { disableGenerateButton = false } = {}) {
         } else {
             paletteBtn.classList.remove("fa-spinner", "fa-spin");
             paletteBtn.classList.add("fa-palette");
-            paletteBtn.title = "Generate Image (right-click for presets)";
+            paletteBtn.title = "Generate Image (right-click for configurations)";
         }
     }
 
@@ -4255,6 +4664,7 @@ async function loadSettings() {
         { localKey: "qig_char_ref_images", backupKey: "_backupCharRefImages", expectedType: "object", fallback: {}, setter: v => { charRefImages = v; }, getter: () => charRefImages },
         { localKey: "qig_gen_presets", backupKey: "_backupGenPresets", expectedType: "array", fallback: [], setter: v => { generationPresets = v; }, getter: () => generationPresets },
         { localKey: "qig_comfy_workflows", backupKey: "_backupComfyWorkflows", expectedType: "array", fallback: [], setter: v => { comfyWorkflows = v; }, getter: () => comfyWorkflows },
+        { localKey: "qig_configurations", backupKey: "_backupConfigurations", expectedType: "array", fallback: [], setter: v => { configurations = v; }, getter: () => configurations },
         { localKey: "qig_contextual_filters", backupKey: "_backupContextualFilters", expectedType: "array", fallback: [], setter: v => { contextualFilters = v; }, getter: () => contextualFilters },
         { localKey: "qig_filter_pools", backupKey: "_backupFilterPools", expectedType: "array", fallback: [], setter: v => { filterPools = v; }, getter: () => filterPools },
         { localKey: "qig_active_pool_ids_global", backupKey: "_backupActiveFilterPoolIdsGlobal", expectedType: "array", fallback: [DEFAULT_FILTER_POOL_ID], setter: v => { activeFilterPoolIdsGlobal = v; }, getter: () => activeFilterPoolIdsGlobal },
@@ -4360,31 +4770,33 @@ async function loadSettings() {
         localCachesRefreshed = safeSetStorage(CONTEXT_MEDIA_STORE_KEY, JSON.stringify(contextMediaLibrary), "Failed to migrate Context Media. Browser storage may be full.") && localCachesRefreshed;
     }
     if (!contextMediaQuarantined) backupToSettings(CONTEXT_MEDIA_STORE_KEY, contextMediaLibrary);
-    const normalizedPresets = normalizeGenerationPresetStore(generationPresets);
-    ensureGenerationPresetIds({ persist: !quarantinedLegacyCacheKeys.has("qig_gen_presets") });
-    if (normalizedPresets) {
-        if (!quarantinedLegacyCacheKeys.has("qig_gen_presets")) {
-            saveGenerationPresetStore("Failed to migrate chat-image preset settings. Browser storage may be full.");
+    // The three legacy stores are never rewritten any more: they stay byte-identical
+    // as a rollback copy. Their normalisers now run on clones inside the migration.
+    const legacyConfigurationRecordsExist = generationPresets.length > 0
+        || comfyWorkflows.length > 0
+        || Object.values(connectionProfiles).some(records => records && typeof records === "object" && Object.keys(records).length > 0);
+    const configurationStoreWasServerBacked = Array.isArray(saved?._backupConfigurations);
+    const configurationMigrationComplete = Number(saved?._configurationMigrationVersion) >= 1;
+    const configurationsNeedMigration = !configurationMigrationComplete
+        && configurations.length === 0
+        && !configurationStoreWasServerBacked
+        && legacyConfigurationRecordsExist;
+    if (configurationsNeedMigration) {
+        configurations = buildConfigurationsFromLegacyStores(connectionProfiles, generationPresets, comfyWorkflows, getGlobalConfigurationSettings(s));
+        if (configurations.length) {
+            if (!quarantinedLegacyCacheKeys.has("qig_configurations")) {
+                safeSetStorage("qig_configurations", JSON.stringify(configurations), "Failed to migrate saved configurations. Browser storage may be full.");
+            }
+            backupToSettings("qig_configurations", configurations);
+            serverSettingsNeedSave = true;
+            log(`Merged ${configurations.length} saved configuration(s) from profiles, presets and workflow presets.`);
         }
-        backupToSettings("qig_gen_presets", generationPresets);
+    }
+    if (!configurationMigrationComplete) {
+        s._configurationMigrationVersion = 1;
         serverSettingsNeedSave = true;
     }
-    const comfyProfilesNormalized = normalizeComfyConnectionProfileStore(connectionProfiles);
-    if (normalizeProxyProfileStore(connectionProfiles) || comfyProfilesNormalized) {
-        if (!quarantinedLegacyCacheKeys.has("qig_profiles")) {
-            safeSetStorage("qig_profiles", JSON.stringify(connectionProfiles), "Failed to migrate chat-image profiles. Browser storage may be full.");
-        }
-        backupToSettings("qig_profiles", connectionProfiles);
-        if (comfyProfilesNormalized) serverSettingsNeedSave = true;
-    }
-    if (normalizeComfyWorkflowPresetStore(comfyWorkflows)) {
-        if (!quarantinedLegacyCacheKeys.has("qig_comfy_workflows")) {
-            safeSetStorage("qig_comfy_workflows", JSON.stringify(comfyWorkflows), "Failed to migrate workflow presets. Browser storage may be full.");
-        }
-        backupToSettings("qig_comfy_workflows", comfyWorkflows);
-        serverSettingsNeedSave = true;
-    }
-    syncActiveGenerationPresetSetting({ persist: true });
+    syncActiveConfigurationSetting({ persist: true });
     if (ensureFilterPoolsState()) {
         for (const [localKey, value] of getFilterStoreEntries()) {
             if (!quarantinedLegacyCacheKeys.has(localKey)) safeSetStorage(localKey, JSON.stringify(value));
@@ -8580,7 +8992,7 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
                 clientId,
                 filenamePrefix: "qig",
             };
-            const request = buildComfyPromptRequest(s.comfyWorkflow, tokenValues);
+            const request = buildComfyPromptRequest(s.comfyWorkflow, tokenValues, s.comfyWorkflowComponentOverrides);
             const nodeCount = Object.keys(request.prompt || {}).length;
             log(`ComfyUI: Using custom API workflow with ${nodeCount} nodes`);
             return submitComfyWorkflow(request, {
@@ -14702,11 +15114,13 @@ function getContextualFiltersSummaryViewState() {
             cardLabel: currentCard.cardLabel,
         })).scopedPools
         : [];
-    const charPools = currentCharId != null
-        ? getVisibleFilterPools(getNormalizedScopedRecord(FILTER_SCOPE_CHAR, {
-            charId: currentCharId,
-        })).scopedPools
-        : [];
+    const charPoolsById = new Map();
+    for (const charId of activeCharIds) {
+        for (const pool of getVisibleFilterPools(getNormalizedScopedRecord(FILTER_SCOPE_CHAR, { charId })).scopedPools) {
+            charPoolsById.set(pool.id, pool);
+        }
+    }
+    const charPools = [...charPoolsById.values()];
     const visibleFilters = [...globalFilters, ...cardFilters, ...charFilters];
     const activeVisibleCount = visibleFilters.filter(filter => isContextualFilterEffective(filter, enabledPoolIds)).length;
     const seededFilterCount = visibleFilters.filter(filter => normalizeSeedOverride(filter?.seedOverride) != null).length;
@@ -14720,6 +15134,7 @@ function getContextualFiltersSummaryViewState() {
         currentCardLabel: currentCard.cardLabel,
         currentCharId,
         charName,
+        activeCharacterCount: activeCharIds.size,
         enabledPoolIds,
         globalPools,
         cardPools,
@@ -14738,7 +15153,11 @@ function renderContextualFiltersSummary(container, viewState = getContextualFilt
     const totalPools = viewState.globalPools.length + viewState.cardPools.length + viewState.charPools.length;
     const scopeLabel = viewState.currentCardKey
         ? `${viewState.currentCardLabel || "Current card"} + character scope`
-        : (viewState.currentCharId != null ? (viewState.charName || "Current character") : "Global-only context");
+        : (viewState.currentCharId != null
+            ? (viewState.charName || "Current character")
+            : (viewState.activeCharacterCount > 0
+                ? `${plural(viewState.activeCharacterCount, "active character")} in group context`
+                : "Global-only context"));
     const scopeParts = [];
     if (viewState.cardFilters.length) scopeParts.push(plural(viewState.cardFilters.length, "card-only filter"));
     if (viewState.charFilters.length) scopeParts.push(plural(viewState.charFilters.length, "character-wide filter"));
@@ -14747,15 +15166,31 @@ function renderContextualFiltersSummary(container, viewState = getContextualFilt
         : (viewState.otherScopeCount > 0
             ? `Manage Filters can browse ${plural(viewState.otherScopeCount, "other saved scope")} without switching chats.`
             : "This summary is showing filters available in the current context.");
-    const seedPart = viewState.seededFilterCount ? `, ${viewState.seededFilterCount} with seed overrides` : "";
-    const summaryLine = `${plural(viewState.visibleFilters.length, "filter")} in ${scopeLabel}: ${viewState.activeVisibleCount} active${seedPart}, ${plural(viewState.enabledPoolIds.size, "enabled pool")} of ${totalPools}.`;
     container.innerHTML = `
         <div class="qig-filter-summary">
-            <p class="qig-filter-summary-line" data-qig-summary="line"></p>
+            <dl class="qig-filter-summary-grid">
+                <div class="qig-filter-summary-card">
+                    <dt class="qig-filter-summary-label">Visible Filters</dt>
+                    <dd><strong data-qig-summary="visible"></strong><small data-qig-summary="scope"></small></dd>
+                </div>
+                <div class="qig-filter-summary-card">
+                    <dt class="qig-filter-summary-label">Active Now</dt>
+                    <dd><strong data-qig-summary="active"></strong><small data-qig-summary="enabled-pools"></small></dd>
+                </div>
+                <div class="qig-filter-summary-card">
+                    <dt class="qig-filter-summary-label">Seed Overrides</dt>
+                    <dd><strong data-qig-summary="seeds"></strong><small data-qig-summary="total-pools"></small></dd>
+                </div>
+            </dl>
             <p class="qig-filter-summary-note" data-qig-summary="note"></p>
-            <button id="qig-manage-filters-btn-inline" class="menu_button">Manage Filters</button>
+            <button type="button" id="qig-manage-filters-btn-inline" class="menu_button">Manage Filters</button>
         </div>`;
-    container.querySelector('[data-qig-summary="line"]').textContent = summaryLine;
+    container.querySelector('[data-qig-summary="visible"]').textContent = String(viewState.visibleFilters.length);
+    container.querySelector('[data-qig-summary="scope"]').textContent = scopeLabel;
+    container.querySelector('[data-qig-summary="active"]').textContent = String(viewState.activeVisibleCount);
+    container.querySelector('[data-qig-summary="enabled-pools"]').textContent = `${plural(viewState.enabledPoolIds.size, "enabled pool")}`;
+    container.querySelector('[data-qig-summary="seeds"]').textContent = String(viewState.seededFilterCount);
+    container.querySelector('[data-qig-summary="total-pools"]').textContent = `${plural(totalPools, "pool")} available`;
     container.querySelector('[data-qig-summary="note"]').textContent = hiddenNote;
     container.querySelector("#qig-manage-filters-btn-inline").addEventListener("click", showContextualFilterManager);
 }
@@ -15349,6 +15784,27 @@ function applyCharScopedState(state, s = getSettings(), { forcePrompt = false } 
     if (localClear) localClear.style.display = s.localRefImage ? "block" : "none";
 }
 
+function getGlobalConfigurationSettings(s = getSettings()) {
+    const persistedBase = s?._charSettingsBaseState;
+    const base = charSettingsOverrideApplied && charSettingsBaseState
+        ? charSettingsBaseState
+        : (persistedBase && typeof persistedBase === "object" && !Array.isArray(persistedBase) ? persistedBase : null);
+    if (!base) return s;
+    return {
+        ...s,
+        prompt: base.prompt ?? s.prompt,
+        negativePrompt: base.negativePrompt ?? s.negativePrompt,
+        style: base.style ?? s.style,
+        width: base.width ?? s.width,
+        height: base.height ?? s.height,
+        proxyRefImages: Array.isArray(base.proxyRefImages) ? [...base.proxyRefImages] : [...(s.proxyRefImages || [])],
+        customApiRefImages: Array.isArray(base.customApiRefImages) ? [...base.customApiRefImages] : [...(s.customApiRefImages || [])],
+        nanobananaRefImages: Array.isArray(base.nanobananaRefImages) ? [...base.nanobananaRefImages] : [...(s.nanobananaRefImages || [])],
+        nanogptRefImages: Array.isArray(base.nanogptRefImages) ? [...base.nanogptRefImages] : [...(s.nanogptRefImages || [])],
+        localRefImage: typeof base.localRefImage === "string" ? base.localRefImage : (s.localRefImage || ""),
+    };
+}
+
 function getCurrentCharId() {
     const ctx = getContext();
     return ctx?.characterId ?? null;
@@ -15920,258 +16376,8 @@ function loadCharSettings() {
     return runLatestCharSettingsLoad(performLoadCharSettings);
 }
 
-async function saveConnectionProfileNow() {
-    const s = getSettings();
-    const provider = s.provider;
-    const rawName = await qigInput("Profile name:", { okButton: "Save Profile" });
-    if (rawName == null) return;
-    const name = rawName.trim();
-    if (!name) {
-        qigToast.warning("Profile name cannot be empty");
-        return;
-    }
-    if (["__proto__", "prototype", "constructor"].includes(name)) {
-        qigToast.warning("This profile name is reserved and cannot be used");
-        return;
-    }
-    const keys = PROVIDER_KEYS[provider] || [];
-    const profile = {};
-    keys.forEach(k => profile[k] = cloneSynchronizedValue(s[k]));
-    const providerProfiles = connectionProfiles[provider] || {};
-    const existing = Object.prototype.hasOwnProperty.call(providerProfiles, name);
-    if (existing && !(await qigConfirm(`Profile "${name}" already exists. Overwrite it?`, { okButton: "Overwrite" }))) return;
-    const nextProfiles = cloneSynchronizedValue(connectionProfiles);
-    if (!nextProfiles[provider]) nextProfiles[provider] = {};
-    nextProfiles[provider][name] = profile;
-    if (!await saveLocalStoreBackupNow("qig_profiles", nextProfiles, "Failed to save profile to your SillyTavern account.")) return;
-    connectionProfiles = nextProfiles;
-    renderProfileSelect(name);
-    showStatus(`${existing ? "♻️ Updated" : "💾 Saved"} profile: ${name}`);
-    setTimeout(hideStatus, 2000);
-}
-
-function saveConnectionProfile() {
-    return runSynchronizedStoreMutation("qig_profiles", saveConnectionProfileNow);
-}
-
-function loadConnectionProfile(name) {
-    const s = getSettings();
-    const provider = s.provider;
-    const profile = connectionProfiles[provider]?.[name];
-    if (!profile) return;
-    const profileSettings = provider === "local" && hasComfyConnectionProfileSignals(profile)
-        ? normalizeComfyIntegrationSettings(profile)
-        : cloneSynchronizedValue(profile);
-    for (const key of PROVIDER_KEYS[provider] || []) {
-        if (profileSettings[key] !== undefined) s[key] = cloneSynchronizedValue(profileSettings[key]);
-    }
-    if (provider === "proxy") {
-        s.proxyEndpointMode = normalizeProxyEndpointSetting(s.proxyEndpointMode);
-        normalizeProxyChatImageSettings(s, s);
-    }
-    saveSettingsDebounced();
-    refreshAllUI(s);
-    if (provider === "local" && s.localType === "comfyui") {
-        refreshComfyModelCatalog().catch(error => log(`ComfyUI model refresh failed: ${error.message}`));
-    }
-    renderProfileSelect(name);
-    syncGenerationPresetIndicators();
-    showStatus(`📂 Loaded profile: ${name}`);
-    setTimeout(hideStatus, 2000);
-}
-
-async function deleteConnectionProfileNow(name) {
-    const provider = getSettings().provider;
-    if (!(await qigConfirm(`Delete profile "${name}"?`, { okButton: "Delete Profile" }))) return;
-    const nextProfiles = cloneSynchronizedValue(connectionProfiles);
-    delete nextProfiles[provider]?.[name];
-    if (!await saveLocalStoreBackupNow("qig_profiles", nextProfiles, "Failed to delete profile from your SillyTavern account.")) return;
-    connectionProfiles = nextProfiles;
-    renderProfileSelect();
-}
-
-function deleteConnectionProfile(name) {
-    return runSynchronizedStoreMutation("qig_profiles", () => deleteConnectionProfileNow(name));
-}
-
-function renderProfileSelect(selectedName = "") {
-    const container = document.getElementById("qig-profile-select");
-    if (!container) return;
-    const provider = getSettings().provider;
-    const profiles = Object.keys(connectionProfiles[provider] || {});
-    const previousSelection = document.getElementById("qig-profile-dropdown")?.value || "";
-    const requestedSelection = selectedName || previousSelection;
-    const selected = profiles.includes(requestedSelection) ? requestedSelection : "";
-    container.innerHTML = profiles.length
-        ? `<select id="qig-profile-dropdown" aria-label="Connection profile for ${escapeHtml(PROVIDERS[provider]?.name || provider)}"><option value="">-- Select Profile --</option>${profiles.map(p => `<option value="${escapeHtml(p)}" ${p === selected ? "selected" : ""}>${escapeHtml(p)}</option>`).join("")}</select><button id="qig-profile-del" class="menu_button" type="button" aria-label="Delete selected connection profile" title="Delete selected connection profile" ${selected ? "" : "disabled"}><span class="fa-solid fa-trash-can" aria-hidden="true"></span></button>`
-        : "<span class='qig-muted'>No saved profiles</span>";
-    const dropdown = document.getElementById("qig-profile-dropdown");
-    if (dropdown) dropdown.onchange = (e) => {
-        const deleteButton = document.getElementById("qig-profile-del");
-        if (deleteButton) deleteButton.disabled = !e.target.value;
-        if (e.target.value) loadConnectionProfile(e.target.value);
-    };
-    const delBtn = document.getElementById("qig-profile-del");
-    if (delBtn) delBtn.onclick = () => { const dd = document.getElementById("qig-profile-dropdown"); if (dd?.value) deleteConnectionProfile(dd.value); };
-}
-
 const COMFY_WORKFLOW_KEYS = ["localModel", "comfyModelLoader", "comfyDenoise", "comfyClipSkip", "comfyScheduler", "comfyUpscale", "comfyUpscaleModel", "comfyLoras", "comfyOutputNodeIds", "comfyOutputImageIndex", "comfyWorkflow", "comfySkipNegativePrompt", "comfyFluxClipModel1", "comfyFluxClipModel2", "comfyFluxVaeModel", "comfyFluxClipType"];
 
-function getComfyWorkflowSnapshot(s = getSettings()) {
-    return {
-        localModel: s.localModel || "",
-        comfyModelLoader: normalizeComfyModelLoader(s.comfyModelLoader, s),
-        comfyDenoise: s.comfyDenoise ?? 1.0,
-        comfyClipSkip: s.comfyClipSkip ?? 1,
-        comfyScheduler: s.comfyScheduler || "normal",
-        comfyUpscale: !!s.comfyUpscale,
-        comfyUpscaleModel: s.comfyUpscaleModel || "RealESRGAN_x4plus.pth",
-        comfyLoras: s.comfyLoras || "",
-        comfyOutputNodeIds: s.comfyOutputNodeIds || "",
-        comfyOutputImageIndex: normalizeComfyOutputImageIndex(s.comfyOutputImageIndex),
-        comfyWorkflow: s.comfyWorkflow || "",
-        comfySkipNegativePrompt: !!s.comfySkipNegativePrompt,
-        comfyFluxClipModel1: s.comfyFluxClipModel1 || "",
-        comfyFluxClipModel2: s.comfyFluxClipModel2 || "",
-        comfyFluxVaeModel: s.comfyFluxVaeModel || "",
-        comfyFluxClipType: s.comfyFluxClipType || "flux"
-    };
-}
-
-function applyComfyWorkflowSnapshot(snapshot) {
-    const s = getSettings();
-    const normalized = normalizeComfyIntegrationSettings(snapshot);
-    COMFY_WORKFLOW_KEYS.forEach(k => {
-        if (normalized[k] !== undefined) s[k] = normalized[k];
-    });
-    s.localType = "comfyui";
-}
-
-function saveComfyWorkflowStore(errorMessage = "Failed to save workflow presets. Browser storage may be full.") {
-    return saveLocalStoreBackup("qig_comfy_workflows", comfyWorkflows, errorMessage);
-}
-
-async function commitComfyWorkflowStore(nextStore, errorMessage = "Failed to synchronize workflow presets with SillyTavern.") {
-    if (!await saveLocalStoreBackupNow("qig_comfy_workflows", nextStore, errorMessage)) return false;
-    comfyWorkflows = nextStore;
-    return true;
-}
-
-function setComfyWorkflowActionState(hasSelection) {
-    ["qig-comfy-workflow-load", "qig-comfy-workflow-update", "qig-comfy-workflow-del"].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.disabled = !hasSelection;
-    });
-}
-
-function renderComfyWorkflowPresets(selectedId = "") {
-    const select = document.getElementById("qig-comfy-workflow-select");
-    if (!select) return;
-    const previousSelection = select.value || selectedComfyWorkflowId || "";
-    const targetId = selectedId || previousSelection;
-    const options = [
-        `<option value="">-- Select Workflow Preset --</option>`,
-        ...comfyWorkflows.map(w => `<option value="${escapeHtml(w.id || "")}" ${w.id === targetId ? "selected" : ""}>${escapeHtml(w.name || "(unnamed)")}</option>`)
-    ];
-    select.innerHTML = options.join("");
-    const found = targetId && comfyWorkflows.some(w => w.id === targetId);
-    selectedComfyWorkflowId = found ? targetId : "";
-    if (selectedComfyWorkflowId) select.value = selectedComfyWorkflowId;
-    setComfyWorkflowActionState(!!selectedComfyWorkflowId);
-}
-
-function getSelectedComfyWorkflowPreset() {
-    const select = document.getElementById("qig-comfy-workflow-select");
-    const id = select?.value || selectedComfyWorkflowId;
-    if (!id) return null;
-    return comfyWorkflows.find(w => w.id === id) || null;
-}
-
-function loadSelectedComfyWorkflowPreset() {
-    const preset = getSelectedComfyWorkflowPreset();
-    if (!preset) {
-        qigToast.info("Select a workflow preset first");
-        return;
-    }
-    applyComfyWorkflowSnapshot(preset);
-    saveSettingsDebounced();
-    refreshAllUI(getSettings());
-    refreshComfyModelCatalog().catch(error => log(`ComfyUI model refresh failed: ${error.message}`));
-    renderComfyWorkflowPresets(preset.id);
-    showStatus(`📂 Loaded workflow preset: ${preset.name}`);
-    setTimeout(hideStatus, 2000);
-}
-
-async function saveComfyWorkflowPresetAsNow() {
-    const rawName = await qigInput("Workflow preset name:", { okButton: "Save Preset" });
-    if (rawName == null) return;
-    const name = rawName.trim();
-    if (!name) {
-        qigToast.warning("Workflow preset name cannot be empty");
-        return;
-    }
-    const existing = comfyWorkflows.find(w => w.name === name);
-    const snapshot = getComfyWorkflowSnapshot();
-    if (existing) {
-        if (!(await qigConfirm(`Workflow preset "${name}" already exists. Overwrite it?`, { okButton: "Overwrite" }))) return;
-        const nextStore = comfyWorkflows.map(workflow => workflow.id === existing.id
-            ? { ...workflow, ...snapshot, updatedAt: new Date().toISOString() }
-            : workflow);
-        if (!await commitComfyWorkflowStore(nextStore)) return;
-        renderComfyWorkflowPresets(existing.id);
-        showStatus(`♻️ Updated workflow preset: ${name}`);
-        setTimeout(hideStatus, 2000);
-        return;
-    }
-    const id = `cwf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-    const nextStore = [...comfyWorkflows, { id, name, ...snapshot, updatedAt: new Date().toISOString() }];
-    if (!await commitComfyWorkflowStore(nextStore)) return;
-    renderComfyWorkflowPresets(id);
-    showStatus(`💾 Saved workflow preset: ${name}`);
-    setTimeout(hideStatus, 2000);
-}
-
-function saveComfyWorkflowPresetAs() {
-    return runSynchronizedStoreMutation("qig_comfy_workflows", saveComfyWorkflowPresetAsNow);
-}
-
-async function updateSelectedComfyWorkflowPresetNow() {
-    const preset = getSelectedComfyWorkflowPreset();
-    if (!preset) {
-        qigToast.info("Select a workflow preset first");
-        return;
-    }
-    if (!(await qigConfirm(`Overwrite workflow preset "${preset.name}" with current Comfy settings?`, { okButton: "Overwrite" }))) return;
-    const nextStore = comfyWorkflows.map(workflow => workflow.id === preset.id
-        ? { ...workflow, ...getComfyWorkflowSnapshot(), updatedAt: new Date().toISOString() }
-        : workflow);
-    if (!await commitComfyWorkflowStore(nextStore)) return;
-    renderComfyWorkflowPresets(preset.id);
-    showStatus(`♻️ Updated workflow preset: ${preset.name}`);
-    setTimeout(hideStatus, 2000);
-}
-
-function updateSelectedComfyWorkflowPreset() {
-    return runSynchronizedStoreMutation("qig_comfy_workflows", updateSelectedComfyWorkflowPresetNow);
-}
-
-async function deleteSelectedComfyWorkflowPresetNow() {
-    const preset = getSelectedComfyWorkflowPreset();
-    if (!preset) {
-        qigToast.info("Select a workflow preset first");
-        return;
-    }
-    if (!(await qigConfirm(`Delete workflow preset "${preset.name}"?`, { okButton: "Delete Preset" }))) return;
-    const nextStore = comfyWorkflows.filter(w => w.id !== preset.id);
-    if (!await commitComfyWorkflowStore(nextStore)) return;
-    renderComfyWorkflowPresets("");
-    showStatus(`🗑️ Deleted workflow preset: ${preset.name}`);
-    setTimeout(hideStatus, 2000);
-}
-
-function deleteSelectedComfyWorkflowPreset() {
-    return runSynchronizedStoreMutation("qig_comfy_workflows", deleteSelectedComfyWorkflowPresetNow);
-}
 
 // === Generation Presets ===
 const PRESET_KEYS = ["provider", "style", "width", "height", "steps", "cfgScale", "sampler", "seed", "prompt", "negativePrompt", "qualityTags", "appendQuality", "useLastMessage", "messageRange", "enableParagraphPicker", "useLLMPrompt", "llmPromptStyle", "llmPrefill", "llmCustomInstruction", "reviewBeforeGenerate", "preserveCharacterIdentity", "useWorldInfo", "llmAddQuality", "llmAddLighting", "llmAddArtist", "twoStepPrompt", "twoStepInstruction", "batchCount", "sequentialSeeds"];
@@ -16180,61 +16386,38 @@ const PROVIDER_PRESET_KEYS = Object.freeze({
     nanobanana: ["nanobananaNbpMode", "nanobananaNbpPreset", "nanobananaNbpUseNegative", "nanobananaNbpCustomDirector", "nanobananaNbpCustomPrompt", "nanobananaExtraInstructions"],
 });
 
-function getGenerationPresetKeys(presetOrSettings) {
-    const provider = presetOrSettings?.provider;
-    const providerKeys = PROVIDER_PRESET_KEYS[provider] || [];
-    if (provider === "proxy") return [...PRESET_KEYS, ...providerKeys, ...PROXY_RECIPE_KEYS];
-    if (provider === "custom") return [...PRESET_KEYS, ...providerKeys, ...CUSTOM_API_RECIPE_KEYS];
-    return [...PRESET_KEYS, ...providerKeys];
+// Settings that belong to a saved configuration but are not part of PRESET_KEYS.
+const CONFIGURATION_AUX_KEYS = ["useSTStyle", "injectEnabled", "injectTagName", "injectPrompt", "injectRegex", "injectPosition", "injectDepth", "injectInsertMode", "injectAutoClean", "paletteMode"];
+
+// Everything a saved configuration owns: the shared recipe plus the selected
+// provider's own settings. Settings for other providers are never touched.
+function getConfigurationKeys(recordOrSettings) {
+    const provider = recordOrSettings?.provider;
+    const keys = new Set([...PRESET_KEYS, ...CONFIGURATION_AUX_KEYS, ...(PROVIDER_KEYS[provider] || []), ...(PROVIDER_PRESET_KEYS[provider] || [])]);
+    if (provider === "proxy") for (const key of PROXY_RECIPE_KEYS) keys.add(key);
+    if (provider === "custom") for (const key of CUSTOM_API_RECIPE_KEYS) keys.add(key);
+    if (provider === "local") for (const key of COMFY_WORKFLOW_KEYS) keys.add(key);
+    return [...keys];
 }
 
-function saveGenerationPresetStore(errorMessage = "Failed to save preset. Browser storage may be full.") {
-    return saveLocalStoreBackup("qig_gen_presets", generationPresets, errorMessage);
-}
-
-async function commitGenerationPresetStore(nextStore, errorMessage = "Failed to synchronize presets with SillyTavern.") {
-    if (!await saveLocalStoreBackupNow("qig_gen_presets", nextStore, errorMessage)) return false;
-    generationPresets = nextStore;
+async function commitConfigurationStore(nextStore, errorMessage = "Failed to synchronize configurations with SillyTavern.") {
+    if (!await saveLocalStoreBackupNow("qig_configurations", nextStore, errorMessage)) return false;
+    configurations = nextStore;
     return true;
 }
 
-function ensureGenerationPresetIds({ persist = false } = {}) {
-    if (!Array.isArray(generationPresets)) {
-        generationPresets = [];
-        return false;
-    }
-    let changed = false;
-    for (const preset of generationPresets) {
-        if (!preset || typeof preset !== "object") continue;
-        if (typeof preset.id === "string" && preset.id.trim()) continue;
-        preset.id = generateUUID();
-        changed = true;
-    }
-    if (changed && persist) {
-        saveGenerationPresetStore("Failed to migrate preset IDs. Browser storage may be full.");
-    }
-    return changed;
+// The selection means "configuration currently being edited", not a byte-for-byte
+// match, so tweaking a value does not silently deselect it.
+function getActiveConfigurationId() {
+    const id = String(getSettings()?.lastLoadedPresetId || "");
+    return configurations.some(entry => entry?.id === id) ? id : "";
 }
 
-function getActiveGenerationPresetId() {
-    const s = getSettings();
-    const presetId = String(s?.lastLoadedPresetId || "");
-    const preset = generationPresets.find(entry => entry?.id === presetId);
-    return preset && generationPresetMatchesSettings(preset, s) ? presetId : "";
-}
-
-function generationPresetMatchesSettings(preset, settings = getSettings()) {
-    if (!preset || !settings) return false;
-    const keys = [...getGenerationPresetKeys(preset), "useSTStyle", "injectEnabled", "injectTagName", "injectPrompt", "injectRegex", "injectPosition", "injectDepth", "injectInsertMode", "injectAutoClean", "paletteMode"];
-    return keys.every(key => preset[key] === undefined || preset[key] === settings[key]);
-}
-
-function syncActiveGenerationPresetSetting({ persist = false } = {}) {
+function syncActiveConfigurationSetting({ persist = false } = {}) {
     const s = getSettings();
     if (!s) return;
-    const activePresetId = String(s.lastLoadedPresetId || "");
-    if (!activePresetId) return;
-    if (generationPresets.some(preset => preset?.id === activePresetId)) return;
+    const activeId = String(s.lastLoadedPresetId || "");
+    if (!activeId || configurations.some(entry => entry?.id === activeId)) return;
     s.lastLoadedPresetId = "";
     if (persist) saveSettingsDebounced();
 }
@@ -16358,142 +16541,162 @@ function normalizeProxyProfileStore(profiles = connectionProfiles) {
     return changed;
 }
 
-function setActiveGenerationPresetId(presetId = "", { persist = true } = {}) {
+function setActiveConfigurationId(configId = "", { persist = true } = {}) {
     const s = getSettings();
     if (!s) return;
-    const nextId = String(presetId || "");
+    const nextId = String(configId || "");
     if (String(s.lastLoadedPresetId || "") !== nextId) {
         s.lastLoadedPresetId = nextId;
         if (persist) saveSettingsDebounced();
     }
-    renderPresets();
+    renderConfigurationSelect();
 }
 
-function syncGenerationPresetIndicators() {
-    const activePresetId = getActiveGenerationPresetId();
-    const select = document.getElementById("qig-preset-select");
-    if (select) select.value = activePresetId;
-    document.querySelectorAll("#qig-presets .qig-preset-chip > .menu_button:first-child").forEach(button => {
-        button.classList.toggle("qig-preset-chip--active", button.dataset.presetId === activePresetId);
-    });
+function syncConfigurationIndicators() {
+    const select = document.getElementById("qig-config-select");
+    if (select) select.value = getActiveConfigurationId();
+    const hasSelection = !!getActiveConfigurationId();
+    for (const id of ["qig-config-update", "qig-config-del"]) {
+        const button = document.getElementById(id);
+        if (button) button.disabled = !hasSelection;
+    }
 }
 
-async function savePresetNow() {
-    const name = await qigInput("Preset name:", { okButton: "Save Preset" });
+function snapshotConfiguration(s = getSettings()) {
+    const source = getGlobalConfigurationSettings(s);
+    const record = {};
+    for (const key of getConfigurationKeys(source)) {
+        if (source[key] !== undefined) record[key] = cloneSynchronizedValue(source[key]);
+    }
+    return record;
+}
+
+async function saveConfigurationAsNow() {
+    const name = (await qigInput("Configuration name:", { okButton: "Save" }) || "").trim();
     if (!name) return;
     ensureFilterPoolsState();
     const s = getSettings();
-    const preset = { id: generateUUID(), name };
-    getGenerationPresetKeys(s).forEach(k => preset[k] = cloneSynchronizedValue(s[k]));
-    // Include ST Style toggle state
-    if (s.useSTStyle !== undefined) preset.useSTStyle = s.useSTStyle;
-    // Include inject mode settings
-    const injectKeys = ["injectEnabled", "autoGenerate", "injectTagName", "injectPrompt", "injectRegex", "injectPosition", "injectDepth", "injectInsertMode", "injectAutoClean", "paletteMode"];
-    injectKeys.forEach(k => { if (s[k] !== undefined) preset[k] = s[k]; });
+    const existingIndex = configurations.findIndex(entry => entry?.name === name && entry?.provider === s.provider);
+    if (existingIndex >= 0 && !await qigConfirm(`Overwrite "${name}"?`, { okButton: "Overwrite" })) return;
+    const record = { id: existingIndex >= 0 ? configurations[existingIndex].id : generateUUID(), name, ...snapshotConfiguration(s) };
+    const nextStore = existingIndex >= 0
+        ? configurations.map((entry, index) => (index === existingIndex ? record : entry))
+        : [...configurations, record];
     const previousActiveId = String(s.lastLoadedPresetId || "");
-    s.lastLoadedPresetId = preset.id;
-    if (!await commitGenerationPresetStore([...generationPresets, preset])) {
+    s.lastLoadedPresetId = record.id;
+    if (!await commitConfigurationStore(nextStore)) {
         s.lastLoadedPresetId = previousActiveId;
         return;
     }
-    renderPresets();
-    showStatus(`💾 Saved preset: ${name}`);
+    renderConfigurationSelect();
+    showStatus(`💾 Saved configuration: ${name}`);
     setTimeout(hideStatus, 2000);
 }
 
-function savePreset() {
-    return runSynchronizedStoreMutation("qig_gen_presets", savePresetNow);
+function saveConfigurationAs() {
+    return runSynchronizedStoreMutation("qig_configurations", saveConfigurationAsNow);
 }
 
-function loadPreset(i) {
-    ensureGenerationPresetIds({ persist: true });
-    const p = generationPresets[i];
+async function updateSelectedConfigurationNow() {
+    const activeId = getActiveConfigurationId();
+    const current = configurations.find(entry => entry?.id === activeId);
+    if (!current) return;
+    const provider = getSettings()?.provider;
+    if (configurations.some(entry => entry?.id !== activeId && entry?.name === current.name && entry?.provider === provider)) {
+        qigToast.warning(`A ${PROVIDERS[provider]?.name || provider} configuration named "${current.name}" already exists.`);
+        return;
+    }
+    if (!await qigConfirm(`Overwrite "${current.name}" with the current settings?`, { okButton: "Update" })) return;
+    ensureFilterPoolsState();
+    const record = { id: current.id, name: current.name, ...snapshotConfiguration() };
+    if (!await commitConfigurationStore(configurations.map(entry => (entry?.id === activeId ? record : entry)))) return;
+    renderConfigurationSelect();
+    showStatus(`💾 Updated configuration: ${current.name}`);
+    setTimeout(hideStatus, 2000);
+}
+
+function updateSelectedConfiguration() {
+    return runSynchronizedStoreMutation("qig_configurations", updateSelectedConfigurationNow);
+}
+
+async function loadConfiguration(id) {
+    const p = configurations.find(entry => entry?.id === id);
     if (!p) return;
     const s = getSettings();
-    getGenerationPresetKeys(p).forEach(k => { if (p[k] !== undefined) s[k] = cloneSynchronizedValue(p[k]); });
+    const activeCharacterOverride = charSettingsOverrideApplied;
+    const target = activeCharacterOverride ? { ...getGlobalConfigurationSettings(s) } : s;
+    // Every queued automation job holds a snapshot of the old provider and credentials.
+    _automationRevision += 1;
+    resetAutoGenerateCadence({ clearTimer: true });
+    // Reset the common keys and this record's provider keys to defaults first, so a
+    // configuration is reproducible. Other providers' settings are never touched.
+    const keys = getConfigurationKeys(p);
+    keys.forEach(k => {
+        if (defaultSettings[k] !== undefined) target[k] = cloneSynchronizedValue(defaultSettings[k]);
+    });
+    keys.forEach(k => { if (p[k] !== undefined) target[k] = cloneSynchronizedValue(p[k]); });
     if (p.provider === "proxy") {
-        if (p.proxySteps === undefined && p.steps !== undefined) s.proxySteps = p.steps;
-        if (p.proxyCfg === undefined && p.cfgScale !== undefined) s.proxyCfg = p.cfgScale;
-        if (p.proxySampler === undefined && p.sampler !== undefined) s.proxySampler = p.sampler;
-        if (p.proxySeed === undefined && p.seed !== undefined) s.proxySeed = p.seed;
+        if (p.proxySteps === undefined && p.steps !== undefined) target.proxySteps = p.steps;
+        if (p.proxyCfg === undefined && p.cfgScale !== undefined) target.proxyCfg = p.cfgScale;
+        if (p.proxySampler === undefined && p.sampler !== undefined) target.proxySampler = p.sampler;
+        if (p.proxySeed === undefined && p.seed !== undefined) target.proxySeed = p.seed;
+        normalizeProxyChatImageSettings(target, p);
+        target.proxyEndpointMode = normalizeProxyEndpointSetting(target.proxyEndpointMode);
+        normalizeProxyChatImageSettings(target, target);
     }
-    if (p.provider === "proxy") {
-        normalizeProxyChatImageSettings(s, p);
-        s.proxyEndpointMode = normalizeProxyEndpointSetting(s.proxyEndpointMode);
-        normalizeProxyChatImageSettings(s, s);
+    if (p.provider === "local" && hasComfyConnectionProfileSignals(p)) {
+        Object.assign(target, normalizeComfyIntegrationSettings(target));
+    }
+    if (target !== s) Object.assign(s, target);
+    if (activeCharacterOverride) {
+        rememberCharSettingsBaseState(s, s);
+        await loadCharSettings();
     }
     ensureFilterPoolsState();
     renderContextualFilters();
-    // Restore ST Style toggle
-    if (p.useSTStyle !== undefined) { s.useSTStyle = p.useSTStyle; }
-    // Restore inject mode settings
-    const previousAutoGenerate = !!s.autoGenerate;
-    const injectKeys = ["injectEnabled", "autoGenerate", "injectTagName", "injectPrompt", "injectRegex", "injectPosition", "injectDepth", "injectInsertMode", "injectAutoClean", "paletteMode"];
-    injectKeys.forEach(k => { if (p[k] !== undefined) s[k] = p[k]; });
     s.injectInsertMode = normalizeInjectInsertMode(s.injectInsertMode);
-    if (s.injectEnabled && p.autoGenerate === undefined) s.autoGenerate = true;
-    if (previousAutoGenerate !== !!s.autoGenerate) {
-        _automationRevision += 1;
-        resetAutoGenerateCadence({ clearTimer: true });
-    }
     s.paletteMode = normalizePaletteMode(s.paletteMode);
     s.lastLoadedPresetId = p.id || "";
     saveSettingsDebounced();
     refreshAllUI(s);
-    renderPresets();
+    renderConfigurationSelect();
     closePalettePresetMenu();
-    showStatus(`📂 Loaded preset: ${p.name}`);
+    if (s.provider === "local" && s.localType === "comfyui") refreshComfyModelCatalog();
+    if (s.provider === "local" && s.localType === "a1111") document.getElementById("qig-a1111-model-refresh")?.click();
+    showStatus(`📂 Loaded configuration: ${p.name}`);
     setTimeout(hideStatus, 2000);
 }
 
-async function deletePresetNow(i) {
-    const removed = generationPresets[i];
+async function deleteSelectedConfigurationNow() {
+    const activeId = getActiveConfigurationId();
+    const removed = configurations.find(entry => entry?.id === activeId);
     if (!removed) return;
-    const nextStore = generationPresets.filter((_, index) => index !== i);
+    if (!await qigConfirm(`Delete configuration "${removed.name}"?`, { okButton: "Delete" })) return;
     const settings = getSettings();
-    const previousActiveId = String(settings.lastLoadedPresetId || "");
-    if (removed.id && previousActiveId === removed.id) settings.lastLoadedPresetId = "";
-    if (!await commitGenerationPresetStore(nextStore, "Failed to delete preset from your SillyTavern account.")) {
-        settings.lastLoadedPresetId = previousActiveId;
+    settings.lastLoadedPresetId = "";
+    if (!await commitConfigurationStore(configurations.filter(entry => entry?.id !== activeId), "Failed to delete configuration from your SillyTavern account.")) {
+        settings.lastLoadedPresetId = activeId;
         return;
     }
-    syncActiveGenerationPresetSetting({ persist: false });
     closePalettePresetMenu();
-    renderPresets();
+    renderConfigurationSelect();
 }
 
-function deletePreset(i) {
-    return runSynchronizedStoreMutation("qig_gen_presets", () => deletePresetNow(i));
+function deleteSelectedConfiguration() {
+    return runSynchronizedStoreMutation("qig_configurations", deleteSelectedConfigurationNow);
 }
 
-async function clearPresetsNow() {
-    if (await qigConfirm("Clear all presets?", { okButton: "Clear Presets" })) {
-        const settings = getSettings();
-        const previousActiveId = String(settings.lastLoadedPresetId || "");
-        settings.lastLoadedPresetId = "";
-        if (!await commitGenerationPresetStore([], "Failed to clear presets from your SillyTavern account.")) {
-            settings.lastLoadedPresetId = previousActiveId;
-            return;
-        }
-        closePalettePresetMenu();
-        renderPresets();
-    }
-}
-
-function clearPresets() {
-    return runSynchronizedStoreMutation("qig_gen_presets", clearPresetsNow);
-}
-
-function seedStarterPresets() {
+function seedStarterConfigurations() {
     const s = getSettings();
     if (!s || s.starterPresetsSeeded) return;
     s.starterPresetsSeeded = true;
-    if (Array.isArray(generationPresets) && generationPresets.length > 0) {
+    if (Array.isArray(configurations) && configurations.length > 0) {
         saveSettingsDebounced();
         return;
     }
     const base = {
         provider: "pollinations",
+        pollinationsModel: "flux",
         prompt: "{{char}} in the current scene",
         width: 832, height: 1216,
         steps: 25, cfgScale: 7, sampler: "euler_a", seed: -1,
@@ -16505,14 +16708,125 @@ function seedStarterPresets() {
         reviewBeforeGenerate: false, preserveCharacterIdentity: true, useWorldInfo: false,
         injectEnabled: false, paletteMode: "direct",
     };
-    generationPresets.push(
+    configurations.push(
         { ...base, id: generateUUID(), name: "Quick Anime (free)", style: "anime" },
         { ...base, id: generateUUID(), name: "Photoreal (free)", style: "photorealistic", width: 896, height: 1152, llmPromptStyle: "natural" },
         { ...base, id: generateUUID(), name: "Chat Scene (LLM prompt)", style: "anime", useLastMessage: true, useLLMPrompt: true },
     );
-    saveGenerationPresetStore();
-    renderPresets();
+    saveLocalStoreBackup("qig_configurations", configurations, "Failed to save starter configurations. Browser storage may be full.");
+    renderConfigurationSelect();
     saveSettingsDebounced();
+}
+
+// One-way, clone-only merge of the three legacy stores into named configurations.
+// The legacy stores themselves are never rewritten: they stay as the rollback copy.
+function fnv1a(text) {
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < text.length; i++) {
+        hash ^= text.charCodeAt(i);
+        hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+    return hash.toString(16).padStart(8, "0");
+}
+
+function buildConfigurationsFromLegacyStores(profiles = connectionProfiles, presets = generationPresets, workflows = comfyWorkflows, baselineSettings = getSettings()) {
+    const profileClone = cloneSynchronizedValue(profiles) || {};
+    const presetClone = Array.isArray(presets) ? cloneSynchronizedValue(presets) : [];
+    const workflowClone = Array.isArray(workflows) ? cloneSynchronizedValue(workflows) : [];
+    normalizeComfyConnectionProfileStore(profileClone);
+    normalizeProxyProfileStore(profileClone);
+    normalizeGenerationPresetStore(presetClone);
+    normalizeComfyWorkflowPresetStore(workflowClone);
+
+    const merged = new Map(); // "provider\0name" -> record
+    const extras = [];
+    const takenIds = new Set();
+    const claimId = candidate => {
+        let id = candidate;
+        for (let n = 2; takenIds.has(id); n++) id = `${candidate}-${n}`;
+        takenIds.add(id);
+        return id;
+    };
+    const sourceValues = (provider, values) => Object.fromEntries(getConfigurationKeys({ provider })
+        .filter(field => values?.[field] !== undefined)
+        .map(field => [field, cloneSynchronizedValue(values[field])]));
+    const complete = record => ({
+        ...Object.fromEntries(getConfigurationKeys(record)
+            .filter(field => baselineSettings?.[field] !== undefined || defaultSettings[field] !== undefined)
+            .map(field => [field, cloneSynchronizedValue(baselineSettings?.[field] ?? defaultSettings[field])])),
+        ...record,
+        provider: record.provider,
+    });
+    const put = (key, provider, name, source, values, preferredId, promoteId = false) => {
+        const existing = merged.get(key);
+        if (existing) {
+            Object.assign(existing, values);
+            if (promoteId && preferredId && !takenIds.has(preferredId)) {
+                takenIds.delete(existing.id);
+                existing.id = claimId(preferredId);
+            }
+            return existing;
+        }
+        const record = { id: claimId(preferredId || `cfg-${fnv1a(`${source}\0${key}`)}`), name, provider, ...values };
+        merged.set(key, record);
+        return record;
+    };
+
+    // Precedence: connection profile < generation preset < comfy workflow preset.
+    for (const [provider, byName] of Object.entries(profileClone)) {
+        if (!byName || typeof byName !== "object") continue;
+        for (const [name, values] of Object.entries(byName)) {
+            if (!values || typeof values !== "object") continue;
+            const localBackend = provider === "local" ? inferLegacyLocalBackend(values) : "";
+            put(`${provider}\0${name}`, provider, name, "profile", {
+                ...sourceValues(provider, values),
+                provider,
+                ...(localBackend ? { _legacyLocalBackend: localBackend } : {}),
+            });
+        }
+    }
+    for (const preset of presetClone) {
+        if (!preset || typeof preset !== "object" || !preset.name) continue;
+        const provider = preset.provider || "pollinations";
+        const key = `${provider}\0${preset.name}`;
+        const { id, name, ...values } = preset;
+        const validId = typeof id === "string" && id.trim() && !takenIds.has(id) ? id : "";
+        if (merged.has(key) && merged.get(key)._presetSeen) {
+            extras.push({ id: claimId(validId || `cfg-${fnv1a(`preset\0${key}\0${extras.length}`)}`), name: `${name} (Generation preset ${extras.length + 2})`, provider, ...sourceValues(provider, values) });
+            continue;
+        }
+        const localBackend = provider === "local" ? inferLegacyLocalBackend(values) : "";
+        put(key, provider, name, "preset", {
+            ...sourceValues(provider, values),
+            provider,
+            _presetSeen: true,
+            ...(localBackend ? { _legacyLocalBackend: localBackend } : {}),
+        }, validId, true);
+    }
+    for (const workflow of workflowClone) {
+        if (!workflow || typeof workflow !== "object" || !workflow.name) continue;
+        const key = `local\0${workflow.name}`;
+        const { id, name, updatedAt: _updatedAt, ...values } = workflow;
+        const target = merged.get(key);
+        // A workflow only joins a same-name local record that positively identifies as ComfyUI.
+        if (target && (target._legacyLocalBackend || target.localType) !== "comfyui") {
+            extras.push({ id: claimId(`cfg-${fnv1a(`workflow\0${key}\0${extras.length}`)}`), name: `${name} (Comfy workflow)`, provider: "local", ...sourceValues("local", values), localType: "comfyui" });
+            continue;
+        }
+        if (target && target._workflowSeen) {
+            extras.push({ id: claimId(`cfg-${fnv1a(`workflow\0${key}\0${extras.length}`)}`), name: `${name} (Comfy workflow ${extras.length + 2})`, provider: "local", ...sourceValues("local", values), localType: "comfyui" });
+            continue;
+        }
+        put(key, "local", name, "workflow", { ...sourceValues("local", values), provider: "local", localType: "comfyui", _workflowSeen: true }, typeof id === "string" && id.trim() && !takenIds.has(id) ? `cfg-${id}` : "");
+    }
+
+    const records = [...merged.values(), ...extras];
+    for (const record of records) {
+        delete record._presetSeen;
+        delete record._workflowSeen;
+        delete record._legacyLocalBackend;
+    }
+    return records.map(complete);
 }
 
 function expandQigCollapsible(sectionKey, buttonId, contentId) {
@@ -16625,52 +16939,19 @@ function showSetupWizard() {
     }, { resizable: false, popupClass: "wizard" });
 }
 
-function renderPresetSelect() {
-    const select = document.getElementById("qig-preset-select");
+function renderConfigurationSelect() {
+    syncActiveConfigurationSetting({ persist: true });
+    const select = document.getElementById("qig-config-select");
     if (!select) return;
-    const activePresetId = getActiveGenerationPresetId();
+    const activeId = getActiveConfigurationId();
     replaceSelectOptions(select, [
         { value: "", label: "— Current settings —" },
-        ...generationPresets.map(preset => ({ value: preset?.id || "", label: preset?.name || "(unnamed)" })),
-    ], activePresetId);
-    select.value = activePresetId && generationPresets.some(p => p?.id === activePresetId) ? activePresetId : "";
-}
-
-function renderPresets() {
-    ensureGenerationPresetIds({ persist: true });
-    syncActiveGenerationPresetSetting({ persist: true });
-    renderPresetSelect();
-    const container = document.getElementById("qig-presets");
-    if (!container) return;
-    const activePresetId = getActiveGenerationPresetId();
-    container.replaceChildren();
-    if (!generationPresets.length) return;
-    const list = document.createElement("div");
-    list.className = "qig-preset-chip-list";
-    generationPresets.forEach((preset, index) => {
-        const wrapper = document.createElement("span");
-        wrapper.className = "qig-preset-chip";
-        const loadButton = document.createElement("button");
-        loadButton.type = "button";
-        loadButton.className = `menu_button${preset?.id === activePresetId ? " qig-preset-chip--active" : ""}`;
-        loadButton.dataset.presetId = preset?.id || "";
-        loadButton.textContent = preset?.name || "(unnamed)";
-        loadButton.onclick = () => loadPreset(index);
-        const deleteButton = document.createElement("button");
-        deleteButton.type = "button";
-        deleteButton.className = "menu_button qig-preset-chip__delete";
-        deleteButton.textContent = "×";
-        deleteButton.setAttribute("aria-label", `Delete preset ${preset?.name || index + 1}`);
-        deleteButton.onclick = () => deletePreset(index);
-        wrapper.append(loadButton, deleteButton);
-        list.appendChild(wrapper);
-    });
-    const clearButton = document.createElement("button");
-    clearButton.type = "button";
-    clearButton.className = "menu_button qig-preset-clear";
-    clearButton.textContent = "Clear All";
-    clearButton.onclick = clearPresets;
-    container.append(list, clearButton);
+        ...configurations.map(entry => ({
+            value: entry?.id || "",
+            label: `${entry?.name || "(unnamed)"} · ${PROVIDERS[entry?.provider]?.name || entry?.provider || "?"}`,
+        })),
+    ], activeId);
+    syncConfigurationIndicators();
 }
 
 function syncInjectTagUI(settings = getSettings()) {
@@ -16799,7 +17080,7 @@ function refreshAllUI(s) {
     updatePromptSourceUI(s);
     updateProviderUI();
     refreshProviderInputs(s.provider);
-    renderProfileSelect();
+    renderConfigurationSelect();
     // Update seq seeds visibility
     const seqWrap = document.getElementById("qig-seq-seeds-wrap");
     if (seqWrap) seqWrap.style.display = (s.batchCount || 1) > 1 ? "" : "none";
@@ -16808,18 +17089,19 @@ function refreshAllUI(s) {
     if (injectDepthWrap) injectDepthWrap.style.display = s.injectPosition === "atDepth" ? "block" : "none";
     renderContextualFilters();
     renderContextMediaSummary();
+    renderComfyComponentOverrides();
     updateQigStatusLine();
-    syncGenerationPresetIndicators();
+    syncConfigurationIndicators();
 }
 
 // === Export / Import Settings ===
 function exportAllSettings() {
     const omissions = [];
     const data = createSettingsExport({
-        activeSettings: getSettings(),
-        connectionProfiles,
-        comfyWorkflows,
-        generationPresets,
+        activeSettings: getGlobalConfigurationSettings(),
+        // Configurations travel under the legacy "generationPresets" property so the
+        // transfer schema stays at v7 and older builds can still read the file.
+        generationPresets: configurations,
         charSettings,
         contextualFilters,
         filterPools,
@@ -16886,9 +17168,7 @@ function mergeImportedContextMediaTaxonomy(current, imported) {
 function getSettingsImportSnapshot() {
     return {
         activeSettings: snapshotGenerationSettings(getSettings()),
-        connectionProfiles: snapshotGenerationSettings(connectionProfiles),
-        comfyWorkflows: snapshotGenerationSettings(comfyWorkflows),
-        generationPresets: snapshotGenerationSettings(generationPresets),
+        configurations: snapshotGenerationSettings(configurations),
         charSettings: snapshotGenerationSettings(charSettings),
         charRefImages: snapshotGenerationSettings(charRefImages),
         contextualFilters: snapshotGenerationSettings(contextualFilters),
@@ -16897,7 +17177,6 @@ function getSettingsImportSnapshot() {
         activeFilterPoolIdsByCard: snapshotGenerationSettings(activeFilterPoolIdsByCard),
         activeFilterPoolIdsByChar: snapshotGenerationSettings(activeFilterPoolIdsByChar),
         contextMediaLibrary: snapshotGenerationSettings(contextMediaLibrary),
-        selectedComfyWorkflowId,
         charSettingsBaseState: cloneSynchronizedValue(charSettingsBaseState),
         charSettingsBaseCharId,
         charSettingsOverrideApplied,
@@ -16907,9 +17186,7 @@ function getSettingsImportSnapshot() {
 
 function restoreSettingsImportSnapshot(snapshot) {
     replaceObjectContents(getSettings(), snapshot.activeSettings);
-    connectionProfiles = snapshot.connectionProfiles;
-    comfyWorkflows = snapshot.comfyWorkflows;
-    generationPresets = snapshot.generationPresets;
+    configurations = snapshot.configurations;
     charSettings = snapshot.charSettings;
     charRefImages = snapshot.charRefImages;
     contextualFilters = snapshot.contextualFilters;
@@ -16918,7 +17195,6 @@ function restoreSettingsImportSnapshot(snapshot) {
     activeFilterPoolIdsByCard = snapshot.activeFilterPoolIdsByCard;
     activeFilterPoolIdsByChar = snapshot.activeFilterPoolIdsByChar;
     contextMediaLibrary = snapshot.contextMediaLibrary;
-    selectedComfyWorkflowId = snapshot.selectedComfyWorkflowId;
     charSettingsBaseState = snapshot.charSettingsBaseState;
     charSettingsBaseCharId = snapshot.charSettingsBaseCharId;
     charSettingsOverrideApplied = snapshot.charSettingsOverrideApplied;
@@ -16930,8 +17206,11 @@ async function commitSettingsImportNow(data) {
     const currentSettings = getSettings();
     let storageTransaction = null;
     const contextMediaTouched = data.contextMedia !== undefined || data.activeSettings !== undefined;
-    const mergedPortableStores = mergeSettingsImportStores({ connectionProfiles, generationPresets }, data);
+    const mergedPortableStores = mergeSettingsImportStores({ connectionProfiles: {}, generationPresets: configurations }, data);
     if (contextMediaTouched) cancelContextMediaWork();
+    // Every imported store can affect a queued run, even when activeSettings is absent.
+    _automationRevision += 1;
+    resetAutoGenerateCadence({ clearTimer: true });
 
     try {
         if (data.activeSettings !== undefined) {
@@ -16946,25 +17225,32 @@ async function commitSettingsImportNow(data) {
                 rememberCharSettingsBaseState(currentSettings, currentSettings);
                 applyCharScopedState(activeCharacterOverride, currentSettings, { forcePrompt: true });
             }
-            // Pending automation jobs snapshot their settings at scheduling time;
-            // any import that touches active settings or stores must invalidate them
-            // so a queued job never runs with pre-import provider/prompt state.
-            _automationRevision += 1;
-            if (!currentSettings.autoGenerate) {
-                resetAutoGenerateCadence({ clearTimer: true });
-            }
-        }
-        if (data.connectionProfiles !== undefined) {
-            connectionProfiles = mergedPortableStores.connectionProfiles;
-            normalizeComfyConnectionProfileStore(connectionProfiles);
-            normalizeProxyProfileStore(connectionProfiles);
-        }
-        if (data.comfyWorkflows !== undefined) {
-            log("Skipped imported ComfyUI workflow presets because executable graphs are local trust configuration");
         }
         if (data.generationPresets !== undefined) {
-            generationPresets = mergedPortableStores.generationPresets;
-            normalizeGenerationPresetStore(generationPresets);
+            configurations = mergedPortableStores.generationPresets;
+            normalizeGenerationPresetStore(configurations);
+        }
+        // Files written before configurations existed may carry separate profile and workflow
+        // stores. Complete those records from safe defaults, never from this install's secrets.
+        if (data.connectionProfiles !== undefined || data.comfyWorkflows !== undefined) {
+            const projected = buildConfigurationsFromLegacyStores(
+                data.connectionProfiles || {},
+                data.generationPresets || [],
+                data.comfyWorkflows || [],
+                defaultSettings,
+            );
+            const byId = new Map(configurations.map(entry => [entry?.id, entry]));
+            for (const record of projected) {
+                const existing = byId.get(record.id);
+                if (existing) {
+                    if (!configurationRecordsShareIdentity(existing, record)) continue;
+                    const merged = mergePreservingPrivateFields(existing, record);
+                    Object.assign(existing, merged);
+                } else {
+                    configurations.push(record);
+                    byId.set(record.id, record);
+                }
+            }
         }
         if (data.charSettings !== undefined) charSettings = data.charSettings;
         if (data.charRefImages !== undefined) charRefImages = data.charRefImages;
@@ -16991,11 +17277,10 @@ async function commitSettingsImportNow(data) {
             "promptReplacements",
         ].some(key => Object.prototype.hasOwnProperty.call(data, key));
         if (filterStateTouched) ensureFilterPoolsState({ persist: false });
-        syncActiveGenerationPresetSetting({ persist: false });
+        syncActiveConfigurationSetting({ persist: false });
 
         const stores = new Map();
-        if (data.connectionProfiles !== undefined) stores.set("qig_profiles", connectionProfiles);
-        if (data.generationPresets !== undefined) stores.set("qig_gen_presets", generationPresets);
+        if (data.generationPresets !== undefined || data.connectionProfiles !== undefined || data.comfyWorkflows !== undefined) stores.set("qig_configurations", configurations);
         if (data.charSettings !== undefined) stores.set("qig_char_settings", charSettings);
         if (data.charRefImages !== undefined) stores.set("qig_char_ref_images", charRefImages);
         if (filterStateTouched) {
@@ -17071,7 +17356,7 @@ function importSettings() {
             const legacyPrivateImages = data.charRefImages !== undefined
                 ? " This legacy file includes private reference images."
                 : "";
-            if (!(await qigConfirm(`Import validated settings from ${data.exportDate || "unknown date"}? Records are merged: your existing profiles, presets, and API keys are kept even when the file does not include them. Credentials and executable workflow bodies in the file are ignored.${legacyPrivateImages}`, { okButton: "Import Settings", wide: true }))) return;
+            if (!(await qigConfirm(`Import validated settings from ${data.exportDate || "unknown date"}? Configurations are merged by ID. Existing local credentials, endpoints, reference images, and workflow bodies stay local; private values in the file are ignored.${legacyPrivateImages}`, { okButton: "Import Settings", wide: true }))) return;
             await commitSettingsImport(data);
             const contextMediaManager = document.getElementById("qig-context-media-manager");
             if (contextMediaManager) hidePopup(contextMediaManager);
@@ -17084,9 +17369,7 @@ function importSettings() {
                 }
                 await loadCharSettings();
             }
-            renderPresets();
-            renderProfileSelect();
-            renderComfyWorkflowPresets();
+            renderConfigurationSelect();
             renderContextualFilters();
             const settings = getSettings();
             if (settings.provider === "local" && settings.localType === "comfyui") {
@@ -17106,6 +17389,7 @@ function syncLocalTypeSections(localType) {
     const comfyOpts = document.getElementById("qig-local-comfyui-opts");
     if (a1111Opts) a1111Opts.style.display = localType === "a1111" ? "block" : "none";
     if (comfyOpts) comfyOpts.style.display = localType === "comfyui" ? "block" : "none";
+    syncSamplingGroupVisibility();
     const denoiseWrap = document.getElementById("qig-local-denoise-wrap");
     if (denoiseWrap) {
         const s = getSettings();
@@ -17182,7 +17466,17 @@ function syncNanobananaNbpVisibility(s = getSettings()) {
     if (nbpOptions) nbpOptions.style.display = s.nanobananaNbpMode !== false ? "block" : "none";
     const nbpCustom = document.getElementById("qig-nanobanana-custom-director-wrap");
     if (nbpCustom) nbpCustom.style.display = normalizeNbpDirectorPreset(s.nanobananaNbpPreset) === "custom" ? "block" : "none";
+    rerunSettingsSearch();
 }
+
+const DYNAMIC_PROVIDER_SELECT_IDS = new Set([
+    "qig-local-model",
+    "qig-a1111-model",
+    "qig-a1111-vae",
+    "qig-a1111-hires-upscaler",
+    "qig-a1111-ipadapter-mode",
+    "qig-a1111-cn-model",
+]);
 
 function refreshProviderInputs(provider, { updateProviderVisibility = true } = {}) {
     const s = getSettings();
@@ -17302,7 +17596,20 @@ function refreshProviderInputs(provider, { updateProviderVisibility = true } = {
     };
     (map[provider] || []).forEach(([id, key]) => {
         const el = document.getElementById(id);
-        if (el) el.type === "checkbox" ? el.checked = s[key] : el.value = s[key] ?? "";
+        if (!el) return;
+        if (el.type === "checkbox") {
+            el.checked = s[key];
+            return;
+        }
+        const value = String(s[key] ?? "");
+        if (value && el.tagName === "SELECT" && DYNAMIC_PROVIDER_SELECT_IDS.has(id)
+            && ![...el.options].some(option => option.value === value)) {
+            const option = el.ownerDocument.createElement("option");
+            option.value = value;
+            option.textContent = `${value} (saved)`;
+            el.appendChild(option);
+        }
+        el.value = value;
     });
 
     if (provider === "local") {
@@ -17569,7 +17876,7 @@ function applyCustomApiStarter(starterId) {
     saveSettingsDebounced();
     refreshProviderInputs("custom", { updateProviderVisibility: false });
     updateCustomApiUI();
-    syncGenerationPresetIndicators();
+    syncConfigurationIndicators();
 }
 
 function updateCustomApiUI() {
@@ -17636,6 +17943,24 @@ function updateGenerationCapabilitiesUI(settings = getSettings()) {
     if (seqSeeds) seqSeeds.style.display = !capabilities.sequentialSeeds
         ? "none"
         : ((settings.batchCount || 1) > 1 ? "" : "none");
+    syncSamplingGroupVisibility(settings, capabilities);
+}
+
+// Sampler and the backend schedule live in one Sampling group, but they stay separate settings
+// because each provider needs its own schedule value. Only the applicable schedule is shown.
+function syncSamplingGroupVisibility(settings = getSettings(), capabilities = null) {
+    const isLocal = settings.provider === "local";
+    const showA1111 = isLocal && settings.localType !== "comfyui";
+    const showComfy = isLocal && settings.localType === "comfyui";
+    const a1111Wrap = document.getElementById("qig-a1111-scheduler-wrap");
+    const comfyWrap = document.getElementById("qig-comfy-scheduler-wrap");
+    if (a1111Wrap) a1111Wrap.hidden = !showA1111;
+    if (comfyWrap) comfyWrap.hidden = !showComfy;
+    const samplerWrap = document.getElementById("qig-sampler-wrap");
+    const samplerShown = samplerWrap ? samplerWrap.style.display !== "none" : Boolean(capabilities?.sampler);
+    const fieldset = document.querySelector(".qig-sampling");
+    if (fieldset) fieldset.hidden = !samplerShown && !showA1111 && !showComfy;
+    rerunSettingsSearch();
 }
 
 function renderRefImages() {
@@ -17796,8 +18121,7 @@ function bind(id, key, isNum = false, isCheckbox = false, onChange = null) {
         if (typeof onChange === "function") onChange(value, e);
         saveSettingsDebounced();
         updateQigStatusLine();
-        syncGenerationPresetIndicators();
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
     if (isNum) {
         el.onchange = (e) => {
@@ -18036,10 +18360,6 @@ function createUI() {
     const samplerOpts = Object.entries(SAMPLER_GROUPS).map(([group, ids]) =>
         `<optgroup label="${group}">${ids.map(x => `<option value="${x}" ${activeSampler === x || SAMPLER_DISPLAY_NAMES[x] === activeSampler ? "selected" : ""}>${SAMPLER_DISPLAY_NAMES[x] || x}</option>`).join("")}</optgroup>`
     ).join("");
-    const comfyWorkflowPresetOpts = [
-        `<option value="">-- Select Workflow Preset --</option>`,
-        ...comfyWorkflows.map(w => `<option value="${esc(w.id || "")}" ${w.id === selectedComfyWorkflowId ? "selected" : ""}>${esc(w.name || "(unnamed)")}</option>`)
-    ].join("");
     const providerOpts = buildOptions(Object.entries(PROVIDERS), s.provider, v => v.name);
     const styleOpts = buildOptions(Object.entries(STYLES), s.style, v => v.name);
     const activeProviderName = PROVIDERS[s.provider]?.name || s.provider || "Provider";
@@ -18081,12 +18401,14 @@ function createUI() {
 
                 <div class="qig-essentials">
                     <div class="qig-field">
-                        <label for="qig-preset-select">Preset</label>
+                        <label for="qig-config-select">Configuration</label>
                         <div class="qig-inline-control">
-                            <select id="qig-preset-select" class="qig-inline-control__main"></select>
-                            <button id="qig-preset-save-quick" class="menu_button" title="Save current settings as a new preset"><span class="fa-solid fa-bookmark" aria-hidden="true"></span></button>
+                            <select id="qig-config-select" class="qig-inline-control__main"></select>
+                            <button id="qig-config-save" class="menu_button" title="Save current settings as a new configuration"><span class="fa-solid fa-floppy-disk" aria-hidden="true"></span><span class="qig-sr-label">Save As</span></button>
+                            <button id="qig-config-update" class="menu_button" title="Overwrite the selected configuration with current settings"><span class="fa-solid fa-rotate" aria-hidden="true"></span><span class="qig-sr-label">Update</span></button>
+                            <button id="qig-config-del" class="menu_button" title="Delete the selected configuration"><span class="fa-solid fa-trash" aria-hidden="true"></span><span class="qig-sr-label">Delete</span></button>
                         </div>
-                        <small>Presets bundle provider, style, and prompt behavior. Pick one, tweak the prompt, hit Generate.</small>
+                        <small>A configuration is one complete setup: provider, credentials, model, components, and generation settings. Switching one only touches that provider.</small>
                     </div>
                     <div class="qig-field">
                         <label for="qig-prompt">Prompt</label>
@@ -18098,7 +18420,7 @@ function createUI() {
                             <div class="qig-prompt-source" role="radiogroup" aria-labelledby="qig-prompt-source-label" aria-describedby="qig-prompt-source-help">
                             <label class="qig-prompt-source__option"><input type="radio" name="qig-prompt-source" value="manual" ${promptSourceMode === "manual" ? "checked" : ""}><span>Manual</span></label>
                             <label class="qig-prompt-source__option"><input type="radio" name="qig-prompt-source" value="chat" ${promptSourceMode === "chat" ? "checked" : ""}><span>Chat scene</span></label>
-                            <label class="qig-prompt-source__option"><input type="radio" name="qig-prompt-source" value="tags" ${promptSourceMode === "tags" ? "checked" : ""}><span>AI-tagged (auto)</span></label>
+                            <label class="qig-prompt-source__option"><input type="radio" name="qig-prompt-source" value="tags" ${promptSourceMode === "tags" ? "checked" : ""}><span>AI-tagged</span></label>
                         </div>
                         <small id="qig-prompt-source-help">${esc(PROMPT_SOURCE_HELP[promptSourceMode] || "")}</small>
                     </div>
@@ -18144,13 +18466,6 @@ function createUI() {
                             <label>Provider</label>
                             <select id="qig-provider">${providerOpts}</select>
                             <small>Image generation service, cloud API or local server.</small>
-                        </div>
-                        <div class="qig-field qig-field--full">
-                            <label>Connection Profile</label>
-                            <div class="qig-inline-control qig-profile-control">
-                                <div id="qig-profile-select" class="qig-inline-control__main"></div>
-                                <button id="qig-profile-save" class="menu_button" title="Save current provider, API key, and model as a reusable profile"><span class="fa-solid fa-floppy-disk"></span><span>Save Profile</span></button>
-                            </div>
                         </div>
                     </div>
                     <div id="qig-output-settings" class="qig-output-settings">
@@ -18309,7 +18624,7 @@ function createUI() {
                         <div>
                             <label for="qig-nanobanana-key">Gemini API Key</label>
                             <input id="qig-nanobanana-key" type="password" value="${esc(s.nanobananaKey)}" autocomplete="off" placeholder="AI Studio API key">
-                            <small>Stored in SillyTavern extension settings. Save a Connection Profile if you swap providers often.</small>
+                            <small>Stored in SillyTavern extension settings. Save a Configuration if you swap setups often.</small>
                         </div>
                         <div>
                             <label for="qig-nanobanana-model">Model</label>
@@ -18431,16 +18746,13 @@ function createUI() {
                              <select id="qig-local-model" style="flex:1;">
                                  <option value="${esc(s.localModel)}" selected>${esc(s.localModel || "-- Click Refresh --")}</option>
                              </select>
-                             <button id="qig-comfy-model-refresh" class="menu_button" style="padding:4px 8px;" title="Refresh model list">🔄</button>
+                             <button id="qig-comfy-model-refresh" class="menu_button" style="padding:4px 8px;" title="Refresh models, text encoders and VAEs">🔄</button>
                          </div>
                          <div class="form-hint">Click Refresh to load only models supported by the selected loader.</div>
                          <div class="qig-row">
                             <div><label>Denoise</label><input id="qig-comfy-denoise" type="number" value="${esc(s.comfyDenoise ?? 1.0)}" min="0" max="1" step="0.05"><small>1.0 = full txt2img. For img2img: upload a Reference Image below and set Denoise &lt; 1.0</small></div>
                             <div><label>CLIP Skip</label><input id="qig-comfy-clip" type="number" value="${esc(s.comfyClipSkip || 1)}" min="1" max="12" step="1"><small>1 for most models, 2 for anime/NAI-based</small></div>
                          </div>
-                         <label>Scheduler</label>
-                         <select id="qig-comfy-scheduler">${COMFY_SCHEDULERS.map(x => `<option value="${x}" ${s.comfyScheduler === x ? "selected" : ""}>${x}</option>`).join("")}</select>
-                         <small>Noise schedule for the sampler — karras is popular for DPM++, normal for others</small>
                          <label>Timeout (seconds)</label>
                          <input id="qig-comfy-timeout" type="number" value="${esc(s.comfyTimeout || 300)}" min="10" max="1800">
                          <small>How long SillyTavern waits for ComfyUI to finish before giving up.</small>
@@ -18468,41 +18780,37 @@ function createUI() {
                              <small>(reuse positive conditioning for models that do not use negatives)</small>
                          </label>
                          <div id="qig-comfy-flux-opts" style="display:${normalizeComfyModelLoader(s.comfyModelLoader, s) === "unet" ? "block" : "none"}; margin-left:24px; border-left:2px solid var(--qig-line); padding-left:10px;">
-                            <div class="form-hint">Diffusion/UNET models require separate CLIP and VAE filenames before generation.</div>
+                            <div class="form-hint">Diffusion/UNET models require separate CLIP and VAE filenames before generation. Refresh above to list what your server has.</div>
+                            <datalist id="qig-comfy-clip-catalog"></datalist>
+                            <datalist id="qig-comfy-vae-catalog"></datalist>
                             <div class="qig-row">
-                                <div><label>CLIP Model 1</label><input id="qig-comfy-flux-clip1" type="text" value="${esc(s.comfyFluxClipModel1 || "")}" placeholder="t5xxl_fp16.safetensors"><small>From models/text_encoders/</small></div>
-                                <div><label>CLIP Model 2</label><input id="qig-comfy-flux-clip2" type="text" value="${esc(s.comfyFluxClipModel2 || "")}" placeholder="clip_l.safetensors"><small>From models/text_encoders/ (leave blank if single-CLIP)</small></div>
+                                <div><label>Text Encoder 1</label><input id="qig-comfy-flux-clip1" type="text" list="qig-comfy-clip-catalog" value="${esc(s.comfyFluxClipModel1 || "")}" placeholder="t5xxl_fp16.safetensors"><small>From models/text_encoders/</small></div>
+                                <div><label>Text Encoder 2</label><input id="qig-comfy-flux-clip2" type="text" list="qig-comfy-clip-catalog" value="${esc(s.comfyFluxClipModel2 || "")}" placeholder="clip_l.safetensors"><small>From models/text_encoders/ (leave blank if single-CLIP)</small></div>
                             </div>
                             <label>CLIP Type</label>
-                            <input id="qig-comfy-flux-clip-type" type="text" value="${esc(s.comfyFluxClipType || "flux")}" placeholder="flux">
-                            <small>DualCLIP (2 models): flux, sdxl, sd3, hunyuan_video. SingleCLIP (1 model): flux2, sd3, stable_diffusion, qwen_image, hunyuan_image, etc.</small>
+                            <input id="qig-comfy-flux-clip-type" type="text" list="qig-comfy-clip-type-catalog" value="${esc(s.comfyFluxClipType || "flux")}" placeholder="flux">
+                            <datalist id="qig-comfy-clip-type-catalog">${["flux", "flux2", "sdxl", "sd3", "stable_diffusion", "hunyuan_video", "hunyuan_image", "qwen_image"].map(type => `<option value="${type}"></option>`).join("")}</datalist>
+                            <small>DualCLIP (2 encoders): flux, sdxl, sd3, hunyuan_video. SingleCLIP (1 encoder): flux2, sd3, stable_diffusion, qwen_image, hunyuan_image, etc.</small>
                             <label>VAE Model</label>
-                            <input id="qig-comfy-flux-vae" type="text" value="${esc(s.comfyFluxVaeModel || "")}" placeholder="ae.safetensors">
+                            <input id="qig-comfy-flux-vae" type="text" list="qig-comfy-vae-catalog" value="${esc(s.comfyFluxVaeModel || "")}" placeholder="ae.safetensors">
                             <small>From models/vae/. Required for UNET-only models.</small>
                          </div>
                          <label>LoRAs (filename:weight, comma-separated)</label>
                          <small>Applied only to the built-in workflow. Custom workflows must include their own LoRA nodes. Filename must match your ComfyUI loras folder.</small>
                          <input id="qig-comfy-loras" type="text" value="${esc(s.comfyLoras || "")}" placeholder="my_lora.safetensors:0.8, style_lora.safetensors:0.6">
-                         <label>Workflow Preset</label>
-                         <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
-                             <select id="qig-comfy-workflow-select" style="flex:1;min-width:180px;">${comfyWorkflowPresetOpts}</select>
-                             <button id="qig-comfy-workflow-load" class="menu_button" style="padding:2px 8px;">📂 Load</button>
-                             <button id="qig-comfy-workflow-save-as" class="menu_button" style="padding:2px 8px;">💾 Save As</button>
-                             <button id="qig-comfy-workflow-update" class="menu_button" style="padding:2px 8px;">♻️ Update</button>
-                             <button id="qig-comfy-workflow-del" class="menu_button" style="padding:2px 8px;">🗑️</button>
-                         </div>
-                         <small>Use presets for quick graph switching (e.g., with LoRA / without LoRA). Profiles save provider settings; workflow presets focus on Comfy graph fields.</small>
                          <label>Custom Workflow JSON</label>
                          <textarea id="qig-comfy-workflow" rows="3" placeholder='Paste workflow from ComfyUI "Save (API Format)". Tokens include %prompt%, %negative%, %seed%, %width%, %height%, %steps%, %cfg%, %denoise%, %clip_stop_at_layer%, %sampler%, %scheduler%, %model%, %reference_image%'>${esc(s.comfyWorkflow || "")}</textarea>
-                         <div class="form-hint">Optional: built-in standard and Flux/UNET workflows are available without JSON. Custom graphs use only settings represented by placeholders, and all matching output images are returned. Export from ComfyUI using Save (API Format). Executable workflow JSON is omitted from full settings exports for safety.</div>
-                    </div>
+                          <div class="form-hint">Optional: built-in standard and Flux/UNET workflows are available without JSON. Custom graphs use only settings represented by placeholders, and all matching output images are returned. Export from ComfyUI using Save (API Format). Executable workflow JSON is omitted from full settings exports for safety.</div>
+                          <div id="qig-comfy-component-overrides" class="qig-comfy-overrides" hidden></div>
+                     </div>
                     <div id="qig-local-a1111-opts" style="display:${s.localType === "a1111" ? "block" : "none"}">
                          <label>Model</label>
                          <div style="display:flex;gap:4px;align-items:center;">
                              <select id="qig-a1111-model" style="flex:1;">
-                                 <option value="">-- Click Refresh to load models --</option>
+                                 <option value="" ${!s.a1111Model ? "selected" : ""}>-- Click Refresh to load models --</option>
+                                 ${s.a1111Model ? `<option value="${esc(s.a1111Model)}" selected>${esc(s.a1111Model)} (saved)</option>` : ""}
                              </select>
-                             <button id="qig-a1111-model-refresh" class="menu_button" style="padding:4px 8px;" title="Refresh model list">🔄</button>
+                             <button id="qig-a1111-model-refresh" class="menu_button" style="padding:4px 8px;" title="Refresh models, VAEs, upscalers and ControlNet models">🔄</button>
                          </div>
                          <label>LoRAs (name:weight, comma-separated)</label>
                          <small>Always applied. For scene-specific LoRAs, use Contextual Filters.</small>
@@ -18515,14 +18823,14 @@ function createUI() {
                              <span class="qig-collapsible__icon fa-solid ${a1111TuningCollapsed ? "fa-chevron-right" : "fa-chevron-down"}" aria-hidden="true"></span>
                          </button>
                          <div id="qig-a1111-tuning-content" class="qig-collapsible__content" ${a1111TuningHidden}>
-                         <label>VAE</label>
-                         <select id="qig-a1111-vae">
-                             <option value="" ${!s.a1111Vae ? "selected" : ""}>Automatic</option>
-                         </select>
-                         <small>Override model's built-in VAE. Click Refresh to populate list.</small>
+                          <label>VAE</label>
+                          <select id="qig-a1111-vae">
+                              <option value="" ${!s.a1111Vae ? "selected" : ""}>Automatic</option>
+                              ${s.a1111Vae ? `<option value="${esc(s.a1111Vae)}" selected>${esc(s.a1111Vae)}</option>` : ""}
+                          </select>
+                          <small>Override the model's built-in VAE. Refresh next to Model fills this list from your server.</small>
                          <div class="qig-row" style="margin-top:8px;">
                             <div><label>CLIP Skip</label><input id="qig-a1111-clip" type="number" value="${esc(s.a1111ClipSkip || 1)}" min="1" max="12" step="1"><small>1 for most models, 2 for anime/NAI-based</small></div>
-                            <div><label>Scheduler</label><select id="qig-a1111-scheduler">${A1111_SCHEDULERS.map(x => `<option value="${x}" ${s.a1111Scheduler === x ? "selected" : ""}>${x}</option>`).join("")}</select><small>Noise schedule (A1111 1.6+)</small></div>
                          </div>
                          <div class="qig-row" style="margin-top:4px;">
                             <label class="checkbox_label" style="flex:1;">
@@ -18914,7 +19222,7 @@ function createUI() {
                     <input id="qig-custom-key" type="password" value="${esc(s.customApiKey)}" autocomplete="off">
                     <small id="qig-custom-auth-hint" class="qig-muted">Credentials and trusted URLs stay local and are omitted when importing shared settings.</small>
 
-                    <div class="qig-card-title" style="margin-top:12px;">Request mapping <small>(saved in generation presets)</small></div>
+                    <div class="qig-card-title" style="margin-top:12px;">Request mapping <small>(saved in Configurations)</small></div>
                     <div class="qig-row">
                         <div>
                             <label>Starter</label>
@@ -18972,8 +19280,8 @@ function createUI() {
                 <section class="qig-menu-section qig-menu-section--prompt qig-menu-section--collapsible qig-flow-create" aria-labelledby="qig-prompt-heading">
                     <button id="qig-section-create-toggle" type="button" class="qig-collapsible__header qig-section-header-toggle" aria-expanded="${sectionCreateExpanded}" aria-controls="qig-section-create-content">
                         <span class="qig-section-header-text">
-                            <h3 id="qig-prompt-heading" class="qig-section-kicker">Presets &amp; Prompting</h3>
-                            <small class="qig-section-subtitle">Manage generation presets, plain descriptions, and LLM prompt rewriting.</small>
+                            <h3 id="qig-prompt-heading" class="qig-section-kicker">Prompting Tools</h3>
+                            <small class="qig-section-subtitle">Generate from plain descriptions or rewrite prompts with a language model.</small>
                         </span>
                         <span class="qig-collapsible__icon fa-solid ${collapsed.sectionCreate ? "fa-chevron-right" : "fa-chevron-down"}" aria-hidden="true"></span>
                     </button>
@@ -18981,12 +19289,10 @@ function createUI() {
                     <div class="qig-action-strip">
                         <button id="qig-chatgpt-nbp-setup" class="menu_button qig-inline-action" title="Set QIG for ChatGPT prompt writing and Nano Banana Pro image rendering"><span class="fa-solid fa-wand-magic-sparkles"></span><span>ChatGPT + NBP</span></button>
                         <button id="qig-plain-desc-btn" class="menu_button" title="Write a plain-language image description and let the AI turn it into a prompt"><span class="fa-solid fa-pen-to-square"></span><span>Plain Description</span></button>
-                        <button id="qig-save-preset" class="menu_button" title="Save the current settings as a preset"><span class="fa-solid fa-bookmark"></span><span>Save Preset</span></button>
                         <button id="qig-export-btn" class="menu_button"><span class="fa-solid fa-file-export"></span><span>Export</span></button>
                         <button id="qig-import-btn" class="menu_button"><span class="fa-solid fa-file-import"></span><span>Import</span></button>
                     </div>
-                    <div id="qig-presets" class="qig-presets"></div>
-                    <small class="qig-muted">Presets save generation behavior, not credentials or every provider option. Connection profiles save the active provider's private setup.</small>
+                    <small class="qig-muted">Configurations are managed at the top of the panel. Portable fields are included in Export; credentials, endpoints, private images, and executable workflows stay local.</small>
 
                     <button id="qig-prompt-advanced-toggle" type="button" class="qig-collapsible__header qig-inline-collapsible" aria-expanded="${promptAdvancedExpanded}" aria-controls="qig-prompt-advanced-content">
                         <span>
@@ -19374,7 +19680,14 @@ function createUI() {
                     <div class="qig-control-grid qig-generation-advanced-grid">
                         <div class="qig-field"><label for="qig-steps">Steps</label><input id="qig-steps" type="number" value="${esc(activeSteps)}" min="1" max="${isFalSchnell ? 12 : 150}" step="1"><small>Higher can improve detail but takes longer.</small></div>
                         <div class="qig-field"><label for="qig-cfg">Guidance (CFG)</label><input id="qig-cfg" type="number" value="${esc(activeCfg)}" min="${s.provider === "proxy" ? 0 : 1}" max="${isFalSchnell ? 20 : 30}" step="0.5"><small>Higher follows the prompt more literally.</small></div>
-                        <div class="qig-field"><label for="qig-sampler">Sampler</label><select id="qig-sampler">${samplerOpts}</select><small>Generation algorithm supported by the active provider.</small></div>
+                        <fieldset class="qig-field qig-field--full qig-sampling">
+                            <legend>Sampling</legend>
+                            <div class="qig-sampling-grid">
+                                <div class="qig-field" id="qig-sampler-wrap"><label for="qig-sampler">Sampler</label><select id="qig-sampler">${samplerOpts}</select><small>Generation algorithm supported by the active provider.</small></div>
+                                <div class="qig-field" id="qig-a1111-scheduler-wrap"><label for="qig-a1111-scheduler">Schedule</label><select id="qig-a1111-scheduler">${A1111_SCHEDULERS.map(x => `<option value="${x}" ${s.a1111Scheduler === x ? "selected" : ""}>${x}</option>`).join("")}</select><small>Noise schedule (A1111 1.6+).</small></div>
+                                <div class="qig-field" id="qig-comfy-scheduler-wrap"><label for="qig-comfy-scheduler">Schedule</label><select id="qig-comfy-scheduler">${COMFY_SCHEDULERS.map(x => `<option value="${x}" ${s.comfyScheduler === x ? "selected" : ""}>${x}</option>`).join("")}</select><small>Noise schedule for the sampler — karras is popular for DPM++, normal for others.</small></div>
+                            </div>
+                        </fieldset>
                         <div class="qig-field"><label for="qig-seed">Seed</label><input id="qig-seed" type="number" value="${esc(activeSeed)}"><small>Use -1 for a random seed.</small></div>
                         <div class="qig-field"><label for="qig-hosted-timeout">Hosted deadline (seconds)</label><input id="qig-hosted-timeout" type="number" value="${esc(s.hostedTimeout ?? 300)}" min="30" max="1800"><small>One deadline covers submission, polling, output download, and validation.</small></div>
                     </div>
@@ -19431,8 +19744,6 @@ function createUI() {
         promptSection?.scrollIntoView?.({ block: "center", behavior: "smooth" });
     };
     document.getElementById("qig-plain-desc-btn").onclick = generateImageFromPlainDescription;
-    document.getElementById("qig-profile-save").onclick = saveConnectionProfile;
-    document.getElementById("qig-save-preset").onclick = savePreset;
     document.getElementById("qig-export-btn").onclick = exportAllSettings;
     document.getElementById("qig-import-btn").onclick = importSettings;
     setupQigCollapsibleSection("setupPanel", "qig-setup-toggle", "qig-setup-panel");
@@ -19446,24 +19757,21 @@ function createUI() {
     setupQigCollapsibleSection("a1111Tuning", "qig-a1111-tuning-toggle", "qig-a1111-tuning-content");
     setupSettingsSearch();
     bindQigKeyboardShortcuts();
-    renderPresets();
-    renderProfileSelect();
-    renderComfyWorkflowPresets();
+    renderConfigurationSelect();
     renderContextualFilters();
     renderContextMediaSummary();
+    renderComfyComponentOverrides();
 
     document.querySelectorAll(".qig-wizard-btn").forEach(btn => {
         btn.onclick = () => showSetupWizard();
     });
-    document.getElementById("qig-preset-save-quick").onclick = savePreset;
-    document.getElementById("qig-preset-select").onchange = (e) => {
-        const presetId = e.target.value;
-        if (!presetId) {
-            setActiveGenerationPresetId("");
-            return;
-        }
-        const index = generationPresets.findIndex(p => p?.id === presetId);
-        if (index >= 0) loadPreset(index);
+    document.getElementById("qig-config-save").onclick = saveConfigurationAs;
+    document.getElementById("qig-config-update").onclick = updateSelectedConfiguration;
+    document.getElementById("qig-config-del").onclick = deleteSelectedConfiguration;
+    document.getElementById("qig-config-select").onchange = (e) => {
+        const configId = e.target.value;
+        if (configId) void loadConfiguration(configId);
+        else setActiveConfigurationId("");
     };
     document.querySelectorAll('input[name="qig-prompt-source"]').forEach(radio => {
         radio.onchange = (e) => {
@@ -19472,17 +19780,18 @@ function createUI() {
     });
 
     document.getElementById("qig-provider").onchange = async (e) => {
+        a1111ModelRefreshController?.abort();
+        comfyModelRefreshController?.abort();
         getSettings().provider = e.target.value;
         if (charSettingsOverrideApplied) await loadCharSettings();
         saveSettingsDebounced();
         refreshProviderInputs(getSettings().provider);
-        renderProfileSelect();
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
     document.getElementById("qig-style").onchange = (e) => {
         getSettings().style = e.target.value;
         saveSettingsDebounced();
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
 
     bind("qig-pollinations-key", "pollinationsKey");
@@ -19610,14 +19919,18 @@ function createUI() {
         getSettings().customApiMode = event.target.value;
         saveSettingsDebounced();
         updateCustomApiUI();
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
     const customStarter = getOrCacheElement("qig-custom-starter");
     if (customStarter) customStarter.onchange = (event) => {
         applyCustomApiStarter(event.target.value);
         event.target.value = "";
     };
-    bind("qig-local-url", "localUrl");
+    bind("qig-local-url", "localUrl", () => {
+        a1111ModelRefreshController?.abort();
+        comfyModelRefreshController?.abort();
+        renderComfyComponentOverrides();
+    });
     bind("qig-local-model", "localModel");
     document.getElementById("qig-local-model").addEventListener("change", (e) => {
         const val = (e.target.value || "").toLowerCase();
@@ -19629,19 +19942,13 @@ function createUI() {
             );
         }
     });
-    document.getElementById("qig-comfy-workflow-select").onchange = (e) => {
-        selectedComfyWorkflowId = e.target.value || "";
-        setComfyWorkflowActionState(!!selectedComfyWorkflowId);
-    };
-    document.getElementById("qig-comfy-workflow-load").onclick = loadSelectedComfyWorkflowPreset;
-    document.getElementById("qig-comfy-workflow-save-as").onclick = saveComfyWorkflowPresetAs;
-    document.getElementById("qig-comfy-workflow-update").onclick = updateSelectedComfyWorkflowPreset;
-    document.getElementById("qig-comfy-workflow-del").onclick = deleteSelectedComfyWorkflowPreset;
     // ComfyUI model refresh
     document.getElementById("qig-comfy-model-refresh").onclick = () => {
         refreshComfyModelCatalog().catch(error => log(`ComfyUI model refresh failed: ${error.message}`));
     };
     document.getElementById("qig-local-type").onchange = (e) => {
+        a1111ModelRefreshController?.abort();
+        comfyModelRefreshController?.abort();
         getSettings().localType = e.target.value;
         syncLocalTypeSections(e.target.value);
         saveSettingsDebounced();
@@ -19677,6 +19984,8 @@ function createUI() {
         document.getElementById("qig-comfy-upscale-opts").style.display = e.target.checked ? "block" : "none";
     };
     bind("qig-comfy-workflow", "comfyWorkflow");
+    // Re-parse on blur, not per keystroke: a graph can be up to 1 MiB.
+    document.getElementById("qig-comfy-workflow")?.addEventListener("change", renderComfyComponentOverrides);
     bind("qig-comfy-loras", "comfyLoras");
     document.getElementById("qig-comfy-skip-neg").onchange = (e) => {
         getSettings().comfySkipNegativePrompt = e.target.checked;
@@ -19814,122 +20123,132 @@ function createUI() {
     const a1111ModelSelect = document.getElementById("qig-a1111-model");
     const a1111ModelRefresh = document.getElementById("qig-a1111-model-refresh");
     let a1111ModelRefreshSerial = 0;
+    let a1111ModelRefreshController = null;
+    const ipAdapterSelect = document.getElementById("qig-a1111-ipadapter-mode");
+    const builtInIpAdapterOptions = [...ipAdapterSelect.options].map(option => ({
+        value: option.value,
+        label: option.textContent,
+        disabled: option.disabled,
+    }));
 
     async function populateA1111Models() {
         const s = getSettings();
+        a1111ModelRefreshController?.abort();
+        const controller = new AbortController();
+        a1111ModelRefreshController = controller;
+        const deadline = createAbortDeadline(controller.signal, 10_000, "A1111 discovery timed out");
         const requestId = ++a1111ModelRefreshSerial;
         const baseUrl = normalizeA1111BaseUrl(s.localUrl);
         const configuredModel = s.a1111Model;
+        let checkpointResultCommitted = false;
         const isCurrentRequest = () => isCurrentA1111ModelRefresh({
             requestId,
             latestRequestId: a1111ModelRefreshSerial,
             baseUrl,
             settings: getSettings(),
-        });
-        replaceSelectOptions(a1111ModelSelect, [{ value: "", label: "Loading..." }]);
+        }) && a1111ModelRefreshController === controller;
+        try {
+            replaceSelectOptions(a1111ModelSelect, catalogSelectOptions([], configuredModel, { value: "", label: "Loading..." }), configuredModel);
 
-        // Fetch SD Checkpoints
-        const models = await fetchA1111Models(baseUrl);
-        if (!isCurrentRequest()) return;
-        const currentModel = configuredModel || await getCurrentA1111Model(baseUrl);
-        if (!isCurrentRequest()) return;
+            // Fetch SD Checkpoints
+            const models = await fetchA1111Models(baseUrl, deadline.signal);
+            if (!isCurrentRequest()) return;
+            const currentModel = configuredModel || await getCurrentA1111Model(baseUrl, deadline.signal);
+            if (!isCurrentRequest()) return;
 
-        if (models.length === 0) {
-            replaceSelectOptions(a1111ModelSelect, [{ value: "", label: "-- Failed to load (check if A1111 running) --" }]);
-        } else {
-            replaceSelectOptions(a1111ModelSelect, models.map(model => ({
-                value: model.title,
-                label: model.name,
-            })), currentModel);
+            if (models.length === 0) {
+                replaceSelectOptions(a1111ModelSelect, catalogSelectOptions([], configuredModel, { value: "", label: "-- Failed to load (check if A1111 running) --" }), configuredModel);
+            } else {
+                const modelOptions = models.map(model => ({ value: model.title, label: model.name }));
+                // Keep a configured checkpoint the backend no longer reports, so the select never blanks out.
+                if (currentModel && !modelOptions.some(option => option.value === currentModel)) {
+                    modelOptions.push({ value: currentModel, label: `${currentModel} (not on server)` });
+                }
+                replaceSelectOptions(a1111ModelSelect, modelOptions, currentModel);
 
-            if (currentModel && !getSettings().a1111Model) {
-                getSettings().a1111Model = currentModel;
-                saveSettingsDebounced();
+                if (currentModel && !getSettings().a1111Model) {
+                    getSettings().a1111Model = currentModel;
+                    saveSettingsDebounced();
+                }
             }
-        }
+            checkpointResultCommitted = true;
 
-        // Fetch ControlNet Models for IP-Adapter
-        const cnModels = await fetchControlNetModels(baseUrl);
-        if (!isCurrentRequest()) return;
-        const cnSelect = document.getElementById("qig-a1111-ipadapter-mode");
+            const [controlNetResult, upscalerResult, vaeResult] = await Promise.allSettled([
+                fetchControlNetModels(baseUrl, deadline.signal),
+                fetchA1111Upscalers(baseUrl, deadline.signal),
+                fetchA1111VAEs(baseUrl, deadline.signal),
+            ]);
+            if (!isCurrentRequest()) return;
+            const cnModels = controlNetResult.status === "fulfilled" ? controlNetResult.value : [];
 
-        // Filter for IP-Adapter/FaceID models
-        const ipModels = cnModels.filter(m => m.toLowerCase().includes("ip-adapter") || m.toLowerCase().includes("faceid"));
-
-        if (ipModels.length > 0) {
-            // Preserve current selection if possible, otherwise default
+            // Filter for IP-Adapter/FaceID models
+            const ipModels = cnModels.filter(m => m.toLowerCase().includes("ip-adapter") || m.toLowerCase().includes("faceid"));
             const currentCn = getSettings().a1111IpAdapterMode;
 
-            replaceSelectOptions(cnSelect, [
-                { value: "", label: "-- Detected Models --", disabled: true },
-                ...ipModels.map(model => ({ value: model, label: model })),
-            ], currentCn);
-        } else {
-            // Fallback to presets if no API or no models found
-            console.log("No IP-Adapter models detected via API, using presets.");
-            const hasNoModelsOption = Array.from(cnSelect.options || []).some(opt =>
-                opt.disabled && opt.textContent.includes("No IP-Adapter models detected")
-            );
-            if (!hasNoModelsOption) {
-                const option = cnSelect.ownerDocument.createElement("option");
-                option.value = "";
-                option.textContent = "-- No IP-Adapter models detected --";
-                option.disabled = true;
-                cnSelect.appendChild(option);
+            if (ipModels.length > 0) {
+                replaceSelectOptions(ipAdapterSelect, catalogSelectOptions(ipModels, currentCn, {
+                    value: "",
+                    label: "-- Detected Models --",
+                    disabled: true,
+                }), currentCn);
+            } else {
+                console.log("No IP-Adapter models detected via API, using presets.");
+                replaceSelectOptions(ipAdapterSelect, catalogSelectOptions(builtInIpAdapterOptions, currentCn, {
+                    value: "",
+                    label: "-- No IP-Adapter models detected --",
+                    disabled: true,
+                }), currentCn);
             }
-        }
 
-        // Fetch Upscalers for Hires Fix
-        const upscalers = await fetchA1111Upscalers(baseUrl);
-        if (!isCurrentRequest()) return;
-        const upscalerSelect = document.getElementById("qig-a1111-hires-upscaler");
-        if (upscalers.length > 0 && upscalerSelect) {
-            const cur = getSettings().a1111HiresUpscaler || "Latent";
-            replaceSelectOptions(upscalerSelect, upscalers.map(upscaler => ({ value: upscaler, label: upscaler })), cur);
-        }
+            // Fetch Upscalers for Hires Fix
+            const upscalers = upscalerResult.status === "fulfilled" ? upscalerResult.value : ["Latent"];
+            const upscalerSelect = document.getElementById("qig-a1111-hires-upscaler");
+            if (upscalerSelect) {
+                const cur = getSettings().a1111HiresUpscaler || "Latent";
+                replaceSelectOptions(upscalerSelect, catalogSelectOptions(upscalers, cur), cur);
+            }
 
-        // Fetch VAEs
-        const vaes = await fetchA1111VAEs(baseUrl);
-        if (!isCurrentRequest()) return;
-        const vaeSelect = document.getElementById("qig-a1111-vae");
-        if (vaeSelect) {
-            const curVae = getSettings().a1111Vae || "";
-            replaceSelectOptions(vaeSelect, [
-                { value: "", label: "Automatic" },
-                ...vaes.map(vae => ({ value: vae, label: vae })),
-            ], curVae);
-        }
+            // Fetch VAEs
+            const vaes = vaeResult.status === "fulfilled" ? vaeResult.value : [];
+            const vaeSelect = document.getElementById("qig-a1111-vae");
+            if (vaeSelect) {
+                const curVae = getSettings().a1111Vae || "";
+                replaceSelectOptions(vaeSelect, catalogSelectOptions(vaes, curVae, { value: "", label: "Automatic" }), curVae);
+            }
 
-        // Populate generic ControlNet model list (all models, not just IP-Adapter)
-        const genericCnSelect = document.getElementById("qig-a1111-cn-model");
-        if (genericCnSelect && cnModels.length > 0) {
-            const curCn = getSettings().a1111ControlNetModel || "";
-            replaceSelectOptions(genericCnSelect, [
-                { value: "", label: "-- Select Model --" },
-                ...cnModels.map(model => ({ value: model, label: model })),
-            ], curCn);
-        } else if (genericCnSelect) {
-            replaceSelectOptions(genericCnSelect, [{ value: "", label: "-- No ControlNet models found --" }]);
+            // Populate generic ControlNet model list (all models, not just IP-Adapter)
+            const genericCnSelect = document.getElementById("qig-a1111-cn-model");
+            if (genericCnSelect) {
+                const curCn = getSettings().a1111ControlNetModel || "";
+                replaceSelectOptions(genericCnSelect, catalogSelectOptions(cnModels, curCn, {
+                    value: "",
+                    label: cnModels.length ? "-- Select Model --" : "-- No ControlNet models found --",
+                }), curCn);
+            }
+        } catch (error) {
+            if (isCurrentRequest() && !checkpointResultCommitted) {
+                replaceSelectOptions(a1111ModelSelect, catalogSelectOptions([], configuredModel, {
+                    value: "",
+                    label: deadline.didTimeOut() ? "-- Timed out --" : "-- Failed to load --",
+                }), configuredModel);
+                if (!controller.signal.aborted || deadline.didTimeOut()) log(`A1111 discovery failed: ${error?.message || error}`);
+            }
+        } finally {
+            deadline.dispose();
+            if (a1111ModelRefreshController === controller) a1111ModelRefreshController = null;
         }
     }
 
-    a1111ModelSelect.onchange = async (e) => {
-        const s = getSettings();
-        const newModel = e.target.value;
-        if (!newModel) return;
-
-        a1111ModelSelect.disabled = true;
-        const success = await switchA1111Model(s.localUrl, newModel);
-        if (success) {
-            s.a1111Model = newModel;
-            saveSettingsDebounced();
-        } else {
-            qigToast.warning("Could not switch the model. The backend kept its current model — check that it is still reachable.");
-        }
-        a1111ModelSelect.disabled = false;
+    a1111ModelSelect.onchange = (e) => {
+        a1111ModelRefreshController?.abort();
+        a1111ModelRefreshController = null;
+        a1111ModelRefreshSerial += 1;
+        getSettings().a1111Model = e.target.value;
+        saveSettingsDebounced();
+        syncConfigurationIndicators();
     };
 
-    a1111ModelRefresh.onclick = () => populateA1111Models();
+    a1111ModelRefresh.onclick = () => void populateA1111Models();
 
     // Local Ref Image
     const localRefInput = getOrCacheElement("qig-local-ref-input");
@@ -20161,7 +20480,7 @@ function createUI() {
         document.getElementById("qig-llm-options").style.display = e.target.checked ? "block" : "none";
         saveSettingsDebounced();
         updateQigStatusLine();
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
     bind("qig-llm-custom", "llmCustomInstruction");
     bindCheckbox("qig-preserve-character-identity", "preserveCharacterIdentity");
@@ -20174,7 +20493,7 @@ function createUI() {
         getSettings().llmPromptStyle = e.target.value;
         saveSettingsDebounced();
         document.getElementById("qig-llm-custom-wrap").style.display = e.target.value === "custom" ? "block" : "none";
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
     bindAutoGenerateCheckbox("qig-auto-generate");
     bindAutoGenerateNumberInput("qig-auto-generate-every", "autoGenerateEveryMessages", normalizeAutoGenerateEveryMessages);
@@ -20209,7 +20528,7 @@ function createUI() {
         getSettings()[key] = value;
         saveSettingsDebounced();
         updateQigStatusLine();
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
     const wireInstructionTemplateButton = (id, onClick) => {
         const el = document.getElementById(id);
@@ -20457,7 +20776,7 @@ function createUI() {
         }
         syncSizeInputs(s.width, s.height);
         saveSettingsDebounced();
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
     if (widthEl) widthEl.onchange = onSizeChange;
     if (heightEl) heightEl.onchange = onSizeChange;
@@ -20476,7 +20795,7 @@ function createUI() {
         }
         syncSizeInputs(s.width, s.height);
         saveSettingsDebounced();
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
     document.getElementById("qig-nai-resolution").onchange = (e) => {
         if (e.target.value === NAI_CUSTOM_RESOLUTION_VALUE) {
@@ -20492,7 +20811,7 @@ function createUI() {
         syncSizeInputs(s.width, s.height);
         syncNaiResolutionSelect();
         saveSettingsDebounced();
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
     bind("qig-batch", "batchCount", true);
     bind("qig-hosted-timeout", "hostedTimeout", true);
@@ -20515,7 +20834,7 @@ function createUI() {
                 : (numeric ? parsed.value : rawValue);
             saveSettingsDebounced();
             updateQigStatusLine();
-            syncGenerationPresetIndicators();
+            syncConfigurationIndicators();
         };
         if (numeric) {
             element.onchange = (event) => {
@@ -20558,38 +20877,38 @@ function showPalettePresetMenu(event) {
     if (isGenerating) return;
 
     closePalettePresetMenu();
-    ensureGenerationPresetIds({ persist: true });
-    syncActiveGenerationPresetSetting({ persist: true });
+    syncActiveConfigurationSetting({ persist: true });
 
     const anchor = document.getElementById("qig-input-btn");
-    const activePresetId = getActiveGenerationPresetId();
+    const activePresetId = getActiveConfigurationId();
     const menu = document.createElement("div");
     menu.id = "qig-palette-preset-menu";
     menu.className = "qig-palette-preset-menu";
     menu.setAttribute("role", "menu");
-    menu.setAttribute("aria-label", "Generation presets");
+    menu.setAttribute("aria-label", "Configurations");
 
     const title = document.createElement("div");
     title.className = "qig-palette-preset-menu__title";
-    title.textContent = "Generation Presets";
+    title.textContent = "Configurations";
     menu.appendChild(title);
 
-    if (!generationPresets.length) {
+    if (!configurations.length) {
         const emptyState = document.createElement("div");
         emptyState.className = "qig-palette-preset-menu__empty";
-        emptyState.textContent = "No presets saved yet. Save one with the bookmark button next to Preset.";
+        emptyState.textContent = "No configurations saved yet. Save one with the Save As button next to Configuration.";
         menu.appendChild(emptyState);
     } else {
-        for (const [index, preset] of generationPresets.entries()) {
+        for (const [index, entry] of configurations.entries()) {
             const button = document.createElement("button");
             button.type = "button";
             button.setAttribute("role", "menuitem");
-            button.className = `menu_button qig-palette-preset-menu__item${preset?.id === activePresetId ? " qig-palette-preset-menu__item--active" : ""}`;
-            button.textContent = `${preset?.id === activePresetId ? "✓ " : ""}${preset?.name || `Preset ${index + 1}`}`;
+            button.className = `menu_button qig-palette-preset-menu__item${entry?.id === activePresetId ? " qig-palette-preset-menu__item--active" : ""}`;
+            const providerName = PROVIDERS[entry?.provider]?.name || entry?.provider || "?";
+            button.textContent = `${entry?.id === activePresetId ? "✓ " : ""}${entry?.name || `Configuration ${index + 1}`} · ${providerName}`;
             button.onclick = (clickEvent) => {
                 clickEvent.preventDefault();
                 clickEvent.stopPropagation();
-                loadPreset(index);
+                void loadConfiguration(entry?.id);
             };
             menu.appendChild(button);
         }
@@ -20865,8 +21184,8 @@ function addInputButton() {
         tagName: "div",
         id: "qig-input-btn",
         className: "fa-solid fa-palette interactable",
-        label: "Generate image; right-click for presets",
-        title: "Generate Image (right-click for presets)",
+        label: "Generate image; right-click for configurations",
+        title: "Generate Image (right-click for configurations)",
     });
     btn.setAttribute("aria-haspopup", "menu");
     btn.onclick = () => {
@@ -22555,7 +22874,7 @@ function initializeQuickImageGen() {
             }
             galleryInitializationPromise = initializeGalleryRepository();
             installLifecycleCleanup();
-            seedStarterPresets();
+            seedStarterConfigurations();
             createUI();
             addInputButton();
             bindMessageGenerateActionClicks();
@@ -22982,7 +23301,6 @@ async function handleMetadataDrop(e) {
                 s.provider = importedProvider;
                 setValue("qig-provider", s.provider);
                 updateProviderUI();
-                renderProfileSelect();
             }
 
             for (const [key, value] of Object.entries(structuredSettings)) {
@@ -23133,7 +23451,7 @@ async function handleMetadataDrop(e) {
             }
 
             saveSettingsDebounced();
-            syncGenerationPresetIndicators();
+            syncConfigurationIndicators();
             showStatus("✅ Settings updated from image!");
             setTimeout(() => showStatus(null), 2000);
         }
