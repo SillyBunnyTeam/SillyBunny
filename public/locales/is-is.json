@@ -1450,5 +1450,11 @@
     "Deleting chat…": "Eyði spjalli…",
     "Loading chat…": "Hleð spjalli…",
     "Bulk Delete": "Fjöldaeyðing",
-    "Deleting ${0} character(s)…": "Eyði ${0} persónu(m)…"
+    "Deleting ${0} character(s)…": "Eyði ${0} persónu(m)…",
+    "OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.": "Valkostir í OpenAI-stíl: low, medium, high, xhigh. Hvert stig er sent nákvæmlega eins og það var valið, nema Minimum sem er sent sem 'minimal'. None er sent orðrétt til GPT-5.1 og nýrri; önnur líkön fá ekkert stig.",
+    "Sets a dynamic reasoning depth level for thinking (Flash 3/Pro 3). Every effort is sent exactly as picked, so a level the model does not accept is rejected rather than lowered. Auto lets the model decide.": "Stillir breytilegt dýptarstig rökhugsunar (Flash 3/Pro 3). Hvert stig er sent nákvæmlega eins og það var valið, þannig að stigi sem líkanið tekur ekki við er hafnað í stað þess að lækka það. Auto lætur líkanið ráða.",
+    "DeepSeek documents low, high and max reasoning efforts. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'.": "DeepSeek skjalfestir stigin low, high og max. Hvert stig er sent nákvæmlega eins og það var valið, svo öllu öðru kann að vera hafnað. Minimum er sent sem 'minimal'.",
+    "Only GLM-5.2 and newer accept reasoning efforts. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. GLM-5.3 specifically only accepts 'low', 'high', and 'max'.": "Aðeins GLM-5.2 og nýrri taka við rökhugsunarstigum. Hvert stig er sent nákvæmlega eins og það var valið, nema Minimum sem er sent sem 'minimal'. GLM-5.3 tekur eingöngu við 'low', 'high' og 'max'.",
+    "Only Kimi K3 accepts reasoning efforts, and documents low, high and max. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'. Reasoning cannot be turned off for K3.": "Aðeins Kimi K3 tekur við rökhugsunarstigum og skjalfestir low, high og max. Hvert stig er sent nákvæmlega eins og það var valið, svo öllu öðru kann að vera hafnað. Minimum er sent sem 'minimal'. Ekki er hægt að slökkva á rökhugsun á K3.",
+    "Reasoning efforts are sent exactly, aside from minimum which is sent as 'minimal'.": "Rökhugsunarstig eru send nákvæmlega, nema Minimum sem er sent sem 'minimal'."
 }

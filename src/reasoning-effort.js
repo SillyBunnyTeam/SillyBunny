@@ -17,7 +17,22 @@ export const REASONING_EFFORT = {
     min: 'min',
     max: 'max',
     xhigh: 'xhigh',
+    // Wire spelling of `min`. Listed so it case-folds and does not trip the unrecognized-value warning.
+    minimal: 'minimal',
 };
+
+/**
+ * Maps a canonical effort to the spelling providers actually accept.
+ * SillyBunny: every rung is forwarded verbatim, so the depth the user picked is the depth the
+ * provider receives and a provider that refuses one says so instead of silently reasoning less.
+ * `min` is the sole exception: no provider accepts that literal string, and `minimal` is how
+ * OpenAI-compatible endpoints spell the same rung.
+ * @param {string} effort Reasoning effort.
+ * @returns {string} Value to put on the wire.
+ */
+export function toWireReasoningEffort(effort) {
+    return effort === REASONING_EFFORT.min ? REASONING_EFFORT.minimal : effort;
+}
 
 /**
  * Normalizes a reasoning effort value to the casing every provider table expects.

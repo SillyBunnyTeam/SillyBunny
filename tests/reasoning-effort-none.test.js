@@ -2,12 +2,11 @@ import { describe, expect, test } from '@jest/globals';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { NANOGPT_REASONING_EFFORT_MAP } from '../src/constants.js';
-
 const readSource = (relativePath) => fs.readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8');
 
 const indexSource = readSource('../public/index.html');
 const openAiSource = readSource('../public/scripts/openai.js');
+const chatCompletionsSource = readSource('../src/endpoints/backends/chat-completions.js');
 
 describe('reasoning effort \'none\'', () => {
     test('the client resolves \'none\' to a literal only for OpenAI-style sources on GPT-5.1+ models', () => {
@@ -22,10 +21,11 @@ describe('reasoning effort \'none\'', () => {
         expect(noneCase[0]).toContain(': undefined;');
     });
 
-    test('NanoGPT\'s table forwards \'none\' untouched', () => {
-        // NanoGPT's documented ladder starts at none; leaving it out of the table made the
+    test('the NanoGPT handler forwards \'none\' untouched', () => {
+        // NanoGPT's documented ladder starts at none. Gating on a translation table made the
         // caller omit the reasoning key entirely, letting the model default to thinking.
-        expect(NANOGPT_REASONING_EFFORT_MAP.none).toBe('none');
+        expect(chatCompletionsSource).toContain('if (request.body.reasoning_effort && request.body.reasoning_effort !== \'auto\') {');
+        expect(chatCompletionsSource).toContain('bodyParams[\'reasoning\'] = { effort: toWireReasoningEffort(request.body.reasoning_effort) };');
     });
 
     test('the UI no longer promises that None is never sent', () => {

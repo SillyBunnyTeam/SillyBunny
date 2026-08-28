@@ -166,7 +166,7 @@ describe('calculateClaudeBudgetTokens', () => {
             expect(mod.calculateClaudeBudgetTokens(8192, 'none', true, true)).toBeNull();
         });
 
-        test('min returns "low"', () => expect(mod.calculateClaudeBudgetTokens(8192, 'min', true, true)).toBe('low'));
+        test('min returns "minimal"', () => expect(mod.calculateClaudeBudgetTokens(8192, 'min', true, true)).toBe('minimal'));
 
         test('low returns "low"', () => expect(mod.calculateClaudeBudgetTokens(8192, 'low', true, true)).toBe('low'));
 
@@ -176,10 +176,11 @@ describe('calculateClaudeBudgetTokens', () => {
 
         test('max returns "max"', () => expect(mod.calculateClaudeBudgetTokens(8192, 'max', true, true)).toBe('max'));
 
-        // SillyBunny: Sonnet 5 accepts xhigh; older adaptive Claude models require max.
-        test('xhigh falls back to "max" when unsupported', () => expect(mod.calculateClaudeBudgetTokens(8192, 'xhigh', true, true)).toBe('max'));
+        // SillyBunny: every adaptive model gets the picked rung, so one that rejects it errors
+        // instead of quietly dropping to a shallower one.
+        test('xhigh returns "xhigh"', () => expect(mod.calculateClaudeBudgetTokens(8192, 'xhigh', true, true)).toBe('xhigh'));
 
-        test('xhigh remains "xhigh" when supported', () => expect(mod.calculateClaudeBudgetTokens(8192, 'xhigh', true, true, true)).toBe('xhigh'));
+        test('an unrecognized value is forwarded', () => expect(mod.calculateClaudeBudgetTokens(8192, 'banana', true, true)).toBe('banana'));
     });
 
     describe('traditional model', () => {
@@ -240,7 +241,7 @@ describe('calculateGoogleBudgetTokens', () => {
                 expect(mod.calculateGoogleBudgetTokens(8192, 'auto', model)).toBeNull();
                 expect(mod.calculateGoogleBudgetTokens(8192, 'min', model)).toBe('minimal');
                 expect(mod.calculateGoogleBudgetTokens(8192, 'medium', model)).toBe('medium');
-                expect(mod.calculateGoogleBudgetTokens(8192, 'max', model)).toBe('high');
+                expect(mod.calculateGoogleBudgetTokens(8192, 'max', model)).toBe('max');
             }
         });
 
@@ -256,9 +257,9 @@ describe('calculateGoogleBudgetTokens', () => {
 
         test('high returns high', () => expect(mod.calculateGoogleBudgetTokens(8192, 'high', 'gemini-3.5-flash')).toBe('high'));
 
-        test('max returns high', () => expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3.5-flash')).toBe('high'));
+        test('max returns max', () => expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3.5-flash')).toBe('max'));
 
-        test('xhigh returns high', () => expect(mod.calculateGoogleBudgetTokens(8192, 'xhigh', 'gemini-3.5-flash')).toBe('high'));
+        test('xhigh returns xhigh', () => expect(mod.calculateGoogleBudgetTokens(8192, 'xhigh', 'gemini-3.5-flash')).toBe('xhigh'));
     });
 
     describe('gemini-3 pro', () => {
@@ -266,17 +267,17 @@ describe('calculateGoogleBudgetTokens', () => {
 
         test('none returns null', () => expect(mod.calculateGoogleBudgetTokens(8192, 'none', 'gemini-3.0-pro')).toBeNull());
 
-        test('min returns low', () => expect(mod.calculateGoogleBudgetTokens(8192, 'min', 'gemini-3.0-pro')).toBe('low'));
+        test('min returns minimal', () => expect(mod.calculateGoogleBudgetTokens(8192, 'min', 'gemini-3.0-pro')).toBe('minimal'));
 
         test('low returns low', () => expect(mod.calculateGoogleBudgetTokens(8192, 'low', 'gemini-3.0-pro')).toBe('low'));
 
-        test('medium returns low', () => expect(mod.calculateGoogleBudgetTokens(8192, 'medium', 'gemini-3.0-pro')).toBe('low'));
+        test('medium returns medium', () => expect(mod.calculateGoogleBudgetTokens(8192, 'medium', 'gemini-3.0-pro')).toBe('medium'));
 
         test('high returns high', () => expect(mod.calculateGoogleBudgetTokens(8192, 'high', 'gemini-3.0-pro')).toBe('high'));
 
-        test('max returns high', () => expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3.0-pro')).toBe('high'));
+        test('max returns max', () => expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3.0-pro')).toBe('max'));
 
-        test('xhigh returns high', () => expect(mod.calculateGoogleBudgetTokens(8192, 'xhigh', 'gemini-3.0-pro')).toBe('high'));
+        test('xhigh returns xhigh', () => expect(mod.calculateGoogleBudgetTokens(8192, 'xhigh', 'gemini-3.0-pro')).toBe('xhigh'));
     });
 
     describe('flash (non-gemini-3)', () => {

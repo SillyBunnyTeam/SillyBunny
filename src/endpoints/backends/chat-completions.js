@@ -15,10 +15,6 @@ import {
     AZURE_OPENAI_KEYS,
     CHAT_COMPLETION_SOURCES,
     GEMINI_SAFETY,
-    MOONSHOT_REASONING_EFFORT_MAP,
-    NANOGPT_REASONING_EFFORT_MAP,
-    OPENAI_FIXED_REASONING_EFFORT,
-    OPENAI_REASONING_EFFORT_MAP,
     OPENAI_REASONING_EFFORT_MODELS,
     OPENAI_VERBOSITY_MODELS,
     OPENROUTER_HEADERS,
@@ -65,7 +61,7 @@ import {
     cachingSystemPromptForOpenRouter,
     addOpenRouterSignatures,
 } from '../../prompt-converters.js';
-import { applyReasoningEffortNormalization } from '../../reasoning-effort.js';
+import { applyReasoningEffortNormalization, toWireReasoningEffort } from '../../reasoning-effort.js';
 import { isBunRuntime } from '../../runtime.js';
 
 import { readSecret, SECRET_KEYS } from '../secrets.js';
@@ -221,9 +217,7 @@ function resolveCustomOpenAiReasoningEffort(requestBody) {
         return undefined;
     }
 
-    return OPENAI_FIXED_REASONING_EFFORT[requestBody.model]
-        ?? OPENAI_REASONING_EFFORT_MAP[requestBody.reasoning_effort]
-        ?? requestBody.reasoning_effort;
+    return toWireReasoningEffort(requestBody.reasoning_effort);
 }
 
 function shouldEnableCustomReasoning(requestBody) {
@@ -380,8 +374,6 @@ async function sendClaudeRequest(request, response) {
         const noPrefillModel = /^claude-(opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnetOrOpus5;
         // Sonnet 5 and Opus 5 are always adaptive; other adaptive models require the feature flag.
         const isAdaptiveModel = (enableAdaptiveThinking && (/^claude-(opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel)) || isSonnetOrOpus5;
-        // SillyBunny: Claude 5 preserves xhigh separately from max; older adaptive models keep the max fallback.
-        const supportsXhigh = isSonnetOrOpus5;
         let fixThinkingPrefill = false;
         // Add custom stop sequences
         const stopSequences = [];
@@ -481,7 +473,7 @@ async function sendClaudeRequest(request, response) {
         }
 
         const reasoningEffort = request.body.reasoning_effort;
-        const budgetTokens = calculateClaudeBudgetTokens(requestBody.max_tokens, reasoningEffort, requestBody.stream, isAdaptiveModel, supportsXhigh);
+        const budgetTokens = calculateClaudeBudgetTokens(requestBody.max_tokens, reasoningEffort, requestBody.stream, isAdaptiveModel);
 
         // Adaptive thinking: returns a string effort level (like Gemini 3)
         if (useThinking && typeof budgetTokens === 'string') {
@@ -1219,9 +1211,8 @@ async function sendDeepSeekRequest(request, response) {
             bodyParams['logprobs'] = true;
         }
 
-        // DeepSeek accepts low/high/max and aliases medium/xhigh to high itself; min has no DeepSeek meaning.
         if (isThinkingModel && request.body.reasoning_effort && !['auto', 'none'].includes(request.body.reasoning_effort)) {
-            bodyParams['reasoning_effort'] = request.body.reasoning_effort === 'min' ? 'low' : request.body.reasoning_effort;
+            bodyParams['reasoning_effort'] = toWireReasoningEffort(request.body.reasoning_effort);
         }
 
         if (Array.isArray(request.body.tools) && request.body.tools.length > 0) {
@@ -1347,9 +1338,7 @@ async function sendXaiRequest(request, response) {
         }
 
         if (request.body.reasoning_effort && !['auto', 'none'].includes(request.body.reasoning_effort)) {
-            // grok-4.20-multi-agent supports xhigh; grok-3-mini supports low/high only
-            const effort = request.body.reasoning_effort;
-            bodyParams['reasoning_effort'] = effort === 'xhigh' ? 'xhigh' : (effort === 'high' ? 'high' : 'low');
+            bodyParams['reasoning_effort'] = toWireReasoningEffort(request.body.reasoning_effort);
         }
 
         if (request.body.json_schema) {
@@ -1854,7 +1843,7 @@ async function sendAzureOpenAIRequest(request, response) {
 
     // Do not send reasoning effort to models which do not support it
     apiRequestBody['reasoning_effort'] = OPENAI_REASONING_EFFORT_MODELS.includes(request.body.model)
-        ? OPENAI_FIXED_REASONING_EFFORT[request.body.model] ?? OPENAI_REASONING_EFFORT_MAP[request.body.reasoning_effort] ?? request.body.reasoning_effort
+        ? toWireReasoningEffort(request.body.reasoning_effort)
         : undefined;
 
     const controller = new AbortController();
@@ -2775,11 +2764,8 @@ async function sendOpenAIResponsesRequest(request, response) {
         };
 
         if (request.body.reasoning_effort) {
-            const reasoningEffort = OPENAI_REASONING_EFFORT_MODELS.includes(request.body.model)
-                ? OPENAI_FIXED_REASONING_EFFORT[request.body.model] ?? OPENAI_REASONING_EFFORT_MAP[request.body.reasoning_effort] ?? request.body.reasoning_effort
-                : request.body.reasoning_effort;
             requestBody.reasoning = {
-                effort: reasoningEffort,
+                effort: toWireReasoningEffort(request.body.reasoning_effort),
             };
         }
 
@@ -3117,11 +3103,10 @@ export async function handleChatCompletionsGenerate(request, response) {
             if (request.body.repetition_penalty !== undefined) {
                 bodyParams['repetition_penalty'] = request.body.repetition_penalty;
             }
-            // SillyBunny divergence: gate on the map rather than on the raw value being truthy.
-            // 'none' and 'auto' are truthy but have no NanoGPT equivalent, so upstream sent a
-            // bare `"reasoning": {}` for them -- and for anything else it could not translate.
-            if (Object.hasOwn(NANOGPT_REASONING_EFFORT_MAP, request.body.reasoning_effort)) {
-                bodyParams['reasoning'] = { effort: NANOGPT_REASONING_EFFORT_MAP[request.body.reasoning_effort] };
+            // SillyBunny divergence: 'auto' is truthy but means "unset", and upstream shipped it as
+            // a bare `"reasoning": {}`. Every real rung, 'none' included, goes through untouched.
+            if (request.body.reasoning_effort && request.body.reasoning_effort !== 'auto') {
+                bodyParams['reasoning'] = { effort: toWireReasoningEffort(request.body.reasoning_effort) };
             }
 
             const isClaude = /(?:^|\/)claude[-_]/.test(request.body.model);
@@ -3158,8 +3143,8 @@ export async function handleChatCompletionsGenerate(request, response) {
             };
             // SillyBunny divergence: K3 always reasons and takes the depth from a top-level
             // reasoning_effort instead of the thinking object the older Kimi models use.
-            if (isKimiK3Model(request.body.model) && Object.hasOwn(MOONSHOT_REASONING_EFFORT_MAP, request.body.reasoning_effort)) {
-                bodyParams['reasoning_effort'] = MOONSHOT_REASONING_EFFORT_MAP[request.body.reasoning_effort];
+            if (isKimiK3Model(request.body.model) && request.body.reasoning_effort && !['auto', 'none'].includes(request.body.reasoning_effort)) {
+                bodyParams['reasoning_effort'] = toWireReasoningEffort(request.body.reasoning_effort);
             }
             request.body.json_schema
                 ? setJsonObjectFormat(bodyParams, request.body.messages, request.body.json_schema)
@@ -3185,10 +3170,9 @@ export async function handleChatCompletionsGenerate(request, response) {
                 },
             };
             // SillyBunny divergence: Z.AI takes the reasoning depth alongside thinking.type from
-            // GLM-5.2 onwards. Its ladder matches this fork's apart from naming the bottom rung
-            // 'minimal', so only that one is translated.
+            // GLM-5.2 onwards.
             if (zaiSupportsReasoningEffort(request.body.model) && request.body.reasoning_effort && !['auto', 'none'].includes(request.body.reasoning_effort)) {
-                bodyParams['reasoning_effort'] = request.body.reasoning_effort === 'min' ? 'minimal' : request.body.reasoning_effort;
+                bodyParams['reasoning_effort'] = toWireReasoningEffort(request.body.reasoning_effort);
             }
             if (request.body.json_schema) {
                 setJsonObjectFormat(bodyParams, request.body.messages, request.body.json_schema);
@@ -3227,9 +3211,7 @@ export async function handleChatCompletionsGenerate(request, response) {
             headers = {};
             bodyParams = {};
             if (request.body.reasoning_effort && request.body.reasoning_effort !== 'none') {
-                // Client-side aliases min/max are not valid OpenAI-style effort values.
-                const effortMap = { min: 'low', max: 'high' };
-                bodyParams['reasoning_effort'] = effortMap[request.body.reasoning_effort] ?? request.body.reasoning_effort;
+                bodyParams['reasoning_effort'] = toWireReasoningEffort(request.body.reasoning_effort);
             }
         } else {
             console.warn('This chat completion source is not supported yet.');
@@ -3243,7 +3225,7 @@ export async function handleChatCompletionsGenerate(request, response) {
             && shouldUseDefaultOpenAiReasoningEffort
             && [CHAT_COMPLETION_SOURCES.CUSTOM, CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES].includes(request.body.chat_completion_source)
             && OPENAI_REASONING_EFFORT_MODELS.includes(request.body.model)) {
-            bodyParams['reasoning_effort'] = OPENAI_FIXED_REASONING_EFFORT[request.body.model] ?? OPENAI_REASONING_EFFORT_MAP[request.body.reasoning_effort] ?? request.body.reasoning_effort;
+            bodyParams['reasoning_effort'] = toWireReasoningEffort(request.body.reasoning_effort);
         }
 
         if (request.body.verbosity && [CHAT_COMPLETION_SOURCES.CUSTOM, CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES].includes(request.body.chat_completion_source)) {

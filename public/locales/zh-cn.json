@@ -294,7 +294,6 @@
     "openai_reasoning_effort_maximum": "极高",
     "OpenAI-style options: low, medium, high. Minimum and maximum are aliased to low and high. Auto does not send an effort level.": "OpenAI式选项：低、中、高。极低等于低，极高等于高。选择自动，则不传入推理强度参数。",
     "Allocates a portion of the response length for thinking (min: 1024 tokens, low: 10%, medium: 25%, high: 50%, max: 95%), but minimum 1024 tokens. Auto does not request thinking.": "从回复长度中划拨一部分用于思考（最小：1024 Token，低：10%，中：25%，高：50%，最大：95%），且下限为 1024 Token。设为“自动”则不启用思考功能。",
-    "Sets a dynamic reasoning depth level for thinking (Flash 3/Pro 3). High and low are supported by both, minimal and medium are Flash 3 only. Auto lets the model decide.": "设置动态推理强度等级（3 Flash / 3 Pro）。两者都支持“高”和“低”，但“极低”和“中”只有 3 Flash 支持。设为“自动”让模型自己选择。",
     "Allocates a portion of the response length for thinking (Flash 2.5/Pro 2.5) (min: 0/128 tokens, low: 10%, medium: 25%, high: 50%, max: 24576/32768 tokens). Auto lets the model decide.": "将最大回复空间的一部分分配给思维链（仅 2.5 Flash / 2.5 Pro 模型）（极低：0/128 Token，低：10%，中：25%，高：50%，极高：24576/32768 Token）。选择“自动”会让模型自己决定。",
     "Verbosity": "长度",
     "openai_verbosity_auto": "自动",
@@ -3641,5 +3640,11 @@
     "Deleting chat…": "正在删除聊天…",
     "Loading chat…": "正在加载聊天…",
     "Bulk Delete": "批量删除",
-    "Deleting ${0} character(s)…": "正在删除 ${0} 个角色…"
+    "Deleting ${0} character(s)…": "正在删除 ${0} 个角色…",
+    "OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.": "OpenAI 风格选项：low、medium、high、xhigh。每个等级都按所选内容原样发送，只有“极低”会作为 'minimal' 发送。None 会原样发送给 GPT-5.1 及更新的模型；其他模型不会收到等级。",
+    "Sets a dynamic reasoning depth level for thinking (Flash 3/Pro 3). Every effort is sent exactly as picked, so a level the model does not accept is rejected rather than lowered. Auto lets the model decide.": "设置动态推理强度等级（3 Flash / 3 Pro）。每个等级都按所选内容原样发送，因此模型不接受的等级会被拒绝，而不会被降低。设为“自动”让模型自己选择。",
+    "DeepSeek documents low, high and max reasoning efforts. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'.": "DeepSeek 记录的等级为 low、high 和 max。每个等级都按所选内容原样发送，因此其他值可能被拒绝。“极低”会作为 'minimal' 发送。",
+    "Only GLM-5.2 and newer accept reasoning efforts. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. GLM-5.3 specifically only accepts 'low', 'high', and 'max'.": "只有 GLM-5.2 及更新版本支持推理强度。每个等级都按所选内容原样发送，只有“极低”会作为 'minimal' 发送。GLM-5.3 仅接受 'low'、'high' 和 'max'。",
+    "Only Kimi K3 accepts reasoning efforts, and documents low, high and max. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'. Reasoning cannot be turned off for K3.": "只有 Kimi K3 支持推理强度，其记录的等级为 low、high 和 max。每个等级都按所选内容原样发送，因此其他值可能被拒绝。“极低”会作为 'minimal' 发送。K3 无法关闭推理。",
+    "Reasoning efforts are sent exactly, aside from minimum which is sent as 'minimal'.": "推理强度按所选内容原样发送，只有“极低”会作为 'minimal' 发送。"
 }
