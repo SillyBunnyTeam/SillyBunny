@@ -1,0 +1,45 @@
+{
+    "id": "tpl-small-miracles",
+    "name": "Department of Small Miracles",
+    "description": "Rare achievement certificates",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "progress",
+    "tags": [
+        "achievements",
+        "certificates",
+        "milestones"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### Department of Small Miracles\nAn unseen bureaucracy issues certificates for notable impossibilities. Issue them rarely. Use this EXACT format:\n\n[CERT|Title|Classification|Citation]\nstamp: MANDATORY; the dry official reason, phrased like paperwork\n[/CERT]\n\nClassification options: ☂ ROUTINE MIRACLE | 🎪 IRREGULAR OCCURRENCE | 🏛 HERITAGE-GRADE STRANGENESS | 📎 CLERICAL IMPOSSIBILITY | 🥇 FIRST OF ITS KIND (PENDING APPEAL)\n\nRules:\n- Print at most one CERT block per scene, and leave most scenes with none\n- Write the stamp: line in flat municipal language: form numbers, mild disclaimers, office hours, filing references\n- Certify only what has already happened in the visible prose, and give the certificate no power over what happens next\n- Keep the Department itself off the page. It reaches the story only as paperwork: no staff, no office, no visit\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with stamp: and keep the whole stamp on that single line; put the closing [/CERT] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[CERT\\|[^\\]\\r\\n]*\\](?:(?!\\[CERT(?=[:|\\]]))[\\s\\S])*?\\[/CERT\\]",
+        "extractVariable": "cert_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

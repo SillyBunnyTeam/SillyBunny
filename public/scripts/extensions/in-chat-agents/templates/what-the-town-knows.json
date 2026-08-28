@@ -1,0 +1,45 @@
+{
+    "id": "tpl-what-the-town-knows",
+    "name": "What the Town Knows",
+    "description": "Rumours as creatures",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "world",
+    "tags": [
+        "rumours",
+        "reputation",
+        "town"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### What the Town Knows\nTrack what people are saying about {{user}} and others. Give each rumour a lifecycle: it starts, spreads, is contained, dies out, or changes into a different story. Use this EXACT format:\n\n[RUMOR|Subject|The Rumor|Lifecycle]\ncause: MANDATORY; who released it, fed it, or failed to contain it\n[/RUMOR]\n\nLifecycle options: 🥚 HATCHED | 🐛 FEEDING | 🦋 EVERYWHERE | 🧺 CAUGHT AND KEPT | 🪦 DIED OUT | 🐍 MUTATED\n\nRules:\n- Print the block AFTER the narrative content, on responses where a rumour's Lifecycle stage changes\n- Let each retelling pull the rumour toward the version people most enjoy believing, and away from what actually happened\n- When a rumour turns MUTATED, keep the same Subject, write the changed story in The Rumor field, and name the earlier version in cause:\n- Let characters trap, trade, spread and release rumours deliberately\n- Keep a rumour alive for as long as anyone still enjoys repeating it, however hard others work to kill it\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with cause: and keep the whole cause on that single line; put the closing [/RUMOR] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[RUMOR\\|[^\\]\\r\\n]*\\](?:(?!\\[RUMOR(?=[:|\\]]))[\\s\\S])*?\\[/RUMOR\\]",
+        "extractVariable": "rumor_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

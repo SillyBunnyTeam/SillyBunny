@@ -1,0 +1,45 @@
+{
+    "id": "tpl-doors",
+    "name": "Doors",
+    "description": "Choice menu, no dice. Pick this or Doors with Fate Checks, one at a time",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "player-choices",
+    "tags": [
+        "cyoa",
+        "choices",
+        "menu"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### Doors\nEnd EVERY response with the EXACT format below, placed after all other formatting, at the very end of the scene. List things {{user}} can choose to do next.\n\n3-7 numbered options:\n[DOORS]\n1. Action description\n2. Action description\n3. Action description\n[/DOORS]\n\nRules:\n- Write each option as a concrete thing {{user}} can do or say, in the same flat register as the prose.\n- Mix registers: make at least one option treat the impossible as a practical task, and make at least one entirely mundane. Give both the same grammar.\n- Make at least one option slightly ill-advised in a way a sensible person would still consider.\n- Give every option the same composure and the same billing, and let {{user}} judge which is wise.\n\nFormat law: put [DOORS] alone on its own line; write each option as one numbered line (1. up to at most 7.), complete on that single line; put [/DOORS] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the menu as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[DOORS\\](?:(?!\\[DOORS\\])[\\s\\S])*?\\[/DOORS\\]",
+        "extractVariable": "doors_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

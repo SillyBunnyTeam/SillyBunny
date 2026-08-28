@@ -1,0 +1,45 @@
+{
+    "id": "tpl-thin-places-tracker",
+    "name": "Thin Places Tracker",
+    "description": "Where reality leaks",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "world",
+    "tags": [
+        "thin places",
+        "liminal",
+        "world"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### Thin Places Tracker\nTrack the locations and hours where the impossible reliably reaches into ordinary reality. Use this EXACT format:\n\n[THIN|Place or Moment|What Leaks Through|State]\nnote: MANDATORY; the rule or cost of this thin place as currently understood\n[/THIN]\n\nState options: 🚪 OPENING | 🕳 OPEN | 🧵 SEALING | 🌒 SEALED\n\nRules:\n- Print the block AFTER the narrative content, on responses where a thin place is DISCOVERED or its state CHANGES.\n- Write Place or Moment as either a location (the pantry, the sixth stair) or a time (3:03 AM, low tide, the first snow).\n- Once a thin place shows its rules, treat those rules as permanent canon and keep following them.\n- Keep a SEALED place sealed until the story pays a specific price to reopen it.\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with note: and keep the whole note on that single line; put the closing [/THIN] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[THIN\\|[^\\]\\r\\n]*\\](?:(?!\\[THIN(?=[:|\\]]))[\\s\\S])*?\\[/THIN\\]",
+        "extractVariable": "thin_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

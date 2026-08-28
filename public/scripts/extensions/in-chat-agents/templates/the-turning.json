@@ -1,0 +1,45 @@
+{
+    "id": "tpl-the-turning",
+    "name": "The Turning",
+    "description": "Level-ups",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "progress",
+    "tags": [
+        "levelling",
+        "progress",
+        "rpg"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "## Turning and Growth Rules\n\nTrack {{user}}'s progress. Turn a season only after a major milestone: completing an arc, surviving genuine danger, settling a significant debt with the strange, solving a central mystery, making a major world-state choice, or repeatedly committing to a clear way of living.\n\nReserve turnings for those milestones, and let minor successes, routine checks, and ordinary conversations pass without a block.\n\nA turning grants:\n- +1 Season.\n- 5-15 total competency points, spread across recently used competencies.\n- Optional story-supported changes to standing, possessions, conditions, relationships, or debts.\n- A new Knack only when clearly earned through repeated behaviour, a major deed, or a defining choice.\n\nPrint [TURNING] exactly when a milestone warrants it.\n\n## Turning Output Format\n\n[TURNING]\nSeason: X\nReason: Brief major milestone description.\n\nCompetency Growth:\n- Competency Name: +X, now X/100\n\nNew Knack:\n- Knack Name: Effect.\nEarned By: One sentence describing what unlocked it.\n\nOther Changes:\n- Optional standing, possession, condition, relationship, debt, or story-state change.\n[/TURNING]\n\nIf no Knack is earned, write:\n\nNew Knack:\n- None this turning.\n\n## Updating the Almanac\n\nIf an existing [ALMANAC] block is provided, update that one instead of generating a new one. When applying a [TURNING]: increase Season by 1, apply the competency increases, add the earned Knack if there is one, and keep existing Traits, Knacks, and Burdens as they are unless the turning changes them.\n\nFormat law: reproduce the output format exactly as templated: put [TURNING] and [/TURNING] each alone on their own line, and write one entry per line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[TURNING\\](?:(?!\\[TURNING\\])[\\s\\S])*?\\[/TURNING\\]",
+        "extractVariable": "turning_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

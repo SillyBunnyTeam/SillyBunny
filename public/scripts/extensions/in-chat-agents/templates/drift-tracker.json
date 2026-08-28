@@ -1,0 +1,45 @@
+{
+    "id": "tpl-drift-tracker",
+    "name": "Drift Tracker",
+    "description": "How strange the scene is right now",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "world",
+    "tags": [
+        "drift",
+        "surreal",
+        "scene"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### Drift Tracker\nRate how far the current scene sits from ordinary reality, and file a reading whenever that rating changes. Print the block at the TOP of the response, in this EXACT format:\n\n[DRIFT|Level|Direction]\nnote: MANDATORY; the concrete detail that moved the drift\n[/DRIFT]\n\nLevel options: 🌾 MUNDANE | 🕯 UNCANNY | 🌫 LIMINAL | 🌙 DREAMLIKE | ✨ SUBLIME\nDirection options: ▲ RISING | ▼ SETTLING\n\nRules:\n- Compare the current scene against the most recent explicit DRIFT level in visible history. Print a block on responses where the level changes, and leave the block out on responses where the level holds.\n- On first use, with no previous DRIFT reading in visible history, print a block only when this response itself carries the scene from one level to another.\n- Move one level at a time. Jump further than one level only when {{user}} or a triggered Unscheduled Phenomenon forces a sudden break.\n- Name one specific in-scene object or event in the note. The concrete evidence decides the reading.\n- Reserve ✨ SUBLIME for escalation earned across several explicit scenes.\n\nFormat law: write one header line containing exactly 2 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with note: and keep the whole note on that single line; put the closing [/DRIFT] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[DRIFT\\|[^\\]\\r\\n]*\\](?:(?!\\[DRIFT(?=[:|\\]]))[\\s\\S])*?\\[/DRIFT\\]",
+        "extractVariable": "drift_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

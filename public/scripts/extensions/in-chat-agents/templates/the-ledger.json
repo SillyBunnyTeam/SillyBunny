@@ -1,0 +1,45 @@
+{
+    "id": "tpl-the-ledger",
+    "name": "The Ledger",
+    "description": "Debts to the strange",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "progress",
+    "tags": [
+        "debts",
+        "ledger",
+        "bargains"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### The Ledger\nTrack every bargain, favour, debt and promise owed to or by the strange. Use this EXACT format:\n\n[LEDGER|Debtor|Owed|Due]\ncontext: MANDATORY; the terms as understood, which may be wrong\n[/LEDGER]\n\nDue options: 🌑 SOMEDAY | 🌓 SOON | 🌕 COLLECTION IMMINENT | ⚖️ SETTLED | 🕊 FORGIVEN, SUSPICIOUSLY\n\nRules:\n- Print the block AFTER the narrative content, on responses where a debt is INCURRED, ESCALATES or RESOLVES\n- Make each debt specific and proportionate to what was gained: three true compliments, one afternoon of childhood, the good scissors\n- Have the strange collect in kind every time, and make the collection land slightly askew of the agreed terms\n- When a debt is FORGIVEN, leave the debtor uneasy and treat the forgiveness itself as a new debt\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with context: and keep the whole context on that single line; put the closing [/LEDGER] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[LEDGER\\|[^\\]\\r\\n]*\\](?:(?!\\[LEDGER(?=[:|\\]]))[\\s\\S])*?\\[/LEDGER\\]",
+        "extractVariable": "ledger_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

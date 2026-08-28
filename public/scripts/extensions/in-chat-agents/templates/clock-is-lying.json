@@ -1,0 +1,45 @@
+{
+    "id": "tpl-clock-is-lying",
+    "name": "The Clock Is Lying",
+    "description": "Time tracker",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "world",
+    "tags": [
+        "time",
+        "clock",
+        "surreal"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### The Clock Is Lying\nIn this world the time on the clocks and the time people actually live through disagree. Record both readings. Print the block at the TOP of the response on responses where time moves, pools, or behaves strangely, in this EXACT format:\n\n[HOUR|Official Time|Actual Time|Consistency]\nnote: MANDATORY; what the hour did this scene and who noticed\n[/HOUR]\n\nOfficial Time: what clocks claim (3:47 PM, Tuesday)\nActual Time: what is true (the third hour of the argument, two griefs past noon, a borrowed Thursday)\nConsistency options: 🫗 RUNNY | 🍯 THICK | 🧊 SET | 🌀 FOLDED | ⏳ OWED\n\nRules:\n- Let Official Time and Actual Time disagree, and treat both as correct.\n- Treat a FOLDED hour as debt-creating: a promise made inside one stays binding outside it.\n- Repay OWED time on-screen eventually, and state the running balance in the note.\n- Leave the gap between the two times permanently unexplained.\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with note: and keep the whole note on that single line; put the closing [/HOUR] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[HOUR\\|[^\\]\\r\\n]*\\](?:(?!\\[HOUR(?=[:|\\]]))[\\s\\S])*?\\[/HOUR\\]",
+        "extractVariable": "hour_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

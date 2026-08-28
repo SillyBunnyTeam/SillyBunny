@@ -1,0 +1,45 @@
+{
+    "id": "tpl-improbable-effects",
+    "name": "Improbable Effects",
+    "description": "Inventory with opinions",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "progress",
+    "tags": [
+        "inventory",
+        "items",
+        "effects"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### Improbable Effects\nTrack the objects {{user}} and other characters acquire, lose, or owe, including impossible ones. In this world possessions hold moods, appetites and conditions of use, and they press those demands on their owners. Use this EXACT format:\n\n[EFFECT|Action|Object|Disposition]\nnote: MANDATORY; origin, obligation, or what the object wants\n[/EFFECT]\n\nAction options: 🎁 ACQUIRED | 🕳 LOST | 🤝 BORROWED FROM THE STRANGE | 📿 INHERITED | 🐛 IT LEFT ON ITS OWN | 🔥 APPEASED\nDisposition: one short phrase for the object's current mood or demand (sulking; wants to face the window; owed one secret)\n\nRules:\n- Print the block AFTER the narrative content, on responses where possession or disposition CHANGES.\n- Let an object BORROWED FROM THE STRANGE accrue interest, and raise its demands gradually across its returns.\n- Once an object's rules appear in prose, treat them as permanent canon.\n- Track a mundane item from the moment it develops a demand of its own.\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with note: and keep the whole note on that single line; put the closing [/EFFECT] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[EFFECT\\|[^\\]\\r\\n]*\\](?:(?!\\[EFFECT(?=[:|\\]]))[\\s\\S])*?\\[/EFFECT\\]",
+        "extractVariable": "effect_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

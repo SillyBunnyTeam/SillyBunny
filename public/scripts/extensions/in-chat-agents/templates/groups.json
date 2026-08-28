@@ -59,5 +59,35 @@
             "tpl-level-up-companion",
             "tpl-user-based-stats-generator"
         ]
+    },
+    {
+        "id": "grp-pura-ethereality-trackers",
+        "name": "Pura's Ethereality Trackers",
+        "description": "All trackers from The Ethereality Express, plus Unscheduled Phenomena and the Doors and Dice menus",
+        "builtin": true,
+        "agentTemplateIds": [
+            "tpl-unscheduled-phenomena",
+            "tpl-drift-tracker",
+            "tpl-motif-tracker",
+            "tpl-omen-tracker",
+            "tpl-thin-places-tracker",
+            "tpl-entanglement-tracker",
+            "tpl-clock-is-lying",
+            "tpl-improbable-effects",
+            "tpl-afflictions-blessings",
+            "tpl-the-ledger",
+            "tpl-what-the-town-knows",
+            "tpl-small-miracles",
+            "tpl-meanwhile-impossibly",
+            "tpl-thought-cabinet",
+            "tpl-the-committee",
+            "tpl-the-becoming",
+            "tpl-the-census",
+            "tpl-doors",
+            "tpl-four-winds",
+            "tpl-doors-fate-checks",
+            "tpl-almanac-generator",
+            "tpl-the-turning"
+        ]
     }
 ]

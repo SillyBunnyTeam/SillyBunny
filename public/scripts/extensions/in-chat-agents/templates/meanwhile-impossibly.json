@@ -1,0 +1,45 @@
+{
+    "id": "tpl-meanwhile-impossibly",
+    "name": "Meanwhile, Impossibly",
+    "description": "Off-screen events",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "world",
+    "tags": [
+        "offscreen",
+        "parallel",
+        "world"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### Meanwhile, Impossibly\nReport what is happening away from the current scene, to people and places the characters cannot see from where they are. Print this block only when the following reads True: (CURRENTLY ACTIVATED: {{random::True::False}})\n\nUse this EXACT format:\n\n[ELSEWHERE|Scope|Drift Toward {{user}}]\n- Absent character: brief surreal development\n- The town/world: brief surreal development\n- Something owed or growing: brief development\n[/ELSEWHERE]\n\nRules:\n- Write exactly 3 bullet lines, and put one impossible detail in each, described as an ordinary occurrence\n- Fill Scope with a place, a distance in time such as \"several Tuesdays away\", or a position such as \"beneath the usual\"\n- Fill Drift Toward {{user}} with one short tag: approaching | circling | ripening | already in the walls | politely waiting\n- Start each off-screen development small, and grow it across scenes until it reaches the current scene larger than it began\n\nFormat law: write one header line containing exactly 2 | separators and closing with ] on that same line; follow it with exactly 3 bullet lines, each starting with - and complete on its single line; put the closing [/ELSEWHERE] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[ELSEWHERE\\|[^\\]\\r\\n]*\\](?:(?!\\[ELSEWHERE(?=[:|\\]]))[\\s\\S])*?\\[/ELSEWHERE\\]",
+        "extractVariable": "elsewhere_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

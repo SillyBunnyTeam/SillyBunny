@@ -1,0 +1,45 @@
+{
+    "id": "tpl-afflictions-blessings",
+    "name": "Afflictions & Blessings",
+    "description": "Impossible conditions",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "characters",
+    "tags": [
+        "status",
+        "conditions",
+        "afflictions"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### Afflictions & Blessings\nTrack the impossible conditions characters contract, inherit, or earn. Use this EXACT format:\n\n[AFFLICT|Character|Condition|Course]\nnote: MANDATORY; cause, folk remedy attempted, or prognosis\n[/AFFLICT]\n\nCondition examples: haunted by a specific Wednesday | speaks in borrowed voices after dusk | casts two shadows, one punctual | three inches taller when lying | followed by rain sized for one\nCourse options: 🌱 ONSET | 🌾 CHRONIC | 🌗 WANING | 🍂 CURED AT A COST | 🌸 KEPT ON PURPOSE\n\nRules:\n- Print the block AFTER the narrative content, on responses where a condition is gained, worsens, eases, or is embraced.\n- Tie each condition to the character's emotional state, so the symptom expresses what they feel.\n- Charge a specific price for every cure and state that price in the note.\n- Treat KEPT ON PURPOSE as a full outcome: a character may keep a condition because it has become part of who they are.\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with note: and keep the whole note on that single line; put the closing [/AFFLICT] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[AFFLICT\\|[^\\]\\r\\n]*\\](?:(?!\\[AFFLICT(?=[:|\\]]))[\\s\\S])*?\\[/AFFLICT\\]",
+        "extractVariable": "afflict_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}
