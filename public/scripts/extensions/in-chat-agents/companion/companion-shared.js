@@ -39,10 +39,10 @@ export const CHATROOM_STYLE_VALUES = new Set([
 export const CHATROOM_REPLY_MAX_CHARS = 2000;
 
 // SillyBunny: an agent with nothing to report returns one of these instead of prose or an empty
-// string, so "nothing happened" is a deliberate answer rather than a failed run. Suppression keys
-// off the content alone, which means custom agents opt in purely by teaching their prompt a
-// sentinel - no template allowlist to maintain.
+// string, so "nothing happened" is a deliberate answer rather than a failed run. Tracker companions
+// are taught their sentinel automatically; other custom companions can opt in through their prompt.
 export const EMPTY_OUTPUT_SENTINELS = new Set(['phone-none', 'PHONE_NONE', 'tracker-none', 'TRACKER_NONE']);
+export const TRACKER_EMPTY_OUTPUT_INSTRUCTION = 'Empty-turn rule: when your own instructions above produce no block for this turn, reply with exactly the single line tracker-none and nothing else. Apply this only when your instructions genuinely yield no content; when they call for output every turn, always produce that output in full.';
 
 export function isEmptyOutputSentinel(content = '') {
     return EMPTY_OUTPUT_SENTINELS.has(String(content ?? '').trim());
