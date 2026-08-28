@@ -3711,6 +3711,25 @@ describe('in-chat agent post-processing runner', () => {
         expect(messages[0].content).not.toContain('Write a markdown companion card body');
     });
 
+    test('teaches every tracker companion the empty-output sentinel', async () => {
+        const tracker = createCompanionAgent({ id: 'custom-tracker', category: 'tracker' });
+        const taughtTracker = createCompanionAgent({ id: 'taught-tracker', category: 'tracker', prompt: 'When nothing changes, reply with tracker-none.' });
+        const custom = createCompanionAgent({ id: 'custom-agent' });
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+
+        const trackerPrompt = (await companionRunner.buildCompanionPromptMessages(tracker, 0))[0].content;
+        const taughtPrompt = (await companionRunner.buildCompanionPromptMessages(taughtTracker, 0))[0].content;
+        const customPrompt = (await companionRunner.buildCompanionPromptMessages(custom, 0))[0].content;
+        const repairPrompt = (await companionRunner.buildCompanionPromptMessages(tracker, 0, 'normal', { repair: true }))[0].content;
+
+        expect(trackerPrompt).toContain('reply with exactly the single line tracker-none and nothing else');
+        expect(taughtPrompt.match(/tracker-none/gi)).toHaveLength(1);
+        expect(customPrompt).not.toContain('tracker-none');
+        expect(repairPrompt).not.toContain('tracker-none');
+    });
+
     test('stores readable profile labels instead of raw profile ids', async () => {
         const profiledCompanion = createCompanionAgent({ id: 'profiled-companion' });
         profiledCompanion.connectionProfile = '20345602-939a-44c2-8522-525fb7212b0e';

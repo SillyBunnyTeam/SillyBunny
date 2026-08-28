@@ -52,6 +52,7 @@ import {
     isEmptyOutputSentinel,
     isValidCompanionMessage,
     normalizePlotCompassObjective,
+    TRACKER_EMPTY_OUTPUT_INSTRUCTION,
 } from './companion-shared.js';
 import { resolveCompanionContentMacros } from './companion-macros.js';
 import { findTrackerBlocks, inspectTrackerState, normalizeCompanionTrackerRepairPayload, TRACKER_REPAIR_INSTRUCTION } from '../tracker-state.js';
@@ -1109,7 +1110,7 @@ function getFormatInstruction(format) {
     }
 }
 
-function expandCompanionPrompt(agent, messageIndex, generationType = 'normal') {
+function expandCompanionPrompt(agent, messageIndex, generationType = 'normal', repair = false) {
     const message = chat[messageIndex];
     const messageText = normalizeText(message?.mes ?? '');
     const prompt = substituteParams(agent.prompt, {
@@ -1117,13 +1118,18 @@ function expandCompanionPrompt(agent, messageIndex, generationType = 'normal') {
         original: messageText,
         dynamicMacros: buildPromptDynamicMacros(messageText, message, agent, generationType),
     }).trim();
+    const emptyOutputInstruction = !repair
+        && agent.category === 'tracker'
+        && !prompt.toLowerCase().includes('tracker-none')
+        ? TRACKER_EMPTY_OUTPUT_INSTRUCTION
+        : '';
 
-    return [prompt, getTemplateSettingsPromptBlock(agent, message)].filter(Boolean).join('\n\n').trim();
+    return [prompt, getTemplateSettingsPromptBlock(agent, message), emptyOutputInstruction].filter(Boolean).join('\n\n').trim();
 }
 
 export async function buildCompanionPromptMessages(agent, messageIndex, generationType = 'normal', { repair = false, extraContextSections = [] } = {}) {
     const companion = getCompanionConfig(agent);
-    const expandedPrompt = expandCompanionPrompt(agent, messageIndex, generationType);
+    const expandedPrompt = expandCompanionPrompt(agent, messageIndex, generationType, repair);
     const contextSections = await buildCompanionContextSections(agent, messageIndex, { extraContextSections });
     // rawPrompt sends the agent prompt verbatim: tracker prompts define their own exact output
     // format and break when extra format instructions are appended around them. The guard
