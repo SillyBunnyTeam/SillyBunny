@@ -31,6 +31,7 @@ const modes = Object.freeze({
     macro_def: 'macro_def_mode',
     macro_identifier_end: 'macro_identifier_end_mode',
     macro_args: 'macro_args_mode',
+    macro_comment_args: 'macro_comment_args_mode',
     macro_filter_modifer: 'macro_filter_modifer_mode',
     macro_filter_modifier_end: 'macro_filter_modifier_end_mode',
     // Variable shorthand modes
@@ -168,6 +169,28 @@ const Tokens = Object.freeze({
 const enterModesMap = new Map();
 
 /**
+ * Tokens that make up the body of a macro's arguments, without any filter/pipe handling.
+ *
+ * Shared by {@link modes.macro_args} and {@link modes.macro_comment_args} so both lex argument
+ * content identically, and only the argument mode adds the pipe tokens on top.
+ */
+const argumentBodyTokens = [
+    using(Tokens.Args.DoubleColon),
+    using(Tokens.Args.Colon),
+    using(Tokens.Args.Equals),
+    using(Tokens.Args.Quote),
+    using(Tokens.Identifier),
+
+    using(Tokens.WhiteSpace),
+
+    // Last fallback, before we need to exit the mode, as we might have characters we (wrongly) haven't defined yet
+    using(Tokens.Unknown),
+
+    // Args are optional, and we don't know how long, so exit the mode to be able to capture the actual macro end
+    exits(Tokens.ModePopper, modes.macro_args),
+];
+
+/**
  * Lexer definition object that maps states/modes to their token rules.
  * Each mode defines which tokens are valid in that context and how to transition between modes.
  * @readonly
@@ -183,7 +206,7 @@ const Def = {
             exits(Tokens.Macro.End, modes.macro_def),
 
             // An explicit double-slash will be treated above flags to consume, as it'll introduce a comment macro. Directly following is the args then.
-            enter(Tokens.Macro.DoubleSlash, modes.macro_args),
+            enter(Tokens.Macro.DoubleSlash, modes.macro_comment_args),
 
             // Variable shorthand prefixes - must come before flags to take precedence
             // These enter the variable identifier mode to parse variable expressions
@@ -220,19 +243,17 @@ const Def = {
             // If at any place during args writing there is a pipe, we lex it as an output identifier, and then continue with lex its args
             enter(Tokens.Filter.Pipe, modes.macro_filter_modifer),
 
-            using(Tokens.Args.DoubleColon),
-            using(Tokens.Args.Colon),
-            using(Tokens.Args.Equals),
-            using(Tokens.Args.Quote),
-            using(Tokens.Identifier),
+            ...argumentBodyTokens,
+        ],
+        // Comments are discarded wholesale, so their body must never be interpreted as syntax.
+        // Filter/pipe lexing is deliberately absent here: a bare '|' inside a comment would otherwise
+        // switch into filter mode and make the whole comment macro fail to lex/parse, which leaks the
+        // comment text into the prompt instead of trimming it.
+        [modes.macro_comment_args]: [
+            // Comments still allow nested macros
+            enter(Tokens.Macro.Start, modes.macro_def),
 
-            using(Tokens.WhiteSpace),
-
-            // Last fallback, before we need to exit the mode, as we might have characters we (wrongly) haven't defined yet
-            using(Tokens.Unknown),
-
-            // Args are optional, and we don't know how long, so exit the mode to be able to capture the actual macro end
-            exits(Tokens.ModePopper, modes.macro_args),
+            ...argumentBodyTokens,
         ],
         [modes.macro_filter_modifer]: [
             using(Tokens.WhiteSpace),
