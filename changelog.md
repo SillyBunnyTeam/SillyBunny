@@ -65,6 +65,7 @@
 - PR #808 (2026-08-28) `feat(ica): add The Ethereality Express trackers as pre-generation agents`
 - PR #809 (2026-08-28) `fix(ica): ensure every Tracker category agent has the ‘tracker-none’ sentinel`
 - PR #811 (2026-08-29) `fix(ui): make lorebooks more easily accessible for mobile iOS`
+- PR #812 (2026-08-29) `fix: character is typing stops showing up when the message is fully generated`
 
 ## v1.7.0
 
