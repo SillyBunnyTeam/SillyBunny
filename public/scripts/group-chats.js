@@ -427,10 +427,6 @@ function limitGroupSpeakersForControl(activatedMembers, forceSingleSpeaker) {
 
 function setGroupTypingIndicator(characterName = '') {
     const nextTypingName = String(characterName || '');
-    if (activeGroupTypingName === nextTypingName) {
-        return;
-    }
-
     activeGroupTypingName = nextTypingName;
     const indicator = $('#group_typing_indicator');
     if (!indicator.length) {

@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 
 describe('group chat greetings QoL', () => {
     test('seeds fresh group chats with a member greeting before the first save', async () => {
@@ -80,5 +81,31 @@ describe('group chat greetings QoL', () => {
         expect(styleSource).toContain('grid-template-columns: minmax(0, 1fr) 30px 30px 30px;');
         expect(styleSource).toMatch(/#group_speaker_hide\s*\{[\s\S]*?grid-area:\s*hide;\s*}/);
         expect(mobileStyleSource).toMatch(/#group_speaker_hide\s*\{[\s\S]*?grid-area:\s*hide\s*!important;\s*}/);
+    });
+
+    test('clears a stale typing indicator when generation finishes', async () => {
+        const groupChatSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/group-chats.js', import.meta.url)), 'utf8');
+        const setterStart = groupChatSource.indexOf('function setGroupTypingIndicator');
+        const setterEnd = groupChatSource.indexOf('\n}\n\nfunction isGroupSpeakerControlsHidden', setterStart) + 2;
+        const setterSource = groupChatSource.slice(setterStart, setterEnd);
+        const state = { text: 'Character is typing...', displayNone: false, isTyping: true };
+        const elements = {
+            '#group_typing_indicator': {
+                length: 1,
+                text: value => state.text = value,
+                toggleClass: (_className, enabled) => state.displayNone = enabled,
+            },
+            '#group_speaker_controls': {
+                toggleClass: (_className, enabled) => state.isTyping = enabled,
+            },
+        };
+
+        expect(setterStart).toBeGreaterThanOrEqual(0);
+        expect(setterEnd).toBeGreaterThan(setterStart);
+        vm.runInNewContext(`let activeGroupTypingName = '';\n${setterSource}\nsetGroupTypingIndicator('');`, {
+            $: selector => elements[selector],
+        });
+
+        expect(state).toEqual({ text: '', displayNone: true, isTyping: false });
     });
 });
