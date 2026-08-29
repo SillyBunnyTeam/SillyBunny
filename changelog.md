@@ -64,6 +64,7 @@
 - PR #807 (2026-08-28) `fix: keep the comments trimmed even when pipes are inside`
 - PR #808 (2026-08-28) `feat(ica): add The Ethereality Express trackers as pre-generation agents`
 - PR #809 (2026-08-28) `fix(ica): ensure every Tracker category agent has the ‘tracker-none’ sentinel`
+- PR #811 (2026-08-29) `fix(ui): make lorebooks more easily accessible for mobile iOS`
 
 ## v1.7.0
 
