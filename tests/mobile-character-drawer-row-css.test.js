@@ -6,6 +6,7 @@ import path from 'node:path';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const mobileStylesCss = readFileSync(path.join(repoRoot, 'public', 'css', 'mobile-styles.css'), 'utf8').replace(/\r\n/g, '\n');
 const mobileShellCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8').replace(/\r\n/g, '\n');
+const worldInfoCss = readFileSync(path.join(repoRoot, 'public', 'css', 'world-info.css'), 'utf8').replace(/\r\n/g, '\n');
 
 function getRuleBodies(cssSource, selector) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -64,5 +65,24 @@ describe('mobile character drawer entity row css', () => {
         const bulkEntityRowRule = getRuleBody(mobileStylesCss, '#rm_print_characters_block.bulk_select > :is(.character_select, .group_select)');
 
         expect(bulkEntityRowRule).toContain('flex: 0 0 auto;');
+    });
+});
+
+describe('mobile embedded lorebook css', () => {
+    test('lets the character drawer own scrolling after narrower container rules', () => {
+        const selector = '#WorldInfo.sb-shell-embedded-content :is(#world_popup, #world_popup_entries_list)';
+        const rule = getRuleBody(worldInfoCss, selector);
+        const listHeightCap = worldInfoCss.indexOf('max-height: clamp(280px, 40vh, 420px);');
+        const mobileBreakpoint = worldInfoCss.indexOf('@media screen and (max-width: 960px)', listHeightCap);
+        const mobileReset = worldInfoCss.indexOf(selector);
+
+        expect(rule).toContain('width: 100%;');
+        expect(rule).toContain('height: auto;');
+        expect(rule).toContain('max-width: 100%;');
+        expect(rule).toContain('max-height: none;');
+        expect(rule).toContain('overflow: visible;');
+        expect(listHeightCap).toBeGreaterThan(-1);
+        expect(mobileBreakpoint).toBeGreaterThan(listHeightCap);
+        expect(mobileReset).toBeGreaterThan(mobileBreakpoint);
     });
 });

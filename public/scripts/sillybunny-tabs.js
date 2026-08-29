@@ -130,7 +130,7 @@ const SB_SHORTCUT_LABELS = Object.freeze({
 });
 const SB_PANEL_STYLESHEETS = Object.freeze({
     'characters:world-info': [
-        { href: 'css/world-info.css?v=20260425b', id: 'deferred-world-info-css' },
+        { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
     ],
     'characters:persona': [
         { href: 'css/personas.css?v=20260609a', id: 'deferred-personas-css' },

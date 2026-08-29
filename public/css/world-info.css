@@ -1478,3 +1478,14 @@ select.keyselect+span.select2-container .select2-selection--multiple {
         min-width: 96px;
     }
 }
+
+@media screen and (max-width: 960px) {
+    /* SillyBunny: let the Characters shell own scrolling for embedded mobile lorebooks. */
+    #WorldInfo.sb-shell-embedded-content :is(#world_popup, #world_popup_entries_list) {
+        width: 100%;
+        height: auto;
+        max-width: 100%;
+        max-height: none;
+        overflow: visible;
+    }
+}
