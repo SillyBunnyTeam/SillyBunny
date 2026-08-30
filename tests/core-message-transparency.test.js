@@ -60,6 +60,14 @@ describe('core message transparency wiring', () => {
         expect(backgroundsSource).not.toContain('filter var(--sb-transition-slow)');
     });
 
+    test('keeps theme blur descendants outside a root 3D raster layer', () => {
+        const htmlRule = styleSource.match(/html\s*\{([\s\S]*?)\n\}/)?.[1];
+        expect(htmlRule).toBeDefined();
+        expect(htmlRule).not.toMatch(/(?:-webkit-)?transform\s*:/);
+        expect(htmlRule).not.toMatch(/(?:-webkit-)?perspective\s*:/);
+        expect(htmlRule).not.toMatch(/(?:-webkit-)?backface-visibility\s*:/);
+    });
+
     test('persists and applies the three core visual sliders', () => {
         expect(indexSource).toContain('id="background_blur"');
         expect(indexSource).toContain('aria-label="Background blur"');
