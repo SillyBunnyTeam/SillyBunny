@@ -93,21 +93,23 @@ describe('mobile popup keyboard shift wiring', () => {
         expect(tabsSource).toMatch(/dialog instanceof HTMLElement && dialog\.open/);
     });
 
-    test('caps and anchors to the visual viewport so the input clears the keyboard', () => {
+    test('caps and anchors to the visual viewport safe area so the input clears the keyboard', () => {
         const helperSource = tabsSource.slice(
             tabsSource.indexOf('function syncMobilePopupKeyboardShift('),
             tabsSource.indexOf('function scheduleMobilePopupKeyboardSync('),
         );
 
         expect(helperSource).toContain('const viewportBottom = viewportSize.top + viewportSize.height;');
+        expect(helperSource).toContain('env(safe-area-inset-top, 0px)');
+        expect(helperSource).toContain('env(safe-area-inset-bottom, 0px)');
         expect(helperSource).toMatch(/if \(!isVisualViewportKeyboardOpen\(layoutViewport, viewportSize\)\) \{/);
         expect(helperSource).toContain('dialog.style.setProperty(\'min-height\', \'0\', \'important\');');
-        expect(helperSource).toContain('dialog.style.setProperty(\'max-height\', `${availableHeight}px`, \'important\');');
-        expect(helperSource).toContain('dialog.style.setProperty(\'top\', `${viewportSize.top + MOBILE_POPUP_KEYBOARD_CLEARANCE_PX}px`, \'important\');');
+        expect(helperSource).toContain('dialog.style.setProperty(\'max-height\', availableHeight, \'important\');');
+        expect(helperSource).toContain('dialog.style.setProperty(\'top\', `calc(${viewportSize.top}px + ${topClearance})`, \'important\');');
         expect(helperSource).toContain('dialog.style.setProperty(\'bottom\', \'auto\', \'important\');');
         expect(helperSource).not.toContain('dialog.getBoundingClientRect()');
         expect(helperSource).toContain('activeElement.closest(\'.popup-body, .popup-content\')');
-        expect(helperSource).toContain('scroller.style.maxHeight = `${availableHeight}px`;');
+        expect(helperSource).toContain('scroller.style.maxHeight = availableHeight;');
         expect(helperSource).toContain('scroller.scrollTop += scrollOverflow;');
     });
 

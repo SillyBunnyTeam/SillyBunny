@@ -2984,7 +2984,10 @@ function syncMobilePopupKeyboardShift() {
     // visualViewport tracks the keyboard: top grows and height shrinks as the
     // keyboard rises, so (top + height) is the bottom of the visible area.
     const viewportBottom = viewportSize.top + viewportSize.height;
-    const availableHeight = Math.max(0, viewportSize.height - (MOBILE_POPUP_KEYBOARD_CLEARANCE_PX * 2));
+    const edgeClearance = `${MOBILE_POPUP_KEYBOARD_CLEARANCE_PX}px`;
+    const topClearance = `max(${edgeClearance}, env(safe-area-inset-top, 0px))`;
+    const bottomClearance = `max(${edgeClearance}, env(safe-area-inset-bottom, 0px))`;
+    const availableHeight = `calc(${viewportSize.height}px - ${topClearance} - ${bottomClearance})`;
     const scroller = activeElement.closest('.popup-body, .popup-content');
 
     dialog.dataset.sbKeyboardStyle = dialog.style.cssText;
@@ -2992,14 +2995,14 @@ function syncMobilePopupKeyboardShift() {
     // A modal dialog is fixed to the layout viewport with inset 0 and auto
     // margins, so bottom: auto drops the vertical centering while top pins it
     // to the visible area. Horizontal centering is untouched.
-    dialog.style.setProperty('top', `${viewportSize.top + MOBILE_POPUP_KEYBOARD_CLEARANCE_PX}px`, 'important');
+    dialog.style.setProperty('top', `calc(${viewportSize.top}px + ${topClearance})`, 'important');
     dialog.style.setProperty('bottom', 'auto', 'important');
     dialog.style.setProperty('min-height', '0', 'important');
-    dialog.style.setProperty('max-height', `${availableHeight}px`, 'important');
+    dialog.style.setProperty('max-height', availableHeight, 'important');
 
     if (scroller instanceof HTMLElement) {
         scroller.dataset.sbKeyboardMaxHeight = scroller.style.maxHeight;
-        scroller.style.maxHeight = `${availableHeight}px`;
+        scroller.style.maxHeight = availableHeight;
 
         const scrollOverflow = activeElement.getBoundingClientRect().bottom + MOBILE_POPUP_KEYBOARD_CLEARANCE_PX - viewportBottom;
         if (scrollOverflow > 0) {
