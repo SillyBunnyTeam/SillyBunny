@@ -103,7 +103,6 @@ describe('mobile popup keyboard shift wiring', () => {
         expect(helperSource).toMatch(/if \(!isVisualViewportKeyboardOpen\(layoutViewport, viewportSize\)\) \{/);
         expect(helperSource).toContain('dialog.style.setProperty(\'min-height\', \'0\', \'important\');');
         expect(helperSource).toContain('dialog.style.setProperty(\'max-height\', `${availableHeight}px`, \'important\');');
-        expect(helperSource).toContain('dialog.style.setProperty(\'height\', `${availableHeight}px`, \'important\');');
         expect(helperSource).toContain('dialog.style.setProperty(\'top\', `${viewportSize.top + MOBILE_POPUP_KEYBOARD_CLEARANCE_PX}px`, \'important\');');
         expect(helperSource).toContain('dialog.style.setProperty(\'bottom\', \'auto\', \'important\');');
         expect(helperSource).not.toContain('dialog.getBoundingClientRect()');

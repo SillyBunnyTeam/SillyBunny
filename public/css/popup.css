@@ -35,19 +35,6 @@ dialog {
     --popup-animation-speed: var(--sb-transition);
 }
 
-.popup[data-sb-keyboard-adjusted] {
-    padding-top: 6px;
-    padding-bottom: 6px;
-}
-
-.popup[data-sb-keyboard-adjusted] .popup-content {
-    margin-top: 4px;
-}
-
-.popup[data-sb-keyboard-adjusted] .popup-controls {
-    margin-top: 8px;
-}
-
 /** Popup styles applied to the main popup */
 .popup--animation-fast {
     --popup-animation-speed: var(--sb-transition-fast);
