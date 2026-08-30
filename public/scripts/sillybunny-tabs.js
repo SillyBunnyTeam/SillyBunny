@@ -2985,8 +2985,8 @@ function clearAllMobilePopupKeyboardShifts(except = null) {
  * does not shrink with the virtual keyboard (interactive-widget=resizes-visual).
  * When a focused popup input sits behind the keyboard, the browser pans the
  * visual viewport to reveal it, pushing the top bar off screen (e.g. the
- * connection profile name popup). Cap and scroll the popup first, then shift
- * it up so the input clears the keyboard and the browser never needs to pan.
+ * connection profile name popup). Cap the popup, center it in the visible
+ * area, then scroll its content so the browser never needs to pan.
  */
 function syncMobilePopupKeyboardShift() {
     const activeElement = document.activeElement;
@@ -3025,6 +3025,20 @@ function syncMobilePopupKeyboardShift() {
     dialog.style.setProperty('max-height', `${availableHeight}px`, 'important');
     dialog.dataset.sbKeyboardAdjusted = 'true';
 
+    const dialogBounds = dialog.getBoundingClientRect();
+    const viewportCenter = viewportSize.top + (viewportSize.height / 2);
+    const dialogCenter = dialogBounds.top + (dialogBounds.height / 2);
+    const offset = Math.round(viewportCenter - dialogCenter);
+
+    if (offset !== 0) {
+        dialog.dataset.sbKeyboardShift = String(offset);
+        dialog.dataset.sbKeyboardTransform = dialog.style.transform;
+        dialog.dataset.sbKeyboardTransformPriority = dialog.style.getPropertyPriority('transform');
+        const computedTransform = dialog.style.transform || window.getComputedStyle(dialog).transform;
+        const baseTransform = computedTransform && computedTransform !== 'none' ? ` ${computedTransform}` : '';
+        dialog.style.setProperty('transform', `translateY(${offset}px)${baseTransform}`, 'important');
+    }
+
     if (scroller instanceof HTMLElement) {
         scroller.dataset.sbKeyboardMaxHeight = scroller.style.maxHeight;
         scroller.style.maxHeight = `${availableHeight}px`;
@@ -3034,28 +3048,6 @@ function syncMobilePopupKeyboardShift() {
             scroller.scrollTop += scrollOverflow;
         }
     }
-
-    const overflow = activeElement.getBoundingClientRect().bottom + MOBILE_POPUP_KEYBOARD_CLEARANCE_PX - viewportBottom;
-
-    if (overflow <= 0) {
-        return;
-    }
-
-    const dialogTop = dialog.getBoundingClientRect().top;
-    const maxShift = Math.max(0, dialogTop - viewportSize.top - MOBILE_POPUP_KEYBOARD_CLEARANCE_PX);
-    const shift = Math.round(Math.min(overflow, maxShift));
-
-    if (shift <= 0) {
-        return;
-    }
-
-    dialog.dataset.sbKeyboardAdjusted = 'true';
-    dialog.dataset.sbKeyboardShift = String(shift);
-    dialog.dataset.sbKeyboardTransform = dialog.style.transform;
-    dialog.dataset.sbKeyboardTransformPriority = dialog.style.getPropertyPriority('transform');
-    const computedTransform = dialog.style.transform || window.getComputedStyle(dialog).transform;
-    const baseTransform = computedTransform && computedTransform !== 'none' ? ` ${computedTransform}` : '';
-    dialog.style.setProperty('transform', `translateY(-${shift}px)${baseTransform}`, 'important');
 }
 
 let sbMobilePopupKeyboardSyncTimer = 0;

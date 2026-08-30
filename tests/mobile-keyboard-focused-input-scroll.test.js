@@ -93,7 +93,7 @@ describe('mobile popup keyboard shift wiring', () => {
         expect(tabsSource).toMatch(/dialog instanceof HTMLElement && dialog\.open/);
     });
 
-    test('caps and shifts against the visual viewport so the input clears the keyboard', () => {
+    test('caps and centers against the visual viewport so the input clears the keyboard', () => {
         const helperSource = tabsSource.slice(
             tabsSource.indexOf('function syncMobilePopupKeyboardShift('),
             tabsSource.indexOf('function scheduleMobilePopupKeyboardSync('),
@@ -103,15 +103,13 @@ describe('mobile popup keyboard shift wiring', () => {
         expect(helperSource).toMatch(/if \(!isVisualViewportKeyboardOpen\(layoutViewport, viewportSize\)\) \{/);
         expect(helperSource).toContain('dialog.style.setProperty(\'min-height\', \'0\', \'important\');');
         expect(helperSource).toContain('dialog.style.setProperty(\'max-height\', `${availableHeight}px`, \'important\');');
+        expect(helperSource).toContain('const viewportCenter = viewportSize.top + (viewportSize.height / 2);');
+        expect(helperSource).toContain('const dialogCenter = dialogBounds.top + (dialogBounds.height / 2);');
+        expect(helperSource).toContain('const offset = Math.round(viewportCenter - dialogCenter);');
         expect(helperSource).toContain('activeElement.closest(\'.popup-body, .popup-content\')');
         expect(helperSource).toContain('scroller.style.maxHeight = `${availableHeight}px`;');
         expect(helperSource).toContain('scroller.scrollTop += scrollOverflow;');
-        expect(helperSource).toContain('dialog.style.setProperty(\'transform\', `translateY(-${shift}px)${baseTransform}`, \'important\');');
-    });
-
-    test('clamps the shift so the dialog top stays inside the visible viewport', () => {
-        expect(tabsSource).toContain('const maxShift = Math.max(0, dialogTop - viewportSize.top - MOBILE_POPUP_KEYBOARD_CLEARANCE_PX);');
-        expect(tabsSource).toContain('const shift = Math.round(Math.min(overflow, maxShift));');
+        expect(helperSource).toContain('dialog.style.setProperty(\'transform\', `translateY(${offset}px)${baseTransform}`, \'important\');');
     });
 
     test('clears the shift when focus leaves or the keyboard closes', () => {
