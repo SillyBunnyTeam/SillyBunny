@@ -679,13 +679,14 @@ describe('mobile shell lifecycle wiring', () => {
         expect(getInlineDrawerStorageKeySource).not.toContain('`${SB_STORAGE_KEYS.settingsDrawerStatePrefix}:${contextSegments.join(\'/\')}:drawer:${drawerLabel}:${drawerIndex}`');
     });
 
-    test('clamps shell panels and iOS composer edits on stable viewport bounds', () => {
+    test('clamps shell panels while letting the iOS composer follow the visible viewport', () => {
         const getResolvedShellTopbarOffsetSource = getFunctionSource('getResolvedShellTopbarOffset');
         const getDesktopShellResizeBoundsSource = getFunctionSource('getDesktopShellResizeBounds');
         const setShellSizeOverrideSource = getFunctionSource('setShellSizeOverride');
         const openShellSource = getFunctionSource('openShell');
         const closeShellSource = getFunctionSource('closeShell');
         const syncMobileViewportStateSource = getFunctionSource('syncMobileViewportState');
+        const shouldUseStableIOSPanelViewportSource = getFunctionSource('shouldUseStableIOSPanelViewport');
 
         expect(tabsSource).toContain('function getShellViewportSize(');
         expect(tabsSource).toContain('function getVisualViewportSize(');
@@ -694,8 +695,9 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('function isChatComposerEditableElement(');
         expect(tabsSource).toContain('function hasOpenMobileShellDrawer(');
         expect(tabsSource).toContain('!isIOSWebKitPlatform() || !isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)');
-        expect(tabsSource).toContain('return isMobileShellPanelEditableElement(activeElement) || isChatComposerEditableElement(activeElement) || hasOpenMobileShellDrawer();');
-        expect(tabsSource).not.toContain('if (isChatComposerEditableElement(activeElement)) {');
+        expect(shouldUseStableIOSPanelViewportSource).toMatch(/if \(isChatComposerEditableElement\(activeElement\)\) \{\s*return false;\s*\}/);
+        expect(shouldUseStableIOSPanelViewportSource).toContain('return isMobileShellPanelEditableElement(activeElement) || hasOpenMobileShellDrawer();');
+        expect(shouldUseStableIOSPanelViewportSource).not.toContain('|| isChatComposerEditableElement(activeElement) ||');
         expect(tabsSource).toContain('return layoutViewport;');
         expect(tabsSource).toContain('function syncShellViewportBounds(');
         expect(tabsSource).toContain('function syncMobileShellDrawerBounds(');
