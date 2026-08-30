@@ -2905,7 +2905,7 @@ function scheduleMobileFocusedInputScroll(event) {
     }, 360);
 }
 
-const MOBILE_POPUP_KEYBOARD_CLEARANCE_PX = 16;
+const MOBILE_POPUP_KEYBOARD_CLEARANCE_PX = 8;
 
 function getMobilePopupDialogForKeyboard(element) {
     if (!(element instanceof HTMLElement)) {
@@ -2996,6 +2996,9 @@ function syncMobilePopupKeyboardShift() {
     dialog.style.setProperty('bottom', 'auto', 'important');
     dialog.style.setProperty('min-height', '0', 'important');
     dialog.style.setProperty('max-height', `${availableHeight}px`, 'important');
+    if (dialog.classList.contains('large_dialogue_popup') || dialog.querySelector('.maximized_textarea')) {
+        dialog.style.setProperty('height', `${availableHeight}px`, 'important');
+    }
 
     if (scroller instanceof HTMLElement) {
         scroller.dataset.sbKeyboardMaxHeight = scroller.style.maxHeight;
