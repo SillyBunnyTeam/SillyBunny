@@ -2690,7 +2690,11 @@ function shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize) {
     }
 
     const activeElement = document.activeElement;
-    return isMobileShellPanelEditableElement(activeElement) || isChatComposerEditableElement(activeElement) || hasOpenMobileShellDrawer();
+    if (isChatComposerEditableElement(activeElement)) {
+        return false;
+    }
+
+    return isMobileShellPanelEditableElement(activeElement) || hasOpenMobileShellDrawer();
 }
 
 const MOBILE_COMPOSER_KEYBOARD_PAN_EPSILON_PX = 8;
@@ -2796,9 +2800,9 @@ function getShellViewportSize() {
         return { ...layoutViewport, height, bottom: height };
     }
 
-    // SillyBunny: iOS keyboard edits inside shell panels or the chat composer
-    // should not feed Safari visualViewport jitter back into shell geometry.
-    // Keep layout stable while focused panel scrolling still uses visualViewport.
+    // SillyBunny: iOS keyboard edits inside shell panels should not feed Safari
+    // visualViewport jitter back into shell geometry. The chat composer remains
+    // on the visible viewport so the keyboard accessory bar cannot cover it.
     if (shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize)) {
         return layoutViewport;
     }
@@ -2824,7 +2828,7 @@ function syncShellViewportBounds() {
     setRootViewportProperty('--sb-shell-measured-top-offset', `${topOffset}px`);
     setRootViewportProperty('--sb-shell-available-height', `${Math.max(0, viewportSize.height - topOffset)}px`);
     // SillyBunny: iOS Safari shifts the visual viewport while the keyboard opens;
-    // keyboard edit paths intentionally keep the stable layout top.
+    // panel edits keep the stable top, while composer edits follow the visible top.
     setRootViewportProperty('--sb-shell-viewport-top', `${viewportSize.top}px`);
 
     // SillyBunny: browser-fixes.js may reset document scroll mid-edit once the
