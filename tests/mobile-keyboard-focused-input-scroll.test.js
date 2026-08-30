@@ -93,7 +93,7 @@ describe('mobile popup keyboard shift wiring', () => {
         expect(tabsSource).toMatch(/dialog instanceof HTMLElement && dialog\.open/);
     });
 
-    test('shifts against the visual-viewport bottom so the input clears the keyboard', () => {
+    test('caps and shifts against the visual viewport so the input clears the keyboard', () => {
         const helperSource = tabsSource.slice(
             tabsSource.indexOf('function syncMobilePopupKeyboardShift('),
             tabsSource.indexOf('function scheduleMobilePopupKeyboardSync('),
@@ -101,6 +101,8 @@ describe('mobile popup keyboard shift wiring', () => {
 
         expect(helperSource).toContain('const viewportBottom = viewportSize.top + viewportSize.height;');
         expect(helperSource).toMatch(/if \(!isVisualViewportKeyboardOpen\(layoutViewport, viewportSize\)\) \{/);
+        expect(helperSource).toContain('dialog.style.setProperty(\'min-height\', \'0\', \'important\');');
+        expect(helperSource).toContain('dialog.style.setProperty(\'max-height\', `${availableHeight}px`, \'important\');');
         expect(helperSource).toContain('activeElement.closest(\'.popup-body, .popup-content\')');
         expect(helperSource).toContain('scroller.style.maxHeight = `${availableHeight}px`;');
         expect(helperSource).toContain('scroller.scrollTop += scrollOverflow;');
@@ -120,13 +122,18 @@ describe('mobile popup keyboard shift wiring', () => {
         expect(tabsSource).toContain('dialog.dataset.sbKeyboardTransformPriority = dialog.style.getPropertyPriority(\'transform\');');
         expect(tabsSource).toContain('dialog.style.setProperty(\'transform\', previousTransform, previousTransformPriority);');
         expect(tabsSource).toMatch(/dialog\.style\.removeProperty\('transform'\)/);
+        expect(tabsSource).toContain('dialog.style.setProperty(\'min-height\', previousMinHeight, previousMinHeightPriority);');
+        expect(tabsSource).toContain('dialog.style.setProperty(\'max-height\', previousMaxHeight, previousMaxHeightPriority);');
+        expect(tabsSource).toContain('dialog.style.removeProperty(\'min-height\');');
+        expect(tabsSource).toContain('dialog.style.removeProperty(\'max-height\');');
         expect(tabsSource).toContain('scroller.style.removeProperty(\'max-height\');');
         expect(tabsSource).toContain('delete dialog.dataset.sbKeyboardShift;');
     });
 
-    test('wires the sync on focus changes and visualViewport resize inside initAll', () => {
+    test('wires the sync on focus changes and visualViewport changes inside initAll', () => {
         expect(tabsSource).toContain('document.addEventListener(\'focusin\', scheduleMobilePopupKeyboardSync)');
         expect(tabsSource).toContain('document.addEventListener(\'focusout\', scheduleMobilePopupKeyboardSync)');
         expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', scheduleMobilePopupKeyboardSync, { passive: true })');
+        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', scheduleMobilePopupKeyboardSync, { passive: true })');
     });
 });

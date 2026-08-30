@@ -2932,6 +2932,26 @@ function clearMobilePopupKeyboardShift(dialog) {
         delete scroller.dataset.sbKeyboardMaxHeight;
     }
 
+    if (dialog.dataset.sbKeyboardMinHeight !== undefined) {
+        const previousMinHeight = dialog.dataset.sbKeyboardMinHeight;
+        const previousMinHeightPriority = dialog.dataset.sbKeyboardMinHeightPriority;
+        if (previousMinHeight) {
+            dialog.style.setProperty('min-height', previousMinHeight, previousMinHeightPriority);
+        } else {
+            dialog.style.removeProperty('min-height');
+        }
+    }
+
+    if (dialog.dataset.sbKeyboardMaxHeight !== undefined) {
+        const previousMaxHeight = dialog.dataset.sbKeyboardMaxHeight;
+        const previousMaxHeightPriority = dialog.dataset.sbKeyboardMaxHeightPriority;
+        if (previousMaxHeight) {
+            dialog.style.setProperty('max-height', previousMaxHeight, previousMaxHeightPriority);
+        } else {
+            dialog.style.removeProperty('max-height');
+        }
+    }
+
     if (dialog.dataset.sbKeyboardShift !== undefined) {
         const previousTransform = dialog.dataset.sbKeyboardTransform;
         const previousTransformPriority = dialog.dataset.sbKeyboardTransformPriority;
@@ -2943,6 +2963,10 @@ function clearMobilePopupKeyboardShift(dialog) {
     }
 
     delete dialog.dataset.sbKeyboardAdjusted;
+    delete dialog.dataset.sbKeyboardMinHeight;
+    delete dialog.dataset.sbKeyboardMinHeightPriority;
+    delete dialog.dataset.sbKeyboardMaxHeight;
+    delete dialog.dataset.sbKeyboardMaxHeightPriority;
     delete dialog.dataset.sbKeyboardShift;
     delete dialog.dataset.sbKeyboardTransform;
     delete dialog.dataset.sbKeyboardTransformPriority;
@@ -2961,8 +2985,8 @@ function clearAllMobilePopupKeyboardShifts(except = null) {
  * does not shrink with the virtual keyboard (interactive-widget=resizes-visual).
  * When a focused popup input sits behind the keyboard, the browser pans the
  * visual viewport to reveal it, pushing the top bar off screen (e.g. the
- * connection profile name popup). Scroll the popup body first, then shift the
- * dialog up so the input clears the keyboard and the browser never needs to pan.
+ * connection profile name popup). Cap and scroll the popup first, then shift
+ * it up so the input clears the keyboard and the browser never needs to pan.
  */
 function syncMobilePopupKeyboardShift() {
     const activeElement = document.activeElement;
@@ -2990,13 +3014,20 @@ function syncMobilePopupKeyboardShift() {
     // visualViewport tracks the keyboard: top grows and height shrinks as the
     // keyboard rises, so (top + height) is the bottom of the visible area.
     const viewportBottom = viewportSize.top + viewportSize.height;
+    const availableHeight = Math.max(0, viewportSize.height - (MOBILE_POPUP_KEYBOARD_CLEARANCE_PX * 2));
     const scroller = activeElement.closest('.popup-body, .popup-content');
 
+    dialog.dataset.sbKeyboardMinHeight = dialog.style.getPropertyValue('min-height');
+    dialog.dataset.sbKeyboardMinHeightPriority = dialog.style.getPropertyPriority('min-height');
+    dialog.dataset.sbKeyboardMaxHeight = dialog.style.getPropertyValue('max-height');
+    dialog.dataset.sbKeyboardMaxHeightPriority = dialog.style.getPropertyPriority('max-height');
+    dialog.style.setProperty('min-height', '0', 'important');
+    dialog.style.setProperty('max-height', `${availableHeight}px`, 'important');
+    dialog.dataset.sbKeyboardAdjusted = 'true';
+
     if (scroller instanceof HTMLElement) {
-        const availableHeight = Math.max(0, viewportSize.height - (MOBILE_POPUP_KEYBOARD_CLEARANCE_PX * 2));
         scroller.dataset.sbKeyboardMaxHeight = scroller.style.maxHeight;
         scroller.style.maxHeight = `${availableHeight}px`;
-        dialog.dataset.sbKeyboardAdjusted = 'true';
 
         const scrollOverflow = activeElement.getBoundingClientRect().bottom + MOBILE_POPUP_KEYBOARD_CLEARANCE_PX - viewportBottom;
         if (scrollOverflow > 0) {
@@ -17513,6 +17544,7 @@ function initAll() {
     document.addEventListener('focusin', scheduleMobilePopupKeyboardSync);
     document.addEventListener('focusout', scheduleMobilePopupKeyboardSync);
     window.visualViewport?.addEventListener('resize', scheduleMobilePopupKeyboardSync, { passive: true });
+    window.visualViewport?.addEventListener('scroll', scheduleMobilePopupKeyboardSync, { passive: true });
 
     // SillyBunny: keep iOS drawer scroller padding in sync with keyboard focus;
     // this provides scroll range for bottom inputs without fixing the document.
