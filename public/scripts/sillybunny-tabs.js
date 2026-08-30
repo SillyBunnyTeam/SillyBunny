@@ -2932,48 +2932,16 @@ function clearMobilePopupKeyboardShift(dialog) {
         delete scroller.dataset.sbKeyboardMaxHeight;
     }
 
-    if (dialog.dataset.sbKeyboardMinHeight !== undefined) {
-        const previousMinHeight = dialog.dataset.sbKeyboardMinHeight;
-        const previousMinHeightPriority = dialog.dataset.sbKeyboardMinHeightPriority;
-        if (previousMinHeight) {
-            dialog.style.setProperty('min-height', previousMinHeight, previousMinHeightPriority);
-        } else {
-            dialog.style.removeProperty('min-height');
-        }
-    }
-
-    if (dialog.dataset.sbKeyboardMaxHeight !== undefined) {
-        const previousMaxHeight = dialog.dataset.sbKeyboardMaxHeight;
-        const previousMaxHeightPriority = dialog.dataset.sbKeyboardMaxHeightPriority;
-        if (previousMaxHeight) {
-            dialog.style.setProperty('max-height', previousMaxHeight, previousMaxHeightPriority);
-        } else {
-            dialog.style.removeProperty('max-height');
-        }
-    }
-
-    if (dialog.dataset.sbKeyboardShift !== undefined) {
-        const previousTransform = dialog.dataset.sbKeyboardTransform;
-        const previousTransformPriority = dialog.dataset.sbKeyboardTransformPriority;
-        if (previousTransform) {
-            dialog.style.setProperty('transform', previousTransform, previousTransformPriority);
-        } else {
-            dialog.style.removeProperty('transform');
-        }
+    if (dialog.dataset.sbKeyboardStyle !== undefined) {
+        dialog.style.cssText = dialog.dataset.sbKeyboardStyle;
     }
 
     delete dialog.dataset.sbKeyboardAdjusted;
-    delete dialog.dataset.sbKeyboardMinHeight;
-    delete dialog.dataset.sbKeyboardMinHeightPriority;
-    delete dialog.dataset.sbKeyboardMaxHeight;
-    delete dialog.dataset.sbKeyboardMaxHeightPriority;
-    delete dialog.dataset.sbKeyboardShift;
-    delete dialog.dataset.sbKeyboardTransform;
-    delete dialog.dataset.sbKeyboardTransformPriority;
+    delete dialog.dataset.sbKeyboardStyle;
 }
 
 function clearAllMobilePopupKeyboardShifts(except = null) {
-    for (const dialog of document.querySelectorAll('dialog.popup[data-sb-keyboard-adjusted], dialog.popup[data-sb-keyboard-shift]')) {
+    for (const dialog of document.querySelectorAll('dialog.popup[data-sb-keyboard-adjusted]')) {
         if (dialog !== except) {
             clearMobilePopupKeyboardShift(dialog);
         }
@@ -2985,8 +2953,10 @@ function clearAllMobilePopupKeyboardShifts(except = null) {
  * does not shrink with the virtual keyboard (interactive-widget=resizes-visual).
  * When a focused popup input sits behind the keyboard, the browser pans the
  * visual viewport to reveal it, pushing the top bar off screen (e.g. the
- * connection profile name popup). Cap the popup, center it in the visible
- * area, then scroll its content so the browser never needs to pan.
+ * connection profile name popup). Anchor the popup to the measured visible
+ * area and cap it there, then scroll its content so the browser never needs
+ * to pan. Position comes from visualViewport alone: measuring the dialog to
+ * offset it reads a stale rect while the open/keyboard animations run.
  */
 function syncMobilePopupKeyboardShift() {
     const activeElement = document.activeElement;
@@ -3017,27 +2987,15 @@ function syncMobilePopupKeyboardShift() {
     const availableHeight = Math.max(0, viewportSize.height - (MOBILE_POPUP_KEYBOARD_CLEARANCE_PX * 2));
     const scroller = activeElement.closest('.popup-body, .popup-content');
 
-    dialog.dataset.sbKeyboardMinHeight = dialog.style.getPropertyValue('min-height');
-    dialog.dataset.sbKeyboardMinHeightPriority = dialog.style.getPropertyPriority('min-height');
-    dialog.dataset.sbKeyboardMaxHeight = dialog.style.getPropertyValue('max-height');
-    dialog.dataset.sbKeyboardMaxHeightPriority = dialog.style.getPropertyPriority('max-height');
+    dialog.dataset.sbKeyboardStyle = dialog.style.cssText;
+    dialog.dataset.sbKeyboardAdjusted = 'true';
+    // A modal dialog is fixed to the layout viewport with inset 0 and auto
+    // margins, so bottom: auto drops the vertical centering while top pins it
+    // to the visible area. Horizontal centering is untouched.
+    dialog.style.setProperty('top', `${viewportSize.top + MOBILE_POPUP_KEYBOARD_CLEARANCE_PX}px`, 'important');
+    dialog.style.setProperty('bottom', 'auto', 'important');
     dialog.style.setProperty('min-height', '0', 'important');
     dialog.style.setProperty('max-height', `${availableHeight}px`, 'important');
-    dialog.dataset.sbKeyboardAdjusted = 'true';
-
-    const dialogBounds = dialog.getBoundingClientRect();
-    const viewportCenter = viewportSize.top + (viewportSize.height / 2);
-    const dialogCenter = dialogBounds.top + (dialogBounds.height / 2);
-    const offset = Math.round(viewportCenter - dialogCenter);
-
-    if (offset !== 0) {
-        dialog.dataset.sbKeyboardShift = String(offset);
-        dialog.dataset.sbKeyboardTransform = dialog.style.transform;
-        dialog.dataset.sbKeyboardTransformPriority = dialog.style.getPropertyPriority('transform');
-        const computedTransform = dialog.style.transform || window.getComputedStyle(dialog).transform;
-        const baseTransform = computedTransform && computedTransform !== 'none' ? ` ${computedTransform}` : '';
-        dialog.style.setProperty('transform', `translateY(${offset}px)${baseTransform}`, 'important');
-    }
 
     if (scroller instanceof HTMLElement) {
         scroller.dataset.sbKeyboardMaxHeight = scroller.style.maxHeight;
@@ -3056,7 +3014,8 @@ function scheduleMobilePopupKeyboardSync() {
     window.requestAnimationFrame(syncMobilePopupKeyboardShift);
     window.clearTimeout(sbMobilePopupKeyboardSyncTimer);
     // Run again after the keyboard animation / visualViewport resize settles.
-    sbMobilePopupKeyboardSyncTimer = window.setTimeout(syncMobilePopupKeyboardShift, 200);
+    // iOS takes ~300ms to finish raising the keyboard and panning back.
+    sbMobilePopupKeyboardSyncTimer = window.setTimeout(syncMobilePopupKeyboardShift, 400);
 }
 
 function getMobileShellBoundDrawers() {
