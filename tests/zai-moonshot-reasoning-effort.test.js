@@ -141,11 +141,22 @@ describe('reasoning effort on Z.AI and Moonshot requests', () => {
             },
         );
 
-        test.each(['glm-5.3', 'glm-5.10', 'glm-6'])('sends the effort on %s, which is newer than 5.2', async (model) => {
+        test.each(['glm-5.3', 'glm-5.3-flash', 'glm-5.10', 'glm-6'])('sends the effort on %s, which is newer than 5.2', async (model) => {
             const response = await makeRequest(CHAT_COMPLETION_SOURCES.ZAI, { model, reasoning_effort: 'high' });
 
             expect(response.status).toBe(200);
             expect(capturedBody.reasoning_effort).toBe('high');
+        });
+
+        test.each([
+            ['glm-5.2', 'disabled'],
+            ['glm-5.3', 'enabled'],
+            ['glm-5.3-flash', 'enabled'],
+        ])('%s sends thinking.type=%s when reasoning is disabled', async (model, expected) => {
+            const response = await makeRequest(CHAT_COMPLETION_SOURCES.ZAI, { model, include_reasoning: false });
+
+            expect(response.status).toBe(200);
+            expect(capturedBody.thinking).toEqual({ type: expected });
         });
 
         test('normalizes UI casing before the gate', async () => {

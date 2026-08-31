@@ -660,6 +660,7 @@ async function sendMakerSuiteRequest(request, response) {
 
         const isThinkingConfigModel = m => (/^gemini-2.5-(flash|pro)/.test(m) && !/-image(-preview)?$/.test(m)) || (/^gemini-3[.\d]*-(flash|pro)/.test(m));
         const isImageSizeModel = m => /^gemini-3/.test(m);
+        const noSamplingModel = /gemini-3\.[67]-flash|gemini-3\.5-flash-lite/.test(model);
 
         const noSearchModels = [
             'gemini-2.0-flash-lite',
@@ -671,6 +672,13 @@ async function sendMakerSuiteRequest(request, response) {
 
         if (!Array.isArray(generationConfig.stopSequences) || !generationConfig.stopSequences.length) {
             delete generationConfig.stopSequences;
+        }
+
+        if (noSamplingModel) {
+            delete generationConfig.temperature;
+            delete generationConfig.topP;
+            delete generationConfig.topK;
+            delete generationConfig.candidateCount;
         }
 
         const enableImageModality = requestImages && imageGenerationModels.includes(model);
@@ -3164,9 +3172,10 @@ export async function handleChatCompletionsGenerate(request, response) {
             headers = {
                 'Accept-Language': 'en-US,en',
             };
+            const requiresThinking = /(?:^|[/:])glm-5\.3(?:[-/:]|$)/i.test(String(request.body.model));
             bodyParams = {
                 thinking: {
-                    type: request.body.include_reasoning ? 'enabled' : 'disabled',
+                    type: requiresThinking || request.body.include_reasoning ? 'enabled' : 'disabled',
                 },
             };
             // SillyBunny divergence: Z.AI takes the reasoning depth alongside thinking.type from
