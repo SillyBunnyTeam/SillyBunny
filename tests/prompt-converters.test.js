@@ -245,6 +245,13 @@ describe('calculateGoogleBudgetTokens', () => {
             }
         });
 
+        test('Gemini 3.7 Flash maps min to its lowest supported level', () => {
+            expect(mod.calculateGoogleBudgetTokens(8192, 'auto', 'gemini-3.7-flash')).toBeNull();
+            expect(mod.calculateGoogleBudgetTokens(8192, 'min', 'gemini-3.7-flash')).toBe('low');
+            expect(mod.calculateGoogleBudgetTokens(8192, 'medium', 'gemini-3.7-flash')).toBe('medium');
+            expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3.7-flash')).toBe('max');
+        });
+
         test('auto returns null', () => expect(mod.calculateGoogleBudgetTokens(8192, 'auto', 'gemini-3.5-flash')).toBeNull());
 
         test('none returns null', () => expect(mod.calculateGoogleBudgetTokens(8192, 'none', 'gemini-3.5-flash')).toBeNull());
@@ -1150,6 +1157,32 @@ describe('convertGooglePrompt', () => {
         ];
         const result = mod.convertGooglePrompt(messages, 'gemini-2.0-flash', false, names);
         expect(result.contents.filter(c => c.role === 'user')).toHaveLength(1);
+    });
+
+    test.each(['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'])(
+        'merges a trailing prefill into the user turn on %s',
+        (model) => {
+            const messages = [
+                { role: 'user', content: 'Hi' },
+                { role: 'assistant', content: 'Prefill' },
+            ];
+            const result = mod.convertGooglePrompt(messages, model, false, names);
+
+            expect(result.contents).toHaveLength(1);
+            expect(result.contents[0].role).toBe('user');
+            expect(result.contents[0].parts[0].text).toBe('Hi\n\nPrefill');
+        },
+    );
+
+    test('keeps non-trailing model turns on models without prefill support', () => {
+        const messages = [
+            { role: 'user', content: 'Hi' },
+            { role: 'assistant', content: 'Hello' },
+            { role: 'user', content: 'How are you?' },
+        ];
+        const result = mod.convertGooglePrompt(messages, 'gemini-3.6-flash', false, names);
+
+        expect(result.contents.map(c => c.role)).toEqual(['user', 'model', 'user']);
     });
 
     test('converts image_url to inlineData', () => {

@@ -485,6 +485,7 @@ export function convertGooglePrompt(messages, model, useSysPrompt, names) {
 
     const system_instruction = { parts: sysPrompt.map(text => ({ text })) };
     const toolNameMap = {};
+    const noPrefillModel = /gemini-3\.[67]-flash|gemini-3\.5-flash-lite/.test(model);
 
     const contents = [];
     messages.forEach((message, index) => {
@@ -492,7 +493,7 @@ export function convertGooglePrompt(messages, model, useSysPrompt, names) {
         if (message.role === 'system' || message.role === 'tool') {
             message.role = 'user';
         } else if (message.role === 'assistant') {
-            message.role = 'model';
+            message.role = noPrefillModel && index === messages.length - 1 ? 'user' : 'model';
         }
 
         // Convert the content to an array of parts
@@ -1308,6 +1309,9 @@ export function calculateGoogleBudgetTokens(maxTokens, reasoningEffort, model) {
     function getGemini3ThinkingLevel() {
         if (!reasoningEffort || [REASONING_EFFORT.auto, REASONING_EFFORT.none].includes(reasoningEffort)) {
             return null;
+        }
+        if (reasoningEffort === REASONING_EFFORT.min && /gemini-3\.7-flash/.test(model)) {
+            return REASONING_EFFORT.low;
         }
         return toWireReasoningEffort(reasoningEffort);
     }

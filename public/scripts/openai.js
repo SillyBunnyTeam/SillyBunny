@@ -575,8 +575,8 @@ const default_settings = {
     claude_model: 'claude-opus-5',
     claude_disable_temperature: false,
     claude_disable_top_p: false,
-    google_model: 'gemini-2.5-pro',
-    vertexai_model: 'gemini-2.5-pro',
+    google_model: 'gemini-3.7-flash',
+    vertexai_model: 'gemini-3.7-flash',
     ai21_model: 'jamba-large',
     mistralai_model: 'mistral-large-latest',
     cohere_model: 'command-r-plus',
@@ -586,7 +586,7 @@ const default_settings = {
     chutes_sort_models: 'alphabetically',
     siliconflow_model: 'deepseek-ai/DeepSeek-V3',
     siliconflow_endpoint: SILICONFLOW_ENDPOINT.GLOBAL,
-    minimax_model: 'MiniMax-M2.7',
+    minimax_model: 'MiniMax-M3',
     minimax_endpoint: MINIMAX_ENDPOINT.GLOBAL,
     electronhub_model: 'gpt-4o-mini',
     electronhub_sort_models: 'alphabetically',
@@ -599,7 +599,7 @@ const default_settings = {
     cometapi_model: 'gpt-4o',
     moonshot_model: 'kimi-latest',
     fireworks_model: 'accounts/fireworks/models/kimi-k2-instruct',
-    zai_model: 'glm-5.2',
+    zai_model: 'glm-5.3',
     zai_endpoint: ZAI_ENDPOINT.COMMON,
     linkapi_model: 'claude-sonnet-4-5',
     linkapi_endpoint: LINKAPI_ENDPOINT.GLOBAL,
@@ -8110,6 +8110,7 @@ function getZaiMaxContext(model, isUnlocked) {
     }
 
     const contextMap = {
+        'glm-5.3-flash': max_1mil,
         'glm-5.3': max_1mil,
         'glm-5.2': max_1mil,
         'glm-5.1': max_200k,
@@ -8822,7 +8823,7 @@ async function onModelChange() {
     }
 
     if (oai_settings.chat_completion_source === chat_completion_sources.MINIMAX) {
-        const maxContext = oai_settings.minimax_model === 'M2-her' ? 65536 : 204800;
+        const maxContext = oai_settings.minimax_model === 'MiniMax-M3' ? max_1mil : oai_settings.minimax_model === 'M2-her' ? 65536 : 204800;
         $('#openai_max_context').attr('max', maxContext);
         oai_settings.openai_max_context = Math.min(Number($('#openai_max_context').attr('max')), oai_settings.openai_max_context);
         $('#openai_max_context').val(oai_settings.openai_max_context).trigger('input');
@@ -9339,6 +9340,7 @@ export function isImageInliningSupported() {
         'kimi-k2.5',
         'kimi-latest',
         // Z.AI (GLM)
+        'glm-5.3-flash',
         'glm-5v-turbo',
         'glm-4.5v',
         'glm-4.6v',
@@ -9377,6 +9379,8 @@ export function isImageInliningSupported() {
             return (Array.isArray(model_list) && model_list.find(m => m.id === oai_settings.mistralai_model)?.capabilities?.vision);
         case chat_completion_sources.COHERE:
             return visionSupportedModels.some(model => oai_settings.cohere_model.includes(model));
+        case chat_completion_sources.MINIMAX:
+            return oai_settings.minimax_model === 'MiniMax-M3';
         case chat_completion_sources.XAI:
             // TODO: xAI's /models endpoint doesn't return modality info
             return visionSupportedModels.some(model => oai_settings.xai_model.includes(model));
@@ -9429,6 +9433,7 @@ export function isVideoInliningSupported() {
         'gemini-exp-1206',
         'gemini-3',
         // Z.AI (GLM)
+        'glm-5.3-flash',
         'glm-5v-turbo',
         'glm-4.5v',
         'glm-4.6v',
@@ -9439,6 +9444,8 @@ export function isVideoInliningSupported() {
             return videoSupportedModels.some(model => oai_settings.google_model.includes(model));
         case chat_completion_sources.VERTEXAI:
             return videoSupportedModels.some(model => oai_settings.vertexai_model.includes(model));
+        case chat_completion_sources.MINIMAX:
+            return oai_settings.minimax_model === 'MiniMax-M3';
         case chat_completion_sources.OPENROUTER:
             return (Array.isArray(model_list) && model_list.find(m => m.id === oai_settings.openrouter_model)?.architecture?.input_modalities?.includes('video'));
         case chat_completion_sources.ZAI:
