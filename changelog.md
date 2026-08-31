@@ -68,6 +68,7 @@
 - PR #811 (2026-08-29) `fix(ui): make lorebooks more easily accessible for mobile iOS`
 - PR #812 (2026-08-29) `fix: character is typing stops showing up when the message is fully generated`
 - PR #813 (2026-08-30) `fix(ios): keep viewport height capped`
+- PR #814 (2026-08-31) `chore: add newest models to ZAI, MiniMax, AI Studio, and Vertex`
 
 ## v1.7.0
 
