@@ -60,6 +60,7 @@ describe('in-chat agent post-processing runner', () => {
     let replacePathfinderSettings;
     let getToolAction;
     let getForcedToolChoice;
+    let itemizedPrompts;
 
     beforeEach(async () => {
         jest.resetModules();
@@ -152,6 +153,7 @@ describe('in-chat agent post-processing runner', () => {
         });
         getToolAction = jest.fn(() => null);
         getForcedToolChoice = jest.fn(() => null);
+        itemizedPrompts = [];
 
         const addListener = (listeners, event, handler) => {
             const eventListeners = listeners.get(event) ?? [];
@@ -232,6 +234,7 @@ describe('in-chat agent post-processing runner', () => {
             substituteParamsExtended: jest.fn(value => String(value ?? '')),
             generateQuietPrompt,
             getCurrentChatId: jest.fn(() => currentChatId),
+            itemizedPrompts,
             normalizeContentText: jest.fn(value => String(value ?? '')),
             main_api: mainApi,
             saveChatDebounced,
@@ -5345,6 +5348,38 @@ describe('in-chat agent post-processing runner', () => {
         expect(chat[0].extra.inChatAgentTransformHistory).toHaveLength(1);
         expect(chat[0].swipe_info[0].extra.inChatAgentTransformHistory).toEqual(chat[0].extra.inChatAgentTransformHistory);
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
+    });
+
+    test('excludes Kimi K3 partial prefill from prompt-transform rewrites', async () => {
+        usePromptTransformPostAgent();
+        generateQuietPrompt.mockResolvedValue('Rewritten continuation');
+        itemizedPrompts.push({ mesId: 0, promptBias: 'Protected prefix: ' });
+
+        const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+
+        chat.push({
+            name: 'Assistant',
+            mes: 'Protected prefix: Original continuation',
+            is_user: false,
+            is_system: false,
+            extra: {
+                api: 'moonshot',
+                model: 'kimi-k3',
+            },
+        });
+
+        await eventSource.emit(eventTypes.MESSAGE_RECEIVED, 0, 'normal');
+        await waitFor(() => saveChat.mock.calls.length === 1);
+
+        const quietPrompt = generateQuietPrompt.mock.calls[0][0].quietPrompt;
+        expect(quietPrompt).toContain('<assistant_response>\nOriginal continuation\n</assistant_response>');
+        expect(quietPrompt).not.toContain('Protected prefix: ');
+        expect(chat[0].mes).toBe('Protected prefix: Rewritten continuation');
+        expect(chat[0].extra.inChatAgentTransformHistory).toEqual([expect.objectContaining({
+            beforeText: 'Protected prefix: Original continuation',
+            afterText: 'Protected prefix: Rewritten continuation',
+        })]);
     });
 
     test('shows the resolved profile model in prompt-transform running toasts', async () => {
