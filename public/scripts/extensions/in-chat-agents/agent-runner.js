@@ -10,6 +10,7 @@ import {
     substituteParamsExtended,
     generateQuietPrompt,
     getCurrentChatId,
+    itemizedPrompts,
     normalizeContentText,
     saveChatDebounced,
     stopGeneration,
@@ -40,6 +41,7 @@ import {
     resolveConnectionProfile,
 } from './agent-store.js';
 import { regexFromString } from '../../utils.js';
+import { isKimiK3Model } from '../../openai-model-capabilities.js';
 import { buildFallbackPromptText, extractProfileResponseText } from './llm-utils.js';
 import { getConnectionProfileDisplayName, getConnectionProfileModelName } from './profile-utils.js';
 import {
@@ -3181,18 +3183,34 @@ export async function requestPromptTransform(agent, promptMessages, maxTokens, o
     }
 }
 
+function getProtectedKimiPartialPrefill(message, messageIndex, messageText) {
+    if (message?.is_user !== false || message?.is_system !== false || !Number.isInteger(messageIndex)) {
+        return '';
+    }
+
+    const api = String(message.extra?.api ?? '').trim().toLowerCase();
+    if (!['custom', 'moonshot', 'nanogpt', 'openrouter'].includes(api) || !isKimiK3Model(message.extra?.model)) {
+        return '';
+    }
+
+    const promptBias = itemizedPrompts.find(item => Number(item?.mesId) === messageIndex)?.promptBias;
+    return typeof promptBias === 'string' && promptBias && messageText.startsWith(promptBias) ? promptBias : '';
+}
+
 async function runPromptTransformAgent(agent, message, generationType, messageTextOverride = null, messageIndex = null, options = {}) {
     const applyToMessage = options.applyToMessage !== false;
     const currentMessageText = unwrapAssistantResponseWrapper(
         messageTextOverride !== null ? messageTextOverride : message?.mes,
     );
+    const protectedPartialPrefill = getProtectedKimiPartialPrefill(message, messageIndex, currentMessageText);
+    const transformMessageText = currentMessageText.slice(protectedPartialPrefill.length);
     const normalizedGenerationType = normalizeGenerationType(generationType);
     const promptTransformMode = getPromptTransformMode(agent);
     const profileId = resolveAgentConnectionProfile(agent);
     const runMetadata = getPromptTransformRunMetadata(agent, profileId);
     const showNotifications = shouldShowPromptTransformNotifications(agent);
 
-    if (!currentMessageText.trim()) {
+    if (!transformMessageText.trim()) {
         const result = {
             agentId: agent.id,
             agentName: agent.name,
@@ -3213,8 +3231,8 @@ async function runPromptTransformAgent(agent, message, generationType, messageTe
 
     const expandedPrompt = substituteParams(agent.prompt, {
         name2Override: String(message?.name ?? '').trim(),
-        original: currentMessageText,
-        dynamicMacros: buildPromptDynamicMacros(currentMessageText, message, agent, normalizedGenerationType),
+        original: transformMessageText,
+        dynamicMacros: buildPromptDynamicMacros(transformMessageText, message, agent, normalizedGenerationType),
     }).trim();
 
     if (!expandedPrompt) {
@@ -3238,7 +3256,7 @@ async function runPromptTransformAgent(agent, message, generationType, messageTe
 
     const helperRequest = appendConfiguredHelperPrefillMessages(buildPromptTransformMessages(
         expandedPrompt,
-        currentMessageText,
+        transformMessageText,
         String(message?.name ?? '').trim(),
         normalizedGenerationType,
         promptTransformMode,
@@ -3282,9 +3300,10 @@ async function runPromptTransformAgent(agent, message, generationType, messageTe
             return result;
         }
 
-        const nextMessageText = promptTransformMode === 'append'
-            ? appendPromptTransformOutput(currentMessageText, promptOutputText)
+        const transformedMessageText = promptTransformMode === 'append'
+            ? appendPromptTransformOutput(transformMessageText, promptOutputText)
             : promptOutputText;
+        const nextMessageText = protectedPartialPrefill + transformedMessageText;
         if (agentGenerationCancelRevision !== cancelRevision) {
             return {
                 agentId: agent.id,
