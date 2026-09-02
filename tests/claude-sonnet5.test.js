@@ -192,6 +192,24 @@ describe('Claude 5 backend request handling', () => {
         expect(body.top_k).toBeUndefined();
     });
 
+    test.each([
+        { label: 'canonical ID', model: 'claude-fable-5-1', customExcludeBody: undefined, expectedThinking: { type: 'adaptive' } },
+        { label: 'OpenRouter-style ID', model: 'anthropic/claude-fable-5.1', customExcludeBody: undefined, expectedThinking: { type: 'adaptive' } },
+        { label: 'explicit thinking exclusion', model: 'claude-fable-5-1', customExcludeBody: 'thinking', expectedThinking: undefined },
+    ])('Custom Fable 5.1 with $label handles thinking correctly', async ({ model, customExcludeBody, expectedThinking }) => {
+        const getBody = captureClaudePayload();
+        const res = await makeRequest({
+            chat_completion_source: CHAT_COMPLETION_SOURCES.CUSTOM,
+            custom_url: 'https://example.com/v1/chat/completions',
+            custom_include_body: 'thinking:\n  type: enabled',
+            custom_exclude_body: customExcludeBody,
+            model,
+        });
+
+        expect(res.status).toBe(200);
+        expect(getBody().thinking).toEqual(expectedThinking);
+    });
+
     test.each(currentClaude5Models)('%s with web search enabled includes the web_search tool', async (model) => {
         const getBody = captureClaudePayload();
         const res = await makeRequest({ model, reasoning_effort: 'high', enable_web_search: true });

@@ -3320,6 +3320,13 @@ export async function handleChatCompletionsGenerate(request, response) {
             applyKimiK3ModelParameterConstraints(requestBody);
         }
 
+        // SillyBunny: Fable 5.1 rejects legacy thinking types supplied by Custom endpoint settings.
+        if (!isTextCompletion
+            && request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.CUSTOM
+            && /claude-fable-5(?:-1|\.1)(?:[-/:]|$)/i.test(String(requestBody.model))) {
+            requestBody.thinking = { type: 'adaptive' };
+        }
+
         if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.CUSTOM) {
             excludeKeysByYaml(requestBody, request.body.custom_exclude_body);
         }

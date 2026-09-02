@@ -144,6 +144,7 @@ test('Claude pickers include current Claude 5 models and omit all retired Claude
     const visionModels = openAiScript.match(/const visionSupportedModels = \[([\s\S]*?)\];/)[1];
 
     expect(mainPicker).toEqual(expect.arrayContaining(currentClaudeModels));
+    expect(mainPicker).toContain('claude-fable-5-1');
     expect(captionPicker).toEqual(expect.arrayContaining(currentClaudeModels));
     expect(mainPicker).toEqual(expect.not.arrayContaining(retiredClaudeModels));
     expect(captionPicker).toEqual(expect.not.arrayContaining(retiredClaudeModels));
