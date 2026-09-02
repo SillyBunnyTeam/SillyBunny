@@ -69,6 +69,7 @@
 - PR #812 (2026-08-29) `fix: character is typing stops showing up when the message is fully generated`
 - PR #813 (2026-08-30) `fix(ios): keep viewport height capped`
 - PR #814 (2026-08-31) `chore: add newest models to ZAI, MiniMax, AI Studio, and Vertex`
+- PR #815 (2026-09-02) `chore: add Fable 5.1 on Claude backend and add support`
 
 ## v1.7.0
 
