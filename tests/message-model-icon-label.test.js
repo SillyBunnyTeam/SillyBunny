@@ -15,6 +15,28 @@ const TOGGLES = [
     ['messageReasoningEffortEnabled', 'timestamp_reasoning_effort'],
 ];
 
+function getFunctionSource(name) {
+    const match = scriptJs.match(new RegExp(`(?:export )?function ${name}\\([\\s\\S]*?\\n\\}`));
+    expect(match).not.toBeNull();
+    return match[0].replace(/^export /, '');
+}
+
+function loadCreateModelIcon() {
+    const patterns = scriptJs.match(/const CUSTOM_MODEL_ICON_PATTERNS = Object\.freeze\(\[[\s\S]*?\n\]\);/);
+    expect(patterns).not.toBeNull();
+
+    class FakeImage {
+        constructor() {
+            this.classList = { add() {} };
+        }
+    }
+
+    return new Function('Image', 'chat_completion_sources', `${patterns[0]}
+${getFunctionSource('inferCustomModelIconName')}
+${getFunctionSource('createModelIcon')}
+return createModelIcon;`)(FakeImage, { LINKAPI: 'linkapi' });
+}
+
 describe('message model icon label', () => {
     test('both toggles sit with the model icon toggle in Visual Toggles', () => {
         const themeToggles = indexHtml.indexOf('<div name="themeToggles">');
@@ -64,5 +86,30 @@ describe('message model icon label', () => {
             !scriptJs.includes(`${line}\n${indent}${target}.extra.reasoning_effort = getCurrentReasoningEffort();`));
 
         expect(missingEffort.map(match => match[0].trim())).toEqual([]);
+    });
+});
+
+describe('LinkAPI model icons', () => {
+    const createModelIcon = loadCreateModelIcon();
+
+    test('uses the relevant SVG for each model', () => {
+        for (const [model, icon] of [
+            ['gemini-2.5-pro', 'makersuite'],
+            ['gemma-3-27b-it', 'makersuite'],
+            ['google/gemini-2.5-pro', 'makersuite'],
+            ['claude-sonnet-4-5', 'claude'],
+            ['[SP]claude-sonnet-4-5', 'claude'],
+            ['gpt-5', 'openai'],
+            ['unknown-model', 'generic'],
+        ]) {
+            const image = createModelIcon('linkapi', model);
+
+            expect(image.src).toBe(`/img/${icon}.svg`);
+            expect(image.title).toBe(`linkapi - ${model}`);
+        }
+    });
+
+    test('leaves other API icons unchanged', () => {
+        expect(createModelIcon('openrouter', 'google/gemini-2.5-pro').src).toBe('/img/openrouter.svg');
     });
 });

@@ -3875,9 +3875,13 @@ function notifyCardScriptStripped(messageElement, messageId) {
  * @returns {HTMLImageElement} The image element (not yet in the DOM)
  */
 export function createModelIcon(apiName, modelName = '') {
+    // SillyBunny: LinkAPI aggregates providers, so select its SVG from the model name.
+    const iconName = apiName === chat_completion_sources.LINKAPI
+        ? inferCustomModelIconName(modelName) || 'generic'
+        : apiName;
     const image = new Image();
     image.classList.add('icon-svg');
-    image.src = `/img/${apiName}.svg`;
+    image.src = `/img/${iconName}.svg`;
     image.title = modelName ? `${apiName} - ${modelName}` : apiName;
     return image;
 }
