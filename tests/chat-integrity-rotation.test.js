@@ -302,6 +302,98 @@ describe('chat integrity rotation', () => {
         await expect(fs.readFile(path.join(backupDir, postSaveBackups[0]), 'utf8')).resolves.toContain('final post-processed chat');
     });
 
+    test('preserves pre-turn baseline and avoids ring eviction across multi-pass agent sequences (#373)', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-integrity-agent-ring-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+        jest.setSystemTime(new Date('2026-06-06T12:34:56.000Z'));
+
+        await fs.writeFile(chatFile, chatWithIntegrity('initial-integrity', 'pristine pre-turn baseline').map(JSON.stringify).join('\n'));
+
+        // Simulate 4 intermediate agent passes (e.g. tracker 1, tracker 2, prose polisher, companion)
+        let previousIntegrity = 'initial-integrity';
+        for (let pass = 1; pass <= 4; pass++) {
+            const passResult = await trySaveChat(
+                chatWithIntegrity(previousIntegrity, `agent pass ${pass} intermediate`),
+                chatFile,
+                false,
+                'agent-ring-user',
+                'Test Card',
+                backupDir,
+                { deferBackup: true, deferSequenceId: 'agent-run-seq-1' },
+            );
+            previousIntegrity = passResult.integrity;
+        }
+
+        // Final closing save
+        const finalResult = await trySaveChat(
+            chatWithIntegrity(previousIntegrity, 'final generated reply'),
+            chatFile,
+            false,
+            'agent-ring-user',
+            'Test Card',
+            backupDir,
+            { deferBackup: false, deferSequenceId: 'agent-run-seq-1' },
+        );
+        expect(finalResult?.integrity).toEqual(expect.any(String));
+        jest.runOnlyPendingTimers();
+
+        const backupFiles = await fs.readdir(backupDir);
+        const postSaveBackups = backupFiles.filter(fileName => fileName.startsWith('chat_test_card_'));
+        const preWriteBackups = backupFiles.filter(fileName => fileName.startsWith('chat_pre_write_test_card_'));
+
+        // Exactly 1 post-save backup (final reply) and 1 pre-write backup (pristine pre-turn baseline)
+        expect(postSaveBackups).toHaveLength(1);
+        expect(preWriteBackups).toHaveLength(1);
+        await expect(fs.readFile(path.join(backupDir, postSaveBackups[0]), 'utf8')).resolves.toContain('final generated reply');
+        await expect(fs.readFile(path.join(backupDir, preWriteBackups[0]), 'utf8')).resolves.toContain('pristine pre-turn baseline');
+    });
+
+    test('abandoned deferred sequence does not suppress pre-write backup for subsequent user edits (#373)', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-abandoned-seq-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+        jest.setSystemTime(new Date('2026-06-06T12:34:56.000Z'));
+
+        await fs.writeFile(chatFile, chatWithIntegrity('initial-integrity', 'baseline before agent').map(JSON.stringify).join('\n'));
+
+        // Agent starts deferred sequence and crashes/abandons after step 1
+        const pass1 = await trySaveChat(
+            chatWithIntegrity('initial-integrity', 'agent crashed intermediate'),
+            chatFile,
+            false,
+            'abandon-user',
+            'Test Card',
+            backupDir,
+            { deferBackup: true, deferSequenceId: 'crashed-sequence' },
+        );
+
+        // User makes an independent manual edit 10s later (no deferSequenceId)
+        jest.advanceTimersByTime(10_000);
+        await trySaveChat(
+            chatWithIntegrity(pass1.integrity, 'user manual edit after crash'),
+            chatFile,
+            false,
+            'abandon-user',
+            'Test Card',
+            backupDir,
+        );
+        jest.runOnlyPendingTimers();
+
+        const backupFiles = await fs.readdir(backupDir);
+        const preWriteBackups = backupFiles.filter(fileName => fileName.startsWith('chat_pre_write_test_card_'));
+
+        // Must have TWO pre-write backups: 1 for baseline before agent, and 1 for intermediate state before user edit!
+        expect(preWriteBackups).toHaveLength(2);
+        const backupContents = await Promise.all(preWriteBackups.map(f => fs.readFile(path.join(backupDir, f), 'utf8')));
+        expect(backupContents.some(c => c.includes('baseline before agent'))).toBe(true);
+        expect(backupContents.some(c => c.includes('agent crashed intermediate'))).toBe(true);
+    });
+
     test('leaves a semantically unchanged noncanonical chat untouched and returns its disk integrity', async () => {
         const { trySaveChat } = await import('../src/endpoints/chats.js');
         const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-unchanged-save-'));
