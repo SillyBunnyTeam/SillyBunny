@@ -152,7 +152,33 @@ function normalizeChatMessageExtraForComparison(extra) {
         return extra;
     }
 
-    const normalized = JSON.parse(JSON.stringify(extra));
+    const normalize = (value, seen) => {
+        if (value === null || typeof value !== 'object') {
+            return value;
+        }
+
+        if (seen.has(value)) {
+            return value;
+        }
+
+        seen.add(value);
+
+        if (Array.isArray(value)) {
+            const result = value.map((item) => normalize(item, seen));
+            seen.delete(value);
+            return result;
+        }
+
+        const result = {};
+        for (const key of Object.keys(value).sort()) {
+            result[key] = normalize(value[key], seen);
+        }
+
+        seen.delete(value);
+        return result;
+    };
+
+    const normalized = normalize(JSON.parse(JSON.stringify(extra)), new WeakSet());
     if (Object.hasOwn(normalized, 'file')) {
         normalized.files = Array.isArray(normalized.files) ? normalized.files : [];
         if (normalized.file) {

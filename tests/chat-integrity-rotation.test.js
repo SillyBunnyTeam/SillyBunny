@@ -335,6 +335,51 @@ describe('chat integrity rotation', () => {
         expect(backupFiles.filter(fileName => fileName.startsWith('chat_pre_write_test_card_'))).toHaveLength(0);
     });
 
+    test('persists extension extra changes and rotates integrity when metadata changes without text changes (#706)', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-extra-persistence-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        const baselineChat = [
+            { user_name: 'User', character_name: 'Test Card', chat_metadata: { integrity: 'initial-extra-slug' } },
+            { name: 'Test Card', is_user: false, mes: 'Message text.', send_date: 'August 1, 2026', extra: { selected_media_index: 0 } },
+        ];
+        await fs.writeFile(chatFile, baselineChat.map(row => JSON.stringify(row)).join('\n') + '\n', 'utf8');
+
+        // User selects a different media item in a gallery or updates styling metadata without editing text:
+        const incomingPayload = [
+            { user_name: 'User', character_name: 'Test Card', chat_metadata: { integrity: 'initial-extra-slug' } },
+            {
+                name: 'Test Card',
+                is_user: false,
+                mes: 'Message text.',
+                send_date: 'August 1, 2026',
+                extra: {
+                    selected_media_index: 2,
+                    dialogue_colors: { '0': '#00ff00' },
+                },
+            },
+        ];
+
+        const result = await trySaveChat(
+            incomingPayload,
+            chatFile,
+            false,
+            'test-handle',
+            'Test Card',
+            backupDir,
+        );
+        jest.runOnlyPendingTimers();
+
+        // Must NOT skip the save: integrity rotates and disk content is updated
+        expect(result.integrity).not.toBe('initial-extra-slug');
+        const writtenContent = await fs.readFile(chatFile, 'utf8');
+        expect(writtenContent).toContain('"selected_media_index":2');
+        expect(writtenContent).toContain('dialogue_colors');
+    });
+
     test('preserves an existing chat file identity during a genuine shorter save', async () => {
         const { trySaveChat } = await import('../src/endpoints/chats.js');
         const { createCharacterChatTarget } = await import('../src/chat-recovery.js');
