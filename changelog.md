@@ -71,6 +71,7 @@
 - PR #814 (2026-08-31) `chore: add newest models to ZAI, MiniMax, AI Studio, and Vertex`
 - PR #815 (2026-09-02) `chore: add Fable 5.1 on Claude backend and add support`
 - PR #816 (2026-09-02) `fix: exclude partial prefill from post-gen ICA rewrites`
+- PR #817 (2026-09-03) `feat(linkapi): use the relevant SVGs automatically for models`
 
 ## v1.7.0
 
