@@ -74,6 +74,7 @@
 - PR #817 (2026-09-03) `feat(linkapi): use the relevant SVGs automatically for models`
 - PR #821 (2026-09-04) `fix: fixes 'Char is typing' not stopping on group chats, and allow opening of Definitions/Greetings`
 - PR #822 (2026-09-04) `fix: sanitise filenames for linux systems`
+- PR #823 (2026-09-04) `chore: add GPT 6 Astra on OpenAI backend`
 
 ## v1.7.0
 
