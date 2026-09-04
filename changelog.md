@@ -72,6 +72,7 @@
 - PR #815 (2026-09-02) `chore: add Fable 5.1 on Claude backend and add support`
 - PR #816 (2026-09-02) `fix: exclude partial prefill from post-gen ICA rewrites`
 - PR #817 (2026-09-03) `feat(linkapi): use the relevant SVGs automatically for models`
+- PR #821 (2026-09-04) `fix: fixes 'Char is typing' not stopping on group chats, and allow opening of Definitions/Greetings`
 
 ## v1.7.0
 
