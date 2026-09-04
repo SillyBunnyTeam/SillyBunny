@@ -1268,7 +1268,8 @@ function syncActiveCharacterEditorPanel() {
     }
 }
 
-function setCharacterSpoilerFreeFieldsHidden(hidden) {
+// Exported so the editor sub-tabs (sillybunny-tabs.js) can reveal the hidden fields when a dimmed tab is tapped.
+export function setCharacterSpoilerFreeFieldsHidden(hidden) {
     const form = document.getElementById('form_create');
     const activePanel = form?.querySelector('[data-sb-character-editor-panel]:not([hidden])');
     const activePanelCanRemainVisible = activePanel instanceof HTMLElement
@@ -1287,15 +1288,18 @@ function setCharacterSpoilerFreeFieldsHidden(hidden) {
             panel.hidden = true;
             panel.setAttribute('aria-hidden', 'true');
         });
-    } else {
-        syncActiveCharacterEditorPanel();
     }
 
     $('#spoiler_free_desc').toggleClass('flex1', hidden);
     $('#creators_note_desc_hidden').toggle(hidden);
+    // The eye mirrors the actual state, so it stays correct when the fields are revealed from a sub-tab or at load.
+    $('#spoiler_free_desc_button').toggleClass('fa-eye', !hidden).toggleClass('fa-eye-slash', hidden);
 
+    // Always re-click a tab so the sub-tab buttons pick up their spoiler-hidden state.
     if (hidden && !activePanelCanRemainVisible) {
         showCharacterEditorMetadataPanel();
+    } else {
+        syncActiveCharacterEditorPanel();
     }
 }
 
@@ -4881,7 +4885,6 @@ jQuery(async () => {
     $('#spoiler_free_desc_button').on('click', function (e) {
         e.stopPropagation();
         peekSpoilerMode();
-        $(this).toggleClass('fa-eye fa-eye-slash');
     });
 
     $('#custom_stopping_strings').on('input', function () {
