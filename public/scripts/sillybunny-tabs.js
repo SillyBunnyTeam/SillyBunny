@@ -22,6 +22,7 @@ import {
     TOPBAR_ADOPTION_ATTRIBUTE,
     TOPBAR_EXTENSION_SLOT_ID,
 } from './topbar-extension-slot/index.js';
+import { setCharacterSpoilerFreeFieldsHidden } from './power-user.js';
 import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
 import { characters, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
@@ -2171,13 +2172,14 @@ function isCharacterSpoilerFreeFieldsHidden() {
     return form instanceof HTMLElement && form.dataset.sbSpoilerFreeFieldsHidden === 'true';
 }
 
+function isCharacterEditorSubTabSpoilerHidden(tabId) {
+    return isCharacterSpoilerFreeFieldsHidden()
+        && !SB_CHARACTER_EDITOR_SPOILER_FREE_VISIBLE_TABS.includes(normalizeCharacterEditorSubTab(tabId));
+}
+
 function resolveCharacterEditorSubTab(tabId) {
     const normalizedTabId = normalizeCharacterEditorSubTab(tabId);
-    if (!isCharacterSpoilerFreeFieldsHidden() || SB_CHARACTER_EDITOR_SPOILER_FREE_VISIBLE_TABS.includes(normalizedTabId)) {
-        return normalizedTabId;
-    }
-
-    return 'metadata';
+    return isCharacterEditorSubTabSpoilerHidden(normalizedTabId) ? 'metadata' : normalizedTabId;
 }
 
 function isCharacterEditorMenuType(menuType) {
@@ -8174,7 +8176,6 @@ function saveCharacterEditorSubTab(tabId) {
 
 function updateCharacterEditorSubTabButtons(activeTabId) {
     const activeSubTab = resolveCharacterEditorSubTab(activeTabId);
-    const spoilerFreeFieldsHidden = isCharacterSpoilerFreeFieldsHidden();
 
     for (const tabButton of document.querySelectorAll('#sb_character_editor_subtabs [data-sb-character-editor-tab]')) {
         if (!(tabButton instanceof HTMLElement)) {
@@ -8182,16 +8183,11 @@ function updateCharacterEditorSubTabButtons(activeTabId) {
         }
 
         const isActive = tabButton.dataset.sbCharacterEditorTab === activeSubTab;
-        // Spoiler-free mode reroutes these tabs to Metadata; surface that instead of leaving them looking clickable.
-        const isDisabled = spoilerFreeFieldsHidden && !SB_CHARACTER_EDITOR_SPOILER_FREE_VISIBLE_TABS.includes(tabButton.dataset.sbCharacterEditorTab ?? '');
         tabButton.classList.toggle('is-active', isActive);
         tabButton.setAttribute('aria-selected', String(isActive));
         tabButton.setAttribute('tabindex', isActive ? '0' : '-1');
-        if (isDisabled) {
-            tabButton.setAttribute('aria-disabled', 'true');
-        } else {
-            tabButton.removeAttribute('aria-disabled');
-        }
+        // Dimmed, not disabled: tapping a spoiler-hidden tab reveals the fields (see bindCharacterEditorSubTabs).
+        tabButton.classList.toggle('is-spoiler-hidden', isCharacterEditorSubTabSpoilerHidden(tabButton.dataset.sbCharacterEditorTab));
     }
 }
 
@@ -8393,7 +8389,14 @@ function bindCharacterEditorSubTabs() {
             return;
         }
 
-        setCharacterEditorSubTab(target.dataset.sbCharacterEditorTab, { focusButton: false });
+        const tabId = target.dataset.sbCharacterEditorTab;
+        // Spoiler-free mode hides Definitions/Greetings; a deliberate tap on one of them is the same request as the eye
+        // button's peek, so reveal the fields first instead of silently landing on Metadata.
+        if (isCharacterEditorSubTabSpoilerHidden(tabId)) {
+            setCharacterSpoilerFreeFieldsHidden(false);
+        }
+
+        setCharacterEditorSubTab(tabId, { focusButton: false });
     });
 
     tablist.addEventListener('keydown', (event) => {

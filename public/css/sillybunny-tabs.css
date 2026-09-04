@@ -5915,10 +5915,9 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     background: color-mix(in srgb, var(--sb-shell-main-bg) 54%, transparent);
 }
 
-/* Spoiler-free mode reroutes Definitions/Greetings to Metadata; dim them so the tap is not mistaken for a dead button. */
-#right-nav-panel .sb-character-editor-subtab[aria-disabled="true"] {
+/* Spoiler-free mode hides Definitions/Greetings; dim them, but keep them tappable so a tap can reveal the fields. */
+#right-nav-panel .sb-character-editor-subtab.is-spoiler-hidden {
     opacity: 0.45;
-    cursor: not-allowed;
 }
 
 #right-nav-panel .sb-character-editor-subtabs::before {
