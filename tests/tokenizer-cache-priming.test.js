@@ -31,7 +31,7 @@ await jest.unstable_mockModule('../public/scripts/power-user.js', () => ({
 }));
 
 await jest.unstable_mockModule('../public/scripts/openai.js', () => ({
-    chat_completion_sources: { OPENAI: 'openai' },
+    chat_completion_sources: { OPENAI: 'openai', OPENAI_RESPONSES: 'openai_responses' },
     model_list: [],
     oai_settings: mockOaiSettings,
 }));
@@ -73,6 +73,7 @@ await jest.unstable_mockModule('../public/scripts/textgen-models.js', () => ({
 
 const {
     countTokensOpenAIAsync,
+    getTokenizerModel,
     primeOpenAITokenCache,
 } = await import('../public/scripts/tokenizers.js');
 
@@ -87,6 +88,18 @@ function makeMessages(count, tag) {
 describe('OpenAI token cache priming', () => {
     beforeEach(() => {
         globalThis.jQuery = { ajax: jest.fn() };
+        mockOaiSettings.chat_completion_source = 'openai';
+        mockOaiSettings.openai_model = 'gpt-4-turbo';
+    });
+
+    test.each(['openai', 'openai_responses'])('uses the selected Astra model for %s token counts', async (source) => {
+        mockOaiSettings.chat_completion_source = source;
+        mockOaiSettings.openai_model = 'gpt-6-astra';
+        globalThis.jQuery.ajax.mockResolvedValue({ token_counts: [7] });
+
+        expect(getTokenizerModel()).toBe('gpt-6-astra');
+        await primeOpenAITokenCache(makeMessages(1, source));
+        expect(globalThis.jQuery.ajax.mock.calls[0][0].url).toContain('model=gpt-6-astra');
     });
 
     test('counts a whole batch of messages in a single request', async () => {

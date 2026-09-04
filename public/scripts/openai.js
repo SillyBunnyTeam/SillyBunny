@@ -9301,6 +9301,7 @@ export function isImageInliningSupported() {
         'gpt-4.5-preview',
         'gpt-4o',
         'gpt-5',
+        'gpt-6-astra', // SillyBunny: Astra supports image input in both native OpenAI API modes.
         'o1',
         'o3',
         'o4-mini',

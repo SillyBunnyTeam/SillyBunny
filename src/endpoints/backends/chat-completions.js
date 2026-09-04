@@ -2860,6 +2860,21 @@ export async function handleChatCompletionsGenerate(request, response) {
         // to the provider verbatim.
         applyReasoningEffortNormalization(request.body);
 
+        // SillyBunny: apply Astra's reasoning-model request constraints before dispatch so
+        // profile overrides and Conversation REST requests follow the same native OpenAI path.
+        if ([CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES].includes(request.body.chat_completion_source)
+            && request.body.model === 'gpt-6-astra') {
+            // A profile override can supply max_tokens after a preset set max_completion_tokens.
+            request.body.max_completion_tokens = request.body.max_tokens ?? request.body.max_completion_tokens;
+            for (const key of ['max_tokens', 'temperature', 'top_p', 'frequency_penalty', 'presence_penalty', 'logit_bias', 'stop', 'logprobs', 'top_logprobs']) {
+                delete request.body[key];
+            }
+            if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.OPENAI) {
+                delete request.body.tools;
+                delete request.body.tool_choice;
+            }
+        }
+
         console.log(`[ChatCompletions] generate: type=${request.body.type} source=${request.body.chat_completion_source} model=${request.body.model} stream=${request.body.stream}`);
 
         const postProcessingType = request.body.custom_prompt_post_processing;

@@ -569,8 +569,8 @@ function counterWrapperOpenAIAsync(text) {
 }
 
 export function getTokenizerModel() {
-    // OpenAI models always provide their own tokenizer
-    if (oai_settings.chat_completion_source == chat_completion_sources.OPENAI) {
+    // SillyBunny: both native OpenAI API modes use the selected model for token counting.
+    if ([chat_completion_sources.OPENAI, chat_completion_sources.OPENAI_RESPONSES].includes(oai_settings.chat_completion_source)) {
         return oai_settings.openai_model;
     }
 
