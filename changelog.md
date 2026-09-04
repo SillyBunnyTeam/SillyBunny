@@ -73,6 +73,7 @@
 - PR #816 (2026-09-02) `fix: exclude partial prefill from post-gen ICA rewrites`
 - PR #817 (2026-09-03) `feat(linkapi): use the relevant SVGs automatically for models`
 - PR #821 (2026-09-04) `fix: fixes 'Char is typing' not stopping on group chats, and allow opening of Definitions/Greetings`
+- PR #822 (2026-09-04) `fix: sanitise filenames for linux systems`
 
 ## v1.7.0
 
