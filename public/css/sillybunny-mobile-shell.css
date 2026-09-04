@@ -2177,8 +2177,10 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         border-radius: 10px;
     }
 
+    /* Must beat the generic 34px !important band height above: the parked mode toggle
+       (top 8px + 44px) otherwise hangs over the top of the editor sub-tab pills. */
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) > #CharListButtonAndHotSwaps {
-        min-height: 54px;
+        min-height: 54px !important;
         padding-block: 5px;
     }
 

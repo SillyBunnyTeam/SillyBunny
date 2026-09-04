@@ -55,9 +55,24 @@ describe('mobile character editor css', () => {
         expect(flattenedActionWrappersRule).toContain('display: contents !important;');
     });
 
+    test('keeps the parked mode toggle and close button clear of the editor sub-tabs on mobile', () => {
+        const editorBandRule = getRuleBody(mobileShellCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) > #CharListButtonAndHotSwaps');
+
+        // The generic band rule is `min-height: 34px !important`; the toggle sits at top 8px with a 44px touch target.
+        expect(editorBandRule).toContain('min-height: 54px !important;');
+    });
+
+    test('dims the editor sub-tabs that spoiler-free mode reroutes to Metadata', () => {
+        const disabledTabRule = getRuleBody(tabsCss, '#right-nav-panel .sb-character-editor-subtab[aria-disabled="true"]');
+
+        expect(disabledTabRule).toContain('opacity: 0.45;');
+        expect(disabledTabRule).toContain('cursor: not-allowed;');
+        expect(disabledTabRule).not.toContain('pointer-events');
+    });
+
     test('keeps the desktop editor shell from reintroducing refactor padding and wrapper collapse', () => {
         const desktopActionWrappersRule = getRuleBody(tabsCss, '#right-nav-panel .sb-character-editor-controls-row #character-editor-pinned-actions,\n#right-nav-panel .sb-character-editor-controls-row #avatar_controls,\n#right-nav-panel .sb-character-editor-controls-row #avatar_controls > .form_create_bottom_buttons_block,\n#right-nav-panel .sb-character-editor-controls-row #avatar_controls .char-button-toolbar');
-        const desktopNavPaddingRule = getRuleBody(tabsCss, ":root:not([data-sb-desktop-nav-layout='vertical']) #right-nav-panel.openDrawer .sb-character-shell-nav");
+        const desktopNavPaddingRule = getRuleBody(tabsCss, ':root:not([data-sb-desktop-nav-layout=\'vertical\']) #right-nav-panel.openDrawer .sb-character-shell-nav');
         const desktopCreateButtonSelector = '#right-nav-panel .sb-character-create-bar #rm_button_create,\n#right-nav-panel .sb-character-create-bar #rm_button_group_chats';
         const desktopCreateButtonRule = getRuleBody(tabsCss, desktopCreateButtonSelector);
         const unlayeredGuardIndex = tabsCss.indexOf('/* Unlayered fork cascade guards');

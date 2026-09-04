@@ -8174,6 +8174,7 @@ function saveCharacterEditorSubTab(tabId) {
 
 function updateCharacterEditorSubTabButtons(activeTabId) {
     const activeSubTab = resolveCharacterEditorSubTab(activeTabId);
+    const spoilerFreeFieldsHidden = isCharacterSpoilerFreeFieldsHidden();
 
     for (const tabButton of document.querySelectorAll('#sb_character_editor_subtabs [data-sb-character-editor-tab]')) {
         if (!(tabButton instanceof HTMLElement)) {
@@ -8181,9 +8182,16 @@ function updateCharacterEditorSubTabButtons(activeTabId) {
         }
 
         const isActive = tabButton.dataset.sbCharacterEditorTab === activeSubTab;
+        // Spoiler-free mode reroutes these tabs to Metadata; surface that instead of leaving them looking clickable.
+        const isDisabled = spoilerFreeFieldsHidden && !SB_CHARACTER_EDITOR_SPOILER_FREE_VISIBLE_TABS.includes(tabButton.dataset.sbCharacterEditorTab ?? '');
         tabButton.classList.toggle('is-active', isActive);
         tabButton.setAttribute('aria-selected', String(isActive));
         tabButton.setAttribute('tabindex', isActive ? '0' : '-1');
+        if (isDisabled) {
+            tabButton.setAttribute('aria-disabled', 'true');
+        } else {
+            tabButton.removeAttribute('aria-disabled');
+        }
     }
 }
 

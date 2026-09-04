@@ -1287,15 +1287,16 @@ function setCharacterSpoilerFreeFieldsHidden(hidden) {
             panel.hidden = true;
             panel.setAttribute('aria-hidden', 'true');
         });
-    } else {
-        syncActiveCharacterEditorPanel();
     }
 
     $('#spoiler_free_desc').toggleClass('flex1', hidden);
     $('#creators_note_desc_hidden').toggle(hidden);
 
+    // Always re-click a tab so the sub-tab buttons pick up their aria-disabled state.
     if (hidden && !activePanelCanRemainVisible) {
         showCharacterEditorMetadataPanel();
+    } else {
+        syncActiveCharacterEditorPanel();
     }
 }
 

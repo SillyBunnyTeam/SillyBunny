@@ -5892,9 +5892,13 @@ function showStopButton() {
 }
 
 function hideStopButton({ emitGenerationEnded = true } = {}) {
-    $('#send_form').removeClass('sb-generating-controls');
     // prevent NOOP, because hideStopButton() gets called multiple times
-    if ($('#mes_stop').css('display') !== 'none') {
+    // SillyBunny: read visibility before dropping the class. On mobile, mobile-styles.css forces
+    // `#send_form:not(.sb-generating-controls) #mes_stop` to display:none !important, so checking
+    // after removeClass always reads 'none' and GENERATION_ENDED would never be emitted.
+    const wasVisible = $('#mes_stop').css('display') !== 'none';
+    $('#send_form').removeClass('sb-generating-controls');
+    if (wasVisible) {
         $('#mes_stop').css({ 'display': 'none' });
         if (emitGenerationEnded) {
             eventSource.emit(event_types.GENERATION_ENDED, chat.length);
