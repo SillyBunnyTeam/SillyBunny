@@ -1272,7 +1272,28 @@ describe('chat integrity rotation', () => {
         expect(scriptSource).toContain('applyQueuedChatIntegrity(metadata, integrityKey, isActiveChatSave);');
         expect(scriptSource).toContain('rememberQueuedChatIntegrity(integrityKey, responseData?.integrity);');
         expect(scriptSource).toContain('deferBackup: Boolean(deferBackup)');
-        expect(scriptSource).toContain('return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, deferBackup, allowShrink, activeChatName, characterName, avatarUrl, wasGroupChat });');
+        expect(scriptSource).toContain('return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, deferBackup, allowShrink, activeChatName, characterName, avatarUrl, wasGroupChat, scheduledGeneration, scheduledCharacterId, scheduledGroupId, scheduledChatId });');
+    });
+
+    test('queued chat saves abort when generation or character changes while queued', async () => {
+        const guardSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/chat-save-guard.js', import.meta.url)), 'utf8');
+        const scriptSource = await fs.readFile(fileURLToPath(new URL('../public/script.js', import.meta.url)), 'utf8');
+
+        expect(guardSource).toContain('export function getQueuedChatSaveAbortReason');
+        expect(scriptSource).toContain('scheduledGeneration: currentGeneration');
+        expect(scriptSource).toContain('const abortReason = getQueuedChatSaveAbortReason');
+        expect(scriptSource).toContain('saveChatImmediately aborted, but ${abortReason} changed while queued.');
+    });
+
+    test('swipes invalidate pending debounced saves and queued saves by incrementing chat generation', async () => {
+        const scriptSource = await fs.readFile(fileURLToPath(new URL('../public/script.js', import.meta.url)), 'utf8');
+        const standardSwipeBody = scriptSource.slice(
+            scriptSource.indexOf('async function standardSwipe(newSwipeId)'),
+            scriptSource.indexOf('function clearMessageData(message)', scriptSource.indexOf('async function standardSwipe(newSwipeId)')),
+        );
+
+        expect(standardSwipeBody).toContain('incrementChatGeneration();');
+        expect(standardSwipeBody).toContain('await loadFromSwipeId(mesId, newSwipeId);');
     });
 
     test('debounced chat saves abort after the active chat generation changes', async () => {
@@ -1313,7 +1334,7 @@ describe('chat integrity rotation', () => {
         expect(groupChatSource).toContain('applyQueuedGroupChatIntegrity(metadataForSave, chatId, isActiveGroupChatSave);');
         expect(groupChatSource).toContain('rememberQueuedGroupChatIntegrity(chatId, responseData?.integrity);');
         expect(groupChatSource).toContain('deferBackup: Boolean(options.deferBackup)');
-        expect(groupChatSource).toContain('return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata: metadataForSave, deferBackup, allowShrink });');
+        expect(groupChatSource).toContain('return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata: metadataForSave, deferBackup, allowShrink, scheduledGeneration });');
         expect(groupChatSource).toContain('const isActiveGroupChatSave = selected_group === groupId && group.chat_id === chatId;');
         expect(groupChatSource).toContain('if (isActiveGroupChatSave && typeof responseData?.integrity === \'string\' && responseData.integrity)');
     });
