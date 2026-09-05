@@ -400,6 +400,7 @@ describe('in-chat agent post-processing runner', () => {
             getHiddenAgentIds: jest.fn(() => new Set(globalSettings.hiddenCompanionAgentIds ?? [])),
             getPromptTransformMode: jest.fn(agent => agent?.postProcess?.promptTransformMode === 'append' ? 'append' : 'rewrite'),
             isAgentHidden: jest.fn(agentId => new Set(globalSettings.hiddenCompanionAgentIds ?? []).has(String(agentId ?? '').trim())),
+            isAgentRuntimeAllowed: jest.fn(() => true),
             isTrackerFixAgent: jest.fn(agent => {
                 if (agent?.category !== 'tracker') return false;
                 if (agent.phase === 'post' || agent.phase === 'both') return true;

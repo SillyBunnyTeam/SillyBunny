@@ -140,6 +140,9 @@ import {
 /** @type {InChatAgent[]} */
 let agents = [];
 
+/** @type {Map<string, (agent: InChatAgent) => boolean>} */
+const runtimeAgentFilters = new Map();
+
 /** @type {AgentGroup[]} */
 let builtinGroups = [];
 
@@ -1414,6 +1417,44 @@ export function getAgents() {
     return [...agents];
 }
 
+export function setRuntimeAgentFilter(owner, predicateOrNull) {
+    if (typeof owner !== 'string' || !owner.trim()) {
+        throw new TypeError('Runtime agent filter owner must be a non-empty string.');
+    }
+    if (predicateOrNull !== null && typeof predicateOrNull !== 'function') {
+        throw new TypeError('Runtime agent filter must be a function or null.');
+    }
+
+    if (predicateOrNull === null) {
+        runtimeAgentFilters.delete(owner);
+    } else {
+        runtimeAgentFilters.set(owner, predicateOrNull);
+    }
+}
+
+export function isAgentRuntimeAllowed(agent) {
+    if (runtimeAgentFilters.size === 0) {
+        return true;
+    }
+
+    // Saves replace agent objects; queued runs must evaluate the current record.
+    const currentAgent = getAgentById(agent?.id);
+    if (!currentAgent) {
+        return false;
+    }
+    for (const predicate of runtimeAgentFilters.values()) {
+        try {
+            if (predicate(currentAgent) !== true) {
+                return false;
+            }
+        } catch {
+            // Fail closed without flooding the console from automatic retries.
+            return false;
+        }
+    }
+    return true;
+}
+
 /**
  * Returns enabled agents, sorted by injection order.
  * @returns {InChatAgent[]}
@@ -1426,7 +1467,7 @@ export function getEnabledAgents() {
     const activeScope = getActiveAgentChatScope();
 
     return agents
-        .filter(agent => isAgentEnabledForScope(agent, activeScope))
+        .filter(agent => isAgentEnabledForScope(agent, activeScope) && isAgentRuntimeAllowed(agent))
         .sort((a, b) => a.injection.order - b.injection.order);
 }
 
@@ -1457,7 +1498,7 @@ export function getEnabledToolAgents() {
     }
 
     const activeScope = getActiveAgentChatScope();
-    return agents.filter(agent => isAgentEnabledForScope(agent, activeScope) && agent.category === 'tool');
+    return agents.filter(agent => isAgentEnabledForScope(agent, activeScope) && agent.category === 'tool' && isAgentRuntimeAllowed(agent));
 }
 
 /**

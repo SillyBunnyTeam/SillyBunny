@@ -1296,7 +1296,7 @@ describe('chat integrity rotation', () => {
 
         expect(saveConditionalBody).not.toContain('waitUntilCondition(() => !isChatSaving');
         expect(saveConditionalBody).toContain('await saveChat(options);');
-        expect(saveConditionalBody).toContain('await saveGroupChat(selected_group, true, false, false, options);');
+        expect(saveConditionalBody).toContain('await saveGroupChat(selected_group, true, false, options.throwOnError ?? false, options)');
         expect(scriptSource).toContain('let chatSaveActivityCount = 0;');
         expect(scriptSource).toContain('function setChatSaveActive(isActive)');
         expect(scriptSource).toContain('isChatSaving = chatSaveActivityCount > 0;');
