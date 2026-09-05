@@ -9,6 +9,7 @@ import urlJoin from 'url-join';
 import { getLocalPromptCacheValue, isLikelyLocalServerUrl } from '../../../public/scripts/local-url-utils.js';
 import { getLinkApiBaseUrl, getLinkApiRequestFormat } from '../../../public/scripts/linkapi-utils.js';
 import { applyGrokModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model, zaiSupportsReasoningEffort } from '../../../public/scripts/openai-model-capabilities.js';
+import { applyGenerationRequestControls, requestUsesReasoning } from '../../../public/scripts/generation-request-controls.js';
 
 import {
     AIMLAPI_HEADERS,
@@ -3301,7 +3302,7 @@ export async function handleChatCompletionsGenerate(request, response) {
             request.body.messages = convertXAIMessages(request.body.messages, getPromptNames(request));
         }
 
-        const requestBody = {
+        let requestBody = {
             'messages': isTextCompletion === false ? request.body.messages : undefined,
             'prompt': isTextCompletion === true ? textPrompt : undefined,
             'model': request.body.model,
@@ -3344,6 +3345,20 @@ export async function handleChatCompletionsGenerate(request, response) {
 
         if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.CUSTOM) {
             excludeKeysByYaml(requestBody, request.body.custom_exclude_body);
+            delete requestBody.request_controls;
+            // SillyBunny: enforce owned controls after custom body overrides, never on helper requests.
+            let reasoning;
+            if (hasCustomReasoningParamConfig(request.body)) {
+                const value = requestBody[request.body.custom_reasoning_param_name.trim()];
+                const format = request.body.custom_reasoning_param_format.trim();
+                const enabled = String(request.body.custom_reasoning_enabled_value ?? 'enabled').trim() || 'enabled';
+                const disabled = String(request.body.custom_reasoning_disabled_value ?? 'disabled').trim() || 'disabled';
+                const switchValue = format === 'thinking_object' ? value?.type : value;
+                if (format === 'boolean' && typeof value === 'boolean') reasoning = value;
+                if (['string', 'thinking_object'].includes(format) && [enabled, disabled].includes(switchValue)) reasoning = switchValue === enabled;
+                if (format === 'openai' && typeof value === 'string') reasoning = requestUsesReasoning({ ...requestBody, reasoning_effort: value });
+            }
+            requestBody = applyGenerationRequestControls(requestBody, { ...request.body.request_controls, reasoning });
         }
 
         if (isKimiK3Request) {

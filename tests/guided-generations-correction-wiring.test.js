@@ -11,7 +11,7 @@ const correctionSource = readFileSync(path.join(repoRoot, 'public', 'scripts', '
 describe('Guided Correction generation wiring', () => {
     test('retains correction targets without changing ordinary regeneration', () => {
         expect(scriptSource).toContain('@property {boolean} [preserveLastMessage]');
-        expect(scriptSource).toContain('preserveLastMessage = false, companionHistoryTarget = null } = {}, dryRun = false)');
+        expect(scriptSource).toContain('preserveLastMessage = false, companionHistoryTarget = null, suppressAutoContinue = false');
         expect(scriptSource).toContain('!(type === \'regenerate\' && preserveLastMessage)');
         expect(scriptSource).toContain('setInContextMessages(arrMes.length - injectedIndices.length, type, preserveLastMessage)');
         expect(scriptSource).toContain('(type === \'regenerate\' && !preserveLastMessage)');
@@ -28,7 +28,7 @@ describe('Guided Correction generation wiring', () => {
     });
 
     test('carries the companion rewrite target through group generation only', () => {
-        expect(scriptSource).toContain('generateGroupWrapper(false, type, { quiet_prompt, force_chid, signal: abortController.signal, quietImage, jsonSchema, cacheScope: resolvedCacheScope, preserveLastMessage, companionHistoryTarget: companionFeedbackTarget })');
+        expect(scriptSource).toContain('generateGroupWrapper(false, type, { quiet_prompt, force_chid, signal: abortController.signal, quietImage, jsonSchema, cacheScope: resolvedCacheScope, preserveLastMessage, companionHistoryTarget: companionFeedbackTarget, suppressUserMessage, ...requestControls })');
         expect(groupChatsSource).toContain("Generate(generateType, { automatic_trigger: byAutoMode, ...mergedParams })");
         expect(groupChatsSource).toContain("Generate('continue', { automatic_trigger: byAutoMode, ...mergedParams, companionHistoryTarget: undefined })");
     });

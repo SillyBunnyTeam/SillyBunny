@@ -150,6 +150,7 @@ export function getContext() {
         deleteLastMessage,
         deleteMessage,
         generate: Generate,
+        generationSupportsRequestControls: true,
         sendStreamingRequest,
         sendGenerationRequest,
         stopGeneration,

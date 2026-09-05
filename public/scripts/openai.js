@@ -49,6 +49,7 @@ import { rotateSecret, SECRET_KEYS, secret_state, writeSecret } from './secrets.
 
 import { getEventSourceStream } from './sse-stream.js';
 import { fetchResumable } from './resumable-generation.js';
+import { applyGenerationRequestControls, isGenerationLengthFinish } from './generation-request-controls.js';
 import {
     createThumbnail,
     delay,
@@ -1928,6 +1929,7 @@ export async function prepareOpenAIMessages({
     jailbreakPromptOverride,
     messages,
     messageExamples,
+    responseLength = null,
 }, dryRun) {
     // Without a character selected, there is no way to accurately calculate tokens
     if (!promptManager.activeCharacter && dryRun) return [null, false];
@@ -1935,7 +1937,9 @@ export async function prepareOpenAIMessages({
     const chatCompletion = new ChatCompletion();
     if (power_user.console_log_prompts) chatCompletion.enableLogging();
 
-    const userSettings = promptManager.serviceSettings;
+    const userSettings = Number.isFinite(responseLength) && responseLength > 0
+        ? { ...promptManager.serviceSettings, openai_max_tokens: responseLength }
+        : promptManager.serviceSettings;
     chatCompletion.setTokenBudget(userSettings.openai_max_context, userSettings.openai_max_tokens);
 
     try {
@@ -5676,16 +5680,26 @@ export async function createGenerationParameters(settings, model, type, messages
  * @returns {Promise<unknown>}
  * @throws {Error}
  */
-async function sendOpenAIRequest(type, messages, signal, { jsonSchema = null, cacheScope = null } = {}) {
+async function sendOpenAIRequest(type, messages, signal, { jsonSchema = null, cacheScope = null, maxOutputTokens = 0, responseLength = null, preserveReasoningBudget = false } = {}) {
     // Provide default abort signal
     if (!signal) {
         signal = new AbortController().signal;
     }
 
     const model = getChatCompletionModel(oai_settings);
-    const { generate_data, stream, canMultiSwipe } = await createGenerationParameters(oai_settings, model, type, messages, { jsonSchema, cacheScope });
+    let { generate_data, stream, canMultiSwipe } = await createGenerationParameters(oai_settings, model, type, messages, { jsonSchema, cacheScope });
 
     await eventSource.emit(event_types.CHAT_COMPLETION_SETTINGS_READY, generate_data);
+
+    const requestControls = { maxOutputTokens, responseLength, preserveReasoningBudget };
+    if (generate_data.chat_completion_source === chat_completion_sources.CUSTOM) {
+        if ((Number.isFinite(maxOutputTokens) && maxOutputTokens > 0) || (Number.isFinite(responseLength) && responseLength > 0)) {
+            // SillyBunny: custom YAML is applied server-side, so its final payload owns the limit.
+            generate_data.request_controls = requestControls;
+        }
+    } else {
+        generate_data = applyGenerationRequestControls(generate_data, requestControls);
+    }
 
     if (generate_data.chat_completion_source === chat_completion_sources.CUSTOM && selected_custom_endpoint_preset?.secretId) {
         // SillyBunny: Custom endpoint profiles bind chat requests to their saved secret, not the last active CUSTOM key.
@@ -5722,6 +5736,9 @@ async function sendOpenAIRequest(type, messages, signal, { jsonSchema = null, ca
                 if (rawData === '[DONE]') return;
                 tryParseStreamingError(response, rawData);
                 const parsed = JSON.parse(rawData);
+                if (isGenerationLengthFinish(parsed)) {
+                    state.finishReason = 'length';
+                }
 
                 if (parsed.usage?.completion_tokens_details?.reasoning_tokens) {
                     state.reasoning_tokens = parsed.usage.completion_tokens_details.reasoning_tokens;
