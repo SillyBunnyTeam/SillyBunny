@@ -119,6 +119,14 @@ const OPENROUTER_PROVIDERS = [
  */
 const NANOGPT_PROVIDERS = [
     {
+        'id': 'aionlabs',
+        'label': 'Aion',
+    },
+    {
+        'id': 'aoru',
+        'label': 'Aoru AI',
+    },
+    {
         'id': 'akash',
         'label': 'Akash',
     },
@@ -131,8 +139,20 @@ const NANOGPT_PROVIDERS = [
         'label': 'Ambient',
     },
     {
+        'id': 'anthropic',
+        'label': 'Anthropic',
+    },
+    {
         'id': 'arliai',
         'label': 'ArliAI',
+    },
+    {
+        'id': 'aster',
+        'label': 'Aster',
+    },
+    {
+        'id': 'aster-fast',
+        'label': 'Aster Fast',
     },
     {
         'id': 'atlascloud',
@@ -171,8 +191,20 @@ const NANOGPT_PROVIDERS = [
         'label': 'Cloudflare',
     },
     {
+        'id': 'coreweave',
+        'label': 'CoreWeave',
+    },
+    {
+        'id': 'crofai',
+        'label': 'CrofAI',
+    },
+    {
         'id': 'crusoe',
         'label': 'Crusoe',
+    },
+    {
+        'id': 'decart',
+        'label': 'Decart',
     },
     {
         'id': 'dekallm',
@@ -187,12 +219,28 @@ const NANOGPT_PROVIDERS = [
         'label': 'DeepSeek',
     },
     {
+        'id': 'darkbloom',
+        'label': 'Darkbloom',
+    },
+    {
+        'id': 'engy',
+        'label': 'EngyAI',
+    },
+    {
         'id': 'fireworks',
         'label': 'Fireworks',
     },
     {
+        'id': 'fireworks-fast',
+        'label': 'Fireworks Fast',
+    },
+    {
         'id': 'friendli',
         'label': 'Friendli',
+    },
+    {
+        'id': 'gerra',
+        'label': 'Gerra',
     },
     {
         'id': 'gmicloud',
@@ -201,6 +249,18 @@ const NANOGPT_PROVIDERS = [
     {
         'id': 'lilac',
         'label': 'Lilac',
+    },
+    {
+        'id': 'llmtech',
+        'label': 'LLM Tech',
+    },
+    {
+        'id': 'lucidity',
+        'label': 'Lucidity',
+    },
+    {
+        'id': 'heabsy',
+        'label': 'Heabsy',
     },
     {
         'id': 'google',
@@ -216,7 +276,7 @@ const NANOGPT_PROVIDERS = [
     },
     {
         'id': 'ionet',
-        'label': 'Io Net',
+        'label': 'io.net',
     },
     {
         'id': 'inceptron',
@@ -235,8 +295,20 @@ const NANOGPT_PROVIDERS = [
         'label': 'MegaNova',
     },
     {
+        'id': 'meta',
+        'label': 'Meta',
+    },
+    {
+        'id': 'mixlayer',
+        'label': 'Mixlayer',
+    },
+    {
         'id': 'minimax',
         'label': 'MiniMax',
+    },
+    {
+        'id': 'modal',
+        'label': 'Modal',
     },
     {
         'id': 'modelrun',
@@ -260,7 +332,23 @@ const NANOGPT_PROVIDERS = [
     },
     {
         'id': 'neuralwatt',
-        'label': 'Neuralwatt',
+        'label': 'NeuralWatt',
+    },
+    {
+        'id': 'neuralwatt-fast',
+        'label': 'NeuralWatt Fast',
+    },
+    {
+        'id': 'neuralwatt-flex',
+        'label': 'NeuralWatt Flex',
+    },
+    {
+        'id': 'nube',
+        'label': 'Nube',
+    },
+    {
+        'id': 'tensorix',
+        'label': 'TensorX',
     },
     {
         'id': 'nextbit',
@@ -271,6 +359,10 @@ const NANOGPT_PROVIDERS = [
         'label': 'Novita',
     },
     {
+        'id': 'openai',
+        'label': 'OpenAI',
+    },
+    {
         'id': 'parasail',
         'label': 'Parasail',
     },
@@ -279,8 +371,36 @@ const NANOGPT_PROVIDERS = [
         'label': 'Phala',
     },
     {
+        'id': 'plubo',
+        'label': 'Plubo AI',
+    },
+    {
+        'id': 'pokee',
+        'label': 'Pokee',
+    },
+    {
+        'id': 'abliteration',
+        'label': 'Abliteration.ai',
+    },
+    {
         'id': 'redpill',
         'label': 'Redpill',
+    },
+    {
+        'id': 'runware',
+        'label': 'Runware',
+    },
+    {
+        'id': 'sailresearch-asap',
+        'label': 'Sail Research (ASAP)',
+    },
+    {
+        'id': 'sailresearch-priority',
+        'label': 'Sail Research (Priority)',
+    },
+    {
+        'id': 'sailresearch-standard',
+        'label': 'Sail Research (Standard)',
     },
     {
         'id': 'sambanova',
@@ -307,6 +427,10 @@ const NANOGPT_PROVIDERS = [
         'label': 'Together',
     },
     {
+        'id': 'uomi',
+        'label': 'Uomi',
+    },
+    {
         'id': 'venice',
         'label': 'Venice',
     },
@@ -315,8 +439,24 @@ const NANOGPT_PROVIDERS = [
         'label': 'Weights & Biases',
     },
     {
+        'id': 'wafer',
+        'label': 'Wafer',
+    },
+    {
+        'id': 'xai',
+        'label': 'SpaceXAI',
+    },
+    {
+        'id': 'xiaomi',
+        'label': 'Xiaomi',
+    },
+    {
         'id': 'zai',
         'label': 'Z.AI',
+    },
+    {
+        'id': 'zenmux',
+        'label': 'ZenMux',
     },
 ];
 
