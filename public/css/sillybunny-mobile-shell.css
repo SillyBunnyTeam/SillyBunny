@@ -2753,8 +2753,9 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     #nanogpt_form .sb-nanogpt-provider-picker {
         display: block;
         width: 100%;
-        min-height: 44px;
+        min-height: max(44px, var(--sb-field-min-height));
         height: auto;
+        padding: 8px var(--sb-field-padding-x);
         text-align: left;
         white-space: normal;
         overflow-wrap: anywhere;

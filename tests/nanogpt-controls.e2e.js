@@ -144,7 +144,7 @@ async function toggleProvider(page, mobile, kind, label, remove = false) {
         await expect(option).toBeEnabled();
         await option.click();
     }
-    await page.locator('#nanogpt_form > h4').click();
+    await page.getByRole('heading', { name: 'API', exact: true, level: 2 }).locator('..').click({ position: { x: 8, y: 8 } });
 }
 
 async function expectRouting(page, allowed, ignored, payg) {
@@ -228,6 +228,18 @@ for (const mobile of [false, true]) {
             const allowedPicker = page.locator('#nanogpt_allowed_providers_picker');
             await expect(allowedPicker).toBeVisible({ visible: mobile });
             await expect(allowedPicker).toHaveText('Select providers');
+            const modelField = page.locator(mobile ? '#model_nanogpt_select' : '#model_nanogpt_select + .select2 .select2-selection');
+            const modelBox = await modelField.boundingBox();
+            const modelRadius = await modelField.evaluate(element => window.getComputedStyle(element).borderRadius);
+            for (const kind of ['allowed', 'ignored']) {
+                const field = page.locator(mobile ? `#nanogpt_${kind}_providers_picker` : `#nanogpt_${kind}_providers + .select2 .select2-selection`);
+                const box = await field.boundingBox();
+                expect(box.x).toBeCloseTo(modelBox.x, 0);
+                expect(box.width).toBeCloseTo(modelBox.width, 0);
+                expect(box.height).toBeCloseTo(modelBox.height, 0);
+                await expect(field).toHaveCSS('border-radius', modelRadius);
+            }
+            await screenshot(page, testInfo, `${layout}-provider-alignment`);
             await toggleProvider(page, mobile, 'allowed', 'Chutes');
             await expect(billing).toHaveText(BILLING_WARNING);
             await expect(billing).toBeVisible();
