@@ -84,7 +84,7 @@ import { t } from './i18n.js';
 import { ToolManager } from './tool-calling.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { COMETAPI_IGNORE_PATTERNS, IGNORE_SYMBOL, MEDIA_DISPLAY, MEDIA_TYPE } from './constants.js';
-import { syncNanoGptProvidersForModel, syncOpenRouterProvidersForModel, updateNanoGptProvidersWarning, updateOpenRouterProvidersWarning } from './textgen-models.js';
+import { setOpenRouterProviders, syncNanoGptProvidersForModel, syncOpenRouterProvidersForModel, updateNanoGptProvidersWarning, updateOpenRouterProvidersWarning } from './textgen-models.js';
 import { hasTextOrArrayPayload, shouldRetainContextAtDepth, stripHtmlTagsFromContext, stripOocBlocksFromContext } from './ooc-blocks.js';
 import { checkPostInterceptChatBudget, shouldCheckPostInterceptChatBudget } from './openai-prompt-budget.js';
 import {
@@ -2688,6 +2688,8 @@ function toggleInlineSelectPickerOption(select, value) {
             if (option.value === value) {
                 if (!option.disabled || option.selected) {
                     option.selected = !option.selected;
+                    // SillyBunny: match desktop OpenRouter routing priority, newest selection last.
+                    if (option.selected && select.classList.contains('openrouter_providers')) select.append(option);
                 }
                 break;
             }
@@ -2793,6 +2795,16 @@ function bindInlineSelectPickerSelect(select, control) {
 
     select.dataset.sbInlineSelectPickerBound = 'true';
     select.classList.add('sb-inline-select-picker-control');
+
+    // SillyBunny: repaint an open provider menu after async updates without saving settings.
+    if (select.classList.contains('openrouter_providers')) {
+        $(select).on('change.select2', () => {
+            const menu = document.getElementById(`${select.id}_menu`);
+            if (shouldUseInlineModelSelectPicker() && menu && !menu.hidden) {
+                openInlineSelectPicker(select, { ...control, forceOpen: true });
+            }
+        });
+    }
 
     const openPicker = event => {
         if (!shouldUseInlineModelSelectPicker()) {
@@ -7085,7 +7097,8 @@ function loadOpenAISettings(data, settings) {
     setToolReasoningControls();
     setAutoAppendReasoningTagControls();
 
-    $('#openrouter_providers_chat').trigger('change');
+    // SillyBunny: saved provider names must survive catalogue failures and absent providers.
+    setOpenRouterProviders('#openrouter_providers_chat', oai_settings.openrouter_providers);
     $('#openrouter_quantizations_chat').trigger('change');
     updateNanoGptProviderControls();
     rebuildOpenAIModelSelect();
@@ -8046,7 +8059,7 @@ function onSettingsPresetChange() {
         // These cannot be changed via preset if unbound to connection
         if (oai_settings.bind_preset_to_connection) {
             $('#chat_completion_source').trigger('change');
-            $('#openrouter_providers_chat').trigger('change');
+            setOpenRouterProviders('#openrouter_providers_chat', oai_settings.openrouter_providers);
             $('#openrouter_quantizations_chat').trigger('change');
             updateNanoGptProviderControls();
         }
@@ -11214,14 +11227,7 @@ export function initOpenAI() {
     });
 
     $('#openrouter_providers_chat').on('change', function () {
-        const selectedProviders = $(this).val();
-
-        // Not a multiple select?
-        if (!Array.isArray(selectedProviders)) {
-            return;
-        }
-
-        oai_settings.openrouter_providers = selectedProviders;
+        oai_settings.openrouter_providers = Array.from(this.selectedOptions, option => option.value);
 
         updateOpenRouterProvidersWarning('#openrouter_providers_chat');
         saveSettingsDebounced();

@@ -7,6 +7,29 @@ import { OPENROUTER_HEADERS } from '../constants.js';
 export const router = express.Router();
 const API_OPENROUTER = 'https://openrouter.ai/api/v1';
 
+// SillyBunny: use OpenRouter's catalogue without exposing keys or maintaining provider names.
+router.post('/providers', async (_req, res) => {
+    try {
+        const response = await fetch(`${API_OPENROUTER}/providers`, {
+            headers: { 'Accept': 'application/json' },
+            signal: AbortSignal.timeout(10000),
+        });
+        if (!response.ok) return res.sendStatus(502);
+
+        /** @type {any} */
+        const data = await response.json();
+        if (!Array.isArray(data?.data)) return res.sendStatus(502);
+
+        const names = data.data.map(provider => provider?.name).filter(name => typeof name === 'string' && name.trim());
+        if (!names.length) return res.sendStatus(502);
+
+        return res.json([...new Set(names)].sort((a, b) => a.localeCompare(b)));
+    } catch (error) {
+        console.warn('Failed to fetch OpenRouter provider catalogue', error);
+        return res.sendStatus(502);
+    }
+});
+
 router.post('/models/providers', async (req, res) => {
     try {
         const { model } = req.body;
