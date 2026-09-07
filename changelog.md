@@ -81,6 +81,7 @@
 - PR #828 (2026-09-06) `fix(mobile): extend tagging input box`
 - PR #829 (2026-09-06) `fix(mobile): move the arrow a bit on the thought block`
 - PR #830 (2026-09-07) `fix(nano-gpt): restore the UI for picking provider and PAYG`
+- PR #831 (2026-09-07) `chore: update nanogpt provider list`
 
 ## v1.7.0
 
