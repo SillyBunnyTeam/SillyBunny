@@ -1,13 +1,12 @@
-import { chat, substituteParams } from '../../../../script.js';
-import { parseRegexFromString, world_info_logic, world_info_match_whole_words } from '../../../world-info.js';
+import { chat, getCurrentChatId } from '../../../../script.js';
 import { isAbortLikeError } from '../../../util/abort-error.js';
 import { isPathfinderSubmoduleEnabled } from '../agent-store.js';
-import { getTree, findNodeById, getAllEntryUids, getSettings } from './tree-store.js';
-import { getReadableBooks, getAllEntriesWithContent } from './pathfinder-tool-bridge.js';
+import { getTree, findNodeById, getSettings } from './tree-store.js';
+import { getReadableBooks } from './pathfinder-tool-bridge.js';
 import { sidecarGenerate } from './llm-sidecar.js';
 import { logPathfinderRetrievalDetail, logSidecarRetrieval, logPipelineStart, logPipelineComplete } from './activity-feed.js';
 import { buildTreeFromMetadata } from './tree-builder.js';
-import { runPipeline } from './prompts/pipeline-runner.js';
+import { loadRetrievalEntries, runPipeline } from './prompts/pipeline-runner.js';
 import { isSummaryMemoryEntry, markSummaryMemoryInjected } from './summary-memory-store.js';
 
 const RETRIEVAL_PROMPT_KEY = 'pathfinder_sidecar_retrieval';
@@ -18,160 +17,16 @@ export const PATHFINDER_RETRIEVAL_PROMPT_KEYS = Object.freeze([
 ]);
 
 function clearRetrievalPrompt(setExtensionPrompt, key, extensionPromptTypes, extensionPromptRoles) {
-    setExtensionPrompt(
-        key,
-        '',
-        extensionPromptTypes?.IN_PROMPT ?? 0,
-        4,
-        false,
-        extensionPromptRoles?.SYSTEM ?? 0,
-    );
-}
-
-function getRecentChatText(limit = 10) {
-    const ctx = globalThis.window?.SillyTavern?.getContext?.();
-    const messages = Array.isArray(ctx?.chat) ? ctx.chat : chat;
-    return messages
-        .slice(-limit)
-        .map(message => String(message?.mes ?? message?.content ?? message ?? ''))
-        .join('\n');
-}
-
-function transformForEntry(value, entry) {
-    return entry?.caseSensitive ? String(value ?? '') : String(value ?? '').toLowerCase();
-}
-
-function escapeRegexLiteral(value) {
-    return String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function matchesWorldInfoKey(haystack, key, entry) {
-    const substituted = substituteParams(String(key ?? '')).trim();
-    if (!substituted) {
-        return false;
-    }
-
-    const keyRegex = parseRegexFromString(substituted);
-    if (keyRegex) {
-        return keyRegex.test(haystack);
-    }
-
-    const transformedHaystack = transformForEntry(haystack, entry);
-    const transformedKey = transformForEntry(substituted, entry);
-    const matchWholeWords = entry?.matchWholeWords ?? world_info_match_whole_words;
-
-    if (!matchWholeWords) {
-        return transformedHaystack.includes(transformedKey);
-    }
-
-    const keyWords = transformedKey.split(/\s+/);
-    if (keyWords.length > 1) {
-        return transformedHaystack.includes(transformedKey);
-    }
-
-    return new RegExp(`(?:^|\\W)(${escapeRegexLiteral(transformedKey)})(?:$|\\W)`).test(transformedHaystack);
-}
-
-function hasSecondaryActivationMatch(textToScan, entry) {
-    if (!entry?.selective || !Array.isArray(entry.keysecondary) || entry.keysecondary.length === 0) {
-        return true;
-    }
-
-    const selectiveLogic = entry.selectiveLogic ?? world_info_logic.AND_ANY;
-    let hasAnyMatch = false;
-    let hasAllMatch = true;
-
-    for (const key of entry.keysecondary) {
-        const matched = matchesWorldInfoKey(textToScan, key, entry);
-        if (matched) hasAnyMatch = true;
-        if (!matched) hasAllMatch = false;
-
-        if (selectiveLogic === world_info_logic.AND_ANY && matched) return true;
-        if (selectiveLogic === world_info_logic.NOT_ALL && !matched) return true;
-    }
-
-    if (selectiveLogic === world_info_logic.NOT_ANY && !hasAnyMatch) return true;
-    if (selectiveLogic === world_info_logic.AND_ALL && hasAllMatch) return true;
-    return false;
-}
-
-function getNaturalActivationReason(entry, textToScan = getRecentChatText()) {
-    if (!entry || entry.disable) {
-        return '';
-    }
-
-    if (entry.decorators?.includes?.('@@activate')) {
-        return '@@activate decorator';
-    }
-
-    if (entry.constant) {
-        return 'constant entry';
-    }
-
-    const primaryKeyMatch = Array.isArray(entry.key)
-        ? entry.key.find(key => matchesWorldInfoKey(textToScan, key, entry))
-        : null;
-    if (!primaryKeyMatch) {
-        return '';
-    }
-
-    return hasSecondaryActivationMatch(textToScan, entry)
-        ? `keyword match: ${primaryKeyMatch}`
-        : '';
-}
-
-function shouldSkipNaturalActivation(entry, textToScan) {
-    const settings = getSettings();
-    if (settings.dedupeNaturalActivation === false) {
-        return '';
-    }
-
-    return getNaturalActivationReason(entry, textToScan);
-}
-
-function getRetrievalStatusTimeoutMs() {
-    const seconds = Number(getSettings().retrievalTimeoutSeconds ?? 8);
-    return Math.max(1, Math.min(60, Number.isFinite(seconds) ? seconds : 8)) * 1000;
+    setExtensionPrompt(key, '', extensionPromptTypes?.IN_PROMPT ?? 0, 4, false, extensionPromptRoles?.SYSTEM ?? 0);
 }
 
 function throwIfAborted(signal) {
-    if (!signal?.aborted) {
-        return;
-    }
-
-    throw signal.reason ?? new Error('Pathfinder retrieval cancelled.');
-}
-
-async function withRetrievalStatusGuard(task, mode = 'retrieval', signal = null) {
-    const timeoutMs = getRetrievalStatusTimeoutMs();
-    const controller = new AbortController();
-    const onOuterAbort = () => controller.abort(signal?.reason);
-    signal?.addEventListener('abort', onOuterAbort, { once: true });
-
-    let timedOut = false;
-    const timeoutId = setTimeout(() => {
-        timedOut = true;
-        controller.abort(new Error(`Pathfinder ${mode} timed out after ${timeoutMs / 1000}s.`));
-    }, timeoutMs);
-
-    try {
-        throwIfAborted(signal);
-        return await task(controller.signal);
-    } catch (err) {
-        if (timedOut && !signal?.aborted) {
-            const timeoutError = new Error(`Pathfinder ${mode} timed out after ${timeoutMs / 1000}s before entries could be injected.`);
-            timeoutError.isPathfinderRetrievalTimeout = true;
-            timeoutError.timeoutSeconds = timeoutMs / 1000;
-            throw timeoutError;
-        }
-        throw err;
-    } finally {
-        clearTimeout(timeoutId);
-        signal?.removeEventListener('abort', onOuterAbort);
+    if (signal?.aborted) {
+        throw signal.reason ?? new Error('Pathfinder retrieval cancelled.');
     }
 }
 
-function formatCollapsedGuide(tree, bookName) {
+function formatCollapsedGuide(tree) {
     if (!tree) return '';
     const lines = [];
     function walk(node, depth = 0) {
@@ -189,373 +44,179 @@ function formatCollapsedGuide(tree, bookName) {
     return lines.join('\n');
 }
 
-async function ensureLorebookTree(bookName, signal = null) {
-    throwIfAborted(signal);
+async function ensureReadableBookTrees(bookNames, signal) {
+    const books = [...new Set(bookNames.filter(Boolean))];
+    for (const bookName of books) {
+        throwIfAborted(signal);
+        if (getTree(bookName)) continue;
 
-    if (getTree(bookName)) {
-        return true;
-    }
-
-    const ctx = window?.SillyTavern?.getContext?.();
-    if (typeof ctx?.loadWorldInfo !== 'function') {
-        console.warn(`[Pathfinder] Could not build a tree for "${bookName}" because loadWorldInfo is unavailable.`);
-        return false;
-    }
-
-    try {
-        const bookData = await ctx.loadWorldInfo(bookName);
+        const ctx = globalThis.window?.SillyTavern?.getContext?.();
+        const bookData = await ctx?.loadWorldInfo?.(bookName);
         throwIfAborted(signal);
         if (!bookData?.entries) {
-            console.warn(`[Pathfinder] Could not build a tree for "${bookName}" because no lorebook entries were found.`);
-            return false;
+            throw new Error(`Could not build a tree for "${bookName}" because no lorebook entries were found.`);
         }
-
         await buildTreeFromMetadata(bookName, bookData);
-        return true;
-    } catch (err) {
-        console.warn(`[Pathfinder] Failed to build a tree for "${bookName}".`, err);
-        return false;
+        throwIfAborted(signal);
     }
+    return books;
 }
 
-async function ensureReadableBookTrees(bookNames, signal = null) {
-    const readableBooks = Array.from(new Set((bookNames ?? []).filter(Boolean)));
-
-    for (const bookName of readableBooks) {
-        await ensureLorebookTree(bookName, signal);
-    }
-
-    return readableBooks.filter(bookName => getTree(bookName));
-}
-
-/**
- * Run predictive pipeline retrieval
- * @param {Function} setExtensionPrompt
- * @param {Object} extensionPromptTypes
- * @param {Object} extensionPromptRoles
- * @returns {Promise<void>}
- */
-async function runPipelineRetrieval(setExtensionPrompt, extensionPromptTypes, extensionPromptRoles, signal = null) {
-    const s = getSettings();
-    const pipelineId = s.pipelineId || 'default';
-    const books = await ensureReadableBookTrees(getReadableBooks(), signal);
-
-    // Get chat messages from context
-    const ctx = window?.SillyTavern?.getContext?.();
-    const chatMessages = ctx?.chat ?? [];
-
-    if (books.length === 0) {
-        clearRetrievalPrompt(setExtensionPrompt, PIPELINE_RETRIEVAL_KEY, extensionPromptTypes, extensionPromptRoles);
-        logPathfinderRetrievalDetail({
-            mode: 'pipeline',
-            books,
+async function runPipelineRetrieval(books, chatMessages, signal) {
+    const pipelineId = getSettings().pipelineId || 'default';
+    if (books.length === 0 || chatMessages.length === 0) {
+        return {
+            success: true,
             selectedEntries: [],
             stageResults: [],
-            injectedPrompt: '',
-            metadata: { pipelineId, reason: 'no-readable-lorebooks' },
-        });
-        return;
+            metadata: { pipelineId, reason: books.length ? 'no-chat-messages' : 'no-readable-lorebooks' },
+        };
     }
 
-    if (chatMessages.length === 0) {
-        clearRetrievalPrompt(setExtensionPrompt, PIPELINE_RETRIEVAL_KEY, extensionPromptTypes, extensionPromptRoles);
-        logPathfinderRetrievalDetail({
-            mode: 'pipeline',
-            books,
-            selectedEntries: [],
-            stageResults: [],
-            injectedPrompt: '',
-            metadata: { pipelineId, reason: 'no-chat-messages' },
-        });
-        return;
-    }
-
-    logPipelineStart(pipelineId, 2); // Assuming 2-stage pipeline
-
-    const result = await runPipeline(pipelineId, chatMessages, 10, signal);
-
+    logPipelineStart(pipelineId, 2);
+    const result = await runPipeline(pipelineId, chatMessages, 10, signal, books);
+    throwIfAborted(signal);
     logPipelineComplete(pipelineId, result.selectedEntries?.length ?? 0, result.stageResults);
 
     if (!result.success) {
-        clearRetrievalPrompt(setExtensionPrompt, PIPELINE_RETRIEVAL_KEY, extensionPromptTypes, extensionPromptRoles);
         console.warn('[Pathfinder] Pipeline retrieval failed:', result.error);
-        logPathfinderRetrievalDetail({
-            mode: 'pipeline',
-            books,
-            selectedEntries: [],
-            stageResults: result.stageResults,
-            injectedPrompt: '',
-            metadata: { pipelineId, error: result.error },
-        });
-        return;
     }
 
-    if (result.selectedEntries.length === 0) {
-        clearRetrievalPrompt(setExtensionPrompt, PIPELINE_RETRIEVAL_KEY, extensionPromptTypes, extensionPromptRoles);
-        logPathfinderRetrievalDetail({
-            mode: 'pipeline',
-            books,
-            selectedEntries: [],
-            stageResults: result.stageResults,
-            injectedPrompt: '',
-            metadata: { pipelineId, selectedEntryCount: 0 },
-        });
-        return;
+    return {
+        success: result.success,
+        cacheable: result.stageResults.every(stage => stage.success !== false),
+        selectedEntries: (result.selectedEntryData ?? []).map(entry => ({ name: entry.comment, bookName: entry.bookName, uid: entry.uid, content: entry.content || '' })),
+        stageResults: result.stageResults,
+        metadata: { pipelineId, ...(result.error && { error: result.error }) },
+    };
+}
+
+async function runLegacySidecarRetrieval(books, chatMessages, signal) {
+    const contextText = books.map(bookName => `\n### ${bookName}\n${formatCollapsedGuide(getTree(bookName))}\n`).join('');
+    if (!contextText.trim()) {
+        return { success: true, selectedEntries: [], stageResults: [], metadata: {} };
     }
 
-    // Build content for injection. Load each book once and index by title;
-    // the previous per-UID fetch re-loaded the whole book for every entry.
-    const entryContents = [];
-    const skippedNaturalEntries = [];
-    const textToScan = getRecentChatText();
-    const availableByName = await collectTreeEntriesByName(books);
+    const history = chatMessages.map(message => `${message.is_user || message.role === 'user' ? 'User' : (message.name || 'Assistant')}: ${message.mes}`).join('\n\n');
+    const prompt = `Given the current conversation context, which of these lorebook waypoints contain information relevant to what's happening right now? List the waypoint/node IDs (the "id: node_..." values) you'd retrieve.\n\n${history}\n\n${contextText}`;
+    const response = await sidecarGenerate(prompt, 'You are a lorebook retrieval assistant. Analyze the conversation and identify which waypoints are relevant. Respond with waypoint/node IDs (the "id: node_..." values), one per line.', signal);
+    throwIfAborted(signal);
+    const nodeIds = [...new Set(response.split('\n').map(line => line.match(/node_[a-z0-9]+/i)?.[0]).filter(Boolean))];
+    const selectedEntries = [];
 
-    for (const entryName of result.selectedEntries) {
-        const entry = availableByName.get(entryName);
-        if (!entry) continue;
+    for (const bookName of books) {
+        const tree = getTree(bookName);
+        const uids = new Set(nodeIds.flatMap(nodeId => findNodeById(tree, nodeId)?.entries ?? []));
+        if (uids.size === 0) continue;
 
-        const naturalActivationReason = shouldSkipNaturalActivation(entry, textToScan);
-        if (naturalActivationReason) {
-            skippedNaturalEntries.push({
-                name: entry.comment,
-                bookName: entry.bookName,
-                uid: entry.uid,
-                reason: naturalActivationReason,
-            });
-            continue;
+        const entries = await loadRetrievalEntries(bookName, signal);
+        for (const entry of entries) {
+            if (uids.has(entry.uid)) selectedEntries.push({ name: entry.comment, bookName, uid: entry.uid, content: entry.content || '' });
         }
+    }
 
-        entryContents.push({
-            name: entry.comment,
+    logSidecarRetrieval(nodeIds, selectedEntries.length);
+    return {
+        success: true,
+        selectedEntries,
+        stageResults: [{ stageIndex: 0, promptId: 'legacy-sidecar', success: true, entriesFound: selectedEntries.length, nodeIds }],
+        metadata: { nodeIds },
+    };
+}
+
+export function injectPathfinderRetrieval(result, setExtensionPrompt, extensionPromptTypes, extensionPromptRoles, nativeEntries = []) {
+    if (!result?.success || !Array.isArray(result.selectedEntries)) return;
+
+    const selectedEntries = [];
+    const skippedNaturalEntries = [];
+    const readableBooks = new Set(getReadableBooks());
+    for (const entry of result.selectedEntries) {
+        if (!readableBooks.has(entry.bookName)) continue;
+        if (result.dedupeNaturalActivation !== false && nativeEntries.some(native =>
+            native.world === entry.bookName && String(native.uid) === String(entry.uid),
+        )) {
+            skippedNaturalEntries.push({ name: entry.name, bookName: entry.bookName, uid: entry.uid, reason: 'WORLD_INFO_ACTIVATED' });
+        } else {
+            selectedEntries.push(entry);
+        }
+    }
+
+    const injectedPrompt = selectedEntries.length
+        ? `<pathfinder_context>\n${selectedEntries.map(entry => `[${entry.name}]\n${entry.content}`).join('\n\n')}\n</pathfinder_context>`
+        : '';
+    if (setExtensionPrompt(result.promptKey, injectedPrompt, extensionPromptTypes?.IN_PROMPT ?? 0, 4, false, extensionPromptRoles?.SYSTEM ?? 0) === false) {
+        return;
+    }
+    if (selectedEntries.some(entry => isSummaryMemoryEntry(entry))) {
+        markSummaryMemoryInjected({ mode: result.mode });
+    }
+    logPathfinderRetrievalDetail({
+        mode: result.mode,
+        books: result.books,
+        selectedEntries: selectedEntries.map(entry => ({
+            name: entry.name,
             bookName: entry.bookName,
             uid: entry.uid,
-            content: entry.content,
-        });
-    }
-
-    if (entryContents.length > 0) {
-        const formattedContent = entryContents
-            .map(e => `[${e.name}]\n${e.content}`)
-            .join('\n\n');
-
-        const content = `<pathfinder_context>\n${formattedContent}\n</pathfinder_context>`;
-        if (entryContents.some(entry => isSummaryMemoryEntry(entry))) {
-            markSummaryMemoryInjected({ mode: 'pipeline' });
-        }
-
-        logPathfinderRetrievalDetail({
-            mode: 'pipeline',
-            books,
-            selectedEntries: entryContents.map(entry => ({
-                name: entry.name,
-                bookName: entry.bookName || '',
-                uid: entry.uid ?? null,
-                preview: entry.content ? String(entry.content).slice(0, 240) : '',
-            })),
-            stageResults: result.stageResults,
-            injectedPrompt: content,
-            metadata: {
-                pipelineId,
-                selectedEntryCount: entryContents.length,
-                candidateCount: result.selectedEntries?.length ?? 0,
-                skippedNaturalActivationCount: skippedNaturalEntries.length,
-                skippedNaturalEntries,
-            },
-        });
-        setExtensionPrompt(
-            PIPELINE_RETRIEVAL_KEY,
-            content,
-            extensionPromptTypes?.IN_PROMPT ?? 0,
-            4,
-            false,
-            extensionPromptRoles?.SYSTEM ?? 0,
-        );
-    } else {
-        clearRetrievalPrompt(setExtensionPrompt, PIPELINE_RETRIEVAL_KEY, extensionPromptTypes, extensionPromptRoles);
-        logPathfinderRetrievalDetail({
-            mode: 'pipeline',
-            books,
-            selectedEntries: [],
-            stageResults: result.stageResults,
-            injectedPrompt: '',
-            metadata: {
-                pipelineId,
-                selectedEntryCount: 0,
-                candidateCount: result.selectedEntries?.length ?? 0,
-                skippedNaturalActivationCount: skippedNaturalEntries.length,
-                skippedNaturalEntries,
-            },
-        });
-    }
+            preview: entry.content ? String(entry.content).slice(0, 240) : '',
+        })),
+        stageResults: result.stageResults,
+        injectedPrompt,
+        metadata: {
+            ...result.metadata,
+            selectedEntryCount: selectedEntries.length,
+            candidateCount: result.selectedEntries.length,
+            skippedNaturalActivationCount: skippedNaturalEntries.length,
+            skippedNaturalEntries,
+        },
+    });
 }
 
-/**
- * Load every tree-listed entry once per book and index it by title.
- * @param {string[]} books
- * @returns {Promise<Map<string, Object>>} title -> entry (with bookName); first match wins
- */
-async function collectTreeEntriesByName(books) {
-    const byName = new Map();
-    for (const bookName of books) {
-        const tree = getTree(bookName);
-        if (!tree) continue;
-        const treeUids = new Set(getAllEntryUids(tree));
-        const entries = await getAllEntriesWithContent(bookName);
-        for (const entry of entries) {
-            if (!treeUids.has(entry.uid) || !entry.comment) continue;
-            if (!byName.has(entry.comment)) {
-                byName.set(entry.comment, { ...entry, bookName });
-            }
-        }
-    }
-    return byName;
-}
-
-/**
- * Run legacy waypoint-based sidecar retrieval
- * @param {Function} setExtensionPrompt
- * @param {Object} extensionPromptTypes
- * @param {Object} extensionPromptRoles
- * @returns {Promise<void>}
- */
-async function runLegacySidecarRetrieval(setExtensionPrompt, extensionPromptTypes, extensionPromptRoles, signal = null) {
-    const books = await ensureReadableBookTrees(getReadableBooks(), signal);
-
-    let contextText = '';
-
-    for (const bookName of books) {
-        const tree = getTree(bookName);
-        if (!tree) continue;
-        contextText += `\n### ${bookName}\n${formatCollapsedGuide(tree, bookName)}\n`;
-    }
-
-    if (!contextText.trim()) {
-        clearRetrievalPrompt(setExtensionPrompt, RETRIEVAL_PROMPT_KEY, extensionPromptTypes, extensionPromptRoles);
-        return;
-    }
-
-    const prompt = `Given the current conversation context, which of these lorebook waypoints contain information relevant to what's happening right now? List the waypoint/node IDs (the "id: node_..." values) you'd retrieve.\n\n${contextText}`;
-
-    try {
-        const response = await sidecarGenerate(prompt, 'You are a lorebook retrieval assistant. Analyze the conversation and identify which waypoints are relevant. Respond with waypoint/node IDs (the "id: node_..." values), one per line.', signal);
-        const nodeIds = Array.from(new Set(
-            response.split('\n')
-                .map(line => line.match(/node_[a-z0-9]+/i)?.[0])
-                .filter(Boolean),
-        ));
-
-        const textToScan = getRecentChatText();
-        const selectedEntries = [];
-        const skippedNaturalEntries = [];
-
-        for (const bookName of books) {
-            const tree = getTree(bookName);
-            if (!tree) continue;
-            const uids = new Set();
-            for (const nodeId of nodeIds) {
-                const node = findNodeById(tree, nodeId);
-                for (const uid of node?.entries ?? []) {
-                    uids.add(uid);
-                }
-            }
-            if (uids.size === 0) continue;
-
-            const entries = await getAllEntriesWithContent(bookName);
-            for (const entry of entries) {
-                if (!uids.has(entry.uid)) continue;
-                const reason = shouldSkipNaturalActivation(entry, textToScan);
-                if (reason) {
-                    skippedNaturalEntries.push({ name: entry.comment, bookName, uid: entry.uid, reason });
-                    continue;
-                }
-                selectedEntries.push({ name: entry.comment, bookName, uid: entry.uid, content: entry.content });
-            }
-        }
-
-        const injectedPrompt = selectedEntries.length > 0
-            ? `<pathfinder_context>\n${selectedEntries.map(e => `[${e.name}]\n${e.content}`).join('\n\n')}\n</pathfinder_context>`
-            : '';
-
-        logSidecarRetrieval(nodeIds, selectedEntries.length);
-        logPathfinderRetrievalDetail({
-            mode: 'tool-retrieval',
-            books,
-            selectedEntries: selectedEntries.map(entry => ({
-                uid: entry.uid,
-                name: entry.name,
-                preview: entry.content ? String(entry.content).slice(0, 240) : '',
-            })),
-            stageResults: [{
-                stageIndex: 0,
-                promptId: 'legacy-sidecar',
-                success: true,
-                entriesFound: selectedEntries.length,
-                nodeIds,
-            }],
-            injectedPrompt,
-            metadata: {
-                nodeIds,
-                selectedEntryCount: selectedEntries.length,
-                skippedNaturalActivationCount: skippedNaturalEntries.length,
-                skippedNaturalEntries,
-            },
-        });
-
-        if (selectedEntries.some(entry => isSummaryMemoryEntry(entry))) {
-            markSummaryMemoryInjected({ mode: 'tool-retrieval' });
-        }
-
-        if (selectedEntries.length > 0) {
-            setExtensionPrompt(RETRIEVAL_PROMPT_KEY, injectedPrompt, extensionPromptTypes?.IN_PROMPT ?? 0, 4, false, extensionPromptRoles?.SYSTEM ?? 0);
-        } else {
-            clearRetrievalPrompt(setExtensionPrompt, RETRIEVAL_PROMPT_KEY, extensionPromptTypes, extensionPromptRoles);
-        }
-    } catch (err) {
-        if (isAbortLikeError(err, signal)) {
-            throw err;
-        }
-        console.warn('[Pathfinder] Sidecar retrieval failed:', err);
-        clearRetrievalPrompt(setExtensionPrompt, RETRIEVAL_PROMPT_KEY, extensionPromptTypes, extensionPromptRoles);
-    }
-}
-
-export async function runSidecarRetrieval(setExtensionPrompt, extensionPromptTypes, extensionPromptRoles, signal = null) {
-    if (!isPathfinderSubmoduleEnabled()) {
-        return;
-    }
-
+export async function runSidecarRetrieval(setExtensionPrompt, extensionPromptTypes, extensionPromptRoles, signal = null, { chatMessages = null } = {}) {
     const s = getSettings();
-    if (!(s.sidecarEnabled || s.pipelineEnabled)) return;
+    if (!isPathfinderSubmoduleEnabled() || !(s.sidecarEnabled || s.pipelineEnabled)) {
+        return { success: false };
+    }
 
-    const books = getReadableBooks();
-    if (books.length === 0) return;
-
+    const chatId = getCurrentChatId();
+    const isCurrent = () => !signal?.aborted && isPathfinderSubmoduleEnabled() && getCurrentChatId() === chatId;
+    const writePrompt = (...args) => isCurrent() ? setExtensionPrompt(...args) : false;
+    const ctx = globalThis.window?.SillyTavern?.getContext?.();
+    const messages = (chatMessages ?? ctx?.chat ?? chat).slice(-10).map(message => ({
+        name: message.name,
+        is_user: message.is_user || message.role === 'user',
+        mes: String(message.mes ?? message.content ?? ''),
+    }));
     const mode = s.pipelineEnabled ? 'pipeline' : 'tool-retrieval';
+    const promptKey = s.pipelineEnabled ? PIPELINE_RETRIEVAL_KEY : RETRIEVAL_PROMPT_KEY;
+    const seconds = Number(s.retrievalTimeoutSeconds ?? 8);
+    const timeoutMs = Math.max(1, Math.min(60, Number.isFinite(seconds) ? seconds : 8)) * 1000;
+    const timeoutId = setTimeout(() => {
+        if (isCurrent()) {
+            globalThis.toastr?.warning?.('Pathfinder is processing lore for this reply...', 'Please wait');
+        }
+    }, timeoutMs);
 
     try {
-        await withRetrievalStatusGuard(async (retrievalSignal) => {
-            if (s.pipelineEnabled) {
-                await runPipelineRetrieval(setExtensionPrompt, extensionPromptTypes, extensionPromptRoles, retrievalSignal);
-            } else {
-                await runLegacySidecarRetrieval(setExtensionPrompt, extensionPromptTypes, extensionPromptRoles, retrievalSignal);
-            }
-        }, mode, signal);
+        throwIfAborted(signal);
+        for (const key of PATHFINDER_RETRIEVAL_PROMPT_KEYS) {
+            clearRetrievalPrompt(writePrompt, key, extensionPromptTypes, extensionPromptRoles);
+        }
+        const books = await ensureReadableBookTrees(getReadableBooks(), signal);
+        const selection = s.pipelineEnabled
+            ? await runPipelineRetrieval(books, messages, signal)
+            : await runLegacySidecarRetrieval(books, messages, signal);
+        throwIfAborted(signal);
+        if (!isCurrent()) return { success: false };
+
+        const result = { ...selection, books, mode, promptKey, dedupeNaturalActivation: s.dedupeNaturalActivation };
+        injectPathfinderRetrieval(result, writePrompt, extensionPromptTypes, extensionPromptRoles);
+        return result;
     } catch (err) {
-        if (err?.isPathfinderRetrievalTimeout) {
-            console.warn('[Pathfinder] Retrieval timed out; generating without injected entries.', err);
-            for (const key of PATHFINDER_RETRIEVAL_PROMPT_KEYS) {
-                clearRetrievalPrompt(setExtensionPrompt, key, extensionPromptTypes, extensionPromptRoles);
-            }
-            logPathfinderRetrievalDetail({
-                mode,
-                books,
-                selectedEntries: [],
-                stageResults: [],
-                injectedPrompt: '',
-                metadata: { timedOut: true, timeoutSeconds: err.timeoutSeconds },
-            });
-        } else if (!isAbortLikeError(err, signal)) {
+        if (!isAbortLikeError(err, signal)) {
             console.warn('[Pathfinder] Retrieval failed:', err);
         }
+        return { success: false };
+    } finally {
+        clearTimeout(timeoutId);
     }
 }

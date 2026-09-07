@@ -1,50 +1,84 @@
-import { createTreeNode, createEmptyTree, addEntryToNode, saveTree, getSettings } from './tree-store.js';
+import { addEntryToNode, saveTree, getSettings, getTree, isEntryEligible, syncTrackerUidsForLorebook } from './tree-store.js';
+import { createLayoutNode, getEntryPlacement, readTreeLayout } from './tree-layout.js';
 
-function categorizeEntries(entries) {
-    const categories = {};
-    for (const [, entry] of Object.entries(entries)) {
-        if (!entry || entry.disable) continue;
-        const title = (entry.comment || entry.key?.[0] || `Entry ${entry.uid}`).trim();
-        let category = 'Uncategorized';
-        if (/^\[Tracker\]/i.test(title)) category = 'Trackers';
-        else if (/^\[Summary\]/i.test(title)) category = 'Summaries';
-        else if (/^(character|npc|creature|faction)/i.test(title)) category = 'Characters';
-        else if (/^(location|place|area|room|building|city|town|dungeon)/i.test(title)) category = 'Locations';
-        else if (/^(rule|mechanic|system|magic|combat|skill)/i.test(title)) category = 'World Rules';
-        if (!categories[category]) categories[category] = [];
-        categories[category].push({ uid: entry.uid, title, content: entry.content || '' });
-    }
-    return categories;
+function getCategory(entry) {
+    const title = String(entry.comment || entry.key?.[0] || `Entry ${entry.uid}`).trim();
+    if (/^\[Tracker\]/i.test(title)) return 'Trackers';
+    if (/^\[Summary\]/i.test(title)) return 'Summaries';
+    if (/^(character|npc|creature|faction)/i.test(title)) return 'Characters';
+    if (/^(location|place|area|room|building|city|town|dungeon)/i.test(title)) return 'Locations';
+    if (/^(rule|mechanic|system|magic|combat|skill)/i.test(title)) return 'World Rules';
+    return 'Uncategorized';
 }
 
-export async function buildTreeFromMetadata(bookName, bookData) {
-    if (!bookData || !bookData.entries) {
-        return createEmptyTree();
-    }
-
-    const tree = createEmptyTree();
-    const categories = categorizeEntries(bookData.entries);
-
-    for (const [catName, catEntries] of Object.entries(categories)) {
-        const catNode = createTreeNode(catName, `${catName} waypoint`);
-        for (const entry of catEntries) {
-            addEntryToNode(catNode, entry.uid);
+export function deriveTreeFromMetadata(bookName, bookData, cachedTree = null) {
+    const layout = readTreeLayout(bookData);
+    const nodes = new Map();
+    const categories = new Map();
+    const restore = (stored, runtime = false) => {
+        const node = createLayoutNode(bookName, stored.name, stored.description, runtime ? stored.localId : stored.id);
+        if (stored.generatedCategory !== undefined) {
+            node.generatedCategory = stored.generatedCategory;
+            categories.set(node.generatedCategory, node);
         }
-        tree.children.push(catNode);
-    }
+        nodes.set(node.localId, node);
+        node.children = (stored.children || []).map(child => restore(child, runtime));
+        return node;
+    };
+    const tree = layout ? restore(layout)
+        : layout === undefined && cachedTree ? restore(cachedTree, true)
+            : createLayoutNode(bookName, 'Root', 'Top-level waypoint map', 'root');
+    nodes.set(tree.localId, tree);
 
-    saveTree(bookName, tree);
+    const seen = new Set();
+    for (const entry of Object.values(bookData?.entries || {})) {
+        if (!isEntryEligible(entry) || seen.has(entry.uid)) continue;
+        seen.add(entry.uid);
+        let target = nodes.get(getEntryPlacement(entry));
+        if (!target) {
+            const category = getCategory(entry);
+            target = categories.get(category);
+            if (!target) {
+                let localId = `category_${category.replaceAll(' ', '_')}`;
+                while (nodes.has(localId)) localId += '_';
+                target = createLayoutNode(bookName, category, `${category} waypoint`, localId);
+                target.generatedCategory = category;
+                nodes.set(localId, target);
+                categories.set(category, target);
+                tree.children.push(target);
+            }
+        }
+        addEntryToNode(target, entry.uid);
+    }
     return tree;
 }
 
+export async function buildTreeFromMetadata(bookName, bookData) {
+    const tree = deriveTreeFromMetadata(bookName, bookData);
+    saveTree(bookName, tree);
+    syncTrackerUidsForLorebook(bookName, bookData);
+    return tree;
+}
+
+export async function getTreeWithAutoBuild(bookName) {
+    const cachedTree = getTree(bookName);
+    if (cachedTree) return cachedTree;
+    try {
+        const bookData = await window?.SillyTavern?.getContext?.()?.loadWorldInfo?.(bookName);
+        return bookData?.entries ? await buildTreeFromMetadata(bookName, bookData) : null;
+    } catch {
+        return null;
+    }
+}
+
 export async function buildTreeWithLLM(bookName, bookData, llmGenerate) {
-    if (!bookData || !bookData.entries) {
-        return createEmptyTree();
+    if (!bookData?.entries || readTreeLayout(bookData) !== undefined) {
+        return await buildTreeFromMetadata(bookName, bookData);
     }
 
-    const entries = Object.values(bookData.entries).filter(e => e && !e.disable);
+    const entries = Object.values(bookData.entries).filter(isEntryEligible);
     if (entries.length === 0) {
-        return createEmptyTree();
+        return await buildTreeFromMetadata(bookName, bookData);
     }
 
     const chunkSize = getSettings().llmChunkSize ?? 30000;
@@ -61,7 +95,7 @@ export async function buildTreeWithLLM(bookName, bookData, llmGenerate) {
     }
     if (current) chunks.push(current);
 
-    const tree = createEmptyTree();
+    const tree = createLayoutNode(bookName, 'Root', 'Top-level waypoint map', 'root');
     for (let i = 0; i < chunks.length; i++) {
         const prompt = `You are a knowledge base organizer. Given these lorebook entries, create a hierarchical waypoint map (tree structure) for organizing them into logical categories and sub-categories.
 
@@ -77,7 +111,7 @@ Respond ONLY with the waypoint structure. Do not add commentary.`;
 
         try {
             const response = await llmGenerate(prompt);
-            const parsed = parseLLMTreeResponse(response, entries);
+            const parsed = parseLLMTreeResponse(response, entries, bookName);
             for (const rootNode of parsed) {
                 tree.children.push(rootNode);
             }
@@ -91,10 +125,11 @@ Respond ONLY with the waypoint structure. Do not add commentary.`;
     }
 
     saveTree(bookName, tree);
+    syncTrackerUidsForLorebook(bookName, bookData);
     return tree;
 }
 
-function parseLLMTreeResponse(response, entries) {
+function parseLLMTreeResponse(response, entries, bookName) {
     const lines = (response || '').split('\n');
     const roots = [];
     let currentWaypoint = null;
@@ -109,13 +144,13 @@ function parseLLMTreeResponse(response, entries) {
         if (!trimmed) continue;
         if (trimmed.startsWith('WAYPOINT:')) {
             const name = trimmed.slice(9).trim();
-            currentWaypoint = createTreeNode(name, `${name} waypoint`);
+            currentWaypoint = createLayoutNode(bookName, name, `${name} waypoint`);
             currentSub = null;
             roots.push(currentWaypoint);
         } else if (trimmed.startsWith('SUB:')) {
             const name = trimmed.slice(4).trim();
             if (currentWaypoint) {
-                currentSub = createTreeNode(name, `${name} sub-waypoint`);
+                currentSub = createLayoutNode(bookName, name, `${name} sub-waypoint`);
                 currentWaypoint.children.push(currentSub);
             }
         } else if (trimmed.startsWith('ENTRIES:')) {
@@ -131,4 +166,3 @@ function parseLLMTreeResponse(response, entries) {
     }
     return roots;
 }
-

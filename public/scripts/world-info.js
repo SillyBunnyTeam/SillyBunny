@@ -1,4 +1,4 @@
-import { Fuse } from '../lib.js';
+import { Fuse, lodash } from '../lib.js';
 
 import { saveSettings, substituteParams, getRequestHeaders, chat_metadata, this_chid, characters, saveCharacterDebounced, menu_type, eventSource, event_types, getExtensionPromptByName, saveMetadata, getCurrentChatId, extension_prompt_roles, create_save, createOrEditCharacter, name1, getOneCharacter, select_selected_character, getEntitiesList } from '../script.js';
 import { download, debounce, initScrollHeight, resetScrollHeight, parseJsonFile, extractDataFromPng, getFileBuffer, getCharaFilename, getSortableDelay, escapeRegex, PAGINATION_TEMPLATE, navigation_option, waitUntilCondition, isTrueBoolean, setValueByPath, flashHighlight, select2ModifyOptions, getSelect2OptionId, dynamicSelect2DataViaAjax, highlightRegex, select2ChoiceClickSubscribe, isFalseBoolean, getSanitizedFilename, checkOverwriteExistingData, getStringHash, parseStringArray, cancelDebounce, findChar, onlyUnique, equalsIgnoreCaseAndAccents, uuidv4, normalizeArray, getUniqueName, logSlashCommandWarn, addLongPressEvent, escapeHtml } from './utils.js';
@@ -23,7 +23,7 @@ import { renderTemplateAsync } from './templates.js';
 import { t } from './i18n.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { getOrCreatePersonaDescriptor, setPersonaDescription, user_avatar } from './personas.js';
-import { escapeCharacterBookRegex, normalizeCharacterBookPosition, normalizeWorldInfoPosition, serializeCharacterBookKeys, serializeWorldInfoEntry } from './world-info-character-book.js';
+import { escapeCharacterBookRegex, getFreeCharacterBookEntryId, normalizeCharacterBookPosition, normalizeWorldInfoPosition, serializeCharacterBookKeys, serializeWorldInfoEntry } from './world-info-character-book.js';
 import { detectEmbeddedLorebookCandidates, findMatchingLorebookName, getLinkedAuxBooks, isEmbeddedBookLinked } from './world-info-batch-helpers.js';
 import { getTimedEffectWindow, getWorldInfoGroupNames, normalizeWorldInfoKey, normalizeWorldInfoProbability, passesWorldInfoProbability } from './world-info-scan-core.js';
 
@@ -84,12 +84,18 @@ export let world_info_use_group_scoring = false;
 export let world_info_character_strategy = world_info_insertion_strategy.character_first;
 export let world_info_budget_cap = 0;
 export let world_info_max_recursion_steps = 0;
-/** @type {Map<string, {timer: ReturnType<typeof setTimeout>, data: object}>} */
+/** @type {Map<string, {timer: ReturnType<typeof setTimeout>, data: object, snapshot: object}>} */
 const pendingWorldInfoSaves = new Map();
-/** @type {Map<string, Promise<void>>} */
+/** @type {Map<string, Promise<string>>} */
 const worldInfoSaveQueues = new Map();
 /** @type {Map<string, Promise<string|null>>} */
 const worldInfoSaveBlocks = new Map();
+// SillyBunny: retain load baselines so independent same-tab editors save changes, not stale books.
+const worldInfoDataSnapshots = new WeakMap();
+const worldInfoEntryInstances = new WeakMap();
+const worldInfoCommittedEntryInstances = new Map();
+const worldInfoCacheVersions = new Map();
+let worldInfoEditor = null;
 const saveSettingsDebounced = debounce(() => {
     Object.assign(world_info, { globalSelect: selected_world_info });
     saveSettings();
@@ -912,9 +918,10 @@ export const worldInfoCache = new StructuredCloneMap({ cloneOnGet: true, cloneOn
  * @param {number} maxContext - The maximum context size of the generation.
  * @param {boolean} isDryRun - If true, the function will not emit any events.
  * @param {WIGlobalScanData} globalScanData Chat independent context to be scanned
+ * @param {object|null} [generationContext=null] Origin captured by the host before this scan
  * @returns {Promise<WIPromptResult>} The world info string and depth.
  */
-export async function getWorldInfoPrompt(chat, maxContext, isDryRun, globalScanData) {
+export async function getWorldInfoPrompt(chat, maxContext, isDryRun, globalScanData, generationContext = null) {
     let worldInfoString = '', worldInfoBefore = '', worldInfoAfter = '';
 
     const activatedWorldInfo = await checkWorldInfo(chat, maxContext, isDryRun, globalScanData);
@@ -924,7 +931,8 @@ export async function getWorldInfoPrompt(chat, maxContext, isDryRun, globalScanD
 
     if (!isDryRun && activatedWorldInfo.allActivatedEntries && activatedWorldInfo.allActivatedEntries.size > 0) {
         const arg = Array.from(activatedWorldInfo.allActivatedEntries.values());
-        await eventSource.emit(event_types.WORLD_INFO_ACTIVATED, arg);
+        // SillyBunny: forward the scan's origin, never the context at completion.
+        await eventSource.emit(event_types.WORLD_INFO_ACTIVATED, arg, ...(generationContext ? [generationContext] : []));
     }
 
     return {
@@ -1063,9 +1071,17 @@ export function setWorldInfoSettings(settings, data) {
  * @param {boolean} [loadIfNotSelected=false] - Indicates whether to load the file even if it's not currently selected
  */
 export function reloadEditor(file, loadIfNotSelected = false) {
-    const currentIndex = Number($('#world_editor_select').val());
+    const currentIndex = Number.parseInt(String($('#world_editor_select').val()), 10);
     const selectedIndex = world_names.indexOf(file);
     if (selectedIndex !== -1 && (loadIfNotSelected || currentIndex === selectedIndex)) {
+        const input = document.activeElement;
+        if (worldInfoEditor?.name === file && input?.matches('input, textarea, select') && input.closest('#WorldInfo, #world_popup_editor_pane')) {
+            // Keys can still be a DOM-only draft until blur; never replace a focused form.
+            $(input).off('blur.worldInfoReload').one('blur.worldInfoReload', () => {
+                setTimeout(() => reloadEditor(file, loadIfNotSelected), 0);
+            });
+            return;
+        }
         $('#world_editor_select').val(selectedIndex).trigger('change');
     }
 }
@@ -2058,10 +2074,20 @@ export async function showWorldEditor(name) {
         return;
     }
 
-    const wiData = await loadWorldInfo(name);
+    let wiData = await loadWorldInfo(name);
     if (loadId !== worldInfoEditorLoadId) {
         return;
     }
+    if (wiData && worldInfoEditor?.name === name) {
+        const draft = worldInfoEditor.data;
+        const baseline = worldInfoDataSnapshots.get(draft);
+        const loadedSnapshot = worldInfoDataSnapshots.get(wiData);
+        if (baseline) {
+            wiData = mergeWorldInfoData(baseline.data, draft, wiData) ?? wiData;
+            worldInfoDataSnapshots.set(wiData, loadedSnapshot);
+        }
+    }
+    worldInfoEditor = wiData ? { name, data: wiData } : null;
     await displayWorldEntries(name, wiData);
 }
 
@@ -2079,9 +2105,12 @@ export async function loadWorldInfo(name) {
     }
 
     if (worldInfoCache.has(name)) {
-        return worldInfoCache.get(name);
+        const data = getWorldInfoCachedData(name);
+        if (data && typeof data === 'object') worldInfoDataSnapshots.set(data, { name, data: cloneWorldInfoData(data), committed: true });
+        return data;
     }
 
+    const version = worldInfoCacheVersions.get(name);
     const response = await fetch('/api/worldinfo/get', {
         method: 'POST',
         headers: getRequestHeaders(),
@@ -2090,8 +2119,15 @@ export async function loadWorldInfo(name) {
     });
 
     if (response.ok) {
-        const data = await response.json();
+        let data = await response.json();
+        if (worldInfoCacheVersions.get(name) !== version) {
+            return worldInfoCache.has(name) ? loadWorldInfo(name) : null;
+        }
+        data = cloneWorldInfoData(data, worldInfoCommittedEntryInstances.get(name));
+        worldInfoCommittedEntryInstances.set(name, worldInfoEntryInstances.get(data));
         worldInfoCache.set(name, data);
+        data = cloneWorldInfoData(data);
+        if (data && typeof data === 'object') worldInfoDataSnapshots.set(data, { name, data: cloneWorldInfoData(data), committed: true });
         return data;
     }
 
@@ -2125,6 +2161,7 @@ export async function updateWorldInfoList() {
 
 async function hideWorldEditor() {
     worldInfoEditorLoadId++;
+    worldInfoEditor = null;
     desktopSelectedWorldInfoUid = null;
     clearWorldInfoDesktopEditor();
     await displayWorldEntries(null, null);
@@ -2564,6 +2601,13 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
         desktopSelectedWorldInfoUid = null;
     }
 
+    const baseline = worldInfoDataSnapshots.get(data);
+    if (baseline) {
+        const entries = Object.values(baseline.data.entries).filter(lodash.isPlainObject);
+        entries.forEach(entry => entry.displayIndex ??= entry.uid);
+        addMissingWorldInfoFields(entries);
+    }
+
     // Regardless of whether success is displayed or not. Make sure the delete button is available.
     // Do not put this code behind.
     $('#world_popup_delete').off('click').on('click', async () => {
@@ -2819,10 +2863,16 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
         const finalName = await Popup.show.input('Create a new World Info?', 'Enter a name for the new file:', tempName);
 
         if (finalName) {
-            await saveWorldInfo(finalName, data, true);
+            const targetName = await getCanonicalWorldInfoName(finalName);
+            if (!targetName) return;
+            const baseline = worldInfoDataSnapshots.get(data);
+            const latest = getWorldInfoCachedData(name);
+            const copy = baseline && latest ? mergeWorldInfoData(baseline.data, data, latest) : data;
+            if (!copy) return;
+            const savedName = await replaceWorldInfoData(targetName, copy);
             await updateWorldInfoList();
 
-            const selectedIndex = world_names.indexOf(finalName);
+            const selectedIndex = world_names.indexOf(savedName);
             if (selectedIndex !== -1) {
                 $('#world_editor_select').val(selectedIndex).trigger('change');
             } else {
@@ -3643,6 +3693,7 @@ function setCommentPlaceholder(keys, commentInput) {
  */
 export async function getWorldEntry(name, data, entry, options = {}) {
     if (!data.entries[entry.uid]) return;
+    const finishRender = trackWorldInfoEntryRender(data, entry.uid);
 
     const {
         desktopEditorHost = $('#world_popup_editor_host'),
@@ -3829,6 +3880,7 @@ export async function getWorldEntry(name, data, entry, options = {}) {
     const editOutlet = headerTemplate.find('.inline-drawer-outlet');
 
     function addEditorDrawerContent(targetOutlet = editOutlet, { desktop = false } = {}) {
+        const finishRender = trackWorldInfoEntryRender(data, entry.uid);
         const editTemplate = WI_ENTRY_EDIT_TEMPLATE.clone();
         const editorSurface = desktop
             ? $('<div class="world_entry world_entry_editor_surface"></div>').attr('uid', entry.uid)
@@ -4167,6 +4219,7 @@ export async function getWorldEntry(name, data, entry, options = {}) {
         } else {
             targetOutlet.append(editTemplate);
         }
+        finishRender();
     }
 
     if (isDesktopSplit) {
@@ -4217,6 +4270,7 @@ export async function getWorldEntry(name, data, entry, options = {}) {
 
     headerTemplate.find('.inline-drawer-content').css('display', 'none');
 
+    finishRender();
     return headerTemplate;
 }
 
@@ -4382,7 +4436,8 @@ export function duplicateWorldInfoEntry(data, uid) {
     Object.assign(entry, originalData);
     const targetOriginalIndex = data.originalDataUidMap?.[entry.uid];
     if (Number.isInteger(targetOriginalIndex)) {
-        data.originalData.entries[targetOriginalIndex] = structuredClone(serializeWorldInfoEntry(entry, world_info_position, sourceOriginalEntry ?? undefined));
+        const id = data.originalData.entries[targetOriginalIndex].id;
+        data.originalData.entries[targetOriginalIndex] = structuredClone(serializeWorldInfoEntry(entry, world_info_position, { ...sourceOriginalEntry, id }));
     }
 
     return entry;
@@ -4513,32 +4568,174 @@ function appendWIOriginalDataEntry(data, entry, originalEntry = undefined) {
 
     data.originalDataUidMap ??= {};
     data.originalDataUidMap[entry.uid] = data.originalData.entries.length;
+    // SillyBunny: card IDs are separate from native UIDs, including records written since this editor opened.
+    const snapshot = worldInfoDataSnapshots.get(data);
+    const cachedEntries = snapshot ? worldInfoCache.get(snapshot.name)?.originalData?.entries : [];
+    const id = getFreeCharacterBookEntryId([...data.originalData.entries, ...(cachedEntries ?? [])]);
     // Clone: the serialized record aliases live entry objects (extensions, triggers)
     // and must not track later editor mutations.
-    data.originalData.entries.push(structuredClone(serializeWorldInfoEntry(entry, world_info_position, originalEntry)));
+    data.originalData.entries.push(structuredClone(serializeWorldInfoEntry(entry, world_info_position, { ...originalEntry, id })));
 }
 
-async function _save(name, data) {
+function cloneWorldInfoData(data, instances = worldInfoEntryInstances.get(data)) {
+    const copy = structuredClone(data);
+    if (lodash.isPlainObject(copy?.entries)) {
+        const copiedInstances = new Map(Object.keys(copy.entries).map(uid => [uid, instances?.get(uid) ?? Symbol()]));
+        worldInfoEntryInstances.set(copy, copiedInstances);
+        if (!worldInfoEntryInstances.has(data)) worldInfoEntryInstances.set(data, new Map(copiedInstances));
+    }
+    return copy;
+}
+
+function getWorldInfoCachedData(name) {
+    const data = Map.prototype.get.call(worldInfoCache, name);
+    return cloneWorldInfoData(data, worldInfoEntryInstances.get(data) ?? worldInfoCommittedEntryInstances.get(name));
+}
+
+function mergeWorldInfoChanges(before, after, current) {
+    if (lodash.isEqual(before, after)) {
+        return current;
+    }
+    if (![after, current].every(lodash.isPlainObject)) {
+        return after;
+    }
+    before = lodash.isPlainObject(before) ? before : {};
+    const result = { ...current };
+    for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+        if (!Object.hasOwn(after, key)) {
+            delete result[key];
+        } else if (Object.hasOwn(before, key) && lodash.isEqual(before[key], after[key])) {
+            continue;
+        } else {
+            // Define own properties instead of invoking inherited setters in foreign metadata.
+            Object.defineProperty(result, key, {
+                value: mergeWorldInfoChanges(Object.hasOwn(before, key) ? before[key] : undefined, after[key], Object.hasOwn(current, key) ? current[key] : undefined),
+                enumerable: true, configurable: true, writable: true,
+            });
+        }
+    }
+    return result;
+}
+
+function trackWorldInfoEntryRender(data, uid) {
+    const before = structuredClone(data.entries[uid]);
+    const originalBefore = structuredClone(data.originalData?.entries?.[getWIOriginalDataIndex(data, uid)]);
+    return () => {
+        const baseline = worldInfoDataSnapshots.get(data)?.data;
+        if (!baseline?.entries[uid]) return;
+        // Rendering normalises fields and mirrors them to cards; those changes are not human edits.
+        baseline.entries[uid] = structuredClone(mergeWorldInfoChanges(before, data.entries[uid], baseline.entries[uid]));
+        const originalIndex = getWIOriginalDataIndex(baseline, uid);
+        if (originalBefore && originalIndex >= 0) {
+            baseline.originalData.entries[originalIndex] = structuredClone(mergeWorldInfoChanges(originalBefore,
+                data.originalData.entries[getWIOriginalDataIndex(data, uid)], baseline.originalData.entries[originalIndex]));
+        }
+    };
+}
+
+function mergeWorldInfoData(base, draft, latest) {
+    if (![base, draft, latest].every(book => lodash.isPlainObject(book?.entries))) return null;
+    const beforeInstances = worldInfoEntryInstances.get(base);
+    const afterInstances = worldInfoEntryInstances.get(draft);
+    const currentInstances = worldInfoEntryInstances.get(latest);
+    // SillyBunny: numeric UIDs can be reused. Only changes to the same session-local entry instance may merge.
+    for (const uid of new Set([...Object.keys(base.entries), ...Object.keys(draft.entries)])) {
+        const existed = Object.hasOwn(base.entries, uid);
+        const exists = Object.hasOwn(draft.entries, uid);
+        const before = existed ? base.entries[uid] : undefined;
+        const after = exists ? draft.entries[uid] : undefined;
+        const beforeInstance = beforeInstances?.get(uid);
+        const afterInstance = afterInstances?.get(uid);
+        const currentInstance = currentInstances?.get(uid);
+        if (lodash.isEqual(before, after) && (!exists || beforeInstance === afterInstance)) continue;
+        if (existed && (!Object.hasOwn(latest.entries, uid) || (beforeInstance && currentInstance && beforeInstance !== currentInstance))) return null;
+        if (!existed && Object.hasOwn(latest.entries, uid) && (!afterInstance || afterInstance !== currentInstance)) return null;
+    }
+    const instances = new Map(currentInstances);
+    for (const [uid, instance] of afterInstances ?? []) {
+        if (instance !== beforeInstances?.get(uid)) instances.set(uid, instance);
+    }
+    const result = cloneWorldInfoData(mergeWorldInfoChanges(base, draft, latest), instances);
+    if ([base, draft, latest].every(book => Array.isArray(book.originalData?.entries))
+        && !lodash.isEqual(base.originalData.entries, draft.originalData.entries)
+        && !lodash.isEqual(base.originalData.entries, latest.originalData.entries)) {
+        // Imported records are indexed by the native UID map, not by their array position or card ID.
+        const uids = Object.keys(result.entries).sort((a, b) => {
+            const aIndex = getWIOriginalDataIndex(latest, a);
+            const bIndex = getWIOriginalDataIndex(latest, b);
+            return (aIndex < 0 ? Infinity : aIndex) - (bIndex < 0 ? Infinity : bIndex);
+        });
+        result.originalData.entries = uids.map(uid => {
+            // An absent native UID may match another entry's card ID through the legacy lookup fallback.
+            const records = [base, draft, latest].map(book => Object.hasOwn(book.entries, uid)
+                ? book.originalData.entries[getWIOriginalDataIndex(book, uid)] : undefined);
+            return structuredClone(mergeWorldInfoChanges(...records));
+        });
+        result.originalDataUidMap = Object.fromEntries(uids.map((uid, index) => [uid, index]));
+    }
+    return result;
+}
+
+function invalidateWorldInfoCache(name) {
+    worldInfoCache.delete(name);
+    worldInfoCacheVersions.set(name, {});
+}
+
+async function _save(name, data, { snapshot, notify = true } = {}) {
     const previousSave = worldInfoSaveQueues.get(name) ?? Promise.resolve();
     const save = previousSave.catch(() => undefined).then(async () => {
-        const response = await fetch('/api/worldinfo/edit', {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            body: JSON.stringify({ name: name, data: data }),
-        });
-        if (!response.ok) {
-            throw new Error(`World Info save failed with status ${response.status}`);
+        let savedName;
+        try {
+            const response = await fetch('/api/worldinfo/edit', {
+                method: 'POST',
+                headers: getRequestHeaders(),
+                body: JSON.stringify({ name: name, data: data }),
+            });
+            if (!response.ok) {
+                throw new Error(`World Info save failed with status ${response.status}`);
+            }
+            savedName = (await response.json()).name;
+        } catch (error) {
+            // Compare identity without StructuredCloneMap's cloning getter; a later save owns its cache.
+            if (Map.prototype.get.call(worldInfoCache, name) === data) {
+                invalidateWorldInfoCache(name);
+            }
+            if (snapshot && worldInfoDataSnapshots.get(snapshot.source) === snapshot) {
+                let previous = snapshot.previous;
+                while (previous && !previous.committed) previous = previous.previous;
+                if (previous) worldInfoDataSnapshots.set(snapshot.source, previous);
+                else worldInfoDataSnapshots.delete(snapshot.source);
+            }
+            throw error;
         }
-        await eventSource.emit(event_types.WORLDINFO_UPDATED, name, data);
+        if (snapshot) {
+            snapshot.committed = true;
+            snapshot.previous = null;
+        }
+        worldInfoCommittedEntryInstances.set(savedName, worldInfoEntryInstances.get(data));
+        if (savedName !== name && Map.prototype.get.call(worldInfoCache, name) === data) {
+            invalidateWorldInfoCache(name);
+            worldInfoCache.set(savedName, data);
+            worldInfoCacheVersions.set(savedName, data);
+        }
+        return savedName;
     });
     worldInfoSaveQueues.set(name, save);
+    let savedName;
     try {
-        await save;
+        savedName = await save;
     } finally {
         if (worldInfoSaveQueues.get(name) === save) {
             worldInfoSaveQueues.delete(name);
         }
     }
+    if (notify) {
+        // Listeners can save again; notify outside the write queue and retain unchanged extension-owned identities.
+        const eventData = snapshot?.source !== worldInfoEditor?.data && lodash.isEqual(snapshot?.source, data) ? snapshot.source : data;
+        await eventSource.emit(event_types.WORLDINFO_UPDATED, savedName, eventData);
+        if (snapshot?.source !== worldInfoEditor?.data) reloadEditor(savedName);
+    }
+    return savedName;
 }
 
 function cancelPendingWorldInfoSave(name) {
@@ -4547,14 +4744,14 @@ function cancelPendingWorldInfoSave(name) {
         clearTimeout(pendingSave.timer);
         pendingWorldInfoSaves.delete(name);
     }
-    return pendingSave?.data;
+    return pendingSave;
 }
 
 async function settleWorldInfoSave(name) {
     while (true) {
-        const pendingData = cancelPendingWorldInfoSave(name);
-        if (pendingData) {
-            await _save(name, pendingData);
+        const pending = cancelPendingWorldInfoSave(name);
+        if (pending) {
+            await _save(name, pending.data, { snapshot: pending.snapshot });
         }
         const pendingSave = worldInfoSaveQueues.get(name);
         if (!pendingSave) {
@@ -4602,59 +4799,96 @@ async function getCanonicalWorldInfoName(name) {
  * Saves the world info
  *
  * This will also refresh the `worldInfoCache`.
- * Note, for performance reasons the saved cache will not make a deep clone of the data.
- * It is your responsibility to not modify the saved data object after calling this function, or there will be data inconsistencies.
- * Call `loadWorldInfoData` or query directly from cache if you need the object again.
+ * Pass the object returned by loadWorldInfo to merge changes against its load baseline; untracked objects are full-book writes.
+ * Later changes to the caller's object do not change a queued write.
  *
  * @param {string} name - The name of the world info
  * @param {any} data - The data to be saved
  * @param {boolean} [immediately=false] - Whether to save immediately or use debouncing
- * @return {Promise<void>} A promise that resolves when the world info is saved
+ * @return {Promise<string|null|undefined>} Immediate saves resolve to the committed name, or null if invalid/discarded.
+ * Debounced saves resolve to undefined when scheduled (not committed), or null if invalid/discarded; failures are reported by toast.
  */
 export async function saveWorldInfo(name, data, immediately = false) {
-    if (!name || !data) {
-        return;
+    if (typeof name !== 'string' || !name.trim() || !lodash.isPlainObject(data) || !lodash.isPlainObject(data.entries)
+        || !Object.values(data.entries).every(lodash.isPlainObject)) {
+        return null;
     }
 
-    const saveBlock = worldInfoSaveBlocks.get(name);
-    if (saveBlock) {
-        const targetName = await saveBlock;
-        if (!targetName) {
-            return;
+    const source = data;
+    const baseline = worldInfoDataSnapshots.get(source);
+    const requestedName = name;
+    const draft = cloneWorldInfoData(data, worldInfoEntryInstances.get(data) ?? worldInfoEntryInstances.get(Map.prototype.get.call(worldInfoCache, name)));
+    while (true) {
+        if (worldInfoSaveBlocks.has(name)) {
+            const targetName = await worldInfoSaveBlocks.get(name);
+            if (!targetName) {
+                return null;
+            }
+            name = targetName;
+            continue;
         }
-        name = targetName;
+        if (baseline?.name === requestedName && !worldInfoCache.has(name)) {
+            if (!await loadWorldInfo(name)) return null;
+            if (worldInfoSaveBlocks.has(name)) continue;
+        }
+        break;
     }
 
+    const latest = getWorldInfoCachedData(name);
+    data = baseline?.name === requestedName && latest ? mergeWorldInfoData(baseline.data, draft, latest) : draft;
+    if (!data) return null;
+    const pending = cancelPendingWorldInfoSave(name);
+    if (pending && pending.snapshot.source !== source) {
+        // Another writer's draft must reach disk even if this replacement snapshot fails.
+        _save(name, pending.data, { snapshot: pending.snapshot }).catch(error => {
+            console.error(`Failed to save World Info ${name}:`, error);
+            toastr.error(String(error), t`World Info Save Failed`);
+        });
+    } else if (pending) {
+        pending.snapshot.cancelled = true;
+    }
+    let previous = baseline;
+    while (previous?.cancelled) previous = previous.previous;
+    const snapshot = { name, source, data: draft, previous, committed: false };
+    worldInfoDataSnapshots.set(source, snapshot);
+    worldInfoEntryInstances.set(source, new Map(worldInfoEntryInstances.get(draft)));
     // Update cache immediately, so any future call can pull from this
     worldInfoCache.set(name, data);
+    worldInfoCacheVersions.set(name, data);
 
     if (immediately) {
-        cancelPendingWorldInfoSave(name);
-        return await _save(name, data);
+        return await _save(name, data, { snapshot });
     }
 
-    cancelPendingWorldInfoSave(name);
     const timer = setTimeout(() => {
         pendingWorldInfoSaves.delete(name);
-        _save(name, data).catch(error => {
+        _save(name, data, { snapshot }).catch(error => {
             console.error(`Failed to save World Info ${name}:`, error);
             toastr.error(String(error), t`World Info Save Failed`);
         });
     }, debounce_timeout.relaxed);
-    pendingWorldInfoSaves.set(name, { timer, data });
+    pendingWorldInfoSaves.set(name, { timer, data, snapshot });
 }
 
 async function replaceWorldInfoData(name, data) {
     const releaseSaveBlock = blockWorldInfoSaves(name);
     let saveTarget = name;
+    let savedName;
+    data = cloneWorldInfoData(data, new Map());
     try {
         await settleWorldInfoSave(name);
-        await _save(name, data);
+        savedName = await _save(name, data, { notify: false });
         saveTarget = null;
-        worldInfoCache.set(name, data);
+        invalidateWorldInfoCache(name);
+        worldInfoCache.set(savedName, data);
+        worldInfoCacheVersions.set(savedName, data);
+        if (worldInfoEditor?.name === name) worldInfoEditor = null;
     } finally {
         releaseSaveBlock(saveTarget);
     }
+    await eventSource.emit(event_types.WORLDINFO_UPDATED, savedName, data, { replaced: true });
+    reloadEditor(savedName);
+    return savedName;
 }
 
 async function renameWorldInfo(name, data) {
@@ -4684,6 +4918,10 @@ async function renameWorldInfo(name, data) {
     let saveTarget = oldName;
     try {
         await settleWorldInfoSave(oldName);
+        const baseline = worldInfoDataSnapshots.get(data);
+        const latest = getWorldInfoCachedData(oldName);
+        data = baseline && latest ? mergeWorldInfoData(baseline.data, data, latest) : cloneWorldInfoData(data);
+        if (!data) return;
         const response = await fetch('/api/worldinfo/rename', {
             method: 'POST',
             headers: getRequestHeaders(),
@@ -4695,8 +4933,11 @@ async function renameWorldInfo(name, data) {
         }
         saveTarget = newName;
 
-        worldInfoCache.delete(oldName);
+        invalidateWorldInfoCache(oldName);
+        worldInfoCommittedEntryInstances.delete(oldName);
+        worldInfoCommittedEntryInstances.set(newName, worldInfoEntryInstances.get(data));
         worldInfoCache.set(newName, data);
+        worldInfoCacheVersions.set(newName, data);
         if (entryPreviouslySelected !== -1) {
             selected_world_info[entryPreviouslySelected] = newName;
             saveSettingsDebounced();
@@ -4717,6 +4958,7 @@ async function renameWorldInfo(name, data) {
         }
     } finally {
         releaseSaveBlock(saveTarget);
+        if (saveTarget === newName) await eventSource.emit(event_types.WORLDINFO_RENAMED, oldName, newName);
     }
 }
 
@@ -4850,9 +5092,9 @@ export async function deleteWorldInfo(worldInfoName) {
         }
         saveTarget = null;
 
-        if (worldInfoCache.has(worldInfoName)) {
-            worldInfoCache.delete(worldInfoName);
-        }
+        invalidateWorldInfoCache(worldInfoName);
+        worldInfoCommittedEntryInstances.delete(worldInfoName);
+        if (worldInfoEditor?.name === worldInfoName) worldInfoEditor = null;
 
         const existingWorldIndex = selected_world_info.findIndex((e) => e === worldInfoName);
         if (existingWorldIndex !== -1) {
@@ -4880,11 +5122,11 @@ export async function deleteWorldInfo(worldInfoName) {
             $('#persona_lore_button').toggleClass('world_set', false);
             saveSettingsDebounced();
         }
-
-        return true;
     } finally {
         releaseSaveBlock(saveTarget);
+        if (saveTarget === null) await eventSource.emit(event_types.WORLDINFO_DELETED, worldInfoName);
     }
+    return true;
 }
 
 export function getFreeWorldEntryUid(data) {
@@ -4892,9 +5134,12 @@ export function getFreeWorldEntryUid(data) {
         return null;
     }
 
+    const snapshot = worldInfoDataSnapshots.get(data);
+    const cachedEntries = snapshot ? worldInfoCache.get(snapshot.name)?.entries : null;
     const MAX_UID = 1_000_000; // <- should be safe enough :)
     for (let uid = 0; uid < MAX_UID; uid++) {
-        if (uid in data.entries) {
+        // An open editor may not yet display entries created by another same-tab writer.
+        if (uid in data.entries || (cachedEntries && uid in cachedEntries)) {
             continue;
         }
         return uid;
@@ -6143,6 +6388,7 @@ function convertNovelLorebook(inputObj) {
 export function convertCharacterBook(characterBook) {
     const originalData = structuredClone(characterBook);
     const result = { entries: {}, originalData, originalDataUidMap: {} };
+    if (characterBook.extensions) result.extensions = structuredClone(characterBook.extensions);
 
     characterBook.entries.forEach((entry, index) => {
         const uid = getFreeWorldEntryUid(result);
@@ -6601,10 +6847,9 @@ export async function importWorldInfo(file) {
 
     const formData = new FormData();
     formData.append('avatar', file);
+    let jsonData;
 
     try {
-        let jsonData;
-
         if (file.name.endsWith('.png')) {
             const buffer = new Uint8Array(await getFileBuffer(file));
             jsonData = extractDataFromPng(buffer, 'naidata');
@@ -6660,6 +6905,8 @@ export async function importWorldInfo(file) {
     formData.set('name', persistedWorldName);
     const releaseSaveBlock = blockWorldInfoSaves(persistedWorldName);
     let saveTarget = persistedWorldName;
+    let importedName;
+    let importedData;
 
     try {
         await settleWorldInfoSave(persistedWorldName);
@@ -6678,7 +6925,13 @@ export async function importWorldInfo(file) {
         const data = await result.json();
 
         if (data.name) {
-            worldInfoCache.delete(data.name);
+            importedName = data.name;
+            importedData = cloneWorldInfoData(formData.has('convertedData') ? JSON.parse(String(formData.get('convertedData'))) : jsonData, new Map());
+            worldInfoCommittedEntryInstances.set(data.name, worldInfoEntryInstances.get(importedData));
+            invalidateWorldInfoCache(data.name);
+            worldInfoCache.set(data.name, importedData);
+            worldInfoCacheVersions.set(data.name, importedData);
+            if (worldInfoEditor?.name === data.name) worldInfoEditor = null;
             await updateWorldInfoList();
 
             const newIndex = world_names.indexOf(data.name);
@@ -6693,6 +6946,9 @@ export async function importWorldInfo(file) {
         toastr.error(t`Failed to import World Info`);
     } finally {
         releaseSaveBlock(saveTarget);
+    }
+    if (importedName) {
+        await eventSource.emit(event_types.WORLDINFO_UPDATED, importedName, importedData, { replaced: true });
     }
 }
 

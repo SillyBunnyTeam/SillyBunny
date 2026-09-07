@@ -3,33 +3,27 @@
  */
 
 import { renderExtensionTemplateAsync, getContext } from '../../extensions.js';
-import { saveSettingsDebounced } from '../../../script.js';
+import { eventSource, event_types, online_status } from '../../../script.js';
 import { accountStorage } from '../../util/AccountStorage.js';
 import { escapeHtml } from '../../utils.js';
 import { attachTextareaFullscreen } from './textarea-fullscreen.js';
-import { world_names, loadWorldInfo } from '../../world-info.js';
-import { isAgentEnabledForCurrentScope, isPathfinderSubmoduleEnabled, persistAgentGlobalSettings, saveAgent, setAgentEnabledForCurrentScope } from './agent-store.js';
+import { world_names } from '../../world-info.js';
+import { areAgentsGloballyEnabled, getActiveAgentChatScope, getAgentById, getGlobalSettings, isAgentEnabledForCurrentScope, isPathfinderSubmoduleEnabled, persistAgentGlobalSettings, saveAgent, setAgentEnabledForScope } from './agent-store.js';
+import { runDiagnostics } from './pathfinder-init.js';
 import {
-    getPathfinderSettings,
-    setPathfinderSettings,
-    runDiagnostics,
-} from './pathfinder-init.js';
-import {
-    setLorebookEnabled,
+    SETTING_DEFAULTS,
+    replaceSettings,
     listConnectionProfiles,
     normalizeAutoSummaryInterval,
-    isPathfinderToolEnabled as isRuntimePathfinderToolEnabled,
-    setPathfinderToolEnabled as setRuntimePathfinderToolEnabled,
-    setBookPermission,
     canReadBook,
     canWriteBook,
     canDeleteBook,
 } from './pathfinder/tree-store.js';
-import { buildTreeFromMetadata } from './pathfinder/tree-builder.js';
-import { syncToolAgentRegistrations } from './agent-runner.js';
-import { ALL_TOOL_NAMES, CONFIRMABLE_TOOLS, getContextualLorebookDetails } from './pathfinder/pathfinder-tool-bridge.js';
-import { getPrompt, savePrompt } from './pathfinder/prompts/prompt-store.js';
-import { getDefaultPrompts } from './pathfinder/prompts/default-prompts.js';
+import { getAgentGenerationContext, getAgentGenerationCancelRevision, getPathfinderRuntimeAgent, isAgentGenerationStopped, isPathfinderToolEnabledForAgent, onAgentGenerationStateChanged, syncToolAgentRegistrations } from './agent-runner.js';
+import { ALL_TOOL_NAMES, CONFIRMABLE_TOOLS, getActiveTunnelVisionBooks, getReadableBooks, getWritableBooks, getContextualLorebookDetails, resolveTargetBook } from './pathfinder/pathfinder-tool-bridge.js';
+import { initializePromptStore } from './pathfinder/prompts/prompt-store.js';
+import { getDefaultPrompts, getDefaultPipelines } from './pathfinder/prompts/default-prompts.js';
+import { populateConnectionProfileSelect } from './profile-utils.js';
 import { clearFeed, getFeedItems } from './pathfinder/activity-feed.js';
 import { getSummaryMemoryState, onSummaryMemoryChanged, saveSummaryMemoryContent } from './pathfinder/summary-memory-store.js';
 import { sidecarGenerate } from './pathfinder/llm-sidecar.js';
@@ -44,9 +38,48 @@ const DEFAULT_PIPELINE_MAX_TOKENS = 64000;
 
 let settingsEl = null;
 let currentAgent = null;
+let settingsSession = null;
+let settingsOpenRevision = 0;
 let retrievalLogMode = safeGetAccountStorageItem(PATHFINDER_LOG_MODE_KEY) === 'detailed' ? 'detailed' : 'summary';
-let summaryMemoryUnsubscribe = null;
-let summaryMemoryPanelSeenConnected = false;
+
+export function cancelPathfinderSummary() {
+    settingsSession?.summaryController?.abort();
+}
+
+export function closePathfinderSettings(panel = settingsEl) {
+    if (panel !== settingsEl) return;
+    settingsOpenRevision++;
+    settingsSession?.summaryController?.abort();
+    settingsSession?.cleanup.forEach(dispose => dispose());
+    settingsEl?.off().find('*').off();
+    settingsEl?.find('input, button, select, textarea').prop('disabled', true);
+    settingsSession = null;
+    settingsEl = null;
+    currentAgent = null;
+}
+
+export async function canClosePathfinderSettings(panel) {
+    const session = settingsSession;
+    if (session?.element !== panel) return true;
+    const hadPendingSave = session.pending > 0;
+    cancelPathfinderSummary();
+    await agentSettingsSaveChain;
+    // A newly failed save stays visible for retry; a subsequent Close must still work offline.
+    return settingsSession !== session || (session.pending === 0
+        && (!hadPendingSave || (session.dirtySettings.size === 0 && session.enabledChange === undefined)));
+}
+
+export function refreshPathfinderSettings() {
+    if (!settingsSession) return;
+    const saved = getAgentById(currentAgent.id);
+    if (!saved) return;
+    const edits = Object.fromEntries([...settingsSession.dirtySettings].map(key => [key, currentAgent.settings[key]]));
+    currentAgent.settings = structuredClone({ ...SETTING_DEFAULTS, ...saved.settings, ...edits });
+    if (!settingsSession.dirtySettings.has('toolStates')) currentAgent.tools = structuredClone(saved.tools ?? []);
+    refreshLorebookList();
+    updateModeCardStates();
+    updateStatusBanner();
+}
 
 function safeGetAccountStorageItem(key) {
     try {
@@ -109,7 +142,9 @@ function setSectionCollapsedPreference(sectionKey, collapsed) {
 }
 
 function setSectionChevronState(section, collapsed) {
-    const chevron = section.children('.pf--collapsible-header').first().find('.pf--chevron').first();
+    const header = section.children('.pf--collapsible-header').first();
+    const chevron = header.find('.pf--chevron').first();
+    header.attr('aria-expanded', String(!collapsed));
     chevron.toggleClass('fa-chevron-down', !collapsed);
     chevron.toggleClass('fa-chevron-right', collapsed);
 }
@@ -120,11 +155,9 @@ function applyPersistedCollapseStates() {
     settingsEl.find('.pf--section-collapsible').each(function () {
         const section = $(this);
         const sectionKey = getCollapseSectionKey(section);
-        if (!sectionKey || !Object.prototype.hasOwnProperty.call(states, sectionKey)) {
-            return;
-        }
-
-        const collapsed = states[sectionKey] === true;
+        const collapsed = Object.hasOwn(states, sectionKey)
+            ? states[sectionKey] === true
+            : section.children('.pf--collapsible-header').attr('aria-expanded') === 'false';
         section.children('.pf--section-body').first().toggle(!collapsed);
         setSectionChevronState(section, collapsed);
     });
@@ -136,33 +169,6 @@ function ensureEnabledLorebooks(settings) {
     }
 
     return settings.enabledLorebooks;
-}
-
-function addUniqueLorebookName(names, name) {
-    const bookName = String(name ?? '').trim();
-    if (bookName && !names.includes(bookName)) {
-        names.push(bookName);
-    }
-}
-
-function getActiveLorebookNames(settings, lorebooks = []) {
-    const names = [...ensureEnabledLorebooks(settings)];
-
-    if (settings.autoUseAttachedLorebook || settings.autoSyncLorebooksOnChatChange !== false) {
-        for (const book of lorebooks) {
-            if (book.attached) {
-                addUniqueLorebookName(names, book.name);
-            }
-        }
-    }
-
-    if (settings.includeContextualLorebooks !== false) {
-        for (const source of getContextualLorebookDetails()) {
-            addUniqueLorebookName(names, source.name);
-        }
-    }
-
-    return names;
 }
 
 function getEffectiveLorebooks(lorebooks, settings) {
@@ -177,15 +183,14 @@ function getEffectiveLorebooks(lorebooks, settings) {
         const sourceTypes = Array.isArray(source.types) ? new Set(source.types) : new Set([source.type || 'attached']);
         booksByName.set(source.name, {
             name: source.name,
-            entries: '?',
             attached: true,
             sourceTypes,
             type: formatLorebookSourceLabel(sourceTypes),
         });
     }
 
-    return getActiveLorebookNames(settings, allBooks)
-        .map(name => booksByName.get(name) ?? { name, entries: '?', attached: false, type: 'lorebook' })
+    return getActiveTunnelVisionBooks(settings)
+        .map(name => booksByName.get(name) ?? { name, attached: false, type: 'lorebook' })
         .filter(book => book?.name);
 }
 
@@ -206,14 +211,9 @@ function upsertLorebook(lorebooksByName, name, data = {}) {
 
     const book = lorebooksByName.get(name) ?? {
         name,
-        entries: '?',
         attached: false,
         sourceTypes: new Set(),
     };
-
-    if (data.entries !== undefined) {
-        book.entries = data.entries;
-    }
 
     if (data.type) {
         book.sourceTypes.add(data.type);
@@ -223,76 +223,6 @@ function upsertLorebook(lorebooksByName, name, data = {}) {
     }
 
     lorebooksByName.set(name, book);
-}
-
-async function ensureLorebookTree(bookName) {
-    try {
-        const bookData = await loadWorldInfo(bookName);
-        if (!bookData?.entries) {
-            console.warn(`${PATHFINDER_LOG_PREFIX} Lorebook "${bookName}" could not be loaded for tree building.`);
-            return false;
-        }
-
-        await buildTreeFromMetadata(bookName, bookData);
-        return true;
-    } catch (err) {
-        console.warn(`${PATHFINDER_LOG_PREFIX} Failed to build tree for lorebook "${bookName}".`, err);
-        return false;
-    }
-}
-
-// Counterpart of syncPathfinderAgentLorebooksForCurrentChat (agent-runner.js),
-// which handles the CHAT_CHANGED trigger; both derive the book set from
-// getContextualLorebookDetails, so keep the two in sync.
-async function syncAutoAttachedLorebooks(lorebooks, settings) {
-    if (!settings.autoUseAttachedLorebook && !settings.autoSyncLorebooksOnChatChange) {
-        return [];
-    }
-
-    const enabledLorebooks = [...ensureEnabledLorebooks(settings)];
-    const attachedLorebooks = lorebooks.filter(book => book.attached).map(book => book.name);
-    const syncedLorebooks = Array.from(new Set(attachedLorebooks));
-    const selectedLorebook = syncedLorebooks[0] ?? '';
-    const autoSyncChanged = settings.autoSyncLorebooksOnChatChange
-        && (enabledLorebooks.length !== syncedLorebooks.length
-            || enabledLorebooks.some((name, index) => name !== syncedLorebooks[index])
-            || (settings.selectedLorebook ?? '') !== selectedLorebook);
-    if (settings.autoSyncLorebooksOnChatChange) {
-        settings.enabledLorebooks = syncedLorebooks;
-        settings.selectedLorebook = selectedLorebook;
-        setPathfinderSettings(settings);
-    }
-
-    const newLorebooks = attachedLorebooks.filter(name => !enabledLorebooks.includes(name));
-
-    if (attachedLorebooks.length === 0) {
-        if (autoSyncChanged) {
-            return enabledLorebooks;
-        }
-        return [];
-    }
-
-    if (!settings.autoSyncLorebooksOnChatChange) {
-        settings.enabledLorebooks = Array.from(new Set([...enabledLorebooks, ...attachedLorebooks]));
-        if (!settings.selectedLorebook || !settings.enabledLorebooks.includes(settings.selectedLorebook)) {
-            settings.selectedLorebook = settings.enabledLorebooks[0] ?? '';
-        }
-    }
-    attachedLorebooks.forEach(bookName => setLorebookEnabled(bookName, true));
-    setPathfinderSettings(settings);
-
-    if (newLorebooks.length > 0) {
-        for (const bookName of newLorebooks) {
-            await ensureLorebookTree(bookName);
-        }
-    }
-
-    if (autoSyncChanged) {
-        const removedLorebooks = enabledLorebooks.filter(name => !syncedLorebooks.includes(name));
-        return Array.from(new Set([...newLorebooks, ...removedLorebooks]));
-    }
-
-    return newLorebooks;
 }
 
 /**
@@ -305,29 +235,71 @@ export async function openPathfinderSettings(agent) {
         return null;
     }
 
-    currentAgent = agent;
-    const existingSettings = getPathfinderSettings();
-    setPathfinderSettings({
-        pipelinePrompts: existingSettings.pipelinePrompts,
-        pipelines: existingSettings.pipelines,
-        ...(agent?.settings || {}),
-    });
-
+    closePathfinderSettings();
+    const openRevision = settingsOpenRevision;
     const html = await renderExtensionTemplateAsync(MODULE_NAME, 'pathfinder-settings');
+    if (openRevision !== settingsOpenRevision || !isPathfinderSubmoduleEnabled()) return null;
     if (!html) {
         toastr.error('Could not load Pathfinder settings.');
         return null;
     }
 
     settingsEl = $(html);
-    if (summaryMemoryUnsubscribe) {
-        summaryMemoryUnsubscribe();
+    currentAgent = structuredClone(getAgentById(agent.id) ?? agent);
+    currentAgent.settings = structuredClone({ ...SETTING_DEFAULTS, ...currentAgent.settings });
+    const session = settingsSession = {
+        element: settingsEl,
+        agent: currentAgent,
+        revision: 0,
+        contextRevision: 0,
+        pending: 0,
+        dirtySettings: new Set(),
+        cleanup: [],
+        summaryDraft: null,
+        summaryBusy: false,
+        summaryController: null,
+    };
+    session.cleanup.push(onSummaryMemoryChanged(() => {
+        if (settingsSession === session) renderSummaryMemoryEditor();
+    }));
+    session.cleanup.push(onAgentGenerationStateChanged(refreshPathfinderSettings));
+    const refreshContext = () => {
+        session.summaryController?.abort();
+        // A chat switch invalidates queued edits; the runner owns auto-sync.
+        session.contextRevision++;
+        session.dirtySettings.clear();
+        session.enabledChange = undefined;
+        session.element.find('#pf--settings-save-status').text('');
+        session.element.find('#pf--settings-retry').hide();
+        refreshPathfinderSettings();
+        loadSettingsIntoUI();
+    };
+    eventSource.on(event_types.CHAT_CHANGED, refreshContext);
+    session.cleanup.push(() => eventSource.removeListener(event_types.CHAT_CHANGED, refreshContext));
+    const refreshStatus = () => {
+        updateStatusBanner();
+        populateConnectionProfiles();
+    };
+    for (const event of [
+        event_types.SETTINGS_UPDATED,
+        event_types.MAIN_API_CHANGED,
+        event_types.ONLINE_STATUS_CHANGED,
+        event_types.CHATCOMPLETION_SOURCE_CHANGED,
+        event_types.CHATCOMPLETION_MODEL_CHANGED,
+        event_types.OAI_PRESET_CHANGED_AFTER,
+        event_types.GENERATION_ENDED,
+        event_types.GENERATION_STOPPED,
+        event_types.CONNECTION_PROFILE_LOADED,
+        event_types.CONNECTION_PROFILE_CREATED,
+        event_types.CONNECTION_PROFILE_UPDATED,
+        event_types.CONNECTION_PROFILE_DELETED,
+    ].filter(Boolean)) {
+        eventSource.on(event, refreshStatus);
+        session.cleanup.push(() => eventSource.removeListener(event, refreshStatus));
     }
-    summaryMemoryPanelSeenConnected = false;
-    summaryMemoryUnsubscribe = onSummaryMemoryChanged(renderSummaryMemoryEditor);
 
     // Initialize UI
-    await refreshLorebookList();
+    refreshLorebookList();
     applyQuickstartDismissalState();
     loadSettingsIntoUI();
     applyPersistedCollapseStates();
@@ -345,7 +317,7 @@ export async function openPathfinderSettings(agent) {
 /**
  * Get available lorebooks from current context
  */
-async function getAvailableLorebooks() {
+function getAvailableLorebooks() {
     const ctx = getContext();
     if (!ctx && !globalThis.window?.SillyTavern?.getContext?.() && (!Array.isArray(world_names) || world_names.length === 0)) {
         console.warn(`${PATHFINDER_LOG_PREFIX} Could not resolve the current context while gathering lorebooks.`);
@@ -354,26 +326,9 @@ async function getAvailableLorebooks() {
 
     const lorebooksByName = new Map();
 
-    // Use the global world_names array from world-info.js
-    if (Array.isArray(world_names) && world_names.length > 0) {
-        for (const name of world_names) {
-            try {
-                // Try to load the world info to get entry count
-                const bookData = await loadWorldInfo(name);
-                const entryCount = bookData?.entries ? Object.keys(bookData.entries).length : '?';
-                upsertLorebook(lorebooksByName, name, {
-                    entries: entryCount,
-                    type: 'global',
-                });
-            } catch (err) {
-                // If we can't load it, just add with unknown count
-                console.warn(`${PATHFINDER_LOG_PREFIX} Failed to load lorebook metadata for "${name}".`, err);
-                upsertLorebook(lorebooksByName, name, {
-                    entries: '?',
-                    type: 'global',
-                });
-            }
-        }
+    // Counts and waypoint builds belong to retrieval, not opening settings.
+    for (const name of world_names ?? []) {
+        upsertLorebook(lorebooksByName, name, { type: 'global' });
     }
 
     for (const source of getContextualLorebookDetails()) {
@@ -384,15 +339,10 @@ async function getAvailableLorebooks() {
                 book.sourceTypes.add(type);
             }
         }
+    }
 
-        if (book?.entries === '?') {
-            try {
-                const bookData = await loadWorldInfo(source.name);
-                book.entries = bookData?.entries ? Object.keys(bookData.entries).length : '?';
-            } catch {
-                // Keep unknown count for contextual books that are not importable as standalone lorebooks.
-            }
-        }
+    for (const name of ensureEnabledLorebooks(currentAgent.settings)) {
+        upsertLorebook(lorebooksByName, name);
     }
 
     const lorebooks = Array.from(lorebooksByName.values()).map(book => ({
@@ -406,21 +356,14 @@ async function getAvailableLorebooks() {
 /**
  * Refresh the lorebook list in the UI
  */
-async function refreshLorebookList() {
+function refreshLorebookList() {
     const listEl = settingsEl.find('#pf--lorebook-list');
     listEl.empty();
 
-    const lorebooks = await getAvailableLorebooks();
-    const settings = getPathfinderSettings();
+    const lorebooks = getAvailableLorebooks();
+    const settings = currentAgent.settings;
     ensureEnabledLorebooks(settings);
-
-    settingsEl.find('#pf--auto-use-attached').prop('checked', Boolean(settings.autoUseAttachedLorebook));
-    const autoEnabledLorebooks = await syncAutoAttachedLorebooks(lorebooks, settings);
-    if (autoEnabledLorebooks.length > 0) {
-        await updateAgentSettings();
-        updateStatusBanner();
-    }
-    const enabledBooks = getActiveLorebookNames(getPathfinderSettings(), lorebooks);
+    const enabledBooks = getActiveTunnelVisionBooks(settings);
 
     if (lorebooks.length === 0) {
         listEl.html(`
@@ -433,52 +376,17 @@ async function refreshLorebookList() {
         return;
     }
 
-    for (const book of lorebooks) {
+    for (const [index, book] of lorebooks.entries()) {
         const isEnabled = enabledBooks.includes(book.name);
         const item = $(`
-            <div class="pf--lorebook-item ${isEnabled ? 'selected' : ''}" data-book="${escapeHtml(book.name)}">
-                <input type="checkbox" ${isEnabled ? 'checked' : ''} />
-                <div class="pf--lorebook-info">
-                    <span class="pf--lorebook-name">${escapeHtml(book.name)}</span>
-                    <span class="pf--lorebook-meta">${book.entries} entries · ${book.type}</span>
-                </div>
-            </div>
+            <label class="pf--lorebook-item ${isEnabled ? 'selected' : ''}" data-book="${escapeHtml(book.name)}">
+                <input type="checkbox" aria-labelledby="pf--lorebook-name-${index}" ${isEnabled ? 'checked' : ''} />
+                <span class="pf--lorebook-info">
+                    <span class="pf--lorebook-name" id="pf--lorebook-name-${index}">${escapeHtml(book.name)}</span>
+                    <span class="pf--lorebook-meta">${escapeHtml(book.type)}</span>
+                </span>
+            </label>
         `);
-
-        item.on('click', async function (e) {
-            if (e.target.tagName === 'INPUT') return;
-            const checkbox = $(this).find('input[type="checkbox"]');
-            checkbox.prop('checked', !checkbox.prop('checked')).trigger('change');
-        });
-
-        item.find('input').on('change', async function () {
-            const bookName = item.data('book');
-            const checked = $(this).prop('checked');
-
-            item.toggleClass('selected', checked);
-
-            // Update settings
-            const s = getPathfinderSettings();
-            ensureEnabledLorebooks(s);
-
-            if (checked && !s.enabledLorebooks.includes(bookName)) {
-                s.enabledLorebooks.push(bookName);
-                s.selectedLorebook = s.selectedLorebook || bookName;
-                setLorebookEnabled(bookName, true);
-                await ensureLorebookTree(bookName);
-            } else if (!checked) {
-                s.enabledLorebooks = s.enabledLorebooks.filter(b => b !== bookName);
-                if (s.selectedLorebook === bookName) {
-                    s.selectedLorebook = s.enabledLorebooks[0] ?? '';
-                }
-                setLorebookEnabled(bookName, false);
-            }
-
-            setPathfinderSettings(s);
-            updateAgentSettings();
-            updateStatusBanner();
-            renderPermissionMatrix(lorebooks);
-        });
 
         listEl.append(item);
     }
@@ -488,7 +396,6 @@ async function refreshLorebookList() {
 
 
 function setPathfinderToolEnabled(toolName, enabled) {
-    setRuntimePathfinderToolEnabled(toolName, enabled);
     if (!currentAgent) {
         return;
     }
@@ -512,15 +419,7 @@ function setPathfinderToolEnabled(toolName, enabled) {
 }
 
 function isPathfinderToolEnabled(toolName) {
-    const fallbackTool = Array.isArray(currentAgent?.tools)
-        ? currentAgent.tools.find(t => t.name === toolName)
-        : null;
-
-    if (currentAgent?.settings?.toolStates && Object.hasOwn(currentAgent.settings.toolStates, toolName)) {
-        return currentAgent.settings.toolStates[toolName] !== false;
-    }
-
-    return isRuntimePathfinderToolEnabled(toolName, fallbackTool?.enabled !== false);
+    return isPathfinderToolEnabledForAgent(currentAgent, toolName);
 }
 
 function getToolLabel(toolName) {
@@ -566,7 +465,7 @@ function renderConfirmToggles() {
         return;
     }
 
-    const confirmTools = getPathfinderSettings().confirmTools ?? {};
+    const confirmTools = currentAgent.settings.confirmTools ?? {};
     confirmList.empty();
     for (const toolName of ALL_TOOL_NAMES) {
         if (!CONFIRMABLE_TOOLS.has(toolName)) {
@@ -590,22 +489,23 @@ function renderPermissionMatrix(lorebooks = null) {
         return;
     }
 
-    const books = getEffectiveLorebooks(lorebooks, getPathfinderSettings());
+    const settings = currentAgent.settings;
+    const books = getEffectiveLorebooks(lorebooks, settings);
 
     if (books.length === 0) {
         matrix.html('<div class="pf--empty-state pf--permission-empty"><i class="fa-solid fa-lock-open"></i><span>Select a lorebook above, or attach one to the current character/chat with auto-select enabled.</span></div>');
         return;
     }
 
-    const rows = books.map(book => `
-        <div class="pf--permission-row" data-book="${escapeHtml(book.name)}">
+    const rows = books.map((book, index) => `
+        <div class="pf--permission-row" data-book="${escapeHtml(book.name)}" role="group" aria-labelledby="pf--permission-book-${index}">
             <div class="pf--permission-book">
-                <strong>${escapeHtml(book.name)}</strong>
+                <strong id="pf--permission-book-${index}">${escapeHtml(book.name)}</strong>
                 <span>${escapeHtml(book.type || 'lorebook')}</span>
             </div>
-            <label class="checkbox_label"><input type="checkbox" data-permission="read" ${canReadBook(book.name) ? 'checked' : ''} /><span>Read</span></label>
-            <label class="checkbox_label"><input type="checkbox" data-permission="write" ${canWriteBook(book.name) ? 'checked' : ''} /><span>Write</span></label>
-            <label class="checkbox_label"><input type="checkbox" data-permission="delete" ${canDeleteBook(book.name) ? 'checked' : ''} /><span>Delete</span></label>
+            <label class="checkbox_label"><input type="checkbox" data-permission="read" aria-labelledby="pf--permission-book-${index} pf--permission-read-${index}" ${canReadBook(book.name, settings) ? 'checked' : ''} /><span id="pf--permission-read-${index}">Read</span></label>
+            <label class="checkbox_label"><input type="checkbox" data-permission="write" aria-labelledby="pf--permission-book-${index} pf--permission-write-${index}" ${canWriteBook(book.name, settings) ? 'checked' : ''} /><span id="pf--permission-write-${index}">Write</span></label>
+            <label class="checkbox_label"><input type="checkbox" data-permission="delete" aria-labelledby="pf--permission-book-${index} pf--permission-delete-${index}" ${canDeleteBook(book.name, settings) ? 'checked' : ''} /><span id="pf--permission-delete-${index}">Delete</span></label>
         </div>
     `).join('');
 
@@ -621,9 +521,9 @@ function readPromptMaxTokens() {
  * Load current settings into UI elements
  */
 function loadSettingsIntoUI() {
-    const s = getPathfinderSettings();
+    const s = currentAgent.settings;
 
-    settingsEl.find('#pf--master-enable').prop('checked', currentAgent ? isAgentEnabledForCurrentScope(currentAgent) : false);
+    settingsEl.find('#pf--master-enable').prop('checked', settingsSession.enabledChange ?? isAgentEnabledForCurrentScope(getAgentById(currentAgent.id) ?? currentAgent));
 
     // Pipeline settings
     settingsEl.find('#pf--enable-pipeline').prop('checked', s.pipelineEnabled || false);
@@ -638,6 +538,7 @@ function loadSettingsIntoUI() {
     settingsEl.find('#pf--mandatory-tools').prop('checked', s.mandatoryTools || false);
     settingsEl.find('#pf--auto-use-attached').prop('checked', s.autoUseAttachedLorebook || false);
     settingsEl.find('#pf--auto-sync-lorebooks').prop('checked', s.autoSyncLorebooksOnChatChange !== false);
+    settingsEl.find('#pf--include-contextual-lorebooks').prop('checked', s.includeContextualLorebooks !== false);
     settingsEl.find('#pf--dedupe-natural-activation').prop('checked', s.dedupeNaturalActivation !== false);
     settingsEl.find('#pf--auto-summary').prop('checked', s.autoSummary || false);
     settingsEl.find('#pf--auto-summary-interval').val(s.autoSummaryInterval ?? 20);
@@ -660,19 +561,10 @@ function loadSettingsIntoUI() {
  * Populate connection profile dropdowns
  */
 function populateConnectionProfiles() {
-    const profiles = listConnectionProfiles();
-    const select = settingsEl.find('#pf--pipeline-profile');
-
-    select.find('option:not(:first)').remove();
-
-    for (const profile of profiles) {
-        select.append(`<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.name || profile.id)}</option>`);
-    }
-
-    const s = getPathfinderSettings();
-    if (s.connectionProfile) {
-        select.val(s.connectionProfile);
-    }
+    populateConnectionProfileSelect(settingsEl.find('#pf--pipeline-profile')[0], {
+        emptyLabel: 'Use main model',
+        selectedValue: currentAgent.settings.connectionProfile ?? '',
+    });
 }
 
 
@@ -689,35 +581,23 @@ function renderSummaryMemoryEditor() {
         return;
     }
 
-    // The panel is created detached and mounted by the caller; nothing fires
-    // on close. Track the first time it is seen in the DOM, and once it is
-    // gone again drop the listener so it stops holding the detached panel.
-    if (settingsEl[0]?.isConnected) {
-        summaryMemoryPanelSeenConnected = true;
-    } else if (summaryMemoryPanelSeenConnected) {
-        if (summaryMemoryUnsubscribe) {
-            summaryMemoryUnsubscribe();
-            summaryMemoryUnsubscribe = null;
-        }
-        settingsEl = null;
-        return;
-    }
-
     const summary = getSummaryMemoryState();
     const textarea = settingsEl.find('#pf--summary-content');
     const indicator = settingsEl.find('#pf--summary-injection-indicator');
     const meta = settingsEl.find('#pf--summary-meta');
-    const hasSummary = Boolean(summary.content || summary.uid);
-    const currentContent = String(textarea.val() || summary.content || '').trim();
+    const hasSummary = Boolean(summary.content || summary.uid !== null || settingsSession.summaryDraft);
+    const draft = settingsSession.summaryDraft;
+    const currentContent = String(draft?.content ?? summary.content ?? '').trim();
 
-    if (document.activeElement !== textarea[0]) {
-        textarea.val(summary.content || '');
+    if (!draft) {
+        textarea.val(summary.content ?? '');
     }
 
     textarea.prop('disabled', !hasSummary);
-    settingsEl.find('#pf--summary-save').prop('disabled', !hasSummary);
-    settingsEl.find('#pf--summary-save-entry').prop('disabled', !currentContent);
-    settingsEl.find('#pf--summary-create').toggle(!hasSummary).prop('disabled', hasSummary);
+    const busy = settingsSession.summaryBusy || settingsSession.pending > 0;
+    settingsEl.find('#pf--summary-save').prop('disabled', !hasSummary || busy);
+    settingsEl.find('#pf--summary-save-entry').prop('disabled', !currentContent || busy);
+    settingsEl.find('#pf--summary-create').toggle(!hasSummary).prop('disabled', hasSummary || busy);
 
     indicator.removeClass('pf--summary-indicator-missing pf--summary-indicator-not-injected pf--summary-indicator-injected');
     if (!hasSummary) {
@@ -737,12 +617,12 @@ function renderSummaryMemoryEditor() {
     const location = summary.bookName && summary.uid !== null ? `${summary.bookName} / UID ${summary.uid}` : 'not linked to a lorebook entry';
     const updated = summary.updatedAt ? `Updated ${formatSummaryTimestamp(summary.updatedAt)}` : 'Not saved yet';
     const injected = summary.injectedAt ? `Last injected ${formatSummaryTimestamp(summary.injectedAt)}${summary.injectedMode ? ` via ${summary.injectedMode}` : ''}` : 'Not injected by retrieval yet';
-    meta.text(`${title} — ${location}. ${updated}. ${injected}.`);
+    meta.text(`${title} - ${location}. ${updated}. ${injected}.`);
 }
 
 function getSummaryEditorDraft() {
-    const summary = getSummaryMemoryState();
-    const content = String(settingsEl.find('#pf--summary-content').val() || summary.content || '').trim();
+    const summary = settingsSession.summaryDraft?.source ?? getSummaryMemoryState();
+    const content = String(settingsEl.find('#pf--summary-content').val() ?? '').trim();
     return {
         title: deriveSummaryLorebookTitle({
             title: summary.title,
@@ -752,8 +632,16 @@ function getSummaryEditorDraft() {
         content,
         significance: summary.significance || 'medium',
         arc: summary.arc || '',
-        book: summary.bookName || getPathfinderSettings().selectedLorebook || '',
+        book: summary.bookName || currentAgent.settings.selectedLorebook || '',
     };
+}
+
+function assertSummarySource(expected) {
+    const current = getSummaryMemoryState();
+    if (['bookName', 'uid', 'title', 'content'].some(key => expected[key] !== current[key])) {
+        throw new Error('The summary or its linked entry changed while the user was editing. Saves are blocked to prevent overwriting.');
+    }
+    return current;
 }
 
 function getRecentChatForSummary(maxMessages = 24) {
@@ -812,6 +700,13 @@ function parseGeneratedSummary(rawSummary) {
 }
 
 async function createManualSummaryMemory() {
+    const session = settingsSession;
+    const generation = getAgentGenerationContext();
+    const alreadyStopped = isAgentGenerationStopped();
+    const agentId = currentAgent.id;
+    const agent = getAgentById(agentId) ?? currentAgent;
+    const targetBook = resolveTargetBook(agent.settings?.selectedLorebook, getWritableBooks());
+    if (!targetBook) throw new Error('No Pathfinder-enabled lorebooks available for writing.');
     const recentChat = getRecentChatForSummary();
     if (!recentChat) {
         throw new Error('No recent chat messages are available to summarize.');
@@ -825,270 +720,209 @@ Return only a compact JSON object with this shape:
 Recent chat:
 ${recentChat}`;
 
-    const rawSummary = await sidecarGenerate(
-        prompt,
-        'You create concise long-term memory summaries for creative roleplay. Preserve names, changed state, unresolved threads, and why the scene matters. Return valid JSON only.',
-    );
-    const summary = parseGeneratedSummary(rawSummary);
+    const controller = session.summaryController = new AbortController();
+    const isCurrent = () => {
+        const liveAgent = getAgentById(agentId);
+        const context = getAgentGenerationContext();
+        return settingsSession === session && !controller.signal.aborted
+            && generation.chatId === context.chatId && generation.runId === context.runId
+            && generation.cancelRevision === getAgentGenerationCancelRevision()
+            && (alreadyStopped || !isAgentGenerationStopped())
+            && areAgentsGloballyEnabled() && isPathfinderSubmoduleEnabled()
+            && liveAgent && isAgentEnabledForCurrentScope(liveAgent)
+            && getPathfinderRuntimeAgent()?.id === agentId
+            && getWritableBooks().includes(targetBook);
+    };
+    const checkCurrent = () => {
+        if (!isCurrent()) controller.abort();
+    };
+    const unsubscribe = onAgentGenerationStateChanged(checkCurrent);
+    session.cleanup.push(unsubscribe);
+    try {
+        checkCurrent();
+        controller.signal.throwIfAborted();
+        const rawSummary = await sidecarGenerate(
+            prompt,
+            'You create concise long-term memory summaries for creative roleplay. Preserve names, changed state, unresolved threads, and why the scene matters. Return valid JSON only.',
+            controller.signal,
+        );
+        checkCurrent();
+        controller.signal.throwIfAborted();
+        const summary = parseGeneratedSummary(rawSummary);
+        if (!summary.content) throw new Error('The sidecar model returned an empty summary.');
 
-    if (!summary.content) {
-        throw new Error('The sidecar model returned an empty summary.');
+        return await createSummaryMemoryEntry({ ...summary, book: targetBook }, { signal: controller.signal, isCurrent });
+    } finally {
+        unsubscribe();
+        session.cleanup = session.cleanup.filter(dispose => dispose !== unsubscribe);
+        if (session.summaryController === controller) session.summaryController = null;
     }
-
-    return await createSummaryMemoryEntry(summary);
 }
 
 /**
  * Bind all event handlers
  */
 function bindEvents() {
+    const session = settingsSession;
+    const panel = settingsEl;
+    // Autosave failures remain visible and retryable; explicit saves await rejection.
+    const save = keys => updateAgentSettings(keys).catch(() => {});
+
     settingsEl.find('#pf--quickstart-dismiss').on('click', () => {
         safeSetAccountStorageItem(PATHFINDER_QUICKSTART_DISMISSED_KEY, 'true');
-        settingsEl.find('#pf--quickstart').slideUp(180);
+        settingsEl.find('#pf--quickstart').stop(true, true).slideUp(window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180);
     });
 
-    settingsEl.find('#pf--master-enable').on('change', async function () {
-        if (!currentAgent) {
-            return;
-        }
-
-        const enabled = $(this).prop('checked');
-        setAgentEnabledForCurrentScope(currentAgent, enabled);
-        await saveAgent(currentAgent);
-        persistAgentGlobalSettings();
-        saveSettingsDebounced();
-        updateStatusBanner();
+    settingsEl.find('#pf--master-enable').on('change', function () {
+        session.enabledChange = this.checked;
+        if (!this.checked) cancelPathfinderSummary();
+        return save();
     });
 
-    // Refresh lorebooks
-    settingsEl.find('#pf--refresh-lorebooks').on('click', async () => {
-        await refreshLorebookList();
+    settingsEl.find('#pf--settings-retry').on('click', () => save());
+
+    settingsEl.find('#pf--refresh-lorebooks').on('click', () => {
+        refreshPathfinderSettings();
         toastr.info('Lorebook list refreshed');
     });
 
-    settingsEl.find('#pf--auto-use-attached').on('change', async function () {
-        const enabled = $(this).prop('checked');
-        const s = getPathfinderSettings();
-        s.autoUseAttachedLorebook = enabled;
-        setPathfinderSettings(s);
-
-        if (enabled) {
-            await refreshLorebookList();
+    settingsEl.on('change', '[data-pf-setting]', function () {
+        const key = this.dataset.pfSetting;
+        let value = this.type === 'checkbox' ? this.checked : this.value;
+        if (this.type === 'number') {
+            value = key === 'autoSummaryInterval'
+                ? normalizeSummaryIntervalInput(value)
+                : Math.max(Number(this.min), Math.min(Number(this.max), parseInt(value, 10) || SETTING_DEFAULTS[key]));
+            this.value = String(value);
         }
-
-        updateAgentSettings();
-        updateStatusBanner();
-    });
-
-    settingsEl.find('#pf--auto-sync-lorebooks').on('change', async function () {
-        const enabled = $(this).prop('checked');
-        const s = getPathfinderSettings();
-        s.autoSyncLorebooksOnChatChange = enabled;
-        setPathfinderSettings(s);
-
-        if (enabled) {
-            await refreshLorebookList();
-        }
-
-        await updateAgentSettings();
-        updateStatusBanner();
-    });
-
-    // Mode toggles
-    settingsEl.find('#pf--enable-tools').on('change', function () {
-        const enabled = $(this).prop('checked');
-        const s = getPathfinderSettings();
-        s.sidecarEnabled = enabled;
-        setPathfinderSettings(s);
-        updateModeCardStates();
-        updateDualModeWarning();
-        updateStatusBanner();
-        updateAgentSettings();
-        syncToolAgentRegistrations();
-    });
-
-    settingsEl.find('#pf--enable-pipeline').on('change', function () {
-        const enabled = $(this).prop('checked');
-        const s = getPathfinderSettings();
-        s.pipelineEnabled = enabled;
-        // Don't force sidecarEnabled - let user choose both independently
-        setPathfinderSettings(s);
-        updateModeCardStates();
-        updateStatusBanner();
-        updateAgentSettings();
-    });
-
-    // Pipeline settings
-    settingsEl.find('#pf--pipeline-type').on('change', function () {
-        const s = getPathfinderSettings();
-        s.pipelineId = $(this).val();
-        setPathfinderSettings(s);
-        updateAgentSettings();
-    });
-
-    settingsEl.find('#pf--content-mode').on('change', function () {
-        const s = getPathfinderSettings();
-        s.entryContentMode = $(this).val();
-        setPathfinderSettings(s);
-        updateAgentSettings();
-    });
-
-    settingsEl.find('#pf--truncate-length').on('change', function () {
-        const s = getPathfinderSettings();
-        s.truncateLength = parseInt($(this).val()) || 500;
-        setPathfinderSettings(s);
-        updateAgentSettings();
-    });
-
-    settingsEl.find('#pf--max-candidates').on('change', function () {
-        const s = getPathfinderSettings();
-        s.maxCandidates = parseInt($(this).val()) || 20;
-        setPathfinderSettings(s);
-        updateAgentSettings();
-    });
-
-    settingsEl.find('#pf--retrieval-timeout').on('change', function () {
-        const s = getPathfinderSettings();
-        s.retrievalTimeoutSeconds = Math.max(1, Math.min(60, parseInt($(this).val()) || 8));
-        setPathfinderSettings(s);
-        updateAgentSettings();
-    });
-
-    settingsEl.find('#pf--pipeline-profile').on('change', function () {
-        const s = getPathfinderSettings();
-        s.connectionProfile = $(this).val();
-        setPathfinderSettings(s);
-        updateAgentSettings();
-    });
-
-    settingsEl.find('#pf--dedupe-natural-activation').on('change', function () {
-        const s = getPathfinderSettings();
-        s.dedupeNaturalActivation = $(this).prop('checked');
-        setPathfinderSettings(s);
-        updateAgentSettings();
-    });
-
-    // Memory summary settings
-    settingsEl.find('#pf--enable-summarize-tool').on('change', async function () {
-        const enabled = $(this).prop('checked');
-        setPathfinderToolEnabled('Pathfinder_Summarize', enabled);
-        await updateAgentSettings();
-        syncToolAgentRegistrations();
-    });
-
-    settingsEl.find('#pf--auto-summary').on('change', function () {
-        const s = getPathfinderSettings();
-        s.autoSummary = $(this).prop('checked');
-        if (s.autoSummary) {
+        currentAgent.settings[key] = value;
+        const keys = [key];
+        if (key === 'autoSummary' && value) {
             setPathfinderToolEnabled('Pathfinder_Summarize', true);
             settingsEl.find('#pf--enable-summarize-tool').prop('checked', true);
+            keys.push('toolStates');
         }
-        setPathfinderSettings(s);
-        updateAgentSettings();
-        syncToolAgentRegistrations();
+        if (['autoUseAttachedLorebook', 'autoSyncLorebooksOnChatChange', 'includeContextualLorebooks'].includes(key)) {
+            refreshLorebookList();
+        }
+        updateModeCardStates();
+        return save(keys);
     });
 
-    settingsEl.find('#pf--auto-summary-interval').on('change', function () {
-        const s = getPathfinderSettings();
-        s.autoSummaryInterval = normalizeSummaryIntervalInput($(this).val());
-        setPathfinderSettings(s);
-        updateAgentSettings();
+    settingsEl.on('change', '#pf--lorebook-list input', function () {
+        const item = $(this).closest('.pf--lorebook-item');
+        const bookName = item.attr('data-book');
+        const checked = this.checked;
+        const s = currentAgent.settings;
+        s.enabledLorebooks = ensureEnabledLorebooks(s).filter(name => name !== bookName);
+        if (checked) s.enabledLorebooks.push(bookName);
+        // Selection must not erase the user's independent permission choices.
+        s.bookPermissions = { ...s.bookPermissions, [bookName]: { ...s.bookPermissions?.[bookName], enabled: checked } };
+        if (!s.selectedLorebook || (!checked && s.selectedLorebook === bookName)) {
+            s.selectedLorebook = getActiveTunnelVisionBooks(s)[0] ?? '';
+        }
+        item.toggleClass('selected', checked);
+        renderPermissionMatrix(getAvailableLorebooks());
+        return save(['enabledLorebooks', 'selectedLorebook', 'bookPermissions']);
     });
 
     settingsEl.find('#pf--summary-save').on('click', async () => {
-        const status = settingsEl.find('#pf--summary-save-status');
+        if (session.summaryBusy) return;
+        const status = panel.find('#pf--summary-save-status');
+        const draft = session.summaryDraft ?? { source: getSummaryMemoryState(), content: String(panel.find('#pf--summary-content').val() ?? '') };
+        session.summaryDraft = draft;
+        session.summaryBusy = true;
+        renderSummaryMemoryEditor();
         try {
-            await saveSummaryMemoryContent(settingsEl.find('#pf--summary-content').val());
-            renderSummaryMemoryEditor();
+            const current = assertSummarySource(draft.source);
+            if (current.bookName && !getWritableBooks().includes(current.bookName)) {
+                throw new Error('No Pathfinder-enabled lorebooks available for writing.');
+            }
+            await saveSummaryMemoryContent(draft.content);
+            if (settingsSession !== session) return;
+            const committed = assertSummarySource({ ...draft.source, content: draft.content.trim() });
+            if (session.summaryDraft === draft) session.summaryDraft = null;
+            else session.summaryDraft.source = committed;
             status.text('Saved!').removeClass('error').addClass('success');
-            setTimeout(() => status.text(''), 3000);
         } catch (err) {
+            if (settingsSession !== session) return;
             status.text(`Save failed: ${err.message}`).removeClass('success').addClass('error');
+        } finally {
+            session.summaryBusy = false;
+            if (settingsSession === session) renderSummaryMemoryEditor();
         }
     });
 
-    settingsEl.find('#pf--summary-content').on('input', renderSummaryMemoryEditor);
+    settingsEl.find('#pf--summary-content').on('input', function () {
+        session.summaryDraft = {
+            source: session.summaryDraft?.source ?? getSummaryMemoryState(),
+            content: this.value,
+        };
+        panel.find('#pf--summary-save-status').text('');
+        renderSummaryMemoryEditor();
+    });
 
     settingsEl.find('#pf--summary-save-entry').on('click', async () => {
-        const status = settingsEl.find('#pf--summary-save-status');
-        const button = settingsEl.find('#pf--summary-save-entry');
+        if (session.summaryBusy) return;
+        const status = panel.find('#pf--summary-save-status');
         const draft = getSummaryEditorDraft();
         if (!draft.content) {
             status.text('Write or create a summary first.').removeClass('success').addClass('error');
             return;
         }
 
-        button.prop('disabled', true);
+        session.summaryBusy = true;
+        renderSummaryMemoryEditor();
         status.text('Saving entry...').removeClass('success error');
 
         try {
             const result = await createSeparateSummaryMemoryEntry(draft);
-            setPathfinderToolEnabled('Pathfinder_Summarize', true);
-            settingsEl.find('#pf--enable-summarize-tool').prop('checked', true);
-            await updateAgentSettings();
-            syncToolAgentRegistrations();
+            if (settingsSession !== session) return;
             status.text(`Saved "${result.summaryTitle}"`).removeClass('error').addClass('success');
-            setTimeout(() => status.text(''), 4000);
         } catch (err) {
+            if (settingsSession !== session) return;
             status.text(`Entry save failed: ${err.message}`).removeClass('success').addClass('error');
         } finally {
-            renderSummaryMemoryEditor();
+            session.summaryBusy = false;
+            if (settingsSession === session) renderSummaryMemoryEditor();
         }
     });
 
     settingsEl.find('#pf--summary-create').on('click', async () => {
-        const status = settingsEl.find('#pf--summary-save-status');
-        const button = settingsEl.find('#pf--summary-create');
-        button.prop('disabled', true);
+        if (session.summaryBusy) return;
+        const status = panel.find('#pf--summary-save-status');
+        session.summaryBusy = true;
+        renderSummaryMemoryEditor();
         status.text('Creating summary...').removeClass('success error');
 
         try {
             const result = await createManualSummaryMemory();
-            setPathfinderToolEnabled('Pathfinder_Summarize', true);
-            settingsEl.find('#pf--enable-summarize-tool').prop('checked', true);
-            await updateAgentSettings();
-            syncToolAgentRegistrations();
-            renderSummaryMemoryEditor();
+            if (settingsSession !== session) return;
             status.text(`Created UID ${result.uid}`).removeClass('error').addClass('success');
-            setTimeout(() => status.text(''), 3000);
         } catch (err) {
-            button.prop('disabled', false);
-            status.text(`Create failed: ${err.message}`).removeClass('success').addClass('error');
+            if (settingsSession !== session) return;
+            status.text(err.name === 'AbortError' ? 'Cancelled' : `Create failed: ${err.message}`).removeClass('success').addClass('error');
+        } finally {
+            session.summaryBusy = false;
+            if (settingsSession === session) renderSummaryMemoryEditor();
         }
-    });
-
-    // Tool settings
-    settingsEl.find('#pf--mandatory-tools').on('change', function () {
-        const s = getPathfinderSettings();
-        s.mandatoryTools = $(this).prop('checked');
-        setPathfinderSettings(s);
-        updateAgentSettings();
     });
 
     settingsEl.on('change', '#pf--confirm-tool-list input[data-confirm-tool]', function () {
         const toolName = $(this).data('confirmTool');
-        const s = getPathfinderSettings();
-        if (!s.confirmTools || typeof s.confirmTools !== 'object') {
-            s.confirmTools = {};
-        }
-        s.confirmTools[toolName] = $(this).prop('checked');
-        setPathfinderSettings(s);
-        updateAgentSettings();
+        currentAgent.settings.confirmTools = { ...currentAgent.settings.confirmTools, [toolName]: this.checked };
+        return save(['confirmTools']);
     });
 
-    settingsEl.on('change', '.pf--tool-list input[data-tool]', async function () {
-        const toolName = $(this).data('tool');
-        const enabled = $(this).prop('checked');
-
-        setPathfinderToolEnabled(toolName, enabled);
-
-        await updateAgentSettings();
-        syncToolAgentRegistrations();
+    settingsEl.on('change', 'input[data-tool]', function () {
+        setPathfinderToolEnabled($(this).data('tool'), this.checked);
+        updateModeCardStates();
+        return save(['toolStates']);
     });
 
-    settingsEl.on('change', '#pf--permission-matrix input[data-permission]', async function () {
+    settingsEl.on('change', '#pf--permission-matrix input[data-permission]', function () {
         const row = $(this).closest('.pf--permission-row');
-        const bookName = row.data('book');
+        const bookName = row.attr('data-book');
         const permission = $(this).data('permission');
         const enabled = $(this).prop('checked');
 
@@ -1096,17 +930,18 @@ function bindEvents() {
             return;
         }
 
-        setBookPermission(bookName, permission, enabled ? 'readwrite' : 'none');
-        await updateAgentSettings();
+        const permissions = currentAgent.settings.bookPermissions;
+        currentAgent.settings.bookPermissions = { ...permissions, [bookName]: { ...permissions?.[bookName], [permission]: enabled ? 'readwrite' : 'none' } };
+        return save(['bookPermissions']);
     });
 
     // Collapsible sections
     settingsEl.find('.pf--collapsible-header').on('click', function () {
         const section = $(this).closest('.pf--section-collapsible');
         const body = section.children('.pf--section-body').first();
-        const willOpen = !body.is(':visible');
+        const willOpen = $(this).attr('aria-expanded') !== 'true';
 
-        body.slideToggle(200);
+        body.stop(true, true).toggle(willOpen);
         setSectionChevronState(section, !willOpen);
         setSectionCollapsedPreference(getCollapseSectionKey(section), !willOpen);
     });
@@ -1132,6 +967,7 @@ function bindEvents() {
 
         try {
             const results = await runDiagnostics();
+            if (settingsSession !== session) return;
             let text = '';
 
             for (const [key, value] of Object.entries(results)) {
@@ -1141,6 +977,7 @@ function bindEvents() {
 
             output.text(text || 'All checks passed!');
         } catch (err) {
+            if (settingsSession !== session) return;
             output.text('Error running diagnostics: ' + err.message);
             console.warn(`${PATHFINDER_LOG_PREFIX} Pathfinder diagnostics failed.`, err);
         }
@@ -1181,34 +1018,58 @@ function bindEvents() {
  * Update status banner based on current configuration
  */
 function updateStatusBanner() {
+    if (!settingsEl) return;
     const banner = settingsEl.find('#pf--status-banner');
-    const s = getPathfinderSettings();
-    const activeBooks = getActiveLorebookNames(s);
-    const hasBooks = activeBooks.length > 0;
-    const hasMode = s.sidecarEnabled || s.pipelineEnabled;
-    const masterEnabled = currentAgent ? isAgentEnabledForCurrentScope(currentAgent) : false;
+    const agent = getAgentById(currentAgent.id) ?? currentAgent;
+    settingsEl.find('#pf--master-enable').prop('checked', settingsSession.enabledChange ?? isAgentEnabledForCurrentScope(agent));
+    const s = agent.settings ?? {};
+    const books = getActiveTunnelVisionBooks(s);
+    const readableBooks = getReadableBooks(s);
+    const ToolManager = getContext()?.ToolManager;
+    const usesTools = s.sidecarEnabled || isPathfinderToolEnabledForAgent(agent, 'Pathfinder_Summarize');
+    const enabledTools = ALL_TOOL_NAMES.filter(name => (s.sidecarEnabled || name === 'Pathfinder_Summarize') && isPathfinderToolEnabledForAgent(agent, name));
+    const registered = (ToolManager?.tools ?? []).map(tool => tool.toFunctionOpenAI?.()?.function?.name);
+    let title = 'Pathfinder is not configured';
+    let message = 'Select at least one lorebook below to get started';
+    let ready = false;
 
-    if (hasBooks && hasMode && !masterEnabled) {
-        banner.removeClass('pf--status-ready').addClass('pf--status-disabled');
-        banner.find('.pf--status-icon i').removeClass('fa-circle-check').addClass('fa-circle-xmark');
-        banner.find('.pf--status-text strong').text('Pathfinder is disabled');
-        banner.find('.pf--status-text span').text('Enable Pathfinder above to use the current setup');
-    } else if (hasBooks && hasMode) {
-        banner.removeClass('pf--status-disabled').addClass('pf--status-ready');
-        banner.find('.pf--status-icon i').removeClass('fa-circle-xmark').addClass('fa-circle-check');
-        banner.find('.pf--status-text strong').text('Pathfinder is ready');
-        banner.find('.pf--status-text span').text(`${activeBooks.length} lorebook(s) available`);
-    } else if (hasBooks) {
-        banner.removeClass('pf--status-disabled').addClass('pf--status-ready');
-        banner.find('.pf--status-icon i').removeClass('fa-circle-xmark').addClass('fa-circle-check');
-        banner.find('.pf--status-text strong').text('Lorebooks selected');
-        banner.find('.pf--status-text span').text('Enable Tool Mode or Pipeline Mode above');
-    } else {
-        banner.removeClass('pf--status-ready').addClass('pf--status-disabled');
-        banner.find('.pf--status-icon i').removeClass('fa-circle-check').addClass('fa-circle-xmark');
-        banner.find('.pf--status-text strong').text('Pathfinder is not configured');
-        banner.find('.pf--status-text span').text('Select at least one lorebook below to get started');
+    if (!areAgentsGloballyEnabled() || !isPathfinderSubmoduleEnabled() || !isAgentEnabledForCurrentScope(agent)) {
+        title = 'Pathfinder is disabled';
+        message = !areAgentsGloballyEnabled()
+            ? 'In-Chat Agents disabled.'
+            : !isPathfinderSubmoduleEnabled()
+                ? 'Pathfinder is disabled in In-Chat Agents settings.'
+                : 'Enable Pathfinder above to use the current setup';
+    } else if (books.length > 0) {
+        title = 'Lorebooks selected';
+        message = 'Enable Tool Mode or Pipeline Mode above';
+        if (readableBooks.length === 0) {
+            title = 'Lorebook Permissions';
+            message = 'No readable lorebooks';
+        } else if (usesTools || s.pipelineEnabled) {
+            if (getPathfinderRuntimeAgent()?.id !== agent.id) {
+                message = 'Tool mode is enabled, but the Pathfinder tool agent is not active right now. Enable Pathfinder as a tool agent, then reopen settings or reload agents.';
+            } else if (s.pipelineEnabled && s.connectionProfile && !listConnectionProfiles().some(profile => profile.id === s.connectionProfile)) {
+                message = `Missing profile (${s.connectionProfile})`;
+            } else if (online_status === 'no_connection' && (usesTools || !s.connectionProfile)) {
+                message = 'Not connected to API!';
+            } else if (usesTools && !ToolManager?.isToolCallingSupported?.()) {
+                message = 'Tool calling is not supported for the current API/settings. Enable "Function Calling" in OpenAI settings and ensure the current model supports tools.';
+            } else if (usesTools && enabledTools.length === 0) {
+                message = 'Tool mode is enabled, but every Pathfinder tool toggle is off. Re-enable at least one Pathfinder tool in Tool Settings.';
+            } else if (usesTools && enabledTools.some(name => !registered.includes(name))) {
+                message = 'Tools are configured but not registered with ToolManager. Try reloading the extension or switching API sources.';
+            } else {
+                ready = true;
+                title = 'Pathfinder is ready';
+                message = `${readableBooks.length} lorebook(s) available`;
+            }
+        }
     }
+    banner.toggleClass('pf--status-ready', ready).toggleClass('pf--status-disabled', !ready);
+    banner.find('.pf--status-icon i').toggleClass('fa-circle-check', ready).toggleClass('fa-circle-xmark', !ready);
+    banner.find('.pf--status-text strong').text(title);
+    banner.find('.pf--status-text span').text(message);
 }
 
 function renderRetrievalLog() {
@@ -1532,7 +1393,7 @@ function formatRetrievalLogItem(item) {
  * Update mode card visual states
  */
 function updateModeCardStates() {
-    const s = getPathfinderSettings();
+    const s = currentAgent.settings;
 
     const toolEnabled = Boolean(s.sidecarEnabled);
     const pipelineEnabled = Boolean(s.pipelineEnabled);
@@ -1546,7 +1407,8 @@ function updateModeCardStates() {
     pipelineCard.toggleClass('active', pipelineEnabled);
 
     // Show/hide settings sections
-    settingsEl.find('#pf--tool-settings').toggle(toolEnabled);
+    settingsEl.find('#pf--tool-settings').show();
+    settingsEl.find('.pf--tool-mode-only').toggle(toolEnabled);
     settingsEl.find('#pf--pipeline-settings').toggle(pipelineEnabled);
     settingsEl.find('#pf--prompt-editor-section').toggle(pipelineEnabled);
 
@@ -1558,40 +1420,96 @@ function updateModeCardStates() {
  * Show/hide warning when both modes are enabled
  */
 function updateDualModeWarning() {
-    const s = getPathfinderSettings();
+    const s = currentAgent.settings;
     const bothEnabled = s.sidecarEnabled && s.pipelineEnabled;
     settingsEl.find('#pf--dual-mode-warning').toggle(bothEnabled);
 }
 
 /**
- * Update agent settings object and trigger save.
- * Serialized: many toggle handlers call this without awaiting, and
- * overlapping saveAgent calls on the same agent have no ordering guarantee.
+ * Queue private edits, preserving unrelated changes made outside this panel.
  */
 let agentSettingsSaveChain = Promise.resolve();
 
-function updateAgentSettings() {
-    agentSettingsSaveChain = agentSettingsSaveChain
-        .then(async () => {
-            if (!currentAgent) return;
+function updateAgentSettings(keys = []) {
+    const session = settingsSession;
+    const agentId = currentAgent.id;
+    keys.forEach(key => session.dirtySettings.add(key));
+    const changes = structuredClone(Object.fromEntries([...session.dirtySettings].map(key => [key, currentAgent.settings[key]])));
+    const enabled = session.enabledChange;
+    const scope = getActiveAgentChatScope();
+    const contextRevision = session.contextRevision;
+    const revision = ++session.revision;
+    const status = session.element.find('#pf--settings-save-status');
+    session.pending++;
+    status.text('Not saved yet').removeClass('success error').attr('aria-busy', 'true');
+    session.element.find('#pf--settings-retry').hide();
+    renderSummaryMemoryEditor();
 
-            const s = getPathfinderSettings();
-            currentAgent.settings = { ...s };
-
-            await saveAgent(currentAgent);
+    const run = saveAgent(agentId, { update: agent => {
+        if (settingsSession !== session || session.contextRevision !== contextRevision) return null;
+        if (!agent) throw new Error('Pathfinder agent is not available. Reload In-Chat Agents or restore the bundled Pathfinder template.');
+        agent.settings = { ...agent.settings, ...changes };
+        if (changes.toolStates) {
+            agent.tools = (agent.tools ?? []).map(tool => Object.hasOwn(changes.toolStates, tool.name)
+                ? { ...tool, enabled: changes.toolStates[tool.name] !== false } : tool);
+        }
+        if (enabled !== undefined) {
+            const global = getGlobalSettings();
+            agent.enabled = enabled || (global.separateRecentChats && Object.entries(global.enabledAgentIdsByChatType ?? {})
+                .some(([otherScope, ids]) => otherScope !== scope && ids.includes(agentId)));
+        }
+        return agent;
+    } }).then(agent => {
+        if (!agent) return;
+        if (enabled !== undefined) {
+            setAgentEnabledForScope(getAgentById(agentId) ?? agent, enabled, scope);
             persistAgentGlobalSettings();
-            saveSettingsDebounced();
-        })
-        .catch(err => console.warn('[Pathfinder] Failed to save agent settings:', err));
+        }
+        if (session.contextRevision !== contextRevision) return;
 
-    return agentSettingsSaveChain;
+        try {
+            if (getPathfinderRuntimeAgent()?.id === agentId) {
+                replaceSettings(structuredClone(agent.settings));
+                initializePromptStore(getDefaultPrompts(), getDefaultPipelines());
+            }
+            syncToolAgentRegistrations();
+        } catch (err) {
+            console.warn('[Pathfinder] Could not refresh tool registrations after saving.', err);
+        }
+        if (settingsSession !== session) return;
+        if (revision === session.revision) {
+            session.dirtySettings.clear();
+            session.enabledChange = undefined;
+            session.agent.settings = structuredClone({ ...SETTING_DEFAULTS, ...agent.settings });
+            session.agent.tools = structuredClone(agent.tools ?? []);
+            status.text('Saved!').removeClass('error').addClass('success');
+            session.element.find('#pf--prompt-status.error').text('');
+            updateModeCardStates();
+        }
+        updateStatusBanner();
+    }).catch(err => {
+        if (settingsSession === session && revision === session.revision && session.contextRevision === contextRevision) {
+            status.text(`Save failed: ${err.message}`).removeClass('success').addClass('error');
+            session.element.find('#pf--settings-retry').show();
+        }
+        throw err;
+    }).finally(() => {
+        session.pending--;
+        if (settingsSession === session) {
+            status.attr('aria-busy', String(session.pending > 0));
+            session.element.find('#pf--settings-retry').prop('disabled', session.pending > 0);
+            renderSummaryMemoryEditor();
+        }
+    });
+    agentSettingsSaveChain = run.catch(() => {});
+    return run;
 }
 
 /**
  * Load a prompt into the editor
  */
 function loadPromptIntoEditor(promptId) {
-    const prompt = getPrompt(promptId);
+    const prompt = currentAgent.settings.pipelinePrompts?.[promptId] ?? getDefaultPrompts()[promptId];
     if (!prompt) return;
 
     settingsEl.find('#pf--prompt-system').val(prompt.systemPrompt || '');
@@ -1604,10 +1522,12 @@ function loadPromptIntoEditor(promptId) {
  * Save the current prompt
  */
 async function saveCurrentPrompt() {
+    const session = settingsSession;
+    const contextRevision = session.contextRevision;
     const promptId = settingsEl.find('#pf--prompt-selector').val();
     if (!promptId) return;
 
-    const prompt = getPrompt(promptId);
+    const prompt = structuredClone(currentAgent.settings.pipelinePrompts?.[promptId] ?? getDefaultPrompts()[promptId]);
     if (!prompt) return;
 
     prompt.systemPrompt = settingsEl.find('#pf--prompt-system').val();
@@ -1617,15 +1537,26 @@ async function saveCurrentPrompt() {
         maxTokens: readPromptMaxTokens(),
     };
 
-    savePrompt(prompt);
-    await updateAgentSettings();
-    showPromptStatus('Saved!', 'success');
+    currentAgent.settings.pipelinePrompts = { ...currentAgent.settings.pipelinePrompts, [promptId]: prompt };
+    try {
+        await updateAgentSettings(['pipelinePrompts']);
+        if (settingsSession === session && session.contextRevision === contextRevision && settingsEl.find('#pf--prompt-selector').val() === promptId) {
+            const unchanged = settingsEl.find('#pf--prompt-system').val() === prompt.systemPrompt
+                && settingsEl.find('#pf--prompt-user').val() === prompt.userPromptTemplate
+                && readPromptMaxTokens() === prompt.settings.maxTokens;
+            showPromptStatus(unchanged ? 'Saved!' : 'Not saved yet', unchanged ? 'success' : '');
+        }
+    } catch (err) {
+        if (settingsSession === session && session.contextRevision === contextRevision) showPromptStatus(`Save failed: ${err.message}`, 'error');
+    }
 }
 
 /**
  * Reset the current prompt to default
  */
 async function resetCurrentPrompt() {
+    const session = settingsSession;
+    const contextRevision = session.contextRevision;
     const promptId = settingsEl.find('#pf--prompt-selector').val();
     if (!promptId) return;
 
@@ -1637,16 +1568,23 @@ async function resetCurrentPrompt() {
         return;
     }
 
-    savePrompt({ ...defaultPrompt, isDefault: true });
-    await updateAgentSettings();
-    loadPromptIntoEditor(promptId);
-    showPromptStatus('Reset to default', 'success');
+    const fields = ['#pf--prompt-system', '#pf--prompt-user', '#pf--prompt-max-tokens'];
+    const originalValues = fields.map(selector => settingsEl.find(selector).val());
+    currentAgent.settings.pipelinePrompts = { ...currentAgent.settings.pipelinePrompts, [promptId]: structuredClone({ ...defaultPrompt, isDefault: true }) };
+    try {
+        await updateAgentSettings(['pipelinePrompts']);
+        if (settingsSession !== session || session.contextRevision !== contextRevision || settingsEl.find('#pf--prompt-selector').val() !== promptId) return;
+        const unchanged = fields.every((selector, index) => settingsEl.find(selector).val() === originalValues[index]);
+        if (unchanged) loadPromptIntoEditor(promptId);
+        showPromptStatus(unchanged ? 'Reset to default' : 'Not saved yet', unchanged ? 'success' : '');
+    } catch (err) {
+        if (settingsSession === session && session.contextRevision === contextRevision) showPromptStatus(`Save failed: ${err.message}`, 'error');
+    }
 }
 
 function showPromptStatus(message, type) {
     const status = settingsEl.find('#pf--prompt-status');
     status.text(message).removeClass('success error').addClass(type);
-    setTimeout(() => status.text(''), 3000);
 }
 
 function clearPromptStatus() {

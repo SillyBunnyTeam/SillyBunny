@@ -1,6 +1,6 @@
-import { getTree, findNodeById, getSettings } from '../tree-store.js';
+import { findNodeById, getSettings, isEntryEligible } from '../tree-store.js';
 import { getReadableBooks, TOOL_NAMES, getBookListWithDescriptions } from '../pathfinder-tool-bridge.js';
-import { buildTreeFromMetadata } from '../tree-builder.js';
+import { getTreeWithAutoBuild } from '../tree-builder.js';
 import { registerToolAction, registerToolFormatter } from '../../tool-action-registry.js';
 import { logToolCallStarted, logToolCallCompleted, logToolCallError } from '../activity-feed.js';
 
@@ -17,7 +17,8 @@ function getTreeOverview(tree, bookName, searchMode = 'traversal') {
 function formatTopLevel(tree) {
     if (!tree) return '';
     const lines = [];
-    for (const child of tree.children || []) {
+    const nodes = tree.entries?.length ? [tree, ...(tree.children || [])] : (tree.children || []);
+    for (const child of nodes) {
         const entries = (child.entries || []).length;
         const subWaypoints = (child.children || []).length;
         let line = `🧭 ${child.name}`;
@@ -37,7 +38,7 @@ function formatCollapsed(tree, depth = 0) {
     let line = `${indent}${tree.name}`;
     if (entries) line += ` (${entries} entries)`;
     if (subWaypoints) line += ` [${subWaypoints} sub-waypoints]`;
-    if (tree.id && depth > 0) line += ` [id: ${tree.id}]`;
+    if (tree.id) line += ` [id: ${tree.id}]`;
     let result = line + '\n';
     for (const child of tree.children || []) {
         result += formatCollapsed(child, depth + 1);
@@ -93,8 +94,11 @@ async function searchAction(args) {
     for (const bookName of books) {
         const tree = await getTreeWithAutoBuild(bookName);
         if (!tree) continue;
-        const node = findNodeById(tree, nodeId);
-        if (!node) continue;
+        const cachedNode = findNodeById(tree, nodeId);
+        if (!cachedNode) continue;
+        const bookData = await loadWorldInfoSafe(bookName);
+        if (!bookData) continue;
+        const node = { ...cachedNode, entries: (cachedNode.entries || []).filter(uid => findEntrySafe(bookData.entries, uid)) };
 
         // A node can hold both sub-waypoints and entries: list the children
         // for navigation AND return the entry contents below.
@@ -105,9 +109,6 @@ async function searchAction(args) {
                 return childListing;
             }
         }
-
-        const bookData = await loadWorldInfoSafe(bookName);
-        if (!bookData) continue;
 
         for (const uid of node.entries || []) {
             const entry = findEntrySafe(bookData.entries, uid);
@@ -143,24 +144,10 @@ async function loadWorldInfoSafe(name) {
     }
 }
 
-async function getTreeWithAutoBuild(bookName) {
-    const cachedTree = getTree(bookName);
-    if (cachedTree) {
-        return cachedTree;
-    }
-
-    const bookData = await loadWorldInfoSafe(bookName);
-    if (!bookData?.entries) {
-        return null;
-    }
-
-    return await buildTreeFromMetadata(bookName, bookData);
-}
-
 function findEntrySafe(entries, uid) {
     if (!entries) return null;
     for (const [, entry] of Object.entries(entries)) {
-        if (entry && entry.uid === uid) return entry;
+        if (isEntryEligible(entry) && entry.uid === uid) return entry;
     }
     return null;
 }

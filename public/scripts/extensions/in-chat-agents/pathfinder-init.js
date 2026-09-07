@@ -1,5 +1,6 @@
 import { getSettings, setSettings, isLorebookEnabled, setLorebookEnabled, clearAllTrees } from './pathfinder/tree-store.js';
-import { initEntryManagerAPIs } from './pathfinder/entry-manager.js';
+import { initEntryManagerAPIs, onPathfinderWorldInfoUpdated } from './pathfinder/entry-manager.js';
+import { getSummaryMemoryState } from './pathfinder/summary-memory-store.js';
 import { initActivityFeed } from './pathfinder/activity-feed.js';
 import { isPathfinderSubmoduleEnabled } from './agent-store.js';
 import { unregisterToolAction, unregisterToolFormatter } from './tool-action-registry.js';
@@ -24,6 +25,7 @@ import { initializePromptStore } from './pathfinder/prompts/prompt-store.js';
 import { getDefaultPrompts, getDefaultPipelines } from './pathfinder/prompts/default-prompts.js';
 
 let initialized = false;
+let initializationRevision = 0;
 
 function registerPathfinderToolActions() {
     registerSearchActions();
@@ -55,6 +57,7 @@ export function initPathfinder(context) {
 
     if (initialized) return;
     initialized = true;
+    const revision = ++initializationRevision;
 
     registerPathfinderToolActions();
 
@@ -67,6 +70,16 @@ export function initPathfinder(context) {
     const missingEntryManagerAPIs = entryManagerAPIs.filter(api => !context?.[api]);
     if (missingEntryManagerAPIs.length === 0) {
         initEntryManagerAPIs(context.loadWorldInfo, context.createWorldInfoEntry, context.saveWorldInfo);
+        const summary = getSummaryMemoryState();
+        if (summary.bookName && summary.uid !== null) {
+            // Changes made while disabled or offline may not have delivered a book event.
+            void Promise.resolve().then(() => context.loadWorldInfo(summary.bookName)).then(data => {
+                if (initialized && revision === initializationRevision
+                    && JSON.stringify(getSummaryMemoryState()) === JSON.stringify(summary)) {
+                    onPathfinderWorldInfoUpdated(summary.bookName, data);
+                }
+            }).catch(error => console.warn(error));
+        }
     } else {
         console.error(`[Pathfinder] Missing context APIs for lorebook writes: ${missingEntryManagerAPIs.join(', ')}`);
     }
@@ -94,6 +107,7 @@ export function teardownPathfinder() {
     // lorebook edits made while Pathfinder was off.
     clearAllTrees();
     initialized = false;
+    initializationRevision++;
     console.info('[Pathfinder] Disabled and unregistered.');
 }
 

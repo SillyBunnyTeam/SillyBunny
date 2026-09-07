@@ -820,7 +820,7 @@ function charaFormatData(data, directories) {
                 _.set(char, 'data.character_book', originalData);
             } else if (file && file.entries) {
                 // File was not imported - convert the world info to the character book
-                _.set(char, 'data.character_book', convertWorldInfoToCharacterBook(data.world, file.entries));
+                _.set(char, 'data.character_book', convertWorldInfoToCharacterBook(data.world, file.entries, file.extensions));
             }
         } catch {
             console.warn(`Failed to read world info file: ${data.world}. Character book will not be available.`);
@@ -843,10 +843,12 @@ function charaFormatData(data, directories) {
 /**
  * @param {string} name Name of World Info file
  * @param {object} entries Entries object
+ * @param {object} [extensions] Book extensions
  */
-function convertWorldInfoToCharacterBook(name, entries) {
+function convertWorldInfoToCharacterBook(name, entries, extensions = {}) {
     /** @type {{ entries: object[]; name: string; extensions: object }} */
-    const result = { entries: [], name, extensions: {} };
+    // SillyBunny: native book metadata, including waypoint layouts, travels with embedded cards.
+    const result = { entries: [], name, extensions: structuredClone(extensions ?? {}) };
     const sortedEntries = Object.values(entries).sort((a, b) => (a.displayIndex ?? a.uid ?? 0) - (b.displayIndex ?? b.uid ?? 0));
 
     for (const entry of sortedEntries) {

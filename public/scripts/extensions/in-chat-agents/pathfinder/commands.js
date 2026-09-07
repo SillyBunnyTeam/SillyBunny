@@ -3,9 +3,10 @@ import { ARGUMENT_TYPE, SlashCommandArgument } from '../../../slash-commands/Sla
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 
 import { isPathfinderSubmoduleEnabled } from '../agent-store.js';
-import { getTree, findNodeById } from './tree-store.js';
+import { findNodeById } from './tree-store.js';
+import { getTreeWithAutoBuild } from './tree-builder.js';
 import { createEntry } from './entry-manager.js';
-import { getActiveTunnelVisionBooks, getWritableBooks } from './pathfinder-tool-bridge.js';
+import { getReadableBooks, getWritableBooks } from './pathfinder-tool-bridge.js';
 
 const registeredCommands = [];
 
@@ -73,8 +74,8 @@ export function initCommands(registerSlashCommand) {
             if (books.length === 0) return 'No writable Pathfinder-enabled lorebooks.';
             const bookName = books[0];
             try {
-                await createEntry(bookName, content.slice(0, 50), content);
-                return `Remembered in "${bookName}".`;
+                const result = await createEntry(bookName, content.slice(0, 50), content);
+                return `Remembered in "${result.bookName}".`;
             } catch (err) {
                 return `Error: ${err.message}`;
             }
@@ -93,8 +94,8 @@ export function initCommands(registerSlashCommand) {
             if (!query) return 'No search query.';
             const q = query.toLowerCase();
             const results = [];
-            for (const bookName of getActiveTunnelVisionBooks()) {
-                const tree = getTree(bookName);
+            for (const bookName of getReadableBooks()) {
+                const tree = await getTreeWithAutoBuild(bookName);
                 if (!tree) continue;
                 const exact = findNodeById(tree, query);
                 const matches = exact ? [exact] : findNodesByName(tree, q);

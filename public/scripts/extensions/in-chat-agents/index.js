@@ -83,7 +83,7 @@ import {
     normalizeRegexScript,
 } from './regex-scripts.js';
 import { initPathfinder, teardownPathfinder } from './pathfinder-init.js';
-import { openPathfinderSettings, isPathfinderAgent } from './pathfinder-settings-ui.js';
+import { openPathfinderSettings, closePathfinderSettings, canClosePathfinderSettings, cancelPathfinderSummary, refreshPathfinderSettings, isPathfinderAgent } from './pathfinder-settings-ui.js';
 import { getPathfinderToolDefinitions } from './pathfinder/tool-definitions.js';
 import { buildFallbackPromptText, extractProfileResponseText } from './llm-utils.js';
 import { appendHelperPrefillMessages } from '../helper-prefill.js';
@@ -130,6 +130,7 @@ let selectModeActive = false;
 const selectedAgentIds = new Set();
 let suppressCardClickUntil = 0;
 let pathfinderExtensionsMountPromise = null;
+let pathfinderExtensionsMountRevision = 0;
 let fixTrackersRunning = false;
 
 const REMOVED_BUNDLED_TEMPLATE_IDS = new Set([
@@ -710,6 +711,7 @@ function sortAgentsByOrder(agentList = []) {
 
 async function toggleAgentEnabled(agent) {
     setAgentEnabledForCurrentScope(agent, !isAgentEnabledForCurrentScope(agent));
+    if (isPathfinderAgent(agent) && !isAgentEnabledForCurrentScope(agent)) cancelPathfinderSummary();
     await saveAgent(agent);
     refreshRegexSnapshotsForAgent(agent.id);
     persistExtensionState();
@@ -5085,6 +5087,8 @@ function getPathfinderSettingsAgent() {
 }
 
 function removePathfinderExtensionsHost() {
+    pathfinderExtensionsMountRevision++;
+    closePathfinderSettings();
     document.getElementById(PATHFINDER_EXTENSIONS_HOST_ID)?.remove();
     pathfinderExtensionsMountPromise = null;
 }
@@ -5115,7 +5119,7 @@ function ensurePathfinderExtensionsHost() {
     return host;
 }
 
-async function mountPathfinderSettingsInExtensions() {
+async function mountPathfinderSettingsInExtensions(agent = getPathfinderSettingsAgent()) {
     if (!isPathfinderSubmoduleEnabled()) {
         removePathfinderExtensionsHost();
         return null;
@@ -5132,7 +5136,9 @@ async function mountPathfinderSettingsInExtensions() {
         return null;
     }
 
-    const agent = getPathfinderSettingsAgent();
+    const mountRevision = ++pathfinderExtensionsMountRevision;
+    closePathfinderSettings();
+    delete host.dataset.pathfinderAgentId;
     body.innerHTML = '';
 
     if (!agent) {
@@ -5140,11 +5146,19 @@ async function mountPathfinderSettingsInExtensions() {
         return host;
     }
 
-    const settingsPanel = await openPathfinderSettings(agent);
-    if (!isPathfinderSubmoduleEnabled()) {
-        removePathfinderExtensionsHost();
+    body.setAttribute('aria-busy', 'true');
+    const settingsPanel = await openPathfinderSettings(agent).catch(error => {
+        if (mountRevision === pathfinderExtensionsMountRevision) {
+            body.setAttribute('aria-busy', 'false');
+            body.innerHTML = '<div class="pf--extensions-empty">Could not load Pathfinder settings.</div>';
+        }
+        throw error;
+    });
+    if (mountRevision !== pathfinderExtensionsMountRevision || !host.isConnected || !isPathfinderSubmoduleEnabled()) {
+        if (settingsPanel) closePathfinderSettings(settingsPanel);
         return null;
     }
+    body.setAttribute('aria-busy', 'false');
 
     if (!settingsPanel) {
         body.innerHTML = '<div class="pf--extensions-empty">Could not load Pathfinder settings.</div>';
@@ -5155,16 +5169,17 @@ async function mountPathfinderSettingsInExtensions() {
     for (const node of settingsPanel.toArray()) {
         body.append(node);
     }
+    host.dataset.pathfinderAgentId = agent.id;
     return host;
 }
 
-function schedulePathfinderExtensionsMount() {
+function schedulePathfinderExtensionsMount(agent) {
     if (!isPathfinderSubmoduleEnabled()) {
         removePathfinderExtensionsHost();
         return Promise.resolve(null);
     }
 
-    pathfinderExtensionsMountPromise = mountPathfinderSettingsInExtensions()
+    pathfinderExtensionsMountPromise = mountPathfinderSettingsInExtensions(agent)
         .catch(error => {
             console.warn('[Pathfinder] Failed to mount settings in Extensions drawer:', error);
             return null;
@@ -5179,8 +5194,9 @@ function scrollElementIntoNearestPanelScroller(element, { block = 'nearest' } = 
     }
 
     const scroller = element.closest('.sb-shell-panel-scroller, .scrollableInner, .scrollableInnerFull');
+    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
     if (!(scroller instanceof HTMLElement) || scroller.clientHeight <= 0) {
-        element.scrollIntoView({ block, inline: 'nearest', behavior: 'smooth' });
+        element.scrollIntoView({ block, inline: 'nearest', behavior });
         return;
     }
 
@@ -5203,12 +5219,13 @@ function scrollElementIntoNearestPanelScroller(element, { block = 'nearest' } = 
     if (Math.abs(delta) > 1) {
         scroller.scrollTo({
             top: Math.min(Math.max(scroller.scrollTop + delta, 0), Math.max(0, scroller.scrollHeight - scroller.clientHeight)),
-            behavior: 'smooth',
+            behavior,
         });
     }
 }
 
 function openPathfinderExtensionsDrawer(host) {
+    refreshPathfinderSettings();
     const clickEvent = () => new (globalThis.MouseEvent ?? Event)('click', { bubbles: true });
     const drawer = document.getElementById('extensions-settings-button');
     const drawerContent = drawer?.querySelector(':scope > .drawer-content');
@@ -5224,6 +5241,7 @@ function openPathfinderExtensionsDrawer(host) {
     }
 
     globalThis.setTimeout(() => {
+        if (!host?.isConnected) return;
         scrollElementIntoNearestPanelScroller(host, { block: 'start' });
         host?.querySelector('input, button, select, textarea')?.focus?.({ preventScroll: true });
     }, 100);
@@ -5241,38 +5259,28 @@ async function openPathfinderEditor(agent) {
 
     const existingHost = document.getElementById(PATHFINDER_EXTENSIONS_HOST_ID);
     if (existingHost) {
-        const host = await (pathfinderExtensionsMountPromise ?? schedulePathfinderExtensionsMount());
+        const host = await (existingHost.dataset.pathfinderAgentId === agent.id
+            ? (pathfinderExtensionsMountPromise ?? schedulePathfinderExtensionsMount(agent))
+            : schedulePathfinderExtensionsMount(agent));
         openPathfinderExtensionsDrawer(host ?? existingHost);
         toastr.info('Pathfinder settings are in the Extensions drawer.');
         return;
     }
 
-    const originalAgentState = JSON.stringify(agent);
-    const template = findTemplateForAgent(agent);
-    const settingsPanel = await openPathfinderSettings(agent, async (updatedAgent) => {
-        await saveAgent(updatedAgent);
-        renderAgentList();
-    });
+    const settingsPanel = await openPathfinderSettings(agent);
 
     if (!settingsPanel) return;
 
-    const result = await new Popup(settingsPanel, POPUP_TYPE.CONFIRM, '', {
-        okButton: 'Save & Close',
-        cancelButton: 'Cancel',
-        wide: true,
-        large: true,
-    }).show();
-
-    if (result === POPUP_RESULT.AFFIRMATIVE) {
-        if (JSON.stringify(agent) !== originalAgentState || agent.phaseLocked) {
-            lockBundledAgentCustomization(agent, template);
-        }
-
-        // Settings are already saved via the UI callbacks
-        await saveAgent(agent);
+    try {
+        await new Popup(settingsPanel, POPUP_TYPE.TEXT, '', {
+            okButton: 'Close',
+            wide: true,
+            large: true,
+            onClosing: () => canClosePathfinderSettings(settingsPanel),
+        }).show();
+    } finally {
+        closePathfinderSettings(settingsPanel);
         renderAgentList();
-        syncToolAgentRegistrations();
-        toastr.success('Pathfinder settings saved');
     }
 }
 
@@ -5777,6 +5785,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     $('#ica--globalEnabled').on('click', () => {
         const enabled = !areAgentsGloballyEnabled();
         setGlobalSettings({ enabled });
+        if (!enabled) cancelPathfinderSummary();
         persistExtensionState();
         updateGlobalAgentToggle();
         syncToolAgentRegistrations();
@@ -5912,6 +5921,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
             const agent = getAgentById(id);
             if (agent && isAgentEnabledForCurrentScope(agent)) {
                 setAgentEnabledForCurrentScope(agent, false);
+                if (isPathfinderAgent(agent)) cancelPathfinderSummary();
                 await saveAgent(agent);
                 changed = true;
             }

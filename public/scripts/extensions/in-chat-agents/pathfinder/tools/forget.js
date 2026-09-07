@@ -1,4 +1,5 @@
 import { forgetEntry } from '../entry-manager.js';
+import { parseEntryUid } from '../tree-store.js';
 import { getDeletableBooks, getUnknownBookError, getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-tool-bridge.js';
 import { registerToolAction, registerToolFormatter } from '../../tool-action-registry.js';
 import { logToolCallStarted, logToolCallCompleted, logToolCallError } from '../activity-feed.js';
@@ -6,22 +7,30 @@ import { logToolCallStarted, logToolCallCompleted, logToolCallError } from '../a
 const COMPACT_DESCRIPTION = 'Disable or delete a lorebook entry that is no longer relevant.';
 
 function toBooleanArg(value) {
+    if (value === undefined) return false;
+    if (typeof value === 'boolean') return value;
     if (typeof value === 'string') {
-        return ['true', '1', 'yes'].includes(value.trim().toLowerCase());
+        const normalized = value.trim().toLowerCase();
+        if (['true', '1', 'yes'].includes(normalized)) return true;
+        if (['false', '0', 'no'].includes(normalized)) return false;
     }
-    return Boolean(value);
+    return null;
 }
 
 async function forgetAction(args) {
-    const uid = Number(args.uid);
+    const uid = parseEntryUid(args.uid);
     const bookName = String(args.book || '').trim();
     const hardDelete = toBooleanArg(args.hard_delete);
 
     logToolCallStarted(TOOL_NAMES.FORGET, { uid, bookName, hardDelete });
 
-    if (!uid && uid !== 0) {
+    if (uid === null) {
         logToolCallError(TOOL_NAMES.FORGET, 'Missing UID');
         return 'Error: "uid" is required.';
+    }
+    if (hardDelete === null) {
+        logToolCallError(TOOL_NAMES.FORGET, 'Permanent deletion request refused; the tool supplied an invalid permanent deletion choice.');
+        return 'Permanent deletion request refused; the tool supplied an invalid permanent deletion choice.';
     }
 
     const allowedBooks = hardDelete ? getDeletableBooks() : getWritableBooks();
@@ -42,7 +51,7 @@ async function forgetAction(args) {
     try {
         const result = await forgetEntry(targetBook, uid, hardDelete);
         logToolCallCompleted(TOOL_NAMES.FORGET, `Forgot UID:${uid} (${result.disabled ? 'disabled' : 'deleted'})`);
-        return `🗑️ ${hardDelete ? 'Deleted' : 'Disabled'} entry UID:${uid} in "${targetBook}". ${hardDelete ? 'The entry has been permanently removed.' : 'The entry is disabled and can be re-enabled later.'}`;
+        return `🗑️ ${hardDelete ? 'Deleted' : 'Disabled'} entry UID:${uid} in "${result.bookName}". ${hardDelete ? 'The entry has been permanently removed.' : 'The entry is disabled and can be re-enabled later.'}`;
     } catch (err) {
         logToolCallError(TOOL_NAMES.FORGET, err.message);
         return `❌ Failed to forget: ${err.message}`;

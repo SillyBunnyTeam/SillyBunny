@@ -1,7 +1,8 @@
 import { describe, expect, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
 
-import { escapeCharacterBookRegex, normalizeCharacterBookPosition, normalizeWorldInfoPosition, serializeCharacterBookKeys, serializeWorldInfoEntry } from '../public/scripts/world-info-character-book.js';
+import { escapeCharacterBookRegex, getFreeCharacterBookEntryId, normalizeCharacterBookPosition, normalizeWorldInfoPosition, serializeCharacterBookKeys, serializeWorldInfoEntry } from '../public/scripts/world-info-character-book.js';
 
 const positions = {
     before: 0,
@@ -300,7 +301,7 @@ describe('serializeWorldInfoEntry', () => {
         };
 
         expect(serializeWorldInfoEntry(entry, positions, originalEntry)).toMatchObject({
-            id: 9,
+            id: 2,
             comment: 'Current comment',
             character_filter: entry.characterFilter,
             foreign_top_level: 'kept',
@@ -316,6 +317,13 @@ describe('serializeWorldInfoEntry', () => {
             character_filter: { isExclude: true, names: ['stale.png'], tags: [] },
         });
         expect(record).not.toHaveProperty('character_filter');
+    });
+
+    test('preserves original ID zero and allocates a separate ID for new card records', () => {
+        expect(serializeWorldInfoEntry({ uid: 1 }, positions, { id: 0 }).id).toBe(0);
+        expect(getFreeCharacterBookEntryId([{ id: 74 }, { id: 0 }])).toBe(1);
+        expect(getFreeCharacterBookEntryId([{ id: '0' }, { id: 1 }, { id: 74 }])).toBe(2);
+        expect(getFreeCharacterBookEntryId([])).toBe(0);
     });
 
     test('applies server-parity defaults for absent fields', () => {
@@ -353,8 +361,100 @@ describe('serializeWorldInfoEntry', () => {
 });
 
 describe('convertCharacterBook', () => {
+    const worldInfoSource = readFileSync(new URL('../public/scripts/world-info.js', import.meta.url), 'utf8');
+    const charactersSource = readFileSync(new URL('../src/endpoints/characters.js', import.meta.url), 'utf8');
+    const functions = [
+        'convertCharacterBook', 'getFreeWorldEntryUid', 'parseRegexFromString', 'convertWorldInfoToCharacterBook',
+        'getWIOriginalDataIndex', 'syncWIOriginalDataEntry', 'appendWIOriginalDataEntry', 'createWorldInfoEntry', 'duplicateWorldInfoEntry',
+    ];
+    const context = vm.createContext({
+        structuredClone, escapeCharacterBookRegex, normalizeCharacterBookPosition, serializeWorldInfoEntry, getFreeCharacterBookEntryId,
+        worldInfoDataSnapshots: new WeakMap(), worldInfoCache: new Map(),
+        newWorldInfoEntryTemplate: {}, world_info_position: positions,
+        world_info_logic: { AND_ANY: 0 }, extension_prompt_roles: { SYSTEM: 0 }, DEFAULT_DEPTH: 4, DEFAULT_WEIGHT: 100,
+    });
+    for (const name of functions) {
+        const source = name === 'convertWorldInfoToCharacterBook' ? charactersSource : worldInfoSource;
+        const match = source.match(new RegExp(`^(?:export )?(function ${name}\\([\\s\\S]*?^})`, 'm'));
+        if (!match) throw new Error(`Missing function ${name}`);
+        vm.runInContext(match[1], context);
+    }
+
     test('maps CharacterBook filters to native entries', () => {
-        const source = readFileSync(new URL('../public/scripts/world-info.js', import.meta.url), 'utf8');
-        expect(source).toMatch(/characterFilter:\s*entry\.character_filter,/);
+        const characterFilter = { isExclude: true, names: ['Alice'], tags: ['tag'] };
+        const result = context.convertCharacterBook({ entries: [{ id: 74, content: 'Entry', character_filter: characterFilter }] });
+        expect(result.entries[0].characterFilter).toEqual(characterFilter);
+    });
+
+    test('real import, resync, create, duplicate and cross-book append keep distinct original card IDs', () => {
+        const native = context.convertCharacterBook({ entries: [
+            { id: 74, content: 'First', foreign: 'kept', extensions: { foreign: { retained: true } } },
+            { id: 0, content: 'Second', extensions: {} },
+        ] });
+        native.entries[0].content = 'Edited';
+        context.syncWIOriginalDataEntry(native, 0);
+        context.syncWIOriginalDataEntry(native, 1);
+        expect(native.originalData.entries.map(entry => entry.id)).toEqual([74, 0]);
+        expect(native.originalData.entries[0]).toMatchObject({ content: 'Edited', foreign: 'kept' });
+
+        const created = context.createWorldInfoEntry('Book', native);
+        const duplicated = context.duplicateWorldInfoEntry(native, 0);
+        context.syncWIOriginalDataEntry(native, duplicated.uid);
+        expect(native.originalData.entries.map(entry => entry.id)).toEqual([74, 0, 1, 2]);
+        expect(native.originalData.entries[native.originalDataUidMap[created.uid]].id).toBe(1);
+        expect(native.originalData.entries[native.originalDataUidMap[duplicated.uid]]).toMatchObject({
+            id: 2, foreign: 'kept', extensions: { foreign: { retained: true } },
+        });
+
+        const destination = context.convertCharacterBook({ entries: [{ id: 74, content: 'Destination' }, { id: 0, content: 'Other' }] });
+        const copied = { ...structuredClone(native.entries[0]), uid: context.getFreeWorldEntryUid(destination) };
+        destination.entries[copied.uid] = copied;
+        context.appendWIOriginalDataEntry(destination, copied, native.originalData.entries[0]);
+        expect(destination.originalData.entries.map(entry => entry.id)).toEqual([74, 0, 1]);
+        expect(destination.originalData.entries[2]).toMatchObject({ foreign: 'kept', extensions: { foreign: { retained: true } } });
+        expect(native.originalData.entries[0].id).toBe(74);
+    });
+
+    test('native book to card to native roundtrip keeps layout and entry node IDs through UID renumbering', () => {
+        const extensions = { foreign: { nested: ['kept'] }, sillybunny_pathfinder: { version: 1, tree: { id: 'root', children: [{ id: 'place' }] } } };
+        const native = {
+            extensions,
+            entries: {
+                7: { uid: 7, displayIndex: 1, content: 'Second', extensions: { foreign: 'seven', sillybunny_pathfinder: { version: 1, nodeId: 'place' } } },
+                42: { uid: 42, displayIndex: 0, content: 'First', extensions: { foreign: 'forty-two', sillybunny_pathfinder: { version: 1, nodeId: 'root' } } },
+            },
+        };
+        const card = context.convertWorldInfoToCharacterBook('Lore', native.entries, native.extensions);
+        const restored = context.convertCharacterBook(card);
+
+        expect(card.entries.map(entry => entry.id)).toEqual([42, 7]);
+        expect(restored.extensions).toEqual(extensions);
+        expect(restored.originalData.extensions).toEqual(extensions);
+        expect(restored.originalDataUidMap).toEqual({ 0: 0, 1: 1 });
+        expect(restored.entries[0]).toMatchObject({ uid: 0, content: 'First', extensions: native.entries[42].extensions });
+        expect(restored.entries[1]).toMatchObject({ uid: 1, content: 'Second', extensions: native.entries[7].extensions });
+        expect(native).not.toHaveProperty('originalData');
+        card.extensions.foreign.nested.push('card-only');
+        expect(native.extensions.foreign.nested).toEqual(['kept']);
+        expect(restored.extensions.foreign.nested).toEqual(['kept']);
+    });
+
+    test('imported books preserve foreign book and entry metadata alongside Pathfinder metadata', () => {
+        const card = {
+            name: 'Imported', foreign: 'original book metadata',
+            extensions: { foreign: 'book extension', sillybunny_pathfinder: { version: 1, tree: { id: 'root' } } },
+            entries: [{ id: 91, content: 'Imported entry', foreign: 'original entry metadata', extensions: { foreign: 'entry extension', sillybunny_pathfinder: { version: 1, nodeId: 'root' } } }],
+        };
+        const native = context.convertCharacterBook(card);
+        const exported = structuredClone(native.originalData);
+        const restored = context.convertCharacterBook(exported);
+        expect(exported).toEqual(card);
+        expect(restored.extensions).toEqual(card.extensions);
+        expect(restored.entries[0]).toMatchObject({ uid: 0, extensions: card.entries[0].extensions });
+        expect(restored.originalData.entries[0]).toMatchObject({ id: 91, foreign: 'original entry metadata' });
+    });
+
+    test('the existing two-argument native conversion still supplies empty extensions', () => {
+        expect(context.convertWorldInfoToCharacterBook('Lore', {}).extensions).toEqual({});
     });
 });

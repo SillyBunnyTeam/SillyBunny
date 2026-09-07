@@ -1,5 +1,6 @@
 import { updateEntry } from './entry-manager.js';
 import { accountStorage } from '../../../util/AccountStorage.js';
+import { isEntryEligible, parseEntryUid } from './tree-store.js';
 
 const STORAGE_KEY = 'pathfinder-summary-memory-state';
 const listeners = new Set();
@@ -8,14 +9,14 @@ let state = loadState();
 function loadState() {
     try {
         const parsed = JSON.parse(accountStorage.getItem(STORAGE_KEY) || '{}');
-        if (parsed && typeof parsed === 'object') {
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
             return {
                 title: String(parsed.title || ''),
                 content: String(parsed.content || ''),
                 significance: String(parsed.significance || ''),
                 arc: String(parsed.arc || ''),
                 bookName: String(parsed.bookName || ''),
-                uid: Number.isFinite(Number(parsed.uid)) ? Number(parsed.uid) : null,
+                uid: parseEntryUid(parsed.uid),
                 updatedAt: Number(parsed.updatedAt || 0),
                 injectedAt: Number(parsed.injectedAt || 0),
                 injectedMode: String(parsed.injectedMode || ''),
@@ -45,7 +46,11 @@ function persistState() {
         // Persistence failure leaves the current in-memory summary available.
     }
     for (const listener of listeners) {
-        listener(getSummaryMemoryState());
+        try {
+            listener(getSummaryMemoryState());
+        } catch (error) {
+            console.warn(error);
+        }
     }
 }
 
@@ -70,7 +75,7 @@ export function setSummaryMemoryCreated({ title, content, significance, arc, boo
         significance: String(significance || ''),
         arc: String(arc || ''),
         bookName: String(bookName || ''),
-        uid: Number.isFinite(Number(uid)) ? Number(uid) : null,
+        uid: parseEntryUid(uid),
         updatedAt: Date.now(),
         injectedAt: 0,
         injectedMode: '',
@@ -79,18 +84,57 @@ export function setSummaryMemoryCreated({ title, content, significance, arc, boo
 }
 
 export async function saveSummaryMemoryContent(content) {
+    const previous = state;
+    const nextContent = String(content || '').trim();
+    if (previous.bookName && previous.uid !== null) {
+        try {
+            await updateEntry(previous.bookName, previous.uid, formatSummaryContent(nextContent, previous.significance), previous.title || undefined, {
+                title: previous.title,
+                content: formatSummaryContent(previous.content, previous.significance),
+            });
+        } catch (error) {
+            if (error.code === 'PATHFINDER_ENTRY_CHANGED' && state === previous) detachSummaryMemoryBook(previous.bookName);
+            throw error;
+        }
+        return;
+    }
+    state = { ...previous, content: nextContent, updatedAt: Date.now(), injectedAt: 0, injectedMode: '' };
+    persistState();
+}
+
+export function detachSummaryMemoryBook(bookName) {
+    if (state.bookName !== bookName) return;
+    state = { ...state, bookName: '', uid: null, injectedAt: 0, injectedMode: '' };
+    persistState();
+}
+
+export function renameSummaryMemoryBook(oldName, newName) {
+    if (state.bookName !== oldName) return;
+    state = { ...state, bookName: newName };
+    persistState();
+}
+
+export function syncSummaryMemoryForBook(bookName, bookData, previousEntry = undefined) {
+    if (state.bookName !== bookName || state.uid === null) return;
+    const entry = Object.values(bookData?.entries || {}).find(item => item?.uid === state.uid);
+    const expected = previousEntry === undefined ? entry : previousEntry;
+    if (!isEntryEligible(entry) || !isSummaryMemoryEntry({ ...expected, bookName })) {
+        detachSummaryMemoryBook(bookName);
+        return;
+    }
+    if (isSummaryMemoryEntry({ ...entry, bookName })) return;
+    const significance = String(entry.content || '').match(/^Significance:\s*([^\n]*)\n\n/i)?.[1] || '';
+    const title = String(entry.comment || '');
     state = {
         ...state,
-        content: String(content || '').trim(),
+        title,
+        content: stripSummaryContent(entry.content),
+        significance,
+        arc: state.arc && title.endsWith(` \u2014 ${state.arc}`) ? state.arc : '',
         updatedAt: Date.now(),
         injectedAt: 0,
         injectedMode: '',
     };
-
-    if (state.bookName && state.uid !== null) {
-        await updateEntry(state.bookName, state.uid, formatSummaryContent(state.content, state.significance), state.title || undefined);
-    }
-
     persistState();
 }
 
@@ -108,11 +152,10 @@ export function markSummaryMemoryInjected({ mode = '' } = {}) {
 }
 
 export function isSummaryMemoryEntry(entry) {
-    if (!entry || state.uid === null) {
-        return false;
-    }
-
-    return Number(entry.uid) === Number(state.uid) && (!state.bookName || entry.bookName === state.bookName);
+    return isEntryEligible(entry) && state.uid !== null
+        && parseEntryUid(entry.uid) === state.uid && (entry.bookName ?? entry.world) === state.bookName
+        && (entry.comment ?? entry.name ?? entry.title) === state.title
+        && String(entry.content || '').trim() === formatSummaryContent(state.content, state.significance);
 }
 
 export function onSummaryMemoryChanged(listener) {

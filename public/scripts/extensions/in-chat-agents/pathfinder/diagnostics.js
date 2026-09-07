@@ -12,7 +12,7 @@ function getRegisteredPathfinderTools(ToolManager) {
             : [];
 
     return ALL_TOOL_NAMES.filter(name =>
-        tools.find(t => t?.name === name),
+        tools.some(tool => tool?.toFunctionOpenAI?.()?.function?.name === name),
     );
 }
 
@@ -20,7 +20,7 @@ function formatNameList(names, fallback = 'none') {
     return names.length > 0 ? names.join(', ') : fallback;
 }
 
-function getEnabledPathfinderTools(pathfinderAgent, registeredTools = [], settings = getSettings()) {
+function getEnabledPathfinderTools(pathfinderAgent, settings = getSettings()) {
     if (!pathfinderAgent) {
         return [];
     }
@@ -104,13 +104,13 @@ function getPipelineStageSummary(stageResults = []) {
 
 export async function runDiagnostics() {
     const results = {};
-    const s = getSettings();
 
     try {
         syncToolAgentRegistrations();
     } catch (error) {
         console.warn('[Pathfinder] Diagnostics could not refresh tool registrations before checks.', error);
     }
+    const s = getSettings();
 
     // Check enabled lorebooks
     const manualBooks = (s.enabledLorebooks || []);
@@ -167,7 +167,7 @@ export async function runDiagnostics() {
         const enabledAgents = getEnabledToolAgents();
         const pathfinderAgent = getPathfinderRuntimeAgent(enabledAgents);
         const registeredTools = getRegisteredPathfinderTools(ToolManager);
-        const enabledPathfinderToolNames = getEnabledPathfinderTools(pathfinderAgent, registeredTools, s);
+        const enabledPathfinderToolNames = getEnabledPathfinderTools(pathfinderAgent, s);
         const registrationDetail = getToolRegistrationDetail(enabledPathfinderToolNames, registeredTools);
 
         if (enabledPathfinderToolNames.length > 0 && enabledPathfinderToolNames.every(name => registeredTools.includes(name))) {

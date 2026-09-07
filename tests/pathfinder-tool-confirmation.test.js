@@ -1,3 +1,4 @@
+/* eslint-disable playwright/no-duplicate-hooks, playwright/no-standalone-expect */
 /* global globalThis */
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
@@ -14,6 +15,8 @@ await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/agen
 await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/tree-store.js', () => ({
     getSettings: jest.fn(() => mockSettings),
     getTree: jest.fn(() => null),
+    getAllEntryUids: jest.fn(() => []),
+    isEntryEligible: jest.fn(entry => entry && !entry.disable && !entry.agentBlacklisted),
     isLorebookEnabled: jest.fn(() => true),
     canReadBook: jest.fn(() => true),
     canWriteBook: jest.fn(() => true),
@@ -28,19 +31,23 @@ const {
 } = await import('../public/scripts/extensions/in-chat-agents/pathfinder/tool-confirmation.js');
 
 function installPopup(result) {
+    const show = jest.fn(async () => result);
+    const completeCancelled = jest.fn();
     globalThis.window = {
         SillyTavern: {
             getContext: () => ({
                 Popup: class {
                     async show() {
-                        return result;
+                        return show();
                     }
+                    completeCancelled = completeCancelled;
                 },
                 POPUP_TYPE: { CONFIRM: 2 },
                 POPUP_RESULT: { AFFIRMATIVE: 1, NEGATIVE: 0 },
             }),
         },
     };
+    return { show, completeCancelled };
 }
 
 describe('Pathfinder tool confirmation', () => {
@@ -84,6 +91,33 @@ describe('Pathfinder tool confirmation', () => {
 
         expect(preview).toBe('uid: 3\nbook: Memory Book');
         expect(formatToolArgsPreview({ content: 'x'.repeat(500) })).toHaveLength('content: '.length + 300 + 1);
+    });
+
+    test('uses live agent confirmation settings even while runtime registration is deferred', () => {
+        expect(shouldConfirmToolCall('Pathfinder_Forget', { confirmTools: { Pathfinder_Forget: true } })).toBe(true);
+        expect(shouldConfirmToolCall('Pathfinder_Forget')).toBe(false);
+    });
+
+    test('does not open an already-cancelled approval', async () => {
+        const popup = installPopup(1);
+        const controller = new AbortController();
+        controller.abort();
+        await expect(confirmToolCall('Pathfinder Forget', { uid: 3 }, controller.signal)).resolves.toBe(false);
+        expect(popup.show).not.toHaveBeenCalled();
+    });
+
+    test('cancels without waiting for the dialog and ignores a later affirmative result', async () => {
+        let approve;
+        const popup = installPopup(new Promise(resolve => { approve = resolve; }));
+        const controller = new AbortController();
+        const removeListener = jest.spyOn(controller.signal, 'removeEventListener');
+        const pending = confirmToolCall('Pathfinder Forget', { uid: 3 }, controller.signal);
+        controller.abort();
+        await expect(pending).resolves.toBe(false);
+        expect(popup.completeCancelled).toHaveBeenCalledTimes(1);
+        expect(removeListener).toHaveBeenCalledWith('abort', expect.any(Function));
+        approve(1);
+        await expect(pending).resolves.toBe(false);
     });
 });
 
