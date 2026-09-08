@@ -1,10 +1,36 @@
-import { beforeEach, describe, expect, jest, test } from '@jest/globals';
+/* global globalThis */
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
+
+const presetSource = readFileSync(new URL('../public/scripts/extensions/guided-generations/scripts/presetUtils.js', import.meta.url), 'utf8');
+const utilsSource = readFileSync(new URL('../public/scripts/utils.js', import.meta.url), 'utf8');
 
 describe('Guided Generations profile and preset compatibility', () => {
     let settings;
     let context;
     let managers;
     let getPresetManager;
+
+    function loadLivePresets(api = 'openai', status = 'connected') {
+        const state = {
+            main_api: api,
+            online_status: status,
+            extension_settings: settings,
+            getContext: () => context,
+            getPresetManager,
+            setTimeout, clearTimeout, setInterval, clearInterval, console,
+        };
+        const waitSource = utilsSource.slice(utilsSource.indexOf('export async function waitUntilCondition('), utilsSource.indexOf('\n/**', utilsSource.indexOf('export async function waitUntilCondition(')));
+        const exports = presetSource.match(/export \{([\s\S]*?)\};/)[1];
+        const presets = runInNewContext(`${waitSource.replace('export ', '')}\n${presetSource.replace(/^import .*;\n/gm, '').replace(/export \{[\s\S]*?\};/, '')}\n({${exports}})`, state);
+        return { state, presets };
+    }
+
+    afterEach(() => {
+        jest.useRealTimers();
+        jest.restoreAllMocks();
+    });
 
     beforeEach(async () => {
         jest.resetModules();
@@ -49,7 +75,8 @@ describe('Guided Generations profile and preset compatibility', () => {
             }),
         };
 
-        await jest.unstable_mockModule('../public/script.js', () => ({ main_api: 'openai' }));
+        await jest.unstable_mockModule('../public/script.js', () => ({ main_api: 'openai', online_status: 'no_connection' }));
+        await jest.unstable_mockModule('../public/scripts/utils.js', () => ({ waitUntilCondition: jest.fn() }));
         await jest.unstable_mockModule('../public/scripts/extensions.js', () => ({
             extension_settings: settings,
             getContext: () => context,
@@ -163,5 +190,97 @@ describe('Guided Generations profile and preset compatibility', () => {
         expect(context.executeSlashCommandsWithOptions).toHaveBeenLastCalledWith('/profile await=true "<None>"');
         expect(settings.connectionManager.selectedProfile).toBe('');
         expect(managers.openai.getSelectedPresetName()).toBe('Custom chat baseline');
+    });
+
+    test.each(['novel', 'kobold', 'koboldhorde'])('uses the active %s API for API-excluded text profiles', async api => {
+        settings.connectionManager.profiles.push({ id: 'excluded', name: 'Excluded API', mode: 'tc' });
+        const { presets } = loadLivePresets(api);
+        const expected = api === 'koboldhorde' ? 'kobold' : api;
+        expect(await presets.getProfileApiType('excluded')).toBe(expected);
+        expect(await presets.getProfileApiType('Excluded API')).toBe(expected);
+    });
+
+    test('waits for delayed preset reconnection and restores across APIs', async () => {
+        jest.useFakeTimers();
+        const { state, presets } = loadLivePresets();
+        context.executeSlashCommandsWithOptions.mockImplementation(async command => {
+            const local = command.includes('Local model');
+            settings.connectionManager.selectedProfile = local ? 'local' : 'main';
+            state.main_api = local ? 'textgenerationwebui' : 'openai';
+            state.online_status = 'connected';
+            await managers[state.main_api].selectPreset(0);
+            state.online_status = 'connected';
+        });
+        for (const manager of [managers.openai, managers.textgenerationwebui]) {
+            const select = manager.selectPreset.getMockImplementation();
+            manager.selectPreset.mockImplementation(async index => {
+                await select(index);
+                state.online_status = 'no_connection';
+                setTimeout(() => { state.online_status = 'connected'; }, 500);
+            });
+        }
+        const switching = await presets.handleSwitching('local', 'Text helper');
+        let ready = false;
+        const pending = switching.switch().then(() => { ready = true; });
+        await jest.advanceTimersByTimeAsync(400);
+        expect(ready).toBe(false);
+        await jest.advanceTimersByTimeAsync(200);
+        await pending;
+        expect(managers.textgenerationwebui.getSelectedPresetName()).toBe('Text helper');
+        const restoring = switching.restore();
+        await jest.advanceTimersByTimeAsync(600);
+        await restoring;
+        expect(state.main_api).toBe('openai');
+        expect(settings.connectionManager.selectedProfile).toBe('main');
+        expect(managers.openai.getSelectedPresetName()).toBe('Custom chat baseline');
+        expect(state.online_status).toBe('connected');
+    });
+
+    test('preset readiness timeout aborts impersonation before clearing the draft and restores the connection', async () => {
+        jest.useFakeTimers();
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        const { state, presets } = loadLivePresets();
+        settings['guided-generations'] = { profileImpersonate1st: 'local', presetImpersonate1st: 'Text helper' };
+        const select = managers.textgenerationwebui.selectPreset.getMockImplementation();
+        managers.textgenerationwebui.selectPreset.mockImplementation(async index => {
+            await select(index);
+            state.online_status = 'no_connection';
+        });
+        context.executeSlashCommandsWithOptions.mockImplementation(async command => {
+            if (command.includes('/impersonate')) {
+                textarea.value = '';
+                return;
+            }
+            const local = command.includes('Local model');
+            state.main_api = local ? 'textgenerationwebui' : 'openai';
+            state.online_status = 'connected';
+            settings.connectionManager.selectedProfile = local ? 'local' : 'main';
+            await managers.openai.selectPreset(0);
+        });
+        class Textarea {}
+        const textarea = new Textarea();
+        textarea.value = 'Untouched draft';
+        textarea.dispatchEvent = jest.fn();
+        globalThis.HTMLTextAreaElement = Textarea;
+        globalThis.document = { getElementById: () => textarea };
+        await jest.unstable_mockModule('../public/scripts/extensions/guided-generations/scripts/presetUtils.js', () => presets);
+        const { guidedImpersonate } = await import('../public/scripts/extensions/guided-generations/scripts/guidedImpersonate.js');
+        const pending = guidedImpersonate();
+        await jest.advanceTimersByTimeAsync(11000);
+        await pending;
+        expect(textarea.value).toBe('Untouched draft');
+        expect(context.executeSlashCommandsWithOptions.mock.calls.some(([command]) => command.includes('/impersonate'))).toBe(false);
+        expect(settings.connectionManager.selectedProfile).toBe('main');
+        expect(managers.openai.getSelectedPresetName()).toBe('Custom chat baseline');
+        expect(state.main_api).toBe('openai');
+    });
+
+    test('does not wait for an unchanged preset or an already disconnected API', async () => {
+        jest.useFakeTimers();
+        const { state, presets } = loadLivePresets();
+        await (await presets.handleSwitching('', 'Custom chat baseline')).switch();
+        state.online_status = 'no_connection';
+        await (await presets.handleSwitching('', 'Helper | "Voice"')).switch();
+        expect(jest.getTimerCount()).toBe(0);
     });
 });

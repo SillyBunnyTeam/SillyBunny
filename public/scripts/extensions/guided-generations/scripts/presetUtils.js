@@ -1,6 +1,7 @@
-import { main_api } from '../../../../script.js';
+import { main_api, online_status } from '../../../../script.js';
 import { extension_settings, getContext } from '../../../extensions.js';
 import { getPresetManager } from '../../../preset-manager.js';
+import { waitUntilCondition } from '../../../utils.js';
 
 const extensionName = 'guided-generations';
 const NONE_PROFILE = '<None>';
@@ -110,7 +111,7 @@ async function getProfileApiType(profileIdentifier) {
         return normalizeApiType(profile.api);
     }
 
-    return profile.mode === 'cc' ? 'openai' : profile.mode === 'tc' ? 'textgenerationwebui' : normalizeApiType();
+    return profile.mode === 'cc' ? 'openai' : normalizeApiType();
 }
 
 async function getPresetsForApiType(apiType) {
@@ -144,7 +145,11 @@ async function selectPresetByName(presetName, apiType = '') {
         return true;
     }
 
+    const shouldReconnect = online_status !== 'no_connection';
     await manager.selectPreset(presetValue);
+    if (shouldReconnect) {
+        await waitUntilCondition(() => online_status !== 'no_connection', 10000, 100);
+    }
     return manager.getSelectedPresetName() === presetName;
 }
 

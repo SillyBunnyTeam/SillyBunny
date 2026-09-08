@@ -1,5 +1,30 @@
 /* global globalThis */
-import { describe, test, expect, jest, beforeEach } from '@jest/globals';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import { describe, test, expect, jest, beforeEach, afterEach } from '@jest/globals';
+
+const slashSource = readFileSync(new URL('../public/scripts/slash-commands.js', import.meta.url), 'utf8');
+const utilsSource = readFileSync(new URL('../public/scripts/utils.js', import.meta.url), 'utf8');
+
+function loadImpersonateCommand(textarea) {
+    const state = {
+        is_send_press: true,
+        is_group_generating: false,
+        isTrueBoolean: value => value === 'true',
+        delay: ms => new Promise(resolve => setTimeout(resolve, ms)),
+        Generate: jest.fn(async () => { textarea.value = 'Generated reply'; }),
+        $: () => ({ val: value => { textarea.value = value; return [textarea]; } }),
+        Event: globalThis.Event,
+        toastr: { warning: jest.fn() },
+        t: strings => strings.join(''),
+        setTimeout, clearTimeout, setInterval, clearInterval, console,
+    };
+    const start = slashSource.indexOf('callback:', slashSource.indexOf('name: \'impersonate\''));
+    const callback = slashSource.slice(start + 'callback:'.length, slashSource.indexOf('aliases: [\'imp\']', start)).trim().replace(/,\s*$/, '');
+    const waitStart = utilsSource.indexOf('export async function waitUntilCondition(');
+    const waitSource = utilsSource.slice(waitStart, utilsSource.indexOf('\n/**', waitStart)).replace('export ', '');
+    return { state, command: runInNewContext(`${waitSource}\n(${callback})`, state) };
+}
 
 function createEventSource() {
     const handlers = new Map();
@@ -30,6 +55,11 @@ describe('Guided Generations steering commands', () => {
     let eventSource;
     let eventTypes;
     let extensionSettings;
+
+    afterEach(() => {
+        jest.useRealTimers();
+        jest.restoreAllMocks();
+    });
 
     beforeEach(async () => {
         jest.resetModules();
@@ -250,7 +280,69 @@ describe('Guided Generations steering commands', () => {
         expect(context.chatMetadata.script_injects['gg-guided-swipe']).toBeUndefined();
         expect(textarea.value).toBe('aim for a colder, suspicious reply');
         expect(globalThis.alert).toHaveBeenCalledWith('Guided Swipe Error: Swipe failed');
+        context.swipe.right.mockResolvedValue(undefined);
+        await guidedSwipe();
+        expect(context.swipe.right).toHaveBeenCalledTimes(2);
         errorSpy.mockRestore();
+    });
+
+    test.each([false, true])('overlapping swipe cannot replace or flush a pending guide (plain=%s)', async plain => {
+        if (plain) textarea.value = '';
+        let finish;
+        const pendingSwipe = new Promise(resolve => { finish = resolve; });
+        context.swipe.right.mockImplementationOnce(() => pendingSwipe);
+        const { guidedSwipe } = await import('../public/scripts/extensions/guided-generations/scripts/guidedSwipe.js');
+        const first = guidedSwipe();
+        await Promise.resolve();
+        await Promise.resolve();
+        textarea.value = 'Second guide';
+        await guidedSwipe();
+        expect(context.swipe.right).toHaveBeenCalledTimes(1);
+        expect(context.executeSlashCommandsWithOptions).toHaveBeenCalledTimes(plain ? 0 : 1);
+        expect(context.chatMetadata.script_injects['gg-guided-swipe']?.value ?? '').not.toContain('Second guide');
+        finish();
+        await first;
+        await guidedSwipe();
+        expect(context.swipe.right).toHaveBeenCalledTimes(2);
+    });
+
+    test('swipe rejects overlap while injection itself is pending', async () => {
+        let finish;
+        const injecting = new Promise(resolve => { finish = resolve; });
+        const execute = context.executeSlashCommandsWithOptions.getMockImplementation();
+        context.executeSlashCommandsWithOptions.mockImplementationOnce(async command => {
+            await injecting;
+            await execute(command);
+        });
+        const { guidedSwipe } = await import('../public/scripts/extensions/guided-generations/scripts/guidedSwipe.js');
+        const first = guidedSwipe();
+        await guidedSwipe();
+        expect(context.executeSlashCommandsWithOptions).toHaveBeenCalledTimes(1);
+        expect(context.swipe.right).not.toHaveBeenCalled();
+        finish();
+        await first;
+    });
+
+    test.each(['missing input', 'injection', 'verification', 'cleanup', 'input event'])('swipe can retry after %s failure', async failure => {
+        jest.useFakeTimers();
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
+        if (failure === 'missing input') globalThis.document.getElementById.mockReturnValueOnce(null);
+        if (failure === 'injection') context.executeSlashCommandsWithOptions.mockRejectedValueOnce(new Error('Injection failed'));
+        if (failure === 'verification') context.executeSlashCommandsWithOptions.mockResolvedValueOnce(undefined);
+        if (failure === 'cleanup') {
+            const execute = context.executeSlashCommandsWithOptions.getMockImplementation();
+            context.executeSlashCommandsWithOptions.mockImplementationOnce(execute).mockRejectedValueOnce(new Error('Cleanup failed'));
+        }
+        if (failure === 'input event') textarea.dispatchEvent.mockImplementationOnce(() => { throw new Error('Input failed'); });
+        const { guidedSwipe } = await import('../public/scripts/extensions/guided-generations/scripts/guidedSwipe.js');
+        const first = guidedSwipe().catch(() => {});
+        await jest.advanceTimersByTimeAsync(800);
+        await first;
+        context.swipe.right.mockClear();
+        await guidedSwipe();
+        expect(context.swipe.right).toHaveBeenCalledTimes(1);
+        expect(context.chatMetadata.script_injects['gg-guided-swipe']).toBeUndefined();
     });
 
     test.each([
@@ -302,5 +394,53 @@ I | begin`;
         expect(context.chatMetadata.script_injects['gg-impersonate-voice']).toBeUndefined();
         expect(context.executeSlashCommandsWithOptions).toHaveBeenLastCalledWith('/flushinject gg-impersonate-voice');
         errorSpy.mockRestore();
+    });
+
+    test('real core busy timeout settles guided impersonation, restores and permits a retry', async () => {
+        jest.useFakeTimers();
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        const { state, command } = loadImpersonateCommand(textarea);
+        const execute = context.executeSlashCommandsWithOptions.getMockImplementation();
+        context.executeSlashCommandsWithOptions.mockImplementation(async script => {
+            await execute(script);
+            if (script.includes('/impersonate await=true')) await command({ await: 'true' }, 'Guide');
+        });
+        const { handleSwitching } = await import('../public/scripts/extensions/guided-generations/scripts/presetUtils.js');
+        const restore = jest.fn();
+        handleSwitching.mockResolvedValue({ switch: jest.fn(), restore });
+        const { guidedImpersonate } = await import('../public/scripts/extensions/guided-generations/scripts/guidedImpersonate.js');
+        let settled = false;
+        const pending = guidedImpersonate().then(() => { settled = true; });
+        await jest.advanceTimersByTimeAsync(10100);
+        expect(settled).toBe(true);
+        await pending;
+        expect(state.Generate).not.toHaveBeenCalled();
+        expect(textarea.value).toBe('aim for a colder, suspicious reply');
+        expect(context.chatMetadata.script_injects['gg-impersonate-voice']).toBeUndefined();
+        expect(restore).toHaveBeenCalledTimes(1);
+        state.is_send_press = false;
+        const retry = guidedImpersonate();
+        await jest.advanceTimersByTimeAsync(200);
+        await retry;
+        expect(state.Generate).toHaveBeenCalledTimes(1);
+        expect(textarea.value).toBe('Generated reply');
+        expect(restore).toHaveBeenCalledTimes(2);
+    });
+
+    test('non-awaited core impersonation returns immediately and handles busy timeout and generation rejection', async () => {
+        jest.useFakeTimers();
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        const { state, command } = loadImpersonateCommand(textarea);
+        await expect(command({}, 'Guide')).resolves.toBe('');
+        await jest.advanceTimersByTimeAsync(10100);
+        expect(state.toastr.warning).toHaveBeenCalledTimes(1);
+        expect(state.Generate).not.toHaveBeenCalled();
+        state.is_send_press = false;
+        state.Generate.mockRejectedValueOnce(new Error('Generation failed'));
+        await expect(command({}, 'Guide')).resolves.toBe('');
+        await jest.advanceTimersByTimeAsync(200);
+        expect(state.Generate).toHaveBeenCalledTimes(1);
     });
 });
