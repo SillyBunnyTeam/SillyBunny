@@ -1,4 +1,24 @@
 import { persistIfCurrent } from "./client-orchestration.js";
+import { createChatSaveConfirmer } from "./host-persistence.js";
+
+export function persistChatState(context, {
+    metadataOnly = false,
+    fetchImpl = globalThis.fetch,
+    getRequestHeaders = context?.getRequestHeaders,
+    timeoutMs = 5000,
+    ...options
+} = {}) {
+    let confirm;
+    return persistIfCurrent({
+        ...options,
+        persist: () => {
+            // Snapshot both the target and expected data before the host yields.
+            confirm = createChatSaveConfirmer({ context, metadataOnly, fetchImpl, getRequestHeaders, timeoutMs });
+            return metadataOnly ? context.saveMetadata() : context.saveChat();
+        },
+        acknowledge: () => confirm(),
+    });
+}
 
 export async function rethrowAfterTransactionRollback(error, {
     rollback = null,
@@ -69,6 +89,9 @@ export async function persistLockedBackgroundState(context, {
     path = "",
     validate = null,
     isCurrent = null,
+    fetchImpl = globalThis.fetch,
+    getRequestHeaders = context?.getRequestHeaders,
+    timeoutMs = 5000,
 } = {}) {
     const metadata = context?.chatMetadata;
     if (!metadata || typeof metadata !== "object") {
@@ -89,8 +112,11 @@ export async function persistLockedBackgroundState(context, {
         present: Object.prototype.hasOwnProperty.call(metadata, key),
         value: metadata[key],
     }));
-    const persist = (skipIfStale = false) => persistIfCurrent({
-        persist: () => context.saveMetadata(),
+    const persist = (skipIfStale = false) => persistChatState(context, {
+        metadataOnly: true,
+        fetchImpl,
+        getRequestHeaders,
+        timeoutMs,
         isCurrent: checkCurrent,
         skipIfStale,
         staleMessage,

@@ -1,6 +1,9 @@
 import { expect, test } from '@jest/globals';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
+
+import { CHAT_COMPLETION_SOURCES } from '../src/constants.js';
 
 const gpt56Models = ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'];
 const currentGemmaModels = ['gemma-4-31b-it', 'gemma-4-26b-a4b-it'];
@@ -104,14 +107,42 @@ function getDataTypeOptionIds(source, dataType) {
     return [...source.matchAll(new RegExp(`<option[^>]*data-type="${dataType}"[^>]*value="([^"]+)"`, 'g'))].map(m => m[1]);
 }
 
-test('OpenAI pickers include GPT-5.6 and omit retired native OpenAI models', () => {
+test('OpenAI pickers include GPT-5.6 and GPT-6 Astra and omit retired native OpenAI models', () => {
     const mainPicker = getSelectOptionIds(readSource('../public/index.html'), 'model_openai_select');
     const captionPicker = getSelectOptionIds(readSource('../public/scripts/extensions/caption/settings.html'), 'caption_multimodal_model');
 
-    expect(mainPicker).toEqual(expect.arrayContaining(gpt56Models));
-    expect(captionPicker).toEqual(expect.arrayContaining(gpt56Models));
+    expect(mainPicker).toEqual(expect.arrayContaining([...gpt56Models, 'gpt-6-astra']));
+    expect(captionPicker).toEqual(expect.arrayContaining([...gpt56Models, 'gpt-6-astra']));
     expect(mainPicker).toEqual(expect.not.arrayContaining(retiredMainModels));
     expect(captionPicker).toEqual(expect.not.arrayContaining(retiredCaptionModels));
+});
+
+test('GPT-6 Astra enables images without advertising unsupported tool calls in either API mode', () => {
+    const imageSupport = readSource('../public/scripts/openai.js').match(/export function isImageInliningSupported\(\) \{[\s\S]*?\n\}/)[0].replace('export ', '');
+    const toolSupport = readSource('../public/scripts/tool-calling.js').match(/static isToolCallingSupported\([\s\S]*?\n {4}\}/)[0].replace('static ', 'function ');
+
+    for (const source of [CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES]) {
+        const settings = {
+            chat_completion_source: source,
+            openai_model: 'gpt-6-astra',
+            media_inlining: true,
+            function_calling: true,
+            custom_prompt_post_processing: 0,
+        };
+        const context = {
+            main_api: 'openai',
+            chat_completion_sources: CHAT_COMPLETION_SOURCES,
+            oai_settings: settings,
+            getChatCompletionModel: () => settings.openai_model,
+            custom_prompt_post_processing_types: { NONE: 0 },
+            model_list: [],
+        };
+
+        expect(runInNewContext(`(${imageSupport})()`, context)).toBe(true);
+        expect(runInNewContext(`(${toolSupport})()`, context)).toBe(false);
+        settings.openai_model = 'gpt-5.6-sol';
+        expect(runInNewContext(`(${toolSupport})()`, context)).toBe(source === CHAT_COMPLETION_SOURCES.OPENAI);
+    }
 });
 
 test('OpenAI image picker omits retired DALL-E models', () => {

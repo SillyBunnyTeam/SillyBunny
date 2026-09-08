@@ -75,6 +75,7 @@ const SETTINGS_BOOLEAN_FIELDS = new Set([
 const SETTINGS_ENUM_VALUES = Object.freeze({
     provider: ["pollinations", "novelai", "gptimage", "arliai", "routeway", "navy", "nanogpt", "chutes", "civitai", "nanobanana", "stability", "replicate", "fal", "together", "zai", "local", "proxy", "custom"],
     llmPromptStyle: ["tags", "natural", "custom"],
+    llmRequestRole: ["default", "user", "system"],
     contextMediaInsertMode: ["replace", "new", "hidden"],
     backgroundMode: ["temporary", "locked"], outputMode: ["inline", "image_url"],
     manualInsertTarget: ["assistant", "user", "latest"], paletteMode: ["direct", "inject"],

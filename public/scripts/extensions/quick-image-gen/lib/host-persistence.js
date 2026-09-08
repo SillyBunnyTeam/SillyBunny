@@ -1,88 +1,136 @@
-/**
- * Positive acknowledgement for SillyTavern host persistence.
- *
- * The host's `saveSettings()` / `saveChat()` promises fulfill with `undefined`
- * on both HTTP success and common failures (errors are caught internally), so
- * resolving the promise is not a commit acknowledgement. These helpers give
- * QIG the smallest positive signals the host actually offers:
- *
- * - `confirmSettingsSyncCacheId`: bounded readback of `/api/settings/get`
- *   (SillyTavern >= 1.14.0) to prove a generated account identity reached the
- *   server.
- * - `createSettingsSaveEventConfirmer`: one-shot correlation with the host's
- *   `SETTINGS_UPDATED` event, which the host emits only after an HTTP 2xx save.
- */
+import { createAbortDeadline } from "./network-runtime.js";
+import { readResponseJson } from "./security.js";
 
-export async function confirmSettingsSyncCacheId({
+// ST 1.14 saves resolve undefined even on failure. Read the persisted target,
+// never a global event or the in-memory settings, to confirm those saves.
+async function readHostPersistenceJson(url, body, {
     fetchImpl = null,
     getRequestHeaders = null,
-    settingsKey,
-    expectedSyncCacheId,
     timeoutMs = 5000,
+    maxBytes,
 }) {
-    if (typeof expectedSyncCacheId !== "string" || !expectedSyncCacheId) return false;
-    if (typeof fetchImpl !== "function") return false;
+    if (typeof fetchImpl !== "function") return null;
+    const deadline = createAbortDeadline(null, timeoutMs);
     try {
         const headers = typeof getRequestHeaders === "function" ? getRequestHeaders() : {};
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
-        try {
-            const response = await fetchImpl("/api/settings/get", {
-                method: "GET",
-                headers,
-                signal: controller.signal,
-            });
-            if (!response?.ok) return false;
-            const payload = await response.json();
-            const candidates = [payload?.settings, payload];
-            for (const candidate of candidates) {
-                if (!candidate || typeof candidate !== "object") continue;
-                const entry = candidate[settingsKey];
-                if (entry && typeof entry === "object" && entry._syncCacheId === expectedSyncCacheId) {
-                    return true;
-                }
-            }
-            return JSON.stringify(payload ?? "").includes(expectedSyncCacheId);
-        } finally {
-            clearTimeout(timer);
-        }
+        const response = await fetchImpl(url, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(body),
+            cache: "no-store",
+            signal: deadline.signal,
+        });
+        if (!response?.ok) return null;
+        return await readResponseJson(response, maxBytes);
+    } catch {
+        return null;
+    } finally {
+        deadline.dispose();
+    }
+}
+
+export async function confirmSettingsValues({ settingsKey, expectedValues, ...options }) {
+    if (!settingsKey || !expectedValues || !Object.keys(expectedValues).length) return false;
+    const payload = await readHostPersistenceJson("/api/settings/get", {}, options);
+    try {
+        const settings = typeof payload?.settings === "string" ? JSON.parse(payload.settings) : payload?.settings;
+        const entry = settings?.extension_settings?.[settingsKey];
+        return !!entry && Object.entries(expectedValues).every(([key, value]) =>
+            JSON.stringify(entry[key]) === JSON.stringify(value));
     } catch {
         return false;
     }
 }
 
-export function createSettingsSaveEventConfirmer({ eventSource = null, eventTypes = null, timeoutMs = 2500 }) {
-    return () => new Promise((resolve) => {
-        const type = eventTypes?.SETTINGS_UPDATED;
-        if (!eventSource || typeof eventSource.on !== "function" || !type) {
-            resolve(null);
-            return;
-        }
+export function confirmSettingsSyncCacheId({ expectedSyncCacheId, ...options }) {
+    if (typeof expectedSyncCacheId !== "string" || !expectedSyncCacheId) return Promise.resolve(false);
+    return confirmSettingsValues({ ...options, expectedValues: { _syncCacheId: expectedSyncCacheId } });
+}
 
-        let settled = false;
-        let unsubscribe = null;
-        let timer = null;
+export function createChatSaveConfirmer({ context, metadataOnly = false, ...options }) {
+    const chatId = context?.chatId ?? context?.getCurrentChatId?.();
+    const groupId = context?.groupId;
+    const character = context?.characters?.[context?.characterId];
+    const avatar = character?.avatar;
+    const name = character?.name;
+    // SillyBunny divergence: both chat types use headers; exclude only the
+    // host's rotating top-level integrity token when confirming metadata.
+    const serializeMetadata = value => value && typeof value === "object" && !Array.isArray(value)
+        ? JSON.stringify({ ...value, integrity: undefined })
+        : null;
+    const expected = metadataOnly ? serializeMetadata(context?.chatMetadata) : JSON.stringify(context?.chat);
+    if (typeof chatId !== "string" || !chatId || !expected || (!groupId && !avatar)) return async () => false;
+    const contents = metadataOnly ? JSON.stringify(context?.chat) : expected;
+    const metadata = JSON.stringify(context?.chatMetadata);
+    const encoder = new TextEncoder();
+    const readOptions = {
+        ...options,
+        // One MiB of header/envelope slack, not a provider-response size limit.
+        maxBytes: encoder.encode(contents || "").byteLength + encoder.encode(metadata || "").byteLength + 1024 * 1024,
+    };
 
-        const off = () => {
-            if (typeof unsubscribe === "function") unsubscribe();
-            else if (typeof eventSource.off === "function") eventSource.off(type, handler);
-            else if (typeof eventSource.removeListener === "function") eventSource.removeListener(type, handler);
+    return async () => {
+        const payload = await readHostPersistenceJson(
+            groupId ? "/api/chats/group/get" : "/api/chats/get",
+            groupId ? { id: chatId } : { ch_name: name, file_name: chatId, avatar_url: avatar },
+            readOptions,
+        );
+        if (!Array.isArray(payload)) return false;
+        const savedMetadata = serializeMetadata(payload[0]?.chat_metadata);
+        if (!savedMetadata) return false;
+        return (metadataOnly ? savedMetadata : JSON.stringify(payload.slice(1))) === expected;
+    };
+}
+
+export function createSettingsSaveEventConfirmer({ eventSource = null, eventTypes = null, confirm = null, timeoutMs = 2500 }) {
+    return () => {
+        let cancel = () => {};
+        const confirmation = new Promise((resolve) => {
+            const type = eventTypes?.SETTINGS_UPDATED;
+            if (!eventSource || typeof eventSource.on !== "function" || !type || typeof confirm !== "function") {
+                resolve(null);
+                return;
+            }
+
+            let settled = false;
+            let unsubscribe = null;
+            let timer = null;
+
+            const off = () => {
+                try {
+                    if (typeof unsubscribe === "function") unsubscribe();
+                    else if (typeof eventSource.off === "function") eventSource.off(type, handler);
+                    else if (typeof eventSource.removeListener === "function") eventSource.removeListener(type, handler);
+                } catch { /* host teardown may already have removed the listener */ }
+            };
+            const finish = (value) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                off();
+                resolve(value);
+            };
+            const handler = () => {
+                // SETTINGS_UPDATED has no payload and may belong to another save.
+                void Promise.resolve().then(() => settled ? false : confirm()).then(value => {
+                    if (value === true) finish(true);
+                }, () => {});
+            };
+            cancel = () => finish(false);
+            timer = setTimeout(() => finish(false), timeoutMs);
+
+            try {
+                unsubscribe = eventSource.on(type, handler);
+            } catch {
+                finish(null);
+            }
+        });
+        confirmation.cancel = () => cancel();
+        confirmation.confirmAfterSave = async () => {
+            cancel();
+            // A slow save can outlast observation, and early evidence can become stale.
+            return typeof confirm === "function" && await confirm() === true;
         };
-        const finish = (value) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            off();
-            resolve(value);
-        };
-        const handler = () => finish(true);
-        timer = setTimeout(() => finish(false), timeoutMs);
-
-        try {
-            unsubscribe = eventSource.on(type, handler);
-        } catch {
-            off();
-            finish(null);
-        }
-    });
+        return confirmation;
+    };
 }

@@ -14,11 +14,12 @@ await jest.unstable_mockModule('node-fetch', () => ({
     default: nodeFetchMock,
 }));
 
-describe('reasoning effort on outgoing chat completions', () => {
+describe('outgoing chat completions', () => {
     /** @type {import('http').Server} */
     let appServer;
     let baseUrl;
     let capturedBody;
+    let capturedHeaders;
     const tempDirs = [];
 
     beforeAll(async () => {
@@ -57,9 +58,11 @@ describe('reasoning effort on outgoing chat completions', () => {
 
     beforeEach(() => {
         capturedBody = undefined;
+        capturedHeaders = undefined;
         nodeFetchMock.mockClear();
         nodeFetchMock.mockImplementation(async (_url, options) => {
             capturedBody = JSON.parse(options?.body ?? '{}');
+            capturedHeaders = options?.headers;
             return new Response(JSON.stringify({
                 choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
             }), {
@@ -95,6 +98,146 @@ describe('reasoning effort on outgoing chat completions', () => {
             }),
         });
     }
+
+    test.each([
+        {},
+        { nanogpt_provider: '' },
+        { nanogpt_provider: ' \t ' },
+        { nanogpt_payg_override: false },
+        { nanogpt_allowed_providers: [] },
+        { nanogpt_ignored_providers: [] },
+        { nanogpt_allowed_providers: [], nanogpt_ignored_providers: [] },
+        { nanogpt_provider: 'legacy-provider', nanogpt_allowed_providers: [] },
+        { nanogpt_provider: 'legacy-provider', nanogpt_ignored_providers: [] },
+        { nanogpt_provider: 'legacy-provider', nanogpt_allowed_providers: [], nanogpt_ignored_providers: [] },
+    ])('NanoGPT omits provider and billing overrides for %p', async (overrides) => {
+        const response = await makeRequest(CHAT_COMPLETION_SOURCES.NANOGPT, overrides);
+
+        expect(response.status).toBe(200);
+        expect(capturedBody).not.toHaveProperty('provider');
+        expect(capturedBody).not.toHaveProperty('billing_mode');
+        expect(capturedHeaders).not.toHaveProperty('X-Provider');
+        expect(capturedHeaders).not.toHaveProperty('X-Billing-Mode');
+    });
+
+    test.each([
+        ['allowed only', { nanogpt_allowed_providers: ['Provider-A', 'unlisted/provider:V2'] }, { only: ['Provider-A', 'unlisted/provider:V2'] }],
+        ['ignored only', { nanogpt_ignored_providers: ['Provider-B', 'unlisted/provider:V3'] }, { ignore: ['Provider-B', 'unlisted/provider:V3'] }],
+        ['combined', { nanogpt_allowed_providers: ['Provider-A'], nanogpt_ignored_providers: ['Provider-B'] }, { only: ['Provider-A'], ignore: ['Provider-B'] }],
+        ['empty ignored', { nanogpt_allowed_providers: [' Provider-A '], nanogpt_ignored_providers: [] }, { only: [' Provider-A '] }],
+        ['empty allowed', { nanogpt_allowed_providers: [], nanogpt_ignored_providers: ['Provider-B'] }, { ignore: ['Provider-B'] }],
+    ])('NanoGPT sends exact structured IDs with %s, without explicit billing overrides', async (_name, overrides, provider) => {
+        const response = await makeRequest(CHAT_COMPLETION_SOURCES.NANOGPT, {
+            nanogpt_provider: 'legacy-provider',
+            nanogpt_payg_override: false,
+            ...overrides,
+        });
+
+        expect(response.status).toBe(200);
+        expect(capturedBody.provider).toEqual(provider);
+        expect(capturedHeaders).not.toHaveProperty('X-Provider');
+        expect(capturedHeaders).not.toHaveProperty('X-Billing-Mode');
+        expect(capturedBody).not.toHaveProperty('billing_mode');
+        expect(nodeFetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    test.each([
+        [{}, undefined],
+        [{ nanogpt_allowed_providers: [], nanogpt_ignored_providers: [] }, undefined],
+        [{ nanogpt_allowed_providers: ['Provider-A'], nanogpt_ignored_providers: ['Provider-B'] }, { only: ['Provider-A'], ignore: ['Provider-B'] }],
+    ])('NanoGPT PAYG true sends both billing overrides with %p', async (overrides, provider) => {
+        const response = await makeRequest(CHAT_COMPLETION_SOURCES.NANOGPT, {
+            ...overrides,
+            nanogpt_payg_override: true,
+        });
+
+        expect(response.status).toBe(200);
+        expect(capturedHeaders['X-Billing-Mode']).toBe('paygo');
+        expect(capturedBody.billing_mode).toBe('paygo');
+        expect(capturedBody.provider).toEqual(provider);
+        expect(capturedHeaders).not.toHaveProperty('X-Provider');
+    });
+
+    test('NanoGPT preserves the legacy provider header when neither list is supplied', async () => {
+        const response = await makeRequest(CHAT_COMPLETION_SOURCES.NANOGPT, { nanogpt_provider: 'Legacy/provider:V2' });
+
+        expect(response.status).toBe(200);
+        expect(capturedHeaders['X-Provider']).toBe('Legacy/provider:V2');
+        expect(capturedBody).not.toHaveProperty('provider');
+        expect(capturedBody).not.toHaveProperty('billing_mode');
+        expect(capturedHeaders).not.toHaveProperty('X-Billing-Mode');
+    });
+
+    test.each([
+        ...['nanogpt_allowed_providers', 'nanogpt_ignored_providers'].flatMap(field => [
+            null, '', 'Provider-A', false, 1, {},
+            ['Provider-A', ''], ['Provider-A', ' \t '], ['Provider-A', null],
+            ['Provider-A', false], ['Provider-A', 1], ['Provider-A', {}], ['Provider-A', []],
+        ].map(value => [field, value])),
+        ...[null, '', 'true', 'false', 0, 1, {}, []].map(value => ['nanogpt_payg_override', value]),
+        ...[null, false, 1, {}, [], 'bad\r\nX-Injected: value', 'bad\u0000', 'bad\u0100'].map(value => ['nanogpt_provider', value]),
+    ])('NanoGPT refuses malformed %s=%p before any outbound fetch', async (field, value) => {
+        const response = await makeRequest(CHAT_COMPLETION_SOURCES.NANOGPT, {
+            nanogpt_provider: 'legacy-provider',
+            [field]: value,
+        });
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({ error: true });
+        expect(nodeFetchMock).not.toHaveBeenCalled();
+    });
+
+    test.each([
+        [400, 400],
+        [503, 502],
+    ])('NanoGPT does not retry without restrictions after an upstream %s', async (status, expectedStatus) => {
+        nodeFetchMock.mockResolvedValueOnce(new Response('{}', { status }));
+        const response = await makeRequest(CHAT_COMPLETION_SOURCES.NANOGPT, {
+            nanogpt_allowed_providers: ['unlisted/provider'],
+            nanogpt_ignored_providers: ['Provider-B'],
+        });
+
+        expect(response.status).toBe(expectedStatus);
+        expect(nodeFetchMock).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(nodeFetchMock.mock.calls[0][1].body).provider).toEqual({
+            only: ['unlisted/provider'],
+            ignore: ['Provider-B'],
+        });
+    });
+
+    test.each([
+        [CHAT_COMPLETION_SOURCES.CUSTOM, { custom_url: 'https://custom.test/v1' }],
+        [CHAT_COMPLETION_SOURCES.PERPLEXITY, {}],
+        [CHAT_COMPLETION_SOURCES.OPENROUTER, { provider: ['own-provider'], allow_fallbacks: false }],
+    ])('%s is unaffected by valid or malformed NanoGPT fields', async (source, overrides) => {
+        const baseline = await makeRequest(source, overrides);
+        const originalBody = capturedBody;
+        const originalHeaders = capturedHeaders;
+        const response = await makeRequest(source, {
+            ...overrides,
+            nanogpt_allowed_providers: ['NanoGPT-only'],
+            nanogpt_ignored_providers: ['NanoGPT-ignored'],
+            nanogpt_payg_override: true,
+            nanogpt_provider: 'legacy-provider',
+        });
+
+        expect(baseline.status).toBe(200);
+        expect(response.status).toBe(200);
+        expect(capturedBody).toEqual(originalBody);
+        expect(capturedHeaders).toEqual(originalHeaders);
+
+        const invalidResponse = await makeRequest(source, {
+            ...overrides,
+            nanogpt_allowed_providers: 'invalid',
+            nanogpt_ignored_providers: null,
+            nanogpt_payg_override: 'true',
+            nanogpt_provider: 'bad\r\nheader',
+        });
+
+        expect(invalidResponse.status).toBe(200);
+        expect(capturedBody).toEqual(originalBody);
+        expect(capturedHeaders).toEqual(originalHeaders);
+    });
 
     // NanoGPT documents none < minimal < low < medium < high < xhigh, and some models accept
     // max. Everything but min is spelled the same here, so it goes out untouched instead of

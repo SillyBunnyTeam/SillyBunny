@@ -343,12 +343,6 @@ export async function readSseDataStream(response, onEvent, {
     if (!response?.body?.getReader) throw new Error("SSE response body is not streamable");
     const reader = response.body.getReader();
     const abort = () => reader.cancel(signal?.reason || "SSE request aborted").catch(() => {});
-    if (signal?.aborted) {
-        await abort();
-        reader.releaseLock();
-        throw signal.reason instanceof Error ? signal.reason : new DOMException("Generation cancelled", "AbortError");
-    }
-    signal?.addEventListener("abort", abort, { once: true });
     const decoder = new TextDecoder();
     let buffer = "";
     let dataLines = [];
@@ -388,12 +382,15 @@ export async function readSseDataStream(response, onEvent, {
     }
 
     try {
+        if (signal?.aborted) {
+            throw signal.reason instanceof Error ? signal.reason : new DOMException("Generation cancelled", "AbortError");
+        }
+        signal?.addEventListener("abort", abort, { once: true });
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             total += value.byteLength;
             if (total > maxBytes) {
-                await reader.cancel("SSE response is too large");
                 throw new Error("SSE response is too large");
             }
             buffer += decoder.decode(value, { stream: true });
@@ -404,7 +401,6 @@ export async function readSseDataStream(response, onEvent, {
                 const delimiterLength = buffer[newline] === "\r" && buffer[newline + 1] === "\n" ? 2 : 1;
                 buffer = buffer.slice(newline + delimiterLength);
                 if (await consumeLine(line)) {
-                    await reader.cancel("SSE stream completed").catch(() => {});
                     return { value: lastValue, eventCount, provisionalOnly: lastValue == null && sawProvisionalValue };
                 }
             }
@@ -420,6 +416,8 @@ export async function readSseDataStream(response, onEvent, {
         return { value: lastValue, eventCount, provisionalOnly: lastValue == null && sawProvisionalValue };
     } finally {
         signal?.removeEventListener("abort", abort);
+        // Callback failures and early completion must stop the body without waiting on a tee.
+        void reader.cancel("SSE reader closed").catch(() => {});
         reader.releaseLock();
     }
 }

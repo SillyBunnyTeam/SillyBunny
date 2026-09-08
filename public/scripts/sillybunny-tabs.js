@@ -22,6 +22,7 @@ import {
     TOPBAR_ADOPTION_ATTRIBUTE,
     TOPBAR_EXTENSION_SLOT_ID,
 } from './topbar-extension-slot/index.js';
+import { setCharacterSpoilerFreeFieldsHidden } from './power-user.js';
 import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
 import { characters, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
@@ -2171,13 +2172,14 @@ function isCharacterSpoilerFreeFieldsHidden() {
     return form instanceof HTMLElement && form.dataset.sbSpoilerFreeFieldsHidden === 'true';
 }
 
+function isCharacterEditorSubTabSpoilerHidden(tabId) {
+    return isCharacterSpoilerFreeFieldsHidden()
+        && !SB_CHARACTER_EDITOR_SPOILER_FREE_VISIBLE_TABS.includes(normalizeCharacterEditorSubTab(tabId));
+}
+
 function resolveCharacterEditorSubTab(tabId) {
     const normalizedTabId = normalizeCharacterEditorSubTab(tabId);
-    if (!isCharacterSpoilerFreeFieldsHidden() || SB_CHARACTER_EDITOR_SPOILER_FREE_VISIBLE_TABS.includes(normalizedTabId)) {
-        return normalizedTabId;
-    }
-
-    return 'metadata';
+    return isCharacterEditorSubTabSpoilerHidden(normalizedTabId) ? 'metadata' : normalizedTabId;
 }
 
 function isCharacterEditorMenuType(menuType) {
@@ -2689,6 +2691,10 @@ function shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize) {
         return false;
     }
 
+    if (isMobileViewport() && !isLegacyIOSWebKitPlatform()) {
+        return false;
+    }
+
     const activeElement = document.activeElement;
     if (isChatComposerEditableElement(activeElement)) {
         return false;
@@ -2769,13 +2775,18 @@ function handleMobileKeyboardFocusOut() {
 function syncIOSKeyboardBottomInset() {
     const root = document.documentElement;
     let bottomInset = 0;
+    let composerControlsActive = false;
 
     if (isIOSWebKitPlatform()) {
         const layoutViewport = getLayoutViewportSize();
         const visualViewportSize = getVisualViewportSize(layoutViewport);
 
         if (isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
-            bottomInset = Math.max(0, Math.round(layoutViewport.height - visualViewportSize.top - visualViewportSize.height));
+            if (isMobileViewport() && !isLegacyIOSWebKitPlatform()) {
+                composerControlsActive = isChatComposerEditableElement(document.activeElement);
+            } else {
+                bottomInset = Math.max(0, Math.round(layoutViewport.height - visualViewportSize.top - visualViewportSize.height));
+            }
         }
     }
 
@@ -2788,6 +2799,7 @@ function syncIOSKeyboardBottomInset() {
     // viewports (iPadOS desktop-mode Safari) gate the padding on this class so
     // desktop layouts only pick it up while the software keyboard is open.
     root.classList.toggle('sb-ios-keyboard-inset-active', bottomInset > 0);
+    root.classList.toggle('sb-ios-composer-keyboard-controls-active', composerControlsActive);
 }
 
 function getShellViewportSize() {
@@ -2800,9 +2812,8 @@ function getShellViewportSize() {
         return { ...layoutViewport, height, bottom: height };
     }
 
-    // SillyBunny: iOS keyboard edits inside shell panels should not feed Safari
-    // visualViewport jitter back into shell geometry. The chat composer remains
-    // on the visible viewport so the keyboard accessory bar cannot cover it.
+    // Older iOS and wide iPad panels retain the stable layout; modern phone
+    // panels fit the visible viewport without a second keyboard-sized reserve.
     if (shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize)) {
         return layoutViewport;
     }
@@ -2827,8 +2838,7 @@ function syncShellViewportBounds() {
     setRootViewportProperty('--sb-shell-viewport-height', `${viewportSize.height}px`);
     setRootViewportProperty('--sb-shell-measured-top-offset', `${topOffset}px`);
     setRootViewportProperty('--sb-shell-available-height', `${Math.max(0, viewportSize.height - topOffset)}px`);
-    // SillyBunny: iOS Safari shifts the visual viewport while the keyboard opens;
-    // panel edits keep the stable top, while composer edits follow the visible top.
+    // SillyBunny: Safari can pan the visible viewport without resizing it.
     setRootViewportProperty('--sb-shell-viewport-top', `${viewportSize.top}px`);
 
     // SillyBunny: browser-fixes.js may reset document scroll mid-edit once the
@@ -3076,6 +3086,7 @@ function syncMobileShellDrawerBounds() {
             isOpen,
             isViewportBound: drawer.dataset.sbMobileViewportBound === 'true',
             viewportHeight: viewportSize?.height ?? 0,
+            viewportTop: viewportSize?.top ?? 0,
             baseTopOffset,
             shellGap: drawerStyles ? Number.parseFloat(drawerStyles.getPropertyValue('--sb-mobile-shell-gap')) || 0 : 0,
         }));
@@ -8184,6 +8195,8 @@ function updateCharacterEditorSubTabButtons(activeTabId) {
         tabButton.classList.toggle('is-active', isActive);
         tabButton.setAttribute('aria-selected', String(isActive));
         tabButton.setAttribute('tabindex', isActive ? '0' : '-1');
+        // Dimmed, not disabled: tapping a spoiler-hidden tab reveals the fields (see bindCharacterEditorSubTabs).
+        tabButton.classList.toggle('is-spoiler-hidden', isCharacterEditorSubTabSpoilerHidden(tabButton.dataset.sbCharacterEditorTab));
     }
 }
 
@@ -8385,7 +8398,14 @@ function bindCharacterEditorSubTabs() {
             return;
         }
 
-        setCharacterEditorSubTab(target.dataset.sbCharacterEditorTab, { focusButton: false });
+        const tabId = target.dataset.sbCharacterEditorTab;
+        // Spoiler-free mode hides Definitions/Greetings; a deliberate tap on one of them is the same request as the eye
+        // button's peek, so reveal the fields first instead of silently landing on Metadata.
+        if (isCharacterEditorSubTabSpoilerHidden(tabId)) {
+            setCharacterSpoilerFreeFieldsHidden(false);
+        }
+
+        setCharacterEditorSubTab(tabId, { focusButton: false });
     });
 
     tablist.addEventListener('keydown', (event) => {
@@ -16533,7 +16553,7 @@ function reinitSelect2AfterShell() {
             dropdownParent: apiDropdownParent.length ? apiDropdownParent : $(document.body),
             minimumResultsForSearch: 0,
         };
-        const allSelectors = [...modelSelectors, '.openrouter_quantizations', '.openrouter_providers'];
+        const allSelectors = [...modelSelectors, '.openrouter_quantizations', '.openrouter_providers', '#nanogpt_allowed_providers', '#nanogpt_ignored_providers'];
         for (const selector of allSelectors) {
             const $el = $(selector);
             if ($el.length && $el.data('select2')) {
@@ -17238,6 +17258,10 @@ function openPersonaAppendicesManager() {
         document.getElementById('persona_editor_tab_prompt')?.click();
         const appendicesHeading = document.getElementById('persona_appendices_heading');
         const addButton = document.getElementById('persona_appendix_add');
+        const appendicesBlock = appendicesHeading?.closest('details');
+        if (appendicesBlock instanceof HTMLDetailsElement) {
+            appendicesBlock.open = true;
+        }
         scrollElementIntoManagedView(appendicesHeading ?? addButton, { block: 'center', behavior: getReducedMotionScrollBehavior() });
         addButton?.focus({ preventScroll: true });
     }, 160);
@@ -17509,6 +17533,8 @@ function initAll() {
     if (isIOSWebKitPlatform()) {
         document.addEventListener('focusin', syncIOSKeyboardBottomInset);
         document.addEventListener('focusout', syncIOSKeyboardBottomInset);
+        document.addEventListener('focusin', queueMobileViewportStateSync);
+        document.addEventListener('focusout', queueMobileViewportStateSync);
     }
 
     if (isLegacyIOSWebKitPlatform()) {

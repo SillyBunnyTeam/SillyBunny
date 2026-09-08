@@ -464,8 +464,16 @@ function collectTokens(value, tokens = new Set()) {
     return tokens;
 }
 
-export function getComfyWorkflowCapabilities(workflow) {
-    const tokens = collectTokens(parseComfyWorkflow(workflow));
+export function getComfyWorkflowCapabilities(workflow, tokenValues = {}, componentOverrides = null) {
+    const parsed = parseComfyWorkflow(workflow);
+    const nodes = getPromptNodes(parsed);
+    for (const entry of normalizeComfyWorkflowComponentOverrides(componentOverrides).entries) {
+        if (!entry.verified || !matchesRawComponentInput(nodes, entry)) continue;
+        if (typeof renderString(entry.rawValue, tokenValues) !== "string") continue;
+        // Applied choices are literals, including values that look like placeholders.
+        delete nodes[entry.nodeId].inputs[entry.inputName];
+    }
+    const tokens = collectTokens(parsed);
     const has = name => tokens.has(name);
     const referenceImages = has("reference_image") || [...tokens].some(name => NUMBERED_REFERENCE.test(name));
     return {

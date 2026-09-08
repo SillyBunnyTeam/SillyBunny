@@ -1157,6 +1157,11 @@ function renderPersonaAppendices() {
         renderPersonaAppendixChips(activeChips, activeAppendices);
     }
 
+    // SillyBunny: retain open notes through list refreshes, but not persona switches.
+    const expandedIds = new Set(list.dataset.avatarId === user_avatar
+        ? Array.from(list.querySelectorAll('details[open]'), details => details.closest('.persona-appendix-card').dataset.appendixId)
+        : []);
+    list.dataset.avatarId = user_avatar;
     list.replaceChildren();
 
     if (!appendices.length) {
@@ -1180,15 +1185,21 @@ function renderPersonaAppendices() {
         checkbox.className = 'persona_appendix_toggle';
         checkbox.dataset.appendixId = appendix.id;
         checkbox.checked = activeIds.has(appendix.id);
+        checkbox.setAttribute('aria-label', appendix.name);
+        label.append(checkbox);
 
-        const name = document.createElement('span');
+        const details = document.createElement('details');
+        details.className = 'persona-appendix-details';
+        details.open = expandedIds.has(appendix.id);
+
+        const name = document.createElement('summary');
         name.className = 'persona-appendix-name';
         name.textContent = appendix.name;
-        label.append(checkbox, name);
 
         const description = document.createElement('p');
         description.className = 'persona-appendix-description text_muted';
         description.textContent = appendix.description?.trim() || t`[No Scenario Note text]`;
+        details.append(name, description);
 
         const actions = document.createElement('div');
         actions.className = 'persona-appendix-actions';
@@ -1206,7 +1217,7 @@ function renderPersonaAppendices() {
         deleteButton.title = t`Delete Scenario Note`;
 
         actions.append(editButton, deleteButton);
-        card.append(label, description, actions);
+        card.append(label, details, actions);
         list.appendChild(card);
     }
 }

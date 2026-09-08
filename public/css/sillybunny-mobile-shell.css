@@ -2177,8 +2177,10 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         border-radius: 10px;
     }
 
+    /* Must beat the generic 34px !important band height above: the parked mode toggle
+       (top 8px + 44px) otherwise hangs over the top of the editor sub-tab pills. */
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) > #CharListButtonAndHotSwaps {
-        min-height: 54px;
+        min-height: 54px !important;
         padding-block: 5px;
     }
 
@@ -2314,6 +2316,22 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     }
 
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > #tags_div {
+        max-width: 100%;
+    }
+
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > #tags_div .tag_controls {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > #tags_div .tag_controls > label[for="char-management-dropdown"] {
+        grid-column: 1 / -1;
+        justify-self: stretch;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls #char-management-dropdown {
+        width: 100%;
         max-width: 100%;
     }
 
@@ -2728,6 +2746,21 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         touch-action: manipulation;
     }
 
+    #nanogpt_form :is(#nanogpt_allowed_providers, #nanogpt_ignored_providers) {
+        display: none;
+    }
+
+    #nanogpt_form .sb-nanogpt-provider-picker {
+        display: block;
+        width: 100%;
+        min-height: max(44px, var(--sb-field-min-height));
+        height: auto;
+        padding: 8px var(--sb-field-padding-x);
+        text-align: left;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
     .sb-inline-select-picker-menu[data-sb-inline-select-multiple] .sb-inline-select-picker-option {
         gap: 8px;
     }
@@ -2806,7 +2839,7 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     #right-nav-panel.openDrawer,
     #top-settings-holder #right-nav-panel.openDrawer,
     :root[data-sb-character-drawer-lock='right'] #right-nav-panel.openDrawer {
-        top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px)) !important;
+        top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px) + var(--sb-shell-viewport-top, 0px)) !important;
         bottom: auto !important;
         box-sizing: border-box !important;
         height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)))) - var(--sb-mobile-shell-gap, 0px) - env(safe-area-inset-bottom, 0px)) !important;
@@ -2890,10 +2923,14 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     }
 
     #form_sheld {
-        padding: 0 0 env(safe-area-inset-bottom, 0px) !important;
+        padding: 0 0 var(--sb-composer-bottom-padding, env(safe-area-inset-bottom, 0px)) !important;
         margin: 0 !important;
         width: 100% !important;
         max-width: none !important;
+    }
+
+    html.sb-ios-composer-keyboard-controls-active #form_sheld {
+        --sb-composer-bottom-padding: 0px;
     }
 
     #send_form {

@@ -6,6 +6,7 @@ import { formatInstructModeChat, formatInstructModePrompt, getInstructStoppingSe
 import { chat_completion_sources, getStreamingReply, tryParseStreamingError, createGenerationParameters, settingsToUpdate, oai_settings } from './openai.js';
 import EventSourceStream from './sse-stream.js';
 import { fetchResumable } from './resumable-generation.js';
+import { migrateNanoGptProviderSettings } from './openai-preset-utils.js';
 
 const BOOLEAN_CHAT_COMPLETION_FIELDS = [
     'include_reasoning',
@@ -641,8 +642,14 @@ export class ChatCompletionService {
             throw new Error('Invalid preset: must be an object');
         }
 
-        // apply preset overrides
+        // SillyBunny: migrate each layer before merging so overrides cannot erase unrelated restrictions.
+        preset = { ...preset };
+        migrateNanoGptProviderSettings(preset);
+        overridePreset = { ...overridePreset };
+        migrateNanoGptProviderSettings(overridePreset, { partial: true });
         preset = { ...preset, ...overridePreset };
+        overridePayload = { ...overridePayload };
+        migrateNanoGptProviderSettings(overridePayload, { partial: true });
 
         // Fix any fields before converting to settings
         preset.bias_preset_selected = preset.bias_presets !== undefined ? preset.bias_preset_selected : undefined;  // presets might have bias_preset_selected but not bias_presets, but settings need both or neither.

@@ -613,6 +613,11 @@ export class ToolManager {
             return false;
         }
 
+        // SillyBunny: Astra supports tool calls only through the Responses API.
+        if (settings.chat_completion_source === chat_completion_sources.OPENAI && model === 'gpt-6-astra') {
+            return false;
+        }
+
         // Post-processing will forcefully remove past tool calls from the prompt, making them useless
         const { NONE, MERGE_TOOLS, SEMI_TOOLS, STRICT_TOOLS } = custom_prompt_post_processing_types;
         const allowedPromptPostProcessing = [NONE, MERGE_TOOLS, SEMI_TOOLS, STRICT_TOOLS];

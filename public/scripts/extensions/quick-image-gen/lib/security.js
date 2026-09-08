@@ -208,7 +208,8 @@ export function normalizeImageSource(value, {
 export async function readResponseArrayBuffer(response, maxBytes = MAX_IMAGE_BYTES) {
     const declaredLength = Number(response.headers?.get?.("content-length"));
     if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
-        await response.body?.cancel?.("Response exceeds the configured size limit").catch(() => {});
+        // Cancelling a cloned response can wait for its unread sibling; never await disposal.
+        void response.body?.cancel?.("Response exceeds the configured size limit").catch(() => {});
         throw new Error(`Image exceeds the ${Math.floor(maxBytes / 1024 / 1024)} MB limit`);
     }
 
@@ -223,7 +224,7 @@ export async function readResponseArrayBuffer(response, maxBytes = MAX_IMAGE_BYT
             if (done) break;
             total += value.byteLength;
             if (total > maxBytes) {
-                await reader.cancel("Image response is too large");
+                void reader.cancel("Image response is too large").catch(() => {});
                 throw new Error("Image response is too large");
             }
             chunks.push(value);

@@ -376,8 +376,10 @@
     min-height: 0;
     max-height: clamp(20rem, calc(100dvh - 20rem), 44rem);
     overflow-y: auto;
+    overflow-x: hidden;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
+    touch-action: pan-y;
 }
 
 #user_avatar_block {
@@ -400,6 +402,7 @@
 #user_avatar_block:not(.gridView) .avatar-container {
     width: 100%;
     min-width: 0;
+    margin-inline: 0;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: start;
@@ -655,15 +658,15 @@
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 74%, transparent);
 }
 
-.persona-appendices-heading-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
+.persona-appendices-block > summary {
+    display: list-item;
+    cursor: pointer;
 }
 
-.persona-appendices-heading-row .persona-section-header {
+.persona-appendices-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     min-width: 0;
 }
 
@@ -701,10 +704,9 @@
 
 .persona-appendix-card {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-        'toggle actions'
-        'description description';
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    grid-template-areas: 'toggle details actions';
+    align-items: start;
     gap: 6px 10px;
     min-width: 0;
     padding: 8px;
@@ -716,9 +718,10 @@
 .persona-appendix-toggle-row {
     grid-area: toggle;
     min-width: 0;
+    min-height: 44px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: center;
     margin: 0;
     cursor: pointer;
 }
@@ -727,16 +730,22 @@
     accent-color: var(--color-primary, var(--sb-accent));
 }
 
-.persona-appendix-name {
+.persona-appendix-details {
+    grid-area: details;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+}
+
+.persona-appendix-name {
+    display: list-item;
+    min-height: 44px;
+    padding-block: 10px;
+    list-style-position: inside;
+    overflow-wrap: anywhere;
     font-weight: 700;
+    cursor: pointer;
 }
 
 .persona-appendix-description {
-    grid-area: description;
     margin: 0;
     line-height: 1.38;
     white-space: pre-wrap;
@@ -758,14 +767,27 @@
 }
 
 .persona-appendix-actions > .menu_button {
-    width: 34px;
-    min-width: 34px;
-    height: 34px;
-    min-height: 34px;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
     padding: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+}
+
+@container persona-scenario-notes (max-width: 520px) {
+    .persona-appendix-card {
+        grid-template-columns: 44px minmax(0, 1fr);
+        grid-template-areas:
+            'toggle details'
+            '. actions';
+    }
+
+    .persona-appendix-actions {
+        justify-content: flex-start;
+    }
 }
 
 .persona-effective-preview {
@@ -774,10 +796,10 @@
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
 }
 
-.persona-effective-preview > summary {
+.persona-effective-preview-title {
+    display: block;
     min-height: 36px;
     padding: 8px 10px;
-    cursor: pointer;
     font-weight: 700;
 }
 
@@ -855,12 +877,14 @@
     }
 
     #user_avatar_block:not(.gridView) .avatar-container .character_select_container {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 
     #user_avatar_block:not(.gridView) .avatar-container .avatar_container_states {
         grid-column: 1;
         grid-row: auto;
+        min-width: 0;
+        flex-wrap: wrap;
         justify-content: flex-start;
     }
 
@@ -953,11 +977,6 @@
         height: 48px;
     }
 
-    .persona-appendices-heading-row {
-        grid-template-columns: 1fr;
-        align-items: stretch;
-    }
-
     .persona-appendices-actions {
         justify-content: stretch;
     }
@@ -990,25 +1009,6 @@
         width: 44px;
         min-width: 44px;
         max-width: 44px;
-        height: 44px;
-        min-height: 44px;
-    }
-
-    .persona-appendix-card {
-        grid-template-columns: 1fr;
-        grid-template-areas:
-            'toggle'
-            'description'
-            'actions';
-    }
-
-    .persona-appendix-actions {
-        justify-content: flex-start;
-    }
-
-    .persona-appendix-actions > .menu_button {
-        width: 44px;
-        min-width: 44px;
         height: 44px;
         min-height: 44px;
     }
@@ -1396,12 +1396,6 @@
 }
 
 @media screen and (max-width: 760px) {
-    #PersonaManagement .persona-appendices-heading-row {
-        grid-template-columns: minmax(0, 1fr) auto;
-        align-items: center;
-        gap: 6px;
-    }
-
     #PersonaManagement .persona-appendices-actions {
         flex-wrap: nowrap;
         justify-content: flex-end;
@@ -1424,12 +1418,6 @@
 }
 
 @container persona-management (max-width: 520px) {
-    #PersonaManagement .persona-appendices-heading-row {
-        grid-template-columns: minmax(0, 1fr) auto;
-        align-items: center;
-        gap: 6px;
-    }
-
     #PersonaManagement .persona-appendices-actions {
         flex-wrap: nowrap;
         justify-content: flex-end;
@@ -1457,11 +1445,6 @@
         gap: 6px;
     }
 
-    #PersonaManagement .persona-appendices-heading-row {
-        grid-template-columns: 1fr;
-        align-items: stretch;
-    }
-
     #PersonaManagement .persona-appendices-actions {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1477,12 +1460,6 @@
 }
 
 @container persona-scenario-notes (max-width: 360px) {
-    .persona-appendices-heading-row {
-        grid-template-columns: minmax(0, 1fr) auto;
-        align-items: center;
-        gap: 6px;
-    }
-
     .persona-appendices-actions {
         flex-wrap: nowrap;
         justify-content: flex-end;
@@ -1505,11 +1482,6 @@
 }
 
 @container persona-scenario-notes (max-width: 230px) {
-    .persona-appendices-heading-row {
-        grid-template-columns: 1fr;
-        align-items: stretch;
-    }
-
     .persona-appendices-actions {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));

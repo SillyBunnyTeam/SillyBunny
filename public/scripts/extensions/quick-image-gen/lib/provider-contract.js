@@ -2,6 +2,7 @@ import { redactUrlCredentials, sanitizeReproducibleModel } from "./security.js";
 import { getCustomBackendCapabilities } from "./custom-backend.js";
 import { getFalEffectiveSteps, getProviderGenerationCapabilities } from "./provider-capabilities.js";
 import { coerceSettingsFieldValue } from "./settings-transfer.js";
+import { attachResultFailures, getResultFailures } from "./generation.js";
 
 const MAX_SNAPSHOT_STRING = 16_384;
 const MAX_REPRODUCIBLE_SNAPSHOT_BYTES = 16 * 1024;
@@ -203,7 +204,7 @@ function mappedSize(provider, settings, capabilities = null) {
         if (width === height) return { width: 1024, height: 1024 };
         return width > height ? { width: 1536, height: 1024 } : { width: 1024, height: 1536 };
     }
-    if (provider === "nanobanana") return {};
+    if (provider === "nanobanana" || (provider === "proxy" && settings.proxyComfyMode)) return {};
     if (provider === "custom" && capabilities) {
         return {
             ...(capabilities.width ? { width } : {}),
@@ -233,7 +234,8 @@ export function createEffectiveRequest(settings, options = {}) {
         ? options.resolvedSeed
         : (Number.isFinite(configuredSeed) && configuredSeed >= 0 ? configuredSeed : undefined);
     const parameters = {
-        model: provider === "custom" && capabilities && !capabilities.model ? undefined : (options.model ?? null),
+        model: (provider === "custom" && capabilities && !capabilities.model) || (provider === "proxy" && settings?.proxyComfyMode)
+            ? undefined : (options.model ?? null),
         width: size.width,
         height: size.height,
         steps: Number.isFinite(steps) ? steps : undefined,
@@ -287,7 +289,20 @@ function normalizeSingleProviderResult(result, settings, options = {}, inherited
 export function normalizeProviderResult(result, settings, options = {}) {
     if (result && typeof result === "object" && Array.isArray(result.images)) {
         const inheritedRequest = result.effectiveRequest || {};
-        return result.images.map(image => normalizeSingleProviderResult(image, settings, options, inheritedRequest));
+        const images = [];
+        const failures = [...getResultFailures(result.images)];
+        for (const [index, image] of result.images.entries()) {
+            const outputIndex = Number.isInteger(image?.outputIndex) && image.outputIndex >= 0 ? image.outputIndex : index;
+            try {
+                options.reserveOutput?.(outputIndex);
+            } catch (error) {
+                if (error?.code !== "GENERATION_OUTPUT_LIMIT") throw error;
+                failures.push({ index: outputIndex, error });
+                continue;
+            }
+            images.push({ ...normalizeSingleProviderResult(image, settings, options, inheritedRequest), outputIndex });
+        }
+        return attachResultFailures(images, failures);
     }
     return normalizeSingleProviderResult(result, settings, options);
 }

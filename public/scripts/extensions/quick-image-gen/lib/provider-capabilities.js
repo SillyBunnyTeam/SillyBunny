@@ -81,7 +81,7 @@ export function getNanoGptModelCapabilities(model, metadata = null) {
     return {
         steps: !isKnownDefault && hasParameter("steps", "num_inference_steps"),
         cfgScale: !isKnownDefault && hasParameter("guidance", "guidance_scale", "cfg_scale"),
-        sampler: !isKnownDefault && hasParameter("sampler", "scheduler"),
+        sampler: false,
         seed: isKnownDefault ? false : hasParameter("seed"),
         sequentialSeeds: isKnownDefault ? false : hasParameter("seed"),
         referenceImages: inputModalities.includes("image")
@@ -278,12 +278,12 @@ export function getProviderGenerationCapabilities(provider, settings = {}, custo
         };
     }
     if (provider === "proxy") {
-        return settings?.proxyPayloadMode === "openai_strict"
+        return settings?.proxyComfyMode || settings?.proxyPayloadMode === "openai_strict"
             ? NO_DIFFUSION_CONTROLS
             : ALL_CONTROLS;
     }
-    if (provider === "nanogpt" && (settings?.nanogptModel || settings?.__qigNanoGptModelMetadata)) {
-        return getNanoGptModelCapabilities(settings?.nanogptModel, settings?.__qigNanoGptModelMetadata);
+    if (provider === "nanogpt") {
+        return getNanoGptModelCapabilities(String(settings?.nanogptModel || "").trim() || "flux-schnell", settings?.__qigNanoGptModelMetadata);
     }
     return PROVIDER_GENERATION_CAPABILITIES[provider] || ALL_CONTROLS;
 }

@@ -1,4 +1,63 @@
+import { normalizeSavedImagePath } from "./generated-image.js";
+import { MAX_IMAGE_BYTES } from "./security.js";
+
 export const MAX_BATCH_COUNT = 10;
+
+function outputLimitError(message) {
+    const error = new Error(message);
+    error.code = "GENERATION_OUTPUT_LIMIT";
+    return error;
+}
+
+export function reserveGenerationOutput(budget) {
+    if (budget.error) throw budget.error;
+    if (budget.bytes >= MAX_IMAGE_BYTES) {
+        budget.error = outputLimitError(`Generation run reached the ${MAX_IMAGE_BYTES / 1024 / 1024} MiB total output limit`);
+        throw budget.error;
+    }
+    if (budget.count >= MAX_BATCH_COUNT) {
+        throw outputLimitError(`Generation run reached the ${MAX_BATCH_COUNT} output limit`);
+    }
+    budget.count++;
+    return { budget, bytes: 0 };
+}
+
+export function accountGenerationOutputBytes(output, byteLength) {
+    const additionalBytes = Math.max(0, byteLength - output.bytes);
+    // Converting an already downloaded image to a data/blob URL is not another output.
+    if (!additionalBytes) return;
+    const { budget } = output;
+    if (budget.error) throw budget.error;
+    if (additionalBytes > MAX_IMAGE_BYTES - budget.bytes) {
+        budget.error = outputLimitError(`Generation run outputs exceed the ${MAX_IMAGE_BYTES / 1024 / 1024} MiB total output limit`);
+        throw budget.error;
+    }
+    budget.bytes += additionalBytes;
+    output.bytes = byteLength;
+}
+
+export function limitGenerationOutputResponse(response, output) {
+    if (output.budget.error) throw output.budget.error;
+    const declaredLength = Number(response.headers?.get?.("content-length"));
+    if (declaredLength > MAX_IMAGE_BYTES - output.budget.bytes) {
+        void response.body?.cancel?.("Generation output budget exceeded").catch(() => {});
+        accountGenerationOutputBytes(output, output.bytes + declaredLength);
+    }
+    const body = response.body?.pipeThrough(new TransformStream({
+        transform(chunk, controller) {
+            accountGenerationOutputBytes(output, output.bytes + chunk.byteLength);
+            controller.enqueue(chunk);
+        },
+    }));
+    return new Response(body, {
+        headers: {
+            "content-type": response.headers?.get?.("content-type") || "",
+            "content-length": response.headers?.get?.("content-length") || "",
+        },
+        status: response.status,
+        statusText: response.statusText,
+    });
+}
 
 /**
  * A quiet run is one another extension (or a Quick Reply) asks for and wants the picture
@@ -11,6 +70,7 @@ export function getQuietSlashOverrides(prompt) {
         useLastMessage: false,
         autoInsert: false,
         confirmBeforeGenerate: false,
+        reviewBeforeGenerate: false,
         enableParagraphPicker: false,
         batchCount: 1,
         saveToServer: true,
@@ -22,14 +82,14 @@ export function getQuietSlashOverrides(prompt) {
 export function formatQuietSlashResult(outcome) {
     if (outcome?.status === "busy") return "QIG: generation is already running.";
     if (outcome?.status === "cancelled") return "QIG: generation cancelled.";
-    const url = Array.isArray(outcome?.urls) ? outcome.urls.find(item => typeof item === "string" && item) : "";
-    if (url) return url;
+    const url = Array.isArray(outcome?.urls) ? outcome.urls.map(normalizeSavedImagePath).find(Boolean) : "";
+    if (url && ["success", "partial"].includes(outcome?.status)) return url;
     return `QIG failed: ${outcome?.message || "no image was produced"}`;
 }
 const RESULT_FAILURES = Symbol("qigResultFailures");
 
 export function attachResultFailures(results, failures) {
-    if (!Array.isArray(results) || !Array.isArray(failures) || !failures.length) return results;
+    if (!results || typeof results !== "object" || !Array.isArray(failures) || !failures.length) return results;
     Object.defineProperty(results, RESULT_FAILURES, {
         value: failures,
         configurable: true,
@@ -38,9 +98,17 @@ export function attachResultFailures(results, failures) {
 }
 
 export function getResultFailures(results) {
-    return Array.isArray(results) && Array.isArray(results[RESULT_FAILURES])
+    return Array.isArray(results?.[RESULT_FAILURES])
         ? results[RESULT_FAILURES]
         : [];
+}
+
+export function createResultFailureError(failures) {
+    const first = failures[0]?.error;
+    const error = new AggregateError(failures.map(failure => failure.error), first?.message || String(first), { cause: first });
+    if (first?.code) error.code = first.code;
+    error.failedCount = failures.length;
+    return attachResultFailures(error, failures);
 }
 
 export function clampChatMessageIndex(index, chatLength) {
@@ -75,12 +143,22 @@ export async function collectBatchResults(count, task, onError = null) {
             } else if (result != null) results.push(result);
         } catch (error) {
             if (error?.name === "AbortError") throw error;
-            errors.push({ index, error });
-            if (typeof onError === "function") onError(error, index, batchCount);
+            const failures = getResultFailures(error);
+            for (const failure of failures.length ? failures : [{ error }]) {
+                const cause = failure.error || failure;
+                errors.push({
+                    index,
+                    ...(failure.outputIndex != null || failure.index != null ? { outputIndex: failure.outputIndex ?? failure.index } : {}),
+                    error: cause,
+                });
+                if (typeof onError === "function") onError(cause, index, batchCount);
+            }
         }
     }
 
-    if (results.length === 0 && errors.length > 0) throw errors[0].error;
+    if (results.length === 0 && errors.length > 0) {
+        throw createResultFailureError(errors);
+    }
     return { results, errors };
 }
 
@@ -93,7 +171,7 @@ export async function collectSequentialResults(items, task) {
             if (result != null) results.push(result);
         } catch (error) {
             if (error?.name === "AbortError") throw error;
-            errors.push({ index, error });
+            errors.push({ index: Number.isInteger(item?.outputIndex) && item.outputIndex >= 0 ? item.outputIndex : index, error });
         }
     }
     return { results, errors };

@@ -39,6 +39,22 @@ describe('mobile shell drawer bounds lifecycle', () => {
         ]);
     });
 
+    test('follows the visible viewport offset without subtracting it from height', () => {
+        for (const [viewportTop, expectedTop] of [[40, '99px'], [-40, '59px'], [Number.NaN, '59px']]) {
+            const decision = resolveMobileDrawerBounds({
+                isMobileViewport: true,
+                isOpen: true,
+                viewportHeight: 500,
+                viewportTop,
+                baseTopOffset: 56,
+                shellGap: 3,
+            });
+
+            expect(decision.styleWrites).toContainEqual({ property: 'top', value: expectedTop, priority: 'important' });
+            expect(decision.styleWrites).toContainEqual({ property: 'height', value: '441px', priority: 'important' });
+        }
+    });
+
     test('clamps the top offset to the viewport and never yields negative height', () => {
         const decision = resolveMobileDrawerBounds({
             isMobileViewport: true,

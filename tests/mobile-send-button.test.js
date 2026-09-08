@@ -54,6 +54,36 @@ describe('mobile send button helpers', () => {
         })).toBe(false);
     });
 
+    test('uses the Safari version instead of the frozen CPU OS version', () => {
+        for (const [safariVersion, osVersion, legacy] of [
+            ['18.6', '18_6', true],
+            ['18.7', '18_7', true],
+            ['26.0', '18_6', false],
+            ['26.0', '18_6_2', false],
+            ['26.1', '18_7', false],
+            ['27.0', '18_7', false],
+        ]) {
+            expect(isLegacyIOSWebKitPlatform({
+                platform: 'iPhone',
+                maxTouchPoints: 5,
+                userAgent: `Mozilla/5.0 (iPhone; CPU iPhone OS ${osVersion} like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/${safariVersion} Mobile/15E148 Safari/604.1`,
+            })).toBe(legacy);
+        }
+    });
+
+    test('detects Safari versions in iPadOS desktop mode', () => {
+        for (const [safariVersion, legacy] of [
+            ['18.6', true],
+            ['26.0', false],
+        ]) {
+            expect(isLegacyIOSWebKitPlatform({
+                platform: 'MacIntel',
+                maxTouchPoints: 5,
+                userAgent: `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/${safariVersion} Safari/605.1.15`,
+            })).toBe(legacy);
+        }
+    });
+
     test('checks whether a touch ended inside the send button', () => {
         const button = { contains: target => target === 'inside' };
         expect(touchEndedInsideElement(createTouchEvent('touchend'), button, {

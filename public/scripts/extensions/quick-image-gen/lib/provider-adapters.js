@@ -326,17 +326,22 @@ function extractImageFromString(value, defaultMime) {
 function extractImageValue(candidate, defaultMime) {
     const MAX_NODES = 4096;
     const MAX_DEPTH = 64;
-    const stack = [{ value: candidate, depth: 0 }];
+    // Array cursors keep unread siblings out of the work queue and the access budget.
+    const stack = [{ values: [candidate], index: 0, depth: 0 }];
     let visited = 0;
-    while (stack.length) {
-        const { value, depth } = stack.pop();
-        if (++visited > MAX_NODES) return null;
+    while (stack.length && visited < MAX_NODES) {
+        const frame = stack.at(-1);
+        if (frame.index >= frame.values.length) {
+            stack.pop();
+            continue;
+        }
+        const value = frame.values[frame.index++];
+        const depth = frame.depth;
+        visited += 1;
         if (!value) continue;
         if (Array.isArray(value)) {
             if (depth >= MAX_DEPTH) continue;
-            for (let index = value.length - 1; index >= 0; index -= 1) {
-                stack.push({ value: value[index], depth: depth + 1 });
-            }
+            stack.push({ values: value, index: 0, depth: depth + 1 });
             continue;
         }
         if (typeof value === 'string') {
@@ -356,9 +361,7 @@ function extractImageValue(candidate, defaultMime) {
         if (value.inline_data?.data) return `data:${value.inline_data.mime_type || defaultMime};base64,${value.inline_data.data}`;
         if (value.inlineData?.data) return `data:${value.inlineData.mimeType || defaultMime};base64,${value.inlineData.data}`;
         if (depth >= MAX_DEPTH) continue;
-        for (const field of [value.image, value.text, value.content]) {
-            stack.push({ value: field, depth: depth + 1 });
-        }
+        stack.push({ values: [value.content, value.text, value.image], index: 0, depth: depth + 1 });
     }
     return null;
 }

@@ -3,6 +3,7 @@ import { parse } from '@adobe/css-tools';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import vm from 'node:vm';
 
 import {
     MOBILE_SHELL_VIEWPORT_SYNC_STEP,
@@ -921,5 +922,67 @@ describe('mobile shell lifecycle wiring', () => {
         expect(syncBoundsSource).not.toContain('style.setProperty(\'top\'');
         expect(syncBoundsSource).not.toContain('style.setProperty(\'height\'');
         expect(syncBoundsSource).not.toContain('style.removeProperty(');
+    });
+
+    test('reveals spoiler-hidden character fields when a dimmed editor sub-tab is tapped', () => {
+        class HTMLElement {}
+        class HTMLButtonElement extends HTMLElement {}
+
+        const calls = [];
+        const listeners = {};
+        const form = Object.assign(new HTMLElement(), { dataset: { sbSpoilerFreeFieldsHidden: 'true' } });
+        const tablist = Object.assign(new HTMLElement(), {
+            dataset: {},
+            addEventListener: (type, handler) => { listeners[type] = handler; },
+        });
+        const tapTab = (tabId) => {
+            const button = Object.assign(new HTMLButtonElement(), { dataset: { sbCharacterEditorTab: tabId } });
+            button.closest = () => button;
+            listeners.click({ target: button });
+        };
+        const context = {
+            HTMLElement,
+            HTMLButtonElement,
+            document: {
+                getElementById: (id) => ({ sb_character_editor_subtabs: tablist, form_create: form })[id],
+            },
+            normalizeText: (value) => String(value ?? '').trim(),
+            SB_CHARACTER_EDITOR_SUB_TABS: ['char-info', 'definitions', 'greetings', 'metadata'],
+            SB_CHARACTER_EDITOR_DEFAULT_SUB_TAB: 'char-info',
+            SB_CHARACTER_EDITOR_SPOILER_FREE_VISIBLE_TABS: ['char-info', 'metadata'],
+            setCharacterSpoilerFreeFieldsHidden: (hidden) => {
+                calls.push(['reveal', hidden]);
+                form.dataset.sbSpoilerFreeFieldsHidden = String(hidden);
+            },
+            setCharacterEditorSubTab: (tabId) => calls.push(['open', tabId]),
+            syncCharacterEditorSubTabs: () => {},
+        };
+
+        const resolveTab = vm.runInNewContext([
+            getFunctionSource('normalizeCharacterEditorSubTab'),
+            getFunctionSource('isCharacterSpoilerFreeFieldsHidden'),
+            getFunctionSource('isCharacterEditorSubTabSpoilerHidden'),
+            getFunctionSource('resolveCharacterEditorSubTab'),
+            getFunctionSource('bindCharacterEditorSubTabs'),
+            'bindCharacterEditorSubTabs();',
+            'resolveCharacterEditorSubTab;',
+        ].join('\n'), context);
+
+        // While hidden, Definitions is rerouted to Metadata; that is exactly what the reporter saw.
+        expect(resolveTab('definitions')).toBe('metadata');
+
+        // Tapping an always-visible tab must not touch the spoiler state.
+        tapTab('char-info');
+        expect(calls).toEqual([['open', 'char-info']]);
+
+        // Tapping a dimmed tab reveals the fields first, then opens that tab for real.
+        tapTab('definitions');
+        expect(calls).toEqual([['open', 'char-info'], ['reveal', false], ['open', 'definitions']]);
+        expect(resolveTab('definitions')).toBe('definitions');
+
+        // Once revealed, further taps are plain tab switches.
+        tapTab('greetings');
+        expect(calls.at(-1)).toEqual(['open', 'greetings']);
+        expect(calls.filter(([kind]) => kind === 'reveal')).toHaveLength(1);
     });
 });

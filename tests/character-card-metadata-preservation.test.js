@@ -21,11 +21,12 @@ const diskCacheEnvironmentKey = 'SILLYTAVERN_PERFORMANCE_USEDISKCACHE';
 const originalDiskCacheSetting = process.env[diskCacheEnvironmentKey];
 const describeWindows = process.platform === 'win32' ? describe : describe.skip;
 const describeCaseSensitive = process.platform === 'win32' ? describe.skip : describe;
+const describePosix = process.platform === 'win32' ? describe.skip : describe;
 process.env[diskCacheEnvironmentKey] = 'false';
 process.chdir(repoRoot);
 setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
 
-const { router: charactersRouter } = await import('../src/endpoints/characters.js');
+const { router: charactersRouter, sanitiseFilenameForWindows } = await import('../src/endpoints/characters.js');
 
 describe('character card metadata preservation', () => {
     let baseUrl;
@@ -330,6 +331,53 @@ describe('character card metadata preservation', () => {
         expect(response.status).toBe(200);
         expect(fs.existsSync(path.join(directories.characters, avatar))).toBe(false);
         expect(fs.existsSync(chatDirectory)).toBe(false);
+    });
+
+    describePosix('POSIX character filenames', () => {
+        test('deletes a character and its chats when the filename contains a pipe', async () => {
+            const owner = 'Alice | Test';
+            const avatar = `${owner}.png`;
+            const avatarPath = path.join(directories.characters, avatar);
+            const chatDirectory = path.join(directories.chats, owner);
+            fs.writeFileSync(avatarPath, 'avatar');
+            fs.mkdirSync(chatDirectory, { recursive: true });
+            fs.writeFileSync(path.join(chatDirectory, 'chat.jsonl'), '{}\n');
+
+            const response = await postJson('/api/characters/delete', {
+                avatar_url: avatar,
+                delete_chats: true,
+            });
+
+            expect(response.status).toBe(200);
+            expect(fs.existsSync(avatarPath)).toBe(false);
+            expect(fs.existsSync(chatDirectory)).toBe(false);
+        });
+    });
+
+    describeWindows('Windows character filenames', () => {
+        test('sanitises forbidden characters like pipes and question marks for Windows', () => {
+            const sanitised = sanitiseFilenameForWindows('Alice | Test?');
+            expect(sanitised).toBe('Alice _ Test_');
+            expect(sanitised).not.toMatch(/[<>:"/\\|?*]/);
+        });
+    });
+
+    test('does not delete the chats root for an unsafe character owner', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        const avatar = '..png';
+        const avatarPath = path.join(directories.characters, avatar);
+        const sentinelPath = path.join(directories.chats, 'keep.jsonl');
+        fs.writeFileSync(avatarPath, 'avatar');
+        fs.writeFileSync(sentinelPath, '{}\n');
+
+        const response = await postJson('/api/characters/delete', {
+            avatar_url: avatar,
+            delete_chats: true,
+        });
+
+        expect(response.status).toBe(403);
+        expect(fs.existsSync(avatarPath)).toBe(true);
+        expect(fs.existsSync(sentinelPath)).toBe(true);
     });
 
     function saveCharacter(character, avatarUrl = 'Alice.png') {

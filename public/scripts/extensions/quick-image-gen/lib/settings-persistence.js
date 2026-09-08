@@ -52,12 +52,47 @@ function restoreStorageValue(storage, key, previousValue) {
     else storage.setItem(key, previousValue);
 }
 
+export async function saveSettingsWithConfirmation({ save, acknowledge = null, expectedValues }) {
+    if (typeof save !== "function") throw new Error("Immediate settings persistence is unavailable");
+    let confirmation;
+    let confirmationError = null;
+    try {
+        // The caller owns the serialized mutation; observe before the host yields.
+        confirmation = acknowledge?.(cloneSynchronizedValue(expectedValues));
+    } catch (error) {
+        confirmationError = error;
+    }
+    const acknowledged = Promise.resolve(confirmation).catch(error => {
+        confirmationError = error;
+        return false;
+    });
+    try {
+        const saved = await save();
+        if (saved === false) throw new Error("Server synchronization reported failure");
+        let confirmed = saved === true;
+        if (acknowledge) {
+            try {
+                confirmed = (typeof confirmation?.confirmAfterSave === "function"
+                    ? await confirmation.confirmAfterSave()
+                    : await acknowledged) === true;
+            } catch (error) {
+                confirmed = false;
+                confirmationError = error;
+            }
+        }
+        return { confirmed, confirmationError };
+    } finally {
+        confirmation?.cancel?.();
+    }
+}
+
 async function persistSynchronizedStoresNow({
     storage,
     settings,
     stores,
     save,
     acknowledge = null,
+    settingsChanges = {},
 }) {
     if (!storage || !settings || !Array.isArray(stores) || !stores.length || typeof save !== "function") {
         throw new Error("Synchronized store persistence is unavailable");
@@ -73,43 +108,59 @@ async function persistSynchronizedStoresNow({
             hadBackup,
             previousBackup: hadBackup ? cloneSynchronizedValue(settings[backupKey]) : undefined,
             previousLocal: null,
+            previousPending: null,
             cacheWritten: false,
             cacheError: null,
         };
     });
+    const changedSettings = Object.entries(settingsChanges).map(([key, value]) => ({
+        key,
+        value: cloneSynchronizedValue(value),
+        present: Object.prototype.hasOwnProperty.call(settings, key),
+        previous: cloneSynchronizedValue(settings[key]),
+    }));
 
+    for (const entry of changedSettings) settings[entry.key] = entry.value;
     for (const record of records) {
         try {
             record.previousLocal = storage.getItem(record.localKey);
+            record.previousPending = storage.getItem(`${PENDING_SYNC_MARKER_PREFIX}${record.localKey}`);
             storage.setItem(record.localKey, JSON.stringify(record.value));
             record.cacheWritten = true;
+            // Retain local authority even if the tab closes while the host saves.
+            storage.setItem(`${PENDING_SYNC_MARKER_PREFIX}${record.localKey}`, "1");
         } catch (error) {
             record.cacheError = error;
         }
         settings[record.backupKey] = cloneSynchronizedValue(record.value);
     }
 
-    let confirmed = true;
-    let confirmationError = null;
+    const saveAndConfirm = () => saveSettingsWithConfirmation({
+        save,
+        acknowledge,
+        expectedValues: Object.fromEntries([
+            ...records.map(record => [record.backupKey, settings[record.backupKey]]),
+            ...changedSettings.map(entry => [entry.key, settings[entry.key]]),
+        ]),
+    });
+
+    let confirmation;
     try {
-        await save();
-        if (typeof acknowledge === "function") {
-            try {
-                const result = await acknowledge();
-                if (result === false) confirmed = false;
-            } catch (error) {
-                confirmed = false;
-                confirmationError = error;
-            }
-        }
+        confirmation = await saveAndConfirm();
     } catch (error) {
         const rollbackErrors = [];
+        for (const entry of changedSettings) {
+            if (settings[entry.key] !== entry.value) continue;
+            if (entry.present) settings[entry.key] = entry.previous;
+            else delete settings[entry.key];
+        }
         for (const record of records) {
             if (record.hadBackup) settings[record.backupKey] = record.previousBackup;
             else delete settings[record.backupKey];
             if (record.cacheWritten) {
                 try {
                     restoreStorageValue(storage, record.localKey, record.previousLocal);
+                    restoreStorageValue(storage, `${PENDING_SYNC_MARKER_PREFIX}${record.localKey}`, record.previousPending);
                 } catch (rollbackError) {
                     rollbackErrors.push(rollbackError);
                 }
@@ -118,30 +169,29 @@ async function persistSynchronizedStoresNow({
         // The remote commit may have succeeded before the rejection (lost response);
         // persist the restored state so the server cannot remain ahead of local data.
         try {
-            await save();
+            const rollback = await saveAndConfirm();
+            if (!rollback.confirmed) throw new Error("Settings rollback could not be confirmed", { cause: rollback.confirmationError });
         } catch (compensationError) {
             rollbackErrors.push(compensationError);
+            for (const record of records) {
+                try {
+                    if (storage.getItem(record.localKey) != null) storage.setItem(`${PENDING_SYNC_MARKER_PREFIX}${record.localKey}`, "1");
+                } catch { /* retain the restored copy for retry where storage permits */ }
+            }
         }
         if (rollbackErrors.length) {
             throw new AggregateError(
                 [error, ...rollbackErrors],
                 `Server synchronization failed: ${String(error?.message || error)}; the rollback could not be fully persisted`,
+                { cause: error },
             );
         }
         throw error;
     }
+    const { confirmed, confirmationError } = confirmation;
 
-    // The save resolved but was not positively confirmed: the server copy may
-    // still hold the old value, so mark the local cache authoritative for the
-    // next reconciliation instead of letting a stale server value win.
-    if (!confirmed) {
-        for (const record of records) {
-            if (!record.cacheWritten) continue;
-            try {
-                storage.setItem(`${PENDING_SYNC_MARKER_PREFIX}${record.localKey}`, "1");
-            } catch { /* best effort */ }
-        }
-    } else {
+    // Only positive confirmation may release the pending local copy.
+    if (confirmed) {
         for (const record of records) {
             try {
                 storage.removeItem(`${PENDING_SYNC_MARKER_PREFIX}${record.localKey}`);
@@ -187,6 +237,7 @@ export async function persistSynchronizedStore(options) {
         }],
         save: options.save,
         acknowledge: options.acknowledge,
+        settingsChanges: options.settingsChanges,
     });
     return {
         value: result.values[0],

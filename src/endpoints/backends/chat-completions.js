@@ -1,5 +1,6 @@
 /* eslint-disable dot-notation */
 import process from 'node:process';
+import { validateHeaderValue } from 'node:http';
 import https from 'node:https';
 import { text } from 'node:stream/consumers';
 import nodeUtil from 'node:util';
@@ -2860,6 +2861,21 @@ export async function handleChatCompletionsGenerate(request, response) {
         // to the provider verbatim.
         applyReasoningEffortNormalization(request.body);
 
+        // SillyBunny: apply Astra's reasoning-model request constraints before dispatch so
+        // profile overrides and Conversation REST requests follow the same native OpenAI path.
+        if ([CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES].includes(request.body.chat_completion_source)
+            && request.body.model === 'gpt-6-astra') {
+            // A profile override can supply max_tokens after a preset set max_completion_tokens.
+            request.body.max_completion_tokens = request.body.max_tokens ?? request.body.max_completion_tokens;
+            for (const key of ['max_tokens', 'temperature', 'top_p', 'frequency_penalty', 'presence_penalty', 'logit_bias', 'stop', 'logprobs', 'top_logprobs']) {
+                delete request.body[key];
+            }
+            if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.OPENAI) {
+                delete request.body.tools;
+                delete request.body.tool_choice;
+            }
+        }
+
         console.log(`[ChatCompletions] generate: type=${request.body.type} source=${request.body.chat_completion_source} model=${request.body.model} stream=${request.body.stream}`);
 
         const postProcessingType = request.body.custom_prompt_post_processing;
@@ -3099,6 +3115,46 @@ export async function handleChatCompletionsGenerate(request, response) {
             apiKey = readSecret(request.user.directories, SECRET_KEYS.NANOGPT);
             headers = {};
             bodyParams = {};
+
+            // SillyBunny: explicit lists replace the legacy selector even when empty; malformed restrictions must fail closed.
+            let hasProviderLists = false;
+            for (const [field, key] of [
+                ['nanogpt_allowed_providers', 'only'],
+                ['nanogpt_ignored_providers', 'ignore'],
+            ]) {
+                if (!Object.hasOwn(request.body, field)) continue;
+                hasProviderLists = true;
+                const providers = request.body[field];
+                if (!Array.isArray(providers) || providers.some(provider => typeof provider !== 'string' || !provider.trim())) {
+                    return response.status(400).send({ error: true });
+                }
+                if (providers.length > 0) {
+                    bodyParams['provider'] ??= {};
+                    bodyParams['provider'][key] = providers;
+                }
+            }
+            if (!hasProviderLists && Object.hasOwn(request.body, 'nanogpt_provider')) {
+                const provider = request.body.nanogpt_provider;
+                if (typeof provider !== 'string') {
+                    return response.status(400).send({ error: true });
+                }
+                try {
+                    validateHeaderValue('X-Provider', provider);
+                } catch {
+                    return response.status(400).send({ error: true });
+                }
+                if (provider.trim()) {
+                    headers['X-Provider'] = provider;
+                }
+            }
+            if (Object.hasOwn(request.body, 'nanogpt_payg_override') && typeof request.body.nanogpt_payg_override !== 'boolean') {
+                return response.status(400).send({ error: true });
+            }
+            if (request.body.nanogpt_payg_override === true) {
+                headers['X-Billing-Mode'] = 'paygo';
+                bodyParams['billing_mode'] = 'paygo';
+            }
+
             if (request.body.enable_web_search && !/:online$/.test(request.body.model)) {
                 request.body.model = `${request.body.model}:online`;
             }

@@ -84,7 +84,7 @@ import { t } from './i18n.js';
 import { ToolManager } from './tool-calling.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { COMETAPI_IGNORE_PATTERNS, IGNORE_SYMBOL, MEDIA_DISPLAY, MEDIA_TYPE } from './constants.js';
-import { syncOpenRouterProvidersForModel, updateOpenRouterProvidersWarning } from './textgen-models.js';
+import { setOpenRouterProviders, syncNanoGptProvidersForModel, syncOpenRouterProvidersForModel, updateNanoGptProvidersWarning, updateOpenRouterProvidersWarning } from './textgen-models.js';
 import { hasTextOrArrayPayload, shouldRetainContextAtDepth, stripHtmlTagsFromContext, stripOocBlocksFromContext } from './ooc-blocks.js';
 import { checkPostInterceptChatBudget, shouldCheckPostInterceptChatBudget } from './openai-prompt-budget.js';
 import {
@@ -95,6 +95,7 @@ import {
     buildReverseProxyPresetForSave,
     getChatCompletionSamplingProfileLookupKeys,
     getCustomEndpointFavoritesKey,
+    migrateNanoGptProviderSettings,
     normalizeCustomEndpointPreset,
     normalizeReverseProxyPreset,
     shouldIncludeSamplingFieldsInPreset,
@@ -298,6 +299,9 @@ const MODEL_ID_SEARCH_CONTROLS = [
 ];
 
 const INLINE_SELECT_PICKER_CONTROLS = [
+    { source: 'nanogpt-model', select: '#model_nanogpt_select', label: 'NanoGPT Model' },
+    { source: 'nanogpt-allowed-providers', select: '#nanogpt_allowed_providers', label: 'Allowed providers', multiple: true },
+    { source: 'nanogpt-ignored-providers', select: '#nanogpt_ignored_providers', label: 'Ignored providers', multiple: true },
     { source: 'openrouter-model-chat', select: '#model_openrouter_select', label: 'OpenRouter model' },
     { source: 'openrouter-sort-models', select: '#openrouter_sort_models', label: 'OpenRouter model sorting' },
     { source: 'openrouter-providers-chat', select: '#openrouter_providers_chat', label: 'OpenRouter providers', multiple: true },
@@ -468,6 +472,10 @@ export const settingsToUpdate = {
     electronhub_sort_models: ['#electronhub_sort_models', 'electronhub_sort_models', false, true],
     electronhub_group_models: ['#electronhub_group_models', 'electronhub_group_models', false, true],
     nanogpt_model: ['#model_nanogpt_select', 'nanogpt_model', false, true],
+    nanogpt_provider: ['', 'nanogpt_provider', false, true],
+    nanogpt_allowed_providers: ['#nanogpt_allowed_providers', 'nanogpt_allowed_providers', false, true],
+    nanogpt_ignored_providers: ['#nanogpt_ignored_providers', 'nanogpt_ignored_providers', false, true],
+    nanogpt_payg_override: ['#nanogpt_payg_override', 'nanogpt_payg_override', true, true],
     deepseek_model: ['#model_deepseek_select', 'deepseek_model', false, true],
     aimlapi_model: ['#model_aimlapi_select', 'aimlapi_model', false, true],
     xai_model: ['#model_xai_select', 'xai_model', false, true],
@@ -592,6 +600,10 @@ const default_settings = {
     electronhub_sort_models: 'alphabetically',
     electronhub_group_models: false,
     nanogpt_model: 'gpt-4o-mini',
+    nanogpt_provider: '',
+    nanogpt_allowed_providers: [],
+    nanogpt_ignored_providers: [],
+    nanogpt_payg_override: false,
     deepseek_model: 'deepseek-v4-flash',
     aimlapi_model: 'chatgpt-4o-latest',
     xai_model: 'grok-3-beta',
@@ -2448,6 +2460,7 @@ function closeModelSelectPickerMenus(exceptMenu = null) {
     document.querySelectorAll('.sb-model-id-picker-menu').forEach(menu => {
         if (menu !== exceptMenu) {
             menu.hidden = true;
+            if (menu.id) document.querySelector(`[aria-controls="${CSS.escape(menu.id)}"]`)?.setAttribute('aria-expanded', 'false');
         }
     });
 }
@@ -2466,10 +2479,13 @@ function bindModelSelectPickerDocumentListener() {
     });
 
     document.addEventListener('keydown', event => {
-        if (event.key === 'Escape') {
+        if (event.key === 'Escape' && document.querySelector('.sb-model-id-picker-menu:not([hidden])')) {
+            // Close nested pickers before the enclosing API panel handles Escape.
+            event.preventDefault();
+            event.stopPropagation();
             closeModelSelectPickerMenus();
         }
-    });
+    }, true);
 
     modelSelectPickerDocumentListenerBound = true;
 }
@@ -2642,15 +2658,15 @@ function getInlineSelectPickerEntries(select) {
         if (child instanceof HTMLOptGroupElement) {
             const groupLabel = child.label || '';
             for (const option of child.children) {
-                if (option instanceof HTMLOptionElement && !option.disabled) {
-                    entries.push({ group: groupLabel, text: option.textContent.trim() || option.value, value: option.value });
+                if (option instanceof HTMLOptionElement && (!option.disabled || (select.multiple && option.selected))) {
+                    entries.push({ group: groupLabel, text: option.textContent.trim() || option.value, value: option.value, element: option });
                 }
             }
             continue;
         }
 
-        if (child instanceof HTMLOptionElement && !child.disabled) {
-            entries.push({ group: '', text: child.textContent.trim() || child.value, value: child.value });
+        if (child instanceof HTMLOptionElement && (!child.disabled || (select.multiple && child.selected))) {
+            entries.push({ group: '', text: child.textContent.trim() || child.value, value: child.value, element: child });
         }
     }
 
@@ -2670,7 +2686,11 @@ function toggleInlineSelectPickerOption(select, value) {
     if (select.multiple) {
         for (const option of select.options) {
             if (option.value === value) {
-                option.selected = !option.selected;
+                if (!option.disabled || option.selected) {
+                    option.selected = !option.selected;
+                    // SillyBunny: match desktop OpenRouter routing priority, newest selection last.
+                    if (option.selected && select.classList.contains('openrouter_providers')) select.append(option);
+                }
                 break;
             }
         }
@@ -2690,6 +2710,7 @@ function openInlineSelectPicker(select, { source = select.id, label = select.id,
     let menu = menuParent.querySelector(`.sb-model-id-picker-menu[data-sb-model-id-picker-menu-source="${CSS.escape(source)}"]`);
     if (!(menu instanceof HTMLElement)) {
         menu = document.createElement('div');
+        menu.id = `${select.id}_menu`;
         menu.className = 'sb-model-id-picker-menu sb-inline-select-picker-menu';
         menu.dataset.sbModelIdPickerMenuSource = source;
         menu.hidden = true;
@@ -2729,6 +2750,10 @@ function openInlineSelectPicker(select, { source = select.id, label = select.id,
         button.type = 'button';
         button.className = 'sb-model-id-picker-option sb-inline-select-picker-option';
         button.textContent = entry.text;
+        if (select.id === 'model_nanogpt_select') {
+            const template = getNanoGptModelTemplate({ id: entry.value, text: entry.text, element: entry.element });
+            if (typeof template !== 'string') button.replaceChildren(template[0]);
+        }
         button.dataset.value = entry.value;
         button.setAttribute('role', 'option');
         button.setAttribute('aria-selected', String(selected));
@@ -2750,6 +2775,7 @@ function openInlineSelectPicker(select, { source = select.id, label = select.id,
     const willOpen = forceOpen || menu.hidden;
     closeModelSelectPickerMenus(menu);
     menu.hidden = !willOpen;
+    document.getElementById(`${select.id}_picker`)?.setAttribute('aria-expanded', String(willOpen));
 
     if (!menu.hidden) {
         scrollElementIntoNearestPanelScroller(menu.querySelector('[aria-selected="true"]'));
@@ -2770,6 +2796,16 @@ function bindInlineSelectPickerSelect(select, control) {
     select.dataset.sbInlineSelectPickerBound = 'true';
     select.classList.add('sb-inline-select-picker-control');
 
+    // SillyBunny: repaint an open provider menu after async updates without saving settings.
+    if (select.classList.contains('openrouter_providers')) {
+        $(select).on('change.select2', () => {
+            const menu = document.getElementById(`${select.id}_menu`);
+            if (shouldUseInlineModelSelectPicker() && menu && !menu.hidden) {
+                openInlineSelectPicker(select, { ...control, forceOpen: true });
+            }
+        });
+    }
+
     const openPicker = event => {
         if (!shouldUseInlineModelSelectPicker()) {
             return;
@@ -2781,6 +2817,7 @@ function bindInlineSelectPickerSelect(select, control) {
     };
 
     select.addEventListener('pointerdown', openPicker);
+    document.getElementById(`${select.id}_picker`)?.addEventListener('click', openPicker);
     select.addEventListener('click', event => {
         if (shouldUseInlineModelSelectPicker()) {
             event.preventDefault();
@@ -4399,11 +4436,36 @@ function getNanoGptModelTemplate(option) {
 
     const contextLength = model.context_length || 'Unknown';
 
-    return $((`
-        <div class="flex-container alignItemsBaseline" title="${DOMPurify.sanitize(model.id)}">
-            <strong>${DOMPurify.sanitize(model.id)}</strong> | ${contextLength} ctx | <small>${price}</small>
-        </div>
-    `));
+    // SillyBunny: share upstream model details with the mobile picker; treat catalogue fields as text.
+    const row = $('<span>', { class: 'flex-container alignItemsBaseline', title: model.id });
+    row.append($('<strong>').text(model.name || model.id), document.createTextNode(` | ${contextLength} ctx | `), $('<small>').text(price));
+    const icons = $('<span>');
+    for (const [capability, icon, title] of [
+        ['vision', 'eye', 'This model supports vision'],
+        ['reasoning', 'brain', 'This model supports reasoning'],
+        ['tool_calling', 'wrench', 'This model supports tool calling'],
+    ]) {
+        if (model.capabilities?.[capability] === true) {
+            icons.append($('<i>', { class: `fa-solid fa-${icon} fa-sm`, title, 'aria-label': title }), ' ');
+        }
+    }
+
+    const sub = model.subscription;
+    if (sub?.included === true) {
+        const multiplier = sub.inputTokenMultiplier;
+        const multiplied = Number.isFinite(multiplier) && multiplier > 0 && multiplier !== 1;
+        const title = 'Included in subscription' + (multiplied ? ` - Input Multiplier: ${multiplier}x` : '');
+        icons.append($('<small>', { title }).append(
+            $('<i>', { class: 'fa-solid fa-crown fa-xs', 'aria-hidden': 'true' }),
+            multiplied ? ` Sub (${multiplier}x)` : ' Sub',
+        ));
+    } else if (sub?.included === false) {
+        icons.append($('<small>', { title: typeof sub.note === 'string' ? sub.note : 'Not in Sub' }).append(
+            $('<i>', { class: 'fa-solid fa-circle-info fa-sm', 'aria-hidden': 'true' }), ' Not in Sub',
+        ));
+    }
+    if (icons.children().length) row.append(' | ', icons);
+    return row;
 }
 
 function calculateChutesCost() {
@@ -4552,7 +4614,7 @@ function saveModelList(data) {
             $('#model_nanogpt_select').append(
                 $('<option>', {
                     value: model.id,
-                    text: model.id,
+                    text: model.name || model.id,
                 }));
         });
 
@@ -5561,6 +5623,10 @@ export async function createGenerationParameters(settings, model, type, messages
 
     // https://docs.nano-gpt.com/api-reference/endpoint/chat-completion#temperature-&-nucleus
     if (settings.chat_completion_source === chat_completion_sources.NANOGPT) {
+        generate_data.nanogpt_provider = settings.nanogpt_provider;
+        generate_data.nanogpt_allowed_providers = settings.nanogpt_allowed_providers;
+        generate_data.nanogpt_ignored_providers = settings.nanogpt_ignored_providers;
+        generate_data.nanogpt_payg_override = settings.nanogpt_payg_override;
         generate_data.top_k = settings.top_k_openai > 0 ? Number(settings.top_k_openai) : undefined;
         generate_data.min_p = Number(settings.min_p_openai);
         generate_data.repetition_penalty = Number(settings.repetition_penalty_openai);
@@ -6899,6 +6965,7 @@ export class ChatCompletion {
  * @param {ChatCompletionSettings} settings Settings to migrate
  */
 function migrateChatCompletionSettings(settings) {
+    migrateNanoGptProviderSettings(settings);
     const migrateMap = [
         { oldKey: 'group_nudge_prompt', oldValue: legacy_group_nudge_prompt, newKey: 'group_nudge_prompt', newValue: default_group_nudge_prompt },
         { oldKey: 'names_in_completion', oldValue: true, newKey: 'names_behavior', newValue: character_names_behavior.COMPLETION },
@@ -6930,6 +6997,24 @@ function migrateChatCompletionSettings(settings) {
     }
 }
 
+function updateNanoGptProviderControls() {
+    for (const key of ['nanogpt_allowed_providers', 'nanogpt_ignored_providers']) {
+        const select = document.getElementById(key);
+        const providers = oai_settings[key];
+        if (!(select instanceof HTMLSelectElement) || !Array.isArray(providers)) continue;
+
+        for (const provider of providers) {
+            if (typeof provider === 'string' && !Array.from(select.options).some(option => option.value === provider)) {
+                select.add(new Option(provider, provider));
+            }
+        }
+        $(select).val(providers).trigger('change.select2');
+        $(`#${key}_picker`).text(Array.from(select.selectedOptions, option => option.text).join(', ') || t`Select providers`);
+    }
+    $('#nanogpt_payg_override').prop('checked', oai_settings.nanogpt_payg_override === true);
+    updateNanoGptProvidersWarning('#nanogpt_allowed_providers');
+}
+
 /**
  * Load OpenAI settings from backend data
  * @param {any} data Settings data from backend
@@ -6957,7 +7042,9 @@ function loadOpenAISettings(data, settings) {
     ensureModelFavoritesStore(settings);
 
     for (const key of Object.keys(default_settings)) {
-        oai_settings[key] = settings[key] ?? default_settings[key];
+        // Invalid NanoGPT restrictions must reach request validation, not become unrestricted defaults.
+        const isNanoGptRequestSetting = ['nanogpt_allowed_providers', 'nanogpt_ignored_providers', 'nanogpt_payg_override'].includes(key);
+        oai_settings[key] = isNanoGptRequestSetting && Object.hasOwn(settings, key) ? settings[key] : settings[key] ?? default_settings[key];
         const settingToUpdate = Object.values(settingsToUpdate).find(([_, k]) => k === key);
         if (settingToUpdate) {
             const [selector] = settingToUpdate;
@@ -7010,8 +7097,10 @@ function loadOpenAISettings(data, settings) {
     setToolReasoningControls();
     setAutoAppendReasoningTagControls();
 
-    $('#openrouter_providers_chat').trigger('change');
+    // SillyBunny: saved provider names must survive catalogue failures and absent providers.
+    setOpenRouterProviders('#openrouter_providers_chat', oai_settings.openrouter_providers);
     $('#openrouter_quantizations_chat').trigger('change');
+    updateNanoGptProviderControls();
     rebuildOpenAIModelSelect();
     updateOpenAIModelFavoriteButton();
     updateAdvancedFormattingVisibility();
@@ -7697,6 +7786,9 @@ async function onPresetImportFileChange(e) {
 
     await eventSource.emit(event_types.OAI_PRESET_IMPORT_READY, { data: presetBody, presetName: name });
 
+    // SillyBunny: migrate before merging an import with an existing preset's provider lists.
+    migrateNanoGptProviderSettings(presetBody);
+
     const savePresetSettings = await fetch('/api/presets/save', {
         method: 'POST',
         headers: getRequestHeaders(),
@@ -7967,8 +8059,9 @@ function onSettingsPresetChange() {
         // These cannot be changed via preset if unbound to connection
         if (oai_settings.bind_preset_to_connection) {
             $('#chat_completion_source').trigger('change');
-            $('#openrouter_providers_chat').trigger('change');
+            setOpenRouterProviders('#openrouter_providers_chat', oai_settings.openrouter_providers);
             $('#openrouter_quantizations_chat').trigger('change');
+            updateNanoGptProviderControls();
         }
 
         rebuildOpenAIModelSelect();
@@ -8534,6 +8627,7 @@ async function onModelChange() {
 
         console.log('NanoGPT model changed to', value);
         oai_settings.nanogpt_model = value;
+        syncNanoGptProvidersForModel(value, '#nanogpt_allowed_providers');
     }
 
     if ($(this).is('#model_workers_ai_select')) {
@@ -9301,6 +9395,7 @@ export function isImageInliningSupported() {
         'gpt-4.5-preview',
         'gpt-4o',
         'gpt-5',
+        'gpt-6-astra', // SillyBunny: Astra supports image input in both native OpenAI API modes.
         'o1',
         'o3',
         'o4-mini',
@@ -11118,15 +11213,21 @@ export function initOpenAI() {
         });
     }
 
+    $('#nanogpt_allowed_providers, #nanogpt_ignored_providers').on('change', function () {
+        // jQuery val() omits disabled options, including saved restrictions on other models.
+        oai_settings[this.id] = Array.from(this.selectedOptions, option => option.value);
+        migrateNanoGptProviderSettings(oai_settings);
+        updateNanoGptProviderControls();
+        saveSettingsDebounced();
+    });
+
+    $('#nanogpt_payg_override').on('input', function () {
+        oai_settings.nanogpt_payg_override = this.checked;
+        saveSettingsDebounced();
+    });
+
     $('#openrouter_providers_chat').on('change', function () {
-        const selectedProviders = $(this).val();
-
-        // Not a multiple select?
-        if (!Array.isArray(selectedProviders)) {
-            return;
-        }
-
-        oai_settings.openrouter_providers = selectedProviders;
+        oai_settings.openrouter_providers = Array.from(this.selectedOptions, option => option.value);
 
         updateOpenRouterProvidersWarning('#openrouter_providers_chat');
         saveSettingsDebounced();

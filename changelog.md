@@ -72,6 +72,19 @@
 - PR #815 (2026-09-02) `chore: add Fable 5.1 on Claude backend and add support`
 - PR #816 (2026-09-02) `fix: exclude partial prefill from post-gen ICA rewrites`
 - PR #817 (2026-09-03) `feat(linkapi): use the relevant SVGs automatically for models`
+- PR #821 (2026-09-04) `fix: fixes 'Char is typing' not stopping on group chats, and allow opening of Definitions/Greetings`
+- PR #822 (2026-09-04) `fix: sanitise filenames for linux systems`
+- PR #823 (2026-09-04) `chore: add GPT 6 Astra on OpenAI backend`
+- PR #825 (2026-09-06) `fix(ios26+): correctly identify iOS versions`
+- PR #826 (2026-09-06) `chore: update Quick Image Gen to 3.5.0`
+- PR #827 (2026-09-06) `fix(windows): sanitise forbidden characters in filenames on Windows`
+- PR #828 (2026-09-06) `fix(mobile): extend tagging input box`
+- PR #829 (2026-09-06) `fix(mobile): move the arrow a bit on the thought block`
+- PR #830 (2026-09-07) `fix(nano-gpt): restore the UI for picking provider and PAYG`
+- PR #831 (2026-09-07) `chore: update nanogpt provider list`
+- PR #832 (2026-09-07) `feat(openrouter): automate provider list using OpenRouter endpoint`
+- PR #834 (2026-09-07) `fix: retain existing saved themes when installing external theme packs`
+- PR #835 (2026-09-08) `fix(mobile): prevent the Persona picker page from being draggable to the left or right + dropdown for scenario notes`
 
 ## v1.7.0
 

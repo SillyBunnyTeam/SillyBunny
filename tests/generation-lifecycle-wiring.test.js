@@ -2,6 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import vm from 'node:vm';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const scriptSource = readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
@@ -32,6 +33,27 @@ function getFunctionSource(name, { exported = false } = {}) {
     }
 
     throw new Error(`Unable to find function source for ${name}`);
+}
+
+// Minimal jQuery stand-in that mirrors mobile-styles.css:
+// `#send_form:not(.sb-generating-controls) #mes_stop { display: none !important; }`
+function createMobileStopButtonDom() {
+    const state = { generatingClass: true, inlineDisplay: 'flex' };
+    const elements = {
+        '#send_form': {
+            removeClass: () => { state.generatingClass = false; },
+        },
+        '#mes_stop': {
+            css: value => {
+                if (typeof value === 'string') {
+                    return state.generatingClass ? state.inlineDisplay : 'none';
+                }
+                state.inlineDisplay = value.display;
+            },
+        },
+    };
+
+    return { $: selector => elements[selector], state };
 }
 
 function getSourceBetween(startMarker, endMarker) {
@@ -98,6 +120,22 @@ describe('generation lifecycle wiring', () => {
         expect(unblockSource).toContain('unblockState.shouldResetProgress');
         expect(unblockSource).toContain('unblockState.shouldFlushEphemeralState');
         expect(unblockSource).not.toContain('type === \'quiet\' && streamingProcessor && !streamingProcessor.isFinished');
+    });
+
+    test('emits GENERATION_ENDED once even when the mobile stylesheet hides the stop button on class removal', () => {
+        const hideSource = getFunctionSource('hideStopButton');
+        const emitted = [];
+        const { $, state } = createMobileStopButtonDom();
+
+        vm.runInNewContext(`${hideSource}\nhideStopButton();\nhideStopButton();`, {
+            $,
+            eventSource: { emit: (...args) => emitted.push(args) },
+            event_types: { GENERATION_ENDED: 'generation_ended' },
+            chat: { length: 3 },
+        });
+
+        expect(emitted).toEqual([['generation_ended', 3]]);
+        expect(state).toEqual({ generatingClass: false, inlineDisplay: 'none' });
     });
 
     test('routes provider-error cleanup through stopped lifecycle semantics', () => {

@@ -3,6 +3,12 @@ import { afterEach, describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import * as generation from '../public/scripts/extensions/quick-image-gen/lib/generation.js';
+import { GenerationRunManager, snapshotGenerationRunSettings, snapshotGenerationSettings } from '../public/scripts/extensions/quick-image-gen/lib/generation-run.js';
+import { materializeAndValidateProviderOutput } from '../public/scripts/extensions/quick-image-gen/lib/client-orchestration.js';
+import { normalizeProviderResult } from '../public/scripts/extensions/quick-image-gen/lib/provider-contract.js';
+import { buildTextAIRequestMessages } from '../public/scripts/extensions/quick-image-gen/lib/prompt-pipeline.js';
+import { MAX_IMAGE_BYTES } from '../public/scripts/extensions/quick-image-gen/lib/security.js';
 
 const capabilityRegistryKey = Symbol.for('sillybunny.extensionCapabilities');
 const qigSource = readFileSync(fileURLToPath(new URL('../public/scripts/extensions/quick-image-gen/index.js', import.meta.url)), 'utf8');
@@ -329,6 +335,79 @@ describe('Conversation extension media integration', () => {
         await expect(readiness).rejects.toThrow('initialization failed');
     });
 
+    test('scoped run snapshots preserve queued review revisions without reading roleplay context', () => {
+        const settings = { reviewBeforeGenerate: true, style: 'global' };
+        const scoped = { __qigScopedCharacter: true, chat: [] };
+        const filters = [{ name: 'scoped filter' }];
+        const context = createQigContext({
+            getSettings: () => settings,
+            getContext: jest.fn(),
+            getScopedCharacterGenerationSettings: jest.fn(value => ({ ...value, style: 'scoped' })),
+            getActiveFilters: jest.fn(() => filters),
+            resolveContextualFilter: jest.fn(filter => filter),
+            snapshotGenerationRunSettings,
+            snapshotGenerationSettings,
+            transientGenerationSettingsState: { current: null },
+            reviewDisableRevision: 3,
+            activeGenerationRun: null,
+        });
+        const snapshot = evaluateInContext('getGenerationSettingsForRun', context);
+        const shouldReview = evaluateInContext('shouldReviewPrompt', context);
+        const queued = snapshot(scoped);
+        expect(queued).toMatchObject({ style: 'scoped', __qigReviewDisableRevision: 3, __qigActiveContextualFilters: filters });
+        expect(queued.__qigActiveContextualFilters).not.toBe(filters);
+        expect(context.getScopedCharacterGenerationSettings).toHaveBeenCalledWith(settings, scoped);
+        expect(context.getActiveFilters).toHaveBeenCalledWith(scoped);
+        expect(context.resolveContextualFilter).toHaveBeenCalledWith(filters[0], scoped);
+        expect(shouldReview(queued)).toBe(true);
+
+        context.reviewDisableRevision++;
+        context.transientGenerationSettingsState.current = { value: queued };
+        const resumed = snapshot(scoped);
+        expect(resumed.__qigReviewDisableRevision).toBe(3);
+        expect(shouldReview(resumed)).toBe(false);
+        context.transientGenerationSettingsState.current = null;
+        expect(shouldReview(snapshot(scoped))).toBe(true);
+        expect(context.getContext).not.toHaveBeenCalled();
+        expect(settings).toEqual({ reviewBeforeGenerate: true, style: 'global' });
+    });
+
+    test('Text AI override preserves the explicit context, request role, history and prefill', async () => {
+        const scoped = { ConnectionManagerRequestService: {}, chat: [] };
+        const settings = { llmOverrideProfileId: 'scoped-profile', llmOverrideMaxTokens: 100 };
+        const history = [{ role: 'user', content: 'scoped history' }];
+        const context = createQigContext({
+            getContext: jest.fn(),
+            buildOverrideChatHistory: jest.fn(() => history),
+            buildTextAIRequestMessages,
+            sendIsolatedConnectionManagerRequest: jest.fn(async () => 'answer'),
+            runWithInternalLLMRequest: (_label, task) => task(),
+            runSerializedTextAITask: task => task(),
+            extractLLMResponseDetails: text => ({ text }),
+            plural: () => 'chat message',
+            log: jest.fn(),
+        });
+        const signal = new AbortController().signal;
+        const callOverride = evaluateInContext('callOverrideLLM', context);
+        await expect(callOverride('instruction', 'system context', signal, {
+            settings, context: scoped, role: 'system', assistantPrefill: 'prefix',
+        })).resolves.toBe('answer');
+        expect(context.buildOverrideChatHistory).toHaveBeenCalledWith(settings, scoped);
+        expect(context.sendIsolatedConnectionManagerRequest).toHaveBeenCalledWith(expect.objectContaining({
+            service: scoped.ConnectionManagerRequestService,
+            context: scoped,
+            profileId: 'scoped-profile',
+            signal,
+            messages: [
+                { role: 'system', content: 'system context' },
+                { role: 'system', content: 'instruction' },
+                ...history,
+                { role: 'assistant', content: 'prefix' },
+            ],
+        }));
+        expect(context.getContext).not.toHaveBeenCalled();
+    });
+
     test('multi-result finalization handles {images} payloads, picks the first success, and releases extras', async () => {
         const released = [];
         const context = createQigContext({
@@ -442,6 +521,98 @@ describe('Conversation extension media integration', () => {
         await first;
         expect(cancelTrackedComfyPrompt).toHaveBeenCalledTimes(1);
         await expect(cancelOnce({ promptId: '' })).resolves.toEqual(expect.objectContaining({ cancelled: false }));
+    });
+
+    test('provider submissions enforce active owners and independent external and interactive output budgets', async () => {
+        const manager = new GenerationRunManager();
+        const interactive = manager.start({}, { outputBudget: { count: 0, bytes: 0, error: null } });
+        const outputs = [];
+        const generator = jest.fn(async (_prompt, _negative, _settings, _signal, options) => {
+            const output = options.reserveOutput(0);
+            outputs.push(output);
+            generation.accountGenerationOutputBytes(output, 64);
+            return { url: '/user/images/test.png' };
+        });
+        const context = createQigContext({
+            ...generation,
+            activeGenerationRun: interactive,
+            activeExternalGenerationRun: null,
+            externalGenerationTail: Promise.resolve(),
+            nextExternalGenerationRunId: 1,
+            providerGenerators: { local: generator },
+            PROVIDERS: { local: { name: 'Local' } },
+            HOSTED_PROVIDER_IDS: new Set(),
+            normalizeProviderResult,
+            materializeAndValidateProviderOutput,
+            normalizeProviderImageSource: source => source,
+            verifyRenderableImage: jest.fn(async () => {}),
+            releaseTransientBlobUrl: jest.fn(),
+            getProviderModelId: () => 'test-model',
+        });
+        for (const name of ['getAbortError', 'abortExternalGenerationRun', 'assertExternalGenerationRun', 'accountInlineGenerationOutput', 'releaseTransientProviderResult']) {
+            evaluateInContext(name, context);
+        }
+        const enqueue = evaluateInContext('enqueueExternalGeneration', context);
+        const generate = evaluateInContext('generateForProvider', context);
+        const settings = { provider: 'local', localType: 'a1111' };
+        const submit = (run, options = {}) => generate('portrait', '', settings, run.signal, options);
+        let firstRun;
+        await enqueue(async run => {
+            firstRun = run;
+            await expect(submit(run, { externalRun: run })).resolves.toMatchObject({ url: '/user/images/test.png' });
+            expect(generator).toHaveBeenLastCalledWith('portrait', '', settings, run.signal, expect.objectContaining({ externalRun: run }));
+            expect(outputs[0].budget).toBe(run.context.outputBudget);
+            expect(run.context.outputBudget).toEqual({ count: 1, bytes: 64, error: null });
+            expect(interactive.context.outputBudget).toEqual({ count: 0, bytes: 0, error: null });
+
+            // A live external signal alone, or a forged owner borrowing the UI signal, is insufficient.
+            await expect(submit(run)).rejects.toMatchObject({ name: 'AbortError' });
+            await expect(submit(interactive, { externalRun: { ...run, signal: interactive.signal } })).rejects.toMatchObject({ name: 'AbortError' });
+            await expect(submit(interactive, { externalRun: run })).rejects.toMatchObject({ name: 'AbortError' });
+            expect(generator).toHaveBeenCalledTimes(1);
+            await submit(interactive);
+            expect(interactive.context.outputBudget).toEqual({ count: 1, bytes: 64, error: null });
+
+            for (let index = 1; index < generation.MAX_BATCH_COUNT; index++) await submit(run, { externalRun: run });
+            expect(run.context.outputBudget.count).toBe(generation.MAX_BATCH_COUNT);
+            const submissions = generator.mock.calls.length;
+            await expect(submit(run, { externalRun: run })).rejects.toMatchObject({ code: 'GENERATION_OUTPUT_LIMIT' });
+            expect(generator).toHaveBeenCalledTimes(submissions);
+        });
+        const submissions = generator.mock.calls.length;
+        await expect(submit(firstRun, { externalRun: firstRun })).rejects.toMatchObject({ name: 'AbortError' });
+        expect(generator).toHaveBeenCalledTimes(submissions);
+
+        await enqueue(async run => {
+            expect(run.context.outputBudget).not.toBe(firstRun.context.outputBudget);
+            expect(run.context.outputBudget).toEqual({ count: 0, bytes: 0, error: null });
+            generator.mockImplementationOnce(async (_prompt, _negative, _settings, _signal, options) => {
+                generation.accountGenerationOutputBytes(options.reserveOutput(0), MAX_IMAGE_BYTES);
+                return { url: '/user/images/large.png' };
+            });
+            await submit(run, { externalRun: run });
+            expect(run.context.outputBudget).toEqual({ count: 1, bytes: MAX_IMAGE_BYTES, error: null });
+            await expect(submit(run, { externalRun: run })).rejects.toMatchObject({ code: 'GENERATION_OUTPUT_LIMIT' });
+        });
+        expect(generator).toHaveBeenCalledTimes(submissions + 1);
+
+        const parent = new AbortController();
+        await enqueue(async run => {
+            parent.abort(new DOMException('Parent cancelled', 'AbortError'));
+            await expect(submit(run, { externalRun: run })).rejects.toThrow('Parent cancelled');
+            expect(run.context.outputBudget.count).toBe(0);
+        }, parent.signal);
+        expect(context.activeExternalGenerationRun).toBeNull();
+        expect(context.activeGenerationRun).toBe(interactive);
+
+        manager.finish(interactive);
+        context.activeGenerationRun = manager.start({}, { outputBudget: { count: 0, bytes: 0, error: null } });
+        await expect(submit(interactive)).rejects.toMatchObject({ name: 'AbortError' });
+        manager.cancel();
+        await expect(submit(context.activeGenerationRun)).rejects.toMatchObject({ name: 'AbortError' });
+        context.activeGenerationRun = null;
+        await expect(submit(interactive)).rejects.toMatchObject({ name: 'AbortError' });
+        expect(generator).toHaveBeenCalledTimes(submissions + 1);
     });
 
     test('the sprite bridge uses only the activated QIG capability', async () => {

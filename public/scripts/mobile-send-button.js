@@ -26,7 +26,10 @@ export function isLegacyIOSWebKitPlatform(navigatorRef = globalThis.navigator) {
         return false;
     }
 
-    const match = String(navigatorRef.userAgent || '').match(/\bCPU(?: iPhone)? OS (\d+)(?:[_\s]|$)/i);
+    const userAgent = String(navigatorRef.userAgent || '');
+    // Safari 26+ freezes the CPU OS token at iOS 18; its Version token remains accurate.
+    const match = userAgent.match(/\bVersion\/(\d+)(?:[.\s]|$)/i)
+        ?? userAgent.match(/\bCPU(?: iPhone)? OS (\d+)(?:[_\s]|$)/i);
     const majorVersion = Number(match?.[1]);
     return Number.isInteger(majorVersion) && majorVersion < IOS_STABLE_COMPOSER_VIEWPORT_MAJOR;
 }

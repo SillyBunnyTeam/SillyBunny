@@ -867,7 +867,7 @@ async function decompressBounded(data, maxBytes) {
             if (done) break;
             total += value.byteLength;
             if (total > maxBytes) {
-                await reader.cancel('PNG metadata is too large');
+                void reader.cancel('PNG metadata is too large').catch(() => {});
                 throw new Error('Decompressed PNG metadata exceeds the 512 KB limit');
             }
             chunks.push(value);
@@ -884,49 +884,53 @@ async function decompressBounded(data, maxBytes) {
     return output;
 }
 
-async function decodeTextChunk(chunk, keyword) {
+async function decodeTextChunk(chunk, keyword, budget) {
     if (chunk.data.byteLength > MAX_PNG_METADATA_BYTES) throw new Error('PNG metadata chunk exceeds the 512 KB limit');
     const keywordEnd = textKeywordEnd(chunk.data, keyword);
     if (keywordEnd < 0) return null;
-    if (chunk.type === 'tEXt') return latin1Decoder.decode(chunk.data.subarray(keywordEnd + 1));
+    let textBytes = chunk.data.subarray(keywordEnd + 1);
+    let decoder = latin1Decoder;
     if (chunk.type === 'zTXt') {
         if (chunk.data[keywordEnd + 1] !== 0) return null;
-        const decompressed = await decompressBounded(chunk.data.subarray(keywordEnd + 2), MAX_PNG_METADATA_BYTES);
-        return decompressed ? latin1Decoder.decode(decompressed) : null;
+        textBytes = await decompressBounded(chunk.data.subarray(keywordEnd + 2), budget.remaining);
+    } else if (chunk.type === 'iTXt') {
+        let cursor = keywordEnd + 1;
+        if (cursor + 2 > chunk.data.length) return null;
+        const compressed = chunk.data[cursor++];
+        const method = chunk.data[cursor++];
+        for (let field = 0; field < 2; field++) {
+            while (cursor < chunk.data.length && chunk.data[cursor] !== 0) cursor++;
+            if (cursor >= chunk.data.length) return null;
+            cursor++;
+        }
+        textBytes = chunk.data.subarray(cursor);
+        if (compressed === 1) {
+            if (method !== 0) return null;
+            textBytes = await decompressBounded(textBytes, budget.remaining);
+        } else if (compressed !== 0 || method !== 0) {
+            return null;
+        }
+        decoder = textDecoder;
     }
-
-    let cursor = keywordEnd + 1;
-    if (cursor + 2 > chunk.data.length) return null;
-    const compressed = chunk.data[cursor++];
-    const method = chunk.data[cursor++];
-    for (let field = 0; field < 2; field++) {
-        while (cursor < chunk.data.length && chunk.data[cursor] !== 0) cursor++;
-        if (cursor >= chunk.data.length) return null;
-        cursor++;
-    }
-    let textBytes = chunk.data.subarray(cursor);
-    if (compressed === 1) {
-        if (method !== 0) return null;
-        textBytes = await decompressBounded(textBytes, MAX_PNG_METADATA_BYTES);
-        if (!textBytes) return null;
-    } else if (compressed !== 0 || method !== 0) {
-        return null;
-    }
-    return textDecoder.decode(textBytes);
+    if (!textBytes) return null;
+    if (textBytes.byteLength > budget.remaining) throw new Error('PNG metadata exceeds the 512 KB limit');
+    budget.remaining -= textBytes.byteLength;
+    return decoder.decode(textBytes);
 }
 
 export async function readPngMetadataBundle(value) {
     const chunks = readChunks(value);
+    const budget = { remaining: MAX_PNG_METADATA_BYTES };
     let parameters = null;
     let structuredText = null;
-    for (const chunk of chunks) {
-        if (isParametersChunk(chunk)) {
-            const decoded = await decodeTextChunk(chunk, 'parameters');
-            if (decoded !== null) parameters = decoded;
+    // Last decodable values win; older duplicates must not multiply decompression work.
+    for (let index = chunks.length - 1; index >= 0 && (parameters === null || structuredText === null); index--) {
+        const chunk = chunks[index];
+        if (parameters === null && isParametersChunk(chunk)) {
+            parameters = await decodeTextChunk(chunk, 'parameters', budget);
         }
-        if (isTextChunkForKeyword(chunk, QIG_STRUCTURED_METADATA_KEYWORD)) {
-            const decoded = await decodeTextChunk(chunk, QIG_STRUCTURED_METADATA_KEYWORD);
-            if (decoded !== null) structuredText = decoded;
+        if (structuredText === null && isTextChunkForKeyword(chunk, QIG_STRUCTURED_METADATA_KEYWORD)) {
+            structuredText = await decodeTextChunk(chunk, QIG_STRUCTURED_METADATA_KEYWORD, budget);
         }
     }
     return {

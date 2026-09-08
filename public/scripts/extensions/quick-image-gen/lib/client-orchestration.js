@@ -196,10 +196,16 @@ export async function sendIsolatedConnectionManagerRequest({
 }) {
     if (!service || typeof service.sendRequest !== "function") throw new Error("Connection Manager request service is unavailable");
     if (signal?.aborted) throw abortError(signal);
-    const liveProfile = service.getProfile(profileId);
     const requestedPreset = String(preset || "");
-    const requestOptions = { extractData: true, includePreset: true, stream: false, signal };
-    if (!requestedPreset || liveProfile?.preset === requestedPreset) {
+    const requestOptions = { extractData: true, includePreset: true, includeInstruct: true, stream: false, signal };
+    if (!requestedPreset) {
+        return settleAfterAbortableOperation(service.sendRequest(profileId, messages, maxTokens, requestOptions), signal);
+    }
+    const liveProfile = typeof service.getProfile === "function"
+        ? service.getProfile(profileId)
+        : service.getSupportedProfiles?.().find(profile => profile.id === profileId);
+    if (!liveProfile) throw new Error("Connection Manager profile was not found");
+    if (liveProfile.preset === requestedPreset) {
         return settleAfterAbortableOperation(service.sendRequest(profileId, messages, maxTokens, requestOptions), signal);
     }
 
@@ -331,6 +337,7 @@ export async function applyStateBeforePersistence({ apply, persist, rollback }) 
 
 export async function persistIfCurrent({
     persist,
+    acknowledge = null,
     isCurrent = null,
     skipIfStale = false,
     staleMessage = "Persistence target changed",
@@ -340,6 +347,9 @@ export async function persistIfCurrent({
     if (isCurrent != null && typeof isCurrent !== "function") {
         throw new TypeError("Persistence identity validation must be a function");
     }
+    if (acknowledge != null && typeof acknowledge !== "function") {
+        throw new TypeError("Persistence acknowledgement must be a function");
+    }
     const checkCurrent = isCurrent || (() => true);
     if (!checkCurrent()) {
         if (skipIfStale) return false;
@@ -347,8 +357,10 @@ export async function persistIfCurrent({
     }
 
     const saved = await persist();
-    if (saved === false) throw new Error(failureMessage);
     if (!checkCurrent()) throw new DOMException(staleMessage, "AbortError");
+    const confirmed = saved === true || (saved !== false && await acknowledge?.() === true);
+    if (!checkCurrent()) throw new DOMException(staleMessage, "AbortError");
+    if (!confirmed) throw new Error(failureMessage);
     return true;
 }
 

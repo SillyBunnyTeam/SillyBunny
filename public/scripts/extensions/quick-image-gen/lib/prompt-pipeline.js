@@ -2,6 +2,16 @@ function cleanText(value) {
     return String(value ?? "").trim();
 }
 
+export function buildTextAIRequestMessages(instruction, { role = "default", history = [], systemPrompt = "", prefill = "" } = {}) {
+    const messages = systemPrompt ? [{ role: "system", content: systemPrompt }] : [];
+    const request = { role: role === "system" ? "system" : "user", content: instruction };
+    // Keep custom templates whole; only the request's role changes, not history roles.
+    if (request.role === "system") messages.push(request, ...history);
+    else messages.push(...history, request);
+    if (prefill) messages.push({ role: "assistant", content: prefill });
+    return structuredClone(messages);
+}
+
 export function appendWorldInfoToRequest(request, worldInfoText) {
     const base = cleanText(request);
     const lore = cleanText(worldInfoText);

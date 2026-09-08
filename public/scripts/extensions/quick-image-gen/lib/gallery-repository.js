@@ -11,6 +11,7 @@ const DEFAULT_MANIFEST_KEY = 'qig_gallery_manifest_v2';
 const DEFAULT_LEGACY_KEY = 'qig_gallery';
 const MAX_SOURCE_ID_LENGTH = 512;
 const MAX_PENDING_ASSET_IDS = 500;
+const EXCLUSIVE_ACCESS_ERROR = 'Permanent gallery changes require Web Locks; new images are session-only';
 const GALLERY_METADATA_FIELDS = Object.freeze([
   'steps', 'sampler', 'scheduler', 'cfgScale', 'seed', 'width', 'height',
   'provider', 'model', 'backend', 'serverSaveStatus',
@@ -152,33 +153,43 @@ export async function clearGalleryRepositoryStorage(options = {}) {
   const storeName = options.storeName || DEFAULT_STORE_NAME;
   const manifestKey = options.manifestKey || DEFAULT_MANIFEST_KEY;
   const legacyKey = options.legacyKey || DEFAULT_LEGACY_KEY;
-  let manifest;
-  try {
-    manifest = parseManifest(storage, manifestKey);
-  } catch {
-    manifest = emptyManifest();
-  }
-  const clearMarker = {
-    version: GALLERY_MANIFEST_VERSION,
-    revision: manifest.revision + 1,
-    legacyMigrated: true,
-    cleared: true,
-    pendingAssetIds: [],
-    entries: [],
+  const lockManager = options.lockManager ?? globalThis.navigator?.locks;
+  const lockName = options.lockName || `qig-gallery:${dbName}:${manifestKey}`;
+  const clear = async lock => {
+    if (lock?.name !== lockName || lock?.mode !== 'exclusive') {
+      throw new Error(EXCLUSIVE_ACCESS_ERROR);
+    }
+    let manifest;
+    try {
+      manifest = parseManifest(storage, manifestKey);
+    } catch {
+      manifest = emptyManifest();
+    }
+    const clearMarker = {
+      version: GALLERY_MANIFEST_VERSION,
+      revision: manifest.revision + 1,
+      legacyMigrated: true,
+      cleared: true,
+      pendingAssetIds: [],
+      entries: [],
+    };
+    storage.setItem(manifestKey, JSON.stringify(clearMarker));
+    try {
+      storage.removeItem(legacyKey);
+    } catch {
+      // The durable clear marker prevents legacy data from being restored.
+    }
+    try {
+      await clearAssetStore(indexedDB, dbName, storeName);
+      return { assetsCleared: true, marker: clearMarker, error: null };
+    } catch (error) {
+      // Keep the marker so a later exclusive initialization can finish clearing.
+      return { assetsCleared: false, marker: clearMarker, error };
+    }
   };
-  storage.setItem(manifestKey, JSON.stringify(clearMarker));
-  try {
-    storage.removeItem(legacyKey);
-  } catch {
-    // The durable clear marker prevents legacy data from being restored.
-  }
-  try {
-    await clearAssetStore(indexedDB, dbName, storeName);
-    return { assetsCleared: true, marker: clearMarker, error: null };
-  } catch (error) {
-    // Keep the marker so initialization can finish the interrupted clear later.
-    return { assetsCleared: false, marker: clearMarker, error };
-  }
+  return lockManager?.request
+    ? lockManager.request(lockName, { mode: 'exclusive' }, clear)
+    : clear();
 }
 
 function parseManifest(storage, key) {
@@ -221,6 +232,8 @@ function errorMessage(error, fallback) {
 }
 
 export class GalleryRepository {
+  #hasExclusiveLock = false;
+
   constructor(options = {}) {
     this.indexedDB = options.indexedDB || globalThis.indexedDB;
     this.storage = options.storage || globalThis.localStorage;
@@ -245,19 +258,13 @@ export class GalleryRepository {
 
   async init(assetFactory) {
     return this.#enqueue(async () => {
-      let manifestWasInvalid = false;
-      try {
-        this.manifest = parseManifest(this.storage, this.manifestKey);
-      } catch {
-        manifestWasInvalid = true;
-        this.manifest = emptyManifest();
-      }
+      // ponytail: a damaged manifest cannot distinguish cleared bytes from recoverable bytes.
+      this.manifest = parseManifest(this.storage, this.manifestKey);
 
       const legacyEntries = this.manifest.legacyMigrated
         ? []
         : parseLegacyEntries(this.storage, this.legacyKey);
       const reconciledAssets = await this.#reconcileAssets({
-        replaceInvalidManifest: manifestWasInvalid,
         hasLegacySource: legacyEntries.length > 0,
       });
       const durableEntries = await this.#loadManifestEntries(reconciledAssets);
@@ -268,13 +275,15 @@ export class GalleryRepository {
       }
 
       const migration = await this.#prepareEntries(legacyEntries, assetFactory, { legacy: true });
-      const canMigrate = migration.length === legacyEntries.length
+      const canMigrate = this.#hasExclusiveLock && migration.length === legacyEntries.length
         && migration.every(item => item.asset?.blob instanceof Blob);
 
       if (!canMigrate) {
         const runtimeCandidates = [
           ...durableEntries,
-          ...migration.filter(item => !item.asset?.invalid).map(item => this.#createEphemeralEntry(item.entry, item.asset, true)),
+          ...migration.filter(item => !item.asset?.invalid).map(item => this.#createEphemeralEntry(
+            item.entry, item.asset, true, this.#hasExclusiveLock ? '' : EXCLUSIVE_ACCESS_ERROR,
+          )),
         ];
         this.entries = this.#sortAndLimit(runtimeCandidates);
         this.#notifyEvictions(this.#findEvictions(runtimeCandidates, this.entries));
@@ -322,7 +331,7 @@ export class GalleryRepository {
       } catch (error) {
         this.#revokeObjectUrls(insertedIds);
         let restoredManifest = false;
-        if (nextManifest && this.manifest === nextManifest) {
+        if (this.#hasExclusiveLock && nextManifest && this.manifest === nextManifest) {
           try {
             const rollbackManifest = { ...previousManifest, revision: nextManifest.revision + 1 };
             this.#writeManifest(rollbackManifest, { expectedRevision: nextManifest.revision });
@@ -333,7 +342,7 @@ export class GalleryRepository {
           }
         }
         if (!nextManifest || restoredManifest) {
-          await Promise.allSettled(insertedIds.map(id => this.#deleteAsset(id)));
+          await this.#deleteAssets(insertedIds).catch(() => {});
         }
         const runtimeCandidates = [
           ...durableEntries,
@@ -388,8 +397,9 @@ export class GalleryRepository {
           ...this.manifest,
           version: GALLERY_MANIFEST_VERSION,
           revision: this.manifest.revision + 1,
+          cleared: false,
           pendingAssetIds: [...new Set([
-            ...(this.manifest.pendingAssetIds || []),
+            ...(this.manifest.cleared ? [] : this.manifest.pendingAssetIds || []),
             ...durableItems.map(item => item.id),
           ])].slice(-MAX_PENDING_ASSET_IDS),
         };
@@ -426,7 +436,7 @@ export class GalleryRepository {
       } catch (error) {
         persistenceError = errorMessage(error, 'Gallery persistence failed');
         this.#revokeObjectUrls(insertedIds);
-        if (pendingManifestPublished) {
+        if (this.#hasExclusiveLock && pendingManifestPublished) {
           try {
             const rollbackManifest = {
               ...this.manifest,
@@ -439,7 +449,7 @@ export class GalleryRepository {
             // A surviving pending marker lets startup resolve any interrupted IDB writes.
           }
         }
-        await Promise.allSettled(insertedIds.map(id => this.#deleteAsset(id)));
+        await this.#deleteAssets(insertedIds).catch(() => {});
       }
 
       if (requestedGeneration !== this.generation) return results.filter(Boolean);
@@ -522,7 +532,14 @@ export class GalleryRepository {
 
   #enqueue(operation) {
     const run = () => this.lockManager?.request
-      ? this.lockManager.request(this.lockName, { mode: 'exclusive' }, operation)
+      ? this.lockManager.request(this.lockName, { mode: 'exclusive' }, async lock => {
+        this.#hasExclusiveLock = lock?.name === this.lockName && lock?.mode === 'exclusive';
+        try {
+          return await operation();
+        } finally {
+          this.#hasExclusiveLock = false;
+        }
+      })
       : operation();
     const result = this.operationQueue.then(run, run);
     this.operationQueue = result.catch(() => {});
@@ -605,6 +622,7 @@ export class GalleryRepository {
   }
 
   async #putAsset(id, asset, metadata = null) {
+    if (!this.#hasExclusiveLock) throw new Error(EXCLUSIVE_ACCESS_ERROR);
     const db = await this.#openDatabase();
     const transaction = db.transaction(this.storeName, 'readwrite');
     const done = transactionDone(transaction);
@@ -674,15 +692,8 @@ export class GalleryRepository {
     return Array.isArray(keys) ? keys : [];
   }
 
-  async #deleteAsset(id) {
-    const db = await this.#openDatabase();
-    const transaction = db.transaction(this.storeName, 'readwrite');
-    const done = transactionDone(transaction);
-    transaction.objectStore(this.storeName).delete(id);
-    await done;
-  }
-
   async #deleteAllAssets() {
+    if (!this.#hasExclusiveLock) return;
     const db = await this.#openDatabase();
     const transaction = db.transaction(this.storeName, 'readwrite');
     const done = transactionDone(transaction);
@@ -691,7 +702,11 @@ export class GalleryRepository {
   }
 
   async #deleteAssets(ids) {
-    const uniqueIds = [...new Set(ids.filter(Boolean))];
+    // ponytail: retain uncertain bytes without a Web Lock; reclaim on an exclusive pass.
+    if (!this.#hasExclusiveLock) return;
+    const current = parseManifest(this.storage, this.manifestKey);
+    const protectedIds = new Set([...current.entries.map(entry => entry.assetId), ...current.pendingAssetIds]);
+    const uniqueIds = [...new Set(ids.filter(id => id && !protectedIds.has(id)))];
     if (!uniqueIds.length) return;
     const db = await this.#openDatabase();
     const transaction = db.transaction(this.storeName, 'readwrite');
@@ -717,7 +732,7 @@ export class GalleryRepository {
     return { ...asset, thumbnailBlob: null };
   }
 
-  async #reconcileAssets({ replaceInvalidManifest = false, hasLegacySource = false } = {}) {
+  async #reconcileAssets({ hasLegacySource = false } = {}) {
     // Enumerate keys without cloning every Blob, then load recovery candidates one at a time.
     const assetKeys = await this.#getAllAssetKeys();
     const availableKeys = new Set(assetKeys);
@@ -754,6 +769,7 @@ export class GalleryRepository {
         return;
       }
       retainCandidate(metadata, asset, asset !== storedAsset);
+      pendingIds.delete(assetId);
     };
 
     for (const entry of this.manifest.entries) {
@@ -767,9 +783,9 @@ export class GalleryRepository {
     for (const assetId of assetKeys) {
       if (processedIds.has(assetId)) continue;
       processedIds.add(assetId);
-      const canRecover = typeof assetId === 'string'
+      const canRecover = this.#hasExclusiveLock && typeof assetId === 'string'
         && this.manifest.cleared !== true
-        && (replaceInvalidManifest || pendingIds.has(assetId));
+        && pendingIds.has(assetId);
       if (!canRecover) {
         if (typeof assetId === 'string') staleIds.push(assetId);
         continue;
@@ -786,42 +802,43 @@ export class GalleryRepository {
         }, assetId);
       });
     }
-    await this.#deleteAssets(corruptIds).catch(() => {});
-
     const nextEntries = retainedMetadata;
     const retainedIds = new Set(nextEntries.map(entry => entry.assetId));
-    const changed = replaceInvalidManifest
-      || (this.manifest.pendingAssetIds || []).length > 0
+    // An unlocked reader cannot tell whether pending bytes are still being written.
+    const nextPendingIds = this.#hasExclusiveLock ? [] : [...pendingIds];
+    const changed = JSON.stringify(nextPendingIds) !== JSON.stringify(this.manifest.pendingAssetIds || [])
       || JSON.stringify(nextEntries) !== JSON.stringify(this.manifest.entries);
     if (changed) {
       const nextManifest = {
         ...this.manifest,
         version: GALLERY_MANIFEST_VERSION,
-        revision: this.manifest.revision + 1,
-        pendingAssetIds: [],
+        revision: this.manifest.revision + (this.#hasExclusiveLock ? 1 : 0),
+        pendingAssetIds: nextPendingIds,
         entries: nextEntries,
       };
-      this.#writeManifest(nextManifest, { replaceInvalid: replaceInvalidManifest });
+      if (this.#hasExclusiveLock) this.#writeManifest(nextManifest);
       this.manifest = nextManifest;
     }
 
     for (const metadata of candidateMetadata) {
       if (!retainedIds.has(metadata.assetId)) staleIds.push(metadata.assetId);
     }
-    await this.#deleteAssets(staleIds).catch(() => {});
+    await this.#deleteAssets([...corruptIds, ...staleIds]).catch(() => {});
 
-    for (const entry of this.manifest.entries) {
-      const retained = retainedAssets.get(entry.assetId);
-      const asset = retained?.asset;
-      if (!asset?.blob) continue;
-      const desiredMetadata = {
-        ...toManifestEntry(entry, entry.assetId),
-        legacy: asset.metadata?.legacy === true,
-        pending: false,
-      };
-      if (!retained.needsRepair
-        && JSON.stringify(asset.metadata || null) === JSON.stringify(desiredMetadata)) continue;
-      await this.#putAsset(entry.assetId, asset, desiredMetadata).catch(() => {});
+    if (this.#hasExclusiveLock) {
+      for (const entry of this.manifest.entries) {
+        const retained = retainedAssets.get(entry.assetId);
+        const asset = retained?.asset;
+        if (!asset?.blob) continue;
+        const desiredMetadata = {
+          ...toManifestEntry(entry, entry.assetId),
+          legacy: asset.metadata?.legacy === true,
+          pending: false,
+        };
+        if (!retained.needsRepair
+          && JSON.stringify(asset.metadata || null) === JSON.stringify(desiredMetadata)) continue;
+        await this.#putAsset(entry.assetId, asset, desiredMetadata).catch(() => {});
+      }
     }
 
     this.#notifyEvictions(candidateMetadata.filter(metadata => !retainedIds.has(metadata.assetId)));
@@ -836,13 +853,13 @@ export class GalleryRepository {
       const asset = assetsById.get(metadata.assetId);
       if (!asset) {
         missingIds.push(metadata.assetId);
-        await this.#deleteAsset(metadata.assetId).catch(() => {});
+        await this.#deleteAssets([metadata.assetId]).catch(() => {});
         continue;
       }
       loaded.push(this.#materializeEntry(metadata, asset));
     }
 
-    if (missingIds.length) {
+    if (missingIds.length && this.#hasExclusiveLock) {
       const missing = new Set(missingIds);
       const nextManifest = {
         ...this.manifest,
@@ -885,12 +902,21 @@ export class GalleryRepository {
   }
 
   #createEphemeralEntry(entry, asset = {}, legacy = false, persistenceError = '') {
+    let url = asset.fallbackUrl || entry?.url || '';
+    let thumbnail = asset.fallbackThumbnail || entry?.thumbnail || null;
+    if (asset.blob instanceof Blob) {
+      try {
+        ({ url, thumbnail } = this.#materializeEntry(toManifestEntry(entry, entry.id), asset));
+      } catch {
+        // Keep the source URL usable if this browser cannot create a local Blob URL.
+      }
+    }
     return {
       ...clone(entry || {}),
       id: entry?.id || this.createId(),
-      url: asset.fallbackUrl || entry?.url || '',
+      url,
       sourceUrl: '',
-      thumbnail: asset.fallbackThumbnail || entry?.thumbnail || null,
+      thumbnail,
       date: normalizeDate(entry?.date),
       ephemeral: true,
       legacy,
@@ -944,18 +970,15 @@ export class GalleryRepository {
       if (runtimeIds.has(id)) continue;
       urls.forEach(url => this.revokeObjectURL(url));
       this.objectUrls.delete(id);
-      if (!retainedIds.has(id)) await this.#deleteAsset(id).catch(() => {});
+      if (!retainedIds.has(id)) await this.#deleteAssets([id]).catch(() => {});
     }
   }
 
-  #writeManifest(manifest, { expectedRevision = this.manifest.revision, replaceInvalid = false } = {}) {
-    let current = null;
-    try {
-      current = parseManifest(this.storage, this.manifestKey);
-    } catch (error) {
-      if (!replaceInvalid) throw error;
-    }
-    if (current && current.revision !== expectedRevision) {
+  #writeManifest(manifest, { expectedRevision = this.manifest.revision } = {}) {
+    // localStorage revision checks are not atomic; only a held lock permits publication.
+    if (!this.#hasExclusiveLock) throw new Error(EXCLUSIVE_ACCESS_ERROR);
+    const current = parseManifest(this.storage, this.manifestKey);
+    if (current.revision !== expectedRevision) {
       throw new Error('Gallery changed in another tab; reload before saving again');
     }
     this.storage.setItem(this.manifestKey, JSON.stringify(manifest));

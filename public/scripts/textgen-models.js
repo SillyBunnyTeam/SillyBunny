@@ -24,93 +24,8 @@ function shouldUseNativeApiSelects() {
     return isMobile() || (window.matchMedia?.('(max-width: 768px)').matches ?? false);
 }
 
-/**
- * List of OpenRouter providers.
- * @type {string[]}
- */
-const OPENROUTER_PROVIDERS = [
-    // Providers endpoint: https://openrouter.ai/api/v1/providers
-    // The list should resemble the sidebar from https://openrouter.ai/models
-    // Their docs no longer displays the list, which had "super dead" ones at top, thankfully gone from /v1/providers
-    'AI21',
-    'AionLabs',
-    'Alibaba',
-    'AkashML',
-    'Amazon Bedrock',
-    'Amazon Nova',
-    'Ambient',
-    'Anthropic',
-    'Arcee AI',
-    'AtlasCloud',
-    'Avian',
-    'Azure',
-    'Baidu',
-    'BaseTen',
-    'Black Forest Labs',
-    'Cerebras',
-    'Chutes',
-    'Cirrascale',
-    'Clarifai',
-    'Cloudflare',
-    'Cohere',
-    'Crusoe',
-    'DeepInfra',
-    'DeepSeek',
-    'DekaLLM',
-    'FakeProvider',
-    'Featherless',
-    'Fireworks',
-    'Friendli',
-    'GMICloud',
-    'Google',
-    'Google AI Studio',
-    'Groq',
-    'Hyperbolic',
-    'Inception',
-    'Inceptron',
-    'InferenceNet',
-    'Infermatic',
-    'Inflection',
-    'Io Net',
-    'Ionstream',
-    'Liquid',
-    'Mancer 2',
-    'Mara',
-    'Minimax',
-    'Mistral',
-    'ModelRun',
-    'Modular',
-    'Moonshot AI',
-    'Morph',
-    'NCompass',
-    'Nebius',
-    'NextBit',
-    'Novita',
-    'Nvidia',
-    'OpenAI',
-    'OpenInference',
-    'Parasail',
-    'Perplexity',
-    'Phala',
-    'Recraft',
-    'Reka',
-    'Relace',
-    'SambaNova',
-    'Seed',
-    'SiliconFlow',
-    'Sourceful',
-    'Stealth',
-    'StepFun',
-    'StreamLake',
-    'Switchpoint',
-    'Together',
-    'Upstage',
-    'Venice',
-    'WandB',
-    'xAI',
-    'Xiaomi',
-    'Z.AI',
-];
+// SillyBunny: share in-flight catalogue requests, not a hardcoded provider list.
+let openRouterProvidersRequest = null;
 
 /**
  * List of NanoGPT providers.
@@ -118,6 +33,14 @@ const OPENROUTER_PROVIDERS = [
  * @type {{id: string, label: string}[]}
  */
 const NANOGPT_PROVIDERS = [
+    {
+        'id': 'aionlabs',
+        'label': 'Aion',
+    },
+    {
+        'id': 'aoru',
+        'label': 'Aoru AI',
+    },
     {
         'id': 'akash',
         'label': 'Akash',
@@ -131,8 +54,20 @@ const NANOGPT_PROVIDERS = [
         'label': 'Ambient',
     },
     {
+        'id': 'anthropic',
+        'label': 'Anthropic',
+    },
+    {
         'id': 'arliai',
         'label': 'ArliAI',
+    },
+    {
+        'id': 'aster',
+        'label': 'Aster',
+    },
+    {
+        'id': 'aster-fast',
+        'label': 'Aster Fast',
     },
     {
         'id': 'atlascloud',
@@ -171,8 +106,20 @@ const NANOGPT_PROVIDERS = [
         'label': 'Cloudflare',
     },
     {
+        'id': 'coreweave',
+        'label': 'CoreWeave',
+    },
+    {
+        'id': 'crofai',
+        'label': 'CrofAI',
+    },
+    {
         'id': 'crusoe',
         'label': 'Crusoe',
+    },
+    {
+        'id': 'decart',
+        'label': 'Decart',
     },
     {
         'id': 'dekallm',
@@ -187,12 +134,28 @@ const NANOGPT_PROVIDERS = [
         'label': 'DeepSeek',
     },
     {
+        'id': 'darkbloom',
+        'label': 'Darkbloom',
+    },
+    {
+        'id': 'engy',
+        'label': 'EngyAI',
+    },
+    {
         'id': 'fireworks',
         'label': 'Fireworks',
     },
     {
+        'id': 'fireworks-fast',
+        'label': 'Fireworks Fast',
+    },
+    {
         'id': 'friendli',
         'label': 'Friendli',
+    },
+    {
+        'id': 'gerra',
+        'label': 'Gerra',
     },
     {
         'id': 'gmicloud',
@@ -201,6 +164,18 @@ const NANOGPT_PROVIDERS = [
     {
         'id': 'lilac',
         'label': 'Lilac',
+    },
+    {
+        'id': 'llmtech',
+        'label': 'LLM Tech',
+    },
+    {
+        'id': 'lucidity',
+        'label': 'Lucidity',
+    },
+    {
+        'id': 'heabsy',
+        'label': 'Heabsy',
     },
     {
         'id': 'google',
@@ -216,7 +191,7 @@ const NANOGPT_PROVIDERS = [
     },
     {
         'id': 'ionet',
-        'label': 'Io Net',
+        'label': 'io.net',
     },
     {
         'id': 'inceptron',
@@ -235,8 +210,20 @@ const NANOGPT_PROVIDERS = [
         'label': 'MegaNova',
     },
     {
+        'id': 'meta',
+        'label': 'Meta',
+    },
+    {
+        'id': 'mixlayer',
+        'label': 'Mixlayer',
+    },
+    {
         'id': 'minimax',
         'label': 'MiniMax',
+    },
+    {
+        'id': 'modal',
+        'label': 'Modal',
     },
     {
         'id': 'modelrun',
@@ -260,7 +247,23 @@ const NANOGPT_PROVIDERS = [
     },
     {
         'id': 'neuralwatt',
-        'label': 'Neuralwatt',
+        'label': 'NeuralWatt',
+    },
+    {
+        'id': 'neuralwatt-fast',
+        'label': 'NeuralWatt Fast',
+    },
+    {
+        'id': 'neuralwatt-flex',
+        'label': 'NeuralWatt Flex',
+    },
+    {
+        'id': 'nube',
+        'label': 'Nube',
+    },
+    {
+        'id': 'tensorix',
+        'label': 'TensorX',
     },
     {
         'id': 'nextbit',
@@ -271,6 +274,10 @@ const NANOGPT_PROVIDERS = [
         'label': 'Novita',
     },
     {
+        'id': 'openai',
+        'label': 'OpenAI',
+    },
+    {
         'id': 'parasail',
         'label': 'Parasail',
     },
@@ -279,8 +286,36 @@ const NANOGPT_PROVIDERS = [
         'label': 'Phala',
     },
     {
+        'id': 'plubo',
+        'label': 'Plubo AI',
+    },
+    {
+        'id': 'pokee',
+        'label': 'Pokee',
+    },
+    {
+        'id': 'abliteration',
+        'label': 'Abliteration.ai',
+    },
+    {
         'id': 'redpill',
         'label': 'Redpill',
+    },
+    {
+        'id': 'runware',
+        'label': 'Runware',
+    },
+    {
+        'id': 'sailresearch-asap',
+        'label': 'Sail Research (ASAP)',
+    },
+    {
+        'id': 'sailresearch-priority',
+        'label': 'Sail Research (Priority)',
+    },
+    {
+        'id': 'sailresearch-standard',
+        'label': 'Sail Research (Standard)',
     },
     {
         'id': 'sambanova',
@@ -307,6 +342,10 @@ const NANOGPT_PROVIDERS = [
         'label': 'Together',
     },
     {
+        'id': 'uomi',
+        'label': 'Uomi',
+    },
+    {
         'id': 'venice',
         'label': 'Venice',
     },
@@ -315,8 +354,24 @@ const NANOGPT_PROVIDERS = [
         'label': 'Weights & Biases',
     },
     {
+        'id': 'wafer',
+        'label': 'Wafer',
+    },
+    {
+        'id': 'xai',
+        'label': 'SpaceXAI',
+    },
+    {
+        'id': 'xiaomi',
+        'label': 'Xiaomi',
+    },
+    {
         'id': 'zai',
         'label': 'Z.AI',
+    },
+    {
+        'id': 'zenmux',
+        'label': 'ZenMux',
     },
 ];
 
@@ -351,12 +406,62 @@ export function updateOpenRouterProvidersWarning(providersSelector) {
     $warning.toggleClass('displayNone', !showWarning);
 }
 
+/**
+ * Restore saved provider names and priority even before the live catalogue arrives.
+ * @param {string} providersSelector
+ * @param {string[]} selectedProviders
+ * @param {string[]} [providerNames]
+ */
+export function setOpenRouterProviders(providersSelector, selectedProviders, providerNames) {
+    const select = $(providersSelector)[0];
+    if (!select) return;
+
+    const options = new Map(Array.from(select.options, option => [option.value, option]));
+    const selected = Array.isArray(selectedProviders) ? selectedProviders.filter(name => typeof name === 'string' && name.trim()) : [];
+    const names = (providerNames ?? [...options.keys()]).filter(name => !selected.includes(name)).sort((a, b) => a.localeCompare(b));
+    select.replaceChildren(...Array.from(new Set([...names, ...selected]), name => {
+        const option = options.get(name) ?? new Option(name, name);
+        option.selected = selected.includes(name);
+        return option;
+    }));
+    $(select).trigger('change.select2');
+    updateOpenRouterProvidersWarning(providersSelector);
+}
+
 export async function syncOpenRouterProvidersForModel(modelId, providersSelector) {
     const $providers = $(providersSelector);
+    if (!$providers.length) return;
+
+    // SillyBunny: a late catalogue or model response must not overwrite a newer selection.
+    const request = {};
+    $providers.data('openrouterRequest', request);
 
     const refreshWarningState = () => {
         updateOpenRouterProvidersWarning(providersSelector);
     };
+
+    try {
+        openRouterProvidersRequest ??= fetch('/api/openrouter/providers', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+        }).then(async response => {
+            if (!response.ok) throw new Error(`OpenRouter providers request failed: ${response.status}`);
+            const names = await response.json();
+            if (!Array.isArray(names) || !names.length || !names.every(name => typeof name === 'string' && name.trim())) {
+                throw new Error('Invalid OpenRouter providers response');
+            }
+            return names;
+        }).finally(() => {
+            openRouterProvidersRequest = null;
+        });
+        const names = await openRouterProvidersRequest;
+        if ($providers.data('openrouterRequest') !== request) return;
+        setOpenRouterProviders(providersSelector, Array.from($providers[0].selectedOptions, option => option.value), names);
+    } catch (error) {
+        console.warn('Failed to refresh OpenRouter provider catalogue', error);
+    }
+
+    if ($providers.data('openrouterRequest') !== request) return;
 
     if (!modelId || !modelId.includes('/')) {
         $providers.find('option').prop('disabled', false);
@@ -372,12 +477,15 @@ export async function syncOpenRouterProvidersForModel(modelId, providersSelector
             body: JSON.stringify({ model: modelId }),
         });
 
+        if ($providers.data('openrouterRequest') !== request) return;
+
         if (!response.ok) {
             refreshWarningState();
             return;
         }
 
         const providerNames = await response.json();
+        if ($providers.data('openrouterRequest') !== request) return;
 
         if (!Array.isArray(providerNames) || providerNames.length === 0) {
             $providers.find('option').prop('disabled', false);
@@ -399,19 +507,20 @@ export async function syncOpenRouterProvidersForModel(modelId, providersSelector
     }
 }
 
+let nanoGptProvidersRequest = 0;
+
 export async function syncNanoGptProvidersForModel(modelId, providersSelector) {
+    const requestId = ++nanoGptProvidersRequest;
     const $providers = $(providersSelector);
 
     const refreshWarningState = () => {
         updateNanoGptProvidersWarning(providersSelector);
     };
 
-    if (!modelId) {
-        $providers.find('option').prop('disabled', false);
-        $providers.trigger('change.select2');
-        refreshWarningState();
-        return;
-    }
+    $providers.removeData('supportsProviderSelection').find('option').prop('disabled', false);
+    $providers.trigger('change.select2');
+    refreshWarningState();
+    if (!modelId) return;
 
     try {
         const response = await fetch('/api/nanogpt/models/providers', {
@@ -426,20 +535,22 @@ export async function syncNanoGptProvidersForModel(modelId, providersSelector) {
         }
 
         const data = await response.json();
-        const providerIds = Array.isArray(data?.providers) ? data.providers : [];
+        if (requestId !== nanoGptProvidersRequest || !Array.isArray(data?.providers) || typeof data.supportsProviderSelection !== 'boolean') return;
+        const providerIds = data.providers.filter(id => typeof id === 'string' && id.trim());
 
-        if (!data?.supportsProviderSelection || providerIds.length === 0) {
-            $providers.find('option').each(function () {
-                $(this).prop('disabled', Boolean($(this).val()));
-            });
-            $providers.trigger('change').trigger('change.select2');
-            refreshWarningState();
-            return;
+        // SillyBunny: refresh availability without changing saved restrictions or losing new provider IDs.
+        for (const select of $providers.add('#nanogpt_ignored_providers')) {
+            for (const id of providerIds) {
+                if (!Array.from(select.options).some(option => option.value === id)) {
+                    select.add(new Option(id, id));
+                }
+            }
         }
 
+        $providers.data('supportsProviderSelection', data.supportsProviderSelection);
         $providers.find('option').each(function () {
             const value = $(this).val();
-            const isAvailable = !value || providerIds.includes(value);
+            const isAvailable = !value || (data.supportsProviderSelection && providerIds.includes(value));
             $(this).prop('disabled', !isAvailable);
         });
 
@@ -459,10 +570,13 @@ export function updateNanoGptProvidersWarning(providersSelector) {
     }
 
     const selectedCount = $providers.find('option:selected').length;
-    const applicableSelectedCount = $providers.find('option:selected:not(:disabled)').length;
-    const showWarning = selectedCount > 0 && applicableSelectedCount === 0;
+    const ignored = new Set($('#nanogpt_ignored_providers option:selected').map((_, option) => option.value).get());
+    const applicableSelectedCount = $providers.find('option:selected:not(:disabled)').filter((_, option) => !ignored.has(option.value)).length;
+    const showWarning = (selectedCount > 0 && applicableSelectedCount === 0)
+        || ($providers.data('supportsProviderSelection') === false && ignored.size > 0);
 
     $('#nanogpt_provider_warning').toggleClass('displayNone', !showWarning);
+    $('#nanogpt_billing_warning').toggleClass('displayNone', selectedCount === 0 && ignored.size === 0);
 }
 
 export async function loadOllamaModels(data) {
@@ -1355,14 +1469,11 @@ export function initTextGenModels() {
     $('#featherless_model').on('change', () => onFeatherlessModelSelect(String($('#featherless_model').val())));
 
     const providersSelect = $('.openrouter_providers');
-    for (const provider of OPENROUTER_PROVIDERS) {
-        providersSelect.append($('<option>', {
-            value: provider,
-            text: provider,
-        }));
+    for (const selector of Object.keys(OPENROUTER_PROVIDER_WARNING_SELECTORS)) {
+        void syncOpenRouterProvidersForModel('', selector);
     }
 
-    const nanoGptProvidersSelect = $('#nanogpt_provider');
+    const nanoGptProvidersSelect = $('#nanogpt_allowed_providers, #nanogpt_ignored_providers');
     for (const provider of NANOGPT_PROVIDERS) {
         nanoGptProvidersSelect.append($('<option>', {
             value: provider.id,
@@ -1477,6 +1588,13 @@ export function initTextGenModels() {
         width: '100%',
         closeOnSelect: false,
     });
+    // SillyBunny: refresh open results after async updates, surviving shell reinitialisation.
+    $(document).on('change.select2', '.openrouter_providers', function () {
+        const select2 = $(this).data('select2');
+        if (select2?.isOpen()) {
+            select2.trigger('query', { term: select2.selection.$search.val() || '' });
+        }
+    });
     providersSelect.on('select2:select', function (/** @type {any} */ evt) {
         const element = evt.params.data.element;
         const $element = $(element);
@@ -1488,10 +1606,11 @@ export function initTextGenModels() {
     nanoGptProvidersSelect.select2({
         ...select2Defaults,
         sorter: data => data.sort((a, b) => a.text.localeCompare(b.text)),
-        placeholder: t`Select providers. No selection = all providers.`,
+        placeholder: t`Select providers`,
         searchInputPlaceholder: t`Search providers...`,
         searchInputCssClass: 'text_pole',
         width: '100%',
         allowClear: true,
+        closeOnSelect: false,
     });
 }
