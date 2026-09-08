@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
+import { getQueuedChatSaveAbortReason } from '../public/scripts/chat-save-guard.js';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'acorn';
@@ -56,7 +57,7 @@ function createClient(group) {
         return { ok: true, json: async () => result };
     }
     const runtime = vm.createContext({
-        console, structuredClone, getChatBackupSaveOptions, uuidv4: randomUUID,
+        console, structuredClone, getChatBackupSaveOptions, uuidv4: randomUUID, getQueuedChatSaveAbortReason,
         chatSaveQueue: Promise.resolve(), groupChatSaveQueue: Promise.resolve(),
         chat: records('original', 'first pass').slice(1), chat_metadata: { integrity: 'original' },
         chatGeneration: 1, getChatGeneration: () => 1,

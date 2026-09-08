@@ -39,7 +39,7 @@ import {
 } from './scripts/textgen-settings.js';
 import { shouldRestoreTextGenStatusOnStartup } from './scripts/textgen-startup-status.js';
 import { normalizeCharacterChatName, resolveCharacterChatNameForLoad } from './scripts/character-chat-resolver.js';
-import { getDebouncedChatSaveAbortReason } from './scripts/chat-save-guard.js';
+import { getDebouncedChatSaveAbortReason, getQueuedChatSaveAbortReason } from './scripts/chat-save-guard.js';
 import { getChatBackupSaveOptions } from './scripts/chat-backup-sequence.js';
 import { getCharacterDefinitionFormValues, getSuspiciousEmptyCharacterDefinitionSave } from './scripts/character-save-guard.js';
 // SillyBunny: keep model-produced chat filenames behind a strict, independently tested parser.
@@ -10671,11 +10671,13 @@ export async function flushPendingChatSaves({ silent = false } = {}) {
  */
 export function saveChat(...saveChatArguments) {
     const [firstArgument] = saveChatArguments;
-    let options = firstArgument && typeof firstArgument === 'object'
-        ? firstArgument
-        : saveChatArguments.length === 0
-            ? {}
-            : undefined;
+    let options = firstArgument && typeof firstArgument === 'object' ? firstArgument : {};
+    if (saveChatArguments.length > 0 && (typeof firstArgument !== 'object' || firstArgument === null)) {
+        // SillyBunny: legacy extension calls need the same enqueue-time snapshot and lifecycle guard.
+        console.trace('saveChat called with positional arguments. Please use an object instead.');
+        const [chatName, withMetadata, mesId, force, throwOnError] = saveChatArguments;
+        options = { chatName, withMetadata, mesId, force, throwOnError };
+    }
     let queuedSaveArguments = saveChatArguments;
 
     if (options) {
@@ -10689,6 +10691,7 @@ export function saveChat(...saveChatArguments) {
         const chatData = cloneChatSavePayload(sourceChatData);
         const metadataSnapshot = structuredClone({ ...chat_metadata, ...(options.withMetadata || {}) });
         const activeCharacter = characters[this_chid];
+        const currentGeneration = chatGeneration;
         queuedSaveArguments = [{
             ...options,
             chatData,
@@ -10697,6 +10700,10 @@ export function saveChat(...saveChatArguments) {
             characterName: activeCharacter?.name,
             avatarUrl: activeCharacter?.avatar,
             wasGroupChat: Boolean(selected_group),
+            scheduledGeneration: currentGeneration,
+            scheduledCharacterId: this_chid,
+            scheduledGroupId: selected_group,
+            scheduledChatId: getCurrentChatId(),
         }];
     }
 
@@ -10710,15 +10717,57 @@ export function saveChat(...saveChatArguments) {
     return saveTask;
 }
 
-async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, mesId, force = false, chatData = undefined, throwOnError = false, deferBackup = false, deferSequenceId, allowShrink = false, activeChatName, characterName, avatarUrl, wasGroupChat = false } = {}) {
+async function saveChatImmediately(...args) {
+    let options = args[0];
+    if (args.length > 0 && (typeof args[0] !== 'object' || args[0] === null)) {
+        console.trace('saveChat called with positional arguments. Please use an object instead.');
+        const [chatName, withMetadata, mesId, force, throwOnError] = args;
+        options = { chatName, withMetadata, mesId, force, throwOnError };
+    } else {
+        options = options || {};
+    }
+
+    let {
+        chatName,
+        withMetadata,
+        metadataSnapshot,
+        mesId,
+        force = false,
+        chatData = undefined,
+        throwOnError = false,
+        deferBackup = false,
+        deferSequenceId,
+        allowShrink = false,
+        activeChatName,
+        characterName,
+        avatarUrl,
+        wasGroupChat = false,
+        scheduledGeneration,
+        scheduledCharacterId,
+        scheduledGroupId,
+        scheduledChatId,
+    } = options;
+
     if (wasGroupChat || (selected_group && !activeChatName)) {
         toastr.error(t`Operation was aborted to prevent data corruption.`, t`saveChat called for a group chat`);
         throw new Error('saveChat called for a group chat');
     }
 
-    if (arguments.length > 0 && typeof arguments[0] !== 'object') {
-        console.trace('saveChat called with positional arguments. Please use an object instead.');
-        [chatName, withMetadata, mesId, force, throwOnError] = arguments;
+    // SillyBunny: abort saves whose identity or generation changed while queued to prevent chat cloning.
+    const abortReason = getQueuedChatSaveAbortReason({
+        scheduledGroupId,
+        currentGroupId: selected_group,
+        scheduledCharacterId,
+        currentCharacterId: this_chid,
+        scheduledChatId,
+        currentChatId: getCurrentChatId(),
+        scheduledGeneration,
+        currentGeneration: chatGeneration,
+    });
+
+    if (abortReason) {
+        console.warn(`saveChatImmediately aborted, but ${abortReason} changed while queued.`);
+        return false;
     }
 
     const metadata = structuredClone(metadataSnapshot || { ...chat_metadata, ...(withMetadata || {}) });
@@ -10819,7 +10868,7 @@ async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, m
             return false;
         }
 
-        return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, deferBackup, deferSequenceId, allowShrink, activeChatName, characterName, avatarUrl, wasGroupChat });
+        return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, deferBackup, deferSequenceId, allowShrink, activeChatName, characterName, avatarUrl, wasGroupChat, scheduledGeneration, scheduledCharacterId, scheduledGroupId, scheduledChatId });
     } catch (error) {
         console.error(error);
         toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Chat could not be saved`);
@@ -15360,6 +15409,8 @@ export async function swipe(event, direction, { source, repeated, message = chat
     async function standardSwipe(newSwipeId) {
         //If swipe_id has changed, or the source is being deleted.
         if (newSwipeId !== originalSwipeId || source == SWIPE_SOURCE.DELETE || source == SWIPE_SOURCE.BACK) {
+            // SillyBunny: invalidate pending debounced saves and queued saves from previous swipes.
+            incrementChatGeneration();
             //Update the chat.
             await loadFromSwipeId(mesId, newSwipeId);
             //Transition to the new chat.
