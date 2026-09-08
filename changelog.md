@@ -75,6 +75,7 @@
 - PR #821 (2026-09-04) `fix: fixes 'Char is typing' not stopping on group chats, and allow opening of Definitions/Greetings`
 - PR #822 (2026-09-04) `fix: sanitise filenames for linux systems`
 - PR #823 (2026-09-04) `chore: add GPT 6 Astra on OpenAI backend`
+- PR #824 (2026-09-08) `fix: protect drafts and saved settings when using Story Mode`
 - PR #825 (2026-09-06) `fix(ios26+): correctly identify iOS versions`
 - PR #826 (2026-09-06) `chore: update Quick Image Gen to 3.5.0`
 - PR #827 (2026-09-06) `fix(windows): sanitise forbidden characters in filenames on Windows`
