@@ -4326,6 +4326,56 @@ describe('in-chat agent post-processing runner', () => {
         expect(action).not.toHaveBeenCalled();
     });
 
+    test.each([
+        ['Stop', () => eventSource.emit(eventTypes.GENERATION_STOPPED)],
+        ['chat change', async () => { currentChatId = 'chat-b'; await eventSource.emit(eventTypes.CHAT_CHANGED); }],
+        ['replacement', () => eventSource.emit(eventTypes.WORLDINFO_UPDATED, 'Book A', { entries: {} }, { replaced: true })],
+    ])('keeps an executing tool cancellable on %s until its promise settles', async (_name, cancel) => {
+        usePathfinderAgent({ confirmTools: { Pathfinder_Summarize: false } });
+        let release;
+        let context;
+        getToolAction.mockReturnValue(jest.fn((_args, options) => {
+            context = options;
+            return new Promise(resolve => { release = resolve; });
+        }));
+        const runner = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        runner.initAgentRunner();
+        runner.syncToolAgentRegistrations();
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        const pending = registeredTools.get('Pathfinder_Summarize').invoke({ title: 'Memory', content: 'Original chat' });
+        await cancel();
+        release('cancelled');
+        await pending;
+        expect(context?.signal.aborted).toBe(true);
+        expect(context?.isCurrent()).toBe(false);
+    });
+
+    test('a sibling tool save does not cancel another executing tool, but a later external edit does', async () => {
+        usePathfinderAgent({ confirmTools: { Pathfinder_Summarize: false } });
+        const { isPathfinderSelfWrite } = await import('../public/scripts/extensions/in-chat-agents/pathfinder/tree-store.js');
+        let release;
+        let context;
+        getToolAction.mockReturnValue(jest.fn((_args, options) => {
+            context = options;
+            return new Promise(resolve => { release = resolve; });
+        }));
+        const runner = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        runner.initAgentRunner();
+        runner.syncToolAgentRegistrations();
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        const pending = registeredTools.get('Pathfinder_Summarize').invoke({ title: 'Memory', content: 'Original chat' });
+        isPathfinderSelfWrite.mockReturnValue(true);
+        await eventSource.emit(eventTypes.WORLDINFO_UPDATED, 'Book A', { entries: {} });
+        expect(context.signal.aborted).toBe(false);
+        expect(context.isCurrent()).toBe(true);
+        isPathfinderSelfWrite.mockReturnValue(false);
+        await eventSource.emit(eventTypes.WORLDINFO_UPDATED, 'Book A', { entries: {} });
+        release('cancelled');
+        await pending;
+        expect(context.signal.aborted).toBe(true);
+        expect(context.isCurrent()).toBe(false);
+    });
+
     test('rechecks tool enablement after approval even without a registration sync', async () => {
         const agent = usePathfinderAgent({ sidecarEnabled: true, confirmTools: { Pathfinder_Summarize: true } });
         const action = jest.fn(async () => 'written');

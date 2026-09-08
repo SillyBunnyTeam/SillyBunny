@@ -1,6 +1,6 @@
 import { forgetEntry } from '../entry-manager.js';
 import { parseEntryUid } from '../tree-store.js';
-import { getDeletableBooks, getUnknownBookError, getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-tool-bridge.js';
+import { getDeletableBooks, getToolWriteOptions, getUnknownBookError, getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-tool-bridge.js';
 import { registerToolAction, registerToolFormatter } from '../../tool-action-registry.js';
 import { logToolCallStarted, logToolCallCompleted, logToolCallError } from '../activity-feed.js';
 
@@ -17,7 +17,7 @@ function toBooleanArg(value) {
     return null;
 }
 
-async function forgetAction(args) {
+async function forgetAction(args, options = {}) {
     const uid = parseEntryUid(args.uid);
     const bookName = String(args.book || '').trim();
     const hardDelete = toBooleanArg(args.hard_delete);
@@ -49,7 +49,7 @@ async function forgetAction(args) {
     }
 
     try {
-        const result = await forgetEntry(targetBook, uid, hardDelete);
+        const result = await forgetEntry(targetBook, uid, hardDelete, getToolWriteOptions(targetBook, options, hardDelete ? getDeletableBooks : getWritableBooks));
         logToolCallCompleted(TOOL_NAMES.FORGET, `Forgot UID:${uid} (${result.disabled ? 'disabled' : 'deleted'})`);
         return `🗑️ ${hardDelete ? 'Deleted' : 'Disabled'} entry UID:${uid} in "${result.bookName}". ${hardDelete ? 'The entry has been permanently removed.' : 'The entry is disabled and can be re-enabled later.'}`;
     } catch (err) {

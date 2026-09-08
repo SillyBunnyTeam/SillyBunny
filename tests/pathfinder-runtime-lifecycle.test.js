@@ -27,7 +27,7 @@ await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/path
 const { initPathfinder, teardownPathfinder } = await import('../public/scripts/extensions/in-chat-agents/pathfinder-init.js');
 const storage = await import('../public/scripts/extensions/in-chat-agents/pathfinder/entry-manager.js');
 const { setSummaryMemoryCreated, getSummaryMemoryState, saveSummaryMemoryContent } = await import('../public/scripts/extensions/in-chat-agents/pathfinder/summary-memory-store.js');
-const { replaceSettings, getSettings, clearAllTrees, getTree, findNodeById } = await import('../public/scripts/extensions/in-chat-agents/pathfinder/tree-store.js');
+const { replaceSettings, getSettings, clearAllTrees, getTree, findNodeById, isPathfinderSelfWrite } = await import('../public/scripts/extensions/in-chat-agents/pathfinder/tree-store.js');
 const { buildTreeFromMetadata } = await import('../public/scripts/extensions/in-chat-agents/pathfinder/tree-builder.js');
 const runnerSource = readFileSync(new URL('../public/scripts/extensions/in-chat-agents/agent-runner.js', import.meta.url), 'utf8');
 
@@ -41,7 +41,7 @@ function installRunner(events) {
     const context = vm.createContext({
         console,
         eventSource: events, event_types,
-        agentRunnerInitialized: false, pathfinderRetrievalCacheRevision: 0,
+        agentRunnerInitialized: false, pathfinderRetrievalCacheRevision: 0, pathfinderToolRevision: 0, isPathfinderSelfWrite,
         initPostGenerationRecoveryHooks() {}, setAgentGenerationContextProvider() {}, getAgentGenerationContext() {},
         setPromptStorePersistHook() {}, abortActivePathfinderRetrieval() {}, clearPathfinderRetrievalToast() {}, clearPathfinderExtensionPrompts() {},
         syncToolAgentRegistrations: jest.fn(), getAgents: () => [], isPathfinderToolAgent: () => false,

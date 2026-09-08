@@ -173,6 +173,14 @@ export function getDeletableBooks(s = getSettings()) {
     return getActiveTunnelVisionBooks(s).filter(b => canDeleteBook(b, s));
 }
 
+export function getToolWriteOptions(bookName, options = {}, getAllowedBooks = getWritableBooks) {
+    // Queued writes must recheck permissions after loading, not only when invoked.
+    return {
+        signal: options.signal,
+        isCurrent: () => (!options.isCurrent || options.isCurrent()) && getAllowedBooks().includes(bookName),
+    };
+}
+
 export function resolveTargetBook(requestedBook, writableBooks = null) {
     const books = writableBooks ?? getWritableBooks();
     if (books.length === 0) return null;

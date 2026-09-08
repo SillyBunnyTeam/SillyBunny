@@ -1,5 +1,5 @@
 import { createEntry } from '../entry-manager.js';
-import { getUnknownBookError, getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-tool-bridge.js';
+import { getToolWriteOptions, getUnknownBookError, getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-tool-bridge.js';
 import { registerToolAction, registerToolFormatter } from '../../tool-action-registry.js';
 import { logToolCallStarted, logToolCallCompleted, logToolCallError } from '../activity-feed.js';
 import { setSummaryMemoryCreated } from '../summary-memory-store.js';
@@ -93,7 +93,7 @@ export async function createSummaryMemoryEntry(args = {}, options = {}) {
 
     try {
         const result = await createEntry(targetBook, summaryTitle, formattedContent, ['summary', significance.toLowerCase()], {
-            arc, signal: options.signal, isCurrent: options.isCurrent,
+            arc, ...getToolWriteOptions(targetBook, options),
         });
         if (trackLatest) {
             setSummaryMemoryCreated({
@@ -138,9 +138,9 @@ export async function createSeparateSummaryMemoryEntry(args = {}) {
     }, { trackLatest: false });
 }
 
-async function summarizeAction(args) {
+async function summarizeAction(args, options = {}) {
     try {
-        const result = await createSummaryMemoryEntry(args);
+        const result = await createSummaryMemoryEntry(args, options);
         // SillyBunny: reset the auto-summary counter only after a summary is
         // successfully written, not when the prompt is injected. This ensures
         // the interval is not consumed when the model skips or fails the tool

@@ -58,6 +58,7 @@ import {
 import {
     getSettings as getPathfinderRuntimeSettings,
     replaceSettings as replacePathfinderRuntimeSettings,
+    isPathfinderSelfWrite,
 } from './pathfinder/tree-store.js';
 import { onPathfinderWorldInfoUpdated, onPathfinderWorldInfoRenamed, onPathfinderWorldInfoDeleted } from './pathfinder/entry-manager.js';
 import { initializePromptStore, setPromptStorePersistHook } from './pathfinder/prompts/prompt-store.js';
@@ -154,6 +155,7 @@ const activeToolApprovals = new Map();
 const pathfinderRetrievalCacheSession = uuidv4();
 // ponytail: invalidate all retrieval caches on book changes; use per-book revisions only if this becomes costly.
 let pathfinderRetrievalCacheRevision = 0;
+let pathfinderToolRevision = 0;
 let pathfinderRetrievalRun = null;
 let pathfinderChatSyncRevision = 0;
 let activePathfinderRetrievalToast = null;
@@ -752,13 +754,13 @@ export function syncToolAgentRegistrations() {
                 parameters: toolDef.parameters,
                 action: async (args) => {
                     const { cancelRevision, runId, chatId } = getAgentGenerationContext();
-                    const lorebookRevision = pathfinderRetrievalCacheRevision;
+                    const lorebookRevision = pathfinderToolRevision;
                     const controller = new AbortController();
                     const isCurrent = () => {
                         const liveAgent = getEnabledToolAgents().find(item => item.id === agent.id);
                         return !controller.signal.aborted && !generationStopRequested && areAgentsGloballyEnabled()
                             && cancelRevision === agentGenerationCancelRevision && runId === postProcessingGenerationRunId
-                            && lorebookRevision === pathfinderRetrievalCacheRevision
+                            && lorebookRevision === pathfinderToolRevision
                             && chatId === getCurrentSnapshotChatId() && liveAgent
                             && (!isPathfinderToolAgent(liveAgent) || getPathfinderRuntimeAgent()?.id === agent.id)
                             && getRegisterableAgentTools(liveAgent).some(tool => tool.name === toolDef.name && tool.actionKey === toolDef.actionKey)
@@ -774,7 +776,7 @@ export function syncToolAgentRegistrations() {
                             if (!approved) return declined;
                         }
                         if (!isCurrent()) return declined;
-                        return action(args);
+                        return await action(args, { signal: controller.signal, isCurrent });
                     } finally {
                         activeToolApprovals.delete(controller);
                     }
@@ -5204,6 +5206,8 @@ function invalidatePathfinderRetrieval() {
 
 function onWorldInfoUpdatedToolSync(name, data, options) {
     if (typeof name === 'string' && name) {
+        // Other queued tools remain valid when a sibling tool commits its save.
+        if (options?.replaced || !isPathfinderSelfWrite(name)) pathfinderToolRevision++;
         onPathfinderWorldInfoUpdated(name, data, options);
         invalidatePathfinderRetrieval();
     }
@@ -5212,6 +5216,7 @@ function onWorldInfoUpdatedToolSync(name, data, options) {
 
 async function onWorldInfoRenamedOrDeleted(oldName, newName = '') {
     if (typeof oldName !== 'string' || !oldName) return;
+    pathfinderToolRevision++;
     if (newName) onPathfinderWorldInfoRenamed(oldName, newName);
     else onPathfinderWorldInfoDeleted(oldName);
     invalidatePathfinderRetrieval();

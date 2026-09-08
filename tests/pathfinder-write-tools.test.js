@@ -15,13 +15,14 @@ const { clearAllTrees, getTree, getSettings, replaceSettings, setBookPermission 
 const { buildTreeFromMetadata } = await import('../public/scripts/extensions/in-chat-agents/pathfinder/tree-builder.js');
 const { initEntryManagerAPIs } = await import('../public/scripts/extensions/in-chat-agents/pathfinder/entry-manager.js');
 const { getToolAction } = await import('../public/scripts/extensions/in-chat-agents/tool-action-registry.js');
-for (const tool of ['remember', 'update', 'forget', 'merge-split', 'reorganize']) {
+for (const tool of ['remember', 'update', 'forget', 'merge-split', 'reorganize', 'summarize']) {
     (await import(`../public/scripts/extensions/in-chat-agents/pathfinder/tools/${tool}.js`)).registerActions();
 }
 
 describe('Pathfinder write tool actions', () => {
     let store;
     let save;
+    let load;
 
     beforeEach(async () => {
         clearAllTrees();
@@ -33,7 +34,7 @@ describe('Pathfinder write tool actions', () => {
             } },
             'Second Book': { entries: { 3: { uid: 3, comment: 'Unrelated', content: 'untouched' } } },
         };
-        const load = jest.fn(async name => store[name] ? structuredClone(store[name]) : null);
+        load = jest.fn(async name => store[name] ? structuredClone(store[name]) : null);
         save = jest.fn(async (name, data) => {
             store[name] = structuredClone(data);
             return name;
@@ -47,6 +48,42 @@ describe('Pathfinder write tool actions', () => {
     });
 
     afterEach(() => { delete globalThis.window; });
+
+    test.each([
+        ['remember', { title: 'New', content: 'new' }],
+        ['update', { uid: 3, content: 'changed' }],
+        ['forget', { uid: 3 }],
+        ['forget', { uid: 3, hard_delete: true }],
+        ['merge_split', { action: 'merge', uid1: 0, uid2: 3 }],
+        ['merge_split', { action: 'split', uid: 3, content1: 'one', content2: 'two' }],
+        ['reorganize', { action: 'create_waypoint', name: 'New' }],
+        ['reorganize', { action: 'move', uid: 3 }],
+        ['summarize', { title: 'Summary', content: 'new summary' }],
+    ])('cancels a pending %s before saving after Stop or a permission change (%j)', async (tool, args) => {
+        getSettings().dedupDetection = false;
+        const before = structuredClone(store);
+        for (const reason of ['stop', 'context', 'permission']) {
+            let release;
+            let started;
+            const loading = new Promise(resolve => { started = resolve; });
+            load.mockImplementationOnce(() => new Promise(resolve => { release = resolve; started(); }));
+            const controller = new AbortController();
+            let current = true;
+            const pending = getToolAction(`pathfinder_${tool}`)({
+                ...args, book: 'Memory Book', target_node_id: getTree('Memory Book').id,
+            }, { signal: controller.signal, isCurrent: () => current });
+            await loading;
+            const permission = args.hard_delete || args.action === 'merge' ? 'delete' : 'write';
+            if (reason === 'stop') controller.abort();
+            if (reason === 'context') current = false;
+            if (reason === 'permission') setBookPermission('Memory Book', permission, false);
+            release(structuredClone(store['Memory Book']));
+            await pending;
+            expect(store).toEqual(before);
+            expect(save).not.toHaveBeenCalled();
+            setBookPermission('Memory Book', permission, true);
+        }
+    });
 
     test.each([undefined, null, false, true, '', '  ', [], [0], {}, { uid: 0 }, 0.5, '3.5', -1, NaN, Infinity])('rejects raw UID %p before it can address a real entry', async uid => {
         const before = structuredClone(store);

@@ -131,7 +131,7 @@ export function createEntry(bookName, title, content, keys = [], { arc = '', sig
     }, { signal, isCurrent });
 }
 
-export function updateEntry(bookName, uid, newContent, newTitle, expectedEntry = null) {
+export function updateEntry(bookName, uid, newContent, newTitle, expectedEntry = null, options = {}) {
     return writeBook(bookName, bookData => {
         const entry = findEntryByUid(bookData.entries, uid);
         if (expectedEntry && (!isEntryEligible(entry) || entry.comment !== expectedEntry.title || String(entry.content || '').trim() !== expectedEntry.content)) {
@@ -144,10 +144,10 @@ export function updateEntry(bookName, uid, newContent, newTitle, expectedEntry =
         if (typeof newTitle === 'string') entry.comment = newTitle;
         syncWIOriginalDataEntry(bookData, entry.uid);
         return { uid: entry.uid };
-    });
+    }, options);
 }
 
-export function forgetEntry(bookName, uid, hardDelete = false) {
+export function forgetEntry(bookName, uid, hardDelete = false, options = {}) {
     return writeBook(bookName, bookData => {
         if (typeof hardDelete !== 'boolean') throw new Error('Permanent deletion request refused; the tool supplied an invalid permanent deletion choice.');
         const entry = requireEntry(bookName, bookData, uid);
@@ -160,10 +160,10 @@ export function forgetEntry(bookName, uid, hardDelete = false) {
             syncWIOriginalDataEntry(bookData, entry.uid);
         }
         return { uid: entry.uid, deleted: hardDelete, disabled: !hardDelete };
-    });
+    }, options);
 }
 
-export function moveEntry(bookName, uid, targetNodeId) {
+export function moveEntry(bookName, uid, targetNodeId, options = {}) {
     return writeBook(bookName, bookData => {
         const entry = requireEntry(bookName, bookData, uid, true);
         const tree = getEditableTree(bookName, bookData);
@@ -173,10 +173,10 @@ export function moveEntry(bookName, uid, targetNodeId) {
         writeTreeLayout(bookData, tree);
         syncWIOriginalDataEntry(bookData, entry.uid);
         return { uid: entry.uid, targetNodeId };
-    });
+    }, options);
 }
 
-export function createCategory(bookName, parentNodeId, name, description = '') {
+export function createCategory(bookName, parentNodeId, name, description = '', options = {}) {
     return writeBook(bookName, bookData => {
         const tree = getEditableTree(bookName, bookData);
         const newNode = createLayoutNode(bookName, name, description);
@@ -185,7 +185,7 @@ export function createCategory(bookName, parentNodeId, name, description = '') {
         parent.children.push(newNode);
         writeTreeLayout(bookData, tree);
         return { nodeId: newNode.id, name };
-    });
+    }, options);
 }
 
 export function findEntry(entries, uid) {
@@ -214,7 +214,7 @@ export async function listNodeEntries(bookName, nodeId) {
         .map(e => ({ uid: e.uid, title: e.comment || e.key?.[0] || '', content: e.content || '' }));
 }
 
-export function mergeEntries(bookName, uid1, uid2, mergedTitle) {
+export function mergeEntries(bookName, uid1, uid2, mergedTitle, options = {}) {
     return writeBook(bookName, bookData => {
         const e1 = requireEntry(bookName, bookData, uid1, true);
         const e2 = requireEntry(bookName, bookData, uid2, true);
@@ -232,10 +232,10 @@ export function mergeEntries(bookName, uid1, uid2, mergedTitle) {
         delete bookData.entries[key2];
         syncWIOriginalDataEntry(bookData, uid1);
         return { mergedUid: uid1, removedUid: uid2 };
-    });
+    }, options);
 }
 
-export function splitEntry(bookName, uid, splitTitle1, content1, splitTitle2, content2) {
+export function splitEntry(bookName, uid, splitTitle1, content1, splitTitle2, content2, options = {}) {
     return writeBook(bookName, async bookData => {
         const original = requireEntry(bookName, bookData, uid, true);
         uid = original.uid;
@@ -257,7 +257,7 @@ export function splitEntry(bookName, uid, splitTitle1, content1, splitTitle2, co
         syncWIOriginalDataEntry(bookData, uid);
         syncWIOriginalDataEntry(bookData, newEntry.uid);
         return { originalUid: uid, newUid: newEntry.uid };
-    });
+    }, options);
 }
 
 function findParentOfEntry(tree, uid) {

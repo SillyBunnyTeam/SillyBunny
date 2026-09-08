@@ -151,7 +151,7 @@ function notifySummary() { for (const listener of summaryListeners) listener(); 
 function backgroundSaves() {
     const source = readFileSync(new URL('../public/scripts/extensions/in-chat-agents/agent-runner.js', import.meta.url), 'utf8');
     const runtime = vm.createContext({
-        console, structuredClone, pathfinderChatSyncRevision: 0,
+        console, structuredClone, pathfinderChatSyncRevision: 0, pathfinderToolRevision: 0,
         isPathfinderSubmoduleEnabled: store.isPathfinderSubmoduleEnabled,
         getPathfinderRuntimeAgent: () => store.getEnabledToolAgents()[0], isPathfinderToolAgent: () => true,
         getAgentById: store.getAgentById, getAgents: store.getAgents,
