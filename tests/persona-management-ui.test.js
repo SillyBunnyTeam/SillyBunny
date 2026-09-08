@@ -35,7 +35,7 @@ describe('Persona Management mobile layout', () => {
 });
 
 describe('Scenario Notes disclosure', () => {
-    test('starts collapsed without nesting another disclosure inside it', () => {
+    test('starts collapsed with a plain final-prompt preview', () => {
         expect(indexHtml).toMatch(/<details class="persona-appendices-block"[^>]*>\s*<summary id="persona_appendices_heading"/);
         expect(indexHtml).not.toContain('<details open class="persona-appendices-block"');
         expect(indexHtml).not.toContain('<details class="persona-effective-preview">');

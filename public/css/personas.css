@@ -704,10 +704,9 @@
 
 .persona-appendix-card {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-        'toggle actions'
-        'description description';
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    grid-template-areas: 'toggle details actions';
+    align-items: start;
     gap: 6px 10px;
     min-width: 0;
     padding: 8px;
@@ -719,9 +718,10 @@
 .persona-appendix-toggle-row {
     grid-area: toggle;
     min-width: 0;
+    min-height: 44px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: center;
     margin: 0;
     cursor: pointer;
 }
@@ -730,16 +730,22 @@
     accent-color: var(--color-primary, var(--sb-accent));
 }
 
-.persona-appendix-name {
+.persona-appendix-details {
+    grid-area: details;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+}
+
+.persona-appendix-name {
+    display: list-item;
+    min-height: 44px;
+    padding-block: 10px;
+    list-style-position: inside;
+    overflow-wrap: anywhere;
     font-weight: 700;
+    cursor: pointer;
 }
 
 .persona-appendix-description {
-    grid-area: description;
     margin: 0;
     line-height: 1.38;
     white-space: pre-wrap;
@@ -761,14 +767,27 @@
 }
 
 .persona-appendix-actions > .menu_button {
-    width: 34px;
-    min-width: 34px;
-    height: 34px;
-    min-height: 34px;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
     padding: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+}
+
+@container persona-scenario-notes (max-width: 520px) {
+    .persona-appendix-card {
+        grid-template-columns: 44px minmax(0, 1fr);
+        grid-template-areas:
+            'toggle details'
+            '. actions';
+    }
+
+    .persona-appendix-actions {
+        justify-content: flex-start;
+    }
 }
 
 .persona-effective-preview {
@@ -990,25 +1009,6 @@
         width: 44px;
         min-width: 44px;
         max-width: 44px;
-        height: 44px;
-        min-height: 44px;
-    }
-
-    .persona-appendix-card {
-        grid-template-columns: 1fr;
-        grid-template-areas:
-            'toggle'
-            'description'
-            'actions';
-    }
-
-    .persona-appendix-actions {
-        justify-content: flex-start;
-    }
-
-    .persona-appendix-actions > .menu_button {
-        width: 44px;
-        min-width: 44px;
         height: 44px;
         min-height: 44px;
     }
