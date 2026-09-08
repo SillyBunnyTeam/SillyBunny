@@ -6,6 +6,7 @@ import {
     extension_prompt_types,
     extension_prompts,
     setExtensionPrompt,
+    setAgentGenerationContextProvider,
     substituteParams,
     substituteParamsExtended,
     generateQuietPrompt,
@@ -20,11 +21,13 @@ import {
 } from '../../../script.js';
 import { getContext } from '../../extensions.js';
 import { eventSource, event_types } from '../../events.js';
+import { is_group_generating } from '../../group-chats.js';
 import { POPUP_RESULT, POPUP_TYPE, callGenericPopup } from '../../popup.js';
 import { ToolManager } from '../../tool-calling.js';
 import {
     areAgentsGloballyEnabled,
     getAgentById,
+    getAgents,
     getAgentRegexScripts,
     getEnabledAgents,
     getEnabledToolAgents,
@@ -41,7 +44,7 @@ import {
     resolveCompanionConnectionProfile,
     resolveConnectionProfile,
 } from './agent-store.js';
-import { regexFromString } from '../../utils.js';
+import { regexFromString, uuidv4 } from '../../utils.js';
 import { resetChatBackupSequence } from '../../chat-backup-sequence.js';
 import { isKimiK3Model } from '../../openai-model-capabilities.js';
 import { buildFallbackPromptText, extractProfileResponseText } from './llm-utils.js';
@@ -57,17 +60,15 @@ import {
 import {
     getSettings as getPathfinderRuntimeSettings,
     replaceSettings as replacePathfinderRuntimeSettings,
-    setSettings as setPathfinderRuntimeSettings,
-    deleteTree as deletePathfinderTree,
-    syncTrackerUidsForLorebook,
     isPathfinderSelfWrite,
 } from './pathfinder/tree-store.js';
+import { onPathfinderWorldInfoUpdated, onPathfinderWorldInfoRenamed, onPathfinderWorldInfoDeleted } from './pathfinder/entry-manager.js';
 import { initializePromptStore, setPromptStorePersistHook } from './pathfinder/prompts/prompt-store.js';
 import { getDefaultPrompts, getDefaultPipelines } from './pathfinder/prompts/default-prompts.js';
 import { getPathfinderToolDefinitions } from './pathfinder/tool-definitions.js';
 import { getContextualLorebooks, getForcedToolChoice } from './pathfinder/pathfinder-tool-bridge.js';
 import { confirmToolCall, shouldConfirmToolCall } from './pathfinder/tool-confirmation.js';
-import { PATHFINDER_RETRIEVAL_PROMPT_KEYS, runSidecarRetrieval } from './pathfinder/sidecar-retrieval.js';
+import { injectPathfinderRetrieval, PATHFINDER_RETRIEVAL_PROMPT_KEYS, runSidecarRetrieval } from './pathfinder/sidecar-retrieval.js';
 import { resetAutoSummaryCount, shouldAutoSummarize } from './pathfinder/auto-summary.js';
 import { buildRegexScriptRefsForAgent, cacheAgentRegexScripts, migrateLegacyRegexSnapshotsInMessages } from './regex-snapshot-store.js';
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from './regex-scripts.js';
@@ -152,6 +153,13 @@ let postProcessingGenerationRunId = 0;
 let swipeNavigationPending = false;
 const activeAgentRequestAbortControllers = new Set();
 const activePathfinderRetrievalAbortControllers = new Set();
+const activeToolApprovals = new Map();
+const pathfinderRetrievalCacheSession = uuidv4();
+// ponytail: invalidate all retrieval caches on book changes; use per-book revisions only if this becomes costly.
+let pathfinderRetrievalCacheRevision = 0;
+let pathfinderToolRevision = 0;
+let pathfinderRetrievalRun = null;
+let pathfinderChatSyncRevision = 0;
 let activePathfinderRetrievalToast = null;
 let activeInitialGenerationToast = null;
 let companionRuntime = null;
@@ -162,6 +170,18 @@ export function registerCompanionRuntime(runtime = null) {
 
 export function getAgentGenerationCancelRevision() {
     return agentGenerationCancelRevision;
+}
+
+export function isAgentGenerationStopped() {
+    return generationStopRequested;
+}
+
+export function getAgentGenerationContext() {
+    return {
+        chatId: getCurrentSnapshotChatId(),
+        runId: postProcessingGenerationRunId,
+        cancelRevision: agentGenerationCancelRevision,
+    };
 }
 
 function shouldDeferAgentRegularBackup() {
@@ -233,6 +253,7 @@ const agentRegisteredToolNames = new Set();
 
 /** Guard to prevent re-registration during generation when WORLDINFO_UPDATED fires. */
 let toolSyncDuringGeneration = false;
+let pendingToolSync = false;
 
 /** Recursion depth tracker for tool-call passes. */
 let toolRecursionDepth = 0;
@@ -254,7 +275,7 @@ function escapeToastHtml(value) {
 }
 
 export function isAgentGenerationActive() {
-    return internalPromptTransformDepth > 0 || manualAgentRunQueueProcessing || manualAgentRunQueue.length > 0 || parallelManualRunCount > 0;
+    return internalPromptTransformDepth > 0 || manualAgentRunQueueProcessing || manualAgentRunQueue.length > 0 || parallelManualRunCount > 0 || activePathfinderRetrievalAbortControllers.size > 0;
 }
 
 export function onAgentGenerationStateChanged(listener) {
@@ -317,9 +338,9 @@ export function cancelAgentGeneration() {
     manualAgentRunCancelRequested = true;
     agentGenerationCancelRevision++;
 
-    if (internalPromptTransformDepth > 0) {
-        generationStopRequested = true;
-    }
+    generationStopRequested = true;
+    invalidateToolApprovals();
+    releaseToolAgentRegistrations();
 
     clearLatestAssistantPostProcessingFallback();
     clearDeferredPostProcessing();
@@ -329,8 +350,9 @@ export function cancelAgentGeneration() {
     clearPathfinderRetrievalToast();
     abortActiveAgentRequests('Agent generation cancelled by user.');
     abortActivePathfinderRetrieval('Pathfinder retrieval cancelled by user.');
+    clearPathfinderExtensionPrompts();
 
-    const stopped = internalPromptTransformDepth > 0 || activeManualAgentRun ? stopGeneration() : false;
+    const stopped = wasActive || activeManualAgentRun ? stopGeneration() : false;
     notifyAgentGenerationStateChanged();
 
     if (stopped || wasActive || queuedCount > 0) {
@@ -358,12 +380,26 @@ function isAbortSignalTriggered(error, signal = null) {
 
 function abortActivePathfinderRetrieval(reason = 'Pathfinder retrieval cancelled.') {
     const error = reason instanceof Error ? reason : new Error(String(reason));
+    pathfinderRetrievalRun?.controller.abort(error);
+    pathfinderRetrievalRun = null;
 
     for (const controller of activePathfinderRetrievalAbortControllers) {
         controller.abort(error);
     }
 
     activePathfinderRetrievalAbortControllers.clear();
+    notifyAgentGenerationStateChanged();
+}
+
+function invalidateToolApprovals(force = false) {
+    for (const [controller, isCurrent] of activeToolApprovals) {
+        if (force || !isCurrent()) controller.abort();
+    }
+}
+
+function releaseToolAgentRegistrations() {
+    toolSyncDuringGeneration = false;
+    if (pendingToolSync) syncToolAgentRegistrations();
 }
 
 function showPathfinderRetrievalToast() {
@@ -623,9 +659,6 @@ export function getToolRecursionState() {
     };
 }
 
-// Counterpart of syncAutoAttachedLorebooks (pathfinder-settings-ui.js), which
-// handles the panel-open trigger from the same contextual-lorebook source;
-// keep the two in sync.
 export async function syncPathfinderAgentLorebooksForCurrentChat(agent = getPathfinderRuntimeAgent(), { persist = false } = {}) {
     if (!isPathfinderSubmoduleEnabled()) {
         return false;
@@ -635,40 +668,35 @@ export async function syncPathfinderAgentLorebooksForCurrentChat(agent = getPath
         return false;
     }
 
-    const existingSettings = {
-        ...getPathfinderRuntimeSettings(),
-        ...(agent.settings || {}),
+    const chatId = getCurrentSnapshotChatId();
+    const revision = pathfinderChatSyncRevision;
+    const books = [...new Set(getContextualLorebooks().filter(Boolean))];
+    const isCurrent = () => revision === pathfinderChatSyncRevision && chatId === getCurrentSnapshotChatId()
+        && getPathfinderRuntimeAgent()?.id === agent.id;
+    const update = current => {
+        if (!current || !isCurrent() || current.settings?.autoSyncLorebooksOnChatChange === false) return null;
+        const settings = current.settings ?? {};
+        const contextualBooks = books.filter(book => settings.bookPermissions?.[book]?.enabled !== false);
+        const selectedLorebook = contextualBooks[0] ?? '';
+        const currentBooks = settings.enabledLorebooks ?? [];
+        if (currentBooks.length === contextualBooks.length && currentBooks.every((book, index) => book === contextualBooks[index])
+            && (settings.selectedLorebook ?? '') === selectedLorebook) return null;
+        return { ...current, settings: { ...settings, enabledLorebooks: contextualBooks, selectedLorebook } };
     };
-    if (existingSettings.autoSyncLorebooksOnChatChange === false) {
-        return false;
-    }
-
-    const contextualBooks = Array.from(new Set(getContextualLorebooks().filter(Boolean)));
-    const currentBooks = Array.isArray(existingSettings.enabledLorebooks) ? existingSettings.enabledLorebooks : [];
-    const sameBooks = currentBooks.length === contextualBooks.length && currentBooks.every((book, index) => book === contextualBooks[index]);
-    const selectedLorebook = contextualBooks[0] ?? '';
-
-    if (sameBooks && (existingSettings.selectedLorebook ?? '') === selectedLorebook) {
-        return false;
-    }
-
-    const nextSettings = {
-        ...existingSettings,
-        enabledLorebooks: contextualBooks,
-        selectedLorebook,
-    };
-    agent.settings = {
-        ...(agent.settings || {}),
-        ...nextSettings,
-    };
-    setPathfinderRuntimeSettings(nextSettings);
-
+    let saved;
     if (persist) {
-        await saveAgent(agent);
+        saved = await saveAgent(agent.id, { update });
+    } else {
+        const current = getAgentById(agent.id) ?? agent;
+        saved = update(current);
+        if (saved) current.settings = saved.settings;
     }
+    if (!saved || !isCurrent()) return false;
+    syncToolAgentRegistrations();
+    notifyAgentGenerationStateChanged();
 
     console.info('[Pathfinder] Synced enabled lorebooks to the current chat context.', {
-        lorebooks: contextualBooks,
+        lorebooks: saved.settings.enabledLorebooks,
     });
     return true;
 }
@@ -678,13 +706,23 @@ export async function syncPathfinderAgentLorebooksForCurrentChat(agent = getPath
  * Unregisters tools from disabled agents, registers tools from enabled ones.
  */
 export function syncToolAgentRegistrations() {
+    invalidateToolApprovals();
+    if (pathfinderRetrievalRun && !pathfinderRetrievalRun.isCurrent()) {
+        abortActivePathfinderRetrieval();
+        clearPathfinderRetrievalToast();
+        clearPathfinderExtensionPrompts();
+    }
     if (toolSyncDuringGeneration) {
+        pendingToolSync = true;
         return;
     }
+    pendingToolSync = false;
 
     const desiredTools = new Set();
-    const enabledToolAgents = areAgentsGloballyEnabled() ? getEnabledToolAgents() : [];
-    syncPathfinderRuntimeSettings(getPathfinderRuntimeAgent(enabledToolAgents));
+    const allEnabledToolAgents = areAgentsGloballyEnabled() ? getEnabledToolAgents() : [];
+    const pathfinderAgent = getPathfinderRuntimeAgent(allEnabledToolAgents);
+    const enabledToolAgents = allEnabledToolAgents.filter(agent => !isPathfinderToolAgent(agent) || agent.id === pathfinderAgent?.id);
+    syncPathfinderRuntimeSettings(pathfinderAgent);
 
     for (const agent of enabledToolAgents) {
         const enabledTools = getRegisterableAgentTools(agent);
@@ -717,16 +755,35 @@ export function syncToolAgentRegistrations() {
                 description: toolDef.description,
                 parameters: toolDef.parameters,
                 action: async (args) => {
-                    if (!isAgentRuntimeAllowed(agent)) {
-                        return '';
-                    }
-                    if (shouldConfirmToolCall(toolDef.name)) {
-                        const approved = await confirmToolCall(toolDef.displayName ?? toolDef.name, args);
-                        if (!approved) {
-                            return 'The user declined this tool call. Continue the response without it and do not retry.';
+                    if (!isAgentRuntimeAllowed(agent)) return '';
+                    const { cancelRevision, runId, chatId } = getAgentGenerationContext();
+                    const lorebookRevision = pathfinderToolRevision;
+                    const controller = new AbortController();
+                    const isCurrent = () => {
+                        const liveAgent = getEnabledToolAgents().find(item => item.id === agent.id);
+                        return !controller.signal.aborted && !generationStopRequested && areAgentsGloballyEnabled()
+                            && cancelRevision === agentGenerationCancelRevision && runId === postProcessingGenerationRunId
+                            && lorebookRevision === pathfinderToolRevision
+                            && chatId === getCurrentSnapshotChatId() && liveAgent && isAgentRuntimeAllowed(liveAgent)
+                            && (!isPathfinderToolAgent(liveAgent) || getPathfinderRuntimeAgent()?.id === agent.id)
+                            && getRegisterableAgentTools(liveAgent).some(tool => tool.name === toolDef.name && tool.actionKey === toolDef.actionKey)
+                            && getToolAction(toolDef.actionKey) === action;
+                    };
+                    const declined = 'The user declined this tool call. Continue the response without it and do not retry.';
+                    if (!isCurrent()) return declined;
+
+                    activeToolApprovals.set(controller, isCurrent);
+                    try {
+                        if (shouldConfirmToolCall(toolDef.name, getEnabledToolAgents().find(item => item.id === agent.id)?.settings)) {
+                            const approved = await confirmToolCall(toolDef.displayName ?? toolDef.name, args, controller.signal);
+                            if (!approved) return declined;
                         }
+                        if (!isAgentRuntimeAllowed(agent)) return '';
+                        if (!isCurrent()) return declined;
+                        return await action(args, { signal: controller.signal, isCurrent });
+                    } finally {
+                        activeToolApprovals.delete(controller);
                     }
-                    return isAgentRuntimeAllowed(agent) ? action(args) : '';
                 },
                 formatMessage,
                 shouldRegister: async () => isAgentRuntimeAllowed(agent),
@@ -950,7 +1007,13 @@ function clearPendingPostProcessingForChatChange() {
     }
 
     isGenerationInProgress = false;
-    toolSyncDuringGeneration = false;
+    agentGenerationCancelRevision++;
+    invalidateToolApprovals();
+    abortActiveAgentRequests();
+    abortActivePathfinderRetrieval();
+    clearPathfinderRetrievalToast();
+    clearInChatAgentExtensionPrompts();
+    releaseToolAgentRegistrations();
     generationStopRequested = false;
     generationStartChatId = getCurrentSnapshotChatId();
     pendingGenerationSnapshot = null;
@@ -959,6 +1022,7 @@ function clearPendingPostProcessingForChatChange() {
     clearLatestAssistantPostProcessingFallback();
     clearPostGenerationRecoveryCheck();
     clearMissedGenerationEndRecoveryCheck();
+    notifyAgentGenerationStateChanged();
 }
 
 function clearStalePendingGenerationSnapshot() {
@@ -1240,7 +1304,9 @@ function buildPathfinderRetrievalCacheSignature(pathfinderAgent, activationSnaps
     }
 
     const signaturePayload = normalizePathfinderCacheValue({
-        version: 1,
+        version: 2,
+        cacheSession: pathfinderRetrievalCacheSession,
+        lorebookRevision: pathfinderRetrievalCacheRevision,
         chatId: normalizeSnapshotChatId(activationSnapshot?.chatId ?? getCurrentSnapshotChatId()),
         generationType: normalizeGenerationType(generationType),
         targetMessageIndex: cacheTarget.messageIndex,
@@ -1335,7 +1401,7 @@ function restorePathfinderRetrievalPromptSnapshot(cache) {
     return true;
 }
 
-function storePathfinderRetrievalCache(message, signature) {
+function storePathfinderRetrievalCache(message, signature, retrieval) {
     if (!message || !signature) {
         return;
     }
@@ -1343,6 +1409,7 @@ function storePathfinderRetrievalCache(message, signature) {
     const cacheEntry = {
         signature,
         prompts: capturePathfinderRetrievalPromptSnapshot(),
+        retrieval: { ...retrieval, stageResults: [], metadata: {} },
         savedAt: Date.now(),
     };
     const caches = getStoredPathfinderRetrievalCaches(message).filter(cache => cache.signature !== signature);
@@ -1704,7 +1771,7 @@ function recoverMissedGenerationEnd(reason = 'fallback') {
     console.warn(`[InChatAgents] Recovering missed generation end via ${reason}; flushing queued post-processing.`);
     isGenerationInProgress = false;
     lastMainGenerationEndedAt = Date.now() - BODY_GENERATING_FLAG_GRACE_MS;
-    toolSyncDuringGeneration = false;
+    releaseToolAgentRegistrations();
     generationStopRequested = false;
     clearMissedGenerationEndRecoveryCheck();
     clearInitialGenerationToast();
@@ -3127,6 +3194,27 @@ async function requestProfilePromptTransform(isRuntimeAllowed, CMRS, profileId, 
     };
 }
 
+export async function runAsInternalPromptTransform(requestFn, signal = null) {
+    signal?.throwIfAborted();
+    internalPromptTransformDepth++;
+    notifyAgentGenerationStateChanged();
+    let active = true;
+    const finish = () => {
+        if (!active) return;
+        active = false;
+        internalPromptTransformDepth = Math.max(0, internalPromptTransformDepth - 1);
+        notifyPromptTransformIdle();
+        notifyAgentGenerationStateChanged();
+    };
+    signal?.addEventListener('abort', finish, { once: true });
+    try {
+        return await requestFn();
+    } finally {
+        signal?.removeEventListener('abort', finish);
+        finish();
+    }
+}
+
 export async function requestPromptTransform(agent, promptMessages, maxTokens, options = {}) {
     const isRuntimeAllowed = () => isAgentRuntimeAllowed(agent) && (options.runtimeAgents ?? []).every(isAgentRuntimeAllowed);
     if (!isRuntimeAllowed()) {
@@ -3137,21 +3225,10 @@ export async function requestPromptTransform(agent, promptMessages, maxTokens, o
     const context = getContext();
     const CMRS = context?.ConnectionManagerRequestService;
     const requestAbortController = new AbortController();
-    const runAsInternalPromptTransform = async (requestFn) => {
-        internalPromptTransformDepth++;
-        notifyAgentGenerationStateChanged();
-        try {
-            if (!isRuntimeAllowed()) {
-                throw new DOMException('', 'AbortError');
-            }
-            return await requestFn();
-        } finally {
-            internalPromptTransformDepth = Math.max(0, internalPromptTransformDepth - 1);
-            notifyPromptTransformIdle();
-            notifyAgentGenerationStateChanged();
-        }
-    };
-
+    const runAllowedRequest = requestFn => runAsInternalPromptTransform(() => {
+        if (!isRuntimeAllowed()) throw new DOMException('', 'AbortError');
+        return requestFn();
+    }, requestAbortController.signal);
     activeAgentRequestAbortControllers.add(requestAbortController);
 
     try {
@@ -3160,14 +3237,14 @@ export async function requestPromptTransform(agent, promptMessages, maxTokens, o
                 throw new Error(`${describePromptTransformTarget(profileId, 'profile')} is set, but Connection Manager is unavailable.`);
             }
 
-            return await runAsInternalPromptTransform(async () =>
-                await requestProfilePromptTransform(isRuntimeAllowed, CMRS, profileId, promptMessages, maxTokens, modelOverride, requestAbortController.signal),
+            return await runAllowedRequest(
+                () => requestProfilePromptTransform(isRuntimeAllowed, CMRS, profileId, promptMessages, maxTokens, modelOverride, requestAbortController.signal),
             );
         }
 
         if (canUseMainChatCompletionHelper(context)) {
-            return await runAsInternalPromptTransform(async () =>
-                await requestMainChatCompletionPromptTransform(context, promptMessages, maxTokens, options, requestAbortController.signal),
+            return await runAllowedRequest(
+                () => requestMainChatCompletionPromptTransform(context, promptMessages, maxTokens, options, requestAbortController.signal),
             );
         }
 
@@ -3176,13 +3253,14 @@ export async function requestPromptTransform(agent, promptMessages, maxTokens, o
             .join('\n\n');
         const preservedPrompts = Object.entries(extension_prompts)
             .filter(([key]) => key.startsWith(PROMPT_KEY_PREFIX));
+        const origin = getAgentGenerationContext();
 
         for (const [key] of preservedPrompts) {
             delete extension_prompts[key];
         }
 
         try {
-            return await runAsInternalPromptTransform(async () => ({
+            return await runAllowedRequest(async () => ({
                 output: await generateQuietPrompt({
                     quietPrompt,
                     quietName: 'In-Chat Agent',
@@ -3195,8 +3273,11 @@ export async function requestPromptTransform(agent, promptMessages, maxTokens, o
                 profileId: '',
             }));
         } finally {
-            for (const [key, value] of preservedPrompts) {
-                extension_prompts[key] = value;
+            if (!requestAbortController.signal.aborted && origin.chatId === getCurrentSnapshotChatId()
+                && origin.runId === postProcessingGenerationRunId && origin.cancelRevision === agentGenerationCancelRevision) {
+                for (const [key, value] of preservedPrompts) {
+                    if (!Object.hasOwn(extension_prompts, key)) extension_prompts[key] = value;
+                }
             }
         }
     } finally {
@@ -3608,11 +3689,14 @@ function clearPathfinderExtensionPrompts() {
 }
 
 export function deactivatePathfinderRuntime() {
+    invalidateToolApprovals();
     clearPathfinderRetrievalToast();
     abortActivePathfinderRetrieval('Pathfinder disabled.');
     clearPathfinderExtensionPrompts();
     toolRecursionDepth = 0;
-    syncToolAgentRegistrations();
+    pendingToolSync = true;
+    releaseToolAgentRegistrations();
+    notifyAgentGenerationStateChanged();
 }
 
 function injectPreGenerationAgentPrompts(activeAgents, generationType) {
@@ -3652,12 +3736,18 @@ function injectPreGenerationAgentPrompts(activeAgents, generationType) {
 /**
  * Cleans up all in-chat agent extension prompts before a new generation.
  */
-function onGenerationStarted(generationType, _options, dryRun) {
+function onGenerationStarted(generationType, options, dryRun) {
     swipeNavigationPending = false;
 
-    if (dryRun || internalPromptTransformDepth > 0) {
+    if (dryRun || options?.isAuxiliaryGeneration || (internalPromptTransformDepth > 0 && normalizeGenerationType(generationType) === 'quiet')) {
         return;
     }
+
+    // Generate dispatches a group wrapper before any member has started.
+    if (getContext()?.groupId && !is_group_generating) return;
+
+    abortActivePathfinderRetrieval();
+    releaseToolAgentRegistrations();
 
     currentMainGenerationType = normalizeGenerationType(generationType);
     resetChatBackupSequence();
@@ -3669,6 +3759,7 @@ function onGenerationStarted(generationType, _options, dryRun) {
     generationStartedAt = Date.now();
     lastMainGenerationEndedAt = 0;
     postProcessingGenerationRunId++;
+    invalidateToolApprovals();
     stoppedGenerationRunId = -1;
     stoppedStreamingMessageIndexes.clear();
     clearLatestAssistantPostProcessingFallback();
@@ -3696,17 +3787,25 @@ function onGenerationStarted(generationType, _options, dryRun) {
     clearInChatAgentExtensionPrompts();
 }
 
-function onGenerationEnded() {
-    if (internalPromptTransformDepth > 0) {
+function onGenerationEnded(_chatLength, generationContext) {
+    if (generationContext && (generationContext.runId !== postProcessingGenerationRunId
+        || generationContext.chatId !== getCurrentSnapshotChatId()
+        || generationContext.cancelRevision !== agentGenerationCancelRevision)) {
+        return;
+    }
+    if (internalPromptTransformDepth > 0 && activePathfinderRetrievalAbortControllers.size === 0) {
         return;
     }
 
     clearInitialGenerationToast();
+    invalidateToolApprovals(true);
+    abortActivePathfinderRetrieval();
+    clearPathfinderRetrievalToast();
+    releaseToolAgentRegistrations();
 
     if (stoppedGenerationRunId === postProcessingGenerationRunId) {
         isGenerationInProgress = false;
         lastMainGenerationEndedAt = Date.now();
-        toolSyncDuringGeneration = false;
         clearLatestAssistantPostProcessingFallback();
         clearPostGenerationRecoveryCheck();
         clearMissedGenerationEndRecoveryCheck();
@@ -3717,7 +3816,6 @@ function onGenerationEnded() {
 
     if (postProcessingInvalidatedByChatChange || isCurrentGenerationChatStale()) {
         isGenerationInProgress = false;
-        toolSyncDuringGeneration = false;
         generationStopRequested = false;
         clearPendingPostProcessingForChatChange();
         return;
@@ -3726,7 +3824,6 @@ function onGenerationEnded() {
     pendingGenerationSnapshot ??= buildActivationSnapshot(currentMainGenerationType);
     isGenerationInProgress = false;
     lastMainGenerationEndedAt = Date.now();
-    toolSyncDuringGeneration = false;
     generationStopRequested = false;
     clearMissedGenerationEndRecoveryCheck();
     clearAllPromptTransformRunningToasts();
@@ -3737,14 +3834,20 @@ function onGenerationEnded() {
     scheduleLatestAssistantPostProcessingFallback();
 }
 
-function onGenerationStopped() {
-    if (internalPromptTransformDepth > 0) {
+function onGenerationStopped(generationContext) {
+    if (generationContext && (generationContext.runId !== postProcessingGenerationRunId
+        || generationContext.chatId !== getCurrentSnapshotChatId()
+        || generationContext.cancelRevision !== agentGenerationCancelRevision)) {
         return;
     }
 
     resetChatBackupSequence();
 
     generationStopRequested = true;
+    agentGenerationCancelRevision++;
+    invalidateToolApprovals();
+    abortActiveAgentRequests();
+    releaseToolAgentRegistrations();
     stoppedGenerationRunId = postProcessingGenerationRunId;
     const stoppedMessageIndex = Number(streamingProcessor?.messageId);
     if (Number.isInteger(stoppedMessageIndex) && stoppedMessageIndex >= 0) {
@@ -3761,6 +3864,8 @@ function onGenerationStopped() {
     clearInitialGenerationToast();
     takePendingPreGenerationInterceptRuns();
     abortActivePathfinderRetrieval('Pathfinder retrieval cancelled because generation stopped.');
+    clearPathfinderExtensionPrompts();
+    notifyAgentGenerationStateChanged();
 }
 
 /**
@@ -3770,9 +3875,11 @@ function onGenerationStopped() {
  * @param {boolean} dryRun
  */
 async function onGenerationAfterCommands(generationType, options, dryRun) {
-    if (internalPromptTransformDepth > 0) {
+    if (options?.isAuxiliaryGeneration || (internalPromptTransformDepth > 0 && (dryRun || normalizeGenerationType(generationType) === 'quiet'))) {
         return;
     }
+
+    if (!dryRun && getContext()?.groupId && !is_group_generating) return;
 
     const normalizedGenerationType = normalizeGenerationType(generationType);
 
@@ -3802,38 +3909,66 @@ async function onGenerationAfterCommands(generationType, options, dryRun) {
     const pathfinderAgent = getPathfinderRuntimeAgent(activeAgents);
 
     if (!dryRun && pathfinderAgent) {
-        const retrievalCancelRevision = agentGenerationCancelRevision;
+        abortActivePathfinderRetrieval();
+        const run = {
+            controller: new AbortController(),
+            ...getAgentGenerationContext(),
+            cacheRevision: pathfinderRetrievalCacheRevision,
+            result: null,
+            nativeApplied: false,
+            skipWIAN: options?.skipWIAN,
+        };
+        run.isCurrent = () => pathfinderRetrievalRun === run && !run.controller.signal.aborted && !options?.signal?.aborted
+            && !generationStopRequested && run.cancelRevision === agentGenerationCancelRevision
+            && run.runId === postProcessingGenerationRunId && run.chatId === getCurrentSnapshotChatId()
+            && run.cacheRevision === pathfinderRetrievalCacheRevision && areAgentsGloballyEnabled()
+            && getPathfinderRuntimeAgent(getEnabledAgents())?.id === pathfinderAgent.id
+            && JSON.stringify(getPathfinderRetrievalSettingsSnapshot(getAgentById(pathfinderAgent.id))) === run.settingsSignature;
+        run.writePrompt = (...args) => run.isCurrent() ? setExtensionPrompt(...args) : false;
+        pathfinderRetrievalRun = run;
         syncPathfinderRuntimeSettings(pathfinderAgent);
+        run.settingsSignature = JSON.stringify(getPathfinderRetrievalSettingsSnapshot(pathfinderAgent));
         const retrievalCacheTarget = getPathfinderRetrievalCacheTarget(normalizedGenerationType);
         const retrievalCacheSignature = buildPathfinderRetrievalCacheSignature(pathfinderAgent, activationSnapshot, normalizedGenerationType, retrievalCacheTarget);
         const cachedRetrieval = findPathfinderRetrievalCache(retrievalCacheTarget?.message, retrievalCacheSignature);
-        let retrievalAbortController = null;
 
         if (cachedRetrieval) {
+            if (!run.isCurrent()) return;
+            run.result = cachedRetrieval.retrieval;
             restorePathfinderRetrievalPromptSnapshot(cachedRetrieval);
         } else {
-            retrievalAbortController = new AbortController();
-            activePathfinderRetrievalAbortControllers.add(retrievalAbortController);
+            const onAbort = () => run.controller.abort(options.signal.reason);
+            options?.signal?.addEventListener('abort', onAbort, { once: true });
+            if (options?.signal?.aborted) onAbort();
+            activePathfinderRetrievalAbortControllers.add(run.controller);
+            notifyAgentGenerationStateChanged();
 
             try {
                 if (shouldShowPathfinderRetrievalToast(pathfinderAgent)) {
                     showPathfinderRetrievalToast();
                 }
-                await runSidecarRetrieval(setExtensionPrompt, extension_prompt_types, extension_prompt_roles, retrievalAbortController.signal);
+                run.result = await runSidecarRetrieval(run.writePrompt, extension_prompt_types, extension_prompt_roles, run.controller.signal, {
+                    chatMessages: getPathfinderRetrievalContextSnapshot(retrievalCacheTarget?.messageIndex ?? chat.length),
+                });
             } finally {
-                clearPathfinderRetrievalToast();
-                activePathfinderRetrievalAbortControllers.delete(retrievalAbortController);
+                if (pathfinderRetrievalRun === run) clearPathfinderRetrievalToast();
+                activePathfinderRetrievalAbortControllers.delete(run.controller);
+                options?.signal?.removeEventListener('abort', onAbort);
+                notifyAgentGenerationStateChanged();
             }
 
-            if (!generationStopRequested && agentGenerationCancelRevision === retrievalCancelRevision && !retrievalAbortController.signal.aborted && isAgentRuntimeAllowed(pathfinderAgent)) {
-                storePathfinderRetrievalCache(retrievalCacheTarget?.message, retrievalCacheSignature);
+            if (run.isCurrent() && run.result?.success && run.result.cacheable !== false && isAgentRuntimeAllowed(pathfinderAgent)) {
+                storePathfinderRetrievalCache(retrievalCacheTarget?.message, retrievalCacheSignature, run.result);
             }
         }
 
-        if (generationStopRequested || agentGenerationCancelRevision !== retrievalCancelRevision || retrievalAbortController?.signal.aborted) {
+        if (run.controller.signal.aborted || pathfinderRetrievalRun !== run || (!run.isCurrent() && isAgentRuntimeAllowed(pathfinderAgent))
+            || generationStopRequested || options?.signal?.aborted || run.cancelRevision !== agentGenerationCancelRevision
+            || run.runId !== postProcessingGenerationRunId || run.chatId !== getCurrentSnapshotChatId()) {
             return;
         }
 
+        // A runtime exclusion must not suppress other agents belonging to this response.
         if (!isAgentRuntimeAllowed(pathfinderAgent)) {
             clearPathfinderExtensionPrompts();
         } else if (shouldAutoSummarize() && isPathfinderSummarizeToolEnabled(pathfinderAgent)) {
@@ -5019,7 +5154,7 @@ function onMessageSwipeDeleted(data) {
  * @param {object} data Generation data being prepared for the API call
  */
 function onChatCompletionSettingsReady(data) {
-    if (!areAgentsGloballyEnabled() || agentRegisteredToolNames.size === 0) {
+    if (internalPromptTransformDepth > 0 || !areAgentsGloballyEnabled() || agentRegisteredToolNames.size === 0) {
         return;
     }
 
@@ -5051,10 +5186,26 @@ function onWorldInfoEntriesLoaded(data) {
     void data;
 }
 
+function onWorldInfoActivated(entries, generationContext) {
+    const run = pathfinderRetrievalRun;
+    // Native activation is emitted after retrieval, before either prompt builder
+    // reads extension prompts. Untagged events cannot identify overlapping scans.
+    if (internalPromptTransformDepth > 0 || !isGenerationInProgress || !run?.isCurrent()
+        || !run.result?.success || run.nativeApplied || run.skipWIAN || !Array.isArray(entries)
+        || generationContext?.runId !== run.runId || generationContext?.chatId !== run.chatId
+        || generationContext?.cancelRevision !== run.cancelRevision) {
+        return;
+    }
+    run.nativeApplied = true;
+    injectPathfinderRetrieval(run.result, run.writePrompt, extension_prompt_types, extension_prompt_roles, entries);
+}
+
 let _onChatChangedToolSync = false;
 
 function onChatChangedToolSync() {
+    pathfinderChatSyncRevision++;
     clearPendingPostProcessingForChatChange();
+    resetAutoSummaryCount();
 
     if (!areAgentsGloballyEnabled()) {
         syncToolAgentRegistrations();
@@ -5069,34 +5220,71 @@ function onChatChangedToolSync() {
     requestAnimationFrame(() => {
         _onChatChangedToolSync = false;
         toolRecursionDepth = 0;
-        // The counter is per-chat: messages from the previous chat must not
-        // trigger a summary in the new one.
-        resetAutoSummaryCount();
+        const revision = pathfinderChatSyncRevision;
         void (async () => {
-            const pathfinderAgent = getPathfinderRuntimeAgent();
-            if (pathfinderAgent) {
-                await syncPathfinderAgentLorebooksForCurrentChat(pathfinderAgent, { persist: true });
+            try {
+                const pathfinderAgent = getPathfinderRuntimeAgent();
+                if (pathfinderAgent) {
+                    await syncPathfinderAgentLorebooksForCurrentChat(pathfinderAgent, { persist: true });
+                }
+            } catch (error) {
+                console.warn('[Pathfinder] Failed to save agent', error);
+            } finally {
+                if (revision === pathfinderChatSyncRevision) syncToolAgentRegistrations();
             }
-            syncToolAgentRegistrations();
         })();
     });
 }
 
-function onWorldInfoUpdatedToolSync(name, data) {
-    // External lorebook edits invalidate the cached waypoint tree; it is
-    // rebuilt on demand. Pathfinder's own saves maintain the tree in place.
-    if (typeof name === 'string' && name && !isPathfinderSelfWrite()) {
-        deletePathfinderTree(name);
-        syncTrackerUidsForLorebook(name, data);
-    }
+function invalidatePathfinderRetrieval() {
+    pathfinderRetrievalCacheRevision++;
+    abortActivePathfinderRetrieval();
+    clearPathfinderRetrievalToast();
+    clearPathfinderExtensionPrompts();
+}
 
-    if (!areAgentsGloballyEnabled()) {
+function onWorldInfoUpdatedToolSync(name, data, options) {
+    if (typeof name === 'string' && name) {
+        // Other queued tools remain valid when a sibling tool commits its save.
+        if (options?.replaced || !isPathfinderSelfWrite(name)) pathfinderToolRevision++;
+        onPathfinderWorldInfoUpdated(name, data, options);
+        invalidatePathfinderRetrieval();
+    }
+    syncToolAgentRegistrations();
+}
+
+async function onWorldInfoRenamedOrDeleted(oldName, newName = '') {
+    if (typeof oldName !== 'string' || !oldName) return;
+    pathfinderToolRevision++;
+    if (newName) onPathfinderWorldInfoRenamed(oldName, newName);
+    else onPathfinderWorldInfoDeleted(oldName);
+    invalidatePathfinderRetrieval();
+
+    const retarget = settings => {
+        if (!settings || !(settings.enabledLorebooks?.includes(oldName) || settings.selectedLorebook === oldName
+            || Object.hasOwn(settings.bookPermissions ?? {}, oldName))) return null;
+        const enabledLorebooks = [...new Set((settings.enabledLorebooks ?? []).map(name => name === oldName ? newName : name).filter(Boolean))];
+        const bookPermissions = { ...(settings.bookPermissions ?? {}) };
+        if (newName && Object.hasOwn(bookPermissions, oldName)) {
+            bookPermissions[newName] ??= bookPermissions[oldName];
+        }
+        delete bookPermissions[oldName];
+        return {
+            ...settings,
+            enabledLorebooks,
+            selectedLorebook: settings.selectedLorebook === oldName ? (newName || enabledLorebooks[0] || '') : settings.selectedLorebook,
+            bookPermissions,
+        };
+    };
+
+    for (const agent of getAgents().filter(isPathfinderToolAgent)) {
+        const saved = await saveAgent(agent.id, { update: current => {
+            const settings = retarget(current?.settings);
+            return settings ? { ...current, settings } : null;
+        } });
+        if (!saved) continue;
         syncToolAgentRegistrations();
-        return;
-    }
-
-    if (toolSyncDuringGeneration || isGenerationInProgress) {
-        return;
+        notifyAgentGenerationStateChanged();
     }
     syncToolAgentRegistrations();
 }
@@ -5150,11 +5338,10 @@ async function persistPathfinderRuntimeSettingsToAgent() {
         return;
     }
 
-    agent.settings = {
-        ...(agent.settings || {}),
-        ...getPathfinderRuntimeSettings(),
-    };
-    await saveAgent(agent);
+    const { pipelinePrompts, pipelines } = structuredClone(getPathfinderRuntimeSettings());
+    await saveAgent(agent.id, { update: current => current
+        ? { ...current, settings: { ...current.settings, pipelinePrompts, pipelines } }
+        : null });
 }
 
 export function initAgentRunner() {
@@ -5163,6 +5350,7 @@ export function initAgentRunner() {
     }
 
     agentRunnerInitialized = true;
+    setAgentGenerationContextProvider(getAgentGenerationContext);
     initPostGenerationRecoveryHooks();
     setPromptStorePersistHook(() => { void persistPathfinderRuntimeSettingsToAgent(); });
 
@@ -5217,6 +5405,10 @@ export function initAgentRunner() {
         eventSource.on(event_types.WORLDINFO_ENTRIES_LOADED, onWorldInfoEntriesLoaded);
     }
 
+    if (event_types.WORLD_INFO_ACTIVATED) {
+        eventSource.on(event_types.WORLD_INFO_ACTIVATED, onWorldInfoActivated);
+    }
+
     if (event_types.CHAT_CHANGED) {
         eventSource.on(event_types.CHAT_CHANGED, migrateLegacyRegexSnapshotsForCurrentChat);
         eventSource.on(event_types.CHAT_CHANGED, onChatChangedToolSync);
@@ -5224,6 +5416,13 @@ export function initAgentRunner() {
 
     if (event_types.WORLDINFO_UPDATED) {
         eventSource.on(event_types.WORLDINFO_UPDATED, onWorldInfoUpdatedToolSync);
+    }
+
+    if (event_types.WORLDINFO_RENAMED) {
+        eventSource.on(event_types.WORLDINFO_RENAMED, onWorldInfoRenamedOrDeleted);
+    }
+    if (event_types.WORLDINFO_DELETED) {
+        eventSource.on(event_types.WORLDINFO_DELETED, name => onWorldInfoRenamedOrDeleted(name));
     }
 
     migrateLegacyRegexSnapshotsForCurrentChat();

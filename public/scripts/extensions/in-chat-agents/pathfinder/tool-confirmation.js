@@ -10,12 +10,12 @@ const MAX_ARG_PREVIEW_LENGTH = 300;
  * @param {string} toolName
  * @returns {boolean}
  */
-export function shouldConfirmToolCall(toolName) {
+export function shouldConfirmToolCall(toolName, settings = getSettings()) {
     if (!CONFIRMABLE_TOOLS.has(toolName)) {
         return false;
     }
 
-    const confirmTools = getSettings().confirmTools;
+    const confirmTools = settings.confirmTools;
     return confirmTools?.[toolName] === true;
 }
 
@@ -42,9 +42,12 @@ export function formatToolArgsPreview(args) {
  * so this module stays loadable in dependency-light environments.
  * @param {string} displayName - Human-readable tool name
  * @param {object} args - Tool call arguments from the model
+ * @param {AbortSignal?} signal
  * @returns {Promise<boolean>} true when the user approved the call
  */
-export async function confirmToolCall(displayName, args) {
+export async function confirmToolCall(displayName, args, signal = null) {
+    if (signal?.aborted) return false;
+
     const ctx = globalThis.window?.SillyTavern?.getContext?.();
     const Popup = ctx?.Popup;
     const popupType = ctx?.POPUP_TYPE;
@@ -59,11 +62,25 @@ export async function confirmToolCall(displayName, args) {
         ${preview ? `<pre class="justifyLeft">${escapeHtml(preview)}</pre>` : ''}
     `;
 
+    let onAbort;
     try {
-        const result = await new Popup(content, popupType.CONFIRM, '', { okButton: 'Allow', cancelButton: 'Deny' }).show();
-        return result === (ctx.POPUP_RESULT?.AFFIRMATIVE ?? 1);
+        const popup = new Popup(content, popupType.CONFIRM, '', { okButton: 'Allow', cancelButton: 'Deny' });
+        const cancelled = new Promise(resolve => {
+            onAbort = () => {
+                resolve(false);
+                Promise.resolve().then(() => popup.completeCancelled?.()).catch(() => {});
+            };
+        });
+        signal?.addEventListener('abort', onAbort, { once: true });
+        if (signal?.aborted) {
+            return false;
+        }
+        const result = await Promise.race([popup.show(), cancelled]);
+        return !signal?.aborted && result === (ctx.POPUP_RESULT?.AFFIRMATIVE ?? 1);
     } catch (err) {
         console.warn('[Pathfinder] Tool confirmation dialog failed; declining the call.', err);
         return false;
+    } finally {
+        signal?.removeEventListener('abort', onAbort);
     }
 }

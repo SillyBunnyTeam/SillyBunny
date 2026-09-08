@@ -1,11 +1,12 @@
 import { mergeEntries, splitEntry } from '../entry-manager.js';
-import { getUnknownBookError, getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-tool-bridge.js';
+import { canDeleteBook, parseEntryUid } from '../tree-store.js';
+import { getToolWriteOptions, getUnknownBookError, getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-tool-bridge.js';
 import { registerToolAction, registerToolFormatter } from '../../tool-action-registry.js';
 import { logToolCallStarted, logToolCallCompleted, logToolCallError } from '../activity-feed.js';
 
 const COMPACT_DESCRIPTION = 'Merge related entries together or split a long entry into two.';
 
-async function mergeSplitAction(args) {
+async function mergeSplitAction(args, options = {}) {
     const action = String(args.action || '').trim().toLowerCase();
     const bookName = String(args.book || '').trim();
 
@@ -16,7 +17,7 @@ async function mergeSplitAction(args) {
         return 'Error: "action" is required. Use "merge" or "split".';
     }
 
-    const writableBooks = getWritableBooks();
+    const writableBooks = getWritableBooks().filter(book => action !== 'merge' || canDeleteBook(book));
     const bookError = getUnknownBookError(bookName, writableBooks);
     if (bookError) {
         logToolCallError(TOOL_NAMES.MERGE_SPLIT, `Unknown book: ${bookName}`);
@@ -31,28 +32,28 @@ async function mergeSplitAction(args) {
 
     try {
         if (action === 'merge') {
-            const uid1 = Number(args.uid1);
-            const uid2 = Number(args.uid2);
+            const uid1 = parseEntryUid(args.uid1);
+            const uid2 = parseEntryUid(args.uid2);
             const mergedTitle = String(args.merged_title || '').trim();
-            if ((!uid1 && uid1 !== 0) || (!uid2 && uid2 !== 0)) {
+            if (uid1 === null || uid2 === null) {
                 return 'Error: "uid1" and "uid2" required for merge.';
             }
-            const result = await mergeEntries(targetBook, uid1, uid2, mergedTitle || undefined);
+            const result = await mergeEntries(targetBook, uid1, uid2, mergedTitle || undefined, getToolWriteOptions(targetBook, options, () => getWritableBooks().filter(book => canDeleteBook(book))));
             logToolCallCompleted(TOOL_NAMES.MERGE_SPLIT, `Merged UID:${uid1} + UID:${uid2}`);
-            return `✂️ Merged UID:${uid1} and UID:${uid2} into "${result.mergedUid}" in "${targetBook}". UID:${uid2} removed.`;
+            return `✂️ Merged UID:${uid1} and UID:${uid2} into "${result.mergedUid}" in "${result.bookName}". UID:${uid2} removed.`;
         }
 
         if (action === 'split') {
-            const uid = Number(args.uid);
+            const uid = parseEntryUid(args.uid);
             const title1 = String(args.title1 || '').trim();
             const content1 = String(args.content1 || '').trim();
             const title2 = String(args.title2 || '').trim();
             const content2 = String(args.content2 || '').trim();
-            if (!uid && uid !== 0) return 'Error: "uid" required for split.';
+            if (uid === null) return 'Error: "uid" required for split.';
             if (!content1 || !content2) return 'Error: "content1" and "content2" required for split.';
-            const result = await splitEntry(targetBook, uid, title1, content1, title2, content2);
+            const result = await splitEntry(targetBook, uid, title1, content1, title2, content2, getToolWriteOptions(targetBook, options));
             logToolCallCompleted(TOOL_NAMES.MERGE_SPLIT, `Split UID:${uid}`);
-            return `✂️ Split UID:${uid} into UID:${result.originalUid} and UID:${result.newUid} in "${targetBook}".`;
+            return `✂️ Split UID:${uid} into UID:${result.originalUid} and UID:${result.newUid} in "${result.bookName}".`;
         }
 
         logToolCallError(TOOL_NAMES.MERGE_SPLIT, `Unknown action: ${action}`);

@@ -32,6 +32,7 @@ function makeRuntime({ api = 'openai', model = 'gpt-4o', stream = false, buffer 
         for (const listener of eventSource.rawListeners(name)) await listener(...args);
     });
     eventSource.emitAndWait = eventSource.emit;
+    eventSource.makeFirst = (name, handler) => eventSource.prependListener(name, handler);
     const textarea = { value: composer, dispatchEvent: jest.fn() };
     const element = { isConnected: true, getAttribute: () => '0', querySelector: () => ({ isConnected: true }) };
     const dom = {
@@ -54,6 +55,8 @@ function makeRuntime({ api = 'openai', model = 'gpt-4o', stream = false, buffer 
         chat: [{ name: 'Story', mes: 'Existing prose. ', extra: {}, is_user: false }],
         chat_metadata: {}, generationChatFilter: null, pendingGeneratedMessageExtra: null,
         generation_started: null, abortController: null, streamingProcessor: null,
+        activeGenerationRun: null, agentGenerationContextProvider: null, chatGeneration: 1,
+        getCurrentChatId: () => 'story',
         amount_gen: 8192, max_context: 32768, kobold_horde_model: '',
         openai_messages_count: 1, itemizedPrompts: [], extension_prompts: {},
         power_user: {
@@ -673,8 +676,8 @@ describe('owned host generation flow', () => {
     test.each([false, true])('inline thinking and repeated text do not consume the stream budget (buffer: %s)', async buffer => {
         const { context, StreamingProcessor } = makeRuntime({ api: 'textgenerationwebui', stream: true, buffer });
         const processor = new StreamingProcessor('continue', false, new Date(), '', {}, { maxOutputTokens: 2 });
-        processor.messageId = 0;
         context.streamingProcessor = processor;
+        processor.messageId = await processor.onStartStreaming('');
         processor.generator = async function* () {
             yield { text: '<think>' + 'x'.repeat(1000), state: {}, swipes: [] };
             yield { text: '<think>' + 'x'.repeat(1000), state: {}, swipes: [] };

@@ -78,22 +78,37 @@ export function replaceSettings(newSettings) {
 }
 
 const trees = new Map();
+const nodeIds = new Map();
+const runtimeNodePrefix = generateNodeId();
+let nextNodeId = 0;
+
+// Keep book-local stored IDs distinct at runtime, including for duplicated books.
+// Cache invalidation deliberately does not discard these mappings.
+export function getRuntimeNodeId(bookName, localId) {
+    if (!nodeIds.has(bookName)) nodeIds.set(bookName, new Map());
+    const ids = nodeIds.get(bookName);
+    if (!ids.has(localId)) ids.set(localId, `${runtimeNodePrefix}${(++nextNodeId).toString(36)}`);
+    return ids.get(localId);
+}
 
 // Lets the WORLDINFO_UPDATED handler distinguish Pathfinder's own saves
-// (tree already maintained in place) from external edits (tree must be
-// invalidated). Relies on the host emitting the event within the awaited save.
+// (cache refreshed after commit) from external edits (tree must be invalidated).
+// Relies on the host emitting the event within the awaited save.
 let selfWriteDepth = 0;
+const selfWriteBooks = new Set();
 
-export function beginPathfinderSelfWrite() {
+export function beginPathfinderSelfWrite(bookName) {
     selfWriteDepth++;
+    if (bookName) selfWriteBooks.add(bookName);
 }
 
 export function endPathfinderSelfWrite() {
     selfWriteDepth = Math.max(0, selfWriteDepth - 1);
+    if (!selfWriteDepth) selfWriteBooks.clear();
 }
 
-export function isPathfinderSelfWrite() {
-    return selfWriteDepth > 0;
+export function isPathfinderSelfWrite(bookName) {
+    return bookName ? selfWriteBooks.has(bookName) : selfWriteDepth > 0;
 }
 
 export function getTree(bookName) {
@@ -104,8 +119,20 @@ export function saveTree(bookName, tree) {
     trees.set(bookName, tree);
 }
 
-export function deleteTree(bookName) {
+export function deleteTree(bookName, resetIds = false) {
     trees.delete(bookName);
+    trackerUids.delete(bookName);
+    if (resetIds) nodeIds.delete(bookName);
+}
+
+export function renameTree(oldName, newName) {
+    if (selfWriteBooks.has(oldName)) selfWriteBooks.add(newName);
+    if (oldName === newName || (!trees.has(oldName) && !trackerUids.has(oldName) && !nodeIds.has(oldName))) return;
+    deleteTree(newName, true);
+    if (trees.has(oldName)) trees.set(newName, trees.get(oldName));
+    if (trackerUids.has(oldName)) trackerUids.set(newName, trackerUids.get(oldName));
+    if (nodeIds.has(oldName)) nodeIds.set(newName, nodeIds.get(oldName));
+    deleteTree(oldName, true);
 }
 
 export function clearAllTrees() {
@@ -171,7 +198,17 @@ export function getAllEntryUids(tree) {
     for (const child of tree.children || []) {
         uids.push(...getAllEntryUids(child));
     }
-    return uids;
+    return [...new Set(uids)];
+}
+
+export function isEntryEligible(entry) {
+    return Boolean(entry && !entry.disable && !entry.agentBlacklisted);
+}
+
+export function parseEntryUid(value) {
+    if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null;
+    const uid = Number(value);
+    return Number.isSafeInteger(uid) && uid >= 0 ? uid : null;
 }
 
 export function buildTreeDescription(tree, depth = 0) {
@@ -225,7 +262,7 @@ export function syncTrackerUidsForLorebook(bookName, bookData) {
     if (!bookData || !bookData.entries) return;
     const trackerSet = new Set();
     for (const [, entry] of Object.entries(bookData.entries)) {
-        if (entry && isTrackerTitle(entry.comment || entry.key?.[0])) {
+        if (isEntryEligible(entry) && isTrackerTitle(entry.comment || entry.key?.[0])) {
             trackerSet.add(entry.uid);
         }
     }
@@ -242,9 +279,9 @@ export function setSelectedLorebook(name) {
     s.selectedLorebook = name;
 }
 
-export function isLorebookEnabled(bookName) {
-    const s = getSettings();
-    return Array.isArray(s.enabledLorebooks) && s.enabledLorebooks.includes(bookName);
+export function isLorebookEnabled(bookName, s = getSettings()) {
+    return s.bookPermissions?.[bookName]?.enabled !== false
+        && Array.isArray(s.enabledLorebooks) && s.enabledLorebooks.includes(bookName);
 }
 
 export function setLorebookEnabled(bookName, enabled) {
@@ -306,8 +343,7 @@ export function listConnectionProfiles() {
     return listSupportedConnectionProfiles();
 }
 
-export function getBookPermission(bookName, permission) {
-    const s = getSettings();
+export function getBookPermission(bookName, permission, s = getSettings()) {
     const perms = s.bookPermissions?.[bookName];
     return perms?.[permission] ?? 'readwrite';
 }
@@ -336,17 +372,17 @@ function isPermissionAllowed(value) {
     return !['none', 'false', 'off', 'deny', 'denied', 'no', '0', 'disabled'].includes(normalized);
 }
 
-export function canReadBook(bookName) {
-    const perm = getBookPermission(bookName, 'read');
-    return isPermissionAllowed(perm);
+export function canReadBook(bookName, s = getSettings()) {
+    const perm = getBookPermission(bookName, 'read', s);
+    return s.bookPermissions?.[bookName]?.enabled !== false && isPermissionAllowed(perm);
 }
 
-export function canWriteBook(bookName) {
-    const perm = getBookPermission(bookName, 'write');
-    return isPermissionAllowed(perm);
+export function canWriteBook(bookName, s = getSettings()) {
+    const perm = getBookPermission(bookName, 'write', s);
+    return s.bookPermissions?.[bookName]?.enabled !== false && isPermissionAllowed(perm);
 }
 
-export function canDeleteBook(bookName) {
-    const perm = getBookPermission(bookName, 'delete');
-    return isPermissionAllowed(perm);
+export function canDeleteBook(bookName, s = getSettings()) {
+    const perm = getBookPermission(bookName, 'delete', s);
+    return s.bookPermissions?.[bookName]?.enabled !== false && isPermissionAllowed(perm);
 }

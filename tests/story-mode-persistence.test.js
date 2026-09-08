@@ -3,6 +3,9 @@ import { describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { parse } from 'acorn';
+import { randomUUID } from 'node:crypto';
+import { getChatBackupSaveOptions } from '../public/scripts/chat-backup-sequence.js';
+import { getQueuedChatSaveAbortReason } from '../public/scripts/chat-save-guard.js';
 
 const sources = Object.fromEntries(['script.js', 'scripts/extensions.js', 'scripts/group-chats.js', 'scripts/utils.js'].map(file => {
     const source = readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8');
@@ -30,6 +33,8 @@ function saveContext(group = false) {
         saveTokenCache: jest.fn(async () => {}),
         saveItemizedPrompts: jest.fn(async () => {}),
         getCurrentChatId: () => 'story',
+        chatGeneration: 1, getChatGeneration: () => 1,
+        getChatBackupSaveOptions, getQueuedChatSaveAbortReason, uuidv4: randomUUID,
     });
     load(context, 'script.js', ['saveChatConditional', 'saveMetadata']);
     return context;

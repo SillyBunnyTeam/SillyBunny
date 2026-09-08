@@ -1,11 +1,12 @@
 import { moveEntry, createCategory } from '../entry-manager.js';
-import { getUnknownBookError, getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-tool-bridge.js';
+import { parseEntryUid } from '../tree-store.js';
+import { getToolWriteOptions, getUnknownBookError, getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-tool-bridge.js';
 import { registerToolAction, registerToolFormatter } from '../../tool-action-registry.js';
 import { logToolCallStarted, logToolCallCompleted, logToolCallError } from '../activity-feed.js';
 
 const COMPACT_DESCRIPTION = 'Move entries between waypoints or create new waypoints to reorganize the lorebook.';
 
-async function reorganizeAction(args) {
+async function reorganizeAction(args, options = {}) {
     const action = String(args.action || '').trim().toLowerCase();
     const bookName = String(args.book || '').trim();
 
@@ -31,13 +32,13 @@ async function reorganizeAction(args) {
 
     try {
         if (action === 'move') {
-            const uid = Number(args.uid);
-            const targetNodeId = String(args.target_node_id || '').trim();
-            if (!uid && uid !== 0) return 'Error: "uid" required for move.';
+            const uid = parseEntryUid(args.uid);
+            const targetNodeId = typeof args.target_node_id === 'string' ? args.target_node_id.trim() : '';
+            if (uid === null) return 'Error: "uid" required for move.';
             if (!targetNodeId) return 'Error: "target_node_id" required for move.';
-            await moveEntry(targetBook, uid, targetNodeId);
+            const result = await moveEntry(targetBook, uid, targetNodeId, getToolWriteOptions(targetBook, options));
             logToolCallCompleted(TOOL_NAMES.REORGANIZE, `Moved UID:${uid} to ${targetNodeId}`);
-            return `🔀 Moved entry UID:${uid} to waypoint ${targetNodeId} in "${targetBook}".`;
+            return `🔀 Moved entry UID:${uid} to waypoint ${targetNodeId} in "${result.bookName}".`;
         }
 
         if (action === 'create_waypoint') {
@@ -45,9 +46,9 @@ async function reorganizeAction(args) {
             const parentNodeId = String(args.parent_node_id || '').trim() || null;
             const description = String(args.description || '').trim();
             if (!name) return 'Error: "name" required for create_waypoint.';
-            const result = await createCategory(targetBook, parentNodeId, name, description);
+            const result = await createCategory(targetBook, parentNodeId, name, description, getToolWriteOptions(targetBook, options));
             logToolCallCompleted(TOOL_NAMES.REORGANIZE, `Created waypoint: ${name}`);
-            return `🔀 Created waypoint "${name}" (ID: ${result.nodeId}) in "${targetBook}".${parentNodeId ? ` Under node ${parentNodeId}.` : ' At top level.'}`;
+            return `🔀 Created waypoint "${name}" (ID: ${result.nodeId}) in "${result.bookName}".${parentNodeId ? ` Under node ${parentNodeId}.` : ' At top level.'}`;
         }
 
         logToolCallError(TOOL_NAMES.REORGANIZE, `Unknown action: ${action}`);

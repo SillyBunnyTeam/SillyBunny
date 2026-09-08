@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 
 import extract from 'png-chunks-extract';
 import PNGtext from 'png-chunk-text';
@@ -14,6 +15,7 @@ import { AVATAR_HEIGHT, AVATAR_WIDTH } from '../src/constants.js';
 import { Jimp } from '../src/jimp.js';
 import { setConfigFilePath } from '../src/util.js';
 import encode from '../src/png/encode.js';
+import { escapeCharacterBookRegex, normalizeCharacterBookPosition } from '../public/scripts/world-info-character-book.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const originalWorkingDirectory = process.cwd();
@@ -27,6 +29,18 @@ process.chdir(repoRoot);
 setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
 
 const { router: charactersRouter, sanitiseFilenameForWindows } = await import('../src/endpoints/characters.js');
+const worldInfoSource = fs.readFileSync(new URL('../public/scripts/world-info.js', import.meta.url), 'utf8');
+const conversionFunctions = ['convertCharacterBook', 'getFreeWorldEntryUid', 'parseRegexFromString'].map(name => {
+    const match = worldInfoSource.match(new RegExp(`^(?:export )?(function ${name}\\([\\s\\S]*?^})`, 'm'));
+    if (!match) throw new Error(`Missing function ${name}`);
+    return match[1];
+});
+const restoreCharacterBook = vm.runInNewContext(`${conversionFunctions.join('\n')}\nconvertCharacterBook`, {
+    structuredClone, escapeCharacterBookRegex, normalizeCharacterBookPosition,
+    worldInfoDataSnapshots: new WeakMap(), newWorldInfoEntryTemplate: {},
+    world_info_position: { before: 0, after: 1 }, world_info_logic: { AND_ANY: 0 },
+    extension_prompt_roles: { SYSTEM: 0 }, DEFAULT_DEPTH: 4, DEFAULT_WEIGHT: 100,
+});
 
 describe('character card metadata preservation', () => {
     let baseUrl;
@@ -190,6 +204,43 @@ describe('character card metadata preservation', () => {
         expect(fs.readFileSync(cardPath).equals(cardBefore)).toBe(true);
         expect(fs.statSync(cardPath).mtimeMs).toBe(statBefore.mtimeMs);
     });
+
+    for (const format of ['native', 'imported']) {
+        const extensions = { foreign: { kept: true }, sillybunny_pathfinder: { version: 1, tree: { id: 'root', children: [{ id: 'place' }] } } };
+        const entryExtensions = { foreign: 'entry metadata', sillybunny_pathfinder: { version: 1, nodeId: 'place' } };
+        const originalData = { name: 'Lore', extensions, foreign: 'original book metadata', entries: [{ id: 74, keys: ['place'], content: 'A place', extensions: entryExtensions, foreign: 'original entry metadata' }] };
+        const book = {
+            extensions, entries: { 42: { uid: 42, key: ['place'], content: 'A place', extensions: entryExtensions } },
+            ...(format === 'imported' ? { originalData, originalDataUidMap: { 42: 0 } } : {}),
+        };
+
+        test(`embeds ${format} lorebook layouts and foreign extensions in both PNG card formats`, async () => {
+            jest.spyOn(console, 'error').mockImplementation(() => {});
+            jest.spyOn(console, 'info').mockImplementation(() => {});
+            const worldPath = path.join(directories.worlds, 'Lore.json');
+            const worldBefore = JSON.stringify(book);
+            fs.writeFileSync(worldPath, worldBefore);
+            await createAlice();
+            const character = await getCharacter('Alice.png');
+            character.data.extensions.world = 'Lore';
+            expect((await saveCharacter(character)).status).toBe(200);
+
+            const cards = decodeCardChunks(fs.readFileSync(path.join(directories.characters, 'Alice.png')));
+            expect(cards.map(chunk => chunk.keyword)).toEqual(['chara', 'ccv3']);
+            for (const { card } of cards) {
+                expect(card.data.character_book.extensions).toEqual(extensions);
+                expect(card.data.character_book.entries[0].extensions).toMatchObject(entryExtensions);
+                expect(card.data.character_book.entries[0].id).toBe(format === 'imported' ? 74 : 42);
+                expect(card.data.character_book.foreign).toBe(format === 'imported' ? 'original book metadata' : undefined);
+                expect(card.data.character_book.entries[0].foreign).toBe(format === 'imported' ? 'original entry metadata' : undefined);
+                const restored = restoreCharacterBook(card.data.character_book);
+                expect(restored.extensions).toEqual(extensions);
+                expect(restored.entries[0]).toMatchObject({ uid: 0, content: 'A place', extensions: entryExtensions });
+                expect(restored.originalData).toEqual(card.data.character_book);
+            }
+            expect(fs.readFileSync(worldPath, 'utf8')).toBe(worldBefore);
+        });
+    }
 
     test('updates the original card when its filename stem contains .png', async () => {
         jest.spyOn(console, 'error').mockImplementation(() => {});

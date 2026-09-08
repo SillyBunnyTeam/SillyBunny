@@ -1665,30 +1665,43 @@ export function loadAgents(data) {
     }
 }
 
+let agentSaveChain = Promise.resolve();
+
 /**
  * Saves an agent to the server. Updates local array.
- * @param {InChatAgent} agent
+ * @param {InChatAgent|string} agent Agent snapshot, or ID when updating the latest saved state
+ * @param {{update?: function}} options A synchronous updater; null skips an obsolete save
  */
-export async function saveAgent(agent) {
-    const normalizedAgent = normalizeAgent(agent);
-    const index = agents.findIndex(existingAgent => existingAgent.id === normalizedAgent.id);
+export async function saveAgent(agent, { update = null } = {}) {
+    const id = typeof agent === 'string' ? agent : agent.id;
+    const snapshot = update ? null : normalizeAgent(structuredClone(agent));
+    // Panel and background updates must merge only after earlier saves have committed.
+    const save = agentSaveChain.then(async () => {
+        const next = update ? update(structuredClone(getAgentById(id))) : snapshot;
+        if (!next) return null;
+        const normalizedAgent = update ? normalizeAgent(next) : next;
+        const response = await fetch('/api/in-chat-agents/save', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify(normalizedAgent),
+        });
 
-    if (index >= 0) {
-        agents[index] = normalizedAgent;
-    } else {
-        agents.push(normalizedAgent);
-    }
-    cacheAgentRegexScriptsForAgent(normalizedAgent);
+        if (!response.ok) {
+            throw new Error('Failed to save agent');
+        }
 
-    const response = await fetch('/api/in-chat-agents/save', {
-        method: 'POST',
-        headers: getRequestHeaders(),
-        body: JSON.stringify(normalizedAgent),
+        // Publish the saved snapshot only after the server accepts it.
+        const index = agents.findIndex(existingAgent => existingAgent.id === normalizedAgent.id);
+        if (index >= 0) {
+            agents[index] = normalizedAgent;
+        } else {
+            agents.push(normalizedAgent);
+        }
+        cacheAgentRegexScriptsForAgent(normalizedAgent);
+        return normalizedAgent;
     });
-
-    if (!response.ok) {
-        throw new Error('Failed to save agent');
-    }
+    agentSaveChain = save.catch(() => {});
+    return save;
 }
 
 /**
@@ -1749,23 +1762,27 @@ export async function reorderAgentsIntoOrderSlots(orderedSubsetIds) {
  * @param {string} id
  */
 export async function deleteAgent(id) {
-    agents = agents.filter(agent => agent.id !== id);
-    deleteCachedAgentRegexScripts(id);
-    const scopedStateChanged = removeAgentIdFromScopedEnabledAgentIds(id);
+    const deletion = agentSaveChain.then(async () => {
+        agents = agents.filter(agent => agent.id !== id);
+        deleteCachedAgentRegexScripts(id);
+        const scopedStateChanged = removeAgentIdFromScopedEnabledAgentIds(id);
 
-    const response = await fetch('/api/in-chat-agents/delete', {
-        method: 'POST',
-        headers: getRequestHeaders(),
-        body: JSON.stringify({ id }),
+        const response = await fetch('/api/in-chat-agents/delete', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ id }),
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to delete agent');
+        }
+
+        if (scopedStateChanged) {
+            persistAgentGlobalSettings();
+        }
     });
-
-    if (!response.ok) {
-        throw new Error('Failed to delete agent');
-    }
-
-    if (scopedStateChanged) {
-        persistAgentGlobalSettings();
-    }
+    agentSaveChain = deletion.catch(() => {});
+    return deletion;
 }
 
 /**

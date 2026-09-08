@@ -57,6 +57,32 @@ describe('in-chat agent scoped enabled state', () => {
         ]);
     }
 
+    test('deleting an agent waits for its pending save so it cannot reappear locally or on the server', async () => {
+        const store = await importStore();
+        useAgents(store);
+        const persisted = new Map(store.getAgents().map(agent => [agent.id, structuredClone(agent)]));
+        let finishSave;
+        let started;
+        const saving = new Promise(resolve => { started = resolve; });
+        globalThis.fetch = jest.fn(async (url, request) => {
+            const data = JSON.parse(request.body);
+            if (url.endsWith('/save')) {
+                await new Promise(resolve => { finishSave = resolve; started(); });
+                persisted.set(data.id, data);
+            } else {
+                persisted.delete(data.id);
+            }
+            return { ok: true };
+        });
+        const pending = store.saveAgent({ ...store.getAgentById('agent-individual'), name: 'Edited' });
+        await saving;
+        const deletion = store.deleteAgent('agent-individual');
+        finishSave();
+        await Promise.all([pending, deletion]);
+        expect(store.getAgents().some(agent => agent.id === 'agent-individual')).toBe(false);
+        expect(persisted.has('agent-individual')).toBe(false);
+    });
+
     test('keeps individual and group enabled agents separate when scoped toggles are enabled', async () => {
         const store = await importStore();
         useAgents(store);

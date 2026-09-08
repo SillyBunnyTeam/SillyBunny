@@ -1,6 +1,5 @@
-import { getTree, createTreeNode, saveTree } from '../tree-store.js';
 import { createEntry } from '../entry-manager.js';
-import { getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-tool-bridge.js';
+import { getToolWriteOptions, getUnknownBookError, getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-tool-bridge.js';
 import { registerToolAction, registerToolFormatter } from '../../tool-action-registry.js';
 import { logToolCallStarted, logToolCallCompleted, logToolCallError } from '../activity-feed.js';
 import { setSummaryMemoryCreated } from '../summary-memory-store.js';
@@ -22,7 +21,7 @@ function trimDerivedTitle(value) {
         return normalized;
     }
 
-    const clipped = normalized.slice(0, MAX_DERIVED_TITLE_LENGTH);
+    const clipped = Array.from(normalized).slice(0, MAX_DERIVED_TITLE_LENGTH).join('');
     return clipped.replace(/\s+\S*$/, '').trim() || clipped.trim();
 }
 
@@ -42,10 +41,10 @@ function stripSummaryMetadata(content) {
 
 function deriveTitleFromContent(content) {
     const body = stripSummaryMetadata(content);
-    const firstSentence = body.split(/[.!?]\s+|\n+/).find(part => part.trim()) || body;
-    const withoutSpeaker = firstSentence.replace(/^[\w .'-]{1,32}:\s+/, '').trim();
+    const firstSentence = body.split(/[.!?]\s+|[\u3002\uff01\uff1f\n]+/u).find(part => part.trim()) || body;
+    const withoutSpeaker = firstSentence.replace(/^[\p{L}\p{M}\p{N} .'-]{1,32}:\s+/u, '').trim();
     const words = withoutSpeaker
-        .replace(/[^\w\s'-]/g, ' ')
+        .replace(/[^\p{L}\p{M}\p{N}\s'-]/gu, ' ')
         .split(/\s+/)
         .filter(Boolean)
         .slice(0, MAX_DERIVED_TITLE_WORDS);
@@ -78,6 +77,11 @@ export async function createSummaryMemoryEntry(args = {}, options = {}) {
     }
 
     const writableBooks = getWritableBooks();
+    const bookError = getUnknownBookError(bookName, writableBooks);
+    if (bookError) {
+        logToolCallError(TOOL_NAMES.SUMMARIZE, `Unknown book: ${bookName}`);
+        throw new Error(bookError);
+    }
     const targetBook = resolveTargetBook(bookName, writableBooks);
     if (!targetBook) {
         logToolCallError(TOOL_NAMES.SUMMARIZE, 'No writable lorebooks');
@@ -88,53 +92,25 @@ export async function createSummaryMemoryEntry(args = {}, options = {}) {
     const formattedContent = `Significance: ${significance}\n\n${content}`;
 
     try {
-        const result = await createEntry(targetBook, summaryTitle, formattedContent, ['summary', significance.toLowerCase()]);
+        const result = await createEntry(targetBook, summaryTitle, formattedContent, ['summary', significance.toLowerCase()], {
+            arc, ...getToolWriteOptions(targetBook, options),
+        });
         if (trackLatest) {
             setSummaryMemoryCreated({
                 title: summaryTitle,
                 content,
                 significance,
                 arc,
-                bookName: targetBook,
+                bookName: result.bookName,
                 uid: result.uid,
             });
-        }
-
-        // Arc filing is best-effort: the entry is already saved, so a tree
-        // problem must not fail the tool (that skipped the auto-summary
-        // counter reset and produced duplicate summaries).
-        try {
-            const tree = getTree(targetBook);
-            if (tree && arc) {
-                let summaryWaypoint = (tree.children || []).find(c => /summar/i.test(c.name));
-                if (!summaryWaypoint) {
-                    summaryWaypoint = createTreeNode('Summaries', 'Event summaries and recaps');
-                    if (!Array.isArray(tree.children)) tree.children = [];
-                    tree.children.push(summaryWaypoint);
-                }
-
-                let arcNode = (summaryWaypoint.children || []).find(c => c.name.toLowerCase() === arc.toLowerCase());
-                if (!arcNode) {
-                    arcNode = createTreeNode(`Arc: ${arc}`, `Narrative arc: ${arc}`);
-                    if (!Array.isArray(summaryWaypoint.children)) summaryWaypoint.children = [];
-                    summaryWaypoint.children.push(arcNode);
-                }
-                if (!Array.isArray(arcNode.entries)) arcNode.entries = [];
-                if (!arcNode.entries.includes(result.uid)) {
-                    arcNode.entries.push(result.uid);
-                }
-
-                saveTree(targetBook, tree);
-            }
-        } catch (treeErr) {
-            console.warn('[Pathfinder] Failed to file summary under its arc waypoint:', treeErr);
         }
 
         logToolCallCompleted(TOOL_NAMES.SUMMARIZE, `Summarized: ${title}`);
         return {
             title,
             summaryTitle,
-            targetBook,
+            targetBook: result.bookName,
             uid: result.uid,
             significance,
             arc,
@@ -162,9 +138,9 @@ export async function createSeparateSummaryMemoryEntry(args = {}) {
     }, { trackLatest: false });
 }
 
-async function summarizeAction(args) {
+async function summarizeAction(args, options = {}) {
     try {
-        const result = await createSummaryMemoryEntry(args);
+        const result = await createSummaryMemoryEntry(args, options);
         // SillyBunny: reset the auto-summary counter only after a summary is
         // successfully written, not when the prompt is injected. This ensures
         // the interval is not consumed when the model skips or fails the tool

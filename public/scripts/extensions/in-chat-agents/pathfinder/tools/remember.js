@@ -1,6 +1,6 @@
-import { getSettings } from '../tree-store.js';
+import { canReadBook, getSettings, isEntryEligible } from '../tree-store.js';
 import { createEntry } from '../entry-manager.js';
-import { getUnknownBookError, getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-tool-bridge.js';
+import { getToolWriteOptions, getUnknownBookError, getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-tool-bridge.js';
 import { registerToolAction, registerToolFormatter } from '../../tool-action-registry.js';
 import { logToolCallStarted, logToolCallCompleted, logToolCallError } from '../activity-feed.js';
 
@@ -21,7 +21,7 @@ function trigramSimilarity(a, b) {
     return intersection / Math.max(ta.size, tb.size);
 }
 
-async function rememberAction(args) {
+async function rememberAction(args, options = {}) {
     const settings = getSettings();
     const title = String(args.title || '').trim();
     const content = String(args.content || '').trim();
@@ -48,13 +48,13 @@ async function rememberAction(args) {
         return 'No Pathfinder-enabled lorebooks available for writing. Enable at least one lorebook.';
     }
 
-    if (settings.dedupDetection) {
+    if (settings.dedupDetection && canReadBook(targetBook)) {
         try {
             const ctx = window?.SillyTavern?.getContext?.();
             const bookData = await ctx?.loadWorldInfo?.(targetBook);
             if (bookData?.entries) {
                 for (const [, entry] of Object.entries(bookData.entries)) {
-                    if (entry && !entry.disable) {
+                    if (isEntryEligible(entry)) {
                         const sim = trigramSimilarity(entry.content || '', content);
                         if (sim >= (settings.dedupThreshold || 0.85)) {
                             logToolCallError(TOOL_NAMES.REMEMBER, `Duplicate of UID ${entry.uid}`);
@@ -69,9 +69,9 @@ async function rememberAction(args) {
     }
 
     try {
-        const result = await createEntry(targetBook, title, content);
+        const result = await createEntry(targetBook, title, content, [], getToolWriteOptions(targetBook, options));
         logToolCallCompleted(TOOL_NAMES.REMEMBER, `Created: ${title}`);
-        return `✅ Remembered "${title}" in lorebook "${targetBook}" (UID: ${result.uid}). The entry is filed under the appropriate waypoint.`;
+        return `✅ Remembered "${title}" in lorebook "${result.bookName}" (UID: ${result.uid}). The entry is filed under the appropriate waypoint.`;
     } catch (err) {
         logToolCallError(TOOL_NAMES.REMEMBER, err.message);
         return `❌ Failed to remember: ${err.message}`;

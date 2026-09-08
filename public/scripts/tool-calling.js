@@ -777,7 +777,7 @@ export class ToolManager {
      * @param {any} data Reply data
      * @returns {Promise<ToolInvocationResult>} Successful tool invocations
      */
-    static async invokeFunctionTools(data, { reasoningText = null } = {}) {
+    static async invokeFunctionTools(data, { reasoningText = null, isCurrent = () => true, signal = null } = {}) {
         /** @type {ToolInvocationResult} */
         const result = {
             invocations: [],
@@ -791,6 +791,8 @@ export class ToolManager {
         }
 
         for (const toolCall of toolCalls) {
+            // SillyBunny: every call belongs to the response that requested the batch.
+            if (signal?.aborted || !isCurrent()) break;
             if (!toolCall || !toolCall.function || typeof toolCall.function !== 'object') {
                 continue;
             }
@@ -802,9 +804,15 @@ export class ToolManager {
             const displayName = ToolManager.getDisplayName(name);
             const isStealth = ToolManager.isStealthTool(name);
             const message = await ToolManager.formatToolCallMessage(name, parameters);
+            if (signal?.aborted || !isCurrent()) break;
             const toast = message && toastr.info(message, 'Tool Calling', { timeOut: 0 });
-            const toolResult = await ToolManager.invokeFunctionTool(name, parameters);
-            toastr.clear(toast);
+            let toolResult;
+            try {
+                toolResult = await ToolManager.invokeFunctionTool(name, parameters);
+            } finally {
+                toastr.clear(toast);
+            }
+            if (signal?.aborted || !isCurrent()) break;
             console.log('[ToolManager] Function tool result:', result);
 
             // Handle tool errors — still create an invocation so the LLM sees the failure

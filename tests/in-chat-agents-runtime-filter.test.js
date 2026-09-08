@@ -117,6 +117,7 @@ beforeEach(async () => {
         normalizeContentText: value => String(value ?? ''),
         saveChatDebounced: jest.fn(),
         saveSettingsDebounced,
+        setAgentGenerationContextProvider: jest.fn(),
         stopGeneration: jest.fn(),
         streamingProcessor: null,
         syncMesToSwipe: jest.fn(),
@@ -127,6 +128,10 @@ beforeEach(async () => {
         getContext: () => context,
     }));
     jest.unstable_mockModule('../public/scripts/events.js', () => ({ eventSource, event_types: eventTypes }));
+    jest.unstable_mockModule('../public/scripts/group-chats.js', () => ({ is_group_generating: false }));
+    jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/entry-manager.js', () => ({
+        onPathfinderWorldInfoUpdated: jest.fn(), onPathfinderWorldInfoRenamed: jest.fn(), onPathfinderWorldInfoDeleted: jest.fn(),
+    }));
     jest.unstable_mockModule('../public/scripts/utils.js', () => ({
         uuidv4: () => 'test-uuid',
         regexFromString: value => {
@@ -187,6 +192,7 @@ beforeEach(async () => {
     jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/sidecar-retrieval.js', () => ({
         PATHFINDER_RETRIEVAL_PROMPT_KEYS: ['pathfinder_sidecar_retrieval'],
         runSidecarRetrieval,
+        injectPathfinderRetrieval: jest.fn(),
     }));
     jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/auto-summary.js', () => ({
         resetAutoSummaryCount: jest.fn(),

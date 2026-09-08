@@ -4,8 +4,8 @@
 
 import { getPrompt, getPipeline } from './prompt-store.js';
 import { sidecarGenerateWithProfile } from '../llm-sidecar.js';
-import { getSettings, getTree, getAllEntryUids } from '../tree-store.js';
-import { getReadableBooks, getAllEntriesWithContent } from '../pathfinder-tool-bridge.js';
+import { canReadBook, getSettings, getTree, getAllEntryUids, isEntryEligible } from '../tree-store.js';
+import { getReadableBooks } from '../pathfinder-tool-bridge.js';
 import { logPipelineStageStart, logPipelineStageComplete, logPipelineError } from '../activity-feed.js';
 import { isAbortLikeError } from '../../../../util/abort-error.js';
 
@@ -32,6 +32,7 @@ function throwIfAborted(signal) {
  * @typedef {Object} PipelineResult
  * @property {boolean} success
  * @property {string[]} selectedEntries - Entry names/UIDs to activate
+ * @property {Object[]} [selectedEntryData] - Selected entries with their originating book and UID
  * @property {Object[]} stageResults - Results from each stage
  * @property {string} [error] - Error message if failed
  */
@@ -43,7 +44,7 @@ function throwIfAborted(signal) {
  * @param {number} [maxMessages=10] - Max messages to include in context
  * @returns {Promise<PipelineResult>}
  */
-export async function runPipeline(pipelineId, chatMessages, maxMessages = 10, signal = null) {
+export async function runPipeline(pipelineId, chatMessages, maxMessages = 10, signal = null, books = getReadableBooks()) {
     throwIfAborted(signal);
     const pipeline = getPipeline(pipelineId);
     if (!pipeline) {
@@ -57,12 +58,14 @@ export async function runPipeline(pipelineId, chatMessages, maxMessages = 10, si
     }
 
     const settings = getSettings();
-    const context = await buildPipelineContext(chatMessages, maxMessages);
+    const context = await buildPipelineContext(chatMessages, maxMessages, books, signal);
+    throwIfAborted(signal);
 
     if (!context.entry_names.trim()) {
         return {
             success: true,
             selectedEntries: [],
+            selectedEntryData: [],
             stageResults: [],
             error: 'No lorebook entries available',
         };
@@ -174,9 +177,26 @@ export async function runPipeline(pipelineId, chatMessages, maxMessages = 10, si
 
     return {
         success: true,
-        selectedEntries: currentEntries,
+        selectedEntries: currentEntries.map(name => context.entriesByName.get(name).comment),
+        selectedEntryData: currentEntries.map(name => context.entriesByName.get(name)),
         stageResults,
     };
+}
+
+export async function loadRetrievalEntries(bookName, signal = null) {
+    throwIfAborted(signal);
+    if (!canReadBook(bookName)) return [];
+    const ctx = globalThis.window?.SillyTavern?.getContext?.();
+    const data = await ctx?.loadWorldInfo?.(bookName);
+    throwIfAborted(signal);
+    if (!canReadBook(bookName)) return [];
+    // A failed read must not become a cacheable empty selection.
+    if (!data?.entries || typeof data.entries !== 'object' || Array.isArray(data.entries)) {
+        throw new Error(`Lorebook "${bookName}" has no entries while fetching all content.`);
+    }
+    return Object.values(data.entries)
+        .filter(isEntryEligible)
+        .map(entry => ({ ...entry, bookName, comment: entry.comment || entry.key?.[0] || '' }));
 }
 
 /**
@@ -185,14 +205,12 @@ export async function runPipeline(pipelineId, chatMessages, maxMessages = 10, si
  * @param {number} maxMessages
  * @returns {Promise<PipelineContext>}
  */
-async function buildPipelineContext(chatMessages, maxMessages) {
-    const books = getReadableBooks();
-
+async function buildPipelineContext(chatMessages, maxMessages, books, signal) {
     // Format chat history
     const recentMessages = chatMessages.slice(-maxMessages);
     const chat_history = recentMessages
         .map(msg => {
-            const name = msg.is_user ? 'User' : (msg.name || 'Assistant');
+            const name = msg.is_user || msg.role === 'user' ? 'User' : (msg.name || 'Assistant');
             return `${name}: ${msg.mes}`;
         })
         .join('\n\n');
@@ -209,13 +227,14 @@ async function buildPipelineContext(chatMessages, maxMessages) {
         }
 
         const treeUids = new Set(getAllEntryUids(tree));
-        const entries = await getAllEntriesWithContent(bookName);
+        const entries = await loadRetrievalEntries(bookName, signal);
         for (const entry of entries) {
             if (!treeUids.has(entry.uid) || !entry.comment) {
                 continue;
             }
-            entriesByName.set(entry.comment, { ...entry, bookName });
-            entryNames.push(`- ${entry.comment}`);
+            const name = `${JSON.stringify([bookName, entry.uid])} ${entry.comment}`;
+            entriesByName.set(name, entry);
+            entryNames.push(`- ${name}`);
         }
     }
 
@@ -282,7 +301,7 @@ function formatCandidateEntries(candidates, context, settings) {
 
     for (const name of limited) {
         const entry = context.entriesByName.get(name);
-        if (!entry) continue;
+        if (!entry || !canReadBook(entry.bookName)) continue;
 
         let content = entry.content || '';
 
@@ -311,13 +330,10 @@ function resolveEntryName(name, entriesByName) {
     }
 
     const normalized = normalizeEntryName(trimmed);
-    for (const knownName of entriesByName.keys()) {
-        if (normalizeEntryName(knownName) === normalized) {
-            return knownName;
-        }
-    }
-
-    return null;
+    const matches = [...entriesByName].filter(([knownName, entry]) =>
+        normalizeEntryName(knownName) === normalized || normalizeEntryName(entry.comment) === normalized,
+    );
+    return matches.length === 1 ? matches[0][0] : null;
 }
 
 /**
@@ -374,7 +390,7 @@ function parseOutput(response, format, entriesByName) {
                 for (const name of entries) {
                     const resolvedName = resolveEntryName(name, entriesByName);
                     if (resolvedName) {
-                        validEntries.push(resolvedName);
+                        if (!validEntries.includes(resolvedName)) validEntries.push(resolvedName);
                     }
                 }
 
@@ -400,7 +416,8 @@ function parseOutput(response, format, entriesByName) {
     // Fallback: extract entry names line by line
     const lines = trimmed.split('\n')
         .map(line => line.replace(/^[-*]\s*/, '').trim())
-        .filter(line => line && entriesByName.has(line));
+        .map(line => resolveEntryName(line, entriesByName))
+        .filter(Boolean);
 
-    return { entries: lines };
+    return { entries: [...new Set(lines)] };
 }
