@@ -5832,6 +5832,9 @@ Helper context.`;
         document.getElementById = jest.fn(id => id === 'send_textarea' ? textarea : null);
         document.querySelector = jest.fn(selector => selector === '#send_textarea' ? textarea : null);
         executeSlashCommandsWithOptions.mockImplementation(async (script) => {
+            if (script === '/flushinject gg-impersonate-voice') {
+                return;
+            }
             expect(script).toContain('/impersonate await=true');
             textarea.value = 'Draft guided impersonation';
             await eventSource.emit(eventTypes.IMPERSONATE_READY, 'Draft guided impersonation');

@@ -56,6 +56,7 @@ describe('Guided Generations steering commands', () => {
         eventSource = createEventSource();
 
         context = {
+            chatId: 'test-chat',
             chat: [{ name: 'Bot', mes: 'Previous reply', swipes: ['Previous reply'], swipe_id: 0 }],
             chatMetadata: { script_injects: {} },
             executeSlashCommandsWithOptions: jest.fn(async (command) => {
@@ -71,11 +72,12 @@ describe('Guided Generations steering commands', () => {
             }),
             groupId: null,
             groups: [],
+            characters: [],
+            callGenericPopup: jest.fn(async () => 0),
+            POPUP_TYPE: { TEXT: 1 },
             messageFormatting: jest.fn(value => value),
             swipe: {
-                right: jest.fn(() => {
-                    setTimeout(() => eventSource.emit(eventTypes.GENERATION_ENDED), 0);
-                }),
+                right: jest.fn(async () => eventSource.emit(eventTypes.GENERATION_ENDED)),
             },
         };
         extensionSettings = {
@@ -89,6 +91,13 @@ describe('Guided Generations steering commands', () => {
         };
 
         globalThis.document = {
+            createElement: jest.fn(tagName => ({
+                tagName,
+                children: [],
+                dataset: {},
+                style: {},
+                append(...children) { this.children.push(...children); },
+            })),
             getElementById: jest.fn(id => id === 'send_textarea' ? textarea : null),
             querySelector: jest.fn(() => null),
         };
@@ -142,6 +151,108 @@ describe('Guided Generations steering commands', () => {
         expect(textarea.dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'input' }));
     });
 
+    test('guided response cancels before injecting or generating when the group picker is dismissed', async () => {
+        context.groupId = 'group';
+        context.groups = [{ id: 'group', members: ['avatar.png'] }];
+        context.characters = [{ name: 'Actual Character Name', avatar: 'avatar.png' }];
+        const { guidedResponse } = await import('../public/scripts/extensions/guided-generations/scripts/guidedResponse.js');
+
+        await guidedResponse();
+
+        expect(context.callGenericPopup).toHaveBeenCalledTimes(1);
+        expect(context.executeSlashCommandsWithOptions).not.toHaveBeenCalled();
+        expect(textarea.value).toBe('aim for a colder, suspicious reply');
+    });
+
+    test('guided response targets the selected group position with missing avatars and duplicate numeric names', async () => {
+        context.groupId = 'group';
+        context.groups = [{ id: 'group', members: ['missing.png', 'first.png', 'second.png'] }];
+        context.characters = [
+            { name: 'Unused', avatar: 'unused.png' },
+            { name: '2B | "Alias"', avatar: 'second.png' },
+            { name: '2B | "Alias"', avatar: 'first.png' },
+        ];
+        context.callGenericPopup.mockResolvedValue(4);
+        const { guidedResponse } = await import('../public/scripts/extensions/guided-generations/scripts/guidedResponse.js');
+
+        await guidedResponse();
+
+        const content = context.callGenericPopup.mock.calls[0][0];
+        expect(content.textContent).toBe('Select member to respond as');
+        expect(content.children[0].children.map(button => ({ text: button.textContent, result: button.dataset.result }))).toEqual([
+            { text: '2B | "Alias"', result: '3' },
+            { text: '2B | "Alias"', result: '4' },
+        ]);
+        const command = context.executeSlashCommandsWithOptions.mock.calls[0][0];
+        expect(command).toContain('/trigger await=true 2|');
+        expect(command).not.toContain('setglobalvar');
+        expect(command).not.toContain('2B');
+    });
+
+    test('guided response does not fall back to automatic generation for an empty group', async () => {
+        context.groupId = 'empty-group';
+        context.groups = [{ id: 'empty-group', members: [] }];
+        const { guidedResponse } = await import('../public/scripts/extensions/guided-generations/scripts/guidedResponse.js');
+
+        await guidedResponse();
+
+        expect(context.callGenericPopup).not.toHaveBeenCalled();
+        expect(context.executeSlashCommandsWithOptions).not.toHaveBeenCalled();
+    });
+
+    test('changing chats while choosing a group member preserves the new draft and cancels generation', async () => {
+        context.groupId = 'group';
+        context.groups = [{ id: 'group', members: ['avatar.png'] }];
+        context.characters = [{ name: 'Character', avatar: 'avatar.png' }];
+        context.callGenericPopup.mockImplementation(async () => {
+            context = { ...context, chatId: 'other-chat' };
+            textarea.value = 'New chat draft';
+            return 2;
+        });
+        const { guidedResponse } = await import('../public/scripts/extensions/guided-generations/scripts/guidedResponse.js');
+
+        await guidedResponse();
+
+        expect(context.executeSlashCommandsWithOptions).not.toHaveBeenCalled();
+        expect(textarea.value).toBe('New chat draft');
+    });
+
+    test('guided swipe waits for core cleanup even after GENERATION_ENDED fires', async () => {
+        let finishSwipe;
+        const swipeFinished = new Promise(resolve => { finishSwipe = resolve; });
+        let started;
+        const swipeStarted = new Promise(resolve => { started = resolve; });
+        context.swipe.right.mockImplementation(async () => {
+            await eventSource.emit(eventTypes.GENERATION_ENDED);
+            started();
+            await swipeFinished;
+        });
+        const { guidedSwipe } = await import('../public/scripts/extensions/guided-generations/scripts/guidedSwipe.js');
+
+        const pending = guidedSwipe();
+        await swipeStarted;
+        expect(context.chatMetadata.script_injects['gg-guided-swipe']).toBeDefined();
+        expect(context.executeSlashCommandsWithOptions).toHaveBeenCalledTimes(1);
+
+        finishSwipe();
+        await pending;
+        expect(context.chatMetadata.script_injects['gg-guided-swipe']).toBeUndefined();
+        expect(eventSource.once).not.toHaveBeenCalled();
+    });
+
+    test('a rejected swipe clears guidance and restores the input without waiting for an event', async () => {
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        context.swipe.right.mockRejectedValue(new Error('Swipe failed'));
+        const { guidedSwipe } = await import('../public/scripts/extensions/guided-generations/scripts/guidedSwipe.js');
+
+        await guidedSwipe();
+
+        expect(context.chatMetadata.script_injects['gg-guided-swipe']).toBeUndefined();
+        expect(textarea.value).toBe('aim for a colder, suspicious reply');
+        expect(globalThis.alert).toHaveBeenCalledWith('Guided Swipe Error: Swipe failed');
+        errorSpy.mockRestore();
+    });
+
     test.each([
         ['first', 'FIRST PERSON: {{input}}'],
         ['second', 'SECOND PERSON: {{input}}'],
@@ -158,7 +269,7 @@ I | begin`;
 
         await guidedImpersonate();
 
-        expect(context.executeSlashCommandsWithOptions).toHaveBeenCalledTimes(1);
+        expect(context.executeSlashCommandsWithOptions).toHaveBeenCalledTimes(2);
         const command = context.executeSlashCommandsWithOptions.mock.calls[0][0];
         expect(command).toContain('/inject id=gg-impersonate-voice position=chat ephemeral=true scan=true depth=0 role=system Guided Impersonate: generate only the next text-box message for {{user}}.');
         expect(command).toContain('The guided impersonation prompt is authoritative for grammatical person, narration style, length, and exclusions.');
@@ -172,6 +283,24 @@ I | begin`;
         expect(command).toContain('SYSTEM:\nStay terse.');
         expect(command).toContain('ASSISTANT:\nI \\| begin');
         expect(command).toContain('</helper_prefill_context>');
-        expect(command).toContain('/flushinject gg-impersonate-voice |');
+        expect(context.executeSlashCommandsWithOptions).toHaveBeenLastCalledWith('/flushinject gg-impersonate-voice');
+    });
+
+    test('failed impersonation clears its voice guide', async () => {
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        context.executeSlashCommandsWithOptions.mockImplementation(async command => {
+            if (command.includes('/impersonate await=true')) {
+                context.chatMetadata.script_injects['gg-impersonate-voice'] = { value: 'Voice guide' };
+                throw new Error('Impersonation failed');
+            }
+            delete context.chatMetadata.script_injects['gg-impersonate-voice'];
+        });
+        const { guidedImpersonate } = await import('../public/scripts/extensions/guided-generations/scripts/guidedImpersonate.js');
+
+        await guidedImpersonate();
+
+        expect(context.chatMetadata.script_injects['gg-impersonate-voice']).toBeUndefined();
+        expect(context.executeSlashCommandsWithOptions).toHaveBeenLastCalledWith('/flushinject gg-impersonate-voice');
+        errorSpy.mockRestore();
     });
 });

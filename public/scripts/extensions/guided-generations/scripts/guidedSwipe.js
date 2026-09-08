@@ -74,23 +74,8 @@ async function generateNewSwipe() {
         }
 
         debugLog('[Swipe] Calling context.swipe.right() to trigger new swipe generation.');
-        context.swipe.right();
-
-        await new Promise(resolve => {
-            let resolved = false;
-            const resolveOnce = () => {
-                if (resolved) {
-                    return;
-                }
-                resolved = true;
-                eventSource.removeListener(event_types.GENERATION_ENDED, resolveOnce);
-                eventSource.removeListener(event_types.GENERATION_STOPPED, resolveOnce);
-                resolve();
-            };
-            eventSource.once(event_types.GENERATION_ENDED, resolveOnce);
-            eventSource.once(event_types.GENERATION_STOPPED, resolveOnce);
-        });
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // GENERATION_ENDED precedes the core swipe flow's UI cleanup.
+        await context.swipe.right();
         return true;
     } catch (error) {
         console.error('[GuidedGenerations][Swipe] Error during swipe generation process:', error);
