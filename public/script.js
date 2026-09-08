@@ -333,6 +333,7 @@ import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker
 import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-send-button.js';
 import { formatMobileStreamingPreview, getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval, isAndroidStreamingPlatform, shouldReduceStreamingDomWork, shouldUsePlainTextStreamingPreview } from './scripts/mobile-streaming.js';
 import { fetchResumable } from './scripts/resumable-generation.js';
+import { applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse } from './scripts/generation-request-controls.js';
 import {
     CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
     CHAT_RENDER_LIFECYCLE_ROUTE,
@@ -5382,6 +5383,7 @@ export function getStoppingStrings(isImpersonate, isContinue, api = main_api) {
  * @prop {string} [quietImage] Image to use for the quiet prompt
  * @prop {string} [quietName] Name to use for the quiet prompt (defaults to "System:")
  * @prop {number} [responseLength] Maximum response length. If unset, the global default value is used.
+ * @prop {boolean} [preserveReasoningBudget=false] Keep the preset's total allowance for reasoning requests
  * @prop {number} [forceChId] Character ID to use for this generation run. Works in groups only.
  * @prop {object} [jsonSchema] JSON schema to use for the structured generation. Usually requires a special instruction.
  * @prop {boolean} [removeReasoning] Parses and removes the reasoning block according to reasoning format preferences
@@ -5391,13 +5393,13 @@ export function getStoppingStrings(isImpersonate, isContinue, api = main_api) {
  * @param {GenerateQuietPromptParams} params Parameters for the quiet prompt generation
  * @returns {Promise<string>} Generated text. If using structured output, will contain a serialized JSON object.
  */
-export async function generateQuietPrompt({ quietPrompt = '', quietToLoud = false, skipWIAN = false, quietImage = null, quietName = null, responseLength = null, forceChId = null, jsonSchema = null, removeReasoning = true, trimToSentence = false, signal = null, cacheScope = 'auxiliary' } = {}) {
+export async function generateQuietPrompt({ quietPrompt = '', quietToLoud = false, skipWIAN = false, quietImage = null, quietName = null, responseLength = null, forceChId = null, jsonSchema = null, removeReasoning = true, trimToSentence = false, signal = null, cacheScope = 'auxiliary', preserveReasoningBudget = false } = {}) {
     if (arguments.length > 0 && typeof arguments[0] !== 'object') {
         console.trace('generateQuietPrompt called with positional arguments. Please use an object instead.');
         [quietPrompt, quietToLoud, skipWIAN, quietImage, quietName, responseLength, forceChId, jsonSchema] = arguments;
     }
 
-    const responseLengthCustomized = typeof responseLength === 'number' && responseLength > 0;
+    const responseLengthCustomized = !preserveReasoningBudget && typeof responseLength === 'number' && responseLength > 0;
     const externalSignal = signal instanceof AbortSignal ? signal : null;
     const quietAbortController = externalSignal ? new AbortController() : null;
     const abortFromExternalSignal = quietAbortController
@@ -5426,6 +5428,8 @@ export async function generateQuietPrompt({ quietPrompt = '', quietToLoud = fals
             jsonSchema: jsonSchema ?? null,
             signal: quietAbortController?.signal ?? null,
             cacheScope,
+            responseLength: preserveReasoningBudget ? responseLength : null,
+            preserveReasoningBudget,
         };
         if (responseLengthCustomized) {
             TempResponseLength.save(main_api, responseLength);
@@ -5956,8 +5960,9 @@ class StreamingProcessor {
      * @param {Date} timeStarted Date when generation was started
      * @param {string} continueMessage Previous message if the type is 'continue'
      * @param {PromptReasoning} promptReasoning Prompt reasoning instance
+     * @param {GenerateOptions} [requestControls] Controls for this request and its owned successors
      */
-    constructor(type, forceName2, timeStarted, continueMessage, promptReasoning) {
+    constructor(type, forceName2, timeStarted, continueMessage, promptReasoning, requestControls = {}) {
         this.result = '';
         this.messageId = -1;
         /** @type {HTMLElement} */
@@ -5977,6 +5982,15 @@ class StreamingProcessor {
         this.isFinished = false;
         this.generator = this.nullStreamingGeneration;
         this.abortController = new AbortController();
+        // SillyBunny: a prose limit closes the transport, not the generation lifecycle.
+        this.requestAbortController = new AbortController();
+        this.abortController.signal.addEventListener('abort', () => this.requestAbortController.abort(this.abortController.signal.reason), { once: true });
+        this.requestControls = requestControls;
+        this.maxOutputTokens = Number.isFinite(requestControls.maxOutputTokens) && requestControls.maxOutputTokens > 0 ? requestControls.maxOutputTokens : 0;
+        this.finishReason = null;
+        this.lastRawText = null;
+        this.lastReasoningPrefix = null;
+        this.limitedOutput = null;
         this.firstMessageText = '...';
         this.timeStarted = timeStarted;
         /** @type {number?} */
@@ -6007,6 +6021,29 @@ class StreamingProcessor {
         }
     }
 
+    #applyProseLimit(state, isFinal = false) {
+        if (!this.maxOutputTokens || (isFinal && this.lastRawText === null)) {
+            return false;
+        }
+        if (state?.finishReason === 'length') {
+            this.finishReason = 'length';
+        }
+        const rawText = isFinal ? this.lastRawText : this.result;
+        const prefix = isFinal ? this.lastReasoningPrefix : this.promptReasoning?.prefixIncomplete && !this.pendingReasoning ? this.promptReasoning.prefixReasoningFormatted : '';
+        if (isFinal || rawText !== this.lastRawText || prefix !== this.lastReasoningPrefix) {
+            this.lastRawText = rawText;
+            this.lastReasoningPrefix = prefix;
+            this.limitedOutput = limitGenerationProse(rawText, this.maxOutputTokens, power_user.reasoning, prefix, !isFinal);
+        }
+        this.result = this.limitedOutput.text;
+        if (!isFinal) {
+            this.pendingReasoning = [this.pendingReasoning, this.limitedOutput.reasoning].filter(Boolean).join('\n\n');
+        } else if (this.limitedOutput.limited) {
+            this.finishReason = 'length';
+        }
+        return this.limitedOutput.limited;
+    }
+
     /**
      * Initializes DOM elements for the current message.
      * @param {number} messageId Current message ID
@@ -6032,7 +6069,8 @@ class StreamingProcessor {
             this.messageTokenCounterDom = this.messageDom?.querySelector('.tokenCounterDisplay');
         }
         if (continueOnReasoning) {
-            await this.reasoningHandler.process(messageId, false, this.promptReasoning);
+            // Controlled streams parse inline reasoning once in #applyProseLimit.
+            await this.reasoningHandler.process(messageId, false, this.maxOutputTokens ? null : this.promptReasoning);
         }
         if (this.reasoningHandler.hasReasoningContent()) {
             this.reasoningHandler.updateDom(messageId);
@@ -6122,7 +6160,7 @@ class StreamingProcessor {
             getMessage: text,
             isImpersonate: isImpersonate,
             isContinue: isContinue,
-            displayIncompleteSentences: !isFinal,
+            displayIncompleteSentences: !isFinal || this.finishReason === 'length',
             stoppingStrings: this.stoppingStrings,
         });
 
@@ -6148,7 +6186,7 @@ class StreamingProcessor {
 
             // Update reasoning
             this.#applyPendingReasoning();
-            await this.reasoningHandler.process(messageId, mesChanged, this.promptReasoning);
+            await this.reasoningHandler.process(messageId, mesChanged, this.maxOutputTokens ? null : this.promptReasoning);
             processedText = chat[messageId].mes;
 
             // Token count update.
@@ -6333,7 +6371,7 @@ class StreamingProcessor {
 
         const isAborted = this.abortController.signal.aborted;
         if (!isAborted && power_user.auto_swipe && generatedTextFiltered(text)) {
-            return await swipe(null, SWIPE_DIRECTION.RIGHT, { source: SWIPE_SOURCE.AUTO_SWIPE, repeated: true, forceMesId: chat.length - 1 });
+            return await swipe(null, SWIPE_DIRECTION.RIGHT, { source: SWIPE_SOURCE.AUTO_SWIPE, repeated: true, forceMesId: chat.length - 1, generationOptions: this.requestControls });
         }
         await saveChatConditional();
 
@@ -6415,16 +6453,26 @@ class StreamingProcessor {
                     this.messageLogprobs.push(...(Array.isArray(logprobs) ? logprobs : [logprobs]));
                 }
                 this.pendingReasoning = typeof state?.reasoning === 'string' ? state.reasoning : null;
+                const reachedLimit = this.#applyProseLimit(state);
                 if (this.pendingReasoning !== null) {
                     this.reasoningHandler.reasoning = getRegexedString(this.pendingReasoning, regex_placement.REASONING);
                 }
                 this.images = state?.images ?? [];
                 this.reasoningSignature = state?.signature ?? null;
                 this.reasoningTokens = state?.reasoning_tokens ?? 0;
+                if (reachedLimit) {
+                    this.finishReason = 'length';
+                    this.requestAbortController.abort();
+                    break;
+                }
             }
             const seconds = (timestamps[timestamps.length - 1] - timestamps[0]) / 1000;
             console.warn(`Stream stats: ${timestamps.length} tokens, ${seconds.toFixed(2)} seconds, rate: ${Number(timestamps.length / seconds).toFixed(2)} TPS`);
         } catch (err) {
+            if (this.finishReason === 'length' && err === this.requestAbortController.signal.reason && !this.abortController.signal.aborted) {
+                this.isFinished = true;
+                return this.result;
+            }
             const isCancelled = this.isCancelled || this.abortController.signal.aborted;
             if (!this.isFinished && isCancelled) {
                 this.isStopped = true;
@@ -6441,6 +6489,7 @@ class StreamingProcessor {
             return this.result;
         }
 
+        this.#applyProseLimit(null, true);
         this.isFinished = true;
         return this.result;
     }
@@ -6485,15 +6534,25 @@ class StreamingProcessor {
                 // SillyBunny: keep full reasoning regex/DOM work on UI ticks. Reasoning-heavy
                 // streams like DeepSeek and GLM can otherwise overwhelm iOS WebKit.
                 this.pendingReasoning = typeof state?.reasoning === 'string' ? state.reasoning : null;
+                const reachedLimit = this.#applyProseLimit(state);
                 this.images = state?.images ?? [];
                 this.reasoningSignature = state?.signature ?? null;
                 this.reasoningTokens = state?.reasoning_tokens ?? 0;
-                await eventSource.emit(event_types.STREAM_TOKEN_RECEIVED, text);
-                await sw.tick(async () => await this.onProgressStreaming(this.messageId, this.continueMessage + text));
+                await eventSource.emit(event_types.STREAM_TOKEN_RECEIVED, this.result);
+                await sw.tick(async () => await this.onProgressStreaming(this.messageId, this.continueMessage + this.result));
+                if (reachedLimit && !this.isCancelled && !this.abortController.signal.aborted) {
+                    this.finishReason = 'length';
+                    this.requestAbortController.abort();
+                    break;
+                }
             }
             const seconds = (timestamps[timestamps.length - 1] - timestamps[0]) / 1000;
             console.warn(`Stream stats: ${timestamps.length} tokens, ${seconds.toFixed(2)} seconds, rate: ${Number(timestamps.length / seconds).toFixed(2)} TPS`);
         } catch (err) {
+            if (this.finishReason === 'length' && err === this.requestAbortController.signal.reason && !this.abortController.signal.aborted) {
+                this.isFinished = true;
+                return this.result;
+            }
             const isCancelled = this.isCancelled || this.abortController.signal.aborted;
             if (!this.isFinished && isCancelled) {
                 this.setFirstSwipe(this.messageId);
@@ -6509,6 +6568,7 @@ class StreamingProcessor {
             return this.result;
         }
 
+        this.#applyProseLimit(null, true);
         this.isFinished = true;
         return this.result;
     }
@@ -6611,6 +6671,7 @@ export function createRawPrompt(prompt, api, instructOverride, quietToLoud, syst
  * @prop {boolean} [quietToLoud] true to generate a message in system mode, false to generate a message in character mode
  * @prop {string} [systemPrompt] System prompt to use.
  * @prop {number} [responseLength] Maximum response length. If unset, the global default value is used.
+ * @prop {boolean} [preserveReasoningBudget=false] Keep the preset's total allowance for reasoning requests
  * @prop {boolean} [trimNames] Whether to allow trimming "{{user}}:" and "{{char}}:" from the response.
  * @prop {string} [prefill] An optional prefill for the prompt.
  * @prop {JsonSchema} [jsonSchema] JSON schema to use for the structured generation. Usually requires a special instruction.
@@ -6624,7 +6685,7 @@ export function createRawPrompt(prompt, api, instructOverride, quietToLoud, syst
  * @param {GenerateRawParams} params Parameters for generating a message
  * @returns {Promise<object | string>} Raw API response data, or a JSON string extracted from the response when `jsonSchema` is provided.
  */
-export async function generateRawData({ prompt = '', api = null, instructOverride = false, quietToLoud = false, systemPrompt = '', responseLength = null, prefill = '', jsonSchema = null, signal = null, cacheScope = 'auxiliary' } = {}) {
+export async function generateRawData({ prompt = '', api = null, instructOverride = false, quietToLoud = false, systemPrompt = '', responseLength = null, prefill = '', jsonSchema = null, signal = null, cacheScope = 'auxiliary', preserveReasoningBudget = false } = {}) {
     if (!api) {
         api = main_api;
     }
@@ -6639,7 +6700,9 @@ export async function generateRawData({ prompt = '', api = null, instructOverrid
             externalSignal.addEventListener('abort', abortFromExternalSignal, { once: true });
         }
     }
-    const responseLengthCustomized = typeof responseLength === 'number' && responseLength > 0;
+    // SillyBunny: route preserved budgets before TempResponseLength can overwrite the preset.
+    const responseLengthCustomized = !preserveReasoningBudget && typeof responseLength === 'number' && responseLength > 0;
+    const requestControls = preserveReasoningBudget ? { responseLength, preserveReasoningBudget } : {};
     let eventHook = () => { };
 
     // construct final prompt from the input. Can either be a string or an array of chat-style messages.
@@ -6687,30 +6750,37 @@ export async function generateRawData({ prompt = '', api = null, instructOverrid
                     const koboldSettings = koboldai_settings[koboldai_setting_names[kai_settings.preset_settings]];
                     generateData = getKoboldGenerationData(prompt.toString(), koboldSettings, amount_gen, max_context, isHorde, 'quiet');
                 }
-                TempResponseLength.restore(api);
+                responseLengthCustomized && TempResponseLength.restore(api);
                 break;
             case 'novel': {
                 const novelSettings = novelai_settings[novelai_setting_names[nai_settings.preset_settings_novel]];
-                generateData = getNovelGenerationData(prompt, novelSettings, amount_gen, false, false, null, 'quiet');
-                TempResponseLength.restore(api);
+                const maxLength = applyGenerationRequestControls({ max_length: amount_gen, model: nai_settings.model_novel }, requestControls).max_length;
+                generateData = getNovelGenerationData(prompt, novelSettings, maxLength, false, false, null, 'quiet');
+                requestControls.responseLength = null;
+                responseLengthCustomized && TempResponseLength.restore(api);
                 break;
             }
             case 'textgenerationwebui':
                 generateData = await getTextGenGenerationData(prompt, amount_gen, false, false, null, 'quiet', { cacheScope });
-                TempResponseLength.restore(api);
+                responseLengthCustomized && TempResponseLength.restore(api);
                 break;
             case 'openai': {
                 generateData = prompt;  // generateData is just the chat message object
-                eventHook = TempResponseLength.setupEventHook(api);
+                if (responseLengthCustomized) {
+                    eventHook = TempResponseLength.setupEventHook(api);
+                }
             } break;
         }
 
+        if (api !== 'openai') {
+            generateData = applyGenerationRequestControls(generateData, { model: api === 'koboldhorde' ? horde_settings.models : api === main_api ? getGeneratingModel() : undefined, ...requestControls });
+        }
         let data = {};
 
         if (api === 'koboldhorde') {
             data = await generateHorde(prompt.toString(), generateData, abortController.signal, false);
         } else if (api === 'openai') {
-            data = await sendOpenAIRequest('quiet', generateData, abortController.signal, { jsonSchema, cacheScope });
+            data = await sendOpenAIRequest('quiet', generateData, abortController.signal, { jsonSchema, cacheScope, ...requestControls });
         } else {
             const generateUrl = getGenerateUrl(api);
             const response = await fetchResumable(generateUrl, {
@@ -6758,13 +6828,13 @@ export async function generateRawData({ prompt = '', api = null, instructOverrid
  * @param {GenerateRawParams} params Parameters for generating a message
  * @returns {Promise<string>} Generated output: a cleaned-up message string when `jsonSchema` is not provided, or an extracted JSON string conforming to `jsonSchema` when it is.
  */
-export async function generateRaw({ prompt = '', api = null, instructOverride = false, quietToLoud = false, systemPrompt = '', responseLength = null, trimNames = true, prefill = '', jsonSchema = null, signal = null, cacheScope = 'auxiliary' } = {}) {
+export async function generateRaw({ prompt = '', api = null, instructOverride = false, quietToLoud = false, systemPrompt = '', responseLength = null, trimNames = true, prefill = '', jsonSchema = null, signal = null, cacheScope = 'auxiliary', preserveReasoningBudget = false } = {}) {
     if (arguments.length > 0 && typeof arguments[0] !== 'object') {
         console.trace('generateRaw called with positional arguments. Please use an object instead.');
         [prompt, api, instructOverride, quietToLoud, systemPrompt, responseLength, trimNames, prefill, jsonSchema] = arguments;
     }
 
-    const data = await generateRawData({ prompt, api, instructOverride, quietToLoud, systemPrompt, responseLength, prefill, jsonSchema, signal, cacheScope });
+    const data = await generateRawData({ prompt, api, instructOverride, quietToLoud, systemPrompt, responseLength, prefill, jsonSchema, signal, cacheScope, preserveReasoningBudget });
 
     // JSON string (matching the provided schema) will already be extracted.
     if (jsonSchema) {
@@ -6922,7 +6992,11 @@ function removeLastMessage(messageId = null) {
  * @property {string} [quietName] Name to use for the quiet prompt (defaults to "System:")
  * @property {number} [depth] Recursion depth for the generation. Used to prevent infinite loops in tool calls.
  * @property {JsonSchema} [jsonSchema] JSON schema to use for the structured generation. Usually requires a special instruction.
- * @property {boolean} [suppressUserMessage] Whether the visible user message was already rendered by a caller.
+ * @property {boolean} [suppressUserMessage] Ignore composer input, including commands and pending attachments.
+ * @property {boolean} [suppressAutoContinue=false] Skip automatic continuation for this request
+ * @property {number} [maxOutputTokens] Limit generated prose without reducing the reasoning allowance
+ * @property {number} [responseLength] Request-local response length override
+ * @property {boolean} [preserveReasoningBudget=false] Ignore responseLength for reasoning requests
  * @property {'main'|'auxiliary'|'none'} [cacheScope] Prompt cache lane for local backends.
  * @property {boolean} [preserveLastMessage] Whether regeneration should retain the last assistant message as context.
  * @property {ChatMessage} [companionHistoryTarget] Rewrite target whose Companion output must stay excluded during recursive tool calls.
@@ -6970,16 +7044,17 @@ function consumePendingUserMessageExtra(message) {
     pendingUserMessageExtra = null;
 }
 
-export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null, preserveLastMessage = false, companionHistoryTarget = null } = {}, dryRun = false) {
+export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null, preserveLastMessage = false, companionHistoryTarget = null, suppressAutoContinue = false, maxOutputTokens = 0, responseLength = null, preserveReasoningBudget = false } = {}, dryRun = false) {
     console.log('Generate entered');
     setGenerationProgress(0);
     generation_started = new Date();
+    const requestControls = { suppressUserMessage, suppressAutoContinue, maxOutputTokens, responseLength, preserveReasoningBudget };
 
     // Prevent generation from shallow characters
     await unshallowCharacter(this_chid);
 
     // Occurs every time, even if the generation is aborted due to slash commands execution
-    await eventSource.emit(event_types.GENERATION_STARTED, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope, preserveLastMessage }, dryRun);
+    await eventSource.emit(event_types.GENERATION_STARTED, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope, preserveLastMessage, suppressUserMessage, ...requestControls }, dryRun);
 
     // Don't recreate abort controller if signal is passed
     if (!(abortController && signal)) {
@@ -6994,7 +7069,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     let textareaText = '';
     let renderedUserMessage = false;
 
-    if (!(dryRun || depth || type == 'regenerate' || type == 'swipe' || type == 'quiet')) {
+    if (!(dryRun || depth || suppressUserMessage || type == 'regenerate' || type == 'swipe' || type == 'quiet')) {
         const interruptedByCommand = await processCommands(String($('#send_textarea').val()));
 
         if (interruptedByCommand) {
@@ -7015,8 +7090,8 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             textareaText = '';
             if (chat.length && lastMessage.is_user) {
                 //do nothing? why does this check exist?
-            // SillyBunny: Guided Correction regenerates against the existing assistant reply.
-            } else if (type !== 'quiet' && type !== 'swipe' && !isImpersonate && !dryRun && !depth && chat.length && !(type === 'regenerate' && preserveLastMessage)) {
+            // SillyBunny: retain continuation targets and Guided Correction regeneration context.
+            } else if (type !== 'quiet' && type !== 'swipe' && type !== 'continue' && !isImpersonate && !dryRun && !depth && chat.length && !(type === 'regenerate' && preserveLastMessage) && (!suppressUserMessage || type === 'regenerate')) {
                 if (type === 'regenerate') {
                     requestMobileChatBottomPin();
                 }
@@ -7044,7 +7119,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         'continue',
     ];
 
-    if ((textareaText != '' || (hasPendingFileAttachment() && !noAttachTypes.includes(type))) && !automatic_trigger && type !== 'quiet' && !dryRun && !depth && !selected_group) {
+    if ((textareaText != '' || (hasPendingFileAttachment() && !noAttachTypes.includes(type))) && !automatic_trigger && type !== 'quiet' && !dryRun && !depth && !suppressUserMessage && !selected_group) {
         // If user message contains no text other than bias - send as a system message
         if (messageBias && !removeMacros(textareaText)) {
             sendSystemMessage(system_message_types.GENERIC, ' ', { bias: messageBias });
@@ -7065,7 +7140,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     // Occurs only if the generation is not aborted due to slash commands execution
     const companionFeedbackTarget = companionHistoryTarget
         ?? (type === 'continue' || type === 'swipe' || type === 'regenerate' ? lastMessage : null);
-    await eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope: resolvedCacheScope, preserveLastMessage, companionHistoryTarget: companionFeedbackTarget }, dryRun);
+    await eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope: resolvedCacheScope, preserveLastMessage, companionHistoryTarget: companionFeedbackTarget, suppressUserMessage, ...requestControls }, dryRun);
 
     if (main_api == 'kobold' && kai_settings.streaming_kobold && !kai_flags.can_use_streaming) {
         toastr.error(t`Streaming is enabled, but the version of Kobold used does not support token streaming.`, undefined, { timeOut: 10000, preventDuplicates: true });
@@ -7088,7 +7163,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     if (selected_group && !is_group_generating) {
         if (!dryRun) {
             // Returns the promise that generateGroupWrapper returns; resolves when generation is done
-            return generateGroupWrapper(false, type, { quiet_prompt, force_chid, signal: abortController.signal, quietImage, jsonSchema, cacheScope: resolvedCacheScope, preserveLastMessage, companionHistoryTarget: companionFeedbackTarget });
+            return generateGroupWrapper(false, type, { quiet_prompt, force_chid, signal: abortController.signal, quietImage, jsonSchema, cacheScope: resolvedCacheScope, preserveLastMessage, companionHistoryTarget: companionFeedbackTarget, suppressUserMessage, ...requestControls });
         }
 
         const characterIndexMap = new Map(characters.map((char, index) => [char.avatar, index]));
@@ -7417,7 +7492,11 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     }
 
     // Determine token limit
-    let this_max_context = getMaxPromptTokens();
+    // Reserve enough context for either the preset reasoning allowance or the requested reply.
+    const requestResponseLength = Number.isFinite(responseLength) && responseLength > 0
+        ? Math.max(Number(getMaxResponseTokens()), responseLength)
+        : null;
+    let this_max_context = getMaxPromptTokens(requestResponseLength);
 
     if (!dryRun) {
         console.debug('Running extension interceptors');
@@ -8154,7 +8233,9 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         case 'novel': {
             const cfgValues = useCfgPrompt ? { guidanceScale: cfgGuidanceScale } : null;
             const presetSettings = novelai_settings[novelai_setting_names[nai_settings.preset_settings_novel]];
-            generate_data = getNovelGenerationData(finalPrompt, presetSettings, maxLength, isImpersonate, isContinue, cfgValues, type);
+            const responseTokens = applyGenerationRequestControls({ max_length: maxLength, model: nai_settings.model_novel }, requestControls).max_length;
+            generate_data = getNovelGenerationData(finalPrompt, presetSettings, responseTokens, isImpersonate, isContinue, cfgValues, type);
+            requestControls.responseLength = null;
             break;
         }
         case 'openai': {
@@ -8175,6 +8256,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                 jailbreakPromptOverride: jailbreak,
                 messages: oaiMessages,
                 messageExamples: oaiMessageExamples,
+                responseLength: requestResponseLength,
             }, dryRun);
             generate_data = { prompt: prompt, cacheScope: resolvedCacheScope };
 
@@ -8262,14 +8344,14 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             let startedSuccessorGeneration = false;
             try {
                 continue_mag = promptReasoning.removePrefix(continue_mag);
-                const activeStreamingProcessor = streamingProcessor = new StreamingProcessor(type, force_name2, generation_started, continue_mag, promptReasoning);
+                const activeStreamingProcessor = streamingProcessor = new StreamingProcessor(type, force_name2, generation_started, continue_mag, promptReasoning, requestControls);
                 if (isContinue) {
                     // Save reply does add cycle text to the prompt, so it's not needed here
                     activeStreamingProcessor.firstMessageText = '';
                 }
 
                 const shouldBufferOutput = await shouldBufferMainGenerationOutput({ type, isStreaming: true });
-                activeStreamingProcessor.generator = await sendStreamingRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope });
+                activeStreamingProcessor.generator = await sendStreamingRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope, ...requestControls });
 
                 hideSwipeButtons();
                 let getMessage = shouldBufferOutput
@@ -8279,7 +8361,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                     getMessage: getMessage,
                     isImpersonate: isImpersonate,
                     isContinue: isContinue,
-                    displayIncompleteSentences: false,
+                    displayIncompleteSentences: activeStreamingProcessor.finishReason === 'length',
                 });
 
                 const isReasoningOnlyStream = !getMessage.trim() && !!(activeStreamingProcessor.reasoningHandler.reasoning || activeStreamingProcessor.pendingReasoning);
@@ -8323,7 +8405,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                         depth = depth + 1;
                         await ToolManager.saveFunctionToolInvocations(invocationResult.invocations);
                         startedSuccessorGeneration = true;
-                        return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage, companionHistoryTarget: companionRewriteTarget }, dryRun);
+                        return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage, cacheScope: resolvedCacheScope, companionHistoryTarget: companionRewriteTarget, ...requestControls }, dryRun);
                     }
                 }
 
@@ -8346,7 +8428,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                             getMessage: getMessage,
                             isImpersonate: isImpersonate,
                             isContinue: isContinue,
-                            displayIncompleteSentences: false,
+                            displayIncompleteSentences: activeStreamingProcessor.finishReason === 'length',
                         });
 
                         const saveReplyType = originalType !== 'continue' ? type : 'appendFinal';
@@ -8354,7 +8436,9 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                             type: saveReplyType,
                             getMessage,
                             swipes: activeStreamingProcessor.swipes,
-                            reasoning: activeStreamingProcessor.reasoningHandler.reasoning,
+                            reasoning: activeStreamingProcessor.lastReasoningPrefix
+                                ? activeStreamingProcessor.reasoningHandler.reasoning.slice(promptReasoning.prefixReasoning.length)
+                                : activeStreamingProcessor.reasoningHandler.reasoning,
                             imageUrls: activeStreamingProcessor.images,
                             reasoningSignature: activeStreamingProcessor.reasoningSignature,
                             reasoningTokens: activeStreamingProcessor.reasoningTokens,
@@ -8365,24 +8449,26 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
                         const isAborted = activeStreamingProcessor.abortController.signal.aborted;
                         if (!isAborted && power_user.auto_swipe && generatedTextFiltered(getMessage)) {
-                            return await swipe(null, SWIPE_DIRECTION.RIGHT, { source: SWIPE_SOURCE.AUTO_SWIPE, repeated: true, forceMesId: chat.length - 1 });
+                            return await swipe(null, SWIPE_DIRECTION.RIGHT, { source: SWIPE_SOURCE.AUTO_SWIPE, repeated: true, forceMesId: chat.length - 1, generationOptions: requestControls });
                         }
 
                         await saveChatConditional();
                         playMessageSound();
-                        triggerAutoContinue(messageChunk, isImpersonate);
+                        triggerAutoContinue(messageChunk, isImpersonate, requestControls);
                         return Object.defineProperties(new String(getMessage), {
                             'messageChunk': { value: messageChunk },
                             'fromStream': { value: true },
+                            'finishReason': { value: activeStreamingProcessor.finishReason },
                         });
                     }
 
                     await activeStreamingProcessor.onFinishStreaming(activeStreamingProcessor.messageId, getMessage);
                     clearStreamingProcessorIfCurrent(activeStreamingProcessor);
-                    triggerAutoContinue(messageChunk, isImpersonate);
+                    triggerAutoContinue(messageChunk, isImpersonate, requestControls);
                     return Object.defineProperties(new String(getMessage), {
                         'messageChunk': { value: messageChunk },
                         'fromStream': { value: true },
+                        'finishReason': { value: activeStreamingProcessor.finishReason },
                     });
                 }
 
@@ -8396,7 +8482,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                 }
             }
         } else {
-            return await sendGenerationRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope });
+            return await sendGenerationRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope, ...requestControls });
         }
     }
 
@@ -8447,11 +8533,21 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
         const swipes = extractMultiSwipes(data, type);
 
+        // SillyBunny: non-streaming reasoners keep their preset allowance; only separated prose is capped locally.
+        const reasoningPrefix = promptReasoning.prefixIncomplete && !reasoning ? promptReasoning.prefixReasoningFormatted : '';
+        const limitedOutput = limitGenerationProse(getMessage, maxOutputTokens, power_user.reasoning, reasoningPrefix);
+        limitedOutput.limited ||= Number.isFinite(maxOutputTokens) && maxOutputTokens > 0 && isGenerationLengthFinish(data);
+        getMessage = limitedOutput.text;
+        const inlineReasoning = reasoningPrefix && limitedOutput.reasoning.startsWith(promptReasoning.prefixReasoning)
+            ? limitedOutput.reasoning.slice(promptReasoning.prefixReasoning.length)
+            : limitedOutput.reasoning;
+        reasoning = [reasoning, inlineReasoning].filter(Boolean).join('\n\n');
+
         messageChunk = cleanUpMessage({
             getMessage: getMessage,
             isImpersonate: isImpersonate,
             isContinue: isContinue,
-            displayIncompleteSentences: false,
+            displayIncompleteSentences: limitedOutput.limited,
         });
 
 
@@ -8476,7 +8572,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             getMessage: getMessage,
             isImpersonate: isImpersonate,
             isContinue: isContinue,
-            displayIncompleteSentences: displayIncomplete,
+            displayIncompleteSentences: displayIncomplete || limitedOutput.limited,
         });
 
         const interceptResult = await applyMainGenerationOutputInterceptors({
@@ -8496,7 +8592,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             getMessage: getMessage,
             isImpersonate: isImpersonate,
             isContinue: isContinue,
-            displayIncompleteSentences: false,
+            displayIncompleteSentences: limitedOutput.limited,
         });
 
         if (isImpersonate) {
@@ -8534,7 +8630,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
                 depth = depth + 1;
                 await ToolManager.saveFunctionToolInvocations(invocationResult.invocations);
-                return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage, companionHistoryTarget: companionRewriteTarget }, dryRun);
+                return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage, cacheScope: resolvedCacheScope, companionHistoryTarget: companionRewriteTarget, ...requestControls }, dryRun);
             }
         }
 
@@ -8545,7 +8641,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         const isAborted = abortController && abortController.signal.aborted;
         if (!isAborted && power_user.auto_swipe && generatedTextFiltered(getMessage)) {
             is_send_press = false;
-            return await swipe(null, SWIPE_DIRECTION.RIGHT, { source: SWIPE_SOURCE.AUTO_SWIPE, repeated: true, forceMesId: chat.length - 1 });
+            return await swipe(null, SWIPE_DIRECTION.RIGHT, { source: SWIPE_SOURCE.AUTO_SWIPE, repeated: true, forceMesId: chat.length - 1, generationOptions: requestControls });
         }
 
         console.debug('/api/chats/save called by /Generate');
@@ -8554,11 +8650,14 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         streamingProcessor = null;
 
         if (type !== 'quiet') {
-            triggerAutoContinue(messageChunk, isImpersonate);
+            triggerAutoContinue(messageChunk, isImpersonate, requestControls);
         }
 
         // Don't break the API chain that expects a single string in return
-        return Object.defineProperty(new String(getMessage), 'messageChunk', { value: messageChunk });
+        return Object.defineProperties(new String(getMessage), {
+            'messageChunk': { value: messageChunk },
+            'finishReason': { value: limitedOutput.limited ? 'length' : null },
+        });
     }
 
     /**
@@ -8724,9 +8823,13 @@ export function getNextMessageId(type, preserveLastMessage = false) {
  * Determines if the message should be auto-continued.
  * @param {string} messageChunk Current message chunk
  * @param {boolean} isImpersonate Is the user impersonation
+ * @param {GenerateOptions} [options] Request-local auto-continue controls
  * @returns {boolean} Whether the message should be auto-continued
  */
-export function shouldAutoContinue(messageChunk, isImpersonate) {
+export function shouldAutoContinue(messageChunk, isImpersonate, { suppressAutoContinue = false } = {}) {
+    if (suppressAutoContinue) {
+        return false;
+    }
     if (!power_user.auto_continue.enabled) {
         console.debug('Auto-continue is disabled by user.');
         return false;
@@ -8792,8 +8895,9 @@ export function shouldAutoContinue(messageChunk, isImpersonate) {
  * Triggers auto-continue if the message meets the criteria.
  * @param {string} messageChunk Current message chunk
  * @param {boolean} isImpersonate Is the user impersonation
+ * @param {GenerateOptions} [options] Controls forwarded to automatic continuations
  */
-export function triggerAutoContinue(messageChunk, isImpersonate) {
+export function triggerAutoContinue(messageChunk, isImpersonate, options = {}) {
     if (selected_group) {
         console.debug('Auto-continue is disabled for group chat');
         return;
@@ -8805,8 +8909,8 @@ export function triggerAutoContinue(messageChunk, isImpersonate) {
         return;
     }
 
-    if (shouldAutoContinue(messageChunk, isImpersonate)) {
-        $('#option_continue').trigger('click');
+    if (shouldAutoContinue(messageChunk, isImpersonate, options)) {
+        $('#option_continue').trigger('click', { generationOptions: options });
     }
 }
 
@@ -9129,6 +9233,9 @@ function setInContextMessages(msgInContextCount, type, preserveLastMessage = fal
  * @typedef {object} AdditionalRequestOptions
  * @property {JsonSchema} [jsonSchema]
  * @property {'main'|'auxiliary'|'none'} [cacheScope]
+ * @property {number} [maxOutputTokens]
+ * @property {number} [responseLength]
+ * @property {boolean} [preserveReasoningBudget]
  */
 
 /**
@@ -9144,6 +9251,7 @@ export async function sendGenerationRequest(type, data, options = {}) {
         return await sendOpenAIRequest(type, data.prompt, abortController.signal, options);
     }
 
+    data = applyGenerationRequestControls(data, { model: main_api === 'koboldhorde' ? horde_settings.models : getGeneratingModel(), ...options });
     if (main_api === 'koboldhorde') {
         return await generateHorde(data.prompt, data, abortController.signal, true);
     }
@@ -9175,15 +9283,18 @@ export async function sendStreamingRequest(type, data, options = {}) {
         throw new Error('Generation was aborted.');
     }
 
+    if (main_api !== 'openai') {
+        data = applyGenerationRequestControls(data, { model: getGeneratingModel(), ...options });
+    }
     switch (main_api) {
         case 'openai':
-            return await sendOpenAIRequest(type, data.prompt, streamingProcessor.abortController.signal, options);
+            return await sendOpenAIRequest(type, data.prompt, streamingProcessor.requestAbortController.signal, options);
         case 'textgenerationwebui':
-            return await generateTextGenWithStreaming(data, streamingProcessor.abortController.signal);
+            return await generateTextGenWithStreaming(data, streamingProcessor.requestAbortController.signal);
         case 'novel':
-            return await generateNovelWithStreaming(data, streamingProcessor.abortController.signal);
+            return await generateNovelWithStreaming(data, streamingProcessor.requestAbortController.signal);
         case 'kobold':
-            return await generateKoboldWithStreaming(data, streamingProcessor.abortController.signal);
+            return await generateKoboldWithStreaming(data, streamingProcessor.requestAbortController.signal);
         default:
             throw new Error('Streaming is enabled, but the current API does not support streaming.');
     }
@@ -9415,8 +9526,13 @@ export function extractMessageFromData(data, activeApi = null) {
                     || normalizeContentText(data?.text)
                     || normalizeContentText(data?.message?.content)
                     || normalizeContentText(data?.message?.tool_plan)
-                    || normalizeContentText(data?.responseContent?.parts)
-                    || normalizeContentText(data?.candidates?.[0]?.content?.parts)
+                    // SillyBunny: an empty reply must not fall back to Gemini's thinking parts.
+                    || normalizeContentText(Array.isArray(data?.responseContent?.parts)
+                        ? data.responseContent.parts.filter(part => !part?.thought)
+                        : data?.responseContent?.parts)
+                    || normalizeContentText(Array.isArray(data?.candidates?.[0]?.content?.parts)
+                        ? data.candidates[0].content.parts.filter(part => !part?.thought)
+                        : data?.candidates?.[0]?.content?.parts)
                     || stringifyUnknown(data?.message?.content);
             default:
                 return '';
@@ -14791,8 +14907,8 @@ export async function deleteSwipe(swipeId = null, messageId = chat.length - 1) {
     return newSwipeId;
 }
 
-export async function saveMetadata() {
-    return await saveChatConditional();
+export async function saveMetadata(options = {}) {
+    return await saveChatConditional(options);
 }
 
 export async function saveChatConditional(options = {}) {
@@ -14801,17 +14917,28 @@ export async function saveChatConditional(options = {}) {
 
         setChatSaveActive(true);
 
-        if (selected_group) {
-            await saveGroupChat(selected_group, true, false, false, options);
-        } else {
-            await saveChat(options);
+        const saved = selected_group
+            ? await saveGroupChat(selected_group, true, false, options.throwOnError ?? false, options)
+            : await saveChat(options);
+
+        // SillyBunny: strict callers must also see saves declined without an exception.
+        if (saved !== true) {
+            if (options.throwOnError) {
+                throw new Error('Chat was not saved');
+            }
+            return false;
         }
 
         // Save token and prompts cache to IndexedDB storage
-        saveTokenCache();
-        saveItemizedPrompts(getCurrentChatId());
+        await saveTokenCache();
+        await saveItemizedPrompts(getCurrentChatId());
+        return true;
     } catch (error) {
         console.error('Error saving chat', error);
+        if (options.throwOnError) {
+            throw error;
+        }
+        return false;
     } finally {
         setChatSaveActive(false);
     }
@@ -15254,8 +15381,9 @@ function formatSwipeCounter(current, total) {
  * @param {number} [params.forceMesId] The message id to swipe.
  * @param {number} [params.forceSwipeId] The target swipe_id. When out of range, it will be looped or clamped.
  * @param {number} [params.forceDuration] Overwrites the default swipe duration.
+ * @param {GenerateOptions} [params.generationOptions] Controls for an owned successor generation.
  */
-export async function swipe(event, direction, { source, repeated, message = chat[chat.length - 1], forceMesId, forceSwipeId, forceDuration } = {}) {
+export async function swipe(event, direction, { source, repeated, message = chat[chat.length - 1], forceMesId, forceSwipeId, forceDuration, generationOptions } = {}) {
     if (chat.length === 0) {
         console.warn('Swipe was called on an empty chat.');
         return;
@@ -15635,7 +15763,7 @@ export async function swipe(event, direction, { source, repeated, message = chat
 
         if (run_generate && !is_send_press) {
             is_send_press = true;
-            generation = Generate('swipe');
+            generation = Generate('swipe', generationOptions);
         }
 
         //Swipe in from the opposite side.
@@ -17076,6 +17204,7 @@ jQuery(async function () {
         // Check whether a custom prompt was provided via custom data (for example through a slash command)
         const additionalPrompt = customData?.additionalPrompt?.trim() || undefined;
         const buildOrFillAdditionalArgs = (args = {}) => ({
+            ...customData?.generationOptions,
             ...args,
             ...(additionalPrompt !== undefined && { quiet_prompt: additionalPrompt, quietToLoud: true }),
         });

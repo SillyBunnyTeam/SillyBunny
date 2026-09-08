@@ -2562,18 +2562,64 @@ export async function runGenerationInterceptors(chat, contextSize, type) {
  * @param {number|string} characterId Index in the character array
  * @param {string} key Field name
  * @param {any} value Field value
- * @returns {Promise<void>} When the field is written
+ * @param {object} [options] Write options
+ * @param {boolean} [options.throwOnError=false] Commit local data only after a successful save
+ * @returns {Promise<void|boolean>} True on strict success
  */
-export async function writeExtensionField(characterId, key, value) {
-    const context = getContext();
-    const character = context.characters[characterId];
+export async function writeExtensionField(characterId, key, value, { throwOnError = false } = {}) {
+    let context = getContext();
+    let character = context.characters[characterId];
     if (!character) {
+        if (throwOnError) {
+            throw new Error('Character not found');
+        }
         console.warn('Character not found', characterId);
         return;
+    }
+    const avatar = character.avatar;
+    if (throwOnError && (typeof avatar !== 'string' || !avatar || avatar === 'none')) {
+        throw new Error('Character has no saved identity');
     }
     const extensionPath = `data.extensions.${key}`;
     const isUnset = value === UNSET_VALUE;
 
+    const saveDataRequest = {
+        avatar,
+        data: {
+            extensions: {
+                [key]: value,
+            },
+        },
+    };
+    const requestBody = JSON.stringify(saveDataRequest);
+    async function persist() {
+        const mergeResponse = await fetch('/api/characters/merge-attributes', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: requestBody,
+        });
+
+        if (!mergeResponse.ok) {
+            console.error('Failed to save extension field', mergeResponse.statusText);
+            if (throwOnError) {
+                throw new Error('Failed to save extension field');
+            }
+        }
+    }
+
+    if (throwOnError) {
+        // SillyBunny: bind the request to the card, then merge into its latest local state.
+        value = JSON.parse(requestBody).data.extensions[key];
+        await persist();
+        context = getContext();
+        characterId = context.characters.findIndex(candidate => candidate?.avatar === avatar);
+        character = context.characters[characterId];
+        if (!character) {
+            throw new Error('Saved character is no longer available');
+        }
+    }
+
+    const jsonData = character.json_data ? JSON.parse(character.json_data) : null;
     if (isUnset) {
         deleteValueByPath(character, extensionPath);
     } else {
@@ -2581,8 +2627,7 @@ export async function writeExtensionField(characterId, key, value) {
     }
 
     // Process JSON data
-    if (character.json_data) {
-        const jsonData = JSON.parse(character.json_data);
+    if (jsonData) {
         if (isUnset) {
             deleteValueByPath(jsonData, extensionPath);
         } else {
@@ -2596,24 +2641,11 @@ export async function writeExtensionField(characterId, key, value) {
         }
     }
 
-    // Save data to the server
-    const saveDataRequest = {
-        avatar: character.avatar,
-        data: {
-            extensions: {
-                [key]: value,
-            },
-        },
-    };
-    const mergeResponse = await fetch('/api/characters/merge-attributes', {
-        method: 'POST',
-        headers: getRequestHeaders(),
-        body: JSON.stringify(saveDataRequest),
-    });
-
-    if (!mergeResponse.ok) {
-        console.error('Failed to save extension field', mergeResponse.statusText);
+    if (!throwOnError) {
+        await persist();
+        return;
     }
+    return true;
 }
 
 /**
