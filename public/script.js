@@ -11658,22 +11658,24 @@ export async function getSettings(initLoaderHandle = null) {
 }
 
 //MARK: saveSettings()
-export async function saveSettings(loopCounter = 0) {
+export async function saveSettings(loopCounter = 0, { returnResult = false } = {}) {
     const saveTask = settingsSaveQueue.then(() => saveSettingsInner(loopCounter));
     settingsSaveQueue = saveTask.catch(() => {});
-    return saveTask;
+    const saved = await saveTask;
+    // SillyBunny: acknowledgement is opt-in; extensions rely on the default undefined result.
+    return returnResult ? saved : undefined;
 }
 
 async function saveSettingsInner(loopCounter = 0) {
     if (!settingsReady) {
         console.warn('Settings not ready, scheduling another save');
         saveSettingsDebounced();
-        return;
+        return false;
     }
 
     if (settingsConflictReloadRequired) {
         await promptSettingsConflictReload();
-        return;
+        return false;
     }
 
     const MAX_RETRIES = 3;
@@ -11681,7 +11683,7 @@ async function saveSettingsInner(loopCounter = 0) {
         if (loopCounter < MAX_RETRIES) {
             console.warn('Response length is currently being overridden, scheduling another save');
             saveSettingsDebounced(++loopCounter);
-            return;
+            return false;
         }
         console.error('Response length is currently being overridden, but the save loop has reached the maximum number of retries');
         TempResponseLength.restore(null);
@@ -11739,7 +11741,7 @@ async function saveSettingsInner(loopCounter = 0) {
             settingsConflictReloadRequired = true;
             settingsConflictPromptDismissed = false;
             await promptSettingsConflictReload();
-            return;
+            return false;
         }
 
         if (!result.ok) {
@@ -11757,9 +11759,11 @@ async function saveSettingsInner(loopCounter = 0) {
 
         settings = payload;
         await eventSource.emit(event_types.SETTINGS_UPDATED);
+        return true;
     } catch (error) {
         console.error('Error saving settings:', error);
         toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Settings could not be saved`);
+        return false;
     }
 }
 

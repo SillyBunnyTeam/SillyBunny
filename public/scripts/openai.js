@@ -9181,7 +9181,9 @@ async function onConnectButtonClick(e) {
                 if (customEndpointPreset === selected_custom_endpoint_preset) {
                     updateCustomEndpointKeyInput(customEndpointPreset, '');
                 }
-                await saveSettings();
+                if (await saveSettings(0, { returnResult: true }) !== true) {
+                    return;
+                }
             }
         }
 
@@ -10052,14 +10054,21 @@ $('#save_custom_endpoint').on('click', async function () {
     // Write a secret when a key was typed, or mint a stable empty secret for keyless endpoints
     if (keyInputValue || !preset.secretId) {
         await activateCustomEndpointPresetSecret(preset, { forceWrite: true });
+        // SillyBunny: a failed secret write must not fall back to the old profile binding.
+        if (!preset.secretId) {
+            return;
+        }
     }
 
     await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId, writeKey: false });
-    // SillyBunny: persist the new secret binding before a successful Save can be followed by a reload.
-    await saveSettings();
-    toastr.success(t`Custom Endpoint Profile Saved`);
+    // SillyBunny: update selection before yielding to persistence so a later user selection wins.
     updateCustomEndpointPresetOption(preset);
     $('#custom_endpoint_preset').val(preset.name);
+    // SillyBunny: persist the new secret binding before a successful Save can be followed by a reload.
+    if (await saveSettings(0, { returnResult: true }) !== true) {
+        return;
+    }
+    toastr.success(t`Custom Endpoint Profile Saved`);
 });
 
 $('#delete_custom_endpoint').on('click', async function () {
