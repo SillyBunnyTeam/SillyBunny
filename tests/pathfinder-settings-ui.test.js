@@ -153,6 +153,7 @@ function backgroundSaves() {
     const runtime = vm.createContext({
         console, structuredClone, pathfinderChatSyncRevision: 0, pathfinderToolRevision: 0,
         isPathfinderSubmoduleEnabled: store.isPathfinderSubmoduleEnabled,
+        isAgentRuntimeAllowed: store.isAgentRuntimeAllowed,
         getPathfinderRuntimeAgent: () => store.getEnabledToolAgents()[0], isPathfinderToolAgent: () => true,
         getAgentById: store.getAgentById, getAgents: store.getAgents,
         getCurrentSnapshotChatId: () => generation.chatId,

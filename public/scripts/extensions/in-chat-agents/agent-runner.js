@@ -33,6 +33,7 @@ import {
     getEnabledToolAgents,
     getGlobalSettings,
     getPromptTransformMode,
+    isAgentRuntimeAllowed,
     isCompanionAgent,
     isTrackerFixAgent,
     isPathfinderSubmoduleEnabled,
@@ -567,7 +568,7 @@ export function getPathfinderRuntimeAgent(agents = getEnabledToolAgents()) {
         return null;
     }
 
-    return agents.find(isPathfinderToolAgent) ?? null;
+    return agents.find(agent => isPathfinderToolAgent(agent) && isAgentRuntimeAllowed(agent)) ?? null;
 }
 
 function getAgentToolByName(agent, toolName) {
@@ -663,7 +664,7 @@ export async function syncPathfinderAgentLorebooksForCurrentChat(agent = getPath
         return false;
     }
 
-    if (!agent || !isPathfinderToolAgent(agent)) {
+    if (!agent || !isPathfinderToolAgent(agent) || !isAgentRuntimeAllowed(agent)) {
         return false;
     }
 
@@ -754,6 +755,7 @@ export function syncToolAgentRegistrations() {
                 description: toolDef.description,
                 parameters: toolDef.parameters,
                 action: async (args) => {
+                    if (!isAgentRuntimeAllowed(agent)) return '';
                     const { cancelRevision, runId, chatId } = getAgentGenerationContext();
                     const lorebookRevision = pathfinderToolRevision;
                     const controller = new AbortController();
@@ -762,7 +764,7 @@ export function syncToolAgentRegistrations() {
                         return !controller.signal.aborted && !generationStopRequested && areAgentsGloballyEnabled()
                             && cancelRevision === agentGenerationCancelRevision && runId === postProcessingGenerationRunId
                             && lorebookRevision === pathfinderToolRevision
-                            && chatId === getCurrentSnapshotChatId() && liveAgent
+                            && chatId === getCurrentSnapshotChatId() && liveAgent && isAgentRuntimeAllowed(liveAgent)
                             && (!isPathfinderToolAgent(liveAgent) || getPathfinderRuntimeAgent()?.id === agent.id)
                             && getRegisterableAgentTools(liveAgent).some(tool => tool.name === toolDef.name && tool.actionKey === toolDef.actionKey)
                             && getToolAction(toolDef.actionKey) === action;
@@ -776,6 +778,7 @@ export function syncToolAgentRegistrations() {
                             const approved = await confirmToolCall(toolDef.displayName ?? toolDef.name, args, controller.signal);
                             if (!approved) return declined;
                         }
+                        if (!isAgentRuntimeAllowed(agent)) return '';
                         if (!isCurrent()) return declined;
                         return await action(args, { signal: controller.signal, isCurrent });
                     } finally {
@@ -783,7 +786,7 @@ export function syncToolAgentRegistrations() {
                     }
                 },
                 formatMessage,
-                shouldRegister: async () => true,
+                shouldRegister: async () => isAgentRuntimeAllowed(agent),
                 stealth: toolDef.stealth ?? false,
             });
 
@@ -1998,7 +2001,7 @@ function getSnapshotAgents(snapshot) {
 
     return snapshot.activeAgentIds
         .map(id => getAgentById(id))
-        .filter(Boolean);
+        .filter(agent => agent && isAgentRuntimeAllowed(agent));
 }
 
 function getActiveAgentsForMessage(generationType, activationSnapshot = null) {
@@ -2027,7 +2030,7 @@ export function buildPromptDynamicMacros(messageText = '', message = null, agent
 
 function updateMessageRegexSnapshot(message, activeAgents, generationType) {
     message.extra ??= {};
-    const inlineAgents = activeAgents.filter(agent => !isCompanionAgent(agent));
+    const inlineAgents = activeAgents.filter(agent => !isCompanionAgent(agent) && isAgentRuntimeAllowed(agent));
     const regexScriptRefs = inlineAgents.flatMap(agent => {
         const scripts = getAgentRegexScripts(agent);
         cacheAgentRegexScripts(agent?.id, scripts);
@@ -2113,7 +2116,7 @@ function ensureMessageRegexSnapshot(messageIndex, generationType, activationSnap
 }
 
 function isRegexRefreshAgentCandidate(agent, generationType, { respectGenerationTypes = true } = {}) {
-    if (!agent || isCompanionAgent(agent) || getAgentRegexScripts(agent).length === 0) {
+    if (!agent || !isAgentRuntimeAllowed(agent) || isCompanionAgent(agent) || getAgentRegexScripts(agent).length === 0) {
         return false;
     }
 
@@ -2293,6 +2296,9 @@ function applyAgentRegexScriptsToText(agents, text, { characterOverride = '' } =
     };
 
     for (const agent of agents) {
+        if (!isAgentRuntimeAllowed(agent)) {
+            continue;
+        }
         const scripts = getAgentRegexScripts(agent);
         if (scripts.length === 0) {
             continue;
@@ -3019,6 +3025,9 @@ function consolidateAppendPromptTransformOutputs(baseText, agents, results) {
         }
 
         const agent = agentMap.get(result.agentId);
+        if (!isAgentRuntimeAllowed(agent)) {
+            continue;
+        }
         const shouldPrepend = shouldPrependPromptTransformOutput(agent, outputText);
         const dedupeKey = `${shouldPrepend ? 'prepend' : 'append'}:${outputText}`;
         if (seenSegments.has(dedupeKey)) {
@@ -3117,7 +3126,7 @@ async function requestMainChatCompletionPromptTransform(context, promptMessages,
     };
 }
 
-async function requestProfilePromptTransform(CMRS, profileId, promptMessages, maxTokens, modelOverride = '', signal = null) {
+async function requestProfilePromptTransform(isRuntimeAllowed, CMRS, profileId, promptMessages, maxTokens, modelOverride = '', signal = null) {
     const requestOptions = {
         extractData: true,
         includePreset: true,
@@ -3173,6 +3182,9 @@ async function requestProfilePromptTransform(CMRS, profileId, promptMessages, ma
         fallbackOptions.modelOverride = modelOverride.trim();
     }
 
+    if (!isRuntimeAllowed()) {
+        throw new DOMException('', 'AbortError');
+    }
     const fallbackResponse = await CMRS.sendRequest(profileId, fallbackRequestPrompt, maxTokens, fallbackOptions);
 
     return {
@@ -3204,11 +3216,19 @@ export async function runAsInternalPromptTransform(requestFn, signal = null) {
 }
 
 export async function requestPromptTransform(agent, promptMessages, maxTokens, options = {}) {
+    const isRuntimeAllowed = () => isAgentRuntimeAllowed(agent) && (options.runtimeAgents ?? []).every(isAgentRuntimeAllowed);
+    if (!isRuntimeAllowed()) {
+        throw new DOMException('', 'AbortError');
+    }
     const profileId = resolveAgentConnectionProfile(agent);
     const modelOverride = typeof agent.modelOverride === 'string' ? agent.modelOverride.trim() : '';
     const context = getContext();
     const CMRS = context?.ConnectionManagerRequestService;
     const requestAbortController = new AbortController();
+    const runAllowedRequest = requestFn => runAsInternalPromptTransform(() => {
+        if (!isRuntimeAllowed()) throw new DOMException('', 'AbortError');
+        return requestFn();
+    }, requestAbortController.signal);
     activeAgentRequestAbortControllers.add(requestAbortController);
 
     try {
@@ -3217,16 +3237,14 @@ export async function requestPromptTransform(agent, promptMessages, maxTokens, o
                 throw new Error(`${describePromptTransformTarget(profileId, 'profile')} is set, but Connection Manager is unavailable.`);
             }
 
-            return await runAsInternalPromptTransform(
-                () => requestProfilePromptTransform(CMRS, profileId, promptMessages, maxTokens, modelOverride, requestAbortController.signal),
-                requestAbortController.signal,
+            return await runAllowedRequest(
+                () => requestProfilePromptTransform(isRuntimeAllowed, CMRS, profileId, promptMessages, maxTokens, modelOverride, requestAbortController.signal),
             );
         }
 
         if (canUseMainChatCompletionHelper(context)) {
-            return await runAsInternalPromptTransform(
+            return await runAllowedRequest(
                 () => requestMainChatCompletionPromptTransform(context, promptMessages, maxTokens, options, requestAbortController.signal),
-                requestAbortController.signal,
             );
         }
 
@@ -3242,7 +3260,7 @@ export async function requestPromptTransform(agent, promptMessages, maxTokens, o
         }
 
         try {
-            return await runAsInternalPromptTransform(async () => ({
+            return await runAllowedRequest(async () => ({
                 output: await generateQuietPrompt({
                     quietPrompt,
                     quietName: 'In-Chat Agent',
@@ -3253,7 +3271,7 @@ export async function requestPromptTransform(agent, promptMessages, maxTokens, o
                 }),
                 runner: 'main',
                 profileId: '',
-            }), requestAbortController.signal);
+            }));
         } finally {
             if (!requestAbortController.signal.aborted && origin.chatId === getCurrentSnapshotChatId()
                 && origin.runId === postProcessingGenerationRunId && origin.cancelRevision === agentGenerationCancelRevision) {
@@ -3294,12 +3312,14 @@ async function runPromptTransformAgent(agent, message, generationType, messageTe
     const runMetadata = getPromptTransformRunMetadata(agent, profileId);
     const showNotifications = shouldShowPromptTransformNotifications(agent);
 
-    if (!transformMessageText.trim()) {
+    const isRuntimeAllowed = () => isAgentRuntimeAllowed(agent) && (options.runtimeAgents ?? []).every(isAgentRuntimeAllowed);
+    const runtimeAllowed = isRuntimeAllowed();
+    if (!runtimeAllowed || !transformMessageText.trim()) {
         const result = {
             agentId: agent.id,
             agentName: agent.name,
             changed: false,
-            status: 'skipped-empty-message',
+            status: runtimeAllowed ? 'skipped-empty-message' : 'skipped-runtime-filter',
             mode: promptTransformMode,
             profileId,
             ...runMetadata,
@@ -3356,7 +3376,7 @@ async function runPromptTransformAgent(agent, message, generationType, messageTe
             agent,
             helperRequest.promptMessages,
             maxTokens,
-            { allowAssistantPrefillTail: helperRequest.allowAssistantPrefillTail },
+            { allowAssistantPrefillTail: helperRequest.allowAssistantPrefillTail, runtimeAgents: options.runtimeAgents },
         );
         const promptOutputText = unwrapAssistantResponseWrapper(response.output).trim();
 
@@ -3388,12 +3408,12 @@ async function runPromptTransformAgent(agent, message, generationType, messageTe
             ? appendPromptTransformOutput(transformMessageText, promptOutputText)
             : promptOutputText;
         const nextMessageText = protectedPartialPrefill + transformedMessageText;
-        if (agentGenerationCancelRevision !== cancelRevision) {
+        if (agentGenerationCancelRevision !== cancelRevision || !isRuntimeAllowed()) {
             return {
                 agentId: agent.id,
                 agentName: agent.name,
                 changed: false,
-                status: 'cancelled',
+                status: agentGenerationCancelRevision !== cancelRevision ? 'cancelled' : 'skipped-runtime-filter',
                 mode: promptTransformMode,
                 profileId: response.profileId,
                 ...getPromptTransformRunMetadata(agent, response.profileId),
@@ -3478,11 +3498,11 @@ async function runPromptTransformAgent(agent, message, generationType, messageTe
     }
 }
 
-async function runPromptTransformAppendBatch(agents, message, generationType, messageTextOverride = null, messageIndex = null, { applyToMessage = true, cancelRevision = null } = {}) {
+async function runPromptTransformAppendBatch(agents, message, generationType, messageTextOverride = null, messageIndex = null, { applyToMessage = true, cancelRevision = null, runtimeAgents = [] } = {}) {
     const currentMessageText = unwrapAssistantResponseWrapper(
         messageTextOverride !== null ? messageTextOverride : message?.mes,
     );
-    const isCancelled = () => cancelRevision !== null && agentGenerationCancelRevision !== cancelRevision;
+    const isCancelled = () => (cancelRevision !== null && agentGenerationCancelRevision !== cancelRevision) || !runtimeAgents.every(isAgentRuntimeAllowed);
     const globalSettings = getGlobalSettings();
     const executionMode = globalSettings.appendAgentsExecutionMode === 'sequential' ? 'sequential' : 'parallel';
 
@@ -3507,6 +3527,7 @@ async function runPromptTransformAppendBatch(agents, message, generationType, me
             try {
                 const result = await runPromptTransformAgent(agent, message, generationType, currentMessageText, messageIndex, {
                     applyToMessage: false,
+                    runtimeAgents,
                 });
                 results.push(result);
                 if (isCancelled() || result.status === 'cancelled') {
@@ -3534,6 +3555,7 @@ async function runPromptTransformAppendBatch(agents, message, generationType, me
                 try {
                     return await runPromptTransformAgent(agent, message, generationType, currentMessageText, messageIndex, {
                         applyToMessage: false,
+                        runtimeAgents,
                     });
                 } catch (error) {
                     return {
@@ -3679,6 +3701,7 @@ export function deactivatePathfinderRuntime() {
 
 function injectPreGenerationAgentPrompts(activeAgents, generationType) {
     const promptAgents = activeAgents.filter(agent =>
+        isAgentRuntimeAllowed(agent) &&
         !isCompanionAgent(agent) &&
         (agent.phase === 'pre' || agent.phase === 'both') &&
         agent.preProcess?.mode !== 'intercept',
@@ -3934,16 +3957,21 @@ async function onGenerationAfterCommands(generationType, options, dryRun) {
                 notifyAgentGenerationStateChanged();
             }
 
-            if (run.isCurrent() && run.result?.success && run.result.cacheable !== false) {
+            if (run.isCurrent() && run.result?.success && run.result.cacheable !== false && isAgentRuntimeAllowed(pathfinderAgent)) {
                 storePathfinderRetrievalCache(retrievalCacheTarget?.message, retrievalCacheSignature, run.result);
             }
         }
 
-        if (!run.isCurrent()) {
+        if (run.controller.signal.aborted || pathfinderRetrievalRun !== run || (!run.isCurrent() && isAgentRuntimeAllowed(pathfinderAgent))
+            || generationStopRequested || options?.signal?.aborted || run.cancelRevision !== agentGenerationCancelRevision
+            || run.runId !== postProcessingGenerationRunId || run.chatId !== getCurrentSnapshotChatId()) {
             return;
         }
 
-        if (shouldAutoSummarize() && isPathfinderSummarizeToolEnabled(pathfinderAgent)) {
+        // A runtime exclusion must not suppress other agents belonging to this response.
+        if (!isAgentRuntimeAllowed(pathfinderAgent)) {
+            clearPathfinderExtensionPrompts();
+        } else if (shouldAutoSummarize() && isPathfinderSummarizeToolEnabled(pathfinderAgent)) {
             setExtensionPrompt(
                 PATHFINDER_AUTO_SUMMARY_PROMPT_KEY,
                 'Pathfinder memory summary is due. If the recent conversation contains a meaningful scene, event, state change, or resolved arc, call Pathfinder_Summarize with a concise title, useful content, significance, and arc when applicable. If nothing important happened, do not call it.',
@@ -3961,7 +3989,7 @@ async function onGenerationAfterCommands(generationType, options, dryRun) {
     }
 
     injectPreGenerationAgentPrompts(activeAgents, generationType);
-    companionRuntime?.injectCompanionFeedbackPrompts?.(activeAgents, {
+    companionRuntime?.injectCompanionFeedbackPrompts?.(activeAgents.filter(isAgentRuntimeAllowed), {
         excludeMessage: options?.companionHistoryTarget ?? null,
     });
 
@@ -4020,9 +4048,9 @@ async function processReceivedMessage(messageIndex, generationType, activationSn
 
         // Companions normally run last so they see the post-transform reply; the concurrent
         // option trades that for speed and runs them against the current reply alongside the passes.
-        const companionStageArgs = { messageIndex, message, generationType, activeAgents };
+        const companionStageArgs = { messageIndex, message, generationType };
         const concurrentCompanionStage = getGlobalSettings().companionConcurrentWithPostGen && companionRuntime?.runCompanionStage
-            ? companionRuntime.runCompanionStage(companionStageArgs).catch(error => {
+            ? companionRuntime.runCompanionStage({ ...companionStageArgs, activeAgents: activeAgents.filter(isAgentRuntimeAllowed) }).catch(error => {
                 console.warn('[InChatAgents] Companion stage failed:', error);
             })
             : null;
@@ -4125,6 +4153,9 @@ async function processReceivedMessage(messageIndex, generationType, activationSn
         }
 
         for (const agent of utilityAgents) {
+            if (!isAgentRuntimeAllowed(agent)) {
+                continue;
+            }
             const postProcess = agent.postProcess;
 
             switch (postProcess.type) {
@@ -4180,7 +4211,7 @@ async function processReceivedMessage(messageIndex, generationType, activationSn
             await concurrentCompanionStage;
         } else if (companionRuntime?.runCompanionStage) {
             try {
-                await companionRuntime.runCompanionStage(companionStageArgs);
+                await companionRuntime.runCompanionStage({ ...companionStageArgs, activeAgents: activeAgents.filter(isAgentRuntimeAllowed) });
             } catch (error) {
                 console.warn('[InChatAgents] Companion stage failed:', error);
             }
@@ -4314,7 +4345,7 @@ function onMessageEdited(messageIndex) {
     saveChatDebouncedForAgent();
 }
 
-async function runPromptTransformAgentsForText(promptTransformAgents, initialText, generationType, { messageContext = {}, cancelRevision = null, stopOnFailure = false } = {}) {
+async function runPromptTransformAgentsForText(promptTransformAgents, initialText, generationType, { messageContext = {}, cancelRevision = null, stopOnFailure = false, runtimeAgents = [] } = {}) {
     const message = {
         mes: initialText,
         name: getUserMessageName(),
@@ -4325,7 +4356,7 @@ async function runPromptTransformAgentsForText(promptTransformAgents, initialTex
     };
     const promptRuns = [];
     const initialPromptTransformText = unwrapAssistantResponseWrapper(initialText);
-    const isCancelled = () => cancelRevision !== null && agentGenerationCancelRevision !== cancelRevision;
+    const isCancelled = () => (cancelRevision !== null && agentGenerationCancelRevision !== cancelRevision) || !runtimeAgents.every(isAgentRuntimeAllowed);
     const cancelledResult = () => ({
         promptRuns,
         text: initialPromptTransformText,
@@ -4359,7 +4390,7 @@ async function runPromptTransformAgentsForText(promptTransformAgents, initialTex
             generationType,
             currentPromptTransformText,
             null,
-            { cancelRevision },
+            { cancelRevision, runtimeAgents },
         );
         promptRuns.push(...batchResult.results);
 
@@ -4396,6 +4427,7 @@ async function runPromptTransformAgentsForText(promptTransformAgents, initialTex
         try {
             const result = await runPromptTransformAgent(agent, message, generationType, currentPromptTransformText, null, {
                 applyToMessage: false,
+                runtimeAgents,
             });
             promptRuns.push(result);
 
@@ -4460,7 +4492,7 @@ export async function runCompanionOutputPostPasses(companionAgent, initialText, 
         return { text: baseText, changed: false };
     }
 
-    const isCancelled = () => agentGenerationCancelRevision !== cancelRevision;
+    const isCancelled = () => agentGenerationCancelRevision !== cancelRevision || !isAgentRuntimeAllowed(companionAgent);
     if (isCancelled()) {
         return { text: baseText, changed: false, cancelled: true };
     }
@@ -4485,6 +4517,7 @@ export async function runCompanionOutputPostPasses(companionAgent, initialText, 
                 messageContext: characterName ? { name: characterName } : {},
                 cancelRevision,
                 stopOnFailure: true,
+                runtimeAgents: [companionAgent],
             },
         );
         if (promptResult.cancelled || isCancelled()) {
@@ -4543,10 +4576,11 @@ async function runContextInterceptAgent(agent, currentContextText, generationTyp
         dynamicMacros: buildPromptDynamicMacros(currentContextText, null, agent, generationType),
     }).trim();
 
-    if (!expandedPrompt || !currentContextText.trim()) {
+    const runtimeAllowed = isAgentRuntimeAllowed(agent);
+    if (!runtimeAllowed || !expandedPrompt || !currentContextText.trim()) {
         return {
             ...baseResult,
-            status: 'skipped-empty-prompt',
+            status: runtimeAllowed ? 'skipped-empty-prompt' : 'skipped-runtime-filter',
         };
     }
 
@@ -4573,10 +4607,10 @@ async function runContextInterceptAgent(agent, currentContextText, generationTyp
             { allowAssistantPrefillTail: helperRequest.allowAssistantPrefillTail },
         );
 
-        if (agentGenerationCancelRevision !== cancelRevision) {
+        if (agentGenerationCancelRevision !== cancelRevision || !isAgentRuntimeAllowed(agent)) {
             return {
                 ...baseResult,
-                status: 'cancelled',
+                status: agentGenerationCancelRevision !== cancelRevision ? 'cancelled' : 'skipped-runtime-filter',
                 profileId: response.profileId,
                 runner: response.runner,
             };
@@ -5134,7 +5168,7 @@ function onChatCompletionSettingsReady(data) {
     // "Require tool use on every response": force only the first pass of a
     // turn. Forcing recursive passes too would make every turn consume the
     // whole recursion budget before the model may write its reply.
-    if (toolRecursionDepth === 0) {
+    if (toolRecursionDepth === 0 && getPathfinderRuntimeAgent()) {
         const forcedToolChoice = getForcedToolChoice(data.chat_completion_source, data.model);
         if (forcedToolChoice) {
             data.tool_choice = forcedToolChoice;
@@ -5403,16 +5437,19 @@ export function initAgentRunner() {
  * @param {{ characterOverride?: string, messageContext?: object }} [options]
  * @returns {Promise<{ text: string, changed: boolean }>}
  */
-export async function runSingleAgentPostPassesOnText(agent, text, generationType, { characterOverride = '', messageContext = {} } = {}) {
+export async function runSingleAgentPostPassesOnText(agent, text, generationType, { characterOverride = '', messageContext = {}, runtimeAgents = [] } = {}) {
     let currentText = String(text ?? '');
     let changed = false;
 
     if (String(agent?.prompt ?? '').trim()) {
-        const promptResult = await runPromptTransformAgentsForText([agent], currentText, generationType, { messageContext });
+        const promptResult = await runPromptTransformAgentsForText([agent], currentText, generationType, { messageContext, runtimeAgents });
         currentText = promptResult.text;
         changed = changed || promptResult.changed;
     }
 
+    if (!isAgentRuntimeAllowed(agent) || !runtimeAgents.every(isAgentRuntimeAllowed)) {
+        return { text: String(text ?? ''), changed: false };
+    }
     if (getAgentRegexScripts(agent).length > 0) {
         const regexText = applyAgentRegexScriptsToText([agent], currentText, { characterOverride });
         if (regexText !== currentText) {
@@ -5472,6 +5509,9 @@ async function executeManualAgentRun(agentId, target, cancelRevision = agentGene
         toastr.error('Agent not found.');
         return null;
     }
+    if (!isAgentRuntimeAllowed(agent)) {
+        return null;
+    }
 
     if (runTarget.kind === 'composer') {
         return await executeManualComposerAgentRun(agent, cancelRevision);
@@ -5494,6 +5534,9 @@ async function executeManualAgentRun(agentId, target, cancelRevision = agentGene
     const messageIndex = runTarget.messageIndex;
     await commitOpenEditorForMessage(messageIndex);
 
+    if (!isAgentRuntimeAllowed(agent)) {
+        return null;
+    }
     const message = chat[messageIndex];
     if (!message || message.is_user || message.is_system) {
         return null;
@@ -5715,6 +5758,7 @@ export async function runTrackerFixOnMessage(messageIndex, { cancelRevision = ag
     // derives metadata from that validated text instead of discarding model output.
     for (const agent of trackerExtractAgents) {
         if (isFixCancelled()) break;
+        if (!isAgentRuntimeAllowed(agent)) continue;
 
         const inspection = inspectTrackerState(agent, message.mes);
         if (inspection.status === 'valid') {
@@ -5780,6 +5824,7 @@ export async function runTrackerFixOnMessage(messageIndex, { cancelRevision = ag
     }
 
     for (const agent of trackerExtractAgents) {
+        if (!isAgentRuntimeAllowed(agent)) continue;
         const metadataKey = getTrackerMetadataKey(agent);
         if (!metadataKey) continue;
 
@@ -5809,6 +5854,7 @@ export async function runTrackerFixOnMessage(messageIndex, { cancelRevision = ag
     }
 
     const utilityAgents = trackerAgents.filter(agent =>
+        isAgentRuntimeAllowed(agent) &&
         agent.postProcess?.enabled &&
         agent.postProcess.type !== 'regex' &&
         agent.postProcess.type !== 'extract',

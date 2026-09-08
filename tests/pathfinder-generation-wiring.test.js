@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { EventEmitter } from '../public/lib/eventemitter.js';
 import { event_types } from '../public/scripts/events.js';
 import { resolveGenerationUiLockState, resolveGenerationUnblockState, resolveStopGenerationState } from '../public/scripts/generation-lifecycle/index.js';
+import { limitGenerationProse, isGenerationLengthFinish } from '../public/scripts/generation-request-controls.js';
 
 await jest.unstable_mockModule('../public/script.js', () => ({ chat: [], getCurrentChatId: () => 'chat-a' }));
 await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/agent-store.js', () => ({ isPathfinderSubmoduleEnabled: () => true }));
@@ -37,6 +38,7 @@ function createHost() {
         AbortController, AbortSignal, structuredClone, console,
         eventSource: events, event_types,
         resolveGenerationUiLockState, resolveGenerationUnblockState, resolveStopGenerationState,
+        limitGenerationProse, isGenerationLengthFinish,
         activeGenerationRun: null, agentGenerationContextProvider: null, abortController: null,
         generationChatFilter: null,
         chatId: 'chat-a', chatGeneration: 0, agentRunId: 0, cancelRevision: 0,
@@ -157,7 +159,7 @@ describe('Pathfinder integration with the real extracted host generation flow', 
     ])('emits one terminal event for %s, including before the Stop button becomes visible', async (_name, setup) => {
         const host = createHost();
         setup(host);
-        await host.generate();
+        await host.generate('normal', { suppressUserMessage: false });
         expect(host.emitted.mock.calls.filter(([event]) => event === event_types.GENERATION_ENDED)).toHaveLength(1);
         expect(host.context.is_send_press).toBe(false);
         expect(host.context.sendGenerationRequest).not.toHaveBeenCalled();

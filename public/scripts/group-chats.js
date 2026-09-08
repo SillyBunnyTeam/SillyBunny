@@ -1244,7 +1244,11 @@ async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = fals
     }
 
     if (shouldSaveGroup) {
-        await editGroup(groupId, false, false);
+        // SillyBunny: strict saves cannot acknowledge deferred group metadata writes.
+        if (throwOnError && !groups.some(candidate => candidate.id === group.id)) {
+            throw new Error('Group not found');
+        }
+        await editGroup(throwOnError ? group.id : groupId, throwOnError, false);
     }
 
     return true;
@@ -1566,7 +1570,7 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
         setSendButtonState(true);
         setCharacterName('');
         setCharacterId(undefined);
-        const userInput = String($('#send_textarea').val());
+        const userInput = params.suppressUserMessage ? '' : String($('#send_textarea').val());
 
         // id of this specific batch for regeneration purposes
         group_generation_id = Date.now();
@@ -1685,7 +1689,7 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
             let messageChunk = textResult?.messageChunk;
 
             if (messageChunk) {
-                while (shouldAutoContinue(messageChunk, type === 'impersonate')) {
+                while (shouldAutoContinue(messageChunk, type === 'impersonate', mergedParams)) {
                     textResult = await runWithGroupMemberModelOverride(group, characters[chId]?.avatar, () => Generate('continue', { automatic_trigger: byAutoMode, ...mergedParams, companionHistoryTarget: undefined }));
                     messageChunk = textResult?.messageChunk;
                 }
