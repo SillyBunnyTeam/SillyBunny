@@ -443,6 +443,7 @@ function backupChatPreWrite(directory, name, data, handle = '') {
         removeOldBackups(directory, CHAT_PRE_WRITE_BACKUPS_PREFIX, maxTotalChatBackups);
     } catch (err) {
         console.error(`Could not create pre-write chat backup for ${name}`, err);
+        throw err;
     }
 }
 
@@ -1271,9 +1272,6 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
             if (isSameChatSaveContent(jsonlData, currentChatData, { ignoreDerivedMetadata: !persistDerivedMetadata })) {
                 unchangedChatData = currentChatData;
                 unchangedIntegrity = existingIntegrity;
-                if (backupDecision.closeSequence || backupDecision.clearActiveSequenceAfterSuccess) {
-                    commitDeferredPreWriteBackupDecision(backupDecision, deferSequenceId);
-                }
             } else {
                 if (backupDecision.shouldCreateBackup) {
                     backupChatPreWrite(backupDirectory, cardName, currentChatData, handle);
@@ -1295,11 +1293,6 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
                 }
             }
         }
-    }
-
-    // SillyBunny: commit deferred sequence state changes only after backup/content decisions succeed.
-    if (backupDecision) {
-        commitDeferredPreWriteBackupDecision(backupDecision, deferSequenceId);
     }
 
     // SillyBunny: the regular backup still runs for an unchanged save. An agent run defers every
@@ -1357,6 +1350,10 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
         });
     } else {
         logBackupEvent('chat-save-skipped', { handle, chat: cardName, reason: 'unchanged', force: Boolean(skipIntegrityCheck), ...savedChatSizeDetails });
+    }
+    // A no-op cannot open a sequence: it has not captured a pre-write snapshot yet.
+    if (backupDecision && (!backupDecision.beginSequence || unchangedChatData === null)) {
+        commitDeferredPreWriteBackupDecision(backupDecision, deferSequenceId);
     }
     if (!deferBackup) {
         getBackupFunction(handle)(backupDirectory, cardName, persistedChatData, CHAT_BACKUPS_PREFIX, handle);

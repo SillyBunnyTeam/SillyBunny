@@ -40,6 +40,7 @@ import {
 import { shouldRestoreTextGenStatusOnStartup } from './scripts/textgen-startup-status.js';
 import { normalizeCharacterChatName, resolveCharacterChatNameForLoad } from './scripts/character-chat-resolver.js';
 import { getDebouncedChatSaveAbortReason } from './scripts/chat-save-guard.js';
+import { getChatBackupSaveOptions } from './scripts/chat-backup-sequence.js';
 import { getCharacterDefinitionFormValues, getSuspiciousEmptyCharacterDefinitionSave } from './scripts/character-save-guard.js';
 // SillyBunny: keep model-produced chat filenames behind a strict, independently tested parser.
 import { CHAT_LABEL_TITLE_LIMIT, extractGeneratedChatLabel, normalizeGeneratedChatLabel, truncateChatLabelText } from './scripts/chat-label.js';
@@ -212,6 +213,7 @@ import {
     loadFileToDocument,
     getSanitizedFilename,
     getStringHash,
+    uuidv4,
 } from './scripts/utils.js';
 import {
     TOOLING_UI_HYDRATION_STATUS,
@@ -10665,7 +10667,7 @@ export async function flushPendingChatSaves({ silent = false } = {}) {
  */
 export function saveChat(...saveChatArguments) {
     const [firstArgument] = saveChatArguments;
-    const options = firstArgument && typeof firstArgument === 'object'
+    let options = firstArgument && typeof firstArgument === 'object'
         ? firstArgument
         : saveChatArguments.length === 0
             ? {}
@@ -10673,6 +10675,7 @@ export function saveChat(...saveChatArguments) {
     let queuedSaveArguments = saveChatArguments;
 
     if (options) {
+        options = getChatBackupSaveOptions(options, JSON.stringify([characters[this_chid]?.avatar, getCurrentChatId(), chatGeneration]), uuidv4);
         const mesId = options.mesId;
         const sourceChatData = Array.isArray(options.chatData)
             ? options.chatData
@@ -10703,7 +10706,7 @@ export function saveChat(...saveChatArguments) {
     return saveTask;
 }
 
-async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, mesId, force = false, chatData = undefined, throwOnError = false, deferBackup = false, allowShrink = false, activeChatName, characterName, avatarUrl, wasGroupChat = false } = {}) {
+async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, mesId, force = false, chatData = undefined, throwOnError = false, deferBackup = false, deferSequenceId, allowShrink = false, activeChatName, characterName, avatarUrl, wasGroupChat = false } = {}) {
     if (wasGroupChat || (selected_group && !activeChatName)) {
         toastr.error(t`Operation was aborted to prevent data corruption.`, t`saveChat called for a group chat`);
         throw new Error('saveChat called for a group chat');
@@ -10764,6 +10767,7 @@ async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, m
                 avatar_url: resolvedAvatarUrl,
                 force: force,
                 deferBackup: Boolean(deferBackup),
+                deferSequenceId,
                 allowShrink: Boolean(allowShrink),
             }),
         });
@@ -10811,7 +10815,7 @@ async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, m
             return false;
         }
 
-        return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, deferBackup, allowShrink, activeChatName, characterName, avatarUrl, wasGroupChat });
+        return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, deferBackup, deferSequenceId, allowShrink, activeChatName, characterName, avatarUrl, wasGroupChat });
     } catch (error) {
         console.error(error);
         toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Chat could not be saved`);
