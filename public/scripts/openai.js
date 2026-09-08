@@ -9209,13 +9209,27 @@ async function onConnectButtonClick(e) {
     const config = apiSourceConfig[oai_settings.chat_completion_source];
     if (config) {
         const apiKey = String($(config.selector).val()).trim();
-        const isBoundCustomEndpointProfile = oai_settings.chat_completion_source === chat_completion_sources.CUSTOM
+        const customEndpointPreset = oai_settings.chat_completion_source === chat_completion_sources.CUSTOM
             && selected_custom_endpoint_preset?.name !== 'None'
-            && selected_custom_endpoint_preset?.secretId;
+            ? selected_custom_endpoint_preset
+            : null;
 
-        // SillyBunny: custom endpoint profiles keep their own secret ids; Connect must not mint duplicate active keys.
-        if (!isBoundCustomEndpointProfile && apiKey.length) {
-            await writeSecret(config.key, apiKey);
+        // SillyBunny: an explicitly entered key replaces the profile binding; an empty input reuses it.
+        if (apiKey.length) {
+            const secretId = await writeSecret(config.key, apiKey);
+            if (customEndpointPreset) {
+                if (!secretId) {
+                    return;
+                }
+                customEndpointPreset.secretId = secretId;
+                customEndpointPreset.key = '';
+                if (customEndpointPreset === selected_custom_endpoint_preset) {
+                    updateCustomEndpointKeyInput(customEndpointPreset, '');
+                }
+                if (await saveSettings(0, { returnResult: true }) !== true) {
+                    return;
+                }
+            }
         }
 
         if (!secret_state[config.key] && (!config.proxy || !oai_settings.reverse_proxy) && !config.keyless) {
@@ -10085,13 +10099,21 @@ $('#save_custom_endpoint').on('click', async function () {
     // Write a secret when a key was typed, or mint a stable empty secret for keyless endpoints
     if (keyInputValue || !preset.secretId) {
         await activateCustomEndpointPresetSecret(preset, { forceWrite: true });
+        // SillyBunny: a failed secret write must not fall back to the old profile binding.
+        if (!preset.secretId) {
+            return;
+        }
     }
 
     await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId, writeKey: false });
-    saveSettingsDebounced();
-    toastr.success(t`Custom Endpoint Profile Saved`);
+    // SillyBunny: update selection before yielding to persistence so a later user selection wins.
     updateCustomEndpointPresetOption(preset);
     $('#custom_endpoint_preset').val(preset.name);
+    // SillyBunny: persist the new secret binding before a successful Save can be followed by a reload.
+    if (await saveSettings(0, { returnResult: true }) !== true) {
+        return;
+    }
+    toastr.success(t`Custom Endpoint Profile Saved`);
 });
 
 $('#delete_custom_endpoint').on('click', async function () {

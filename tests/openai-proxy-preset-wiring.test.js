@@ -186,20 +186,6 @@ describe('OpenAI proxy preset wiring', () => {
         expect(setCustomEndpointSource).not.toContain('writeSecret(SECRET_KEYS.CUSTOM, normalizedPreset.key');
     });
 
-    test('keeps bound Custom endpoint profile secrets on Connect', () => {
-        const connectSource = getFunctionSource('onConnectButtonClick');
-        const customGuardIndex = connectSource.indexOf('const isBoundCustomEndpointProfile = oai_settings.chat_completion_source === chat_completion_sources.CUSTOM');
-        const profileSecretIndex = connectSource.indexOf('selected_custom_endpoint_preset?.secretId;', customGuardIndex);
-        const writeGuardIndex = connectSource.indexOf('if (!isBoundCustomEndpointProfile && apiKey.length) {', customGuardIndex);
-        const writeIndex = connectSource.indexOf('await writeSecret(config.key, apiKey);', writeGuardIndex);
-
-        expect(customGuardIndex).toBeGreaterThanOrEqual(0);
-        expect(profileSecretIndex).toBeGreaterThan(customGuardIndex);
-        expect(writeGuardIndex).toBeGreaterThan(profileSecretIndex);
-        expect(writeIndex).toBeGreaterThan(writeGuardIndex);
-        expect(connectSource).not.toContain('await rotateSecret(SECRET_KEYS.CUSTOM, selected_custom_endpoint_preset.secretId);');
-    });
-
     test('clears the Custom endpoint key input when a saved secret is bound', () => {
         const inputSource = getFunctionSource('updateCustomEndpointKeyInput');
 
