@@ -90,6 +90,7 @@
 - PR #836 (2026-09-08) `fix: Connection reconnects stability`
 - PR #837 (2026-09-08) `fix: Device setting persistence per-device`
 - PR #838 (2026-09-08) `fix: Endpoint Profiles ignoring Credentials`
+- PR #839 (2026-09-08) `fix: Update to Guided Generations Baked-In for Feature Parity with Upstream Project`
 - PR #840 (2026-09-08) `fix: touch scrolling on mobile for blown-up text editors`
 
 ## v1.7.0
