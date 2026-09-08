@@ -89,6 +89,7 @@
 - PR #835 (2026-09-08) `fix(mobile): prevent the Persona picker page from being draggable to the left or right + dropdown for scenario notes`
 - PR #836 (2026-09-08) `fix: Connection reconnects stability`
 - PR #837 (2026-09-08) `fix: Device setting persistence per-device`
+- PR #838 (2026-09-08) `fix: Endpoint Profiles ignoring Credentials`
 - PR #840 (2026-09-08) `fix: touch scrolling on mobile for blown-up text editors`
 
 ## v1.7.0
