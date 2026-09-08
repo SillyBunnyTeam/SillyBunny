@@ -10661,11 +10661,13 @@ export async function flushPendingChatSaves({ silent = false } = {}) {
  */
 export function saveChat(...saveChatArguments) {
     const [firstArgument] = saveChatArguments;
-    const options = firstArgument && typeof firstArgument === 'object'
-        ? firstArgument
-        : saveChatArguments.length === 0
-            ? {}
-            : undefined;
+    let options = firstArgument && typeof firstArgument === 'object' ? firstArgument : {};
+    if (saveChatArguments.length > 0 && (typeof firstArgument !== 'object' || firstArgument === null)) {
+        // SillyBunny: legacy extension calls need the same enqueue-time snapshot and lifecycle guard.
+        console.trace('saveChat called with positional arguments. Please use an object instead.');
+        const [chatName, withMetadata, mesId, force, throwOnError] = saveChatArguments;
+        options = { chatName, withMetadata, mesId, force, throwOnError };
+    }
     let queuedSaveArguments = saveChatArguments;
 
     if (options) {
