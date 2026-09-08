@@ -39,6 +39,8 @@ function createHarness() {
         abortStatusCheck: new AbortController(),
         online_status: 'no_connection',
         loading: false,
+        connectDisabled: false,
+        document: {},
         models: [],
         fetch: jest.fn(),
         URL,
@@ -55,22 +57,43 @@ function createHarness() {
         t: strings => strings.join(''),
         console: { error: jest.fn(), log: jest.fn(), debug: jest.fn() },
         toastr: { error: jest.fn() },
-        $: () => ({ val: () => '', empty: () => {} }),
+        displayOnlineStatus: jest.fn(),
+        $: selector => ({
+            val: () => '',
+            empty: () => {},
+            show: () => { if (selector === '.api_loading') context.loading = true; },
+            hide: () => { if (selector === '.api_loading') context.loading = false; },
+            addClass: name => { if (selector === '.api_button' && name === 'disabled') context.connectDisabled = true; },
+            removeClass: name => { if (selector === '.api_button' && name === 'disabled') context.connectDisabled = false; },
+            on: (event, target, handler) => {
+                if (selector !== context.document || event !== 'click' || target !== '.api_loading') {
+                    throw new Error('Unexpected cancel handler registration');
+                }
+                context.cancelClick = handler;
+            },
+        }),
     });
     runInContext(`
         ${openAiSource.slice(constantsStart, constantsEnd).replaceAll('export ', '')}
         function setOnlineStatus(status) { online_status = status; }
-        function startStatusLoading() { loading = true; }
-        function resultCheckStatus() { loading = false; }
+        ${functionSource(scriptSource, 'startStatusLoading')}
+        ${functionSource(scriptSource, 'stopStatusLoading')}
+        ${functionSource(scriptSource, 'resultCheckStatus')}
         function saveModelList(data) { models = data; }
         ${functionSource(scriptSource, 'cancelStatusCheck')}
         ${functionSource(openAiSource, 'validateReverseProxy')}
         ${functionSource(openAiSource, 'getStatusOpen')}
         ${functionSource(openAiSource, 'onConnectButtonClick')}
     `, context);
+    const cancelHandlerStart = scriptSource.indexOf('$(document).on(\'click\', \'.api_loading\',');
+    if (cancelHandlerStart < 0) {
+        throw new Error('Missing manual status cancellation handler');
+    }
+    runInContext(scriptSource.slice(cancelHandlerStart, scriptSource.indexOf('\n\n', cancelHandlerStart)), context);
     return {
         context,
         connect: () => context.onConnectButtonClick({ stopPropagation() {} }),
+        cancel: () => context.cancelClick(),
         switchSource(source) {
             context.cancelStatusCheck('Chat Completion source changed');
             context.oai_settings.chat_completion_source = source;
@@ -83,6 +106,69 @@ function response(models) {
 }
 
 describe('Chat Completion reconnect status ownership', () => {
+    test.each([
+        ['fetch', false],
+        ['fetch', true],
+        ['body', false],
+        ['body', true],
+    ])('manual cancel during %s cleans up immediately and protects reconnect (completed: %s)', async (phase, completed) => {
+        const { context, connect, cancel } = createHarness();
+        const oldResult = deferred();
+        const newRequest = deferred();
+        const parsing = deferred();
+        const json = () => {
+            parsing.resolve();
+            return oldResult.promise;
+        };
+        context.fetch.mockReturnValueOnce(phase === 'fetch' ? oldResult.promise : Promise.resolve({ ok: true, json }))
+            .mockReturnValueOnce(newRequest.promise);
+
+        const first = connect();
+        if (phase === 'body') await parsing.promise;
+        const oldSignal = context.fetch.mock.calls[0][1].signal;
+        expect(context.loading).toBe(true);
+        expect(context.connectDisabled).toBe(true);
+
+        cancel();
+
+        expect(oldSignal.aborted).toBe(true);
+        expect(context.abortStatusCheck.signal.aborted).toBe(false);
+        expect(context.online_status).toBe('no_connection');
+        expect(context.loading).toBe(false);
+        expect(context.connectDisabled).toBe(false);
+
+        const second = connect();
+        expect(context.loading).toBe(true);
+        expect(context.connectDisabled).toBe(true);
+        const newSignal = context.fetch.mock.calls[1][1].signal;
+        if (completed) {
+            newRequest.resolve(response(['new-model']));
+            await second;
+        }
+
+        if (phase === 'fetch') {
+            oldResult.reject(oldSignal.reason);
+        } else {
+            oldResult.resolve({ data: [{ id: 'old-model' }] });
+        }
+        await first;
+
+        expect(newSignal.aborted).toBe(false);
+        expect(context.loading).toBe(!completed);
+        expect(context.connectDisabled).toBe(!completed);
+        expect(context.online_status).toBe(completed ? 'Valid' : 'no_connection');
+        expect(context.models).toEqual(completed ? [{ id: 'new-model' }] : []);
+
+        if (!completed) {
+            newRequest.resolve(response(['new-model']));
+            await second;
+        }
+        expect(context.online_status).toBe('Valid');
+        expect(context.models).toEqual([{ id: 'new-model' }]);
+        expect(context.loading).toBe(false);
+        expect(context.connectDisabled).toBe(false);
+    });
+
     test.each(['linkapi', 'openai'])('connects to %s when requests do not overlap', async source => {
         const { context, connect, switchSource } = createHarness();
         switchSource(source);
