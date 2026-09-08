@@ -16843,7 +16843,11 @@ jQuery(async function () {
         $('#groupCurrentMemberListToggle .inline-drawer-icon').trigger('click');
     }, 200);
 
-    $(document).on('click', '.api_loading', () => cancelStatusCheck('Canceled because connecting was manually canceled'));
+    $(document).on('click', '.api_loading', () => {
+        cancelStatusCheck('Canceled because connecting was manually canceled');
+        // SillyBunny: manual cancellation owns cleanup; stale requests must not stop a newer check.
+        resultCheckStatus();
+    });
 
     //////////INPUT BAR FOCUS-KEEPING LOGIC/////////////
     const isIOSFocusSensitiveBrowser = isIOSWebKitPlatform();

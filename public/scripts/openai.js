@@ -764,7 +764,7 @@ export function getCurrentOpenAIPresetPromptOrder(characterId) {
     return Array.isArray(promptOrderEntry?.order) ? promptOrderEntry.order : [];
 }
 
-async function validateReverseProxy() {
+async function validateReverseProxy(signal) {
     if (!oai_settings.reverse_proxy) {
         return;
     }
@@ -781,6 +781,10 @@ async function validateReverseProxy() {
     const skipConfirm = accountStorage.getItem(rememberKey) === 'true';
 
     const confirmation = skipConfirm || await Popup.show.confirm(t`Connecting To Proxy`, await renderTemplateAsync('proxyConnectionWarning', { proxyURL: DOMPurify.sanitize(oai_settings.reverse_proxy) }));
+
+    if (signal?.aborted) {
+        return;
+    }
 
     if (!confirmation) {
         toastr.error(t`Update or remove your reverse proxy settings.`);
@@ -7384,6 +7388,11 @@ function setAutoAppendReasoningTagControls() {
 }
 
 async function getStatusOpen() {
+    // SillyBunny: only the latest connection attempt may update status or provider models.
+    cancelStatusCheck('New Chat Completion status check');
+    const { signal } = abortStatusCheck;
+    const isCurrentCheck = () => !signal.aborted && main_api === 'openai';
+
     const noValidateSources = [
         chat_completion_sources.AI21,
         chat_completion_sources.PERPLEXITY,
@@ -7416,7 +7425,19 @@ async function getStatusOpen() {
     };
 
     if (oai_settings.reverse_proxy && REVERSE_PROXY_SUPPORTED_SOURCES.includes(oai_settings.chat_completion_source)) {
-        await validateReverseProxy();
+        try {
+            await validateReverseProxy(signal);
+        } catch (error) {
+            if (!isCurrentCheck()) {
+                return;
+            }
+            console.error(error);
+            setOnlineStatus('no_connection');
+            return resultCheckStatus();
+        }
+        if (!isCurrentCheck()) {
+            return;
+        }
     }
 
     if (oai_settings.chat_completion_source === chat_completion_sources.CUSTOM) {
@@ -7467,7 +7488,7 @@ async function getStatusOpen() {
             method: 'POST',
             headers: getRequestHeaders(),
             body: JSON.stringify(data),
-            signal: abortStatusCheck.signal,
+            signal,
             cache: 'no-cache',
         });
 
@@ -7476,6 +7497,10 @@ async function getStatusOpen() {
         }
 
         const responseData = await response.json();
+
+        if (!isCurrentCheck()) {
+            return;
+        }
 
         if ('data' in responseData && Array.isArray(responseData.data)) {
             saveModelList(responseData.data);
@@ -7487,6 +7512,9 @@ async function getStatusOpen() {
             setOnlineStatus(t`Status check bypassed`);
         }
     } catch (error) {
+        if (!isCurrentCheck()) {
+            return;
+        }
         console.error(error);
 
         if (!canBypass) {
