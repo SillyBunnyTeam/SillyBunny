@@ -6416,9 +6416,9 @@
                                 </h4>
                                 <textarea id="persona_description" name="persona_description" data-macros data-i18n="[placeholder]Example: [{{user}} is a 28-year-old Romanian cat girl.]" placeholder="Example:&#10;[{{user}} is a 28-year-old Romanian cat girl.]" class="text_pole textarea_compact" value="" autocomplete="off" rows="8"></textarea>
 
-                                <section class="persona-appendices-block" aria-labelledby="persona_appendices_heading">
-                                    <div class="persona-appendices-heading-row">
-                                        <h4 id="persona_appendices_heading" class="persona-section-header" data-i18n="Scenario Notes">Scenario Notes</h4>
+                                <details class="persona-appendices-block" aria-labelledby="persona_appendices_heading">
+                                    <summary id="persona_appendices_heading" class="persona-section-header" data-i18n="Scenario Notes">Scenario Notes</summary>
+                                    <div class="persona-appendices-content">
                                         <div class="persona-appendices-actions">
                                             <button id="persona_appendix_add" class="menu_button menu_button_icon" type="button" title="Add scenario note" data-i18n="[title]Add scenario note">
                                                 <i class="fa-solid fa-plus fa-fw" aria-hidden="true"></i>
@@ -6429,15 +6429,15 @@
                                                 <span data-i18n="Import">Import</span>
                                             </button>
                                         </div>
+                                        <p class="persona-appendices-help text_muted" data-i18n="Scenario Notes add chat-specific details to this persona. Multiple notes can be active at once in this chat.">Scenario Notes add chat-specific details to this persona. Multiple notes can be active at once in this chat.</p>
+                                        <div id="persona_appendices_active_chips" class="persona-appendices-active-chips" aria-live="polite"></div>
+                                        <div id="persona_appendices_list" class="persona-appendices-list"></div>
+                                        <div class="persona-effective-preview">
+                                            <strong class="persona-effective-preview-title" data-i18n="Preview final prompt for this chat">Preview final prompt for this chat</strong>
+                                            <pre id="persona_effective_description_preview"></pre>
+                                        </div>
                                     </div>
-                                    <p class="persona-appendices-help text_muted" data-i18n="Scenario Notes add chat-specific details to this persona. Multiple notes can be active at once in this chat.">Scenario Notes add chat-specific details to this persona. Multiple notes can be active at once in this chat.</p>
-                                    <div id="persona_appendices_active_chips" class="persona-appendices-active-chips" aria-live="polite"></div>
-                                    <div id="persona_appendices_list" class="persona-appendices-list"></div>
-                                    <details class="persona-effective-preview">
-                                        <summary data-i18n="Preview final prompt for this chat">Preview final prompt for this chat</summary>
-                                        <pre id="persona_effective_description_preview"></pre>
-                                    </details>
-                                </section>
+                                </details>
 
                                 <div class="flex-container justifySpaceBetween persona-section-meta">
                                     <h4 class="persona-section-header persona-section-header--inline" data-i18n="Position">Position</h4>

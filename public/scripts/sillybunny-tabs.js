@@ -17258,6 +17258,10 @@ function openPersonaAppendicesManager() {
         document.getElementById('persona_editor_tab_prompt')?.click();
         const appendicesHeading = document.getElementById('persona_appendices_heading');
         const addButton = document.getElementById('persona_appendix_add');
+        const appendicesBlock = appendicesHeading?.closest('details');
+        if (appendicesBlock instanceof HTMLDetailsElement) {
+            appendicesBlock.open = true;
+        }
         scrollElementIntoManagedView(appendicesHeading ?? addButton, { block: 'center', behavior: getReducedMotionScrollBehavior() });
         addButton?.focus({ preventScroll: true });
     }, 160);

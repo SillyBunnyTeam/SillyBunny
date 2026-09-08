@@ -44,6 +44,7 @@ import {
     resolveConnectionProfile,
 } from './agent-store.js';
 import { regexFromString, uuidv4 } from '../../utils.js';
+import { resetChatBackupSequence } from '../../chat-backup-sequence.js';
 import { isKimiK3Model } from '../../openai-model-capabilities.js';
 import { buildFallbackPromptText, extractProfileResponseText } from './llm-utils.js';
 import { getConnectionProfileDisplayName, getConnectionProfileModelName } from './profile-utils.js';
@@ -222,7 +223,7 @@ function companionTriggerMatches(keyword, messageText) {
 }
 
 function saveChatDebouncedForAgent({ deferBackup = shouldDeferAgentRegularBackup() } = {}) {
-    saveChatDebounced({ deferBackup: Boolean(deferBackup) });
+    saveChatDebounced({ deferBackup: Boolean(deferBackup), completeDeferredBackup: !deferBackup });
 }
 
 async function saveChatForAgent(context, { deferBackup = shouldDeferAgentRegularBackup() } = {}) {
@@ -230,7 +231,7 @@ async function saveChatForAgent(context, { deferBackup = shouldDeferAgentRegular
         return;
     }
 
-    await context.saveChat({ deferBackup: Boolean(deferBackup) });
+    await context.saveChat({ deferBackup: Boolean(deferBackup), completeDeferredBackup: !deferBackup });
 }
 
 function migrateLegacyRegexSnapshotsForCurrentChat(chatId = getCurrentChatId()) {
@@ -3726,6 +3727,7 @@ function onGenerationStarted(generationType, options, dryRun) {
     releaseToolAgentRegistrations();
 
     currentMainGenerationType = normalizeGenerationType(generationType);
+    resetChatBackupSequence();
     isGenerationInProgress = true;
     generationStartChatId = getCurrentSnapshotChatId();
     postProcessingInvalidatedByChatChange = false;
@@ -3815,6 +3817,9 @@ function onGenerationStopped(generationContext) {
         || generationContext.cancelRevision !== agentGenerationCancelRevision)) {
         return;
     }
+
+    resetChatBackupSequence();
+
     generationStopRequested = true;
     agentGenerationCancelRevision++;
     invalidateToolApprovals();
@@ -5568,6 +5573,7 @@ export async function runAgentOnTarget(agentId, target) {
 }
 
 export async function runTrackerFixOnMessage(messageIndex, { cancelRevision = agentGenerationCancelRevision } = {}) {
+    resetChatBackupSequence();
     if (!areAgentsGloballyEnabled()) {
         toastr.warning('In-Chat Agents are disabled.');
         return;
