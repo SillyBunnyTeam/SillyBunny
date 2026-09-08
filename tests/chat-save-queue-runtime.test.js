@@ -3,6 +3,8 @@ import vm from 'node:vm';
 import { parse } from 'acorn';
 import { describe, expect, jest, test } from '@jest/globals';
 import { getQueuedChatSaveAbortReason } from '../public/scripts/chat-save-guard.js';
+import { getChatBackupSaveOptions } from '../public/scripts/chat-backup-sequence.js';
+import { randomUUID } from 'node:crypto';
 
 const source = readFileSync(new URL('../public/script.js', import.meta.url), 'utf8');
 const ast = parse(source, { ecmaVersion: 'latest', sourceType: 'module' });
@@ -21,6 +23,7 @@ function createSaveRuntime() {
         characters: [{ name: 'Bunny', avatar: 'bunny.png', chat: 'original-chat' }],
         name2: 'Bunny', neutralCharacterName: 'Assistant',
         getQueuedChatSaveAbortReason,
+        getChatBackupSaveOptions, uuidv4: randomUUID,
         getCurrentChatId: () => runtime.characters[runtime.this_chid]?.chat,
         cloneChatSavePayload: structuredClone,
         setChatSaveActive: jest.fn(),
