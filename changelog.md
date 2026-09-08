@@ -84,6 +84,7 @@
 - PR #831 (2026-09-07) `chore: update nanogpt provider list`
 - PR #832 (2026-09-07) `feat(openrouter): automate provider list using OpenRouter endpoint`
 - PR #834 (2026-09-07) `fix: retain existing saved themes when installing external theme packs`
+- PR #835 (2026-09-08) `fix(mobile): prevent the Persona picker page from being draggable to the left or right + dropdown for scenario notes`
 
 ## v1.7.0
 
