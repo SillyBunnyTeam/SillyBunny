@@ -250,6 +250,7 @@ describe('in-chat agent post-processing runner', () => {
             itemizedPrompts,
             normalizeContentText: jest.fn(value => String(value ?? '')),
             main_api: mainApi,
+            online_status: 'no_connection',
             saveChatDebounced,
             stopGeneration: jest.fn(() => false),
             streamingProcessor,
@@ -381,6 +382,7 @@ describe('in-chat agent post-processing runner', () => {
                 return match ? new RegExp(match[1], match[2]) : new RegExp(String(value ?? ''));
             }),
             uuidv4: jest.fn(() => 'test-uuid'),
+            waitUntilCondition: jest.fn(),
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/agent-store.js', () => ({
@@ -6373,6 +6375,9 @@ Helper context.`;
         document.getElementById = jest.fn(id => id === 'send_textarea' ? textarea : null);
         document.querySelector = jest.fn(selector => selector === '#send_textarea' ? textarea : null);
         executeSlashCommandsWithOptions.mockImplementation(async (script) => {
+            if (script === '/flushinject gg-impersonate-voice') {
+                return;
+            }
             expect(script).toContain('/impersonate await=true');
             textarea.value = 'Draft guided impersonation';
             await eventSource.emit(eventTypes.IMPERSONATE_READY, 'Draft guided impersonation');

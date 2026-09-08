@@ -1,6 +1,7 @@
-import { eventSource, event_types, main_api } from '../../../../script.js';
+import { main_api, online_status } from '../../../../script.js';
 import { extension_settings, getContext } from '../../../extensions.js';
 import { getPresetManager } from '../../../preset-manager.js';
+import { waitUntilCondition } from '../../../utils.js';
 
 const extensionName = 'guided-generations';
 const NONE_PROFILE = '<None>';
@@ -18,27 +19,18 @@ function debugWarn(...args) {
 }
 
 function normalizeApiType(apiType = '') {
-    const value = String(apiType || '').trim();
-    if (!value) {
-        return main_api === 'koboldhorde' ? 'kobold' : main_api;
-    }
+    const value = String(apiType || main_api).trim();
+    const mappedApi = getContext()?.CONNECT_API_MAP?.[value]?.selected ?? value;
 
-    if (value === 'koboldhorde') {
+    if (mappedApi === 'koboldhorde') {
         return 'kobold';
     }
 
-    return value;
+    return mappedApi === 'chatcompletion' ? 'openai' : mappedApi;
 }
 
 function quoteSlashArg(value) {
     return `"${String(value ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '\\n')}"`;
-}
-
-function makeCommandArg(value) {
-    return String(value ?? '')
-        .replace(/\\/g, '\\\\')
-        .replace(/"/g, '\\"')
-        .replace(/\r?\n/g, ' ');
 }
 
 function getConnectionManagerSettings() {
@@ -116,12 +108,7 @@ async function getProfileApiType(profileIdentifier) {
     }
 
     if (profile.api) {
-        const apiKey = String(profile.api);
-        if (apiKey === 'chatcompletion') {
-            return 'openai';
-        }
-
-        return normalizeApiType(apiKey);
+        return normalizeApiType(profile.api);
     }
 
     return profile.mode === 'cc' ? 'openai' : normalizeApiType();
@@ -158,8 +145,12 @@ async function selectPresetByName(presetName, apiType = '') {
         return true;
     }
 
+    const shouldReconnect = online_status !== 'no_connection';
     await manager.selectPreset(presetValue);
-    return true;
+    if (shouldReconnect) {
+        await waitUntilCondition(() => online_status !== 'no_connection', 10000, 100);
+    }
+    return manager.getSelectedPresetName() === presetName;
 }
 
 async function switchToProfile(profileName) {
@@ -169,14 +160,7 @@ async function switchToProfile(profileName) {
         return false;
     }
 
-    const loaded = new Promise(resolve => {
-        eventSource.once(event_types.CONNECTION_PROFILE_LOADED, resolve);
-    });
     await context.executeSlashCommandsWithOptions(`/profile await=true ${quoteSlashArg(target)}`);
-    await Promise.race([
-        loaded,
-        new Promise(resolve => setTimeout(resolve, 5000)),
-    ]);
     return true;
 }
 
@@ -190,20 +174,24 @@ async function handleSwitching(targetProfileId = '', targetPreset = '', original
     const profileToRestoreName = restoreProfile?.name ?? '';
 
     async function switchToTarget() {
-        if (targetProfileId && targetProfileId !== profileToRestoreId) {
-            const targetProfile = getProfileById(targetProfileId);
-            const targetName = targetProfile?.name ?? targetProfileId;
+        const targetProfile = resolveStoredProfile(targetProfileId);
+        if (targetProfileId && !targetProfile) {
+            throw new Error('Guided Impersonate connection profile is unavailable.');
+        }
+        if (targetProfile && targetProfile.id !== profileToRestoreId) {
+            const targetName = targetProfile.name;
             debugLog(`[${extensionName}] Switching profile to: ${targetName}`);
             await switchToProfile(targetName);
+            if (await getCurrentProfileId() !== targetProfile.id) {
+                throw new Error('Guided Impersonate connection profile was not applied.');
+            }
         }
 
         if (targetPreset) {
             const apiType = await getProfileApiType(targetProfileId || await getCurrentProfileId());
             debugLog(`[${extensionName}] Switching preset to: ${targetPreset} (${apiType})`);
-            if (targetProfileId && targetPreset) {
-                await getContext().executeSlashCommandsWithOptions(`/preset ${makeCommandArg(targetPreset)}`);
-            } else {
-                await selectPresetByName(targetPreset, apiType);
+            if (!await selectPresetByName(targetPreset, apiType)) {
+                throw new Error('Guided Impersonate preset was not applied.');
             }
         }
     }
@@ -216,7 +204,7 @@ async function handleSwitching(targetProfileId = '', targetPreset = '', original
                 await switchToProfile(profileToRestoreName);
             }
 
-            if (targetPreset && presetToRestore) {
+            if ((targetProfileId || targetPreset) && presetToRestore) {
                 debugLog(`[${extensionName}] Restoring preset to: ${presetToRestore} (${apiToRestore})`);
                 await selectPresetByName(presetToRestore, apiToRestore);
             }

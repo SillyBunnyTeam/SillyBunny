@@ -348,24 +348,27 @@ export function initDefaultSlashCommands() {
         callback: async function (args, prompt) {
             const options = prompt?.toString()?.trim() ? { quiet_prompt: prompt.toString().trim(), quietToLoud: true } : {};
             const shouldAwait = isTrueBoolean(args?.await?.toString());
-            const outerPromise = new Promise((outerResolve) => setTimeout(async () => {
+            // SillyBunny: settle busy timeouts so awaited callers can restore their state.
+            const generationPromise = delay(1).then(async () => {
                 try {
                     await waitUntilCondition(() => !is_send_press && !is_group_generating, 10000, 100);
-                } catch {
+                } catch (error) {
                     console.warn('Timeout waiting for generation unlock');
                     toastr.warning(t`Cannot run /impersonate command while the reply is being generated.`);
-                    return '';
+                    throw error;
                 }
 
                 // Prevent generate recursion
                 $('#send_textarea').val('')[0].dispatchEvent(new Event('input', { bubbles: true }));
 
-                outerResolve(new Promise(innerResolve => setTimeout(() => innerResolve(Generate('impersonate', options)), 1)));
-            }, 1));
+                await delay(1);
+                await Generate('impersonate', options);
+            });
 
             if (shouldAwait) {
-                const innerPromise = await outerPromise;
-                await innerPromise;
+                await generationPromise;
+            } else {
+                void generationPromise.catch(error => console.warn('Impersonation failed', error));
             }
 
             return '';
