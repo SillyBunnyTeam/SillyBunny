@@ -67,7 +67,7 @@ describe('topbar label tap cycle', () => {
 
     test('title activation respects the click-to-cycle toggle', () => {
         const activationSource = getFunctionSource('handleTopBarTitleActivation');
-        expect(activationSource).toContain('if (sbState.topbarLabel.clickCycle)');
+        expect(activationSource).toContain('if (isTopbarLabelClickCycleEnabled())');
         expect(activationSource).toContain('cycleTopBarLabel();');
         expect(activationSource).toContain('returnToChatSurface();');
 
@@ -78,7 +78,8 @@ describe('topbar label tap cycle', () => {
         expect(returnSource).not.toContain('closeCurrentChat');
 
         const setterSource = getFunctionSource('setTopbarLabelClickCycle');
-        expect(setterSource).toContain('safeSetItem(SB_STORAGE_KEYS.topbarLabelClickCycle, String(nextValue));');
+        expect(setterSource).toContain('const mode = isMobileViewport() ? \'mobile\' : \'desktop\';');
+        expect(setterSource).toContain('safeSetItem(storageKey, String(nextValue));');
         expect(setterSource).toContain('resetTopBarLabelCycle({ refresh: false });');
         expect(tabsSource).toContain('topbarLabelClickCycle: \'sb-topbar-label-click-cycle\'');
         expect(tabsSource).toContain('normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarLabelClickCycle), true)');

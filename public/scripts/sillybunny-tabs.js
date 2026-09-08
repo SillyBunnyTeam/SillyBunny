@@ -46,6 +46,8 @@ const SB_STORAGE_KEYS = Object.freeze({
     topbarLabelMobilePart: 'sb-topbar-label-mobile-part',
     topbarLabelCustomText: 'sb-topbar-label-custom-text',
     topbarLabelClickCycle: 'sb-topbar-label-click-cycle',
+    topbarLabelClickCycleDesktop: 'sb-topbar-label-click-cycle-desktop',
+    topbarLabelClickCycleMobile: 'sb-topbar-label-click-cycle-mobile',
     chatbarVisible: 'sb-chatbar-visible',
     topbarOffset: 'sb-topbar-offset',
     settingsDrawerStatePrefix: 'sb-settings-inline-drawer',
@@ -295,7 +297,6 @@ function flushSbStorageWrites() {
     }
 
     const pendingWrites = Array.from(sbStoragePendingWrites.entries());
-    sbStoragePendingWrites.clear();
 
     for (const [key, write] of pendingWrites) {
         try {
@@ -304,8 +305,9 @@ function flushSbStorageWrites() {
             } else {
                 localStorage.setItem(key, write.value);
             }
+            sbStoragePendingWrites.delete(key);
         } catch {
-            // Keep the previous safe localStorage semantics: storage failures are non-fatal.
+            // Retry on the next flush or page hide if browser storage becomes writable again.
         }
     }
 }
@@ -850,7 +852,10 @@ const sbState = {
             ? 'char'
             : normalizeTopbarLabelPart(safeGetItem(SB_STORAGE_KEYS.topbarLabelMobilePart), ''),
         customText: normalizeTopbarCustomText(safeGetItem(SB_STORAGE_KEYS.topbarLabelCustomText)),
-        clickCycle: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarLabelClickCycle), true),
+        clickCycle: {
+            desktop: readTopbarLabelClickCycle('desktop'),
+            mobile: readTopbarLabelClickCycle('mobile'),
+        },
         contextTokens: null,
         refreshTimer: 0,
         refreshInFlight: false,
@@ -1081,6 +1086,21 @@ function normalizeStoredBoolean(value, fallback = false) {
     }
 
     return fallback;
+}
+
+function readTopbarLabelClickCycle(mode) {
+    const storageKey = mode === 'mobile'
+        ? SB_STORAGE_KEYS.topbarLabelClickCycleMobile
+        : SB_STORAGE_KEYS.topbarLabelClickCycleDesktop;
+    // Keep the old choice as a read-only seed until each layout has its own saved value.
+    return normalizeStoredBoolean(
+        safeGetItem(storageKey),
+        normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarLabelClickCycle), true),
+    );
+}
+
+function isTopbarLabelClickCycleEnabled() {
+    return isMobileViewport() ? sbState.topbarLabel.clickCycle.mobile : sbState.topbarLabel.clickCycle.desktop;
 }
 
 function normalizeMobileNavLayout(value) {
@@ -1531,7 +1551,8 @@ function restorePersistedTopbarState() {
         ? 'char'
         : normalizeTopbarLabelPart(safeGetItem(SB_STORAGE_KEYS.topbarLabelMobilePart), '');
     sbState.topbarLabel.customText = normalizeTopbarCustomText(safeGetItem(SB_STORAGE_KEYS.topbarLabelCustomText));
-    sbState.topbarLabel.clickCycle = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarLabelClickCycle), true);
+    sbState.topbarLabel.clickCycle.desktop = readTopbarLabelClickCycle('desktop');
+    sbState.topbarLabel.clickCycle.mobile = readTopbarLabelClickCycle('mobile');
     sbState.chatbar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.chatbarVisible), sbState.chatbar.visible);
     sbState.chatbar.topbarOffset = normalizeTopbarOffset(safeGetItem(SB_STORAGE_KEYS.topbarOffset));
     sbState.compactMode = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), sbState.compactMode);
@@ -4184,17 +4205,21 @@ function setTopbarCustomText(value) {
 }
 
 function setTopbarLabelClickCycle(enabled) {
+    const mode = isMobileViewport() ? 'mobile' : 'desktop';
     const nextValue = Boolean(enabled);
-    if (sbState.topbarLabel.clickCycle === nextValue) {
+    if (sbState.topbarLabel.clickCycle[mode] === nextValue) {
         return;
     }
 
-    sbState.topbarLabel.clickCycle = nextValue;
+    sbState.topbarLabel.clickCycle[mode] = nextValue;
     if (!nextValue) {
         resetTopBarLabelCycle({ refresh: false });
     }
 
-    safeSetItem(SB_STORAGE_KEYS.topbarLabelClickCycle, String(nextValue));
+    const storageKey = mode === 'mobile'
+        ? SB_STORAGE_KEYS.topbarLabelClickCycleMobile
+        : SB_STORAGE_KEYS.topbarLabelClickCycleDesktop;
+    safeSetItem(storageKey, String(nextValue));
     flushSbStorageWrites();
     updateThemePickerUi();
     updateTopBarBrand();
@@ -4711,7 +4736,7 @@ function returnToChatSurface() {
 }
 
 function handleTopBarTitleActivation() {
-    if (sbState.topbarLabel.clickCycle) {
+    if (isTopbarLabelClickCycleEnabled()) {
         cycleTopBarLabel();
         return;
     }
@@ -4773,7 +4798,7 @@ function updateTopBarBrand() {
     bindTopBarTitleCycle(title);
     title.textContent = label;
     title.title = label;
-    title.setAttribute('aria-label', sbState.topbarLabel.clickCycle
+    title.setAttribute('aria-label', isTopbarLabelClickCycleEnabled()
         ? `${label}. Tap to preview top bar label options.`
         : `${label}. Tap to return to the chat.`);
     title.classList.toggle('is-chat', isActiveChat);
@@ -9014,7 +9039,9 @@ window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener('change', () => {
     // Crossing the breakpoint can change which device's icons-only setting is in force, so the
     // whole preference re-applies rather than just the group order.
     applyTopbarIconsOnlyPreference();
-    queueTopbarBrandFit();
+    resetTopBarLabelCycle({ refresh: false });
+    updateThemePickerUi();
+    updateTopBarBrand();
     // Crossing the breakpoint also decides which rail third-party composer buttons belong in.
     queueComposerControlPlacement();
 });
@@ -14037,8 +14064,8 @@ function updateThemePickerUi() {
             continue;
         }
 
-        input.checked = sbState.topbarLabel.clickCycle;
-        input.closest('.sb-topbar-label-option')?.classList.toggle('is-selected', sbState.topbarLabel.clickCycle);
+        input.checked = isTopbarLabelClickCycleEnabled();
+        input.closest('.sb-topbar-label-option')?.classList.toggle('is-selected', input.checked);
     }
 
     for (const input of document.querySelectorAll('[data-sb-compact-mode-input]')) {
