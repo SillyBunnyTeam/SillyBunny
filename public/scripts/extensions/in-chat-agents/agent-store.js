@@ -1721,23 +1721,27 @@ export async function reorderAgentsIntoOrderSlots(orderedSubsetIds) {
  * @param {string} id
  */
 export async function deleteAgent(id) {
-    agents = agents.filter(agent => agent.id !== id);
-    deleteCachedAgentRegexScripts(id);
-    const scopedStateChanged = removeAgentIdFromScopedEnabledAgentIds(id);
+    const deletion = agentSaveChain.then(async () => {
+        agents = agents.filter(agent => agent.id !== id);
+        deleteCachedAgentRegexScripts(id);
+        const scopedStateChanged = removeAgentIdFromScopedEnabledAgentIds(id);
 
-    const response = await fetch('/api/in-chat-agents/delete', {
-        method: 'POST',
-        headers: getRequestHeaders(),
-        body: JSON.stringify({ id }),
+        const response = await fetch('/api/in-chat-agents/delete', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ id }),
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to delete agent');
+        }
+
+        if (scopedStateChanged) {
+            persistAgentGlobalSettings();
+        }
     });
-
-    if (!response.ok) {
-        throw new Error('Failed to delete agent');
-    }
-
-    if (scopedStateChanged) {
-        persistAgentGlobalSettings();
-    }
+    agentSaveChain = deletion.catch(() => {});
+    return deletion;
 }
 
 /**
