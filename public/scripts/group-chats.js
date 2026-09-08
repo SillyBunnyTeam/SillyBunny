@@ -78,7 +78,9 @@ import {
     ensureMessageMediaIsArray,
     syncCharacterMenuActiveEntity,
     incrementChatGeneration,
+    getChatGeneration,
 } from '../script.js';
+import { getQueuedChatSaveAbortReason } from './chat-save-guard.js';
 import { printTagList, createTagMapFromList, applyTagsOnCharacterSelect, tag_map, applyTagsOnGroupSelect, printTagFilters, tag_filter_type } from './tags.js';
 import { FILTER_TYPES, FilterHelper } from './filters.js';
 import { isExternalMediaAllowed } from './chats.js';
@@ -1120,6 +1122,7 @@ function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnError = f
     const chatSnapshot = cloneGroupChatSavePayload(chat);
     const metadataSnapshot = structuredClone(chat_metadata);
     const chatIdSnapshot = group.chat_id;
+    const currentGeneration = getChatGeneration();
     const saveTask = groupChatSaveQueue
         .catch(error => console.warn('Previous group chat save failed before queued save.', error))
         .then(() => saveGroupChatImmediately({
@@ -1132,6 +1135,7 @@ function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnError = f
             metadata: metadataSnapshot,
             deferBackup: Boolean(options.deferBackup),
             allowShrink: Boolean(options.allowShrink),
+            scheduledGeneration: currentGeneration,
         }));
 
     groupChatSaveQueue = saveTask.catch(() => {});
@@ -1153,10 +1157,25 @@ export async function waitForQueuedGroupChatSaves() {
     }
 }
 
-async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = false, throwOnError = false, chatId, chatData, metadata, deferBackup = false, allowShrink = false }) {
+async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = false, throwOnError = false, chatId, chatData, metadata, deferBackup = false, allowShrink = false, scheduledGeneration }) {
     const group = groups.find(x => x.id == groupId);
     if (!group) {
         console.warn('Group not found', groupId);
+        return false;
+    }
+
+    // SillyBunny: abort saves whose identity or generation changed while queued to prevent chat cloning.
+    const abortReason = getQueuedChatSaveAbortReason({
+        scheduledGroupId: groupId,
+        currentGroupId: selected_group,
+        scheduledChatId: chatId,
+        currentChatId: group.chat_id,
+        scheduledGeneration,
+        currentGeneration: getChatGeneration(),
+    });
+
+    if (abortReason) {
+        console.warn(`saveGroupChatImmediately aborted, but ${abortReason} changed while queued.`);
         return false;
     }
 
@@ -1212,7 +1231,7 @@ async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = fals
             return false;
         }
 
-        return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata: metadataForSave, deferBackup, allowShrink });
+        return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata: metadataForSave, deferBackup, allowShrink, scheduledGeneration });
     }
 
     const responseData = await response.json().catch(() => ({}));
