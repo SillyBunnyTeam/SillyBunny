@@ -922,7 +922,9 @@ function canElementScrollOnAxis(element, axis) {
     const style = window.getComputedStyle(element);
     const overflow = axis === 'x' ? style.overflowX : style.overflowY;
 
-    return SCROLLABLE_OVERFLOW_VALUES.has(overflow);
+    // Firefox reports visible for native textarea scrolling, unlike Chromium's auto.
+    return SCROLLABLE_OVERFLOW_VALUES.has(overflow)
+        || (overflow === 'visible' && element.matches('textarea'));
 }
 
 function canElementScrollForGesture(element, delta, { requireAvailableScrollInDirection = false } = {}) {
