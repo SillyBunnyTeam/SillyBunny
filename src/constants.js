@@ -383,6 +383,7 @@ export const FEATHERLESS_HEADERS = {
 };
 
 export const OPENROUTER_KEYS = [
+    'service_tier', // SillyBunny: retain explicit Flex/Priority routing in Text Completion.
     'max_tokens',
     'temperature',
     'top_k',

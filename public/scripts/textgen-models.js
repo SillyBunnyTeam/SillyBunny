@@ -8,6 +8,7 @@ import { t } from './i18n.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { localizePagination, PAGINATION_TEMPLATE, textValueMatcher } from './utils.js';
 import { isMobile } from './RossAscends-mods.js';
+import { updateServiceTierOptions } from './service-tiers.js';
 
 let mancerModels = [];
 let togetherModels = [];
@@ -27,362 +28,16 @@ function shouldUseNativeApiSelects() {
 // SillyBunny: share in-flight catalogue requests, not a hardcoded provider list.
 let openRouterProvidersRequest = null;
 
-/**
- * List of NanoGPT providers.
- * Providers endpoint: https://nano-gpt.com/api/models/providers
- * @type {{id: string, label: string}[]}
- */
-const NANOGPT_PROVIDERS = [
-    {
-        'id': 'aionlabs',
-        'label': 'Aion',
-    },
-    {
-        'id': 'aoru',
-        'label': 'Aoru AI',
-    },
-    {
-        'id': 'akash',
-        'label': 'Akash',
-    },
-    {
-        'id': 'alibaba',
-        'label': 'Alibaba',
-    },
-    {
-        'id': 'ambient',
-        'label': 'Ambient',
-    },
-    {
-        'id': 'anthropic',
-        'label': 'Anthropic',
-    },
-    {
-        'id': 'arliai',
-        'label': 'ArliAI',
-    },
-    {
-        'id': 'aster',
-        'label': 'Aster',
-    },
-    {
-        'id': 'aster-fast',
-        'label': 'Aster Fast',
-    },
-    {
-        'id': 'atlascloud',
-        'label': 'AtlasCloud',
-    },
-    {
-        'id': 'azure',
-        'label': 'Azure',
-    },
-    {
-        'id': 'awsbedrock',
-        'label': 'Amazon Bedrock',
-    },
-    {
-        'id': 'baidu',
-        'label': 'Baidu',
-    },
-    {
-        'id': 'baseten',
-        'label': 'BaseTen',
-    },
-    {
-        'id': 'cerebras',
-        'label': 'Cerebras',
-    },
-    {
-        'id': 'chutes',
-        'label': 'Chutes',
-    },
-    {
-        'id': 'clarifai',
-        'label': 'Clarifai',
-    },
-    {
-        'id': 'cloudflare',
-        'label': 'Cloudflare',
-    },
-    {
-        'id': 'coreweave',
-        'label': 'CoreWeave',
-    },
-    {
-        'id': 'crofai',
-        'label': 'CrofAI',
-    },
-    {
-        'id': 'crusoe',
-        'label': 'Crusoe',
-    },
-    {
-        'id': 'decart',
-        'label': 'Decart',
-    },
-    {
-        'id': 'dekallm',
-        'label': 'DekaLLM',
-    },
-    {
-        'id': 'deepinfra',
-        'label': 'DeepInfra',
-    },
-    {
-        'id': 'deepseek',
-        'label': 'DeepSeek',
-    },
-    {
-        'id': 'darkbloom',
-        'label': 'Darkbloom',
-    },
-    {
-        'id': 'engy',
-        'label': 'EngyAI',
-    },
-    {
-        'id': 'fireworks',
-        'label': 'Fireworks',
-    },
-    {
-        'id': 'fireworks-fast',
-        'label': 'Fireworks Fast',
-    },
-    {
-        'id': 'friendli',
-        'label': 'Friendli',
-    },
-    {
-        'id': 'gerra',
-        'label': 'Gerra',
-    },
-    {
-        'id': 'gmicloud',
-        'label': 'GMICloud',
-    },
-    {
-        'id': 'lilac',
-        'label': 'Lilac',
-    },
-    {
-        'id': 'llmtech',
-        'label': 'LLM Tech',
-    },
-    {
-        'id': 'lucidity',
-        'label': 'Lucidity',
-    },
-    {
-        'id': 'heabsy',
-        'label': 'Heabsy',
-    },
-    {
-        'id': 'google',
-        'label': 'Google',
-    },
-    {
-        'id': 'groq',
-        'label': 'Groq',
-    },
-    {
-        'id': 'hyperbolic',
-        'label': 'Hyperbolic',
-    },
-    {
-        'id': 'ionet',
-        'label': 'io.net',
-    },
-    {
-        'id': 'inceptron',
-        'label': 'Inceptron',
-    },
-    {
-        'id': 'mancer',
-        'label': 'Mancer',
-    },
-    {
-        'id': 'mara',
-        'label': 'Mara',
-    },
-    {
-        'id': 'meganova',
-        'label': 'MegaNova',
-    },
-    {
-        'id': 'meta',
-        'label': 'Meta',
-    },
-    {
-        'id': 'mixlayer',
-        'label': 'Mixlayer',
-    },
-    {
-        'id': 'minimax',
-        'label': 'MiniMax',
-    },
-    {
-        'id': 'modal',
-        'label': 'Modal',
-    },
-    {
-        'id': 'modelrun',
-        'label': 'ModelRun',
-    },
-    {
-        'id': 'moonshot',
-        'label': 'Moonshot',
-    },
-    {
-        'id': 'morph',
-        'label': 'Morph',
-    },
-    {
-        'id': 'ncompass',
-        'label': 'NCompass',
-    },
-    {
-        'id': 'nebius',
-        'label': 'Nebius',
-    },
-    {
-        'id': 'neuralwatt',
-        'label': 'NeuralWatt',
-    },
-    {
-        'id': 'neuralwatt-fast',
-        'label': 'NeuralWatt Fast',
-    },
-    {
-        'id': 'neuralwatt-flex',
-        'label': 'NeuralWatt Flex',
-    },
-    {
-        'id': 'nube',
-        'label': 'Nube',
-    },
-    {
-        'id': 'tensorix',
-        'label': 'TensorX',
-    },
-    {
-        'id': 'nextbit',
-        'label': 'NextBit',
-    },
-    {
-        'id': 'novita',
-        'label': 'Novita',
-    },
-    {
-        'id': 'openai',
-        'label': 'OpenAI',
-    },
-    {
-        'id': 'parasail',
-        'label': 'Parasail',
-    },
-    {
-        'id': 'phala',
-        'label': 'Phala',
-    },
-    {
-        'id': 'plubo',
-        'label': 'Plubo AI',
-    },
-    {
-        'id': 'pokee',
-        'label': 'Pokee',
-    },
-    {
-        'id': 'abliteration',
-        'label': 'Abliteration.ai',
-    },
-    {
-        'id': 'redpill',
-        'label': 'Redpill',
-    },
-    {
-        'id': 'runware',
-        'label': 'Runware',
-    },
-    {
-        'id': 'sailresearch-asap',
-        'label': 'Sail Research (ASAP)',
-    },
-    {
-        'id': 'sailresearch-priority',
-        'label': 'Sail Research (Priority)',
-    },
-    {
-        'id': 'sailresearch-standard',
-        'label': 'Sail Research (Standard)',
-    },
-    {
-        'id': 'sambanova',
-        'label': 'SambaNova',
-    },
-    {
-        'id': 'sambanova-high-throughput',
-        'label': 'SambaNova (High Throughput)',
-    },
-    {
-        'id': 'siliconflow',
-        'label': 'SiliconFlow',
-    },
-    {
-        'id': 'streamlake',
-        'label': 'StreamLake',
-    },
-    {
-        'id': 'tinfoil',
-        'label': 'Tinfoil',
-    },
-    {
-        'id': 'together',
-        'label': 'Together',
-    },
-    {
-        'id': 'uomi',
-        'label': 'Uomi',
-    },
-    {
-        'id': 'venice',
-        'label': 'Venice',
-    },
-    {
-        'id': 'wandb',
-        'label': 'Weights & Biases',
-    },
-    {
-        'id': 'wafer',
-        'label': 'Wafer',
-    },
-    {
-        'id': 'xai',
-        'label': 'SpaceXAI',
-    },
-    {
-        'id': 'xiaomi',
-        'label': 'Xiaomi',
-    },
-    {
-        'id': 'zai',
-        'label': 'Z.AI',
-    },
-    {
-        'id': 'zenmux',
-        'label': 'ZenMux',
-    },
-];
-
 const OPENROUTER_PROVIDER_WARNING_SELECTORS = {
     '#openrouter_providers_text': {
         fallbackSelector: '#openrouter_allow_fallbacks_textgenerationwebui',
         warningSelector: '#openrouter_provider_warning_text',
+        tierSelector: '#openrouter_service_tier_text',
     },
     '#openrouter_providers_chat': {
         fallbackSelector: '#openrouter_allow_fallbacks',
         warningSelector: '#openrouter_provider_warning_chat',
+        tierSelector: '#openrouter_service_tier_chat',
     },
 };
 
@@ -413,19 +68,26 @@ export function updateOpenRouterProvidersWarning(providersSelector) {
  * @param {string[]} [providerNames]
  */
 export function setOpenRouterProviders(providersSelector, selectedProviders, providerNames) {
+    setProviderOptions(providersSelector, selectedProviders, providerNames?.map(name => ({ id: name, label: name })));
+    updateOpenRouterProvidersWarning(providersSelector);
+}
+
+function setProviderOptions(providersSelector, selectedProviders, providers) {
     const select = $(providersSelector)[0];
     if (!select) return;
 
     const options = new Map(Array.from(select.options, option => [option.value, option]));
     const selected = Array.isArray(selectedProviders) ? selectedProviders.filter(name => typeof name === 'string' && name.trim()) : [];
-    const names = (providerNames ?? [...options.keys()]).filter(name => !selected.includes(name)).sort((a, b) => a.localeCompare(b));
+    const labels = new Map(providers?.map(provider => [provider.id, provider.label]));
+    const names = (providers?.map(provider => provider.id) ?? [...options.keys()]).filter(name => !selected.includes(name))
+        .sort((a, b) => (labels.get(a) ?? a).localeCompare(labels.get(b) ?? b));
     select.replaceChildren(...Array.from(new Set([...names, ...selected]), name => {
         const option = options.get(name) ?? new Option(name, name);
+        option.text = labels.get(name) ?? option.text;
         option.selected = selected.includes(name);
         return option;
     }));
     $(select).trigger('change.select2');
-    updateOpenRouterProvidersWarning(providersSelector);
 }
 
 export async function syncOpenRouterProvidersForModel(modelId, providersSelector) {
@@ -435,6 +97,11 @@ export async function syncOpenRouterProvidersForModel(modelId, providersSelector
     // SillyBunny: a late catalogue or model response must not overwrite a newer selection.
     const request = {};
     $providers.data('openrouterRequest', request);
+    const tierSelector = OPENROUTER_PROVIDER_WARNING_SELECTORS[providersSelector]?.tierSelector;
+    if ($providers.data('openrouterModel') !== modelId) {
+        updateServiceTierOptions(tierSelector);
+        $providers.data('openrouterModel', modelId);
+    }
 
     const refreshWarningState = () => {
         updateOpenRouterProvidersWarning(providersSelector);
@@ -474,7 +141,7 @@ export async function syncOpenRouterProvidersForModel(modelId, providersSelector
         const response = await fetch('/api/openrouter/models/providers', {
             method: 'POST',
             headers: getRequestHeaders(),
-            body: JSON.stringify({ model: modelId }),
+            body: JSON.stringify({ model: modelId, include_service_tiers: true }),
         });
 
         if ($providers.data('openrouterRequest') !== request) return;
@@ -484,8 +151,10 @@ export async function syncOpenRouterProvidersForModel(modelId, providersSelector
             return;
         }
 
-        const providerNames = await response.json();
+        const data = await response.json();
         if ($providers.data('openrouterRequest') !== request) return;
+        const providerNames = Array.isArray(data) ? data : data?.providers;
+        if (Array.isArray(data?.service_tiers)) updateServiceTierOptions(tierSelector, data.service_tiers);
 
         if (!Array.isArray(providerNames) || providerNames.length === 0) {
             $providers.find('option').prop('disabled', false);
@@ -508,6 +177,7 @@ export async function syncOpenRouterProvidersForModel(modelId, providersSelector
 }
 
 let nanoGptProvidersRequest = 0;
+let nanoGptCatalogueRequest = null;
 
 export async function syncNanoGptProvidersForModel(modelId, providersSelector) {
     const requestId = ++nanoGptProvidersRequest;
@@ -520,7 +190,30 @@ export async function syncNanoGptProvidersForModel(modelId, providersSelector) {
     $providers.removeData('supportsProviderSelection').find('option').prop('disabled', false);
     $providers.trigger('change.select2');
     refreshWarningState();
-    if (!modelId) return;
+
+    try {
+        nanoGptCatalogueRequest ??= fetch('/api/nanogpt/providers', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+        }).then(async response => {
+            if (!response.ok) throw new Error(`NanoGPT providers request failed: ${response.status}`);
+            const providers = await response.json();
+            if (!Array.isArray(providers) || !providers.length || !providers.every(provider => typeof provider?.id === 'string' && provider.id.trim() && typeof provider.label === 'string' && provider.label.trim())) {
+                throw new Error('Invalid NanoGPT providers response');
+            }
+            return providers;
+        }).finally(() => {
+            nanoGptCatalogueRequest = null;
+        });
+        const providers = await nanoGptCatalogueRequest;
+        if (requestId !== nanoGptProvidersRequest) return;
+        for (const select of $providers.add('#nanogpt_ignored_providers')) {
+            setProviderOptions(`#${select.id}`, Array.from(select.selectedOptions, option => option.value), providers);
+        }
+    } catch (error) {
+        console.warn('Failed to refresh NanoGPT provider catalogue', error);
+    }
+    if (requestId !== nanoGptProvidersRequest || !modelId) return;
 
     try {
         const response = await fetch('/api/nanogpt/models/providers', {
@@ -554,7 +247,7 @@ export async function syncNanoGptProvidersForModel(modelId, providersSelector) {
             $(this).prop('disabled', !isAvailable);
         });
 
-        $providers.trigger('change.select2');
+        $providers.add('#nanogpt_ignored_providers').trigger('change.select2');
         refreshWarningState();
     } catch (error) {
         console.error('Failed to fetch NanoGPT providers for model', error);
@@ -1474,12 +1167,7 @@ export function initTextGenModels() {
     }
 
     const nanoGptProvidersSelect = $('#nanogpt_allowed_providers, #nanogpt_ignored_providers');
-    for (const provider of NANOGPT_PROVIDERS) {
-        nanoGptProvidersSelect.append($('<option>', {
-            value: provider.id,
-            text: provider.label,
-        }));
-    }
+    void syncNanoGptProvidersForModel('', '#nanogpt_allowed_providers');
 
     if (shouldUseNativeApiSelects()) {
         return;
@@ -1589,7 +1277,7 @@ export function initTextGenModels() {
         closeOnSelect: false,
     });
     // SillyBunny: refresh open results after async updates, surviving shell reinitialisation.
-    $(document).on('change.select2', '.openrouter_providers', function () {
+    $(document).on('change.select2', '.openrouter_providers, #nanogpt_allowed_providers, #nanogpt_ignored_providers', function () {
         const select2 = $(this).data('select2');
         if (select2?.isOpen()) {
             select2.trigger('query', { term: select2.selection.$search.val() || '' });

@@ -3284,6 +3284,15 @@ export async function handleChatCompletionsGenerate(request, response) {
             return response.status(400).send({ error: true });
         }
 
+        // SillyBunny: service tiers are explicit routing choices on these two aggregators.
+        if ([CHAT_COMPLETION_SOURCES.NANOGPT, CHAT_COMPLETION_SOURCES.OPENROUTER].includes(request.body.chat_completion_source)
+            && request.body.service_tier !== undefined) {
+            if (!['auto', 'default', 'flex', 'priority'].includes(request.body.service_tier)) {
+                return response.status(400).json({ error: true, field: 'service_tier' });
+            }
+            bodyParams.service_tier = request.body.service_tier;
+        }
+
         // A few of OpenAIs reasoning models support reasoning effort
         const shouldUseDefaultOpenAiReasoningEffort = request.body.chat_completion_source !== CHAT_COMPLETION_SOURCES.CUSTOM
             || !hasCustomReasoningParamConfig(request.body);

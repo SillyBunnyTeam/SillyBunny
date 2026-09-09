@@ -2412,6 +2412,12 @@
                                     </h4>
                                     <select id="openrouter_providers_text" class="openrouter_providers" multiple>
                                     </select>
+                                    <label for="openrouter_service_tier_text">Flex + Priority</label>
+                                    <select id="openrouter_service_tier_text" class="text_pole" disabled>
+                                        <option value="" data-i18n="Default">Default</option>
+                                        <option value="flex" disabled>Flex</option>
+                                        <option value="priority" disabled>Priority</option>
+                                    </select>
                                     <label class="checkbox_label" data-i18n="[title]Automatically chooses an alternative provider if chosen providers can't serve your request." for="openrouter_allow_fallbacks_textgenerationwebui" title="Automatically chooses an alternative provider if chosen providers can't serve your request.">
                                         <input id="openrouter_allow_fallbacks_textgenerationwebui" type="checkbox" />
                                         <span data-i18n="Allow fallback providers">Allow fallback providers</span>
@@ -3229,6 +3235,12 @@
                                 </h4>
                                 <select id="openrouter_providers_chat" class="openrouter_providers" multiple>
                                 </select>
+                                <label for="openrouter_service_tier_chat">Flex + Priority</label>
+                                <select id="openrouter_service_tier_chat" class="text_pole" disabled>
+                                    <option value="" data-i18n="Default">Default</option>
+                                    <option value="flex" disabled>Flex</option>
+                                    <option value="priority" disabled>Priority</option>
+                                </select>
                                 <label class="checkbox_label marginTopBot5" for="openrouter_allow_fallbacks" data-i18n="[title]Automatically chooses an alternative provider if chosen providers can't serve your request." title="Automatically chooses an alternative provider if chosen providers can't serve your request.">
                                     <input id="openrouter_allow_fallbacks" type="checkbox" />
                                     <span data-i18n="Allow fallback providers">Allow fallback providers</span>
@@ -3675,6 +3687,12 @@
                                 <input id="nanogpt_payg_override" type="checkbox">
                                 <span data-i18n="Use pay-as-you-go billing">Use pay-as-you-go billing</span>
                             </label>
+                            <label for="nanogpt_service_tier">Flex + Priority</label>
+                            <select id="nanogpt_service_tier" class="text_pole" disabled>
+                                <option value="" data-i18n="Default">Default</option>
+                                <option value="flex" disabled>Flex</option>
+                                <option value="priority" disabled>Priority</option>
+                            </select>
                         </div>
                         <div id="workers_ai_form" data-source="workers_ai">
                             <h4><a href="https://dash.cloudflare.com/?to=/:account/ai/workers-ai/api-quick-start" target="_blank" rel="noopener noreferrer" data-i18n="Cloudflare Workers AI API Key">Cloudflare Workers AI API Key</a></h4>

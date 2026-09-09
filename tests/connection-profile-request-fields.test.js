@@ -4,7 +4,12 @@ const mockOpenAiSettings = {};
 const mockProxies = [];
 
 await jest.unstable_mockModule('../public/script.js', () => ({
-    CONNECT_API_MAP: {},
+    CONNECT_API_MAP: {
+        nanogpt: { selected: 'openai', source: 'nanogpt' },
+        openrouter: { selected: 'openai', source: 'openrouter' },
+        'openrouter-text': { selected: 'textgenerationwebui', type: 'openrouter' },
+        openai: { selected: 'openai', source: 'openai' },
+    },
     createModelIcon: jest.fn(),
     getRequestHeaders: jest.fn(() => ({})),
 }));
@@ -59,6 +64,7 @@ await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
 const {
     getChatCompletionProfileRequestOverrides,
     getChatCompletionProfileReverseProxy,
+    getProfileServiceTier,
 } = await import('../public/scripts/extensions/shared.js');
 
 const mappedRequestFieldNames = [
@@ -110,6 +116,18 @@ beforeEach(() => {
         delete mockOpenAiSettings[key];
     }
     mockProxies.splice(0, mockProxies.length);
+});
+
+test('service tiers stay scoped to the profile or its bound preset, including explicit Default', () => {
+    mockOpenAiSettings.nanogpt_service_tier = 'priority';
+    mockPresets.set('tier-preset', { nanogpt_service_tier: 'flex', openrouter_service_tier: 'priority' });
+    expect(getProfileServiceTier({ api: 'nanogpt' })).toBe('');
+    expect(getProfileServiceTier({ api: 'nanogpt', preset: 'tier-preset' })).toBe('flex');
+    expect(getProfileServiceTier({ api: 'openrouter', preset: 'tier-preset' })).toBe('priority');
+    expect(getProfileServiceTier({ api: 'nanogpt', preset: 'tier-preset', 'service-tier': 'default' })).toBe('');
+    expect(getProfileServiceTier({ api: 'openrouter-text', 'service-tier': 'flex' })).toBe('flex');
+    expect(getProfileServiceTier({ api: 'openai', 'service-tier': 'priority' })).toBeUndefined();
+    expect(getProfileServiceTier({ api: 'nanogpt', exclude: ['service-tier'] })).toBeUndefined();
 });
 
 describe('Connection Profile chat-completion request field mapping', () => {
@@ -303,4 +321,3 @@ describe('reasoning settings from the profile preset', () => {
         expect(getChatCompletionProfileRequestOverrides(base, {}).overrides).toEqual({});
     });
 });
-

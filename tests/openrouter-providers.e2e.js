@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const models = readFileSync(new URL('../public/scripts/textgen-models.js', import.meta.url), 'utf8');
 const openai = readFileSync(new URL('../public/scripts/openai.js', import.meta.url), 'utf8');
+const tierCode = readFileSync(new URL('../public/scripts/service-tiers.js', import.meta.url), 'utf8').replaceAll('export ', '');
 const providerCode = models.slice(models.indexOf('const OPENROUTER_PROVIDER_WARNING_SELECTORS'), models.indexOf('let nanoGptProvidersRequest')).replaceAll('export ', '');
 const pickerCode = openai.slice(openai.indexOf('function getInlineSelectPickerEntries('), openai.indexOf('function bindInlineSelectPickerControl('));
 const desktopCode = models.slice(models.indexOf('    providersSelect.select2({'), models.indexOf('    nanoGptProvidersSelect.select2({'));
@@ -12,7 +13,8 @@ const desktopCode = models.slice(models.indexOf('    providersSelect.select2({')
 for (const mobile of [false, true]) {
     test(`live provider catalogue preserves choices and ignores stale responses (${mobile ? 'mobile' : 'desktop'})`, async ({ page }) => {
         await page.setViewportSize({ width: mobile ? 390 : 1440, height: 900 });
-        await page.setContent(['text', 'chat'].map(mode => `<div><select multiple class="openrouter_providers" id="openrouter_providers_${mode}"></select></div>`).join(''));
+        await page.setContent(['text', 'chat'].map(mode => `<div><select multiple class="openrouter_providers" id="openrouter_providers_${mode}"></select>
+            <select id="openrouter_service_tier_${mode}"><option value="">Default</option><option value="flex">Flex</option><option value="priority">Priority</option></select></div>`).join(''));
         await page.addScriptTag({ path: fileURLToPath(new URL('../public/lib/jquery-3.5.1.min.js', import.meta.url)) });
         await page.addScriptTag({ path: fileURLToPath(new URL('../public/lib/select2.min.js', import.meta.url)) });
         await page.addScriptTag({ content: `
@@ -25,6 +27,7 @@ for (const mobile of [false, true]) {
             const scrollElementIntoNearestPanelScroller = () => {};
             window.pending = [];
             window.fetch = (url, options) => new Promise(resolve => pending.push({ url, options, resolve }));
+            ${tierCode}
             ${providerCode}
             ${pickerCode}
             const providersSelect = $('.openrouter_providers');
@@ -58,11 +61,13 @@ for (const mobile of [false, true]) {
         });
         await expect.poll(() => page.evaluate(() => window.pending.length)).toBe(2);
         await page.evaluate(async () => {
-            for (const request of window.pending.splice(0)) request.resolve({ ok: true, json: async () => ['Alpha', 'Zeta'] });
+            for (const request of window.pending.splice(0)) request.resolve({ ok: true, json: async () => ({ providers: ['Alpha', 'Zeta'], service_tiers: ['flex', 'priority'] }) });
             await window.loading;
         });
         for (const mode of ['text', 'chat']) {
             await expect(page.locator(`#openrouter_providers_${mode} option`)).toHaveCount(4);
+            await expect(page.locator(`#openrouter_service_tier_${mode}`)).toBeEnabled();
+            await page.locator(`#openrouter_service_tier_${mode}`).selectOption('flex');
         }
         expect(await page.evaluate(() => Array.from(document.querySelector('#openrouter_providers_chat').selectedOptions, option => option.value))).toEqual(['Missing', 'Zeta']);
         await expect(page.locator('img')).toHaveCount(0);
@@ -91,13 +96,16 @@ for (const mobile of [false, true]) {
         });
         await expect.poll(() => page.evaluate(() => window.pending.length)).toBe(2);
         await page.evaluate(async () => {
-            window.pending.pop().resolve({ ok: true, json: async () => ['Alpha'] });
+            window.pending.pop().resolve({ ok: true, json: async () => ({ providers: ['Alpha'], service_tiers: ['priority'] }) });
             await window.newer;
-            window.pending.pop().resolve({ ok: true, json: async () => ['Zeta'] });
+            window.pending.pop().resolve({ ok: true, json: async () => ({ providers: ['Zeta'], service_tiers: ['flex'] }) });
             await window.old;
         });
         await expect(page.locator('#openrouter_providers_chat option')).toHaveCount(4);
         expect(await page.locator('#openrouter_providers_chat option:enabled').allTextContents()).toEqual(['Alpha']);
         expect(await page.evaluate(() => window.changes)).toBe(changes);
+        await expect(page.locator('#openrouter_service_tier_chat')).toHaveValue('flex');
+        await expect(page.locator('#openrouter_service_tier_chat option[value="flex"]')).toBeDisabled();
+        await expect(page.locator('#openrouter_service_tier_chat option[value="priority"]')).toBeEnabled();
     });
 }

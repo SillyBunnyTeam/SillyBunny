@@ -5,6 +5,29 @@ import { readSecret, SECRET_KEYS } from './secrets.js';
 export const router = express.Router();
 const API_NANOGPT = 'https://nano-gpt.com/api';
 
+router.post('/providers', async (_req, res) => {
+    try {
+        const response = await fetch(`${API_NANOGPT}/models/providers`, {
+            headers: { 'Accept': 'application/json' },
+            signal: AbortSignal.timeout(10000),
+        });
+        if (!response.ok) return res.sendStatus(502);
+
+        /** @type {any} */
+        const data = await response.json();
+        if (!Array.isArray(data?.providers)) return res.sendStatus(502);
+        const providers = new Map(data.providers
+            .filter(provider => typeof provider?.id === 'string' && provider.id.trim() && typeof provider.label === 'string' && provider.label.trim())
+            .map(({ id, label }) => [id, { id, label }]));
+        if (!providers.size) return res.sendStatus(502);
+
+        return res.json([...providers.values()].sort((a, b) => a.label.localeCompare(b.label)));
+    } catch (error) {
+        console.warn('Failed to fetch NanoGPT provider catalogue', error);
+        return res.sendStatus(502);
+    }
+});
+
 /**
  * Parses a numeric API value, returning 0 for missing or invalid values.
  * @param {unknown} value Value to parse.
@@ -118,7 +141,7 @@ router.post('/models/providers', async (req, res) => {
         });
 
         if (!response.ok) {
-            return res.json({ supportsProviderSelection: false, providers: [] });
+            return res.sendStatus(502);
         }
 
         /** @type {any} */

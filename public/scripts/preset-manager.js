@@ -1111,6 +1111,7 @@ class PresetManager {
             'featherless_model',
             'max_tokens_second',
             'openrouter_providers',
+            'openrouter_service_tier',
             'openrouter_quantizations',
             'openrouter_allow_fallbacks',
             'tabby_model',
