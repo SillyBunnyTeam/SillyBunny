@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { CHAT_COMPLETION_SOURCES } from '../src/constants.js';
 import { setConfigFilePath } from '../src/util.js';
 
-const actualNodeFetch = (await import('node-fetch')).default;
+const { default: actualNodeFetch, Response: FetchResponse } = await import('node-fetch');
 const nodeFetchMock = jest.fn((url, options) => actualNodeFetch(url, options));
 await jest.unstable_mockModule('node-fetch', () => ({
     default: nodeFetchMock,
@@ -31,6 +31,7 @@ describe('outgoing chat completions', () => {
         setConfigFilePath(configPath);
 
         const { router: chatCompletionsRouter } = await import('../src/endpoints/backends/chat-completions.js');
+        const { router: textCompletionsRouter } = await import('../src/endpoints/backends/text-completions.js');
         const { SecretManager, SECRET_KEYS } = await import('../src/endpoints/secrets.js');
         const userRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-effort-user-'));
         tempDirs.push(userRoot);
@@ -48,6 +49,7 @@ describe('outgoing chat completions', () => {
             next();
         });
         app.use('/api/backends/chat-completions', chatCompletionsRouter);
+        app.use('/api/backends/text-completions', textCompletionsRouter);
 
         await new Promise((resolve) => {
             appServer = app.listen(0, '127.0.0.1', resolve);
@@ -85,7 +87,7 @@ describe('outgoing chat completions', () => {
     });
 
     function makeRequest(source, overrides = {}) {
-        return fetch(`${baseUrl}/api/backends/chat-completions/generate`, {
+        return fetch(`${baseUrl}/api/backends/${source === 'openrouter-text' ? 'text' : 'chat'}-completions/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -94,10 +96,58 @@ describe('outgoing chat completions', () => {
                 stream: false,
                 max_tokens: 128,
                 messages: [{ role: 'user', content: 'Question' }],
+                ...(source === 'openrouter-text' ? { api_type: 'openrouter', api_server: 'https://openrouter.ai/api', prompt: 'Question' } : {}),
                 ...overrides,
             }),
         });
     }
+
+    describe.each([CHAT_COMPLETION_SOURCES.NANOGPT, CHAT_COMPLETION_SOURCES.OPENROUTER, 'openrouter-text'])('%s service tiers', source => {
+        test.each(['flex', 'priority', 'auto', 'default'])('forwards %s without altering provider or billing choices', async tier => {
+            const response = await makeRequest(source, {
+                service_tier: tier,
+                provider: ['OpenAI'], allow_fallbacks: false, quantizations: ['bf16'],
+                nanogpt_allowed_providers: ['unlisted-provider'], nanogpt_payg_override: false,
+            });
+            expect(response.status).toBe(200);
+            expect(capturedBody.service_tier).toBe(tier);
+            expect(capturedBody.provider).toEqual(source === CHAT_COMPLETION_SOURCES.NANOGPT
+                ? { only: ['unlisted-provider'] }
+                : { order: ['OpenAI'], allow_fallbacks: false, quantizations: ['bf16'] });
+            expect(capturedBody.billing_mode).toBeUndefined();
+            expect(capturedHeaders['X-Billing-Mode']).toBeUndefined();
+            expect(nodeFetchMock).toHaveBeenCalledTimes(1);
+        });
+
+        test('omits the tier by default', async () => {
+            expect((await makeRequest(source)).status).toBe(200);
+            expect(capturedBody).not.toHaveProperty('service_tier');
+        });
+
+        test.each(['', 'fast', 'unsupported', null, [], {}, true, 1])('rejects malformed tier %p before forwarding', async tier => {
+            expect((await makeRequest(source, { service_tier: tier })).status).toBe(400);
+            expect(nodeFetchMock).not.toHaveBeenCalled();
+        });
+
+        test('keeps the tier on streamed requests', async () => {
+            nodeFetchMock.mockImplementationOnce(async (_url, options) => {
+                capturedBody = JSON.parse(options.body);
+                return new FetchResponse('data: [DONE]\n\n', { headers: { 'Content-Type': 'text/event-stream' } });
+            });
+            const response = await makeRequest(source, { service_tier: 'flex', stream: true });
+            expect(response.status).toBe(200);
+            expect(await response.text()).toContain('[DONE]');
+            expect(capturedBody.service_tier).toBe('flex');
+        });
+
+        test('does not retry an upstream tier rejection', async () => {
+            nodeFetchMock.mockResolvedValueOnce(new FetchResponse('{"error":{"message":"tier unavailable"}}', { status: 400 }));
+            const response = await makeRequest(source, { service_tier: 'flex' });
+            await response.text();
+            expect(nodeFetchMock).toHaveBeenCalledTimes(1);
+            expect(JSON.parse(nodeFetchMock.mock.calls[0][1].body).service_tier).toBe('flex');
+        });
+    });
 
     test.each([
         {},

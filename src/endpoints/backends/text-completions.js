@@ -422,6 +422,10 @@ export async function handleTextCompletionsGenerate(request, response) {
         }
 
         if (request.body.api_type === TEXTGEN_TYPES.OPENROUTER) {
+            // SillyBunny: validate before the OpenRouter whitelist and upstream request.
+            if (request.body.service_tier !== undefined && !['auto', 'default', 'flex', 'priority'].includes(request.body.service_tier)) {
+                return response.status(400).json({ error: true, field: 'service_tier' });
+            }
             if (Array.isArray(request.body.provider) && request.body.provider.length > 0) {
                 request.body.provider = {
                     allow_fallbacks: request.body.allow_fallbacks ?? true,

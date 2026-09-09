@@ -18,7 +18,7 @@ import { getSecretLabelById } from '../../secrets.js';
 import { chat_completion_sources, maybeApplyModelSamplingProfile, oai_settings, selected_custom_endpoint_preset, syncCustomEndpointPresetSelectionBySecretId } from '../../openai.js';
 import { performFuzzySearch } from '/scripts/power-user.js';
 import { StreamingDisplay } from '/scripts/streaming-display.js';
-import { ConnectionManagerRequestService } from '../shared.js';
+import { ConnectionManagerRequestService, getProfileServiceTier } from '../shared.js';
 import { formatReasoning } from '/scripts/reasoning.js';
 
 const MODULE_NAME = 'connection-manager';
@@ -64,6 +64,7 @@ const CC_COMMANDS = [
     'custom-endpoint-profile',
     'api-url',
     'model',
+    'service-tier',
     'proxy',
     'stop-strings',
     'start-reply-with',
@@ -93,6 +94,7 @@ const TC_COMMANDS = [
     'preset',
     'api-url',
     'model',
+    'service-tier',
     'sysprompt',
     'sysprompt-state',
     'instruct',
@@ -111,6 +113,7 @@ const FANCY_NAMES = {
     'api-url': 'Server URL',
     'preset': 'Settings Preset',
     'model': 'Model',
+    'service-tier': 'Flex + Priority',
     'proxy': 'Proxy Preset',
     'custom-endpoint-profile': 'Custom Endpoint Profile',
     'sysprompt-state': 'Use System Prompt',
@@ -1008,6 +1011,10 @@ async function applyConnectionProfile(profile) {
             }
 
             let argument = profile[command];
+            if (command === 'service-tier') {
+                const tier = getProfileServiceTier(profile);
+                argument = tier === '' ? 'default' : tier;
+            }
             const allowEmpty = ALLOW_EMPTY.includes(command);
             // SillyBunny: a profile without a proxy value means "no proxy". Reset the
             // proxy preset instead of skipping, otherwise the previous profile's proxy

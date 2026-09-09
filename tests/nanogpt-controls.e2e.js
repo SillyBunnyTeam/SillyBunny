@@ -8,11 +8,11 @@ test.use({ serviceWorkers: 'block' });
 const BILLING_WARNING = 'Using allowed and/or ignored providers forces PAYG and adds a 5% markup.';
 const HTML_PAYLOAD = '<img data-nanogpt-injected src=x onerror="window.__nanogptInjected=true">';
 const NEW_PROVIDER = 'future-provider-2026';
-const ROUTING_KEYS = ['nanogpt_provider', 'nanogpt_allowed_providers', 'nanogpt_ignored_providers', 'nanogpt_payg_override'];
+const ROUTING_KEYS = ['nanogpt_provider', 'nanogpt_allowed_providers', 'nanogpt_ignored_providers', 'nanogpt_payg_override', 'nanogpt_service_tier'];
 const MODEL_CASES = [
-    { id: 'gpt-4o-mini', name: 'Nano Tiny', subscription: { included: true, inputTokenMultiplier: 1 }, badge: ['Sub'] },
+    { id: 'gpt-4o-mini', name: 'Nano Tiny', subscription: { included: true, inputTokenMultiplier: 1 }, supported_service_tiers: ['flex'], badge: ['Sub'] },
     { id: 'deepseek/deepseek-v3.1', name: 'DeepSeek Friendly', subscription: { included: true, inputTokenMultiplier: 2 }, badge: ['Sub (2x)'] },
-    { id: 'openai/gpt-4.1', name: 'Premium Friendly', subscription: { included: false, note: 'Not included in subscription' }, badge: ['Not in Sub'] },
+    { id: 'openai/gpt-4.1', name: 'Premium Friendly', subscription: { included: false, note: 'Not included in subscription' }, supported_service_tiers: ['flex', 'fast', 'priority'], badge: ['Not in Sub'] },
     { id: 'qwen/qwen3-32b', name: 'No Subscription Metadata', badge: [] },
     { id: 'test/unsafe-fields', name: `Unsafe ${HTML_PAYLOAD}`, context_length: HTML_PAYLOAD, subscription: { included: HTML_PAYLOAD, inputTokenMultiplier: HTML_PAYLOAD, note: HTML_PAYLOAD }, badge: [] },
     { id: 'test/unsafe-multiplier', name: 'Malformed Multiplier', subscription: { included: true, inputTokenMultiplier: HTML_PAYLOAD }, badge: ['Sub'] },
@@ -36,12 +36,14 @@ async function installRoutes(page, baseURL) {
         [MODELS[3].id, { status: 503, json: { error: 'Discovery unavailable' } }],
     ]);
     const held = [];
+    const catalogue = { json: [{ id: 'chutes', label: 'Chutes' }, { id: 'cerebras', label: 'Cerebras' }] };
     await page.context().route('**/*', async route => {
         const url = new URL(route.request().url());
         if (url.origin !== origin) return route.abort();
         if (url.pathname === '/api/backends/chat-completions/status') {
             return route.fulfill({ json: { data: MODELS } });
         }
+        if (url.pathname === '/api/nanogpt/providers') return route.fulfill(catalogue);
         if (url.pathname === '/api/nanogpt/models/providers') {
             const response = discovery.get(route.request().postDataJSON().model);
             if (response === 'hold') {
@@ -61,7 +63,7 @@ async function installRoutes(page, baseURL) {
         }
         return route.continue();
     });
-    return { discovery, held };
+    return { discovery, held, catalogue };
 }
 
 async function openApi(page) {
@@ -216,6 +218,51 @@ for (const mobile of [false, true]) {
             expect(await page.evaluate(() => window.__nanogptInjected)).toBeUndefined();
             await chooseModel(page, mobile, MODELS[1]);
             expect(await page.evaluate(async () => (await import('/scripts/openai.js')).oai_settings.nanogpt_model)).toBe(MODELS[1].id);
+        });
+
+        test('live catalogues and service tiers respect saved choices and PAYG eligibility', async ({ page, baseURL }, testInfo) => {
+            const routes = await setupNanoGpt(page, baseURL);
+            const tier = page.locator('#nanogpt_service_tier');
+            await expect(tier).toBeDisabled();
+            await page.locator('#nanogpt_payg_override').check();
+            await expect(tier.locator('option[value="flex"]')).toBeEnabled();
+            await expect(tier.locator('option[value="priority"]')).toBeDisabled();
+            await tier.selectOption('flex');
+            const getTier = () => page.evaluate(async () => {
+                const { getNanoGptServiceTier, oai_settings } = await import('/scripts/openai.js');
+                return (await getNanoGptServiceTier(oai_settings, oai_settings.nanogpt_model)) ?? null;
+            });
+            expect(await getTier()).toBe('flex');
+            await page.locator('#nanogpt_payg_override').uncheck();
+            expect(await getTier()).toBeNull();
+            await expect(tier.locator('option[value="flex"]')).toBeDisabled();
+            await toggleProvider(page, mobile, 'ignored', 'Cerebras');
+            expect(await getTier()).toBe('flex');
+            await expect(page.locator('#nanogpt_payg_override')).not.toBeChecked();
+
+            routes.catalogue.json = [{ id: 'brand-new', label: 'Live Provider' }];
+            const refresh = () => page.evaluate(async () => {
+                const { syncNanoGptProvidersForModel } = await import('/scripts/textgen-models.js');
+                await syncNanoGptProvidersForModel('', '#nanogpt_allowed_providers');
+            });
+            await refresh();
+            await expect(page.locator('#nanogpt_allowed_providers option[value="brand-new"]')).toHaveText('Live Provider');
+            await expect(page.locator('#nanogpt_ignored_providers option[value="brand-new"]')).toHaveText('Live Provider');
+            await expectRouting(page, [], ['cerebras'], false);
+            routes.catalogue.status = 502;
+            await refresh();
+            await expect(page.locator('#nanogpt_allowed_providers option[value="brand-new"]')).toHaveCount(1);
+            await expectRouting(page, [], ['cerebras'], false);
+            routes.catalogue.status = 200;
+            await toggleProvider(page, mobile, 'ignored', 'Cerebras', true);
+            await chooseModel(page, mobile, MODELS[2]);
+            await expect(tier.locator('option[value="priority"]')).toBeEnabled();
+            await tier.selectOption('priority');
+            expect(await getTier()).toBe('priority');
+            await expect(page.locator('#nanogpt_payg_override')).not.toBeChecked();
+            await tier.scrollIntoViewIfNeeded();
+            expect((await tier.boundingBox()).height).toBeGreaterThanOrEqual(44);
+            await screenshot(page, testInfo, `${layout}-service-tiers`);
         });
 
         test('provider controls preserve restrictions through discovery, reload and removal', async ({ page, baseURL }, testInfo) => {
@@ -426,4 +473,54 @@ test('NanoGPT runtime settings and presets retain defaults, legacy migration and
     });
     await page.locator('dialog[open]').filter({ hasText: 'Preset name already exists. Overwrite?' }).locator('.popup-button-ok').click();
     await expectRouting(page, ['chutes'], [], false);
+});
+
+test('tier payloads preserve preset precedence and isolate background connections', async ({ page, baseURL }) => {
+    await setupNanoGpt(page, baseURL);
+    const requests = [];
+    await page.route('**/api/backends/*/generate', route => {
+        requests.push(route.request().postDataJSON());
+        return route.fulfill({ json: { choices: [{ message: { content: 'ok' }, text: 'ok' }] } });
+    });
+    const tiers = await page.evaluate(async ({ paidModel, subscriptionModel }) => {
+        const { oai_settings } = await import('/scripts/openai.js');
+        const { textgenerationwebui_settings } = await import('/scripts/textgen-settings.js');
+        const { ChatCompletionService, TextCompletionService } = await import('/scripts/custom-request.js');
+        const { ConnectionManagerRequestService } = await import('/scripts/extensions/shared.js');
+        const context = window.SillyTavern.getContext();
+        oai_settings.nanogpt_service_tier = oai_settings.openrouter_service_tier = 'priority';
+        textgenerationwebui_settings.openrouter_service_tier = 'priority';
+        const preset = { chat_completion_source: 'nanogpt', nanogpt_model: paidModel, nanogpt_service_tier: 'flex' };
+        const convert = (preset, overrides = {}) => ChatCompletionService.presetToGeneratePayload(preset, {}, { model: preset.nanogpt_model ?? paidModel, messages: [], ...overrides });
+        const payloads = [
+            await convert({ ...preset, nanogpt_service_tier: undefined }),
+            await convert(preset),
+            await convert(preset, { service_tier: '', __connectionProfileRequestFields: ['service_tier'] }),
+            await convert({ ...preset, nanogpt_model: subscriptionModel }),
+            await convert({ ...preset, nanogpt_model: subscriptionModel }, { nanogpt_ignored_providers: ['cerebras'] }),
+            await convert({ chat_completion_source: 'openrouter', openrouter_model: paidModel, openrouter_service_tier: 'flex' }),
+            await TextCompletionService.presetToGeneratePayload({}, {}, { api_type: 'openrouter', model: paidModel, prompt: 'test' }),
+            await TextCompletionService.presetToGeneratePayload({}, {}, { api_type: 'openrouter', model: paidModel, prompt: 'test', service_tier: 'flex' }),
+        ];
+        for (const source of ['nanogpt', 'openrouter', 'openrouter-text']) {
+            const text = source === 'openrouter-text';
+            const api = Object.entries(context.CONNECT_API_MAP).find(([, entry]) => text
+                ? entry.selected === 'textgenerationwebui' && entry.type === 'openrouter'
+                : entry.selected === 'openai' && entry.source === source)?.[0];
+            const profile = { id: 'tier-test', api, model: paidModel, 'api-url': 'https://openrouter.ai/api' };
+            context.extensionSettings.connectionManager.profiles.push(profile);
+            for (const tier of [undefined, 'flex', 'default']) {
+                profile['service-tier'] = tier;
+                await ConnectionManagerRequestService.sendRequest(profile.id, 'test', 1, { includePreset: false, includeInstruct: false });
+            }
+            context.extensionSettings.connectionManager.profiles.pop();
+        }
+        const legacyRequest = { chat_completion_source: 'nanogpt', model: subscriptionModel, messages: [], service_tier: 'flex', nanogpt_provider: 'cerebras' };
+        await ChatCompletionService.sendRequest(legacyRequest);
+        await ChatCompletionService.sendRequest({ ...legacyRequest, nanogpt_allowed_providers: [], nanogpt_ignored_providers: [] });
+        return payloads.map(payload => payload.service_tier ?? null);
+    }, { paidModel: MODELS[2].id, subscriptionModel: MODELS[0].id });
+    expect(tiers).toEqual([null, 'flex', null, null, 'flex', 'flex', null, 'flex']);
+    expect(requests.map(request => request.service_tier ?? null)).toEqual([null, 'flex', null, null, 'flex', null, null, 'flex', null, 'flex', null]);
+    expect(requests.every(request => !Object.hasOwn(request, '__connectionProfileRequestFields'))).toBe(true);
 });

@@ -33,21 +33,31 @@ router.post('/providers', async (_req, res) => {
 router.post('/models/providers', async (req, res) => {
     try {
         const { model } = req.body;
-        const response = await fetch(`${API_OPENROUTER}/models/${model}/endpoints`, {
+        if (typeof model !== 'string' || !model.trim()) return res.sendStatus(400);
+        const response = await fetch(`${API_OPENROUTER}/models/${model.split('/').map(encodeURIComponent).join('/')}/endpoints`, {
             method: 'GET',
             headers: {
                 'Accept': 'application/json',
             },
+            signal: AbortSignal.timeout(10000),
         });
 
         if (!response.ok) {
-            return res.json([]);
+            return req.body.include_service_tiers ? res.sendStatus(502) : res.json([]);
         }
 
         /** @type {any} */
         const data = await response.json();
-        const endpoints = data?.data?.endpoints || [];
-        const providerNames = endpoints.map(e => e.provider_name);
+        const endpoints = data?.data?.endpoints;
+        if (!Array.isArray(endpoints)) return res.sendStatus(502);
+        const providerNames = [...new Set(endpoints.map(e => e?.provider_name).filter(name => typeof name === 'string' && name.trim()))];
+
+        // SillyBunny: keep the legacy array response for extensions; tier discovery shares this fetch.
+        if (req.body.include_service_tiers === true) {
+            const tiers = endpoints.map(e => typeof e?.tag === 'string' ? e.tag.match(/\/(flex|fast|priority)$/)?.[1] : null)
+                .filter(Boolean).map(tier => tier === 'fast' ? 'priority' : tier);
+            return res.json({ providers: providerNames, service_tiers: [...new Set(tiers)] });
+        }
 
         return res.json(providerNames);
     } catch (error) {

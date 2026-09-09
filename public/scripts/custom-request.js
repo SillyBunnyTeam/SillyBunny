@@ -3,7 +3,7 @@ import { extractJsonFromData, extractMessageFromData, getGenerateUrl, getRequest
 import { getTextGenServer, createTextGenGenerationData, setting_names, textgenerationwebui_settings } from './textgen-settings.js';
 import { extractReasoningFromData } from './reasoning.js';
 import { formatInstructModeChat, formatInstructModePrompt, getInstructStoppingSequences } from './instruct-mode.js';
-import { chat_completion_sources, getStreamingReply, tryParseStreamingError, createGenerationParameters, settingsToUpdate, oai_settings } from './openai.js';
+import { chat_completion_sources, getStreamingReply, tryParseStreamingError, createGenerationParameters, getNanoGptServiceTier, settingsToUpdate, oai_settings } from './openai.js';
 import EventSourceStream from './sse-stream.js';
 import { fetchResumable } from './resumable-generation.js';
 import { migrateNanoGptProviderSettings } from './openai-preset-utils.js';
@@ -165,6 +165,7 @@ export class TextCompletionService {
      * @throws {Error}
      */
     static async sendRequest(data, extractData = true, signal = null) {
+        if (data.service_tier === '') delete data.service_tier;
         if (!data.stream) {
             const response = await fetchResumable(getGenerateUrl(this.TYPE), {
                 method: 'POST',
@@ -452,6 +453,7 @@ export class TextCompletionService {
 
         // Only take fields from the preset specified in setting_names to use as TextCompletionSettings
         const settings = structuredClone(textgenerationwebui_settings);
+        settings.openrouter_service_tier = preset.openrouter_service_tier ?? '';
         for (const [key, value] of Object.entries(preset)) {
             if (!setting_names.includes(key)) continue;
             settings[key] = value;
@@ -525,6 +527,10 @@ export class ChatCompletionService {
     static async sendRequest(data, extractData = true, signal = null) {
         delete data.__connectionProfileRequestFields;
         delete data.modelOverride;
+        if (data.service_tier === '') delete data.service_tier;
+        if (data.chat_completion_source === chat_completion_sources.NANOGPT && data.service_tier) {
+            data.service_tier = await getNanoGptServiceTier({ ...data, nanogpt_service_tier: data.service_tier }, data.model);
+        }
         const response = await fetchResumable('/api/backends/chat-completions/generate', {
             method: 'POST',
             headers: getRequestHeaders(),
@@ -656,6 +662,9 @@ export class ChatCompletionService {
 
         // Convert from preset to ChatCompletionSettings
         const settings = structuredClone(oai_settings);
+        // SillyBunny: a preset without a tier predates paid-tier opt-in.
+        settings.nanogpt_service_tier = preset.nanogpt_service_tier ?? '';
+        settings.openrouter_service_tier = preset.openrouter_service_tier ?? '';
         for (const [key, value] of Object.entries(preset)) {
             const settingToUpdate = settingsToUpdate[key];
             if (!settingToUpdate) continue;
@@ -695,6 +704,13 @@ export class ChatCompletionService {
         }
         if (overridePayload.model) {
             settings.openai_model = overridePayload.model;
+        }
+        if (overridePayload.service_tier !== undefined) {
+            const source = settings.chat_completion_source;
+            if (['nanogpt', 'openrouter'].includes(source)) settings[`${source}_service_tier`] = overridePayload.service_tier;
+        }
+        for (const key of ['nanogpt_provider', 'nanogpt_allowed_providers', 'nanogpt_ignored_providers', 'nanogpt_payg_override']) {
+            if (Object.hasOwn(overridePayload, key)) settings[key] = overridePayload[key];
         }
         if (overridePayload.reverse_proxy !== undefined) {
             settings.reverse_proxy = overridePayload.reverse_proxy;
@@ -788,6 +804,9 @@ export class ChatCompletionService {
         }
         if (shouldUseConnectionProfileField('verbosity')) {
             overridePayload.verbosity = payload.verbosity;
+        }
+        if (shouldUseConnectionProfileField('service_tier')) {
+            overridePayload.service_tier = payload.service_tier;
         }
         delete overridePayload.__connectionProfileRequestFields;
         delete overridePayload.modelOverride;

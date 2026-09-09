@@ -273,6 +273,7 @@ export const textgenerationwebui_settings = {
     ollama_model: '',
     openrouter_model: 'openrouter/auto',
     openrouter_providers: [],
+    openrouter_service_tier: '',
     openrouter_quantizations: [],
     vllm_model: '',
     aphrodite_model: '',
@@ -682,6 +683,7 @@ export async function loadTextGenSettings(data, loadedSettings) {
     $('#textgen_type').val(textgenerationwebui_settings.type);
     // SillyBunny: restore saved providers without waiting for the live catalogue or saving an empty selection.
     setOpenRouterProviders('#openrouter_providers_text', textgenerationwebui_settings.openrouter_providers);
+    $('#openrouter_service_tier_text').val(textgenerationwebui_settings.openrouter_service_tier);
     $('#openrouter_quantizations_text').val(textgenerationwebui_settings.openrouter_quantizations).trigger('change');
     showSamplerControls(textgenerationwebui_settings.type);
     BIAS_CACHE.delete(BIAS_KEY);
@@ -1164,6 +1166,11 @@ export function initTextGenSettings() {
         textgenerationwebui_settings.openrouter_providers = Array.from(this.selectedOptions, option => option.value);
 
         updateOpenRouterProvidersWarning('#openrouter_providers_text');
+        saveSettingsDebounced();
+    });
+
+    $('#openrouter_service_tier_text').on('change', function () {
+        textgenerationwebui_settings.openrouter_service_tier = this.value;
         saveSettingsDebounced();
     });
 
@@ -1845,6 +1852,7 @@ export function createTextGenGenerationData(settings, model, finalPrompt = null,
 
     if (settings.type === OPENROUTER) {
         params.provider = settings.openrouter_providers;
+        params.service_tier = settings.openrouter_service_tier || undefined;
         params.quantizations = settings.openrouter_quantizations;
         params.allow_fallbacks = settings.openrouter_allow_fallbacks;
     }

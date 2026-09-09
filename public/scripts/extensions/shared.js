@@ -56,6 +56,17 @@ function getProfileCompletionPreset(profile) {
     }
 }
 
+export function getProfileServiceTier(profile) {
+    const api = CONNECT_API_MAP[profile.api];
+    const source = api?.source || api?.type;
+    if (!['nanogpt', 'openrouter'].includes(source)) return undefined;
+    if (profile.exclude?.includes('service-tier')) return undefined;
+    // Older profiles inherit an explicitly bound preset choice, never the active UI's paid tier.
+    const presetTier = api.selected === 'openai' ? getProfileCompletionPreset(profile)?.[`${source}_service_tier`] : undefined;
+    const tier = profile['service-tier'] ?? presetTier;
+    return tier === 'default' ? '' : (tier ?? '');
+}
+
 export function getChatCompletionProfileRequestOverrides(profile, overridePayload) {
     const overrides = {};
     const profileFieldNames = [];
@@ -576,10 +587,14 @@ export class ConnectionManagerRequestService {
                         // so recover reverse proxy fields from the profile preset or current proxy state.
                         ...reverseProxyFields,
                         custom_prompt_post_processing: profile['prompt-post-processing'],
+                        service_tier: getProfileServiceTier(profile),
                         // SillyBunny: persist profile-scoped reasoning and image request settings through the shared request path.
                         ...profileRequestOverrides.overrides,
                         ...overridePayload,
-                        __connectionProfileRequestFields: profileRequestOverrides.profileFieldNames,
+                        __connectionProfileRequestFields: [
+                            ...profileRequestOverrides.profileFieldNames,
+                            ...(!Object.hasOwn(overridePayload, 'service_tier') ? ['service_tier'] : []),
+                        ],
                     };
 
                     // Only set the URL field for the actual API source to avoid contaminating
@@ -619,6 +634,7 @@ export class ConnectionManagerRequestService {
                         max_tokens: maxTokens,
                         model: profile.model,
                         api_type: selectedApiMap.type,
+                        service_tier: getProfileServiceTier(profile),
                         api_server: profile['api-url'],
                         secret_id: profile['secret-id'],
                         ...overridePayload,

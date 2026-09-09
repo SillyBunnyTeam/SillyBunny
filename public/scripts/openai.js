@@ -86,6 +86,7 @@ import { ToolManager } from './tool-calling.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { COMETAPI_IGNORE_PATTERNS, IGNORE_SYMBOL, MEDIA_DISPLAY, MEDIA_TYPE } from './constants.js';
 import { setOpenRouterProviders, syncNanoGptProvidersForModel, syncOpenRouterProvidersForModel, updateNanoGptProvidersWarning, updateOpenRouterProvidersWarning } from './textgen-models.js';
+import { getNanoGptServiceTiers, isNanoGptPayg, updateServiceTierOptions } from './service-tiers.js';
 import { hasTextOrArrayPayload, shouldRetainContextAtDepth, stripHtmlTagsFromContext, stripOocBlocksFromContext } from './ooc-blocks.js';
 import { checkPostInterceptChatBudget, shouldCheckPostInterceptChatBudget } from './openai-prompt-budget.js';
 import {
@@ -226,6 +227,7 @@ const textCompletionModels = [
 
 let biasCache = undefined;
 export let model_list = [];
+let nanoGptModelList = [];
 let openAiStaticModelGroups = null;
 let hasShownPresetConnectionBindingReminder = false;
 let settingsPresetChangeGeneration = 0;
@@ -454,6 +456,7 @@ export const settingsToUpdate = {
     openrouter_group_models: ['#openrouter_group_models', 'openrouter_group_models', false, true],
     openrouter_sort_models: ['#openrouter_sort_models', 'openrouter_sort_models', false, true],
     openrouter_providers: ['#openrouter_providers_chat', 'openrouter_providers', false, true],
+    openrouter_service_tier: ['#openrouter_service_tier_chat', 'openrouter_service_tier', false, true],
     openrouter_quantizations: ['#openrouter_quantizations_chat', 'openrouter_quantizations', false, true],
     openrouter_allow_fallbacks: ['#openrouter_allow_fallbacks', 'openrouter_allow_fallbacks', true, true],
     openrouter_middleout: ['#openrouter_middleout', 'openrouter_middleout', false, true],
@@ -477,6 +480,7 @@ export const settingsToUpdate = {
     nanogpt_allowed_providers: ['#nanogpt_allowed_providers', 'nanogpt_allowed_providers', false, true],
     nanogpt_ignored_providers: ['#nanogpt_ignored_providers', 'nanogpt_ignored_providers', false, true],
     nanogpt_payg_override: ['#nanogpt_payg_override', 'nanogpt_payg_override', true, true],
+    nanogpt_service_tier: ['#nanogpt_service_tier', 'nanogpt_service_tier', false, true],
     deepseek_model: ['#model_deepseek_select', 'deepseek_model', false, true],
     aimlapi_model: ['#model_aimlapi_select', 'aimlapi_model', false, true],
     xai_model: ['#model_xai_select', 'xai_model', false, true],
@@ -605,6 +609,7 @@ const default_settings = {
     nanogpt_allowed_providers: [],
     nanogpt_ignored_providers: [],
     nanogpt_payg_override: false,
+    nanogpt_service_tier: '',
     deepseek_model: 'deepseek-v4-flash',
     aimlapi_model: 'chatgpt-4o-latest',
     xai_model: 'grok-3-beta',
@@ -633,6 +638,7 @@ const default_settings = {
     openrouter_group_models: false,
     openrouter_sort_models: 'alphabetically',
     openrouter_providers: [],
+    openrouter_service_tier: '',
     openrouter_quantizations: [],
     openrouter_allow_fallbacks: true,
     openrouter_middleout: openrouter_middleout_types.ON,
@@ -2805,7 +2811,7 @@ function bindInlineSelectPickerSelect(select, control) {
     select.classList.add('sb-inline-select-picker-control');
 
     // SillyBunny: repaint an open provider menu after async updates without saving settings.
-    if (select.classList.contains('openrouter_providers')) {
+    if (select.classList.contains('openrouter_providers') || ['nanogpt_allowed_providers', 'nanogpt_ignored_providers'].includes(select.id)) {
         $(select).on('change.select2', () => {
             const menu = document.getElementById(`${select.id}_menu`);
             if (shouldUseInlineModelSelectPicker() && menu && !menu.hidden) {
@@ -4618,6 +4624,7 @@ function saveModelList(data) {
 
     if (oai_settings.chat_completion_source == chat_completion_sources.NANOGPT) {
         $('#model_nanogpt_select').empty();
+        nanoGptModelList = model_list;
         model_list.forEach((model) => {
             $('#model_nanogpt_select').append(
                 $('<option>', {
@@ -5494,6 +5501,7 @@ export async function createGenerationParameters(settings, model, type, messages
         generate_data.top_a = Number(settings.top_a_openai);
         generate_data.use_fallback = settings.openrouter_use_fallback;
         generate_data.provider = settings.openrouter_providers;
+        generate_data.service_tier = settings.openrouter_service_tier || undefined;
         generate_data.quantizations = settings.openrouter_quantizations;
         generate_data.allow_fallbacks = settings.openrouter_allow_fallbacks;
         generate_data.middleout = settings.openrouter_middleout;
@@ -5635,6 +5643,7 @@ export async function createGenerationParameters(settings, model, type, messages
         generate_data.nanogpt_allowed_providers = settings.nanogpt_allowed_providers;
         generate_data.nanogpt_ignored_providers = settings.nanogpt_ignored_providers;
         generate_data.nanogpt_payg_override = settings.nanogpt_payg_override;
+        generate_data.service_tier = await getNanoGptServiceTier(settings, model);
         generate_data.top_k = settings.top_k_openai > 0 ? Number(settings.top_k_openai) : undefined;
         generate_data.min_p = Number(settings.min_p_openai);
         generate_data.repetition_penalty = Number(settings.repetition_penalty_openai);
@@ -7018,6 +7027,35 @@ function migrateChatCompletionSettings(settings) {
     }
 }
 
+export async function getNanoGptServiceTier(settings, modelId) {
+    const tier = settings.nanogpt_service_tier;
+    if (!tier) return undefined;
+    // Explicit API overrides still reach backend validation; only UI tiers need billing eligibility.
+    if (!['flex', 'priority'].includes(tier)) return tier;
+    let model = nanoGptModelList.find(model => model.id === modelId);
+    if (!model) {
+        // Background profile requests may run before NanoGPT has ever been connected in the UI.
+        const response = await fetch('/api/backends/chat-completions/status', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ chat_completion_source: chat_completion_sources.NANOGPT }),
+            signal: AbortSignal.timeout(10000),
+        });
+        const data = response.ok ? await response.json() : null;
+        if (!Array.isArray(data?.data)) throw new Error('service_tier');
+        nanoGptModelList = data.data;
+        model = nanoGptModelList.find(model => model.id === modelId);
+    }
+    if (!model) throw new Error('service_tier');
+    if (!isNanoGptPayg(model, settings)) return undefined;
+    if (!getNanoGptServiceTiers(model, settings).includes(tier)) throw new Error('service_tier');
+    return tier;
+}
+
+function updateNanoGptServiceTierControl() {
+    updateServiceTierOptions('#nanogpt_service_tier', getNanoGptServiceTiers(nanoGptModelList.find(model => model.id === oai_settings.nanogpt_model), oai_settings));
+}
+
 function updateNanoGptProviderControls() {
     for (const key of ['nanogpt_allowed_providers', 'nanogpt_ignored_providers']) {
         const select = document.getElementById(key);
@@ -7033,6 +7071,8 @@ function updateNanoGptProviderControls() {
         $(`#${key}_picker`).text(Array.from(select.selectedOptions, option => option.text).join(', ') || t`Select providers`);
     }
     $('#nanogpt_payg_override').prop('checked', oai_settings.nanogpt_payg_override === true);
+    $('#nanogpt_service_tier').val(oai_settings.nanogpt_service_tier);
+    updateNanoGptServiceTierControl();
     updateNanoGptProvidersWarning('#nanogpt_allowed_providers');
 }
 
@@ -8673,6 +8713,7 @@ async function onModelChange() {
         console.log('NanoGPT model changed to', value);
         oai_settings.nanogpt_model = value;
         syncNanoGptProvidersForModel(value, '#nanogpt_allowed_providers');
+        updateNanoGptServiceTierControl();
     }
 
     if ($(this).is('#model_workers_ai_select')) {
@@ -10367,6 +10408,29 @@ function registerChatCompletionProfileSlashCommand({ name, callback, description
 }
 
 function registerChatCompletionProfileSlashCommands() {
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name: 'service-tier',
+        callback: (args, value) => {
+            const selector = main_api === 'textgenerationwebui'
+                ? ($('#textgen_type').val() === 'openrouter' ? '#openrouter_service_tier_text' : null)
+                : main_api === 'openai' && ({ nanogpt: '#nanogpt_service_tier', openrouter: '#openrouter_service_tier_chat' })[oai_settings.chat_completion_source];
+            if (!selector) return '';
+            if (hasSlashCommandValue(args, value)) {
+                const tier = getSlashCommandStringValue(value).trim();
+                getSlashCommandEnumValue(tier, ['default', 'flex', 'priority'], 'service-tier');
+                $(selector).val(tier === 'default' ? '' : tier).trigger('change');
+            }
+            return document.querySelector(selector)?.value || 'default';
+        },
+        returns: t`current value`,
+        unnamedArgumentList: [SlashCommandArgument.fromProps({
+            description: 'Flex + Priority',
+            typeList: [ARGUMENT_TYPE.STRING],
+            enumList: ['default', 'flex', 'priority'],
+            forceEnum: true,
+        })],
+        helpString: 'Flex + Priority',
+    }));
     registerChatCompletionProfileSlashCommand({
         name: 'request-reasoning',
         callback: runBooleanChatCompletionSettingCallback('request-reasoning', 'show_thoughts', '#openai_show_thoughts', setToolReasoningControls),
@@ -11290,6 +11354,13 @@ export function initOpenAI() {
 
     $('#nanogpt_payg_override').on('input', function () {
         oai_settings.nanogpt_payg_override = this.checked;
+        updateNanoGptServiceTierControl();
+        saveSettingsDebounced();
+    });
+
+    $('#nanogpt_service_tier, #openrouter_service_tier_chat').on('change', function () {
+        const key = this.id === 'nanogpt_service_tier' ? 'nanogpt_service_tier' : 'openrouter_service_tier';
+        oai_settings[key] = this.value;
         saveSettingsDebounced();
     });
 
