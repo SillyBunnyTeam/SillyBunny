@@ -92,6 +92,7 @@
 - PR #838 (2026-09-08) `fix: Endpoint Profiles ignoring Credentials`
 - PR #839 (2026-09-08) `fix: Update to Guided Generations Baked-In for Feature Parity with Upstream Project`
 - PR #840 (2026-09-08) `fix: touch scrolling on mobile for blown-up text editors`
+- PR #841 (2026-09-09) `feat(nanogpt+openrouter): gather providers from Nano-GPT in real time instead of hardcoding, and add a Flex + Priority option for PAYG models with a Flex/Priority endpoint`
 
 ## v1.7.0
 
