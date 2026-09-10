@@ -1,5 +1,6 @@
-/* global document, window */
+/* global document, window, navigator */
 import { expect, test } from '@playwright/test';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 const APP_URL = process.env.SILLYBUNNY_TEST_BASE_URL || '/';
@@ -286,7 +287,7 @@ async function completeScreenshotExport(page, startId, endId) {
     await page.locator('#message_screenshot_end_id').fill(String(endId));
 
     const downloadPromise = page.waitForEvent('download', { timeout: 45000 });
-    await page.locator('.message_screenshot_popup .popup-button-ok').dispatchEvent('click');
+    await page.locator('.message_screenshot_popup .popup-button-ok').click();
     return await downloadPromise;
 }
 
@@ -311,8 +312,119 @@ async function installHangingCloneImage(page) {
     });
 }
 
+async function installClipboardProbe(page, mode = 'success') {
+    await page.evaluate((behavior) => {
+        window.screenshotClipboardCalls = [];
+        window.screenshotClipboardImages = [];
+        Object.defineProperty(navigator, 'clipboard', {
+            configurable: true,
+            value: behavior === 'unavailable' ? undefined : {
+                async write(items) {
+                    window.screenshotClipboardCalls.push(navigator.userActivation.isActive);
+                    if (behavior === 'denied') {
+                        throw new DOMException('Clipboard access denied', 'NotAllowedError');
+                    }
+                    const blob = await items[0].getType('image/png');
+                    const digest = await window.crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+                    window.screenshotClipboardImages.push({
+                        type: blob.type,
+                        hash: Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join(''),
+                    });
+                },
+            },
+        });
+    }, mode);
+}
+
+async function expectScreenshotCopied(page, download, count) {
+    const hash = createHash('sha256').update(await readFile(await download.path())).digest('hex');
+    await expect.poll(() => page.evaluate(() => window.screenshotClipboardImages.length)).toBe(count);
+    expect(await page.evaluate(() => window.screenshotClipboardImages.at(-1))).toEqual({ type: 'image/png', hash });
+    expect(await page.evaluate(() => window.screenshotClipboardCalls)).toEqual(Array(count).fill(true));
+    await expect(page.locator('.toast-success').filter({ hasText: 'Copied!' }).last()).toBeVisible();
+}
+
 test.describe('desktop message screenshots', () => {
     test.setTimeout(120000);
+
+    test('copies the downloaded PNG for single, range, and wand screenshots', async ({ page }) => {
+        await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
+        await dismissOnboardingIfPresent(page);
+        await installScreenshotMessage(page, 'clipboard screenshot');
+        await installClipboardProbe(page);
+
+        const singleDownload = await exportScreenshotFromMessage(page, 0, 0, 0);
+        expect(singleDownload.suggestedFilename()).toContain('message-0.png');
+        await expectScreenshotCopied(page, singleDownload, 1);
+        await expectScreenshotCopied(page, await exportScreenshotFromMessage(page, 0, 0, 1), 2);
+        await expectScreenshotCopied(page, await exportScreenshotFromWand(page, 1, 1), 3);
+    });
+
+    for (const mode of ['denied', 'unavailable']) {
+        test(`still downloads when clipboard access is ${mode}`, async ({ page }) => {
+            await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
+            await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
+            await dismissOnboardingIfPresent(page);
+            await installScreenshotMessage(page, 'clipboard fallback');
+            await installClipboardProbe(page, mode);
+
+            const download = await exportScreenshotFromMessage(page, 0, 0, 0);
+            expect(download.suggestedFilename()).toContain('message-0.png');
+            await expect(page.locator('.toast-success').filter({ hasText: 'Message screenshot downloaded.' })).toBeVisible();
+            await expect(page.locator('.toast-success').filter({ hasText: 'Copied!' })).toHaveCount(0);
+            await expect(page.locator('.toast-error')).toHaveCount(0);
+        });
+    }
+
+    test('does not copy or download an invalid or cancelled selection', async ({ page }) => {
+        const downloads = [];
+        page.on('download', download => downloads.push(download));
+        await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
+        await dismissOnboardingIfPresent(page);
+        await installScreenshotMessage(page, 'cancelled clipboard screenshot');
+        await installClipboardProbe(page);
+        await page.locator('#chat .mes').first().locator('.mes_screenshot').dispatchEvent('click');
+        await page.locator('#message_screenshot_start_id').fill('-1');
+        await page.locator('.message_screenshot_popup .popup-button-ok').click();
+        await expect(page.locator('.message_screenshot_popup')).toBeVisible();
+        await page.locator('.message_screenshot_popup .popup-button-cancel').click();
+        await expect(page.locator('.message_screenshot_popup')).toHaveCount(0);
+        expect(await page.evaluate(() => window.screenshotClipboardCalls)).toEqual([]);
+        expect(downloads).toHaveLength(0);
+    });
+
+    test('recovers after a failed capture without copying or downloading a partial image', async ({ page }) => {
+        const downloads = [];
+        const pageErrors = [];
+        page.on('download', download => downloads.push(download));
+        page.on('pageerror', error => pageErrors.push(error.message));
+        await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
+        await dismissOnboardingIfPresent(page);
+        await installScreenshotMessage(page, 'clipboard screenshot retry');
+        await installClipboardProbe(page);
+        await page.addScriptTag({ url: '/lib/html2canvas.min.js' });
+        await page.evaluate(() => {
+            const render = window.html2canvas;
+            window.html2canvas = (...args) => {
+                window.html2canvas = render;
+                throw new Error('Screenshot capture failed for retry test');
+            };
+        });
+
+        await page.locator('#chat .mes').first().locator('.mes_screenshot').dispatchEvent('click');
+        await page.locator('.message_screenshot_popup .popup-button-ok').click();
+        await expect(page.locator('.toast-error').filter({ hasText: 'Screenshot failed' })).toBeVisible();
+        expect(downloads).toHaveLength(0);
+        expect(await page.evaluate(() => window.screenshotClipboardImages)).toEqual([]);
+
+        await installClipboardProbe(page);
+        await expectScreenshotCopied(page, await exportScreenshotFromMessage(page, 0, 0, 0), 1);
+        expect(downloads).toHaveLength(1);
+        expect(pageErrors).toEqual([]);
+    });
 
     test('exports message and wand screenshots with modern colors', async ({ page }) => {
         const screenshotErrors = [];
@@ -417,6 +529,18 @@ function registerMobileScreenshotTests(profileName, targetBrowserName, useOption
             // Each emulated mobile profile runs only on its matching Playwright browser engine.
             // eslint-disable-next-line playwright/no-skipped-test
             test.skip(browserName !== targetBrowserName, `${profileName} coverage uses ${targetBrowserName}`);
+        });
+
+        test('copies the downloaded range PNG from a confirmation gesture', async ({ page }) => {
+            await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
+            await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
+            await dismissOnboardingIfPresent(page);
+            await installScreenshotMessage(page, `${profileName} clipboard screenshot`);
+            await installClipboardProbe(page);
+
+            const download = await exportScreenshotFromMessage(page, 0, 0, 1);
+            expect(download.suggestedFilename()).toContain('messages-0-1.png');
+            await expectScreenshotCopied(page, download, 1);
         });
 
         test('bounds long screenshot raster memory and canvas side', async ({ page }) => {

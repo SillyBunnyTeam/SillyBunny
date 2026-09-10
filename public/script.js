@@ -12812,27 +12812,62 @@ async function renderMessageScreenshotCanvas(startId, endId) {
     }
 }
 
-async function downloadMessageScreenshot(startId, endId) {
+async function createMessageScreenshotBlob(startId, endId) {
     const canvas = await renderMessageScreenshotCanvas(startId, endId);
-    const blob = await new Promise((resolve, reject) => {
-        canvas.toBlob((result) => {
-            if (result) {
-                resolve(result);
-                return;
-            }
+    try {
+        return await new Promise((resolve, reject) => {
+            canvas.toBlob((result) => {
+                if (result) {
+                    resolve(result);
+                    return;
+                }
 
-            reject(new Error('Failed to create screenshot PNG blob'));
-        }, 'image/png');
-    });
+                reject(new Error('Failed to create screenshot PNG blob'));
+            }, 'image/png');
+        });
+    } finally {
+        canvas.width = 0;
+        canvas.height = 0;
+    }
+}
 
-    canvas.width = 0;
-    canvas.height = 0;
-    download(blob, buildMessageScreenshotFilename(startId, endId), 'image/png');
+async function copyMessageScreenshotToClipboard(blobPromise) {
+    if (!window.isSecureContext || typeof navigator.clipboard?.write !== 'function' || typeof ClipboardItem !== 'function') {
+        return false;
+    }
+
+    try {
+        // Start the write during the confirmation gesture; WebKit cannot wait for rendering first.
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blobPromise })]);
+        return true;
+    } catch (error) {
+        console.warn('Failed to copy message screenshot to clipboard', error);
+        return false;
+    }
+}
+
+async function downloadMessageScreenshot(startId, endId) {
+    const blobPromise = messageScreenshotDownloadQueue.then(() => createMessageScreenshotBlob(startId, endId));
+    messageScreenshotDownloadQueue = blobPromise.then(() => undefined, () => undefined);
+    const clipboardPromise = copyMessageScreenshotToClipboard(blobPromise);
+
+    try {
+        const blob = await blobPromise;
+        download(blob, buildMessageScreenshotFilename(startId, endId), 'image/png');
+        const copied = await clipboardPromise;
+        const successText = startId === endId
+            ? t`Message screenshot downloaded.`
+            : t`Message range screenshot downloaded.`;
+        toastr.success(copied ? `${successText} ${t`Copied!`}` : successText, t`Screenshot ready`);
+    } catch (error) {
+        console.error('Failed to create message screenshot', error);
+        toastr.error(t`Couldn't create the screenshot. Check the browser console for details.`, t`Screenshot failed`);
+    }
 }
 
 async function promptForMessageScreenshotRange(messageId) {
     const maximumMessageId = Math.max(chat.length - 1, 0);
-    let selectedRange = null;
+    let captureStarted = false;
 
     const content = document.createElement('div');
     content.classList.add('sb-message-screenshot-popup-copy');
@@ -12869,7 +12904,7 @@ async function promptForMessageScreenshotRange(messageId) {
             }
         },
         onClosing: function (activePopup) {
-            if (activePopup.result !== POPUP_RESULT.AFFIRMATIVE) {
+            if (activePopup.result !== POPUP_RESULT.AFFIRMATIVE || captureStarted) {
                 return true;
             }
 
@@ -12888,15 +12923,15 @@ async function promptForMessageScreenshotRange(messageId) {
                 return false;
             }
 
-            selectedRange = range;
+            captureStarted = true;
+            void downloadMessageScreenshot(range.startId, range.endId);
             return true;
         },
     });
 
     popup.dlg.classList.add('message_screenshot_popup');
 
-    const result = await popup.show();
-    return result === POPUP_RESULT.AFFIRMATIVE ? selectedRange : null;
+    await popup.show();
 }
 
 async function openMessageScreenshotDialog(messageId) {
@@ -12907,28 +12942,7 @@ async function openMessageScreenshotDialog(messageId) {
 
     closeExpandedMessageActionMenus();
 
-    const range = await promptForMessageScreenshotRange(messageId);
-    if (!range) {
-        return;
-    }
-
-    const previousDownload = messageScreenshotDownloadQueue;
-    let releaseDownload;
-    messageScreenshotDownloadQueue = new Promise(resolve => releaseDownload = resolve);
-    await previousDownload;
-
-    try {
-        await downloadMessageScreenshot(range.startId, range.endId);
-        const successText = range.startId === range.endId
-            ? t`Message screenshot downloaded.`
-            : t`Message range screenshot downloaded.`;
-        toastr.success(successText, t`Screenshot ready`);
-    } catch (error) {
-        console.error('Failed to create message screenshot', error);
-        toastr.error(t`Couldn't create the screenshot. Check the browser console for details.`, t`Screenshot failed`);
-    } finally {
-        releaseDownload();
-    }
+    await promptForMessageScreenshotRange(messageId);
 }
 
 /**
