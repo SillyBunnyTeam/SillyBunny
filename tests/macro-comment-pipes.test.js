@@ -50,9 +50,15 @@ describe('comment macros containing pipes', () => {
         expect(tokenNames('{{// a|b}}')).not.toContain('Filter.Pipe');
     });
 
-    test('still lexes pipes outside a comment as filter tokens', () => {
-        expect(tokenNames('{{foo a|b}}')).toContain('Filter.Pipe');
-    });
+});
+
+describe('literal pipes in macro arguments', () => {
+    for (const input of ['{{setvar::foo::|bar}}', '{{setvar::foo::a||b|}}', '{{reverse::a|b}}', '{{reverse::a\\|b}}']) {
+        test(`parses without filter tokens: ${input}`, () => {
+            expect(parseErrors(input)).toEqual([]);
+            expect(tokenNames(input)).not.toContain('Filter.Pipe');
+        });
+    }
 });
 
 describe('comment macros without pipes', () => {

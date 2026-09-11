@@ -53,6 +53,7 @@ function createHarness() {
         saveSettingsDebounced: jest.fn(),
         writeSecret: jest.fn(),
         getRequestHeaders: () => ({}),
+        substituteParams: value => value,
         isValidUrl: value => URL.canParse(value),
         t: strings => strings.join(''),
         console: { error: jest.fn(), log: jest.fn(), debug: jest.fn() },
@@ -75,6 +76,7 @@ function createHarness() {
     });
     runInContext(`
         ${openAiSource.slice(constantsStart, constantsEnd).replaceAll('export ', '')}
+        ${openAiSource.match(/export const POLLINATIONS_ENDPOINT = \{[\s\S]*?\n\};/)[0].replace('export ', '')}
         function setOnlineStatus(status) { online_status = status; }
         ${functionSource(scriptSource, 'startStatusLoading')}
         ${functionSource(scriptSource, 'stopStatusLoading')}

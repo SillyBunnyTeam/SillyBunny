@@ -554,7 +554,7 @@ export function getTokenCount(str, padding = undefined) {
  * @deprecated Use counterWrapperOpenAIAsync instead.
  */
 function counterWrapperOpenAI(text) {
-    const message = { role: 'system', content: text };
+    const message = { content: text };
     return countTokensOpenAI(message, true);
 }
 
@@ -564,7 +564,7 @@ function counterWrapperOpenAI(text) {
  * @returns {Promise<number>} Token count.
  */
 function counterWrapperOpenAIAsync(text) {
-    const message = { role: 'system', content: text };
+    const message = { content: text };
     return countTokensOpenAIAsync(message, true);
 }
 
@@ -808,7 +808,7 @@ export function countTokensOpenAI(messages, full = false) {
         messages = [messages];
     }
 
-    let token_count = -1;
+    let token_count = 0;
 
     for (const message of messages) {
         const model = getTokenizerModel();
@@ -887,7 +887,7 @@ export async function countTokensOpenAIAsync(messages, full = false) {
         messages = [messages];
     }
 
-    let token_count = -1;
+    let token_count = 0;
 
     for (const message of messages) {
         const model = getTokenizerModel();

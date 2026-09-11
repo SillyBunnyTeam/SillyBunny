@@ -17,7 +17,7 @@ import tiktoken from 'tiktoken';
 import { convertClaudePrompt } from '../prompt-converters.js';
 import { TEXTGEN_TYPES } from '../constants.js';
 import { setAdditionalHeaders } from '../additional-headers.js';
-import { getConfigValue, isValidUrl } from '../util.js';
+import { getConfigValue, isValidUrl, trimV1 } from '../util.js';
 
 const require = createRequire(import.meta.url);
 const { getTokenizer: getClaudeTokenizer } = require('@anthropic-ai/tokenizer');
@@ -688,15 +688,14 @@ export function getTiktokenTokenizer(model) {
  * @returns {number} Number of tokens
  */
 export function countWebTokenizerTokens(tokenizer, messages) {
-    // Should be fine if we use the old conversion method instead of the messages API one i think?
-    const convertedPrompt = convertClaudePrompt(messages, false, '', false, false, '', false);
+    const jsonBody = messages.flatMap(x => Object.values(x)).join('\n\n');
 
     // Fallback to strlen estimation
     if (!tokenizer) {
-        return guesstimate(convertedPrompt);
+        return guesstimate(jsonBody);
     }
 
-    const count = tokenizer.encode(convertedPrompt).length;
+    const count = tokenizer.encode(jsonBody).length;
     return count;
 }
 
@@ -1250,7 +1249,7 @@ router.post('/remote/textgenerationwebui/encode', async function (request, respo
         setAdditionalHeaders(request, args, baseUrl);
 
         // Convert to string + remove trailing slash + /v1 suffix
-        let url = String(baseUrl).replace(/\/$/, '').replace(/\/v1$/, '');
+        let url = trimV1(baseUrl);
 
         switch (request.body.api_type) {
             case TEXTGEN_TYPES.TABBY:
@@ -1273,10 +1272,12 @@ router.post('/remote/textgenerationwebui/encode', async function (request, respo
                 url += '/v1/tokenize';
                 args.body = JSON.stringify({ 'model': model, 'prompt': text });
                 break;
-            default:
+            case TEXTGEN_TYPES.OOBA:
                 url += '/v1/internal/encode';
                 args.body = JSON.stringify({ 'text': text });
                 break;
+            default:
+                return response.sendStatus(400);
         }
 
         const result = await fetch(url, args);

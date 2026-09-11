@@ -499,6 +499,7 @@ export const OPENAI_REASONING_EFFORT_MODELS = [
     'gpt-5.5-2026-04-23',
     'gpt-5.5-pro',
     // SillyBunny: GPT-5.6 and GPT-6 Astra native IDs expose configurable reasoning effort.
+    'gpt-5.6',
     'gpt-5.6-sol',
     'gpt-5.6-terra',
     'gpt-5.6-luna',
@@ -555,6 +556,11 @@ export const MEDIA_REQUEST_TYPE = {
 export const ZAI_ENDPOINT = {
     COMMON: 'common',
     CODING: 'coding',
+};
+
+export const POLLINATIONS_ENDPOINT = {
+    AUTHENTICATED: 'authenticated',
+    ANONYMOUS: 'anonymous',
 };
 
 export const SILICONFLOW_ENDPOINT = {

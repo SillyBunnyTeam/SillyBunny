@@ -3932,9 +3932,9 @@ input[type='range']::-moz-range-thumb {
 }
 
 #rm_api_block .flex-container:has(> .manage-api-keys),
-#rm_api_block .flex-container:has(> #openai_proxy_password_show),
+#rm_api_block .flex-container:has(> #openai_proxy_access_key_show),
 #openai_settings .flex-container:has(> .manage-api-keys),
-#openai_settings .flex-container:has(> #openai_proxy_password_show) {
+#openai_settings .flex-container:has(> #openai_proxy_access_key_show) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: center;
@@ -3943,22 +3943,22 @@ input[type='range']::-moz-range-thumb {
 }
 
 #rm_api_block .flex-container:has(> .manage-api-keys) > .text_pole,
-#rm_api_block .flex-container:has(> #openai_proxy_password_show) > .text_pole,
+#rm_api_block .flex-container:has(> #openai_proxy_access_key_show) > .text_pole,
 #openai_settings .flex-container:has(> .manage-api-keys) > .text_pole,
-#openai_settings .flex-container:has(> #openai_proxy_password_show) > .text_pole {
+#openai_settings .flex-container:has(> #openai_proxy_access_key_show) > .text_pole {
     min-height: 44px;
     margin-block: 0;
     line-height: 1.25;
 }
 
 #rm_api_block .flex-container:has(> .manage-api-keys) > .menu_button,
-#rm_api_block .flex-container:has(> #openai_proxy_password_show) > .menu_button {
+#rm_api_block .flex-container:has(> #openai_proxy_access_key_show) > .menu_button {
     min-height: 44px;
     margin-block: 0;
 }
 
 #rm_api_block .manage-api-keys,
-#rm_api_block #openai_proxy_password_show {
+#rm_api_block #openai_proxy_access_key_show {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -3970,7 +3970,7 @@ input[type='range']::-moz-range-thumb {
 }
 
 #rm_api_block .manage-api-keys::before,
-#rm_api_block #openai_proxy_password_show::before {
+#rm_api_block #openai_proxy_access_key_show::before {
     display: inline-flex;
     align-items: center;
     justify-content: center;

@@ -661,18 +661,21 @@
                                     <div class="inline-drawer-content">
                                         <div class="range-block m-t-1">
                                             <div class="justifyLeft" data-i18n="Main">Main</div>
+                                            <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="main_prompt_quick_edit_textarea" data-i18n="[title]Expand the editor"></i>
                                             <div class="wide100p">
                                                 <textarea id="main_prompt_quick_edit_textarea" class="text_pole textarea_compact autoSetHeight" rows="6" placeholder="&mdash;" data-pm-prompt="main"></textarea>
                                             </div>
                                         </div>
                                         <div class="range-block m-t-1">
                                             <div class="justifyLeft" data-i18n="Auxiliary">Auxiliary</div>
+                                            <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="nsfw_prompt_quick_edit_textarea" data-i18n="[title]Expand the editor"></i>
                                             <div class="wide100p">
                                                 <textarea id="nsfw_prompt_quick_edit_textarea" class="text_pole textarea_compact autoSetHeight" rows="6" placeholder="&mdash;" data-pm-prompt="nsfw"></textarea>
                                             </div>
                                         </div>
                                         <div class="range-block m-t-1">
                                             <div class="justifyLeft" data-i18n="Post-History Instructions">Post-History Instructions</div>
+                                            <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="jailbreak_prompt_quick_edit_textarea" data-i18n="[title]Expand the editor"></i>
                                             <div class="wide100p">
                                                 <textarea id="jailbreak_prompt_quick_edit_textarea" class="text_pole textarea_compact autoSetHeight" rows="6" placeholder="&mdash;" data-pm-prompt="jailbreak"></textarea>
                                             </div>
@@ -2025,7 +2028,10 @@
                                             <span data-i18n="Allows the model to return its thinking process.">
                                                 Allows the model to return its thinking process.
                                             </span>
-                                            <strong data-source-mode="except" data-source="zai,moonshot,openrouter">
+                                            <strong data-i18n="This setting enables or disables reasoning generation by the model." data-source="deepseek,zai,moonshot">
+                                                This setting enables or disables reasoning generation by the model.
+                                            </strong>
+                                            <strong data-source-mode="except" data-source="zai,moonshot,openrouter,deepseek">
                                                 Provider support varies. Returned thought text appears in chat only when the provider exposes it.
                                             </strong>
                                             <div class="note-block marginTop5">
@@ -2056,7 +2062,7 @@
                                             </select>
                                         </div>
                                     </div>
-                                    <div class="flex-container flexFlowColumn wide100p textAlignCenter marginTop10" data-source="openai,custom,claude,xai,makersuite,vertexai,aimlapi,openrouter,pollinations,perplexity,cometapi,electronhub,azure_openai,chutes,nanogpt,linkapi,deepseek,zai,moonshot">
+                                    <div class="flex-container flexFlowColumn wide100p textAlignCenter marginTop10" data-source="openai,custom,claude,xai,makersuite,vertexai,aimlapi,openrouter,pollinations,perplexity,cometapi,electronhub,azure_openai,chutes,nanogpt,linkapi,deepseek,zai,moonshot,fireworks">
                                         <div class="flex-container oneline-dropdown" title="Constrains effort on reasoning for reasoning models.&#10;Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response." data-i18n="[title]Constrains effort on reasoning for reasoning models.">
                                             <label for="openai_reasoning_effort">
                                                 <span data-i18n="Reasoning Effort">Reasoning Effort</span>
@@ -2074,8 +2080,11 @@
                                             <div class="toggle-description justifyLeft marginBot5" data-source="openai,custom,xai,aimlapi,openrouter,pollinations,perplexity,cometapi,electronhub,azure_openai,chutes" data-i18n="OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.">
                                                 OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.
                                             </div>
-                                            <div class="toggle-description justifyLeft marginBot5" data-source="claude" data-i18n="Allocates a portion of the response length for thinking (min: 1024 tokens, low: 10%, medium: 25%, high: 50%, max: 95%), but minimum 1024 tokens. Auto does not request thinking.">
-                                                Allocates a portion of the response length for thinking (min: 1024 tokens, low: 10%, medium: 25%, high: 50%, max: 95%), but minimum 1024 tokens. Auto does not request thinking.
+                                            <div class="toggle-description justifyLeft marginBot5" data-source="fireworks" data-i18n="Fireworks supports low, medium, high, and max as distinct effort levels. Minimum is aliased to low. Auto does not send an effort level.">
+                                                Fireworks supports low, medium, high, and max as distinct effort levels. Minimum is aliased to low. Auto does not send an effort level.
+                                            </div>
+                                            <div class="toggle-description justifyLeft marginBot5" data-source="claude" data-i18n="Selects an effort level on adaptive-thinking models. On older Claude models, it allocates a portion of the response length to thinking. Auto does not request thinking.">
+                                                Selects an effort level on adaptive-thinking models. On older Claude models, it allocates a portion of the response length to thinking. Auto does not request thinking.
                                             </div>
                                             <div class="toggle-description justifyLeft marginBot5" data-source="makersuite,vertexai">
                                                 <span data-i18n="Sets a dynamic reasoning depth level for thinking (Flash 3/Pro 3). Every effort is sent exactly as picked, so a level the model does not accept is rejected rather than lowered. Auto lets the model decide.">
@@ -2128,6 +2137,12 @@
                                                 <option data-i18n="openai_verbosity_medium" value="medium">Medium</option>
                                                 <option data-i18n="openai_verbosity_high" value="high">High</option>
                                             </select>
+                                            <div class="toggle-description justifyLeft marginBot5" data-i18n="Constrains the verbosity of the model's response.">
+                                                Constrains the verbosity of the model's response.
+                                            </div>
+                                            <strong class="toggle-description justifyLeft marginBot5" data-source="claude">
+                                                On adaptive-thinking Claude models, a non-automatic Reasoning Effort takes precedence over Verbosity.
+                                            </strong>
                                         </div>
                                     </div>
                                     <div class="range-block" data-source="claude,linkapi">
@@ -2520,8 +2535,19 @@
                                     <small data-i18n="Example: http://127.0.0.1:5000">Example: http://127.0.0.1:5000</small>
                                     <input id="generic_api_url_text" name="generic_api_url" class="text_pole wide100p" value="" autocomplete="off" data-server-history="generic">
                                 </div>
-                                <datalist id="generic_model_fill"></datalist>
-                                <input id="generic_model_textgenerationwebui" list="generic_model_fill" class="text_pole wide100p" placeholder="Model ID (optional)" data-i18n="[placeholder]Model ID (optional)" type="text">
+                                <h4 data-i18n="Enter a Model ID">Enter a Model ID</h4>
+                                <div class="flex-container">
+                                    <input list="generic_model_fill" id="generic_model_textgenerationwebui" class="text_pole wide100p" placeholder="Model ID (optional)" data-i18n="[placeholder]Model ID (optional)" type="text" autocomplete="off">
+                                    <datalist id="generic_model_fill"></datalist>
+                                </div>
+                                <h4 data-i18n="Available Models">Available Models</h4>
+                                <div class="flex-container">
+                                    <select id="generic_model_select" class="text_pole wide100p">
+                                        <option value="" data-i18n="-- Connect to the API --">
+                                            -- Connect to the API --
+                                        </option>
+                                    </select>
+                                </div>
                             </div>
                             <div data-tg-type="ooba" class="flex-container flexFlowColumn">
                                 <div class="flex-container flexFlowColumn">
@@ -2935,8 +2961,8 @@
                                     <br>
                                 </div>
                                 <div class="flex-container width100p">
-                                    <input id="openai_proxy_password" type="password" class="text_pole flex1" placeholder="" form="openai_form" autocomplete="off" />
-                                    <div id="openai_proxy_password_show" title="Peek a password" data-i18n="[title]Peek a password" class="menu_button fa-solid fa-eye-slash fa-fw"></div>
+                                    <input id="openai_proxy_access_key" type="text" class="text_pole flex1 masked-secret" placeholder="" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" />
+                                    <div id="openai_proxy_access_key_show" title="Peek a password" data-i18n="[title]Peek a password" class="menu_button fa-solid fa-eye-slash fa-fw"></div>
                                 </div>
                                 <div class="range-block-title justifyLeft" data-i18n="Bind to Backend">
                                     Bind to Backend
@@ -3024,6 +3050,7 @@
                                             <option value="gpt-6-astra">gpt-6-astra</option>
                                         </optgroup>
                                         <optgroup label="GPT-5.6">
+                                            <option value="gpt-5.6">gpt-5.6</option>
                                             <option value="gpt-5.6-sol">gpt-5.6-sol</option>
                                             <option value="gpt-5.6-terra">gpt-5.6-terra</option>
                                             <option value="gpt-5.6-luna">gpt-5.6-luna</option>
@@ -3042,12 +3069,12 @@
                                             <option value="gpt-5.4-nano-2026-03-17">gpt-5.4-nano-2026-03-17</option>
                                         </optgroup>
                                         <optgroup label="GPT-5.3">
-                                            <option value="gpt-5.3-chat-latest">gpt-5.3-chat-latest</option>
+                                            <option value="gpt-5.3-chat-latest">gpt-5.3-chat-latest (deprecated)</option>
                                         </optgroup>
                                         <optgroup label="GPT-5.2">
                                             <option value="gpt-5.2">gpt-5.2</option>
                                             <option value="gpt-5.2-2025-12-11">gpt-5.2-2025-12-11</option>
-                                            <option value="gpt-5.2-chat-latest">gpt-5.2-chat-latest</option>
+                                            <option value="gpt-5.2-chat-latest">gpt-5.2-chat-latest (deprecated)</option>
                                         </optgroup>
                                         <optgroup label="GPT-5.1">
                                             <option value="gpt-5.1">gpt-5.1</option>
@@ -3056,12 +3083,12 @@
                                         </optgroup>
                                         <optgroup label="GPT-5">
                                             <option value="gpt-5">gpt-5</option>
-                                            <option value="gpt-5-2025-08-07">gpt-5-2025-08-07</option>
+                                            <option value="gpt-5-2025-08-07">gpt-5-2025-08-07 (deprecated)</option>
                                             <option value="gpt-5-chat-latest">gpt-5-chat-latest</option>
                                             <option value="gpt-5-mini">gpt-5-mini</option>
-                                            <option value="gpt-5-mini-2025-08-07">gpt-5-mini-2025-08-07</option>
+                                            <option value="gpt-5-mini-2025-08-07">gpt-5-mini-2025-08-07 (deprecated)</option>
                                             <option value="gpt-5-nano">gpt-5-nano</option>
-                                            <option value="gpt-5-nano-2025-08-07">gpt-5-nano-2025-08-07</option>
+                                            <option value="gpt-5-nano-2025-08-07">gpt-5-nano-2025-08-07 (deprecated)</option>
                                         </optgroup>
                                         <optgroup label="GPT-4o">
                                             <option value="gpt-4o">gpt-4o</option>
@@ -3078,35 +3105,34 @@
                                             <option value="gpt-4.1-2025-04-14">gpt-4.1-2025-04-14</option>
                                             <option value="gpt-4.1-mini">gpt-4.1-mini</option>
                                             <option value="gpt-4.1-mini-2025-04-14">gpt-4.1-mini-2025-04-14</option>
-                                            <option value="gpt-4.1-nano">gpt-4.1-nano</option>
-                                            <option value="gpt-4.1-nano-2025-04-14">gpt-4.1-nano-2025-04-14</option>
+                                            <option value="gpt-4.1-nano">gpt-4.1-nano (deprecated)</option>
+                                            <option value="gpt-4.1-nano-2025-04-14">gpt-4.1-nano-2025-04-14 (deprecated)</option>
                                         </optgroup>
                                         <optgroup label="o1">
-                                            <option value="o1">o1</option>
-                                            <option value="o1-2024-12-17">o1-2024-12-17</option>
+                                            <option value="o1">o1 (deprecated)</option>
+                                            <option value="o1-2024-12-17">o1-2024-12-17 (deprecated)</option>
                                         </optgroup>
                                         <optgroup label="o3">
                                             <option value="o3">o3</option>
-                                            <option value="o3-2025-04-16">o3-2025-04-16</option>
-                                            <option value="o3-mini">o3-mini</option>
-                                            <option value="o3-mini-2025-01-31">o3-mini-2025-01-31</option>
+                                            <option value="o3-2025-04-16">o3-2025-04-16 (deprecated)</option>
+                                            <option value="o3-mini">o3-mini (deprecated)</option>
+                                            <option value="o3-mini-2025-01-31">o3-mini-2025-01-31 (deprecated)</option>
                                         </optgroup>
                                         <optgroup label="o4">
-                                            <option value="o4-mini">o4-mini</option>
-                                            <option value="o4-mini-2025-04-16">o4-mini-2025-04-16</option>
+                                            <option value="o4-mini">o4-mini (deprecated)</option>
+                                            <option value="o4-mini-2025-04-16">o4-mini-2025-04-16 (deprecated)</option>
                                         </optgroup>
                                         <optgroup label="GPT-4 Turbo and GPT-4">
-                                            <option value="gpt-4-turbo">gpt-4-turbo</option>
-                                            <option value="gpt-4-turbo-2024-04-09">gpt-4-turbo-2024-04-09</option>
-                                            <option value="gpt-4-1106-preview">gpt-4-1106-preview (2023)</option>
-                                            <option value="gpt-4">gpt-4</option>
-                                            <option value="gpt-4-0613">gpt-4-0613 (2023)</option>
+                                            <option value="gpt-4-turbo">gpt-4-turbo (deprecated)</option>
+                                            <option value="gpt-4-turbo-2024-04-09">gpt-4-turbo-2024-04-09 (deprecated)</option>
+                                            <option value="gpt-4">gpt-4 (deprecated)</option>
+                                            <option value="gpt-4-0613">gpt-4-0613 (2023, deprecated)</option>
                                         </optgroup>
                                         <optgroup label="GPT-3.5 Turbo">
-                                            <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
-                                            <option value="gpt-3.5-turbo-0125">gpt-3.5-turbo-0125 (2024)</option>
-                                            <option value="gpt-3.5-turbo-1106">gpt-3.5-turbo-1106 (2023)</option>
-                                            <option value="gpt-3.5-turbo-instruct">gpt-3.5-turbo-instruct</option>
+                                            <option value="gpt-3.5-turbo">gpt-3.5-turbo (deprecated)</option>
+                                            <option value="gpt-3.5-turbo-0125">gpt-3.5-turbo-0125 (2024, deprecated)</option>
+                                            <option value="gpt-3.5-turbo-1106">gpt-3.5-turbo-1106 (2023, deprecated)</option>
+                                            <option value="gpt-3.5-turbo-instruct">gpt-3.5-turbo-instruct (deprecated)</option>
                                         </optgroup>
                                         <optgroup label="Other">
                                             <option value="babbage-002">babbage-002</option>
@@ -3312,12 +3338,16 @@
                                         <option value="gemini-3.6-flash">gemini-3.6-flash</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.5">
+                                        <option value="gemini-3.5-flash">gemini-3.5-flash</option>
                                         <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.1">
                                         <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
+                                        <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
+                                        <option value="gemini-3.1-flash-image">gemini-3.1-flash-image</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.0">
+                                        <option value="gemini-3-pro-image">gemini-3-pro-image</option>
                                         <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
                                     </optgroup>
                                     <optgroup label="Gemini 2.5">
@@ -3465,16 +3495,16 @@
                                         <option value="gemini-3.6-flash">gemini-3.6-flash</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.5">
+                                        <option value="gemini-3.5-flash">gemini-3.5-flash</option>
                                         <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.1">
                                         <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
-                                        <option value="gemini-3.1-flash-lite-preview">gemini-3.1-flash-lite-preview</option>
-                                        <option value="gemini-3.1-flash-image-preview">gemini-3.1-flash-image-preview</option>
+                                        <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
+                                        <option value="gemini-3.1-flash-image">gemini-3.1-flash-image</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.0">
-                                        <option value="gemini-3-pro-preview">gemini-3-pro-preview</option>
-                                        <option value="gemini-3-pro-image-preview">gemini-3-pro-image-preview</option>
+                                        <option value="gemini-3-pro-image">gemini-3-pro-image</option>
                                         <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
                                     </optgroup>
                                     <optgroup label="Gemini 2.5">
@@ -3934,17 +3964,24 @@
                             </select>
                         </div>
                         <div id="pollinations_form" data-source="pollinations">
-                            <h4>
-                                <a href="https://enter.pollinations.ai/" target="_blank" rel="noopener noreferrer" data-i18n="Pollinations API Key">
-                                    Pollinations API Key
-                                </a>
-                            </h4>
-                            <div class="flex-container">
-                                <input id="api_key_pollinations" name="api_key_pollinations" class="text_pole flex1" value="" type="text" autocomplete="off">
-                                <div title="Manage API keys" data-i18n="[title]Manage API keys" class="menu_button fa-solid fa-key fa-fw manage-api-keys" data-key="api_key_pollinations"></div>
-                            </div>
-                            <div data-for="api_key_pollinations" class="neutral_warning" data-i18n="For privacy reasons, your API key will be hidden after you click 'Connect'.">
-                                For privacy reasons, your API key will be hidden after you click 'Connect'.
+                            <h4 data-i18n="Pollinations Endpoint">Pollinations Endpoint</h4>
+                            <select id="pollinations_endpoint">
+                                <option value="anonymous" data-i18n="Anonymous (No Key)">Anonymous (No Key)</option>
+                                <option value="authenticated" data-i18n="Authenticated (API Key)">Authenticated (API Key)</option>
+                            </select>
+                            <div id="pollinations_key_section">
+                                <h4>
+                                    <a href="https://enter.pollinations.ai/" target="_blank" rel="noopener noreferrer" data-i18n="Pollinations API Key">
+                                        Pollinations API Key
+                                    </a>
+                                </h4>
+                                <div class="flex-container">
+                                    <input id="api_key_pollinations" name="api_key_pollinations" class="text_pole flex1" value="" type="text" placeholder="sk_..." autocomplete="off">
+                                    <div title="Manage API keys" data-i18n="[title]Manage API keys" class="menu_button fa-solid fa-key fa-fw manage-api-keys" data-key="api_key_pollinations"></div>
+                                </div>
+                                <div data-for="api_key_pollinations" class="neutral_warning" data-i18n="For privacy reasons, your API key will be hidden after you click 'Connect'.">
+                                    For privacy reasons, your API key will be hidden after you click 'Connect'.
+                                </div>
                             </div>
                             <h4 data-i18n="Pollinations Model">Pollinations Model</h4>
                             <select id="model_pollinations_select">
@@ -4083,7 +4120,7 @@
                             <!-- Azure API Key -->
                             <h4><span data-i18n="Azure API Key">Azure API Key</span></h4>
                             <div class="flex-container">
-                                <input id="api_key_azure_openai" data-setting="api_key_azure_openai" class="text_pole flex1" type="password" autocomplete="off">
+                                <input id="api_key_azure_openai" data-setting="api_key_azure_openai" class="text_pole flex1" type="text" autocomplete="off">
                                 <div title="Manage API keys" data-i18n="[title]Manage API keys" class="menu_button fa-solid fa-key fa-fw manage-api-keys" data-key="api_key_azure_openai"></div>
                             </div>
                             <div class="neutral_warning" data-i18n="For privacy reasons, your API key will be hidden after you click 'Connect'." data-for="api_key_azure_openai">

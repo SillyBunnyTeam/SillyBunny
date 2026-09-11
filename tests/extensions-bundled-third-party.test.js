@@ -1,6 +1,7 @@
 import { describe, expect, jest, test } from '@jest/globals';
 
 jest.unstable_mockModule('../src/util.js', () => ({
+    color: { yellow: text => text },
     getConfigValue: jest.fn((_, fallback) => fallback),
     isValidUrl: jest.fn(() => true),
 }));
