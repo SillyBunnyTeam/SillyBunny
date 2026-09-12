@@ -679,6 +679,7 @@ export class ChatCompletionService {
             [chat_completion_sources.SILICONFLOW]: 'siliconflow_endpoint',
             [chat_completion_sources.MINIMAX]: 'minimax_endpoint',
             [chat_completion_sources.LINKAPI]: 'linkapi_endpoint',
+            [chat_completion_sources.POLLINATIONS]: 'pollinations_endpoint',
         };
 
         if (overridePayload.chat_completion_source) {
@@ -690,7 +691,7 @@ export class ChatCompletionService {
             }
         } else {
             // Fallback: apply URL fields for all sources (legacy behavior)
-            ['custom_url', 'vertexai_region', 'zai_endpoint', 'siliconflow_endpoint', 'linkapi_endpoint'].forEach(field => {
+            ['custom_url', 'vertexai_region', 'zai_endpoint', 'siliconflow_endpoint', 'linkapi_endpoint', 'pollinations_endpoint'].forEach(field => {
                 overridePayload[field] = overridePayload[field] || settings[field] || oai_settings[field];
             });
         }
@@ -735,6 +736,9 @@ export class ChatCompletionService {
         }
         if (overridePayload.linkapi_endpoint !== undefined) {
             settings.linkapi_endpoint = overridePayload.linkapi_endpoint;
+        }
+        if (overridePayload.pollinations_endpoint !== undefined) {
+            settings.pollinations_endpoint = overridePayload.pollinations_endpoint;
         }
         if (overridePayload.custom_include_body !== undefined) {
             settings.custom_include_body = overridePayload.custom_include_body;
@@ -795,6 +799,16 @@ export class ChatCompletionService {
         // Convert from settings to generation payload
         const data = await createGenerationParameters(settings, overridePayload.model, 'quiet', overridePayload.messages);
         const payload = data.generate_data;
+
+        // SillyBunny: profile overrides must retain the provider's message constraints and expanded custom fields.
+        overridePayload.messages = payload.messages;
+        if (settings.chat_completion_source === chat_completion_sources.CUSTOM) {
+            for (const field of ['custom_include_body', 'custom_exclude_body', 'custom_include_headers']) {
+                if (Object.hasOwn(overridePayload, field)) {
+                    overridePayload[field] = payload[field];
+                }
+            }
+        }
 
         if (shouldUseConnectionProfileField('include_reasoning')) {
             overridePayload.include_reasoning = payload.include_reasoning;

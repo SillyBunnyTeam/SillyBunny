@@ -20,6 +20,7 @@ const retiredMainModels = [
     'o1-mini-2024-09-12',
     'gpt-4-turbo-preview',
     'gpt-4-0125-preview',
+    'gpt-4-1106-preview',
     'gpt-4-0314',
 ];
 const retiredCaptionModels = [
@@ -115,6 +116,7 @@ test('OpenAI pickers include GPT-5.6 and GPT-6 Astra and omit retired native Ope
     expect(captionPicker).toEqual(expect.arrayContaining([...gpt56Models, 'gpt-6-astra']));
     expect(mainPicker).toEqual(expect.not.arrayContaining(retiredMainModels));
     expect(captionPicker).toEqual(expect.not.arrayContaining(retiredCaptionModels));
+    expect(readSource('../public/index.html')).toContain('<option value="gpt-5.3-chat-latest">gpt-5.3-chat-latest (deprecated)</option>');
 });
 
 test('GPT-6 Astra enables images without advertising unsupported tool calls in either API mode', () => {
@@ -153,16 +155,30 @@ test('OpenAI image picker omits retired DALL-E models', () => {
     expect(imageModels).toEqual(expect.not.arrayContaining(['dall-e-2', 'dall-e-3']));
 });
 
-test('GPT-5.6 supports distinct max reasoning effort and one-million-token context', () => {
+test('GPT-5.6 supports distinct max reasoning effort and its 1.05-million-token context', () => {
     const constants = readSource('../src/constants.js');
     const openAiScript = readSource('../public/scripts/openai.js');
 
     for (const model of gpt56Models) {
         expect(constants).toContain(`'${model}'`);
     }
-    expect(openAiScript).toContain('value.startsWith(\'gpt-5.4\') || value.startsWith(\'gpt-5.6\')');
-    // max reaches the wire untouched now, so there is no per-model case left to assert.
-    expect(openAiScript).not.toContain('case reasoning_effort_types.max:');
+    const contextLimit = openAiScript.match(/function getMaxContextOpenAI\(value\) \{[\s\S]*?\n\}/)[0];
+    const reasoningEffort = openAiScript.match(/function getReasoningEffort\([\s\S]*?\n\}/)[0];
+    for (const model of gpt56Models) {
+        expect(runInNewContext(`(${contextLimit})(model)`, {
+            model,
+            isMaxContextUnlockedForSource: () => false,
+            max_1050k: 1050000,
+        })).toBe(1050000);
+        for (const source of [CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES, CHAT_COMPLETION_SOURCES.CUSTOM]) {
+            expect(runInNewContext(`(${reasoningEffort})(settings, model)`, {
+                model,
+                settings: { chat_completion_source: source, reasoning_effort: 'max' },
+                chat_completion_sources: CHAT_COMPLETION_SOURCES,
+                reasoning_effort_types: { none: 'none', min: 'min' },
+            })).toBe('max');
+        }
+    }
 });
 
 test('Claude pickers include current Claude 5 models and omit all retired Claude IDs', () => {
@@ -260,10 +276,10 @@ test('new provider models are the defaults where requested', () => {
     const openAiScript = readSource('../public/scripts/openai.js');
     const defaultPreset = JSON.parse(readSource('../default/content/presets/openai/Default.json'));
 
-    expect(openAiScript).toContain("google_model: 'gemini-3.7-flash'");
-    expect(openAiScript).toContain("vertexai_model: 'gemini-3.7-flash'");
-    expect(openAiScript).toContain("minimax_model: 'MiniMax-M3'");
-    expect(openAiScript).toContain("zai_model: 'glm-5.3'");
+    expect(openAiScript).toContain('google_model: \'gemini-3.7-flash\'');
+    expect(openAiScript).toContain('vertexai_model: \'gemini-3.7-flash\'');
+    expect(openAiScript).toContain('minimax_model: \'MiniMax-M3\'');
+    expect(openAiScript).toContain('zai_model: \'glm-5.3\'');
     expect(defaultPreset).toMatchObject({
         google_model: 'gemini-3.7-flash',
         vertexai_model: 'gemini-3.7-flash',
@@ -280,9 +296,9 @@ test('Z.AI includes GLM-5.3-Flash with multimodal and one-million-token support'
 
     expect(getSelectOptionIds(mainSource, 'model_zai_select')).toContain('glm-5.3-flash');
     expect(getDataTypeOptionIds(captionSource, 'zai')).toContain('glm-5.3-flash');
-    expect(openAiScript).toContain("'glm-5.3-flash': max_1mil");
-    expect(visionModels).toContain("'glm-5.3-flash'");
-    expect(videoModels).toContain("'glm-5.3-flash'");
+    expect(openAiScript).toContain('\'glm-5.3-flash\': max_1mil');
+    expect(visionModels).toContain('\'glm-5.3-flash\'');
+    expect(videoModels).toContain('\'glm-5.3-flash\'');
 });
 
 test('MiniMax includes M3 with multimodal and one-million-token support', () => {
@@ -290,8 +306,8 @@ test('MiniMax includes M3 with multimodal and one-million-token support', () => 
     const openAiScript = readSource('../public/scripts/openai.js');
 
     expect(getSelectOptionIds(mainSource, 'model_minimax_select')).toContain('MiniMax-M3');
-    expect(openAiScript).toContain("oai_settings.minimax_model === 'MiniMax-M3' ? max_1mil");
-    expect(openAiScript).toContain("case chat_completion_sources.MINIMAX:\n            return oai_settings.minimax_model === 'MiniMax-M3';");
+    expect(openAiScript).toContain('oai_settings.minimax_model === \'MiniMax-M3\' ? max_1mil');
+    expect(openAiScript).toContain('case chat_completion_sources.MINIMAX:\n            return oai_settings.minimax_model === \'MiniMax-M3\';');
 });
 
 test('Caption picker omits retired Cohere and Groq vision models', () => {

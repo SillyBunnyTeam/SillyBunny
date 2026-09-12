@@ -14,6 +14,7 @@ import {
     extension_prompt_roles,
     extension_prompt_types,
     Generate,
+    getCurrentChatId,
     getExtensionPrompt,
     getExtensionPromptMaxDepth,
     getMediaDisplay,
@@ -189,6 +190,7 @@ const max_200k = 200 * 1000;
 const max_256k = 256 * 1000;
 const max_400k = 400 * 1000;
 const max_1mil = 1000 * 1000;
+const max_1050k = 1050 * 1000;
 const max_2mil = 2000 * 1000;
 const unlocked_max = max_2mil;
 const oai_max_temp = 2.0;
@@ -407,6 +409,11 @@ export const ZAI_ENDPOINT = {
     CODING: 'coding',
 };
 
+export const POLLINATIONS_ENDPOINT = {
+    AUTHENTICATED: 'authenticated',
+    ANONYMOUS: 'anonymous',
+};
+
 export const SILICONFLOW_ENDPOINT = {
     GLOBAL: 'global',
     CN: 'cn',
@@ -485,6 +492,7 @@ export const settingsToUpdate = {
     aimlapi_model: ['#model_aimlapi_select', 'aimlapi_model', false, true],
     xai_model: ['#model_xai_select', 'xai_model', false, true],
     pollinations_model: ['#model_pollinations_select', 'pollinations_model', false, true],
+    pollinations_endpoint: ['#pollinations_endpoint', 'pollinations_endpoint', false, true],
     moonshot_model: ['#model_moonshot_select', 'moonshot_model', false, true],
     fireworks_model: ['#model_fireworks_select', 'fireworks_model', false, true],
     cometapi_model: ['#model_cometapi_select', 'cometapi_model', false, true],
@@ -523,7 +531,7 @@ export const settingsToUpdate = {
     prompts: ['', 'prompts', false, false],
     prompt_order: ['', 'prompt_order', false, false],
     show_external_models: ['#openai_show_external_models', 'show_external_models', true, true],
-    proxy_password: ['#openai_proxy_password', 'proxy_password', false, true],
+    proxy_password: ['#openai_proxy_access_key', 'proxy_password', false, true],
     assistant_prefill: ['#claude_assistant_prefill', 'assistant_prefill', false, false],
     kimi_partial_prefill: ['#openai_kimi_partial_prefill', 'kimi_partial_prefill', false, false],
     assistant_impersonation: ['#claude_assistant_impersonation', 'assistant_impersonation', false, false],
@@ -584,7 +592,7 @@ const default_settings = {
     group_nudge_prompt: default_group_nudge_prompt,
     scenario_format: default_scenario_format,
     personality_format: default_personality_format,
-    openai_model: 'gpt-4-turbo',
+    openai_model: 'gpt-5.6-terra',
     claude_model: 'claude-opus-5',
     claude_disable_temperature: false,
     claude_disable_top_p: false,
@@ -614,6 +622,7 @@ const default_settings = {
     aimlapi_model: 'chatgpt-4o-latest',
     xai_model: 'grok-3-beta',
     pollinations_model: 'openai',
+    pollinations_endpoint: POLLINATIONS_ENDPOINT.AUTHENTICATED,
     cometapi_model: 'gpt-4o',
     moonshot_model: 'kimi-latest',
     fireworks_model: 'accounts/fireworks/models/kimi-k2-instruct',
@@ -2042,6 +2051,21 @@ export async function prepareOpenAIMessages({
 }
 
 /**
+ * Extracts a human-readable message from a Chat Completion error response.
+ * Providers can return an error object without a message field, or the error as
+ * a plain string. statusText is only used for non-2xx responses, since for an
+ * HTTP 200 carrying an error payload it is just "OK" (#5647).
+ * @param {object} data Parsed response body
+ * @param {Response} response Fetch response
+ * @returns {string} Error message to display and throw
+ */
+function getChatCompletionErrorMessage(data, response) {
+    const error = data?.error ?? data?.detail?.error;
+    const message = typeof error === 'string' ? error : (error?.message || error?.code || error?.type);
+    return String(message || (!response.ok && response.statusText) || t`Unknown error`);
+}
+
+/**
  * Handles errors during streaming requests.
  * @param {Response} response
  * @param {string} decoded - response text or decoded stream data
@@ -2063,7 +2087,7 @@ export function tryParseStreamingError(response, decoded, { quiet = false } = {}
         // if trying to fix "[object Object]" displayed to users, start here
 
         if (data.error) {
-            !quiet && toastr.error(data.error.message || response.statusText, 'Chat Completion API');
+            !quiet && toastr.error(getChatCompletionErrorMessage(data, response), 'Chat Completion API');
             throw new Error(typeof data === 'string' ? data : JSON.stringify(data));
         }
 
@@ -2073,7 +2097,7 @@ export function tryParseStreamingError(response, decoded, { quiet = false } = {}
         }
 
         if (data.detail) {
-            !quiet && toastr.error(data.detail?.error?.message || response.statusText, 'Chat Completion API');
+            !quiet && toastr.error(getChatCompletionErrorMessage(data, response), 'Chat Completion API');
             throw new Error(typeof data === 'string' ? data : JSON.stringify(data));
         }
     } catch {
@@ -4779,14 +4803,12 @@ function saveModelList(data) {
 
     if (oai_settings.chat_completion_source === chat_completion_sources.FIREWORKS) {
         $('#model_fireworks_select').empty();
+        model_list.sort((a, b) => (a?.name || a?.id || '').localeCompare(b?.name || b?.id || ''));
         model_list.forEach((model) => {
-            if (!model?.supports_chat) {
-                return;
-            }
             $('#model_fireworks_select').append(
                 $('<option>', {
                     value: model.id,
-                    text: model.id,
+                    text: model.name || model.id,
                 }));
         });
 
@@ -5242,6 +5264,7 @@ function getReasoningEffort(settings = null, model = null) {
         chat_completion_sources.COMETAPI,
         chat_completion_sources.ELECTRONHUB,
         chat_completion_sources.CHUTES,
+        chat_completion_sources.FIREWORKS,
     ];
 
     if (!reasoningEffortSources.includes(settings.chat_completion_source)) {
@@ -5249,6 +5272,18 @@ function getReasoningEffort(settings = null, model = null) {
     }
 
     function resolveReasoningEffort() {
+        if (settings.chat_completion_source === chat_completion_sources.FIREWORKS) {
+            switch (settings.reasoning_effort) {
+                case 'auto':
+                case reasoning_effort_types.none:
+                    return undefined;
+                case reasoning_effort_types.min:
+                    return reasoning_effort_types.low;
+                default:
+                    return settings.reasoning_effort;
+            }
+        }
+
         switch (settings.reasoning_effort) {
             case reasoning_effort_types.none:
                 // GPT-5.1 and newer accept 'none' as a real value that pins thinking off;
@@ -5329,6 +5364,20 @@ export async function createGenerationParameters(settings, model, type, messages
     messages = messages.filter(msg => msg && typeof msg === 'object');
     messages = appendAutoAppendReasoningInstruction(messages, settings, model, type);
 
+    // DeepSeek only accepts image blocks in user messages. Media can also be
+    // attached to system and assistant messages by the shared inlining path.
+    const isDeepSeekVisionModel = typeof model === 'string' && model.toLowerCase().includes('deepseek-v4-flash-vision-exp');
+    if (isDeepSeekVisionModel) {
+        messages = messages.flatMap((message) => {
+            if (!['system', 'assistant'].includes(message.role) || !Array.isArray(message.content)) {
+                return [message];
+            }
+
+            const content = message.content.filter(block => block?.type !== 'image_url');
+            return content.length > 0 ? [{ ...message, content }] : [];
+        });
+    }
+
     // "OpenAI-like" sources
     const gptSources = [
         chat_completion_sources.OPENAI,
@@ -5362,6 +5411,7 @@ export async function createGenerationParameters(settings, model, type, messages
     const logprobsSupportedSources = [
         chat_completion_sources.OPENAI,
         chat_completion_sources.AZURE_OPENAI,
+        chat_completion_sources.OPENROUTER,
         chat_completion_sources.CUSTOM,
         chat_completion_sources.DEEPSEEK,
         chat_completion_sources.XAI,
@@ -5507,6 +5557,10 @@ export async function createGenerationParameters(settings, model, type, messages
         generate_data.middleout = settings.openrouter_middleout;
     }
 
+    if (settings.chat_completion_source === chat_completion_sources.FIREWORKS && type !== 'quiet') {
+        generate_data.chat_id = getCurrentChatId();
+    }
+
     if ([chat_completion_sources.MAKERSUITE, chat_completion_sources.VERTEXAI].includes(settings.chat_completion_source)) {
         const stopStringsLimit = 5;
         generate_data.top_k = settings.top_k_openai > 0 ? Number(settings.top_k_openai) : undefined;
@@ -5526,9 +5580,9 @@ export async function createGenerationParameters(settings, model, type, messages
 
     if (settings.chat_completion_source === chat_completion_sources.CUSTOM) {
         generate_data.custom_url = settings.custom_url;
-        generate_data.custom_include_body = settings.custom_include_body;
-        generate_data.custom_exclude_body = settings.custom_exclude_body;
-        generate_data.custom_include_headers = settings.custom_include_headers;
+        generate_data.custom_include_body = substituteParams(settings.custom_include_body);
+        generate_data.custom_exclude_body = substituteParams(settings.custom_exclude_body);
+        generate_data.custom_include_headers = substituteParams(settings.custom_include_headers);
         generate_data.custom_reasoning_preset = settings.custom_reasoning_preset;
         generate_data.custom_reasoning_param_name = settings.custom_reasoning_param_name;
         generate_data.custom_reasoning_param_format = settings.custom_reasoning_param_format;
@@ -5613,6 +5667,10 @@ export async function createGenerationParameters(settings, model, type, messages
         generate_data.zai_endpoint = settings.zai_endpoint || ZAI_ENDPOINT.COMMON;
         delete generate_data.presence_penalty;
         delete generate_data.frequency_penalty;
+    }
+
+    if (settings.chat_completion_source === chat_completion_sources.POLLINATIONS) {
+        generate_data.pollinations_endpoint = settings.pollinations_endpoint || POLLINATIONS_ENDPOINT.AUTHENTICATED;
     }
 
     if (settings.chat_completion_source === chat_completion_sources.SILICONFLOW) {
@@ -5843,7 +5901,7 @@ async function sendOpenAIRequest(type, messages, signal, { jsonSchema = null, ca
         checkModerationError(data);
 
         if (data.error) {
-            const message = data.error.message || response.statusText || t`Unknown error`;
+            const message = getChatCompletionErrorMessage(data, response);
             toastr.error(message, t`API returned an error`);
             throw new Error(message);
         }
@@ -5974,7 +6032,7 @@ export function getStreamingReply(data, state, { chatCompletionSource = null, ov
             }
         });
         return data.choices?.[0]?.delta?.content ?? data.choices?.[0]?.message?.content ?? data.choices?.[0]?.text ?? '';
-    } else if ([chat_completion_sources.CUSTOM, chat_completion_sources.POLLINATIONS, chat_completion_sources.AIMLAPI, chat_completion_sources.MOONSHOT, chat_completion_sources.COMETAPI, chat_completion_sources.ELECTRONHUB, chat_completion_sources.NANOGPT, chat_completion_sources.ZAI, chat_completion_sources.SILICONFLOW, chat_completion_sources.CHUTES, chat_completion_sources.MINIMAX, chat_completion_sources.WORKERS_AI].includes(chat_completion_source)) {
+    } else if ([chat_completion_sources.CUSTOM, chat_completion_sources.POLLINATIONS, chat_completion_sources.AIMLAPI, chat_completion_sources.MOONSHOT, chat_completion_sources.COMETAPI, chat_completion_sources.ELECTRONHUB, chat_completion_sources.NANOGPT, chat_completion_sources.ZAI, chat_completion_sources.SILICONFLOW, chat_completion_sources.CHUTES, chat_completion_sources.MINIMAX, chat_completion_sources.WORKERS_AI, chat_completion_sources.FIREWORKS].includes(chat_completion_source)) {
         if (show_thoughts) {
             state.reasoning +=
                 data.choices?.filter(x => x?.delta?.reasoning_content)?.[0]?.delta?.reasoning_content ??
@@ -6012,6 +6070,7 @@ function parseChatCompletionLogprobs(data) {
         case chat_completion_sources.OPENAI:
         case chat_completion_sources.OPENAI_RESPONSES:
         case chat_completion_sources.AZURE_OPENAI:
+        case chat_completion_sources.OPENROUTER:
         case chat_completion_sources.DEEPSEEK:
         case chat_completion_sources.XAI:
         case chat_completion_sources.CUSTOM:
@@ -7002,6 +7061,12 @@ function migrateChatCompletionSettings(settings) {
         { oldKey: 'chat_completion_source', oldValue: 'palm', newKey: 'chat_completion_source', newValue: chat_completion_sources.MAKERSUITE },
         { oldKey: 'custom_prompt_post_processing', oldValue: custom_prompt_post_processing_types.CLAUDE, newKey: 'custom_prompt_post_processing', newValue: custom_prompt_post_processing_types.MERGE },
         { oldKey: 'ai21_model', oldValue: /^j2-/, newKey: 'ai21_model', newValue: 'jamba-large' },
+        { oldKey: 'google_model', oldValue: 'gemini-3.1-flash-lite-preview', newKey: 'google_model', newValue: 'gemini-3.1-flash-lite' },
+        { oldKey: 'vertexai_model', oldValue: 'gemini-3.1-flash-lite-preview', newKey: 'vertexai_model', newValue: 'gemini-3.1-flash-lite' },
+        { oldKey: 'google_model', oldValue: 'gemini-3.1-flash-image-preview', newKey: 'google_model', newValue: 'gemini-3.1-flash-image' },
+        { oldKey: 'vertexai_model', oldValue: 'gemini-3.1-flash-image-preview', newKey: 'vertexai_model', newValue: 'gemini-3.1-flash-image' },
+        { oldKey: 'google_model', oldValue: 'gemini-3-pro-image-preview', newKey: 'google_model', newValue: 'gemini-3-pro-image' },
+        { oldKey: 'vertexai_model', oldValue: 'gemini-3-pro-image-preview', newKey: 'vertexai_model', newValue: 'gemini-3-pro-image' },
         { oldKey: 'image_inlining', oldValue: false, newKey: 'media_inlining', newValue: false },
         { oldKey: 'image_inlining', oldValue: true, newKey: 'media_inlining', newValue: true },
         { oldKey: 'video_inlining', oldValue: true, newKey: 'media_inlining', newValue: true },
@@ -7483,7 +7548,7 @@ async function getStatusOpen() {
     if (oai_settings.chat_completion_source === chat_completion_sources.CUSTOM) {
         $('.model_custom_select').empty();
         data.custom_url = oai_settings.custom_url;
-        data.custom_include_headers = oai_settings.custom_include_headers;
+        data.custom_include_headers = substituteParams(oai_settings.custom_include_headers);
         if (selected_custom_endpoint_preset?.secretId) {
             data.secret_id = selected_custom_endpoint_preset.secretId;
         }
@@ -7515,6 +7580,10 @@ async function getStatusOpen() {
 
     if (oai_settings.chat_completion_source === chat_completion_sources.WORKERS_AI) {
         data.workers_ai_account_id = oai_settings.workers_ai_account_id;
+    }
+
+    if (oai_settings.chat_completion_source === chat_completion_sources.POLLINATIONS) {
+        data.pollinations_endpoint = oai_settings.pollinations_endpoint || POLLINATIONS_ENDPOINT.AUTHENTICATED;
     }
 
     const canBypass = ([chat_completion_sources.OPENAI, chat_completion_sources.OPENAI_RESPONSES].includes(oai_settings.chat_completion_source) && oai_settings.bypass_status_check)
@@ -8061,6 +8130,23 @@ async function onLogitBiasPresetDeleteClick() {
     saveSettingsDebounced();
 }
 
+/**
+ * Promise that resolves when the most recently started preset application has fully completed.
+ * The change handler defers the actual apply behind an event emission, so programmatic preset
+ * switches (e.g. /preset, connection profiles) must await this to sequence follow-up commands
+ * such as /api and /model correctly.
+ * @type {Promise<void>}
+ */
+let presetApplicationPromise = Promise.resolve();
+
+/**
+ * Gets a promise that resolves when the currently pending preset application completes.
+ * @returns {Promise<void>} Promise that resolves when the preset is fully applied.
+ */
+export function getPresetApplicationPromise() {
+    return presetApplicationPromise;
+}
+
 function restoreOpenAIPresetSelection(presetName = oai_settings.preset_settings_openai) {
     const presetValue = openai_setting_names?.[presetName];
 
@@ -8089,7 +8175,7 @@ function onSettingsPresetChange() {
     const updateCheckbox = (selector, value) => $(selector).prop('checked', value).trigger('input', { source: 'preset' });
 
     // Allow subscribers to alter the preset before applying deltas
-    return eventSource.emit(event_types.OAI_PRESET_CHANGED_BEFORE, {
+    return presetApplicationPromise = eventSource.emit(event_types.OAI_PRESET_CHANGED_BEFORE, {
         preset: preset,
         presetName: presetName,
         settingsToUpdate: settingsToUpdate,
@@ -8172,8 +8258,9 @@ function onSettingsPresetChange() {
 function getMaxContextOpenAI(value) {
     if (isMaxContextUnlockedForSource()) {
         return unlocked_max;
-    } else if (value.startsWith('gpt-5.4') || value.startsWith('gpt-5.6')) {
-        // SillyBunny: GPT-5.6 has the same one-million-token context tier as GPT-5.4.
+    } else if (value.startsWith('gpt-5.6')) {
+        return max_1050k;
+    } else if (value.startsWith('gpt-5.4') || value.startsWith('gpt-5.5')) {
         return max_1mil;
     } else if (value.startsWith('gpt-5')) {
         return max_400k;
@@ -8816,6 +8903,8 @@ async function onModelChange() {
             $('#openai_max_context').attr('max', max_2mil);
         } else if (value.includes('gemini-2.5-flash-image')) {
             $('#openai_max_context').attr('max', max_32k);
+        } else if (value.includes('gemini-3.1-flash-image')) {
+            $('#openai_max_context').attr('max', max_128k);
         } else if (value.includes('gemini-3-pro-image')) {
             $('#openai_max_context').attr('max', max_64k);
         } else if (/gemini-3[.\d]*-(pro|flash)/.test(value) || /gemini-2.5-(pro|flash)/.test(value) || /gemini-2.0-(pro|flash)/.test(value)) {
@@ -9227,7 +9316,7 @@ async function onConnectButtonClick(e) {
         [chat_completion_sources.AZURE_OPENAI]: { key: SECRET_KEYS.AZURE_OPENAI, selector: '#api_key_azure_openai', proxy: false },
         [chat_completion_sources.ZAI]: { key: SECRET_KEYS.ZAI, selector: '#api_key_zai', proxy: true },
         [chat_completion_sources.CHUTES]: { key: SECRET_KEYS.CHUTES, selector: '#api_key_chutes', proxy: false },
-        [chat_completion_sources.POLLINATIONS]: { key: SECRET_KEYS.POLLINATIONS, selector: '#api_key_pollinations', proxy: false },
+        [chat_completion_sources.POLLINATIONS]: { key: SECRET_KEYS.POLLINATIONS, selector: '#api_key_pollinations', proxy: false, keyless: oai_settings.pollinations_endpoint === POLLINATIONS_ENDPOINT.ANONYMOUS },
         [chat_completion_sources.WORKERS_AI]: { key: SECRET_KEYS.WORKERS_AI, selector: '#api_key_workers_ai', proxy: false },
         [chat_completion_sources.MINIMAX]: { key: SECRET_KEYS.MINIMAX, selector: '#api_key_minimax', proxy: false },
         [chat_completion_sources.LINKAPI]: { key: SECRET_KEYS.LINKAPI, selector: '#api_key_linkapi', proxy: false },
@@ -9335,6 +9424,7 @@ function toggleChatCompletionForms() {
     } else if (oai_settings.chat_completion_source == chat_completion_sources.XAI) {
         $('#model_xai_select').trigger('change');
     } else if (oai_settings.chat_completion_source == chat_completion_sources.POLLINATIONS) {
+        $('#pollinations_key_section').toggle(oai_settings.pollinations_endpoint === POLLINATIONS_ENDPOINT.AUTHENTICATED);
         $('#model_pollinations_select').trigger('change');
     } else if (oai_settings.chat_completion_source == chat_completion_sources.MOONSHOT) {
         $('#model_moonshot_select').trigger('change');
@@ -9392,10 +9482,8 @@ export function reconnectOpenAi() {
     }
 }
 
-function onProxyPasswordShowClick() {
-    const $input = $('#openai_proxy_password');
-    const type = $input.attr('type') === 'password' ? 'text' : 'password';
-    $input.attr('type', type);
+function onProxyAccessKeyShowClick() {
+    $('#openai_proxy_access_key').toggleClass('masked-secret');
     $(this).toggleClass('fa-eye-slash fa-eye');
 }
 
@@ -9534,6 +9622,8 @@ export function isImageInliningSupported() {
         'moonshot-v1-128k-vision-preview',
         'kimi-k2.5',
         'kimi-latest',
+        // DeepSeek
+        'deepseek-v4-flash-vision-exp',
         // Z.AI (GLM)
         'glm-5.3-flash',
         'glm-5v-turbo',
@@ -9599,10 +9689,14 @@ export function isImageInliningSupported() {
             return visionSupportedModels.some(model => oai_settings.linkapi_model.includes(model));
         case chat_completion_sources.SILICONFLOW:
             return visionSupportedModels.some(model => oai_settings.siliconflow_model.includes(model));
+        case chat_completion_sources.DEEPSEEK:
+            return visionSupportedModels.some(model => oai_settings.deepseek_model.includes(model));
         case chat_completion_sources.WORKERS_AI: {
             const waiModel = Array.isArray(model_list) && model_list.find(m => m.id === oai_settings.workers_ai_model);
             return Boolean(waiModel && Array.isArray(waiModel.properties) && waiModel.properties.some(p => p.property_id === 'vision' && p.value === 'true'));
         }
+        case chat_completion_sources.FIREWORKS:
+            return (Array.isArray(model_list) && model_list.find(m => m.id === oai_settings.fireworks_model)?.supports_image_input);
         default:
             return false;
     }
@@ -9817,7 +9911,7 @@ function setProxyPreset(name, url, password, source = '', { applySource = true, 
     oai_settings.reverse_proxy = normalizedPreset.url;
     $('#openai_reverse_proxy').val(oai_settings.reverse_proxy);
     oai_settings.proxy_password = normalizedPreset.password;
-    $('#openai_proxy_password').val(oai_settings.proxy_password);
+    $('#openai_proxy_access_key').val(oai_settings.proxy_password);
     $('#openai_proxy_source').val(normalizedPreset.source || '');
 
     const shouldSwitchSource = applySource && normalizedPreset.source && normalizedPreset.source !== oai_settings.chat_completion_source;
@@ -9893,7 +9987,7 @@ function syncProxyPresetToBoundSource(source) {
 $('#save_proxy').on('click', async function () {
     const presetName = $('#openai_reverse_proxy_name').val();
     const reverseProxy = $('#openai_reverse_proxy').val();
-    const proxyPassword = $('#openai_proxy_password').val();
+    const proxyPassword = $('#openai_proxy_access_key').val();
     const preset = buildReverseProxyPresetForSave({
         name: presetName,
         url: reverseProxy,
@@ -10948,9 +11042,15 @@ export function initOpenAI() {
         saveSettingsDebounced();
     });
 
-    $('#openai_proxy_password').on('input', function () {
+    $('#openai_proxy_access_key').on('input', function () {
         oai_settings.proxy_password = String($(this).val());
         saveSettingsDebounced();
+    });
+
+    $('#openai_proxy_access_key').on('copy cut', function (event) {
+        if ($(this).hasClass('masked-secret')) {
+            event.preventDefault();
+        }
     });
 
     $('#claude_assistant_prefill').on('input', function () {
@@ -11448,6 +11548,12 @@ export function initOpenAI() {
         oai_settings.linkapi_endpoint = String($(this).val());
         saveSettingsDebounced();
     });
+    $('#pollinations_endpoint').on('input', function () {
+        oai_settings.pollinations_endpoint = String($(this).val());
+        $('#pollinations_key_section').toggle(oai_settings.pollinations_endpoint === POLLINATIONS_ENDPOINT.AUTHENTICATED);
+        reconnectOpenAi();
+        saveSettingsDebounced();
+    });
     $('#siliconflow_endpoint').on('input', function () {
         oai_settings.siliconflow_endpoint = String($(this).val());
         saveSettingsDebounced();
@@ -11504,7 +11610,7 @@ export function initOpenAI() {
     $('#openai_logit_bias_export_preset').on('click', onLogitBiasPresetExportClick);
     $('#openai_logit_bias_delete_preset').on('click', onLogitBiasPresetDeleteClick);
     $('#import_oai_preset').on('click', onImportPresetClick);
-    $('#openai_proxy_password_show').on('click', onProxyPasswordShowClick);
+    $('#openai_proxy_access_key_show').on('click', onProxyAccessKeyShowClick);
     $('#customize_additional_parameters').on('click', onCustomizeParametersClick);
     $('#openai_proxy_preset').on('change', onProxyPresetChange);
     $('#custom_endpoint_preset').on('change', onCustomEndpointPresetChange);

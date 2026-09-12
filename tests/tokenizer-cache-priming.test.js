@@ -129,7 +129,7 @@ describe('OpenAI token cache priming', () => {
         }
 
         expect(globalThis.jQuery.ajax).toHaveBeenCalledTimes(1);
-        expect(counts).toEqual([-1 + 11, -1 + 22, -1 + 33]);
+        expect(counts).toEqual([11, 22, 33]);
     });
 
     test('skips messages that are already cached', async () => {
@@ -158,7 +158,7 @@ describe('OpenAI token cache priming', () => {
         await expect(primeOpenAITokenCache(messages)).resolves.toBeUndefined();
 
         globalThis.jQuery.ajax.mockResolvedValue({ token_count: 4 });
-        expect(await countTokensOpenAIAsync(messages[0], true)).toBe(-1 + 4);
+        expect(await countTokensOpenAIAsync(messages[0], true)).toBe(4);
     });
 
     test('ignores a response that does not line up with the request', async () => {
@@ -168,7 +168,7 @@ describe('OpenAI token cache priming', () => {
         await primeOpenAITokenCache(messages);
 
         globalThis.jQuery.ajax.mockResolvedValue({ token_count: 8 });
-        expect(await countTokensOpenAIAsync(messages[0], true)).toBe(-1 + 8);
+        expect(await countTokensOpenAIAsync(messages[0], true)).toBe(8);
     });
 
     test('does nothing when given no messages', async () => {

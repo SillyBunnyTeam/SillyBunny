@@ -1,11 +1,12 @@
 import { describe, expect, test } from '@jest/globals';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
 
 const readSource = (relativePath) => fs.readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8');
 
 const indexSource = readSource('../public/index.html');
-const openAiSource = readSource('../public/scripts/openai.js');
+const openAiSource = readSource('../public/scripts/openai.js').replace(/\r\n/g, '\n');
 const chatCompletionsSource = readSource('../src/endpoints/backends/chat-completions.js');
 
 describe('reasoning effort \'none\'', () => {
@@ -13,12 +14,26 @@ describe('reasoning effort \'none\'', () => {
         // GPT-5.1 and newer accept 'none' as a value that pins thinking off. Omitting the field
         // there lets the model pick its own default depth, which defeats picking None. Every
         // other source keeps omitting it, because endpoints that do not list the value reject it.
-        const noneCase = openAiSource.match(/case reasoning_effort_types\.none:[\s\S]*?(?=case reasoning_effort_types\.min:)/);
+        const declarations = ['chat_completion_sources', 'reasoning_effort_types'].map(name =>
+            openAiSource.match(new RegExp(`export const ${name} = \\{[\\s\\S]*?\\n\\};`))[0].replace('export ', ''),
+        );
+        const effortSource = openAiSource.match(/function getReasoningEffort\([\s\S]*?\n\}/)[0];
+        const context = { model_list: [] };
+        runInNewContext([...declarations, effortSource].join('\n'), context);
 
-        expect(noneCase).not.toBeNull();
-        expect(noneCase[0]).toContain('return [chat_completion_sources.OPENAI, chat_completion_sources.OPENAI_RESPONSES, chat_completion_sources.AZURE_OPENAI, chat_completion_sources.CUSTOM].includes(settings.chat_completion_source) && /^gpt-5\\.([1-9]|\\d{2,})/.test(model)');
-        expect(noneCase[0]).toContain('? reasoning_effort_types.none');
-        expect(noneCase[0]).toContain(': undefined;');
+        const results = ['openai', 'openai_responses', 'azure_openai', 'custom', 'fireworks', 'openrouter'].flatMap(source =>
+            ['gpt-5', 'gpt-5.1', 'gpt-5.6', 'gpt-5.10', 'other-model'].map(model => ({
+                source,
+                model,
+                effort: context.getReasoningEffort({ chat_completion_source: source, reasoning_effort: 'none' }, model),
+            })),
+        );
+        expect(results.filter(result => result.effort === 'none')).toEqual(
+            ['openai', 'openai_responses', 'azure_openai', 'custom'].flatMap(source =>
+                ['gpt-5.1', 'gpt-5.6', 'gpt-5.10'].map(model => ({ source, model, effort: 'none' })),
+            ),
+        );
+        expect(results.every(result => result.effort === 'none' || result.effort === undefined)).toBe(true);
     });
 
     test('the NanoGPT handler forwards \'none\' untouched', () => {

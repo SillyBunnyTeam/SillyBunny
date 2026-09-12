@@ -1,3 +1,5 @@
+const baseURL = process.env.SILLYBUNNY_TEST_BASE_URL || process.env.ST_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:4444';
+
 export const testSetup = {
     /**
      * Navigates to the home page without waiting for SillyTavern to load.
@@ -15,10 +17,40 @@ export const testSetup = {
      */
     awaitST: async ({ page }) => {
         await page.goto('/');
-        if (new URL(page.url()).pathname === '/login') {
-            await page.locator('#userList .userSelect').last().click();
-            await page.waitForURL(url => url.pathname === '/');
+        if (await testSetup.isLoginPage({ page })) {
+            // eslint-disable-next-line playwright/no-networkidle
+            await page.waitForLoadState('networkidle');
+            // Try accounts from last to first: clicking a password-protected account stays on the login page
+            const userSelects = page.locator('#userList .userSelect');
+            const userCount = await userSelects.count();
+            for (let i = userCount - 1; i >= 0; i--) {
+                await userSelects.nth(i).click();
+                const loggedIn = await page
+                    .waitForURL(url => url.toString().startsWith(baseURL) && url.pathname !== '/login', { timeout: 3000 })
+                    .then(() => true, () => false);
+                if (loggedIn) {
+                    break;
+                }
+            }
+            if (await testSetup.isLoginPage({ page })) {
+                throw new Error('Could not log into any account without a password.');
+            }
         }
         await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
+        // SB releases the preloader before its async startup listeners finish.
+        const appEvents = await page.evaluateHandle(() => import('/scripts/events.js'));
+        await page.waitForFunction(({ eventSource, event_types }) => {
+            return eventSource.autoFireLastArgs.has(event_types.APP_READY);
+        }, appEvents);
+        await appEvents.dispose();
+    },
+
+    /**
+     * Checks if the current page is the login page by looking for a body element with the class 'login'.
+     * @param {Object} params
+     * @param {import('@playwright/test').Page} params.page
+     */
+    isLoginPage: async ({ page }) => {
+        return await page.locator('body.login').count() > 0;
     },
 };

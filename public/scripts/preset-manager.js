@@ -23,7 +23,7 @@ import { t } from './i18n.js';
 import { instruct_presets } from './instruct-mode.js';
 import { kai_settings } from './kai-settings.js';
 import { convertNovelPreset } from './nai-settings.js';
-import { getChatCompletionPreset, oai_settings, openai_setting_names, openai_settings } from './openai.js';
+import { getChatCompletionPreset, getPresetApplicationPromise, oai_settings, openai_setting_names, openai_settings } from './openai.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup } from './popup.js';
 import { context_presets, getContextSettings, power_user } from './power-user.js';
 import {
@@ -789,6 +789,9 @@ class PresetManager {
 
     /**
      * Selects a preset by option value.
+     * The returned promise resolves when the preset is fully applied. Chat Completion presets
+     * apply asynchronously after the change event, so callers that run follow-up commands
+     * (e.g. /preset followed by /api) must await it to avoid overriding their own changes.
      * @param {string} value Preset option value
      * @returns {Promise<void>}
      */
@@ -800,6 +803,9 @@ class PresetManager {
         const waitForChange = presetName ? waitForPresetChange(this) : Promise.resolve();
         option.prop('selected', true);
         this._triggerPresetSelectChange(value);
+        if (this.apiId === 'openai') {
+            await getPresetApplicationPromise();
+        }
         await waitForChange;
         this.snapshotTextFields();
     }

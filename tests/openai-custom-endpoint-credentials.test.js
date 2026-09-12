@@ -5,6 +5,7 @@ import { runInNewContext } from 'node:vm';
 import { buildCustomEndpointPresetForSave, normalizeCustomEndpointPreset } from '../public/scripts/openai-preset-utils.js';
 
 const source = readFileSync(new URL('../public/scripts/openai.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const pollinationsEndpointSource = source.match(/export const POLLINATIONS_ENDPOINT = \{[\s\S]*?\n\};/)[0].replace('export ', '');
 const connectSource = source.match(/async function onConnectButtonClick\(e\) \{[\s\S]*?\n\}/)[0];
 const keyInputSource = source.match(/function updateCustomEndpointKeyInput\(preset, key\) \{[\s\S]*?\n\}/)[0];
 const activateSource = source.match(/async function activateCustomEndpointPresetSecret\([\s\S]*?\n\}/)[0];
@@ -109,7 +110,7 @@ function createHarness({ profile = normalizeCustomEndpointPreset({ name: 'Saved 
         saveSettingsDebounced: jest.fn(),
         getStatusOpen: jest.fn(async () => context.selected_custom_endpoint_preset?.secretId),
     };
-    runInNewContext(`${saverSource}\n${keyInputSource}\n${connectSource}\n${activateSource}\n${setPresetSource}\n${changeSource}\n${saveSource}`, context);
+    runInNewContext(`${pollinationsEndpointSource}\n${saverSource}\n${keyInputSource}\n${connectSource}\n${activateSource}\n${setPresetSource}\n${changeSource}\n${saveSource}`, context);
     return {
         context,
         profile,

@@ -9,9 +9,11 @@ await jest.unstable_mockModule('../public/script.js', () => ({
         openrouter: { selected: 'openai', source: 'openrouter' },
         'openrouter-text': { selected: 'textgenerationwebui', type: 'openrouter' },
         openai: { selected: 'openai', source: 'openai' },
+        pollinations: { selected: 'openai', source: 'pollinations' },
     },
     createModelIcon: jest.fn(),
     getRequestHeaders: jest.fn(() => ({})),
+    substituteParams: value => value,
 }));
 
 await jest.unstable_mockModule('../public/scripts/extensions.js', () => ({
@@ -30,6 +32,10 @@ await jest.unstable_mockModule('../public/scripts/openai.js', () => ({
     proxies: mockProxies,
     ZAI_ENDPOINT: {
         COMMON: 'common',
+    },
+    POLLINATIONS_ENDPOINT: {
+        AUTHENTICATED: 'authenticated',
+        ANONYMOUS: 'anonymous',
     },
 }));
 
@@ -62,6 +68,7 @@ await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
 }));
 
 const {
+    ConnectionManagerRequestService,
     getChatCompletionProfileRequestOverrides,
     getChatCompletionProfileReverseProxy,
     getProfileServiceTier,
@@ -320,4 +327,30 @@ describe('reasoning settings from the profile preset', () => {
         expect(getChatCompletionProfileRequestOverrides({ ...base, preset: 'Missing Preset' }, {}).overrides).toEqual({});
         expect(getChatCompletionProfileRequestOverrides(base, {}).overrides).toEqual({});
     });
+});
+
+test('Pollinations profiles pass only their endpoint and honor a caller endpoint override', async () => {
+    const profile = { id: 'pollinations-profile', mode: 'cc', api: 'pollinations', model: 'test-model', 'api-url': 'anonymous' };
+    const processRequest = jest.fn(async payload => payload);
+    const originalContext = global.SillyTavern;
+    global.SillyTavern = {
+        getContext: () => ({
+            extensionSettings: { disabledExtensions: [], connectionManager: { profiles: [profile] } },
+            ChatCompletionService: { processRequest },
+            CONNECT_API_MAP: { pollinations: { selected: 'openai', source: 'pollinations' } },
+        }),
+    };
+
+    try {
+        const result = await ConnectionManagerRequestService.sendRequest(profile.id, 'Hello', 100);
+        expect(result.pollinations_endpoint).toBe('anonymous');
+        expect(result).not.toHaveProperty('custom_url');
+        expect(result).not.toHaveProperty('vertexai_region');
+        expect(result).not.toHaveProperty('minimax_endpoint');
+        const overridden = await ConnectionManagerRequestService.sendRequest(profile.id, 'Hello', 100, {}, { pollinations_endpoint: 'authenticated' });
+        expect(overridden.pollinations_endpoint).toBe('authenticated');
+        expect(profile['api-url']).toBe('anonymous');
+    } finally {
+        global.SillyTavern = originalContext;
+    }
 });

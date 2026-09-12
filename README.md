@@ -255,7 +255,7 @@ Conversation mode changes the UI by mimicking an internet messaging client when 
 
 ## Upstream Information
 
-SillyBunny is a fork of SillyTavern. The vast majority of SillyTavern behavior, data formats, and ecosystem knowledge still apply, with upstream compatibility maintained as much as possible. Please report SillyBunny-specific issues here, while reporting SillyTavern-adjacent issues upstream.
+SillyBunny is a fork of the SillyTavern `staging` branch. The vast majority of SillyTavern behavior, data formats, and ecosystem knowledge still apply, with upstream compatibility maintained as much as possible. Please report SillyBunny-specific issues here, while reporting SillyTavern-adjacent issues upstream.
 
 | Resource | Link |
 |----------|------|
@@ -264,7 +264,7 @@ SillyBunny is a fork of SillyTavern. The vast majority of SillyTavern behavior, 
 | Upstream Discord | [discord.gg/sillytavern](https://discord.gg/sillytavern) |
 | Upstream Subreddit | [r/SillyTavernAI](https://reddit.com/r/SillyTavernAI) |
 
-If something feels off, compare against the upstream `release` branch first.
+If something feels off, compare against the upstream `staging` branch first.
 
 ## Contributors
 

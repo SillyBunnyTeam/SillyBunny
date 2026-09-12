@@ -56,6 +56,23 @@ const CHAT_PRE_WRITE_BACKUPS_PREFIX = 'chat_pre_write_';
 const PRE_WRITE_BACKUP_RING_SIZE = 3;
 
 /**
+ * Builds a stable filename key for a chat's backups.
+ * Non-ASCII characters are replaced with underscores, so names such as CJK ones
+ * would all collapse to the same key and share one backup quota. A short hash of
+ * the raw name keeps those keys distinct while ASCII names stay unchanged (#5780).
+ * @param {string} name The name of the chat.
+ * @returns {string} Sanitized filename key for the backup files.
+ */
+export function getBackupKey(name) {
+    const sanitized = sanitize(name).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    if (/[^\x20-\x7E]/.test(name)) {
+        const hash = crypto.createHash('sha256').update(name).digest('hex').slice(0, 8);
+        return `${sanitized}_${hash}`;
+    }
+    return sanitized;
+}
+
+/**
  * Trims regular chat backups only. `CHAT_BACKUPS_PREFIX` is a prefix of the pre-write and
  * forced-overwrite prefixes, so a plain prefix sweep would also rotate away those recovery layers.
  * @param {string} directory The user's backup directory.
@@ -358,7 +375,7 @@ function backupChat(directory, name, data, backupPrefix = CHAT_BACKUPS_PREFIX, h
             return;
         }
         // replace non-alphanumeric characters with underscores
-        name = sanitize(name).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        name = getBackupKey(name);
         const prefix = `${backupPrefix}${name}_`;
         const sizeDetails = getSerializedBackupSizeDetails(data);
 
@@ -410,7 +427,7 @@ function backupChatPreWrite(directory, name, data, handle = '') {
             console.error(`The chat couldn't be backed up because no directory exists at ${directory}!`);
             logBackupEvent('chat-backup-skipped', { type: 'pre-write', handle, chat: originalName, reason: 'missing-directory' });
         }
-        name = sanitize(name).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        name = getBackupKey(name);
         const sizeDetails = getSerializedBackupSizeDetails(data);
 
         if (isDuplicatePreWriteBackup(directory, `${CHAT_PRE_WRITE_BACKUPS_PREFIX}${name}_`, data)) {
@@ -581,15 +598,19 @@ function clearDeferredPreWriteBackupSequence(filePath) {
 }
 
 /**
- * Gets a backup function for a user.
+ * Gets a backup function for a user and chat.
+ * Throttling is keyed per user and chat so that rapid saves in one chat cannot
+ * swallow the throttled backup of another chat saved in the same window.
  * @param {string} handle User handle
+ * @param {string} name The name of the chat, as passed to backupChat
  * @returns {typeof backupChat} Backup function
  */
-function getBackupFunction(handle) {
-    if (!backupFunctions.has(handle)) {
-        backupFunctions.set(handle, _.throttle(backupChat, throttleInterval, { leading: true, trailing: true }));
+function getBackupFunction(handle, name) {
+    const key = `${handle} ${name}`;
+    if (!backupFunctions.has(key)) {
+        backupFunctions.set(key, _.throttle(backupChat, throttleInterval, { leading: true, trailing: true }));
     }
-    return backupFunctions.get(handle) || (() => { });
+    return backupFunctions.get(key) || (() => { });
 }
 
 /**
@@ -994,8 +1015,6 @@ export async function getChatInfo(pathToFile, additionalData = {}, withMetadata 
                 lastLine = line;
             });
             rl.on('close', () => {
-                rl.close();
-
                 if (!lastLine) {
                     res(chatData);
                     return;
@@ -1015,12 +1034,23 @@ export async function getChatInfo(pathToFile, additionalData = {}, withMetadata 
 
                     res(chatData);
                 } else {
-                    console.warn('Found an invalid or corrupted chat file:', pathToFile);
-                    res({});
+                    console.warn('Found an invalid or corrupted last line in a chat file:', pathToFile);
+                    chatData.chat_items = Math.max(itemCounter - 2, 0);
+                    chatData.token_estimate = Math.round(messageCharacters / 4);
+                    chatData.mes = '[The message is empty]';
+                    chatData.match = hasMatcher ? hasAnyMatch : true;
+                    if (previewLimit > 0) {
+                        chatData.preview_messages = previewMessages;
+                    }
+                    res(chatData);
                 }
             });
         });
     } catch (error) {
+        if (error?.code === 'ENOENT') {
+            console.warn('Chat file was deleted while it was being scanned:', pathToFile);
+            return { match: false };
+        }
         console.error('Failed to read chat info:', pathToFile, error);
         return {};
     }
@@ -1234,6 +1264,14 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
         }
 
         const currentChatData = currentSnapshot?.data ?? null;
+        if (doIntegrityCheck && currentChatData) {
+            // SillyBunny accepts legacy leading blank lines; validate the same header used by its integrity reader.
+            const headerLine = currentChatData.split('\n').find(line => line.trim()) ?? '';
+            const header = tryParse(headerLine.replace(/^\uFEFF/, ''));
+            if (!isPlainObject(header)) {
+                throw new IntegrityMismatchError(`Chat integrity check failed for "${filePath}": the existing header is unparseable and requires explicit overwrite confirmation.`);
+            }
+        }
         const existingIntegrity = currentChatData === null ? '' : getSerializedChatIntegrity(currentChatData);
         const destructiveReason = currentChatData ? getDestructiveChatSaveReason(savedChatData, currentChatData) : '';
 
@@ -1356,7 +1394,7 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
         commitDeferredPreWriteBackupDecision(backupDecision, deferSequenceId);
     }
     if (!deferBackup) {
-        getBackupFunction(handle)(backupDirectory, cardName, persistedChatData, CHAT_BACKUPS_PREFIX, handle);
+        getBackupFunction(handle, cardName)(backupDirectory, cardName, persistedChatData, CHAT_BACKUPS_PREFIX, handle);
     } else {
         logBackupEvent('chat-backup-skipped', { type: 'regular', handle, chat: cardName, reason: 'deferred', ...savedChatSizeDetails });
     }
