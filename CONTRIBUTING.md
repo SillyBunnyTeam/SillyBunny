@@ -87,11 +87,11 @@ Include a Discord-friendly update summary for non-hotfix releases so the changes
 ```
 #### Upstream sync
 
-When a new, stable upstream SillyTavern version releases:
+When upstream SillyTavern `staging` advances:
 
 - Follow the upstream sync runbook in `docs/upstream-sync.md` before preparing a sync PR.
 - Prioritize synchronizing to `staging` over new features and bug fixes.
-- Check for code compatibility with the new version release.
+- Check for code compatibility with the current upstream `staging` tree.
 - Remove and migrate any SillyBunny features or patches if they have been properly implemented upstream.
 - Resolve merge conflicts carefully, ensuring that upstream changes do not overwrite SillyBunny's custom UI modifications, Bun-specific optimizations, or additional features.
 - Verify that any new upstream UI elements (such as new settings, menus, or buttons) integrate correctly into the fork's modified DOM structure.
