@@ -642,6 +642,7 @@ const SHOW_MORE_DUPLICATE_EVENT_GUARD_MS = 750;
 const SHOW_MORE_TOUCH_MOVE_CANCEL_PX = 12;
 const ENTITY_SELECTION_PULSE_CLEANUP_MS = 900;
 let isLoadingMoreMessages = false;
+let chatRenderVersion = 0;
 let lastShowMoreTouchEventAt = 0;
 let showMoreTouchStart = null;
 let entitySelectionPulseId = 0;
@@ -2957,11 +2958,24 @@ function pruneRenderedChatMessagesToWindow({ windowSize, pruneFrom }) {
 }
 
 function removeRenderedChatMessages() {
+    chatRenderVersion++;
     const renderedMessages = $(getRenderedChatMessageElements());
 
     unobserveChatMessageResize(renderedMessages);
     renderedMessages.remove();
     removeChatHistoryWindowControls();
+}
+
+// SillyBunny: frame yields permit both replacement renders and same-chat index changes.
+function createChatRenderTransaction(messages, firstMessageId, sourceChat = chat) {
+    const version = ++chatRenderVersion;
+    const originGeneration = chatGeneration;
+    const originChat = chat;
+    const sourceLength = sourceChat.length;
+    const isCurrent = () => version === chatRenderVersion && chatGeneration === originGeneration && chat === originChat;
+    const hasCurrentSnapshot = () => sourceChat.length === sourceLength
+        && messages.every((message, offset) => sourceChat[firstMessageId + offset] === message);
+    return { isCurrent, hasCurrentSnapshot, canRender: () => isCurrent() && hasCurrentSnapshot() };
 }
 
 async function renderShowMoreMessagesLegacy({
@@ -2971,10 +2985,12 @@ async function renderShowMoreMessagesLegacy({
     insertionReference,
     anchor,
     shouldPreserveScroll,
+    isCurrent,
 }) {
     const shouldYieldBetweenBatches = batchSize < messages.length;
 
     for (let offset = 0; offset < messages.length; offset += batchSize) {
+        if (!isCurrent()) return;
         const fragment = document.createDocumentFragment();
         const batch = messages.slice(offset, offset + batchSize);
 
@@ -2994,7 +3010,7 @@ async function renderShowMoreMessagesLegacy({
 
         if (shouldYieldBetweenBatches && offset + batchSize < messages.length) {
             await waitForNextFrame();
-            if (shouldPreserveScroll) {
+            if (isCurrent() && shouldPreserveScroll) {
                 restoreVisibleChatMessageAnchor(anchor);
             }
         }
@@ -3008,10 +3024,10 @@ async function renderShowMoreMessagesThroughLifecycle({
     insertionReference,
     anchor,
     shouldPreserveScroll,
+    isCurrent,
 }) {
-    const originGeneration = chatGeneration;
     const restoreAnchorIfNeeded = () => {
-        if (chatGeneration === originGeneration && shouldPreserveScroll) {
+        if (isCurrent() && shouldPreserveScroll) {
             restoreVisibleChatMessageAnchor(anchor);
         }
     };
@@ -3021,7 +3037,7 @@ async function renderShowMoreMessagesThroughLifecycle({
         firstMessageId: firstId,
         batchSize,
         timeBudgetMs: 8,
-        isCurrent: () => chatGeneration === originGeneration,
+        isCurrent,
         renderMessageElement: (message, messageId) => updateMessageElement(message, { messageId }),
         insertFragment: fragment => insertShowMoreFragment(insertionReference, fragment),
         waitForNextFrame: async () => {
@@ -3038,6 +3054,7 @@ async function renderShowMoreMessages({
     insertionReference,
     anchor,
     shouldPreserveScroll,
+    isCurrent,
 }) {
     const batchSize = getMobileChatRenderBatchSize(messages.length);
     const renderOptions = {
@@ -3047,6 +3064,7 @@ async function renderShowMoreMessages({
         insertionReference,
         anchor,
         shouldPreserveScroll,
+        isCurrent,
     };
 
     if (isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.SHOW_MORE_BATCH)) {
@@ -3058,7 +3076,6 @@ async function renderShowMoreMessages({
 }
 
 export async function showMoreMessages(messagesToLoad = null) {
-    const originGeneration = chatGeneration;
     if (isLoadingMoreMessages) {
         return;
     }
@@ -3089,6 +3106,7 @@ export async function showMoreMessages(messagesToLoad = null) {
 
         const firstId = clamp(messageId - count, 0, Infinity);
         const messages = chat.slice(firstId, messageId);
+        const transaction = createChatRenderTransaction(messages, firstId);
         const insertionReference = showMoreButtonElement instanceof HTMLElement
             ? showMoreButtonElement.nextSibling
             : chatElement[0]?.firstChild ?? null;
@@ -3105,8 +3123,13 @@ export async function showMoreMessages(messagesToLoad = null) {
             insertionReference,
             anchor,
             shouldPreserveScroll,
+            isCurrent: transaction.canRender,
         });
-        if (chatGeneration !== originGeneration) return;
+        if (!transaction.isCurrent()) return;
+        if (!transaction.hasCurrentSnapshot()) {
+            await redisplayChat({ startIndex: Math.min(firstId, chat.length) });
+            return;
+        }
 
         pruneRenderedChatMessagesToWindow({ windowSize, pruneFrom: 'end' });
         syncChatHistoryWindowControls();
@@ -3124,7 +3147,7 @@ export async function showMoreMessages(messagesToLoad = null) {
         if (shouldPreserveScroll) {
             await settleVisibleChatMessageAnchor(anchor);
         }
-        if (chatGeneration !== originGeneration) return;
+        if (!transaction.canRender()) return;
 
         await eventSource.emit(event_types.MORE_MESSAGES_LOADED);
     } finally {
@@ -3136,7 +3159,6 @@ export async function showMoreMessages(messagesToLoad = null) {
 }
 
 export async function showNewerMessages(messagesToLoad = null) {
-    const originGeneration = chatGeneration;
     if (isLoadingMoreMessages) {
         return;
     }
@@ -3162,6 +3184,7 @@ export async function showNewerMessages(messagesToLoad = null) {
         isLoadingMoreMessages = false;
         return;
     }
+    const transaction = createChatRenderTransaction(messages, firstId);
 
     try {
         if (showNewerButtonElement instanceof HTMLElement) {
@@ -3170,8 +3193,12 @@ export async function showNewerMessages(messagesToLoad = null) {
 
         showNewerButton.remove();
 
-        const renderedMessageIds = await renderRedisplayChatMessages({ messages, startIndex: firstId });
-        if (chatGeneration !== originGeneration) return;
+        const renderedMessageIds = await renderRedisplayChatMessages({ messages, startIndex: firstId, isCurrent: transaction.canRender });
+        if (!transaction.isCurrent()) return;
+        if (!transaction.hasCurrentSnapshot()) {
+            await redisplayChat({ startIndex: Math.min(firstId, chat.length) });
+            return;
+        }
 
         pruneRenderedChatMessagesToWindow({ windowSize, pruneFrom: 'start' });
         syncRenderedChatLastMessageClass();
@@ -3197,13 +3224,15 @@ export async function printMessages() {
 
     removeRenderedChatMessages();
     beginChatLoadBottomLock();
-    await redisplayChat({ startIndex, fade: false, pinBottomDuringRender: true });
-    if (chatGeneration !== originGeneration) return;
+    const rendering = redisplayChat({ startIndex, fade: false, pinBottomDuringRender: true });
+    const renderVersion = chatRenderVersion;
+    await rendering;
+    if (chatGeneration !== originGeneration || chatRenderVersion !== renderVersion) return;
     syncChatHistoryWindowControls();
 
     // Wait for next frame to ensure batch rendering completes
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    if (chatGeneration !== originGeneration) return;
+    if (chatGeneration !== originGeneration || chatRenderVersion !== renderVersion) return;
     scrollLoadedChatToBottomThroughLifecycle();
     delay(debounce_timeout.short).then(() => scrollOnMediaLoad({ force: true }));
 }
@@ -3250,11 +3279,12 @@ function scrollLoadedChatToBottom() {
     }
 }
 
-async function renderRedisplayChatMessagesLegacy({ messages, startIndex, batchSize, pinBottomDuringRender }) {
+async function renderRedisplayChatMessagesLegacy({ messages, startIndex, batchSize, pinBottomDuringRender, isCurrent }) {
     const renderedMessageIds = lodash.range(startIndex, startIndex + messages.length, 1);
     const shouldYieldBetweenBatches = batchSize < messages.length;
 
     for (let offset = 0; offset < messages.length; offset += batchSize) {
+        if (!isCurrent()) return [];
         const batchMessages = messages.slice(offset, offset + batchSize);
         const fragment = document.createDocumentFragment();
         const newMessageElements = batchMessages.map((message, batchOffset) => {
@@ -3287,14 +3317,13 @@ async function renderRedisplayChatMessagesLegacy({ messages, startIndex, batchSi
     return renderedMessageIds;
 }
 
-async function renderRedisplayChatMessagesThroughLifecycle({ messages, startIndex, batchSize, pinBottomDuringRender }) {
-    const originGeneration = chatGeneration;
+async function renderRedisplayChatMessagesThroughLifecycle({ messages, startIndex, batchSize, pinBottomDuringRender, isCurrent }) {
     const { renderedMessageIds } = await renderMessagesInBatches({
         messages,
         firstMessageId: startIndex,
         batchSize,
         timeBudgetMs: 8,
-        isCurrent: () => chatGeneration === originGeneration,
+        isCurrent,
         renderMessageElement: (message, messageId) => updateMessageElement(message, { messageId }),
         insertFragment: fragment => chatElement[0].appendChild(fragment),
         waitForNextFrame,
@@ -3305,14 +3334,14 @@ async function renderRedisplayChatMessagesThroughLifecycle({ messages, startInde
     return renderedMessageIds;
 }
 
-async function renderRedisplayChatMessages({ messages, startIndex, pinBottomDuringRender = false }) {
+async function renderRedisplayChatMessages({ messages, startIndex, pinBottomDuringRender = false, isCurrent }) {
     const batchSize = getMobileChatRenderBatchSize(messages.length);
 
     if (isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.REDISPLAY_BATCH)) {
-        return renderRedisplayChatMessagesThroughLifecycle({ messages, startIndex, batchSize, pinBottomDuringRender });
+        return renderRedisplayChatMessagesThroughLifecycle({ messages, startIndex, batchSize, pinBottomDuringRender, isCurrent });
     }
 
-    return renderRedisplayChatMessagesLegacy({ messages, startIndex, batchSize, pinBottomDuringRender });
+    return renderRedisplayChatMessagesLegacy({ messages, startIndex, batchSize, pinBottomDuringRender, isCurrent });
 }
 
 /**
@@ -3324,7 +3353,6 @@ async function renderRedisplayChatMessages({ messages, startIndex, pinBottomDuri
  * @param {Boolean} [options.pinBottomDuringRender=false] Keep initial chat loads at the newest rendered message while batches append.
  */
 export async function redisplayChat({ targetChat = chat, startIndex = 0, fade = true, pinBottomDuringRender = false } = {}) {
-    const originGeneration = chatGeneration;
     const messageElements = chatElement.find('.mes');
     messageElements.removeClass('last_mes');
     const { renderedMessageCount, firstMessageId, lastMessageId } = getRenderedChatMessageWindow();
@@ -3345,10 +3373,15 @@ export async function redisplayChat({ targetChat = chat, startIndex = 0, fade = 
     const windowSize = getChatRenderWindowSize();
     const endIndex = Math.min(targetChat.length, startIndex + windowSize);
     const messages = targetChat.slice(startIndex, endIndex);
+    const transaction = createChatRenderTransaction(messages, startIndex, targetChat);
 
     if (messages.length > 0) {
-        const renderedMessageIds = await renderRedisplayChatMessages({ messages, startIndex, pinBottomDuringRender });
-        if (chatGeneration !== originGeneration) return;
+        const renderedMessageIds = await renderRedisplayChatMessages({ messages, startIndex, pinBottomDuringRender, isCurrent: transaction.canRender });
+        if (!transaction.isCurrent()) return;
+        if (!transaction.hasCurrentSnapshot()) {
+            await redisplayChat({ targetChat, startIndex: Math.min(startIndex, targetChat.length), fade, pinBottomDuringRender });
+            return;
+        }
 
         applyCharacterTagsToMessageDivs({ mesIds: renderedMessageIds });
     }
@@ -3462,6 +3495,7 @@ function rememberQueuedChatIntegrity(integrityKey, integrity) {
  * @param {boolean} [options.clearData=false] Optionally clear the chat array's contents.
  */
 export async function clearChat({ clearData = false } = {}) {
+    chatRenderVersion++;
     cancelDebouncedChatSave();
     cancelDebouncedMetadataSave();
     closeMessageEditor();
