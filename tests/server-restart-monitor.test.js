@@ -35,10 +35,10 @@ describe('server restart monitor', () => {
     test('wires the boot marker through version and restart responses', () => {
         const serverMainSource = fs.readFileSync(path.join(repoRoot, 'src', 'server-main.js'), 'utf8');
         const serverAdminSource = fs.readFileSync(path.join(repoRoot, 'src', 'endpoints', 'server-admin.js'), 'utf8');
-        const tabsSource = fs.readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-tabs.js'), 'utf8');
+        const toolsSource = fs.readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-server-tools.js'), 'utf8');
 
         expect(serverMainSource).toContain('serverBootId: getServerBootId()');
         expect(serverAdminSource).toContain('serverBootId: getServerBootId()');
-        expect(tabsSource).toContain("waitForServerReturn('', { previousServerBootId: result?.serverBootId })");
+        expect(toolsSource).toContain('waitForServerReturn(\'\', { previousServerBootId: result?.serverBootId })');
     });
 });
