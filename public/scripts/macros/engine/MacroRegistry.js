@@ -72,6 +72,7 @@ export const MacroValueType = Object.freeze({
  * @property {string} [displayOverride] - Override the auto-generated macro signature for display (must include curly braces, e.g. "{{macro::arg}}").
  * @property {string|string[]} [exampleUsage] - Example usage(s) shown in documentation (must include curly braces).
  * @property {boolean} [delayArgResolution=false] - If true, nested macros in arguments or scope are NOT resolved before calling the handler. The handler receives raw argument text and must call resolve() manually. Use sparingly - only for control-flow macros like {{if}}.
+ * @property {boolean} [protectsWhitespace=false] - When true, whitespace at the edges of this macro's result is protected from trim passes while being spliced into document text.
  * @property {MacroHandler} handler - The handler function for the macro.
  */
 
@@ -145,6 +146,7 @@ export const MacroValueType = Object.freeze({
  * @property {string|null} displayOverride - Override for the auto-generated macro signature display.
  * @property {string[]} exampleUsage - Example usage strings for documentation.
  * @property {boolean} delayArgResolution - If true, nested macros in arguments are NOT resolved before calling the handler. The handler receives raw argument text and must call resolve() manually. Use sparingly - only for control-flow macros like {{if}}.
+ * @property {boolean} [protectsWhitespace=false] - When true, whitespace at the edges of this macro's result is protected from trim passes while being spliced into document text.
  * @property {MacroHandler} handler
  * @property {MacroSource} source
  * @property {string|null} aliasOf - If this is an alias, the primary macro name this is an alias of. Can also be used to check if this is an alias macro.
@@ -474,6 +476,7 @@ class MacroRegistry {
             trimContent: MacroEngine.trimScopedContent.bind(MacroEngine),
             resolve: (text, { offsetDelta = 0 } = {}) => MacroEngine.evaluate(text, call.env, {
                 contextOffset: call.globalOffset + offsetDelta,
+                isNested: true,
             }),
             warn: (message, error = undefined) => logMacroRuntimeWarning({ message, call, def, error }),
         };
@@ -521,6 +524,7 @@ class MacroRegistry {
             displayOverride: rawDisplayOverride,
             exampleUsage: rawExampleUsage,
             delayArgResolution: rawDelayArgResolution,
+            protectsWhitespace: rawProtectsWhitespace,
             handler,
         } = options;
 
@@ -676,6 +680,12 @@ class MacroRegistry {
             delayArgResolution = rawDelayArgResolution;
         }
 
+        let protectsWhitespace = false;
+        if (rawProtectsWhitespace !== undefined) {
+            if (typeof rawProtectsWhitespace !== 'boolean') throw new Error(`Macro "${name}" options.protectsWhitespace must be a boolean when provided.`);
+            protectsWhitespace = rawProtectsWhitespace;
+        }
+
         /** @type {MacroDefinition} */
         const definition = {
             name: name,
@@ -692,6 +702,7 @@ class MacroRegistry {
             displayOverride,
             exampleUsage,
             delayArgResolution,
+            protectsWhitespace,
             handler,
             source: source ?? { name: 'dynamic', isExtension: false, isThirdParty: false },
             aliasOf: null,
