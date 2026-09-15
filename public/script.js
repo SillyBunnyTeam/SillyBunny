@@ -40,6 +40,7 @@ import {
 import { shouldRestoreTextGenStatusOnStartup } from './scripts/textgen-startup-status.js';
 import { normalizeCharacterChatName, resolveCharacterChatNameForLoad } from './scripts/character-chat-resolver.js';
 import { getDebouncedChatSaveAbortReason, getQueuedChatSaveAbortReason } from './scripts/chat-save-guard.js';
+import { shouldAbortReloadForActiveGeneration, shouldDiscardReloadTarget } from './scripts/chat-reload-guard.js';
 import { getChatBackupSaveOptions } from './scripts/chat-backup-sequence.js';
 import { getCharacterDefinitionFormValues, getSuspiciousEmptyCharacterDefinitionSave } from './scripts/character-save-guard.js';
 // SillyBunny: keep model-produced chat filenames behind a strict, independently tested parser.
@@ -3580,19 +3581,77 @@ export const reloadCurrentChat = reloadChatMutex.update.bind(reloadChatMutex);
  * @returns {Promise<void>} A promise that resolves when the chat is reloaded.
  */
 export async function reloadCurrentChatUnsafe() {
-    preserveNeutralChat();
-    await clearChat({ clearData: true });
+    const targetChatId = getCurrentChatId();
 
-    if (selected_group) {
-        await getGroupChat(selected_group, true);
-    } else if (this_chid !== undefined) {
-        await getChat();
-    } else {
-        resetChatState();
-        restoreNeutralChat();
-        await getCharacters();
-        await printMessages();
-        await eventSource.emit(event_types.CHAT_CHANGED, getCurrentChatId());
+    // SillyBunny: cooperative bounded abort barrier if generation/streaming is active
+    if (shouldAbortReloadForActiveGeneration({ isSendPressed: is_send_press, hasActiveGenerationRun: Boolean(activeGenerationRun) })) {
+        stopGeneration();
+
+        const abortDeadline = Date.now() + 2500;
+        while (shouldAbortReloadForActiveGeneration({ isSendPressed: is_send_press, hasActiveGenerationRun: Boolean(activeGenerationRun) }) && Date.now() < abortDeadline) {
+            await delay(50);
+        }
+
+        if (shouldAbortReloadForActiveGeneration({ isSendPressed: is_send_press, hasActiveGenerationRun: Boolean(activeGenerationRun) })) {
+            toastr.warning(
+                t`Generation still active. Reload cancelled to protect chat data.`,
+                t`Reload cancelled`,
+            );
+            return;
+        }
+    }
+
+    // SillyBunny: flush pending user edits before re-reading from disk (fail-closed)
+    const flushed = await flushPendingChatSavesForNavigation();
+    if (!flushed) {
+        toastr.error(
+            t`Could not save pending edits before reload. Reload cancelled.`,
+            t`Reload cancelled`,
+        );
+        return;
+    }
+
+    preserveNeutralChat();
+    // SillyBunny: do NOT clearData here; keep in-memory chat intact during the fetch (Issue #368)
+    await clearChat({ clearData: false });
+
+    let loadedSuccessfully = false;
+
+    try {
+        if (selected_group) {
+            await getGroupChat(selected_group, true);
+            loadedSuccessfully = true;
+        } else if (this_chid !== undefined) {
+            loadedSuccessfully = await getChat();
+        } else {
+            resetChatState();
+            restoreNeutralChat();
+            await getCharacters();
+            await printMessages();
+            await eventSource.emit(event_types.CHAT_CHANGED, getCurrentChatId());
+            loadedSuccessfully = true;
+        }
+    } catch (error) {
+        console.error('Error reloading current chat:', error);
+        toastr.error(
+            t`Could not reload chat data from server.`,
+            t`Reload failed`,
+        );
+        return;
+    }
+
+    // SillyBunny: if user switched chats during the async fetch, discard stale reload
+    if (shouldDiscardReloadTarget({ initialChatId: targetChatId, currentChatId: getCurrentChatId() })) {
+        console.warn('Chat target changed during reload fetch. Discarding reload.');
+        return;
+    }
+
+    if (!loadedSuccessfully) {
+        toastr.error(
+            t`Chat reload failed. Existing chat preserved.`,
+            t`Reload failed`,
+        );
+        return;
     }
 
     refreshSwipeButtons();
