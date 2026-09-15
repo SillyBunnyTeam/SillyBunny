@@ -319,7 +319,7 @@ import { getSystemMessageByType, initSystemMessages, SAFETY_CHAT, sendSystemMess
 import { event_types, eventSource } from './scripts/events.js';
 import { initAccessibility } from './scripts/a11y.js';
 import { initQuickContextSizeEnhancer } from './scripts/quick-context-size-enhancer.js';
-import { applyStreamFadeIn } from './scripts/util/stream-fadein.js';
+import { applyStreamDomPatch, applyStreamFadeIn } from './scripts/util/stream-fadein.js';
 import { formatTokenCounterText, getPositiveTokenCount, updateReasoningTokenAccounting } from './scripts/reasoning-token-accounting.js';
 import { initDomHandlers } from './scripts/dom-handlers.js';
 import { SimpleMutex } from './scripts/util/SimpleMutex.js';
@@ -2471,7 +2471,8 @@ function applyStreamingVisibleWrite(messageId, {
     messageTokenCounterDom,
     messageDom,
     message,
-    formattedText,
+    formatText,
+    onRendered,
     timePassed,
     currentTokenCount,
     shouldRefreshTokenCount,
@@ -2481,6 +2482,7 @@ function applyStreamingVisibleWrite(messageId, {
 }, { isFinal = false } = {}) {
     if (isCurrent && !isCurrent()) return false;
     if (messageDom instanceof HTMLElement && (!messageDom.isConnected || messageDom.getAttribute('mesid') !== String(messageId))) return false;
+    const renderStartedAt = performance.now();
     if (shouldRefreshTokenCount && messageTokenCounterDom instanceof HTMLElement) {
         messageTokenCounterDom.textContent = `${currentTokenCount}t`;
     }
@@ -2490,8 +2492,12 @@ function applyStreamingVisibleWrite(messageId, {
     }
 
     if (messageTextDom instanceof HTMLElement) {
+        // SillyBunny: only format the surviving frame write, after checking its message/run ownership.
+        const formattedText = formatText();
         if (shouldUseStreamFadeIn) {
             applyStreamFadeIn(messageTextDom, formattedText, { bypassFadeIn });
+        } else if (!isFinal) {
+            applyStreamDomPatch(messageTextDom, formattedText);
         } else {
             messageTextDom.innerHTML = formattedText;
         }
@@ -2501,6 +2507,8 @@ function applyStreamingVisibleWrite(messageId, {
         messageTimerDom.textContent = timePassed.timerValue;
         messageTimerDom.title = timePassed.timerTitle;
     }
+
+    onRendered?.(performance.now() - renderStartedAt);
 
     return isFinal;
 }
@@ -3001,8 +3009,9 @@ async function renderShowMoreMessagesThroughLifecycle({
     anchor,
     shouldPreserveScroll,
 }) {
+    const originGeneration = chatGeneration;
     const restoreAnchorIfNeeded = () => {
-        if (shouldPreserveScroll) {
+        if (chatGeneration === originGeneration && shouldPreserveScroll) {
             restoreVisibleChatMessageAnchor(anchor);
         }
     };
@@ -3011,6 +3020,8 @@ async function renderShowMoreMessagesThroughLifecycle({
         messages,
         firstMessageId: firstId,
         batchSize,
+        timeBudgetMs: 8,
+        isCurrent: () => chatGeneration === originGeneration,
         renderMessageElement: (message, messageId) => updateMessageElement(message, { messageId }),
         insertFragment: fragment => insertShowMoreFragment(insertionReference, fragment),
         waitForNextFrame: async () => {
@@ -3047,6 +3058,7 @@ async function renderShowMoreMessages({
 }
 
 export async function showMoreMessages(messagesToLoad = null) {
+    const originGeneration = chatGeneration;
     if (isLoadingMoreMessages) {
         return;
     }
@@ -3094,6 +3106,7 @@ export async function showMoreMessages(messagesToLoad = null) {
             anchor,
             shouldPreserveScroll,
         });
+        if (chatGeneration !== originGeneration) return;
 
         pruneRenderedChatMessagesToWindow({ windowSize, pruneFrom: 'end' });
         syncChatHistoryWindowControls();
@@ -3111,6 +3124,7 @@ export async function showMoreMessages(messagesToLoad = null) {
         if (shouldPreserveScroll) {
             await settleVisibleChatMessageAnchor(anchor);
         }
+        if (chatGeneration !== originGeneration) return;
 
         await eventSource.emit(event_types.MORE_MESSAGES_LOADED);
     } finally {
@@ -3122,6 +3136,7 @@ export async function showMoreMessages(messagesToLoad = null) {
 }
 
 export async function showNewerMessages(messagesToLoad = null) {
+    const originGeneration = chatGeneration;
     if (isLoadingMoreMessages) {
         return;
     }
@@ -3156,6 +3171,7 @@ export async function showNewerMessages(messagesToLoad = null) {
         showNewerButton.remove();
 
         const renderedMessageIds = await renderRedisplayChatMessages({ messages, startIndex: firstId });
+        if (chatGeneration !== originGeneration) return;
 
         pruneRenderedChatMessagesToWindow({ windowSize, pruneFrom: 'start' });
         syncRenderedChatLastMessageClass();
@@ -3175,16 +3191,19 @@ export async function showNewerMessages(messagesToLoad = null) {
 }
 
 export async function printMessages() {
+    const originGeneration = chatGeneration;
     const count = getChatRenderWindowSize(power_user.chat_truncation);
     const startIndex = getChatRenderWindowStartIndex(chat.length, count);
 
     removeRenderedChatMessages();
     beginChatLoadBottomLock();
     await redisplayChat({ startIndex, fade: false, pinBottomDuringRender: true });
+    if (chatGeneration !== originGeneration) return;
     syncChatHistoryWindowControls();
 
     // Wait for next frame to ensure batch rendering completes
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (chatGeneration !== originGeneration) return;
     scrollLoadedChatToBottomThroughLifecycle();
     delay(debounce_timeout.short).then(() => scrollOnMediaLoad({ force: true }));
 }
@@ -3269,10 +3288,13 @@ async function renderRedisplayChatMessagesLegacy({ messages, startIndex, batchSi
 }
 
 async function renderRedisplayChatMessagesThroughLifecycle({ messages, startIndex, batchSize, pinBottomDuringRender }) {
+    const originGeneration = chatGeneration;
     const { renderedMessageIds } = await renderMessagesInBatches({
         messages,
         firstMessageId: startIndex,
         batchSize,
+        timeBudgetMs: 8,
+        isCurrent: () => chatGeneration === originGeneration,
         renderMessageElement: (message, messageId) => updateMessageElement(message, { messageId }),
         insertFragment: fragment => chatElement[0].appendChild(fragment),
         waitForNextFrame,
@@ -3302,6 +3324,7 @@ async function renderRedisplayChatMessages({ messages, startIndex, pinBottomDuri
  * @param {Boolean} [options.pinBottomDuringRender=false] Keep initial chat loads at the newest rendered message while batches append.
  */
 export async function redisplayChat({ targetChat = chat, startIndex = 0, fade = true, pinBottomDuringRender = false } = {}) {
+    const originGeneration = chatGeneration;
     const messageElements = chatElement.find('.mes');
     messageElements.removeClass('last_mes');
     const { renderedMessageCount, firstMessageId, lastMessageId } = getRenderedChatMessageWindow();
@@ -3325,6 +3348,7 @@ export async function redisplayChat({ targetChat = chat, startIndex = 0, fade = 
 
     if (messages.length > 0) {
         const renderedMessageIds = await renderRedisplayChatMessages({ messages, startIndex, pinBottomDuringRender });
+        if (chatGeneration !== originGeneration) return;
 
         applyCharacterTagsToMessageDivs({ mesIds: renderedMessageIds });
     }
@@ -4613,6 +4637,10 @@ export function appendMediaToMessage(mes, messageElement, scrollBehavior = SCROL
 export function addCopyToCodeBlocks(messageElement) {
     const codeBlocks = $(messageElement).find('pre code');
     for (let i = 0; i < codeBlocks.length; i++) {
+        // SillyBunny: metadata-only refreshes keep the code node and its existing copy handler.
+        if (codeBlocks.get(i).querySelector(':scope > .code-copy')) {
+            continue;
+        }
         hljs.highlightElement(codeBlocks.get(i));
         const copyButton = document.createElement('i');
         copyButton.classList.add('fa-solid', 'fa-copy', 'code-copy', 'interactable');
@@ -6089,6 +6117,7 @@ class StreamingProcessor {
         this.reasoningTokens = 0;
         /** @type {string?} Latest reasoning received from the stream, applied on UI ticks */
         this.pendingReasoning = null;
+        this.streamingRenderDurationMs = 0;
     }
 
     #isCurrent(messageId = this.messageId, allowStopped = false) {
@@ -6177,7 +6206,13 @@ class StreamingProcessor {
             return;
         }
 
-        getStreamingVisibleWriteBuffer().queue(messageId, write, { isFinal });
+        getStreamingVisibleWriteBuffer().queue(messageId, write, {
+            isFinal,
+            onError: error => {
+                console.error(error);
+                this.onErrorStreaming();
+            },
+        });
     }
 
     markUIGenStarted() {
@@ -6330,38 +6365,26 @@ class StreamingProcessor {
                 && !isImpersonate
                 && shouldUseAndroidBasicMarkdown;
 
-            const preparedPreview = shouldUsePlainTextPreview || shouldUseBasicMarkdown
-                ? prepareMessageDisplayText(
-                    processedText,
-                    chat[messageId].name,
-                    chat[messageId].is_system,
-                    chat[messageId].is_user,
-                    messageId,
-                    false,
-                )
-                : null;
-            const previewText = preparedPreview?.mes ?? processedText;
-            const markdownText = isFinal ? processedText : balanceStreamingMarkdown(processedText);
+            const { name, is_system, is_user } = chat[messageId];
+            const formatText = () => {
+                const preparedPreview = shouldUsePlainTextPreview || shouldUseBasicMarkdown
+                    ? prepareMessageDisplayText(processedText, name, is_system, is_user, messageId, false)
+                    : null;
+                const previewText = preparedPreview?.mes ?? processedText;
+                const markdownText = isFinal ? processedText : balanceStreamingMarkdown(processedText);
 
-            const formattedText = shouldUsePlainTextPreview || shouldUseBasicMarkdown
-                ? formatMobileStreamingPreview(
-                    shouldUseBasicMarkdown ? balanceStreamingMarkdown(previewText) : previewText,
-                    {
-                        useBasicMarkdown: shouldUseBasicMarkdown,
-                        collapseOocBlocks: !preparedPreview?.isSystem,
-                        converter,
-                        sanitizeHtml: sanitizeMessageHtml,
-                    },
-                )
-                : messageFormatting(
-                    markdownText,
-                    chat[messageId].name,
-                    chat[messageId].is_system,
-                    chat[messageId].is_user,
-                    messageId,
-                    {},
-                    false,
-                );
+                return shouldUsePlainTextPreview || shouldUseBasicMarkdown
+                    ? formatMobileStreamingPreview(
+                        shouldUseBasicMarkdown ? balanceStreamingMarkdown(previewText) : previewText,
+                        {
+                            useBasicMarkdown: shouldUseBasicMarkdown,
+                            collapseOocBlocks: !preparedPreview?.isSystem,
+                            converter,
+                            sanitizeHtml: sanitizeMessageHtml,
+                        },
+                    )
+                    : messageFormatting(markdownText, name, is_system, is_user, messageId, {}, false);
+            };
             const timePassed = formatGenerationTimer(this.timeStarted, currentTime, currentTokenCount, this.reasoningHandler.getDuration(), this.timeToFirstToken, currentReasoningTokens);
             this.#queueStreamingVisibleWrite({
                 messageId,
@@ -6372,7 +6395,10 @@ class StreamingProcessor {
                     messageTokenCounterDom: this.messageTokenCounterDom,
                     messageDom: this.messageDom,
                     message: chat[messageId],
-                    formattedText,
+                    formatText,
+                    onRendered: durationMs => {
+                        this.streamingRenderDurationMs = Math.max(durationMs, this.streamingRenderDurationMs * 0.8);
+                    },
                     timePassed,
                     currentTokenCount,
                     shouldRefreshTokenCount,
@@ -6652,6 +6678,11 @@ class StreamingProcessor {
                 this.reasoningTokens = state?.reasoning_tokens ?? 0;
                 await eventSource.emit(event_types.STREAM_TOKEN_RECEIVED, this.result);
                 if (!this.#isCurrent()) { this.isFinished = true; return this.result; }
+                sw.interval = getStreamingUpdateInterval(1000 / power_user.streaming_fps, {
+                    iosEnabled: power_user.ios_webkit_conservative_streaming,
+                    androidEnabled: power_user.android_conservative_streaming,
+                    renderDurationMs: this.streamingRenderDurationMs,
+                });
                 await sw.tick(async () => await this.onProgressStreaming(this.messageId, this.continueMessage + this.result));
                 if (!this.#isCurrent()) { this.isFinished = true; return this.result; }
                 if (reachedLimit && !this.isCancelled && !this.abortController.signal.aborted) {

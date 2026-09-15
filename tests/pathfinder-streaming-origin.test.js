@@ -2,6 +2,7 @@
 import { describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { createStreamWriteBuffer } from '../public/scripts/chat-render-lifecycle/stream-buffer.js';
 
 const source = readFileSync(new URL('../public/script.js', import.meta.url), 'utf8');
 const classSource = source.slice(source.indexOf('class StreamingProcessor {'), source.indexOf('\n/**', source.indexOf('\n}\n', source.indexOf('class StreamingProcessor {'))));
@@ -21,7 +22,7 @@ async function stream(type = 'normal') {
     }
     const element = new Element();
     const context = vm.createContext({
-        console, AbortController, structuredClone,
+        console, AbortController, structuredClone, performance,
         chat: [], chatId: 'original', chatGeneration: 1, activeGenerationRun: {}, streamingProcessor: null,
         document: { querySelector: () => element }, HTMLElement: Element,
         power_user: { streaming_fps: 30 }, main_api: 'openai', scrollLock: false, scrollLockImmunityUntil: 0,
@@ -43,7 +44,9 @@ async function stream(type = 'normal') {
         isAndroidStreamingPlatform: () => false, shouldUsePlainTextStreamingPreview: () => false,
         getPositiveTokenCount: value => Number(value) || 0,
         updateMessageTokenAccounting: jest.fn(async () => ({ outputTokens: 1, reasoningTokens: 0 })),
-        balanceStreamingMarkdown: value => value, messageFormatting: value => value,
+        balanceStreamingMarkdown: value => value, messageFormatting: jest.fn(value => value),
+        applyStreamDomPatch: jest.fn((element, html) => { element.innerHTML = html; }),
+        applyStreamFadeIn: jest.fn((element, html) => { element.innerHTML = html; }),
         formatGenerationTimer: () => ({}), deactivateSendButtons() {}, hideSwipeButtons() {}, unblockGeneration() {},
         scrollStartedStreamingMessageThroughLifecycle() {}, scrollChatToBottom: jest.fn(),
         CHAT_RENDER_LIFECYCLE_ROUTE: { STREAM_PROGRESS: 'stream' },
@@ -63,7 +66,93 @@ async function stream(type = 'normal') {
     return { context, processor, writes, reasoningDomWrite };
 }
 
+function useFrameBuffer(context) {
+    let frame = null;
+    const buffer = createStreamWriteBuffer({
+        scheduler: {
+            request: callback => { frame = callback; },
+            cancel: () => { frame = null; },
+        },
+        applyWrite: (...args) => context.applyStreamingVisibleWrite(...args),
+    });
+    context.getStreamingVisibleWriteBuffer = () => buffer;
+    return { runFrame: () => { const callback = frame; frame = null; callback?.(); }, buffer };
+}
+
 describe('streaming message origin', () => {
+    test('formats only the latest queued snapshot while retaining every token event', async () => {
+        const { context, processor } = await stream();
+        const { runFrame } = useFrameBuffer(context);
+        processor.generator = async function* () {
+            for (const text of ['a', 'ab', 'abc']) yield { text, swipes: [], toolCalls: [], state: {} };
+        };
+        await processor.generate();
+        expect(context.eventSource.emit.mock.calls.map(call => call[1])).toEqual(['a', 'ab', 'abc']);
+        expect(context.messageFormatting).not.toHaveBeenCalled();
+        runFrame();
+        expect(context.messageFormatting).toHaveBeenCalledTimes(1);
+        expect(context.messageFormatting.mock.calls[0][0]).toBe('abc');
+        expect(processor.messageTextDom.innerHTML).toBe('abc');
+    });
+
+    test('finalization synchronously formats the final snapshot and cancels the pending preview', async () => {
+        const { context, processor } = await stream();
+        const { runFrame, buffer } = useFrameBuffer(context);
+        await processor.onProgressStreaming(0, 'preview', false);
+        await processor.onProgressStreaming(0, 'final', true);
+        expect(buffer.size()).toBe(0);
+        expect(processor.messageTextDom.innerHTML).toBe('final');
+        expect(context.messageFormatting).toHaveBeenCalledTimes(1);
+        expect(context.messageFormatting.mock.calls[0][0]).toBe('final');
+        expect(context.applyStreamDomPatch).not.toHaveBeenCalled();
+        runFrame();
+        expect(context.messageFormatting).toHaveBeenCalledTimes(1);
+    });
+
+    test.each(['Stop', 'chat switch', 'swipe'])('drops queued formatting before doing any work after %s', async reason => {
+        const { context, processor } = await stream();
+        const { runFrame } = useFrameBuffer(context);
+        await processor.onProgressStreaming(0, 'preview', false);
+        if (reason === 'Stop') processor.onStopStreaming();
+        else if (reason === 'swipe') context.chat[0].swipe_id++;
+        else context.chatGeneration++;
+        runFrame();
+        expect(context.messageFormatting).not.toHaveBeenCalled();
+        expect(context.applyStreamDomPatch).not.toHaveBeenCalled();
+    });
+
+    test('records format and DOM cost, then decays it after a cheaper visible update', async () => {
+        const { context, processor } = await stream();
+        const { runFrame } = useFrameBuffer(context);
+        context.performance = { now: jest.fn().mockReturnValueOnce(0).mockReturnValueOnce(30).mockReturnValueOnce(40).mockReturnValueOnce(45) };
+        await processor.onProgressStreaming(0, 'first', false);
+        runFrame();
+        expect(processor.streamingRenderDurationMs).toBe(30);
+        await processor.onProgressStreaming(0, 'second', false);
+        runFrame();
+        expect(processor.streamingRenderDurationMs).toBe(24);
+    });
+
+    test('routes a scheduled formatter failure through stream error cleanup', async () => {
+        const { context, processor } = await stream();
+        const { runFrame } = useFrameBuffer(context);
+        context.console = { ...console, error: jest.fn() };
+        context.messageFormatting.mockImplementation(() => { throw new Error('formatter failed'); });
+        await processor.onProgressStreaming(0, 'preview', false);
+        expect(runFrame).not.toThrow();
+        expect(processor.abortController.signal.aborted).toBe(true);
+        expect(processor.isStopped).toBe(true);
+        expect(processor.isFinished).toBe(true);
+        expect(context.applyStreamDomPatch).not.toHaveBeenCalled();
+    });
+
+    test('propagates final formatting errors to the caller', async () => {
+        const { context, processor } = await stream();
+        useFrameBuffer(context);
+        context.messageFormatting.mockImplementation(() => { throw new Error('final formatter failed'); });
+        await expect(processor.onProgressStreaming(0, 'final', true)).rejects.toThrow('final formatter failed');
+    });
+
     test('continues updating the original message and swipe through normal stream completion', async () => {
         const { context, processor } = await stream();
         await processor.generate();

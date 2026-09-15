@@ -416,7 +416,7 @@ describe('chat render lifecycle script wiring', () => {
         expect(source).toContain('shouldUpdateMetaBadges: !shouldReduceIntermediateStreamingWork');
         expect(source).toContain('this.setFirstSwipe(messageId);');
         expect(source).toContain('this.#queueStreamingVisibleWrite({');
-        expect(source).toContain('formattedText,');
+        expect(source).toContain('formatText,');
         expect(source).toContain('timePassed,');
         expect(source).toContain('currentTokenCount,');
         expect(source).toContain('isFinal,');
@@ -484,7 +484,8 @@ describe('chat render lifecycle script wiring', () => {
 
         expect(queueSource).toContain('if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.STREAM_PROGRESS))');
         expect(queueSource).toContain('applyStreamingVisibleWrite(messageId, write, { isFinal });');
-        expect(queueSource).toContain('getStreamingVisibleWriteBuffer().queue(messageId, write, { isFinal });');
+        expect(queueSource).toContain('getStreamingVisibleWriteBuffer().queue(messageId, write, {');
+        expect(queueSource).toContain('this.onErrorStreaming();');
     });
 
     test('swipe replacement keeps viewport routing behind the lifecycle rollout guard', () => {
