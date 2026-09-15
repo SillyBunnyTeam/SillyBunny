@@ -24,7 +24,7 @@ function runtime() {
         removeClass() { return this; }
         addClass() { return this; }
         filter(selector) { return new Collection(this.items.filter(element => element.messageId === Number(selector.match(/mesid="(\d+)"/)[1]))); }
-        nextAll() { return new Collection(elements.slice(elements.indexOf(this.items[0]) + 1), this); }
+        nextAll() { return new Collection(this.items.length ? elements.slice(elements.indexOf(this.items[0]) + 1) : [], this); }
         addBack() { return new Collection([...this.previous.items, ...this.items]); }
         remove() { elements = elements.filter(element => !this.items.includes(element)); return this; }
         first() { return new Collection(this.items.slice(0, 1)); }
@@ -47,7 +47,7 @@ function runtime() {
         console: { info() {}, debug() {} },
         chat: ['A', 'B', 'C'].map(mes => ({ mes, extra: {} })), chatGeneration: 1, chatRenderVersion: 0,
         chat_metadata: {}, this_edit_mes_id: undefined, isLoadingMoreMessages: false,
-        power_user: { chat_truncation: 100 }, CHAT_HISTORY_OLDER_BUTTON_ID: 'older',
+        power_user: { chat_truncation: 100 }, CHAT_HISTORY_OLDER_BUTTON_ID: 'older', CHAT_HISTORY_NEWER_BUTTON_ID: 'newer',
         HTMLElement: Element,
         $: element => typeof element === 'string' ? select(element) : new Collection([element]),
         chatElement: {
@@ -75,10 +75,10 @@ function runtime() {
         CHAT_RENDER_LIFECYCLE_ROUTE: { REDISPLAY_BATCH: 'redisplay', SHOW_MORE_BATCH: 'history' },
         eventSource: { emit: jest.fn(async () => {}) }, event_types: { MESSAGE_DELETED: 'deleted', MORE_MESSAGES_LOADED: 'loaded' },
     });
-    for (const name of ['unobserveChatMessageResize', 'applyCharacterTagsToMessageDivs', 'syncChatHistoryWindowControls', 'refreshSwipeButtons', 'applyStylePins', 'updateEditArrowClasses', 'deleteItemizedPromptForMessage', 'saveChatDebounced', 'pruneRenderedChatMessagesToWindow']) {
+    for (const name of ['unobserveChatMessageResize', 'applyCharacterTagsToMessageDivs', 'syncChatHistoryWindowControls', 'syncRenderedChatLastMessageClass', 'refreshSwipeButtons', 'applyStylePins', 'updateEditArrowClasses', 'deleteItemizedPromptForMessage', 'saveChatDebounced', 'pruneRenderedChatMessagesToWindow']) {
         context[name] = jest.fn();
     }
-    for (const name of ['createChatRenderTransaction', 'renderRedisplayChatMessagesThroughLifecycle', 'renderRedisplayChatMessages', 'redisplayChat', 'getMessageDeletionStartId', 'deleteMessage', 'updateViewMessageIds', 'renderShowMoreMessagesThroughLifecycle', 'renderShowMoreMessages', 'showMoreMessages']) {
+    for (const name of ['createChatRenderTransaction', 'renderRedisplayChatMessagesThroughLifecycle', 'renderRedisplayChatMessages', 'redisplayChat', 'getMessageDeletionStartId', 'deleteMessage', 'updateViewMessageIds', 'renderShowMoreMessagesThroughLifecycle', 'renderShowMoreMessages', 'showMoreMessages', 'showNewerMessages']) {
         const declaration = source.match(new RegExp(`^(?:export )?((?:async )?function ${name}\\([\\s\\S]*?^}\\r?$)`, 'm'))[1];
         vm.runInContext(declaration, context);
     }
@@ -96,7 +96,13 @@ function runtime() {
         if (!done) throw new Error('Render did not complete');
         await completion;
     };
-    return { context, frames, waitForFrame, finish, rows: () => elements.map(element => `${element.message.mes}@${element.messageId}`), insert: (message, id) => elements.push(new Element(id, message)) };
+    return {
+        context, frames, waitForFrame, finish,
+        rows: () => elements.map(element => `${element.message.mes}@${element.messageId}`),
+        insert: (message, id) => elements.push(new Element(id, message)),
+        decorate: () => elements.forEach(element => { element.decorated = true; }),
+        decorations: () => elements.map(element => Boolean(element.decorated)),
+    };
 }
 
 describe('yielded chat render transactions', () => {
@@ -119,6 +125,34 @@ describe('yielded chat render transactions', () => {
         await host.context.deleteMessage(0, undefined, false, false);
         await host.finish([pending]);
         expect(host.rows()).toEqual(['B@0', 'C@1']);
+        expect(host.context.eventSource.emit.mock.calls.map(call => call[0])).toEqual(['deleted', 'loaded']);
+    });
+
+    test.each(['older', 'newer'])('reapplies extension decorations after %s history recovery completes', async direction => {
+        const host = runtime();
+        host.context.eventSource.emit.mockImplementation(async () => host.decorate());
+        const initialId = direction === 'older' ? 2 : 0;
+        host.insert(host.context.chat[initialId], initialId);
+        const pending = direction === 'older' ? host.context.showMoreMessages() : host.context.showNewerMessages();
+        await host.waitForFrame();
+        await host.context.deleteMessage(0, undefined, false, false);
+        await host.finish([pending]);
+        expect(host.rows()).toEqual(['B@0', 'C@1']);
+        expect(host.decorations()).toEqual([true, true]);
+        expect(host.context.eventSource.emit.mock.calls.map(call => call[0])).toEqual(['deleted', 'loaded']);
+    });
+
+    test.each(['replacement render', 'chat switch'])('does not emit a stale history event when recovery is superseded by %s', async supersession => {
+        const host = runtime();
+        host.insert(host.context.chat[2], 2);
+        const pending = host.context.showMoreMessages();
+        await host.waitForFrame();
+        await host.context.deleteMessage(0, undefined, false, false);
+        host.frames.shift()();
+        await host.waitForFrame();
+        const replacement = supersession === 'replacement render' ? host.context.redisplayChat() : Promise.resolve();
+        if (supersession === 'chat switch') host.context.chatGeneration++;
+        await host.finish([pending, replacement]);
         expect(host.context.eventSource.emit.mock.calls.map(call => call[0])).toEqual(['deleted']);
     });
 

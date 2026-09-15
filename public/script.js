@@ -3127,7 +3127,10 @@ export async function showMoreMessages(messagesToLoad = null) {
         });
         if (!transaction.isCurrent()) return;
         if (!transaction.hasCurrentSnapshot()) {
-            await redisplayChat({ startIndex: Math.min(firstId, chat.length) });
+            const recoveredRender = await redisplayChat({ startIndex: Math.min(firstId, chat.length) });
+            if (recoveredRender?.isCurrent()) {
+                await eventSource.emit(event_types.MORE_MESSAGES_LOADED);
+            }
             return;
         }
 
@@ -3196,7 +3199,10 @@ export async function showNewerMessages(messagesToLoad = null) {
         const renderedMessageIds = await renderRedisplayChatMessages({ messages, startIndex: firstId, isCurrent: transaction.canRender });
         if (!transaction.isCurrent()) return;
         if (!transaction.hasCurrentSnapshot()) {
-            await redisplayChat({ startIndex: Math.min(firstId, chat.length) });
+            const recoveredRender = await redisplayChat({ startIndex: Math.min(firstId, chat.length) });
+            if (recoveredRender?.isCurrent()) {
+                await eventSource.emit(event_types.MORE_MESSAGES_LOADED);
+            }
             return;
         }
 
@@ -3379,8 +3385,7 @@ export async function redisplayChat({ targetChat = chat, startIndex = 0, fade = 
         const renderedMessageIds = await renderRedisplayChatMessages({ messages, startIndex, pinBottomDuringRender, isCurrent: transaction.canRender });
         if (!transaction.isCurrent()) return;
         if (!transaction.hasCurrentSnapshot()) {
-            await redisplayChat({ targetChat, startIndex: Math.min(startIndex, targetChat.length), fade, pinBottomDuringRender });
-            return;
+            return await redisplayChat({ targetChat, startIndex: Math.min(startIndex, targetChat.length), fade, pinBottomDuringRender });
         }
 
         applyCharacterTagsToMessageDivs({ mesIds: renderedMessageIds });
@@ -3392,6 +3397,8 @@ export async function redisplayChat({ targetChat = chat, startIndex = 0, fade = 
     updateEditArrowClasses();
 
     console.info(`Rendered ${messages.length} of ${targetChat.length - startIndex} messages in ${((performance.now() - t1) / 1000).toFixed(3)} seconds.`);
+    // Recovery callers finalize extension events only while this completed render still owns the view.
+    return { isCurrent: transaction.canRender };
 }
 
 export function scrollOnMediaLoad({ force = false } = {}) {
