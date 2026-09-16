@@ -26,6 +26,14 @@ import { setCharacterSpoilerFreeFieldsHidden } from './power-user.js';
 import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
 import { characters, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
+import {
+    SAMPLING_PARAMETER_DESCRIPTORS,
+} from './sampling-parameter-policy.js';
+import {
+    getSamplingParameterTransmissionState,
+    setSamplingParameterTransmissionState,
+    getSamplingParameterViewModel,
+} from './openai.js';
 
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
@@ -10208,9 +10216,120 @@ function neutralizeChatCompletionSamplers() {
     });
 }
 
+const SAMPLING_SELECTOR_TO_CANONICAL_ID = Object.freeze({
+    '#temp_openai': 'temperature',
+    '#temp_textgenerationwebui': 'temperature',
+    '#top_p_openai': 'top_p',
+    '#top_p_textgenerationwebui': 'top_p',
+    '#pres_pen_openai': 'presence_penalty',
+    '#presence_pen_textgenerationwebui': 'presence_penalty',
+    '#freq_pen_openai': 'frequency_penalty',
+    '#freq_pen_textgenerationwebui': 'frequency_penalty',
+    '#typical_p_textgenerationwebui': 'typical_p',
+});
+
 function decorateSamplingControlCard(card, selector) {
     if (!(card instanceof HTMLElement)) {
         return;
+    }
+
+    const parameterId = SAMPLING_SELECTOR_TO_CANONICAL_ID[selector];
+    if (parameterId && SAMPLING_PARAMETER_DESCRIPTORS[parameterId]) {
+        card.dataset.samplingParameter = parameterId;
+        const descriptor = SAMPLING_PARAMETER_DESCRIPTORS[parameterId];
+
+        let container = card.querySelector('.sb-sampling-transmission');
+        if (!container) {
+            container = createElement('div', { className: 'sb-sampling-transmission flex-container alignitemscenter gap5 m-t-0-5' });
+            container.setAttribute('data-sampling-transmission-for', parameterId);
+
+            const labelContainer = createElement('div', {
+                className: 'flex-container alignitemscenter gap5',
+            });
+            const label = createElement('small', {
+                className: 'sb-sampling-transmission__label opacity70p',
+                text: 'Wire:',
+            });
+            const infoIcon = createElement('div', {
+                className: 'fa-solid fa-circle-info opacity50p sb-sampling-info-icon',
+                attrs: {
+                    title: 'Controls how this setting is sent to the AI:\n\n• Auto: Normal default behavior.\n• Send: Force this slider\'s exact value to be sent.\n• Omit: Completely delete this setting from the request so models that reject it (like Grok or o1) won\'t crash.',
+                },
+            });
+            labelContainer.appendChild(label);
+            labelContainer.appendChild(infoIcon);
+            container.appendChild(labelContainer);
+
+            const options = createElement('div', {
+                className: 'sb-sampling-transmission__options flex-container gap5',
+                attrs: {
+                    role: 'radiogroup',
+                    'aria-label': `Transmission policy for ${descriptor.label}`,
+                },
+            });
+
+            const states = [
+                { state: 'inherit', label: 'Auto', title: 'Auto: Normal default behavior' },
+                { state: 'include', label: 'Send', title: 'Send: Force this slider\'s exact value to be sent' },
+                { state: 'omit', label: 'Omit', title: 'Omit: Completely delete this setting from the request to prevent crashes' },
+            ];
+
+            const currentStored = typeof getSamplingParameterTransmissionState === 'function'
+                ? getSamplingParameterTransmissionState(parameterId)
+                : 'inherit';
+            const viewModel = typeof getSamplingParameterViewModel === 'function'
+                ? getSamplingParameterViewModel(parameterId)
+                : { reason: 'provider-default' };
+
+            states.forEach(opt => {
+                const isSelected = opt.state === currentStored;
+                const btn = createElement('button', {
+                    className: `sb-transmission-btn ${isSelected ? 'active' : ''}`,
+                    text: opt.label,
+                    attrs: {
+                        type: 'button',
+                        role: 'radio',
+                        'data-policy-state': opt.state,
+                        'aria-checked': String(isSelected),
+                        title: opt.title,
+                    },
+                });
+                btn.style.padding = '2px 8px';
+                btn.style.fontSize = '0.8em';
+
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (typeof setSamplingParameterTransmissionState === 'function') {
+                        setSamplingParameterTransmissionState(parameterId, opt.state);
+                    }
+                    options.querySelectorAll('.sb-transmission-btn').forEach(b => {
+                        const sel = b.getAttribute('data-policy-state') === opt.state;
+                        b.classList.toggle('active', sel);
+                        b.setAttribute('aria-checked', String(sel));
+                    });
+                });
+                options.appendChild(btn);
+            });
+
+            if (viewModel.reason === 'capability-forbidden') {
+                const forbiddenBadge = createElement('small', {
+                    className: 'sb-capability-forbidden-badge',
+                    text: '(Omitted: provider restriction)',
+                    attrs: {
+                        title: `Forbidden by model capability rule: ${viewModel.capabilityRuleId || 'provider restriction'}`,
+                    },
+                });
+                forbiddenBadge.style.color = 'var(--smart-theme-body-soft)';
+                forbiddenBadge.style.fontStyle = 'italic';
+                container.appendChild(options);
+                container.appendChild(forbiddenBadge);
+            } else {
+                container.appendChild(options);
+            }
+
+            card.appendChild(container);
+        }
     }
 
     if (selector === '#seed_textgenerationwebui') {

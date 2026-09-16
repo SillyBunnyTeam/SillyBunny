@@ -33,6 +33,14 @@ import { SECRET_KEYS, writeSecret } from './secrets.js';
 import { getEventSourceStream } from './sse-stream.js';
 import { fetchResumable } from './resumable-generation.js';
 import { getLocalPromptCacheValue, isLikelyLocalServerUrl } from './local-url-utils.js';
+import {
+    applySamplingParameterPolicy,
+    createSamplingRequestContext,
+    createSamplingTargetKey,
+    getTargetSamplingPolicy,
+    parseLegacySamplingExclusions,
+} from './sampling-parameter-policy.js';
+import { oai_settings } from './openai.js';
 import { getCurrentDreamGenModelTokenizer, getCurrentOpenRouterModelTokenizer, loadAphroditeModels, loadDreamGenModels, loadFeatherlessModels, loadGenericModels, loadInfermaticAIModels, loadLlamaCppModels, loadMancerModels, loadOllamaModels, loadOpenRouterModels, loadTabbyModels, loadTogetherAIModels, loadVllmModels, setOpenRouterProviders, updateOpenRouterProvidersWarning } from './textgen-models.js';
 import { ENCODE_TOKENIZERS, TEXTGEN_TOKENIZERS, TOKENIZER_SUPPORTED_KEY, getTextTokens, getTokenizerBestMatch, tokenizers } from './tokenizers.js';
 import { AbortReason } from './util/AbortReason.js';
@@ -1945,6 +1953,28 @@ export function createTextGenGenerationData(settings, model, finalPrompt = null,
             delete params.guided_json;
         }
     }
+
+    const textContext = createSamplingRequestContext({
+        backend: 'text',
+        source: settings.type || 'textgenerationwebui',
+        adapter: settings.type,
+        model: model || '',
+        activeValues: {
+            temperature: params.temperature,
+            top_p: params.top_p,
+            presence_penalty: params.presence_penalty,
+            frequency_penalty: params.frequency_penalty,
+            typical_p: params.typical_p,
+        },
+        policy: getTargetSamplingPolicy(oai_settings?.model_sampling_policies, createSamplingTargetKey({
+            source: settings.type || 'textgenerationwebui',
+            model: model || '',
+        })),
+        legacyExclusions: parseLegacySamplingExclusions(settings.custom_exclude_body),
+    });
+
+    applySamplingParameterPolicy(params, textContext);
+
     return params;
 }
 
