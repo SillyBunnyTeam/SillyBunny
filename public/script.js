@@ -39,7 +39,8 @@ import {
 } from './scripts/textgen-settings.js';
 import { shouldRestoreTextGenStatusOnStartup } from './scripts/textgen-startup-status.js';
 import { normalizeCharacterChatName, resolveCharacterChatNameForLoad } from './scripts/character-chat-resolver.js';
-import { getDebouncedChatSaveAbortReason } from './scripts/chat-save-guard.js';
+import { getDebouncedChatSaveAbortReason, getQueuedChatSaveAbortReason } from './scripts/chat-save-guard.js';
+import { getChatBackupSaveOptions } from './scripts/chat-backup-sequence.js';
 import { getCharacterDefinitionFormValues, getSuspiciousEmptyCharacterDefinitionSave } from './scripts/character-save-guard.js';
 // SillyBunny: keep model-produced chat filenames behind a strict, independently tested parser.
 import { CHAT_LABEL_TITLE_LIMIT, extractGeneratedChatLabel, normalizeGeneratedChatLabel, truncateChatLabelText } from './scripts/chat-label.js';
@@ -119,6 +120,8 @@ import {
     openai_messages_count,
     chat_completion_sources,
     getChatCompletionModel,
+    getCurrentReasoningEffort,
+    getEffectivePromptBias,
     proxies,
     loadProxyPresets,
     selected_proxy,
@@ -210,6 +213,7 @@ import {
     loadFileToDocument,
     getSanitizedFilename,
     getStringHash,
+    uuidv4,
 } from './scripts/utils.js';
 import {
     TOOLING_UI_HYDRATION_STATUS,
@@ -321,6 +325,7 @@ import { initDomHandlers } from './scripts/dom-handlers.js';
 import { SimpleMutex } from './scripts/util/SimpleMutex.js';
 import { AudioPlayer } from './scripts/audio-player.js';
 import { MacroEnvBuilder } from './scripts/macros/engine/MacroEnvBuilder.js';
+import { MessageFormatter } from './scripts/message-formatter.js';
 import { MacroEngine } from './scripts/macros/engine/MacroEngine.js';
 import { addChatBackupsBrowser } from './scripts/chat-backups.js';
 import { onboardingExperimentalMacroEngine } from './scripts/macros/engine/MacroDiagnostics.js';
@@ -328,6 +333,8 @@ import { compressRequest, setRequestCompressionConfig } from './scripts/request-
 import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker } from './scripts/swipe-picker.js';
 import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-send-button.js';
 import { formatMobileStreamingPreview, getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval, isAndroidStreamingPlatform, shouldReduceStreamingDomWork, shouldUsePlainTextStreamingPreview } from './scripts/mobile-streaming.js';
+import { fetchResumable } from './scripts/resumable-generation.js';
+import { applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse } from './scripts/generation-request-controls.js';
 import {
     CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
     CHAT_RENDER_LIFECYCLE_ROUTE,
@@ -523,7 +530,7 @@ export let isChatSaving = false;
 export let firstRun = false;
 export let settingsReady = false;
 let currentVersion = '0.0.0';
-const SILLYBUNNY_UI_VERSION = 'SillyBunny v1.7.0';
+const SILLYBUNNY_UI_VERSION = 'SillyBunny v1.7.1';
 
 export let displayVersion = SILLYBUNNY_UI_VERSION;
 
@@ -566,7 +573,7 @@ export function getSillyBunnyFrontendIconSrc({ absolute = false } = {}) {
 export let system_avatar = getSillyBunnyFrontendIconSrc();
 export const comment_avatar = 'img/quill.png';
 export const default_user_avatar = 'img/user-default.png';
-export let CLIENT_VERSION = 'SillyBunny:v1.7.0:platberlitz'; // For Horde header
+export let CLIENT_VERSION = 'SillyBunny:v1.7.1:platberlitz'; // For Horde header
 
 function applySillyBunnyFrontendIcon(iconId = getStoredSillyBunnyFrontendIcon()) {
     const normalizedIconId = normalizeSillyBunnyFrontendIcon(iconId);
@@ -628,6 +635,7 @@ const MOBILE_CHAT_VIEWPORT_SCROLL_SUPPRESS_MS = 500;
 const MOBILE_CHAT_BOTTOM_PIN_MS = 1500;
 const MOBILE_STREAMING_SCROLL_MIN_INTERVAL_MS = 750;
 const CHAT_SCROLL_BOTTOM_THRESHOLD_PX = 24;
+const CHAT_TAP_RESIZE_GRACE_MS = 400;
 const CHAT_LOAD_BOTTOM_LOCK_EXTRA_MS = 250;
 const CHAT_LOAD_SCROLL_SETTLE_DELAYS_MS = Object.freeze([80, 250, MOBILE_CHAT_LOAD_SCROLL_SETTLE_MS, 900, 1600, 2400]);
 const SHOW_MORE_DUPLICATE_EVENT_GUARD_MS = 750;
@@ -671,6 +679,13 @@ let mobileStreamingBottomPinSmooth = false;
 let lastMobileStreamingBottomPinAt = 0;
 let chatLoadBottomLockUntil = 0;
 let chatLoadBottomPinFrame = 0;
+let chatLastBottomPinScrollTop = 0;
+let lastChatPointerUpAt = 0;
+
+// ponytail: pointerup only — a touch scroll ends in pointercancel, so scrolling never arms the window.
+function isRecentChatTap() {
+    return Date.now() - lastChatPointerUpAt < CHAT_TAP_RESIZE_GRACE_MS;
+}
 export let abortStatusCheck = new AbortController();
 export let charDragDropHandler = null;
 export let chatDragDropHandler = null;
@@ -914,6 +929,7 @@ export let is_send_press = false; //Send generation
 export const isGenerating = () => (is_send_press || is_group_generating);
 
 let this_del_mes = -1;
+let deleteToolCallsInDeleteMode = true;
 
 /** @type {string} */
 let this_edit_mes_chname = '';
@@ -1987,6 +2003,8 @@ function isChatLoadBottomLockActive() {
 
 function clearChatLoadBottomLock() {
     chatLoadBottomLockUntil = 0;
+    // SillyBunny: leaving the load lock means user intent took over; do not let the scroll handler immediately re-arm autoscroll.
+    scrollLockImmunityUntil = 0;
 
     if (chatLoadBottomPinFrame) {
         cancelAnimationFrame(chatLoadBottomPinFrame);
@@ -2090,7 +2108,7 @@ function requestMobileChatBottomPin({ requireNearBottom = true, durationMs = MOB
 }
 
 function shouldPinMobileChatToBottom() {
-    if (!shouldGuardMobileChatScroll() || isMobileChatManualScrollSuppressionActive()) {
+    if (!power_user.auto_scroll_chat_to_bottom || !shouldGuardMobileChatScroll() || isMobileChatManualScrollSuppressionActive()) {
         return false;
     }
 
@@ -2447,6 +2465,7 @@ function getMobileMessageUpdateQueue() {
 }
 
 function applyStreamingVisibleWrite(messageId, {
+    isCurrent,
     messageTextDom,
     messageTimerDom,
     messageTokenCounterDom,
@@ -2460,6 +2479,8 @@ function applyStreamingVisibleWrite(messageId, {
     shouldUseStreamFadeIn,
     bypassFadeIn,
 }, { isFinal = false } = {}) {
+    if (isCurrent && !isCurrent()) return false;
+    if (messageDom instanceof HTMLElement && (!messageDom.isConnected || messageDom.getAttribute('mesid') !== String(messageId))) return false;
     if (shouldRefreshTokenCount && messageTokenCounterDom instanceof HTMLElement) {
         messageTokenCounterDom.textContent = `${currentTokenCount}t`;
     }
@@ -2579,7 +2600,10 @@ async function applyChatMessageResizeAction(element, entry, metadata) {
 
     if (shouldApplyChatBottomScrollAction(action)) {
         // SillyBunny: coalesce media resize pins with the shared bottom-scroll rAF lane.
-        scrollChatToBottom({ waitForFrame: true, isNearBottom: true });
+        // ponytail: growth right after a completed tap is user-caused, not late media; pinning then drags the view. Keyboard-toggled details still pin, and late media landing inside the 400 ms window won't.
+        if (!isRecentChatTap()) {
+            scrollChatToBottom({ waitForFrame: true, isNearBottom: true });
+        }
         requestAnimationFrame(() => refreshChatMessageResizeState(element, metadata, entry));
         return;
     }
@@ -2909,6 +2933,9 @@ function pruneRenderedChatMessagesToWindow({ windowSize, pruneFrom }) {
         return;
     }
 
+    // SillyBunny: pin the first visible message so a top prune cannot shift the view.
+    const anchor = pruneFrom === 'start' ? captureVisibleChatMessageAnchor() : null;
+
     const removedMessages = pruneFrom === 'end'
         ? renderedMessages.slice(-excessMessageCount)
         : renderedMessages.slice(0, excessMessageCount);
@@ -2918,6 +2945,7 @@ function pruneRenderedChatMessagesToWindow({ windowSize, pruneFrom }) {
     removedMessageElements.remove();
     syncRenderedChatLastMessageClass();
     syncChatHistoryWindowControls();
+    restoreVisibleChatMessageAnchor(anchor);
 }
 
 function removeRenderedChatMessages() {
@@ -3364,6 +3392,10 @@ export function incrementChatGeneration() {
     chatGeneration++;
 }
 
+export function getChatGeneration() {
+    return chatGeneration;
+}
+
 function setChatSaveActive(isActive) {
     chatSaveActivityCount += isActive ? 1 : -1;
     chatSaveActivityCount = Math.max(0, chatSaveActivityCount);
@@ -3448,13 +3480,32 @@ export async function deleteLastMessage() {
     await eventSource.emit(event_types.MESSAGE_DELETED, deletedMessageId);
 }
 
+function getMessageDeletionStartId(id, deleteToolCalls = true) {
+    const message = chat[id];
+    if (!deleteToolCalls || message?.is_user || message?.is_system) {
+        return id;
+    }
+
+    let startId = id;
+    while (startId > 0) {
+        const previousMessage = chat[startId - 1];
+        if (!previousMessage?.is_system || !Array.isArray(previousMessage.extra?.tool_invocations)) {
+            break;
+        }
+        startId--;
+    }
+
+    return startId;
+}
+
 /**
  * Deletes a message from the chat by its ID, optionally asking for confirmation.
  * @param {number} id The ID of the message to delete.
  * @param {number} [swipeDeletionIndex] Deletes the swipe with that index.
  * @param {boolean} [askConfirmation=false] Whether to ask for confirmation before deleting.
+ * @param {boolean} [deleteToolCalls=true] Whether to delete preceding tool-call messages.
  */
-export async function deleteMessage(id, swipeDeletionIndex = undefined, askConfirmation = false) {
+export async function deleteMessage(id, swipeDeletionIndex = undefined, askConfirmation = false, deleteToolCalls = true) {
     const canDeleteSwipe = swipeDeletionIndex !== undefined && swipeDeletionIndex !== null;
     if (canDeleteSwipe) {
         if (swipeDeletionIndex < 0) {
@@ -3492,14 +3543,21 @@ export async function deleteMessage(id, swipeDeletionIndex = undefined, askConfi
         return;
     }
 
-    chat.splice(id, 1);
-    unobserveChatMessageResize(messageElement);
-    messageElement.remove();
+    const firstMessageId = getMessageDeletionStartId(id, deleteToolCalls);
+    const messageIds = Array.from({ length: id - firstMessageId + 1 }, (_, index) => id - index);
+
+    // Delete from the end so earlier indices remain stable.
+    for (const messageId of messageIds) {
+        chat.splice(messageId, 1);
+        const messageElement = chatElement.find(`.mes[mesid="${messageId}"]`);
+        unobserveChatMessageResize(messageElement);
+        messageElement.remove();
+        deleteItemizedPromptForMessage(messageId);
+    }
 
     chat_metadata.tainted = true;
 
-    const startIndex = [0, minId].includes(id) ? id : null;
-    deleteItemizedPromptForMessage(id);
+    const startIndex = firstMessageId <= minId ? firstMessageId : null;
     updateViewMessageIds(startIndex);
     // SillyBunny: this shrink is the user's own deletion, not an accidental overwrite.
     saveChatDebounced({ allowShrink: true });
@@ -3609,7 +3667,9 @@ function prepareMessageDisplayText(mes, ch_name, isSystem, isUser, messageId, is
     }
 
     // Prompt bias replacement should be applied on the raw message
-    const replacedPromptBias = power_user.user_prompt_bias && substituteParams(power_user.user_prompt_bias);
+    // SillyBunny: read the prefill actually in effect, which is Kimi K3's own field on K3.
+    const promptBiasSource = getEffectivePromptBias();
+    const replacedPromptBias = promptBiasSource && substituteParams(promptBiasSource);
     if (!power_user.show_user_prompt_bias && ch_name && !isUser && !isSystem && replacedPromptBias && mes.startsWith(replacedPromptBias)) {
         mes = mes.slice(replacedPromptBias.length);
     }
@@ -3636,6 +3696,10 @@ function prepareMessageDisplayText(mes, ch_name, isSystem, isUser, messageId, is
         const depth = getNonSystemMessageDepth(chat, resolvedMessageId);
         const agentRegexScripts = resolveRegexScriptsForSnapshot(chatMessage?.extra?.inChatAgents);
 
+        mes = MessageFormatter.runStage(MessageFormatter.stage.BEFORE_REGEX, mes,
+            { characterName: ch_name, ch_name, isSystem, isUser, messageId, isReasoning },
+        );
+
         if (!isUser && !isReasoning && agentRegexScripts.length > 0) {
             mes = applyRegexScriptList(mes, agentRegexScripts, AGENT_REGEX_PLACEMENT.AI_OUTPUT, {
                 characterOverride: ch_name,
@@ -3653,6 +3717,10 @@ function prepareMessageDisplayText(mes, ch_name, isSystem, isUser, messageId, is
             isMarkdown: true,
             depth: depth,
         });
+
+        mes = MessageFormatter.runStage(MessageFormatter.stage.AFTER_REGEX, mes,
+            { characterName: ch_name, ch_name, isSystem, isUser, messageId, isReasoning },
+        );
     }
 
     return { mes, isSystem, showdownSource };
@@ -3688,15 +3756,35 @@ function sanitizeMessageHtml(mes, sanitizerOverrides = {}) {
 }
 
 /**
- * Formats the message text into an HTML string using Markdown and other formatting.
- * @param {string} mes Message text
- * @param {string} ch_name Character name
- * @param {boolean} isSystem If the message was sent by the system
- * @param {boolean} isUser If the message was sent by the user
- * @param {number} messageId Message index in chat array
- * @param {Partial<DOMPurify.Config>} [sanitizerOverrides] DOMPurify sanitizer option overrides
- * @param {boolean} [isReasoning] If the message is reasoning output
- * @returns {string} HTML string
+ * Formats raw message text into an HTML string ready for DOM insertion.
+ *
+ * The pipeline is, in order:
+ *   1. Prompt-bias stripping (message 0 only)
+ *   2. Comment / hidden-message normalisation
+ *   3. `beforeRegex` extension hooks (see {@link MessageFormatter})
+ *   4. Custom regex rules (`getRegexedString`)
+ *   5. `afterRegex` extension hooks
+ *   6. Markdown auto-fix (`fixMarkdown`)
+ *   7. HTML tag encoding (`encode_tags`)
+ *   8. Showdown Markdown → HTML conversion
+ *   9. `afterMarkdown` extension hooks
+ *  10. Name-prefix stripping (`allow_name2_display`)
+ *  11. DOMPurify sanitization
+ *
+ * All extension hooks run **before** DOMPurify (steps 3, 5, 9) so their
+ * output is always sanitised.
+ *
+ * @param {string} mes - Raw message text.
+ * @param {string} ch_name - Character name associated with the message.
+ * @param {boolean} isSystem - Whether the message is a system message.
+ * @param {boolean} isUser - Whether the message was sent by the user.
+ * @param {number} messageId - Index of the message in the chat array, or -1
+ *   for transient messages (e.g. streaming previews).
+ * @param {Partial<DOMPurify.Config>} [sanitizerOverrides] - DOMPurify option
+ *   overrides. Merged on top of the default config.
+ * @param {boolean} [isReasoning=false] - Whether the message is reasoning/thinking
+ *   output (affects regex placement and some display rules).
+ * @returns {string} Sanitized HTML string ready to assign to `innerHTML`.
  */
 export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, sanitizerOverrides = {}, isReasoning = false) {
     if (!mes) {
@@ -3790,6 +3878,10 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
         mes = mes.replace(/<code(.*)>[\s\S]*?<\/code>/g, function (match) {
             return match.replace(/&amp;/g, '&');
         });
+
+        mes = MessageFormatter.runStage(MessageFormatter.stage.AFTER_MARKDOWN, mes,
+            { characterName: ch_name, ch_name, isSystem, isUser, messageId, isReasoning },
+        );
     }
 
     if (!power_user.allow_name2_display && ch_name && !isUser && !isSystem) {
@@ -3849,9 +3941,13 @@ function notifyCardScriptStripped(messageElement, messageId) {
  * @returns {HTMLImageElement} The image element (not yet in the DOM)
  */
 export function createModelIcon(apiName, modelName = '') {
+    // SillyBunny: LinkAPI aggregates providers, so select its SVG from the model name.
+    const iconName = apiName === chat_completion_sources.LINKAPI
+        ? inferCustomModelIconName(modelName) || 'generic'
+        : apiName;
     const image = new Image();
     image.classList.add('icon-svg');
-    image.src = `/img/${apiName}.svg`;
+    image.src = `/img/${iconName}.svg`;
     image.title = modelName ? `${apiName} - ${modelName}` : apiName;
     return image;
 }
@@ -3871,7 +3967,8 @@ function insertSVGIcon(mes, extra) {
 
     const insertOrReplaceSVG = (image, className, targetSelector, insertBefore) => {
         image.onload = async function () {
-            let existingSVG = insertBefore ? mes.find(targetSelector).prev(`.${className}`) : mes.find(targetSelector).next(`.${className}`);
+            // The model name label can sit between the timestamp and its icon, so match past it.
+            let existingSVG = insertBefore ? mes.find(targetSelector).prevAll(`.${className}`).first() : mes.find(targetSelector).nextAll(`.${className}`).first();
             if (existingSVG.length) {
                 existingSVG.replaceWith(image);
             } else {
@@ -3952,6 +4049,46 @@ function inferCustomModelIconName(model) {
     return '';
 }
 
+/**
+ * Writes the model name label after a message's timestamp icon, or after the
+ * timestamp itself when icons are turned off.
+ *
+ * @param {JQuery<HTMLElement>} mes - The message element.
+ * @param {ChatMessageExtra} [extra] - Contains the API, model and reasoning effort details.
+ */
+function insertModelLabel(mes, extra) {
+    mes.find('.timestamp-model').remove();
+
+    const label = getMessageIconLabel(extra);
+
+    if (!label) {
+        return;
+    }
+
+    const icon = mes.find('.timestamp-icon').first();
+    $('<small class="timestamp-model"></small>').text(label).insertAfter(icon.length ? icon : mes.find('.timestamp'));
+}
+
+/**
+ * Builds the text written after a message's timestamp icon.
+ *
+ * @param {ChatMessageExtra} [extra] - Contains the API, model and reasoning effort details.
+ * @returns {string} Label text, empty when nothing should be written
+ */
+function getMessageIconLabel(extra) {
+    const parts = [];
+
+    if (power_user.timestamp_model_name) {
+        parts.push(String(extra?.model ?? '').trim());
+    }
+
+    if (power_user.timestamp_reasoning_effort && extra?.reasoning_effort) {
+        parts.push(`(${extra.reasoning_effort})`);
+    }
+
+    return parts.filter(Boolean).join(' ');
+}
+
 function getMessageIconName(extra) {
     const apiName = String(extra?.api ?? '').trim().toLowerCase();
 
@@ -3972,13 +4109,13 @@ export function refreshMessageModelIcons() {
         const messageId = Number.parseInt(String(messageElement.attr('mesid') ?? ''), 10);
         const message = Number.isInteger(messageId) ? chat[messageId] : null;
 
-        messageElement.find('.timestamp-icon, .thinking-icon').remove();
+        messageElement.find('.timestamp-icon, .thinking-icon, .timestamp-model').remove();
 
-        if (!power_user.timestamp_model_icon || !message?.extra?.api) {
-            return;
+        if (power_user.timestamp_model_icon && message?.extra?.api) {
+            insertSVGIcon(messageElement, message.extra);
         }
 
-        insertSVGIcon(messageElement, message.extra);
+        insertModelLabel(messageElement, message?.extra);
     });
 }
 
@@ -4216,6 +4353,10 @@ export function appendMediaToMessage(mes, messageElement, scrollBehavior = SCROL
     const chatHeight = (hasMedia || hasFiles) ? chatElement.prop('scrollHeight') : 0;
     const scrollPosition = (hasMedia || hasFiles) ? chatElement.scrollTop() : 0;
     const doAdjustScroll = () => {
+        // SillyBunny: the block's resize observer already keeps the viewport; a late relative restore would revert it.
+        if (chatMessageResizeStates.has(getMessageBlockElement(messageElement))) {
+            return;
+        }
         if (!hasMedia && !hasFiles) {
             return;
         }
@@ -4735,6 +4876,8 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
         insertSVGIcon(messageElement, mes.extra);
     }
 
+    insertModelLabel(messageElement, mes.extra);
+
     if (mes?.extra?.isSmallSys === true) {
         messageElement.addClass('smallSysMes');
     }
@@ -4944,10 +5087,12 @@ function scrollChatElementToBottom({ behavior = 'auto' } = {}) {
     const element = chatElement[0];
     if (behavior === 'smooth' && typeof element?.scrollTo === 'function') {
         element.scrollTo({ top: position, behavior });
+        chatLastBottomPinScrollTop = position;
         return;
     }
 
     chatElement.scrollTop(position);
+    chatLastBottomPinScrollTop = element.scrollTop;
 }
 
 /**
@@ -5301,6 +5446,7 @@ export function getStoppingStrings(isImpersonate, isContinue, api = main_api) {
  * @prop {string} [quietImage] Image to use for the quiet prompt
  * @prop {string} [quietName] Name to use for the quiet prompt (defaults to "System:")
  * @prop {number} [responseLength] Maximum response length. If unset, the global default value is used.
+ * @prop {boolean} [preserveReasoningBudget=false] Keep the preset's total allowance for reasoning requests
  * @prop {number} [forceChId] Character ID to use for this generation run. Works in groups only.
  * @prop {object} [jsonSchema] JSON schema to use for the structured generation. Usually requires a special instruction.
  * @prop {boolean} [removeReasoning] Parses and removes the reasoning block according to reasoning format preferences
@@ -5310,13 +5456,13 @@ export function getStoppingStrings(isImpersonate, isContinue, api = main_api) {
  * @param {GenerateQuietPromptParams} params Parameters for the quiet prompt generation
  * @returns {Promise<string>} Generated text. If using structured output, will contain a serialized JSON object.
  */
-export async function generateQuietPrompt({ quietPrompt = '', quietToLoud = false, skipWIAN = false, quietImage = null, quietName = null, responseLength = null, forceChId = null, jsonSchema = null, removeReasoning = true, trimToSentence = false, signal = null, cacheScope = 'auxiliary' } = {}) {
+export async function generateQuietPrompt({ quietPrompt = '', quietToLoud = false, skipWIAN = false, quietImage = null, quietName = null, responseLength = null, forceChId = null, jsonSchema = null, removeReasoning = true, trimToSentence = false, signal = null, cacheScope = 'auxiliary', preserveReasoningBudget = false } = {}) {
     if (arguments.length > 0 && typeof arguments[0] !== 'object') {
         console.trace('generateQuietPrompt called with positional arguments. Please use an object instead.');
         [quietPrompt, quietToLoud, skipWIAN, quietImage, quietName, responseLength, forceChId, jsonSchema] = arguments;
     }
 
-    const responseLengthCustomized = typeof responseLength === 'number' && responseLength > 0;
+    const responseLengthCustomized = !preserveReasoningBudget && typeof responseLength === 'number' && responseLength > 0;
     const externalSignal = signal instanceof AbortSignal ? signal : null;
     const quietAbortController = externalSignal ? new AbortController() : null;
     const abortFromExternalSignal = quietAbortController
@@ -5345,6 +5491,8 @@ export async function generateQuietPrompt({ quietPrompt = '', quietToLoud = fals
             jsonSchema: jsonSchema ?? null,
             signal: quietAbortController?.signal ?? null,
             cacheScope,
+            responseLength: preserveReasoningBudget ? responseLength : null,
+            preserveReasoningBudget,
         };
         if (responseLengthCustomized) {
             TempResponseLength.save(main_api, responseLength);
@@ -5369,7 +5517,8 @@ export async function generateQuietPrompt({ quietPrompt = '', quietToLoud = fals
         // generation, regardless of whether Generate succeeded, failed, threw,
         // or returned null data. Without this, memory refresh and other quiet
         // generation callers can leave the chat input locked. (#527)
-        activateSendButtons();
+        if (!activeGenerationRun) activateSendButtons();
+        else if (abortController === quietAbortController) abortController = activeGenerationRun.controller;
     }
 }
 
@@ -5813,12 +5962,17 @@ function showStopButton() {
 }
 
 function hideStopButton({ emitGenerationEnded = true } = {}) {
-    $('#send_form').removeClass('sb-generating-controls');
+    const generationContext = activeGenerationRun?.context;
     // prevent NOOP, because hideStopButton() gets called multiple times
-    if ($('#mes_stop').css('display') !== 'none') {
+    // SillyBunny: read visibility before dropping the class. On mobile, mobile-styles.css forces
+    // `#send_form:not(.sb-generating-controls) #mes_stop` to display:none !important, so checking
+    // after removeClass always reads 'none' and GENERATION_ENDED would never be emitted.
+    const wasVisible = $('#mes_stop').css('display') !== 'none';
+    $('#send_form').removeClass('sb-generating-controls');
+    if (wasVisible) {
         $('#mes_stop').css({ 'display': 'none' });
         if (emitGenerationEnded) {
-            eventSource.emit(event_types.GENERATION_ENDED, chat.length);
+            eventSource.emit(event_types.GENERATION_ENDED, chat.length, ...(generationContext ? [generationContext] : []));
         }
     }
 }
@@ -5871,8 +6025,15 @@ class StreamingProcessor {
      * @param {Date} timeStarted Date when generation was started
      * @param {string} continueMessage Previous message if the type is 'continue'
      * @param {PromptReasoning} promptReasoning Prompt reasoning instance
+     * @param {GenerateOptions} [requestControls] Controls for this request and its owned successors
      */
-    constructor(type, forceName2, timeStarted, continueMessage, promptReasoning) {
+    constructor(type, forceName2, timeStarted, continueMessage, promptReasoning, requestControls = {}) {
+        // SillyBunny: stream writes belong to one run and message, not a reusable chat index.
+        this.originRun = activeGenerationRun;
+        this.originChatId = getCurrentChatId();
+        this.originChatGeneration = chatGeneration;
+        this.message = null;
+        this.swipeId = undefined;
         this.result = '';
         this.messageId = -1;
         /** @type {HTMLElement} */
@@ -5892,6 +6053,15 @@ class StreamingProcessor {
         this.isFinished = false;
         this.generator = this.nullStreamingGeneration;
         this.abortController = new AbortController();
+        // SillyBunny: a prose limit closes the transport, not the generation lifecycle.
+        this.requestAbortController = new AbortController();
+        this.abortController.signal.addEventListener('abort', () => this.requestAbortController.abort(this.abortController.signal.reason), { once: true });
+        this.requestControls = requestControls;
+        this.maxOutputTokens = Number.isFinite(requestControls.maxOutputTokens) && requestControls.maxOutputTokens > 0 ? requestControls.maxOutputTokens : 0;
+        this.finishReason = null;
+        this.lastRawText = null;
+        this.lastReasoningPrefix = null;
+        this.limitedOutput = null;
         this.firstMessageText = '...';
         this.timeStarted = timeStarted;
         /** @type {number?} */
@@ -5904,6 +6074,11 @@ class StreamingProcessor {
         this.toolCalls = [];
         // Initialize reasoning in its own handler
         this.reasoningHandler = new ReasoningHandler(timeStarted);
+        // Reasoning completion can await an event before updating its DOM.
+        const updateReasoningDom = this.reasoningHandler.updateDom.bind(this.reasoningHandler);
+        this.reasoningHandler.updateDom = messageId => {
+            if (this.#isCurrent(messageId)) updateReasoningDom(messageId);
+        };
         /** @type {PromptReasoning} */
         this.promptReasoning = promptReasoning;
         /** @type {string[]} */
@@ -5916,10 +6091,42 @@ class StreamingProcessor {
         this.pendingReasoning = null;
     }
 
+    #isCurrent(messageId = this.messageId, allowStopped = false) {
+        return (allowStopped || (!this.isStopped && !this.abortController.signal.aborted))
+            && (allowStopped || (this.isCurrentGeneration?.() ?? true))
+            && streamingProcessor === this && activeGenerationRun === this.originRun
+            && chatGeneration === this.originChatGeneration && getCurrentChatId() === this.originChatId
+            && (this.type === 'impersonate' || messageId < 0 || (this.message !== null
+                && chat[messageId] === this.message && (this.swipeId === undefined || this.message.swipe_id === this.swipeId)));
+    }
+
     #applyPendingReasoning() {
         if (typeof this.pendingReasoning === 'string') {
             this.reasoningHandler.updateReasoning(this.messageId, this.pendingReasoning);
         }
+    }
+
+    #applyProseLimit(state, isFinal = false) {
+        if (!this.maxOutputTokens || (isFinal && this.lastRawText === null)) {
+            return false;
+        }
+        if (state?.finishReason === 'length') {
+            this.finishReason = 'length';
+        }
+        const rawText = isFinal ? this.lastRawText : this.result;
+        const prefix = isFinal ? this.lastReasoningPrefix : this.promptReasoning?.prefixIncomplete && !this.pendingReasoning ? this.promptReasoning.prefixReasoningFormatted : '';
+        if (isFinal || rawText !== this.lastRawText || prefix !== this.lastReasoningPrefix) {
+            this.lastRawText = rawText;
+            this.lastReasoningPrefix = prefix;
+            this.limitedOutput = limitGenerationProse(rawText, this.maxOutputTokens, power_user.reasoning, prefix, !isFinal);
+        }
+        this.result = this.limitedOutput.text;
+        if (!isFinal) {
+            this.pendingReasoning = [this.pendingReasoning, this.limitedOutput.reasoning].filter(Boolean).join('\n\n');
+        } else if (this.limitedOutput.limited) {
+            this.finishReason = 'length';
+        }
+        return this.limitedOutput.limited;
     }
 
     /**
@@ -5928,9 +6135,10 @@ class StreamingProcessor {
      * @param {boolean?} continueOnReasoning If continuing on reasoning
      */
     async #checkDomElements(messageId, continueOnReasoning = null) {
+        if (!this.#isCurrent(messageId)) return;
         const cachedMessageDomInvalid = this.messageDom !== null
             && (!this.messageDom.isConnected || this.messageDom.getAttribute('mesid') !== String(messageId));
-        const cachedMessageTextDomInvalid = this.messageTextDom !== null && !this.messageTextDom.isConnected;
+        const cachedMessageTextDomInvalid = this.messageTextDom != null && !this.messageTextDom.isConnected;
 
         if (cachedMessageDomInvalid || cachedMessageTextDomInvalid) {
             // SillyBunny: refresh stale stream targets after chat-window pruning or tail-gap re-renders.
@@ -5947,8 +6155,10 @@ class StreamingProcessor {
             this.messageTokenCounterDom = this.messageDom?.querySelector('.tokenCounterDisplay');
         }
         if (continueOnReasoning) {
-            await this.reasoningHandler.process(messageId, false, this.promptReasoning);
+            // Controlled streams parse inline reasoning once in #applyProseLimit.
+            await this.reasoningHandler.process(messageId, false, this.maxOutputTokens ? null : this.promptReasoning);
         }
+        if (!this.#isCurrent(messageId)) return;
         if (this.reasoningHandler.hasReasoningContent()) {
             this.reasoningHandler.updateDom(messageId);
         }
@@ -5971,18 +6181,21 @@ class StreamingProcessor {
     }
 
     markUIGenStarted() {
+        if (!this.#isCurrent()) return;
         deactivateSendButtons();
     }
 
     markUIGenStopped({ emitGenerationEnded = true, emitGenerationStopped = false } = {}) {
+        if (!this.#isCurrent(this.messageId, true)) return;
         if (emitGenerationStopped) {
-            eventSource.emit(event_types.GENERATION_STOPPED);
+            eventSource.emit(event_types.GENERATION_STOPPED, ...(this.agentGenerationContext ? [this.agentGenerationContext] : []));
         }
 
         unblockGeneration(this.type, { emitGenerationEnded });
     }
 
     async onStartStreaming(text) {
+        if (!this.#isCurrent()) return -1;
         const continueOnReasoning = !!(this.type === 'continue' && this.promptReasoning.prefixReasoning);
         if (continueOnReasoning) {
             this.reasoningHandler.initContinue(this.promptReasoning);
@@ -5994,9 +6207,16 @@ class StreamingProcessor {
             this.sendTextarea.value = '';
             this.sendTextarea.dispatchEvent(new Event('input', { bubbles: true }));
         } else {
-            await saveReply({ type: this.type, getMessage: text, fromStreaming: true });
+            const saving = saveReply({ type: this.type, getMessage: text, fromStreaming: true, isCurrent: () => this.#isCurrent() });
             messageId = chat.length - 1;
+            this.messageId = messageId;
+            this.message = chat[messageId];
+            this.swipeId = this.message?.swipe_id;
+            await saving;
+            if (!this.#isCurrent(messageId)) return -1;
+            this.swipeId = this.message.swipe_id;
             await this.#checkDomElements(messageId, continueOnReasoning);
+            if (!this.#isCurrent(messageId)) return -1;
             this.markUIGenStarted();
         }
         hideSwipeButtons({ hideCounters: true });
@@ -6007,12 +6227,14 @@ class StreamingProcessor {
     }
 
     async onProgressStreaming(messageId, text, isFinal) {
+        if (!this.#isCurrent(messageId)) return;
         const isImpersonate = this.type == 'impersonate';
         const isContinue = this.type == 'continue';
-        const shouldReduceIntermediateStreamingWork = !isFinal && shouldReduceStreamingDomWork(globalThis.navigator, {
+        const shouldReduceStreamingWork = shouldReduceStreamingDomWork(globalThis.navigator, {
             iosEnabled: power_user.ios_webkit_reduce_streaming_work,
             androidEnabled: power_user.android_reduce_streaming_work,
         });
+        const shouldReduceIntermediateStreamingWork = !isFinal && shouldReduceStreamingWork;
         const shouldBypassStreamingFadeIn = shouldReduceStreamingDomWork(globalThis.navigator, {
             iosEnabled: power_user.ios_webkit_disable_stream_fade_in,
             androidEnabled: power_user.android_disable_stream_fade_in,
@@ -6036,7 +6258,7 @@ class StreamingProcessor {
             getMessage: text,
             isImpersonate: isImpersonate,
             isContinue: isContinue,
-            displayIncompleteSentences: !isFinal,
+            displayIncompleteSentences: !isFinal || this.finishReason === 'length',
             stoppingStrings: this.stoppingStrings,
         });
 
@@ -6046,6 +6268,7 @@ class StreamingProcessor {
         } else {
             const mesChanged = chat[messageId].mes !== processedText;
             await this.#checkDomElements(messageId);
+            if (!this.#isCurrent(messageId)) return;
             this.#updateMessageBlockVisibility();
             const currentTime = new Date();
             chat[messageId].mes = processedText;
@@ -6062,7 +6285,8 @@ class StreamingProcessor {
 
             // Update reasoning
             this.#applyPendingReasoning();
-            await this.reasoningHandler.process(messageId, mesChanged, this.promptReasoning);
+            await this.reasoningHandler.process(messageId, mesChanged, this.maxOutputTokens ? null : this.promptReasoning);
+            if (!this.#isCurrent(messageId)) return;
             processedText = chat[messageId].mes;
 
             // Token count update.
@@ -6076,6 +6300,7 @@ class StreamingProcessor {
                     countOutput: shouldRefreshTokenCount,
                     countReasoning: shouldRefreshTokenCount,
                 });
+                if (!this.#isCurrent(messageId)) return;
                 currentTokenCount = outputTokens;
                 currentReasoningTokens = reasoningTokens;
             }
@@ -6141,6 +6366,7 @@ class StreamingProcessor {
             this.#queueStreamingVisibleWrite({
                 messageId,
                 write: {
+                    isCurrent: () => this.#isCurrent(messageId),
                     messageTextDom: this.messageTextDom,
                     messageTimerDom: this.messageTimerDom,
                     messageTokenCounterDom: this.messageTokenCounterDom,
@@ -6162,12 +6388,17 @@ class StreamingProcessor {
             }
         }
 
+        // SillyBunny: instant intermediate pins visibly jump on reduced-work mobile platforms; settle once when streaming finishes.
+        if (shouldReduceIntermediateStreamingWork && shouldUseMobileStreamingPin) {
+            return;
+        }
+
         if (shouldPinMobileBottom && shouldPinMobileChatToBottom()) {
             scheduleMobileStreamingBottomPin({ isFinal });
         } else if (!scrollLock && (!shouldUseMobileStreamingPin || !isMobileChatManualScrollSuppressionActive())) {
             scrollChatToBottom({
                 waitForFrame: true,
-                isNearBottom: shouldUseMobileStreamingPin ? shouldPinMobileBottom : true,
+                isNearBottom: shouldUseMobileStreamingPin ? shouldPinMobileBottom || (isFinal && shouldReduceStreamingWork) : true,
             });
         }
     }
@@ -6182,12 +6413,15 @@ class StreamingProcessor {
      * @param {boolean} options.unlockUI - Whether to unlock the generation UI.
      */
     async finalizeIntermediaryMessage(messageId, text, { unlockUI = true }) {
+        if (!this.#isCurrent(messageId)) return;
         await this.onProgressStreaming(messageId, text, true);
+        if (!this.#isCurrent(messageId)) return;
         const messageElement = chatElement.find(`.mes[mesid="${messageId}"]`);
         const message = chat[messageId];
         addCopyToCodeBlocks(messageElement);
 
         await this.reasoningHandler.finish(messageId);
+        if (!this.#isCurrent(messageId)) return;
 
         if (Array.isArray(this.swipes) && this.swipes.length > 0) {
             const swipeInfoExtra = structuredClone(message.extra ?? {});
@@ -6214,6 +6448,7 @@ class StreamingProcessor {
 
         if (Array.isArray(this.images) && this.images.length > 0) {
             await processImageAttachment(message, { imageUrls: this.images });
+            if (!this.#isCurrent(messageId)) return;
             appendMediaToMessage(message, $(this.messageDom));
         }
 
@@ -6229,28 +6464,32 @@ class StreamingProcessor {
 
         if (this.type !== 'impersonate') {
             await eventSource.emit(event_types.MESSAGE_RECEIVED, this.messageId, this.type);
+            if (!this.#isCurrent(messageId)) return;
             await eventSource.emit(event_types.CHARACTER_MESSAGE_RENDERED, this.messageId, this.type);
         } else {
             await eventSource.emit(event_types.IMPERSONATE_READY, text);
         }
+        if (!this.#isCurrent(messageId)) return;
 
         updateSwipeCounter(messageId, { message, messageElement });
     }
 
     async onFinishStreaming(messageId, text) {
         await this.finalizeIntermediaryMessage(messageId, text, { unlockUI: true });
+        if (!this.#isCurrent(messageId)) return;
 
         const isAborted = this.abortController.signal.aborted;
         if (!isAborted && power_user.auto_swipe && generatedTextFiltered(text)) {
-            return await swipe(null, SWIPE_DIRECTION.RIGHT, { source: SWIPE_SOURCE.AUTO_SWIPE, repeated: true, forceMesId: chat.length - 1 });
+            return await swipe(null, SWIPE_DIRECTION.RIGHT, { source: SWIPE_SOURCE.AUTO_SWIPE, repeated: true, forceMesId: chat.length - 1, generationOptions: this.requestControls });
         }
         await saveChatConditional();
+        if (!this.#isCurrent(messageId)) return;
 
         playMessageSound();
     }
 
     onErrorStreaming() {
-        if (this.isFinished) {
+        if (this.isFinished || !this.#isCurrent(this.messageId, true)) {
             return;
         }
 
@@ -6268,6 +6507,7 @@ class StreamingProcessor {
     }
 
     setFirstSwipe(messageId) {
+        if (!this.#isCurrent(messageId, true)) return;
         if (this.type !== 'swipe' && this.type !== 'impersonate') {
             if (Array.isArray(chat[messageId].swipes) && chat[messageId].swipes.length === 1 && chat[messageId].swipe_id === 0) {
                 chat[messageId].swipes[0] = chat[messageId].mes;
@@ -6311,7 +6551,7 @@ class StreamingProcessor {
                 if (!this.timeToFirstToken) {
                     this.timeToFirstToken = now - this.createdAt.getTime();
                 }
-                if (this.isStopped || this.abortController.signal.aborted) {
+                if (!this.#isCurrent()) {
                     this.isStopped = true;
                     this.isFinished = true;
                     return this.result;
@@ -6324,16 +6564,26 @@ class StreamingProcessor {
                     this.messageLogprobs.push(...(Array.isArray(logprobs) ? logprobs : [logprobs]));
                 }
                 this.pendingReasoning = typeof state?.reasoning === 'string' ? state.reasoning : null;
+                const reachedLimit = this.#applyProseLimit(state);
                 if (this.pendingReasoning !== null) {
                     this.reasoningHandler.reasoning = getRegexedString(this.pendingReasoning, regex_placement.REASONING);
                 }
                 this.images = state?.images ?? [];
                 this.reasoningSignature = state?.signature ?? null;
                 this.reasoningTokens = state?.reasoning_tokens ?? 0;
+                if (reachedLimit) {
+                    this.finishReason = 'length';
+                    this.requestAbortController.abort();
+                    break;
+                }
             }
             const seconds = (timestamps[timestamps.length - 1] - timestamps[0]) / 1000;
             console.warn(`Stream stats: ${timestamps.length} tokens, ${seconds.toFixed(2)} seconds, rate: ${Number(timestamps.length / seconds).toFixed(2)} TPS`);
         } catch (err) {
+            if (this.finishReason === 'length' && err === this.requestAbortController.signal.reason && !this.abortController.signal.aborted) {
+                this.isFinished = true;
+                return this.result;
+            }
             const isCancelled = this.isCancelled || this.abortController.signal.aborted;
             if (!this.isFinished && isCancelled) {
                 this.isStopped = true;
@@ -6350,6 +6600,7 @@ class StreamingProcessor {
             return this.result;
         }
 
+        this.#applyProseLimit(null, true);
         this.isFinished = true;
         return this.result;
     }
@@ -6359,6 +6610,7 @@ class StreamingProcessor {
             this.messageId = await this.onStartStreaming(this.firstMessageText);
             await delay(1); // delay for message to be rendered
         }
+        if (!this.#isCurrent()) { this.isFinished = true; return this.result; }
 
         // Stopping strings are expensive to calculate, especially with macros enabled. To remove stopping strings
         // when streaming, we cache the result of getStoppingStrings instead of calling it once per token.
@@ -6378,7 +6630,7 @@ class StreamingProcessor {
                 if (!this.timeToFirstToken) {
                     this.timeToFirstToken = now - this.createdAt.getTime();
                 }
-                if (this.isStopped || this.abortController.signal.aborted) {
+                if (!this.#isCurrent()) {
                     this.setFirstSwipe(this.messageId);
                     this.isStopped = true;
                     this.isFinished = true;
@@ -6394,15 +6646,27 @@ class StreamingProcessor {
                 // SillyBunny: keep full reasoning regex/DOM work on UI ticks. Reasoning-heavy
                 // streams like DeepSeek and GLM can otherwise overwhelm iOS WebKit.
                 this.pendingReasoning = typeof state?.reasoning === 'string' ? state.reasoning : null;
+                const reachedLimit = this.#applyProseLimit(state);
                 this.images = state?.images ?? [];
                 this.reasoningSignature = state?.signature ?? null;
                 this.reasoningTokens = state?.reasoning_tokens ?? 0;
-                await eventSource.emit(event_types.STREAM_TOKEN_RECEIVED, text);
-                await sw.tick(async () => await this.onProgressStreaming(this.messageId, this.continueMessage + text));
+                await eventSource.emit(event_types.STREAM_TOKEN_RECEIVED, this.result);
+                if (!this.#isCurrent()) { this.isFinished = true; return this.result; }
+                await sw.tick(async () => await this.onProgressStreaming(this.messageId, this.continueMessage + this.result));
+                if (!this.#isCurrent()) { this.isFinished = true; return this.result; }
+                if (reachedLimit && !this.isCancelled && !this.abortController.signal.aborted) {
+                    this.finishReason = 'length';
+                    this.requestAbortController.abort();
+                    break;
+                }
             }
             const seconds = (timestamps[timestamps.length - 1] - timestamps[0]) / 1000;
             console.warn(`Stream stats: ${timestamps.length} tokens, ${seconds.toFixed(2)} seconds, rate: ${Number(timestamps.length / seconds).toFixed(2)} TPS`);
         } catch (err) {
+            if (this.finishReason === 'length' && err === this.requestAbortController.signal.reason && !this.abortController.signal.aborted) {
+                this.isFinished = true;
+                return this.result;
+            }
             const isCancelled = this.isCancelled || this.abortController.signal.aborted;
             if (!this.isFinished && isCancelled) {
                 this.setFirstSwipe(this.messageId);
@@ -6418,6 +6682,7 @@ class StreamingProcessor {
             return this.result;
         }
 
+        this.#applyProseLimit(null, true);
         this.isFinished = true;
         return this.result;
     }
@@ -6520,6 +6785,7 @@ export function createRawPrompt(prompt, api, instructOverride, quietToLoud, syst
  * @prop {boolean} [quietToLoud] true to generate a message in system mode, false to generate a message in character mode
  * @prop {string} [systemPrompt] System prompt to use.
  * @prop {number} [responseLength] Maximum response length. If unset, the global default value is used.
+ * @prop {boolean} [preserveReasoningBudget=false] Keep the preset's total allowance for reasoning requests
  * @prop {boolean} [trimNames] Whether to allow trimming "{{user}}:" and "{{char}}:" from the response.
  * @prop {string} [prefill] An optional prefill for the prompt.
  * @prop {JsonSchema} [jsonSchema] JSON schema to use for the structured generation. Usually requires a special instruction.
@@ -6533,7 +6799,7 @@ export function createRawPrompt(prompt, api, instructOverride, quietToLoud, syst
  * @param {GenerateRawParams} params Parameters for generating a message
  * @returns {Promise<object | string>} Raw API response data, or a JSON string extracted from the response when `jsonSchema` is provided.
  */
-export async function generateRawData({ prompt = '', api = null, instructOverride = false, quietToLoud = false, systemPrompt = '', responseLength = null, prefill = '', jsonSchema = null, signal = null, cacheScope = 'auxiliary' } = {}) {
+export async function generateRawData({ prompt = '', api = null, instructOverride = false, quietToLoud = false, systemPrompt = '', responseLength = null, prefill = '', jsonSchema = null, signal = null, cacheScope = 'auxiliary', preserveReasoningBudget = false } = {}) {
     if (!api) {
         api = main_api;
     }
@@ -6548,7 +6814,9 @@ export async function generateRawData({ prompt = '', api = null, instructOverrid
             externalSignal.addEventListener('abort', abortFromExternalSignal, { once: true });
         }
     }
-    const responseLengthCustomized = typeof responseLength === 'number' && responseLength > 0;
+    // SillyBunny: route preserved budgets before TempResponseLength can overwrite the preset.
+    const responseLengthCustomized = !preserveReasoningBudget && typeof responseLength === 'number' && responseLength > 0;
+    const requestControls = preserveReasoningBudget ? { responseLength, preserveReasoningBudget } : {};
     let eventHook = () => { };
 
     // construct final prompt from the input. Can either be a string or an array of chat-style messages.
@@ -6596,33 +6864,40 @@ export async function generateRawData({ prompt = '', api = null, instructOverrid
                     const koboldSettings = koboldai_settings[koboldai_setting_names[kai_settings.preset_settings]];
                     generateData = getKoboldGenerationData(prompt.toString(), koboldSettings, amount_gen, max_context, isHorde, 'quiet');
                 }
-                TempResponseLength.restore(api);
+                responseLengthCustomized && TempResponseLength.restore(api);
                 break;
             case 'novel': {
                 const novelSettings = novelai_settings[novelai_setting_names[nai_settings.preset_settings_novel]];
-                generateData = getNovelGenerationData(prompt, novelSettings, amount_gen, false, false, null, 'quiet');
-                TempResponseLength.restore(api);
+                const maxLength = applyGenerationRequestControls({ max_length: amount_gen, model: nai_settings.model_novel }, requestControls).max_length;
+                generateData = getNovelGenerationData(prompt, novelSettings, maxLength, false, false, null, 'quiet');
+                requestControls.responseLength = null;
+                responseLengthCustomized && TempResponseLength.restore(api);
                 break;
             }
             case 'textgenerationwebui':
                 generateData = await getTextGenGenerationData(prompt, amount_gen, false, false, null, 'quiet', { cacheScope });
-                TempResponseLength.restore(api);
+                responseLengthCustomized && TempResponseLength.restore(api);
                 break;
             case 'openai': {
                 generateData = prompt;  // generateData is just the chat message object
-                eventHook = TempResponseLength.setupEventHook(api);
+                if (responseLengthCustomized) {
+                    eventHook = TempResponseLength.setupEventHook(api);
+                }
             } break;
         }
 
+        if (api !== 'openai') {
+            generateData = applyGenerationRequestControls(generateData, { model: api === 'koboldhorde' ? horde_settings.models : api === main_api ? getGeneratingModel() : undefined, ...requestControls });
+        }
         let data = {};
 
         if (api === 'koboldhorde') {
             data = await generateHorde(prompt.toString(), generateData, abortController.signal, false);
         } else if (api === 'openai') {
-            data = await sendOpenAIRequest('quiet', generateData, abortController.signal, { jsonSchema, cacheScope });
+            data = await sendOpenAIRequest('quiet', generateData, abortController.signal, { jsonSchema, cacheScope, ...requestControls });
         } else {
             const generateUrl = getGenerateUrl(api);
-            const response = await fetch(generateUrl, {
+            const response = await fetchResumable(generateUrl, {
                 method: 'POST',
                 headers: getRequestHeaders(),
                 cache: 'no-cache',
@@ -6667,13 +6942,13 @@ export async function generateRawData({ prompt = '', api = null, instructOverrid
  * @param {GenerateRawParams} params Parameters for generating a message
  * @returns {Promise<string>} Generated output: a cleaned-up message string when `jsonSchema` is not provided, or an extracted JSON string conforming to `jsonSchema` when it is.
  */
-export async function generateRaw({ prompt = '', api = null, instructOverride = false, quietToLoud = false, systemPrompt = '', responseLength = null, trimNames = true, prefill = '', jsonSchema = null, signal = null, cacheScope = 'auxiliary' } = {}) {
+export async function generateRaw({ prompt = '', api = null, instructOverride = false, quietToLoud = false, systemPrompt = '', responseLength = null, trimNames = true, prefill = '', jsonSchema = null, signal = null, cacheScope = 'auxiliary', preserveReasoningBudget = false } = {}) {
     if (arguments.length > 0 && typeof arguments[0] !== 'object') {
         console.trace('generateRaw called with positional arguments. Please use an object instead.');
         [prompt, api, instructOverride, quietToLoud, systemPrompt, responseLength, trimNames, prefill, jsonSchema] = arguments;
     }
 
-    const data = await generateRawData({ prompt, api, instructOverride, quietToLoud, systemPrompt, responseLength, prefill, jsonSchema, signal, cacheScope });
+    const data = await generateRawData({ prompt, api, instructOverride, quietToLoud, systemPrompt, responseLength, prefill, jsonSchema, signal, cacheScope, preserveReasoningBudget });
 
     // JSON string (matching the provided schema) will already be extracted.
     if (jsonSchema) {
@@ -6831,7 +7106,11 @@ function removeLastMessage(messageId = null) {
  * @property {string} [quietName] Name to use for the quiet prompt (defaults to "System:")
  * @property {number} [depth] Recursion depth for the generation. Used to prevent infinite loops in tool calls.
  * @property {JsonSchema} [jsonSchema] JSON schema to use for the structured generation. Usually requires a special instruction.
- * @property {boolean} [suppressUserMessage] Whether the visible user message was already rendered by a caller.
+ * @property {boolean} [suppressUserMessage] Ignore composer input, including commands and pending attachments.
+ * @property {boolean} [suppressAutoContinue=false] Skip automatic continuation for this request
+ * @property {number} [maxOutputTokens] Limit generated prose without reducing the reasoning allowance
+ * @property {number} [responseLength] Request-local response length override
+ * @property {boolean} [preserveReasoningBudget=false] Ignore responseLength for reasoning requests
  * @property {'main'|'auxiliary'|'none'} [cacheScope] Prompt cache lane for local backends.
  * @property {boolean} [preserveLastMessage] Whether regeneration should retain the last assistant message as context.
  * @property {ChatMessage} [companionHistoryTarget] Rewrite target whose Companion output must stay excluded during recursive tool calls.
@@ -6848,6 +7127,13 @@ function removeLastMessage(messageId = null) {
 let generationChatFilter = null;
 let pendingGeneratedMessageExtra = null;
 let pendingUserMessageExtra = null;
+let agentGenerationContextProvider = null;
+let activeGenerationRun = null;
+
+// SillyBunny: the extension registers its getter without a host-to-extension import cycle.
+export function setAgentGenerationContextProvider(provider) {
+    agentGenerationContextProvider = typeof provider === 'function' ? provider : null;
+}
 
 export function setGenerationChatFilter(filter) {
     generationChatFilter = typeof filter === 'function' ? filter : null;
@@ -6879,1603 +7165,1762 @@ function consumePendingUserMessageExtra(message) {
     pendingUserMessageExtra = null;
 }
 
-export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null, preserveLastMessage = false, companionHistoryTarget = null } = {}, dryRun = false) {
-    console.log('Generate entered');
-    setGenerationProgress(0);
-    generation_started = new Date();
+export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null, preserveLastMessage = false, companionHistoryTarget = null, suppressAutoContinue = false, maxOutputTokens = 0, responseLength = null, preserveReasoningBudget = false } = {}, dryRun = false) {
+    if (!dryRun && signal?.aborted) return;
 
-    // Prevent generation from shallow characters
-    await unshallowCharacter(this_chid);
-
-    // Occurs every time, even if the generation is aborted due to slash commands execution
-    await eventSource.emit(event_types.GENERATION_STARTED, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope, preserveLastMessage }, dryRun);
-
-    // Don't recreate abort controller if signal is passed
-    if (!(abortController && signal)) {
+    // SillyBunny: keep cancellation and terminal cleanup attached to this invocation,
+    // not to a successor group member, tool pass, or a newly selected chat.
+    const parentRun = activeGenerationRun;
+    const isAuxiliaryGeneration = type === 'quiet' && Boolean(parentRun && !parentRun.isGroupDispatch);
+    const previousAbortController = abortController;
+    const externalSignal = signal;
+    if (!dryRun && (isAuxiliaryGeneration || !abortController || abortController.signal !== signal)) {
         abortController = new AbortController();
     }
-
-    // OpenAI doesn't need instruct mode. Use OAI main prompt instead.
-    const isInstruct = power_user.instruct.enabled && main_api !== 'openai';
-    const isImpersonate = type == 'impersonate';
-    const resolvedCacheScope = cacheScope ?? (type === 'quiet' ? 'auxiliary' : 'main');
-    const shouldConsumeUserInput = type !== 'regenerate' && type !== 'swipe' && type !== 'quiet' && !isImpersonate && !dryRun && !depth && !suppressUserMessage;
-    let textareaText = '';
-    let renderedUserMessage = false;
-
-    if (!(dryRun || depth || type == 'regenerate' || type == 'swipe' || type == 'quiet')) {
-        const interruptedByCommand = await processCommands(String($('#send_textarea').val()));
-
-        if (interruptedByCommand) {
-            //$("#send_textarea").val('')[0].dispatchEvent(new Event('input', { bubbles:true }));
-            unblockGeneration(type);
-            return Promise.resolve();
+    const requestController = dryRun ? null : abortController;
+    const originChatId = getCurrentChatId();
+    const originChatGeneration = chatGeneration;
+    const getAgentGenerationContext = agentGenerationContextProvider ?? (() => null);
+    const cancelRevision = getAgentGenerationContext()?.cancelRevision;
+    let agentGenerationContext = null;
+    let activeStream = null;
+    let delegatedGeneration = false;
+    const run = !dryRun && !isAuxiliaryGeneration ? {
+        controller: requestController,
+        type,
+        isGroupDispatch: Boolean(selected_group && !is_group_generating),
+        terminal: false,
+    } : null;
+    if (run) {
+        activeGenerationRun = run;
+    }
+    const isCurrent = () => {
+        const context = getAgentGenerationContext();
+        return (dryRun || !requestController.signal.aborted)
+            && getCurrentChatId() === originChatId && chatGeneration === originChatGeneration
+            && (!run || activeGenerationRun === run)
+            && (!isAuxiliaryGeneration || activeGenerationRun === parentRun)
+            && (dryRun || cancelRevision === undefined || context?.cancelRevision === cancelRevision)
+            && (!agentGenerationContext || context?.runId === agentGenerationContext.runId);
+    };
+    const onEnded = () => { if (run && activeGenerationRun === run) run.terminal = true; };
+    const onStopped = () => {
+        if ((run && activeGenerationRun === run) || (isAuxiliaryGeneration && activeGenerationRun === parentRun)) {
+            onEnded();
+            requestController.abort();
         }
-    }
-
-    const lastMessage = chat[chat.length - 1];
-
-    if (!selected_group) {
-        if (shouldConsumeUserInput) {
-            is_send_press = true;
-            textareaText = String($('#send_textarea').val());
-            $('#send_textarea').val('')[0].dispatchEvent(new Event('input', { bubbles: true }));
-        } else {
-            textareaText = '';
-            if (chat.length && lastMessage.is_user) {
-                //do nothing? why does this check exist?
-            // SillyBunny: Guided Correction regenerates against the existing assistant reply.
-            } else if (type !== 'quiet' && type !== 'swipe' && !isImpersonate && !dryRun && !depth && chat.length && !(type === 'regenerate' && preserveLastMessage)) {
-                if (type === 'regenerate') {
-                    requestMobileChatBottomPin();
-                }
-                const deletedMessageId = chat.length - 1;
-                deleteItemizedPromptForMessage(deletedMessageId);
-                chat.length = deletedMessageId;
-                await removeLastMessage(deletedMessageId);
-                await eventSource.emit(event_types.MESSAGE_DELETED, deletedMessageId);
-            }
-        }
-
-        if (!dryRun) {
-            deactivateSendButtons();
-        }
-    }
-
-    let { messageBias, promptBias, isUserPromptBias } = getBiasStrings(textareaText, type);
-
-    // These generation types should not attach pending files to the chat
-    const noAttachTypes = [
-        'regenerate',
-        'swipe',
-        'impersonate',
-        'quiet',
-        'continue',
-    ];
-
-    if ((textareaText != '' || (hasPendingFileAttachment() && !noAttachTypes.includes(type))) && !automatic_trigger && type !== 'quiet' && !dryRun && !depth && !selected_group) {
-        // If user message contains no text other than bias - send as a system message
-        if (messageBias && !removeMacros(textareaText)) {
-            sendSystemMessage(system_message_types.GENERIC, ' ', { bias: messageBias });
-        } else {
-            await sendMessageAsUser(textareaText, messageBias);
-        }
-        renderedUserMessage = true;
-    } else if (textareaText == '' && !automatic_trigger && !dryRun && [undefined, 'normal'].includes(type) && main_api == 'openai' && oai_settings.send_if_empty.trim().length > 0 && !depth && !suppressUserMessage && !selected_group) {
-        // Use send_if_empty if set and the user message is empty. Only when sending messages normally
-        await sendMessageAsUser(oai_settings.send_if_empty.trim(), messageBias);
-        renderedUserMessage = true;
-    }
-
-    if (renderedUserMessage && shouldBatchMobileChatRendering()) {
-        await waitForNextFrame();
-    }
-
-    // Occurs only if the generation is not aborted due to slash commands execution
-    const companionFeedbackTarget = companionHistoryTarget
-        ?? (type === 'continue' || type === 'swipe' || type === 'regenerate' ? lastMessage : null);
-    await eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope: resolvedCacheScope, preserveLastMessage, companionHistoryTarget: companionFeedbackTarget }, dryRun);
-
-    if (main_api == 'kobold' && kai_settings.streaming_kobold && !kai_flags.can_use_streaming) {
-        toastr.error(t`Streaming is enabled, but the version of Kobold used does not support token streaming.`, undefined, { timeOut: 10000, preventDuplicates: true });
-        unblockGeneration(type);
-        return Promise.resolve();
-    }
-
-    if (isHordeGenerationNotAllowed()) {
-        unblockGeneration(type);
-        return Promise.resolve();
-    }
-
+    };
+    const onChatChanged = () => {
+        if (getCurrentChatId() !== originChatId || chatGeneration !== originChatGeneration) requestController?.abort();
+    };
+    const onAbort = () => requestController?.abort(externalSignal.reason);
+    const stopStream = () => activeStream?.onStopStreaming();
     if (!dryRun) {
-        // Hide swipes if not in a dry run.
-        hideSwipeButtons();
-        // If generated any message, set the flag to indicate it can't be recreated again.
-        chat_metadata.tainted = true;
+        signal = requestController.signal;
+        externalSignal?.addEventListener('abort', onAbort, { once: true });
+        requestController.signal.addEventListener('abort', stopStream, { once: true });
+        if (run) {
+            eventSource.makeFirst(event_types.GENERATION_ENDED, onEnded);
+            eventSource.makeFirst(event_types.GENERATION_STOPPED, onStopped);
+        } else {
+            eventSource.on(event_types.GENERATION_STOPPED, onStopped);
+        }
+        eventSource.on(event_types.CHAT_CHANGED, onChatChanged);
     }
 
-    if (selected_group && !is_group_generating) {
-        if (!dryRun) {
-            // Returns the promise that generateGroupWrapper returns; resolves when generation is done
-            return generateGroupWrapper(false, type, { quiet_prompt, force_chid, signal: abortController.signal, quietImage, jsonSchema, cacheScope: resolvedCacheScope, preserveLastMessage, companionHistoryTarget: companionFeedbackTarget });
+    try {
+        console.log('Generate entered');
+        if (!dryRun && !isAuxiliaryGeneration) {
+            setGenerationProgress(0);
+            generation_started = new Date();
+        }
+        const requestControls = { suppressUserMessage, suppressAutoContinue, maxOutputTokens, responseLength, preserveReasoningBudget };
+
+        // Prevent generation from shallow characters
+        await unshallowCharacter(this_chid);
+        if (!isCurrent()) return;
+
+        // Occurs every time, even if the generation is aborted due to slash commands execution
+        await eventSource.emit(event_types.GENERATION_STARTED, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope, preserveLastMessage, isAuxiliaryGeneration, ...requestControls }, dryRun);
+        if (!isCurrent()) return;
+        agentGenerationContext = !dryRun && !isAuxiliaryGeneration && !run?.isGroupDispatch ? getAgentGenerationContext() : null;
+        if (run) run.context = agentGenerationContext;
+
+        // OpenAI doesn't need instruct mode. Use OAI main prompt instead.
+        const isInstruct = power_user.instruct.enabled && main_api !== 'openai';
+        const isImpersonate = type == 'impersonate';
+        const resolvedCacheScope = cacheScope ?? (type === 'quiet' ? 'auxiliary' : 'main');
+        const shouldConsumeUserInput = type !== 'regenerate' && type !== 'swipe' && type !== 'quiet' && !isImpersonate && !dryRun && !depth && !suppressUserMessage;
+        let textareaText = '';
+        let renderedUserMessage = false;
+
+        if (!(dryRun || depth || suppressUserMessage || type == 'regenerate' || type == 'swipe' || type == 'quiet')) {
+            const interruptedByCommand = await processCommands(String($('#send_textarea').val()));
+            if (!isCurrent()) return;
+
+            if (interruptedByCommand) {
+            //$("#send_textarea").val('')[0].dispatchEvent(new Event('input', { bubbles:true }));
+                unblockGeneration(type);
+                return Promise.resolve();
+            }
         }
 
-        const characterIndexMap = new Map(characters.map((char, index) => [char.avatar, index]));
-        const group = groups.find((x) => x.id === selected_group);
+        const lastMessage = chat[chat.length - 1];
 
-        const enabledMembers = group.members.reduce((acc, member) => {
-            if (!group.disabled_members.includes(member) && !acc.includes(member)) {
-                acc.push(member);
+        if (!selected_group) {
+            if (shouldConsumeUserInput) {
+                is_send_press = true;
+                textareaText = String($('#send_textarea').val());
+                $('#send_textarea').val('')[0].dispatchEvent(new Event('input', { bubbles: true }));
+            } else {
+                textareaText = '';
+                if (chat.length && lastMessage.is_user) {
+                //do nothing? why does this check exist?
+                    // SillyBunny: retain continuation targets and Guided Correction regeneration context.
+                } else if (type !== 'quiet' && type !== 'swipe' && type !== 'continue' && !isImpersonate && !dryRun && !depth && chat.length && !(type === 'regenerate' && preserveLastMessage) && (!suppressUserMessage || type === 'regenerate')) {
+                    if (type === 'regenerate') {
+                        requestMobileChatBottomPin();
+                    }
+                    const deletedMessageId = chat.length - 1;
+                    deleteItemizedPromptForMessage(deletedMessageId);
+                    chat.length = deletedMessageId;
+                    await removeLastMessage(deletedMessageId);
+                    if (!isCurrent()) return;
+                    await eventSource.emit(event_types.MESSAGE_DELETED, deletedMessageId);
+                }
             }
-            return acc;
-        }, []);
 
-        const memberIds = enabledMembers
-            .map((member) => characterIndexMap.get(member))
-            .filter((index) => index !== undefined && index !== null);
+            if (!dryRun && !isAuxiliaryGeneration) {
+                deactivateSendButtons();
+            }
+        }
 
-        if (memberIds.length > 0) {
-            if (menu_type != 'character_edit') setCharacterId(memberIds[0]);
-            setCharacterName('');
-        } else {
-            console.log('No enabled members found');
+        let { messageBias, promptBias, isUserPromptBias } = getBiasStrings(textareaText, type);
+
+        // These generation types should not attach pending files to the chat
+        const noAttachTypes = [
+            'regenerate',
+            'swipe',
+            'impersonate',
+            'quiet',
+            'continue',
+        ];
+
+        if ((textareaText != '' || (hasPendingFileAttachment() && !noAttachTypes.includes(type))) && !automatic_trigger && type !== 'quiet' && !dryRun && !depth && !suppressUserMessage && !selected_group) {
+        // If user message contains no text other than bias - send as a system message
+            if (messageBias && !removeMacros(textareaText)) {
+                sendSystemMessage(system_message_types.GENERIC, ' ', { bias: messageBias });
+            } else {
+                await sendMessageAsUser(textareaText, messageBias);
+            }
+            renderedUserMessage = true;
+        } else if (textareaText == '' && !automatic_trigger && !dryRun && [undefined, 'normal'].includes(type) && main_api == 'openai' && oai_settings.send_if_empty.trim().length > 0 && !depth && !suppressUserMessage && !selected_group) {
+        // Use send_if_empty if set and the user message is empty. Only when sending messages normally
+            await sendMessageAsUser(oai_settings.send_if_empty.trim(), messageBias);
+            renderedUserMessage = true;
+        }
+
+        if (renderedUserMessage && shouldBatchMobileChatRendering()) {
+            await waitForNextFrame();
+        }
+        if (!isCurrent()) return;
+
+        // Occurs only if the generation is not aborted due to slash commands execution
+        const companionFeedbackTarget = companionHistoryTarget
+        ?? (type === 'continue' || type === 'swipe' || type === 'regenerate' ? lastMessage : null);
+        await eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope: resolvedCacheScope, preserveLastMessage, companionHistoryTarget: companionFeedbackTarget, isAuxiliaryGeneration, ...requestControls }, dryRun);
+        if (!isCurrent()) return;
+
+        if (main_api == 'kobold' && kai_settings.streaming_kobold && !kai_flags.can_use_streaming) {
+            toastr.error(t`Streaming is enabled, but the version of Kobold used does not support token streaming.`, undefined, { timeOut: 10000, preventDuplicates: true });
             unblockGeneration(type);
             return Promise.resolve();
         }
-    }
 
-    //#########QUIET PROMPT STUFF##############
-    //this function just gives special care to novel quiet instruction prompts
-    if (quiet_prompt) {
-        quiet_prompt = substituteParams(quiet_prompt);
-        quiet_prompt = main_api == 'novel' && !quietToLoud ? adjustNovelInstructionPrompt(quiet_prompt) : quiet_prompt;
-    }
+        if (isHordeGenerationNotAllowed()) {
+            unblockGeneration(type);
+            return Promise.resolve();
+        }
 
-    const hasBackendConnection = online_status !== 'no_connection';
+        if (!dryRun && !isAuxiliaryGeneration) {
+        // Hide swipes if not in a dry run.
+            hideSwipeButtons();
+            // If generated any message, set the flag to indicate it can't be recreated again.
+            chat_metadata.tainted = true;
+        }
 
-    // We can't do anything because we're not in a chat right now. (Unless it's a dry run, in which case we need to
-    // assemble the prompt so we can count its tokens regardless of whether a chat is active.)
-    if (!dryRun && !hasBackendConnection) {
-        is_send_press = false;
+        if (selected_group && !is_group_generating) {
+            if (!dryRun) {
+            // Returns the promise that generateGroupWrapper returns; resolves when generation is done
+                return await generateGroupWrapper(false, type, { quiet_prompt, force_chid, signal, quietImage, jsonSchema, cacheScope: resolvedCacheScope, preserveLastMessage, companionHistoryTarget: companionFeedbackTarget, ...requestControls });
+            }
+
+            const characterIndexMap = new Map(characters.map((char, index) => [char.avatar, index]));
+            const group = groups.find((x) => x.id === selected_group);
+
+            const enabledMembers = group.members.reduce((acc, member) => {
+                if (!group.disabled_members.includes(member) && !acc.includes(member)) {
+                    acc.push(member);
+                }
+                return acc;
+            }, []);
+
+            const memberIds = enabledMembers
+                .map((member) => characterIndexMap.get(member))
+                .filter((index) => index !== undefined && index !== null);
+
+            if (memberIds.length > 0) {
+                if (menu_type != 'character_edit') setCharacterId(memberIds[0]);
+                setCharacterName('');
+            } else {
+                console.log('No enabled members found');
+                unblockGeneration(type);
+                return Promise.resolve();
+            }
+        }
+
+        //#########QUIET PROMPT STUFF##############
+        //this function just gives special care to novel quiet instruction prompts
+        if (quiet_prompt) {
+            quiet_prompt = substituteParams(quiet_prompt);
+            quiet_prompt = main_api == 'novel' && !quietToLoud ? adjustNovelInstructionPrompt(quiet_prompt) : quiet_prompt;
+        }
+
+        const hasBackendConnection = online_status !== 'no_connection';
+
+        // We can't do anything because we're not in a chat right now. (Unless it's a dry run, in which case we need to
+        // assemble the prompt so we can count its tokens regardless of whether a chat is active.)
+        if (!dryRun && !hasBackendConnection) {
         // SillyBunny: reactivate send buttons on early exit so the UI is not
         // left locked when there is no backend connection. (#527)
-        activateSendButtons();
-        return Promise.resolve();
-    }
-
-    const isContinue = type == 'continue';
-
-    // Rewrite the generation timer to account for the time passed for all the continuations.
-    if (isContinue && chat.length) {
-        const prevFinished = lastMessage.gen_finished;
-        const prevStarted = lastMessage.gen_started;
-
-        if (prevFinished && prevStarted) {
-            const timePassed = Number(prevFinished) - Number(prevStarted);
-            generation_started = new Date(Date.now() - timePassed);
-            lastMessage.gen_started = generation_started;
+            unblockGeneration(type);
+            return Promise.resolve();
         }
-    }
 
-    //*********************************
-    //PRE FORMATING STRING
-    //*********************************
+        const isContinue = type == 'continue';
 
-    if (!dryRun) {
+        // Rewrite the generation timer to account for the time passed for all the continuations.
+        if (!dryRun && isContinue && chat.length) {
+            const prevFinished = lastMessage.gen_finished;
+            const prevStarted = lastMessage.gen_started;
+
+            if (prevFinished && prevStarted) {
+                const timePassed = Number(prevFinished) - Number(prevStarted);
+                generation_started = new Date(Date.now() - timePassed);
+                lastMessage.gen_started = generation_started;
+            }
+        }
+
+        //*********************************
+        //PRE FORMATING STRING
+        //*********************************
+
+        if (!dryRun) {
         // Ping after rendering the local user message so slow WebKit networking cannot delay the visible send.
-        const pingResult = await pingServer();
+            const pingResult = await pingServer();
+            if (!isCurrent()) return;
 
-        if (!pingResult) {
-            unblockGeneration(type);
-            toastr.error(t`Verify that the server is running and accessible.`, t`ST Server cannot be reached`);
-            throw new Error('Server unreachable');
-        }
-    }
-
-    let {
-        description,
-        personality,
-        persona,
-        scenario,
-        mesExamples,
-        system,
-        jailbreak,
-        charDepthPrompt,
-        creatorNotes,
-    } = getCharacterCardFields();
-
-    // Depth prompt (character-specific A/N)
-    removeDepthPrompts();
-    const groupDepthPrompts = getGroupDepthPrompts(selected_group, Number(this_chid));
-
-    if (selected_group && Array.isArray(groupDepthPrompts) && groupDepthPrompts.length > 0) {
-        groupDepthPrompts.forEach((value, index) => {
-            const role = getExtensionPromptRoleByName(value.role);
-            setExtensionPrompt(inject_ids.DEPTH_PROMPT_INDEX(index), value.text, extension_prompt_types.IN_CHAT, value.depth, extension_settings.note.allowWIScan, role);
-        });
-    } else {
-        const depthPromptText = charDepthPrompt || '';
-        const depthPromptDepth = characters[this_chid]?.data?.extensions?.depth_prompt?.depth ?? depth_prompt_depth_default;
-        const depthPromptRole = getExtensionPromptRoleByName(characters[this_chid]?.data?.extensions?.depth_prompt?.role ?? depth_prompt_role_default);
-        setExtensionPrompt(inject_ids.DEPTH_PROMPT, depthPromptText, extension_prompt_types.IN_CHAT, depthPromptDepth, extension_settings.note.allowWIScan, depthPromptRole);
-    }
-
-    // First message in fresh 1-on-1 chat reacts to user/character settings changes
-    const firstChatMessage = chat[0];
-    const firstMessageVariants = !world_info_include_names && firstChatMessage
-        ? substituteWorldInfoGreeting(firstChatMessage.mes, substituteParams, { char: name2, user: name1 })
-        : undefined;
-    const firstPromptMessage = firstChatMessage
-        ? (firstMessageVariants?.prompt ?? substituteParams(firstChatMessage.mes))
-        : undefined;
-
-    // Collect messages with usable content
-    const canUseTools = ToolManager.isToolCallingSupported();
-    const canPerformToolCalls = !dryRun && ToolManager.canPerformToolCalls(type) && depth < ToolManager.RECURSE_LIMIT;
-    let coreChat = chat.filter(x => !x.is_system
-        || (canUseTools && Array.isArray(x.extra?.tool_invocations))
-        || hasCompanionChatHistoryForHiddenHost(x));
-    if (generationChatFilter) {
-        coreChat = coreChat.filter((message, index) => generationChatFilter(message, index, coreChat));
-    }
-    if (type === 'swipe') {
-        coreChat.pop();
-    }
-    const companionRewriteTarget = companionHistoryTarget
-        ?? (isContinue || type === 'swipe' || type === 'regenerate' ? lastMessage : null);
-    const companionCandidateMessages = coreChat.filter(message =>
-        message !== companionRewriteTarget
-        && !message.extra?.[IGNORE_SYMBOL],
-    );
-    const companionPolicyMessages = (companionRewriteTarget && !chat.includes(companionRewriteTarget)
-        ? [...chat, companionRewriteTarget]
-        : chat
-    ).filter(message => !message.extra?.[IGNORE_SYMBOL]);
-    const companionChatHistory = selectCompanionChatHistory(companionCandidateMessages, {
-        policyMessages: companionPolicyMessages,
-    });
-    const {
-        host: consolidatedCompanionHistoryHost,
-        entries: consolidatedRetainedEntries,
-    } = consolidateCompanionChatHistory(companionCandidateMessages, companionChatHistory, sourceMessage => content => substituteParams(content, {
-        name2Override: String(sourceMessage.name ?? '').trim() || undefined,
-        original: sourceMessage.is_system ? '' : sourceMessage.mes,
-    }), message => !Array.isArray(message?.extra?.tool_invocations));
-    const consolidatedRetainedContributions = consolidatedRetainedEntries.map(({ message: sourceMessage, contribution }) => {
-        const sourceIndex = coreChat.indexOf(sourceMessage);
-        const regexType = sourceMessage.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
-        const options = { isPrompt: true, depth: (coreChat.length - sourceIndex - (isContinue ? 2 : 1)) };
-        const agentRegexScripts = resolveRegexScriptsForSnapshot(sourceMessage?.extra?.inChatAgents);
-        let promptContent = contribution.content;
-        if (agentRegexScripts.length > 0) {
-            const agentPlacement = sourceMessage.is_user ? AGENT_REGEX_PLACEMENT.USER_INPUT : AGENT_REGEX_PLACEMENT.AI_OUTPUT;
-            promptContent = applyRegexScriptList(promptContent, agentRegexScripts, agentPlacement, {
-                ...options,
-                characterOverride: name2,
-                substituteParamsFn: substituteParams,
-                substituteParamsExtendedFn: substituteParamsExtended,
-            });
-        }
-        const worldInfoContent = promptContent === contribution.content
-            ? undefined
-            : getRegexedString(contribution.content, regexType, options);
-        promptContent = getRegexedString(promptContent, regexType, options);
-        const contextDepth = Math.max(0, coreChat.length - sourceIndex - 1);
-        const retainOoc = shouldRetainContextAtDepth(contextDepth, power_user.ooc_context_depth);
-        const retainHtml = shouldRetainContextAtDepth(contextDepth, power_user.html_context_depth);
-
-        return {
-            contribution: {
-                ...contribution,
-                content: stripHtmlTagsFromContext(stripOocBlocksFromContext(promptContent, retainOoc), retainHtml),
-            },
-            worldInfoContent: worldInfoContent === undefined
-                ? undefined
-                : stripHtmlTagsFromContext(stripOocBlocksFromContext(worldInfoContent, retainOoc), retainHtml),
-        };
-    });
-    coreChat = coreChat.filter(chatItem => !chatItem.is_system
-        || (canUseTools && Array.isArray(chatItem.extra?.tool_invocations))
-        || chatItem === consolidatedCompanionHistoryHost);
-
-    const worldInfoMessageVariants = new Map();
-    coreChat = await Promise.all(coreChat.map(async (/** @type {ChatMessage} */ chatItem, index) => {
-        const originalMessage = chatItem === firstChatMessage ? firstPromptMessage : chatItem.mes;
-        const worldInfoSourceMessage = chatItem === firstChatMessage && firstMessageVariants !== undefined
-            ? firstMessageVariants.worldInfo
-            : originalMessage;
-        const isConsolidatedCompanionHost = chatItem === consolidatedCompanionHistoryHost;
-        const hiddenCompanionHistory = chatItem.is_system && isConsolidatedCompanionHost;
-        // SillyBunny: project opted-in companion notes into prompt history without changing stored chat text.
-        const retainedContributions = isConsolidatedCompanionHost
-            ? consolidatedRetainedContributions.map(item => item.contribution).filter(contribution => contribution.content)
-            : [];
-        const contextSourceMessage = hiddenCompanionHistory ? '' : originalMessage;
-        const worldInfoContextSourceMessage = hiddenCompanionHistory ? '' : worldInfoSourceMessage;
-        let message = contextSourceMessage;
-        let regexType = chatItem.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
-        let options = { isPrompt: true, depth: (coreChat.length - index - (isContinue ? 2 : 1)) };
-
-        // SillyBunny: apply in-chat agent regex scripts (e.g. CYOA "Trim Choices") in prompt mode
-        const agentRegexScripts = resolveRegexScriptsForSnapshot(chatItem?.extra?.inChatAgents);
-        if (agentRegexScripts.length > 0) {
-            const agentPlacement = chatItem.is_user ? AGENT_REGEX_PLACEMENT.USER_INPUT : AGENT_REGEX_PLACEMENT.AI_OUTPUT;
-            message = applyRegexScriptList(message, agentRegexScripts, agentPlacement, {
-                ...options,
-                characterOverride: name2,
-                substituteParamsFn: substituteParams,
-                substituteParamsExtendedFn: substituteParamsExtended,
-            });
-        }
-
-        let regexedMessage = getRegexedString(message, regexType, options);
-        let worldInfoRegexedMessage = message === worldInfoContextSourceMessage ? undefined : getRegexedString(worldInfoContextSourceMessage, regexType, options);
-        const fileContent = hiddenCompanionHistory ? '' : await appendFileContent(chatItem, '');
-        regexedMessage = fileContent + regexedMessage;
-        if (worldInfoRegexedMessage !== undefined) {
-            worldInfoRegexedMessage = fileContent + worldInfoRegexedMessage;
-        }
-
-        const titles = [];
-        if (!hiddenCompanionHistory && chatItem?.extra?.append_title && chatItem?.extra?.title) {
-            titles.push(chatItem.extra.title);
-        }
-        if (!hiddenCompanionHistory && Array.isArray(chatItem?.extra?.media)) {
-            for (const mediaItem of chatItem.extra.media) {
-                if (mediaItem?.title && mediaItem?.append_title) {
-                    titles.push(mediaItem.title);
-                }
-            }
-        }
-        if (titles.length > 0) {
-            const appendedTitles = `\n\n${titles.join('\n\n')}`;
-            regexedMessage += appendedTitles;
-            if (worldInfoRegexedMessage !== undefined) {
-                worldInfoRegexedMessage += appendedTitles;
+            if (!pingResult) {
+                unblockGeneration(type);
+                toastr.error(t`Verify that the server is running and accessible.`, t`ST Server cannot be reached`);
+                throw new Error('Server unreachable');
             }
         }
 
-        const contextDepth = Math.max(0, coreChat.length - index - 1);
-        const retainOoc = shouldRetainContextAtDepth(contextDepth, power_user.ooc_context_depth);
-        const retainHtml = shouldRetainContextAtDepth(contextDepth, power_user.html_context_depth);
-        const contextMessage = stripHtmlTagsFromContext(
-            stripOocBlocksFromContext(regexedMessage, retainOoc),
-            retainHtml,
-        );
-        const consolidatedContextMessage = [contextMessage, ...retainedContributions.map(contribution => contribution.content)]
-            .filter(Boolean)
-            .join('\n\n');
-        const agentContributions = retainedContributions
-            .filter(contribution => contribution.content && consolidatedContextMessage.includes(contribution.content));
-
-        let worldInfoContextMessage = contextMessage;
-        if (worldInfoRegexedMessage !== undefined) {
-            worldInfoContextMessage = stripHtmlTagsFromContext(
-                stripOocBlocksFromContext(worldInfoRegexedMessage, retainOoc),
-                retainHtml,
-            );
-        }
-        if (isConsolidatedCompanionHost) {
-            const worldInfoRetainedContent = consolidatedRetainedContributions
-                .map(item => item.worldInfoContent ?? item.contribution.content)
-                .filter(Boolean);
-            worldInfoContextMessage = [worldInfoContextMessage, ...worldInfoRetainedContent]
-                .filter(Boolean)
-                .join('\n\n');
-        }
-        if (worldInfoContextMessage !== consolidatedContextMessage) {
-            worldInfoMessageVariants.set(index, { prompt: consolidatedContextMessage, worldInfo: worldInfoContextMessage });
-        }
-
-        return {
-            ...chatItem,
-            mes: consolidatedContextMessage,
-            extra: hiddenCompanionHistory ? {} : chatItem.extra,
-            is_system: hiddenCompanionHistory ? false : chatItem.is_system,
-            ...(agentContributions.length > 0 && { agentContributions }),
-            index,
-        };
-    }));
-    // SillyBunny: ICA prompt-only regexes must not remove stored chat text from World Info scans.
-    const worldInfoOnlyChat = coreChat.filter(chatItem => {
-        const variant = worldInfoMessageVariants.get(chatItem.index);
-        return variant && !hasPromptPayload(chatItem) && hasPromptPayload({ ...chatItem, mes: variant.worldInfo });
-    });
-    // SillyBunny: preserve an interrupted reasoning-only prefix when continuing.
-    coreChat = coreChat.filter((chatItem, index) => hasPromptPayload(
-        chatItem,
-        isContinue && index === coreChat.length - 1,
-    ));
-
-    const promptReasoning = new PromptReasoning();
-    for (let i = coreChat.length - 1; i >= 0; i--) {
-        const depth = coreChat.length - i - (isContinue ? 2 : 1);
-        const isPrefix = isContinue && i === coreChat.length - 1;
-
-        // In group chats, only include reasoning from the currently generating character
-        const isOtherGroupMember = selected_group && coreChat[i].name !== name2;
-
-        const promptMessage = coreChat[i].mes;
-        const messageWithReasoning = isOtherGroupMember
-            ? promptMessage
-            : promptReasoning.addToMessage(
-                promptMessage,
-                getRegexedString(
-                    String(coreChat[i].extra?.reasoning ?? ''),
-                    regex_placement.REASONING,
-                    { isPrompt: true, depth: depth },
-                ),
-                isPrefix,
-                coreChat[i].extra?.reasoning_duration,
-            );
-
-        coreChat[i] = {
-            ...coreChat[i],
-            mes: messageWithReasoning,
-        };
-
-        const worldInfoVariant = worldInfoMessageVariants.get(coreChat[i].index);
-        if (worldInfoVariant?.prompt === promptMessage && messageWithReasoning.endsWith(promptMessage)) {
-            const reasoningPrefix = messageWithReasoning.slice(0, messageWithReasoning.length - promptMessage.length);
-            worldInfoVariant.prompt = messageWithReasoning;
-            worldInfoVariant.worldInfo = reasoningPrefix + worldInfoVariant.worldInfo;
-        }
-        if (promptReasoning.isLimitReached()) {
-            break;
-        }
-    }
-
-    // Determine token limit
-    let this_max_context = getMaxPromptTokens();
-
-    if (!dryRun) {
-        console.debug('Running extension interceptors');
-        const aborted = await runGenerationInterceptors(coreChat, this_max_context, type);
-
-        if (aborted) {
-            console.debug('Generation aborted by extension interceptors');
-            unblockGeneration(type);
-            return Promise.resolve();
-        }
-    } else {
-        console.debug('Skipping extension interceptors for dry run');
-    }
-
-    // Adjust token limit for Horde
-    let adjustedParams;
-    if (main_api == 'koboldhorde' && (horde_settings.auto_adjust_context_length || horde_settings.auto_adjust_response_length)) {
-        try {
-            adjustedParams = await adjustHordeGenerationParams(max_context, amount_gen);
-        } catch {
-            unblockGeneration(type);
-            return Promise.resolve();
-        }
-        if (horde_settings.auto_adjust_context_length) {
-            this_max_context = (adjustedParams.maxContextLength - adjustedParams.maxLength);
-        }
-    }
-
-    // Fetches the combined prompt for both negative and positive prompts
-    const cfgGuidanceScale = getGuidanceScale();
-    const useCfgPrompt = cfgGuidanceScale && cfgGuidanceScale.value !== 1;
-
-    // Adjust max context based on CFG prompt to prevent overfitting
-    if (useCfgPrompt) {
-        const negativePrompt = getCfgPrompt(cfgGuidanceScale, true, true)?.value || '';
-        const positivePrompt = getCfgPrompt(cfgGuidanceScale, false, true)?.value || '';
-        if (negativePrompt || positivePrompt) {
-            const previousMaxContext = this_max_context;
-            const [negativePromptTokenCount, positivePromptTokenCount] = await Promise.all([getTokenCountAsync(negativePrompt), getTokenCountAsync(positivePrompt)]);
-            const decrement = Math.max(negativePromptTokenCount, positivePromptTokenCount);
-            this_max_context -= decrement;
-            console.log(`Max context reduced by ${decrement} tokens of CFG prompt (${previousMaxContext} -> ${this_max_context})`);
-        }
-    }
-
-    console.log(`Core/all messages: ${coreChat.length}/${chat.length}`);
-
-    if ((promptBias && !isUserPromptBias) || power_user.always_force_name2 || main_api == 'novel') {
-        force_name2 = true;
-    }
-
-    if (isImpersonate) {
-        force_name2 = false;
-    }
-
-    let mesExamplesArray = parseMesExamples(mesExamples, isInstruct);
-
-    // Set non-WI AN
-    setFloatingPrompt();
-
-    // Add WI to prompt (and also inject WI to AN value via hijack)
-    // Make quiet prompt available for WIAN
-    setExtensionPrompt(inject_ids.QUIET_PROMPT, quiet_prompt || '', extension_prompt_types.IN_PROMPT, 0, true);
-    const chatForWI = buildWorldInfoScanChat(coreChat, worldInfoOnlyChat, worldInfoMessageVariants, world_info_include_names);
-    /** @type {import('./scripts/world-info.js').WIGlobalScanData} */
-    const globalScanData = {
-        personaDescription: persona,
-        characterDescription: description,
-        characterPersonality: personality,
-        characterDepthPrompt: charDepthPrompt,
-        scenario: scenario,
-        creatorNotes: creatorNotes,
-        trigger: GENERATION_TYPE_TRIGGERS.includes(type) ? type : 'normal',
-    };
-    const { worldInfoString, worldInfoBefore, worldInfoAfter, worldInfoExamples, worldInfoDepth, outletEntries } = await getWorldInfoPrompt(chatForWI, this_max_context, dryRun, globalScanData);
-    setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
-
-    // Add message example WI
-    for (const example of worldInfoExamples) {
-        const exampleMessage = example.content;
-
-        if (exampleMessage.length === 0) {
-            continue;
-        }
-
-        const formattedExample = baseChatReplace(exampleMessage);
-        const cleanedExample = parseMesExamples(formattedExample, isInstruct);
-
-        // Insert depending on before or after position
-        if (example.position === wi_anchor_position.before) {
-            mesExamplesArray.unshift(...cleanedExample);
-        } else {
-            mesExamplesArray.push(...cleanedExample);
-        }
-    }
-
-    // At this point, the raw message examples can be created
-    const mesExamplesRawArray = [...mesExamplesArray];
-
-    if (mesExamplesArray && isInstruct) {
-        mesExamplesArray = formatInstructModeExamples(mesExamplesArray, name1, name2);
-    }
-
-    if (skipWIAN !== true) {
-        console.log('skipWIAN not active, adding WIAN');
-        // Add all depth WI entries to prompt
-        flushWIInjections();
-        if (Array.isArray(worldInfoDepth)) {
-            worldInfoDepth.forEach((e) => {
-                const joinedEntries = e.entries.join('\n');
-                setExtensionPrompt(inject_ids.CUSTOM_WI_DEPTH_ROLE(e.depth, e.role), joinedEntries, extension_prompt_types.IN_CHAT, e.depth, false, e.role);
-            });
-        }
-        if (outletEntries && typeof outletEntries === 'object' && Object.keys(outletEntries).length > 0) {
-            Object.entries(outletEntries).forEach(([key, value]) => {
-                setExtensionPrompt(inject_ids.CUSTOM_WI_OUTLET(key), value.join('\n'), extension_prompt_types.NONE, 0);
-            });
-        }
-    } else {
-        console.log('skipping WIAN');
-    }
-
-    // Add persona description to prompt
-    addPersonaDescriptionExtensionPrompt();
-
-    // Prepare the system prompt for Text Completion APIs
-    if (main_api !== 'openai') {
-        if (power_user.sysprompt.enabled) {
-            system = power_user.prefer_character_prompt && system
-                ? substituteParams(system, { original: power_user.sysprompt.content ?? '' })
-                : baseChatReplace(power_user.sysprompt.content);
-            system = isInstruct ? substituteParams(system, { original: power_user.sysprompt.content ?? '' }) : system;
-        } else {
-            // Nullify if it's not enabled
-            system = '';
-        }
-    }
-
-    // Collect before / after story string injections
-    const beforeScenarioAnchor = await getExtensionPrompt(extension_prompt_types.BEFORE_PROMPT);
-    const afterScenarioAnchor = await getExtensionPrompt(extension_prompt_types.IN_PROMPT);
-
-    const storyStringParams = {
-        description: description,
-        personality: personality,
-        persona: power_user.persona_description_position == persona_description_positions.IN_PROMPT ? persona : '',
-        scenario: scenario,
-        system: system,
-        char: name2,
-        user: name1,
-        wiBefore: worldInfoBefore,
-        wiAfter: worldInfoAfter,
-        loreBefore: worldInfoBefore,
-        loreAfter: worldInfoAfter,
-        anchorBefore: beforeScenarioAnchor.trim(),
-        anchorAfter: afterScenarioAnchor.trim(),
-        mesExamples: mesExamplesArray.join(''),
-        mesExamplesRaw: mesExamplesRawArray.join(''),
-    };
-
-    // Render the story string and combine with injections
-    const storyString = renderStoryString(storyStringParams);
-    let combinedStoryString = isInstruct ? formatInstructModeStoryString(storyString) : storyString;
-
-    // Inject the story string as in-chat prompt (if needed)
-    const applyStoryStringInject = main_api !== 'openai' && power_user.context.story_string_position === extension_prompt_types.IN_CHAT;
-    if (applyStoryStringInject) {
-        const depth = power_user.context.story_string_depth ?? 1;
-        const role = power_user.context.story_string_role ?? extension_prompt_roles.SYSTEM;
-        setExtensionPrompt(inject_ids.STORY_STRING, combinedStoryString, extension_prompt_types.IN_CHAT, depth, false, role);
-        // Remove to prevent duplication
-        combinedStoryString = '';
-    } else {
-        setExtensionPrompt(inject_ids.STORY_STRING, '', extension_prompt_types.IN_CHAT, 0);
-    }
-
-    // Story string rendered, safe to remove
-    if (power_user.strip_examples) {
-        mesExamplesArray = [];
-    }
-
-    const generationExtensionPrompts = extension_prompts;
-
-    // Inject all Depth prompts. Chat Completion does it separately
-    let injectedIndices = [];
-    if (main_api !== 'openai') {
-        injectedIndices = await doChatInject(coreChat, isContinue);
-    }
-
-    if (main_api !== 'openai' && power_user.sysprompt.enabled) {
-        jailbreak = power_user.prefer_character_jailbreak && jailbreak
-            ? substituteParams(jailbreak, { original: power_user.sysprompt.post_history ?? '' })
-            : baseChatReplace(power_user.sysprompt.post_history);
-
-        // Only inject the jb if there is one
-        if (jailbreak) {
-            // When continuing generation of previous output, last user message precedes the message to continue
-            if (isContinue) {
-                coreChat.splice(coreChat.length - 1, 0, { mes: jailbreak, is_user: true });
-            } else {
-                // This operation will result in the injectedIndices indexes being off by one
-                coreChat.push({ mes: jailbreak, is_user: true });
-                // Add +1 to the elements to correct for the new PHI/Jailbreak message.
-                injectedIndices.forEach(shiftUpByOne);
-            }
-        }
-    }
-
-    let chat2 = [];
-    let chat2AgentContributions = [];
-    let continue_mag = '';
-    let userMessageIndices = [];
-    const lastUserMessageIndex = coreChat.findLastIndex(x => x.is_user);
-
-    for (let i = coreChat.length - 1, j = 0; i >= 0; i--, j++) {
-        if (main_api == 'openai') {
-            chat2[i] = coreChat[j].mes;
-            if (i === 0 && isContinue) {
-                chat2[i] = chat2[i].slice(0, chat2[i].lastIndexOf(coreChat[j].mes) + coreChat[j].mes.length);
-                continue_mag = coreChat[j].mes;
-            }
-            continue;
-        }
-
-        chat2[i] = formatMessageHistoryItem(coreChat[j], isInstruct, false);
-        chat2AgentContributions[i] = Array.isArray(coreChat[j].agentContributions)
-            ? structuredClone(coreChat[j].agentContributions)
-            : [];
-
-        if (j === 0 && isInstruct) {
-            // Reformat with the first output sequence (if any)
-            chat2[i] = formatMessageHistoryItem(coreChat[j], isInstruct, force_output_sequence.FIRST);
-        }
-
-        if (lastUserMessageIndex >= 0 && j === lastUserMessageIndex && isInstruct && !isImpersonate) {
-            // Reformat with the last input sequence (if any)
-            chat2[i] = formatMessageHistoryItem(coreChat[j], isInstruct, force_output_sequence.LAST);
-        }
-
-        // Do not suffix the message for continuation
-        if (i === 0 && isContinue) {
-            // Pick something that's very unlikely to be in a message
-            const FORMAT_TOKEN = '\u0000\ufffc\u0000\ufffd';
-
-            if (isInstruct) {
-                const originalMessage = String(coreChat[j].mes ?? '');
-                coreChat[j].mes = originalMessage.replaceAll(FORMAT_TOKEN, '') + FORMAT_TOKEN;
-                // Reformat with the last output sequence (if any)
-                chat2[i] = formatMessageHistoryItem(coreChat[j], isInstruct, force_output_sequence.LAST);
-                coreChat[j].mes = originalMessage;
-            }
-
-            chat2[i] = chat2[i].includes(FORMAT_TOKEN)
-                ? chat2[i].slice(0, chat2[i].lastIndexOf(FORMAT_TOKEN))
-                : chat2[i].slice(0, chat2[i].lastIndexOf(coreChat[j].mes) + coreChat[j].mes.length);
-            continue_mag = coreChat[j].mes;
-        }
-
-        if (coreChat[j].is_user) {
-            userMessageIndices.push(i);
-        }
-    }
-
-    let addUserAlignment = isInstruct && power_user.instruct.user_alignment_message;
-    let userAlignmentMessage = '';
-
-    if (addUserAlignment) {
-        const alignmentMessage = {
-            name: name1,
-            mes: substituteParams(power_user.instruct.user_alignment_message),
-            is_user: true,
-        };
-        userAlignmentMessage = formatMessageHistoryItem(alignmentMessage, isInstruct, force_output_sequence.FIRST);
-    }
-
-    let oaiMessages = [];
-    let oaiMessageExamples = [];
-
-    if (main_api === 'openai') {
-        oaiMessages = setOpenAIMessages(coreChat);
-        oaiMessageExamples = setOpenAIMessageExamples(mesExamplesArray);
-    }
-
-    // hack for regeneration of the first message
-    if (chat2.length == 0) {
-        chat2.push('');
-    }
-
-    let examplesString = '';
-    let chatString = addChatsPreamble(addChatsSeparator(''));
-    let cyclePrompt = '';
-
-    async function getMessagesTokenCount() {
-        const encodeString = [
-            combinedStoryString,
-            examplesString,
-            userAlignmentMessage,
-            chatString,
-            modifyLastPromptLine(''),
-            cyclePrompt,
-        ].join('').replace(/\r/gm, '');
-        return getTokenCountAsync(encodeString, power_user.token_padding);
-    }
-
-    // Force pinned examples into the context
-    let pinExmString;
-    if (power_user.pin_examples) {
-        pinExmString = examplesString = mesExamplesArray.join('');
-    }
-
-    // Only add the chat in context if past the greeting message
-    if (isContinue && (chat2.length > 1 || main_api === 'openai')) {
-        cyclePrompt = chat2.shift();
-        chat2AgentContributions.shift();
-        // Adjust indices to account for the shift
-        injectedIndices = injectedIndices.map(shiftDownByOne).filter(x => x >= 0);
-        userMessageIndices = userMessageIndices.map(shiftDownByOne).filter(x => x >= 0);
-    }
-
-    // Collect enough messages to fill the context
-    let arrMes = new Array(chat2.length);
-    let tokenCount = await getMessagesTokenCount();
-    let lastAddedIndex = 0;
-
-    // Pre-allocate all injections first.
-    // If it doesn't fit - user shot himself in the foot
-    for (const index of injectedIndices) {
-        // not needed for OAI prompting
-        if (main_api == 'openai') {
-            break;
-        }
-
-        const item = chat2[index];
-
-        if (typeof item !== 'string') {
-            continue;
-        }
-
-        tokenCount += await getTokenCountAsync(item.replace(/\r/gm, ''));
-        if (tokenCount < this_max_context) {
-            chatString = chatString + item;
-            arrMes[index] = item;
-            lastAddedIndex = Math.max(lastAddedIndex, index);
-        } else {
-            break;
-        }
-    }
-
-    for (let i = 0; i < chat2.length; i++) {
-        // not needed for OAI prompting
-        if (main_api == 'openai') {
-            break;
-        }
-
-        // Skip already injected messages
-        if (arrMes[i] !== undefined) {
-            continue;
-        }
-
-        let item = chat2[i];
-
-        if (typeof item !== 'string') {
-            continue;
-        }
-
-        let itemTokens = await getTokenCountAsync(item.replace(/\r/gm, ''));
-        while (tokenCount + itemTokens >= this_max_context && chat2AgentContributions[i].length > 0) {
-            const trimmed = trimOldestRetainedContribution(item, chat2AgentContributions[i]);
-            if (!trimmed.changed) break;
-            item = trimmed.content;
-            chat2[i] = item;
-            chat2AgentContributions[i] = trimmed.contributions;
-            itemTokens = await getTokenCountAsync(item.replace(/\r/gm, ''));
-        }
-        tokenCount += itemTokens;
-        if (tokenCount < this_max_context) {
-            chatString = chatString + item;
-            arrMes[i] = item;
-            lastAddedIndex = Math.max(lastAddedIndex, i);
-        } else {
-            break;
-        }
-    }
-
-    // Add user alignment message if last message is not a user message
-    const stoppedAtUser = userMessageIndices.includes(lastAddedIndex);
-    if (addUserAlignment && !stoppedAtUser) {
-        tokenCount += await getTokenCountAsync(userAlignmentMessage.replace(/\r/gm, ''));
-        chatString = userAlignmentMessage + chatString;
-        arrMes.push(userAlignmentMessage);
-        injectedIndices.push(arrMes.length - 1);
-    }
-
-    // Unsparse the array. Adjust injected indices
-    const newArrMes = [];
-    const newInjectedIndices = [];
-    for (let i = 0; i < arrMes.length; i++) {
-        if (arrMes[i] !== undefined) {
-            newArrMes.push(arrMes[i]);
-            if (injectedIndices.includes(i)) {
-                newInjectedIndices.push(newArrMes.length - 1);
-            }
-        }
-    }
-
-    arrMes = newArrMes;
-    injectedIndices = newInjectedIndices;
-
-    if (main_api !== 'openai') {
-        setInContextMessages(arrMes.length - injectedIndices.length, type, preserveLastMessage);
-    }
-
-    // Estimate how many unpinned example messages fit in the context
-    tokenCount = await getMessagesTokenCount();
-    let count_exm_add = 0;
-    if (!power_user.pin_examples) {
-        for (let example of mesExamplesArray) {
-            tokenCount += await getTokenCountAsync(example.replace(/\r/gm, ''));
-            examplesString += example;
-            if (tokenCount < this_max_context) {
-                count_exm_add++;
-            } else {
-                break;
-            }
-        }
-    }
-
-    let mesSend = [];
-    console.debug('calling runGenerate');
-
-    if (isContinue) {
-        // Coping mechanism for OAI spacing
-        if (main_api === 'openai' && !cyclePrompt.endsWith(' ')) {
-            cyclePrompt += oai_settings.continue_postfix;
-            continue_mag += oai_settings.continue_postfix;
-        }
-    }
-
-    const originalType = type;
-
-    if (!dryRun) {
-        is_send_press = true;
-    }
-
-    let generatedPromptCache = cyclePrompt || '';
-    if (generatedPromptCache.length == 0 || type === 'continue') {
-        console.debug('generating prompt');
-        chatString = '';
-        arrMes = arrMes.reverse();
-        arrMes.forEach(function (item, i, arr) {
-            // OAI doesn't need all of this
-            if (main_api === 'openai') {
-                return;
-            }
-
-            // Cohee: This removes a newline from the end of the last message in the context
-            // Last prompt line will add a newline if it's not a continuation
-            // In instruct mode it only removes it if wrap is enabled and it's not a quiet generation
-            if (i === arrMes.length - 1 && type !== 'continue') {
-                if (!isInstruct || (power_user.instruct.wrap && type !== 'quiet')) {
-                    item = item.replace(/\n?$/, '');
-                }
-            }
-
-            mesSend[mesSend.length] = { message: item, extensionPrompts: [] };
-        });
-    }
-
-    let mesExmString = '';
-
-    function setPromptString() {
-        if (main_api == 'openai') {
-            return;
-        }
-
-        console.debug('--setting Prompt string');
-        mesExmString = pinExmString ?? mesExamplesArray.slice(0, count_exm_add).join('');
-
-        if (mesSend.length) {
-            mesSend[mesSend.length - 1].message = modifyLastPromptLine(mesSend[mesSend.length - 1].message);
-        }
-    }
-
-    function modifyLastPromptLine(lastMesString) {
-        //#########QUIET PROMPT STUFF PT2##############
-
-        // Add quiet generation prompt at depth 0
-        if (quiet_prompt && quiet_prompt.length) {
-            // here name1 is forced for all quiet prompts..why?
-            const name = name1;
-            //checks if we are in instruct, if so, formats the chat as such, otherwise just adds the quiet prompt
-            const quietAppend = isInstruct ? formatInstructModeChat(name, quiet_prompt, false, true, '', name1, name2, false) : `\n${quiet_prompt}`;
-
-            //This begins to fix quietPrompts (particularly /sysgen) for instruct
-            //previously instruct input sequence was being appended to the last chat message w/o '\n'
-            //and no output sequence was added after the input's content.
-            //TODO: respect output_sequence vs last_output_sequence settings
-            //TODO: decide how to prompt this to clarify who is talking 'Narrator', 'System', etc.
-            if (isInstruct) {
-                lastMesString += quietAppend; // + power_user.instruct.output_sequence + '\n';
-            } else {
-                lastMesString += quietAppend;
-            }
-
-
-            // Ross: bailing out early prevents quiet prompts from respecting other instruct prompt toggles
-            // for sysgen, SD, and summary this is desireable as it prevents the AI from responding as char..
-            // but for idle prompting, we want the flexibility of the other prompt toggles, and to respect them as per settings in the extension
-            // need a detection for what the quiet prompt is being asked for...
-
-            // Bail out early?
-            if (!isInstruct && !quietToLoud) {
-                return lastMesString;
-            }
-        }
-
-
-        // Get instruct mode line
-        if (isInstruct && !isContinue) {
-            const name = (quiet_prompt && !quietToLoud && !isImpersonate) ? (quietName ?? 'System') : (isImpersonate ? name1 : name2);
-            const isQuiet = quiet_prompt && type == 'quiet';
-            lastMesString += formatInstructModePrompt(name, isImpersonate, promptBias, name1, name2, isQuiet, quietToLoud);
-        }
-
-        // Get non-instruct impersonation line
-        if (!isInstruct && isImpersonate && !isContinue) {
-            const name = name1;
-            if (!lastMesString.endsWith('\n')) {
-                lastMesString += '\n';
-            }
-            lastMesString += name + ':';
-        }
-
-        // Add character's name
-        // Force name append on continue (if not continuing on user message or first message)
-        const isContinuingOnFirstMessage = chat.length === 1 && isContinue;
-        if (!isInstruct && force_name2 && !isContinuingOnFirstMessage) {
-            if (!lastMesString.endsWith('\n')) {
-                lastMesString += '\n';
-            }
-            if (!isContinue || !(chat[chat.length - 1]?.is_user)) {
-                lastMesString += `${name2}:`;
-            }
-        }
-
-        return lastMesString;
-    }
-
-    async function checkPromptSize() {
-        console.debug('---checking Prompt size');
-        setPromptString();
-        const jointMessages = mesSend.map((e) => `${e.extensionPrompts.join('')}${e.message}`).join('');
-        const prompt = [
-            combinedStoryString,
-            mesExmString,
-            addChatsPreamble(addChatsSeparator(jointMessages)),
-            '\n',
-            modifyLastPromptLine(''),
-            generatedPromptCache,
-        ].join('').replace(/\r/gm, '');
-        let thisPromptContextSize = await getTokenCountAsync(prompt, power_user.token_padding);
-
-        if (thisPromptContextSize > this_max_context) {        //if the prepared prompt is larger than the max context size...
-            if (count_exm_add > 0) {                            // ..and we have example messages..
-                count_exm_add--;                            // remove the example messages...
-                await checkPromptSize();                            // and try agin...
-            } else if (mesSend.length > 0) {                    // if the chat history is longer than 0
-                mesSend.shift();                            // remove the first (oldest) chat entry..
-                await checkPromptSize();                            // and check size again..
-            } else {
-                //end
-                console.debug(`---mesSend.length = ${mesSend.length}`);
-            }
-        }
-    }
-
-    if (generatedPromptCache.length > 0 && main_api !== 'openai') {
-        console.debug('---Generated Prompt Cache length: ' + generatedPromptCache.length);
-        await checkPromptSize();
-    } else {
-        console.debug('---calling setPromptString ' + generatedPromptCache.length);
-        setPromptString();
-    }
-
-    // For prompt bit itemization
-    let mesSendString = '';
-
-    async function getCombinedPrompt(isNegative) {
-        // Only return if the guidance scale doesn't exist or the value is 1
-        // Also don't return if constructing the neutral prompt
-        if (isNegative && !useCfgPrompt) {
-            return;
-        }
-
-        // OAI has its own prompt manager. No need to do anything here
-        if (main_api === 'openai') {
-            return '';
-        }
-
-        // Deep clone
-        let finalMesSend = structuredClone(mesSend);
-
-        if (useCfgPrompt) {
-            const cfgPrompt = getCfgPrompt(cfgGuidanceScale, isNegative);
-            if (cfgPrompt.value) {
-                if (cfgPrompt.depth === 0) {
-                    finalMesSend[finalMesSend.length - 1].message +=
-                        /\s/.test(finalMesSend[finalMesSend.length - 1].message.slice(-1))
-                            ? cfgPrompt.value
-                            : ` ${cfgPrompt.value}`;
-                } else {
-                    // TODO: Make all extension prompts use an array/splice method
-                    const lengthDiff = mesSend.length - cfgPrompt.depth;
-                    const cfgDepth = lengthDiff >= 0 ? lengthDiff : 0;
-                    const cfgMessage = finalMesSend[cfgDepth];
-                    if (cfgMessage) {
-                        if (!Array.isArray(finalMesSend[cfgDepth].extensionPrompts)) {
-                            finalMesSend[cfgDepth].extensionPrompts = [];
-                        }
-                        finalMesSend[cfgDepth].extensionPrompts.push(`${cfgPrompt.value}\n`);
-                    }
-                }
-            }
-        }
-
-        // Add prompt bias after everything else
-        // Always run with continue
-        if (!isInstruct && !isImpersonate) {
-            if (promptBias.trim().length !== 0) {
-                finalMesSend[finalMesSend.length - 1].message +=
-                    /\s/.test(finalMesSend[finalMesSend.length - 1].message.slice(-1))
-                        ? promptBias.trimStart()
-                        : ` ${promptBias.trimStart()}`;
-            }
-        }
-
-        // Flattens the multiple prompt objects to a string.
-        const combine = () => {
-            // Right now, everything is suffixed with a newline
-            mesSendString = finalMesSend.map((e) => `${e.extensionPrompts.join('')}${e.message}`).join('');
-
-            // add a custom dingus (if defined)
-            mesSendString = addChatsSeparator(mesSendString);
-
-            // add chat preamble
-            mesSendString = addChatsPreamble(mesSendString);
-
-            let combinedPrompt = [
-                combinedStoryString,
-                mesExmString,
-                mesSendString,
-                generatedPromptCache,
-            ].join('').replace(/\r/gm, '');
-
-            if (power_user.collapse_newlines) {
-                combinedPrompt = collapseNewlines(combinedPrompt);
-            }
-
-            return combinedPrompt;
-        };
-
-        finalMesSend.forEach((item, i) => {
-            item.injected = injectedIndices.includes(finalMesSend.length - i - 1);
-        });
-
-        let data = {
-            api: main_api,
-            combinedPrompt: null,
+        let {
             description,
             personality,
             persona,
             scenario,
-            char: name2,
-            user: name1,
-            worldInfoBefore,
-            worldInfoAfter,
-            beforeScenarioAnchor,
-            afterScenarioAnchor,
-            storyString,
-            mesExmString,
-            mesSendString,
-            finalMesSend,
-            generatedPromptCache,
-            main: system,
+            mesExamples,
+            system,
             jailbreak,
-            naiPreamble: nai_settings.preamble,
-        };
+            charDepthPrompt,
+            creatorNotes,
+        } = getCharacterCardFields();
 
-        // Before returning the combined prompt, give available context related information to all subscribers.
-        await eventSource.emit(event_types.GENERATE_BEFORE_COMBINE_PROMPTS, data);
+        // Depth prompt (character-specific A/N)
+        removeDepthPrompts();
+        const groupDepthPrompts = getGroupDepthPrompts(selected_group, Number(this_chid));
 
-        // If one or multiple subscribers return a value, forfeit the responsibillity of flattening the context.
-        return !data.combinedPrompt ? combine() : data.combinedPrompt;
-    }
+        if (selected_group && Array.isArray(groupDepthPrompts) && groupDepthPrompts.length > 0) {
+            groupDepthPrompts.forEach((value, index) => {
+                const role = getExtensionPromptRoleByName(value.role);
+                setExtensionPrompt(inject_ids.DEPTH_PROMPT_INDEX(index), value.text, extension_prompt_types.IN_CHAT, value.depth, extension_settings.note.allowWIScan, role);
+            });
+        } else {
+            const depthPromptText = charDepthPrompt || '';
+            const depthPromptDepth = characters[this_chid]?.data?.extensions?.depth_prompt?.depth ?? depth_prompt_depth_default;
+            const depthPromptRole = getExtensionPromptRoleByName(characters[this_chid]?.data?.extensions?.depth_prompt?.role ?? depth_prompt_role_default);
+            setExtensionPrompt(inject_ids.DEPTH_PROMPT, depthPromptText, extension_prompt_types.IN_CHAT, depthPromptDepth, extension_settings.note.allowWIScan, depthPromptRole);
+        }
 
-    let finalPrompt = await getCombinedPrompt(false);
+        // First message in fresh 1-on-1 chat reacts to user/character settings changes
+        const firstChatMessage = chat[0];
+        const firstMessageVariants = !world_info_include_names && firstChatMessage
+            ? substituteWorldInfoGreeting(firstChatMessage.mes, substituteParams, { char: name2, user: name1 })
+            : undefined;
+        const firstPromptMessage = firstChatMessage
+            ? (firstMessageVariants?.prompt ?? substituteParams(firstChatMessage.mes))
+            : undefined;
 
-    const eventData = { prompt: finalPrompt, dryRun: dryRun };
-    await eventSource.emit(event_types.GENERATE_AFTER_COMBINE_PROMPTS, eventData);
-    finalPrompt = eventData.prompt;
+        // Collect messages with usable content
+        const canUseTools = ToolManager.isToolCallingSupported();
+        const canPerformToolCalls = !dryRun && ToolManager.canPerformToolCalls(type) && depth < ToolManager.RECURSE_LIMIT;
+        let coreChat = chat.filter(x => !x.is_system
+        || (canUseTools && Array.isArray(x.extra?.tool_invocations))
+        || hasCompanionChatHistoryForHiddenHost(x));
+        if (generationChatFilter) {
+            coreChat = coreChat.filter((message, index) => generationChatFilter(message, index, coreChat));
+        }
+        if (type === 'swipe') {
+            coreChat.pop();
+        }
+        const companionRewriteTarget = companionHistoryTarget
+        ?? (isContinue || type === 'swipe' || type === 'regenerate' ? lastMessage : null);
+        const companionCandidateMessages = coreChat.filter(message =>
+            message !== companionRewriteTarget
+        && !message.extra?.[IGNORE_SYMBOL],
+        );
+        const companionPolicyMessages = (companionRewriteTarget && !chat.includes(companionRewriteTarget)
+            ? [...chat, companionRewriteTarget]
+            : chat
+        ).filter(message => !message.extra?.[IGNORE_SYMBOL]);
+        const companionChatHistory = selectCompanionChatHistory(companionCandidateMessages, {
+            policyMessages: companionPolicyMessages,
+        });
+        const {
+            host: consolidatedCompanionHistoryHost,
+            entries: consolidatedRetainedEntries,
+        } = consolidateCompanionChatHistory(companionCandidateMessages, companionChatHistory, sourceMessage => content => substituteParams(content, {
+            name2Override: String(sourceMessage.name ?? '').trim() || undefined,
+            original: sourceMessage.is_system ? '' : sourceMessage.mes,
+        }), message => !Array.isArray(message?.extra?.tool_invocations));
+        const consolidatedRetainedContributions = consolidatedRetainedEntries.map(({ message: sourceMessage, contribution }) => {
+            const sourceIndex = coreChat.indexOf(sourceMessage);
+            const regexType = sourceMessage.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
+            const options = { isPrompt: true, depth: (coreChat.length - sourceIndex - (isContinue ? 2 : 1)) };
+            const agentRegexScripts = resolveRegexScriptsForSnapshot(sourceMessage?.extra?.inChatAgents);
+            let promptContent = contribution.content;
+            if (agentRegexScripts.length > 0) {
+                const agentPlacement = sourceMessage.is_user ? AGENT_REGEX_PLACEMENT.USER_INPUT : AGENT_REGEX_PLACEMENT.AI_OUTPUT;
+                promptContent = applyRegexScriptList(promptContent, agentRegexScripts, agentPlacement, {
+                    ...options,
+                    characterOverride: name2,
+                    substituteParamsFn: substituteParams,
+                    substituteParamsExtendedFn: substituteParamsExtended,
+                });
+            }
+            const worldInfoContent = promptContent === contribution.content
+                ? undefined
+                : getRegexedString(contribution.content, regexType, options);
+            promptContent = getRegexedString(promptContent, regexType, options);
+            const contextDepth = Math.max(0, coreChat.length - sourceIndex - 1);
+            const retainOoc = shouldRetainContextAtDepth(contextDepth, power_user.ooc_context_depth);
+            const retainHtml = shouldRetainContextAtDepth(contextDepth, power_user.html_context_depth);
 
-    let maxLength = Number(amount_gen); // how many tokens the AI will be requested to generate
-    let thisPromptBits = [];
+            return {
+                contribution: {
+                    ...contribution,
+                    content: stripHtmlTagsFromContext(stripOocBlocksFromContext(promptContent, retainOoc), retainHtml),
+                },
+                worldInfoContent: worldInfoContent === undefined
+                    ? undefined
+                    : stripHtmlTagsFromContext(stripOocBlocksFromContext(worldInfoContent, retainOoc), retainHtml),
+            };
+        });
+        coreChat = coreChat.filter(chatItem => !chatItem.is_system
+        || (canUseTools && Array.isArray(chatItem.extra?.tool_invocations))
+        || chatItem === consolidatedCompanionHistoryHost);
 
-    let generate_data;
-    switch (main_api) {
-        case 'koboldhorde':
-        case 'kobold':
-            if (main_api == 'koboldhorde' && horde_settings.auto_adjust_response_length) {
-                maxLength = Math.min(maxLength, adjustedParams.maxLength);
-                maxLength = Math.max(maxLength, MIN_LENGTH); // prevent validation errors
+        const worldInfoMessageVariants = new Map();
+        coreChat = await Promise.all(coreChat.map(async (/** @type {ChatMessage} */ chatItem, index) => {
+            const originalMessage = chatItem === firstChatMessage ? firstPromptMessage : chatItem.mes;
+            const worldInfoSourceMessage = chatItem === firstChatMessage && firstMessageVariants !== undefined
+                ? firstMessageVariants.worldInfo
+                : originalMessage;
+            const isConsolidatedCompanionHost = chatItem === consolidatedCompanionHistoryHost;
+            const hiddenCompanionHistory = chatItem.is_system && isConsolidatedCompanionHost;
+            // SillyBunny: project opted-in companion notes into prompt history without changing stored chat text.
+            const retainedContributions = isConsolidatedCompanionHost
+                ? consolidatedRetainedContributions.map(item => item.contribution).filter(contribution => contribution.content)
+                : [];
+            const contextSourceMessage = hiddenCompanionHistory ? '' : originalMessage;
+            const worldInfoContextSourceMessage = hiddenCompanionHistory ? '' : worldInfoSourceMessage;
+            let message = contextSourceMessage;
+            let regexType = chatItem.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
+            let options = { isPrompt: true, depth: (coreChat.length - index - (isContinue ? 2 : 1)) };
+
+            // SillyBunny: apply in-chat agent regex scripts (e.g. CYOA "Trim Choices") in prompt mode
+            const agentRegexScripts = resolveRegexScriptsForSnapshot(chatItem?.extra?.inChatAgents);
+            if (agentRegexScripts.length > 0) {
+                const agentPlacement = chatItem.is_user ? AGENT_REGEX_PLACEMENT.USER_INPUT : AGENT_REGEX_PLACEMENT.AI_OUTPUT;
+                message = applyRegexScriptList(message, agentRegexScripts, agentPlacement, {
+                    ...options,
+                    characterOverride: name2,
+                    substituteParamsFn: substituteParams,
+                    substituteParamsExtendedFn: substituteParamsExtended,
+                });
             }
 
-            generate_data = {
-                prompt: finalPrompt,
-                gui_settings: true,
-                max_length: maxLength,
-                max_context_length: max_context,
-                api_server: kai_settings.api_server,
+            let regexedMessage = getRegexedString(message, regexType, options);
+            let worldInfoRegexedMessage = message === worldInfoContextSourceMessage ? undefined : getRegexedString(worldInfoContextSourceMessage, regexType, options);
+            const fileContent = hiddenCompanionHistory ? '' : await appendFileContent(chatItem, '');
+            regexedMessage = fileContent + regexedMessage;
+            if (worldInfoRegexedMessage !== undefined) {
+                worldInfoRegexedMessage = fileContent + worldInfoRegexedMessage;
+            }
+
+            const titles = [];
+            if (!hiddenCompanionHistory && chatItem?.extra?.append_title && chatItem?.extra?.title) {
+                titles.push(chatItem.extra.title);
+            }
+            if (!hiddenCompanionHistory && Array.isArray(chatItem?.extra?.media)) {
+                for (const mediaItem of chatItem.extra.media) {
+                    if (mediaItem?.title && mediaItem?.append_title) {
+                        titles.push(mediaItem.title);
+                    }
+                }
+            }
+            if (titles.length > 0) {
+                const appendedTitles = `\n\n${titles.join('\n\n')}`;
+                regexedMessage += appendedTitles;
+                if (worldInfoRegexedMessage !== undefined) {
+                    worldInfoRegexedMessage += appendedTitles;
+                }
+            }
+
+            const contextDepth = Math.max(0, coreChat.length - index - 1);
+            const retainOoc = shouldRetainContextAtDepth(contextDepth, power_user.ooc_context_depth);
+            const retainHtml = shouldRetainContextAtDepth(contextDepth, power_user.html_context_depth);
+            const contextMessage = stripHtmlTagsFromContext(
+                stripOocBlocksFromContext(regexedMessage, retainOoc),
+                retainHtml,
+            );
+            const consolidatedContextMessage = [contextMessage, ...retainedContributions.map(contribution => contribution.content)]
+                .filter(Boolean)
+                .join('\n\n');
+            const agentContributions = retainedContributions
+                .filter(contribution => contribution.content && consolidatedContextMessage.includes(contribution.content));
+
+            let worldInfoContextMessage = contextMessage;
+            if (worldInfoRegexedMessage !== undefined) {
+                worldInfoContextMessage = stripHtmlTagsFromContext(
+                    stripOocBlocksFromContext(worldInfoRegexedMessage, retainOoc),
+                    retainHtml,
+                );
+            }
+            if (isConsolidatedCompanionHost) {
+                const worldInfoRetainedContent = consolidatedRetainedContributions
+                    .map(item => item.worldInfoContent ?? item.contribution.content)
+                    .filter(Boolean);
+                worldInfoContextMessage = [worldInfoContextMessage, ...worldInfoRetainedContent]
+                    .filter(Boolean)
+                    .join('\n\n');
+            }
+            if (worldInfoContextMessage !== consolidatedContextMessage) {
+                worldInfoMessageVariants.set(index, { prompt: consolidatedContextMessage, worldInfo: worldInfoContextMessage });
+            }
+
+            return {
+                ...chatItem,
+                mes: consolidatedContextMessage,
+                extra: hiddenCompanionHistory ? {} : chatItem.extra,
+                is_system: hiddenCompanionHistory ? false : chatItem.is_system,
+                ...(agentContributions.length > 0 && { agentContributions }),
+                index,
+            };
+        }));
+        if (!isCurrent()) return;
+        // SillyBunny: ICA prompt-only regexes must not remove stored chat text from World Info scans.
+        const worldInfoOnlyChat = coreChat.filter(chatItem => {
+            const variant = worldInfoMessageVariants.get(chatItem.index);
+            return variant && !hasPromptPayload(chatItem) && hasPromptPayload({ ...chatItem, mes: variant.worldInfo });
+        });
+        // SillyBunny: preserve an interrupted reasoning-only prefix when continuing.
+        coreChat = coreChat.filter((chatItem, index) => hasPromptPayload(
+            chatItem,
+            isContinue && index === coreChat.length - 1,
+        ));
+
+        const promptReasoning = new PromptReasoning();
+        for (let i = coreChat.length - 1; i >= 0; i--) {
+            const depth = coreChat.length - i - (isContinue ? 2 : 1);
+            const isPrefix = isContinue && i === coreChat.length - 1;
+
+            // In group chats, only include reasoning from the currently generating character
+            const isOtherGroupMember = selected_group && coreChat[i].name !== name2;
+
+            const promptMessage = coreChat[i].mes;
+            const messageWithReasoning = isOtherGroupMember
+                ? promptMessage
+                : promptReasoning.addToMessage(
+                    promptMessage,
+                    getRegexedString(
+                        String(coreChat[i].extra?.reasoning ?? ''),
+                        regex_placement.REASONING,
+                        { isPrompt: true, depth: depth },
+                    ),
+                    isPrefix,
+                    coreChat[i].extra?.reasoning_duration,
+                );
+
+            coreChat[i] = {
+                ...coreChat[i],
+                mes: messageWithReasoning,
             };
 
-            if (kai_settings.preset_settings != 'gui') {
-                const isHorde = main_api == 'koboldhorde';
-                const presetSettings = koboldai_settings[koboldai_setting_names[kai_settings.preset_settings]];
-                const maxContext = (adjustedParams && horde_settings.auto_adjust_context_length) ? adjustedParams.maxContextLength : max_context;
-                generate_data = getKoboldGenerationData(finalPrompt, presetSettings, maxLength, maxContext, isHorde, type);
+            const worldInfoVariant = worldInfoMessageVariants.get(coreChat[i].index);
+            if (worldInfoVariant?.prompt === promptMessage && messageWithReasoning.endsWith(promptMessage)) {
+                const reasoningPrefix = messageWithReasoning.slice(0, messageWithReasoning.length - promptMessage.length);
+                worldInfoVariant.prompt = messageWithReasoning;
+                worldInfoVariant.worldInfo = reasoningPrefix + worldInfoVariant.worldInfo;
             }
-            break;
-        case 'textgenerationwebui': {
-            const cfgValues = useCfgPrompt ? { guidanceScale: cfgGuidanceScale, negativePrompt: await getCombinedPrompt(true) } : null;
-            generate_data = await getTextGenGenerationData(finalPrompt, maxLength, isImpersonate, isContinue, cfgValues, type, { cacheScope: resolvedCacheScope });
-            break;
+            if (promptReasoning.isLimitReached()) {
+                break;
+            }
         }
-        case 'novel': {
-            const cfgValues = useCfgPrompt ? { guidanceScale: cfgGuidanceScale } : null;
-            const presetSettings = novelai_settings[novelai_setting_names[nai_settings.preset_settings_novel]];
-            generate_data = getNovelGenerationData(finalPrompt, presetSettings, maxLength, isImpersonate, isContinue, cfgValues, type);
-            break;
-        }
-        case 'openai': {
-            let [prompt, counts] = await prepareOpenAIMessages({
-                name2: name2,
-                charDescription: description,
-                charPersonality: personality,
-                scenario: scenario,
-                worldInfoBefore: worldInfoBefore,
-                worldInfoAfter: worldInfoAfter,
-                extensionPrompts: generationExtensionPrompts,
-                bias: promptBias,
-                type: type,
-                quietPrompt: quiet_prompt,
-                quietImage: quietImage,
-                cyclePrompt: cyclePrompt,
-                systemPromptOverride: system,
-                jailbreakPromptOverride: jailbreak,
-                messages: oaiMessages,
-                messageExamples: oaiMessageExamples,
-            }, dryRun);
-            generate_data = { prompt: prompt, cacheScope: resolvedCacheScope };
 
-            // TODO: move these side-effects somewhere else, so this switch-case solely sets generate_data
-            // counts will return false if the user has not enabled the token breakdown feature
-            if (counts) {
-                parseTokenCounts(counts, thisPromptBits);
+        // Determine token limit
+        // Reserve enough context for either the preset reasoning allowance or the requested reply.
+        const requestResponseLength = Number.isFinite(responseLength) && responseLength > 0
+            ? Math.max(Number(getMaxResponseTokens()), responseLength)
+            : null;
+        let this_max_context = getMaxPromptTokens(requestResponseLength);
+
+        if (!dryRun) {
+            console.debug('Running extension interceptors');
+            const aborted = await runGenerationInterceptors(coreChat, this_max_context, type);
+            if (!isCurrent()) return;
+
+            if (aborted) {
+                console.debug('Generation aborted by extension interceptors');
+                unblockGeneration(type);
+                return Promise.resolve();
+            }
+        } else {
+            console.debug('Skipping extension interceptors for dry run');
+        }
+
+        // Adjust token limit for Horde
+        let adjustedParams;
+        if (main_api == 'koboldhorde' && (horde_settings.auto_adjust_context_length || horde_settings.auto_adjust_response_length)) {
+            try {
+                adjustedParams = await adjustHordeGenerationParams(max_context, amount_gen);
+            } catch {
+                if (isCurrent()) unblockGeneration(type);
+                return Promise.resolve();
+            }
+            if (!isCurrent()) return;
+            if (horde_settings.auto_adjust_context_length) {
+                this_max_context = (adjustedParams.maxContextLength - adjustedParams.maxLength);
+            }
+        }
+
+        // Fetches the combined prompt for both negative and positive prompts
+        const cfgGuidanceScale = getGuidanceScale();
+        const useCfgPrompt = cfgGuidanceScale && cfgGuidanceScale.value !== 1;
+
+        // Adjust max context based on CFG prompt to prevent overfitting
+        if (useCfgPrompt) {
+            const negativePrompt = getCfgPrompt(cfgGuidanceScale, true, true)?.value || '';
+            const positivePrompt = getCfgPrompt(cfgGuidanceScale, false, true)?.value || '';
+            if (negativePrompt || positivePrompt) {
+                const previousMaxContext = this_max_context;
+                const [negativePromptTokenCount, positivePromptTokenCount] = await Promise.all([getTokenCountAsync(negativePrompt), getTokenCountAsync(positivePrompt)]);
+                const decrement = Math.max(negativePromptTokenCount, positivePromptTokenCount);
+                this_max_context -= decrement;
+                console.log(`Max context reduced by ${decrement} tokens of CFG prompt (${previousMaxContext} -> ${this_max_context})`);
+            }
+        }
+
+        console.log(`Core/all messages: ${coreChat.length}/${chat.length}`);
+
+        if ((promptBias && !isUserPromptBias) || power_user.always_force_name2 || main_api == 'novel') {
+            force_name2 = true;
+        }
+
+        if (isImpersonate) {
+            force_name2 = false;
+        }
+
+        let mesExamplesArray = parseMesExamples(mesExamples, isInstruct);
+        if (!isCurrent()) return;
+
+        // Set non-WI AN
+        setFloatingPrompt();
+
+        // Add WI to prompt (and also inject WI to AN value via hijack)
+        // Make quiet prompt available for WIAN
+        setExtensionPrompt(inject_ids.QUIET_PROMPT, quiet_prompt || '', extension_prompt_types.IN_PROMPT, 0, true);
+        const chatForWI = buildWorldInfoScanChat(coreChat, worldInfoOnlyChat, worldInfoMessageVariants, world_info_include_names);
+        /** @type {import('./scripts/world-info.js').WIGlobalScanData} */
+        const globalScanData = {
+            personaDescription: persona,
+            characterDescription: description,
+            characterPersonality: personality,
+            characterDepthPrompt: charDepthPrompt,
+            scenario: scenario,
+            creatorNotes: creatorNotes,
+            trigger: GENERATION_TYPE_TRIGGERS.includes(type) ? type : 'normal',
+        };
+        const nativeGenerationContext = !dryRun && type !== 'quiet' ? getAgentGenerationContext() : null;
+        const { worldInfoString, worldInfoBefore, worldInfoAfter, worldInfoExamples, worldInfoDepth, outletEntries } = await getWorldInfoPrompt(chatForWI, this_max_context, dryRun, globalScanData, nativeGenerationContext);
+        if (!isCurrent()) return;
+        setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
+
+        // Add message example WI
+        for (const example of worldInfoExamples) {
+            const exampleMessage = example.content;
+
+            if (exampleMessage.length === 0) {
+                continue;
             }
 
-            if (!dryRun) {
-                setInContextMessages(openai_messages_count, type, preserveLastMessage);
+            const formattedExample = baseChatReplace(exampleMessage);
+            const cleanedExample = parseMesExamples(formattedExample, isInstruct);
+
+            // Insert depending on before or after position
+            if (example.position === wi_anchor_position.before) {
+                mesExamplesArray.unshift(...cleanedExample);
+            } else {
+                mesExamplesArray.push(...cleanedExample);
             }
-            break;
         }
-    }
 
-    await eventSource.emit(event_types.GENERATE_AFTER_DATA, generate_data, dryRun);
+        // At this point, the raw message examples can be created
+        const mesExamplesRawArray = [...mesExamplesArray];
 
-    if (dryRun) {
-        return Promise.resolve();
-    }
+        if (mesExamplesArray && isInstruct) {
+            mesExamplesArray = formatInstructModeExamples(mesExamplesArray, name1, name2);
+        }
 
-    /**
+        if (skipWIAN !== true) {
+            console.log('skipWIAN not active, adding WIAN');
+            // Add all depth WI entries to prompt
+            flushWIInjections();
+            if (Array.isArray(worldInfoDepth)) {
+                worldInfoDepth.forEach((e) => {
+                    const joinedEntries = e.entries.join('\n');
+                    setExtensionPrompt(inject_ids.CUSTOM_WI_DEPTH_ROLE(e.depth, e.role), joinedEntries, extension_prompt_types.IN_CHAT, e.depth, false, e.role);
+                });
+            }
+            if (outletEntries && typeof outletEntries === 'object' && Object.keys(outletEntries).length > 0) {
+                Object.entries(outletEntries).forEach(([key, value]) => {
+                    setExtensionPrompt(inject_ids.CUSTOM_WI_OUTLET(key), value.join('\n'), extension_prompt_types.NONE, 0);
+                });
+            }
+        } else {
+            console.log('skipping WIAN');
+        }
+
+        // Add persona description to prompt
+        addPersonaDescriptionExtensionPrompt();
+
+        // Prepare the system prompt for Text Completion APIs
+        if (main_api !== 'openai') {
+            if (power_user.sysprompt.enabled) {
+                system = power_user.prefer_character_prompt && system
+                    ? substituteParams(system, { original: power_user.sysprompt.content ?? '' })
+                    : baseChatReplace(power_user.sysprompt.content);
+                system = isInstruct ? substituteParams(system, { original: power_user.sysprompt.content ?? '' }) : system;
+            } else {
+            // Nullify if it's not enabled
+                system = '';
+            }
+        }
+
+        // Collect before / after story string injections
+        const beforeScenarioAnchor = await getExtensionPrompt(extension_prompt_types.BEFORE_PROMPT);
+        const afterScenarioAnchor = await getExtensionPrompt(extension_prompt_types.IN_PROMPT);
+        if (!isCurrent()) return;
+
+        const storyStringParams = {
+            description: description,
+            personality: personality,
+            persona: power_user.persona_description_position == persona_description_positions.IN_PROMPT ? persona : '',
+            scenario: scenario,
+            system: system,
+            char: name2,
+            user: name1,
+            wiBefore: worldInfoBefore,
+            wiAfter: worldInfoAfter,
+            loreBefore: worldInfoBefore,
+            loreAfter: worldInfoAfter,
+            anchorBefore: beforeScenarioAnchor.trim(),
+            anchorAfter: afterScenarioAnchor.trim(),
+            mesExamples: mesExamplesArray.join(''),
+            mesExamplesRaw: mesExamplesRawArray.join(''),
+        };
+
+        // Render the story string and combine with injections
+        const storyString = renderStoryString(storyStringParams);
+        let combinedStoryString = isInstruct ? formatInstructModeStoryString(storyString) : storyString;
+
+        // Inject the story string as in-chat prompt (if needed)
+        const applyStoryStringInject = main_api !== 'openai' && power_user.context.story_string_position === extension_prompt_types.IN_CHAT;
+        if (applyStoryStringInject) {
+            const depth = power_user.context.story_string_depth ?? 1;
+            const role = power_user.context.story_string_role ?? extension_prompt_roles.SYSTEM;
+            setExtensionPrompt(inject_ids.STORY_STRING, combinedStoryString, extension_prompt_types.IN_CHAT, depth, false, role);
+            // Remove to prevent duplication
+            combinedStoryString = '';
+        } else {
+            setExtensionPrompt(inject_ids.STORY_STRING, '', extension_prompt_types.IN_CHAT, 0);
+        }
+
+        // Story string rendered, safe to remove
+        if (power_user.strip_examples) {
+            mesExamplesArray = [];
+        }
+
+        const generationExtensionPrompts = extension_prompts;
+
+        // Inject all Depth prompts. Chat Completion does it separately
+        let injectedIndices = [];
+        if (main_api !== 'openai') {
+            injectedIndices = await doChatInject(coreChat, isContinue);
+        }
+
+        if (main_api !== 'openai' && power_user.sysprompt.enabled) {
+            jailbreak = power_user.prefer_character_jailbreak && jailbreak
+                ? substituteParams(jailbreak, { original: power_user.sysprompt.post_history ?? '' })
+                : baseChatReplace(power_user.sysprompt.post_history);
+
+            // Only inject the jb if there is one
+            if (jailbreak) {
+            // When continuing generation of previous output, last user message precedes the message to continue
+                if (isContinue) {
+                    coreChat.splice(coreChat.length - 1, 0, { mes: jailbreak, is_user: true });
+                } else {
+                // This operation will result in the injectedIndices indexes being off by one
+                    coreChat.push({ mes: jailbreak, is_user: true });
+                    // Add +1 to the elements to correct for the new PHI/Jailbreak message.
+                    injectedIndices.forEach(shiftUpByOne);
+                }
+            }
+        }
+
+        let chat2 = [];
+        let chat2AgentContributions = [];
+        let continue_mag = '';
+        let userMessageIndices = [];
+        const lastUserMessageIndex = coreChat.findLastIndex(x => x.is_user);
+
+        for (let i = coreChat.length - 1, j = 0; i >= 0; i--, j++) {
+            if (main_api == 'openai') {
+                chat2[i] = coreChat[j].mes;
+                if (i === 0 && isContinue) {
+                    chat2[i] = chat2[i].slice(0, chat2[i].lastIndexOf(coreChat[j].mes) + coreChat[j].mes.length);
+                    continue_mag = coreChat[j].mes;
+                }
+                continue;
+            }
+
+            chat2[i] = formatMessageHistoryItem(coreChat[j], isInstruct, false);
+            chat2AgentContributions[i] = Array.isArray(coreChat[j].agentContributions)
+                ? structuredClone(coreChat[j].agentContributions)
+                : [];
+
+            if (j === 0 && isInstruct) {
+            // Reformat with the first output sequence (if any)
+                chat2[i] = formatMessageHistoryItem(coreChat[j], isInstruct, force_output_sequence.FIRST);
+            }
+
+            if (lastUserMessageIndex >= 0 && j === lastUserMessageIndex && isInstruct && !isImpersonate) {
+            // Reformat with the last input sequence (if any)
+                chat2[i] = formatMessageHistoryItem(coreChat[j], isInstruct, force_output_sequence.LAST);
+            }
+
+            // Do not suffix the message for continuation
+            if (i === 0 && isContinue) {
+            // Pick something that's very unlikely to be in a message
+                const FORMAT_TOKEN = '\u0000\ufffc\u0000\ufffd';
+
+                if (isInstruct) {
+                    const originalMessage = String(coreChat[j].mes ?? '');
+                    coreChat[j].mes = originalMessage.replaceAll(FORMAT_TOKEN, '') + FORMAT_TOKEN;
+                    // Reformat with the last output sequence (if any)
+                    chat2[i] = formatMessageHistoryItem(coreChat[j], isInstruct, force_output_sequence.LAST);
+                    coreChat[j].mes = originalMessage;
+                }
+
+                chat2[i] = chat2[i].includes(FORMAT_TOKEN)
+                    ? chat2[i].slice(0, chat2[i].lastIndexOf(FORMAT_TOKEN))
+                    : chat2[i].slice(0, chat2[i].lastIndexOf(coreChat[j].mes) + coreChat[j].mes.length);
+                continue_mag = coreChat[j].mes;
+            }
+
+            if (coreChat[j].is_user) {
+                userMessageIndices.push(i);
+            }
+        }
+
+        let addUserAlignment = isInstruct && power_user.instruct.user_alignment_message;
+        let userAlignmentMessage = '';
+
+        if (addUserAlignment) {
+            const alignmentMessage = {
+                name: name1,
+                mes: substituteParams(power_user.instruct.user_alignment_message),
+                is_user: true,
+            };
+            userAlignmentMessage = formatMessageHistoryItem(alignmentMessage, isInstruct, force_output_sequence.FIRST);
+        }
+
+        let oaiMessages = [];
+        let oaiMessageExamples = [];
+
+        if (main_api === 'openai') {
+            oaiMessages = setOpenAIMessages(coreChat);
+            oaiMessageExamples = setOpenAIMessageExamples(mesExamplesArray);
+        }
+
+        // hack for regeneration of the first message
+        if (chat2.length == 0) {
+            chat2.push('');
+        }
+
+        let examplesString = '';
+        let chatString = addChatsPreamble(addChatsSeparator(''));
+        let cyclePrompt = '';
+
+        async function getMessagesTokenCount() {
+            const encodeString = [
+                combinedStoryString,
+                examplesString,
+                userAlignmentMessage,
+                chatString,
+                modifyLastPromptLine(''),
+                cyclePrompt,
+            ].join('').replace(/\r/gm, '');
+            return getTokenCountAsync(encodeString, power_user.token_padding);
+        }
+
+        // Force pinned examples into the context
+        let pinExmString;
+        if (power_user.pin_examples) {
+            pinExmString = examplesString = mesExamplesArray.join('');
+        }
+
+        // Only add the chat in context if past the greeting message
+        if (isContinue && (chat2.length > 1 || main_api === 'openai')) {
+            cyclePrompt = chat2.shift();
+            chat2AgentContributions.shift();
+            // Adjust indices to account for the shift
+            injectedIndices = injectedIndices.map(shiftDownByOne).filter(x => x >= 0);
+            userMessageIndices = userMessageIndices.map(shiftDownByOne).filter(x => x >= 0);
+        }
+
+        // Collect enough messages to fill the context
+        let arrMes = new Array(chat2.length);
+        let tokenCount = await getMessagesTokenCount();
+        let lastAddedIndex = 0;
+
+        // Pre-allocate all injections first.
+        // If it doesn't fit - user shot himself in the foot
+        for (const index of injectedIndices) {
+        // not needed for OAI prompting
+            if (main_api == 'openai') {
+                break;
+            }
+
+            const item = chat2[index];
+
+            if (typeof item !== 'string') {
+                continue;
+            }
+
+            tokenCount += await getTokenCountAsync(item.replace(/\r/gm, ''));
+            if (tokenCount < this_max_context) {
+                chatString = chatString + item;
+                arrMes[index] = item;
+                lastAddedIndex = Math.max(lastAddedIndex, index);
+            } else {
+                break;
+            }
+        }
+
+        for (let i = 0; i < chat2.length; i++) {
+        // not needed for OAI prompting
+            if (main_api == 'openai') {
+                break;
+            }
+
+            // Skip already injected messages
+            if (arrMes[i] !== undefined) {
+                continue;
+            }
+
+            let item = chat2[i];
+
+            if (typeof item !== 'string') {
+                continue;
+            }
+
+            let itemTokens = await getTokenCountAsync(item.replace(/\r/gm, ''));
+            while (tokenCount + itemTokens >= this_max_context && chat2AgentContributions[i].length > 0) {
+                const trimmed = trimOldestRetainedContribution(item, chat2AgentContributions[i]);
+                if (!trimmed.changed) break;
+                item = trimmed.content;
+                chat2[i] = item;
+                chat2AgentContributions[i] = trimmed.contributions;
+                itemTokens = await getTokenCountAsync(item.replace(/\r/gm, ''));
+            }
+            tokenCount += itemTokens;
+            if (tokenCount < this_max_context) {
+                chatString = chatString + item;
+                arrMes[i] = item;
+                lastAddedIndex = Math.max(lastAddedIndex, i);
+            } else {
+                break;
+            }
+        }
+
+        // Add user alignment message if last message is not a user message
+        const stoppedAtUser = userMessageIndices.includes(lastAddedIndex);
+        if (addUserAlignment && !stoppedAtUser) {
+            tokenCount += await getTokenCountAsync(userAlignmentMessage.replace(/\r/gm, ''));
+            chatString = userAlignmentMessage + chatString;
+            arrMes.push(userAlignmentMessage);
+            injectedIndices.push(arrMes.length - 1);
+        }
+
+        // Unsparse the array. Adjust injected indices
+        const newArrMes = [];
+        const newInjectedIndices = [];
+        for (let i = 0; i < arrMes.length; i++) {
+            if (arrMes[i] !== undefined) {
+                newArrMes.push(arrMes[i]);
+                if (injectedIndices.includes(i)) {
+                    newInjectedIndices.push(newArrMes.length - 1);
+                }
+            }
+        }
+
+        arrMes = newArrMes;
+        injectedIndices = newInjectedIndices;
+
+        if (main_api !== 'openai') {
+            setInContextMessages(arrMes.length - injectedIndices.length, type, preserveLastMessage);
+        }
+
+        // Estimate how many unpinned example messages fit in the context
+        tokenCount = await getMessagesTokenCount();
+        let count_exm_add = 0;
+        if (!power_user.pin_examples) {
+            for (let example of mesExamplesArray) {
+                tokenCount += await getTokenCountAsync(example.replace(/\r/gm, ''));
+                examplesString += example;
+                if (tokenCount < this_max_context) {
+                    count_exm_add++;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        let mesSend = [];
+        console.debug('calling runGenerate');
+
+        if (isContinue) {
+        // Coping mechanism for OAI spacing
+            if (main_api === 'openai' && !cyclePrompt.endsWith(' ')) {
+                cyclePrompt += oai_settings.continue_postfix;
+                continue_mag += oai_settings.continue_postfix;
+            }
+        }
+
+        const originalType = type;
+
+        if (!isCurrent()) return;
+        if (!dryRun && !isAuxiliaryGeneration) {
+            is_send_press = true;
+        }
+
+        let generatedPromptCache = cyclePrompt || '';
+        if (generatedPromptCache.length == 0 || type === 'continue') {
+            console.debug('generating prompt');
+            chatString = '';
+            arrMes = arrMes.reverse();
+            arrMes.forEach(function (item, i, arr) {
+            // OAI doesn't need all of this
+                if (main_api === 'openai') {
+                    return;
+                }
+
+                // Cohee: This removes a newline from the end of the last message in the context
+                // Last prompt line will add a newline if it's not a continuation
+                // In instruct mode it only removes it if wrap is enabled and it's not a quiet generation
+                if (i === arrMes.length - 1 && type !== 'continue') {
+                    if (!isInstruct || (power_user.instruct.wrap && type !== 'quiet')) {
+                        item = item.replace(/\n?$/, '');
+                    }
+                }
+
+                mesSend[mesSend.length] = { message: item, extensionPrompts: [] };
+            });
+        }
+
+        let mesExmString = '';
+
+        function setPromptString() {
+            if (main_api == 'openai') {
+                return;
+            }
+
+            console.debug('--setting Prompt string');
+            mesExmString = pinExmString ?? mesExamplesArray.slice(0, count_exm_add).join('');
+
+            if (mesSend.length) {
+                mesSend[mesSend.length - 1].message = modifyLastPromptLine(mesSend[mesSend.length - 1].message);
+            }
+        }
+
+        function modifyLastPromptLine(lastMesString) {
+        //#########QUIET PROMPT STUFF PT2##############
+
+            // Add quiet generation prompt at depth 0
+            if (quiet_prompt && quiet_prompt.length) {
+            // here name1 is forced for all quiet prompts..why?
+                const name = name1;
+                //checks if we are in instruct, if so, formats the chat as such, otherwise just adds the quiet prompt
+                const quietAppend = isInstruct ? formatInstructModeChat(name, quiet_prompt, false, true, '', name1, name2, false) : `\n${quiet_prompt}`;
+
+                //This begins to fix quietPrompts (particularly /sysgen) for instruct
+                //previously instruct input sequence was being appended to the last chat message w/o '\n'
+                //and no output sequence was added after the input's content.
+                //TODO: respect output_sequence vs last_output_sequence settings
+                //TODO: decide how to prompt this to clarify who is talking 'Narrator', 'System', etc.
+                if (isInstruct) {
+                    lastMesString += quietAppend; // + power_user.instruct.output_sequence + '\n';
+                } else {
+                    lastMesString += quietAppend;
+                }
+
+
+                // Ross: bailing out early prevents quiet prompts from respecting other instruct prompt toggles
+                // for sysgen, SD, and summary this is desireable as it prevents the AI from responding as char..
+                // but for idle prompting, we want the flexibility of the other prompt toggles, and to respect them as per settings in the extension
+                // need a detection for what the quiet prompt is being asked for...
+
+                // Bail out early?
+                if (!isInstruct && !quietToLoud) {
+                    return lastMesString;
+                }
+            }
+
+
+            // Get instruct mode line
+            if (isInstruct && !isContinue) {
+                const name = (quiet_prompt && !quietToLoud && !isImpersonate) ? (quietName ?? 'System') : (isImpersonate ? name1 : name2);
+                const isQuiet = quiet_prompt && type == 'quiet';
+                lastMesString += formatInstructModePrompt(name, isImpersonate, promptBias, name1, name2, isQuiet, quietToLoud);
+            }
+
+            // Get non-instruct impersonation line
+            if (!isInstruct && isImpersonate && !isContinue) {
+                const name = name1;
+                if (!lastMesString.endsWith('\n')) {
+                    lastMesString += '\n';
+                }
+                lastMesString += name + ':';
+            }
+
+            // Add character's name
+            // Force name append on continue (if not continuing on user message or first message)
+            const isContinuingOnFirstMessage = chat.length === 1 && isContinue;
+            if (!isInstruct && force_name2 && !isContinuingOnFirstMessage) {
+                if (!lastMesString.endsWith('\n')) {
+                    lastMesString += '\n';
+                }
+                if (!isContinue || !(chat[chat.length - 1]?.is_user)) {
+                    lastMesString += `${name2}:`;
+                }
+            }
+
+            return lastMesString;
+        }
+
+        async function checkPromptSize() {
+            console.debug('---checking Prompt size');
+            setPromptString();
+            const jointMessages = mesSend.map((e) => `${e.extensionPrompts.join('')}${e.message}`).join('');
+            const prompt = [
+                combinedStoryString,
+                mesExmString,
+                addChatsPreamble(addChatsSeparator(jointMessages)),
+                '\n',
+                modifyLastPromptLine(''),
+                generatedPromptCache,
+            ].join('').replace(/\r/gm, '');
+            let thisPromptContextSize = await getTokenCountAsync(prompt, power_user.token_padding);
+
+            if (thisPromptContextSize > this_max_context) {        //if the prepared prompt is larger than the max context size...
+                if (count_exm_add > 0) {                            // ..and we have example messages..
+                    count_exm_add--;                            // remove the example messages...
+                    await checkPromptSize();                            // and try agin...
+                } else if (mesSend.length > 0) {                    // if the chat history is longer than 0
+                    mesSend.shift();                            // remove the first (oldest) chat entry..
+                    await checkPromptSize();                            // and check size again..
+                } else {
+                //end
+                    console.debug(`---mesSend.length = ${mesSend.length}`);
+                }
+            }
+        }
+
+        if (generatedPromptCache.length > 0 && main_api !== 'openai') {
+            console.debug('---Generated Prompt Cache length: ' + generatedPromptCache.length);
+            await checkPromptSize();
+        } else {
+            console.debug('---calling setPromptString ' + generatedPromptCache.length);
+            setPromptString();
+        }
+
+        // For prompt bit itemization
+        let mesSendString = '';
+
+        async function getCombinedPrompt(isNegative) {
+        // Only return if the guidance scale doesn't exist or the value is 1
+        // Also don't return if constructing the neutral prompt
+            if (isNegative && !useCfgPrompt) {
+                return;
+            }
+
+            // OAI has its own prompt manager. No need to do anything here
+            if (main_api === 'openai') {
+                return '';
+            }
+
+            // Deep clone
+            let finalMesSend = structuredClone(mesSend);
+
+            if (useCfgPrompt) {
+                const cfgPrompt = getCfgPrompt(cfgGuidanceScale, isNegative);
+                if (cfgPrompt.value) {
+                    if (cfgPrompt.depth === 0) {
+                        finalMesSend[finalMesSend.length - 1].message +=
+                        /\s/.test(finalMesSend[finalMesSend.length - 1].message.slice(-1))
+                            ? cfgPrompt.value
+                            : ` ${cfgPrompt.value}`;
+                    } else {
+                    // TODO: Make all extension prompts use an array/splice method
+                        const lengthDiff = mesSend.length - cfgPrompt.depth;
+                        const cfgDepth = lengthDiff >= 0 ? lengthDiff : 0;
+                        const cfgMessage = finalMesSend[cfgDepth];
+                        if (cfgMessage) {
+                            if (!Array.isArray(finalMesSend[cfgDepth].extensionPrompts)) {
+                                finalMesSend[cfgDepth].extensionPrompts = [];
+                            }
+                            finalMesSend[cfgDepth].extensionPrompts.push(`${cfgPrompt.value}\n`);
+                        }
+                    }
+                }
+            }
+
+            // Add prompt bias after everything else
+            // Always run with continue
+            if (!isInstruct && !isImpersonate) {
+                if (promptBias.trim().length !== 0) {
+                    finalMesSend[finalMesSend.length - 1].message +=
+                    /\s/.test(finalMesSend[finalMesSend.length - 1].message.slice(-1))
+                        ? promptBias.trimStart()
+                        : ` ${promptBias.trimStart()}`;
+                }
+            }
+
+            // Flattens the multiple prompt objects to a string.
+            const combine = () => {
+            // Right now, everything is suffixed with a newline
+                mesSendString = finalMesSend.map((e) => `${e.extensionPrompts.join('')}${e.message}`).join('');
+
+                // add a custom dingus (if defined)
+                mesSendString = addChatsSeparator(mesSendString);
+
+                // add chat preamble
+                mesSendString = addChatsPreamble(mesSendString);
+
+                let combinedPrompt = [
+                    combinedStoryString,
+                    mesExmString,
+                    mesSendString,
+                    generatedPromptCache,
+                ].join('').replace(/\r/gm, '');
+
+                if (power_user.collapse_newlines) {
+                    combinedPrompt = collapseNewlines(combinedPrompt);
+                }
+
+                return combinedPrompt;
+            };
+
+            finalMesSend.forEach((item, i) => {
+                item.injected = injectedIndices.includes(finalMesSend.length - i - 1);
+            });
+
+            let data = {
+                api: main_api,
+                combinedPrompt: null,
+                description,
+                personality,
+                persona,
+                scenario,
+                char: name2,
+                user: name1,
+                worldInfoBefore,
+                worldInfoAfter,
+                beforeScenarioAnchor,
+                afterScenarioAnchor,
+                storyString,
+                mesExmString,
+                mesSendString,
+                finalMesSend,
+                generatedPromptCache,
+                main: system,
+                jailbreak,
+                naiPreamble: nai_settings.preamble,
+            };
+
+            // Before returning the combined prompt, give available context related information to all subscribers.
+            await eventSource.emit(event_types.GENERATE_BEFORE_COMBINE_PROMPTS, data);
+
+            // If one or multiple subscribers return a value, forfeit the responsibillity of flattening the context.
+            return !data.combinedPrompt ? combine() : data.combinedPrompt;
+        }
+
+        let finalPrompt = await getCombinedPrompt(false);
+
+        const eventData = { prompt: finalPrompt, dryRun: dryRun };
+        await eventSource.emit(event_types.GENERATE_AFTER_COMBINE_PROMPTS, eventData);
+        if (!isCurrent()) return;
+        finalPrompt = eventData.prompt;
+
+        let maxLength = Number(amount_gen); // how many tokens the AI will be requested to generate
+        let thisPromptBits = [];
+
+        let generate_data;
+        switch (main_api) {
+            case 'koboldhorde':
+            case 'kobold':
+                if (main_api == 'koboldhorde' && horde_settings.auto_adjust_response_length) {
+                    maxLength = Math.min(maxLength, adjustedParams.maxLength);
+                    maxLength = Math.max(maxLength, MIN_LENGTH); // prevent validation errors
+                }
+
+                generate_data = {
+                    prompt: finalPrompt,
+                    gui_settings: true,
+                    max_length: maxLength,
+                    max_context_length: max_context,
+                    api_server: kai_settings.api_server,
+                };
+
+                if (kai_settings.preset_settings != 'gui') {
+                    const isHorde = main_api == 'koboldhorde';
+                    const presetSettings = koboldai_settings[koboldai_setting_names[kai_settings.preset_settings]];
+                    const maxContext = (adjustedParams && horde_settings.auto_adjust_context_length) ? adjustedParams.maxContextLength : max_context;
+                    generate_data = getKoboldGenerationData(finalPrompt, presetSettings, maxLength, maxContext, isHorde, type);
+                }
+                break;
+            case 'textgenerationwebui': {
+                const cfgValues = useCfgPrompt ? { guidanceScale: cfgGuidanceScale, negativePrompt: await getCombinedPrompt(true) } : null;
+                generate_data = await getTextGenGenerationData(finalPrompt, maxLength, isImpersonate, isContinue, cfgValues, type, { cacheScope: resolvedCacheScope });
+                break;
+            }
+            case 'novel': {
+                const cfgValues = useCfgPrompt ? { guidanceScale: cfgGuidanceScale } : null;
+                const presetSettings = novelai_settings[novelai_setting_names[nai_settings.preset_settings_novel]];
+                const responseTokens = applyGenerationRequestControls({ max_length: maxLength, model: nai_settings.model_novel }, requestControls).max_length;
+                generate_data = getNovelGenerationData(finalPrompt, presetSettings, responseTokens, isImpersonate, isContinue, cfgValues, type);
+                requestControls.responseLength = null;
+                break;
+            }
+            case 'openai': {
+                let [prompt, counts] = await prepareOpenAIMessages({
+                    name2: name2,
+                    charDescription: description,
+                    charPersonality: personality,
+                    scenario: scenario,
+                    worldInfoBefore: worldInfoBefore,
+                    worldInfoAfter: worldInfoAfter,
+                    extensionPrompts: generationExtensionPrompts,
+                    bias: promptBias,
+                    type: type,
+                    quietPrompt: quiet_prompt,
+                    quietImage: quietImage,
+                    cyclePrompt: cyclePrompt,
+                    systemPromptOverride: system,
+                    jailbreakPromptOverride: jailbreak,
+                    messages: oaiMessages,
+                    messageExamples: oaiMessageExamples,
+                    responseLength: requestResponseLength,
+                }, dryRun);
+                if (!isCurrent()) return;
+                generate_data = { prompt: prompt, cacheScope: resolvedCacheScope };
+
+                // TODO: move these side-effects somewhere else, so this switch-case solely sets generate_data
+                // counts will return false if the user has not enabled the token breakdown feature
+                if (counts) {
+                    parseTokenCounts(counts, thisPromptBits);
+                }
+
+                if (!dryRun) {
+                    setInContextMessages(openai_messages_count, type, preserveLastMessage);
+                }
+                break;
+            }
+        }
+
+        await eventSource.emit(event_types.GENERATE_AFTER_DATA, generate_data, dryRun);
+        if (!isCurrent()) return;
+
+        if (dryRun) {
+            return Promise.resolve();
+        }
+
+        /**
      * Saves itemized prompt bits and calls streaming or non-streaming generation API.
      * @returns {Promise<void|*|Awaited<*>|String|{fromStream}|string|undefined|Object>}
      * @throws {Error|object} Error with message text, or Error with response JSON (OAI/Horde), or the actual response JSON (novel|textgenerationwebui|kobold)
      */
-    async function finishGenerating() {
-        if (power_user.console_log_prompts) {
-            console.log(typeof generate_data.prompt === 'string' ? generate_data.prompt : JSON.stringify(generate_data.prompt));
-        }
+        async function finishGenerating() {
+            if (!isCurrent()) return;
+            if (power_user.console_log_prompts) {
+                console.log(typeof generate_data.prompt === 'string' ? generate_data.prompt : JSON.stringify(generate_data.prompt));
+            }
 
-        console.log(`[rungenerate] calling API: main_api=${main_api}${main_api === 'openai' ? ` source=${oai_settings.chat_completion_source} model=${getChatCompletionModel(oai_settings)}` : ''}`);
+            console.log(`[rungenerate] calling API: main_api=${main_api}${main_api === 'openai' ? ` source=${oai_settings.chat_completion_source} model=${getChatCompletionModel(oai_settings)}` : ''}`);
 
-        showStopButton();
+            if (!isAuxiliaryGeneration) showStopButton();
 
-        //set array object for prompt token itemization of this message
-        let currentArrayEntry = Number(thisPromptBits.length - 1);
-        let additionalPromptStuff = {
-            ...thisPromptBits[currentArrayEntry],
-            rawPrompt: generate_data.prompt || generate_data.input,
-            mesId: getNextMessageId(type, preserveLastMessage),
-            allAnchors: await getAllExtensionPrompts(),
-            chatInjects: injectedIndices?.map(index => arrMes[arrMes.length - index - 1])?.join('') || '',
-            summarizeString: (extension_prompts['1_memory']?.value || ''),
-            authorsNoteString: (extension_prompts['2_floating_prompt']?.value || ''),
-            smartContextString: (extension_prompts.chromadb?.value || ''),
-            chatVectorsString: (extension_prompts['3_vectors']?.value || ''),
-            dataBankVectorsString: (extension_prompts['4_vectors_data_bank']?.value || ''),
-            worldInfoString: worldInfoString,
-            storyString: storyString,
-            beforeScenarioAnchor: beforeScenarioAnchor,
-            afterScenarioAnchor: afterScenarioAnchor,
-            examplesString: examplesString,
-            mesSendString: mesSendString,
-            generatedPromptCache: generatedPromptCache,
-            promptBias: promptBias,
-            finalPrompt: finalPrompt,
-            charDescription: description,
-            charPersonality: personality,
-            scenarioText: scenario,
-            this_max_context: this_max_context,
-            padding: power_user.token_padding,
-            main_api: main_api,
-            instruction: main_api !== 'openai' && power_user.sysprompt.enabled ? substituteParams(power_user.prefer_character_prompt && system ? system : power_user.sysprompt.content) : '',
-            userPersona: (power_user.persona_description_position == persona_description_positions.IN_PROMPT ? (persona || '') : ''),
-            tokenizer: getFriendlyTokenizerName(main_api).tokenizerName || '',
-            presetName: getPresetManager()?.getSelectedPresetName() || '',
-            messagesCount: main_api !== 'openai' ? mesSend.length : oaiMessages.length,
-            examplesCount: main_api !== 'openai' ? (pinExmString ? mesExamplesArray.length : count_exm_add) : oaiMessageExamples.length,
-        };
+            //set array object for prompt token itemization of this message
+            let currentArrayEntry = Number(thisPromptBits.length - 1);
+            let additionalPromptStuff = {
+                ...thisPromptBits[currentArrayEntry],
+                rawPrompt: generate_data.prompt || generate_data.input,
+                mesId: getNextMessageId(type, preserveLastMessage),
+                allAnchors: await getAllExtensionPrompts(),
+                chatInjects: injectedIndices?.map(index => arrMes[arrMes.length - index - 1])?.join('') || '',
+                summarizeString: (extension_prompts['1_memory']?.value || ''),
+                authorsNoteString: (extension_prompts['2_floating_prompt']?.value || ''),
+                smartContextString: (extension_prompts.chromadb?.value || ''),
+                chatVectorsString: (extension_prompts['3_vectors']?.value || ''),
+                dataBankVectorsString: (extension_prompts['4_vectors_data_bank']?.value || ''),
+                worldInfoString: worldInfoString,
+                storyString: storyString,
+                beforeScenarioAnchor: beforeScenarioAnchor,
+                afterScenarioAnchor: afterScenarioAnchor,
+                examplesString: examplesString,
+                mesSendString: mesSendString,
+                generatedPromptCache: generatedPromptCache,
+                promptBias: promptBias,
+                finalPrompt: finalPrompt,
+                charDescription: description,
+                charPersonality: personality,
+                scenarioText: scenario,
+                this_max_context: this_max_context,
+                padding: power_user.token_padding,
+                main_api: main_api,
+                instruction: main_api !== 'openai' && power_user.sysprompt.enabled ? substituteParams(power_user.prefer_character_prompt && system ? system : power_user.sysprompt.content) : '',
+                userPersona: (power_user.persona_description_position == persona_description_positions.IN_PROMPT ? (persona || '') : ''),
+                tokenizer: getFriendlyTokenizerName(main_api).tokenizerName || '',
+                presetName: getPresetManager()?.getSelectedPresetName() || '',
+                messagesCount: main_api !== 'openai' ? mesSend.length : oaiMessages.length,
+                examplesCount: main_api !== 'openai' ? (pinExmString ? mesExamplesArray.length : count_exm_add) : oaiMessageExamples.length,
+            };
+            if (!isCurrent()) return;
 
-        //console.log(additionalPromptStuff);
-        const itemizedIndex = itemizedPrompts.findIndex((item) => item.mesId === additionalPromptStuff.mesId);
+            //console.log(additionalPromptStuff);
+            const itemizedIndex = itemizedPrompts.findIndex((item) => item.mesId === additionalPromptStuff.mesId);
 
-        if (itemizedIndex !== -1) {
-            itemizedPrompts[itemizedIndex] = additionalPromptStuff;
-        } else {
-            itemizedPrompts.push(additionalPromptStuff);
-        }
+            if (itemizedIndex !== -1) {
+                itemizedPrompts[itemizedIndex] = additionalPromptStuff;
+            } else {
+                itemizedPrompts.push(additionalPromptStuff);
+            }
 
-        console.debug(`pushed prompt bits to itemizedPrompts array. Length is now: ${itemizedPrompts.length}`);
+            console.debug(`pushed prompt bits to itemizedPrompts array. Length is now: ${itemizedPrompts.length}`);
 
-        if (isStreamingEnabled() && type !== 'quiet') {
-            let startedSuccessorGeneration = false;
-            try {
-                continue_mag = promptReasoning.removePrefix(continue_mag);
-                const activeStreamingProcessor = streamingProcessor = new StreamingProcessor(type, force_name2, generation_started, continue_mag, promptReasoning);
-                if (isContinue) {
+            if (isStreamingEnabled() && type !== 'quiet') {
+                let startedSuccessorGeneration = false;
+                try {
+                    continue_mag = promptReasoning.removePrefix(continue_mag);
+                    const activeStreamingProcessor = streamingProcessor = new StreamingProcessor(type, force_name2, generation_started, continue_mag, promptReasoning, requestControls);
+                    activeStreamingProcessor.isCurrentGeneration = isCurrent;
+                    activeStreamingProcessor.agentGenerationContext = agentGenerationContext;
+                    activeStream = activeStreamingProcessor;
+                    if (isContinue) {
                     // Save reply does add cycle text to the prompt, so it's not needed here
-                    activeStreamingProcessor.firstMessageText = '';
-                }
+                        activeStreamingProcessor.firstMessageText = '';
+                    }
 
-                const shouldBufferOutput = await shouldBufferMainGenerationOutput({ type, isStreaming: true });
-                activeStreamingProcessor.generator = await sendStreamingRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope });
+                    const shouldBufferOutput = await shouldBufferMainGenerationOutput({ type, isStreaming: true });
+                    if (!isCurrent()) return;
+                    activeStreamingProcessor.generator = await sendStreamingRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope, signal, ...requestControls });
+                    if (!isCurrent()) return;
 
-                hideSwipeButtons();
-                let getMessage = shouldBufferOutput
-                    ? await activeStreamingProcessor.generateBuffered()
-                    : await activeStreamingProcessor.generate();
-                let messageChunk = cleanUpMessage({
-                    getMessage: getMessage,
-                    isImpersonate: isImpersonate,
-                    isContinue: isContinue,
-                    displayIncompleteSentences: false,
-                });
+                    hideSwipeButtons();
+                    let getMessage = shouldBufferOutput
+                        ? await activeStreamingProcessor.generateBuffered()
+                        : await activeStreamingProcessor.generate();
+                    if (!isCurrent()) return;
+                    let messageChunk = cleanUpMessage({
+                        getMessage: getMessage,
+                        isImpersonate: isImpersonate,
+                        isContinue: isContinue,
+                        displayIncompleteSentences: activeStreamingProcessor.finishReason === 'length',
+                    });
 
-                if (isContinue) {
-                    getMessage = continue_mag + getMessage;
-                }
+                    const isReasoningOnlyStream = !getMessage.trim() && !!(activeStreamingProcessor.reasoningHandler.reasoning || activeStreamingProcessor.pendingReasoning);
 
-                const isStreamCancelled = activeStreamingProcessor.isStopped
+                    if (isContinue) {
+                        getMessage = continue_mag + getMessage;
+                    }
+
+                    const isStreamCancelled = activeStreamingProcessor.isStopped
                     || activeStreamingProcessor.isCancelled
                     || activeStreamingProcessor.abortController.signal.aborted;
-                const isStreamFinished = !isStreamCancelled && activeStreamingProcessor.isFinished;
-                const isStreamWithToolCalls = Array.isArray(activeStreamingProcessor.toolCalls) && activeStreamingProcessor.toolCalls.length;
-                if (canPerformToolCalls && isStreamFinished && isStreamWithToolCalls) {
-                    const hasToolCalls = ToolManager.hasToolCalls(activeStreamingProcessor.toolCalls);
-                    const lastMessage = chat[chat.length - 1];
-                    const shouldDeleteMessage = !shouldBufferOutput && type !== 'swipe' && ['', '...'].includes(lastMessage?.mes) && !lastMessage?.extra?.reasoning && ['', '...'].includes(activeStreamingProcessor.result);
-                    hasToolCalls && shouldDeleteMessage && await deleteLastMessage();
-                    if (!shouldBufferOutput && hasToolCalls && !shouldDeleteMessage) {
-                        await activeStreamingProcessor.finalizeIntermediaryMessage(activeStreamingProcessor.messageId, getMessage, { unlockUI: false });
+                    const isStreamFinished = !isStreamCancelled && activeStreamingProcessor.isFinished;
+                    const isStreamWithToolCalls = Array.isArray(activeStreamingProcessor.toolCalls) && activeStreamingProcessor.toolCalls.length;
+
+                    if (isStreamFinished && !isStreamWithToolCalls && isReasoningOnlyStream) {
+                        toastr.warning(t`The model finished reasoning but returned no reply text.`);
                     }
-                    const invocationResult = await ToolManager.invokeFunctionTools(activeStreamingProcessor.toolCalls, {
-                        reasoningText: activeStreamingProcessor.reasoningHandler.reasoning,
-                    });
-                    const shouldStopGeneration = (!invocationResult.invocations.length && shouldDeleteMessage) || invocationResult.stealthCalls.length;
-                    if (hasToolCalls) {
-                        if (shouldStopGeneration) {
-                            if (Array.isArray(invocationResult.errors) && invocationResult.errors.length) {
-                                ToolManager.showToolCallError(invocationResult.errors);
+                    if (canPerformToolCalls && isStreamFinished && isStreamWithToolCalls) {
+                        const hasToolCalls = ToolManager.hasToolCalls(activeStreamingProcessor.toolCalls);
+                        const lastMessage = chat[chat.length - 1];
+                        const shouldDeleteMessage = !shouldBufferOutput && type !== 'swipe' && ['', '...'].includes(lastMessage?.mes) && !lastMessage?.extra?.reasoning && ['', '...'].includes(activeStreamingProcessor.result);
+                        hasToolCalls && shouldDeleteMessage && await deleteLastMessage();
+                        if (!shouldBufferOutput && hasToolCalls && !shouldDeleteMessage) {
+                            await activeStreamingProcessor.finalizeIntermediaryMessage(activeStreamingProcessor.messageId, getMessage, { unlockUI: false });
+                        }
+                        const invocationResult = await ToolManager.invokeFunctionTools(activeStreamingProcessor.toolCalls, {
+                            reasoningText: activeStreamingProcessor.reasoningHandler.reasoning,
+                            isCurrent,
+                            signal,
+                        });
+                        if (!isCurrent()) return;
+                        const shouldStopGeneration = (!invocationResult.invocations.length && shouldDeleteMessage) || invocationResult.stealthCalls.length;
+                        if (hasToolCalls) {
+                            if (shouldStopGeneration) {
+                                if (Array.isArray(invocationResult.errors) && invocationResult.errors.length) {
+                                    ToolManager.showToolCallError(invocationResult.errors);
+                                }
+                                unblockGeneration(type);
+                                clearStreamingProcessorIfCurrent(activeStreamingProcessor);
+                                return;
                             }
+
+                            clearStreamingProcessorIfCurrent(activeStreamingProcessor);
+                            depth = depth + 1;
+                            await ToolManager.saveFunctionToolInvocations(invocationResult.invocations);
+                            if (!isCurrent()) return;
+                            startedSuccessorGeneration = true;
+                            delegatedGeneration = true;
+                            return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage, cacheScope: resolvedCacheScope, companionHistoryTarget: companionRewriteTarget, ...requestControls }, dryRun);
+                        }
+                    }
+
+                    if (isStreamFinished) {
+                        if (shouldBufferOutput) {
+                            const interceptResult = await applyMainGenerationOutputInterceptors({
+                                type,
+                                text: getMessage,
+                                isStreaming: true,
+                            });
+
+                            if (interceptResult.cancelled || !isCurrent() || activeStreamingProcessor.abortController.signal.aborted) {
+                                if (isCurrent()) unblockGeneration(type, { emitGenerationEnded: false });
+                                clearStreamingProcessorIfCurrent(activeStreamingProcessor);
+                                return;
+                            }
+
+                            getMessage = interceptResult.text;
+                            messageChunk = cleanUpMessage({
+                                getMessage: getMessage,
+                                isImpersonate: isImpersonate,
+                                isContinue: isContinue,
+                                displayIncompleteSentences: activeStreamingProcessor.finishReason === 'length',
+                            });
+
+                            const saveReplyType = originalType !== 'continue' ? type : 'appendFinal';
+                            ({ type, getMessage } = await saveReply({
+                                type: saveReplyType,
+                                isCurrent,
+                                getMessage,
+                                swipes: activeStreamingProcessor.swipes,
+                                reasoning: activeStreamingProcessor.lastReasoningPrefix
+                                    ? activeStreamingProcessor.reasoningHandler.reasoning.slice(promptReasoning.prefixReasoning.length)
+                                    : activeStreamingProcessor.reasoningHandler.reasoning,
+                                imageUrls: activeStreamingProcessor.images,
+                                reasoningSignature: activeStreamingProcessor.reasoningSignature,
+                                reasoningTokens: activeStreamingProcessor.reasoningTokens,
+                            }));
+                            if (!isCurrent()) return;
+                            saveLogprobsForActiveMessage(activeStreamingProcessor.messageLogprobs.filter(Boolean), continue_mag);
                             unblockGeneration(type);
                             clearStreamingProcessorIfCurrent(activeStreamingProcessor);
-                            return;
+
+                            const isAborted = activeStreamingProcessor.abortController.signal.aborted;
+                            if (!isAborted && power_user.auto_swipe && generatedTextFiltered(getMessage)) {
+                                return await swipe(null, SWIPE_DIRECTION.RIGHT, { source: SWIPE_SOURCE.AUTO_SWIPE, repeated: true, forceMesId: chat.length - 1, generationOptions: requestControls });
+                            }
+
+                            await saveChatConditional();
+                            if (!isCurrent()) return;
+                            playMessageSound();
+                            triggerAutoContinue(messageChunk, isImpersonate, requestControls);
+                            return Object.defineProperties(new String(getMessage), {
+                                'messageChunk': { value: messageChunk },
+                                'fromStream': { value: true },
+                                'finishReason': { value: activeStreamingProcessor.finishReason },
+                            });
                         }
 
+                        await activeStreamingProcessor.onFinishStreaming(activeStreamingProcessor.messageId, getMessage);
+                        if (!isCurrent()) return;
                         clearStreamingProcessorIfCurrent(activeStreamingProcessor);
-                        depth = depth + 1;
-                        await ToolManager.saveFunctionToolInvocations(invocationResult.invocations);
-                        startedSuccessorGeneration = true;
-                        return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage, companionHistoryTarget: companionRewriteTarget }, dryRun);
-                    }
-                }
-
-                if (isStreamFinished) {
-                    if (shouldBufferOutput) {
-                        const interceptResult = await applyMainGenerationOutputInterceptors({
-                            type,
-                            text: getMessage,
-                            isStreaming: true,
-                        });
-
-                        if (interceptResult.cancelled || activeStreamingProcessor.abortController.signal.aborted) {
-                            unblockGeneration(type, { emitGenerationEnded: false });
-                            clearStreamingProcessorIfCurrent(activeStreamingProcessor);
-                            return;
-                        }
-
-                        getMessage = interceptResult.text;
-                        messageChunk = cleanUpMessage({
-                            getMessage: getMessage,
-                            isImpersonate: isImpersonate,
-                            isContinue: isContinue,
-                            displayIncompleteSentences: false,
-                        });
-
-                        const saveReplyType = originalType !== 'continue' ? type : 'appendFinal';
-                        ({ type, getMessage } = await saveReply({
-                            type: saveReplyType,
-                            getMessage,
-                            swipes: activeStreamingProcessor.swipes,
-                            reasoning: activeStreamingProcessor.reasoningHandler.reasoning,
-                            imageUrls: activeStreamingProcessor.images,
-                            reasoningSignature: activeStreamingProcessor.reasoningSignature,
-                            reasoningTokens: activeStreamingProcessor.reasoningTokens,
-                        }));
-                        saveLogprobsForActiveMessage(activeStreamingProcessor.messageLogprobs.filter(Boolean), continue_mag);
-                        unblockGeneration(type);
-                        clearStreamingProcessorIfCurrent(activeStreamingProcessor);
-
-                        const isAborted = activeStreamingProcessor.abortController.signal.aborted;
-                        if (!isAborted && power_user.auto_swipe && generatedTextFiltered(getMessage)) {
-                            return await swipe(null, SWIPE_DIRECTION.RIGHT, { source: SWIPE_SOURCE.AUTO_SWIPE, repeated: true, forceMesId: chat.length - 1 });
-                        }
-
-                        await saveChatConditional();
-                        playMessageSound();
-                        triggerAutoContinue(messageChunk, isImpersonate);
+                        triggerAutoContinue(messageChunk, isImpersonate, requestControls);
                         return Object.defineProperties(new String(getMessage), {
                             'messageChunk': { value: messageChunk },
                             'fromStream': { value: true },
+                            'finishReason': { value: activeStreamingProcessor.finishReason },
                         });
                     }
 
-                    await activeStreamingProcessor.onFinishStreaming(activeStreamingProcessor.messageId, getMessage);
                     clearStreamingProcessorIfCurrent(activeStreamingProcessor);
-                    triggerAutoContinue(messageChunk, isImpersonate);
-                    return Object.defineProperties(new String(getMessage), {
-                        'messageChunk': { value: messageChunk },
-                        'fromStream': { value: true },
-                    });
-                }
-
-                clearStreamingProcessorIfCurrent(activeStreamingProcessor);
-                return;
-            } finally {
+                    return;
+                } finally {
                 // SillyBunny: Safety net - every streaming exit path must leave the UI idle.
                 // Cancelled streams used to skip unblockGeneration(), leaving is_send_press stuck.
-                if (is_send_press && streamingProcessor === null && !startedSuccessorGeneration) {
-                    unblockGeneration(type);
+                    if (isCurrent() && is_send_press && streamingProcessor === null && !startedSuccessorGeneration) {
+                        unblockGeneration(type);
+                    }
                 }
+            } else {
+                return await sendGenerationRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope, signal, ...requestControls });
             }
-        } else {
-            return await sendGenerationRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope });
         }
-    }
 
-    return finishGenerating().then(onSuccess, onError);
+        return await finishGenerating().then(onSuccess, onError);
 
-    /**
+        /**
      * Handles the successful response from the generation API.
      * @param data
      * @returns {Promise<String|{fromStream}|*|string|string|void|Awaited<*>|undefined>}
      * @throws {Error} Throws an error if the response data contains an error message
      */
-    async function onSuccess(data) {
-        if (!data) {
+        async function onSuccess(data) {
+            if (delegatedGeneration) return data;
+            if (!isCurrent()) return;
+            if (!data) {
             // SillyBunny: unblock generation on null/falsy data so the send
             // buttons are not left locked. (#527)
-            unblockGeneration(type, { force: true });
-            return;
-        }
-
-        if (data?.fromStream) {
-            return data;
-        }
-
-        let messageChunk = '';
-
-        // if an error was returned in data (textgenwebui), show it and throw it
-        if (data.error) {
-            unblockGeneration(type);
-
-            if (data?.response) {
-                toastr.error(data.response, t`API Error`, { preventDuplicates: true });
-            }
-            throw new Error(data?.response);
-        }
-
-        if (jsonSchema) {
-            unblockGeneration(type);
-            return extractJsonFromData(data, { returnInvalidJson: jsonSchema.returnInvalid ?? false });
-        }
-
-        //const getData = await response.json();
-        let getMessage = extractMessageFromData(data);
-        let title = extractTitleFromData(data);
-        let reasoning = extractReasoningFromData(data);
-        let imageUrls = extractImagesFromData(data);
-        const reasoningSignature = extractReasoningSignatureFromData(data);
-        kobold_horde_model = title;
-
-        const swipes = extractMultiSwipes(data, type);
-
-        messageChunk = cleanUpMessage({
-            getMessage: getMessage,
-            isImpersonate: isImpersonate,
-            isContinue: isContinue,
-            displayIncompleteSentences: false,
-        });
-
-
-        reasoning = getRegexedString(reasoning, regex_placement.REASONING);
-
-        if (power_user.trim_spaces) {
-            reasoning = reasoning.trim();
-        }
-
-        if (isContinue) {
-            continue_mag = promptReasoning.removePrefix(continue_mag);
-            getMessage = continue_mag + getMessage;
-        }
-
-        //Formating
-        const displayIncomplete = type === 'quiet' && !quietToLoud;
-        getMessage = cleanUpMessage({
-            getMessage: getMessage,
-            isImpersonate: isImpersonate,
-            isContinue: isContinue,
-            displayIncompleteSentences: displayIncomplete,
-        });
-
-        const interceptResult = await applyMainGenerationOutputInterceptors({
-            type,
-            text: getMessage,
-            isStreaming: false,
-        });
-
-        if (interceptResult.cancelled || (abortController && abortController.signal.aborted)) {
-            unblockGeneration(type, { emitGenerationEnded: false });
-            streamingProcessor = null;
-            return;
-        }
-
-        getMessage = interceptResult.text;
-        messageChunk = cleanUpMessage({
-            getMessage: getMessage,
-            isImpersonate: isImpersonate,
-            isContinue: isContinue,
-            displayIncompleteSentences: false,
-        });
-
-        if (isImpersonate) {
-            $('#send_textarea').val(getMessage)[0].dispatchEvent(new Event('input', { bubbles: true }));
-            await eventSource.emit(event_types.IMPERSONATE_READY, getMessage);
-        } else if (type == 'quiet') {
-            unblockGeneration(type);
-            return getMessage;
-        } else {
-            // Without streaming we'll be having a full message on continuation. Treat it as a last chunk.
-            if (originalType !== 'continue') {
-                ({ type, getMessage } = await saveReply({ type, getMessage, title, swipes, reasoning, imageUrls, reasoningSignature, reasoningTokens: data.reasoningTokens }));
-            } else {
-                ({ type, getMessage } = await saveReply({ type: 'appendFinal', getMessage, title, swipes, reasoning, imageUrls, reasoningSignature, reasoningTokens: data.reasoningTokens }));
+                if (!isAuxiliaryGeneration) unblockGeneration(type, { force: true });
+                return;
             }
 
-            // This relies on `saveReply` having been called to add the message to the chat, so it must be last.
-            parseAndSaveLogprobs(data, continue_mag);
-        }
+            if (data?.fromStream) {
+                return data;
+            }
 
-        if (canPerformToolCalls) {
-            const hasToolCalls = ToolManager.hasToolCalls(data);
-            const shouldDeleteMessage = type !== 'swipe' && ['', '...'].includes(getMessage) && !reasoning;
-            hasToolCalls && shouldDeleteMessage && await deleteLastMessage();
-            const invocationResult = await ToolManager.invokeFunctionTools(data, { reasoningText: reasoning });
-            const shouldStopGeneration = (!invocationResult.invocations.length && shouldDeleteMessage) || invocationResult.stealthCalls.length;
-            if (hasToolCalls) {
-                if (shouldStopGeneration) {
-                    if (Array.isArray(invocationResult.errors) && invocationResult.errors.length) {
-                        ToolManager.showToolCallError(invocationResult.errors);
-                    }
-                    unblockGeneration(type);
-                    return;
+            let messageChunk = '';
+
+            // if an error was returned in data (textgenwebui), show it and throw it
+            if (data.error) {
+                unblockGeneration(type);
+
+                if (data?.response) {
+                    toastr.error(data.response, t`API Error`, { preventDuplicates: true });
                 }
-
-                depth = depth + 1;
-                await ToolManager.saveFunctionToolInvocations(invocationResult.invocations);
-                return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage, companionHistoryTarget: companionRewriteTarget }, dryRun);
+                throw new Error(data?.response);
             }
+
+            if (jsonSchema) {
+                unblockGeneration(type);
+                return extractJsonFromData(data, { returnInvalidJson: jsonSchema.returnInvalid ?? false });
+            }
+
+            //const getData = await response.json();
+            let getMessage = extractMessageFromData(data);
+            let title = extractTitleFromData(data);
+            let reasoning = extractReasoningFromData(data);
+            let imageUrls = extractImagesFromData(data);
+            const reasoningSignature = extractReasoningSignatureFromData(data);
+            kobold_horde_model = title;
+
+            const swipes = extractMultiSwipes(data, type);
+
+            // SillyBunny: non-streaming reasoners keep their preset allowance; only separated prose is capped locally.
+            const reasoningPrefix = promptReasoning.prefixIncomplete && !reasoning ? promptReasoning.prefixReasoningFormatted : '';
+            const limitedOutput = limitGenerationProse(getMessage, maxOutputTokens, power_user.reasoning, reasoningPrefix);
+            limitedOutput.limited ||= Number.isFinite(maxOutputTokens) && maxOutputTokens > 0 && isGenerationLengthFinish(data);
+            getMessage = limitedOutput.text;
+            const inlineReasoning = reasoningPrefix && limitedOutput.reasoning.startsWith(promptReasoning.prefixReasoning)
+                ? limitedOutput.reasoning.slice(promptReasoning.prefixReasoning.length)
+                : limitedOutput.reasoning;
+            reasoning = [reasoning, inlineReasoning].filter(Boolean).join('\n\n');
+
+            messageChunk = cleanUpMessage({
+                getMessage: getMessage,
+                isImpersonate: isImpersonate,
+                isContinue: isContinue,
+                displayIncompleteSentences: limitedOutput.limited,
+            });
+
+
+            reasoning = getRegexedString(reasoning, regex_placement.REASONING);
+
+            if (power_user.trim_spaces) {
+                reasoning = reasoning.trim();
+            }
+
+            if (!getMessage.trim() && reasoning && type !== 'quiet') {
+                toastr.warning(t`The model finished reasoning but returned no reply text.`);
+            }
+
+            if (isContinue) {
+                continue_mag = promptReasoning.removePrefix(continue_mag);
+                getMessage = continue_mag + getMessage;
+            }
+
+            //Formating
+            const displayIncomplete = type === 'quiet' && !quietToLoud;
+            getMessage = cleanUpMessage({
+                getMessage: getMessage,
+                isImpersonate: isImpersonate,
+                isContinue: isContinue,
+                displayIncompleteSentences: displayIncomplete || limitedOutput.limited,
+            });
+
+            const interceptResult = await applyMainGenerationOutputInterceptors({
+                type,
+                text: getMessage,
+                isStreaming: false,
+            });
+
+            if (interceptResult.cancelled || !isCurrent()) {
+                if (isCurrent() && !isAuxiliaryGeneration) {
+                    unblockGeneration(type, { emitGenerationEnded: false });
+                    streamingProcessor = null;
+                }
+                return;
+            }
+
+            getMessage = interceptResult.text;
+            messageChunk = cleanUpMessage({
+                getMessage: getMessage,
+                isImpersonate: isImpersonate,
+                isContinue: isContinue,
+                displayIncompleteSentences: limitedOutput.limited,
+            });
+
+            if (isImpersonate) {
+                $('#send_textarea').val(getMessage)[0].dispatchEvent(new Event('input', { bubbles: true }));
+                await eventSource.emit(event_types.IMPERSONATE_READY, getMessage);
+            } else if (type == 'quiet') {
+                unblockGeneration(type);
+                return getMessage;
+            } else {
+            // Without streaming we'll be having a full message on continuation. Treat it as a last chunk.
+                if (originalType !== 'continue') {
+                    ({ type, getMessage } = await saveReply({ type, getMessage, title, swipes, reasoning, imageUrls, reasoningSignature, reasoningTokens: data.reasoningTokens, isCurrent }));
+                } else {
+                    ({ type, getMessage } = await saveReply({ type: 'appendFinal', getMessage, title, swipes, reasoning, imageUrls, reasoningSignature, reasoningTokens: data.reasoningTokens, isCurrent }));
+                }
+                if (!isCurrent()) return;
+
+                // This relies on `saveReply` having been called to add the message to the chat, so it must be last.
+                parseAndSaveLogprobs(data, continue_mag);
+            }
+
+            if (canPerformToolCalls) {
+                const hasToolCalls = ToolManager.hasToolCalls(data);
+                const shouldDeleteMessage = type !== 'swipe' && ['', '...'].includes(getMessage) && !reasoning;
+                hasToolCalls && shouldDeleteMessage && await deleteLastMessage();
+                const invocationResult = await ToolManager.invokeFunctionTools(data, { reasoningText: reasoning, isCurrent, signal });
+                if (!isCurrent()) return;
+                const shouldStopGeneration = (!invocationResult.invocations.length && shouldDeleteMessage) || invocationResult.stealthCalls.length;
+                if (hasToolCalls) {
+                    if (shouldStopGeneration) {
+                        if (Array.isArray(invocationResult.errors) && invocationResult.errors.length) {
+                            ToolManager.showToolCallError(invocationResult.errors);
+                        }
+                        unblockGeneration(type);
+                        return;
+                    }
+
+                    depth = depth + 1;
+                    await ToolManager.saveFunctionToolInvocations(invocationResult.invocations);
+                    if (!isCurrent()) return;
+                    return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage, cacheScope: resolvedCacheScope, companionHistoryTarget: companionRewriteTarget, ...requestControls }, dryRun);
+                }
+            }
+
+            if (type !== 'quiet') {
+                playMessageSound();
+            }
+
+            const isAborted = abortController && abortController.signal.aborted;
+            if (!isAborted && power_user.auto_swipe && generatedTextFiltered(getMessage)) {
+                is_send_press = false;
+                return await swipe(null, SWIPE_DIRECTION.RIGHT, { source: SWIPE_SOURCE.AUTO_SWIPE, repeated: true, forceMesId: chat.length - 1, generationOptions: requestControls });
+            }
+
+            console.debug('/api/chats/save called by /Generate');
+            await saveChatConditional();
+            if (!isCurrent()) return;
+            unblockGeneration(type);
+            streamingProcessor = null;
+
+            if (type !== 'quiet') {
+                triggerAutoContinue(messageChunk, isImpersonate, requestControls);
+            }
+
+            // Don't break the API chain that expects a single string in return
+            return Object.defineProperties(new String(getMessage), {
+                'messageChunk': { value: messageChunk },
+                'finishReason': { value: limitedOutput.limited ? 'length' : null },
+            });
         }
 
-        if (type !== 'quiet') {
-            playMessageSound();
-        }
-
-        const isAborted = abortController && abortController.signal.aborted;
-        if (!isAborted && power_user.auto_swipe && generatedTextFiltered(getMessage)) {
-            is_send_press = false;
-            return await swipe(null, SWIPE_DIRECTION.RIGHT, { source: SWIPE_SOURCE.AUTO_SWIPE, repeated: true, forceMesId: chat.length - 1 });
-        }
-
-        console.debug('/api/chats/save called by /Generate');
-        await saveChatConditional();
-        unblockGeneration(type);
-        streamingProcessor = null;
-
-        if (type !== 'quiet') {
-            triggerAutoContinue(messageChunk, isImpersonate);
-        }
-
-        // Don't break the API chain that expects a single string in return
-        return Object.defineProperty(new String(getMessage), 'messageChunk', { value: messageChunk });
-    }
-
-    /**
+        /**
      * Exception handler for finishGenerating
      * @param {Error|object} exception Error or response JSON
      * @throws {Error|object} Re-throws the exception
      */
-    function onError(exception) {
-        // if the response JSON was thrown (novel|textgenerationwebui|kobold), show the error message
-        if (typeof exception?.error?.message === 'string') {
-            toastr.error(exception.error.message, t`Text generation error`, { timeOut: 10000, extendedTimeOut: 20000 });
-        }
+        function onError(exception) {
+            if (!isCurrent()) throw exception;
+            // if the response JSON was thrown (novel|textgenerationwebui|kobold), show the error message
+            if (typeof exception?.error?.message === 'string') {
+                toastr.error(exception.error.message, t`Text generation error`, { timeOut: 10000, extendedTimeOut: 20000 });
+            }
 
-        eventSource.emit(event_types.GENERATION_STOPPED);
-        unblockGeneration(type, { emitGenerationEnded: false });
-        console.log(exception);
-        streamingProcessor = null;
-        throw exception;
+            if (!isAuxiliaryGeneration) {
+                eventSource.emit(event_types.GENERATION_STOPPED, ...(agentGenerationContext ? [agentGenerationContext] : []));
+                unblockGeneration(type, { emitGenerationEnded: false });
+                streamingProcessor = null;
+            }
+            console.log(exception);
+            throw exception;
+        }
+    } finally {
+        externalSignal?.removeEventListener('abort', onAbort);
+        requestController?.signal.removeEventListener('abort', stopStream);
+        eventSource.removeListener(event_types.GENERATION_ENDED, onEnded);
+        eventSource.removeListener(event_types.GENERATION_STOPPED, onStopped);
+        eventSource.removeListener(event_types.CHAT_CHANGED, onChatChanged);
+        if (run && activeGenerationRun === run) {
+            activeGenerationRun = null;
+            if (!run.terminal && getCurrentChatId() === originChatId && chatGeneration === originChatGeneration) {
+                unblockGeneration(type, { emitGenerationEnded: false, force: true });
+                await eventSource.emit(event_types.GENERATION_ENDED, chat.length, agentGenerationContext);
+            }
+        }
+        if (isAuxiliaryGeneration && abortController === requestController) {
+            abortController = activeGenerationRun?.controller ?? previousAbortController;
+        }
     }
 }
 //MARK: Generate() ends
@@ -8486,7 +8931,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 export function stopGeneration() {
     const activeStreamingProcessor = streamingProcessor;
     const stopState = resolveStopGenerationState({
-        isSendPressed: is_send_press,
+        isSendPressed: is_send_press || Boolean(activeGenerationRun),
         isGroupGenerating: is_group_generating,
         hasStreamingProcessor: Boolean(activeStreamingProcessor),
         streamingType: activeStreamingProcessor?.type,
@@ -8498,10 +8943,12 @@ export function stopGeneration() {
 
     if (stopState.shouldAbortRequest && abortController) {
         abortController.abort(stopState.abortReason);
+        activeGenerationRun?.controller.abort(stopState.abortReason);
     }
 
     if (stopState.shouldEmitStopped) {
-        eventSource.emitAndWait(event_types.GENERATION_STOPPED);
+        const generationContext = agentGenerationContextProvider?.();
+        eventSource.emitAndWait(event_types.GENERATION_STOPPED, ...(generationContext ? [generationContext] : []));
     }
 
     if (stopState.shouldClearStreamingProcessor) {
@@ -8590,6 +9037,9 @@ function flushWIInjections() {
  * @param {boolean} [options.force=false] Whether to bypass stream-wait guards.
  */
 function unblockGeneration(type, { emitGenerationEnded = true, force = false } = {}) {
+    // SillyBunny: a nested quiet helper must not end its owning main generation.
+    if (type === 'quiet' && activeGenerationRun && !force
+        && (activeGenerationRun.type !== 'quiet' || abortController !== activeGenerationRun.controller)) return;
     const unblockState = resolveGenerationUnblockState({
         type,
         hasStreamingProcessor: Boolean(streamingProcessor),
@@ -8623,9 +9073,13 @@ export function getNextMessageId(type, preserveLastMessage = false) {
  * Determines if the message should be auto-continued.
  * @param {string} messageChunk Current message chunk
  * @param {boolean} isImpersonate Is the user impersonation
+ * @param {GenerateOptions} [options] Request-local auto-continue controls
  * @returns {boolean} Whether the message should be auto-continued
  */
-export function shouldAutoContinue(messageChunk, isImpersonate) {
+export function shouldAutoContinue(messageChunk, isImpersonate, { suppressAutoContinue = false } = {}) {
+    if (suppressAutoContinue) {
+        return false;
+    }
     if (!power_user.auto_continue.enabled) {
         console.debug('Auto-continue is disabled by user.');
         return false;
@@ -8691,8 +9145,9 @@ export function shouldAutoContinue(messageChunk, isImpersonate) {
  * Triggers auto-continue if the message meets the criteria.
  * @param {string} messageChunk Current message chunk
  * @param {boolean} isImpersonate Is the user impersonation
+ * @param {GenerateOptions} [options] Controls forwarded to automatic continuations
  */
-export function triggerAutoContinue(messageChunk, isImpersonate) {
+export function triggerAutoContinue(messageChunk, isImpersonate, options = {}) {
     if (selected_group) {
         console.debug('Auto-continue is disabled for group chat');
         return;
@@ -8704,8 +9159,8 @@ export function triggerAutoContinue(messageChunk, isImpersonate) {
         return;
     }
 
-    if (shouldAutoContinue(messageChunk, isImpersonate)) {
-        $('#option_continue').trigger('click');
+    if (shouldAutoContinue(messageChunk, isImpersonate, options)) {
+        $('#option_continue').trigger('click', { generationOptions: options });
     }
 }
 
@@ -8733,8 +9188,11 @@ export function getBiasStrings(textareaText, type) {
         }
     }
 
-    promptBias = messageBias || promptBias || power_user.user_prompt_bias || '';
-    const isUserPromptBias = promptBias === power_user.user_prompt_bias;
+    // SillyBunny: Kimi K3 draws its prefill from its own preset-scoped field instead of the
+    // global Start Reply With, so that value stops leaking into every other model.
+    const userPromptBias = getEffectivePromptBias();
+    promptBias = messageBias || promptBias || userPromptBias || '';
+    const isUserPromptBias = promptBias === userPromptBias;
 
     // Substitute params for everything
     messageBias = substituteParams(messageBias);
@@ -9023,8 +9481,12 @@ function setInContextMessages(msgInContextCount, type, preserveLastMessage = fal
 
 /**
  * @typedef {object} AdditionalRequestOptions
+ * @property {AbortSignal} [signal] Originating request's cancellation signal
  * @property {JsonSchema} [jsonSchema]
  * @property {'main'|'auxiliary'|'none'} [cacheScope]
+ * @property {number} [maxOutputTokens]
+ * @property {number} [responseLength]
+ * @property {boolean} [preserveReasoningBudget]
  */
 
 /**
@@ -9036,20 +9498,22 @@ function setInContextMessages(msgInContextCount, type, preserveLastMessage = fal
  * @throws {Error|object}
  */
 export async function sendGenerationRequest(type, data, options = {}) {
+    const signal = options.signal ?? abortController.signal;
     if (main_api === 'openai') {
-        return await sendOpenAIRequest(type, data.prompt, abortController.signal, options);
+        return await sendOpenAIRequest(type, data.prompt, signal, options);
     }
 
+    data = applyGenerationRequestControls(data, { model: main_api === 'koboldhorde' ? horde_settings.models : getGeneratingModel(), ...options });
     if (main_api === 'koboldhorde') {
-        return await generateHorde(data.prompt, data, abortController.signal, true);
+        return await generateHorde(data.prompt, data, signal, true);
     }
 
-    const response = await fetch(getGenerateUrl(main_api), {
+    const response = await fetchResumable(getGenerateUrl(main_api), {
         method: 'POST',
         headers: getRequestHeaders(),
         cache: 'no-cache',
         body: JSON.stringify(data),
-        signal: abortController.signal,
+        signal,
     });
 
     if (!response.ok) {
@@ -9067,19 +9531,22 @@ export async function sendGenerationRequest(type, data, options = {}) {
  * @returns {Promise<any>} Streaming generator
  */
 export async function sendStreamingRequest(type, data, options = {}) {
-    if (abortController?.signal?.aborted) {
+    if ((options.signal ?? abortController?.signal)?.aborted) {
         throw new Error('Generation was aborted.');
     }
 
+    if (main_api !== 'openai') {
+        data = applyGenerationRequestControls(data, { model: getGeneratingModel(), ...options });
+    }
     switch (main_api) {
         case 'openai':
-            return await sendOpenAIRequest(type, data.prompt, streamingProcessor.abortController.signal, options);
+            return await sendOpenAIRequest(type, data.prompt, streamingProcessor.requestAbortController.signal, options);
         case 'textgenerationwebui':
-            return await generateTextGenWithStreaming(data, streamingProcessor.abortController.signal);
+            return await generateTextGenWithStreaming(data, streamingProcessor.requestAbortController.signal);
         case 'novel':
-            return await generateNovelWithStreaming(data, streamingProcessor.abortController.signal);
+            return await generateNovelWithStreaming(data, streamingProcessor.requestAbortController.signal);
         case 'kobold':
-            return await generateKoboldWithStreaming(data, streamingProcessor.abortController.signal);
+            return await generateKoboldWithStreaming(data, streamingProcessor.requestAbortController.signal);
         default:
             throw new Error('Streaming is enabled, but the current API does not support streaming.');
     }
@@ -9311,8 +9778,13 @@ export function extractMessageFromData(data, activeApi = null) {
                     || normalizeContentText(data?.text)
                     || normalizeContentText(data?.message?.content)
                     || normalizeContentText(data?.message?.tool_plan)
-                    || normalizeContentText(data?.responseContent?.parts)
-                    || normalizeContentText(data?.candidates?.[0]?.content?.parts)
+                    // SillyBunny: an empty reply must not fall back to Gemini's thinking parts.
+                    || normalizeContentText(Array.isArray(data?.responseContent?.parts)
+                        ? data.responseContent.parts.filter(part => !part?.thought)
+                        : data?.responseContent?.parts)
+                    || normalizeContentText(Array.isArray(data?.candidates?.[0]?.content?.parts)
+                        ? data.candidates[0].content.parts.filter(part => !part?.thought)
+                        : data?.candidates?.[0]?.content?.parts)
                     || stringifyUnknown(data?.message?.content);
             default:
                 return '';
@@ -9486,14 +9958,17 @@ export function cleanUpMessage({ getMessage, isImpersonate, isContinue, displayI
     }
 
     // Add the prompt bias before anything else
+    // SillyBunny: a partial-mode model returns only the continuation, so this has to prepend
+    // the same prefill that was sent -- Kimi K3's own field on K3, the global one elsewhere.
+    const userPromptBias = getEffectivePromptBias();
     if (
         includeUserPromptBias &&
-        power_user.user_prompt_bias &&
+        userPromptBias &&
         !isImpersonate &&
         !isContinue &&
-        power_user.user_prompt_bias.length !== 0
+        userPromptBias.length !== 0
     ) {
-        getMessage = substituteParams(power_user.user_prompt_bias) + getMessage;
+        getMessage = substituteParams(userPromptBias) + getMessage;
     }
 
     // Allow for caching of stopping strings. getStoppingStrings is an expensive function, especially with macros
@@ -9676,12 +10151,13 @@ async function processImageAttachment(message, { imageUrls }) {
  * @property {string} type Type of generation
  * @property {string} getMessage Generated message
  */
-export async function saveReply({ type, getMessage, fromStreaming = false, title = '', swipes = [], reasoning = '', imageUrls = [], reasoningSignature = null, reasoningTokens = 0 }) {
+export async function saveReply({ type, getMessage, fromStreaming = false, title = '', swipes = [], reasoning = '', imageUrls = [], reasoningSignature = null, reasoningTokens = 0, isCurrent = () => true }) {
     // Backward compatibility
     if (arguments.length > 1 && typeof arguments[0] !== 'object') {
         console.trace('saveReply called with positional arguments. Please use an object instead.');
         [type, getMessage, fromStreaming, title, swipes, reasoning, imageUrls, reasoningSignature, reasoningTokens] = arguments;
     }
+    if (!isCurrent()) return { type, getMessage };
 
     const lastMessage = chat[chat.length - 1];
 
@@ -9689,6 +10165,10 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
         lastMessage.is_user)) {
         type = 'normal';
     }
+    // SillyBunny: asynchronous attachment/token work must retain its message, not the new chat tail.
+    const replyIndex = ['swipe', 'append', 'continue', 'appendFinal'].includes(type) ? chat.length - 1 : chat.length;
+    let replyMessage = lastMessage;
+    const isReplyCurrent = () => isCurrent() && chat[replyIndex] === replyMessage;
 
     if (chat.length && (!lastMessage.extra || typeof lastMessage.extra !== 'object')) {
         lastMessage.extra = {};
@@ -9716,16 +10196,20 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
             lastMessage.send_date = getMessageTimeStamp();
             lastMessage.extra.api = getGeneratingApi();
             lastMessage.extra.model = getGeneratingModel();
+            lastMessage.extra.reasoning_effort = getCurrentReasoningEffort();
             lastMessage.extra.reasoning = reasoning;
             lastMessage.extra.reasoning_duration = null;
             lastMessage.extra.reasoning_signature = reasoningSignature;
             delete lastMessage.extra[IN_CHAT_AGENT_TRANSFORM_HISTORY_KEY];
             delete lastMessage.extra[IN_CHAT_AGENT_PRE_GENERATION_INTERCEPT_HISTORY_KEY];
             await processImageAttachment(lastMessage, { imageUrls });
+            if (!isReplyCurrent()) return { type, getMessage };
             await updateMessageTokenAccounting(lastMessage, { reasoning, reasoningTokens });
-            const chat_id = (chat.length - 1);
+            if (!isReplyCurrent()) return { type, getMessage };
+            const chat_id = replyIndex;
             !fromStreaming && await eventSource.emit(event_types.MESSAGE_RECEIVED, chat_id, type);
-            addOneMessage(chat[chat_id], { type: 'swipe' });
+            if (!isReplyCurrent()) return { type, getMessage };
+            addOneMessage(replyMessage, { type: 'swipe' });
             !fromStreaming && await eventSource.emit(event_types.CHARACTER_MESSAGE_RENDERED, chat_id, type);
         } else {
             lastMessage.mes = getMessage;
@@ -9740,14 +10224,18 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
         lastMessage.send_date = getMessageTimeStamp();
         lastMessage.extra.api = getGeneratingApi();
         lastMessage.extra.model = getGeneratingModel();
+        lastMessage.extra.reasoning_effort = getCurrentReasoningEffort();
         lastMessage.extra.reasoning = reasoning;
         lastMessage.extra.reasoning_duration = null;
         lastMessage.extra.reasoning_signature = reasoningSignature;
         await processImageAttachment(lastMessage, { imageUrls });
+        if (!isReplyCurrent()) return { type, getMessage };
         await updateMessageTokenAccounting(lastMessage, { reasoning, reasoningTokens });
-        const chat_id = (chat.length - 1);
+        if (!isReplyCurrent()) return { type, getMessage };
+        const chat_id = replyIndex;
         !fromStreaming && await eventSource.emit(event_types.MESSAGE_RECEIVED, chat_id, type);
-        addOneMessage(chat[chat_id], { type: 'swipe' });
+        if (!isReplyCurrent()) return { type, getMessage };
+        addOneMessage(replyMessage, { type: 'swipe' });
         !fromStreaming && await eventSource.emit(event_types.CHARACTER_MESSAGE_RENDERED, chat_id, type);
     } else if (type === 'appendFinal') {
         oldMessage = lastMessage.mes;
@@ -9759,21 +10247,26 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
         lastMessage.send_date = getMessageTimeStamp();
         lastMessage.extra.api = getGeneratingApi();
         lastMessage.extra.model = getGeneratingModel();
+        lastMessage.extra.reasoning_effort = getCurrentReasoningEffort();
         lastMessage.extra.reasoning += reasoning;
         lastMessage.extra.reasoning_signature = reasoningSignature;
         await processImageAttachment(lastMessage, { imageUrls });
+        if (!isReplyCurrent()) return { type, getMessage };
         // We don't know if the reasoning duration extended, so we don't update it here on purpose.
         await updateMessageTokenAccounting(lastMessage, {
             reasoning: lastMessage.extra.reasoning,
             reasoningTokens: Math.max(getPositiveTokenCount(lastMessage.extra.reasoning_tokens), getPositiveTokenCount(reasoningTokens)),
         });
-        const chat_id = (chat.length - 1);
+        if (!isReplyCurrent()) return { type, getMessage };
+        const chat_id = replyIndex;
         !fromStreaming && await eventSource.emit(event_types.MESSAGE_RECEIVED, chat_id, type);
-        addOneMessage(chat[chat_id], { type: 'swipe' });
+        if (!isReplyCurrent()) return { type, getMessage };
+        addOneMessage(replyMessage, { type: 'swipe' });
         !fromStreaming && await eventSource.emit(event_types.CHARACTER_MESSAGE_RENDERED, chat_id, type);
     } else {
         console.debug('entering chat update routine for non-swipe post');
         const newMessage = {};
+        replyMessage = newMessage;
         chat.push(newMessage);
         newMessage.extra = {};
         newMessage.name = name2;
@@ -9781,6 +10274,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
         newMessage.send_date = getMessageTimeStamp();
         newMessage.extra.api = getGeneratingApi();
         newMessage.extra.model = getGeneratingModel();
+        newMessage.extra.reasoning_effort = getCurrentReasoningEffort();
         newMessage.extra.reasoning = reasoning;
         newMessage.extra.reasoning_duration = null;
         newMessage.extra.reasoning_signature = reasoningSignature;
@@ -9793,6 +10287,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
         newMessage.gen_finished = generationFinished;
 
         await updateMessageTokenAccounting(newMessage, { reasoning, reasoningTokens });
+        if (!isReplyCurrent()) return { type, getMessage };
 
         if (selected_group) {
             consumePendingGeneratedMessageExtra(newMessage);
@@ -9807,14 +10302,17 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
         }
 
         await processImageAttachment(newMessage, { imageUrls });
-        const chat_id = (chat.length - 1);
+        if (!isReplyCurrent()) return { type, getMessage };
+        const chat_id = replyIndex;
 
         !fromStreaming && await eventSource.emit(event_types.MESSAGE_RECEIVED, chat_id, type);
-        addOneMessage(chat[chat_id]);
+        if (!isReplyCurrent()) return { type, getMessage };
+        addOneMessage(replyMessage);
         !fromStreaming && await eventSource.emit(event_types.CHARACTER_MESSAGE_RENDERED, chat_id, type);
     }
 
-    const item = chat[chat.length - 1];
+    if (!isReplyCurrent()) return { type, getMessage };
+    const item = replyMessage;
     if (item.swipe_info === undefined) {
         item.swipe_info = [];
     }
@@ -10560,14 +11058,17 @@ export async function flushPendingChatSaves({ silent = false } = {}) {
  */
 export function saveChat(...saveChatArguments) {
     const [firstArgument] = saveChatArguments;
-    const options = firstArgument && typeof firstArgument === 'object'
-        ? firstArgument
-        : saveChatArguments.length === 0
-            ? {}
-            : undefined;
+    let options = firstArgument && typeof firstArgument === 'object' ? firstArgument : {};
+    if (saveChatArguments.length > 0 && (typeof firstArgument !== 'object' || firstArgument === null)) {
+        // SillyBunny: legacy extension calls need the same enqueue-time snapshot and lifecycle guard.
+        console.trace('saveChat called with positional arguments. Please use an object instead.');
+        const [chatName, withMetadata, mesId, force, throwOnError] = saveChatArguments;
+        options = { chatName, withMetadata, mesId, force, throwOnError };
+    }
     let queuedSaveArguments = saveChatArguments;
 
     if (options) {
+        options = getChatBackupSaveOptions(options, JSON.stringify([characters[this_chid]?.avatar, getCurrentChatId(), chatGeneration]), uuidv4);
         const mesId = options.mesId;
         const sourceChatData = Array.isArray(options.chatData)
             ? options.chatData
@@ -10577,6 +11078,7 @@ export function saveChat(...saveChatArguments) {
         const chatData = cloneChatSavePayload(sourceChatData);
         const metadataSnapshot = structuredClone({ ...chat_metadata, ...(options.withMetadata || {}) });
         const activeCharacter = characters[this_chid];
+        const currentGeneration = chatGeneration;
         queuedSaveArguments = [{
             ...options,
             chatData,
@@ -10585,6 +11087,10 @@ export function saveChat(...saveChatArguments) {
             characterName: activeCharacter?.name,
             avatarUrl: activeCharacter?.avatar,
             wasGroupChat: Boolean(selected_group),
+            scheduledGeneration: currentGeneration,
+            scheduledCharacterId: this_chid,
+            scheduledGroupId: selected_group,
+            scheduledChatId: getCurrentChatId(),
         }];
     }
 
@@ -10598,15 +11104,57 @@ export function saveChat(...saveChatArguments) {
     return saveTask;
 }
 
-async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, mesId, force = false, chatData = undefined, throwOnError = false, deferBackup = false, allowShrink = false, activeChatName, characterName, avatarUrl, wasGroupChat = false } = {}) {
+async function saveChatImmediately(...args) {
+    let options = args[0];
+    if (args.length > 0 && (typeof args[0] !== 'object' || args[0] === null)) {
+        console.trace('saveChat called with positional arguments. Please use an object instead.');
+        const [chatName, withMetadata, mesId, force, throwOnError] = args;
+        options = { chatName, withMetadata, mesId, force, throwOnError };
+    } else {
+        options = options || {};
+    }
+
+    let {
+        chatName,
+        withMetadata,
+        metadataSnapshot,
+        mesId,
+        force = false,
+        chatData = undefined,
+        throwOnError = false,
+        deferBackup = false,
+        deferSequenceId,
+        allowShrink = false,
+        activeChatName,
+        characterName,
+        avatarUrl,
+        wasGroupChat = false,
+        scheduledGeneration,
+        scheduledCharacterId,
+        scheduledGroupId,
+        scheduledChatId,
+    } = options;
+
     if (wasGroupChat || (selected_group && !activeChatName)) {
         toastr.error(t`Operation was aborted to prevent data corruption.`, t`saveChat called for a group chat`);
         throw new Error('saveChat called for a group chat');
     }
 
-    if (arguments.length > 0 && typeof arguments[0] !== 'object') {
-        console.trace('saveChat called with positional arguments. Please use an object instead.');
-        [chatName, withMetadata, mesId, force, throwOnError] = arguments;
+    // SillyBunny: abort saves whose identity or generation changed while queued to prevent chat cloning.
+    const abortReason = getQueuedChatSaveAbortReason({
+        scheduledGroupId,
+        currentGroupId: selected_group,
+        scheduledCharacterId,
+        currentCharacterId: this_chid,
+        scheduledChatId,
+        currentChatId: getCurrentChatId(),
+        scheduledGeneration,
+        currentGeneration: chatGeneration,
+    });
+
+    if (abortReason) {
+        console.warn(`saveChatImmediately aborted, but ${abortReason} changed while queued.`);
+        return false;
     }
 
     const metadata = structuredClone(metadataSnapshot || { ...chat_metadata, ...(withMetadata || {}) });
@@ -10659,6 +11207,7 @@ async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, m
                 avatar_url: resolvedAvatarUrl,
                 force: force,
                 deferBackup: Boolean(deferBackup),
+                deferSequenceId,
                 allowShrink: Boolean(allowShrink),
             }),
         });
@@ -10706,7 +11255,7 @@ async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, m
             return false;
         }
 
-        return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, deferBackup, allowShrink, activeChatName, characterName, avatarUrl, wasGroupChat });
+        return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, deferBackup, deferSequenceId, allowShrink, activeChatName, characterName, avatarUrl, wasGroupChat, scheduledGeneration, scheduledCharacterId, scheduledGroupId, scheduledChatId });
     } catch (error) {
         console.error(error);
         toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Chat could not be saved`);
@@ -11549,22 +12098,24 @@ export async function getSettings(initLoaderHandle = null) {
 }
 
 //MARK: saveSettings()
-export async function saveSettings(loopCounter = 0) {
+export async function saveSettings(loopCounter = 0, { returnResult = false } = {}) {
     const saveTask = settingsSaveQueue.then(() => saveSettingsInner(loopCounter));
     settingsSaveQueue = saveTask.catch(() => {});
-    return saveTask;
+    const saved = await saveTask;
+    // SillyBunny: acknowledgement is opt-in; extensions rely on the default undefined result.
+    return returnResult ? saved : undefined;
 }
 
 async function saveSettingsInner(loopCounter = 0) {
     if (!settingsReady) {
         console.warn('Settings not ready, scheduling another save');
         saveSettingsDebounced();
-        return;
+        return false;
     }
 
     if (settingsConflictReloadRequired) {
         await promptSettingsConflictReload();
-        return;
+        return false;
     }
 
     const MAX_RETRIES = 3;
@@ -11572,7 +12123,7 @@ async function saveSettingsInner(loopCounter = 0) {
         if (loopCounter < MAX_RETRIES) {
             console.warn('Response length is currently being overridden, scheduling another save');
             saveSettingsDebounced(++loopCounter);
-            return;
+            return false;
         }
         console.error('Response length is currently being overridden, but the save loop has reached the maximum number of retries');
         TempResponseLength.restore(null);
@@ -11630,7 +12181,7 @@ async function saveSettingsInner(loopCounter = 0) {
             settingsConflictReloadRequired = true;
             settingsConflictPromptDismissed = false;
             await promptSettingsConflictReload();
-            return;
+            return false;
         }
 
         if (!result.ok) {
@@ -11648,9 +12199,11 @@ async function saveSettingsInner(loopCounter = 0) {
 
         settings = payload;
         await eventSource.emit(event_types.SETTINGS_UPDATED);
+        return true;
     } catch (error) {
         console.error('Error saving settings:', error);
         toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Settings could not be saved`);
+        return false;
     }
 }
 
@@ -11973,7 +12526,100 @@ async function waitForMessageScreenshotAssets(container) {
     ]);
 }
 
+async function inlineMessageScreenshotImages(container) {
+    const abortController = new AbortController();
+    const abortTimer = setTimeout(() => abortController.abort(), 2000);
+
+    try {
+        const fetchInlineSource = async (source) => {
+            const response = await fetch(source, { signal: abortController.signal });
+            if (!response.ok) {
+                throw new Error(`Unexpected ${response.status} response for ${source}`);
+            }
+
+            return await getBase64Async(await response.blob());
+        };
+        const pseudoImages = [];
+        // SB: html2canvas materializes generated-content images after its normal image wait.
+        [container, ...container.querySelectorAll('*')].forEach(element => {
+            ['::before', '::after'].forEach(pseudoElement => {
+                const content = getComputedStyle(element, pseudoElement).content;
+                const sources = Array.from(content.matchAll(/url\((?:"([^"]*)"|'([^']*)'|([^)]*))\)/g));
+                if (sources.length > 0) {
+                    pseudoImages.push({ content, element, pseudoElement, sources });
+                }
+            });
+        });
+
+        const pseudoStyleRules = [];
+        await Promise.all([
+            ...Array.from(container.querySelectorAll('img')).map(async (image) => {
+                const source = image.currentSrc || image.src;
+                if (!source || isDataURL(source)) {
+                    return;
+                }
+
+                try {
+                    image.srcset = '';
+                    image.src = await fetchInlineSource(source);
+                    await image.decode?.().catch(() => undefined);
+                } catch {
+                    // Foreign-object SVG cannot load external images, and a pending one stalls the capture clone.
+                    image.removeAttribute('srcset');
+                    image.removeAttribute('src');
+                }
+            }),
+            ...pseudoImages.map(async ({ content, element, pseudoElement, sources }, index) => {
+                let inlineContent = content;
+                try {
+                    for (const sourceMatch of sources) {
+                        const source = sourceMatch[1] ?? sourceMatch[2] ?? sourceMatch[3]?.trim();
+                        if (!source || isDataURL(source)) {
+                            continue;
+                        }
+
+                        inlineContent = inlineContent.replace(sourceMatch[0], `url("${await fetchInlineSource(source)}")`);
+                    }
+                } catch {
+                    inlineContent = 'none';
+                }
+
+                const pseudoName = pseudoElement.slice(2);
+                const attribute = `data-sb-screenshot-pseudo-${pseudoName}`;
+                element.setAttribute(attribute, String(index));
+                pseudoStyleRules.push(`[${attribute}="${index}"]${pseudoElement} { content: ${inlineContent} !important; }`);
+            }),
+        ]);
+
+        if (pseudoStyleRules.length > 0) {
+            const style = document.createElement('style');
+            style.textContent = pseudoStyleRules.join('\n');
+            container.prepend(style);
+        }
+    } finally {
+        clearTimeout(abortTimer);
+    }
+}
+
+let messageScreenshotIconFontStylePromise = null;
+
+async function getMessageScreenshotIconFontStyle() {
+    if (!messageScreenshotIconFontStylePromise) {
+        const abortController = new AbortController();
+        const abortTimer = setTimeout(() => abortController.abort(), 2000);
+        messageScreenshotIconFontStylePromise = fetch('/webfonts/fa-solid-900.woff2', { signal: abortController.signal })
+            .then(response => response.ok ? response.blob() : Promise.reject())
+            .then(getBase64Async)
+            .then(source => `@font-face { font-family: 'Font Awesome 6 Free'; font-style: normal; font-weight: 900; src: url('${source}') format('woff2'); }`)
+            .catch(() => '')
+            .finally(() => clearTimeout(abortTimer));
+    }
+
+    return await messageScreenshotIconFontStylePromise;
+}
+
 let messageScreenshotLibraryPromise = null;
+let messageScreenshotDownloadQueue = Promise.resolve();
 
 async function getMessageScreenshotLibrary() {
     const hydrationState = resolveLazyToolingLibraryHydration({
@@ -12003,197 +12649,139 @@ async function getMessageScreenshotLibrary() {
     return await messageScreenshotLibraryPromise;
 }
 
-function normalizeSrgbChannel(channel) {
-    const trimmedChannel = channel.trim();
-
-    if (trimmedChannel.endsWith('%')) {
-        const percent = Number.parseFloat(trimmedChannel.slice(0, -1));
-        return Number.isFinite(percent) ? Math.round(clamp(percent, 0, 100) * 2.55) : null;
+async function renderMessageScreenshotWithBoundedSvg(html2canvas, surface, captureOptions) {
+    const NativeImage = window.Image;
+    const nativeEncodeURIComponent = window.encodeURIComponent;
+    const nativeImageSource = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    if (!nativeImageSource?.get || !nativeImageSource.set) {
+        return await html2canvas(surface, captureOptions);
     }
 
-    const numericChannel = Number.parseFloat(trimmedChannel);
-    if (!Number.isFinite(numericChannel)) {
-        return null;
+    const svgMarker = '__sillybunny_html2canvas_foreign_object__';
+    const markedSvgDataUrl = `data:image/svg+xml;charset=utf-8,${svgMarker}`;
+    const existingCloneContainers = new Set(document.querySelectorAll('.html2canvas-container'));
+    let serializedSvg = '';
+
+    // SB: html2canvas awaits the clone's fonts.ready and, on WebKit, every cloned image with no
+    // timeout, which stalls iOS captures forever. The capture is already decoded before cloning.
+    const cloneObserver = new MutationObserver(mutations => mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
+        const cloneDocument = node instanceof HTMLIFrameElement && node.classList.contains('html2canvas-container')
+            ? node.contentDocument
+            : null;
+        if (cloneDocument) {
+            Object.defineProperty(cloneDocument, 'fonts', { configurable: true, value: { ready: Promise.resolve() } });
+            Object.defineProperty(cloneDocument, 'images', { configurable: true, value: [] });
+        }
+    })));
+
+    function ScreenshotImage(...args) {
+        const image = new NativeImage(...args);
+        Object.defineProperty(image, 'src', {
+            configurable: true,
+            get: () => nativeImageSource.get.call(image),
+            set: (source) => {
+                if (source !== markedSvgDataUrl || !serializedSvg) {
+                    nativeImageSource.set.call(image, source);
+                    return;
+                }
+
+                const reader = new FileReader();
+                const onload = image.onload;
+                const onerror = image.onerror;
+                let settled = false;
+                const svg = new Blob([serializedSvg], { type: 'image/svg+xml;charset=utf-8' });
+                serializedSvg = '';
+
+                const cleanup = () => {
+                    image.onload = null;
+                    image.onerror = null;
+                    reader.onload = null;
+                    reader.onerror = null;
+                };
+                const fail = (error) => {
+                    if (settled) {
+                        return;
+                    }
+
+                    settled = true;
+                    clearTimeout(timeout);
+                    cleanup();
+                    if (reader.readyState === FileReader.LOADING) {
+                        reader.abort();
+                    }
+                    try {
+                        nativeImageSource.set.call(image, '');
+                    } catch {
+                        // The saved error handler still releases html2canvas if image cancellation fails.
+                    }
+                    onerror?.call(image, error instanceof Error ? error : new Error('Failed to render screenshot SVG'));
+                };
+                const timeout = setTimeout(() => fail(new Error('Timed out rendering screenshot SVG')), 15000);
+
+                image.onload = (event) => {
+                    if (settled) {
+                        return;
+                    }
+
+                    settled = true;
+                    clearTimeout(timeout);
+                    cleanup();
+                    onload?.call(image, event);
+                };
+                image.onerror = fail;
+                reader.onerror = () => fail(reader.error ?? new Error('Failed to encode screenshot SVG'));
+                reader.onload = () => {
+                    try {
+                        nativeImageSource.set.call(image, reader.result);
+                    } catch (error) {
+                        fail(error);
+                    }
+                };
+
+                try {
+                    reader.readAsDataURL(svg);
+                } catch (error) {
+                    fail(error);
+                }
+            },
+        });
+        return image;
     }
 
-    return Math.round(clamp(numericChannel, 0, 1) * 255);
-}
-
-function normalizeSrgbAlpha(alpha) {
-    const trimmedAlpha = alpha.trim();
-
-    if (trimmedAlpha.endsWith('%')) {
-        const percent = Number.parseFloat(trimmedAlpha.slice(0, -1));
-        return Number.isFinite(percent) ? clamp(percent / 100, 0, 1) : null;
-    }
-
-    const numericAlpha = Number.parseFloat(trimmedAlpha);
-    return Number.isFinite(numericAlpha) ? clamp(numericAlpha, 0, 1) : null;
-}
-
-function normalizeOklabLightness(lightness) {
-    const trimmedLightness = lightness.trim();
-
-    if (trimmedLightness.endsWith('%')) {
-        const percent = Number.parseFloat(trimmedLightness.slice(0, -1));
-        return Number.isFinite(percent) ? clamp(percent / 100, 0, 1) : null;
-    }
-
-    const numericLightness = Number.parseFloat(trimmedLightness);
-    if (!Number.isFinite(numericLightness)) {
-        return null;
-    }
-
-    return clamp(numericLightness > 1 ? numericLightness / 100 : numericLightness, 0, 1);
-}
-
-function normalizeOklchChroma(chroma) {
-    const trimmedChroma = chroma.trim();
-    if (trimmedChroma === 'none') {
-        return 0;
-    }
-
-    if (trimmedChroma.endsWith('%')) {
-        const percent = Number.parseFloat(trimmedChroma.slice(0, -1));
-        return Number.isFinite(percent) ? Math.max(0, percent / 100 * 0.4) : null;
-    }
-
-    const numericChroma = Number.parseFloat(trimmedChroma);
-    return Number.isFinite(numericChroma) ? Math.max(0, numericChroma) : null;
-}
-
-function normalizeCssHueToDegrees(hue) {
-    const trimmedHue = hue.trim().toLowerCase();
-    if (trimmedHue === 'none') {
-        return 0;
-    }
-
-    const numericHue = Number.parseFloat(trimmedHue);
-    if (!Number.isFinite(numericHue)) {
-        return null;
-    }
-
-    if (trimmedHue.endsWith('turn')) {
-        return numericHue * 360;
-    }
-
-    if (trimmedHue.endsWith('rad')) {
-        return numericHue * 180 / Math.PI;
-    }
-
-    if (trimmedHue.endsWith('grad')) {
-        return numericHue * 0.9;
-    }
-
-    return numericHue;
-}
-
-function linearSrgbToRgbChannel(channel) {
-    const clampedChannel = clamp(channel, 0, 1);
-    const srgbChannel = clampedChannel <= 0.0031308
-        ? 12.92 * clampedChannel
-        : 1.055 * Math.pow(clampedChannel, 1 / 2.4) - 0.055;
-
-    return Math.round(clamp(srgbChannel, 0, 1) * 255);
-}
-
-function oklabToRgbString(lightness, a, b, alpha) {
-    const lPrime = lightness + 0.3963377774 * a + 0.2158037573 * b;
-    const mPrime = lightness - 0.1055613458 * a - 0.0638541728 * b;
-    const sPrime = lightness - 0.0894841775 * a - 1.2914855480 * b;
-    const l = lPrime ** 3;
-    const m = mPrime ** 3;
-    const s = sPrime ** 3;
-    const red = linearSrgbToRgbChannel(+4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s);
-    const green = linearSrgbToRgbChannel(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s);
-    const blue = linearSrgbToRgbChannel(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s);
-
-    return alpha >= 1
-        ? `rgb(${red}, ${green}, ${blue})`
-        : `rgba(${red}, ${green}, ${blue}, ${alpha})`;
-}
-
-function normalizeOklchFunctionString(value) {
-    return value.replace(/oklch\(\s*([^()]+?)\s*\)/gi, (_match, contents) => {
-        const [channelSection, alphaSection] = contents.split('/').map(section => section.trim());
-        const channels = channelSection.split(/\s+/).filter(Boolean);
-
-        if (channels.length < 2) {
-            return _match;
+    ScreenshotImage.prototype = NativeImage.prototype;
+    const encodeURIComponentWithSvgData = (value) => {
+        if (typeof value === 'string' && value.startsWith('<svg') && value.includes('<foreignObject')) {
+            serializedSvg = value;
+            return svgMarker;
         }
 
-        const lightness = normalizeOklabLightness(channels[0]);
-        const chroma = normalizeOklchChroma(channels[1]);
-        const hue = normalizeCssHueToDegrees(channels[2] ?? '0');
-        const alpha = alphaSection ? normalizeSrgbAlpha(alphaSection) : 1;
-        if ([lightness, chroma, hue, alpha].some(channel => channel === null)) {
-            return _match;
+        return nativeEncodeURIComponent(value);
+    };
+
+    // SB: html2canvas's unbounded percent-encoded SVG image load can stall indefinitely in Safari.
+    window.Image = ScreenshotImage;
+    window.encodeURIComponent = encodeURIComponentWithSvgData;
+    cloneObserver.observe(document.body, { childList: true });
+    let watchdog;
+    try {
+        return await Promise.race([
+            html2canvas(surface, captureOptions),
+            new Promise((_, reject) => watchdog = setTimeout(() => reject(new Error('Timed out capturing the screenshot')), 30000)),
+        ]);
+    } finally {
+        clearTimeout(watchdog);
+        cloneObserver.disconnect();
+        if (window.Image === ScreenshotImage) {
+            window.Image = NativeImage;
         }
-
-        const hueRadians = hue * Math.PI / 180;
-        const a = chroma * Math.cos(hueRadians);
-        const b = chroma * Math.sin(hueRadians);
-        return oklabToRgbString(lightness, a, b, alpha);
-    });
-}
-
-function normalizeColorFunctionString(value) {
-    if (!/(?:color\(srgb|oklch\()/i.test(value)) {
-        return value;
-    }
-
-    const normalizedSrgbValue = value.replace(/color\(srgb\s+([^()]+?)\)/gi, (_match, contents) => {
-        const [channelSection, alphaSection] = contents.split('/').map(section => section.trim());
-        const channels = channelSection.split(/\s+/).filter(Boolean);
-
-        if (channels.length < 3) {
-            return _match;
+        if (window.encodeURIComponent === encodeURIComponentWithSvgData) {
+            window.encodeURIComponent = nativeEncodeURIComponent;
         }
-
-        const [red, green, blue] = channels.slice(0, 3).map(normalizeSrgbChannel);
-        if ([red, green, blue].some(channel => channel === null)) {
-            return _match;
-        }
-
-        if (!alphaSection) {
-            return `rgb(${red}, ${green}, ${blue})`;
-        }
-
-        const alpha = normalizeSrgbAlpha(alphaSection);
-        if (alpha === null) {
-            return _match;
-        }
-
-        return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
-    });
-
-    return normalizeOklchFunctionString(normalizedSrgbValue);
-}
-
-function normalizeMessageScreenshotStyles(container) {
-    const elements = [container, ...container.querySelectorAll('*')];
-
-    for (const element of elements) {
-        if (!(element instanceof HTMLElement)) {
-            continue;
-        }
-
-        const computedStyle = getComputedStyle(element);
-        for (const propertyName of computedStyle) {
-            if (propertyName.startsWith('--')) {
-                continue;
+        document.querySelectorAll('.html2canvas-container').forEach(container => {
+            if (!existingCloneContainers.has(container)) {
+                container.remove();
             }
-
-            const propertyValue = computedStyle.getPropertyValue(propertyName);
-            if (!/(?:color\(srgb|oklch\()/i.test(propertyValue)) {
-                continue;
-            }
-
-            const normalizedValue = normalizeColorFunctionString(propertyValue);
-            if (normalizedValue !== propertyValue) {
-                element.style.setProperty(propertyName, normalizedValue, computedStyle.getPropertyPriority(propertyName));
-            }
-        }
+        });
     }
 }
 
@@ -12224,43 +12812,122 @@ async function renderMessageScreenshotCanvas(startId, endId) {
         const html2canvas = await getMessageScreenshotLibrary();
 
         if (document.fonts?.ready) {
-            await document.fonts.ready;
+            await Promise.race([document.fonts.ready, delay(2000)]);
         }
 
         await delay(50);
         await waitForMessageScreenshotAssets(surface);
-        normalizeMessageScreenshotStyles(surface);
+        await inlineMessageScreenshotImages(surface);
+        const iconFontStyle = await getMessageScreenshotIconFontStyle();
+        const mobileCapture = isMobile();
+        const preferredScale = mobileCapture ? 1 : Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+        const pixelBudget = mobileCapture ? 4_000_000 : 16_000_000;
+        const maxCanvasSide = mobileCapture ? 16_384 : 32_767;
 
-        return await html2canvas(surface, {
+        const captureOptions = {
             backgroundColor: null,
+            foreignObjectRendering: true,
+            ignoreElements: element => !element.contains(surface) && !surface.contains(element),
             logging: false,
-            scale: Math.max(1, Math.min(window.devicePixelRatio || 1, 2)),
+            onclone: (clonedDocument, clonedSurface) => {
+                clonedDocument.documentElement.style.backgroundColor = 'transparent';
+                clonedDocument.body.style.cssText = 'margin: 0; background: transparent;';
+                clonedSurface.style.position = 'relative';
+                clonedSurface.style.inset = '0';
+                clonedSurface.style.margin = '0';
+                clonedSurface.style.transform = 'none';
+                // Foreign-object fonts can reflow after html2canvas freezes computed heights and grid tracks.
+                clonedSurface.style.height = 'auto';
+                clonedSurface
+                    .querySelectorAll('.mes, .mes_block, .mes_text, .mes_reasoning, :is(.mes_text, .mes_reasoning) :is(p, blockquote, li, ul, ol, .dc-gradient-text)')
+                    .forEach(element => element.style.height = 'auto');
+                clonedSurface.querySelectorAll('.mes').forEach(element => element.style.gridTemplateRows = 'auto');
+                clonedSurface
+                    .querySelectorAll('.mes_reasoning_header_title, .ica--companion-title, .ica--companion-title > span, .ica--companion-meta, .ica--companion-summary-spacer')
+                    .forEach(element => element.style.width = 'auto');
+                if (iconFontStyle) {
+                    const style = clonedDocument.createElement('style');
+                    style.textContent = iconFontStyle;
+                    clonedSurface.prepend(style);
+                }
+                // Keep html2canvas's pseudo-element suppression inside the serialized subtree.
+                clonedSurface.prepend(...clonedDocument.body.querySelectorAll(':scope > style'));
+                clonedDocument.body.replaceChildren(clonedSurface);
+                // SB: bound the reflowed capture by both raster area and browser canvas-side limits.
+                const captureArea = Math.max(1, clonedSurface.scrollWidth * clonedSurface.scrollHeight);
+                captureOptions.scale = Math.min(
+                    preferredScale,
+                    Math.sqrt(pixelBudget / captureArea),
+                    maxCanvasSide / Math.max(1, clonedSurface.scrollWidth),
+                    maxCanvasSide / Math.max(1, clonedSurface.scrollHeight),
+                );
+            },
+            scale: preferredScale,
             useCORS: true,
-        });
+        };
+
+        return await renderMessageScreenshotWithBoundedSvg(html2canvas, surface, captureOptions);
     } finally {
         shell.remove();
     }
 }
 
-async function downloadMessageScreenshot(startId, endId) {
+async function createMessageScreenshotBlob(startId, endId) {
     const canvas = await renderMessageScreenshotCanvas(startId, endId);
-    const blob = await new Promise((resolve, reject) => {
-        canvas.toBlob((result) => {
-            if (result) {
-                resolve(result);
-                return;
-            }
+    try {
+        return await new Promise((resolve, reject) => {
+            canvas.toBlob((result) => {
+                if (result) {
+                    resolve(result);
+                    return;
+                }
 
-            reject(new Error('Failed to create screenshot PNG blob'));
-        }, 'image/png');
-    });
+                reject(new Error('Failed to create screenshot PNG blob'));
+            }, 'image/png');
+        });
+    } finally {
+        canvas.width = 0;
+        canvas.height = 0;
+    }
+}
 
-    download(blob, buildMessageScreenshotFilename(startId, endId), 'image/png');
+async function copyMessageScreenshotToClipboard(blobPromise) {
+    if (!window.isSecureContext || typeof navigator.clipboard?.write !== 'function' || typeof ClipboardItem !== 'function') {
+        return false;
+    }
+
+    try {
+        // Start the write during the confirmation gesture; WebKit cannot wait for rendering first.
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blobPromise })]);
+        return true;
+    } catch (error) {
+        console.warn('Failed to copy message screenshot to clipboard', error);
+        return false;
+    }
+}
+
+async function downloadMessageScreenshot(startId, endId) {
+    const blobPromise = messageScreenshotDownloadQueue.then(() => createMessageScreenshotBlob(startId, endId));
+    messageScreenshotDownloadQueue = blobPromise.then(() => undefined, () => undefined);
+    const clipboardPromise = copyMessageScreenshotToClipboard(blobPromise);
+
+    try {
+        const blob = await blobPromise;
+        download(blob, buildMessageScreenshotFilename(startId, endId), 'image/png');
+        const copied = await clipboardPromise;
+        const successText = startId === endId
+            ? t`Message screenshot downloaded.`
+            : t`Message range screenshot downloaded.`;
+        toastr.success(copied ? `${successText} ${t`Copied!`}` : successText, t`Screenshot ready`);
+    } catch (error) {
+        console.error('Failed to create message screenshot', error);
+        toastr.error(t`Couldn't create the screenshot. Check the browser console for details.`, t`Screenshot failed`);
+    }
 }
 
 async function promptForMessageScreenshotRange(messageId) {
     const maximumMessageId = Math.max(chat.length - 1, 0);
-    let selectedRange = null;
+    let captureStarted = false;
 
     const content = document.createElement('div');
     content.classList.add('sb-message-screenshot-popup-copy');
@@ -12297,7 +12964,7 @@ async function promptForMessageScreenshotRange(messageId) {
             }
         },
         onClosing: function (activePopup) {
-            if (activePopup.result !== POPUP_RESULT.AFFIRMATIVE) {
+            if (activePopup.result !== POPUP_RESULT.AFFIRMATIVE || captureStarted) {
                 return true;
             }
 
@@ -12316,15 +12983,15 @@ async function promptForMessageScreenshotRange(messageId) {
                 return false;
             }
 
-            selectedRange = range;
+            captureStarted = true;
+            void downloadMessageScreenshot(range.startId, range.endId);
             return true;
         },
     });
 
     popup.dlg.classList.add('message_screenshot_popup');
 
-    const result = await popup.show();
-    return result === POPUP_RESULT.AFFIRMATIVE ? selectedRange : null;
+    await popup.show();
 }
 
 async function openMessageScreenshotDialog(messageId) {
@@ -12335,21 +13002,7 @@ async function openMessageScreenshotDialog(messageId) {
 
     closeExpandedMessageActionMenus();
 
-    const range = await promptForMessageScreenshotRange(messageId);
-    if (!range) {
-        return;
-    }
-
-    try {
-        await downloadMessageScreenshot(range.startId, range.endId);
-        const successText = range.startId === range.endId
-            ? t`Message screenshot downloaded.`
-            : t`Message range screenshot downloaded.`;
-        toastr.success(successText, t`Screenshot ready`);
-    } catch (error) {
-        console.error('Failed to create message screenshot', error);
-        toastr.error(t`Couldn't create the screenshot. Check the browser console for details.`, t`Screenshot failed`);
-    }
+    await promptForMessageScreenshotRange(messageId);
 }
 
 /**
@@ -12434,7 +13087,7 @@ function updateMessage(div) {
     return { mesBlock, text, mes, bias };
 }
 
-function openMessageDelete(fromSlashCommand) {
+function openMessageDelete(fromSlashCommand, deleteToolCalls = true) {
     closeMessageEditor();
     hideSwipeButtons();
     if (fromSlashCommand || (!is_send_press) || (selected_group && !is_group_generating)) {
@@ -12453,6 +13106,7 @@ function openMessageDelete(fromSlashCommand) {
             is_group_generating: ${is_group_generating}`);
     }
     this_del_mes = -1;
+    deleteToolCallsInDeleteMode = deleteToolCalls;
     is_delete_mode = true;
 }
 
@@ -12531,7 +13185,8 @@ export async function messageEdit(editMessageId) {
         markMobileChatManualScroll();
     }
 
-    const shouldRestoreChatScroll = shouldGuardMobileChatScroll() || Number(this_edit_mes_id) === chat.length - 1;
+    // SillyBunny: on desktop the message resize observer owns the edit-open layout change and focus already has preventScroll; restoring here reverts it.
+    const shouldRestoreChatScroll = shouldGuardMobileChatScroll();
     const restoreChatScroll = () => {
         if (shouldRestoreChatScroll) {
             chatElement.scrollTop(chatScrollPosition);
@@ -13502,8 +14157,8 @@ async function displayChats(searchQuery, currentChat, displayName, avatarImg, se
             $('#select_chat_div').append(template);
 
             if (Array.isArray(highlightNames) && highlightNames.includes(chat.file_name)) {
-                const templateOffset = template.offset().top - template.parent().offset().top;
-                $('#select_chat_div').scrollTop(templateOffset);
+                // SillyBunny: Chat History scrolls the popup on mobile and the list on desktop.
+                template[0].scrollIntoView({ block: 'nearest' });
                 flashHighlight(template, debounce_timeout.extended);
             }
         }
@@ -13829,13 +14484,19 @@ export function select_rm_info(type, charId, previousCharId = null) {
             const perPage = Number(accountStorage.getItem('Characters_PerPage')) || per_page_default;
             const page = Math.floor(charIndex / perPage) + 1;
             $('#rm_print_characters_pagination').pagination('go', page);
-            const selector = `#rm_print_characters_block [grid="${charId}"]`;
+            // SillyBunny: match the rendered group card and tolerate it disappearing during navigation.
+            const selector = `#rm_print_characters_block [data-grid="${charId}"]`;
             try {
-                waitUntilCondition(() => document.querySelector(selector) !== null).then(() => {
+                waitUntilCondition(() => document.querySelector(selector) !== null, 1000, 100, { rejectOnTimeout: false }).then(() => {
                     const element = $(selector);
+                    if (element.length === 0) {
+                        return;
+                    }
                     const scrollOffset = element.offset().top - element.parent().offset().top;
                     element.parent().scrollTop(scrollOffset);
                     flashHighlight(element, 5000);
+                }).catch(e => {
+                    console.error(e);
                 });
             } catch (e) {
                 console.error(e);
@@ -14542,8 +15203,8 @@ export async function deleteSwipe(swipeId = null, messageId = chat.length - 1) {
     return newSwipeId;
 }
 
-export async function saveMetadata() {
-    return await saveChatConditional();
+export async function saveMetadata(options = {}) {
+    return await saveChatConditional(options);
 }
 
 export async function saveChatConditional(options = {}) {
@@ -14552,17 +15213,28 @@ export async function saveChatConditional(options = {}) {
 
         setChatSaveActive(true);
 
-        if (selected_group) {
-            await saveGroupChat(selected_group, true, false, false, options);
-        } else {
-            await saveChat(options);
+        const saved = selected_group
+            ? await saveGroupChat(selected_group, true, false, options.throwOnError ?? false, options)
+            : await saveChat(options);
+
+        // SillyBunny: strict callers must also see saves declined without an exception.
+        if (saved !== true) {
+            if (options.throwOnError) {
+                throw new Error('Chat was not saved');
+            }
+            return false;
         }
 
         // Save token and prompts cache to IndexedDB storage
-        saveTokenCache();
-        saveItemizedPrompts(getCurrentChatId());
+        await saveTokenCache();
+        await saveItemizedPrompts(getCurrentChatId());
+        return true;
     } catch (error) {
         console.error('Error saving chat', error);
+        if (options.throwOnError) {
+            throw error;
+        }
+        return false;
     } finally {
         setChatSaveActive(false);
     }
@@ -15005,8 +15677,9 @@ function formatSwipeCounter(current, total) {
  * @param {number} [params.forceMesId] The message id to swipe.
  * @param {number} [params.forceSwipeId] The target swipe_id. When out of range, it will be looped or clamped.
  * @param {number} [params.forceDuration] Overwrites the default swipe duration.
+ * @param {GenerateOptions} [params.generationOptions] Controls for an owned successor generation.
  */
-export async function swipe(event, direction, { source, repeated, message = chat[chat.length - 1], forceMesId, forceSwipeId, forceDuration } = {}) {
+export async function swipe(event, direction, { source, repeated, message = chat[chat.length - 1], forceMesId, forceSwipeId, forceDuration, generationOptions } = {}) {
     if (chat.length === 0) {
         console.warn('Swipe was called on an empty chat.');
         return;
@@ -15160,6 +15833,8 @@ export async function swipe(event, direction, { source, repeated, message = chat
     async function standardSwipe(newSwipeId) {
         //If swipe_id has changed, or the source is being deleted.
         if (newSwipeId !== originalSwipeId || source == SWIPE_SOURCE.DELETE || source == SWIPE_SOURCE.BACK) {
+            // SillyBunny: invalidate pending debounced saves and queued saves from previous swipes.
+            incrementChatGeneration();
             //Update the chat.
             await loadFromSwipeId(mesId, newSwipeId);
             //Transition to the new chat.
@@ -15384,7 +16059,7 @@ export async function swipe(event, direction, { source, repeated, message = chat
 
         if (run_generate && !is_send_press) {
             is_send_press = true;
-            generation = Generate('swipe');
+            generation = Generate('swipe', generationOptions);
         }
 
         //Swipe in from the opposite side.
@@ -16253,7 +16928,11 @@ jQuery(async function () {
         $('#groupCurrentMemberListToggle .inline-drawer-icon').trigger('click');
     }, 200);
 
-    $(document).on('click', '.api_loading', () => cancelStatusCheck('Canceled because connecting was manually canceled'));
+    $(document).on('click', '.api_loading', () => {
+        cancelStatusCheck('Canceled because connecting was manually canceled');
+        // SillyBunny: manual cancellation owns cleanup; stale requests must not stop a newer check.
+        resultCheckStatus();
+    });
 
     //////////INPUT BAR FOCUS-KEEPING LOGIC/////////////
     const isIOSFocusSensitiveBrowser = isIOSWebKitPlatform();
@@ -16466,6 +17145,7 @@ jQuery(async function () {
     chatElementScroll.addEventListener('touchend', releaseMobileChatTouchScroll, { passive: true });
     chatElementScroll.addEventListener('touchcancel', releaseMobileChatTouchScroll, { passive: true });
     chatElementScroll.addEventListener('wheel', markMobileChatWheelScroll, { passive: true });
+    chatElementScroll.addEventListener('pointerup', () => { lastChatPointerUpAt = Date.now(); }, { passive: true, capture: true });
     document.addEventListener('wheel', routeShellWheelToChat, { passive: false, capture: true });
     setupMobileChatViewportObserver(markMobileViewportScroll);
 
@@ -16473,8 +17153,13 @@ jQuery(async function () {
         refreshObservedChatMessageResizeViewportStates();
 
         if (isChatLoadBottomLockActive() && !isChatScrolledNearBottom()) {
-            pinChatLoadToBottom();
-            return;
+            // SillyBunny: load pins only ever land at the bottom; sitting above the last pin means the user (or a jump) took over.
+            if (chatElementScroll.scrollTop < chatLastBottomPinScrollTop) {
+                clearChatLoadBottomLock();
+            } else {
+                pinChatLoadToBottom();
+                return;
+            }
         }
 
         if (power_user.waifuMode) {
@@ -16516,6 +17201,7 @@ jQuery(async function () {
         });
         $(this).addClass('selected'); //sets the bg of the mes selected for deletion
         var i = Number($(this).attr('mesid')); //checks the message ID in the chat
+        i = getMessageDeletionStartId(i, deleteToolCallsInDeleteMode);
         this_del_mes = i;
         //as long as the current message ID is less than the total chat length
         while (i < chat.length) {
@@ -16814,11 +17500,13 @@ jQuery(async function () {
     ///////////// OPTIMIZED LISTENERS FOR LEFT SIDE OPTIONS POPUP MENU //////////////////////
     $('#options [id]').on('click', async function (event, customData) {
         const fromSlashCommand = customData?.fromSlashCommand || false;
+        const deleteToolCalls = customData?.deleteToolCalls ?? true;
         var id = $(this).attr('id');
 
         // Check whether a custom prompt was provided via custom data (for example through a slash command)
         const additionalPrompt = customData?.additionalPrompt?.trim() || undefined;
         const buildOrFillAdditionalArgs = (args = {}) => ({
+            ...customData?.generationOptions,
             ...args,
             ...(additionalPrompt !== undefined && { quiet_prompt: additionalPrompt, quietToLoud: true }),
         });
@@ -16892,7 +17580,7 @@ jQuery(async function () {
                 Generate('continue', buildOrFillAdditionalArgs());
             }
         } else if (id == 'option_delete_mes') {
-            setTimeout(() => openMessageDelete(fromSlashCommand), animation_duration);
+            setTimeout(() => openMessageDelete(fromSlashCommand, deleteToolCalls), animation_duration);
         } else if (id == 'option_close_chat') {
             await closeCurrentChat();
         } else if (id === 'option_settings') {
