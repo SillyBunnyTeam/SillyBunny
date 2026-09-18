@@ -3589,7 +3589,6 @@ export async function reloadCurrentChatUnsafe() {
     const targetChatId = getCurrentChatId();
     const targetChid = this_chid;
     const targetGroup = selected_group;
-
     // SillyBunny: cooperative bounded abort barrier if generation/streaming is active
     const hadActiveGeneration = shouldAbortReloadForActiveGeneration({
         isSendPressed: is_send_press,
@@ -3624,11 +3623,28 @@ export async function reloadCurrentChatUnsafe() {
                 return;
             }
 
-            // SillyBunny: persist any partial assistant message from the aborted generation
-            if (targetGroup) {
-                await saveGroupChat(targetGroup, true);
-            } else if (targetChid !== undefined) {
-                await saveChatConditional();
+            // SillyBunny: abort can yield to navigation; never save another chat under this target.
+            if (
+                shouldDiscardReloadTarget({ initialChatId: targetChatId, currentChatId: getCurrentChatId() }) ||
+                this_chid !== targetChid ||
+                selected_group !== targetGroup
+            ) {
+                console.warn('Chat target changed during generation abort. Discarding reload.');
+                return;
+            }
+
+            // SillyBunny: persist any partial assistant message from the aborted generation.
+            const saved = targetGroup
+                ? await saveGroupChat(targetGroup, true)
+                : targetChid !== undefined
+                    ? await saveChatConditional()
+                    : true;
+            if (saved !== true) {
+                toastr.error(
+                    t`Could not save pending edits before reload. Reload cancelled.`,
+                    t`Reload cancelled`,
+                );
+                return;
             }
         } catch (error) {
             console.error('Error aborting generation or saving partial chat:', error);
@@ -3676,7 +3692,7 @@ export async function reloadCurrentChatUnsafe() {
     try {
         if (targetGroup) {
             staging = await fetchGroupChatRaw({
-                chatId: targetGroup,
+                chatId: targetChatId,
                 headers: getRequestHeaders(),
             });
         } else if (targetChid !== undefined) {
