@@ -14484,13 +14484,19 @@ export function select_rm_info(type, charId, previousCharId = null) {
             const perPage = Number(accountStorage.getItem('Characters_PerPage')) || per_page_default;
             const page = Math.floor(charIndex / perPage) + 1;
             $('#rm_print_characters_pagination').pagination('go', page);
-            const selector = `#rm_print_characters_block [grid="${charId}"]`;
+            // SillyBunny: match the rendered group card and tolerate it disappearing during navigation.
+            const selector = `#rm_print_characters_block [data-grid="${charId}"]`;
             try {
-                waitUntilCondition(() => document.querySelector(selector) !== null).then(() => {
+                waitUntilCondition(() => document.querySelector(selector) !== null, 1000, 100, { rejectOnTimeout: false }).then(() => {
                     const element = $(selector);
+                    if (element.length === 0) {
+                        return;
+                    }
                     const scrollOffset = element.offset().top - element.parent().offset().top;
                     element.parent().scrollTop(scrollOffset);
                     flashHighlight(element, 5000);
+                }).catch(e => {
+                    console.error(e);
                 });
             } catch (e) {
                 console.error(e);
