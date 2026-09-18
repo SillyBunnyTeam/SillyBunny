@@ -28,6 +28,19 @@ import { setCharacterSpoilerFreeFieldsHidden } from './power-user.js';
 import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
 import { characters, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
+import {
+    SAMPLING_PARAMETER_DESCRIPTORS,
+} from './sampling-parameter-policy.js';
+import {
+    getSamplingParameterTransmissionState,
+    setSamplingParameterTransmissionState,
+    getSamplingParameterViewModel,
+} from './openai.js';
+import {
+    getTextSamplingParameterTransmissionState,
+    setTextSamplingParameterTransmissionState,
+    getTextSamplingParameterViewModel,
+} from './textgen-settings.js';
 
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
@@ -10257,9 +10270,136 @@ function neutralizeChatCompletionSamplers() {
     });
 }
 
+const SAMPLING_SELECTOR_TO_CANONICAL_ID = Object.freeze({
+    '#temp_openai': 'temperature',
+    '#temp_textgenerationwebui': 'temperature',
+    '#top_p_openai': 'top_p',
+    '#top_p_textgenerationwebui': 'top_p',
+    '#pres_pen_openai': 'presence_penalty',
+    '#presence_pen_textgenerationwebui': 'presence_penalty',
+    '#freq_pen_openai': 'frequency_penalty',
+    '#freq_pen_textgenerationwebui': 'frequency_penalty',
+    '#typical_p_textgenerationwebui': 'typical_p',
+});
+
+function refreshSamplingTransmission(card, selector) {
+    const parameterId = SAMPLING_SELECTOR_TO_CANONICAL_ID[selector];
+    const container = card.querySelector('.sb-sampling-transmission');
+    if (!parameterId || !container) {
+        return;
+    }
+    const viewModel = selector.includes('textgenerationwebui')
+        ? getTextSamplingParameterViewModel(parameterId)
+        : getSamplingParameterViewModel(parameterId);
+    container.querySelectorAll('.sb-transmission-btn').forEach(button => {
+        const selected = button.dataset.policyState === viewModel.storedState;
+        button.classList.toggle('active', selected);
+        button.setAttribute('aria-checked', String(selected));
+        button.disabled = !viewModel.targetKey;
+    });
+    const badge = container.querySelector('.sb-capability-forbidden-badge');
+    if (badge) {
+        badge.hidden = viewModel.reason !== 'capability-forbidden';
+    }
+}
+
 function decorateSamplingControlCard(card, selector) {
     if (!(card instanceof HTMLElement)) {
         return;
+    }
+
+    const parameterId = SAMPLING_SELECTOR_TO_CANONICAL_ID[selector];
+    if (parameterId && SAMPLING_PARAMETER_DESCRIPTORS[parameterId]) {
+        card.dataset.samplingParameter = parameterId;
+        const descriptor = SAMPLING_PARAMETER_DESCRIPTORS[parameterId];
+
+        let container = card.querySelector('.sb-sampling-transmission');
+        if (!container) {
+            container = createElement('div', { className: 'sb-sampling-transmission flex-container alignitemscenter gap5 m-t-0-5' });
+            container.setAttribute('data-sampling-transmission-for', parameterId);
+
+            const labelContainer = createElement('div', {
+                className: 'flex-container alignitemscenter gap5',
+            });
+            const label = createElement('small', {
+                className: 'sb-sampling-transmission__label opacity70p',
+                text: 'Wire:',
+            });
+            const infoIcon = createElement('div', {
+                className: 'fa-solid fa-circle-info opacity50p sb-sampling-info-icon',
+                attrs: {
+                    title: 'Controls how this setting is sent to the AI:\n\n• Auto: Normal default behavior.\n• Send: Force this slider\'s exact value to be sent.\n• Omit: Completely delete this setting from the request so models that reject it (like Grok or o1) won\'t crash.',
+                },
+            });
+            labelContainer.appendChild(label);
+            labelContainer.appendChild(infoIcon);
+            container.appendChild(labelContainer);
+
+            const options = createElement('div', {
+                className: 'sb-sampling-transmission__options flex-container gap5',
+                attrs: {
+                    role: 'radiogroup',
+                    'aria-label': `Transmission policy for ${descriptor.label}`,
+                },
+            });
+
+            const states = [
+                { state: 'inherit', label: 'Auto', title: 'Auto: Normal default behavior' },
+                { state: 'include', label: 'Send', title: 'Send: Force this slider\'s exact value to be sent' },
+                { state: 'omit', label: 'Omit', title: 'Omit: Completely delete this setting from the request to prevent crashes' },
+            ];
+
+            const isTextGenParameter = selector.includes('textgenerationwebui');
+            const getPolicyState = isTextGenParameter
+                ? getTextSamplingParameterTransmissionState
+                : getSamplingParameterTransmissionState;
+            const getPolicyViewModel = isTextGenParameter
+                ? getTextSamplingParameterViewModel
+                : getSamplingParameterViewModel;
+            const currentStored = typeof getPolicyState === 'function'
+                ? getPolicyState(parameterId)
+                : 'inherit';
+            const viewModel = typeof getPolicyViewModel === 'function'
+                ? getPolicyViewModel(parameterId)
+                : { reason: 'provider-default' };
+
+            states.forEach(opt => {
+                const isSelected = opt.state === currentStored;
+                const btn = createElement('button', {
+                    className: `sb-transmission-btn ${isSelected ? 'active' : ''}`,
+                    text: opt.label,
+                    attrs: {
+                        type: 'button',
+                        role: 'radio',
+                        'data-policy-state': opt.state,
+                        'aria-checked': String(isSelected),
+                        title: opt.title,
+                    },
+                });
+
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const setPolicyState = isTextGenParameter
+                        ? setTextSamplingParameterTransmissionState
+                        : setSamplingParameterTransmissionState;
+                    if (setPolicyState(parameterId, opt.state)) {
+                        refreshSamplingTransmission(card, selector);
+                    }
+                });
+                options.appendChild(btn);
+            });
+
+            const forbiddenBadge = createElement('small', {
+                className: 'sb-capability-forbidden-badge',
+                text: '(Omitted: provider restriction)',
+            });
+            forbiddenBadge.hidden = viewModel.reason !== 'capability-forbidden';
+            container.append(options, forbiddenBadge);
+
+            card.appendChild(container);
+        }
+        refreshSamplingTransmission(card, selector);
     }
 
     if (selector === '#seed_textgenerationwebui') {
@@ -10429,6 +10569,7 @@ function syncSamplingPanelControls(root) {
                 if (existingCard.parentElement !== target) {
                     target.appendChild(existingCard);
                 }
+                refreshSamplingTransmission(existingCard, selector);
                 continue;
             }
 
@@ -10529,7 +10670,11 @@ function buildSamplingPanel() {
     $('#main_api').on('change.sbSamplingPanel', () => {
         if (isShellTabOpen('left', 'sampling')) updateSamplingPanelVisibility(column);
     });
+    $(document).on('change.sbSamplingTransmission', 'select', () => updateSamplingPanelVisibility(column));
     updateSamplingPanelVisibility(column);
+    window.requestAnimationFrame(() => updateSamplingPanelVisibility(column));
+    window.setTimeout(() => updateSamplingPanelVisibility(column), 250);
+    window.setTimeout(() => updateSamplingPanelVisibility(column), 1000);
 
     return {
         id: 'sampling',

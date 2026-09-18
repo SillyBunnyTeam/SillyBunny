@@ -299,24 +299,25 @@ export function shouldReduceStreamingDomWork(navigatorRef = globalThis.navigator
 }
 
 /**
- * Applies a conservative floor to live streaming UI updates on reduced-DOM mobile platforms.
+ * Applies device and measured render-cost floors to live streaming UI updates.
  * @param {number} baseIntervalMs Requested streaming interval
  * @param {object} [options]
  * @param {Navigator} [options.navigatorRef] Navigator-like object
  * @param {boolean} [options.enabled] Legacy all-mobile override
  * @param {boolean} [options.iosEnabled] Whether iOS WebKit floor is enabled
  * @param {boolean} [options.androidEnabled] Whether Android floor is enabled
+ * @param {number} [options.renderDurationMs] Recent formatting and DOM write cost
  * @returns {number}
  */
-export function getStreamingUpdateInterval(baseIntervalMs, { navigatorRef = globalThis.navigator, enabled = true, iosEnabled = enabled, androidEnabled = false } = {}) {
+export function getStreamingUpdateInterval(baseIntervalMs, { navigatorRef = globalThis.navigator, enabled = true, iosEnabled = enabled, androidEnabled = false, renderDurationMs = 0 } = {}) {
     const interval = Number(baseIntervalMs);
     const normalizedInterval = Number.isFinite(interval) && interval > 0 ? interval : 1;
 
-    if (!shouldReduceStreamingDomWork(navigatorRef, { enabled, iosEnabled, androidEnabled })) {
-        return normalizedInterval;
-    }
-
-    return Math.max(normalizedInterval, getStreamingUpdateIntervalFloor(navigatorRef));
+    const platformFloor = shouldReduceStreamingDomWork(navigatorRef, { enabled, iosEnabled, androidEnabled })
+        ? getStreamingUpdateIntervalFloor(navigatorRef) : 0;
+    // Leave roughly two thirds of the main thread for input/layout, with a bounded live-preview delay.
+    const renderCostFloor = Number.isFinite(renderDurationMs) ? Math.min(250, Math.max(0, renderDurationMs) * 3) : 0;
+    return Math.max(normalizedInterval, platformFloor, renderCostFloor);
 }
 
 /**
