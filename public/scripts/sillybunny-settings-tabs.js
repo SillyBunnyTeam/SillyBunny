@@ -3,7 +3,8 @@
  * Self-contained settings tab layout and search integration.
  */
 
-(function () {
+export const initializeSettingsTabs = (function () {
+    let initialized = false;
     const tabStyles = `
         /* Tab bar container */
         .sb-settings-tabs-nav {
@@ -117,6 +118,7 @@
     `;
 
     function injectStyles() {
+        if (document.getElementById('sb-settings-tabs-styles')) return;
         const style = document.createElement('style');
         style.id = 'sb-settings-tabs-styles';
         style.textContent = tabStyles;
@@ -166,10 +168,7 @@
             }
 
             // Find Theme Colors inline-drawer
-            const themeColorsDrawer = Array.from(parentAppearance.querySelectorAll('.inline-drawer')).find(drawer => {
-                const header = drawer.querySelector('.inline-drawer-header');
-                return header && header.textContent.includes('Theme Colors');
-            });
+            const themeColorsDrawer = parentAppearance.querySelector('.inline-drawer-header [data-i18n="Theme Colors"]')?.closest('.inline-drawer');
             if (themeColorsDrawer) {
                 themeColorsDrawer.id = 'sb-theme-colors-drawer';
                 themeColorsDrawer.classList.add('sb-settings-subdrawer');
@@ -201,20 +200,14 @@
         const col2 = document.querySelector('[name="UserSettingsSecondColumn"]');
         if (parentChatCharacters && col2) {
             // Find Auto-swipe drawer
-            const autoSwipeDrawer = Array.from(parentChatCharacters.querySelectorAll('.inline-drawer')).find(drawer => {
-                const header = drawer.querySelector('.inline-drawer-header');
-                return header && header.textContent.includes('Auto-swipe');
-            });
+            const autoSwipeDrawer = parentChatCharacters.querySelector('.inline-drawer-header [data-i18n="Auto-swipe"]')?.closest('.inline-drawer');
             if (autoSwipeDrawer) {
                 autoSwipeDrawer.id = 'sb-auto-swipe-drawer';
                 col2.appendChild(autoSwipeDrawer);
             }
 
             // Find Auto-Continue drawer
-            const autoContinueDrawer = Array.from(parentChatCharacters.querySelectorAll('.inline-drawer')).find(drawer => {
-                const header = drawer.querySelector('.inline-drawer-header');
-                return header && header.textContent.includes('Auto-Continue');
-            });
+            const autoContinueDrawer = parentChatCharacters.querySelector('.inline-drawer-header [data-i18n="Auto-Continue"]')?.closest('.inline-drawer');
             if (autoContinueDrawer) {
                 autoContinueDrawer.id = 'sb-auto-continue-drawer';
                 col2.appendChild(autoContinueDrawer);
@@ -486,6 +479,7 @@
     }
 
     function initialize() {
+        if (initialized) return;
         try {
             injectStyles();
             promoteNestedDrawers();
@@ -495,17 +489,12 @@
             createTabBar();
             setupSearchIntegration();
             watchForLateDrawers();
+            initialized = true;
         } catch (error) {
             console.error('[SillyBunny Settings Tabs] Initialization failed:', error);
+            throw error;
         }
     }
 
-    // Poll for the user settings content to be fully loaded
-    const pollInterval = setInterval(() => {
-        const userSettingsContent = document.getElementById('user-settings-block-content');
-        if (userSettingsContent && userSettingsContent.children.length > 0) {
-            clearInterval(pollInterval);
-            initialize();
-        }
-    }, 100);
+    return initialize;
 })();
