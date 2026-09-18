@@ -33,6 +33,18 @@ import { SECRET_KEYS, writeSecret } from './secrets.js';
 import { getEventSourceStream } from './sse-stream.js';
 import { fetchResumable } from './resumable-generation.js';
 import { getLocalPromptCacheValue, isLikelyLocalServerUrl } from './local-url-utils.js';
+import {
+    POLICY_SCHEMA_VERSION,
+    applySamplingParameterPolicy,
+    createSamplingRequestContext,
+    createSamplingTargetKey,
+    getTargetSamplingPolicy,
+    normalizeTransmissionState,
+    parseLegacySamplingExclusions,
+    resolveEffectiveParameterDecision,
+    setTargetParameterState,
+} from './sampling-parameter-policy.js';
+import { oai_settings } from './openai.js';
 import { getCurrentDreamGenModelTokenizer, getCurrentOpenRouterModelTokenizer, loadAphroditeModels, loadDreamGenModels, loadFeatherlessModels, loadGenericModels, loadInfermaticAIModels, loadLlamaCppModels, loadMancerModels, loadOllamaModels, loadOpenRouterModels, loadTabbyModels, loadTogetherAIModels, loadVllmModels, setOpenRouterProviders, updateOpenRouterProvidersWarning } from './textgen-models.js';
 import { ENCODE_TOKENIZERS, TEXTGEN_TOKENIZERS, TOKENIZER_SUPPORTED_KEY, getTextTokens, getTokenizerBestMatch, tokenizers } from './tokenizers.js';
 import { AbortReason } from './util/AbortReason.js';
@@ -1945,7 +1957,89 @@ export function createTextGenGenerationData(settings, model, finalPrompt = null,
             delete params.guided_json;
         }
     }
+
+    // SillyBunny: match the flat text request before the server constructs backend-specific options.
+    const textContext = createSamplingRequestContext({
+        backend: 'text',
+        source: settings.type || 'textgenerationwebui',
+        adapter: settings.type,
+        model: model || '',
+        activeValues: {
+            temperature: params.temperature,
+            top_p: params.top_p,
+            presence_penalty: params.presence_penalty,
+            frequency_penalty: params.frequency_penalty,
+            typical_p: params.typical_p,
+        },
+        policy: getTargetSamplingPolicy(oai_settings?.model_sampling_policies, createSamplingTargetKey({
+            source: settings.type || 'textgenerationwebui',
+            model: model || '',
+        })),
+        legacyExclusions: parseLegacySamplingExclusions(settings.custom_exclude_body),
+    });
+
+    applySamplingParameterPolicy(params, textContext);
+
     return params;
+}
+
+/**
+ * Return the transmission state for the active Text Completions target.
+ * @param {string} parameterId
+ * @returns {'inherit'|'include'|'omit'}
+ */
+export function getTextSamplingParameterTransmissionState(parameterId) {
+    const source = textgenerationwebui_settings.type || 'textgenerationwebui';
+    const model = getTextGenModel(textgenerationwebui_settings);
+    const targetKey = createSamplingTargetKey({ source, model });
+    if (!targetKey) {
+        return 'inherit';
+    }
+    const policy = getTargetSamplingPolicy(oai_settings?.model_sampling_policies, targetKey);
+    return normalizeTransmissionState(policy.parameters?.[parameterId]);
+}
+
+/**
+ * Set the transmission state for the active Text Completions target.
+ * @param {string} parameterId
+ * @param {'inherit'|'include'|'omit'} state
+ * @returns {boolean}
+ */
+export function setTextSamplingParameterTransmissionState(parameterId, state) {
+    const source = textgenerationwebui_settings.type || 'textgenerationwebui';
+    const model = getTextGenModel(textgenerationwebui_settings);
+    const targetKey = createSamplingTargetKey({ source, model });
+    if (!targetKey) {
+        return false;
+    }
+    oai_settings.model_sampling_policies ??= { version: POLICY_SCHEMA_VERSION, targets: {} };
+    setTargetParameterState(oai_settings.model_sampling_policies, targetKey, parameterId, normalizeTransmissionState(state));
+    saveSettingsDebounced();
+    return true;
+}
+
+/**
+ * Describe the effective policy for an active Text Completions parameter.
+ * @param {string} parameterId
+ * @returns {object}
+ */
+export function getTextSamplingParameterViewModel(parameterId) {
+    const source = textgenerationwebui_settings.type || 'textgenerationwebui';
+    const model = getTextGenModel(textgenerationwebui_settings);
+    const targetKey = createSamplingTargetKey({ source, model });
+    const policy = getTargetSamplingPolicy(oai_settings?.model_sampling_policies, targetKey);
+    return {
+        ...resolveEffectiveParameterDecision(parameterId, {
+            backend: 'text',
+            adapter: source,
+            source,
+            model,
+            policy,
+            legacyExclusions: new Set(),
+            activeValues: {},
+        }),
+        targetKey: targetKey || null,
+    };
 }
 
 /**
