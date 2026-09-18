@@ -40,6 +40,13 @@ import {
 import { shouldRestoreTextGenStatusOnStartup } from './scripts/textgen-startup-status.js';
 import { normalizeCharacterChatName, resolveCharacterChatNameForLoad } from './scripts/character-chat-resolver.js';
 import { getDebouncedChatSaveAbortReason, getQueuedChatSaveAbortReason } from './scripts/chat-save-guard.js';
+import {
+    commitChatStaging,
+    fetchChatRaw,
+    fetchGroupChatRaw,
+    shouldAbortReloadForActiveGeneration,
+    shouldDiscardReloadTarget,
+} from './scripts/chat-reload-guard.js';
 import { getChatBackupSaveOptions } from './scripts/chat-backup-sequence.js';
 import { getCharacterDefinitionFormValues, getSuspiciousEmptyCharacterDefinitionSave } from './scripts/character-save-guard.js';
 // SillyBunny: keep model-produced chat filenames behind a strict, independently tested parser.
@@ -73,7 +80,6 @@ import {
     select_group_chats,
     regenerateGroup,
     group_generation_id,
-    getGroupChat,
     renameGroupMember,
     createNewGroupChat,
     getGroupAvatar,
@@ -3645,21 +3651,215 @@ export const reloadCurrentChat = reloadChatMutex.update.bind(reloadChatMutex);
  * @returns {Promise<void>} A promise that resolves when the chat is reloaded.
  */
 export async function reloadCurrentChatUnsafe() {
-    preserveNeutralChat();
-    await clearChat({ clearData: true });
+    const targetChatId = getCurrentChatId();
+    const targetChid = this_chid;
+    const targetGroup = selected_group;
+    // SillyBunny: cooperative bounded abort barrier if generation/streaming is active
+    const hadActiveGeneration = shouldAbortReloadForActiveGeneration({
+        isSendPressed: is_send_press,
+        hasActiveGenerationRun: Boolean(activeGenerationRun),
+    });
 
-    if (selected_group) {
-        await getGroupChat(selected_group, true);
-    } else if (this_chid !== undefined) {
-        await getChat();
-    } else {
-        resetChatState();
-        restoreNeutralChat();
-        await getCharacters();
-        await printMessages();
-        await eventSource.emit(event_types.CHAT_CHANGED, getCurrentChatId());
+    if (hadActiveGeneration) {
+        try {
+            stopGeneration();
+
+            const abortDeadline = Date.now() + 2500;
+            while (
+                shouldAbortReloadForActiveGeneration({
+                    isSendPressed: is_send_press,
+                    hasActiveGenerationRun: Boolean(activeGenerationRun),
+                }) &&
+                Date.now() < abortDeadline
+            ) {
+                await delay(50);
+            }
+
+            if (
+                shouldAbortReloadForActiveGeneration({
+                    isSendPressed: is_send_press,
+                    hasActiveGenerationRun: Boolean(activeGenerationRun),
+                })
+            ) {
+                toastr.warning(
+                    t`Generation still active. Reload cancelled to protect chat data.`,
+                    t`Reload cancelled`,
+                );
+                return;
+            }
+
+            // SillyBunny: abort can yield to navigation; never save another chat under this target.
+            if (
+                shouldDiscardReloadTarget({ initialChatId: targetChatId, currentChatId: getCurrentChatId() }) ||
+                this_chid !== targetChid ||
+                selected_group !== targetGroup
+            ) {
+                console.warn('Chat target changed during generation abort. Discarding reload.');
+                return;
+            }
+
+            // SillyBunny: persist any partial assistant message from the aborted generation.
+            const saved = targetGroup
+                ? await saveGroupChat(targetGroup, true)
+                : targetChid !== undefined
+                    ? await saveChatConditional()
+                    : true;
+            if (saved !== true) {
+                toastr.error(
+                    t`Could not save pending edits before reload. Reload cancelled.`,
+                    t`Reload cancelled`,
+                );
+                return;
+            }
+        } catch (error) {
+            console.error('Error aborting generation or saving partial chat:', error);
+            toastr.error(
+                t`Could not safely abort generation. Reload cancelled to protect chat data.`,
+                t`Reload cancelled`,
+            );
+            return;
+        }
     }
 
+    // SillyBunny: flush pending user edits before re-reading from disk (fail-closed)
+    let flushed = false;
+    try {
+        flushed = await flushPendingChatSavesForNavigation();
+    } catch (error) {
+        console.error('Error flushing pending chat saves:', error);
+        toastr.error(
+            t`Could not save pending edits before reload. Reload cancelled.`,
+            t`Reload cancelled`,
+        );
+        return;
+    }
+
+    if (!flushed) {
+        toastr.error(
+            t`Could not save pending edits before reload. Reload cancelled.`,
+            t`Reload cancelled`,
+        );
+        return;
+    }
+
+    // SillyBunny: validate full target identity after flush and before any fetch or mutation
+    if (
+        shouldDiscardReloadTarget({ initialChatId: targetChatId, currentChatId: getCurrentChatId() }) ||
+        this_chid !== targetChid ||
+        selected_group !== targetGroup
+    ) {
+        console.warn('Chat target changed during flush. Discarding reload.');
+        return;
+    }
+
+    let staging = null;
+
+    try {
+        if (targetGroup) {
+            staging = await fetchGroupChatRaw({
+                chatId: targetChatId,
+                headers: getRequestHeaders(),
+            });
+        } else if (targetChid !== undefined) {
+            const character = characters[targetChid];
+            if (!character) {
+                toastr.error(
+                    t`Character not found. Reload cancelled.`,
+                    t`Reload failed`,
+                );
+                return;
+            }
+            const fileName = character.chat;
+            staging = await fetchChatRaw({
+                characterName: character.name,
+                fileName: fileName,
+                avatarUrl: character.avatar,
+                headers: getRequestHeaders(),
+            });
+        } else {
+            // Neutral chat: no fetch needed, but re-validate after async getCharacters()
+            await getCharacters();
+
+            if (
+                shouldDiscardReloadTarget({ initialChatId: targetChatId, currentChatId: getCurrentChatId() }) ||
+                this_chid !== targetChid ||
+                selected_group !== targetGroup
+            ) {
+                console.warn('Chat target changed during neutral reload. Discarding reload.');
+                return;
+            }
+
+            resetChatState();
+            restoreNeutralChat();
+            await printMessages();
+            await eventSource.emit(event_types.CHAT_CHANGED, targetChatId);
+            refreshSwipeButtons();
+            return;
+        }
+    } catch (error) {
+        console.error('Error fetching chat data for reload:', error);
+        toastr.error(
+            t`Could not reload chat data from server. Existing chat preserved.`,
+            t`Reload failed`,
+        );
+        return;
+    }
+
+    // SillyBunny: validate that user is still on the same chat BEFORE mutating globals or clearing DOM
+    if (
+        shouldDiscardReloadTarget({ initialChatId: targetChatId, currentChatId: getCurrentChatId() }) ||
+        this_chid !== targetChid ||
+        selected_group !== targetGroup
+    ) {
+        console.warn('Chat target changed during reload fetch. Discarding reload.');
+        return;
+    }
+
+    if (!staging || !Array.isArray(staging.messages)) {
+        toastr.error(
+            t`Invalid chat data received from server. Existing chat preserved.`,
+            t`Reload failed`,
+        );
+        return;
+    }
+
+    if (
+        !Array.isArray(chat) ||
+        !chat_metadata ||
+        typeof chat_metadata !== 'object' ||
+        Array.isArray(chat_metadata)
+    ) {
+        toastr.error(
+            t`Live chat state is invalid. Reload cancelled to protect data.`,
+            t`Reload failed`,
+        );
+        return;
+    }
+
+    // Synchronously commit to live memory and re-render DOM
+    preserveNeutralChat();
+
+    const committed = commitChatStaging({
+        staging,
+        targetChat: chat,
+        targetMetadata: chat_metadata,
+    });
+
+    if (!committed) {
+        toastr.error(
+            t`Failed to commit reloaded chat data. Existing chat preserved.`,
+            t`Reload failed`,
+        );
+        return;
+    }
+
+    await clearChat({ clearData: false });
+    chat.forEach(ensureMessageMediaIsArray);
+
+    await loadItemizedPrompts(getCurrentChatId());
+    await printMessages();
+
+    await eventSource.emit(event_types.CHAT_CHANGED, targetChatId);
     refreshSwipeButtons();
 }
 
@@ -14556,13 +14756,19 @@ export function select_rm_info(type, charId, previousCharId = null) {
             const perPage = Number(accountStorage.getItem('Characters_PerPage')) || per_page_default;
             const page = Math.floor(charIndex / perPage) + 1;
             $('#rm_print_characters_pagination').pagination('go', page);
-            const selector = `#rm_print_characters_block [grid="${charId}"]`;
+            // SillyBunny: match the rendered group card and tolerate it disappearing during navigation.
+            const selector = `#rm_print_characters_block [data-grid="${charId}"]`;
             try {
-                waitUntilCondition(() => document.querySelector(selector) !== null).then(() => {
+                waitUntilCondition(() => document.querySelector(selector) !== null, 1000, 100, { rejectOnTimeout: false }).then(() => {
                     const element = $(selector);
+                    if (element.length === 0) {
+                        return;
+                    }
                     const scrollOffset = element.offset().top - element.parent().offset().top;
                     element.parent().scrollTop(scrollOffset);
                     flashHighlight(element, 5000);
+                }).catch(e => {
+                    console.error(e);
                 });
             } catch (e) {
                 console.error(e);

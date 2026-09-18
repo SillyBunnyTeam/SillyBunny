@@ -103,6 +103,18 @@ import {
     normalizeReverseProxyPreset,
     shouldIncludeSamplingFieldsInPreset,
 } from './openai-preset-utils.js';
+import {
+    POLICY_SCHEMA_VERSION,
+    applySamplingParameterPolicy,
+    createSamplingRequestContext,
+    createSamplingTargetKey,
+    getTargetSamplingPolicy,
+    normalizeStoredSamplingPolicies,
+    normalizeTransmissionState,
+    parseLegacySamplingExclusions,
+    resolveEffectiveParameterDecision,
+    setTargetParameterState,
+} from './sampling-parameter-policy.js';
 import { applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model } from './openai-model-capabilities.js';
 import { TOOL_CALL_RECURSE_LIMIT_DEFAULT, normalizeToolCallRecurseLimit } from './tool-call-recurse-limit.js';
 import { LINKAPI_ENDPOINT, getLinkApiRequestFormat } from './linkapi-utils.js';
@@ -695,6 +707,10 @@ const default_settings = {
     bind_preset_to_sampling: true,
     model_sampling_profiles: {},
     model_sampling_profiles_enabled: false,
+    model_sampling_policies: {
+        version: POLICY_SCHEMA_VERSION,
+        targets: {},
+    },
     extensions: {},
     model_favorites: {},
 };
@@ -5632,15 +5648,10 @@ export async function createGenerationParameters(settings, model, type, messages
         }
 
         if (model.includes('grok-3-mini')) {
-            delete generate_data.presence_penalty;
-            delete generate_data.frequency_penalty;
             delete generate_data.stop;
         }
 
         if (model.includes('grok-4') || model.includes('grok-code')) {
-            delete generate_data.presence_penalty;
-            delete generate_data.frequency_penalty;
-
             // grok-4-fast-non-reasoning accepts stop
             if (!model.includes('grok-4-fast-non-reasoning')) {
                 delete generate_data.stop;
@@ -5813,6 +5824,41 @@ export async function createGenerationParameters(settings, model, type, messages
     if (jsonSchema) {
         generate_data.json_schema = jsonSchema;
     }
+
+    // SillyBunny: apply per-target transmission choices without changing sampler presets.
+    const requestSource = settings.chat_completion_source || '';
+    const requestProfile = selected_custom_endpoint_preset?.secretId || undefined;
+    const targetKey = createSamplingTargetKey({
+        source: requestSource,
+        model: model,
+        customProfileId: requestProfile,
+    }) || '';
+
+    const policy = getTargetSamplingPolicy(
+        oai_settings.model_sampling_policies,
+        targetKey || null,
+    );
+
+    const activeValues = {
+        temperature: settings.temp_openai,
+        top_p: settings.top_p_openai,
+        presence_penalty: settings.pres_pen_openai,
+        frequency_penalty: settings.freq_pen_openai,
+    };
+
+    const legacyExclusions = parseLegacySamplingExclusions(settings.custom_exclude_body);
+
+    const samplingContext = createSamplingRequestContext({
+        backend: 'chat',
+        source: requestSource,
+        model: model,
+        customProfileId: requestProfile,
+        activeValues,
+        policy,
+        legacyExclusions,
+    });
+
+    applySamplingParameterPolicy(generate_data, samplingContext);
 
     return { generate_data, stream, canMultiSwipe };
 }
@@ -7176,6 +7222,7 @@ function loadOpenAISettings(data, settings) {
     migrateChatCompletionSettings(settings);
     ensureModelFavoritesStore(settings);
 
+
     for (const key of Object.keys(default_settings)) {
         // Invalid NanoGPT restrictions must reach request validation, not become unrestricted defaults.
         const isNanoGptRequestSetting = ['nanogpt_allowed_providers', 'nanogpt_ignored_providers', 'nanogpt_payg_override'].includes(key);
@@ -7206,6 +7253,7 @@ function loadOpenAISettings(data, settings) {
             }
         }
     }
+    oai_settings.model_sampling_policies = normalizeStoredSamplingPolicies(oai_settings.model_sampling_policies);
 
     applyToolCallRecurseLimit(oai_settings.tool_call_recurse_limit);
     syncMaxContextUnlockedControl(oai_settings);
@@ -11620,4 +11668,53 @@ export function initOpenAI() {
     $('#customize_additional_parameters').on('click', onCustomizeParametersClick);
     $('#openai_proxy_preset').on('change', onProxyPresetChange);
     $('#custom_endpoint_preset').on('change', onCustomEndpointPresetChange);
+}
+
+export function getSamplingParameterTransmissionState(parameterId) {
+    const source = oai_settings.chat_completion_source || '';
+    const model = getChatCompletionModel(oai_settings);
+    const customProfileId = selected_custom_endpoint_preset?.secretId || undefined;
+    const targetKey = createSamplingTargetKey({ source, model, customProfileId });
+    if (!targetKey) {
+        return 'inherit';
+    }
+    const policy = getTargetSamplingPolicy(oai_settings.model_sampling_policies, targetKey);
+    return normalizeTransmissionState(policy.parameters?.[parameterId]);
+}
+
+export function setSamplingParameterTransmissionState(parameterId, state) {
+    const source = oai_settings.chat_completion_source || '';
+    const model = getChatCompletionModel(oai_settings);
+    const customProfileId = selected_custom_endpoint_preset?.secretId || undefined;
+    const targetKey = createSamplingTargetKey({ source, model, customProfileId });
+    if (!targetKey) {
+        return false;
+    }
+    oai_settings.model_sampling_policies ??= { version: POLICY_SCHEMA_VERSION, targets: {} };
+    const normalized = normalizeTransmissionState(state);
+    setTargetParameterState(oai_settings.model_sampling_policies, targetKey, parameterId, normalized);
+    saveSettingsDebounced();
+    return true;
+}
+
+export function getSamplingParameterViewModel(parameterId) {
+    const source = oai_settings.chat_completion_source || '';
+    const model = getChatCompletionModel(oai_settings);
+    const customProfileId = selected_custom_endpoint_preset?.secretId || undefined;
+    const targetKey = createSamplingTargetKey({ source, model, customProfileId });
+    const policy = getTargetSamplingPolicy(oai_settings.model_sampling_policies, targetKey);
+    const decision = resolveEffectiveParameterDecision(parameterId, {
+        backend: 'chat',
+        source,
+        model,
+        customProfileId,
+        policy,
+        legacyExclusions: new Set(),
+        activeValues: {},
+    });
+    return {
+        ...decision,
+        targetKey: targetKey || null,
+        storedState: normalizeTransmissionState(policy.parameters?.[parameterId]),
+    };
 }
