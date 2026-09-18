@@ -5825,6 +5825,7 @@ export async function createGenerationParameters(settings, model, type, messages
         generate_data.json_schema = jsonSchema;
     }
 
+    // SillyBunny: apply per-target transmission choices without changing sampler presets.
     const requestSource = settings.chat_completion_source || '';
     const requestProfile = selected_custom_endpoint_preset?.secretId || undefined;
     const targetKey = createSamplingTargetKey({
@@ -7221,9 +7222,6 @@ function loadOpenAISettings(data, settings) {
     migrateChatCompletionSettings(settings);
     ensureModelFavoritesStore(settings);
 
-    oai_settings.model_sampling_policies = normalizeStoredSamplingPolicies(
-        settings.model_sampling_policies ?? default_settings.model_sampling_policies,
-    );
 
     for (const key of Object.keys(default_settings)) {
         // Invalid NanoGPT restrictions must reach request validation, not become unrestricted defaults.
@@ -7255,6 +7253,7 @@ function loadOpenAISettings(data, settings) {
             }
         }
     }
+    oai_settings.model_sampling_policies = normalizeStoredSamplingPolicies(oai_settings.model_sampling_policies);
 
     applyToolCallRecurseLimit(oai_settings.tool_call_recurse_limit);
     syncMaxContextUnlockedControl(oai_settings);

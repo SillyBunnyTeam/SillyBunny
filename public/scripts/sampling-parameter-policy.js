@@ -175,7 +175,7 @@ export const SAMPLING_PARAMETER_DESCRIPTORS = deepFreeze({
         label: 'Typical P',
         valueKey: 'typical_p',
         wirePaths: {
-            text: ['options', 'typical_p'],
+            text: ['typical_p'],
         },
     },
 });
@@ -342,7 +342,7 @@ export function createSamplingTargetKey(identity = {}) {
         ? normalizedModel
         : UNSELECTED_MODEL_SENTINEL;
 
-    if (hasProfile) {
+    if (hasProfile && (sourceIsCustom || !hasSource)) {
         return `custom:${rawProfile}:${modelPart}`;
     }
 
@@ -931,6 +931,10 @@ export function applySamplingParameterPolicy(payload, requestContext) {
 
         if (decision.action === 'omit') {
             deleteOwnPath(payload, wirePath);
+            if (parameterId === 'typical_p' && ctx.backend === 'text') {
+                // SillyBunny: text backends also consume the legacy flat alias.
+                deleteOwnPath(payload, ['typical']);
+            }
             decisions.push(decision);
             continue;
         }
@@ -948,6 +952,9 @@ export function applySamplingParameterPolicy(payload, requestContext) {
             }
 
             setOwnPath(payload, wirePath, activeValue);
+            if (parameterId === 'typical_p' && ctx.backend === 'text' && Object.hasOwn(payload, 'typical')) {
+                setOwnPath(payload, ['typical'], activeValue);
+            }
             decisions.push(decision);
             continue;
         }

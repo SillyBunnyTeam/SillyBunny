@@ -34,6 +34,11 @@ import {
     setSamplingParameterTransmissionState,
     getSamplingParameterViewModel,
 } from './openai.js';
+import {
+    getTextSamplingParameterTransmissionState,
+    setTextSamplingParameterTransmissionState,
+    getTextSamplingParameterViewModel,
+} from './textgen-settings.js';
 
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
@@ -10228,6 +10233,27 @@ const SAMPLING_SELECTOR_TO_CANONICAL_ID = Object.freeze({
     '#typical_p_textgenerationwebui': 'typical_p',
 });
 
+function refreshSamplingTransmission(card, selector) {
+    const parameterId = SAMPLING_SELECTOR_TO_CANONICAL_ID[selector];
+    const container = card.querySelector('.sb-sampling-transmission');
+    if (!parameterId || !container) {
+        return;
+    }
+    const viewModel = selector.includes('textgenerationwebui')
+        ? getTextSamplingParameterViewModel(parameterId)
+        : getSamplingParameterViewModel(parameterId);
+    container.querySelectorAll('.sb-transmission-btn').forEach(button => {
+        const selected = button.dataset.policyState === viewModel.storedState;
+        button.classList.toggle('active', selected);
+        button.setAttribute('aria-checked', String(selected));
+        button.disabled = !viewModel.targetKey;
+    });
+    const badge = container.querySelector('.sb-capability-forbidden-badge');
+    if (badge) {
+        badge.hidden = viewModel.reason !== 'capability-forbidden';
+    }
+}
+
 function decorateSamplingControlCard(card, selector) {
     if (!(card instanceof HTMLElement)) {
         return;
@@ -10274,11 +10300,18 @@ function decorateSamplingControlCard(card, selector) {
                 { state: 'omit', label: 'Omit', title: 'Omit: Completely delete this setting from the request to prevent crashes' },
             ];
 
-            const currentStored = typeof getSamplingParameterTransmissionState === 'function'
-                ? getSamplingParameterTransmissionState(parameterId)
+            const isTextGenParameter = selector.includes('textgenerationwebui');
+            const getPolicyState = isTextGenParameter
+                ? getTextSamplingParameterTransmissionState
+                : getSamplingParameterTransmissionState;
+            const getPolicyViewModel = isTextGenParameter
+                ? getTextSamplingParameterViewModel
+                : getSamplingParameterViewModel;
+            const currentStored = typeof getPolicyState === 'function'
+                ? getPolicyState(parameterId)
                 : 'inherit';
-            const viewModel = typeof getSamplingParameterViewModel === 'function'
-                ? getSamplingParameterViewModel(parameterId)
+            const viewModel = typeof getPolicyViewModel === 'function'
+                ? getPolicyViewModel(parameterId)
                 : { reason: 'provider-default' };
 
             states.forEach(opt => {
@@ -10294,42 +10327,30 @@ function decorateSamplingControlCard(card, selector) {
                         title: opt.title,
                     },
                 });
-                btn.style.padding = '2px 8px';
-                btn.style.fontSize = '0.8em';
 
                 btn.addEventListener('click', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    if (typeof setSamplingParameterTransmissionState === 'function') {
-                        setSamplingParameterTransmissionState(parameterId, opt.state);
+                    const setPolicyState = isTextGenParameter
+                        ? setTextSamplingParameterTransmissionState
+                        : setSamplingParameterTransmissionState;
+                    if (setPolicyState(parameterId, opt.state)) {
+                        refreshSamplingTransmission(card, selector);
                     }
-                    options.querySelectorAll('.sb-transmission-btn').forEach(b => {
-                        const sel = b.getAttribute('data-policy-state') === opt.state;
-                        b.classList.toggle('active', sel);
-                        b.setAttribute('aria-checked', String(sel));
-                    });
                 });
                 options.appendChild(btn);
             });
 
-            if (viewModel.reason === 'capability-forbidden') {
-                const forbiddenBadge = createElement('small', {
-                    className: 'sb-capability-forbidden-badge',
-                    text: '(Omitted: provider restriction)',
-                    attrs: {
-                        title: `Forbidden by model capability rule: ${viewModel.capabilityRuleId || 'provider restriction'}`,
-                    },
-                });
-                forbiddenBadge.style.color = 'var(--smart-theme-body-soft)';
-                forbiddenBadge.style.fontStyle = 'italic';
-                container.appendChild(options);
-                container.appendChild(forbiddenBadge);
-            } else {
-                container.appendChild(options);
-            }
+            const forbiddenBadge = createElement('small', {
+                className: 'sb-capability-forbidden-badge',
+                text: '(Omitted: provider restriction)',
+            });
+            forbiddenBadge.hidden = viewModel.reason !== 'capability-forbidden';
+            container.append(options, forbiddenBadge);
 
             card.appendChild(container);
         }
+        refreshSamplingTransmission(card, selector);
     }
 
     if (selector === '#seed_textgenerationwebui') {
@@ -10499,6 +10520,7 @@ function syncSamplingPanelControls(root) {
                 if (existingCard.parentElement !== target) {
                     target.appendChild(existingCard);
                 }
+                refreshSamplingTransmission(existingCard, selector);
                 continue;
             }
 
@@ -10597,6 +10619,7 @@ function buildSamplingPanel() {
     scroller.appendChild(column);
 
     $('#main_api').on('change.sbSamplingPanel', () => updateSamplingPanelVisibility(column));
+    $(document).on('change.sbSamplingTransmission', 'select', () => updateSamplingPanelVisibility(column));
     window.requestAnimationFrame(() => updateSamplingPanelVisibility(column));
     window.setTimeout(() => updateSamplingPanelVisibility(column), 250);
     window.setTimeout(() => updateSamplingPanelVisibility(column), 1000);

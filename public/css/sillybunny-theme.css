@@ -2646,6 +2646,8 @@ input[type='range']::-moz-range-thumb {
 .sb-sampling-transmission {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
     justify-content: space-between;
     margin-top: 8px;
     padding-top: 6px;
@@ -2668,7 +2670,7 @@ input[type='range']::-moz-range-thumb {
 }
 
 .sb-sampling-info-icon:hover {
-    opacity: 0.9 !important;
+    opacity: 0.9;
 }
 
 .sb-sampling-transmission__options {
@@ -2681,13 +2683,13 @@ input[type='range']::-moz-range-thumb {
 }
 
 .sb-transmission-btn {
-    padding: 3px 10px !important;
-    font-size: 0.75rem !important;
-    font-weight: 500 !important;
-    border-radius: 6px !important;
-    border: 1px solid transparent !important;
-    background: transparent !important;
-    color: var(--SmartThemeBodyColor) !important;
+    padding: 3px 10px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--SmartThemeBodyColor);
     opacity: 0.65;
     cursor: pointer;
     transition: all 120ms ease-in-out;
@@ -2695,44 +2697,31 @@ input[type='range']::-moz-range-thumb {
 
 .sb-transmission-btn:hover:not(.active):not([disabled]) {
     opacity: 0.9;
-    background: color-mix(in srgb, var(--sb-shell-surface) 60%, transparent) !important;
+    background: color-mix(in srgb, var(--sb-shell-surface) 60%, transparent);
 }
 
-/* 1. AUTO active state: crisp clean neutral cyan / accent */
-.sb-transmission-btn[data-policy-state='inherit'].active {
-    opacity: 1 !important;
-    font-weight: 700 !important;
-    background: color-mix(in srgb, var(--color-primary, var(--sb-accent, #3b82f6)) 20%, transparent) !important;
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent, #3b82f6)) 60%, transparent) !important;
-    color: var(--color-primary, var(--sb-accent, #60a5fa)) !important;
+/* Transmission policy active states */
+.sb-transmission-btn.active {
+    opacity: 1;
+    font-weight: 700;
+    background: color-mix(in srgb, var(--color-primary, var(--sb-accent, #3b82f6)) 20%, transparent);
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent, #3b82f6)) 60%, transparent);
+    color: var(--color-primary, var(--sb-accent, #60a5fa));
     box-shadow: 0 1px 4px color-mix(in srgb, var(--SmartThemeShadowColor) 20%, transparent);
 }
 
-/* 2. SEND active state: vivid green highlight */
-.sb-transmission-btn[data-policy-state='include'].active {
-    opacity: 1 !important;
-    font-weight: 700 !important;
-    background: color-mix(in srgb, #22c55e 25%, transparent) !important;
-    border-color: #22c55e !important;
-    color: #4ade80 !important;
-    box-shadow: 0 0 8px color-mix(in srgb, #22c55e 30%, transparent);
-}
 
-/* 3. OMIT active state: vivid red strikethrough highlight */
 .sb-transmission-btn[data-policy-state='omit'].active {
-    opacity: 1 !important;
-    font-weight: 700 !important;
-    background: color-mix(in srgb, #ef4444 25%, transparent) !important;
-    border-color: #ef4444 !important;
-    color: #f87171 !important;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
+    border-color: var(--SmartThemeQuoteColor);
+    color: var(--SmartThemeBodyColor);
     text-decoration: line-through;
-    box-shadow: 0 0 8px color-mix(in srgb, #ef4444 30%, transparent);
 }
 
 /* Dim slider when parameter is OMITTED */
 .sb-sampling-control-card:has(.sb-transmission-btn[data-policy-state='omit'].active) input[type='range'].neo-range-slider,
 .sb-sampling-control-card:has(.sb-transmission-btn[data-policy-state='omit'].active) .neo-range-input {
-    opacity: 0.35 !important;
+    opacity: 0.35;
     filter: grayscale(0.8);
     transition: opacity 150ms ease-in-out;
 }
@@ -2744,11 +2733,15 @@ input[type='range']::-moz-range-thumb {
     gap: 4px;
     font-size: 0.72rem;
     font-weight: 600;
-    color: #f87171;
-    background: color-mix(in srgb, #ef4444 12%, transparent);
-    border: 1px solid color-mix(in srgb, #ef4444 35%, transparent);
+    color: var(--SmartThemeBodyColor);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 35%, transparent);
     padding: 2px 6px;
     border-radius: 6px;
+}
+
+.sb-capability-forbidden-badge[hidden] {
+    display: none;
 }
 
 .sb-sampling-control-card.sb-sampling-large-card {

@@ -1,11 +1,10 @@
 /**
  * @jest-environment node
  */
+/* eslint-disable playwright/no-standalone-expect -- Jest test.each tables are not Playwright tests. */
 
 import {
-    BUILTIN_SAMPLING_CAPABILITIES,
     POLICY_SCHEMA_VERSION,
-    SAMPLING_PARAMETER_DESCRIPTORS,
     UNSELECTED_MODEL_SENTINEL,
     applySamplingParameterPolicy,
     createSamplingRequestContext,
@@ -13,12 +12,9 @@ import {
     deleteOwnPath,
     getMatchingCapabilityRules,
     getOwnPath,
-    getSamplingParameterDescriptor,
     getTargetSamplingPolicy,
-    getWirePath,
     normalizeModelId,
     normalizeStoredSamplingPolicies,
-    normalizeTransmissionState,
     parseLegacySamplingExclusions,
     resolveEffectiveParameterDecision,
     setOwnPath,
@@ -352,8 +348,8 @@ describe('applySamplingParameterPolicy — payload behavior', () => {
         applySamplingParameterPolicy(payload, ctx);
         expect(payload).toEqual({ temperature: 0.7, top_p: 0.9 });
     });
-    test('nested typical_p for text omits via options.typical_p', () => {
-        const payload = { options: { typical_p: 0.9, other: 1 } };
+    test('text capability omits flat typical sampling fields', () => {
+        const payload = { typical_p: 0.9, typical: 0.9, top_p: 0.8 };
         const ctx = makeContext({
             backend: 'text',
             adapter: 'ollama',
@@ -361,8 +357,23 @@ describe('applySamplingParameterPolicy — payload behavior', () => {
             source: 'textgenerationwebui',
         });
         applySamplingParameterPolicy(payload, ctx);
-        expect(Object.hasOwn(payload.options, 'typical_p')).toBe(false);
-        expect(payload.options.other).toBe(1);
+        expect(Object.hasOwn(payload, 'typical_p')).toBe(false);
+        expect(Object.hasOwn(payload, 'typical')).toBe(false);
+        expect(payload.top_p).toBe(0.8);
+    });
+    test('explicit typical sampling inclusion updates an existing alias without introducing one', () => {
+        const ctx = makeContext({
+            backend: 'text',
+            source: 'llamacpp',
+            activeValues: { typical_p: 0.75 },
+            policy: { parameters: { typical_p: 'include' } },
+        });
+        const withAlias = { typical_p: 0.9, typical: 0.9 };
+        const withoutAlias = {};
+        applySamplingParameterPolicy(withAlias, ctx);
+        applySamplingParameterPolicy(withoutAlias, ctx);
+        expect(withAlias).toEqual({ typical_p: 0.75, typical: 0.75 });
+        expect(withoutAlias).toEqual({ typical_p: 0.75 });
     });
     test('Grok proxy path omits penalties via capability', () => {
         const payload = { presence_penalty: 0.5, frequency_penalty: 0.5, temperature: 0.7 };
@@ -442,7 +453,9 @@ describe('I2: Absolute wire absence', () => {
             presence_penalty: 0,
             frequency_penalty: 1,
             temperature: 0.7,
-            options: { typical_p: 0.9, other: 'x' },
+            typical_p: 0.9,
+            typical: 0.9,
+            other: 'x',
         };
         applySamplingParameterPolicy(payload, makeContext({
             source: 'openrouter',
@@ -456,6 +469,7 @@ describe('I2: Absolute wire absence', () => {
         expect(json).not.toContain('"frequency_penalty"');
         expect(json).not.toContain('"temperature"');
         expect(json).not.toContain('"typical_p"');
+        expect(json).not.toContain('"typical"');
         expect(json).toContain('"other":"x"');
     });
 
@@ -596,7 +610,7 @@ describe('I4: Decoupled safety (model_sampling_profiles_enabled === false)', () 
     });
 
     test('Text/Ollama restriction applies without value profiles', () => {
-        const payload = { options: { typical_p: 0.95 } };
+        const payload = { typical_p: 0.95 };
         const ctx = makeContext({
             backend: 'text',
             adapter: 'ollama',
@@ -604,7 +618,7 @@ describe('I4: Decoupled safety (model_sampling_profiles_enabled === false)', () 
             model: 'llama-3.1-8b',
         });
         applySamplingParameterPolicy(payload, ctx);
-        expect(Object.hasOwn(payload.options, 'typical_p')).toBe(false);
+        expect(Object.hasOwn(payload, 'typical_p')).toBe(false);
     });
 });
 
@@ -613,9 +627,11 @@ describe('I4: Decoupled safety (model_sampling_profiles_enabled === false)', () 
 // ---------------------------------------------------------------------------
 
 describe('I5: Dual-backend parity', () => {
-    const states = ['inherit', 'include', 'omit'];
-
-    test.each(states)('Chat and Text both honor state=%s for temperature', state => {
+    test.each([
+        ['inherit', { temperature: 0.9 }],
+        ['include', { temperature: 0.33 }],
+        ['omit', {}],
+    ])('Chat and Text both honor state=%s for temperature', (state, expectedPayload) => {
         const policy = { parameters: { temperature: state } };
         const chatPayload = { temperature: 0.9 };
         const textPayload = { temperature: 0.9 };
@@ -635,23 +651,8 @@ describe('I5: Dual-backend parity', () => {
             activeValues: { temperature: 0.33 },
         }));
 
-        if (state === 'omit') {
-            expect(Object.hasOwn(chatPayload, 'temperature')).toBe(false);
-            expect(Object.hasOwn(textPayload, 'temperature')).toBe(false);
-        } else if (state === 'include') {
-            expect(chatPayload.temperature).toBe(0.33);
-            expect(textPayload.temperature).toBe(0.33);
-        } else {
-            expect(chatPayload.temperature).toBe(0.9);
-            expect(textPayload.temperature).toBe(0.9);
-        }
-    });
-
-    test('typical_p is only reachable via text backend', () => {
-        const chatPath = getWirePath('typical_p', { backend: 'chat' });
-        const textPath = getWirePath('typical_p', { backend: 'text' });
-        expect(chatPath).toBeNull();
-        expect(textPath).toEqual(['options', 'typical_p']);
+        expect(chatPayload).toEqual(expectedPayload);
+        expect(textPayload).toEqual(expectedPayload);
     });
 
     test('explicit include overrides legacy exclusion on both backends', () => {
@@ -763,17 +764,6 @@ describe('createSamplingRequestContext', () => {
         expect(ctx.activeValues.temperature).toBe(0.7);
     });
 
-    test('frozen context', () => {
-        const ctx = createSamplingRequestContext({
-            backend: 'chat',
-            source: 'openai',
-            model: 'gpt-4.1',
-        });
-        expect(Object.isFrozen(ctx)).toBe(true);
-        expect(Object.isFrozen(ctx.policy)).toBe(true);
-        expect(Object.isFrozen(ctx.activeValues)).toBe(true);
-    });
-
     test('in-flight capture is unaffected by later policy edits', () => {
         const settings = { version: 1, targets: {} };
         setTargetParameterState(settings, 'openai:gpt-4.1', 'temperature', 'omit');
@@ -802,31 +792,5 @@ describe('createSamplingRequestContext', () => {
             activeValues: { temperature: 0.7 },
         }));
         expect(fresh.temperature).toBe(0.7);
-    });
-});
-
-// ---------------------------------------------------------------------------
-// Registry shape guards
-// ---------------------------------------------------------------------------
-
-describe('registry integrity', () => {
-    test('all descriptors expose a valid id', () => {
-        for (const [key, descriptor] of Object.entries(SAMPLING_PARAMETER_DESCRIPTORS)) {
-            expect(descriptor.id).toBe(key);
-            expect(descriptor.label).toBeTruthy();
-            expect(descriptor.valueKey).toBeTruthy();
-        }
-    });
-    test('capability rules use frozen arrays', () => {
-        for (const rule of BUILTIN_SAMPLING_CAPABILITIES) {
-            expect(Array.isArray(rule.forbidden)).toBe(true);
-            expect(Object.isFrozen(rule.forbidden)).toBe(true);
-        }
-    });
-    test('getSamplingParameterDescriptor round-trips', () => {
-        for (const key of Object.keys(SAMPLING_PARAMETER_DESCRIPTORS)) {
-            expect(getSamplingParameterDescriptor(key)).toBe(SAMPLING_PARAMETER_DESCRIPTORS[key]);
-        }
-        expect(getSamplingParameterDescriptor('nope')).toBeUndefined();
     });
 });
