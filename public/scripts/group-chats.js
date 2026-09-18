@@ -2739,8 +2739,10 @@ function filterGroupMembers() {
 }
 
 function filterGroupMemberList() {
-    const searchValue = String($(this).val()).toLowerCase();
-    groupMembersFilter.setFilterData(FILTER_TYPES.SEARCH, searchValue);
+    const searchValue = String($(this).val());
+    // SillyBunny: the editor and its popout share one filter, including the search-order input.
+    $('[id="rm_group_members_filter"]').not(this).val(searchValue);
+    groupMembersFilter.setFilterData(FILTER_TYPES.SEARCH, searchValue.toLowerCase());
 }
 
 
@@ -3179,6 +3181,9 @@ function doCurMemberListPopout() {
             .append(controlBarHtml)
             .append(memberListClone);
 
+        // SillyBunny: HTML copies do not retain the search input's current value.
+        newElement.find('#rm_group_members_filter').val($('#rm_group_members_filter').val());
+
         // Remove pagination from popout
         newElement.find('.group_pagination').empty();
 
@@ -3221,7 +3226,8 @@ jQuery(() => {
         }
     });
     $('#rm_group_filter').on('input', filterGroupMembers);
-    $('#rm_group_members_filter').on('input', filterGroupMemberList);
+    // SillyBunny: include the search field created later by the native popout.
+    $(document).on('input', '#rm_group_members_filter', filterGroupMemberList);
     $('#rm_group_submit').on('click', createGroup);
     $('#rm_group_quick_create').on('click', createQuickGroupFromSelectedMembers);
     $('#rm_group_scenario').on('click', setCharacterSettingsOverrides);

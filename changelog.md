@@ -95,6 +95,8 @@
 - PR #841 (2026-09-09) `feat(nanogpt+openrouter): gather providers from Nano-GPT in real time instead of hardcoding, and add a Flex + Priority option for PAYG models with a Flex/Priority endpoint`
 - PR #842 (2026-09-13) `feat: Clipboard copy when copying screenshot of message(s)`
 - PR #848 (2026-09-15) `chore: reconcile main release history with staging`
+- PR #851 (2026-09-18) `fix: Initialize new group chats, restore group highlighting and fix search in popout.`
+- PR #853 (2026-09-18) `feat(samplers): add unified 3-state transmission policy and model-scoped wire sanitization`
 
 ## v1.7.0
 

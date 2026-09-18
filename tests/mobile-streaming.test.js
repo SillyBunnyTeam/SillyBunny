@@ -79,6 +79,18 @@ describe('mobile streaming helpers', () => {
         })).toBe(33);
     });
 
+    test('backs off expensive renders without exceeding the live preview delay or overriding slower user settings', () => {
+        const desktop = { platform: 'Linux x86_64', maxTouchPoints: 0 };
+        const interval = (base, cost) => getStreamingUpdateInterval(base, { navigatorRef: desktop, renderDurationMs: cost });
+        expect(interval(33, 5)).toBe(33);
+        expect(interval(33, 30)).toBe(90);
+        expect(interval(33, 300)).toBe(250);
+        expect(interval(500, 300)).toBe(500);
+        expect(interval(33, NaN)).toBe(33);
+        expect(interval(33, -10)).toBe(33);
+        expect(getStreamingUpdateInterval(33, { navigatorRef: androidNavigator, androidEnabled: true, renderDurationMs: 30 })).toBe(250);
+    });
+
     test('applies an iOS WebKit floor to streaming updates', () => {
         expect(getStreamingUpdateInterval(33, {
             navigatorRef: { platform: 'iPhone', maxTouchPoints: 1 },

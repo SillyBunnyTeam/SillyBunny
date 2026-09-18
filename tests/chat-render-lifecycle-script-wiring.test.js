@@ -83,7 +83,8 @@ describe('chat render lifecycle script wiring', () => {
         expect(source).toContain('const startIndex = getChatRenderWindowStartIndex(chat.length, count);');
         expect(source).toContain('removeRenderedChatMessages();');
         expect(source).toContain('beginChatLoadBottomLock();');
-        expect(source).toContain('await redisplayChat({ startIndex, fade: false, pinBottomDuringRender: true });');
+        expect(source).toContain('const rendering = redisplayChat({ startIndex, fade: false, pinBottomDuringRender: true });');
+        expect(source).toContain('await rendering;');
         expect(source).toContain('syncChatHistoryWindowControls();');
         expect(source).toContain('scrollLoadedChatToBottomThroughLifecycle();');
         expect(source).toContain('delay(debounce_timeout.short).then(() => scrollOnMediaLoad({ force: true }));');
@@ -107,7 +108,7 @@ describe('chat render lifecycle script wiring', () => {
         expect(source).toContain('const windowSize = getChatRenderWindowSize();');
         expect(source).toContain('const endIndex = Math.min(targetChat.length, startIndex + windowSize);');
         expect(source).toContain('const messages = targetChat.slice(startIndex, endIndex);');
-        expect(source).toContain('const renderedMessageIds = await renderRedisplayChatMessages({ messages, startIndex, pinBottomDuringRender });');
+        expect(source).toContain('const renderedMessageIds = await renderRedisplayChatMessages({ messages, startIndex, pinBottomDuringRender, isCurrent: transaction.canRender });');
         expect(source).toContain('applyCharacterTagsToMessageDivs({ mesIds: renderedMessageIds });');
         expect(source).toContain('syncChatHistoryWindowControls();');
         expect(source).toContain('refreshSwipeButtons(false, fade);');
@@ -121,8 +122,8 @@ describe('chat render lifecycle script wiring', () => {
 
         expect(source).toContain('const batchSize = getMobileChatRenderBatchSize(messages.length);');
         expect(source).toContain('if (isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.REDISPLAY_BATCH))');
-        expect(source).toContain('return renderRedisplayChatMessagesThroughLifecycle({ messages, startIndex, batchSize, pinBottomDuringRender });');
-        expect(source).toContain('return renderRedisplayChatMessagesLegacy({ messages, startIndex, batchSize, pinBottomDuringRender });');
+        expect(source).toContain('return renderRedisplayChatMessagesThroughLifecycle({ messages, startIndex, batchSize, pinBottomDuringRender, isCurrent });');
+        expect(source).toContain('return renderRedisplayChatMessagesLegacy({ messages, startIndex, batchSize, pinBottomDuringRender, isCurrent });');
     });
 
     test('guard-on redisplayChat delegates batch mechanics to the lifecycle render batch helper', () => {
@@ -187,7 +188,7 @@ describe('chat render lifecycle script wiring', () => {
         expect(source).toContain('preserveAnchor: messagesToLoad === null');
         expect(source).toContain('const firstId = Number.isInteger(lastMessageId) ? lastMessageId + 1 : 0;');
         expect(source).toContain('const messages = chat.slice(firstId, lastId);');
-        expect(source).toContain('const renderedMessageIds = await renderRedisplayChatMessages({ messages, startIndex: firstId });');
+        expect(source).toContain('const renderedMessageIds = await renderRedisplayChatMessages({ messages, startIndex: firstId, isCurrent: transaction.canRender });');
         expect(source).toContain('pruneRenderedChatMessagesToWindow({ windowSize, pruneFrom: \'start\' });');
         expect(source).toContain('syncRenderedChatLastMessageClass();');
         expect(source).toContain('syncChatHistoryWindowControls();');
@@ -416,7 +417,7 @@ describe('chat render lifecycle script wiring', () => {
         expect(source).toContain('shouldUpdateMetaBadges: !shouldReduceIntermediateStreamingWork');
         expect(source).toContain('this.setFirstSwipe(messageId);');
         expect(source).toContain('this.#queueStreamingVisibleWrite({');
-        expect(source).toContain('formattedText,');
+        expect(source).toContain('formatText,');
         expect(source).toContain('timePassed,');
         expect(source).toContain('currentTokenCount,');
         expect(source).toContain('isFinal,');
@@ -484,7 +485,8 @@ describe('chat render lifecycle script wiring', () => {
 
         expect(queueSource).toContain('if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.STREAM_PROGRESS))');
         expect(queueSource).toContain('applyStreamingVisibleWrite(messageId, write, { isFinal });');
-        expect(queueSource).toContain('getStreamingVisibleWriteBuffer().queue(messageId, write, { isFinal });');
+        expect(queueSource).toContain('getStreamingVisibleWriteBuffer().queue(messageId, write, {');
+        expect(queueSource).toContain('this.onErrorStreaming();');
     });
 
     test('swipe replacement keeps viewport routing behind the lifecycle rollout guard', () => {

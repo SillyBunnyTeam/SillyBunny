@@ -66,7 +66,10 @@ export function segmentTextInElement(htmlElement, htmlContent, granularity = 'wo
 export function applyStreamDomPatch(messageTextElement, htmlContent) {
     const targetElement = /** @type {HTMLElement} */ (messageTextElement.cloneNode());
     targetElement.innerHTML = htmlContent;
-    morphdom(messageTextElement, targetElement);
+    morphdom(messageTextElement, targetElement, {
+        // Full formatting still runs: late references or extension transforms may change earlier blocks.
+        onBeforeElUpdated: (from, to) => !from.isEqualNode(to),
+    });
 }
 
 /**
@@ -84,5 +87,7 @@ export function applyStreamFadeIn(messageTextElement, htmlContent, { bypassFadeI
 
     const targetElement = /** @type {HTMLElement} */ (messageTextElement.cloneNode());
     segmentTextInElement(targetElement, htmlContent);
-    morphdom(messageTextElement, targetElement);
+    morphdom(messageTextElement, targetElement, {
+        onBeforeElUpdated: (from, to) => !from.isEqualNode(to),
+    });
 }

@@ -6,6 +6,8 @@ function assertRenderBatchOptions({
     messages,
     firstMessageId,
     batchSize,
+    timeBudgetMs,
+    now,
     documentRef,
     renderMessageElement,
     insertFragment,
@@ -22,6 +24,10 @@ function assertRenderBatchOptions({
 
     if (!isPositiveInteger(batchSize)) {
         throw new TypeError('renderMessagesInBatches requires batchSize to be a positive integer.');
+    }
+
+    if (!(timeBudgetMs > 0) || typeof now !== 'function') {
+        throw new TypeError('renderMessagesInBatches requires a positive timeBudgetMs and a clock.');
     }
 
     if (!documentRef || typeof documentRef.createDocumentFragment !== 'function') {
@@ -88,6 +94,9 @@ function createBatchMeta({
  * @param {Array} options.messages Messages already selected by the caller.
  * @param {number} options.firstMessageId Numeric id for the first selected message.
  * @param {number} options.batchSize Positive number of messages per fragment.
+ * @param {number} [options.timeBudgetMs=Infinity] Maximum synchronous render time per fragment.
+ * @param {() => number} [options.now] Monotonic clock.
+ * @param {() => boolean} [options.isCurrent] Whether the caller still owns the rendered chat.
  * @param {{createDocumentFragment: () => DocumentFragment}} [options.documentRef=globalThis.document] Fragment factory.
  * @param {(message: object, messageId: number) => Element|Array<Element>} options.renderMessageElement Injected renderer.
  * @param {(fragment: DocumentFragment, batchMeta: object) => void} options.insertFragment Injected insertion target.
@@ -100,6 +109,9 @@ export async function renderMessagesInBatches({
     messages,
     firstMessageId,
     batchSize,
+    timeBudgetMs = Infinity,
+    now = () => performance.now(),
+    isCurrent = () => true,
     documentRef = globalThis.document,
     renderMessageElement,
     insertFragment,
@@ -111,6 +123,8 @@ export async function renderMessagesInBatches({
         messages,
         firstMessageId,
         batchSize,
+        timeBudgetMs,
+        now,
         documentRef,
         renderMessageElement,
         insertFragment,
@@ -120,17 +134,18 @@ export async function renderMessagesInBatches({
 
     const renderedMessageIds = [];
     const renderedMessageElements = [];
-    const shouldYieldBetweenBatches = batchSize < messages.length;
     let batchIndex = 0;
 
-    for (let startOffset = 0; startOffset < messages.length; startOffset += batchSize) {
-        const endOffset = Math.min(startOffset + batchSize, messages.length);
+    for (let startOffset = 0; startOffset < messages.length;) {
+        if (!isCurrent()) break;
+        const batchStart = now();
+        const batchLimit = Math.min(startOffset + batchSize, messages.length);
+        let endOffset = startOffset;
         const fragment = documentRef.createDocumentFragment();
         const batchRenderedMessageIds = [];
         const batchRenderedMessageElements = [];
-        const isFinalBatch = endOffset >= messages.length;
 
-        for (let offset = startOffset; offset < endOffset; offset++) {
+        for (let offset = startOffset; offset < batchLimit; offset++) {
             const messageId = firstMessageId + offset;
             const renderedMessageElement = unwrapRenderedElement(renderMessageElement(messages[offset], messageId));
 
@@ -140,8 +155,13 @@ export async function renderMessagesInBatches({
             batchRenderedMessageElements.push(renderedMessageElement);
             renderedMessageIds.push(messageId);
             renderedMessageElements.push(renderedMessageElement);
+            endOffset = offset + 1;
+            if (now() - batchStart >= timeBudgetMs) {
+                break;
+            }
         }
 
+        const isFinalBatch = endOffset >= messages.length;
         if (markLastMessage && isFinalBatch) {
             batchRenderedMessageElements.at(-1)?.classList?.add('last_mes');
         }
@@ -161,14 +181,16 @@ export async function renderMessagesInBatches({
             isFinalBatch,
         });
 
+        if (!isCurrent()) break;
         insertFragment(fragment, batchMeta);
         await afterBatch?.(batchMeta);
 
-        if (shouldYieldBetweenBatches && !isFinalBatch) {
+        if (!isFinalBatch) {
             await waitForNextFrame();
         }
 
         batchIndex++;
+        startOffset = endOffset;
     }
 
     return {

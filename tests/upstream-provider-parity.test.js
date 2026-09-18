@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import { parse } from 'acorn';
 import { applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model } from '../public/scripts/openai-model-capabilities.js';
 import { migrateNanoGptProviderSettings } from '../public/scripts/openai-preset-utils.js';
+import * as samplingParameterPolicy from '../public/scripts/sampling-parameter-policy.js';
 
 const sources = Object.fromEntries(['openai', 'custom-request', 'reasoning', 'tokenizers'].map(name => {
     const source = readFileSync(new URL(`../public/scripts/${name}.js`, import.meta.url), 'utf8');
@@ -36,9 +37,11 @@ function makeRuntime(overrides = {}) {
         ...overrides,
     };
     const context = vm.createContext({
+        ...samplingParameterPolicy,
         structuredClone,
         console,
         oai_settings: settings,
+        selected_custom_endpoint_preset: null,
         power_user: { request_token_probabilities: true },
         name1: 'User',
         name2: 'Character',
@@ -66,6 +69,7 @@ function makeRuntime(overrides = {}) {
     load(context, 'reasoning', ['extractReasoningFromData']);
     load(context, 'tokenizers', ['getTokenizerModel']);
     return {
+        context,
         settings,
         powerUser: context.power_user,
         build: (...args) => context.createGenerationParameters(settings, ...args),
@@ -78,6 +82,26 @@ function makeRuntime(overrides = {}) {
 }
 
 describe('upstream provider request integration', () => {
+    test('a stale custom profile selection does not change the native provider policy target', async () => {
+        const runtime = makeRuntime({
+            chat_completion_source: 'openai',
+            model_sampling_policies: {
+                version: samplingParameterPolicy.POLICY_SCHEMA_VERSION,
+                targets: {
+                    'openai:gpt-4o': { parameters: { temperature: 'omit' } },
+                    'custom:profile-a:gpt-4o': { parameters: { temperature: 'include' } },
+                },
+            },
+        });
+        runtime.context.selected_custom_endpoint_preset = { secretId: 'profile-a' };
+        const { generate_data: nativePayload } = await runtime.build('gpt-4o', 'quiet', []);
+        expect(nativePayload).not.toHaveProperty('temperature');
+
+        runtime.settings.chat_completion_source = 'custom';
+        const { generate_data: customPayload } = await runtime.build('gpt-4o', 'quiet', []);
+        expect(customPayload.temperature).toBe(1);
+    });
+
     for (const [source, model] of [
         ['openai', 'gpt-6-astra'],
         ['openai', 'gpt-6-astra-2026-09-14'],

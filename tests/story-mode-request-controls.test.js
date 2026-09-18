@@ -9,6 +9,7 @@ import { applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstrai
 import { resolveGenerationOutputBufferState, resolveGenerationUnblockState, resolveStopGenerationState } from '../public/scripts/generation-lifecycle/index.js';
 import { event_types } from '../public/scripts/events.js';
 import { OVERSWIPE_BEHAVIOR, SWIPE_DIRECTION, SWIPE_SOURCE, SWIPE_STATE } from '../public/scripts/constants.js';
+import * as samplingParameterPolicy from '../public/scripts/sampling-parameter-policy.js';
 
 const sources = Object.fromEntries(['script.js', 'scripts/openai.js', 'scripts/reasoning.js', 'scripts/group-chats.js', 'scripts/utils.js', 'scripts/st-context.js', 'scripts/sse-stream.js', 'scripts/textgen-settings.js'].map(file => {
     const source = readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8');
@@ -45,6 +46,7 @@ function makeRuntime({ api = 'openai', model = 'gpt-4o', stream = false, buffer 
         trigger: jest.fn(),
     };
     const context = vm.createContext({
+        ...samplingParameterPolicy,
         AbortController, AbortSignal, Event, MessageEvent, TextDecoderStream, TransformStream, structuredClone,
         console: { log: jest.fn(), info: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn(), trace: jest.fn() },
         main_api: api,
@@ -175,7 +177,7 @@ function makeRuntime({ api = 'openai', model = 'gpt-4o', stream = false, buffer 
     load(context, 'scripts/reasoning.js', ['ReasoningType', 'ReasoningState', 'PromptReasoning', 'ReasoningHandler', 'parseReasoningFromString', 'extractReasoningFromData']);
     context.getReasoningParseTemplates = () => [context.power_user.reasoning];
     vm.runInContext('ReasoningHandler.prototype.updateDom = () => {};', context);
-    load(context, 'script.js', ['Generate', 'StreamingProcessor', 'sendGenerationRequest', 'sendStreamingRequest', 'getGenerateUrl', 'saveReply', 'getNextMessageId', 'getBiasStrings', 'processCommands', 'extractMessageFromData', 'normalizeContentText', 'stringifyUnknown', 'shouldBufferMainGenerationOutput', 'applyMainGenerationOutputInterceptors', 'unblockGeneration', 'clearStreamingProcessorIfCurrent', 'shouldAutoContinue', 'triggerAutoContinue', 'syncMesToSwipe', 'stopGeneration', 'generateRaw', 'generateRawData', 'generateQuietPrompt', 'TempResponseLength', 'addChatsPreamble', 'addChatsSeparator', 'consumePendingGeneratedMessageExtra']);
+    load(context, 'script.js', ['Generate', 'StreamingProcessor', 'sendGenerationRequest', 'sendStreamingRequest', 'getGenerateUrl', 'saveReply', 'getNextMessageId', 'getBiasStrings', 'processCommands', 'extractMessageFromData', 'normalizeContentText', 'stringifyUnknown', 'shouldBufferMainGenerationOutput', 'applyMainGenerationOutputInterceptors', 'unblockGeneration', 'clearStreamingProcessorIfCurrent', 'shouldAutoContinue', 'triggerAutoContinue', 'syncMesToSwipe', 'syncSwipeToMes', 'stopGeneration', 'generateRaw', 'generateRawData', 'generateQuietPrompt', 'TempResponseLength', 'addChatsPreamble', 'addChatsSeparator', 'consumePendingGeneratedMessageExtra']);
     context.removeReasoningFromString = text => context.parseReasoningFromString(text)?.content ?? text;
 
     const requests = [];
@@ -214,6 +216,86 @@ function makeRuntime({ api = 'openai', model = 'gpt-4o', stream = false, buffer 
     if (buffer) eventSource.on(event_types.GENERATION_OUTPUT_BUFFERING_DECISION, data => { data.hasPostMainInterceptors = true; });
     return { context, requests, textarea, dom, eventSource, StreamingProcessor: vm.runInContext('StreamingProcessor', context) };
 }
+
+function loadTextGeneration(context) {
+    load(context, 'scripts/textgen-settings.js', [
+        'textgen_types', 'getTextGenModel', 'createTextGenGenerationData', 'getTextGenGenerationData', 'replaceMacrosInList',
+        'getTextSamplingParameterTransmissionState', 'setTextSamplingParameterTransmissionState', 'getTextSamplingParameterViewModel',
+    ]);
+    Object.assign(context, vm.runInContext('textgen_types', context), {
+        isDynamicTemperatureSupported: () => false,
+        getCustomTokenBans: () => ({ banned_tokens: [], banned_strings: [] }),
+        isObject: value => value !== null && typeof value === 'object',
+        toIntArray: () => [], shouldUseLocalPromptCache: () => false,
+        getTextGenServer: () => 'http://example.invalid',
+        saveSettingsDebounced: jest.fn(),
+    });
+}
+
+describe('text sampling policy request integration', () => {
+    test('the text setter omits typical sampling from the serialized request and restores the preset on inherit', () => {
+        const { context } = makeRuntime({ api: 'textgenerationwebui' });
+        loadTextGeneration(context);
+        const settings = context.textgenerationwebui_settings;
+        Object.assign(settings, { llamacpp_model: 'llama-3.1-8b', typical_p: 0.85, top_p: 0.9 });
+        const preset = structuredClone(settings);
+        const build = () => JSON.parse(JSON.stringify(context.createTextGenGenerationData(settings, null, 'Hello', 120)));
+
+        expect(build()).toMatchObject({ typical_p: 0.85, typical: 0.85, top_p: 0.9 });
+        context.setTextSamplingParameterTransmissionState('typical_p', 'omit');
+        const omitted = build();
+        expect(omitted).not.toHaveProperty('typical_p');
+        expect(omitted).not.toHaveProperty('typical');
+        expect(omitted.top_p).toBe(0.9);
+        expect(context.getTextSamplingParameterTransmissionState('typical_p')).toBe('omit');
+        context.setTextSamplingParameterTransmissionState('typical_p', 'inherit');
+        expect(build()).toMatchObject({ typical_p: 0.85, typical: 0.85 });
+        expect(settings).toEqual(preset);
+    });
+
+    test('Ollama capability removes both flat typical fields even when explicitly included', () => {
+        const { context } = makeRuntime({ api: 'textgenerationwebui' });
+        loadTextGeneration(context);
+        const settings = context.textgenerationwebui_settings;
+        Object.assign(settings, { type: 'ollama', ollama_model: 'llama-3.1-8b', typical_p: 0.85 });
+        context.setTextSamplingParameterTransmissionState('typical_p', 'include');
+        const payload = context.createTextGenGenerationData(settings, null, 'Hello', 120);
+        expect(payload).not.toHaveProperty('typical_p');
+        expect(payload).not.toHaveProperty('typical');
+        expect(settings.typical_p).toBe(0.85);
+    });
+
+    test('text policies remain isolated by model and adapter from the selected chat target', async () => {
+        const { context } = makeRuntime({ api: 'textgenerationwebui', model: 'llama-3.1-8b' });
+        loadTextGeneration(context);
+        load(context, 'scripts/openai.js', ['setSamplingParameterTransmissionState']);
+        const settings = context.textgenerationwebui_settings;
+        Object.assign(settings, { llamacpp_model: 'llama-3.1-8b', temp: 0.6 });
+        context.oai_settings.temp_openai = 0.7;
+        const build = () => context.createTextGenGenerationData(settings, null, 'Hello', 120);
+        const buildChat = async () => (await context.createGenerationParameters(context.oai_settings, 'llama-3.1-8b', 'quiet', [])).generate_data;
+
+        context.setTextSamplingParameterTransmissionState('temperature', 'omit');
+        expect(build()).not.toHaveProperty('temperature');
+        expect((await buildChat()).temperature).toBe(0.7);
+
+        settings.llamacpp_model = 'llama-3.1-70b';
+        expect(context.getTextSamplingParameterTransmissionState('temperature')).toBe('inherit');
+        expect(build().temperature).toBe(0.6);
+
+        Object.assign(settings, { type: 'ollama', ollama_model: 'llama-3.1-8b' });
+        expect(build().temperature).toBe(0.6);
+        context.setTextSamplingParameterTransmissionState('temperature', 'include');
+        context.setSamplingParameterTransmissionState('temperature', 'omit');
+        expect(await buildChat()).not.toHaveProperty('temperature');
+        expect(build().temperature).toBe(0.6);
+
+        Object.assign(settings, { type: 'llamacpp', llamacpp_model: 'llama-3.1-8b' });
+        expect(build()).not.toHaveProperty('temperature');
+        expect(settings.temp).toBe(0.6);
+        expect(context.oai_settings.temp_openai).toBe(0.7);
+    });
+});
 
 describe('request-local output controls', () => {
     test.each([undefined, 0, -1, NaN, Infinity, '160'])('leaves presets alone for an inactive limit: %s', maxOutputTokens => {
@@ -460,14 +542,7 @@ describe('owned host generation flow', () => {
 
     test.each(['generateRaw', 'generateQuietPrompt'])('%s preserves the exact real text-completion reasoning payload, not a backend default', async method => {
         const { context, requests } = makeRuntime({ api: 'textgenerationwebui', model: 'deepseek-r1' });
-        load(context, 'scripts/textgen-settings.js', ['textgen_types', 'getTextGenModel', 'createTextGenGenerationData', 'getTextGenGenerationData', 'replaceMacrosInList']);
-        Object.assign(context, vm.runInContext('textgen_types', context), {
-            isDynamicTemperatureSupported: () => false,
-            getCustomTokenBans: () => ({ banned_tokens: [], banned_strings: [] }),
-            isObject: value => value !== null && typeof value === 'object',
-            toIntArray: () => [], shouldUseLocalPromptCache: () => false,
-            getTextGenServer: () => 'http://example.invalid',
-        });
+        loadTextGeneration(context);
         Object.assign(context.textgenerationwebui_settings, { llamacpp_model: 'deepseek-r1', temp: 0.6, min_length: 128, top_p: 0.9, include_reasoning: true });
         const settings = structuredClone(context.textgenerationwebui_settings);
         await context[method]({ prompt: 'helper', quietPrompt: 'helper' });
