@@ -1164,6 +1164,74 @@ describe('chat integrity rotation', () => {
         expect(after.mtimeMs).toBe(before.mtimeMs);
     });
 
+    test('treats client hydration empty media and swipe extras as unchanged on plain legacy chats (#706)', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-empty-media-706-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        // Chat on disk without media or files keys
+        const header = {
+            chat_metadata: { integrity: 'disk-slug-706' },
+            user_name: 'User',
+            character_name: 'Bot',
+        };
+        const userMsg = {
+            name: 'User',
+            is_user: true,
+            send_date: '2026-08-01T12:00:00.000Z',
+            mes: 'Hello there',
+            extra: {},
+        };
+        const botMsg = {
+            name: 'Bot',
+            is_user: false,
+            send_date: '2026-08-01T12:01:00.000Z',
+            mes: 'Greetings!',
+            extra: { dialogue_colors: { 0: '#3498db' } },
+            swipes: ['Greetings!', 'Alt greeting'],
+            swipe_id: 0,
+            swipe_info: [
+                { send_date: '2026-08-01T12:01:00.000Z', extra: { dialogue_colors: { 0: '#3498db' } } },
+                { send_date: '2026-08-01T12:01:05.000Z', extra: {} },
+            ],
+        };
+        const diskContent = [header, userMsg, botMsg].map(JSON.stringify).join('\n');
+        await fs.writeFile(chatFile, diskContent);
+        const beforeStat = await fs.stat(chatFile);
+
+        // Client hydration runs ensureMessageMediaIsArray, injecting media: [] and files: []
+        const clientPayload = [
+            header,
+            {
+                ...userMsg,
+                extra: { media: [], files: [] },
+            },
+            {
+                ...botMsg,
+                extra: { dialogue_colors: { 0: '#3498db' }, media: [], files: [] },
+                swipe_info: [
+                    { send_date: '2026-08-01T12:01:00.000Z', extra: { dialogue_colors: { 0: '#3498db' }, media: [], files: [] } },
+                    { send_date: '2026-08-01T12:01:05.000Z', extra: { media: [], files: [] } },
+                ],
+            },
+        ];
+
+        // Save must recognize semantic identity, skip write, skip pre-write backup, and preserve disk mtime
+        const result = await trySaveChat(clientPayload, chatFile, false, 'open-user', 'Test Bot', backupDir, { deferBackup: true });
+        expect(result.integrity).toBe('disk-slug-706');
+
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(diskContent);
+        const afterStat = await fs.stat(chatFile);
+        expect(afterStat.ino).toBe(beforeStat.ino);
+        expect(afterStat.mtimeMs).toBe(beforeStat.mtimeMs);
+
+        // Verify zero pre-write backups created in backupDir
+        const backups = await fs.readdir(backupDir);
+        expect(backups.length).toBe(0);
+    });
+
     test('persists derived metadata when an explicit rename flush requests it', async () => {
         const { trySaveChat } = await import('../src/endpoints/chats.js');
         const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-derived-metadata-'));
