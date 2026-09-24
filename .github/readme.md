@@ -130,7 +130,7 @@ Termux, macOS, and ARM hosts run on Node.js by default due to compatibility issu
 
 ### Staging Branch
 
-The `staging` branch is updated more frequently than the `main` branch and contains work that may not yet be ready for production. It can be less stable and may include breaking changes, so use it at your own risk.
+The `staging` branch is updated more frequently than the `release` branch and contains work that may not yet be ready for production. It can be less stable and may include breaking changes, so use it at your own risk.
 
 From an existing Git checkout, run:
 
