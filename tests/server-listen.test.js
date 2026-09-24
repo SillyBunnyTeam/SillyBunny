@@ -273,3 +273,91 @@ describe('server wiring', () => {
         expect(source).toContain('await Promise.all([startIPv6, startIPv4]);');
     });
 });
+
+describe('port conflict diagnostics', () => {
+    describe('diagnosePortConflict', () => {
+        test('returns structured diagnosis object with holder type', async () => {
+            const { diagnosePortConflict } = await import('../src/server-listen.js');
+            const diagnosis = await diagnosePortConflict(4444, '127.0.0.1:4444');
+            expect(diagnosis).toHaveProperty('port', 4444);
+            expect(diagnosis).toHaveProperty('listenAddress', '127.0.0.1:4444');
+            expect(diagnosis).toHaveProperty('holderType');
+            expect(diagnosis).toHaveProperty('processName');
+            expect(diagnosis).toHaveProperty('pid');
+            expect(diagnosis).toHaveProperty('commandLine');
+        });
+    });
+
+    describe('formatPortConflictBanner', () => {
+        test('formats banner for SillyTavern holder', async () => {
+            const { formatPortConflictBanner } = await import('../src/server-listen.js');
+            const diagnosis = {
+                port: 4444,
+                listenAddress: '127.0.0.1:4444',
+                holderType: 'SillyTavern',
+                processName: 'node.exe',
+                pid: 1234,
+                commandLine: 'C:\\Users\\test\\SillyTavern\\server.js',
+            };
+
+            const banner = formatPortConflictBanner(diagnosis);
+            expect(banner).toContain('[Startup Notice] Port 4444 is already in use!');
+            expect(banner).toContain('SillyBunny cannot start');
+            expect(banner).toContain('SillyTavern');
+            expect(banner).toContain('PID 1234');
+            expect(banner).toContain('C:\\Users\\test\\SillyTavern\\server.js');
+            expect(banner).toContain('--- Technical Details ---');
+            expect(banner).toContain('--- How to Fix ---');
+            expect(banner).toContain('config.yaml');
+        });
+
+        test('formats banner for SillyBunny instance', async () => {
+            const { formatPortConflictBanner } = await import('../src/server-listen.js');
+            const diagnosis = {
+                port: 4444,
+                listenAddress: '127.0.0.1:4444',
+                holderType: 'Another SillyBunny Instance',
+                processName: 'bun.exe',
+                pid: 5678,
+                commandLine: '',
+            };
+
+            const banner = formatPortConflictBanner(diagnosis);
+            expect(banner).toContain('Another SillyBunny Instance');
+            expect(banner).toContain('bun.exe');
+            expect(banner).toContain('PID 5678');
+        });
+
+        test('formats banner for generic process', async () => {
+            const { formatPortConflictBanner } = await import('../src/server-listen.js');
+            const diagnosis = {
+                port: 4444,
+                listenAddress: '127.0.0.1:4444',
+                holderType: 'Generic Application (java.exe)',
+                processName: 'java.exe',
+                pid: 9999,
+                commandLine: '',
+            };
+
+            const banner = formatPortConflictBanner(diagnosis);
+            expect(banner).toContain('Generic Application (java.exe)');
+            expect(banner).toContain('java.exe');
+            expect(banner).toContain('PID 9999');
+        });
+
+        test('formats banner when no PID available', async () => {
+            const { formatPortConflictBanner } = await import('../src/server-listen.js');
+            const diagnosis = {
+                port: 4444,
+                listenAddress: '127.0.0.1:4444',
+                holderType: 'Unknown Process',
+                processName: 'unknown',
+                pid: null,
+                commandLine: '',
+            };
+
+            const banner = formatPortConflictBanner(diagnosis);
+            expect(banner).toContain('???');
+        });
+    });
+});
