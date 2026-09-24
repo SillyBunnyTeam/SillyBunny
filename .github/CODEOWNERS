@@ -1,0 +1,29 @@
+# Trusted owners for security-sensitive repository paths
+* @TheLonelyDevil9 @Geechan
+
+# CI/CD and repository policy
+/.github/workflows/** @TheLonelyDevil9 @Geechan
+/.github/CODEOWNERS @TheLonelyDevil9 @Geechan
+
+# Application manifests and lockfiles
+/package.json @TheLonelyDevil9 @Geechan
+/**/package-lock.json @TheLonelyDevil9 @Geechan
+/**/bun.lock @TheLonelyDevil9 @Geechan
+/**/pnpm-lock.yaml @TheLonelyDevil9 @Geechan
+/**/yarn.lock @TheLonelyDevil9 @Geechan
+
+# Scripts and launchers
+/scripts/** @TheLonelyDevil9 @Geechan
+/Start*.bat @TheLonelyDevil9 @Geechan
+/Start*.command @TheLonelyDevil9 @Geechan
+/start*.sh @TheLonelyDevil9 @Geechan
+/Remote-Link.cmd @TheLonelyDevil9 @Geechan
+
+# Container and deployment assets
+/Dockerfile @TheLonelyDevil9 @Geechan
+/docker/** @TheLonelyDevil9 @Geechan
+
+# Release artifacts and release automation
+/releases/** @TheLonelyDevil9 @Geechan
+/.github/workflows/release*.yml @TheLonelyDevil9 @Geechan
+/.github/workflows/release*.yaml @TheLonelyDevil9 @Geechan
