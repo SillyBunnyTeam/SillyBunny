@@ -1232,6 +1232,57 @@ describe('chat integrity rotation', () => {
         expect(backups.length).toBe(0);
     });
 
+    test.each(['list', 'gallery'])('preserves saves with malformed inactive swipe media in %s mode', async (mediaDisplay) => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-inactive-media-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        try {
+            const onDisk = chatWithMessages('disk-integrity', ['Hello', 'Active reply']);
+            onDisk[2].extra = {};
+            onDisk[2].swipe_id = 0;
+            onDisk[2].swipes = ['Active reply', 'Inactive reply'];
+            const inactiveExtra = {
+                image: 'legacy.png',
+                media_display: mediaDisplay,
+                media: [null, null, {}, { unknown: true }, 'invalid', { type: 'image', url: 'legacy.png' }],
+            };
+            onDisk[2].swipe_info = [
+                { send_date: onDisk[2].send_date, extra: {} },
+                { send_date: onDisk[2].send_date, extra: inactiveExtra },
+            ];
+            const serialized = onDisk.map(JSON.stringify).join('\n');
+            await fs.writeFile(chatFile, serialized);
+            await fs.utimes(chatFile, new Date('2020-01-01T00:00:00Z'), new Date('2020-01-01T00:00:00Z'));
+            const before = await fs.stat(chatFile);
+            const save = payload => trySaveChat(payload, chatFile, false, `inactive-${mediaDisplay}`, 'Test Card', backupDir, { deferBackup: true });
+
+            await expect(save(structuredClone(onDisk))).resolves.toEqual({ integrity: 'disk-integrity' });
+            await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(serialized);
+            expect((await fs.stat(chatFile)).mtimeMs).toBe(before.mtimeMs);
+            expect(await fs.readdir(backupDir)).toEqual([]);
+
+            const edited = structuredClone(onDisk);
+            edited[1].mes = 'Edited user message';
+            const editResult = await save(edited);
+            const saved = (await fs.readFile(chatFile, 'utf8')).split('\n').map(JSON.parse);
+            expect(saved[1].mes).toBe('Edited user message');
+            expect(saved[2].swipe_info[1].extra).toEqual(inactiveExtra);
+            expect(editResult.integrity).not.toBe('disk-integrity');
+
+            // Unknown entries must remain significant, not collapse into one missing-URL entry.
+            saved[2].swipe_info[1].extra.media.shift();
+            const removalResult = await save(saved);
+            const afterRemoval = (await fs.readFile(chatFile, 'utf8')).split('\n').map(JSON.parse);
+            expect(afterRemoval[2].swipe_info[1].extra.media).toEqual(inactiveExtra.media.slice(1));
+            expect(removalResult.integrity).not.toBe(editResult.integrity);
+        } finally {
+            await fs.rm(tempDir, { recursive: true, force: true });
+        }
+    });
+
     test('persists derived metadata when an explicit rename flush requests it', async () => {
         const { trySaveChat } = await import('../src/endpoints/chats.js');
         const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-derived-metadata-'));
