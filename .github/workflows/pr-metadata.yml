@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: pr-metadata-${{ github.event.pull_request.number }}
@@ -23,6 +24,10 @@ jobs:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
         run: |
           if [ "$BASE_REF" = "staging" ]; then
             exit 0
@@ -32,8 +37,30 @@ jobs:
             exit 0
           fi
 
+          if [ "$BASE_REF" = "main" ] && [ "$HEAD_REPOSITORY" = "$REPOSITORY" ]; then
+            gh api --paginate --slurp "repos/$REPOSITORY/pulls/$PR_NUMBER/files" > "$RUNNER_TEMP/pr-files.json"
+            current_head=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')
+            if [ "$current_head" != "$PR_HEAD_SHA" ]; then
+              echo "The PR changed while its files were being checked."
+              exit 1
+            fi
+
+            if jq -e --argjson expected_count "$PR_CHANGED_FILES" '
+              add
+              | length == $expected_count
+                and any(.[]; .filename == ".github/CODEOWNERS")
+                and all(.[];
+                  (.filename == ".github/CODEOWNERS" or .filename == ".github/workflows/pr-metadata.yml")
+                  and (.status == "added" or .status == "modified")
+                  and (has("previous_filename") | not))
+            ' "$RUNNER_TEMP/pr-files.json" > /dev/null; then
+              exit 0
+            fi
+          fi
+
           if [ "$BASE_REF" = "main" ]; then
             echo "Only the staging release branch may target main. Current source: $HEAD_REF"
+            echo "Exception: CODEOWNERS additions or edits may also update pr-metadata.yml, with no other file changes."
           else
             echo "Pull requests must target staging. Current target: $BASE_REF"
           fi
