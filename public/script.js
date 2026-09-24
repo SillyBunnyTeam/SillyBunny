@@ -1170,10 +1170,15 @@ async function firstLoadInit() {
         initCardScriptRuntime();
         reloadMarkdownProcessor();
         applyBrowserFixes();
-        await getClientVersion();
-        await initSecrets();
-        await readSecretState();
-        await initLocales();
+        // SillyBunny: version data and localized secret controls are independent startup reads.
+        await Promise.all([
+            getClientVersion(),
+            (async () => {
+                await initSecrets();
+                await readSecretState();
+                await initLocales();
+            })(),
+        ]);
         initChatUtilities();
         initDefaultSlashCommands();
         initTextGenModels();
