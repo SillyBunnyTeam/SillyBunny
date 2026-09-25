@@ -1603,9 +1603,9 @@ export function buildSettingsDrawerHtml() {
             </div>
             <div class="sb-settings-group">
                 <h4 class="sb-settings-group-title"><i class="fa-solid fa-image" aria-hidden="true"></i><span>Image Generation</span></h4>
-                <label class="checkbox_label" title="Enable in-chat image generation via Quick Image Gen">
+                <label class="checkbox_label" title="Enable in-chat image generation">
                     <input id="sb_conv_image_gen_enabled" type="checkbox" />
-                    <span>Enable chatroom image generation (Quick Image Gen)</span>
+                    <span>Enable chatroom image generation</span>
                 </label>
                 <div class="sb-conversation-field-stack">
                     <label for="sb_conv_image_gen_prompt_template">Image Prompt Template</label>

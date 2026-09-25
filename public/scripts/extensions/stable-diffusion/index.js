@@ -63,6 +63,8 @@ import { oai_settings } from '../../openai.js';
 import { power_user } from '/scripts/power-user.js';
 import { MacrosParser } from '/scripts/macros.js';
 import { ActionLoaderHandle, loader } from '/scripts/action-loader.js';
+// SillyBunny: expose the configured provider without borrowing the active roleplay chat.
+import { registerExtensionCapability } from '../../sillybunny-conversation/extension-capabilities.js';
 
 export { MODULE_NAME };
 
@@ -3093,6 +3095,17 @@ async function generatePicture(initiator, args, trigger, message, callback) {
     return imagePath;
 }
 
+// SillyBunny: Conversation prompts and character scope are already resolved by the caller.
+async function generateScopedImage(prompt, negative = '', { avatar = '', character = null, signal } = {}) {
+    signal?.throwIfAborted();
+    if (!isValidState()) {
+        throw new Error('Image generation is not available. Check your settings and try again.');
+    }
+    const url = await sendGenerationRequest(generationMode.FREE, prompt, negative, character?.name || '', () => {}, initiators.action, signal, { avatar, character });
+    signal?.throwIfAborted();
+    return url ? { url } : null;
+}
+
 /**
  * Adjusts image generation dimensions based on the generation type and/or previous media attachment.
  * @param {number} generationType The type of image generation to perform, used to determine dimension adjustments
@@ -3311,25 +3324,34 @@ async function generatePrompt(quietPrompt) {
  * @param {function} callback Callback function to be called after image generation
  * @param {string} initiator The initiator of the image generation
  * @param {AbortSignal} signal Abort signal to cancel the request
+ * @param {object|null} [scopedContext] Explicit Conversation character, independent of the active chat
  * @returns
  */
-async function sendGenerationRequest(generationType, prompt, additionalNegativePrefix, characterName, callback, initiator, signal) {
+async function sendGenerationRequest(generationType, prompt, additionalNegativePrefix, characterName, callback, initiator, signal, scopedContext = null) {
     const noCharPrefix = [generationMode.FREE, generationMode.BACKGROUND, generationMode.USER, generationMode.USER_MULTIMODAL, generationMode.FREE_EXTENDED];
     const isCharChat = this_chid !== undefined && !selected_group;
     const ignoreNoCharForSwipe = initiator === initiators.swipe && isCharChat;
 
     const skipCharPrefix = !ignoreNoCharForSwipe && noCharPrefix.includes(generationType);
 
-    const prefix = skipCharPrefix
+    let prefix = skipCharPrefix
         ? extension_settings.sd.prompt_prefix
         : combinePrefixes(extension_settings.sd.prompt_prefix, getCharacterPrefix());
 
-    const negativePrefix = skipCharPrefix
+    let negativePrefix = skipCharPrefix
         ? extension_settings.sd.negative_prompt
         : combinePrefixes(extension_settings.sd.negative_prompt, getCharacterNegativePrefix());
 
-    const prefixedPrompt = substituteParams(combinePrefixes(prefix, prompt, '{prompt}'));
-    const negativePrompt = substituteParams(combinePrefixes(additionalNegativePrefix, negativePrefix));
+    // SillyBunny: keep Conversation prefixes and macros scoped to its speaker.
+    const macroOptions = scopedContext ? { name2Override: characterName, replaceCharacterCard: false } : undefined;
+    if (scopedContext) {
+        const key = String(scopedContext.avatar || scopedContext.character?.avatar || '').replace(/\.[^/.]+$/, '');
+        const shared = scopedContext.character?.data?.extensions?.sd_character_prompt;
+        prefix = combinePrefixes(extension_settings.sd.prompt_prefix, extension_settings.sd.character_prompts[key] || shared?.positive || '');
+        negativePrefix = combinePrefixes(extension_settings.sd.negative_prompt, extension_settings.sd.character_negative_prompts[key] || shared?.negative || '');
+    }
+    const prefixedPrompt = substituteParams(combinePrefixes(prefix, prompt, '{prompt}'), macroOptions);
+    const negativePrompt = substituteParams(combinePrefixes(additionalNegativePrefix, negativePrefix), macroOptions);
 
     let result = { format: '', data: '' };
     const currentChatId = getCurrentChatId();
@@ -3366,10 +3388,10 @@ async function sendGenerationRequest(generationType, prompt, additionalNegativeP
             case sources.comfy:
                 switch (extension_settings.sd.comfy_type) {
                     case comfyTypes.runpod_serverless:
-                        result = await generateComfyRunPodImage(prefixedPrompt, negativePrompt, signal);
+                        result = await generateComfyRunPodImage(prefixedPrompt, negativePrompt, signal, scopedContext);
                         break;
                     case comfyTypes.standard:
-                        result = await generateComfyImage(prefixedPrompt, negativePrompt, signal);
+                        result = await generateComfyImage(prefixedPrompt, negativePrompt, signal, scopedContext);
                         break;
                     default:
                         throw new Error('Unknown comfyUI server type.');
@@ -3435,7 +3457,9 @@ async function sendGenerationRequest(generationType, prompt, additionalNegativeP
         return;
     }
 
-    if (currentChatId !== getCurrentChatId()) {
+    // SillyBunny: Conversation callers own their target guard and cancellation.
+    if (scopedContext) signal?.throwIfAborted();
+    if (!scopedContext && currentChatId !== getCurrentChatId()) {
         console.warn('Chat changed, aborting SD result saving');
         toastr.warning('Chat changed, generated image discarded.', 'Image Generation');
         return;
@@ -4215,9 +4239,10 @@ async function generateAimlapiImage(prompt, signal) {
  * @param {string} basePath - ST server endpoint for the service. '/api/sd/comfy' for local, '/api/sd/comfyrunpod' for serverless.
  * @param {string[]} placeholders - Array of substitutions to apply to the workflow.
  * @param {string} url - The url of the service to call. Passed to ST server.
+ * @param {object|null} [scopedContext] Explicit Conversation character
  * @returns {Promise<{format: string, data: string}>} - A promise that resolves when the image generation and processing are complete.
  */
-async function generateComfyImageCommon(prompt, negativePrompt, signal, basePath, placeholders, url) {
+async function generateComfyImageCommon(prompt, negativePrompt, signal, basePath, placeholders, url, scopedContext = null) {
     const workflowResponse = await fetch('/api/sd/comfy/workflow', {
         method: 'POST',
         headers: getRequestHeaders(),
@@ -4245,7 +4270,7 @@ async function generateComfyImageCommon(prompt, negativePrompt, signal, basePath
         workflow = workflow.replaceAll(`"%${ph}%"`, JSON.stringify(extension_settings.sd[ph]));
     });
     (extension_settings.sd.comfy_placeholders ?? []).forEach(ph => {
-        workflow = workflow.replaceAll(`"%${ph.find}%"`, JSON.stringify(substituteParams(ph.replace)));
+        workflow = workflow.replaceAll(`"%${ph.find}%"`, JSON.stringify(substituteParams(ph.replace, scopedContext ? { name2Override: scopedContext.character?.name || '', replaceCharacterCard: false } : undefined)));
     });
     if (/%user_avatar%/gi.test(workflow)) {
         const response = await fetch(getUserAvatarUrl());
@@ -4259,7 +4284,7 @@ async function generateComfyImageCommon(prompt, negativePrompt, signal, basePath
         }
     }
     if (/%char_avatar%/gi.test(workflow)) {
-        const response = await fetch(getCharacterAvatarUrl());
+        const response = await fetch(scopedContext ? formatCharacterAvatar(scopedContext.avatar) : getCharacterAvatarUrl());
         if (response.ok) {
             const avatarBlob = await response.blob();
             const avatarBase64DataUrl = await getBase64Async(avatarBlob);
@@ -4297,9 +4322,10 @@ async function generateComfyImageCommon(prompt, negativePrompt, signal, basePath
  * @param {string} prompt - The main instruction used to guide the image generation.
  * @param {string} negativePrompt - The instruction used to restrict the image generation.
  * @param {AbortSignal} signal - An AbortSignal object that can be used to cancel the request.
+ * @param {object|null} [scopedContext] Explicit Conversation character
  * @returns {Promise<{format: string, data: string}>} - A promise that resolves when the image generation and processing are complete.
  */
-async function generateComfyImage(prompt, negativePrompt, signal) {
+async function generateComfyImage(prompt, negativePrompt, signal, scopedContext = null) {
     const placeholders = [
         'model',
         'vae',
@@ -4310,7 +4336,7 @@ async function generateComfyImage(prompt, negativePrompt, signal) {
         'width',
         'height',
     ];
-    return generateComfyImageCommon(prompt, negativePrompt, signal, '/api/sd/comfy', placeholders, extension_settings.sd.comfy_url);
+    return generateComfyImageCommon(prompt, negativePrompt, signal, '/api/sd/comfy', placeholders, extension_settings.sd.comfy_url, scopedContext);
 }
 
 /**
@@ -4319,9 +4345,10 @@ async function generateComfyImage(prompt, negativePrompt, signal) {
  * @param {string} prompt - The main instruction used to guide the image generation.
  * @param {string} negativePrompt - The instruction used to restrict the image generation.
  * @param {AbortSignal} signal - An AbortSignal object that can be used to cancel the request.
+ * @param {object|null} [scopedContext] Explicit Conversation character
  * @returns {Promise<{format: string, data: string}>} - A promise that resolves when the image generation and processing are complete.
  */
-async function generateComfyRunPodImage(prompt, negativePrompt, signal) {
+async function generateComfyRunPodImage(prompt, negativePrompt, signal, scopedContext = null) {
     const placeholders = [
         'steps',
         'scale',
@@ -4329,7 +4356,7 @@ async function generateComfyRunPodImage(prompt, negativePrompt, signal) {
         'height',
     ];
 
-    return generateComfyImageCommon(prompt, negativePrompt, signal, '/api/sd/comfyrunpod', placeholders, extension_settings.sd.comfy_runpod_url);
+    return generateComfyImageCommon(prompt, negativePrompt, signal, '/api/sd/comfyrunpod', placeholders, extension_settings.sd.comfy_runpod_url, scopedContext);
 }
 
 /**
@@ -5949,6 +5976,7 @@ export async function init() {
     });
 
     await loadSettings();
+    registerExtensionCapability('stable-diffusion', { generateScopedImage });
     $('body').addClass('sd');
 
     const getMacroValue = ({ isNegative }) => {

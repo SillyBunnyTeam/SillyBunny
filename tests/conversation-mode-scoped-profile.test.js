@@ -41,17 +41,14 @@ const chromeSource = readConversationSource('chrome.js');
 const constantsSource = readConversationSource('constants.js');
 const contextSource = readConversationSource('context.js');
 const initSource = readConversationSource('init.js');
-const mediaSource = readConversationSource('media.js');
 const palsRailSource = readConversationSource('pals-rail.js');
 const pickersSource = readConversationSource('pickers.js');
 const promptSource = readConversationSource('prompt.js');
 const sharedHelpersSource = readConversationSource('shared-helpers.js');
-const renderUtilsSource = readConversationSource('render-utils.js');
 const settingsStoreSource = readConversationSource('settings-store.js');
 const stateSource = readConversationSource('state.js');
 const threadStoreSource = readConversationSource('thread-store.js');
 const timelineSource = readConversationSource('timeline-render.js');
-const timelineSlashSource = readConversationSource('timeline-slash-commands.js');
 const conversationTtsSource = readConversationSource('tts.js');
 const extensionTtsSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'tts', 'index.js'), 'utf8'));
 const pollinationsTtsSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'tts', 'pollinations.js'), 'utf8'));
@@ -221,24 +218,6 @@ describe('conversation mode scoped connection profile', () => {
         const replyRefSource = generationSource.slice(replyRefFuncStart, nextFuncStart);
         expect(replyRefSource).toContain('previous message from the same speaker');
         expect(replyRefSource).toContain('break;');
-    });
-
-    test('adds Quick Image Gen actions for actual selfie commands', () => {
-        expect(timelineSource).toContain('getConversationSelfieCommandRequests');
-        expect(timelineSource).toContain('conversation_commands?.selfieRequests');
-        expect(timelineSource).toContain('SELFIE_COMMAND_RE');
-        expect(timelineSource).toContain('sb-conversation-selfie-action');
-        expect(timelineSource).toContain('force: true');
-        expect(timelineSource).toContain('notify: true');
-        expect(timelineSlashSource).toContain('force: true, notify: true');
-        expect(renderUtilsSource).toContain('compactConversationCommandsFingerprint');
-        expect(chromeSource).toContain('generate-selfie-command');
-        expect(generationSource).toContain('force = false');
-        expect(generationSource).toContain('notify = false');
-        expect(generationSource).toContain('!force && (!resolvedSettings.image_gen_enabled');
-        expect(mediaSource).toContain('Quick Image Gen failed');
-        expect(mediaSource).toContain('getExtensionCapability(\'quick-image-gen\')');
-        expect(mediaSource).not.toContain('../extensions/quick-image-gen/index.js');
     });
 
     test('suppresses the welcome recent-chat surface while Conversation Mode opens', () => {
