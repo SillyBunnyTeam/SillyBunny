@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import http from 'node:http';
 import process from 'node:process';
 import { setTimeout as delay } from 'node:timers/promises';
+import { stripVTControlCharacters } from 'node:util';
 
 // A relaunched server races the previous process for the listen port: the old
 // socket can still be encumbered for a moment after that process is gone,
@@ -150,197 +151,187 @@ function runDiagnosticCommand(command, args) {
 }
 
 /**
- * Performs a lightweight HTTP probe to the running process's /version endpoint.
+ * Probes the version agent without letting an unrelated server delay shutdown.
  * @param {number} port The port to probe
  * @param {number} ipVersion The IP version used
- * @returns {Promise<{type: string, pid: number, name: string, command: string}|null>}
+ * @param {string} [host] The local interface to probe
+ * @returns {Promise<{type: string, name: string}|null>} Identified application
  */
-export async function probeHttpHolder(port, ipVersion) {
-    const protocol = ipVersion === 6 ? 'http://[::1]' : 'http://127.0.0.1';
-    const url = `${protocol}:${port}/version`;
-
-    try {
-        const response = await new Promise((resolve, reject) => {
-            const req = http.get(url, { timeout: 1000 }, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => resolve({ status: res.statusCode, body: data }));
-            });
-            req.on('error', reject);
-            req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
-        });
-
-        if (response.statusCode !== 200) {
-            return null;
-        }
-
+export async function probeHttpHolder(port, ipVersion, host = ipVersion === 6 ? '::1' : '127.0.0.1') {
+    return new Promise((resolve) => {
+        let request;
+        let settled = false;
+        const finish = (result = null) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            request?.destroy();
+            resolve(result);
+        };
+        // Socket inactivity timeouts do not bound a trickling response.
+        const timer = setTimeout(() => finish(), 1000);
         try {
-            const json = JSON.parse(response.body);
-            const text = JSON.stringify(json);
-            if (text.includes('SillyTavern')) {
-                return { type: 'SillyTavern', pid: 0, name: 'SillyTavern', command: '' };
-            }
-            if (text.includes('SillyBunny')) {
-                return { type: 'Another SillyBunny Instance', pid: 0, name: 'SillyBunny', command: '' };
+            request = http.get({ hostname: host, port, path: '/version', family: ipVersion, agent: false }, (response) => {
+                response.on('error', () => finish());
+                response.on('close', () => finish());
+                if (response.statusCode !== 200) {
+                    finish();
+                    return;
+                }
+                const chunks = [];
+                let size = 0;
+                response.on('data', (chunk) => {
+                    size += chunk.length;
+                    if (size > 16 * 1024) {
+                        finish();
+                    } else {
+                        chunks.push(chunk);
+                    }
+                });
+                response.on('end', () => {
+                    try {
+                        const { agent } = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                        if (typeof agent === 'string' && agent.startsWith('SillyTavern:')) {
+                            finish({ type: 'SillyTavern', name: 'SillyTavern' });
+                        } else if (typeof agent === 'string' && agent.startsWith('SillyBunny:')) {
+                            finish({ type: 'Another SillyBunny Instance', name: 'SillyBunny' });
+                        } else {
+                            finish();
+                        }
+                    } catch {
+                        finish();
+                    }
+                });
+            });
+            request.on('error', () => finish());
+        } catch {
+            finish();
+        }
+    });
+}
+
+/**
+ * Resolves process identity and command arguments for local classification.
+ * @param {number} pid The process ID
+ * @param {string} platform OS platform
+ * @param {typeof runDiagnosticCommand} runCommand Command runner
+ * @returns {Promise<{name: string, command: string, executable: string}>} Process details
+ */
+async function resolveProcessCommandLine(pid, platform, runCommand) {
+    if (platform === 'win32') {
+        const output = await runCommand('powershell', ['-NoProfile', '-NonInteractive', '-Command', `Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}' | Select-Object Name,ExecutablePath,CommandLine | ConvertTo-Json -Compress`]);
+        try {
+            const info = JSON.parse(output);
+            if (typeof info.Name === 'string' && info.Name) {
+                return {
+                    name: info.Name,
+                    command: typeof info.CommandLine === 'string' ? info.CommandLine : '',
+                    executable: typeof info.ExecutablePath === 'string' ? info.ExecutablePath : info.Name,
+                };
             }
         } catch {
-            // Not JSON or parse failed; fall through to OS probe
+            // CIM can be unavailable or access to process details denied.
         }
-    } catch {
-        // Probe failed; fall through to OS probe
+        const name = parseTasklistProcessName(await runCommand('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH']), pid) || 'unknown';
+        return { name, command: '', executable: '' };
     }
-    return null;
+
+    const cmdline = platform === 'linux' ? await runCommand('cat', [`/proc/${pid}/cmdline`]) : '';
+    if (cmdline) {
+        const executable = cmdline.split('\0', 1)[0];
+        return { name: executable.split('/').pop() || 'unknown', executable, command: cmdline.replace(/\0/g, ' ').trim() };
+    }
+    const executable = (await runCommand('ps', ['-p', String(pid), '-o', 'comm='])).trim();
+    const command = (await runCommand('ps', ['-p', String(pid), '-o', 'args='])).trim();
+    return { name: executable.split('/').pop() || 'unknown', executable, command };
 }
 
 /**
- * Resolves the command-line details for a given PID on POSIX systems.
- * @param {number} pid The process ID
- * @returns {Promise<{name: string, command: string}>}
+ * Gets the host from a socket tool's endpoint, including unbracketed IPv6.
+ * @param {string} endpoint Socket endpoint
+ * @returns {string} Normalized host
  */
-async function resolvePosixCommandLine(pid) {
+function endpointHost(endpoint) {
+    const host = endpoint.slice(0, endpoint.lastIndexOf(':')).replace(/^\[|\]$/g, '');
+    if (!host.includes(':')) return host;
     try {
-        const cmdline = await runDiagnosticCommand('cat', [`/proc/${pid}/cmdline`]);
-        if (cmdline) {
-            const parts = cmdline.replace(/\0/g, ' ').trim().split(/\s+/);
-            const name = parts[0] ? parts[0].split('/').pop() : 'unknown';
-            return { name, command: cmdline.trim() };
-        }
+        return new URL(`http://[${host}]`).hostname.slice(1, -1);
     } catch {
-        // Fall through
+        return host;
     }
-
-    try {
-        const psOutput = await runDiagnosticCommand('ps', ['-p', String(pid), '-o', 'comm=,args=']);
-        if (psOutput) {
-            const lines = psOutput.trim().split('\n');
-            const firstLine = lines[0]?.trim() || '';
-            const name = firstLine.split(/\s+/)[0] || 'unknown';
-            return { name, command: psOutput.trim() };
-        }
-    } catch {
-        // Fall through
-    }
-
-    return { name: 'unknown', command: '' };
 }
 
 /**
- * Resolves the command-line details for a given PID on Windows.
- * @param {number} pid The process ID
- * @returns {Promise<{name: string, command: string}>}
- */
-async function resolveWindowsCommandLine(pid) {
-    const commandLine = await runDiagnosticCommand('powershell', ['-NoProfile', `Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}' | Select-Object -ExpandProperty CommandLine`]);
-
-    if (commandLine && commandLine.trim()) {
-        const parts = commandLine.trim().split(/\s+/);
-        const name = parts[0] ? parts[0].split(/[\\/]/).pop() : 'unknown';
-        return { name, command: commandLine.trim() };
-    }
-
-    const tasklistOutput = await runDiagnosticCommand('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH']);
-    const name = parseTasklistProcessName(tasklistOutput, pid) || 'unknown';
-    return { name, command: '' };
-}
-
-/**
- * Builds a structured diagnostic object for a port conflict.
+ * Builds diagnostics for the actual failed interface, not another same-port service.
  * @param {number} port The port in conflict
- * @param {string} listenAddress The listen address (e.g. 127.0.0.1:4444)
+ * @param {string} listenAddress The failed bind address
+ * @param {object} [options] Dependency injection for tests
+ * @param {typeof runDiagnosticCommand} [options.runCommand] Command runner
+ * @param {string} [options.platform] Platform override
  * @returns {Promise<object>} Diagnostic result
  */
-export async function diagnosePortConflict(port, listenAddress) {
-    const diagnosis = {
-        port,
-        listenAddress,
-        holderType: 'Unknown Process',
-        processName: 'unknown',
-        pid: null,
-        commandLine: '',
+export async function diagnosePortConflict(port, listenAddress, { runCommand = runDiagnosticCommand, platform = process.platform } = {}) {
+    const diagnosis = { port, listenAddress, holderType: 'Unknown Process', processName: 'unknown', pid: null, commandLine: '' };
+    const host = endpointHost(listenAddress);
+    const ipVersion = host.includes(':') ? 6 : 4;
+    const wildcard = ipVersion === 6 ? '::' : '0.0.0.0';
+    const matches = (endpoint) => {
+        if (!endpoint.endsWith(`:${port}`) || endpoint.includes('->')) return false;
+        const local = endpointHost(endpoint);
+        return local === '*' || ((local.includes(':') ? 6 : 4) === ipVersion && (host === wildcard || local === wildcard || local === host));
     };
-
-    // Phase 1: HTTP probe to /version
-    const httpProbe = await probeHttpHolder(port, 4);
-    if (httpProbe && httpProbe.type !== 'Another SillyBunny Instance' && httpProbe.type !== 'SillyTavern') {
-        diagnosis.holderType = httpProbe.type;
-        diagnosis.processName = httpProbe.name;
-        diagnosis.commandLine = httpProbe.command;
-        return diagnosis;
+    let holder;
+    if (platform === 'win32') {
+        holder = parseNetstatPortRows(await runCommand('netstat', ['-ano']), port)
+            .find(row => row.state.toUpperCase() === 'LISTENING' && row.pid > 0 && Number.isFinite(row.pid) && matches(row.local));
+    } else {
+        const ss = await runCommand('ss', [`-${ipVersion}`, '-ltnp', `sport = :${port}`]);
+        for (const line of ss.split('\n')) {
+            const columns = line.trim().split(/\s+/);
+            const pid = line.match(/pid=(\d+)/);
+            if (columns[0] === 'LISTEN' && pid && matches(columns[3] || '')) {
+                holder = { pid: Number(pid[1]), local: columns[3] };
+                break;
+            }
+        }
+        if (!holder) {
+            const output = await runCommand('lsof', ['-nP', '-a', `-i${ipVersion}TCP:${port}`, '-sTCP:LISTEN', '-Fpn']);
+            let pid;
+            for (const line of output.split('\n')) {
+                if (/^p\d+$/.test(line)) pid = Number(line.slice(1));
+                if (line.startsWith('n') && pid > 0 && matches(line.slice(1))) {
+                    holder = { pid, local: line.slice(1) };
+                    break;
+                }
+            }
+        }
     }
 
+    // A wildcard bind can be blocked by a service bound only to a LAN address.
+    const local = holder ? endpointHost(holder.local) : host;
+    const probeHost = local === wildcard || local === '*' ? (ipVersion === 6 ? '::1' : '127.0.0.1') : local;
+    const httpProbe = await probeHttpHolder(port, ipVersion, probeHost);
     if (httpProbe) {
         diagnosis.holderType = httpProbe.type;
         diagnosis.processName = httpProbe.name;
-        return diagnosis;
     }
-
-    // Phase 2: OS-level process inspection
-    if (process.platform === 'win32') {
-        const rows = parseNetstatPortRows(await runDiagnosticCommand('netstat', ['-ano']), port);
-        const listeningRow = rows.find(r => r.state.toUpperCase() === 'LISTENING');
-        if (listeningRow && Number.isFinite(listeningRow.pid) && listeningRow.pid > 0) {
-            diagnosis.pid = listeningRow.pid;
-            const cmdInfo = await resolveWindowsCommandLine(listeningRow.pid);
-            diagnosis.processName = cmdInfo.name;
-            diagnosis.commandLine = cmdInfo.command;
-
-            if (cmdInfo.name.toLowerCase().includes('sillytavern')) {
+    if (holder) {
+        diagnosis.pid = holder.pid;
+        const info = await resolveProcessCommandLine(holder.pid, platform, runCommand);
+        diagnosis.processName = info.name;
+        // Arguments may contain API tokens or --keyPassphrase; never log them.
+        diagnosis.commandLine = info.executable;
+        if (!httpProbe) {
+            const identity = `${info.name} ${info.command}`;
+            if (/(?:^|[\\/\s"'])sillytavern(?:[\\/\s"':]|\.exe\b|$)/i.test(identity)) {
                 diagnosis.holderType = 'SillyTavern';
-            } else if (cmdInfo.name.toLowerCase().includes('sillybunny') || cmdInfo.name.toLowerCase().includes('bun') || cmdInfo.name.toLowerCase().includes('node')) {
-                const lowerName = cmdInfo.name.toLowerCase();
-                if (lowerName.includes('sillybunny')) {
-                    diagnosis.holderType = 'Another SillyBunny Instance';
-                } else {
-                    diagnosis.holderType = `Generic Application (${cmdInfo.name})`;
-                }
-            } else {
-                diagnosis.holderType = `Generic Application (${cmdInfo.name})`;
-            }
-        }
-    } else {
-        const ss = await runDiagnosticCommand('ss', ['-tnap', `sport = :${port}`]);
-        const ssRows = ss.split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('State '));
-        if (ssRows.length > 0) {
-            const match = ssRows[0]?.match(/pid=(\d+)/);
-            if (match) {
-                diagnosis.pid = Number(match[1]);
-                const cmdInfo = await resolvePosixCommandLine(diagnosis.pid);
-                diagnosis.processName = cmdInfo.name;
-                diagnosis.commandLine = cmdInfo.command;
-
-                const lowerName = cmdInfo.name.toLowerCase();
-                if (lowerName.includes('sillytavern')) {
-                    diagnosis.holderType = 'SillyTavern';
-                } else if (lowerName.includes('sillybunny')) {
-                    diagnosis.holderType = 'Another SillyBunny Instance';
-                } else {
-                    diagnosis.holderType = `Generic Application (${cmdInfo.name})`;
-                }
-            }
-        } else {
-            const lsof = await runDiagnosticCommand('lsof', ['-nP', `-iTCP:${port}`]);
-            const lsofLines = lsof.split('\n').filter(Boolean);
-            if (lsofLines.length > 1) {
-                const match = lsofLines[1]?.match(/(\d+)\s/);
-                if (match) {
-                    diagnosis.pid = Number(match[1]);
-                    const cmdInfo = await resolvePosixCommandLine(diagnosis.pid);
-                    diagnosis.processName = cmdInfo.name;
-                    diagnosis.commandLine = cmdInfo.command;
-
-                    const lowerName = cmdInfo.name.toLowerCase();
-                    if (lowerName.includes('sillytavern')) {
-                        diagnosis.holderType = 'SillyTavern';
-                    } else if (lowerName.includes('sillybunny')) {
-                        diagnosis.holderType = 'Another SillyBunny Instance';
-                    } else {
-                        diagnosis.holderType = `Generic Application (${cmdInfo.name})`;
-                    }
-                }
+            } else if (/(?:^|[\\/\s"'])sillybunny(?:[\\/\s"':]|\.exe\b|$)/i.test(identity)) {
+                diagnosis.holderType = 'Another SillyBunny Instance';
+            } else if (info.name !== 'unknown') {
+                diagnosis.holderType = `Generic Application (${info.name})`;
             }
         }
     }
-
     return diagnosis;
 }
 
@@ -351,8 +342,8 @@ export async function diagnosePortConflict(port, listenAddress) {
  */
 export function formatPortConflictBanner(diagnosis) {
     const { port, listenAddress, holderType, processName, pid, commandLine } = diagnosis;
+    const display = value => stripVTControlCharacters(String(value ?? '')).replace(/[\x00-\x1f\x7f]/g, ' ');
     const separator = '='.repeat(70);
-    const pidStr = pid ? `PID ${pid}` : '???';
 
     const lines = [
         separator,
@@ -363,19 +354,20 @@ export function formatPortConflictBanner(diagnosis) {
         `port ${port}.`,
         '',
         'If you are running SillyTavern and SillyBunny at the same time, they',
-        'both use this port by default. They cannot share the same port number.',
+        'cannot share the same port number.',
         '',
         '--- Technical Details ---',
-        `  Port:           ${port} (${listenAddress})`,
-        `  Detected App:   ${holderType}`,
-        `  Process:        ${processName}${pid ? ` (PID ${pid})` : ''}`,
-        `  Path / Command: ${commandLine || ''}`,
+        `  Port:           ${port} (${display(listenAddress)})`,
+        `  Detected App:   ${display(holderType)}`,
+        `  Process:        ${display(processName)}${pid ? ` (PID ${pid})` : ''}`,
+        `  Path / Command: ${display(commandLine)}`,
         '',
         '--- How to Fix ---',
         '  1. To run both SillyTavern and SillyBunny at the same time:',
-        '     Open SillyBunny\'s "config.yaml" and change "port: 4444" to "port: 4445".',
-        '  2. If SillyTavern was left open accidentally:',
-        `     Close the other terminal window or end ${pidStr} in Task Manager.`,
+        `     Open SillyBunny's "config.yaml" and change "port: ${port}" to "port: ${port < 65535 ? port + 1 : port - 1}".`,
+        ...(pid && process.platform === 'win32' ? [
+            `  2. Close the other terminal window or end PID ${pid} in Task Manager.`,
+        ] : []),
         separator,
     ];
 

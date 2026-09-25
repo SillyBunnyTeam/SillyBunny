@@ -417,10 +417,15 @@ export class ServerStartup {
         }
 
         if (v6Failed && v4Failed) {
+            if (this.#isAddressInUseError(v6Error) || this.#isAddressInUseError(v4Error)) {
+                const urls = [];
+                if (this.#isAddressInUseError(v6Error)) urls.push(this.cliArgs.getIPv6ListenUrl());
+                if (this.#isAddressInUseError(v4Error)) urls.push(this.cliArgs.getIPv4ListenUrl());
+                await reportBeforeFatal(...urls);
+                if (this.#isAddressInUseError(v6Error)) await emitDiagnostic(this.cliArgs.getIPv6ListenUrl(), 6);
+                if (this.#isAddressInUseError(v4Error)) await emitDiagnostic(this.cliArgs.getIPv4ListenUrl(), 4);
+            }
             if (this.#isAddressInUseError(v6Error) && this.#isAddressInUseError(v4Error)) {
-                await reportBeforeFatal(this.cliArgs.getIPv6ListenUrl(), this.cliArgs.getIPv4ListenUrl());
-                await emitDiagnostic(this.cliArgs.getIPv6ListenUrl(), 6);
-                await emitDiagnostic(this.cliArgs.getIPv4ListenUrl(), 4);
                 this.#fatal('Error: Failed to start server because the configured IPv6 and IPv4 listen ports are already in use.');
             }
             this.#fatal('Error: Failed to start server on both IPv6 and IPv4');
