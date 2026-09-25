@@ -1,4 +1,5 @@
 import { characters, default_user_avatar, getThumbnailUrl } from '../../script.js';
+import { extension_settings, modules } from '../extensions.js';
 import { DEFAULT_SETTINGS, MAX_STACKED_PARTICIPANT_AVATARS } from './constants.js';
 import {
     getActiveConversationBranch,
@@ -35,8 +36,12 @@ export async function generateConversationImage(prompt, negative = '', { avatar 
         return null;
     }
 
-    const qig = getExtensionCapability('quick-image-gen');
-    if (!qig) {
+    const source = extension_settings.sd?.source;
+    // The default Extras source is unconfigured until an SD module connects.
+    const useImageGeneration = source && (source !== 'extras' || modules.includes('sd'));
+    const generator = getExtensionCapability(useImageGeneration ? 'stable-diffusion' : 'quick-image-gen');
+    const generatorName = useImageGeneration ? 'Image Generation' : 'Quick Image Gen';
+    if (!generator) {
         return null;
     }
 
@@ -49,25 +54,25 @@ export async function generateConversationImage(prompt, negative = '', { avatar 
     conversationState.imageGenerationAbortController = controller;
     scheduleTimelineRender();
     try {
-        await qig.ensureReady();
+        await generator.ensureReady?.();
         if (controller.signal.aborted) {
             throw controller.signal.reason || new DOMException('Aborted', 'AbortError');
         }
 
-        const entry = await qig.generateScopedImage(prompt, negative, {
+        const entry = await generator.generateScopedImage(prompt, negative, {
             ...runContext,
             signal: controller.signal,
         });
 
         if (!entry?.url && notify) {
-            globalThis.toastr?.warning?.('Quick Image Gen did not return an image.');
+            globalThis.toastr?.warning?.(`${generatorName} did not return an image.`);
         }
         return entry?.url ?? null;
     } catch (error) {
         if (!isAbortError(error, controller.signal)) {
-            console.warn('Conversation Mode: QIG not available or generation failed', error);
+            console.warn('Conversation Mode: image generation failed', error);
             if (notify) {
-                globalThis.toastr?.warning?.(`Quick Image Gen failed: ${error?.message || 'check Image Gen settings'}`);
+                globalThis.toastr?.warning?.(`${generatorName} failed: ${error?.message || 'check Image Gen settings'}`);
             }
         }
         return null;

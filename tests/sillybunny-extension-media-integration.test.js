@@ -13,28 +13,29 @@ import { MAX_IMAGE_BYTES } from '../public/scripts/extensions/quick-image-gen/li
 const capabilityRegistryKey = Symbol.for('sillybunny.extensionCapabilities');
 const qigSource = readFileSync(fileURLToPath(new URL('../public/scripts/extensions/quick-image-gen/index.js', import.meta.url)), 'utf8');
 const bridgeSource = readFileSync(fileURLToPath(new URL('../public/scripts/extensions/expressions/expression-sprite-bridge.js', import.meta.url)), 'utf8');
+const sdSource = readFileSync(fileURLToPath(new URL('../public/scripts/extensions/stable-diffusion/index.js', import.meta.url)), 'utf8');
 
-function getFunctionSource(name) {
-    const asyncStart = qigSource.indexOf(`async function ${name}(`);
-    const start = asyncStart >= 0 ? asyncStart : qigSource.indexOf(`function ${name}(`);
+function getFunctionSource(name, source = qigSource) {
+    const asyncStart = source.indexOf(`async function ${name}(`);
+    const start = asyncStart >= 0 ? asyncStart : source.indexOf(`function ${name}(`);
     expect(start).toBeGreaterThanOrEqual(0);
-    const paramsStart = qigSource.indexOf('(', start);
+    const paramsStart = source.indexOf('(', start);
     let parenDepth = 0;
     let bodyStart = -1;
-    for (let index = paramsStart; index < qigSource.length; index++) {
-        if (qigSource[index] === '(') parenDepth++;
-        if (qigSource[index] === ')') {
+    for (let index = paramsStart; index < source.length; index++) {
+        if (source[index] === '(') parenDepth++;
+        if (source[index] === ')') {
             parenDepth--;
             if (parenDepth === 0) {
-                bodyStart = qigSource.indexOf('{', index);
+                bodyStart = source.indexOf('{', index);
                 break;
             }
         }
     }
     let braceDepth = 0;
-    for (let index = bodyStart; index < qigSource.length; index++) {
-        if (qigSource[index] === '{') braceDepth++;
-        if (qigSource[index] === '}' && --braceDepth === 0) return qigSource.slice(start, index + 1);
+    for (let index = bodyStart; index < source.length; index++) {
+        if (source[index] === '{') braceDepth++;
+        if (source[index] === '}' && --braceDepth === 0) return source.slice(start, index + 1);
     }
     throw new Error(`Unable to extract ${name}`);
 }
@@ -79,13 +80,14 @@ function installCapabilityRegistry(entries) {
     });
 }
 
-async function importConversationMedia({ characters, currentAvatar, state, render } = {}) {
+async function importConversationMedia({ characters, currentAvatar, state, render, settings = {} } = {}) {
     jest.resetModules();
     await jest.unstable_mockModule('../public/script.js', () => ({
         characters,
         default_user_avatar: 'user.png',
         getThumbnailUrl: jest.fn((_type, avatar) => avatar),
     }));
+    await jest.unstable_mockModule('../public/scripts/extensions.js', () => ({ extension_settings: settings, modules: [] }));
     await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/constants.js', () => ({
         DEFAULT_SETTINGS: { image_gen_prompt_template: '{{char}} in {{scene}}: {{appearance}}' },
         MAX_STACKED_PARTICIPANT_AVATARS: 4,
@@ -132,6 +134,110 @@ afterEach(() => {
 });
 
 describe('Conversation extension media integration', () => {
+    test('routes a configured NovelAI selfie through Image Generation, not QIG', async () => {
+        const settings = { sd: { source: 'novel', model: 'nai-diffusion-4-5-full' } };
+        const qig = { ensureReady: jest.fn(), generateScopedImage: jest.fn(async () => ({ url: 'pollinations.png' })) };
+        const sd = { generateScopedImage: jest.fn(async () => ({ url: 'novelai.png' })) };
+        installCapabilityRegistry([['quick-image-gen', qig], ['stable-diffusion', sd]]);
+        const media = await importConversationMedia({
+            characters: [{ name: 'Conversation', avatar: 'conversation.png' }],
+            currentAvatar: 'roleplay.png',
+            state: {},
+            render: jest.fn(),
+            settings,
+        });
+
+        await expect(media.generateConversationImage('selfie', '', { avatar: 'conversation.png' })).resolves.toBe('novelai.png');
+        expect(qig.generateScopedImage).not.toHaveBeenCalled();
+
+        sd.generateScopedImage.mockRejectedValue(new Error('NovelAI unavailable'));
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
+        await expect(media.generateConversationImage('selfie', '', { avatar: 'conversation.png' })).resolves.toBeNull();
+        expect(qig.generateScopedImage).not.toHaveBeenCalled();
+
+        installCapabilityRegistry([['quick-image-gen', qig]]);
+        await expect(media.generateConversationImage('selfie', '', { avatar: 'conversation.png' })).resolves.toBeNull();
+        expect(qig.generateScopedImage).not.toHaveBeenCalled();
+    });
+
+    test('uses NovelAI settings and the Conversation speaker without writing to the roleplay chat', async () => {
+        const settings = { sd: {
+            source: 'novel', model: 'nai-diffusion-4-5-full', sampler: 'k_euler', scheduler: 'karras',
+            steps: 23, scale: 6, width: 832, height: 1216, seed: 42,
+            prompt_prefix: 'photo of {{char}}', negative_prompt: 'blur',
+            character_prompts: { conversation: 'blue eyes', roleplay: 'wrong character' },
+            character_negative_prompts: { conversation: 'hat' },
+        } };
+        const secretState = { novel: true };
+        const save = jest.fn(async () => 'conversation-selfie.png');
+        const sendMessage = jest.fn();
+        let chatId = 'roleplay-chat';
+        let failRequest = false;
+        let abortRequest;
+        const requests = [];
+        const context = createQigContext({
+            console: { log: jest.fn(), warn: jest.fn(), error: jest.fn() },
+            extension_settings: settings,
+            secret_state: secretState,
+            SECRET_KEYS: { NOVEL: 'novel' },
+            sources: { novel: 'novel' },
+            generationMode: { FREE: 6 },
+            initiators: { action: 'action', swipe: 'swipe' },
+            this_chid: 0,
+            selected_group: null,
+            getCurrentChatId: () => chatId,
+            substituteParams: (text, options) => text.replaceAll('{{char}}', options?.name2Override || 'Roleplay'),
+            getRequestHeaders: () => ({}),
+            loadNovelSchedulers: () => ['karras'],
+            humanizedDateTime: () => 'timestamp',
+            saveBase64AsFile: save,
+            sendMessage,
+            toastr: { warning: jest.fn(), info: jest.fn(), error: jest.fn() },
+            fetch: async (url, options) => {
+                requests.push({ url, body: JSON.parse(options.body) });
+                chatId = 'another-roleplay-chat';
+                abortRequest?.abort();
+                return { ok: !failRequest, text: async () => failRequest ? 'Provider unavailable' : 'image-data' };
+            },
+        });
+        for (const name of ['combinePrefixes', 'isValidState', 'getNovelParams', 'generateNovelImage', 'sendGenerationRequest', 'generateScopedImage']) {
+            context[name] = vm.runInContext(`(${getFunctionSource(name, sdSource)})`, context);
+        }
+        const qig = { generateScopedImage: jest.fn() };
+        installCapabilityRegistry([['stable-diffusion', context], ['quick-image-gen', qig]]);
+        const state = {};
+        const media = await importConversationMedia({
+            characters: [{ name: 'Conversation', avatar: 'conversation.png' }],
+            currentAvatar: 'roleplay.png', state, render: jest.fn(), settings,
+        });
+        const generate = () => media.generateConversationImage('selfie at a desk', 'watermark', { avatar: 'conversation.png' });
+
+        await expect(generate()).resolves.toBe('conversation-selfie.png');
+        expect(requests).toEqual([{ url: '/api/novelai/generate-image', body: expect.objectContaining({
+            model: 'nai-diffusion-4-5-full', sampler: 'k_euler', scheduler: 'karras',
+            steps: 23, scale: 6, width: 832, height: 1216, seed: 42,
+            prompt: 'photo of Conversation, blue eyes, selfie at a desk',
+            negative_prompt: 'watermark, blur, hat',
+        }) }]);
+        expect(save).toHaveBeenCalledWith('image-data', 'Conversation', 'Conversation_timestamp', 'png');
+        expect(sendMessage).not.toHaveBeenCalled();
+
+        save.mockClear();
+        failRequest = true;
+        await expect(generate()).resolves.toBeNull();
+        expect(save).not.toHaveBeenCalled();
+        failRequest = false;
+        abortRequest = { abort: () => state.imageGenerationAbortController.abort() };
+        await expect(generate()).resolves.toBeNull();
+        expect(save).not.toHaveBeenCalled();
+
+        secretState.novel = false;
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
+        await expect(generate()).resolves.toBeNull();
+        expect(requests).toHaveLength(3);
+        expect(qig.generateScopedImage).not.toHaveBeenCalled();
+    });
+
     test('uses the activated QIG capability with the explicit Conversation speaker only', async () => {
         const characters = [
             { name: 'Roleplay', avatar: 'roleplay.png', description: 'roleplay description' },
@@ -148,6 +254,7 @@ describe('Conversation extension media integration', () => {
             currentAvatar: 'roleplay.png',
             state,
             render: jest.fn(),
+            settings: { sd: { source: 'extras' } },
         });
 
         const prompt = media.buildCharacterImagePrompt('{{char}} selfie', 'outside', 'conversation.png');
