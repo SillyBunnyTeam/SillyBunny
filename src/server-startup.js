@@ -2,7 +2,7 @@ import https from 'node:https';
 import http from 'node:http';
 import fs from 'node:fs';
 import { APP_NAME } from './runtime.js';
-import { BUN_SOCKET_INHERIT_ISSUE_URL, isAddressInUseError, reportPortHolders, retryOnAddressInUse, trackListeningServer } from './server-listen.js';
+import { BUN_SOCKET_INHERIT_ISSUE_URL, isAddressInUseError, reportPortHolders, retryOnAddressInUse, trackListeningServer, diagnosePortConflict, formatPortConflictBanner } from './server-listen.js';
 import { color, urlHostnameToIPv6, getHasIP } from './util.js';
 
 // Express routers
@@ -386,9 +386,22 @@ export class ServerStartup {
             }
         };
 
+        const emitDiagnostic = async (url, ipVersion) => {
+            const port = this.#getListenPort(url);
+            const listenAddress = this.#getListenAddress(url, ipVersion);
+            try {
+                const diagnosis = await diagnosePortConflict(port, listenAddress);
+                const banner = formatPortConflictBanner(diagnosis);
+                console.error(banner);
+            } catch {
+                // Diagnostics must never break startup.
+            }
+        };
+
         if (v6Failed && !useIPv4) {
             if (this.#isAddressInUseError(v6Error)) {
                 await reportBeforeFatal(this.cliArgs.getIPv6ListenUrl());
+                await emitDiagnostic(this.cliArgs.getIPv6ListenUrl(), 6);
                 this.#fatal('Error: Startup aborted because IPv6 is the only enabled protocol and its listen port is already in use.');
             }
             this.#fatal('Error: Failed to start server on IPv6 and IPv4 disabled');
@@ -397,14 +410,22 @@ export class ServerStartup {
         if (v4Failed && !useIPv6) {
             if (this.#isAddressInUseError(v4Error)) {
                 await reportBeforeFatal(this.cliArgs.getIPv4ListenUrl());
+                await emitDiagnostic(this.cliArgs.getIPv4ListenUrl(), 4);
                 this.#fatal('Error: Startup aborted because IPv4 is the only enabled protocol and its listen port is already in use.');
             }
             this.#fatal('Error: Failed to start server on IPv4 and IPv6 disabled');
         }
 
         if (v6Failed && v4Failed) {
+            if (this.#isAddressInUseError(v6Error) || this.#isAddressInUseError(v4Error)) {
+                const urls = [];
+                if (this.#isAddressInUseError(v6Error)) urls.push(this.cliArgs.getIPv6ListenUrl());
+                if (this.#isAddressInUseError(v4Error)) urls.push(this.cliArgs.getIPv4ListenUrl());
+                await reportBeforeFatal(...urls);
+                if (this.#isAddressInUseError(v6Error)) await emitDiagnostic(this.cliArgs.getIPv6ListenUrl(), 6);
+                if (this.#isAddressInUseError(v4Error)) await emitDiagnostic(this.cliArgs.getIPv4ListenUrl(), 4);
+            }
             if (this.#isAddressInUseError(v6Error) && this.#isAddressInUseError(v4Error)) {
-                await reportBeforeFatal(this.cliArgs.getIPv6ListenUrl(), this.cliArgs.getIPv4ListenUrl());
                 this.#fatal('Error: Failed to start server because the configured IPv6 and IPv4 listen ports are already in use.');
             }
             this.#fatal('Error: Failed to start server on both IPv6 and IPv4');
