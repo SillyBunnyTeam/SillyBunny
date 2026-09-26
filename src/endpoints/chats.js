@@ -193,13 +193,16 @@ function normalizeChatMessageExtraForComparison(extra) {
         if (typeof imageUrl === 'string' && imageUrl) {
             normalized.media.push({ type: 'image', url: imageUrl });
         }
-        if (normalized.media_display === 'gallery') {
-            const selectedIndex = normalized.media.findIndex(media => media.url === imageUrl);
+        if (normalized.media_display === 'gallery' && typeof imageUrl === 'string' && imageUrl) {
+            const selectedIndex = normalized.media.findIndex(media => media?.url === imageUrl);
             if (selectedIndex > -1) {
                 normalized.media_index = selectedIndex;
             }
         }
-        normalized.media = normalized.media.filter((media, index, allMedia) => index === allMedia.findIndex(other => other.url === media.url));
+        // SillyBunny: retain unknown media entries verbatim; comparison must not discard data or block saves.
+        normalized.media = normalized.media.filter((media, index, allMedia) => !isPlainObject(media)
+            || typeof media.url !== 'string' || !media.url
+            || index === allMedia.findIndex(other => other?.url === media.url));
         delete normalized.image;
     }
     if (Object.hasOwn(normalized, 'video')) {
@@ -208,6 +211,21 @@ function normalizeChatMessageExtraForComparison(extra) {
             normalized.media.push({ type: 'video', url: normalized.video });
         }
         delete normalized.video;
+    }
+
+    // SillyBunny: clean up empty hydration containers so on-disk chats without media/files
+    // compare identical to in-memory hydrated chats whose media/files arrays were initialized to [].
+    if (Array.isArray(normalized.media) && normalized.media.length === 0) {
+        delete normalized.media;
+        if (normalized.media_display === 'gallery') {
+            delete normalized.media_display;
+        }
+        if (normalized.media_index === 0) {
+            delete normalized.media_index;
+        }
+    }
+    if (Array.isArray(normalized.files) && normalized.files.length === 0) {
+        delete normalized.files;
     }
     return normalized;
 }
@@ -244,6 +262,9 @@ function normalizeChatMessageForComparison(message, chatMetadata, messageCount) 
         }
         if (!isPlainObject(normalized.swipe_info[index])) {
             normalized.swipe_info[index] = createSwipeInfo();
+        } else {
+            // SillyBunny: normalize extra inside all swipe_info records symmetrically with message.extra.
+            normalized.swipe_info[index].extra = normalizeChatMessageExtraForComparison(normalized.swipe_info[index].extra);
         }
     }
 
