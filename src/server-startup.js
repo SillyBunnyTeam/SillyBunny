@@ -378,7 +378,7 @@ export class ServerStartup {
      */
     async #handleServerListenFail({ v6Failed, v4Failed, v6Error, v4Error, useIPv6, useIPv4 }) {
         // A final look at who occupies the port makes the abort actionable: a
-        // still-listed holder after a minute of retries is not a transient race.
+        // still-listed holder after thirty seconds of retries is not a transient race.
         const reportBeforeFatal = async (...urls) => {
             const ports = [...new Set(urls.map(url => this.#getListenPort(url)))];
             for (const port of ports) {

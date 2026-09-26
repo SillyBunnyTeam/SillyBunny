@@ -145,7 +145,7 @@ describe('listen retry on an occupied port', () => {
 
         expect(attemptFn).toHaveBeenCalledTimes(3);
         expect(onRetry).toHaveBeenCalledTimes(2);
-        expect(onRetry).toHaveBeenNthCalledWith(1, 1, 40);
+        expect(onRetry).toHaveBeenNthCalledWith(1, 1, 20);
     });
 
     test('gives up after the attempt cap and rethrows the original error', async () => {
@@ -168,16 +168,14 @@ describe('listen retry on an occupied port', () => {
         expect(onRetry).not.toHaveBeenCalled();
     });
 
-    test('defaults to a bounded window of about a minute', async () => {
+    test('defaults to a bounded window of about thirty seconds', async () => {
         const { LISTEN_RETRY_ATTEMPTS, LISTEN_RETRY_DELAY_MS } = await loadListenModule();
 
-        expect(LISTEN_RETRY_ATTEMPTS).toBe(40);
-        expect(LISTEN_RETRY_DELAY_MS).toBe(1500);
         // Long enough to outlast an update straggler holding an inherited
         // socket handle, short enough that a genuine conflict still surfaces.
         const windowMs = (LISTEN_RETRY_ATTEMPTS - 1) * LISTEN_RETRY_DELAY_MS;
-        expect(windowMs).toBeGreaterThanOrEqual(45_000);
-        expect(windowMs).toBeLessThanOrEqual(120_000);
+        expect(windowMs).toBeGreaterThanOrEqual(25_000);
+        expect(windowMs).toBeLessThanOrEqual(35_000);
     });
 });
 
@@ -412,15 +410,16 @@ describe('port conflict diagnostics', () => {
             .toMatchObject({ pid: 222, holderType: 'SillyTavern' });
     });
 
-    test.each([4445, 65535])('suggests a different valid port for conflict on %i', async (port) => {
+    test.each([
+        ['Another SillyBunny Instance', 'To run two instances of SillyBunny, change "port: 4444" to a different, unused number.', false],
+        ['SillyTavern', 'To run SillyBunny alongside SillyTavern, change "port: 4444" to a different, unused number.', true],
+        ['Generic Application (python3)', 'To run SillyBunny alongside the other application, change "port: 4444" to a different, unused number.', false],
+        ['Unknown Process', 'To run SillyBunny alongside the other application, change "port: 4444" to a different, unused number.', false],
+    ])('gives port guidance matching a %s holder', async (holderType, guidance, mentionsSharing) => {
         const { formatPortConflictBanner } = await loadListenModule();
-        const banner = formatPortConflictBanner({ port, listenAddress: `127.0.0.1:${port}`, holderType: 'Unknown Process', processName: 'unknown', pid: null, commandLine: '' });
-        const ports = [...banner.matchAll(/port: (\d+)/g)].map(match => Number(match[1]));
-        expect(ports[0]).toBe(port);
-        expect(ports[1]).not.toBe(port);
-        expect(ports[1]).toBeGreaterThan(0);
-        expect(ports[1]).toBeLessThanOrEqual(65535);
-        expect(banner).not.toContain('???');
+        const banner = formatPortConflictBanner({ port: 4444, listenAddress: '127.0.0.1:4444', holderType, processName: 'unknown', pid: null, commandLine: '' });
+        expect(banner).toContain(guidance);
+        expect(banner.includes('If you are running SillyTavern and SillyBunny at the same time')).toBe(mentionsSharing);
     });
 
     test('does not allow process details to inject terminal controls or extra lines', async () => {

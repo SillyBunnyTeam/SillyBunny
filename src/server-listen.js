@@ -9,9 +9,9 @@ import { stripVTControlCharacters } from 'node:util';
 // especially on Windows where libuv binds with SO_EXCLUSIVEADDRUSE. Worse,
 // released Bun versions create inheritable socket handles on Windows
 // (oven-sh/bun#36936), so a process spawned during an update can keep the port
-// bound until it exits. Retrying for about a minute outlasts the typical
+// bound until it exits. Retrying for about thirty seconds outlasts the typical
 // straggler instead of permanently breaking the restart after five seconds.
-export const LISTEN_RETRY_ATTEMPTS = 40;
+export const LISTEN_RETRY_ATTEMPTS = 20;
 export const LISTEN_RETRY_DELAY_MS = 1500;
 export const LISTEN_CLOSE_TIMEOUT_MS = 2000;
 export const PORT_HOLDER_LOOKUP_TIMEOUT_MS = 3000;
@@ -345,16 +345,23 @@ export function formatPortConflictBanner(diagnosis) {
     const display = value => stripVTControlCharacters(String(value ?? '')).replace(/[\x00-\x1f\x7f]/g, ' ');
     const separator = '='.repeat(70);
 
+    const isSillyTavern = holderType === 'SillyTavern';
+    const isSillyBunny = holderType === 'Another SillyBunny Instance';
+    const holder = isSillyTavern ? 'SillyTavern' : isSillyBunny ? 'another SillyBunny instance' : 'another application';
+    const portChange = `change "port: ${port}" to a different, unused number.`;
+
     const lines = [
         separator,
         `[Startup Notice] Port ${port} is already in use!`,
         separator,
         '',
-        'SillyBunny cannot start because another application is already using',
+        `SillyBunny cannot start because ${holder} is already using`,
         `port ${port}.`,
-        '',
-        'If you are running SillyTavern and SillyBunny at the same time, they',
-        'cannot share the same port number.',
+        ...(isSillyTavern ? [
+            '',
+            'If you are running SillyTavern and SillyBunny at the same time, they',
+            'cannot share the same port number.',
+        ] : []),
         '',
         '--- Technical Details ---',
         `  Port:           ${port} (${display(listenAddress)})`,
@@ -363,8 +370,10 @@ export function formatPortConflictBanner(diagnosis) {
         `  Path / Command: ${display(commandLine)}`,
         '',
         '--- How to Fix ---',
-        '  1. To run both SillyTavern and SillyBunny at the same time:',
-        `     Open SillyBunny's "config.yaml" and change "port: ${port}" to "port: ${port < 65535 ? port + 1 : port - 1}".`,
+        isSillyBunny
+            ? `  1. To run two instances of SillyBunny, ${portChange}`
+            : `  1. To run SillyBunny alongside ${isSillyTavern ? 'SillyTavern' : 'the other application'}, ${portChange}`,
+        '     This setting is in SillyBunny\'s "config.yaml".',
         ...(pid && process.platform === 'win32' ? [
             `  2. Close the other terminal window or end PID ${pid} in Task Manager.`,
         ] : []),
