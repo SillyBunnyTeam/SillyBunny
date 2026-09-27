@@ -211,6 +211,32 @@ describe('Claude 5 backend request handling', () => {
         expect(body.thinking).toEqual({ type: 'disabled' });
     });
 
+    test.each([
+        { effort: 'none', includeReasoning: false },
+        { effort: 'none', includeReasoning: true },
+        { effort: undefined, includeReasoning: false },
+        { effort: 'auto', includeReasoning: false },
+        { effort: 'auto', includeReasoning: true },
+        { effort: 'high', includeReasoning: true },
+    ])('Opus 5.5 keeps adaptive thinking with effort=$effort and summaries=$includeReasoning', async ({ effort, includeReasoning }) => {
+        const getBody = captureClaudePayload();
+        const res = await makeRequest({
+            model: 'claude-opus-5-5',
+            reasoning_effort: effort,
+            include_reasoning: includeReasoning,
+        });
+
+        expect(res.status).toBe(200);
+        const body = getBody();
+        expect(body.thinking).toEqual(includeReasoning
+            ? { type: 'adaptive', display: 'summarized' }
+            : { type: 'adaptive' });
+        expect(body.output_config?.effort).toBe(effort === 'high' ? 'high' : undefined);
+        expect(body.temperature).toBeUndefined();
+        expect(body.top_p).toBeUndefined();
+        expect(body.top_k).toBeUndefined();
+    });
+
     test.each(currentClaude5Models)('%s with include_reasoning adds display:summarized to thinking', async (model) => {
         const getBody = captureClaudePayload();
         const res = await makeRequest({ model, reasoning_effort: 'high', include_reasoning: true });
@@ -233,15 +259,19 @@ describe('Claude 5 backend request handling', () => {
     });
 
     test.each([
-        { label: 'canonical ID', model: 'claude-fable-5-1', customExcludeBody: undefined, expectedThinking: { type: 'adaptive' } },
-        { label: 'OpenRouter-style ID', model: 'anthropic/claude-fable-5.1', customExcludeBody: undefined, expectedThinking: { type: 'adaptive' } },
+        { label: 'canonical Fable 5.1 ID', model: 'claude-fable-5-1', customExcludeBody: undefined, expectedThinking: { type: 'adaptive' } },
+        { label: 'OpenRouter-style Fable 5.1 ID', model: 'anthropic/claude-fable-5.1', customExcludeBody: undefined, expectedThinking: { type: 'adaptive' } },
+        { label: 'canonical Opus 5.5 ID', model: 'claude-opus-5-5', customExcludeBody: undefined, expectedThinking: { type: 'adaptive' } },
         { label: 'explicit thinking exclusion', model: 'claude-fable-5-1', customExcludeBody: 'thinking', expectedThinking: undefined },
-    ])('Custom Fable 5.1 with $label handles thinking correctly', async ({ model, customExcludeBody, expectedThinking }) => {
+        { label: 'Opus 5.5 thinking exclusion', model: 'claude-opus-5-5', customExcludeBody: 'thinking', expectedThinking: undefined },
+        { label: 'Opus 5.5 adaptive display', model: 'claude-opus-5-5', customIncludeBody: 'thinking:\n  type: adaptive\n  display: summarized', expectedThinking: { type: 'adaptive', display: 'summarized' } },
+        { label: 'Opus 5.5 adaptive display with legacy budget', model: 'claude-opus-5-5', customIncludeBody: 'thinking:\n  type: adaptive\n  display: summarized\n  budget_tokens: 1024', expectedThinking: { type: 'adaptive', display: 'summarized' } },
+    ])('Custom Claude adaptive-thinking exception with $label handles thinking correctly', async ({ model, customIncludeBody = 'thinking:\n  type: enabled\n  budget_tokens: 1024', customExcludeBody, expectedThinking }) => {
         const getBody = captureClaudePayload();
         const res = await makeRequest({
             chat_completion_source: CHAT_COMPLETION_SOURCES.CUSTOM,
             custom_url: 'https://example.com/v1/chat/completions',
-            custom_include_body: 'thinking:\n  type: enabled',
+            custom_include_body: customIncludeBody,
             custom_exclude_body: customExcludeBody,
             model,
         });

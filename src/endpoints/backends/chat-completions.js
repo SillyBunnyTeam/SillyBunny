@@ -387,6 +387,7 @@ async function sendClaudeRequest(request, response) {
         const isFable51Model = /claude-fable-5-1/.test(request.body.model);
         // SillyBunny: Claude Sonnet 5 and Opus 5 require adaptive thinking and reject sampling params and assistant prefill.
         const isSonnetOrOpus5 = /claude-(?:sonnet|opus)-5/.test(request.body.model);
+        const isOpus55Model = /claude-opus-5-5(?:[-/:]|$)/.test(request.body.model);
         const useThinking = /^claude-(3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnetOrOpus5;
         const useWebSearch = (/^claude-(3-5|3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnetOrOpus5) && Boolean(request.body.enable_web_search);
         const isLimitedSampling = /^claude-(opus-4-1|sonnet-4-5|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model);
@@ -532,8 +533,11 @@ async function sendClaudeRequest(request, response) {
             delete requestBody.top_p;
             delete requestBody.top_k;
         } else if (isSonnetOrOpus5 && budgetTokens === null) {
-            // SillyBunny: Claude 5 enables adaptive thinking by default; explicitly disable when effort is none/auto.
-            requestBody.thinking = { type: 'disabled' };
+            // SillyBunny: Opus 5.5 rejects disabled thinking even when no effort is selected.
+            requestBody.thinking = { type: isOpus55Model ? 'adaptive' : 'disabled' };
+            if (isOpus55Model && includeReasoning) {
+                requestBody.thinking.display = 'summarized';
+            }
         }
 
         if ((fixThinkingPrefill || noPrefillModel) && convertedPrompt.messages.length && convertedPrompt.messages[convertedPrompt.messages.length - 1].role === 'assistant') {
@@ -3475,11 +3479,14 @@ export async function handleChatCompletionsGenerate(request, response) {
             applyKimiK3ModelParameterConstraints(requestBody);
         }
 
-        // SillyBunny: Fable 5.1 rejects legacy thinking types supplied by Custom endpoint settings.
+        // SillyBunny: Claude models that require adaptive thinking reject legacy thinking types supplied by Custom endpoint settings.
         if (!isTextCompletion
             && request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.CUSTOM
-            && /claude-fable-5(?:-1|\.1)(?:[-/:]|$)/i.test(String(requestBody.model))) {
-            requestBody.thinking = { type: 'adaptive' };
+            && /claude-(?:fable-5(?:-1|\.1)|opus-5-5)(?:[-/:]|$)/i.test(String(requestBody.model))) {
+            if (requestBody.thinking?.type !== 'adaptive') {
+                requestBody.thinking = { type: 'adaptive' };
+            }
+            delete requestBody.thinking.budget_tokens;
         }
 
         if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.CUSTOM) {

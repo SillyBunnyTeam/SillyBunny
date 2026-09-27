@@ -2,6 +2,11 @@
 
 ## v1.7.1
 
+### Fixes
+
+- Keep Opus 5.5 adaptive thinking enabled when reasoning effort is `none`, `auto`, or unset.
+- Preserve Custom endpoint adaptive-thinking options while removing legacy token budgets.
+
 ### Merged Staging PRs
 - PR #743 (2026-08-07) `fix: conversation mode send/save/cancel buttons non-functional`
 - PR #747 (2026-08-14) `feat: add Chats Archive as a core extension`
