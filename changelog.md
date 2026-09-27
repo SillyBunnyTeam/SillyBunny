@@ -1,8 +1,7 @@
 # Changelog
 
-## v1.8.0
+## v1.8.0: Archival Performance Update
 
-**SillyBunny version 1.8.0 has released**
 This update features a new Chat Archives feature, alongside many performance improvements, QOL, and bug fixes.
 
 **Highlights: Chat Archives**
