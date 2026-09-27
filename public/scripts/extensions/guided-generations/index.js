@@ -24,6 +24,7 @@ const oldExtensionName = 'third-party/GuidedGenerations-Extension';
 const legacySystemPromptPresetNames = new Set(['GGSystemPrompt', 'GGSytemPrompt']);
 
 const defaultSettings = {
+    showActionButtonContainer: true,
     showFlushGuidesButton: true,
     showGuidedResponse: true,
     showGuidedSwipe: true,
@@ -400,6 +401,8 @@ function updateExtensionButtons() {
     if (!container) {
         return;
     }
+
+    container.hidden = !settings.showActionButtonContainer;
 
     const existingQrBar = document.getElementById('qr--bar');
     if (existingQrBar && container.contains(existingQrBar)) {

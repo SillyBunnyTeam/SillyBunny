@@ -115,4 +115,18 @@ describe('Guided Generations settings migration', () => {
         expect(extensionSettings['guided-generations'].helperPrefillMessages).toBe('');
         expect(saveSettingsDebounced).not.toHaveBeenCalled();
     });
+
+    test('shows the action bar by default and preserves an explicit hidden preference', async () => {
+        extensionSettings['guided-generations'] = {
+            showActionButtonContainer: false,
+        };
+
+        const { defaultSettings, loadSettings } = await import('../public/scripts/extensions/guided-generations/index.js');
+
+        loadSettings();
+
+        expect(defaultSettings.showActionButtonContainer).toBe(true);
+        expect(extensionSettings['guided-generations'].showActionButtonContainer).toBe(false);
+        expect(saveSettingsDebounced).not.toHaveBeenCalled();
+    });
 });

@@ -27,6 +27,7 @@ import {
 import { setCharacterSpoilerFreeFieldsHidden } from './power-user.js';
 import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
+import { extension_settings } from './extensions.js';
 import { characters, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
 import {
     SAMPLING_PARAMETER_DESCRIPTORS,
@@ -12369,6 +12370,30 @@ function injectThemePicker() {
     const paperTextureSettingsGroup = createPaperTextureSettingsGroup();
     const frontendIconSettingsGroup = createFrontendIconSettingsGroup();
     const shortcutSettingsGroup = createShortcutSettingsGroup();
+    const actionBarVisibilityLabel = createElement('label', {
+        className: 'checkbox_label',
+        attrs: { for: 'sb-guided-generations-action-bar-visible' },
+    });
+    const actionBarVisibilityInput = createElement('input', {
+        id: 'sb-guided-generations-action-bar-visible',
+        attrs: { type: 'checkbox' },
+    });
+    const actionBarVisibilityText = createElement('span', { text: 'Show Guided Generations action bar' });
+    const actionBarVisibilitySettings = createElement('div', { className: 'sb-desktop-action-bar-setting' });
+    actionBarVisibilityInput.checked = extension_settings['guided-generations']?.showActionButtonContainer !== false;
+    actionBarVisibilityInput.addEventListener('change', event => {
+        const input = event.currentTarget;
+        if (!(input instanceof HTMLInputElement)) {
+            return;
+        }
+
+        extension_settings['guided-generations'] ??= {};
+        extension_settings['guided-generations'].showActionButtonContainer = input.checked;
+        document.getElementById('gg-action-button-container')?.toggleAttribute('hidden', !input.checked);
+        saveSettingsDebounced();
+    });
+    actionBarVisibilityLabel.append(actionBarVisibilityInput, actionBarVisibilityText);
+    actionBarVisibilitySettings.append(actionBarVisibilityLabel);
     const desktopQuickActionSettingsGroup = createMobileQuickActionSettingsGroup('desktop');
     const mobileQuickActionSettingsGroup = createMobileQuickActionSettingsGroup();
     const desktopSettingsOutlet = document.getElementById('sb-desktop-settings-outlet');
@@ -12406,6 +12431,7 @@ function injectThemePicker() {
 
     if (desktopSettingsOutlet instanceof HTMLElement) {
         desktopSettingsOutlet.replaceChildren(
+            actionBarVisibilitySettings,
             desktopNavLayoutSettingsGroup,
             desktopSettingsDivider,
             desktopShellSizingSettingsGroup,
@@ -12431,6 +12457,7 @@ function injectThemePicker() {
     card.append(shellStyleSettingsGroup, interfaceSettingsGroup, topbarLabelSettingsGroup, shortcutSettingsGroup);
     if (!(desktopSettingsOutlet instanceof HTMLElement)) {
         card.append(
+            actionBarVisibilitySettings,
             desktopNavLayoutSettingsGroup,
             desktopSettingsDivider,
             desktopShellSizingSettingsGroup,
