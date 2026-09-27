@@ -403,9 +403,6 @@ function updateExtensionButtons() {
     }
 
     container.hidden = !settings.showActionButtonContainer;
-    if (container.hidden) {
-        return;
-    }
 
     const qrBar = document.getElementById('qr--bar');
     container.innerHTML = '';
@@ -421,6 +418,11 @@ function updateExtensionButtons() {
         qrContainer.append(qrBar);
     }
 
+    integrateQrBar();
+    if (container.hidden) {
+        return;
+    }
+
     const buttons = [
         settings.showFlushGuidesButton && createFlushGuidesButton(),
         settings.showSimpleSendButton && createActionButton('gg_simple_send_button', 'Simple Send', 'fa-solid fa-paper-plane', simpleSend),
@@ -432,7 +434,6 @@ function updateExtensionButtons() {
 
     actionsContainer.append(...buttons);
     updateFlushGuideButton();
-    integrateQrBar();
 }
 
 function integrateQrBar() {

@@ -18,9 +18,18 @@ function makeNode(id) {
             this.children.splice(index, 0, node);
             node.parentElement = this;
         },
-        remove() {
-            this.parentElement?.children.splice(this.parentElement.children.indexOf(this), 1);
-            this.parentElement = null;
+        insertAdjacentElement(position, node) {
+            if (position !== 'afterend') throw new Error(`Unsupported position: ${position}`);
+            const siblings = this.parentElement.children;
+            this.parentElement.insertBefore(node, siblings[siblings.indexOf(this) + 1] ?? null);
+        },
+        append(...nodes) {
+            for (const node of nodes) this.insertBefore(node, null);
+        },
+        set innerHTML(value) {
+            if (value !== '') throw new Error('Only clearing is supported');
+            for (const child of this.children) child.parentElement = null;
+            this.children = [];
         },
     };
 }
@@ -29,6 +38,11 @@ function createFakeDocument(root, descendants) {
     const nodes = [root, ...descendants];
     return {
         getElementById: id => nodes.find(node => node.id === id && (node === root || root.contains(node))) ?? null,
+        createElement: () => {
+            const node = makeNode('');
+            nodes.push(node);
+            return node;
+        },
     };
 }
 
@@ -162,29 +176,34 @@ describe('Guided Generations settings migration', () => {
         expect(saveSettingsDebounced).not.toHaveBeenCalled();
     });
 
-    test('hiding the action bar hides the complete bar without relocating Quick Reply', async () => {
+    test('starting hidden hides integrated Quick Replies and respects disabling integration', async () => {
         const sendForm = makeNode('send_form');
         const nonQrFormItems = makeNode('nonQRFormItems');
-        const container = makeNode('gg-action-button-container');
-        const qrContainer = makeNode('gg-qr-container');
         const qrBar = makeNode('qr--bar');
-        sendForm.insertBefore(nonQrFormItems, null);
-        sendForm.insertBefore(container, null);
-        container.insertBefore(qrContainer, null);
-        qrContainer.insertBefore(qrBar, null);
-        globalThis.document = createFakeDocument(sendForm, [nonQrFormItems, container, qrContainer, qrBar]);
-        extensionSettings['guided-generations'] = { showActionButtonContainer: false };
+        sendForm.append(qrBar, nonQrFormItems);
+        globalThis.document = createFakeDocument(sendForm, [nonQrFormItems, qrBar]);
+        extensionSettings['guided-generations'] = {
+            showActionButtonContainer: false,
+            integrateQrBar: true,
+        };
 
         try {
             const { loadSettings, updateExtensionButtons } = await import('../public/scripts/extensions/guided-generations/index.js');
             loadSettings();
             updateExtensionButtons();
+
+            const container = document.getElementById('gg-action-button-container');
+            expect(container.hidden).toBe(true);
+            expect(document.getElementById('qr--bar')).toBe(qrBar);
+            expect(container.contains(qrBar)).toBe(true);
+
+            extensionSettings['guided-generations'].integrateQrBar = false;
+            updateExtensionButtons();
+
+            expect(container.hidden).toBe(true);
+            expect(qrBar.parentElement).toBe(sendForm);
         } finally {
             delete globalThis.document;
         }
-
-        expect(container.parentElement).toBe(sendForm);
-        expect(container.hidden).toBe(true);
-        expect(qrBar.parentElement).toBe(qrContainer);
     });
 });
