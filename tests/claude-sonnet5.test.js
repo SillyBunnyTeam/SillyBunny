@@ -1,8 +1,12 @@
 import { beforeAll, afterAll, describe, expect, jest, test } from '@jest/globals';
 import express from 'express';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
+import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
+import process from 'node:process';
+import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
 import { setConfigFilePath } from '../src/util.js';
@@ -52,11 +56,14 @@ describe('Claude 5 backend request handling', () => {
         tempDirs.push(configRoot);
         setConfigFilePath(configPath);
 
+        const { SECRET_KEYS, SecretManager } = await import('../src/endpoints/secrets.js');
         const { router: chatCompletionsRouter } = await import('../src/endpoints/backends/chat-completions.js');
 
         const userRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-claude-sonnet5-'));
         tempDirs.push(userRoot);
         userDirectories = { root: userRoot, backups: userRoot };
+        new SecretManager(userDirectories).writeSecret(SECRET_KEYS.LINKAPI, 'linkapi-test-key');
+        new SecretManager(userDirectories).writeSecret(SECRET_KEYS.COHERE, 'cohere-test-key');
 
         const app = express();
         app.use(express.json());
@@ -116,6 +123,46 @@ describe('Claude 5 backend request handling', () => {
         expect(body.top_k).toBeUndefined();
     });
 
+    test.each(['claude-fable-5-1', 'anthropic/claude-fable-5-1'])('%s uses native JSON output alongside adaptive thinking', async (model) => {
+        const getBody = captureClaudePayload();
+        const schema = {
+            type: 'object',
+            properties: { answer: { type: 'string' } },
+            required: ['answer'],
+            additionalProperties: false,
+        };
+        const res = await makeRequest({
+            model,
+            reasoning_effort: 'high',
+            json_schema: { name: 'answer', value: schema },
+        });
+
+        expect(res.status).toBe(200);
+        const body = getBody();
+        expect(body.output_config).toEqual({
+            format: { type: 'json_schema', schema },
+            effort: 'high',
+        });
+        expect(body.thinking).toEqual({ type: 'adaptive' });
+        expect(body).not.toHaveProperty('tools');
+        expect(body).not.toHaveProperty('tool_choice');
+    });
+
+    test.each(['claude-fable-5', 'claude-sonnet-5'])('%s keeps the existing forced-tool JSON output', async (model) => {
+        const getBody = captureClaudePayload();
+        const schema = { type: 'object', properties: { answer: { type: 'string' } } };
+        const res = await makeRequest({ model, json_schema: { name: 'answer', value: schema } });
+
+        expect(res.status).toBe(200);
+        expect(getBody().tools).toEqual([{
+            name: 'answer',
+            description: 'Well-formed JSON object',
+            input_schema: schema,
+        }]);
+        expect(getBody().tool_choice).toEqual({ type: 'tool', name: 'answer' });
+        expect(getBody().output_config?.format).toBeUndefined();
+    });
+
     test.each([
         ['claude-sonnet-5', 'xhigh'],
         ['claude-opus-5', 'xhigh'],
@@ -130,24 +177,16 @@ describe('Claude 5 backend request handling', () => {
         expect(body.output_config?.effort).toBe(reasoningEffort);
     });
 
-    test('Sonnet 4.6 maps unsupported xhigh effort to max', async () => {
-        const getBody = captureClaudePayload();
-        const res = await makeRequest({ model: 'claude-sonnet-4-6', reasoning_effort: 'xhigh' });
-        expect(res.status).toBe(200);
-        const body = getBody();
-
-        expect(body.thinking).toEqual({ type: 'adaptive' });
-        expect(body.output_config?.effort).toBe('max');
-    });
-
-    test.each(['claude-opus-4-8', 'claude-fable-5'])('%s does not inherit Claude 5 xhigh support', async (model) => {
+    test.each(['claude-sonnet-4-6', 'claude-opus-4-8', 'claude-fable-5'])('%s receives xhigh verbatim', async (model) => {
+        // Older adaptive models used to have xhigh folded onto max. The picked rung now goes
+        // out as-is, so a model that rejects it returns an error instead of thinking less.
         const getBody = captureClaudePayload();
         const res = await makeRequest({ model, reasoning_effort: 'xhigh' });
         expect(res.status).toBe(200);
         const body = getBody();
 
         expect(body.thinking).toEqual({ type: 'adaptive' });
-        expect(body.output_config?.effort).toBe('max');
+        expect(body.output_config?.effort).toBe('xhigh');
     });
 
     test.each(currentClaude5Models)('%s with effort=none sends thinking.type disabled and omits sampling params', async (model) => {
@@ -172,6 +211,32 @@ describe('Claude 5 backend request handling', () => {
         expect(body.thinking).toEqual({ type: 'disabled' });
     });
 
+    test.each([
+        { effort: 'none', includeReasoning: false },
+        { effort: 'none', includeReasoning: true },
+        { effort: undefined, includeReasoning: false },
+        { effort: 'auto', includeReasoning: false },
+        { effort: 'auto', includeReasoning: true },
+        { effort: 'high', includeReasoning: true },
+    ])('Opus 5.5 keeps adaptive thinking with effort=$effort and summaries=$includeReasoning', async ({ effort, includeReasoning }) => {
+        const getBody = captureClaudePayload();
+        const res = await makeRequest({
+            model: 'claude-opus-5-5',
+            reasoning_effort: effort,
+            include_reasoning: includeReasoning,
+        });
+
+        expect(res.status).toBe(200);
+        const body = getBody();
+        expect(body.thinking).toEqual(includeReasoning
+            ? { type: 'adaptive', display: 'summarized' }
+            : { type: 'adaptive' });
+        expect(body.output_config?.effort).toBe(effort === 'high' ? 'high' : undefined);
+        expect(body.temperature).toBeUndefined();
+        expect(body.top_p).toBeUndefined();
+        expect(body.top_k).toBeUndefined();
+    });
+
     test.each(currentClaude5Models)('%s with include_reasoning adds display:summarized to thinking', async (model) => {
         const getBody = captureClaudePayload();
         const res = await makeRequest({ model, reasoning_effort: 'high', include_reasoning: true });
@@ -191,6 +256,28 @@ describe('Claude 5 backend request handling', () => {
         expect(body.temperature).toBeUndefined();
         expect(body.top_p).toBeUndefined();
         expect(body.top_k).toBeUndefined();
+    });
+
+    test.each([
+        { label: 'canonical Fable 5.1 ID', model: 'claude-fable-5-1', customExcludeBody: undefined, expectedThinking: { type: 'adaptive' } },
+        { label: 'OpenRouter-style Fable 5.1 ID', model: 'anthropic/claude-fable-5.1', customExcludeBody: undefined, expectedThinking: { type: 'adaptive' } },
+        { label: 'canonical Opus 5.5 ID', model: 'claude-opus-5-5', customExcludeBody: undefined, expectedThinking: { type: 'adaptive' } },
+        { label: 'explicit thinking exclusion', model: 'claude-fable-5-1', customExcludeBody: 'thinking', expectedThinking: undefined },
+        { label: 'Opus 5.5 thinking exclusion', model: 'claude-opus-5-5', customExcludeBody: 'thinking', expectedThinking: undefined },
+        { label: 'Opus 5.5 adaptive display', model: 'claude-opus-5-5', customIncludeBody: 'thinking:\n  type: adaptive\n  display: summarized', expectedThinking: { type: 'adaptive', display: 'summarized' } },
+        { label: 'Opus 5.5 adaptive display with legacy budget', model: 'claude-opus-5-5', customIncludeBody: 'thinking:\n  type: adaptive\n  display: summarized\n  budget_tokens: 1024', expectedThinking: { type: 'adaptive', display: 'summarized' } },
+    ])('Custom Claude adaptive-thinking exception with $label handles thinking correctly', async ({ model, customIncludeBody = 'thinking:\n  type: enabled\n  budget_tokens: 1024', customExcludeBody, expectedThinking }) => {
+        const getBody = captureClaudePayload();
+        const res = await makeRequest({
+            chat_completion_source: CHAT_COMPLETION_SOURCES.CUSTOM,
+            custom_url: 'https://example.com/v1/chat/completions',
+            custom_include_body: customIncludeBody,
+            custom_exclude_body: customExcludeBody,
+            model,
+        });
+
+        expect(res.status).toBe(200);
+        expect(getBody().thinking).toEqual(expectedThinking);
     });
 
     test.each(currentClaude5Models)('%s with web search enabled includes the web_search tool', async (model) => {
@@ -219,5 +306,58 @@ describe('Claude 5 backend request handling', () => {
         const lastMessage = body.messages[body.messages.length - 1];
         // noPrefillModel: last assistant role must have been converted to user
         expect(lastMessage.role).not.toBe('assistant');
+    });
+
+    test.each([
+        ['required', 'REQUIRED'],
+        ['auto', undefined],
+    ])('Cohere maps tool_choice=%s to %s', async (toolChoice, expected) => {
+        const getBody = captureClaudePayload();
+        const res = await makeRequest({
+            chat_completion_source: CHAT_COMPLETION_SOURCES.COHERE,
+            model: 'command-r-plus',
+            tool_choice: toolChoice,
+            tools: [{ type: 'function', function: { name: 'search', parameters: { type: 'object' } } }],
+        });
+
+        expect(res.status).toBe(200);
+        expect(getBody().tool_choice).toBe(expected);
+    });
+
+    test('Bun LinkAPI streams bypass the leaking node-fetch pipeline', async () => {
+        Object.defineProperty(process.versions, 'bun', { configurable: true, value: 'test' });
+        nodeFetchMock.mockReset();
+        nodeFetchMock.mockRejectedValue(new DOMException('The operation timed out.', 'TimeoutError'));
+        const upstreamResponse = Object.assign(new PassThrough(), {
+            statusCode: 200,
+            statusMessage: 'OK',
+        });
+        const upstreamRequest = Object.assign(new EventEmitter(), {
+            setTimeout: jest.fn(),
+            end: jest.fn(() => upstreamResponse.end('data: [DONE]\n\n')),
+        });
+        const requestSpy = jest.spyOn(https, 'request').mockImplementation((_url, _options, callback) => {
+            process.nextTick(() => callback(upstreamResponse));
+            return upstreamRequest;
+        });
+
+        try {
+            const res = await makeRequest({
+                chat_completion_source: CHAT_COMPLETION_SOURCES.LINKAPI,
+                linkapi_endpoint: 'us',
+                model: 'claude-fable-5',
+                stream: true,
+            });
+
+            expect(res.status).toBe(200);
+            expect(await res.text()).toBe('data: [DONE]\n\n');
+            expect(requestSpy).toHaveBeenCalledWith('https://api.linkapi.ai/v1/messages', expect.any(Object), expect.any(Function));
+            expect(nodeFetchMock).not.toHaveBeenCalled();
+        } finally {
+            requestSpy.mockRestore();
+            nodeFetchMock.mockReset();
+            nodeFetchMock.mockImplementation((url, options) => actualNodeFetch(url, options));
+            delete process.versions.bun;
+        }
     });
 });

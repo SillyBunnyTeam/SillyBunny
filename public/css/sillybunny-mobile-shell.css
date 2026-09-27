@@ -66,8 +66,11 @@
         border-radius: 0 !important;
     }
 
+    /* The composer's text column is roughly 130px on a 360px phone, so this string cannot fit
+       on one line at any readable size. Upstream sets white-space: nowrap, which clipped it. */
     #send_textarea::placeholder {
         font-size: 14px;
+        white-space: normal;
     }
 
     #nonQRFormItems {
@@ -94,8 +97,8 @@
         --sb-composer-action-size: clamp(34px, calc(38px * var(--sb-bottom-bar-scale, 1)), 40px);
         --sb-composer-send-width: var(--sb-composer-action-size);
         --sb-composer-action-icon-size: clamp(11px, calc(14px * var(--sb-bottom-bar-scale, 1)), 16px);
-        --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 2px);
-        --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 2px);
+        --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 4px);
+        --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 4px);
         gap: 0 clamp(8px, 2vw, 10px) !important;
     }
 
@@ -2174,8 +2177,10 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         border-radius: 10px;
     }
 
+    /* Must beat the generic 34px !important band height above: the parked mode toggle
+       (top 8px + 44px) otherwise hangs over the top of the editor sub-tab pills. */
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) > #CharListButtonAndHotSwaps {
-        min-height: 54px;
+        min-height: 54px !important;
         padding-block: 5px;
     }
 
@@ -2311,6 +2316,22 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     }
 
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > #tags_div {
+        max-width: 100%;
+    }
+
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > #tags_div .tag_controls {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > #tags_div .tag_controls > label[for="char-management-dropdown"] {
+        grid-column: 1 / -1;
+        justify-self: stretch;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls #char-management-dropdown {
+        width: 100%;
         max-width: 100%;
     }
 
@@ -2725,6 +2746,21 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         touch-action: manipulation;
     }
 
+    #nanogpt_form :is(#nanogpt_allowed_providers, #nanogpt_ignored_providers) {
+        display: none;
+    }
+
+    #nanogpt_form .sb-nanogpt-provider-picker {
+        display: block;
+        width: 100%;
+        min-height: max(44px, var(--sb-field-min-height));
+        height: auto;
+        padding: 8px var(--sb-field-padding-x);
+        text-align: left;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
     .sb-inline-select-picker-menu[data-sb-inline-select-multiple] .sb-inline-select-picker-option {
         gap: 8px;
     }
@@ -2803,7 +2839,7 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     #right-nav-panel.openDrawer,
     #top-settings-holder #right-nav-panel.openDrawer,
     :root[data-sb-character-drawer-lock='right'] #right-nav-panel.openDrawer {
-        top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px)) !important;
+        top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px) + var(--sb-shell-viewport-top, 0px)) !important;
         bottom: auto !important;
         box-sizing: border-box !important;
         height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)))) - var(--sb-mobile-shell-gap, 0px) - env(safe-area-inset-bottom, 0px)) !important;
@@ -2887,10 +2923,14 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     }
 
     #form_sheld {
-        padding: 0 0 env(safe-area-inset-bottom, 0px) !important;
+        padding: 0 0 var(--sb-composer-bottom-padding, env(safe-area-inset-bottom, 0px)) !important;
         margin: 0 !important;
         width: 100% !important;
         max-width: none !important;
+    }
+
+    html.sb-ios-composer-keyboard-controls-active #form_sheld {
+        --sb-composer-bottom-padding: 0px;
     }
 
     #send_form {
@@ -2928,7 +2968,7 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         --sb-composer-send-width: var(--sb-composer-action-size);
         --sb-composer-action-icon-size: clamp(13px, calc(16px * var(--sb-bottom-bar-scale, 1)), 18px);
         --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 4px);
-        --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 2px);
+        --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 4px);
         gap: 0 clamp(8px, 2vw, 10px) !important;
         min-height: calc(var(--sb-mobile-composer-input-height) + 3px) !important;
         padding: 1px 4px !important;
@@ -2958,10 +2998,6 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     #leftSendForm,
     #rightSendForm {
         gap: 2px !important;
-    }
-
-    #leftSendForm {
-        padding-left: 0;
     }
 
     #chat .mes:not(.smallSysMes) .mesAvatarWrapper {
@@ -3029,6 +3065,44 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
 
     body.ripplestyle #chat .mes:not(.smallSysMes) .mes_block {
         padding: 8px 16px 28px 12px !important;
+    }
+
+    /* SillyBunny: use one mobile scroller so Chat History controls can leave the viewport. */
+    #select_chat_popup {
+        align-items: stretch;
+        left: max(10px, env(safe-area-inset-left, 0px));
+        right: max(10px, env(safe-area-inset-right, 0px));
+        width: auto;
+        max-width: none;
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    #select_chat_div {
+        flex: 0 0 auto;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        height: auto;
+        overflow: visible;
+    }
+
+    #select_chat_popup .chat_cleanup_group {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    #select_chat_popup .chat_cleanup_field {
+        min-width: 0;
+        grid-template-columns: minmax(0, 1fr) minmax(4.5rem, 5.5rem);
+    }
+
+    #select_chat_popup :is(.chat_cleanup_field, .chat_cleanup_checkbox) span {
+        white-space: normal;
+    }
+
+    #select_chat_popup :is(.select_chat_block_filename, .chat_cleanup_status) {
+        min-width: 0;
+        overflow-wrap: anywhere;
     }
 }
 

@@ -47,7 +47,7 @@ const DEFAULT_NEUTRAL_ASSISTANT_NAME = 'Assistant';
 
 const AGENT_MESSAGE_EXTRA_KEY = 'inChatAgents';
 const AGENT_PROMPT_TRANSFORM_HISTORY_KEY = 'inChatAgentTransformHistory';
-const STARTER_PACK_PRESET_NAME_SILLYBUNNY = 'Pura\'s Director Preset 15.0 (SillyBunny)';
+const STARTER_PACK_PRESET_NAME_SILLYBUNNY = 'Pura\'s Director Preset 15.1 (SillyBunny)';
 const STARTER_PACK_PRESET_TITLE = 'Pura\'s Director Preset';
 const TLD_PRESET_NAME = 'TLD Card Conversion Preset (Standalone)';
 const STARTER_PACK_SITE_URL = 'https://platberlitz.github.io/';
@@ -71,6 +71,10 @@ const STARTER_PACK_EXTENSIONS = Object.freeze({
     moonlitEchoes: Object.freeze({
         id: 'third-party/SillyBunny-MoonlitEchoesTheme',
         repoUrl: 'https://github.com/platberlitz/SillyBunny-MoonlitEchoesTheme',
+    }),
+    terminalUi: Object.freeze({
+        id: 'third-party/SillyBunny-Terminal-UI',
+        repoUrl: 'https://github.com/SillyBunnyTeam/SillyBunny-Terminal-UI',
     }),
     groupUtilities: Object.freeze({
         id: 'third-party/SB-GroupUtilities',
@@ -107,6 +111,10 @@ const STARTER_PACK_EXTENSIONS = Object.freeze({
     promptTags: Object.freeze({
         id: 'third-party/SillyBunny-PromptTags',
         repoUrl: 'https://github.com/SillyBunnyTeam/SillyBunny-PromptTags',
+    }),
+    alternateDescriptions: Object.freeze({
+        id: 'third-party/SillyBunny-AlternateDescriptions',
+        repoUrl: 'https://github.com/SillyBunnyTeam/SillyBunny-AlternateDescriptions',
     }),
 });
 
@@ -861,7 +869,7 @@ function buildPresetStarterPackItem() {
     const selectedPresetName = isOpenAiStyleApi ? presetManager?.getSelectedPresetName() : '';
     const isSelected = selectedPresetName === STARTER_PACK_PRESET_NAME_SILLYBUNNY;
     const hasBundledPreset = Boolean(sillyBunnyPreset);
-    const body = 'Purachina\'s Director v15.0 preset is fully bundled with SillyBunny as a preset option. This preset is ideal if you want the LLM to have maximum control over the story, the characters, *and* your persona. Simply go to the Presets menu to find it. If you wish to see more of Pura\'s character cards and other projects, check out the link below!';
+    const body = 'Purachina\'s Director v15.1 preset is fully bundled with SillyBunny as a preset option. This preset is ideal if you want the LLM to have maximum control over the story, the characters, *and* your persona. Simply go to the Presets menu to find it. If you wish to see more of Pura\'s character cards and other projects, check out the link below!';
 
     if (!isOpenAiStyleApi) {
         return {
@@ -985,6 +993,12 @@ function buildStarterPackItems() {
                 extensionName: STARTER_PACK_EXTENSIONS.moonlitEchoes.id,
             }),
             buildExtensionStarterPackItem({
+                title: 'SillyBunny Terminal UI',
+                body: 'A CSS theme that mimics a traditional terminal emulator interface. This keeps the native chat window and implements a forward-facing slash-command system, reducing the surrounding UI to a tmux-style statusline.',
+                icon: 'fa-terminal',
+                extensionName: STARTER_PACK_EXTENSIONS.terminalUi.id,
+            }),
+            buildExtensionStarterPackItem({
                 title: 'Prompting Lab',
                 body: 'A troubleshooting extension used to diagnose the contents of your system prompt before it\'s sent to an LLM. Shows the persona, preset, connection profile, message contents, and more.',
                 icon: 'fa-flask',
@@ -1019,6 +1033,12 @@ function buildStarterPackItems() {
                 body: 'Adds automatic XML tags to SillyBunny\'s prompt sections. This can be useful if you want to implement XML prompting without modifying any existing presets, personas, lorebooks, or character cards.',
                 icon: 'fa-tags',
                 extensionName: STARTER_PACK_EXTENSIONS.promptTags.id,
+            }),
+            buildExtensionStarterPackItem({
+                title: 'Alternate Descriptions',
+                body: 'Keeps multiple versions of a character\'s description, personality, scenario, example dialogue, main prompt, and post-history instructions in one card, with tools to switch between them.',
+                icon: 'fa-layer-group',
+                extensionName: STARTER_PACK_EXTENSIONS.alternateDescriptions.id,
             }),
         ],
         optionalUnofficial: [

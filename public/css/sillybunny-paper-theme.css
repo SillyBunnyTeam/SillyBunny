@@ -211,9 +211,13 @@ button:not(.ica--tpanel-handle):not(.gg-action-button) {
     margin: 2px 0 4px;
 }
 
+.mes_reasoning_details .mes_reasoning_summary {
+    margin-right: 0;
+}
+
 .mes_reasoning_header {
     margin: 2px 0;
-    padding: 7px 12px;
+    padding: 7px calc(0.7em + 14px) 7px 12px;
     border: 1px solid var(--thought-box-border);
     border-radius: 14px;
     background: linear-gradient(180deg, var(--thought-box-bg-2), var(--thought-box-bg));

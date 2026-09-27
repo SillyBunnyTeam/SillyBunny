@@ -10,6 +10,8 @@ import {
     setPreviousImpersonateInput,
 } from './shared.js';
 
+let isSwiping = false;
+
 async function executeSTScriptCommand(command) {
     const context = getContext();
     if (typeof context?.executeSlashCommandsWithOptions !== 'function') {
@@ -74,23 +76,8 @@ async function generateNewSwipe() {
         }
 
         debugLog('[Swipe] Calling context.swipe.right() to trigger new swipe generation.');
-        context.swipe.right();
-
-        await new Promise(resolve => {
-            let resolved = false;
-            const resolveOnce = () => {
-                if (resolved) {
-                    return;
-                }
-                resolved = true;
-                eventSource.removeListener(event_types.GENERATION_ENDED, resolveOnce);
-                eventSource.removeListener(event_types.GENERATION_STOPPED, resolveOnce);
-                resolve();
-            };
-            eventSource.once(event_types.GENERATION_ENDED, resolveOnce);
-            eventSource.once(event_types.GENERATION_STOPPED, resolveOnce);
-        });
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // GENERATION_ENDED precedes the core swipe flow's UI cleanup.
+        await context.swipe.right();
         return true;
     } catch (error) {
         console.error('[GuidedGenerations][Swipe] Error during swipe generation process:', error);
@@ -101,65 +88,73 @@ async function generateNewSwipe() {
 }
 
 async function guidedSwipe() {
-    const textarea = document.getElementById('send_textarea');
-    if (!(textarea instanceof HTMLTextAreaElement)) {
-        console.error('[GuidedGenerations][Swipe] Textarea #send_textarea not found.');
-        alert('Guided Swipe Error: Textarea not found.');
+    if (isSwiping) {
         return;
     }
-
-    const originalInput = textarea.value;
-    if (!originalInput.trim()) {
-        debugLog('[Swipe] No input detected, performing plain swipe.');
-        await generateNewSwipe();
-        return;
-    }
-
-    const settings = extension_settings[extensionName] ?? {};
-    const injectionRole = settings.injectionEndRole ?? 'system';
-    const depth = settings.depthPromptGuidedSwipe ?? 0;
-    const promptTemplate = settings.promptGuidedSwipe ?? '';
-    const filledPrompt = applyPromptTemplate(promptTemplate, originalInput);
-
+    isSwiping = true;
     try {
-        setPreviousImpersonateInput(originalInput);
-        const stscriptCommand = `/inject id=${guidedSwipeInjectId} position=chat ephemeral=true scan=true depth=${depth} role=${injectionRole} ${filledPrompt} |`;
-        await executeSTScriptCommand(stscriptCommand);
-        debugLog('[Swipe] Executed command:', stscriptCommand);
-
-        let injectionFound = false;
-        for (let i = 0; i < 5; i++) {
-            if (getContext().chatMetadata?.script_injects?.[guidedSwipeInjectId]) {
-                injectionFound = true;
-                break;
-            }
-
-            await new Promise(resolve => setTimeout(resolve, 150));
-        }
-
-        if (!injectionFound) {
-            alert('Guided Swipe Error: Could not verify instruction injection. Aborting swipe generation.');
-            textarea.value = originalInput;
-            await executeSTScriptCommand(`/flushinject ${guidedSwipeInjectId}`);
+        const textarea = document.getElementById('send_textarea');
+        if (!(textarea instanceof HTMLTextAreaElement)) {
+            console.error('[GuidedGenerations][Swipe] Textarea #send_textarea not found.');
+            alert('Guided Swipe Error: Textarea not found.');
             return;
         }
 
-        await generateNewSwipe();
-    } catch (error) {
-        console.error('[GuidedGenerations][Swipe] Error during guided swipe execution:', error);
-        const errorMessage = String(error?.message || error);
-        if (!errorMessage.startsWith('Guided Swipe Error:')) {
-            alert(`Guided Swipe Error: ${errorMessage}`);
+        const originalInput = textarea.value;
+        if (!originalInput.trim()) {
+            debugLog('[Swipe] No input detected, performing plain swipe.');
+            await generateNewSwipe();
+            return;
         }
-    } finally {
-        textarea.value = getPreviousImpersonateInput();
-        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+
+        const settings = extension_settings[extensionName] ?? {};
+        const injectionRole = settings.injectionEndRole ?? 'system';
+        const depth = settings.depthPromptGuidedSwipe ?? 0;
+        const promptTemplate = settings.promptGuidedSwipe ?? '';
+        const filledPrompt = applyPromptTemplate(promptTemplate, originalInput);
 
         try {
-            await executeSTScriptCommand(`/flushinject ${guidedSwipeInjectId}`);
+            setPreviousImpersonateInput(originalInput);
+            const stscriptCommand = `/inject id=${guidedSwipeInjectId} position=chat ephemeral=true scan=true depth=${depth} role=${injectionRole} ${filledPrompt} |`;
+            await executeSTScriptCommand(stscriptCommand);
+            debugLog('[Swipe] Executed command:', stscriptCommand);
+
+            let injectionFound = false;
+            for (let i = 0; i < 5; i++) {
+                if (getContext().chatMetadata?.script_injects?.[guidedSwipeInjectId]) {
+                    injectionFound = true;
+                    break;
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 150));
+            }
+
+            if (!injectionFound) {
+                alert('Guided Swipe Error: Could not verify instruction injection. Aborting swipe generation.');
+                textarea.value = originalInput;
+                await executeSTScriptCommand(`/flushinject ${guidedSwipeInjectId}`);
+                return;
+            }
+
+            await generateNewSwipe();
         } catch (error) {
-            console.warn('[GuidedGenerations][Swipe] Could not flush guided swipe injection:', error);
+            console.error('[GuidedGenerations][Swipe] Error during guided swipe execution:', error);
+            const errorMessage = String(error?.message || error);
+            if (!errorMessage.startsWith('Guided Swipe Error:')) {
+                alert(`Guided Swipe Error: ${errorMessage}`);
+            }
+        } finally {
+            textarea.value = getPreviousImpersonateInput();
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+
+            try {
+                await executeSTScriptCommand(`/flushinject ${guidedSwipeInjectId}`);
+            } catch (error) {
+                console.warn('[GuidedGenerations][Swipe] Could not flush guided swipe injection:', error);
+            }
         }
+    } finally {
+        isSwiping = false;
     }
 }
 

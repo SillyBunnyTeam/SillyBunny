@@ -1,3 +1,4 @@
+/* eslint-disable playwright/no-standalone-expect */
 import { describe, expect, test } from '@jest/globals';
 
 import { renderMessagesInBatches } from '../public/scripts/chat-render-lifecycle/render-batch.js';
@@ -43,6 +44,46 @@ function pickBatchMeta(batchMeta) {
 }
 
 describe('chat render lifecycle render batch helper', () => {
+    test.each([100, 8])('yields when elapsed work exceeds the budget even when the count limit is %s', async batchSize => {
+        let elapsed = 0;
+        const inserted = [];
+        const waits = [];
+        const result = await renderMessagesInBatches({
+            messages: ['first', 'second', 'third', 'fourth', 'fifth'],
+            firstMessageId: 7,
+            batchSize,
+            timeBudgetMs: 8,
+            now: () => elapsed,
+            documentRef: new FakeDocument(),
+            renderMessageElement: (message, messageId) => {
+                elapsed += 5;
+                return new FakeElement(messageId);
+            },
+            insertFragment: (fragment, meta) => inserted.push(meta),
+            waitForNextFrame: async () => waits.push('frame'),
+            markLastMessage: true,
+        });
+        expect(inserted.map(meta => meta.renderedMessageIds)).toEqual([[7, 8], [9, 10], [11]]);
+        expect(waits).toHaveLength(2);
+        expect(result.renderedMessageIds).toEqual([7, 8, 9, 10, 11]);
+        expect(result.renderedMessageElements.map(element => element.classList.classes)).toEqual([[], [], [], [], ['last_mes']]);
+    });
+
+    test('stops rendering the previous chat when ownership changes during a frame yield', async () => {
+        let current = true;
+        const inserted = [];
+        const result = await renderMessagesInBatches({
+            messages: ['old first', 'old second'], firstMessageId: 0, batchSize: 1,
+            documentRef: new FakeDocument(),
+            renderMessageElement: (message, messageId) => new FakeElement(messageId),
+            insertFragment: (fragment, meta) => inserted.push(meta.renderedMessageIds),
+            waitForNextFrame: async () => { current = false; },
+            isCurrent: () => current,
+        });
+        expect(inserted).toEqual([[0]]);
+        expect(result.renderedMessageIds).toEqual([0]);
+    });
+
     test('renders caller-selected messages in deterministic yielded fragments', async () => {
         const documentRef = new FakeDocument();
         const messages = [{ text: 'first' }, { text: 'second' }, { text: 'third' }];

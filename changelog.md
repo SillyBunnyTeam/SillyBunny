@@ -1,5 +1,149 @@
 # Changelog
 
+## v1.8.0: Archival Performance Update
+
+This update features a new Chat Archives feature, alongside many performance improvements, QOL, and bug fixes.
+
+**Highlights: Chat Archives**
+Chat Archives is a feature that allows you to browse, search, restore, manage, and delete your chats in bulk from a nice overview. This supplements rather than replaces your existing chats, and you're still able to view chats in the usual way if you wish.
+
+### Fixed
+- Fixed chat reload, save, backup, card rewrite, and resumable-generation issues that could cause data loss, stale chat state, or interrupted replies.
+- Fixed Conversation Mode sending, saving, cancellation, character selection, image-provider handling, and group-chat behavior.
+- Fixed provider-specific request handling for reasoning effort, samplers, partial prefills, model capabilities, and endpoint credentials.
+- Kept Opus 5.5 adaptive thinking enabled when reasoning effort is `none`, `auto`, or unset.
+- Preserved Custom endpoint adaptive-thinking options while removing legacy token budgets.
+- Fixed mobile, iOS, Firefox, WebKit, narrow-layout, scrolling, viewport, composer, and text-editor issues.
+- Fixed extension, lorebook, agent, group-chat, filename, theme, and third-party compatibility issues.
+- Fixed server restart, port handling, connection recovery, and Bun/Node runtime issues.
+### Added
+- Added Chats Archive as a bundled core extension.
+- Added the SillyBunny Debugger and Terminal UI to bundled extras.
+- Added Pathfinder tool confirmation, mandatory tool-use policies, diagnostics, write tools, memory tools, and expanded retrieval support.
+- Added Lorebook Scout integration for confirmation, validation, retries, and direct entry saving.
+- Added Guided Generations action-bar visibility controls and improved Quick Reply integration.
+- Added dynamic Nano-GPT and OpenRouter provider discovery with Nano-GPT service tiers.
+- Added Kimi K3 partial-prefill controls, Claude Fable 5.1 support, GPT 6 Astra, GLM-5.3, new provider models, and model-specific LinkAPI icons.
+- Added new in-chat agent trackers, model/reasoning labels, screenshot clipboard copying, group-chat controls, and Alternate Descriptions support.
+### Changed
+- Changed Guided Generations to the upstream baked-in implementation.
+- Changed reasoning-effort transmission to preserve supported values, including `none`, across relevant providers.
+- Changed provider and model catalogs to support newer models and dynamically discovered providers.
+- Changed chat, agent, lorebook, and generation lifecycles to use stronger ordering and cancellation guarantees.
+- Changed Conversation Mode and group-chat controls to support more reliable image generation, saving, navigation, and visibility management.
+- Changed bundled Quick Image Gen and Pura's Director Preset versions.
+### Improvements
+- Program is synchronised with upstream `staging` instead of `release`. This fits the infrequent release cadence of upstream SillyTavern, and allows us to implement fixes immediately as they're released.
+- Improved startup and restart performance by deferring optional shell panels and cleanup work.
+- Improved streaming rendering and reduced frontend resource and GPU usage.
+- Improved chat history, scrolling, mobile layout, viewport handling, and narrow-screen usability.
+- Improved port-conflict diagnostics with bounded retries and IPv4, IPv6, Windows, inherited-handle, and process details.
+- Improved extension lifecycle handling, bundled-agent updates, full-screen editors, theme persistence, and third-party extension compatibility.
+- Improved security and validation around proxy requests, local URLs, file operations, chat data, lorebooks, cards, and debugger behavior.
+
+### Merged Staging PRs
+
+- PR #743 (2026-08-07) `fix: conversation mode send/save/cancel buttons non-functional`
+- PR #747 (2026-08-14) `feat: add Chats Archive as a core extension`
+- PR #748 (2026-08-09) `fix: Pathfinder bug fixes + making two features that weren't tied to anything real`
+- PR #749 (2026-08-09) `feat: implement Pathfinder tool confirmation and mandatory tool use`
+- PR #750 (2026-08-10) `fix: messages wrapped in <pre> wrap over instead of going beyond bounds`
+- PR #751 (2026-08-10) `chore: update Pura's Director Preset to 15.1 and the corresponding trackers`
+- PR #752 (2026-08-10) `chore: update Quick Image Gen to 3.0.1`
+- PR #753 (2026-08-11) `fix: no redundant ICA toasts when updating bundled agents`
+- PR #754 (2026-08-11) `fix: hardens save path for remote servers`
+- PR #755 (2026-08-14) `fix(linkapi): prevent sending presencePenalty and frequencyPenalty samplers to Grok`
+- PR #756 (2026-08-14) `fix(tokeniser): count every message all at once instead of one by one`
+- PR #757 (2026-08-14) `chore: remove remaining graphify artifacts`
+- PR #758 (2026-08-14) `fix(ui): bulk edit no longer bunches up characters together`
+- PR #760 (2026-08-15) `fix(mobile): stop the viewport jumping while typing on mobile`
+- PR #761 (2026-08-15) `chore: fix the graphify guard regex matching its own filename`
+- PR #762 (2026-08-15) `fix(server): reworks port handling on Windows+Bun (#710)`
+- PR #763 (2026-08-15) `chore: update Quick Image Gen to 3.1.1`
+- PR #764 (2026-08-16) `fix(ica): harden the separation between Companion Agent and Pre-generation Inline Agent trackers`
+- PR #765 (2026-08-16) `fix(connection_profiles): harden custom endpoint switches and additional parameter saving`
+- PR #766 (2026-08-16) `fix(markdown): ensure markdown text wraps around as usual`
+- PR #767 (2026-08-17) `feat: add the model name and reasoning effort after the icon`
+- PR #768 (2026-08-17) `chore: update Quick Image Gen to 3.2.0`
+- PR #769 (2026-08-17) `chore: gitignore the Quick Image Gen sync's leftover merge folder`
+- PR #771 (2026-08-18) `fix: hardens chat scroll jumping`
+- PR #772 (2026-08-18) `fix: list only mode now gets bigger and stretches to screen`
+- PR #773 (2026-08-18) `fix: character menu controls no longer spill out of non-wide browsers`
+- PR #774 (2026-08-20) `fix(ui): Manage extensions and Install Extension are now on their own rows`
+- PR #775 (2026-08-20) `fix(mobile): message box text that says "Type a message, or /? for help" is no longer truncated`
+- PR #776 (2026-08-20) `fix(ui): increase hitbox for holding for swipe selector`
+- PR #777 (2026-08-20) `chore: add reasoning effort levels in ZAI and MoonshotAI backends`
+- PR #778 (2026-08-20) `fix(nanogpt): make reasoning types no longer switch to a different one`
+- PR #779 (2026-08-20) `feat(kimi): add a Partial Prefill field that only Kimi K3 uses`
+- PR #780 (2026-08-20) `chore: add GLM-5.3 in the ZAI backend dropdown`
+- PR #781 (2026-08-21) `fix(generation): allow upstream responses to continue and finish`
+- PR #782 (2026-08-21) `fix(mobile): prevent overflow in mobile devices + giving the chat list more screen space in Chat History`
+- PR #783 (2026-08-21) `fix(mobile): prevent streaming and new content to cause the screen to jump up constantly`
+- PR #784 (2026-08-25) `fix(html2canvas): preserves gradient text colours for extension compatibility`
+- PR #785 (2026-08-22) `fix(ica): updates NPC Profile Cards agent regex`
+- PR #786 (2026-08-22) `fix(mobile): extend the left side of the message input bar so it's perfectly equal to the spacing on the right`
+- PR #787 (2026-08-22) `feat(group_chat): add a hide and unhide button/option for the group chat-specific bottom bar`
+- PR #788 (2026-08-22) `fix(ui): remove the extra height on wand menu entries added as buttons`
+- PR #789 (2026-08-22) `fix(ui): prevent overflow on Group Controls in mobile`
+- PR #790 (2026-08-22) `fix(ui): render newlines in scenario notes in persona, add full screen button, and fix button spacing`
+- PR #791 (2026-08-22) `fix(ui): Creator Notes actually show the rendered text as is`
+- PR #792 (2026-08-22) `fix(ica): normalise full screen buttons`
+- PR #793 (2026-08-22) `fix(ui): debugger inherits theme for dropdown + is the same button as the others in the wand menu + scroll feature when there are too many extensions in wand menu`
+- PR #794 (2026-08-22) `fix(mobile): re-clicking the top bar icons when the window is open closes them`
+- PR #795 (2026-08-22) `fix: atomic card rewrite is no longer luck-based`
+- PR #796 (2026-08-23) `fix: prevent the frontend from using so many resources to reduce GPU usage`
+- PR #797 (2026-08-23) `chore: update Quick Image Gen to 3.3.0`
+- PR #798 (2026-08-23) `fix(connection-profile): send the reasoning effort saved in a profile's preset`
+- PR #799 (2026-08-23) `fix(reasoning-effort): send 'none' verbatim when the model supports it`
+- PR #800 (2026-08-23) `feat(prompt-manager): show token counts even when a prompt is injected or a variable`
+- PR #801 (2026-08-24) `fix(kimi): make Kimi partial prefills reply directly after finishing reasoning`
+- PR #802 (2026-08-30) `fix: High Resolution Blurriness`
+- PR #803 (2026-08-27) `feat(ica): lorebook scout now directly sends to lorebook`
+- PR #804 (2026-08-28) `fix(backends): send all reasoning efforts verbatim`
+- PR #805 (2026-08-28) `chore: update Quick Image Gen to 3.4.0`
+- PR #806 (2026-08-28) `fix: decode base64 explicitly on bun runtimes`
+- PR #807 (2026-08-28) `fix: keep the comments trimmed even when pipes are inside`
+- PR #808 (2026-08-28) `feat(ica): add The Ethereality Express trackers as pre-generation agents`
+- PR #809 (2026-08-28) `fix(ica): ensure every Tracker category agent has the ‘tracker-none’ sentinel`
+- PR #811 (2026-08-29) `fix(ui): make lorebooks more easily accessible for mobile iOS`
+- PR #812 (2026-08-29) `fix: character is typing stops showing up when the message is fully generated`
+- PR #813 (2026-08-30) `fix(ios): keep viewport height capped`
+- PR #814 (2026-08-31) `chore: add newest models to ZAI, MiniMax, AI Studio, and Vertex`
+- PR #815 (2026-09-02) `chore: add Fable 5.1 on Claude backend and add support`
+- PR #816 (2026-09-02) `fix: exclude partial prefill from post-gen ICA rewrites`
+- PR #817 (2026-09-03) `feat(linkapi): use the relevant SVGs automatically for models`
+- PR #821 (2026-09-04) `fix: fixes 'Char is typing' not stopping on group chats, and allow opening of Definitions/Greetings`
+- PR #822 (2026-09-04) `fix: sanitise filenames for linux systems`
+- PR #823 (2026-09-04) `chore: add GPT 6 Astra on OpenAI backend`
+- PR #824 (2026-09-08) `fix: protect drafts and saved settings when using Story Mode`
+- PR #825 (2026-09-06) `fix(ios26+): correctly identify iOS versions`
+- PR #826 (2026-09-06) `chore: update Quick Image Gen to 3.5.0`
+- PR #827 (2026-09-06) `fix(windows): sanitise forbidden characters in filenames on Windows`
+- PR #828 (2026-09-06) `fix(mobile): extend tagging input box`
+- PR #829 (2026-09-06) `fix(mobile): move the arrow a bit on the thought block`
+- PR #830 (2026-09-07) `fix(nano-gpt): restore the UI for picking provider and PAYG`
+- PR #831 (2026-09-07) `chore: update nanogpt provider list`
+- PR #832 (2026-09-07) `feat(openrouter): automate provider list using OpenRouter endpoint`
+- PR #833 (2026-09-08) `fix(pathfinder): general bug fixes`
+- PR #834 (2026-09-07) `fix: retain existing saved themes when installing external theme packs`
+- PR #835 (2026-09-08) `fix(mobile): prevent the Persona picker page from being draggable to the left or right + dropdown for scenario notes`
+- PR #836 (2026-09-08) `fix: Connection reconnects stability`
+- PR #837 (2026-09-08) `fix: Device setting persistence per-device`
+- PR #838 (2026-09-08) `fix: Endpoint Profiles ignoring Credentials`
+- PR #839 (2026-09-08) `fix: Update to Guided Generations Baked-In for Feature Parity with Upstream Project`
+- PR #840 (2026-09-08) `fix: touch scrolling on mobile for blown-up text editors`
+- PR #841 (2026-09-09) `feat(nanogpt+openrouter): gather providers from Nano-GPT in real time instead of hardcoding, and add a Flex + Priority option for PAYG models with a Flex/Priority endpoint`
+- PR #842 (2026-09-13) `feat: Clipboard copy when copying screenshot of message(s)`
+- PR #846 (2026-09-21) `chore: load extra tools only when needed`
+- PR #848 (2026-09-15) `chore: reconcile main release history with staging`
+- PR #849 (2026-09-18) `fix(chats): stage chat reloads and enforce lifecycle barriers to prevent chat wipes (#368)`
+- PR #851 (2026-09-18) `fix: Initialize new group chats, restore group highlighting and fix search in popout.`
+- PR #853 (2026-09-18) `feat(samplers): add unified 3-state transmission policy and model-scoped wire sanitization`
+- PR #854 (2026-09-19) `chore: Repo hardening`
+- PR #856 (2026-09-24) `fix(chats): prevent unintended chat saves on open (#706)`
+- PR #864 (2026-09-27) `fix: add guided generations action bar visibility toggle`
+- PR #865 (2026-09-27) `fix: update Opus 5.5 for adaptive thinking support`
+
 ## v1.7.0
 
 **SillyBunny version 1.7.0 has released**
@@ -60,7 +204,7 @@ Conversation Mode is inspired by instant messaging apps like Discord, Telegram, 
 - Removed placeholder text from the UI.
 - Deprecated Group DMs from Group Chats, as they are now delegated to Conversation Mode.
 
-### Supporting Mechanical Staging PR Ledger
+### Merged Staging PRs
 - PR #495 (2026-06-15) `chore: bump version to 1.7.0`
 - PR #496 (2026-06-16) `fix: keep card and hidden companions out of the tracker panel`
 - PR #497 (2026-06-16) `fix: clamp unmapped SB minors to highest synced ST version`

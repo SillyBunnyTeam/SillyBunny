@@ -5,6 +5,7 @@
 import { getAllPrompts, getPrompt, savePrompt, isPromptModified, getAllPipelines } from './prompt-store.js';
 import { getDefaultPrompts } from './default-prompts.js';
 import { getSettings, setSettings, listConnectionProfiles } from '../tree-store.js';
+import { attachTextareaFullscreen } from '../../textarea-fullscreen.js';
 
 const DEFAULT_PIPELINE_MAX_TOKENS = 64000;
 
@@ -255,6 +256,7 @@ export function initPromptEditorUI(container) {
 
     // Inject HTML
     container.innerHTML = EDITOR_HTML;
+    attachTextareaFullscreen(container);
 
     // Bind events
     bindEditorEvents();

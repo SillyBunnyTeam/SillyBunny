@@ -80,7 +80,7 @@ describe('OpenAI token counting resilience', () => {
 
         const count = await countTokensOpenAIAsync(message, true);
 
-        expect(count).toBe(-1 + guesstimate(JSON.stringify(message)));
+        expect(count).toBe(guesstimate(JSON.stringify(message)));
     });
 
     test('falls back to a guesstimate for finalized payloads when the request fails', async () => {

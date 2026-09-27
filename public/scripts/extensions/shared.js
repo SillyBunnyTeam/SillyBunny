@@ -1,7 +1,8 @@
-import { CONNECT_API_MAP, createModelIcon, getRequestHeaders } from '../../script.js';
+import { CONNECT_API_MAP, createModelIcon, getRequestHeaders, substituteParams } from '../../script.js';
 import { extension_settings, openThirdPartyExtensionMenu } from '../extensions.js';
 import { t } from '../i18n.js';
-import { oai_settings, proxies, ZAI_ENDPOINT } from '../openai.js';
+import { oai_settings, proxies, ZAI_ENDPOINT, POLLINATIONS_ENDPOINT } from '../openai.js';
+import { getPresetManager } from '../preset-manager.js';
 import { SECRET_KEYS, secret_state } from '../secrets.js';
 import { textgen_types, textgenerationwebui_settings } from '../textgen-settings.js';
 import { getTokenCountAsync } from '../tokenizers.js';
@@ -20,7 +21,51 @@ const CHAT_COMPLETION_PROFILE_REQUEST_FIELDS = {
     'custom-reasoning-param-name': ['custom_reasoning_param_name', value => String(value ?? '')],
     'custom-reasoning-enabled-value': ['custom_reasoning_enabled_value', value => String(value ?? '')],
     'custom-reasoning-disabled-value': ['custom_reasoning_disabled_value', value => String(value ?? '')],
+    'custom-include-body': ['custom_include_body', value => String(value ?? '')],
+    'custom-exclude-body': ['custom_exclude_body', value => String(value ?? '')],
+    'custom-include-headers': ['custom_include_headers', value => String(value ?? '')],
 };
+
+/**
+ * Reasoning settings a completion preset owns, keyed by the connection profile field that would
+ * override them. A profile can only capture what was set when it was saved, and profiles saved
+ * before these fields existed carry none of them, so the preset a profile points at is the
+ * fallback: that is where the setting is usually made.
+ * @type {Record<string, string>}
+ */
+const PRESET_BACKED_REASONING_FIELDS = Object.freeze({
+    'reasoning-effort': 'reasoning_effort',
+    'verbosity': 'verbosity',
+});
+
+/**
+ * Loads the completion preset a connection profile points at.
+ * @param {object} profile Connection profile
+ * @returns {object|null} Preset, if it can be read
+ */
+function getProfileCompletionPreset(profile) {
+    if (!profile?.preset) {
+        return null;
+    }
+
+    try {
+        return getPresetManager('openai')?.getCompletionPresetByName(profile.preset) ?? null;
+    } catch (error) {
+        console.warn('Could not read the completion preset of the connection profile', error);
+        return null;
+    }
+}
+
+export function getProfileServiceTier(profile) {
+    const api = CONNECT_API_MAP[profile.api];
+    const source = api?.source || api?.type;
+    if (!['nanogpt', 'openrouter'].includes(source)) return undefined;
+    if (profile.exclude?.includes('service-tier')) return undefined;
+    // Older profiles inherit an explicitly bound preset choice, never the active UI's paid tier.
+    const presetTier = api.selected === 'openai' ? getProfileCompletionPreset(profile)?.[`${source}_service_tier`] : undefined;
+    const tier = profile['service-tier'] ?? presetTier;
+    return tier === 'default' ? '' : (tier ?? '');
+}
 
 export function getChatCompletionProfileRequestOverrides(profile, overridePayload) {
     const overrides = {};
@@ -32,6 +77,25 @@ export function getChatCompletionProfileRequestOverrides(profile, overridePayloa
         }
 
         overrides[requestKey] = coerceValue(profile[profileKey]);
+        profileFieldNames.push(requestKey);
+    }
+
+    // SillyBunny: a profile that states no reasoning preference of its own inherits the one its
+    // preset carries, which is where the setting is usually made. An explicit value on the
+    // profile, and anything the caller passes, still wins.
+    const preset = getProfileCompletionPreset(profile);
+    for (const [profileKey, requestKey] of Object.entries(PRESET_BACKED_REASONING_FIELDS)) {
+        if (Object.hasOwn(profile, profileKey) || Object.hasOwn(overridePayload, requestKey)) {
+            continue;
+        }
+
+        const value = preset?.[requestKey];
+        if (value === undefined || value === null || value === '') {
+            continue;
+        }
+
+        const [, coerceValue] = CHAT_COMPLETION_PROFILE_REQUEST_FIELDS[profileKey];
+        overrides[requestKey] = coerceValue(value);
         profileFieldNames.push(requestKey);
     }
 
@@ -186,13 +250,17 @@ export async function getMultimodalCaption(base64Img, prompt) {
         }
 
         requestBody.server_url = oai_settings.custom_url;
-        requestBody.custom_include_headers = oai_settings.custom_include_headers;
-        requestBody.custom_include_body = oai_settings.custom_include_body;
-        requestBody.custom_exclude_body = oai_settings.custom_exclude_body;
+        requestBody.custom_include_headers = substituteParams(oai_settings.custom_include_headers);
+        requestBody.custom_include_body = substituteParams(oai_settings.custom_include_body);
+        requestBody.custom_exclude_body = substituteParams(oai_settings.custom_exclude_body);
     }
 
     if (extension_settings.caption.multimodal_api === 'zai') {
         requestBody.zai_endpoint = oai_settings.zai_endpoint || ZAI_ENDPOINT.COMMON;
+    }
+
+    if (extension_settings.caption.multimodal_api === 'pollinations') {
+        requestBody.pollinations_endpoint = oai_settings.pollinations_endpoint || POLLINATIONS_ENDPOINT.AUTHENTICATED;
     }
 
     if (extension_settings.caption.multimodal_api === 'workers_ai') {
@@ -353,7 +421,7 @@ function throwIfInvalidModel(useReverseProxy) {
         throw new Error('Z.AI API key is not set.');
     }
 
-    if (multimodalApi === 'pollinations' && !secret_state[SECRET_KEYS.POLLINATIONS]) {
+    if (multimodalApi === 'pollinations' && oai_settings.pollinations_endpoint !== POLLINATIONS_ENDPOINT.ANONYMOUS && !secret_state[SECRET_KEYS.POLLINATIONS]) {
         throw new Error('Pollinations API key is not set.');
     }
 
@@ -523,10 +591,14 @@ export class ConnectionManagerRequestService {
                         // so recover reverse proxy fields from the profile preset or current proxy state.
                         ...reverseProxyFields,
                         custom_prompt_post_processing: profile['prompt-post-processing'],
+                        service_tier: getProfileServiceTier(profile),
                         // SillyBunny: persist profile-scoped reasoning and image request settings through the shared request path.
                         ...profileRequestOverrides.overrides,
                         ...overridePayload,
-                        __connectionProfileRequestFields: profileRequestOverrides.profileFieldNames,
+                        __connectionProfileRequestFields: [
+                            ...profileRequestOverrides.profileFieldNames,
+                            ...(!Object.hasOwn(overridePayload, 'service_tier') ? ['service_tier'] : []),
+                        ],
                     };
 
                     // Only set the URL field for the actual API source to avoid contaminating
@@ -547,6 +619,9 @@ export class ConnectionManagerRequestService {
                         case 'minimax':
                             ccRequestData.minimax_endpoint = overridePayload.minimax_endpoint || profile['api-url'];
                             break;
+                        case 'pollinations':
+                            ccRequestData.pollinations_endpoint = overridePayload.pollinations_endpoint || profile['api-url'];
+                            break;
                     }
 
                     return await context.ChatCompletionService.processRequest(
@@ -566,6 +641,7 @@ export class ConnectionManagerRequestService {
                         max_tokens: maxTokens,
                         model: profile.model,
                         api_type: selectedApiMap.type,
+                        service_tier: getProfileServiceTier(profile),
                         api_server: profile['api-url'],
                         secret_id: profile['secret-id'],
                         ...overridePayload,

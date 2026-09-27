@@ -10,9 +10,9 @@
         "conditions",
         "health"
     ],
-    "version": 4,
+    "version": 5,
     "author": "Purachina",
-    "prompt": "### Status & Conditions\nTrack active physical, mental, or behavioral states when they meaningfully change. Never list baseline states. Use this EXACT format:\n\n[STATUS|Character|Condition|Severity]\nnote: MANDATORY; explain the cause or context\n[/STATUS]\n\nSeverity options: 🟢 MILD | 🟡 MODERATE | 🔴 SEVERE | ⚫ CRITICAL | ✅ CLEARED\n\nRules:\n- Status appears AFTER narrative content when a condition is gained, worsened, improved, or cleared\n- Only show statuses that CHANGED this scene\n- Character can be {{user}} or any NPC\n- Condition is the specific state (e.g., \"Exhausted,\" \"Drunk,\" \"Paranoid,\" \"Bleeding\")\n- When nothing qualifies this scene, output the single line tracker-none in place of the block\n",
+    "prompt": "### Status & Conditions\nTrack active physical, mental, or behavioral states when they meaningfully change. Never list baseline states. Use this EXACT format:\n\n[STATUS|Character|Condition|Severity]\nnote: MANDATORY; explain the cause or context\n[/STATUS]\n\nSeverity options: 🟢 MILD | 🟡 MODERATE | 🔴 SEVERE | ⚫ CRITICAL | ✅ CLEARED\n\nRules:\n- Status appears AFTER narrative content when a condition is gained, worsened, improved, or cleared\n- Only show statuses that CHANGED this scene\n- Character can be {{user}} or any NPC\n- Condition is the specific state (e.g., \"Exhausted,\" \"Drunk,\" \"Paranoid,\" \"Bleeding\")\n- Only show TRUTHFUL status effects; what has directly happened *in reality*.\n- When nothing qualifies this scene, output the single line tracker-none in place of the block\n",
     "phase": "both",
     "injection": {
         "position": 0,

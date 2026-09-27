@@ -1452,5 +1452,11 @@
     "Deleting chat…": "جارٍ حذف المحادثة…",
     "Loading chat…": "جارٍ تحميل المحادثة…",
     "Bulk Delete": "حذف جماعي",
-    "Deleting ${0} character(s)…": "جارٍ حذف ${0} شخصية (شخصيات)…"
+    "Deleting ${0} character(s)…": "جارٍ حذف ${0} شخصية (شخصيات)…",
+    "OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.": "خيارات بنمط OpenAI: low، medium، high، xhigh. يُرسل كل مستوى تمامًا كما تم اختياره، باستثناء Minimum الذي يُرسل بصيغة 'minimal'. ويُرسل None حرفيًا إلى GPT-5.1 والأحدث، أما النماذج الأخرى فلا تتلقى أي مستوى.",
+    "Sets a dynamic reasoning depth level for thinking (Flash 3/Pro 3). Every effort is sent exactly as picked, so a level the model does not accept is rejected rather than lowered. Auto lets the model decide.": "يحدد مستوى عمق التفكير ديناميكيًا (Flash 3/Pro 3). يُرسل كل مستوى تمامًا كما تم اختياره، لذا يُرفض المستوى الذي لا يقبله النموذج بدلًا من خفضه. ويترك Auto القرار للنموذج.",
+    "DeepSeek documents low, high and max reasoning efforts. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'.": "يوثّق DeepSeek المستويات low وhigh وmax. يُرسل كل مستوى تمامًا كما تم اختياره، لذا قد تُرفض أي قيمة أخرى. ويُرسل Minimum بصيغة 'minimal'.",
+    "Only GLM-5.2 and newer accept reasoning efforts. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. GLM-5.3 specifically only accepts 'low', 'high', and 'max'.": "لا تقبل مستويات التفكير سوى GLM-5.2 والأحدث. يُرسل كل مستوى تمامًا كما تم اختياره، باستثناء Minimum الذي يُرسل بصيغة 'minimal'. ولا يقبل GLM-5.3 سوى 'low' و'high' و'max'.",
+    "Only Kimi K3 accepts reasoning efforts, and documents low, high and max. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'. Reasoning cannot be turned off for K3.": "لا يقبل مستويات التفكير سوى Kimi K3، وهو يوثّق المستويات low وhigh وmax. يُرسل كل مستوى تمامًا كما تم اختياره، لذا قد تُرفض أي قيمة أخرى. ويُرسل Minimum بصيغة 'minimal'. ولا يمكن إيقاف التفكير في K3.",
+    "Reasoning efforts are sent exactly, aside from minimum which is sent as 'minimal'.": "تُرسل مستويات التفكير تمامًا كما تم اختيارها، باستثناء Minimum الذي يُرسل بصيغة 'minimal'."
 }

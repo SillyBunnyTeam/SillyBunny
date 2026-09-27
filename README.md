@@ -10,7 +10,7 @@ English | [Deutsch](.github/readme-de_de.md) | [中文](.github/readme-zh_cn.md)
 
 <div align="center">
 
-**Latest Release: v1.7.0.** [Find changelogs in our Releases.](https://github.com/SillyBunnyTeam/SillyBunny/releases)
+**Latest Release: v1.8.0.** [Find changelogs in our Releases.](https://github.com/SillyBunnyTeam/SillyBunny/releases)
 
 </div>
 
@@ -37,7 +37,7 @@ English | [Deutsch](.github/readme-de_de.md) | [中文](.github/readme-zh_cn.md)
 SillyBunny is an elegant fork of [SillyTavern](https://github.com/SillyTavern/SillyTavern), designed with a clean, graphical shell UI for both desktop and mobile, inspired by the [GNOME project](https://www.gnome.org/) and [KDE Plasma](https://kde.org/plasma-desktop/). SillyBunny features a Bun-based runtime for improved performance; a quick-access home page with built-in tutorials, guides, and recommended extensions; a lightweight in-chat agentic system to facilitate modern agent functionality; extra chat modes to expand functionality with your character cards; and a plethora of bug fixes and general improvements!
 
 > [!WARNING]
-> We're a small team of three people who are passionate about making a simple and effective frontend that has all the features we always wished to see in SillyTavern, while leveraging the amazing work on its backend.
+> We're a small team of people who are passionate about making a simple and effective frontend that has all the features we always wished to see in SillyTavern, while leveraging the amazing work on its backend.
 >
 > As such, this is an in-dev fork, and is currently considered beta quality. [Please direct SillyBunny-specific issues to this project's issue tracker.](https://github.com/SillyBunnyTeam/SillyBunny/issues) If an issue is reproducible in upstream SillyTavern, please report it upstream instead.
 >
@@ -255,7 +255,7 @@ Conversation mode changes the UI by mimicking an internet messaging client when 
 
 ## Upstream Information
 
-SillyBunny is a fork of SillyTavern. The vast majority of SillyTavern behavior, data formats, and ecosystem knowledge still apply, with upstream compatibility maintained as much as possible. Please report SillyBunny-specific issues here, while reporting SillyTavern-adjacent issues upstream.
+SillyBunny is a fork of the SillyTavern `staging` branch. The vast majority of SillyTavern behavior, data formats, and ecosystem knowledge still apply, with upstream compatibility maintained as much as possible. Please report SillyBunny-specific issues here, while reporting SillyTavern-adjacent issues upstream.
 
 | Resource | Link |
 |----------|------|
@@ -264,12 +264,17 @@ SillyBunny is a fork of SillyTavern. The vast majority of SillyTavern behavior, 
 | Upstream Discord | [discord.gg/sillytavern](https://discord.gg/sillytavern) |
 | Upstream Subreddit | [r/SillyTavernAI](https://reddit.com/r/SillyTavernAI) |
 
-If something feels off, compare against the upstream `release` branch first.
+If something feels off, compare against the upstream `staging` branch first.
 
 ## Contributors
 
-- [Platberlitz](https://github.com/platberlitz)
 - [Geechan](https://github.com/Geechan)
 - [TheLonelyDevil9](https://github.com/TheLonelyDevil9)
+- [voldomero](https://github.com/voldomero)
+- [cspiritsong](https://github.com/cspiritsong)
+
+## Past Contributors
+
+- [Platberlitz](https://github.com/platberlitz)
 
 [Licensed as free software under the AGPL-3.0.](https://www.gnu.org/licenses/agpl-3.0.en.html)

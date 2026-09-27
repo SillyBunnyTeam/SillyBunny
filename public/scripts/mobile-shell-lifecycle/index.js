@@ -695,21 +695,21 @@ export function shouldAutoCloseMobileNav({
 
 /**
  * Resolves page inert policy from active mobile modal roots.
+ * Every mobile surface docks below the top bar rather than covering it, so the bar
+ * stays interactive: its proxy buttons are how an open panel is closed again.
  * @param {object} options Options.
  * @param {string[]} [options.activeRootIds=[]] Active modal root ids.
- * @returns {{hasActiveMobileModal: boolean, shouldInertShell: boolean, shouldInertTopBar: boolean}}
+ * @returns {{hasActiveMobileModal: boolean, shouldInertShell: boolean}}
  */
 export function resolveMobileModalA11yState({
     activeRootIds = [],
 } = {}) {
     const ids = Array.isArray(activeRootIds) ? activeRootIds : [];
     const hasActiveMobileModal = ids.length > 0;
-    const shouldInertTopBar = ids.some(id => id !== 'sb-mobile-nav');
 
     return {
         hasActiveMobileModal,
         shouldInertShell: hasActiveMobileModal,
-        shouldInertTopBar,
     };
 }
 
@@ -922,7 +922,9 @@ function canElementScrollOnAxis(element, axis) {
     const style = window.getComputedStyle(element);
     const overflow = axis === 'x' ? style.overflowX : style.overflowY;
 
-    return SCROLLABLE_OVERFLOW_VALUES.has(overflow);
+    // Firefox reports visible for native textarea scrolling, unlike Chromium's auto.
+    return SCROLLABLE_OVERFLOW_VALUES.has(overflow)
+        || (overflow === 'visible' && element.matches('textarea'));
 }
 
 function canElementScrollForGesture(element, delta, { requireAvailableScrollInDirection = false } = {}) {
@@ -1063,6 +1065,7 @@ function clampBoundNumber(value, min, max) {
  * @param {boolean} [options.isOpen=false] Whether the drawer has the openDrawer class.
  * @param {boolean} [options.isViewportBound=false] Whether the drawer carries the bound dataset marker.
  * @param {number} [options.viewportHeight=0] Current shell viewport height in px.
+ * @param {number} [options.viewportTop=0] Visible viewport offset in px.
  * @param {number} [options.baseTopOffset=0] Resolved shell topbar offset in px.
  * @param {number} [options.shellGap=0] Drawer --sb-mobile-shell-gap value in px.
  * @returns {{action: string, styleWrites: Array<{property: string, value: string, priority: string}>, styleRemovals: string[]}}
@@ -1072,6 +1075,7 @@ export function resolveMobileDrawerBounds({
     isOpen = false,
     isViewportBound = false,
     viewportHeight = 0,
+    viewportTop = 0,
     baseTopOffset = 0,
     shellGap = 0,
 } = {}) {
@@ -1086,6 +1090,7 @@ export function resolveMobileDrawerBounds({
     }
 
     const safeViewportHeight = Math.max(0, normalizeNumber(viewportHeight));
+    const safeViewportTop = Math.max(0, Math.round(normalizeNumber(viewportTop)));
     const safeBaseTopOffset = Math.max(0, Math.round(normalizeNumber(baseTopOffset)));
     const topOffset = clampBoundNumber(Math.round(safeBaseTopOffset + normalizeNumber(shellGap)), 0, safeViewportHeight);
     const availableHeight = Math.max(0, safeViewportHeight - topOffset);
@@ -1093,7 +1098,7 @@ export function resolveMobileDrawerBounds({
     return {
         action: MOBILE_SHELL_DRAWER_BOUND_ACTION.BIND,
         styleWrites: [
-            { property: 'top', value: `${topOffset}px`, priority: 'important' },
+            { property: 'top', value: `${safeViewportTop + topOffset}px`, priority: 'important' },
             { property: 'bottom', value: 'auto', priority: 'important' },
             { property: 'box-sizing', value: 'border-box', priority: 'important' },
             { property: 'height', value: `${availableHeight}px`, priority: 'important' },

@@ -277,6 +277,8 @@ The token information pills describe the Companion request itself. Input tokens 
 
 ### Special Panel Controls
 
+Lorebook Scout - Creates a lorebook keyword after manually running it, then has an option to send it directly to the lorebook attached to the chat, or creates a Lorebook Scout that it places the entries to.
+
 Plot Compass can display a **Plot Objective** field. Entering an objective and pressing the compass button saves it and reruns Plot Compass on the applicable message. Submitting an empty field clears the objective, though if it runs anyway, the LLM could still make up its own objective to follow.
 
 Chat Only can display a **Private side chat** field. Sending an aside adds it to the Chat Only side transcript and reruns that Companion. It is not part of the main chat context unless you modify it to be.

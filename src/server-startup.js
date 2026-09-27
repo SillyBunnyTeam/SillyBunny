@@ -2,7 +2,7 @@ import https from 'node:https';
 import http from 'node:http';
 import fs from 'node:fs';
 import { APP_NAME } from './runtime.js';
-import { isAddressInUseError, retryOnAddressInUse, trackListeningServer } from './server-listen.js';
+import { BUN_SOCKET_INHERIT_ISSUE_URL, isAddressInUseError, reportPortHolders, retryOnAddressInUse, trackListeningServer, diagnosePortConflict, formatPortConflictBanner } from './server-listen.js';
 import { color, urlHostnameToIPv6, getHasIP } from './util.js';
 
 // Express routers
@@ -27,6 +27,8 @@ import { router as assetsRouter } from './endpoints/assets.js';
 import { router as filesRouter } from './endpoints/files.js';
 import { router as charactersRouter } from './endpoints/characters.js';
 import { router as chatsRouter } from './endpoints/chats.js';
+// SillyBunny divergence: keep archive inventory and read-only orphan access isolated from upstream chat and Data Maid routes.
+import { router as chatArchiveRouter } from './endpoints/chat-archive.js';
 import { router as groupsRouter } from './endpoints/groups.js';
 import { router as worldInfoRouter } from './endpoints/worldinfo.js';
 import { router as statsRouter } from './endpoints/stats.js';
@@ -57,6 +59,7 @@ import { router as serverAdminRouter } from './endpoints/server-admin.js';
 import { router as inChatAgentsRouter } from './endpoints/in-chat-agents.js';
 // SillyBunny divergence: keep Conversation REST mounted here only; endpoint behavior stays isolated in its fork-owned router for upstream syncs.
 import { router as sillyBunnyConversationRouter } from './endpoints/sillybunny-conversation.js';
+import { resumableGenerationMiddleware, router as resumableGenerationsRouter } from './resumable-generations.js';
 
 /**
  * @typedef {object} ServerStartupResult
@@ -74,6 +77,9 @@ import { router as sillyBunnyConversationRouter } from './endpoints/sillybunny-c
  */
 export function setupPrivateEndpoints(app) {
     app.use('/', userDataRouter);
+    // SillyBunny: resumable generations. The router is mounted first so its own requests never register as generations.
+    app.use('/api/resumable-generations', resumableGenerationsRouter);
+    app.use(resumableGenerationMiddleware);
     app.use('/api/users', usersPrivateRouter);
     app.use('/api/users', usersAdminRouter);
     app.use('/api/moving-ui', movingUIRouter);
@@ -93,6 +99,7 @@ export function setupPrivateEndpoints(app) {
     app.use('/api/assets', assetsRouter);
     app.use('/api/files', filesRouter);
     app.use('/api/characters', charactersRouter);
+    app.use('/api/chats/archive', chatArchiveRouter);
     app.use('/api/chats', chatsRouter);
     app.use('/api/groups', groupsRouter);
     app.use('/api/worldinfo', worldInfoRouter);
@@ -167,7 +174,16 @@ export class ServerStartup {
      */
     #getListenAddress(url, ipVersion) {
         const host = ipVersion === 6 ? urlHostnameToIPv6(url.hostname) : url.hostname;
-        return `${host}:${Number(url.port || (this.cliArgs.ssl ? 443 : 80))}`;
+        return `${host}:${this.#getListenPort(url)}`;
+    }
+
+    /**
+     * Resolves the effective listen port of a URL.
+     * @param {URL} url The URL to inspect
+     * @returns {number}
+     */
+    #getListenPort(url) {
+        return Number(url.port || (this.cliArgs.ssl ? 443 : 80));
     }
 
     /**
@@ -178,7 +194,15 @@ export class ServerStartup {
      */
     #getAddressInUseMessage(url, ipVersion) {
         const listenAddress = this.#getListenAddress(url, ipVersion);
-        return `Address ${listenAddress} is already in use. Another ${APP_NAME} instance may already be running. Stop the other process or change "port" in config.yaml.`;
+        let message = `Address ${listenAddress} is already in use. Another ${APP_NAME} instance may already be running. Stop the other process or change "port" in config.yaml.`;
+        // SillyBunny: released Bun builds create inheritable socket handles on
+        // Windows, so a process spawned by the previous instance (git, package
+        // install, browser launch) can keep the port bound after that instance
+        // exited. Fixed in Bun main but not in any release yet.
+        if (process.platform === 'win32' && process.versions.bun) {
+            message += ` If no other instance is running, this is a known Bun-on-Windows bug (${BUN_SOCKET_INHERIT_ISSUE_URL}): wait a minute and relaunch, or start with Start-Node.bat.`;
+        }
+        return message;
     }
 
     /**
@@ -298,8 +322,12 @@ export class ServerStartup {
         // it out briefly instead of aborting the relaunch on the first failure.
         const listen = (url, ipVersion) => retryOnAddressInUse(() => createFunc(url, ipVersion), {
             onRetry: (attempt, attempts) => {
+                if (attempt === 1 || attempt % 10 === 0) {
+                    console.warn(`${this.#getListenAddress(url, ipVersion)} is still in use; waiting for it to be released (attempt ${attempt} of ${attempts}).`);
+                }
                 if (attempt === 1) {
-                    console.warn(`${this.#getListenAddress(url, ipVersion)} is still in use; waiting for it to be released (up to ${attempts} attempts).`);
+                    // Fire-and-forget: names the holder while the retries run.
+                    void reportPortHolders(this.#getListenPort(url));
                 }
             },
         });
@@ -348,9 +376,32 @@ export class ServerStartup {
      * @param {ServerStartupResult} result The results of the server startup
      * @returns {void}
      */
-    #handleServerListenFail({ v6Failed, v4Failed, v6Error, v4Error, useIPv6, useIPv4 }) {
+    async #handleServerListenFail({ v6Failed, v4Failed, v6Error, v4Error, useIPv6, useIPv4 }) {
+        // A final look at who occupies the port makes the abort actionable: a
+        // still-listed holder after thirty seconds of retries is not a transient race.
+        const reportBeforeFatal = async (...urls) => {
+            const ports = [...new Set(urls.map(url => this.#getListenPort(url)))];
+            for (const port of ports) {
+                await reportPortHolders(port);
+            }
+        };
+
+        const emitDiagnostic = async (url, ipVersion) => {
+            const port = this.#getListenPort(url);
+            const listenAddress = this.#getListenAddress(url, ipVersion);
+            try {
+                const diagnosis = await diagnosePortConflict(port, listenAddress);
+                const banner = formatPortConflictBanner(diagnosis);
+                console.error(banner);
+            } catch {
+                // Diagnostics must never break startup.
+            }
+        };
+
         if (v6Failed && !useIPv4) {
             if (this.#isAddressInUseError(v6Error)) {
+                await reportBeforeFatal(this.cliArgs.getIPv6ListenUrl());
+                await emitDiagnostic(this.cliArgs.getIPv6ListenUrl(), 6);
                 this.#fatal('Error: Startup aborted because IPv6 is the only enabled protocol and its listen port is already in use.');
             }
             this.#fatal('Error: Failed to start server on IPv6 and IPv4 disabled');
@@ -358,12 +409,22 @@ export class ServerStartup {
 
         if (v4Failed && !useIPv6) {
             if (this.#isAddressInUseError(v4Error)) {
+                await reportBeforeFatal(this.cliArgs.getIPv4ListenUrl());
+                await emitDiagnostic(this.cliArgs.getIPv4ListenUrl(), 4);
                 this.#fatal('Error: Startup aborted because IPv4 is the only enabled protocol and its listen port is already in use.');
             }
             this.#fatal('Error: Failed to start server on IPv4 and IPv6 disabled');
         }
 
         if (v6Failed && v4Failed) {
+            if (this.#isAddressInUseError(v6Error) || this.#isAddressInUseError(v4Error)) {
+                const urls = [];
+                if (this.#isAddressInUseError(v6Error)) urls.push(this.cliArgs.getIPv6ListenUrl());
+                if (this.#isAddressInUseError(v4Error)) urls.push(this.cliArgs.getIPv4ListenUrl());
+                await reportBeforeFatal(...urls);
+                if (this.#isAddressInUseError(v6Error)) await emitDiagnostic(this.cliArgs.getIPv6ListenUrl(), 6);
+                if (this.#isAddressInUseError(v4Error)) await emitDiagnostic(this.cliArgs.getIPv4ListenUrl(), 4);
+            }
             if (this.#isAddressInUseError(v6Error) && this.#isAddressInUseError(v4Error)) {
                 this.#fatal('Error: Failed to start server because the configured IPv6 and IPv4 listen ports are already in use.');
             }
@@ -422,7 +483,7 @@ export class ServerStartup {
 
         const [v6Failed, v4Failed, v6Error, v4Error] = await this.#startHTTPorHTTPS(useIPv6, useIPv4);
         const result = { v6Failed, v4Failed, v6Error, v4Error, useIPv6, useIPv4 };
-        this.#handleServerListenFail(result);
+        await this.#handleServerListenFail(result);
         return result;
     }
 }

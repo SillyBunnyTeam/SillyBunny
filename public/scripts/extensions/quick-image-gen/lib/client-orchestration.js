@@ -133,6 +133,9 @@ async function sendClonedConnectionProfileRequest({
         };
         const endpointField = endpointFields[selectedApiMap.source];
         if (endpointField && profile["api-url"]) request[endpointField] = profile["api-url"];
+        else if (!endpointField && profile["api-url"]) {
+            throw new Error("This Connection Manager profile routes through an endpoint that cannot be isolated for a preset override");
+        }
         return {
             supported: true,
             value: await context.ChatCompletionService.processRequest(
@@ -164,6 +167,24 @@ async function sendClonedConnectionProfileRequest({
     return null;
 }
 
+// Recent chat turns for a standalone Text AI request: up to `depth` messages ending at
+// `throughIndex` (the scene being illustrated), oldest first, so a request made from an
+// older message does not drag later chat in as "the conversation so far".
+// `formatMessage` returns { role, content } or null to skip a message; skipped messages
+// do not count towards `depth`.
+export function buildChatHistoryMessages(chat, { depth = 0, throughIndex = null, formatMessage } = {}) {
+    if (!Array.isArray(chat) || typeof formatMessage !== "function") return [];
+    const count = Math.max(0, Math.trunc(Number(depth) || 0));
+    if (!count || !chat.length) return [];
+    const last = Number.isInteger(throughIndex) ? Math.min(chat.length - 1, Math.max(0, throughIndex)) : chat.length - 1;
+    const messages = [];
+    for (let index = last; index >= 0 && messages.length < count; index -= 1) {
+        const formatted = formatMessage(chat[index], index);
+        if (formatted) messages.push(formatted);
+    }
+    return messages.reverse();
+}
+
 export async function sendIsolatedConnectionManagerRequest({
     service,
     context,
@@ -175,10 +196,16 @@ export async function sendIsolatedConnectionManagerRequest({
 }) {
     if (!service || typeof service.sendRequest !== "function") throw new Error("Connection Manager request service is unavailable");
     if (signal?.aborted) throw abortError(signal);
-    const liveProfile = service.getProfile(profileId);
     const requestedPreset = String(preset || "");
-    const requestOptions = { extractData: true, includePreset: true, stream: false, signal };
-    if (!requestedPreset || liveProfile?.preset === requestedPreset) {
+    const requestOptions = { extractData: true, includePreset: true, includeInstruct: true, stream: false, signal };
+    if (!requestedPreset) {
+        return settleAfterAbortableOperation(service.sendRequest(profileId, messages, maxTokens, requestOptions), signal);
+    }
+    const liveProfile = typeof service.getProfile === "function"
+        ? service.getProfile(profileId)
+        : service.getSupportedProfiles?.().find(profile => profile.id === profileId);
+    if (!liveProfile) throw new Error("Connection Manager profile was not found");
+    if (liveProfile.preset === requestedPreset) {
         return settleAfterAbortableOperation(service.sendRequest(profileId, messages, maxTokens, requestOptions), signal);
     }
 
@@ -229,12 +256,18 @@ export function unregisterConversationCheckpointInsertion(checkpoint, message) {
     return true;
 }
 
+// A QIG "generated image message" carries generated/context media and no meaningful
+// text of its own: either an empty body or QIG's placeholder caption. Ordinary
+// text-bearing assistant replies keep their text even when a generated image is
+// attached to them.
 export function isGeneratedImageMessage(message) {
     if (!message || message.is_user) return false;
-    if (message.extra?.inline_image === true) return true;
-    const media = message.extra?.media;
-    return Array.isArray(media) && media.length > 0
-        && media.every(item => item?.source === "generated" || item?.source === "context-media");
+    const hasGeneratedMedia = message.extra?.inline_image === true
+        || (Array.isArray(message.extra?.media) && message.extra.media.length > 0
+            && message.extra.media.every(item => item?.source === "generated" || item?.source === "context-media"));
+    if (!hasGeneratedMedia) return false;
+    const text = String(message.mes ?? "").trim();
+    return !text || /^generated image$/i.test(text);
 }
 
 export function readConstrainedNumber(value, {
@@ -304,6 +337,7 @@ export async function applyStateBeforePersistence({ apply, persist, rollback }) 
 
 export async function persistIfCurrent({
     persist,
+    acknowledge = null,
     isCurrent = null,
     skipIfStale = false,
     staleMessage = "Persistence target changed",
@@ -313,6 +347,9 @@ export async function persistIfCurrent({
     if (isCurrent != null && typeof isCurrent !== "function") {
         throw new TypeError("Persistence identity validation must be a function");
     }
+    if (acknowledge != null && typeof acknowledge !== "function") {
+        throw new TypeError("Persistence acknowledgement must be a function");
+    }
     const checkCurrent = isCurrent || (() => true);
     if (!checkCurrent()) {
         if (skipIfStale) return false;
@@ -320,8 +357,10 @@ export async function persistIfCurrent({
     }
 
     const saved = await persist();
-    if (saved === false) throw new Error(failureMessage);
     if (!checkCurrent()) throw new DOMException(staleMessage, "AbortError");
+    const confirmed = saved === true || (saved !== false && await acknowledge?.() === true);
+    if (!checkCurrent()) throw new DOMException(staleMessage, "AbortError");
+    if (!confirmed) throw new Error(failureMessage);
     return true;
 }
 

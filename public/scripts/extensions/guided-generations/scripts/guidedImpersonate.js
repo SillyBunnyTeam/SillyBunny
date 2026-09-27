@@ -17,6 +17,8 @@ import {
     serializeHelperPrefillForPrompt,
 } from '../../helper-prefill.js';
 
+let isImpersonating = false;
+
 function escapeSlashCommandDelimiters(value) {
     return String(value ?? '').replace(/\|/g, '\\|');
 }
@@ -50,6 +52,9 @@ function buildGuidedImpersonatePrompt(filledPrompt, helperPrefillPrompt) {
 }
 
 async function guidedImpersonate() {
+    if (isImpersonating) {
+        return;
+    }
     const textarea = document.getElementById('send_textarea');
     if (!(textarea instanceof HTMLTextAreaElement)) {
         console.error('[GuidedGenerations][Impersonate] Textarea #send_textarea not found.');
@@ -70,19 +75,22 @@ async function guidedImpersonate() {
     const settings = extension_settings[extensionName] ?? {};
     const profileValue = settings.profileImpersonate1st ?? '';
     const presetValue = settings.presetImpersonate1st ?? '';
-    const originalProfile = await getCurrentProfileId();
-    const switching = await handleSwitching(profileValue, presetValue, originalProfile);
     const promptTemplate = settings.promptImpersonate1st ?? '';
     const filledPrompt = applyPromptTemplate(promptTemplate, currentInputText);
     const helperPrefillPrompt = serializeHelperPrefillForPrompt(parseHelperPrefillMessages(settings.helperPrefillMessages));
     const impersonatePrompt = buildGuidedImpersonatePrompt(filledPrompt, helperPrefillPrompt);
     const fullScript = `// Impersonate guide|
 /inject id=${guidedImpersonateInjectId} position=chat ephemeral=true scan=true depth=0 role=system ${escapeSlashCommandDelimiters(getImpersonateSystemFrame())} |
-/impersonate await=true ${escapeSlashCommandDelimiters(impersonatePrompt)} |
-/flushinject ${guidedImpersonateInjectId} |`;
+/impersonate await=true ${escapeSlashCommandDelimiters(impersonatePrompt)} |`;
+    let switching;
+    let injectionAttempted = false;
+    isImpersonating = true;
 
     try {
+        const originalProfile = await getCurrentProfileId();
+        switching = await handleSwitching(profileValue, presetValue, originalProfile);
         await switching.switch();
+        injectionAttempted = true;
         await getContext().executeSlashCommandsWithOptions(fullScript);
         setLastImpersonateResult(textarea.value);
         debugLog('[Impersonate] STScript executed, new input stored in shared state.');
@@ -90,7 +98,18 @@ async function guidedImpersonate() {
         console.error('[GuidedGenerations][Impersonate] Error executing Guided Impersonate stscript:', error);
         setLastImpersonateResult('');
     } finally {
-        await switching.restore();
+        if (injectionAttempted) {
+            try {
+                await getContext().executeSlashCommandsWithOptions(`/flushinject ${guidedImpersonateInjectId}`);
+            } catch (error) {
+                console.warn('[GuidedGenerations][Impersonate] Could not flush impersonation injection:', error);
+            }
+        }
+        try {
+            await switching?.restore();
+        } finally {
+            isImpersonating = false;
+        }
     }
 }
 

@@ -13,6 +13,7 @@ import {
 import { MAX_CONTEXT_DEFAULT, MAX_RESPONSE_DEFAULT, power_user } from './power-user.js';
 import { getTextTokens, tokenizers } from './tokenizers.js';
 import { getEventSourceStream } from './sse-stream.js';
+import { fetchResumable } from './resumable-generation.js';
 import {
     getSortableDelay,
     getStringHash,
@@ -236,7 +237,7 @@ export function loadNovelPreset(preset) {
     nai_settings.logit_bias = preset.logit_bias || [];
     nai_settings.preamble = preset.preamble || default_preamble;
     nai_settings.min_p = preset.min_p || 0;
-    nai_settings.math1_temp = preset.math1_temp || 1;
+    nai_settings.math1_temp = preset.math1_temp ?? 1;
     nai_settings.math1_quad = preset.math1_quad || 0;
     nai_settings.math1_quad_entropy_scale = preset.math1_quad_entropy_scale || 0;
     nai_settings.extensions = preset.extensions || {};
@@ -290,7 +291,7 @@ export function loadNovelSettings(data, settings) {
     nai_settings.order = settings.order || default_order;
     nai_settings.logit_bias = settings.logit_bias || [];
     nai_settings.min_p = settings.min_p || 0;
-    nai_settings.math1_temp = settings.math1_temp || 1;
+    nai_settings.math1_temp = settings.math1_temp ?? 1;
     nai_settings.math1_quad = settings.math1_quad || 0;
     nai_settings.math1_quad_entropy_scale = settings.math1_quad_entropy_scale || 0;
     nai_settings.extensions = settings.extensions || {};
@@ -772,7 +773,7 @@ function tryParseStreamingError(response, decoded) {
 export async function generateNovelWithStreaming(generate_data, signal) {
     generate_data.streaming = nai_settings.streaming_novel;
 
-    const response = await fetch('/api/novelai/generate', {
+    const response = await fetchResumable('/api/novelai/generate', {
         headers: getRequestHeaders(),
         body: JSON.stringify(generate_data),
         method: 'POST',

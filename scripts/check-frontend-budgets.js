@@ -116,6 +116,7 @@ if (startupScriptBytes > budgets.startupScriptBytes) {
 const largeExtensionAssets = [
     'scripts/extensions/tts/lib/kokoro.web.js',
     'scripts/extensions/gallery/jquery.nanogallery2.min.js',
+    'scripts/extensions/sillybunny-debugger/lib/eruda.js',
 ];
 
 for (const asset of largeExtensionAssets) {

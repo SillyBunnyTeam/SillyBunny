@@ -191,6 +191,7 @@ describe('entity date added endpoints', () => {
         fs.mkdirSync(oldChatsPath, { recursive: true });
         fs.writeFileSync(path.join(oldChatsPath, 'First.jsonl'), '{}\n');
         fs.writeFileSync(path.join(oldChatsPath, 'Second.jsonl'), '{}\n');
+        const copySpy = jest.spyOn(fs, 'cpSync');
         const rmSync = fs.rmSync.bind(fs);
         let removalFailed = false;
         jest.spyOn(fs, 'rmSync').mockImplementation((targetPath, options) => {
@@ -210,10 +211,19 @@ describe('entity date added endpoints', () => {
         });
 
         expect(renameResponse.status).toBe(500);
+        expect(copySpy).toHaveBeenCalledTimes(2);
+        expect(copySpy).toHaveBeenNthCalledWith(1, oldChatsPath, newChatsPath, {
+            recursive: true,
+            filter: expect.any(Function),
+        });
+        expect(copySpy).toHaveBeenNthCalledWith(2, newChatsPath, oldChatsPath, {
+            recursive: true,
+            filter: expect.any(Function),
+        });
         expect(fs.existsSync(oldAvatarPath)).toBe(true);
         expect(fs.existsSync(newAvatarPath)).toBe(false);
-        expect(fs.existsSync(path.join(oldChatsPath, 'First.jsonl'))).toBe(true);
-        expect(fs.existsSync(path.join(oldChatsPath, 'Second.jsonl'))).toBe(true);
+        expect(fs.readFileSync(path.join(oldChatsPath, 'First.jsonl'), 'utf8')).toBe('{}\n');
+        expect(fs.readFileSync(path.join(oldChatsPath, 'Second.jsonl'), 'utf8')).toBe('{}\n');
         expect(fs.existsSync(newChatsPath)).toBe(false);
     });
 

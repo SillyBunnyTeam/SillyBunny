@@ -6,7 +6,7 @@ import { parse } from 'yaml';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const scriptSource = readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
-const tabsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-tabs.js'), 'utf8');
+const serverToolsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-server-tools.js'), 'utf8');
 const imageMetadataSource = readFileSync(path.join(repoRoot, 'src', 'endpoints', 'image-metadata.js'), 'utf8');
 const serverAdminSource = readFileSync(path.join(repoRoot, 'src', 'endpoints', 'server-admin.js'), 'utf8');
 const thumbnailsSource = readFileSync(path.join(repoRoot, 'src', 'endpoints', 'thumbnails.js'), 'utf8');
@@ -86,8 +86,8 @@ describe('Android avatar resource budget', () => {
         expect(imageMetadataSource).toContain('persona: Object.freeze([320, 480])');
         expect(serverAdminSource).toContain('format: \'jpg\'');
         expect(serverAdminSource).toContain('quality: 82');
-        expect(tabsSource).toContain('Mobile preset');
-        expect(tabsSource).toContain('Enable the mobile preset to serve smaller JPG thumbnails to phone-sized screens');
+        expect(serverToolsSource).toContain('Mobile preset');
+        expect(serverToolsSource).toContain('Enable the mobile preset to serve smaller JPG thumbnails to phone-sized screens');
     });
 
     test('client exposes a viewport-aware thumbnail URL helper', () => {

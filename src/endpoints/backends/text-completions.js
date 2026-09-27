@@ -13,6 +13,7 @@ import {
     OPENAI_KEYS,
 } from '../../constants.js';
 import { abortOnRequestClose, forwardFetchResponse, trimV1, getConfigValue, pollStreamingRequestConnection, summarizeLlmPayloadForLog } from '../../util.js';
+import { getResumableGeneration } from '../../resumable-generations.js';
 import { setAdditionalHeaders } from '../../additional-headers.js';
 import { createHash } from 'node:crypto';
 
@@ -78,7 +79,13 @@ async function parseOllamaStream(jsonStream, request, response, onDisconnect = n
             }
         });
 
-        request.socket.on('close', closeStream);
+        const resumableGeneration = getResumableGeneration(request);
+        if (resumableGeneration) {
+            // SillyBunny: a resumable generation finishes without the client; only an explicit cancel stops it.
+            resumableGeneration.onCancel(closeStream);
+        } else {
+            request.socket.on('close', closeStream);
+        }
 
         jsonStream.body.on('end', () => {
             if (done) {
@@ -92,8 +99,22 @@ async function parseOllamaStream(jsonStream, request, response, onDisconnect = n
             response.end();
         });
 
-        jsonStream.body.on('error', () => {
+        jsonStream.body.on('error', (error) => {
+            if (done) {
+                return;
+            }
+
+            done = true;
             stopPolling();
+            console.error('Ollama streaming request failed:', error);
+            try {
+                jsonStream.body?.destroy?.();
+            } catch {
+                // Best effort; the stream is already failing.
+            }
+            if (!response.writableEnded) {
+                response.end();
+            }
         });
     } catch (error) {
         console.error('Error forwarding streaming response:', error);
@@ -401,6 +422,10 @@ export async function handleTextCompletionsGenerate(request, response) {
         }
 
         if (request.body.api_type === TEXTGEN_TYPES.OPENROUTER) {
+            // SillyBunny: validate before the OpenRouter whitelist and upstream request.
+            if (request.body.service_tier !== undefined && !['auto', 'default', 'flex', 'priority'].includes(request.body.service_tier)) {
+                return response.status(400).json({ error: true, field: 'service_tier' });
+            }
             if (Array.isArray(request.body.provider) && request.body.provider.length > 0) {
                 request.body.provider = {
                     allow_fallbacks: request.body.allow_fallbacks ?? true,

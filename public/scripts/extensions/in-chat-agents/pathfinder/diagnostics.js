@@ -2,7 +2,7 @@ import { canDeleteBook, canReadBook, canWriteBook, getSettings, getTree, getAllE
 import { ALL_TOOL_NAMES, getActiveTunnelVisionBooks, getContextualLorebooks } from './pathfinder-tool-bridge.js';
 import { getFeedItems } from './activity-feed.js';
 import { getEnabledToolAgents } from '../agent-store.js';
-import { getPathfinderRuntimeAgent, getToolRecursionState, syncToolAgentRegistrations } from '../agent-runner.js';
+import { getPathfinderRuntimeAgent, getToolRecursionState, isPathfinderToolEnabledForAgent, syncToolAgentRegistrations } from '../agent-runner.js';
 
 function getRegisteredPathfinderTools(ToolManager) {
     const tools = ToolManager?.tools instanceof Map
@@ -12,7 +12,7 @@ function getRegisteredPathfinderTools(ToolManager) {
             : [];
 
     return ALL_TOOL_NAMES.filter(name =>
-        tools.find(t => t?.name === name),
+        tools.some(tool => tool?.toFunctionOpenAI?.()?.function?.name === name),
     );
 }
 
@@ -20,11 +20,13 @@ function formatNameList(names, fallback = 'none') {
     return names.length > 0 ? names.join(', ') : fallback;
 }
 
-function getEnabledPathfinderTools(pathfinderAgent, registeredTools = [], settings = getSettings()) {
+function getEnabledPathfinderTools(pathfinderAgent, settings = getSettings()) {
     if (!pathfinderAgent) {
         return [];
     }
 
+    // Runtime toolStates are re-synced from the agent right before this runs;
+    // when configured they are canonical.
     const toolStates = settings?.toolStates;
     if (toolStates && typeof toolStates === 'object') {
         const configuredNames = ALL_TOOL_NAMES.filter(name => Object.prototype.hasOwnProperty.call(toolStates, name));
@@ -33,20 +35,8 @@ function getEnabledPathfinderTools(pathfinderAgent, registeredTools = [], settin
         }
     }
 
-    const agentTools = Array.isArray(pathfinderAgent?.tools) ? pathfinderAgent.tools : [];
-    const agentToolNames = agentTools.map(tool => tool.name).filter(name => ALL_TOOL_NAMES.includes(name));
-    const enabledAgentToolNames = agentTools
-        .filter(tool => tool.enabled !== false)
-        .map(tool => tool.name)
-        .filter(name => ALL_TOOL_NAMES.includes(name));
-
-    if (enabledAgentToolNames.length > 0 || agentToolNames.length > 0) {
-        return Array.from(new Set(enabledAgentToolNames));
-    }
-
-    return registeredTools.length > 0
-        ? registeredTools.filter(name => ALL_TOOL_NAMES.includes(name))
-        : [...ALL_TOOL_NAMES];
+    // Fall back to the same reader the runner uses for registration decisions
+    return ALL_TOOL_NAMES.filter(name => isPathfinderToolEnabledForAgent(pathfinderAgent, name));
 }
 
 function getLastPipelineRunMessage(settings) {
@@ -114,13 +104,13 @@ function getPipelineStageSummary(stageResults = []) {
 
 export async function runDiagnostics() {
     const results = {};
-    const s = getSettings();
 
     try {
         syncToolAgentRegistrations();
     } catch (error) {
         console.warn('[Pathfinder] Diagnostics could not refresh tool registrations before checks.', error);
     }
+    const s = getSettings();
 
     // Check enabled lorebooks
     const manualBooks = (s.enabledLorebooks || []);
@@ -177,7 +167,7 @@ export async function runDiagnostics() {
         const enabledAgents = getEnabledToolAgents();
         const pathfinderAgent = getPathfinderRuntimeAgent(enabledAgents);
         const registeredTools = getRegisteredPathfinderTools(ToolManager);
-        const enabledPathfinderToolNames = getEnabledPathfinderTools(pathfinderAgent, registeredTools, s);
+        const enabledPathfinderToolNames = getEnabledPathfinderTools(pathfinderAgent, s);
         const registrationDetail = getToolRegistrationDetail(enabledPathfinderToolNames, registeredTools);
 
         if (enabledPathfinderToolNames.length > 0 && enabledPathfinderToolNames.every(name => registeredTools.includes(name))) {

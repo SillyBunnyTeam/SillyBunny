@@ -1,5 +1,6 @@
 import { chat } from '../../../../script.js';
 import { hideChatMessageRange } from '../../../chats.js';
+import { captureVisibleMessageAnchor, restoreVisibleMessageAnchor } from '../../../chat-render-lifecycle/anchor.js';
 import { eventSource, event_types } from '../../../events.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
 import { accountStorage } from '../../../util/AccountStorage.js';
@@ -23,6 +24,7 @@ import {
     runCompanionAgentOnMessage,
     runCompanionsOnMessage,
 } from './companion-runner.js';
+import { isLorebookAgent, sendCompanionResultToLorebook } from './lorebook-sender.js';
 import {
     cleanCompanionAgentName,
     editCompanionResult,
@@ -55,6 +57,10 @@ const HANDLE_POSITION_STORAGE_KEY = 'ica--tracker-panel-handle-top-v2';
 const PANEL_LOCK_STORAGE_KEY = 'ica--tracker-panel-locked';
 const HANDLE_DRAG_THRESHOLD_PX = 6;
 const HANDLE_EDGES = ['right', 'left', 'top', 'bottom'];
+const PANEL_ANCHOR_OPTIONS = {
+    messageSelector: '.ica--tpanel-agent[data-agent-id]',
+    keyAttribute: 'data-agent-id',
+};
 
 let panelInitialized = false;
 let panelOpen = false;
@@ -613,6 +619,7 @@ function buildPanelAgentSection(state) {
     const name = getStateDisplayName(state);
     const icon = getStateIcon(state);
     const isHidden = isAgentHidden(agentId);
+    const canSendToLorebook = isLorebookAgent(state.agent);
 
     const settingsButton = state.agent
         ? '<button type="button" class="ica--cdash-action" data-action="panel-edit" title="Open this companion\'s agent settings" aria-label="Agent settings"><i class="fa-solid fa-gear"></i></button>'
@@ -652,6 +659,7 @@ function buildPanelAgentSection(state) {
                             <span>Message #${entry.messageIndex}</span>
                             ${buildAbsorbedPillHtml(entry)}
                             ${buildCompanionTokenUsagePillsHtml(entry.result)}
+                            ${canSendToLorebook && String(entry.result?.status ?? 'done') === 'done' ? '<button type="button" class="ica--cdash-action" data-action="panel-send-to-lorebook" title="Send this state to the attached lorebook" aria-label="Send history entry to lorebook"><i class="fa-solid fa-book-medical"></i></button>' : ''}
                             <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit this state's text" aria-label="Edit history entry"><i class="fa-solid fa-pen-to-square"></i></button>
                         </div>
                         <div class="ica--tpanel-agent-body">${buildPanelEntryBody(agentId, entry)}</div>
@@ -680,6 +688,7 @@ function buildPanelAgentSection(state) {
                     ${dragHandleButton}
                     ${hiddenButton}
                     ${runLatestButton}${rerunButtons}
+                    ${canSendToLorebook && String(latest.result?.status ?? 'done') === 'done' ? '<button type="button" class="ica--cdash-action" data-action="panel-send-to-lorebook" title="Send this state to the attached lorebook" aria-label="Send state to lorebook"><i class="fa-solid fa-book-medical"></i></button>' : ''}
                     <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit this state's text by hand (e.g. type your Plot Compass objective)" aria-label="Edit state text"><i class="fa-solid fa-pen-to-square"></i></button>
                     ${settingsButton}
                     <button type="button" class="ica--cdash-action" data-action="panel-jump" title="Scroll to the source message" aria-label="Scroll to source message"><i class="fa-solid fa-comment-dots"></i></button>
@@ -741,7 +750,23 @@ export function buildPanelHtml() {
 
 function renderPanel() {
     const panelElement = $('#ica--tracker-panel');
+    const panel = panelElement[0];
+    const anchor = captureVisibleMessageAnchor(panel, PANEL_ANCHOR_OPTIONS);
+    const previousHeights = new Map(Array.from(panel?.querySelectorAll(PANEL_ANCHOR_OPTIONS.messageSelector) ?? [], section => [
+        section.getAttribute(PANEL_ANCHOR_OPTIONS.keyAttribute),
+        section.getBoundingClientRect().height,
+    ]));
+
     panelElement.html(buildPanelHtml());
+
+    for (const section of panel?.querySelectorAll(PANEL_ANCHOR_OPTIONS.messageSelector) ?? []) {
+        const previousHeight = previousHeights.get(section.getAttribute(PANEL_ANCHOR_OPTIONS.keyAttribute));
+        if (previousHeight && section.querySelector('.ica--companion-pending')) {
+            section.style.minHeight = `${previousHeight}px`;
+        }
+    }
+
+    restoreVisibleMessageAnchor(panel, anchor, PANEL_ANCHOR_OPTIONS);
     setupPanelSortable();
 }
 
@@ -1082,6 +1107,22 @@ async function handlePanelAction(event) {
         return;
     }
 
+    if (action === 'panel-send-to-lorebook' && agentId && Number.isInteger(messageIndex)) {
+        const result = getCompanionResults(chat[messageIndex])[agentId];
+        if (!result) {
+            toastr.warning('No stored state to send.');
+            return;
+        }
+
+        button.prop('disabled', true);
+        try {
+            await sendCompanionResultToLorebook(result.content);
+        } finally {
+            button.prop('disabled', false);
+        }
+        return;
+    }
+
     if (action === 'panel-edit') {
         if (!agentId || typeof panelHooks?.openEditor !== 'function') {
             toastr.warning('The agent editor is not available.');
@@ -1127,7 +1168,6 @@ export function initCompanionPanel() {
     $(document.body).append(`
         <button type="button" id="ica--tracker-panel-handle" class="ica--tpanel-handle" data-edge="right" title="Open the companion panel" aria-label="Open the companion panel" style="display:none">
             <i class="fa-solid fa-user-astronaut"></i>
-            <span>Companion</span>
         </button>
     `);
 

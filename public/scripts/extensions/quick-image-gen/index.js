@@ -9,30 +9,42 @@ import {
     replaceSelectOptions,
 } from "./lib/security.js";
 import {
+    accountGenerationOutputBytes,
     attachResultFailures,
     clampChatMessageIndex,
     collectBatchResults,
     collectSequentialResults,
+    createResultFailureError,
     getResultFailures,
+    limitGenerationOutputResponse,
     normalizeBatchCount,
+    reserveGenerationOutput,
+    formatQuietSlashResult,
+    getQuietSlashOverrides,
 } from "./lib/generation.js";
 import { GenerationRunManager, OwnedTransientValue, snapshotGenerationRunSettings, snapshotGenerationSettings } from "./lib/generation-run.js";
 import { normalizeProviderResult, sanitizeEffectiveRequest } from "./lib/provider-contract.js";
 import {
+    coerceSettingsFieldValue,
     createSettingsExport,
     MAX_SETTINGS_IMPORT_BYTES,
     mergePreservingPrivateFields,
     mergeSettingsImportStores,
     parseSettingsImport,
+    SETTINGS_BOOLEAN_KEYS,
+    SETTINGS_ENUM_KEYS,
     stageStorageTransaction,
 } from "./lib/settings-transfer.js";
 import {
     canSeedSynchronizedStoreFromLocal,
     cloneSynchronizedValue,
+    PENDING_SYNC_MARKER_PREFIX,
     persistSynchronizedStore,
     persistSynchronizedStores,
     reconcileSynchronizedStore,
+    saveSettingsWithConfirmation,
 } from "./lib/settings-persistence.js";
+import { confirmSettingsSyncCacheId, confirmSettingsValues, createSettingsSaveEventConfirmer } from "./lib/host-persistence.js";
 import { clearGalleryRepositoryStorage, GalleryRepository } from "./lib/gallery-repository.js";
 import {
     detectImageFormat,
@@ -56,11 +68,15 @@ import {
     buildComfyBuiltinWorkflow,
     buildComfyPromptRequest,
     cancelComfyPrompt,
+    collectComfyWorkflowStringInputCandidates,
     getComfyWorkflowCapabilities,
     normalizeComfyModelLoader,
     normalizeComfySettings,
+    normalizeComfyWorkflowComponentOverrides,
+    parseComfyObjectInfoComboInputs,
     parseComfyPromptResponse,
     pollComfyHistory,
+    pruneComfyWorkflowComponentOverrides,
     selectComfyModelList,
 } from "./lib/comfyui-backend.js";
 import {
@@ -86,6 +102,7 @@ import {
     normalizeSavedImagePath,
 } from "./lib/generated-image.js";
 import {
+    persistChatState,
     persistLockedBackgroundState,
     removeInsertedMessage,
     rethrowAfterTransactionRollback,
@@ -110,6 +127,7 @@ import {
 } from "./lib/provider-adapters.js";
 import {
     buildNanoGptReferenceFields,
+    getClosestSupportedImageSize,
     getFalEffectiveGuidance,
     getFalEffectiveSteps,
     getGlmImageResolution,
@@ -154,6 +172,7 @@ import {
 } from "./lib/context-media.js";
 import {
     applyStateBeforePersistence,
+    buildChatHistoryMessages,
     createAccountStorageScope,
     createAbortableSerializedRunner,
     createConversationCheckpoint,
@@ -167,21 +186,21 @@ import {
     normalizeCharacterReferenceRecord,
     normalizeMessageSourceIdentity,
     normalizePromptHistory,
-    persistIfCurrent,
     persistPromptHistory,
     readConstrainedNumber,
     registerConversationCheckpointInsertion,
     rethrowAfterRollbackPersistence,
-    restoreMutableMessageState,
+    restorePropertyIfUnchanged,
     sendIsolatedConnectionManagerRequest,
     setCharacterProviderReferences,
-    snapshotMutableMessageState,
     summarizeOperationOutcomes,
     unregisterConversationCheckpointInsertion,
 } from "./lib/client-orchestration.js";
 import {
     appendWorldInfoToRequest,
+    buildTextAIRequestMessages,
     createPromptPipelineState,
+    dedupePromptTags,
     getPromptPipelineResult,
     setAuthoritativeFinalPrompt,
     updatePromptPipelineState,
@@ -230,6 +249,7 @@ let extension_settings, getContext, saveSettingsDebounced, saveSettings, generat
 let checkWorldInfo, hostScriptModule, hostWorldInfoModule;
 let createGenerationParameters, getChatCompletionModel;
 let saveBase64AsFile, getSanitizedFilename, humanizedDateTime;
+let nativePopupModule = null;
 
 // Dialogs route through SillyTavern's Popup API once `popup.js` is imported during
 // init. Until then — and if that import fails — the browser dialogs stand in, so a
@@ -453,11 +473,10 @@ const QIG_DEFAULT_COLLAPSED_SECTIONS = {
     sectionCreate: true,
     sectionContext: true,
     sectionAutomation: true,
-    providerSettings: false,
     promptAdvanced: true,
     injectOptions: true,
     advancedSettings: true,
-    setupPanel: false,
+    setupPanel: true,
 };
 let qigKeyboardShortcutsBound = false;
 
@@ -515,6 +534,10 @@ function isEditableShortcutTarget(target) {
     return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
 }
 
+function plural(count, noun) {
+    return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
 const GENERATE_SHORTCUT_DEFAULT = "ctrl+enter";
 
 function normalizeShortcutKeyName(key) {
@@ -569,12 +592,21 @@ function updateGenerateShortcutHints() {
 }
 
 function handleQigKeyboardShortcut(event) {
-    if (isEditableShortcutTarget(event.target)) return;
-    if (event.target?.closest?.(".qig-popup")) return;
+    // Editable fields outside QIG's own panel (the chat compose box, other extensions) keep their keys.
+    if (isEditableShortcutTarget(event.target) && !event.target?.closest?.("#qig-settings")) return;
+    if (event.target?.closest?.(".qig-popup, .qig-prompt-review")) {
+        // Popup-local handlers own their keys (they stop propagation themselves).
+        return;
+    }
+    // The shortcut recorder must see the combo it is recording, not run it.
+    if (event.target?.id === "qig-generate-shortcut") return;
     if (eventMatchesGenerateShortcut(event)) {
+        // Own the shortcut before checking whether generation may start: the host binds
+        // Ctrl+Enter to "regenerate message", which must never double-fire while QIG is busy.
+        event.preventDefault();
+        event.stopPropagation();
         const generateBtn = document.getElementById("qig-generate-btn");
         if (!generateBtn || generateBtn.disabled || isGenerating) return;
-        event.preventDefault();
         runConfiguredPaletteGeneration();
         return;
     }
@@ -582,9 +614,11 @@ function handleQigKeyboardShortcut(event) {
     const key = String(event.key || "").toLowerCase();
     if (key === "g") {
         event.preventDefault();
+        event.stopPropagation();
         showGallery();
     } else if (key === "h") {
         event.preventDefault();
+        event.stopPropagation();
         showPromptHistory();
     }
 }
@@ -592,7 +626,16 @@ function handleQigKeyboardShortcut(event) {
 function bindQigKeyboardShortcuts() {
     if (qigKeyboardShortcutsBound) return;
     qigKeyboardShortcutsBound = true;
-    document.addEventListener("keydown", handleQigKeyboardShortcut);
+    // Capture phase: the host's own document-level keydown handlers must not run first.
+    document.addEventListener("keydown", handleQigKeyboardShortcut, { capture: true });
+}
+
+// Groups that start closed for a fresh install, so a dense provider panel opens calm.
+const DEFAULT_COLLAPSED_SECTIONS = { a1111Tuning: true };
+
+function isQigSectionCollapsed(collapsed, key) {
+    const stored = collapsed?.[key];
+    return stored === undefined ? Boolean(DEFAULT_COLLAPSED_SECTIONS[key]) : Boolean(stored);
 }
 
 function setupQigCollapsibleSection(sectionId, buttonId, contentId) {
@@ -617,6 +660,8 @@ function setupQigCollapsibleSection(sectionId, buttonId, contentId) {
     };
 }
 
+let rerunSettingsSearch = () => {};
+
 function setupSettingsSearch() {
     const searchInput = document.getElementById("qig-settings-search");
     const clearBtn = document.getElementById("qig-settings-search-clear");
@@ -626,23 +671,23 @@ function setupSettingsSearch() {
 
     const restoreCollapsibles = () => {
         const s = getSettings();
-        const collapsed = s?.collapsedSections || {};
+        const collapsed = getCollapsedSections(s);
         const pairs = [
             ["setupPanel", "qig-setup-toggle", "qig-setup-panel"],
             ["sectionProvider", "qig-section-provider-toggle", "qig-section-provider-content"],
             ["sectionCreate", "qig-section-create-toggle", "qig-section-create-content"],
             ["sectionContext", "qig-section-context-toggle", "qig-section-context-content"],
             ["sectionAutomation", "qig-section-automation-toggle", "qig-section-automation-content"],
-            ["providerSettings", "qig-provider-settings-toggle", "qig-provider-settings-content"],
             ["promptAdvanced", "qig-prompt-advanced-toggle", "qig-prompt-advanced-content"],
             ["injectOptions", "qig-inject-options-toggle", "qig-inject-options"],
             ["advancedSettings", "qig-advanced-settings-toggle", "qig-advanced-settings"],
+            ["a1111Tuning", "qig-a1111-tuning-toggle", "qig-a1111-tuning-content"],
         ];
         pairs.forEach(([key, btnId, contentId]) => {
             const button = document.getElementById(btnId);
             const content = document.getElementById(contentId);
             if (!button || !content) return;
-            const isCollapsed = Boolean(collapsed[key]);
+            const isCollapsed = isQigSectionCollapsed(collapsed, key);
             button.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
             content.hidden = isCollapsed;
             content.classList.toggle("qig-collapsible__content--collapsed", isCollapsed);
@@ -652,6 +697,16 @@ function setupSettingsSearch() {
                 icon.classList.toggle("fa-chevron-down", !isCollapsed);
             }
         });
+    };
+
+    const isUnavailable = (element) => {
+        for (let node = element; node && node !== setupPanel; node = node.parentElement) {
+            // A collapsed disclosure is searchable because a match opens it. Provider- or
+            // capability-hidden controls are not, because opening a disclosure cannot reveal them.
+            if (node.hidden && !node.classList?.contains("qig-collapsible__content")) return true;
+            if (node.style?.display === "none") return true;
+        }
+        return false;
     };
 
     const handleSearch = () => {
@@ -671,17 +726,29 @@ function setupSettingsSearch() {
         let totalMatches = 0;
 
         sections.forEach(section => {
-            const items = section.querySelectorAll(".qig-field, .qig-provider-card, .qig-dependent-panel, fieldset, .qig-inline-collapsible");
+            const items = section.querySelectorAll(".qig-field, .qig-provider-card, .qig-dependent-panel, fieldset, .qig-inline-collapsible, .checkbox_label");
             let sectionMatches = 0;
 
             items.forEach(item => {
-                const textParts = [];
+                // Controls hidden because they do not apply to the active provider must not be
+                // findable by search; they would otherwise inflate the match count invisibly.
+                if (isUnavailable(item)) {
+                    item.classList.add("qig-search-hidden");
+                    return;
+                }
+                const textParts = [item.matches("label") ? item.textContent : ""];
+                if (item.matches(".checkbox_label") && item.nextElementSibling?.matches("small")) {
+                    textParts.push(item.nextElementSibling.textContent);
+                }
                 item.querySelectorAll("label, legend, small, button, span, option, p, h4, h5").forEach(el => {
+                    if (isUnavailable(el)) return;
                     textParts.push(el.textContent || "");
                 });
                 item.querySelectorAll("input, select, textarea").forEach(el => {
+                    if (isUnavailable(el)) return;
                     if (el.placeholder) textParts.push(el.placeholder);
                     if (el.title) textParts.push(el.title);
+                    if (el.getAttribute("aria-label")) textParts.push(el.getAttribute("aria-label"));
                 });
                 const combinedText = textParts.join(" ").toLowerCase();
 
@@ -698,19 +765,23 @@ function setupSettingsSearch() {
             const sectionHeaderMatch = kickerText.includes(query) || subtitleText.includes(query);
 
             if (sectionHeaderMatch) {
-                items.forEach(item => item.classList.remove("qig-search-hidden"));
-                sectionMatches = Math.max(sectionMatches, items.length || 1);
+                const availableItems = [...items].filter(item => !isUnavailable(item));
+                availableItems.forEach(item => item.classList.remove("qig-search-hidden"));
+                sectionMatches = Math.max(sectionMatches, availableItems.length || 1);
             }
 
             if (sectionMatches > 0) {
                 section.classList.remove("qig-search-hidden");
                 totalMatches += sectionMatches;
 
-                const content = section.querySelector(".qig-collapsible__content");
-                if (content) {
+                // Open every disclosure in the section, nested ones included, so a match inside a
+                // closed group is actually visible and not just counted.
+                section.querySelectorAll(".qig-collapsible__content").forEach(content => {
                     content.hidden = false;
                     content.classList.remove("qig-collapsible__content--collapsed");
-                    const toggleBtn = section.querySelector(".qig-section-header-toggle, .qig-collapsible__header");
+                    const toggleBtn = content.id
+                        ? section.querySelector(`[aria-controls="${content.id}"]`)
+                        : section.querySelector(".qig-section-header-toggle, .qig-collapsible__header");
                     if (toggleBtn) {
                         toggleBtn.setAttribute("aria-expanded", "true");
                         const icon = toggleBtn.querySelector(".qig-collapsible__icon");
@@ -719,7 +790,7 @@ function setupSettingsSearch() {
                             icon.classList.add("fa-chevron-down");
                         }
                     }
-                }
+                });
             } else {
                 section.classList.add("qig-search-hidden");
             }
@@ -732,6 +803,7 @@ function setupSettingsSearch() {
         }
     };
 
+    rerunSettingsSearch = handleSearch;
     searchInput.oninput = handleSearch;
     if (clearBtn) {
         clearBtn.onclick = () => {
@@ -749,13 +821,19 @@ function setupSettingsSearch() {
 const PROMPT_SOURCE_LABELS = {
     manual: "Manual prompt",
     chat: "Chat scene",
-    tags: "AI-tagged (auto)",
+    tags: "AI-tagged",
+};
+
+const PROMPT_FIELD_HELP = {
+    manual: "Sent as your image prompt. The optional LLM rewrite still applies if enabled.",
+    chat: "Not used while Chat scene is selected; the selected chat messages become the scene.",
+    tags: "Not used while AI-tagged is selected; prompts come from the tags your Text AI emits.",
 };
 
 const PROMPT_SOURCE_HELP = {
     manual: "The prompt box above is sent as-is. Optional LLM rewrite still applies if enabled below.",
-    chat: "The selected chat message(s) become the scene. Optionally let your Text AI rewrite them into an image prompt.",
-    tags: "Your Text AI is instructed to emit image tags in replies; QIG extracts them and generates automatically. Auto-generate is kept on for this mode.",
+    chat: "The selected chat messages become the scene. Optionally let your Text AI rewrite them into an image prompt.",
+    tags: "Your Text AI is instructed to emit image tags in replies. Turn on Auto-generate separately for QIG to extract and generate from them.",
 };
 
 function derivePromptSource(s = getSettings()) {
@@ -775,6 +853,11 @@ function updatePromptSourceUI(s = getSettings()) {
     });
     const help = document.getElementById("qig-prompt-source-help");
     if (help) help.textContent = PROMPT_SOURCE_HELP[mode] || "";
+    // Keep the Prompt field honest: in chat/tags modes it is not what gets sent.
+    const promptHelp = document.getElementById("qig-prompt-help");
+    if (promptHelp) promptHelp.textContent = PROMPT_FIELD_HELP[mode] || PROMPT_FIELD_HELP.manual;
+    const promptField = document.getElementById("qig-prompt");
+    if (promptField) promptField.style.opacity = mode === "manual" ? "" : "0.55";
     const chatPanel = document.getElementById("qig-chat-source-panel");
     if (chatPanel) chatPanel.style.display = mode === "chat" ? "block" : "none";
     const llmSubsection = document.getElementById("qig-llm-subsection");
@@ -811,7 +894,7 @@ function applyPromptSource(mode, { persist = true } = {}) {
     if (paletteModeEl) paletteModeEl.value = s.paletteMode;
     updatePromptSourceUI(s);
     updateQigStatusLine();
-    syncGenerationPresetIndicators();
+    syncConfigurationIndicators();
     if (persist) saveSettingsDebounced();
 }
 
@@ -892,9 +975,13 @@ function collectQigStatus(s = getSettings()) {
 function updateQigStatusLine() {
     const s = getSettings();
     if (!s) return;
+    if (reviewPreviouslyEnabled && !s.reviewBeforeGenerate) reviewDisableRevision++;
+    reviewPreviouslyEnabled = !!s.reviewBeforeGenerate;
+    if (!s.reviewBeforeGenerate && activeGenerationRun?.context.review) activeGenerationRun.context.review.enabled = false;
     const meta = document.getElementById("qig-status-meta");
     if (!meta) return;
     const { items, warnings } = collectQigStatus(s);
+    items.push(`Review ${s.reviewBeforeGenerate ? "on" : "off"}`);
     meta.innerHTML = items.map(item => `<span>${escapeHtml(item)}</span>`).join("");
     const warnEl = document.getElementById("qig-status-warnings");
     if (warnEl) {
@@ -902,7 +989,7 @@ function updateQigStatusLine() {
         warnEl.style.display = warnings.length ? "" : "none";
     }
     const eyebrow = document.getElementById("qig-status-eyebrow");
-    if (eyebrow) eyebrow.textContent = warnings.length ? "Needs attention" : "Ready to generate";
+    if (eyebrow) eyebrow.textContent = isGenerating ? "Generating" : (warnings.length ? "Needs attention" : "Ready to generate");
 }
 
 function getNanobananaAspectRatio(settings = getSettings()) {
@@ -968,6 +1055,7 @@ const defaultSettings = {
     useLastMessage: true,
     useLLMPrompt: false,
     llmPromptStyle: "tags",
+    llmRequestRole: "default",
     llmCustomInstruction: "",
     reviewBeforeGenerate: false,
     preserveCharacterIdentity: true,
@@ -1190,8 +1278,10 @@ const defaultSettings = {
     a1111ControlNetGuidanceEnd: 1,
     a1111ControlNetImage: "",
     a1111SaveToWebUI: true,
+    a1111InterruptServer: false,
     // ComfyUI specific
     comfyWorkflow: "",
+    comfyWorkflowComponentOverrides: { version: 1, entries: [] },
     comfyModelLoader: "checkpoint",
     comfyClipSkip: 1,
     comfyDenoise: 1.0,
@@ -1219,6 +1309,7 @@ const defaultSettings = {
     llmOverrideProfileId: "",
     llmOverridePreset: "",
     llmOverrideMaxTokens: 500,
+    llmOverrideChatDepth: 0,
     // ComfyUI Flux/UNET support
     comfySkipNegativePrompt: false,
     comfyFluxClipModel1: "",
@@ -1227,6 +1318,7 @@ const defaultSettings = {
     comfyFluxClipType: "flux",
     _replacementMapsMigrated: false,
     _legacyTemplatesIgnored: false,
+    _configurationMigrationVersion: 0,
     _charSettingsBaseState: null,
     _syncCacheId: "",
     // Backups of localStorage stores (survive browser storage wipes)
@@ -1235,6 +1327,7 @@ const defaultSettings = {
     _backupCharRefImages: null,
     _backupGenPresets: null,
     _backupComfyWorkflows: null,
+    _backupConfigurations: null,
     _backupContextualFilters: null,
     _backupFilterPools: null,
     _backupActiveFilterPoolIdsByCard: null,
@@ -1251,8 +1344,6 @@ let lastGenerationSourceChatId = "";
 let lastGenerationSourceMessageId = "";
 let lastGenerationSourceMessageSignature = "";
 let lastEffectiveRequest = null;
-let originalPrompt = "";
-let originalNegative = "";
 function safeParse(key, fallback) {
     try {
         const val = JSON.parse(localStorage.getItem(key));
@@ -1272,10 +1363,8 @@ function safeSetStorage(key, value, errorMessage = "") {
 // Backup mapping: localStorage key → extensionSettings backup key
 const BACKUP_KEYS = {
     qig_char_settings: "_backupCharSettings",
-    qig_profiles: "_backupProfiles",
     qig_char_ref_images: "_backupCharRefImages",
-    qig_gen_presets: "_backupGenPresets",
-    qig_comfy_workflows: "_backupComfyWorkflows",
+    qig_configurations: "_backupConfigurations",
     qig_contextual_filters: "_backupContextualFilters",
     qig_filter_pools: "_backupFilterPools",
     qig_active_pool_ids_global: "_backupActiveFilterPoolIdsGlobal",
@@ -1305,21 +1394,92 @@ function backupToSettings(localKey, data) {
 }
 
 async function flushSettingsBackup() {
-    if (typeof saveSettings === "function") {
-        await saveSettings();
-        return;
-    }
+    const result = await saveSettingsWithConfirmation({
+        save: saveSettings,
+        acknowledge: confirmSettingsSaveEvent,
+        expectedValues: getSettings(),
+    });
+    if (!result.confirmed) throw new Error("Settings save could not be confirmed", { cause: result.confirmationError });
+}
 
-    saveSettingsDebounced?.();
+// The host's saveSettings() fulfills with undefined on both success and common
+// failures, so a generated account identity must be confirmed via server
+// readback before gallery/history are allowed to use it durably.
+let syncCacheIdClaimed = false;
+let syncCacheIdClaimInFlight = false;
+
+async function confirmSyncCacheIdSaved(expectedId) {
+    return confirmSettingsSyncCacheId({
+        fetchImpl: globalThis.fetch,
+        getRequestHeaders: typeof getRequestHeaders === "function" ? getRequestHeaders : null,
+        settingsKey: extensionName,
+        expectedSyncCacheId: expectedId,
+    });
+}
+
+async function retrySyncCacheIdClaim() {
+    if (syncCacheIdClaimed || syncCacheIdClaimInFlight) return syncCacheIdClaimed;
+    const id = getSettings()?._syncCacheId;
+    if (typeof id !== "string" || !id) return false;
+    syncCacheIdClaimInFlight = true;
+    try {
+        const confirmed = await confirmSyncCacheIdSaved(id);
+        if (confirmed) {
+            syncCacheIdClaimed = true;
+            safeSetStorage(SYNC_CACHE_ID_KEY, id);
+            accountStorageScope = createAccountStorageScope(id);
+            promptHistory = accountStorageScope
+                ? normalizePromptHistory(safeParse(accountStorageScope.promptHistoryKey, []))
+                : [];
+            await initializeGalleryRepository();
+            log("Account sync identity confirmed; gallery and prompt history are now account-scoped");
+        }
+        return confirmed;
+    } finally {
+        syncCacheIdClaimInFlight = false;
+    }
+}
+
+function confirmSettingsSaveEvent(expectedValues = getSettings(), timeoutMs = 2500) {
+    const expected = cloneSynchronizedValue({ _syncCacheId: getSettings()?._syncCacheId, ...expectedValues });
+    const confirmer = createSettingsSaveEventConfirmer({
+        eventSource: hostScriptModule?.eventSource,
+        eventTypes: hostScriptModule?.event_types,
+        timeoutMs,
+        confirm: () => confirmSettingsValues({
+            fetchImpl: globalThis.fetch,
+            getRequestHeaders,
+            settingsKey: extensionName,
+            expectedValues: expected,
+            timeoutMs,
+        }),
+    });
+    return confirmer();
+}
+
+function clearPendingSyncMarkers() {
+    for (const key of Object.keys(BACKUP_KEYS)) {
+        try {
+            localStorage.removeItem(`${PENDING_SYNC_MARKER_PREFIX}${key}`);
+        } catch { /* best effort */ }
+    }
 }
 
 async function saveBackupToSettings(localKey, data) {
-    if (!writeBackupToSettings(localKey, data)) {
-        return false;
-    }
-
-    await flushSettingsBackup();
-    return true;
+    const backupKey = BACKUP_KEYS[localKey];
+    const settings = extension_settings?.[extensionName];
+    if (!backupKey || !settings) return false;
+    const result = await persistSynchronizedStore({
+        storage: localStorage,
+        settings,
+        localKey,
+        backupKey,
+        value: data,
+        save: saveSettings,
+        acknowledge: confirmSettingsSaveEvent,
+    });
+    if (!syncCacheIdClaimed) await retrySyncCacheIdClaim();
+    return result.confirmed;
 }
 
 function saveLocalStoreBackup(localKey, data, errorMessage) {
@@ -1334,7 +1494,7 @@ function saveLocalStoreBackup(localKey, data, errorMessage) {
     return backupSaved;
 }
 
-async function saveLocalStoreBackupNow(localKey, data, errorMessage) {
+async function saveLocalStoreBackupNow(localKey, data, errorMessage, settingsChanges = {}) {
     const backupKey = BACKUP_KEYS[localKey];
     const settings = extension_settings?.[extensionName];
     if (!backupKey || !settings) return false;
@@ -1345,12 +1505,21 @@ async function saveLocalStoreBackupNow(localKey, data, errorMessage) {
             localKey,
             backupKey,
             value: data,
-            save: flushSettingsBackup,
+            save: saveSettings,
+            acknowledge: confirmSettingsSaveEvent,
+            settingsChanges,
         });
         if (!result.cacheSaved) {
             log(`Local cache write failed for ${localKey}: ${result.cacheError?.message || "unknown error"}`);
-            qigToast.warning("Saved to your SillyTavern account, but this browser's local cache could not be updated.");
+            qigToast.warning(result.confirmed
+                ? "Saved to your SillyTavern account, but this browser's local cache could not be updated."
+                : "Server synchronisation is unconfirmed and this browser's local cache could not be updated. Keep this tab open and retry.");
         }
+        if (result.confirmed === false) {
+            log(`Server synchronization for ${localKey} was not positively confirmed; the local copy stays authoritative until retry`);
+            if (result.cacheSaved) qigToast.warning("Saved in this browser; server synchronisation is pending and will retry when settings are next saved.");
+        }
+        if (!syncCacheIdClaimed) await retrySyncCacheIdClaim();
         return true;
     } catch (error) {
         log(`Server synchronization failed for ${localKey}: ${error.message}`);
@@ -1422,26 +1591,57 @@ let connectionProfiles = safeParse("qig_profiles", {});
 let charRefImages = safeParse("qig_char_ref_images", {});
 let generationPresets = safeParse("qig_gen_presets", []);
 let comfyWorkflows = safeParse("qig_comfy_workflows", []);
+let configurations = safeParse("qig_configurations", []);
 let contextualFilters = safeParse("qig_contextual_filters", []);
 let filterPools = safeParse("qig_filter_pools", []);
 let activeFilterPoolIdsGlobal = safeParse("qig_active_pool_ids_global", []);
 let activeFilterPoolIdsByCard = safeParse("qig_active_pool_ids_by_card", {});
 let activeFilterPoolIdsByChar = safeParse("qig_active_pool_ids_by_char", {});
 let contextMediaLibrary;
+let contextMediaQuarantined = false;
+let contextMediaTestController = null;
+function quarantineContextMediaData(reason) {
+    contextMediaQuarantined = true;
+    try {
+        const existing = safeParse("qig_context_media_quarantined", null);
+        const previous = existing && typeof existing === "object" && !Array.isArray(existing) ? existing : {};
+        let serverRaw = null;
+        try {
+            const backup = extension_settings?.[extensionName]?._backupContextMedia;
+            serverRaw = backup === undefined || backup === null ? null : JSON.stringify(backup);
+        } catch { /* host settings not loaded yet */ }
+        let localRaw = null;
+        try {
+            localRaw = localStorage.getItem(CONTEXT_MEDIA_STORE_KEY);
+        } catch { /* storage unavailable */ }
+        const next = {
+            ...previous,
+            reason: String(reason?.message || reason || "unsupported"),
+            localRaw,
+            serverRaw,
+            at: new Date().toISOString(),
+        };
+        safeSetStorage("qig_context_media_quarantined", JSON.stringify(next), "Failed to quarantine unsupported Context Media data.");
+    } catch (quarantineError) {
+        console.warn(`[Quick Image Gen] Failed to quarantine Context Media data: ${quarantineError.message}`);
+    }
+}
 try {
     contextMediaLibrary = normalizeContextMediaLibrary(safeParse(CONTEXT_MEDIA_STORE_KEY, {}));
 } catch (error) {
-    console.warn(`[Quick Image Gen] Ignoring invalid Context Media storage: ${error.message}`);
-    try { localStorage.removeItem(CONTEXT_MEDIA_STORE_KEY); } catch { /* restore from backup when available */ }
+    console.warn(`[Quick Image Gen] Quarantining unsupported Context Media storage: ${error.message}`);
+    quarantineContextMediaData(error);
     contextMediaLibrary = normalizeContextMediaLibrary({});
 }
-let selectedComfyWorkflowId = "";
 let isGenerating = false;
 const generationRunManager = new GenerationRunManager();
 const runSerializedTextAITask = createAbortableSerializedRunner();
 const regenerationReferenceStore = new RegenerationReferenceStore();
 let regenerationReferenceAccountId = null;
 let activeGenerationRun = null;
+let reviewDisableRevision = 0;
+let reviewPreviouslyEnabled = false;
+const a1111SubmittedRunIds = new Set();
 let activeComfyPrompt = null;
 let activeExternalGenerationRun = null;
 let externalGenerationTail = Promise.resolve();
@@ -1460,6 +1660,8 @@ const _autoInjectTimeouts = new Map();
 let _autoGenerateEligibleCount = 0;
 let _autoGenerateLastEligibleMessageIndex = null;
 let _contextMediaTimeout = null;
+let _contextMediaPendingSnapshot = null;
+let _contextMediaActiveSnapshot = null;
 let _contextMediaController = null;
 let _contextMediaEligibleCount = 0;
 let _contextMediaLastEligibleMessage = null;
@@ -1528,19 +1730,35 @@ function generateRandomSeed() {
     return Math.floor(Math.random() * 2147483647);
 }
 
+// Providers accept unsigned 32-bit seeds (or -1 for random). Everything else is
+// normalized here so metadata never records a different seed than the one sent.
+const SEED_MAX = 0xffffffff;
+
+function normalizeGenerationSeed(value) {
+    if (value == null || value === "") return -1;
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return -1;
+    if (numeric < -1) return -1;
+    if (numeric > SEED_MAX) return SEED_MAX;
+    return Math.floor(numeric);
+}
+
+function seedForBatchIndex(baseSeed, index) {
+    if (baseSeed < 0) return baseSeed;
+    return (baseSeed + index) % (SEED_MAX + 1);
+}
+
 function resolveRandomSeed(seedValue = -1, target = null) {
-    const numericSeed = Number(seedValue);
-    if (Number.isFinite(numericSeed) && numericSeed >= 0) return numericSeed;
+    const numericSeed = normalizeGenerationSeed(seedValue);
+    if (numericSeed >= 0) return numericSeed;
     const resolvedSeed = generateRandomSeed();
     if (target && typeof target === "object") target.__qigResolvedSeed = resolvedSeed;
     return resolvedSeed;
 }
 
 function normalizeSeedOverride(seedValue) {
-    if (seedValue == null || seedValue === "") return null;
-    const numericSeed = Number(seedValue);
-    if (!Number.isFinite(numericSeed) || numericSeed < 0) return null;
-    return Math.floor(numericSeed);
+    const normalized = normalizeGenerationSeed(seedValue);
+    return normalized >= 0 ? normalized : null;
 }
 
 function getGenerationSeedKey(settings = getSettings()) {
@@ -1549,8 +1767,7 @@ function getGenerationSeedKey(settings = getSettings()) {
 
 function getGenerationSeedValue(settings = getSettings()) {
     const source = settings || getSettings();
-    const value = Number(source?.[getGenerationSeedKey(source)]);
-    return Number.isFinite(value) ? value : -1;
+    return normalizeGenerationSeed(source?.[getGenerationSeedKey(source)]);
 }
 
 function setGenerationSeedValue(settings, value) {
@@ -1673,20 +1890,12 @@ async function runInternalQuietPromptRequest(instruction, {
         skipWIAN: true,
         quietName: quietName || `ImageGen_${Date.now()}`,
         quietToLoud: false,
+        signal,
     };
 
-    try {
-        return await runSerializedTextAITask(() => generateQuietPrompt(quietOptions), signal);
-    } catch (e) {
-        if (e.name === "AbortError") throw e;
-        log(`${requestLabel}: generateQuietPrompt with options failed: ${e.message}, using simple call`);
-        return await runSerializedTextAITask(() => generateQuietPrompt({
-            quietPrompt,
-            skipWIAN: true,
-            quietName: quietName || `ImageGen_${Date.now()}`,
-            quietToLoud: false,
-        }), signal);
-    }
+    // No retry: the "simple call" previously used the same options object and could
+    // only duplicate a failed request (double latency, double billing).
+    return await runSerializedTextAITask(() => generateQuietPrompt(quietOptions), signal);
 }
 
 async function callInternalQuietPrompt(instruction, { signal = null, quietName, label = "internal quiet prompt", prefill = "" } = {}) {
@@ -1771,113 +1980,40 @@ async function callInternalStandaloneLLM(instruction, {
     label = "internal standalone prompt",
     prefill = "",
     returnMeta = false,
+    role = "default",
 } = {}) {
     const requestLabel = String(label || quietName || "internal standalone prompt");
     const resolvedPrefill = String(prefill || "");
-    let attemptedDirectRawRequest = false;
-
-    const maybeCallDirectMainChatRawRequest = async () => {
-        if (attemptedDirectRawRequest || !canUseDirectMainChatRawRequest()) return null;
-        attemptedDirectRawRequest = true;
-        try {
-            const meta = await runSerializedTextAITask(() => callDirectMainChatRawRequest(instruction, {
-                signal,
-                prefill: resolvedPrefill,
-            }), signal);
-            if (meta?.text) {
-                return meta;
-            }
-            logLLMHelperResponseMeta(meta, `${requestLabel}: direct backend response`);
-            log(`${requestLabel}: direct backend returned no text, using quiet prompt fallback`);
-        } catch (e) {
-            if (e.name === "AbortError") throw e;
-            log(`${requestLabel}: direct backend request failed: ${e.message}, using quiet prompt fallback`);
-        }
-        return null;
-    };
+    const prompt = ["user", "system"].includes(role)
+        ? buildTextAIRequestMessages(instruction, { role })
+        : instruction;
 
     return await runWithInternalLLMRequest(requestLabel, async () => {
+        let response;
+        let requestMethod;
+        const options = { prompt, quietToLoud: false, trimNames: false, prefill: resolvedPrefill, signal };
+        // Select a supported route before submission. An empty or failed response must not
+        // silently trigger another paid request or switch to ambient chat context.
         if (returnMeta && typeof generateRawData === "function") {
-            try {
-                const response = await runSerializedTextAITask(() => generateRawData({
-                    prompt: instruction,
-                    quietToLoud: false,
-                    prefill: resolvedPrefill,
-                }), signal);
-                const details = extractLLMResponseDetails(response);
-                const meta = {
-                    ...details,
-                    route: "main_chat_ai",
-                    requestMethod: "generateRawData",
-                };
-                if (details.text) {
-                    return returnMeta ? meta : details.text;
-                }
-                logLLMHelperResponseMeta(meta, `${requestLabel}: generateRawData response`);
-                const directMeta = await maybeCallDirectMainChatRawRequest();
-                if (directMeta?.text) {
-                    return returnMeta ? directMeta : directMeta.text;
-                }
-                log(`${requestLabel}: generateRawData returned no text, using quiet prompt fallback`);
-            } catch (e) {
-                if (e.name === "AbortError") throw e;
-                const directMeta = await maybeCallDirectMainChatRawRequest();
-                if (directMeta?.text) {
-                    return returnMeta ? directMeta : directMeta.text;
-                }
-                log(`${requestLabel}: generateRawData failed: ${e.message}, using quiet prompt fallback`);
-            }
+            requestMethod = "generateRawData";
+            response = await runSerializedTextAITask(() => generateRawData(options), signal);
         } else if (typeof generateRaw === "function") {
-            try {
-                const text = await runSerializedTextAITask(() => generateRaw({
-                    prompt: instruction,
-                    quietToLoud: false,
-                    trimNames: false,
-                    prefill: resolvedPrefill,
-                }), signal);
-                const meta = {
-                    text,
-                    route: "main_chat_ai",
-                    sourcePath: "response",
-                    extractionStatus: text ? "text" : "empty_string",
-                    finishReason: null,
-                    responseShape: summarizeLLMValueShape(text),
-                    contentShape: summarizeLLMValueShape(text),
-                    requestMethod: "generateRaw",
-                };
-                return returnMeta ? meta : text;
-            } catch (e) {
-                if (e.name === "AbortError") throw e;
-                const directMeta = await maybeCallDirectMainChatRawRequest();
-                if (directMeta?.text) {
-                    return returnMeta ? directMeta : directMeta.text;
-                }
-                log(`${requestLabel}: generateRaw failed: ${e.message}, using quiet prompt fallback`);
-            }
+            requestMethod = "generateRaw";
+            response = await runSerializedTextAITask(() => generateRaw(options), signal);
+        } else if (canUseDirectMainChatRawRequest()) {
+            const meta = await runSerializedTextAITask(() => callDirectMainChatRawRequest(prompt, { signal, prefill: resolvedPrefill }), signal);
+            return returnMeta ? meta : meta.text;
+        } else {
+            if (Array.isArray(prompt)) throw new Error("This connection cannot send an explicit Text AI message role. Use a supported raw request or a separate AI profile.");
+            requestMethod = "generateQuietPrompt";
+            response = await runInternalQuietPromptRequest(instruction, { signal, quietName, requestLabel, prefill: resolvedPrefill });
         }
-
-        const directMeta = await maybeCallDirectMainChatRawRequest();
-        if (directMeta?.text) {
-            return returnMeta ? directMeta : directMeta.text;
-        }
-
-        const fallbackText = await runInternalQuietPromptRequest(instruction, {
-            signal,
-            quietName,
-            requestLabel: `${requestLabel} fallback`,
-            prefill: resolvedPrefill,
-        });
-        const fallbackMeta = {
-            text: fallbackText,
+        const meta = {
+            ...extractLLMResponseDetails(response),
             route: "main_chat_ai",
-            sourcePath: "response",
-            extractionStatus: fallbackText ? "text" : "empty_string",
-            finishReason: null,
-            responseShape: summarizeLLMValueShape(fallbackText),
-            contentShape: summarizeLLMValueShape(fallbackText),
-            requestMethod: "generateQuietPrompt",
+            requestMethod,
         };
-        return returnMeta ? fallbackMeta : fallbackText;
+        return returnMeta ? meta : meta.text;
     });
 }
 
@@ -2159,7 +2295,7 @@ const PROVIDER_KEYS = {
     fal: ["falKey", "falModel"],
     together: ["togetherKey", "togetherModel"],
     zai: ["zaiKey", "zaiModel", "zaiQuality"],
-    local: ["localUrl", "localType", "localModel", "localRefImage", "localDenoise", "a1111Model", "a1111ClipSkip", "a1111Scheduler", "a1111RestoreFaces", "a1111Tiling", "a1111Subseed", "a1111SubseedStrength", "a1111Adetailer", "a1111AdetailerModel", "a1111AdetailerPrompt", "a1111AdetailerNegative", "a1111AdetailerDenoise", "a1111AdetailerConfidence", "a1111AdetailerMaskBlur", "a1111AdetailerDilateErode", "a1111AdetailerInpaintOnlyMasked", "a1111AdetailerInpaintPadding", "a1111Adetailer2", "a1111Adetailer2Model", "a1111Adetailer2Prompt", "a1111Adetailer2Negative", "a1111Adetailer2Denoise", "a1111Adetailer2Confidence", "a1111Adetailer2MaskBlur", "a1111Adetailer2DilateErode", "a1111Adetailer2InpaintOnlyMasked", "a1111Adetailer2InpaintPadding", "a1111Loras", "a1111Vae", "a1111HiresFix", "a1111HiresUpscaler", "a1111HiresScale", "a1111HiresSteps", "a1111HiresDenoise", "a1111HiresSampler", "a1111HiresScheduler", "a1111HiresPrompt", "a1111HiresNegative", "a1111HiresResizeX", "a1111HiresResizeY", "a1111SaveToWebUI", "a1111IpAdapter", "a1111IpAdapterMode", "a1111IpAdapterWeight", "a1111IpAdapterPixelPerfect", "a1111IpAdapterResizeMode", "a1111IpAdapterControlMode", "a1111IpAdapterStartStep", "a1111IpAdapterEndStep", "a1111ControlNet", "a1111ControlNetModel", "a1111ControlNetModule", "a1111ControlNetWeight", "a1111ControlNetResizeMode", "a1111ControlNetControlMode", "a1111ControlNetPixelPerfect", "a1111ControlNetGuidanceStart", "a1111ControlNetGuidanceEnd", "a1111ControlNetImage", "comfyWorkflow", "comfyModelLoader", "comfyClipSkip", "comfyDenoise", "comfyScheduler", "comfyTimeout", "comfyUpscale", "comfyUpscaleModel", "comfyLoras", "comfyOutputNodeIds", "comfyOutputImageIndex", "comfyAllowLegacyInterrupt", "comfySkipNegativePrompt", "comfyFluxClipModel1", "comfyFluxClipModel2", "comfyFluxVaeModel", "comfyFluxClipType"],
+    local: ["localUrl", "localType", "localModel", "localRefImage", "localDenoise", "a1111Model", "a1111ClipSkip", "a1111Scheduler", "a1111RestoreFaces", "a1111Tiling", "a1111Subseed", "a1111SubseedStrength", "a1111Adetailer", "a1111AdetailerModel", "a1111AdetailerPrompt", "a1111AdetailerNegative", "a1111AdetailerDenoise", "a1111AdetailerConfidence", "a1111AdetailerMaskBlur", "a1111AdetailerDilateErode", "a1111AdetailerInpaintOnlyMasked", "a1111AdetailerInpaintPadding", "a1111Adetailer2", "a1111Adetailer2Model", "a1111Adetailer2Prompt", "a1111Adetailer2Negative", "a1111Adetailer2Denoise", "a1111Adetailer2Confidence", "a1111Adetailer2MaskBlur", "a1111Adetailer2DilateErode", "a1111Adetailer2InpaintOnlyMasked", "a1111Adetailer2InpaintPadding", "a1111Loras", "a1111Vae", "a1111HiresFix", "a1111HiresUpscaler", "a1111HiresScale", "a1111HiresSteps", "a1111HiresDenoise", "a1111HiresSampler", "a1111HiresScheduler", "a1111HiresPrompt", "a1111HiresNegative", "a1111HiresResizeX", "a1111HiresResizeY", "a1111SaveToWebUI", "a1111IpAdapter", "a1111IpAdapterMode", "a1111IpAdapterWeight", "a1111IpAdapterPixelPerfect", "a1111IpAdapterResizeMode", "a1111IpAdapterControlMode", "a1111IpAdapterStartStep", "a1111IpAdapterEndStep", "a1111ControlNet", "a1111ControlNetModel", "a1111ControlNetModule", "a1111ControlNetWeight", "a1111ControlNetResizeMode", "a1111ControlNetControlMode", "a1111ControlNetPixelPerfect", "a1111ControlNetGuidanceStart", "a1111ControlNetGuidanceEnd", "a1111ControlNetImage", "comfyWorkflow", "comfyModelLoader", "comfyClipSkip", "comfyDenoise", "comfyScheduler", "comfyTimeout", "comfyUpscale", "comfyUpscaleModel", "comfyLoras", "comfyOutputNodeIds", "comfyOutputImageIndex", "comfyAllowLegacyInterrupt", "comfySkipNegativePrompt", "comfyFluxClipModel1", "comfyFluxClipModel2", "comfyFluxVaeModel", "comfyFluxClipType", "a1111InterruptServer", "comfyWorkflowComponentOverrides"],
     proxy: ["proxyUrl", "proxyKey", "proxyModel", "proxyLoras", "proxyFacefix", "proxyExtraInstructions", "proxyRefImages", "proxyTimeout", "proxyComfyMode", "proxyComfyTimeout", "proxyComfyNodeId", "proxyComfyWorkflow"],
     custom: ["customApiUrl", "customApiKey", "customApiAuthType", "customApiAuthName", "customApiModel", "customApiPollUrl", "customApiRefImages"]
 };
@@ -2505,11 +2641,10 @@ function normalizeProxyChatImageSettings(target, source = target) {
 }
 
 function inferProxyEndpointMode(proxyUrl) {
-    const trimmed = String(proxyUrl || "").trim().replace(/\/$/, "");
-    if (/\/chat\/completions$/i.test(trimmed)) return "chat_completions";
-    if (/\/images(?:\/generations)?$/i.test(trimmed)) return "images_generations";
-    if (trimmed.includes("/v1") && !trimmed.includes("/images")) return "chat_completions";
-    return "images_generations";
+    // Default to the documented images endpoint. Only an explicit chat path or
+    // Chat Image mode routes to chat/completions; a bare "/v1" base must never
+    // be reclassified as a chat endpoint.
+    return isOpenAIChatCompletionsEndpoint(proxyUrl) ? "chat_completions" : "images_generations";
 }
 
 function resolveProxyEndpointMode(proxyUrl, settings) {
@@ -2783,7 +2918,7 @@ function buildProxyImagesPayload(prompt, negative, s, refImages, payloadMode, pr
     const promptText = normalizedPrompt.promptText || getProxyPromptFallback(allRefImages.length > 0);
     const strictPrompt = payloadMode === "openai_strict"
         ? [promptText, negative ? `Avoid: ${negative}` : "", s.proxyExtraInstructions || ""].filter(Boolean).join("\n")
-        : promptText;
+        : [promptText, s.proxyExtraInstructions || ""].filter(Boolean).join("\n");
     const payload = {
         model: s.proxyModel,
         prompt: strictPrompt,
@@ -3060,6 +3195,28 @@ function hasComfyConnectionProfileSignals(profile) {
         || (!!profile.comfySkipNegativePrompt && !!String(profile.comfyFluxClipModel1 || "").trim());
 }
 
+function inferLegacyLocalBackend(settings) {
+    if (settings?.localType === "a1111" || settings?.localType === "comfyui") return settings.localType;
+    if (!settings || typeof settings !== "object" || Array.isArray(settings)) return "";
+    const hasComfy = hasComfyConnectionProfileSignals(settings);
+    const hasA1111 = [
+        "a1111Model",
+        "a1111Vae",
+        "a1111Loras",
+        "a1111AdetailerModel",
+        "a1111Adetailer2Model",
+        "a1111HiresUpscaler",
+        "a1111IpAdapterMode",
+        "a1111ControlNetModel",
+        "a1111ControlNetModule",
+        "a1111ControlNetImage",
+    ].some(key => String(settings[key] || "").trim())
+        || ["a1111Adetailer", "a1111Adetailer2", "a1111HiresFix", "a1111IpAdapter", "a1111ControlNet"]
+            .some(key => settings[key] === true);
+    if (hasComfy === hasA1111) return "";
+    return hasComfy ? "comfyui" : "a1111";
+}
+
 function normalizeAutoGenerateEveryMessages(value) {
     return Math.trunc(clampNumber(value, AUTO_GENERATE_EVERY_MIN, AUTO_GENERATE_EVERY_MAX, AUTO_GENERATE_EVERY_DEFAULT));
 }
@@ -3258,33 +3415,59 @@ async function replicateFetch(action, payload, signal) {
 
 function isExactReplicateApiUrl(value) {
     try {
-        const url = new URL(value);
-        return url.protocol === "https:" && url.hostname.toLowerCase().replace(/\.$/, "") === "api.replicate.com";
+        return new URL(value).origin === "https://api.replicate.com";
     } catch {
         return false;
     }
 }
 
-// CORS-aware fetch: tries direct, falls back to ST's /proxy/ endpoint
+// Choose the transport before mutations; only retrievals may retry through ST's proxy.
 const _corsProxyStates = new Map(); // 0=unknown, 1=direct works, 2=proxy works, -1=proxy disabled, -2=blocked by basicAuth
+const _corsProxyOrigins = new Set(); // Proven proxy routes, not direct CORS permissions or credentials.
 async function corsFetch(url, opts = {}) {
     const { qigAllowProxy = true, ...fetchOptions } = opts;
     const currentUrl = globalThis.location?.href || "http://localhost/";
     let crossOrigin = true;
     let proxyStateKey = "";
+    let targetOrigin = "";
+    let targetUrl = null;
     try {
-        crossOrigin = new URL(url, currentUrl).origin !== new URL(currentUrl).origin;
+        targetUrl = new URL(url, currentUrl);
+        targetOrigin = targetUrl.origin;
+        crossOrigin = targetOrigin !== new URL(currentUrl).origin;
         if (crossOrigin) proxyStateKey = getCorsProxyStateKey(url, fetchOptions, currentUrl);
     } catch { /* invalid URLs are left to fetch */ }
+    if (targetUrl && (!/^https?:$/.test(targetUrl.protocol) || targetUrl.username || targetUrl.password)) {
+        throw new TypeError("Provider URLs must use HTTP or HTTPS without embedded credentials");
+    }
     const proxyState = proxyStateKey ? (_corsProxyStates.get(proxyStateKey) || 0) : 0;
     const setProxyState = (state) => {
         if (proxyStateKey) _corsProxyStates.set(proxyStateKey, state);
     };
     const requestHasOwnAuthorization = hasAuthorizationHeader(fetchOptions.headers);
-    // Prefer direct fetch; only skip direct cross-origin when proxy has already been proven required.
-    if (!crossOrigin || !qigAllowProxy || proxyState !== 2) {
+    const retrieval = ["GET", "HEAD"].includes(String(fetchOptions.method || "GET").toUpperCase());
+    let useProxy = crossOrigin && qigAllowProxy && (proxyState === 2 || (!retrieval && proxyState !== 1 && _corsProxyOrigins.has(targetOrigin)));
+    if (crossOrigin && qigAllowProxy && !retrieval && !useProxy && proxyState !== 1) {
+        const probeUrl = new URL(url, currentUrl);
+        probeUrl.search = "";
+        probeUrl.hash = "";
+        const deadline = createAbortDeadline(fetchOptions.signal, 5000, "CORS transport selection timed out");
+        const probeOptions = { method: "HEAD", credentials: "omit", redirect: "error", referrerPolicy: "no-referrer", signal: deadline.signal };
         try {
-            const res = await fetch(url, fetchOptions);
+            const response = await corsFetch(probeUrl.href, probeOptions);
+            void response.body?.cancel?.().catch(() => {});
+            const route = _corsProxyStates.get(getCorsProxyStateKey(probeUrl.href, probeOptions, currentUrl));
+            if (route !== 1 && route !== 2) throw new TypeError("Could not select a reachable CORS transport; no mutation was sent");
+            useProxy = route === 2;
+        } finally {
+            deadline.dispose();
+        }
+    }
+    if (fetchOptions.signal?.aborted) throw getAbortError(fetchOptions.signal);
+    // Prefer direct fetch; only skip direct cross-origin when proxy has already been proven required.
+    if (!useProxy) {
+        try {
+            const res = await fetch(url, { ...fetchOptions, ...(crossOrigin ? { redirect: "error" } : {}) });
             if (crossOrigin && proxyState !== -2) setProxyState(1);
             return res;
         } catch (e) {
@@ -3292,6 +3475,9 @@ async function corsFetch(url, opts = {}) {
             if (!(e instanceof TypeError)) throw e;
             if (!crossOrigin) throw e;
             if (!qigAllowProxy) throw e;
+            if (!retrieval) {
+                throw new TypeError("Request may already have been accepted; it was not retried through the CORS proxy. Configure a reachable endpoint before trying again.", { cause: e });
+            }
             // TypeError on cross-origin usually means CORS/network failure, try proxy.
         }
     }
@@ -3302,42 +3488,47 @@ async function corsFetch(url, opts = {}) {
     if (proxyState === -1) {
         throw new TypeError(getCorsFailureMessage(url));
     }
-    const proxyUrl = `/proxy/${url}`;
+    const proxyUrl = `/proxy/${new URL(url, currentUrl).href}`;
     // Merge ST request headers (CSRF token) into proxy requests
-    const stHeaders = typeof getRequestHeaders === 'function' ? getRequestHeaders() : {};
-    const mergedHeaders = { ...stHeaders, ...fetchOptions.headers };
-    const res = await fetch(proxyUrl, { ...fetchOptions, headers: mergedHeaders });
+    const mergedHeaders = new Headers(getSameOriginHeaders());
+    mergedHeaders.delete("Authorization");
+    new Headers(fetchOptions.headers).forEach((value, name) => mergedHeaders.set(name, value));
+    const res = await fetch(proxyUrl, { ...fetchOptions, headers: mergedHeaders, credentials: "same-origin", redirect: "error" });
     if (requestHasOwnAuthorization && res.status === 401 && isBasicAuthChallenge(res.headers.get("www-authenticate"))) {
+        _corsProxyOrigins.delete(targetOrigin);
         setProxyState(-2);
         await readResponseText(res, 64 * 1024).catch(() => {});
         throw new CorsProxyBasicAuthError(url);
     }
     if (res.status === 404 && await clonedResponseIncludes(res, "CORS proxy is disabled")) {
+        _corsProxyOrigins.delete(targetOrigin);
         setProxyState(-1);
         throw new TypeError(getCorsFailureMessage(url));
     }
     if (res.status !== 403) setProxyState(2);
+    if (res.ok || (fetchOptions.method === "HEAD" && res.status !== 403)) _corsProxyOrigins.add(targetOrigin);
     return res;
 }
 
 // A1111 Model API helpers
 let a1111ControlNetScriptKey = "ControlNet";
-async function fetchA1111Models(url) {
+async function fetchA1111Models(url, signal = null) {
     try {
         const baseUrl = normalizeA1111BaseUrl(url);
-        const res = await corsFetch(`${baseUrl}/sdapi/v1/sd-models`, { redirect: "error" });
+        const res = await corsFetch(`${baseUrl}/sdapi/v1/sd-models`, { redirect: "error", signal });
         if (!res.ok) throw new Error(`Failed to fetch models: ${res.status}`);
         const models = await readResponseJson(res, MAX_DISCOVERY_RESPONSE_BYTES);
         const normalizedModels = models.map(m => ({ title: m.title, name: m.model_name }));
         log(`A1111: Found ${normalizedModels.length} models`);
         return normalizedModels;
     } catch (e) {
+        if (signal?.aborted) throw signal.reason || e;
         log(`A1111: Error fetching models: ${e.message}`);
         return [];
     }
 }
 
-async function fetchControlNetModels(url) {
+async function fetchControlNetModels(url, signal = null) {
     const baseUrl = normalizeA1111BaseUrl(url);
     const endpoints = [
         `${baseUrl}/controlnet/model_list`,
@@ -3345,71 +3536,57 @@ async function fetchControlNetModels(url) {
     ];
     for (const endpoint of endpoints) {
         try {
-            const res = await corsFetch(endpoint, { redirect: "error" });
+            const res = await corsFetch(endpoint, { redirect: "error", signal });
             if (!res.ok) continue;
             const data = await readResponseJson(res, MAX_DISCOVERY_RESPONSE_BYTES);
             if (Array.isArray(data?.model_list)) return data.model_list;
-        } catch {}
+        } catch (error) {
+            if (signal?.aborted) throw signal.reason || error;
+        }
     }
     return [];
 }
 
-async function switchA1111Model(url, modelTitle) {
+async function getCurrentA1111Model(url, signal = null) {
     try {
         const baseUrl = normalizeA1111BaseUrl(url);
-        log(`A1111: Switching to model: ${modelTitle}`);
-        const res = await corsFetch(`${baseUrl}/sdapi/v1/options`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sd_model_checkpoint: modelTitle }),
-            redirect: "error",
-        });
-        if (!res.ok) throw new Error(`Failed to switch model: ${res.status}`);
-        log(`A1111: Model switched successfully`);
-        return true;
-    } catch (e) {
-        log(`A1111: Error switching model: ${e.message}`);
-        return false;
-    }
-}
-
-async function getCurrentA1111Model(url) {
-    try {
-        const baseUrl = normalizeA1111BaseUrl(url);
-        const res = await corsFetch(`${baseUrl}/sdapi/v1/options`, { redirect: "error" });
+        const res = await corsFetch(`${baseUrl}/sdapi/v1/options`, { redirect: "error", signal });
         if (!res.ok) return null;
         const opts = await readResponseJson(res, MAX_DISCOVERY_RESPONSE_BYTES);
         return opts.sd_model_checkpoint || null;
-    } catch {
+    } catch (error) {
+        if (signal?.aborted) throw signal.reason || error;
         return null;
     }
 }
 
-async function fetchA1111Upscalers(url) {
+async function fetchA1111Upscalers(url, signal = null) {
     try {
-        const res = await corsFetch(`${normalizeA1111BaseUrl(url)}/sdapi/v1/upscalers`, { redirect: "error" });
+        const res = await corsFetch(`${normalizeA1111BaseUrl(url)}/sdapi/v1/upscalers`, { redirect: "error", signal });
         if (!res.ok) throw new Error(`${res.status}`);
         return (await readResponseJson(res, MAX_DISCOVERY_RESPONSE_BYTES)).map(u => u.name);
     } catch (e) {
+        if (signal?.aborted) throw signal.reason || e;
         return ["Latent", "Latent (antialiased)", "Latent (bicubic)",
                 "Latent (bicubic antialiased)", "Latent (nearest)",
                 "Latent (nearest-exact)", "None"];
     }
 }
 
-async function fetchA1111VAEs(url) {
+async function fetchA1111VAEs(url, signal = null) {
     try {
-        const res = await corsFetch(`${normalizeA1111BaseUrl(url)}/sdapi/v1/sd-vae`, { redirect: "error" });
+        const res = await corsFetch(`${normalizeA1111BaseUrl(url)}/sdapi/v1/sd-vae`, { redirect: "error", signal });
         if (!res.ok) throw new Error(`${res.status}`);
         return (await readResponseJson(res, MAX_DISCOVERY_RESPONSE_BYTES)).map(v => v.model_name);
     } catch (e) {
+        if (signal?.aborted) throw signal.reason || e;
         log("Failed to fetch VAE list: " + e.message);
         return [];
     }
 }
 
-async function fetchComfyNodeModelList(baseUrl, nodeClass, inputKey) {
-    const res = await corsFetch(`${baseUrl}/object_info/${nodeClass}`, { redirect: "error" });
+async function fetchComfyNodeModelList(baseUrl, nodeClass, inputKey, signal = null) {
+    const res = await corsFetch(`${baseUrl}/object_info/${nodeClass}`, { redirect: "error", signal });
     if (!res.ok) {
         if (res.status === 403) {
             throw new Error("ComfyUI returned 403 Forbidden. This is usually caused by ComfyUI-Manager's security check. Fix: in ComfyUI-Manager settings, set Security Level to 'normal', then restart ComfyUI. Also ensure ComfyUI is launched with --enable-cors-header.");
@@ -3421,24 +3598,71 @@ async function fetchComfyNodeModelList(baseUrl, nodeClass, inputKey) {
     return Array.isArray(values) ? values : [];
 }
 
-async function fetchComfyUIModels(url, modelLoader = "checkpoint") {
+async function fetchComfyUIModels(url, modelLoader = "checkpoint", signal = null) {
     const rethrow403 = (e) => { if (e.message?.includes("403 Forbidden")) throw e; return []; };
     try {
         const baseUrl = url.replace(/\/+$/, "");
         const [ckpts, unets] = await Promise.all([
-            fetchComfyNodeModelList(baseUrl, "CheckpointLoaderSimple", "ckpt_name").catch(rethrow403),
-            fetchComfyNodeModelList(baseUrl, "UNETLoader", "unet_name").catch(rethrow403)
+            fetchComfyNodeModelList(baseUrl, "CheckpointLoaderSimple", "ckpt_name", signal).catch(rethrow403),
+            fetchComfyNodeModelList(baseUrl, "UNETLoader", "unet_name", signal).catch(rethrow403)
         ]);
 
         return selectComfyModelList({ checkpoints: ckpts, unets }, modelLoader);
     } catch (e) {
+        if (signal?.aborted) throw signal.reason || e;
         log("Failed to fetch ComfyUI models: " + e.message);
         if (e.message?.includes("403 Forbidden")) throw e;
         return [];
     }
 }
 
+const COMFY_COMPONENT_SOURCES = [
+    { kind: "clip", nodeClass: "CLIPLoader", inputKey: "clip_name" },
+    { kind: "clip", nodeClass: "DualCLIPLoader", inputKey: "clip_name1" },
+    { kind: "clip", nodeClass: "DualCLIPLoader", inputKey: "clip_name2" },
+    { kind: "vae", nodeClass: "VAELoader", inputKey: "vae_name" },
+];
+
+async function fetchComfyComponentCatalog(url, signal = null) {
+    const baseUrl = String(url || "").replace(/\/+$/, "");
+    const lists = await Promise.all(COMFY_COMPONENT_SOURCES.map(source =>
+        fetchComfyNodeModelList(baseUrl, source.nodeClass, source.inputKey, signal).catch(error => {
+            if (signal?.aborted) throw signal.reason || error;
+            return [];
+        })
+    ));
+    const collect = kind => [...new Set(lists.flatMap((values, index) =>
+        COMFY_COMPONENT_SOURCES[index].kind === kind ? values.filter(value => typeof value === "string") : []
+    ))].sort((a, b) => a.localeCompare(b));
+    return { clip: collect("clip"), vae: collect("vae") };
+}
+
+function fillDatalist(id, values) {
+    const list = document.getElementById(id);
+    if (!list) return;
+    list.replaceChildren();
+    for (const value of values) {
+        const option = list.ownerDocument.createElement("option");
+        option.value = value;
+        list.appendChild(option);
+    }
+}
+
+/** Build select options from a discovered catalogue, keeping a configured value that the server did not report. */
+function catalogSelectOptions(values, configured, leadingOption = null) {
+    const options = leadingOption ? [leadingOption] : [];
+    for (const value of values) {
+        options.push(value && typeof value === "object" ? { ...value } : { value, label: value });
+    }
+    const kept = String(configured ?? "");
+    if (kept && !options.some(option => String(option.value ?? "") === kept)) {
+        options.push({ value: kept, label: `${kept} (not on server)` });
+    }
+    return options;
+}
+
 let comfyModelRefreshSerial = 0;
+let comfyModelRefreshController = null;
 
 async function refreshComfyModelCatalog() {
     const s = getSettings();
@@ -3446,25 +3670,39 @@ async function refreshComfyModelCatalog() {
     if (!s || !modelSelect) return;
 
     const requestId = ++comfyModelRefreshSerial;
+    comfyModelRefreshController?.abort();
+    const controller = new AbortController();
+    comfyModelRefreshController = controller;
+    const deadline = createAbortDeadline(controller.signal, 10_000, "ComfyUI catalogue discovery timed out");
     const baseUrl = String(s.localUrl || "").replace(/\/+$/, "");
     const modelLoader = normalizeComfyModelLoader(s.comfyModelLoader, s);
     const loadedModel = String(s.localModel || "");
+    fillDatalist("qig-comfy-clip-catalog", []);
+    fillDatalist("qig-comfy-vae-catalog", []);
     const loadingOptions = loadedModel
         ? [{ value: loadedModel, label: loadedModel }, { value: "", label: "Loading...", disabled: true }]
         : [{ value: "", label: "Loading..." }];
     replaceSelectOptions(modelSelect, loadingOptions, loadedModel);
 
     let models;
+    let components = { clip: [], vae: [] };
     let error = null;
     try {
-        models = await fetchComfyUIModels(baseUrl, modelLoader);
+        [models, components] = await Promise.all([
+            fetchComfyUIModels(baseUrl, modelLoader, deadline.signal),
+            fetchComfyComponentCatalog(baseUrl, deadline.signal),
+        ]);
     } catch (caught) {
         error = caught;
         models = [];
+    } finally {
+        deadline.dispose();
+        if (comfyModelRefreshController === controller) comfyModelRefreshController = null;
     }
 
     const current = getSettings();
     const isCurrentRequest = requestId === comfyModelRefreshSerial
+        && current?.provider === "local"
         && current?.localType === "comfyui"
         && String(current?.localUrl || "").replace(/\/+$/, "") === baseUrl
         && normalizeComfyModelLoader(current?.comfyModelLoader, current) === modelLoader;
@@ -3483,17 +3721,325 @@ async function refreshComfyModelCatalog() {
         qigToast.error(error.message, "ComfyUI Connection Error", { timeOut: 0, extendedTimeOut: 0, escapeHtml: true });
         return;
     }
+    fillDatalist("qig-comfy-clip-catalog", components.clip);
+    fillDatalist("qig-comfy-vae-catalog", components.vae);
+
     if (models.length > 0) {
+        // Never substitute a different model: an unavailable saved value stays selected so a saved
+        // configuration keeps producing the same request once the backend has that file again.
         const currentModel = String(current.localModel || "");
-        const selectedModel = models.includes(currentModel) ? currentModel : models[0];
-        replaceSelectOptions(modelSelect, models.map(model => ({ value: model, label: model })), selectedModel);
-        if (current.localModel !== selectedModel) {
-            current.localModel = selectedModel;
-            saveSettingsDebounced();
-        }
+        replaceSelectOptions(modelSelect, catalogSelectOptions(models, currentModel, { value: "", label: "-- Select model --" }), currentModel);
         return;
     }
     showCatalogStatus("-- Failed to load (check if ComfyUI running) --");
+}
+
+const COMFY_CHOICE_DISCOVERY_BATCH = 64;
+const COMFY_CHOICE_DISCOVERY_CONCURRENCY = 4;
+const COMFY_CHOICE_DISCOVERY_TIMEOUT_MS = 10_000;
+const COMFY_CHOICE_CACHE_LIMIT = 64;
+const comfyClassInfoCache = new Map();
+let comfyWorkflowChoiceRequestSerial = 0;
+let comfyWorkflowChoiceController = null;
+let comfyWorkflowChoiceState = {
+    signature: "",
+    catalogues: new Map(),
+    errors: new Map(),
+    inspected: new Set(),
+    loading: false,
+    refreshCursor: 0,
+};
+
+function getComfyWorkflowChoiceContext() {
+    const s = getSettings();
+    const workflow = String(s?.comfyWorkflow || "");
+    const baseUrl = String(s?.localUrl || "").replace(/\/+$/, "");
+    const signature = `${baseUrl}\u0000${workflow}`;
+    let candidates = [];
+    let error = null;
+    try {
+        candidates = workflow ? collectComfyWorkflowStringInputCandidates(workflow) : [];
+    } catch (caught) {
+        error = caught;
+    }
+    if (comfyWorkflowChoiceState.signature !== signature) {
+        comfyWorkflowChoiceController?.abort();
+        comfyWorkflowChoiceController = null;
+        comfyWorkflowChoiceRequestSerial += 1;
+        comfyWorkflowChoiceState = {
+            signature,
+            catalogues: new Map(),
+            errors: new Map(),
+            inspected: new Set(),
+            loading: false,
+            refreshCursor: 0,
+        };
+    }
+    return { baseUrl, candidates, error, signature };
+}
+
+function isLikelyComfyComponent(row) {
+    return /(?:loader|model|checkpoint|unet|vae|clip|encoder|lora)/i.test(`${row.classType} ${row.inputName}`)
+        || /\.(?:safetensors|ckpt|pt|pth|bin|gguf|onnx|vae)$/i.test(row.rawValue);
+}
+
+function getCachedComfyClassChoices(cacheKey) {
+    if (!comfyClassInfoCache.has(cacheKey)) return null;
+    const value = comfyClassInfoCache.get(cacheKey);
+    comfyClassInfoCache.delete(cacheKey);
+    comfyClassInfoCache.set(cacheKey, value);
+    return value;
+}
+
+function cacheComfyClassChoices(cacheKey, value) {
+    comfyClassInfoCache.delete(cacheKey);
+    comfyClassInfoCache.set(cacheKey, value);
+    while (comfyClassInfoCache.size > COMFY_CHOICE_CACHE_LIMIT) {
+        comfyClassInfoCache.delete(comfyClassInfoCache.keys().next().value);
+    }
+}
+
+async function fetchComfyClassChoices(baseUrl, classType, { refresh = false, signal = null } = {}) {
+    const cacheKey = `${baseUrl}\u0000${classType}`;
+    const cached = !refresh ? getCachedComfyClassChoices(cacheKey) : null;
+    if (cached) return { cacheKey, byInput: cached, fromCache: true };
+    const deadline = createAbortDeadline(signal, COMFY_CHOICE_DISCOVERY_TIMEOUT_MS, `Timed out loading ${classType} choices`);
+    try {
+        const response = await corsFetch(`${baseUrl}/object_info/${encodeURIComponent(classType)}`, {
+            redirect: "error",
+            signal: deadline.signal,
+        });
+        if (!response.ok) throw new Error(`${classType}: HTTP ${response.status}`);
+        const parsed = parseComfyObjectInfoComboInputs(
+            await readResponseJson(response, MAX_DISCOVERY_RESPONSE_BYTES),
+            classType,
+        );
+        const byInput = new Map(parsed.map(entry => [entry.inputName, entry.choices]));
+        return { cacheKey, byInput, fromCache: false };
+    } finally {
+        deadline.dispose();
+    }
+}
+
+async function discoverComfyWorkflowChoices() {
+    const context = getComfyWorkflowChoiceContext();
+    if (!context.baseUrl || context.error || !context.candidates.length || comfyWorkflowChoiceState.loading) return;
+    const classTypes = [...new Set(context.candidates.map(row => row.classType))]
+        .sort((a, b) => {
+            const aLikely = context.candidates.some(row => row.classType === a && isLikelyComfyComponent(row));
+            const bLikely = context.candidates.some(row => row.classType === b && isLikelyComfyComponent(row));
+            return Number(bLikely) - Number(aLikely) || a.localeCompare(b);
+        });
+    let batch = classTypes.filter(classType => !comfyWorkflowChoiceState.inspected.has(classType))
+        .slice(0, COMFY_CHOICE_DISCOVERY_BATCH);
+    const refresh = batch.length === 0;
+    if (refresh) {
+        const start = comfyWorkflowChoiceState.refreshCursor % classTypes.length;
+        batch = [...classTypes.slice(start), ...classTypes.slice(0, start)].slice(0, COMFY_CHOICE_DISCOVERY_BATCH);
+        comfyWorkflowChoiceState.refreshCursor = (start + batch.length) % classTypes.length;
+    }
+    if (!batch.length) return;
+
+    comfyWorkflowChoiceController?.abort();
+    const controller = new AbortController();
+    comfyWorkflowChoiceController = controller;
+    const requestId = ++comfyWorkflowChoiceRequestSerial;
+    comfyWorkflowChoiceState.loading = true;
+    renderComfyComponentOverrides();
+    let cursor = 0;
+    const worker = async () => {
+        while (cursor < batch.length) {
+            const classType = batch[cursor++];
+            try {
+                const result = await fetchComfyClassChoices(context.baseUrl, classType, { refresh, signal: controller.signal });
+                if (requestId !== comfyWorkflowChoiceRequestSerial || context.signature !== comfyWorkflowChoiceState.signature) return;
+                if (!result.fromCache) cacheComfyClassChoices(result.cacheKey, result.byInput);
+                comfyWorkflowChoiceState.catalogues.set(classType, result.byInput);
+                comfyWorkflowChoiceState.errors.delete(classType);
+            } catch (error) {
+                if (requestId !== comfyWorkflowChoiceRequestSerial || context.signature !== comfyWorkflowChoiceState.signature) return;
+                comfyWorkflowChoiceState.catalogues.delete(classType);
+                comfyWorkflowChoiceState.errors.set(classType, String(error?.message || error).slice(0, 300));
+            } finally {
+                if (requestId === comfyWorkflowChoiceRequestSerial && context.signature === comfyWorkflowChoiceState.signature) {
+                    comfyWorkflowChoiceState.inspected.add(classType);
+                }
+            }
+        }
+    };
+    await Promise.all(Array.from(
+        { length: Math.min(COMFY_CHOICE_DISCOVERY_CONCURRENCY, batch.length) },
+        () => worker(),
+    ));
+    if (requestId !== comfyWorkflowChoiceRequestSerial || context.signature !== comfyWorkflowChoiceState.signature) return;
+    if (comfyWorkflowChoiceController === controller) comfyWorkflowChoiceController = null;
+    comfyWorkflowChoiceState.loading = false;
+    renderComfyComponentOverrides();
+}
+
+function renderComfyComponentOverrides() {
+    const container = document.getElementById("qig-comfy-component-overrides");
+    if (!container) return;
+    container.replaceChildren();
+    const context = getComfyWorkflowChoiceContext();
+    const s = getSettings();
+    if (!String(s?.comfyWorkflow || "")) {
+        container.hidden = true;
+        return;
+    }
+    container.hidden = false;
+    if (context.error) {
+        const error = document.createElement("div");
+        error.className = "qig-comfy-discovery-error";
+        error.textContent = `Workflow choices unavailable: ${context.error.message}`;
+        container.append(error);
+        return;
+    }
+    if (!context.candidates.length) {
+        const empty = document.createElement("div");
+        empty.className = "form-hint";
+        empty.textContent = "This workflow has no direct text inputs to inspect.";
+        container.append(empty);
+        return;
+    }
+
+    const stored = normalizeComfyWorkflowComponentOverrides(s.comfyWorkflowComponentOverrides);
+    let pruned = pruneComfyWorkflowComponentOverrides(s.comfyWorkflow, stored);
+    if (JSON.stringify(stored) !== JSON.stringify(pruned)) {
+        s.comfyWorkflowComponentOverrides = pruned;
+        saveSettingsDebounced();
+    }
+    const overrideKey = row => `${row.nodeId}\u0000${row.classType}\u0000${row.inputName}\u0000${row.rawValue}`;
+    const candidateByKey = new Map(context.candidates.map(row => [overrideKey(row), row]));
+    const reconciled = normalizeComfyWorkflowComponentOverrides({
+        version: 1,
+        entries: pruned.entries.map(entry => {
+            const row = candidateByKey.get(overrideKey(entry));
+            const choices = row && comfyWorkflowChoiceState.catalogues.get(row.classType)?.get(row.inputName);
+            if (!comfyWorkflowChoiceState.inspected.has(entry.classType)) return entry;
+            return { ...entry, verified: Boolean(choices?.includes(entry.value)) };
+        }),
+    });
+    if (JSON.stringify(pruned) !== JSON.stringify(reconciled)) {
+        pruned = reconciled;
+        s.comfyWorkflowComponentOverrides = reconciled;
+        saveSettingsDebounced();
+    }
+    const confirmed = context.candidates
+        .map(row => ({ row, choices: comfyWorkflowChoiceState.catalogues.get(row.classType)?.get(row.inputName) || null }))
+        .filter(entry => entry.choices)
+        .sort((a, b) => Number(isLikelyComfyComponent(b.row)) - Number(isLikelyComfyComponent(a.row))
+             || a.row.nodeId.localeCompare(b.row.nodeId, undefined, { numeric: true })
+             || a.row.inputName.localeCompare(b.row.inputName));
+    const confirmedKeys = new Set(confirmed.map(({ row }) => overrideKey(row)));
+    const active = new Map(pruned.entries.filter(entry => entry.verified).map(entry => [overrideKey(entry), entry.value]));
+
+    const details = document.createElement("details");
+    details.open = active.size > 0 || comfyWorkflowChoiceState.inspected.size > 0;
+    const summary = document.createElement("summary");
+    summary.textContent = `Custom workflow choices (${confirmed.length})`;
+    details.append(summary);
+
+    const hint = document.createElement("div");
+    hint.className = "form-hint";
+    hint.textContent = "QIG only exposes direct text choices advertised by each installed node. Custom-node choices may have side effects; review the node before changing them.";
+    details.append(hint);
+
+    const actions = document.createElement("div");
+    actions.className = "qig-comfy-discovery-actions";
+    const inspect = document.createElement("button");
+    inspect.type = "button";
+    inspect.className = "menu_button";
+    inspect.disabled = comfyWorkflowChoiceState.loading;
+    const remaining = new Set(context.candidates.map(row => row.classType)).size - comfyWorkflowChoiceState.inspected.size;
+    inspect.textContent = comfyWorkflowChoiceState.loading
+        ? "Inspecting..."
+        : (remaining > 0 ? `Inspect workflow choices (${remaining} class${remaining === 1 ? "" : "es"})` : "Refresh workflow choices");
+    inspect.onclick = () => void discoverComfyWorkflowChoices();
+    actions.append(inspect);
+    details.append(actions);
+
+    for (const [classType, message] of comfyWorkflowChoiceState.errors) {
+        const error = document.createElement("div");
+        error.className = "qig-comfy-discovery-error";
+        error.textContent = `${classType}: ${message}`;
+        details.append(error);
+    }
+
+    for (const entry of pruned.entries.filter(item => !item.verified || !confirmedKeys.has(overrideKey(item)))) {
+        const field = document.createElement("div");
+        field.className = "qig-comfy-override";
+        const label = document.createElement("div");
+        label.className = "form-hint";
+        label.textContent = entry.verified
+            ? `Saved active override: node ${entry.nodeId} · ${entry.classType} · ${entry.inputName} = ${entry.value}. Inspect this class to check it again, or remove it.`
+            : `Inactive saved override: node ${entry.nodeId} · ${entry.classType} · ${entry.inputName} = ${entry.value}. Inspect this class to verify it, or remove it.`;
+        const reset = document.createElement("button");
+        reset.type = "button";
+        reset.className = "menu_button";
+        reset.textContent = "Remove saved override";
+        reset.onclick = () => {
+            const next = getSettings();
+            const key = overrideKey(entry);
+            next.comfyWorkflowComponentOverrides = normalizeComfyWorkflowComponentOverrides({
+                version: 1,
+                entries: normalizeComfyWorkflowComponentOverrides(next.comfyWorkflowComponentOverrides)
+                    .entries.filter(item => overrideKey(item) !== key),
+            });
+            saveSettingsDebounced();
+            renderComfyComponentOverrides();
+        };
+        field.append(label, reset);
+        details.append(field);
+    }
+
+    if (comfyWorkflowChoiceState.inspected.size > 0 && confirmed.length === 0 && !comfyWorkflowChoiceState.loading) {
+        const empty = document.createElement("div");
+        empty.className = "form-hint";
+        empty.textContent = "No direct workflow inputs were confirmed as selectable string choices.";
+        details.append(empty);
+    }
+
+    for (const { row, choices } of confirmed) {
+        const key = overrideKey(row);
+        const field = document.createElement("div");
+        field.className = "qig-comfy-override";
+        const label = document.createElement("label");
+        label.textContent = `${isLikelyComfyComponent(row) ? "Likely component" : "Workflow choice"}: ${row.title || row.classType} · ${row.inputName}`;
+        label.title = `Node ${row.nodeId} · ${row.classType} · ${row.inputName}`;
+        const select = document.createElement("select");
+        select.id = `qig-comfy-override-${row.nodeId}-${row.inputName}`;
+        label.htmlFor = select.id;
+        const selected = active.get(key) ?? row.rawValue;
+        const options = [{ value: row.rawValue, label: `${row.rawValue} (workflow value)` }];
+        for (const value of choices) {
+            if (value !== row.rawValue) options.push({ value, label: value });
+        }
+        if (selected !== row.rawValue && !choices.includes(selected)) {
+            options.push({ value: selected, label: `${selected} (not currently advertised)` });
+        }
+        replaceSelectOptions(select, options, selected);
+        select.addEventListener("change", () => {
+            const next = getSettings();
+            const kept = normalizeComfyWorkflowComponentOverrides(next.comfyWorkflowComponentOverrides)
+                .entries.filter(entry => overrideKey(entry) !== key);
+            if (select.value !== row.rawValue && choices.includes(select.value)) {
+                kept.push({
+                    nodeId: row.nodeId,
+                    classType: row.classType,
+                    inputName: row.inputName,
+                    rawValue: row.rawValue,
+                    value: select.value,
+                    verified: true,
+                });
+            }
+            next.comfyWorkflowComponentOverrides = normalizeComfyWorkflowComponentOverrides({ version: 1, entries: kept });
+            saveSettingsDebounced();
+        });
+        field.append(label, select);
+        details.append(field);
+    }
+    container.append(details);
 }
 
 const cachedElements = {};
@@ -3513,15 +4059,17 @@ function clearCache() {
 
 function showStatus(msg) {
     let status = cachedElements["qig-status"];
+    if (!status?.isConnected) status = document.getElementById("qig-status");
     if (!status) {
+        if (!msg) return;
         status = document.createElement("div");
         status.id = "qig-status";
         status.setAttribute("role", "status");
         status.setAttribute("aria-live", "polite");
         status.setAttribute("aria-atomic", "true");
         document.body.appendChild(status);
-        cachedElements["qig-status"] = status;
     }
+    cachedElements["qig-status"] = status;
     if (msg) {
         status.textContent = msg;
         status.style.display = "block";
@@ -3533,18 +4081,19 @@ function showStatus(msg) {
 const hideStatus = () => showStatus();
 
 function setGenerationActiveUI(active, { disableGenerateButton = false } = {}) {
+    updateQigStatusLine();
     const paletteBtn = getOrCacheElement("qig-input-btn");
     if (paletteBtn) {
         if (active) {
             paletteBtn.classList.remove("fa-palette");
             paletteBtn.classList.add("fa-spinner", "fa-spin");
             paletteBtn.title = "Cancel Generation";
-            paletteBtn.style.opacity = "0.7";
+            paletteBtn.setAttribute("aria-label", "Cancel generation");
         } else {
             paletteBtn.classList.remove("fa-spinner", "fa-spin");
             paletteBtn.classList.add("fa-palette");
-            paletteBtn.title = "Generate Image (right-click for presets)";
-            paletteBtn.style.opacity = "0.7";
+            paletteBtn.title = "Generate Image (right-click for configurations)";
+            paletteBtn.setAttribute("aria-label", "Generate image; right-click for configurations");
         }
     }
 
@@ -3561,6 +4110,7 @@ function setGenerationActiveUI(active, { disableGenerateButton = false } = {}) {
     });
     btn.disabled = controlState.disabled;
     btn.title = controlState.title;
+    btn.setAttribute("aria-label", controlState.label);
     if (controlState.ariaBusy) btn.setAttribute("aria-busy", "true");
     else btn.removeAttribute("aria-busy");
     const shortcut = controlState.action === "generate" && shortcutLabel
@@ -3571,7 +4121,7 @@ function setGenerationActiveUI(active, { disableGenerateButton = false } = {}) {
 
 function beginGeneration({ settings = getGenerationSettingsForRun(), context = getContext?.(), messageSnapshots = [], conversationCheckpoint = null, disableGenerateButton = false, clearPendingAuto = false, preserveRegenerationReferences = false } = {}) {
     closePalettePresetMenu();
-    cancelContextMediaWork();
+    deferContextMediaWorkForGeneration();
     if (!preserveRegenerationReferences) clearRegenerationReferenceState();
     if (clearPendingAuto) {
         resetAutoGenerateCadence({ clearTimer: true });
@@ -3582,6 +4132,8 @@ function beginGeneration({ settings = getGenerationSettingsForRun(), context = g
         serverSubfolder: getServerSubfolder(context),
         messageSnapshots: Array.isArray(messageSnapshots) ? messageSnapshots : [],
         conversationCheckpoint,
+        outputBudget: { count: 0, bytes: 0, error: null },
+        review: { enabled: shouldReviewPrompt(settings) },
     }, { settingsSnapshot: true });
     activeGenerationRun = run;
     cancelRequested = false;
@@ -3593,6 +4145,7 @@ function beginGeneration({ settings = getGenerationSettingsForRun(), context = g
 
 function endGeneration(run, { disableGenerateButton = false } = {}) {
     if (!generationRunManager.finish(run)) return false;
+    a1111SubmittedRunIds.delete(run.id);
     if (activeComfyPrompt?.runId === run.id) activeComfyPrompt = null;
     activeGenerationRun = null;
     currentAbortController = null;
@@ -3620,10 +4173,10 @@ function normalizeComfyPromptState(value) {
     return "unknown";
 }
 
-async function getComfyPromptState(baseUrl, promptId) {
+async function getComfyPromptState(baseUrl, promptId, signal = null) {
     const normalizedBaseUrl = String(baseUrl || "").replace(/\/+$/, "");
     try {
-        const response = await corsFetch(`${normalizedBaseUrl}/queue`, { redirect: "error" });
+        const response = await corsFetch(`${normalizedBaseUrl}/queue`, { redirect: "error", signal });
         if (response.ok) {
             const queue = await readResponseJson(response, MAX_DISCOVERY_RESPONSE_BYTES);
             if (comfyQueueContainsPrompt(queue?.queue_pending, promptId)) return "queued";
@@ -3632,7 +4185,7 @@ async function getComfyPromptState(baseUrl, promptId) {
     } catch { /* fall through to the jobs API when queue inspection is unavailable */ }
 
     try {
-        const response = await corsFetch(`${normalizedBaseUrl}/api/jobs/${encodeURIComponent(promptId)}`, { redirect: "error" });
+        const response = await corsFetch(`${normalizedBaseUrl}/api/jobs/${encodeURIComponent(promptId)}`, { redirect: "error", signal });
         if (!response.ok) return "unknown";
         const job = await readResponseJson(response, MAX_DISCOVERY_RESPONSE_BYTES);
         const candidates = [
@@ -3652,13 +4205,18 @@ async function getComfyPromptState(baseUrl, promptId) {
 }
 
 async function cancelTrackedComfyPrompt(tracked) {
-    const promptState = await getComfyPromptState(tracked.baseUrl, tracked.promptId);
+    // Bound the state probe and the cancellation independently: a hanging /queue or
+    // jobs endpoint must not leave the background cleanup promise pending forever.
+    const probeDeadline = createAbortDeadline(null, 3000, "ComfyUI state probe timed out");
+    const promptState = await getComfyPromptState(tracked.baseUrl, tracked.promptId, probeDeadline.signal);
+    const cancelDeadline = createAbortDeadline(null, 8000, "ComfyUI cancellation timed out");
     return cancelComfyPrompt(tracked.promptId, {
         baseUrl: tracked.baseUrl,
         fetchImpl: corsFetch,
         tryJobsCancel: true,
         promptState,
         allowLegacyInterrupt: tracked.allowLegacyInterrupt === true,
+        signal: cancelDeadline.signal,
     });
 }
 
@@ -3690,6 +4248,8 @@ function enqueueExternalGeneration(task, parentSignal = null) {
         controller,
         signal: controller.signal,
         comfyPrompt: null,
+        // SillyBunny divergence: capability runs own budgets independently of interactive generation.
+        context: { outputBudget: { count: 0, bytes: 0, error: null } },
     };
     const abortFromParent = () => abortExternalGenerationRun(run, parentSignal?.reason);
     if (parentSignal?.aborted) abortFromParent();
@@ -3742,6 +4302,7 @@ function requestGenerationCancel(reason = "Generation cancelled by user", { forc
     cancelRequested = true;
     cancelRequestSerial += 1;
     const settings = run.settings;
+    const a1111WorkSubmitted = a1111SubmittedRunIds.has(run.id);
     const trackedComfyPrompt = activeComfyPrompt?.runId === run.id
         ? { ...activeComfyPrompt }
         : null;
@@ -3771,7 +4332,7 @@ function requestGenerationCancel(reason = "Generation cancelled by user", { forc
                         if (result.cancelled === false) log(`ComfyUI: ${result.reason || "prompt could not be safely cancelled"}`);
                     }).catch(error => log(`ComfyUI cancellation failed: ${error.message}`));
                 }
-            } else {
+            } else if (settings.a1111InterruptServer === true && a1111WorkSubmitted) {
                 const interruptController = new AbortController();
                 const timeoutId = setTimeout(() => interruptController.abort(), 2000);
                 const barrier = corsFetch(`${baseUrl}/sdapi/v1/interrupt`, {
@@ -3783,9 +4344,12 @@ function requestGenerationCancel(reason = "Generation cancelled by user", { forc
                 barrier.finally(() => {
                     if (localCancellationBarriers.get(baseUrl) === barrier) localCancellationBarriers.delete(baseUrl);
                 }).catch(() => {});
+            } else {
+                log("A1111: Skipped global server interrupt (no owned request submitted or shared-server interrupt disabled)");
             }
         }
     } catch (e) { /* best-effort */ }
+    a1111SubmittedRunIds.delete(run.id);
 
     qigToast.info("Stopped waiting. Remote work may continue if the provider cannot cancel it.", "Image Gen", { timeOut: 3500 });
     return true;
@@ -4034,6 +4598,23 @@ async function loadSettings() {
     s.manualInsertTarget = normalizeManualInsertTarget(s.manualInsertTarget);
     normalizeGenerationNumericSettings(s);
     cleanupLegacyTemplateStores(s);
+    for (const key of SETTINGS_BOOLEAN_KEYS) {
+        if (!(key in s) || typeof s[key] === "boolean") continue;
+        const coerced = coerceSettingsFieldValue(key, s[key]);
+        if (typeof coerced !== "boolean") {
+            log(`Resetting malformed persisted setting ${key}`);
+            s[key] = defaultSettings[key];
+        } else {
+            s[key] = coerced;
+        }
+    }
+    for (const [key, values] of Object.entries(SETTINGS_ENUM_KEYS)) {
+        if (!(key in s)) continue;
+        if (typeof s[key] !== "string" || !values.includes(s[key])) {
+            log(`Resetting malformed persisted setting ${key}`);
+            s[key] = defaultSettings[key];
+        }
+    }
     // Server settings are authoritative; localStorage is only a same-device cache.
     const savedCacheId = typeof saved?._syncCacheId === "string" ? saved._syncCacheId : "";
     let localCacheId = "";
@@ -4066,10 +4647,11 @@ async function loadSettings() {
     }
     const restoreTargets = [
         { localKey: "qig_char_settings", backupKey: "_backupCharSettings", expectedType: "object", fallback: {}, setter: v => { charSettings = v; }, getter: () => charSettings },
-        { localKey: "qig_profiles", backupKey: "_backupProfiles", expectedType: "object", fallback: {}, setter: v => { connectionProfiles = v; }, getter: () => connectionProfiles },
+        { localKey: "qig_profiles", backupKey: "_backupProfiles", expectedType: "object", fallback: {}, setter: v => { connectionProfiles = v; }, getter: () => connectionProfiles, readOnly: true },
         { localKey: "qig_char_ref_images", backupKey: "_backupCharRefImages", expectedType: "object", fallback: {}, setter: v => { charRefImages = v; }, getter: () => charRefImages },
-        { localKey: "qig_gen_presets", backupKey: "_backupGenPresets", expectedType: "array", fallback: [], setter: v => { generationPresets = v; }, getter: () => generationPresets },
-        { localKey: "qig_comfy_workflows", backupKey: "_backupComfyWorkflows", expectedType: "array", fallback: [], setter: v => { comfyWorkflows = v; }, getter: () => comfyWorkflows },
+        { localKey: "qig_gen_presets", backupKey: "_backupGenPresets", expectedType: "array", fallback: [], setter: v => { generationPresets = v; }, getter: () => generationPresets, readOnly: true },
+        { localKey: "qig_comfy_workflows", backupKey: "_backupComfyWorkflows", expectedType: "array", fallback: [], setter: v => { comfyWorkflows = v; }, getter: () => comfyWorkflows, readOnly: true },
+        { localKey: "qig_configurations", backupKey: "_backupConfigurations", expectedType: "array", fallback: [], setter: v => { configurations = v; }, getter: () => configurations },
         { localKey: "qig_contextual_filters", backupKey: "_backupContextualFilters", expectedType: "array", fallback: [], setter: v => { contextualFilters = v; }, getter: () => contextualFilters },
         { localKey: "qig_filter_pools", backupKey: "_backupFilterPools", expectedType: "array", fallback: [], setter: v => { filterPools = v; }, getter: () => filterPools },
         { localKey: "qig_active_pool_ids_global", backupKey: "_backupActiveFilterPoolIdsGlobal", expectedType: "array", fallback: [DEFAULT_FILTER_POOL_ID], setter: v => { activeFilterPoolIdsGlobal = v; }, getter: () => activeFilterPoolIdsGlobal },
@@ -4114,19 +4696,37 @@ async function loadSettings() {
     let synchronizedFromServer = 0;
     let serverStoresSeeded = 0;
     let localCachesRefreshed = true;
-    for (const { localKey, backupKey, expectedType, fallback, setter } of restoreTargets) {
+    for (const { localKey, backupKey, expectedType, fallback, setter, readOnly } of restoreTargets) {
         const localValue = localValues.get(localKey);
         const localHasData = expectedType === "array"
             ? Array.isArray(localValue) && localValue.length > 0
             : localValue && typeof localValue === "object" && !Array.isArray(localValue) && Object.keys(localValue).length > 0;
         if (legacySeedDeclined && localHasData) quarantinedLegacyCacheKeys.add(localKey);
-        const reconciled = reconcileSynchronizedStore({
-            serverValue: s[backupKey],
-            localValue: maySeedFromLocal ? localValues.get(localKey) : undefined,
-            fallback,
-            expectedType,
-        });
+        const pendingMarkerKey = `${PENDING_SYNC_MARKER_PREFIX}${localKey}`;
+        const storePendingSync = localStorage.getItem(pendingMarkerKey) === "1";
+        const localIsValidStore = expectedType === "array"
+            ? Array.isArray(localValue)
+            : localValue && typeof localValue === "object" && !Array.isArray(localValue);
+        let reconciled;
+        if (storePendingSync && maySeedFromLocal && localIsValidStore) {
+            // A previous save was never positively confirmed, so the local cache
+            // is the newest copy we know of; push it again instead of letting a
+            // stale server value win. An intentionally empty local store is a
+            // legitimate newer state too.
+            reconciled = { value: cloneSynchronizedValue(localValue), source: "local", serverNeedsUpdate: true };
+        } else {
+            reconciled = reconcileSynchronizedStore({
+                serverValue: s[backupKey],
+                localValue: maySeedFromLocal ? localValues.get(localKey) : undefined,
+                fallback,
+                expectedType,
+            });
+        }
         setter(reconciled.value);
+        if (readOnly) {
+            if (!Object.prototype.hasOwnProperty.call(saved || {}, backupKey)) delete s[backupKey];
+            continue;
+        }
         if (localCacheWritesAllowed && !quarantinedLegacyCacheKeys.has(localKey)) {
             localCachesRefreshed = safeSetStorage(localKey, JSON.stringify(reconciled.value)) && localCachesRefreshed;
         } else if (!localCacheWritesAllowed) {
@@ -4142,42 +4742,53 @@ async function loadSettings() {
     }
     if (synchronizedFromServer > 0) log(`Synchronized ${synchronizedFromServer} setting store(s) from SillyTavern`);
     if (serverStoresSeeded > 0) log(`Seeded ${serverStoresSeeded} setting store(s) into SillyTavern`);
+    let contextMediaSupported = false;
     try {
         contextMediaLibrary = normalizeContextMediaLibrary(contextMediaLibrary);
+        contextMediaSupported = true;
     } catch (error) {
-        log(`Context Media backup is invalid: ${error.message}`);
+        log(`Context Media library is unsupported or invalid: ${error.message}`);
+        quarantineContextMediaData(error);
         contextMediaLibrary = normalizeContextMediaLibrary({});
-        qigToast.error("Invalid Context Media data was reset so Quick Image Gen could continue. Your saved media library was discarded.");
+        qigToast.error("Context Media data uses an unsupported format and was quarantined for safety. Editing is disabled until it can be read again; no data was discarded.");
     }
-    if (localCacheWritesAllowed && !quarantinedLegacyCacheKeys.has(CONTEXT_MEDIA_STORE_KEY)) {
+    if (contextMediaSupported && contextMediaQuarantined) {
+        contextMediaQuarantined = false;
+        try { localStorage.removeItem("qig_context_media_quarantined"); } catch { /* stale quarantine is harmless */ }
+        log("Context Media data is readable again; quarantine cleared.");
+    }
+    if (localCacheWritesAllowed && !quarantinedLegacyCacheKeys.has(CONTEXT_MEDIA_STORE_KEY) && !contextMediaQuarantined) {
         localCachesRefreshed = safeSetStorage(CONTEXT_MEDIA_STORE_KEY, JSON.stringify(contextMediaLibrary), "Failed to migrate Context Media. Browser storage may be full.") && localCachesRefreshed;
     }
-    backupToSettings(CONTEXT_MEDIA_STORE_KEY, contextMediaLibrary);
-    const normalizedPresets = normalizeGenerationPresetStore(generationPresets);
-    ensureGenerationPresetIds({ persist: !quarantinedLegacyCacheKeys.has("qig_gen_presets") });
-    if (normalizedPresets) {
-        if (!quarantinedLegacyCacheKeys.has("qig_gen_presets")) {
-            saveGenerationPresetStore("Failed to migrate chat-image preset settings. Browser storage may be full.");
+    if (!contextMediaQuarantined) backupToSettings(CONTEXT_MEDIA_STORE_KEY, contextMediaLibrary);
+    // The three legacy stores are never rewritten any more: they stay byte-identical
+    // as a rollback copy. Their normalisers now run on clones inside the migration.
+    const legacyConfigurationRecordsExist = generationPresets.length > 0
+        || comfyWorkflows.length > 0
+        || Object.values(connectionProfiles).some(records => records && typeof records === "object" && Object.keys(records).length > 0);
+    const configurationStoreWasServerBacked = Array.isArray(saved?._backupConfigurations);
+    const configurationMigrationComplete = Number(saved?._configurationMigrationVersion) >= 1;
+    const configurationCacheWasPending = maySeedFromLocal
+        && localStorage.getItem(`${PENDING_SYNC_MARKER_PREFIX}qig_configurations`) === "1"
+        && Array.isArray(localValues.get("qig_configurations"));
+    const configurationsNeedMigration = !configurationMigrationComplete
+        && configurations.length === 0
+        && !configurationStoreWasServerBacked
+        && !configurationCacheWasPending
+        && legacyConfigurationRecordsExist;
+    if (configurationsNeedMigration) {
+        configurations = buildConfigurationsFromLegacyStores(connectionProfiles, generationPresets, comfyWorkflows, getGlobalConfigurationSettings(s));
+        if (configurations.length) {
+            writeBackupToSettings("qig_configurations", configurations);
+            serverSettingsNeedSave = true;
+            log(`Merged ${configurations.length} saved configuration(s) from profiles, presets and workflow presets.`);
         }
-        backupToSettings("qig_gen_presets", generationPresets);
+    }
+    if (!configurationMigrationComplete) {
+        s._configurationMigrationVersion = 1;
         serverSettingsNeedSave = true;
     }
-    const comfyProfilesNormalized = normalizeComfyConnectionProfileStore(connectionProfiles);
-    if (normalizeProxyProfileStore(connectionProfiles) || comfyProfilesNormalized) {
-        if (!quarantinedLegacyCacheKeys.has("qig_profiles")) {
-            safeSetStorage("qig_profiles", JSON.stringify(connectionProfiles), "Failed to migrate chat-image profiles. Browser storage may be full.");
-        }
-        backupToSettings("qig_profiles", connectionProfiles);
-        if (comfyProfilesNormalized) serverSettingsNeedSave = true;
-    }
-    if (normalizeComfyWorkflowPresetStore(comfyWorkflows)) {
-        if (!quarantinedLegacyCacheKeys.has("qig_comfy_workflows")) {
-            safeSetStorage("qig_comfy_workflows", JSON.stringify(comfyWorkflows), "Failed to migrate workflow presets. Browser storage may be full.");
-        }
-        backupToSettings("qig_comfy_workflows", comfyWorkflows);
-        serverSettingsNeedSave = true;
-    }
-    syncActiveGenerationPresetSetting({ persist: true });
+    syncActiveConfigurationSetting({ persist: true });
     if (ensureFilterPoolsState()) {
         for (const [localKey, value] of getFilterStoreEntries()) {
             if (!quarantinedLegacyCacheKeys.has(localKey)) safeSetStorage(localKey, JSON.stringify(value));
@@ -4188,8 +4799,16 @@ async function loadSettings() {
     const legacyReplacementMigrationPending = !s._replacementMapsMigrated;
     migrateLegacyReplacementStores(s, { allowLocalStore: maySeedFromLocal });
     if (legacyReplacementMigrationPending) serverSettingsNeedSave = true;
+    syncCacheIdClaimed = Boolean(savedCacheId);
     let initialServerSaveSucceeded = !serverSettingsNeedSave;
     if (serverSettingsNeedSave) {
+        if (localCacheWritesAllowed && !quarantinedLegacyCacheKeys.has("qig_configurations")) {
+            const cacheSaved = safeSetStorage("qig_configurations", JSON.stringify(configurations), "Failed to cache configurations. Keep this tab open and retry.");
+            localCachesRefreshed = cacheSaved && localCachesRefreshed;
+            if (cacheSaved) {
+                localCachesRefreshed = safeSetStorage(`${PENDING_SYNC_MARKER_PREFIX}qig_configurations`, "1") && localCachesRefreshed;
+            }
+        }
         try {
             await flushSettingsBackup();
             initialServerSaveSucceeded = true;
@@ -4201,17 +4820,29 @@ async function loadSettings() {
     } else {
         saveSettingsDebounced?.();
     }
+    if (initialServerSaveSucceeded) {
+        clearPendingSyncMarkers();
+    }
+    if (!syncCacheIdClaimed && serverSettingsNeedSave && initialServerSaveSucceeded) {
+        syncCacheIdClaimed = await confirmSyncCacheIdSaved(s._syncCacheId);
+        if (!syncCacheIdClaimed) {
+            log("Account sync identity is not yet confirmed on the server; gallery and prompt history will remain session-only until it is.");
+            saveSettingsDebounced?.();
+        }
+    }
     if (initialServerSaveSucceeded && maySeedFromLocal && legacyReplacementMigrationPending) {
         cleanupLegacyReplacementLocalStores();
     }
     if (initialServerSaveSucceeded && localCacheWritesAllowed) {
         localCachesRefreshed = true;
-        for (const { localKey, getter } of restoreTargets) {
+        for (const { localKey, getter, readOnly } of restoreTargets) {
+            if (readOnly) continue;
             if (quarantinedLegacyCacheKeys.has(localKey)) continue;
+            if (localKey === CONTEXT_MEDIA_STORE_KEY && contextMediaQuarantined) continue;
             localCachesRefreshed = safeSetStorage(localKey, JSON.stringify(getter())) && localCachesRefreshed;
         }
     }
-    if (initialServerSaveSucceeded && localCachesRefreshed && !legacySeedDeclined) {
+    if (initialServerSaveSucceeded && syncCacheIdClaimed && localCachesRefreshed && !legacySeedDeclined) {
         safeSetStorage(SYNC_CACHE_ID_KEY, s._syncCacheId);
     } else if (!localCachesRefreshed) {
         log("Synchronized cache ownership marker was not updated because one or more local cache writes failed");
@@ -4304,15 +4935,19 @@ async function persistFilterPoolState(previousState) {
                     backupKey,
                     value: new Map(getFilterStoreEntries()).get(localKey),
                 })),
-                save: flushSettingsBackup,
+                save: saveSettings,
+                acknowledge: confirmSettingsSaveEvent,
             }),
             { throwIfBusy: true },
         );
         if (!result.cacheSaved) {
             const failedKeys = result.cacheErrors.map(item => item.localKey).join(", ");
             log(`Filter settings local cache write failed for ${failedKeys}`);
-            qigToast.warning("Saved filter settings to your SillyTavern account, but this browser's local cache could not be fully updated.");
+            qigToast.warning(result.confirmed
+                ? "Saved filter settings to your SillyTavern account, but this browser's local cache could not be fully updated."
+                : "Filter settings synchronisation is unconfirmed and the browser cache could not be fully updated. Keep this tab open and retry.");
         }
+        if (!result.confirmed && result.cacheSaved) qigToast.warning("Filter settings are saved in this browser; server synchronisation is pending.");
         return true;
     } catch (error) {
         restoreFilterPoolState(previousState);
@@ -5312,6 +5947,14 @@ function getSettings() {
     return extension_settings[extensionName];
 }
 
+function shouldReviewPrompt(settings) {
+    const enabled = !!getSettings().reviewBeforeGenerate;
+    const policy = activeGenerationRun?.context.review;
+    const disabledSinceQueued = settings.__qigReviewDisableRevision !== reviewDisableRevision;
+    if (policy && (!enabled || disabledSinceQueued)) policy.enabled = false;
+    return !!settings.reviewBeforeGenerate && !settings.__qigQuiet && enabled && !disabledSinceQueued && policy?.enabled !== false;
+}
+
 function getGenerationSettingsForRun(context = null) {
     const baseSettings = getSettings();
     const transientValues = transientGenerationSettingsState.current?.value;
@@ -5322,6 +5965,8 @@ function getGenerationSettingsForRun(context = null) {
     // Conversation generation cannot inherit the active roleplay character.
     const runContext = context || getContext?.();
     const snapshot = snapshotGenerationRunSettings(getScopedCharacterGenerationSettings(merged, runContext));
+    // Queued work keeps its original revision when its settings are copied again at start.
+    snapshot.__qigReviewDisableRevision = transientValues?.__qigReviewDisableRevision ?? reviewDisableRevision;
     if (!Array.isArray(snapshot.__qigActiveContextualFilters)) {
         snapshot.__qigActiveContextualFilters = snapshotGenerationSettings(
             getActiveFilters(runContext).map(filter => resolveContextualFilter(filter, runContext)),
@@ -6010,11 +6655,14 @@ async function prepareQigFinalPrompt({
     forcePromptWasLLM = false,
 } = {}) {
     let pipelineState = createPromptPipelineState({ sourceText: sourcePrompt, worldInfoText });
+    // Filled by the first pass; later passes (Back from the final review) reuse it.
+    const reviewedRequest = { request: "", prefill: "" };
 
     while (true) {
         const generatedPrompt = await generateLLMPrompt(settings, sourcePrompt, signal, {
             isMultiMessageScene,
             worldInfoText,
+            reviewedRequest,
         });
         if (signal?.aborted) throw getAbortError(signal);
         const promptWasLLM = forcePromptWasLLM || (settings.useLLMPrompt && generatedPrompt !== sourcePrompt);
@@ -6039,12 +6687,12 @@ async function prepareQigFinalPrompt({
         });
         if (signal?.aborted) throw getAbortError(signal);
         pipelineState = updatePromptPipelineState(pipelineState, {
-            positive: contextualApplied.prompt,
-            negative: contextualApplied.negative,
+            positive: dedupePromptTags(contextualApplied.prompt),
+            negative: dedupePromptTags(contextualApplied.negative),
             finalPromptEdited: false,
         });
 
-        if (settings.reviewBeforeGenerate) {
+        if (shouldReviewPrompt(settings)) {
             const reviewed = await reviewFinalImagePrompt(
                 pipelineState.positive,
                 pipelineState.negative,
@@ -6097,7 +6745,7 @@ ${conceptList}`;
     const s = settings || activeGenerationRun?.settings || getSettings();
     let response;
     try {
-        if (s.reviewBeforeGenerate) {
+        if (shouldReviewPrompt(s)) {
             const reviewed = await reviewTextAIRequest(instruction, {
                 title: "Review Contextual Filter Request",
                 description: "This request asks Text AI which Contextual Filters match the scene. Edit it before running the classifier.",
@@ -6315,21 +6963,21 @@ function logLLMHelperResponseMeta(meta, label = "LLM helper") {
 function buildLLMEmptyPromptWarning(meta, rawText, cleanedText) {
     const routeLabel = getLLMHelperRouteDescription(meta?.route);
     if (meta?.finishReason === "length") {
-        return `${routeLabel} hit finish_reason=length — using raw prompt. Consider raising max tokens.`;
+        return `${routeLabel}'s reply was cut off before it finished, so the raw prompt was used. Raise Max Tokens in the LLM rewrite options to give it more room.`;
     }
 
     switch (meta?.extractionStatus) {
         case "null_content":
-            return `${routeLabel} returned empty/null content — using raw prompt.`;
+            return `${routeLabel} returned an empty reply, so the raw prompt was used.`;
         case "no_text_parts":
-            return `${routeLabel} returned structured content with no text parts — using raw prompt.`;
+            return `${routeLabel} replied without any usable text, so the raw prompt was used.`;
         case "unsupported_shape":
-            return `${routeLabel} returned an unsupported response shape — using raw prompt.`;
+            return `${routeLabel} replied in a format QIG does not recognize, so the raw prompt was used.`;
         default:
             if (rawText && !String(cleanedText || "").trim()) {
-                return `${routeLabel} returned no usable text after cleanup — using raw prompt.`;
+                return `${routeLabel} returned no usable text after cleanup, so the raw prompt was used.`;
             }
-            return `${routeLabel} returned no text — using raw prompt.`;
+            return `${routeLabel} returned no text, so the raw prompt was used.`;
     }
 }
 
@@ -6337,47 +6985,45 @@ function extractLLMResponse(response) {
     return extractLLMResponseDetails(response).text;
 }
 
-async function callOverrideLLM(instruction, systemPrompt = "", signal = null, { assistantPrefill = "", context = null, returnMeta = false, settings = null } = {}) {
+// Recent chat turns for the separate AI. Off (0) by default: helper requests are standalone,
+// and the override profile may point at a different provider than the chat does. The history
+// ends at the scene being illustrated and skips hidden messages and QIG's own image messages.
+function buildOverrideChatHistory(s, ctx) {
+    const sceneEntries = shouldUseChatMessageScene(s, ctx) ? getSceneMessageEntries(s, ctx) : [];
+    const throughIndex = sceneEntries.reduce((latest, entry) => (
+        Number.isInteger(entry?.index) ? Math.max(latest, entry.index) : latest
+    ), -1);
+    return buildChatHistoryMessages(ctx?.chat, {
+        depth: s?.llmOverrideChatDepth,
+        throughIndex: throughIndex >= 0 ? throughIndex : null,
+        formatMessage: (message) => {
+            if (!message || message.is_system || isGeneratedImageMessage(message)) return null;
+            const text = resolveSceneMessageSource(message)?.text;
+            if (!text) return null;
+            return { role: message.is_user ? "user" : "assistant", content: `${getSceneMessageSpeakerName(message, ctx)}: ${text}` };
+        },
+    });
+}
+
+async function callOverrideLLM(instruction, systemPrompt = "", signal = null, { assistantPrefill = "", context = null, returnMeta = false, settings = null, role = "default" } = {}) {
     const s = settings || activeGenerationRun?.settings || getSettings();
     const requestedMaxTokens = s.llmOverrideMaxTokens || 500;
     const requestContext = context || getContext();
     let CMRS = null;
     try {
         CMRS = requestContext.ConnectionManagerRequestService;
-    } catch { /* pre-1.15.0 */ }
+    } catch { /* host context unavailable */ }
 
     if (!CMRS || !s.llmOverrideProfileId) {
-        // Fallback: use main chat AI via generateQuietPrompt
-        log("LLM Override: No Connection Manager or profile, falling back to main AI");
-        const fallbackOptions = {
-            signal,
-            quietName: `ImageGen_${Date.now()}`,
-            label: "LLM override fallback request",
-            prefill: assistantPrefill,
-        };
-        const fallbackText = assistantPrefill
-            ? await callInternalStandaloneLLM(instruction, fallbackOptions)
-            : await callInternalQuietPrompt(instruction, fallbackOptions);
-        const fallbackMeta = {
-            text: fallbackText,
-            route: "override_unavailable_main_chat",
-            sourcePath: "response",
-            extractionStatus: fallbackText ? "text" : "empty_string",
-            finishReason: null,
-            requestedMaxTokens,
-            responseShape: summarizeLLMValueShape(fallbackText),
-            contentShape: summarizeLLMValueShape(fallbackText),
-        };
-        return returnMeta ? fallbackMeta : fallbackText;
+        throw new Error("The selected separate AI profile is unavailable. Check Connection Manager. The request was NOT sent to the main chat AI.");
     }
 
-    const messages = [];
-    if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
-    messages.push({ role: "user", content: instruction });
-    if (assistantPrefill) messages.push({ role: "assistant", content: assistantPrefill });
+    // SillyBunny divergence: scoped runs pass their own context, so history comes from it.
+    const history = buildOverrideChatHistory(s, requestContext);
+    const messages = buildTextAIRequestMessages(instruction, { role, history, systemPrompt, prefill: assistantPrefill });
 
     const requestedPreset = s.llmOverridePreset || "";
-    log(`LLM Override: Using connection profile '${s.llmOverrideProfileId}' (preset: ${requestedPreset || "profile default"})`);
+    log(`LLM Override: Using connection profile '${s.llmOverrideProfileId}' (preset: ${requestedPreset || "profile default"}${history.length ? `, ${plural(history.length, "chat message")} of history` : ""})`);
 
     try {
         const response = await runWithInternalLLMRequest("LLM override profile request", () =>
@@ -6403,29 +7049,7 @@ async function callOverrideLLM(instruction, systemPrompt = "", signal = null, { 
     } catch (e) {
         if (e.name === "AbortError") throw e;
         log(`LLM Override failed (profile: ${s.llmOverrideProfileId}): ${e.message}`);
-        log("Falling back to main chat AI. Check your Connection Manager profile's API type, endpoint, and API key.");
-        const recoveryOptions = {
-            signal,
-            quietName: `ImageGen_${Date.now()}`,
-            label: "LLM override recovery request",
-            prefill: assistantPrefill,
-        };
-        const fallbackText = assistantPrefill
-            ? await callInternalStandaloneLLM(instruction, recoveryOptions)
-            : await callInternalQuietPrompt(instruction, recoveryOptions);
-        const fallbackMeta = {
-            text: fallbackText,
-            route: "override_failed_main_chat",
-            sourcePath: "response",
-            extractionStatus: fallbackText ? "text" : "empty_string",
-            finishReason: null,
-            requestedMaxTokens,
-            responseShape: summarizeLLMValueShape(fallbackText),
-            contentShape: summarizeLLMValueShape(fallbackText),
-            error: e.message,
-            profileId: s.llmOverrideProfileId,
-        };
-        return returnMeta ? fallbackMeta : fallbackText;
+        throw new Error(`The selected separate AI profile '${s.llmOverrideProfileId}' failed: ${e.message} Check the profile's API type, endpoint, and API key in Connection Manager. The request was NOT sent to the main chat AI.`);
     }
 }
 
@@ -6437,7 +7061,7 @@ function populateConnectionProfiles(selectId, selectedId) {
         const ctx = getContext();
         const CMRS = ctx.ConnectionManagerRequestService;
         if (!CMRS) {
-            select.innerHTML += '<option value="" disabled>Requires SillyTavern 1.15.0+</option>';
+            select.innerHTML += '<option value="" disabled>Connection Manager unavailable</option>';
             return;
         }
         const profiles = CMRS.getSupportedProfiles();
@@ -6591,10 +7215,11 @@ Plain visual description:`;
         const entropyInline = `{{${timestamp}_${randomPart}}}`;
         let instructionWithEntropy = `[${timestamp}]\n${instruction}\n\nRequest marker: ${entropyInline}`;
         instructionWithEntropy = appendWorldInfoToRequest(instructionWithEntropy, options.worldInfoText);
-        if (s.reviewBeforeGenerate || !!options.worldInfoText) {
+        if (shouldReviewPrompt(s)) {
             const reviewed = await reviewTextAIRequest(instructionWithEntropy, {
                 title: "Review Scene Summary Request",
                 description: "Review the exact request used to create the intermediate visual summary. Matched World Info, when enabled, is included as editable context.",
+                role: s.llmRequestRole,
                 signal,
             });
             instructionWithEntropy = reviewed.request;
@@ -6606,13 +7231,14 @@ Plain visual description:`;
         let llmDescription;
         if (s.llmOverrideEnabled && s.llmOverrideProfileId) {
             log("Using LLM Override for scene description");
-            helperResponseMeta = await callOverrideLLM(instructionWithEntropy, "", signal, { returnMeta: true, settings: s });
+            helperResponseMeta = await callOverrideLLM(instructionWithEntropy, "", signal, { returnMeta: true, settings: s, role: s.llmRequestRole });
             llmDescription = helperResponseMeta?.text || "";
         } else {
             helperResponseMeta = await callInternalStandaloneLLM(instructionWithEntropy, {
                 signal,
                 quietName: `ImageGenScene_${timestamp}`,
                 label: "scene description request",
+                role: s.llmRequestRole,
                 returnMeta: true,
             });
             llmDescription = helperResponseMeta?.text || "";
@@ -6927,15 +7553,31 @@ Tags:`;
 
         let effectivePrefill = resolvedPrefill;
         instructionWithEntropy = appendWorldInfoToRequest(instructionWithEntropy, options.worldInfoText);
-        if (s.reviewBeforeGenerate || !!options.worldInfoText) {
+        // Going back from the final prompt review re-runs the Text AI with the request the user
+        // already reviewed; it must not make them sit through the request window a second time.
+        const reviewedRequest = options.reviewedRequest;
+        if (reviewedRequest?.request) {
+            // Keep the user's edits, but the previous pass's cache-busting stamp with them would
+            // hand back the cached answer; swap in this pass's stamp so "Re-run" actually re-runs.
+            instructionWithEntropy = reviewedRequest.request
+                .replace(/^\[\d{10,}\]\n/, `[${timestamp}]\n`)
+                .replace(/\{\{\d{10,}_[a-z0-9]+\}\}/, entropyInline)
+                .replace(/\[ref:[a-z0-9]+\]/, `[ref:${randomPart}]`);
+            effectivePrefill = reviewedRequest.prefill ?? effectivePrefill;
+        } else if (shouldReviewPrompt(s)) {
             const reviewed = await reviewTextAIRequest(instructionWithEntropy, {
                 title: "Review Image Prompt Request",
                 description: "Review the exact QIG instruction and assistant prefill sent to Text AI. The selected scene, character context, enabled identity rules, and matched lore are editable here.",
+                role: s.llmRequestRole,
                 prefill: resolvedPrefill || null,
                 signal,
             });
             instructionWithEntropy = reviewed.request;
             effectivePrefill = reviewed.prefill;
+            if (reviewedRequest) {
+                reviewedRequest.request = instructionWithEntropy;
+                reviewedRequest.prefill = effectivePrefill;
+            }
         }
 
         log(isCustom ? "Custom instruction mode" : "Built-in instruction mode");
@@ -6950,6 +7592,7 @@ Tags:`;
                 assistantPrefill: effectivePrefill,
                 returnMeta: true,
                 settings: s,
+                role: s.llmRequestRole,
             });
             llmPrompt = helperResponseMeta?.text || "";
         } else {
@@ -6957,6 +7600,7 @@ Tags:`;
                 signal,
                 quietName: `ImageGen_${timestamp}`,
                 label: "image prompt generation request",
+                role: s.llmRequestRole,
                 prefill: effectivePrefill,
                 returnMeta: true,
             });
@@ -7090,7 +7734,7 @@ async function refreshPollinationsModelMetadata(signal) {
     return pollinationsModelDiscoveryPromise;
 }
 
-async function genPollinations(prompt, negative, s, signal) {
+async function genPollinations(prompt, negative, s, signal, options = {}) {
     if (signal?.aborted) throw new DOMException("Generation cancelled", "AbortError");
     const model = String(s.pollinationsModel || "").trim();
     const key = String(s.pollinationsKey || "").trim();
@@ -7115,10 +7759,10 @@ async function genPollinations(prompt, negative, s, signal) {
         const { message } = await readProviderErrorResponse(response);
         throw new Error(`Pollinations error ${response.status}: ${message || response.statusText}`);
     }
-    return imageResponseToDataUrl(response);
+    return imageResponseToDataUrl(limitGenerationOutputResponse(response, options.reserveOutput(0)));
 }
 
-async function genNovelAI(prompt, negative, s, signal) {
+async function genNovelAI(prompt, negative, s, signal, options = {}) {
     normalizeSize(s);
     const effectiveDimensions = { width: s.width, height: s.height };
     const withEffectiveDimensions = (url, dimensions = effectiveDimensions) => ({ url, effectiveRequest: { parameters: dimensions } });
@@ -7184,7 +7828,7 @@ async function genNovelAI(prompt, negative, s, signal) {
             ? proxyUrl
             : buildNovelAIProxyRequestUrl(proxyUrl, "chat");
         assertSafeConfigurableEndpoint(v1Url, "NovelAI proxy URL");
-        const v1Size = s.width > s.height ? "1216:832" : s.width < s.height ? "832:1216" : "1024:1024";
+        const v1Size = getClosestSupportedImageSize(s, NAI_RESOLUTIONS.map(r => `${r.w}x${r.h}`)).replace("x", ":");
         const [v1Width, v1Height] = v1Size.split(":").map(Number);
         const v1Payload = {
             model: s.naiModel,
@@ -7192,8 +7836,11 @@ async function genNovelAI(prompt, negative, s, signal) {
             size: v1Size,
             negative_prompt: negative,
             sampler: v1SamplerMap[sampler] || "Euler Ancestral",
+            steps: s.steps,
+            scale: s.cfgScale,
+            seed,
             return_base64: true,
-            stream: false
+            stream: false,
         };
         debugLog(`NAI v1 proxy request to ${v1Url}: ${JSON.stringify(v1Payload).substring(0, 200)}...`);
         const res = await fetch(v1Url, {
@@ -7210,7 +7857,13 @@ async function genNovelAI(prompt, negative, s, signal) {
         const json = await readResponseJson(res);
         const source = extractProviderImageSource(json);
         if (source) {
-            return withEffectiveDimensions(resolveNovelAIProxyImageUrl(source, v1Url), { width: v1Width, height: v1Height });
+            return withEffectiveDimensions(resolveNovelAIProxyImageUrl(source, v1Url), {
+                width: v1Width,
+                height: v1Height,
+                steps: s.steps,
+                scale: s.cfgScale,
+                seed,
+            });
         }
         throw new Error(`NovelAI proxy returned no image: ${JSON.stringify(json ?? null).substring(0, 300)}`);
     }
@@ -7243,7 +7896,8 @@ async function genNovelAI(prompt, negative, s, signal) {
         return withEffectiveDimensions(extractNovelAIProxyImageUrl(json, apiUrl));
     }
 
-    const arrayBuffer = await readResponseArrayBuffer(res, MAX_IMAGE_BYTES);
+    const output = options.reserveOutput(0);
+    const arrayBuffer = await readResponseArrayBuffer(limitGenerationOutputResponse(res, output), MAX_IMAGE_BYTES);
     const bytes = new Uint8Array(arrayBuffer);
 
     log(`NAI response length: ${bytes.length}`);
@@ -7251,11 +7905,11 @@ async function genNovelAI(prompt, negative, s, signal) {
     // Check if response is a ZIP file (starts with PK)
     if (bytes[0] === 0x50 && bytes[1] === 0x4B) {
         log("Response is ZIP format, extracting PNG...");
-        const pngData = await extractPngFromZip(bytes);
+        const pngData = await extractPngFromZip(bytes, output);
         if (!pngData) {
             throw new Error("No PNG found in ZIP response. Check your API key and model settings.");
         }
-        if (pngData.byteLength > MAX_IMAGE_BYTES) throw new Error("Extracted image exceeds the 25 MB limit");
+        accountGenerationOutputBytes(output, pngData.byteLength);
 
         // Verify PNG signature
         if (pngData[0] === 0x89 && pngData[1] === 0x50 && pngData[2] === 0x4E && pngData[3] === 0x47) {
@@ -7293,56 +7947,6 @@ function getConfiguredImageSize(settings = getSettings()) {
     return `${width}x${height}`;
 }
 
-function parseSupportedImageSizeOption(option, targetPixels) {
-    const size = String(option || "").trim();
-    const dimensionMatch = size.match(/^(\d+)x(\d+)$/i);
-    if (dimensionMatch) {
-        const width = Number(dimensionMatch[1]);
-        const height = Number(dimensionMatch[2]);
-        if (width > 0 && height > 0) return { size, ratio: width / height, pixels: width * height };
-    }
-
-    const ratioMatch = size.match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/);
-    if (ratioMatch) {
-        const width = Number(ratioMatch[1]);
-        const height = Number(ratioMatch[2]);
-        if (width > 0 && height > 0) return { size, ratio: width / height, pixels: targetPixels };
-    }
-
-    return null;
-}
-
-function getClosestSupportedImageSize(settings, supportedSizes) {
-    const width = Number(settings?.width) || 1024;
-    const height = Number(settings?.height) || 1024;
-    const configuredSize = `${width}x${height}`;
-    if (!Array.isArray(supportedSizes) || !supportedSizes.length) return configuredSize;
-
-    const targetPixels = width * height;
-    const targetRatio = width / height;
-    const parsedSizes = supportedSizes
-        .map(size => parseSupportedImageSizeOption(size, targetPixels))
-        .filter(Boolean);
-    if (!parsedSizes.length) return configuredSize;
-
-    const exact = parsedSizes.find(size => size.size.toLowerCase() === configuredSize.toLowerCase());
-    if (exact) return exact.size;
-
-    let best = parsedSizes[0];
-    let bestScore = Infinity;
-    for (const size of parsedSizes) {
-        const ratioScore = Math.abs(Math.log(size.ratio / targetRatio));
-        const pixelScore = Math.abs(Math.log(size.pixels / targetPixels));
-        const score = (ratioScore * 3) + pixelScore;
-        if (score < bestScore) {
-            best = size;
-            bestScore = score;
-        }
-    }
-
-    return best.size;
-}
-
 function getOpenAICompatibleImageSize(provider, model, settings = getSettings()) {
     const sizeMaps = {
         routeway: ROUTEWAY_MODEL_SIZES,
@@ -7375,7 +7979,7 @@ function normalizeGptImageOption(value, allowed, fallback = "auto") {
     return allowed.includes(normalized) ? normalized : fallback;
 }
 
-async function genGptImage(prompt, negative, s, signal) {
+async function genGptImage(prompt, negative, s, signal, options = {}) {
     const apiKey = s.gptImageProxyKey || s.gptImageKey;
     if (!apiKey) throw new Error("GPT Image API key required");
 
@@ -7433,7 +8037,7 @@ async function genGptImage(prompt, negative, s, signal) {
         const responseBaseUrl = response.url || requestUrl;
         log(`GPT Image response: status=${response.status}, type=${responseMime || "unknown"}, endpoint=${describeProviderImageSource(responseBaseUrl)}`);
         if (responseMime.startsWith("image/") || responseMime === "application/octet-stream") {
-            return { image: await imageResponseToDataUrl(response), requestUrl, responseBaseUrl };
+            return { image: await imageResponseToDataUrl(limitGenerationOutputResponse(response, options.reserveOutput(0))), requestUrl, responseBaseUrl };
         }
 
         const data = await readResponseJson(response);
@@ -7457,19 +8061,19 @@ async function genGptImage(prompt, negative, s, signal) {
             : `GPT Image returned no image: ${JSON.stringify(data || {}).substring(0, 300)}`);
     }
     log(`GPT Image result source: ${describeProviderImageSource(source, responseBaseUrl)}`);
-    const materialized = await materializeProviderImageSource(source, {
+    const materialized = await materializeGenerationImageSource(source, {
         requestUrl,
         responseUrl: responseBaseUrl,
         headers,
         signal,
         fetchImpl: corsFetch,
         allowBrowserFallback: false,
-    });
+    }, options.reserveOutput(0));
     log(`GPT Image result ready: ${materialized.startsWith("data:") ? "validated inline image" : describeProviderImageSource(materialized)}`);
     return materialized;
 }
 
-async function extractPngFromZip(zipBytes) {
+async function extractPngFromZip(zipBytes, output) {
     try {
         const view = new DataView(zipBytes.buffer, zipBytes.byteOffset, zipBytes.byteLength);
 
@@ -7507,15 +8111,13 @@ async function extractPngFromZip(zipBytes) {
             const commentLength = view.getUint16(offset + 32, true);
             const localHeaderOffset = view.getUint32(offset + 42, true);
 
-            if (uncompressedSize > MAX_IMAGE_BYTES) {
-                throw new Error("ZIP image exceeds the 25 MB decompression limit");
-            }
             if (offset + 46 + filenameLength + extraLength + commentLength > zipBytes.length) break;
 
             // Get filename
             const filename = new TextDecoder().decode(zipBytes.slice(offset + 46, offset + 46 + filenameLength));
 
             if (filename.toLowerCase().endsWith('.png')) {
+                accountGenerationOutputBytes(output, uncompressedSize);
                 console.log(`Found PNG file: ${filename}, compression: ${compressionMethod}`);
 
                 if (localHeaderOffset + 30 > zipBytes.length) break;
@@ -7536,7 +8138,7 @@ async function extractPngFromZip(zipBytes) {
                 } else if (compressionMethod === 8) {
                     // Deflate compression - try to decompress
                     const compressedData = zipBytes.slice(dataOffset, dataOffset + compressedSize);
-                    return await decompressDeflate(compressedData, uncompressedSize);
+                    return await decompressDeflate(compressedData, uncompressedSize, output);
                 }
             }
 
@@ -7561,7 +8163,7 @@ function searchForPngInBytes(bytes) {
     return pngData;
 }
 
-async function decompressDeflate(compressedData, expectedSize = 0) {
+async function decompressDeflate(compressedData, expectedSize = 0, output) {
     try {
         if (expectedSize > MAX_IMAGE_BYTES) throw new Error("ZIP image exceeds the 25 MB decompression limit");
         // Use pako if available (common in many environments)
@@ -7571,6 +8173,7 @@ async function decompressDeflate(compressedData, expectedSize = 0) {
             const inflator = new pako.Inflate({ raw: true });
             inflator.onData = (chunk) => {
                 total += chunk.byteLength;
+                accountGenerationOutputBytes(output, total);
                 if (total > MAX_IMAGE_BYTES) throw new Error("ZIP image exceeds the 25 MB decompression limit");
                 chunks.push(chunk);
             };
@@ -7598,6 +8201,12 @@ async function decompressDeflate(compressedData, expectedSize = 0) {
                 done = readerDone;
                 if (value) {
                     totalLength += value.byteLength;
+                    try {
+                        accountGenerationOutputBytes(output, totalLength);
+                    } catch (error) {
+                        void reader.cancel(error).catch(() => {});
+                        throw error;
+                    }
                     if (totalLength > MAX_IMAGE_BYTES) {
                         await reader.cancel("ZIP image exceeds the decompression limit");
                         throw new Error("ZIP image exceeds the 25 MB decompression limit");
@@ -7658,25 +8267,48 @@ async function genArliAI(prompt, negative, s, signal) {
 
 const NANOGPT_MAX_ENCODED_INPUT_BYTES = 4 * 1024 * 1024;
 const nanoGptModelMetadataCache = new Map();
+const nanoGptMetadataInFlight = new Map();
 
 async function getNanoGptModelMetadata(model, signal) {
+    if (signal?.aborted) throw getAbortError(signal);
     const id = String(model || "").trim();
     if (!id) return null;
     if (nanoGptModelMetadataCache.has(id)) return nanoGptModelMetadataCache.get(id);
-    try {
-        const response = await fetch(`https://nano-gpt.com/api/v1/images/models/${encodeURIComponent(id)}/endpoints`, {
-            signal,
-            redirect: "error",
+
+    const waitForMetadata = async (pending, waitSignal) => {
+        if (!waitSignal) return pending;
+        let onAbort;
+        try {
+            return await Promise.race([pending, new Promise((resolve, reject) => {
+                onAbort = () => reject(getAbortError(waitSignal));
+                if (waitSignal.aborted) onAbort();
+                else waitSignal.addEventListener("abort", onAbort, { once: true });
+            })]);
+        } finally {
+            waitSignal.removeEventListener("abort", onAbort);
+        }
+    };
+    if (!nanoGptMetadataInFlight.has(id)) {
+        // Discovery outlives any one waiter, but never owns an unbounded background request.
+        const deadline = createAbortDeadline(null, 10_000, "NanoGPT model discovery timed out");
+        const pending = waitForMetadata((async () => {
+            const response = await fetch(`https://nano-gpt.com/api/v1/images/models/${encodeURIComponent(id)}/endpoints`, {
+                signal: deadline.signal,
+                redirect: "error",
+            });
+            if (!response.ok) return null;
+            const endpoints = await readResponseJson(response, MAX_DISCOVERY_RESPONSE_BYTES);
+            return { id, endpoints: endpoints?.endpoints || [] };
+        })(), deadline.signal).then(metadata => {
+            if (metadata) nanoGptModelMetadataCache.set(id, metadata);
+            return metadata;
+        }).catch(() => null).finally(() => {
+            deadline.dispose();
+            nanoGptMetadataInFlight.delete(id);
         });
-        if (!response.ok) return null;
-        const endpoints = await readResponseJson(response, MAX_DISCOVERY_RESPONSE_BYTES);
-        const metadata = { id, endpoints: endpoints?.endpoints || [] };
-        nanoGptModelMetadataCache.set(id, metadata);
-        return metadata;
-    } catch (error) {
-        if (error?.name === "AbortError") throw error;
-        return null;
+        nanoGptMetadataInFlight.set(id, pending);
     }
+    return waitForMetadata(nanoGptMetadataInFlight.get(id), signal);
 }
 
 async function materializeReferenceDataUrl(source, signal, maxEncodedBytes = NANOGPT_MAX_ENCODED_INPUT_BYTES) {
@@ -7798,7 +8430,7 @@ async function genNanoGPT(prompt, negative, s, signal) {
     throw new Error("No image in response");
 }
 
-async function genChutes(prompt, negative, s, signal) {
+async function genChutes(prompt, negative, s, signal, options = {}) {
     const seed = resolveRandomSeed(s.seed, s);
     const res = await fetch("https://image.chutes.ai/generate", {
         method: "POST",
@@ -7823,8 +8455,9 @@ async function genChutes(prompt, negative, s, signal) {
         throw new Error(`Chutes error ${res.status}: ${message || res.statusText}`);
     }
     const contentType = res.headers.get("content-type") || "";
-    if (contentType.includes("image/")) {
-        return createTransientImageObjectUrl(await readResponseArrayBuffer(res, MAX_IMAGE_BYTES));
+    const responseMime = contentType.split(";", 1)[0].trim().toLowerCase();
+    if (responseMime.startsWith("image/") || responseMime === "application/octet-stream") {
+        return createTransientImageObjectUrl(await readResponseArrayBuffer(limitGenerationOutputResponse(res, options.reserveOutput(0)), MAX_IMAGE_BYTES));
     }
     const data = await readResponseJson(res);
     const source = extractProviderImageSource(data);
@@ -7910,7 +8543,7 @@ async function genCivitAI(prompt, negative, s, signal) {
     }
 }
 
-async function genNanobanana(prompt, negative, s, signal) {
+async function genNanobanana(prompt, negative, s, signal, options = {}) {
     // Build parts array with reference images and prompt
     const parts = [];
     let decodedReferenceBytes = 0;
@@ -8017,7 +8650,7 @@ async function genNanobanana(prompt, negative, s, signal) {
     const responseMime = contentType.toLowerCase().split(";", 1)[0].trim();
     if (responseMime.startsWith("image/") || responseMime === "application/octet-stream") {
         return {
-            url: await imageResponseToDataUrl(res),
+            url: await imageResponseToDataUrl(limitGenerationOutputResponse(res, options.reserveOutput(0))),
             effectiveRequest: {
                 parameters: {
                     aspectRatio: generationConfig.imageConfig.aspectRatio,
@@ -8060,14 +8693,14 @@ async function genNanobanana(prompt, negative, s, signal) {
     if (imageSource) {
         const safeSource = normalizeProviderImageSource(imageSource, { trustedBaseUrl: responseBaseUrl });
         if (!safeSource) throw new Error("Nanobanana returned an unsafe or unsupported image URL");
-        const materialized = await materializeProviderImageSource(safeSource, {
+        const materialized = await materializeGenerationImageSource(safeSource, {
             requestUrl: url,
             responseUrl: responseBaseUrl,
             headers,
             signal,
             fetchImpl: corsFetch,
             allowBrowserFallback: false,
-        });
+        }, options.reserveOutput(0));
         return {
             url: materialized,
             effectiveRequest: {
@@ -8288,21 +8921,23 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
                     outputNodeIds: outputNodeIds.length ? outputNodeIds : undefined,
                     imageIndex: outputImageIndex,
                 });
-                const images = [];
-                for (const image of historyResult.images) {
+                const { results: images, errors } = await collectSequentialResults(historyResult.images, async (image, outputIndex) => {
+                    if (signal?.aborted) throw getAbortError(signal);
+                    const output = options.reserveOutput(outputIndex);
                     const materializedUrl = await runComfyRequest("output download", async requestSignal => {
                         const response = await corsFetch(image.url, {
                             signal: requestSignal,
                             redirect: "error",
                         });
                         if (!response.ok) throw new Error(`ComfyUI output download failed with HTTP ${response.status}`);
-                        const buffer = await readResponseArrayBuffer(response, MAX_IMAGE_BYTES);
+                        const buffer = await readResponseArrayBuffer(limitGenerationOutputResponse(response, output), MAX_IMAGE_BYTES);
                         const format = detectImageFormat(buffer);
                         if (!format) throw new Error("ComfyUI output is not a supported image format");
                         return `data:${format.mime};base64,${arrayBufferToBase64(buffer)}`;
                     });
-                    images.push({
+                    return {
                         url: materializedUrl,
+                        outputIndex,
                         effectiveRequest: {
                             parameters: {
                                 ...effectiveParameters,
@@ -8311,12 +8946,13 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
                                 comfySourceUrl: image.url,
                             },
                         },
-                    });
-                }
-                return {
-                    images,
+                    };
+                });
+                const result = {
+                    images: attachResultFailures(images, errors),
                     effectiveRequest: { parameters: effectiveParameters },
                 };
+                return result;
             } catch (error) {
                 if (error?.name === "AbortError" || error?.code === "COMFY_HISTORY_TIMEOUT" || error?.code === "COMFY_DEADLINE_TIMEOUT") {
                     try {
@@ -8335,8 +8971,7 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
 
         // Check for custom workflow JSON
         if (s.comfyWorkflow && s.comfyWorkflow.trim()) {
-            const capabilities = getComfyWorkflowCapabilities(s.comfyWorkflow);
-            const uploadedReference = capabilities.referenceImages && s.localRefImage
+            const uploadedReference = getComfyWorkflowCapabilities(s.comfyWorkflow).referenceImages && s.localRefImage
                 ? await uploadComfyReference()
                 : null;
             const uploadedReferencePath = uploadedReference?.subfolder
@@ -8361,7 +8996,8 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
                 clientId,
                 filenamePrefix: "qig",
             };
-            const request = buildComfyPromptRequest(s.comfyWorkflow, tokenValues);
+            const capabilities = getComfyWorkflowCapabilities(s.comfyWorkflow, tokenValues, s.comfyWorkflowComponentOverrides);
+            const request = buildComfyPromptRequest(s.comfyWorkflow, tokenValues, s.comfyWorkflowComponentOverrides);
             const nodeCount = Object.keys(request.prompt || {}).length;
             log(`ComfyUI: Using custom API workflow with ${nodeCount} nodes`);
             return submitComfyWorkflow(request, {
@@ -8371,7 +9007,7 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
                 steps: capabilities.steps ? tokenValues.steps : undefined,
                 cfgScale: capabilities.cfgScale ? tokenValues.cfgScale : undefined,
                 sampler: capabilities.sampler ? samplerName : undefined,
-                scheduler: capabilities.scheduler ? schedulerName : undefined,
+                schedule: capabilities.scheduler ? schedulerName : undefined,
                 seed: capabilities.seed ? seed : undefined,
                 denoise: capabilities.denoise ? denoise : undefined,
                 clipSkip: capabilities.clipSkip ? clipSkip : undefined,
@@ -8497,7 +9133,7 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
             steps: Number(s.steps),
             cfgScale: Number(s.cfgScale),
             sampler: samplerName,
-            scheduler: schedulerName,
+            schedule: schedulerName,
             seed,
             denoise,
             clipSkip,
@@ -8742,6 +9378,7 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
     });
 
     let requestPayload = payload;
+    if (generationOwnerId) a1111SubmittedRunIds.add(generationOwnerId);
     let res = await postA1111(requestPayload);
         let responseDetail;
         if (!res.ok && controlNetUnits.length > 0 && res.status === 422) {
@@ -8834,7 +9471,7 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
                 const errText = await readResponseText(res, 1024 * 1024).catch(() => "");
                 throw new Error(`ComfyUI Proxy error ${res.status}: ${errText || res.statusText}`);
             }
-            return createTransientImageObjectUrl(await readResponseArrayBuffer(res, MAX_IMAGE_BYTES));
+            return createTransientImageObjectUrl(await readResponseArrayBuffer(limitGenerationOutputResponse(res, options.reserveOutput(0)), MAX_IMAGE_BYTES));
         } catch (e) {
             if (e.name === "AbortError" && timedOut && !signal?.aborted) {
                 throw new Error(`ComfyUI Proxy timed out after ${proxyComfyTimeoutSeconds}s`);
@@ -8852,7 +9489,10 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
     const endpointMode = resolveProxyEndpointMode(s.proxyUrl, s);
     const payloadMode = normalizeProxyPayloadSetting(s.proxyPayloadMode);
     const refMode = normalizeProxyRefImageSetting(s.proxyRefImageMode);
-    const requestUrl = resolveProxyRequestUrl(s.proxyUrl, endpointMode);
+    const configuredRequestUrl = resolveProxyRequestUrl(s.proxyUrl, endpointMode);
+    if (!configuredRequestUrl) throw new Error("Proxy URL is required");
+    assertSafeConfigurableEndpoint(configuredRequestUrl, "Reverse Proxy URL");
+    const requestUrl = new URL(configuredRequestUrl, globalThis.location?.href || "http://localhost/").href;
     const proxySeed = resolveRandomSeed(s.proxySeed, s);
     const withEffectiveProxyRequest = (url) => ({
         url,
@@ -8873,8 +9513,6 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
     const rawRefImages = normalizedPrompt.refImages;
     const sseEnabled = endpointMode === "images_generations" ? shouldUseProxySse(s, payloadMode) : false;
 
-    if (!requestUrl) throw new Error("Proxy URL is required");
-    assertSafeConfigurableEndpoint(requestUrl, "Reverse Proxy URL");
     if (endpointMode === "images_generations" && payloadMode === "openai_strict" && rawRefImages.length) {
         throw new Error("OpenAI-strict images/generations does not support reference images. Remove the references, switch to chat/completions, or use Extended payload mode with a compatible proxy.");
     }
@@ -8911,7 +9549,7 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
         const contentType = res.headers.get("content-type") || "";
         const responseMime = contentType.toLowerCase().split(";", 1)[0].trim();
         if (responseMime.startsWith("image/") || responseMime === "application/octet-stream") {
-            return withEffectiveProxyRequest(await imageResponseToDataUrl(res));
+            return withEffectiveProxyRequest(await imageResponseToDataUrl(limitGenerationOutputResponse(res, options.reserveOutput(0))));
         }
 
         const responseBaseUrl = res.url || requestUrl;
@@ -8923,14 +9561,17 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
                 && !isTrustedProviderOutputUrl("custom", source, requestUrl, { allowRequestSubdomains: true })) {
                 throw new Error("Proxy returned an image URL outside its configured endpoint origin");
             }
-            return materializeProviderImageSource(source, {
+            return materializeGenerationImageSource(source, {
                 requestUrl,
                 responseUrl: responseBaseUrl,
-                headers: {},
+                headers,
                 signal: controller.signal,
                 fetchImpl: corsFetch,
-                allowBrowserFallback: false,
-            });
+                allowBrowserFallback: true,
+                forceFetch: true,
+                allowedHostSuffixes: [new URL(requestUrl).hostname],
+                materializeBytes: createTransientImageObjectUrl,
+            }, options.reserveOutput(0));
         };
         if (endpointMode === "images_generations"
             && (contentType.includes("text/event-stream") || (sseEnabled && looksLikeSsePayload(plainTextResponse)))) {
@@ -8939,7 +9580,7 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
             const streamResponse = plainTextResponse == null
                 ? res
                 : new Response(plainTextResponse, { headers: { "content-type": "text/event-stream" } });
-            const streamed = await readSseDataStream(streamResponse, async eventData => {
+            const streamed = await readSseDataStream(streamResponse, async (eventData, sseEventName) => {
                 let parsed = null;
                 try {
                     parsed = JSON.parse(eventData);
@@ -8947,19 +9588,23 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
                     // Some proxies send a bare URL or data URL as an SSE data event.
                 }
                 const status = String(parsed?.status || parsed?.type || parsed?.event || "").toLowerCase();
+                const sseKind = String(sseEventName || "").toLowerCase();
                 const failed = ["failed", "error", "expired", "timeout", "timed_out", "canceled", "cancelled"].includes(status)
-                    || /(?:^|[._-])(?:failed|error|expired|timeout|timed_out|canceled|cancelled)$/i.test(status);
+                    || /(?:^|[._-])(?:failed|error|expired|timeout|timed_out|canceled|cancelled)$/i.test(status)
+                    || /(?:^|[._-])(?:failed|error|expired|timeout|timed_out|canceled|cancelled)$/i.test(sseKind);
                 if (failed) {
-                    throw new Error(extractProviderErrorMessage(parsed) || parsed?.reason || parsed?.blockedReason || `Proxy SSE generation ${status}`);
+                    throw new Error(extractProviderErrorMessage(parsed) || parsed?.reason || parsed?.blockedReason || `Proxy SSE generation ${status || sseKind || "failed"}`);
                 }
                 const image = parsed
                     ? extractProxyImageFromJson(parsed, responseOptions)
                     : extractProxyImageFromString(eventData, responseOptions);
                 const terminal = parsed?.done === true
                     || ["done", "completed", "complete", "succeeded", "success"].includes(status)
-                    || /(?:^|[._-])completed$|(?:^|[._-])succeeded$/i.test(status);
+                    || /(?:^|[._-])completed$|(?:^|[._-])succeeded$/i.test(status)
+                    || /(?:^|[._-])(?:completed|succeeded)$/i.test(sseKind);
                 const provisional = !terminal && (["queued", "pending", "processing", "running", "preview"].includes(status)
-                    || /(?:^|[._-])(?:partial_image|preview|progress|processing|running)$/i.test(status));
+                    || /(?:^|[._-])(?:partial_image|preview|progress|processing|running)$/i.test(status)
+                    || /(?:^|[._-])(?:partial_image|preview|progress|processing|running)$/i.test(sseKind));
                 return { value: image || undefined, provisional, terminal };
             }, { signal: controller.signal });
             if (streamed.value) return withEffectiveProxyRequest(await materializeProxyResult(streamed.value));
@@ -9003,7 +9648,8 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
     }
 }
 
-async function genCustomApi(prompt, negative, s, signal) {
+async function genCustomApi(prompt, negative, s, signal, options = {}) {
+    const output = options.reserveOutput(0);
     const seed = resolveRandomSeed(s.seed, s);
     const result = await executeCustomBackend({
         mode: s.customApiMode,
@@ -9035,7 +9681,19 @@ async function genCustomApi(prompt, negative, s, signal) {
         sampler: s.sampler,
         seed,
         referenceImages: s.customApiRefImages || [],
-    }, { signal });
+    }, {
+        signal,
+        fetchImpl: async (url, init) => {
+            if (String(url).startsWith("data:")) accountInlineGenerationOutput(url, output);
+            const response = await fetch(url, init);
+            if (String(url).startsWith("data:")) return response;
+            const mime = response.headers.get("content-type") || "";
+            return response.ok && (/^(?:image\/|application\/octet-stream)/i.test(mime) || init?.headers?.Accept === "image/*")
+                ? limitGenerationOutputResponse(response, output)
+                : response;
+        },
+    });
+    accountGenerationOutputBytes(output, result.buffer.byteLength);
     const url = createTransientImageObjectUrl(result.buffer);
     const capabilities = getCustomBackendCapabilities(s.customApiRequestTemplate);
     return {
@@ -9128,14 +9786,77 @@ function bindPopupDismiss(popup, onClose, { closeOnBackdrop = true } = {}) {
 
 function hidePopup(popup, { restoreFocus = true } = {}) {
     if (!popup) return;
+    const wasTop = getTopQigPopup() === popup;
+    popup._qigFocusToken = null;
+    clearTimeout(popup._qigFocusTimer);
     popup.style.display = "none";
-    if (restoreFocus && popup._qigReturnFocus?.isConnected) {
-        popup._qigReturnFocus.focus?.();
+    popup.inert = true;
+    noteQigPopupHidden(popup);
+    if (restoreFocus && wasTop) restoreQigPopupFocus(popup._qigReturnFocus);
+}
+
+let qigPopupKeydownBound = false;
+
+const openQigPopups = [];
+const openQigReviews = new Set();
+
+function getTopQigPopup() {
+    if (document.querySelector("dialog[open]")) return null;
+    return openQigPopups.filter(popup => popup.isConnected && popup.style.display === "flex").at(-1) || null;
+}
+
+function restoreQigPopupFocus(element) {
+    if (document.querySelector("dialog[open]")) return;
+    const top = getTopQigPopup();
+    if (element?.isConnected && !element.matches(":disabled")
+        && !element.closest("[hidden], [inert]")
+        && (top ? top.contains(element) : !element.closest(".qig-popup"))) {
+        element.focus?.({ preventScroll: true });
+    } else if (top && !top.contains(document.activeElement)) {
+        (top.querySelector(".qig-popup-title") || top).focus({ preventScroll: true });
+    }
+}
+
+function noteQigPopupShown(popup) {
+    const at = openQigPopups.indexOf(popup);
+    if (at !== -1) openQigPopups.splice(at, 1);
+    openQigPopups.push(popup);
+    // Cached windows share a z-index; their paint order must match their keyboard order.
+    document.body.appendChild(popup);
+}
+
+function noteQigPopupHidden(popup) {
+    const at = openQigPopups.indexOf(popup);
+    if (at !== -1) openQigPopups.splice(at, 1);
+}
+
+function handleQigPopupKeydown(event) {
+    if (event.key !== "Escape" && event.key !== "Tab") return;
+    // A host dialog (a SillyTavern confirm opened from inside a QIG popup, for instance) sits
+    // above us and owns the keyboard until it closes.
+    const top = getTopQigPopup();
+    if (!top) return;
+    if (event.key === "Escape") {
+        event.preventDefault();
+        // Capture phase: the host also binds Escape (it closes the drawer behind the dialog).
+        event.stopPropagation();
+        top._qigDismiss?.(event);
+        return;
+    }
+    if (!top.contains(document.activeElement)) {
+        // Focus escaped the modal (the host re-focuses the launcher button after click); pull it back.
+        event.preventDefault();
+        event.stopPropagation();
+        (top.querySelector(".qig-popup-title") || top).focus({ preventScroll: true });
     }
 }
 
 function createPopup(id, title, content, onShow, options = {}) {
     const previouslyFocused = options.returnFocusElement || document.activeElement;
+    if (!qigPopupKeydownBound) {
+        qigPopupKeydownBound = true;
+        document.addEventListener("keydown", handleQigPopupKeydown, { capture: true });
+    }
     let popup = document.getElementById(id);
     if (!popup) {
         popup = document.createElement("div");
@@ -9146,19 +9867,23 @@ function createPopup(id, title, content, onShow, options = {}) {
     }
     const popupClass = options.popupClass ? ` qig-popup--${options.popupClass}` : "";
     const contentClass = options.contentClass ? ` ${options.contentClass}` : "";
-    const resizeHandleHtml = options.resizable === false ? "" : `<div class="qig-resize-handle"></div>`;
+    const resizeHandleHtml = options.resizable === true ? `<div class="qig-resize-handle" aria-hidden="true"></div>` : "";
     const titleId = `${id}-title`;
     popup.className = `qig-popup${popupClass}`;
     popup.setAttribute("role", "dialog");
     popup.setAttribute("aria-modal", "true");
     popup.setAttribute("aria-labelledby", titleId);
     popup.tabIndex = -1;
-    popup._qigReturnFocus = previouslyFocused;
+    if (!popup.contains(previouslyFocused)) popup._qigReturnFocus = previouslyFocused;
+    popup.inert = false;
+    clearTimeout(popup._qigFocusTimer);
+    const focusToken = {};
+    popup._qigFocusToken = focusToken;
     // ALWAYS update innerHTML to ensure fresh content each time
     popup.innerHTML = `
         <div class="qig-popup-content${contentClass}">
             <div class="qig-popup-header">
-                <span id="${titleId}">${escapeHtml(title)}</span>
+                <span id="${titleId}" class="qig-popup-title" role="heading" aria-level="2" tabindex="-1">${escapeHtml(title)}</span>
                 <button class="qig-close-btn" type="button" aria-label="Close dialog">✕</button>
             </div>
             ${content}
@@ -9167,12 +9892,11 @@ function createPopup(id, title, content, onShow, options = {}) {
     const closePopup = (e) => {
         e?.preventDefault?.();
         e?.stopPropagation?.();
-        setTimeout(() => {
-            hidePopup(popup);
-        }, 0);
+        hidePopup(popup);
     };
     bindPopupDismiss(popup, closePopup, { closeOnBackdrop: options.closeOnBackdrop !== false });
     popup.onkeydown = (event) => {
+        if (getTopQigPopup() !== popup) return;
         if (event.key === "Escape" && !event.defaultPrevented) {
             event.preventDefault();
             popup._qigDismiss?.(event);
@@ -9188,7 +9912,7 @@ function createPopup(id, title, content, onShow, options = {}) {
         }
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
+        if (event.shiftKey && (document.activeElement === first || !focusable.includes(document.activeElement))) {
             event.preventDefault();
             last.focus();
         } else if (!event.shiftKey && document.activeElement === last) {
@@ -9197,29 +9921,34 @@ function createPopup(id, title, content, onShow, options = {}) {
         }
     };
     popup.style.display = "flex";
+    noteQigPopupShown(popup);
     if (onShow) onShow(popup);
-    queueMicrotask(() => {
+    const focusPopup = () => {
+        if (popup._qigFocusToken !== focusToken || getTopQigPopup() !== popup) return;
         if (!popup.contains(document.activeElement)) {
-            popup.querySelector('button, input, select, textarea, [tabindex]:not([tabindex="-1"])')?.focus?.();
+            popup.querySelector(".qig-popup-title")?.focus({ preventScroll: true });
         }
-    });
+    };
+    queueMicrotask(focusPopup);
+    // The host re-focuses the launcher button a task later; re-assert so Esc/Tab reach the dialog.
+    popup._qigFocusTimer = setTimeout(focusPopup, 60);
     return popup;
 }
 
 function showLogs() {
     createPopup("qig-logs-popup", "Generation Logs", `<pre id="qig-logs-content"></pre>`, (popup) => {
-        document.getElementById("qig-logs-content").textContent = logs.join("\n") || "No logs yet";
+        document.getElementById("qig-logs-content").textContent = logs.entries.join("\n") || "No activity yet. Generate an image and each step will be recorded here.";
     });
 }
 
 function showPromptHistory() {
-    createPopup("qig-prompt-history-popup", "Prompt History", `<div id="qig-prompt-history-content"></div>`, (popup) => {
+    createPopup("qig-prompt-history-popup", "Prompt History", `<div id="qig-prompt-history-content" class="qig-editor-body"></div>`, (popup) => {
         const container = document.getElementById("qig-prompt-history-content");
         if (!promptHistory.length) {
-            container.innerHTML = '<p class="qig-muted">No prompts yet</p>';
+            container.innerHTML = '<p class="qig-muted">No prompts yet. Every prompt you generate from is saved here, so you can reuse a wording you liked.</p>';
             return;
         }
-        container.innerHTML = `<div style="text-align:right;margin-bottom:8px;"><button id="qig-clear-history" class="menu_button" style="padding:2px 8px;font-size:11px;">Clear History</button></div>` +
+        container.innerHTML = `<div style="text-align:right;margin-bottom:8px;"><button id="qig-clear-history" class="menu_button" style="padding:2px 8px;font-size: 12px;">Clear History</button></div>` +
         promptHistory.map((entry, i) => `
             <div class="qig-history-entry">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -9256,7 +9985,7 @@ function showPromptHistory() {
                     log(`Prompt history could not be cleared from browser storage: ${error.message}`);
                     qigToast.warning("Prompt history was cleared for this session, but browser storage could not be updated.");
                 }
-                container.innerHTML = '<p class="qig-muted">No prompts yet</p>';
+                container.innerHTML = '<p class="qig-muted">No prompts yet. Every prompt you generate from is saved here, so you can reuse a wording you liked.</p>';
             }
         };
     });
@@ -9386,12 +10115,7 @@ async function useImageAsReference(source, popup) {
 
     s.localRefImage = persistedSource;
     saveSettingsDebounced();
-    const preview = document.getElementById("qig-local-ref-preview");
-    if (preview) { preview.src = persistedSource; preview.style.display = "block"; }
-    const clearBtn = document.getElementById("qig-local-ref-clear");
-    if (clearBtn) clearBtn.style.display = "block";
-    const denoiseWrap = document.getElementById("qig-local-denoise-wrap");
-    if (denoiseWrap) denoiseWrap.style.display = s.localType === "a1111" ? "block" : "none";
+    syncLocalReferencePreview(s);
     hidePopup(popup);
 }
 
@@ -9536,6 +10260,7 @@ async function saveLockedBackgroundMetadata(cssUrl, path, { commitGuard, context
         path,
         validate: commitGuard,
         isCurrent: () => isChatIdentitySnapshotCurrent(identity, { requireMetadata: true }),
+        getRequestHeaders,
     });
 }
 
@@ -9609,17 +10334,32 @@ function restoreMessageExtra(message, hadExtra, previousExtra) {
     else delete message.extra;
 }
 
-function rerenderMessageMedia(ctx, message, index, expectedChat = ctx?.chat) {
-    if (!isChatIdentitySnapshotCurrent(createChatIdentitySnapshot(ctx), { requireMetadata: true })) return;
-    if (getContext?.()?.chat !== expectedChat || expectedChat[index] !== message) return;
-    if (typeof ctx.appendMediaToMessage !== "function") return;
-    const messageElement = $(`.mes[mesid="${index}"]`);
-    if (messageElement.length) ctx.appendMediaToMessage(message, messageElement, "adjust");
+function persistCurrentChat(ctx, identity, skipIfStale = false) {
+    return persistChatState(ctx, {
+        getRequestHeaders,
+        isCurrent: () => isChatIdentitySnapshotCurrent(identity, { requireMetadata: true }),
+        skipIfStale,
+        staleMessage: "Chat changed while saving image changes",
+        failureMessage: "Image changes could not be saved to the chat server",
+    });
 }
 
-function rollbackInsertedMessage(ctx, chat, message, expectedIndex) {
+function canRerenderMessageMedia(ctx, message, index, expectedChat = ctx?.chat) {
+    if (!isChatIdentitySnapshotCurrent(createChatIdentitySnapshot(ctx), { requireMetadata: true })) return false;
+    if (getContext?.()?.chat !== expectedChat || expectedChat[index] !== message) return false;
+    return typeof ctx.appendMediaToMessage === "function";
+}
+
+function rerenderMessageMedia(ctx, message, index, expectedChat = ctx?.chat) {
+    if (!canRerenderMessageMedia(ctx, message, index, expectedChat)) return false;
+    const messageElement = $(`.mes[mesid="${index}"]`);
+    if (!messageElement.length) return false;
+    ctx.appendMediaToMessage(message, messageElement, "adjust");
+    return true;
+}
+
+function rollbackInsertedMessage(ctx, chat, message, expectedIndex, identity = createChatIdentitySnapshot(ctx)) {
     const current = getContext?.();
-    const identity = createChatIdentitySnapshot(ctx);
     if (current?.chat === chat && !isChatIdentitySnapshotCurrent(identity, { requireMetadata: true })) return;
     const index = removeInsertedMessage(chat, message, expectedIndex);
     if (!isChatIdentitySnapshotCurrent(identity, { requireMetadata: true }) || getContext?.()?.chat !== chat) return;
@@ -9628,9 +10368,58 @@ function rollbackInsertedMessage(ctx, chat, message, expectedIndex) {
     if (messageElement.length) messageElement.remove();
 }
 
+// Taking an image back out of the chat. Each insert records how to reverse itself; the
+// reversal refuses to act unless the exact thing it added is still there, so an undo can
+// never eat a later edit or a different image.
+let lastChatInsertUndo = null;
+
+function rememberChatInsertUndo(undo) {
+    lastChatInsertUndo = typeof undo === "function" ? undo : null;
+}
+
+function hasChatInsertUndo() {
+    return typeof lastChatInsertUndo === "function";
+}
+
+// Each toast is bound to the undo that was current when it was shown, so two toasts on screen
+// at once each reverse their own insert instead of both reversing the newest one.
+async function runChatInsertUndo(event = null, undo = lastChatInsertUndo) {
+    // toastr keeps the toast open when it has an onclick, so close it ourselves and make a
+    // second click before it fades a harmless no-op.
+    const toast = event?.currentTarget || event?.target?.closest?.(".toast");
+    if (toast) globalThis.toastr?.clear?.($(toast));
+    if (typeof undo !== "function") return false;
+    if (lastChatInsertUndo === undo) lastChatInsertUndo = null;
+    try {
+        const removed = await undo();
+        if (removed) qigToast.info("Image removed from the chat.", "Quick Image Gen");
+        else qigToast.warning("That image can no longer be removed automatically; the chat has changed since it was added.", "Quick Image Gen");
+        return removed;
+    } catch (error) {
+        // A failed save must not burn the undo: restore the token unless a newer insert
+        // has since claimed it, so the user can retry after the transient failure.
+        if (!lastChatInsertUndo) lastChatInsertUndo = undo;
+        qigToast.error(`Could not undo the insert: ${error.message}`, "Quick Image Gen");
+        return false;
+    }
+}
+
+function announceChatInsert(message) {
+    if (!hasChatInsertUndo()) {
+        qigToast.success(message, "Quick Image Gen");
+        return;
+    }
+    const undo = lastChatInsertUndo;
+    qigToast.success(`${message} Click here to undo.`, "Quick Image Gen", {
+        timeOut: 8000,
+        onclick: (event) => { void runChatInsertUndo(event, undo); },
+    });
+}
+
 async function insertImageIntoMessage(entryOrUrl, targetMessageIndex = null, options = {}) {
     const ctx = getContext();
     const chat = ctx.chat;
+    const chatIdentity = createChatIdentitySnapshot(ctx);
     if (!chat || chat.length === 0) throw new Error("No messages in chat");
 
     const entry = normalizeGenerationEntry(entryOrUrl);
@@ -9643,21 +10432,24 @@ async function insertImageIntoMessage(entryOrUrl, targetMessageIndex = null, opt
     } else if (targetMessageIndex != null) {
         idx = Number(targetMessageIndex);
         if (!Number.isInteger(idx) || idx < 0 || idx >= chat.length) throw new Error("Image insertion target no longer exists");
-    } else if (Number.isInteger(entry.sourceMessageIndex)) {
-        idx = entry.sourceMessageIndex;
-        if (idx < 0 || idx >= chat.length) throw new Error("Generated image source message no longer exists");
     } else {
+        // Provenance never acts as an implicit target: resolve the configured manual fallback.
+        if (!Number.isInteger(fallbackIdx)) throw new Error("Image insertion target no longer exists");
         idx = fallbackIdx;
     }
     const message = chat[idx];
     if (!message) throw new Error("Could not find target message");
+    // Provenance is verified, not followed: a generated image may only enter the chat it
+    // came from, and message-level identity is enforced when inserting back into the
+    // originating message. Inserting elsewhere follows the user's configured target.
+    const targetsOriginatingMessage = Number.isInteger(entry.sourceMessageIndex) && entry.sourceMessageIndex === idx;
     if (!options.ignoreSourceIdentity && entry.sourceChatId && entry.sourceChatId !== getContextMediaChatId(ctx)) {
         throw new DOMException("Generated image belongs to a different chat", "AbortError");
     }
-    if (!options.ignoreSourceIdentity && entry.sourceMessageId && getMessagePersistentId(message) !== entry.sourceMessageId) {
+    if (!options.ignoreSourceIdentity && targetsOriginatingMessage && entry.sourceMessageId && getMessagePersistentId(message) !== entry.sourceMessageId) {
         throw new DOMException("Generated image source message changed", "AbortError");
     }
-    if (!options.ignoreSourceIdentity && entry.sourceMessageSignature && getMessageContentSignature(message) !== entry.sourceMessageSignature) {
+    if (!options.ignoreSourceIdentity && targetsOriginatingMessage && entry.sourceMessageSignature && getMessageContentSignature(message) !== entry.sourceMessageSignature) {
         throw new DOMException("Generated image source message changed", "AbortError");
     }
     const mutationTargetSnapshot = options.targetSnapshot || createMessageTargetSnapshot(chat, idx);
@@ -9673,20 +10465,65 @@ async function insertImageIntoMessage(entryOrUrl, targetMessageIndex = null, opt
     await verifyRenderableImage(url, options.signal);
     assertMessageTargetSnapshot(mutationTargetSnapshot, "Image insertion target changed");
     options.commitGuard?.();
+    if (!isChatIdentitySnapshotCurrent(chatIdentity, { requireMetadata: true })) throw new DOMException("Image insertion chat changed", "AbortError");
 
     const hadExtra = Object.prototype.hasOwnProperty.call(message, "extra");
-    const previousExtra = hadExtra && message.extra && typeof message.extra === "object"
-        ? snapshotGenerationSettings(message.extra)
-        : message.extra;
     if (!message.extra || typeof message.extra !== 'object') {
         message.extra = {};
     }
+    const previousMediaDisplay = message.extra.media_display;
+    const previousInlineImage = message.extra.inline_image;
+    const previousMediaIndex = message.extra.media_index;
+    const previousImage = message.extra.image;
+    const hadImage = Object.prototype.hasOwnProperty.call(message.extra, "image");
+    const previousTitle = message.extra.title;
+    const hadTitle = Object.prototype.hasOwnProperty.call(message.extra, "title");
 
     const title = entry.prompt || lastPrompt || 'Generated Image';
+    let mediaEntry = null;
+    let legacyImage = null;
+    let undoInsert = null;
+
+    // Roll back only what this call added; concurrent edits to other extra fields survive.
+    const removeOwnedInsert = () => {
+        if (getContext?.()?.chat === chat && !isChatIdentitySnapshotCurrent(chatIdentity, { requireMetadata: true })) return;
+        if (mediaEntry && Array.isArray(message.extra?.media)) {
+            const at = message.extra.media.lastIndexOf(mediaEntry);
+            if (at !== -1) message.extra.media.splice(at, 1);
+            if (message.extra.media.length === 0) delete message.extra.media;
+        }
+        if (legacyImage !== null) {
+            restorePropertyIfUnchanged(message.extra, "image", legacyImage, previousImage, hadImage);
+            restorePropertyIfUnchanged(message.extra, "title", title, previousTitle, hadTitle);
+        }
+        const touchedInline = mediaEntry !== null || legacyImage !== null;
+        if (touchedInline && message.extra?.inline_image === true) {
+            if (previousInlineImage === undefined) delete message.extra.inline_image;
+            else message.extra.inline_image = previousInlineImage;
+        }
+        if (mediaEntry) {
+            if (Array.isArray(message.extra?.media)) {
+                if (previousMediaIndex === undefined) delete message.extra.media_index;
+                else message.extra.media_index = previousMediaIndex;
+            } else if (message.extra?.media_index !== undefined) {
+                if (previousMediaIndex === undefined) delete message.extra.media_index;
+                else message.extra.media_index = previousMediaIndex;
+            }
+        }
+        if (mediaEntry && message.extra?.media_display === 'gallery' && !Array.isArray(message.extra?.media)) {
+            if (previousMediaDisplay === undefined) delete message.extra.media_display;
+            else message.extra.media_display = previousMediaDisplay;
+        }
+        if (!hadExtra && message.extra && Object.keys(message.extra).length === 0) {
+            delete message.extra;
+        }
+    };
 
     try {
         // Use modern media API if available
         if (typeof ctx.appendMediaToMessage === 'function') {
+            const createdMediaArray = !Array.isArray(message.extra.media);
+            const createdMediaDisplay = (!Array.isArray(message.extra.media) || message.extra.media.length === 0) && !message.extra.media_display;
             if (!Array.isArray(message.extra.media)) {
                 message.extra.media = [];
             }
@@ -9694,43 +10531,120 @@ async function insertImageIntoMessage(entryOrUrl, targetMessageIndex = null, opt
                 message.extra.media_display = 'gallery';
             }
 
-            message.extra.media.push({
+            mediaEntry = {
                 url: url,
                 type: 'image',
                 title: title,
                 source: 'generated',
-            });
+            };
+            message.extra.media.push(mediaEntry);
             message.extra.inline_image = true;
             message.extra.media_index = message.extra.media.length - 1;
 
             rerenderMessageMedia(ctx, message, idx, chat);
+            undoInsert = async () => {
+                if (!isChatIdentitySnapshotCurrent(chatIdentity, { requireMetadata: true })) return false;
+                if (getContext?.()?.chat !== chat || chat[idx] !== message) return false;
+                // If the message can no longer be re-rendered (chat metadata replaced, element gone),
+                // refuse before touching anything rather than save a change the screen won't show.
+                if (!canRerenderMessageMedia(ctx, message, idx, chat) || !$(`.mes[mesid="${idx}"]`).length) return false;
+                const media = Array.isArray(message.extra?.media) ? message.extra.media : null;
+                const at = media ? media.lastIndexOf(mediaEntry) : -1;
+                if (at === -1) return false;
+                const applyUndo = () => {
+                    media.splice(at, 1);
+                    if (!media.length && createdMediaArray) delete message.extra.media;
+                    if (!media.length && createdMediaDisplay) delete message.extra.media_display;
+                    if (message.extra.inline_image === true) {
+                        if (previousInlineImage === undefined) delete message.extra.inline_image;
+                        else message.extra.inline_image = previousInlineImage;
+                    }
+                    if (message.extra.media_index === at) {
+                        if (previousMediaIndex === undefined) delete message.extra.media_index;
+                        else message.extra.media_index = previousMediaIndex;
+                    }
+                    rerenderMessageMedia(ctx, message, idx, chat);
+                };
+                const applyRestore = () => {
+                    if (getContext?.()?.chat === chat && !isChatIdentitySnapshotCurrent(chatIdentity, { requireMetadata: true })) return;
+                    if (!Array.isArray(message.extra.media)) message.extra.media = media;
+                    if (!media.includes(mediaEntry)) media.splice(at, 0, mediaEntry);
+                    if (createdMediaDisplay && !message.extra.media_display) message.extra.media_display = 'gallery';
+                    if (message.extra.inline_image !== true) message.extra.inline_image = true;
+                    if (message.extra.media_index !== at) message.extra.media_index = at;
+                    rerenderMessageMedia(ctx, message, idx, chat);
+                };
+                await runDurableTransaction({
+                    mutate: applyUndo,
+                    persist: () => persistCurrentChat(ctx, chatIdentity),
+                    rollback: applyRestore,
+                    persistRollback: () => persistCurrentChat(ctx, chatIdentity, true),
+                    rollbackFailureMessage: "Undo failed and its rollback could not be persisted",
+                });
+                return true;
+            };
         } else {
             // Legacy fallback for older ST versions
+            legacyImage = url;
             message.extra.image = url;
             message.extra.inline_image = true;
             message.extra.title = title;
+            undoInsert = async () => {
+                if (!isChatIdentitySnapshotCurrent(chatIdentity, { requireMetadata: true })) return false;
+                if (getContext?.()?.chat !== chat || chat[idx] !== message) return false;
+                if (message.extra?.image !== url) return false;
+                const extra = message.extra;
+                let titleRestored = false;
+                let inlineRestored = false;
+                const applyUndo = () => {
+                    restorePropertyIfUnchanged(extra, "image", url, previousImage, hadImage);
+                    titleRestored = restorePropertyIfUnchanged(extra, "title", title, previousTitle, hadTitle);
+                    inlineRestored = restorePropertyIfUnchanged(extra, "inline_image", true, previousInlineImage, previousInlineImage !== undefined);
+                    rerenderMessageMedia(ctx, message, idx, chat);
+                };
+                const applyRestore = () => {
+                    if (getContext?.()?.chat === chat && !isChatIdentitySnapshotCurrent(chatIdentity, { requireMetadata: true })) return;
+                    restorePropertyIfUnchanged(extra, "image", previousImage, url);
+                    if (titleRestored) restorePropertyIfUnchanged(extra, "title", previousTitle, title);
+                    if (inlineRestored) restorePropertyIfUnchanged(extra, "inline_image", previousInlineImage, true);
+                    rerenderMessageMedia(ctx, message, idx, chat);
+                };
+                await runDurableTransaction({
+                    mutate: applyUndo,
+                    persist: () => persistCurrentChat(ctx, chatIdentity),
+                    rollback: applyRestore,
+                    persistRollback: () => persistCurrentChat(ctx, chatIdentity, true),
+                    rollbackFailureMessage: "Undo failed and its rollback could not be persisted",
+                });
+                return true;
+            };
         }
 
-        await ctx.saveChat();
+        await persistCurrentChat(ctx, chatIdentity);
         options.commitGuard?.();
         assertMessageTargetSnapshot(mutationTargetSnapshot, "Image insertion target changed while saving chat");
+        rememberChatInsertUndo(undoInsert);
     } catch (error) {
-        restoreMessageExtra(message, hadExtra, previousExtra);
+        removeOwnedInsert();
         try {
             rerenderMessageMedia(ctx, message, idx, chat);
         } catch (rollbackError) {
             log(`Failed to refresh message after insert rollback: ${rollbackError.message}`);
         }
-        await rethrowAfterRollbackPersistence(error, () => ctx.saveChat?.(), "Image insertion failed and its rollback could not be persisted");
+        await rethrowAfterRollbackPersistence(error, () => persistCurrentChat(ctx, chatIdentity, true), "Image insertion failed and its rollback could not be persisted");
     }
 }
 
 async function insertImageAsNewMessage(entryOrUrl, options = {}) {
     const ctx = getContext();
     const chat = ctx.chat;
+    const chatIdentity = createChatIdentitySnapshot(ctx);
     if (!chat) throw new Error("No active chat");
 
     const entry = normalizeGenerationEntry(entryOrUrl);
+    if (entry.sourceChatId && entry.sourceChatId !== getContextMediaChatId(ctx)) {
+        throw new DOMException("Generated image belongs to a different chat", "AbortError");
+    }
     let url = await resolveChatInsertImageUrl(entry, options.outputMode);
     if (url.startsWith('blob:')) {
         url = await blobUrlToDataUrl(url);
@@ -9738,6 +10652,7 @@ async function insertImageAsNewMessage(entryOrUrl, options = {}) {
     if (!url) throw new Error("Generated image has no valid delivery URL");
     await verifyRenderableImage(url, options.signal);
     options.commitGuard?.();
+    if (!isChatIdentitySnapshotCurrent(chatIdentity, { requireMetadata: true })) throw new DOMException("Image insertion chat changed", "AbortError");
 
     const title = entry.prompt || lastPrompt || 'Generated Image';
     const message = {
@@ -9765,24 +10680,51 @@ async function insertImageAsNewMessage(entryOrUrl, options = {}) {
         if (typeof ctx.addOneMessage === 'function') {
             ctx.addOneMessage(message);
         }
-        await ctx.saveChat();
+        await persistCurrentChat(ctx, chatIdentity);
         options.commitGuard?.();
         if (getContext?.()?.chat !== chat || chat[messageIndex] !== message) {
             throw new DOMException("Chat changed while saving inserted image", "AbortError");
         }
+        rememberChatInsertUndo(async () => {
+            if (!isChatIdentitySnapshotCurrent(chatIdentity, { requireMetadata: true })) return false;
+            if (getContext?.()?.chat !== chat || chat[messageIndex] !== message) return false;
+            // Only ever remove the last message. Splicing out of the middle would leave every later
+            // rendered message with a stale index; if the chat has moved on, refuse instead.
+            if (chat.length !== messageIndex + 1) return false;
+            await runDurableTransaction({
+                mutate: () => {
+                    if (checkpointRegistered) unregisterConversationCheckpointInsertion(options.conversationCheckpoint, message);
+                    rollbackInsertedMessage(ctx, chat, message, messageIndex, chatIdentity);
+                },
+                persist: () => persistCurrentChat(ctx, chatIdentity),
+                rollback: () => {
+                    if (getContext?.()?.chat === chat && !isChatIdentitySnapshotCurrent(chatIdentity, { requireMetadata: true })) return;
+                    chat.splice(messageIndex, 0, message);
+                    if (checkpointRegistered) registerConversationCheckpointInsertion(options.conversationCheckpoint, message);
+                    if (isChatIdentitySnapshotCurrent(chatIdentity, { requireMetadata: true }) && typeof ctx.addOneMessage === 'function') ctx.addOneMessage(message);
+                },
+                persistRollback: () => persistCurrentChat(ctx, chatIdentity, true),
+                rollbackFailureMessage: "Undo failed and its rollback could not be persisted",
+            });
+            return true;
+        });
     } catch (error) {
         if (checkpointRegistered) unregisterConversationCheckpointInsertion(options.conversationCheckpoint, message);
-        rollbackInsertedMessage(ctx, chat, message, messageIndex);
-        await rethrowAfterRollbackPersistence(error, () => ctx.saveChat?.(), "New image message insertion failed and its rollback could not be persisted");
+        rollbackInsertedMessage(ctx, chat, message, messageIndex, chatIdentity);
+        await rethrowAfterRollbackPersistence(error, () => persistCurrentChat(ctx, chatIdentity, true), "New image message insertion failed and its rollback could not be persisted");
     }
 }
 
 async function insertImageAsHiddenReply(entryOrUrl, options = {}) {
     const ctx = getContext();
     const chat = ctx.chat;
+    const chatIdentity = createChatIdentitySnapshot(ctx);
     if (!chat) throw new Error("No active chat");
 
     const entry = normalizeGenerationEntry(entryOrUrl);
+    if (entry.sourceChatId && entry.sourceChatId !== getContextMediaChatId(ctx)) {
+        throw new DOMException("Generated image belongs to a different chat", "AbortError");
+    }
     let url = await resolveChatInsertImageUrl(entry, options.outputMode);
     if (url.startsWith('blob:')) {
         url = await blobUrlToDataUrl(url);
@@ -9790,6 +10732,7 @@ async function insertImageAsHiddenReply(entryOrUrl, options = {}) {
     if (!url) throw new Error("Generated image has no valid delivery URL");
     await verifyRenderableImage(url, options.signal);
     options.commitGuard?.();
+    if (!isChatIdentitySnapshotCurrent(chatIdentity, { requireMetadata: true })) throw new DOMException("Image insertion chat changed", "AbortError");
 
     const title = entry.prompt || lastPrompt || 'Generated Image';
     const message = {
@@ -9817,15 +10760,38 @@ async function insertImageAsHiddenReply(entryOrUrl, options = {}) {
         if (typeof ctx.addOneMessage === 'function') {
             ctx.addOneMessage(message);
         }
-        await ctx.saveChat();
+        await persistCurrentChat(ctx, chatIdentity);
         options.commitGuard?.();
         if (getContext?.()?.chat !== chat || chat[messageIndex] !== message) {
             throw new DOMException("Chat changed while saving hidden image", "AbortError");
         }
+        rememberChatInsertUndo(async () => {
+            if (!isChatIdentitySnapshotCurrent(chatIdentity, { requireMetadata: true })) return false;
+            if (getContext?.()?.chat !== chat || chat[messageIndex] !== message) return false;
+            // Only ever remove the last message. Splicing out of the middle would leave every later
+            // rendered message with a stale index; if the chat has moved on, refuse instead.
+            if (chat.length !== messageIndex + 1) return false;
+            await runDurableTransaction({
+                mutate: () => {
+                    if (checkpointRegistered) unregisterConversationCheckpointInsertion(options.conversationCheckpoint, message);
+                    rollbackInsertedMessage(ctx, chat, message, messageIndex, chatIdentity);
+                },
+                persist: () => persistCurrentChat(ctx, chatIdentity),
+                rollback: () => {
+                    if (getContext?.()?.chat === chat && !isChatIdentitySnapshotCurrent(chatIdentity, { requireMetadata: true })) return;
+                    chat.splice(messageIndex, 0, message);
+                    if (checkpointRegistered) registerConversationCheckpointInsertion(options.conversationCheckpoint, message);
+                    if (isChatIdentitySnapshotCurrent(chatIdentity, { requireMetadata: true }) && typeof ctx.addOneMessage === 'function') ctx.addOneMessage(message);
+                },
+                persistRollback: () => persistCurrentChat(ctx, chatIdentity, true),
+                rollbackFailureMessage: "Undo failed and its rollback could not be persisted",
+            });
+            return true;
+        });
     } catch (error) {
         if (checkpointRegistered) unregisterConversationCheckpointInsertion(options.conversationCheckpoint, message);
-        rollbackInsertedMessage(ctx, chat, message, messageIndex);
-        await rethrowAfterRollbackPersistence(error, () => ctx.saveChat?.(), "Hidden image message insertion failed and its rollback could not be persisted");
+        rollbackInsertedMessage(ctx, chat, message, messageIndex, chatIdentity);
+        await rethrowAfterRollbackPersistence(error, () => persistCurrentChat(ctx, chatIdentity, true), "Hidden image message insertion failed and its rollback could not be persisted");
     }
 }
 
@@ -9845,9 +10811,18 @@ async function autoInsertInjectImage(entryOrUrl, { messageIndex, insertMode, com
 // a multi-tag reply reports its insert outcome once rather than once per image.
 function reportAutoInsertOutcome(insertedCount, failedResults) {
     if (insertedCount > 0) {
-        qigToast.success(`${insertedCount === 1 ? "Image" : `${insertedCount} images`} inserted into chat`, "", {
-            throttleKey: "auto-insert-ok",
-        });
+        const insertedLabel = insertedCount === 1 ? "Image inserted into the chat." : `${insertedCount} images inserted into the chat.`;
+        if (insertedCount === 1 && hasChatInsertUndo()) {
+            // No throttle here: each toast is bound to a specific undo, and a suppressed toast would
+            // leave an older visible one pointing at the newer image.
+            const undo = lastChatInsertUndo;
+            qigToast.success(`${insertedLabel} Click here to undo.`, "Quick Image Gen", {
+                timeOut: 8000,
+                onclick: (event) => { void runChatInsertUndo(event, undo); },
+            });
+        } else {
+            qigToast.success(insertedLabel, "Quick Image Gen", { throttleKey: "auto-insert-ok" });
+        }
     }
     if (!failedResults.length) return;
     qigToast.warning(`${failedResults.length === 1 ? "One image" : `${failedResults.length} images`} could not be inserted and remain available in the result viewer.`, "", {
@@ -9860,32 +10835,35 @@ function reportAutoInsertOutcome(insertedCount, failedResults) {
 async function deliverInjectResults(results, { settings, sourceMessageIndex, targetSnapshot, run } = {}) {
     const entries = Array.isArray(results) ? results : [];
     if (!entries.length) return { inserted: 0, failed: [] };
-    if (!settings?.autoInsert) {
+    if (!settings?.autoInsert || entries.length > 1) {
+        // Multi-image batches open the picker even with auto-insert enabled: serial
+        // insertion is non-atomic and only the last insert could be undone.
         if (entries.length === 1) displayImage(entries[0]);
         else displayBatchResults(entries);
         return { inserted: 0, failed: [] };
     }
+    return deliverInjectResultsSingle(entries[0], { settings, sourceMessageIndex, targetSnapshot, run });
+}
 
+async function deliverInjectResultsSingle(entry, { settings, sourceMessageIndex, targetSnapshot, run } = {}) {
     let inserted = 0;
     const failed = [];
     const insertMode = settings.insertAsHiddenReply ? "hidden" : settings.injectInsertMode;
-    for (const entry of entries) {
-        void addToGallery(entry);
-        try {
-            await autoInsertInjectImage(entry, {
-                messageIndex: sourceMessageIndex,
-                insertMode,
-                targetSnapshot,
-                outputMode: settings.outputMode,
-                commitGuard: run ? () => assertGenerationCanCommit(run) : null,
-                conversationCheckpoint: run?.context?.conversationCheckpoint,
-            });
-            inserted += 1;
-        } catch (error) {
-            if (error.name === "AbortError") throw error;
-            log(`Inject: Auto-insert failed: ${error.message}`);
-            failed.push(entry);
-        }
+    void addToGallery(entry);
+    try {
+        await autoInsertInjectImage(entry, {
+            messageIndex: sourceMessageIndex,
+            insertMode,
+            targetSnapshot,
+            outputMode: settings.outputMode,
+            commitGuard: run ? () => assertGenerationCanCommit(run) : null,
+            conversationCheckpoint: run?.context?.conversationCheckpoint,
+        });
+        inserted += 1;
+    } catch (error) {
+        if (error.name === "AbortError") throw error;
+        log(`Inject: Auto-insert failed: ${error.message}`);
+        failed.push(entry);
     }
     reportAutoInsertOutcome(inserted, failed);
     return { inserted, failed };
@@ -10031,7 +11009,7 @@ async function addContextMediaRemoteUrls(rawValue, target) {
         owner.media.push(...inserted);
         if (!await commitContextMediaMutation(previous)) throw new Error("Remote media links could not be saved");
     });
-    if (rejected.length) qigToast.warning(`${rejected.length} link(s) were skipped. ${rejected[0]}`, "Context Media", { escapeHtml: true });
+    if (rejected.length) qigToast.warning(`${plural(rejected.length, "link")} skipped. ${rejected[0]}`, "Context Media", { escapeHtml: true });
     return inserted;
 }
 
@@ -10048,8 +11026,8 @@ async function insertContextMedia(media, {
     if (typeof ctx.saveChat !== "function") throw new Error("Chat persistence is unavailable");
     const chatIdentity = createChatIdentitySnapshot(ctx);
     const isCurrentChat = () => isChatIdentitySnapshotCurrent(chatIdentity, { requireMetadata: true });
-    const persistChat = (skipIfStale = false) => persistIfCurrent({
-        persist: () => ctx.saveChat(),
+    const persistChat = (skipIfStale = false) => persistChatState(ctx, {
+        getRequestHeaders,
         isCurrent: isCurrentChat,
         skipIfStale,
         staleMessage: "Context Media chat changed",
@@ -10173,7 +11151,7 @@ async function insertContextMedia(media, {
                     unregisterConversationCheckpointInsertion(conversationCheckpoint, message);
                     checkpointRegistered = false;
                 }
-                rollbackInsertedMessage(ctx, chat, message, messageIndexAtInsert);
+                rollbackInsertedMessage(ctx, chat, message, messageIndexAtInsert, chatIdentity);
                 scheduleRefreshMessageGenerateActions();
             },
             persistRollback: () => persistChat(true),
@@ -10194,6 +11172,10 @@ function getActiveContextMediaProfile(ctx = getContext?.()) {
 }
 
 function persistContextMediaLibrary({ immediate = false } = {}) {
+    if (contextMediaQuarantined) {
+        log("Blocked Context Media persistence while its data is quarantined");
+        return false;
+    }
     contextMediaLibrary = normalizeContextMediaLibrary(contextMediaLibrary);
     _contextMediaRevision += 1;
     const message = "Failed to save Context Media. Browser storage may be full.";
@@ -10225,7 +11207,7 @@ async function restoreContextMediaLibrary(previous) {
     } catch (error) {
         log(`Context Media backup rollback failed: ${error.message}`);
     }
-    return localRestored && backupRestored;
+    return { localRestored, backupRestored };
 }
 
 async function commitContextMediaMutation(previous) {
@@ -10278,7 +11260,7 @@ async function uploadContextMediaFiles(files, target) {
             if (typeof file.arrayBuffer !== "function") throw new Error("file is unreadable");
             const buffer = await file.arrayBuffer();
             if (buffer.byteLength !== file.size) throw new Error("file size changed while it was being read");
-            if (!contextMediaBytesMatchFormat(buffer, validation.format)) throw new Error("file bytes do not match its declared format");
+            if (!(await contextMediaBytesMatchFormat(buffer, validation.format))) throw new Error("file bytes do not match its declared format");
             const base64 = arrayBufferToBase64(buffer);
             const cleanBase = String(file.name || "media").replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 80) || "media";
             const fileName = `qig_media_${Date.now()}_${generateUUID().slice(0, 8)}_${cleanBase}`;
@@ -10312,13 +11294,13 @@ async function uploadContextMediaFiles(files, target) {
         }
         if (saved) return;
         const rolledBack = await restoreContextMediaLibrary(previous);
-        if (rolledBack) {
+        if (rolledBack.backupRestored) {
             await Promise.allSettled(accepted.map((media) => deleteContextMediaServerPath(media.path)));
             throw new Error("Media was uploaded but the library could not be saved; uploaded files were cleaned up");
         }
-        throw new Error("Media persistence and rollback both failed; server files were retained to avoid broken references");
+        throw new Error("Media persistence and account rollback both failed; server files were retained to avoid broken references");
     });
-    if (rejected.length) qigToast.warning(`${rejected.length} file(s) were skipped. ${rejected[0]}`, "Context Media", { escapeHtml: true });
+    if (rejected.length) qigToast.warning(`${plural(rejected.length, "file")} skipped. ${rejected[0]}`, "Context Media", { escapeHtml: true });
     return accepted;
 }
 
@@ -10347,14 +11329,17 @@ async function deleteContextMediaItem(media, owner) {
 function showContextMediaUrlDialog() {
     return new Promise((resolve) => {
         const popup = createPopup("qig-context-media-url-dialog", "Add Direct Media Links", `
-            <div class="qig-context-media-url-dialog">
-                <p>Paste up to 20 direct HTTPS links, one per line. Supported: JPG, PNG, GIF, WebP, MP4, and WebM.</p>
+            <div class="qig-context-media-url-dialog qig-popup-form">
+                <div class="qig-editor-body">
+                <p id="qig-context-media-url-help">Paste up to 20 direct HTTPS links, one per line. Supported: JPG, PNG, GIF, WebP, MP4, and WebM.</p>
                 <p class="qig-muted">Use only direct links from sources you trust. Links remain third-party hosted, are saved in the media library and inserted chats, and may follow DNS or redirects that QIG cannot inspect in the browser.</p>
-                <textarea id="qig-context-media-url-input" rows="8" spellcheck="false" placeholder="https://cdn.example.com/image.webp\nhttps://cdn.example.com/video.mp4"></textarea>
+                <label for="qig-context-media-url-input">Direct media links</label>
+                <textarea id="qig-context-media-url-input" rows="8" spellcheck="false" aria-describedby="qig-context-media-url-help" placeholder="https://cdn.example.com/image.webp\nhttps://cdn.example.com/video.mp4"></textarea>
                 <label class="checkbox_label qig-context-media-privacy-consent">
                     <input id="qig-context-media-url-consent" type="checkbox">
                     <span>I understand that checking and displaying these links contacts each third-party server and may disclose my IP address, browser details, and the SillyTavern page address. QIG requests no-referrer loading, but the host may start a request before applying it.</span>
                 </label>
+                </div>
                 <div class="qig-context-media-url-actions">
                     <button id="qig-context-media-url-cancel" class="menu_button" type="button">Cancel</button>
                     <button id="qig-context-media-url-add" class="menu_button" type="button" disabled>Check and add</button>
@@ -10412,6 +11397,10 @@ function contextMediaNodeOptions(profile) {
 }
 
 function showContextMediaManager() {
+    if (contextMediaQuarantined) {
+        qigToast.error("Context Media is read-only right now: stored data uses an unsupported format and was quarantined for safety. Update the extension to access it again.");
+        return;
+    }
     const popup = createPopup("qig-context-media-manager", "Context Media", `
         <div class="qig-context-media-manager">
             <div class="qig-context-media-toolbar">
@@ -10476,7 +11465,8 @@ function showContextMediaManager() {
                 } else if (action === "add-subfolder" && folder) {
                     const label = await qigInput("Context name (for example Swimsuit or Working)", { okButton: "Add Context" });
                     if (!label?.trim()) return;
-                    const description = await qigInput("Semantic description (optional)", { okButton: "Continue" }) || "";
+                    const description = await qigInput("Semantic description (optional)", { okButton: "Continue" });
+                    if (description === null) return;
                     folder.subfolders.push({ id: generateUUID(), label: label.trim(), description: description.trim(), media: [] });
                 } else if (action === "rename-profile") {
                     const label = await qigInput("Profile name", { defaultValue: selectedProfile.label, okButton: "Rename" });
@@ -10485,13 +11475,17 @@ function showContextMediaManager() {
                 } else if (action === "edit-folder" && folder) {
                     const label = await qigInput("Folder name", { defaultValue: folder.label, okButton: "Continue" });
                     if (!label?.trim()) return;
+                    const description = await qigInput("Semantic description", { defaultValue: folder.description || "" });
+                    if (description === null) return;
                     folder.label = label.trim();
-                    folder.description = (await qigInput("Semantic description", { defaultValue: folder.description || "" }) || "").trim();
+                    folder.description = description.trim();
                 } else if (action === "edit-subfolder" && owner) {
                     const label = await qigInput("Context name", { defaultValue: owner.label, okButton: "Continue" });
                     if (!label?.trim()) return;
+                    const description = await qigInput("Semantic description", { defaultValue: owner.description || "" });
+                    if (description === null) return;
                     owner.label = label.trim();
-                    owner.description = (await qigInput("Semantic description", { defaultValue: owner.description || "" }) || "").trim();
+                    owner.description = description.trim();
                 } else if (action === "delete-subfolder" && folder && owner) {
                     if (owner.media.length) return qigToast.info("Remove media items before deleting this context.");
                     if (!(await qigConfirm(`Delete empty context "${owner.label}"?`, { okButton: "Delete Context" }))) return;
@@ -10518,7 +11512,7 @@ function showContextMediaManager() {
                         button.disabled = true;
                         try {
                             const accepted = await uploadContextMediaFiles(input.files, owner);
-                            if (accepted.length) qigToast.success(`Added ${accepted.length} Context Media item(s)`);
+                            if (accepted.length) qigToast.success(`Added ${plural(accepted.length, "Context Media item")}`);
                             render();
                         } catch (error) {
                             log(`Context Media upload failed: ${error.message}`);
@@ -10534,7 +11528,7 @@ function showContextMediaManager() {
                     button.disabled = true;
                     try {
                         const accepted = await addContextMediaRemoteUrls(rawLinks, owner);
-                        if (accepted.length) qigToast.success(`Added ${accepted.length} remote Context Media link(s)`);
+                        if (accepted.length) qigToast.success(`Added ${plural(accepted.length, "remote Context Media link")}`);
                         render();
                         renderContextMediaSummary();
                     } catch (error) {
@@ -10621,6 +11615,7 @@ function showContextMediaManager() {
             renderContextMediaSummary();
         };
         popupElement.querySelector("#qig-context-media-test").onclick = async (event) => {
+            const testButton = event.currentTarget;
             const ctx = getContext?.();
             const chat = ctx?.chat;
             let index = Array.isArray(chat) ? chat.length - 1 : -1;
@@ -10651,7 +11646,8 @@ function showContextMediaManager() {
                 }
                 for (const snapshot of contextSnapshots) assertMessageTargetSnapshot(snapshot, "Context Media test scene changed");
             };
-            event.currentTarget.disabled = true;
+            testButton.disabled = true;
+            contextMediaTestController = controller;
             try {
                 const result = await classifyAndInsertContextMedia({
                     chat,
@@ -10673,11 +11669,20 @@ function showContextMediaManager() {
             } catch (error) {
                 qigToast.error(error.message, "Context Media test", { escapeHtml: true });
             } finally {
-                event.currentTarget.disabled = false;
+                if (contextMediaTestController === controller) contextMediaTestController = null;
+                testButton.disabled = false;
             }
         };
         render();
     }, { popupClass: "wide", contentClass: "qig-popup-content--wide", resizable: false });
+    const priorDismiss = popup._qigDismiss;
+    popup._qigDismiss = (event) => {
+        if (contextMediaTestController) {
+            contextMediaTestController.abort();
+            contextMediaTestController = null;
+        }
+        if (typeof priorDismiss === "function") priorDismiss(event);
+    };
     return popup;
 }
 
@@ -10696,12 +11701,37 @@ function renderContextMediaItems(owner) {
 function cancelContextMediaWork({ resetCadence = false } = {}) {
     if (_contextMediaTimeout) clearTimeout(_contextMediaTimeout);
     _contextMediaTimeout = null;
+    _contextMediaPendingSnapshot = null;
+    _contextMediaActiveSnapshot = null;
     _contextMediaController?.abort();
     _contextMediaController = null;
+    if (contextMediaTestController) {
+        contextMediaTestController.abort();
+        contextMediaTestController = null;
+    }
     if (resetCadence) {
         _contextMediaEligibleCount = 0;
         _contextMediaLastEligibleMessage = null;
         _contextMediaPreviousMediaId = null;
+    }
+}
+
+function deferContextMediaWorkForGeneration() {
+    // Generation takes priority over Context Media, but starting it must not burn the
+    // cadence slot this reply already consumed. A scheduled-but-unfired job already
+    // defers at fire time (its guard reschedules every 250 ms while generation is
+    // busy), so keep its timer intact; only an in-flight classification is aborted,
+    // and its snapshot is requeued so the reply is still served later.
+    if (_contextMediaTimeout && _contextMediaPendingSnapshot) return;
+    const queued = _contextMediaPendingSnapshot || _contextMediaActiveSnapshot;
+    if (_contextMediaController) {
+        _contextMediaController.abort();
+        _contextMediaController = null;
+    }
+    if (queued && !queued.signal.aborted) {
+        _contextMediaPendingSnapshot = null;
+        _contextMediaActiveSnapshot = null;
+        scheduleContextMediaJob(queued, 250);
     }
 }
 
@@ -10757,8 +11787,11 @@ async function classifyAndInsertContextMedia(snapshot, { testOnly = false } = {}
 
 function scheduleContextMediaJob(snapshot, delayMs) {
     if (snapshot.signal.aborted) return;
+    _contextMediaPendingSnapshot = snapshot;
     _contextMediaTimeout = setTimeout(async () => {
         _contextMediaTimeout = null;
+        if (_contextMediaPendingSnapshot === snapshot) _contextMediaPendingSnapshot = null;
+        _contextMediaActiveSnapshot = snapshot;
         if (snapshot.signal.aborted) return;
         const liveSettings = getSettings();
         if (!liveSettings?.contextMediaEnabled) {
@@ -10781,6 +11814,7 @@ function scheduleContextMediaJob(snapshot, delayMs) {
             }
         } finally {
             if (_contextMediaController === snapshot.controller) _contextMediaController = null;
+            if (_contextMediaActiveSnapshot === snapshot) _contextMediaActiveSnapshot = null;
         }
     }, delayMs);
 }
@@ -10793,7 +11827,7 @@ function scheduleContextMediaForMessage(messageIndex) {
     const index = Number(messageIndex);
     if (!Array.isArray(chat) || !Number.isInteger(index) || index < 0 || index >= chat.length) return;
     const message = chat?.[index];
-    if (!message || message.is_user || isGeneratedImageMessage(message) || !shouldScheduleContextMedia(message, settings)) return;
+    if (!message || message.is_user || message.is_system || isGeneratedImageMessage(message) || !shouldScheduleContextMedia(message, settings)) return;
     const profile = getActiveContextMediaProfile(ctx);
     if (!profile || !buildContextMediaCandidates(contextMediaLibrary, { profileIds: profile.id }).length) return;
     cancelContextMediaWork();
@@ -11030,11 +12064,11 @@ async function finalizeGeneratedResults(providerResult, prompt, negative, settin
             if (entry) finalizedEntries.push(entry);
             return entry;
         });
-        if (!outcome.results.length && outcome.errors.length) throw outcome.errors[0].error;
         const entries = attachResultFailures(outcome.results, [
             ...getResultFailures(normalizedProviderResult),
             ...outcome.errors,
         ]);
+        if (!entries.length && getResultFailures(entries).length) throw createResultFailureError(getResultFailures(entries));
         options.commitGuard?.();
         rememberRegenerationReferences(entries, settings, options.referenceRuntimeOptions, {
             groupId: options.regenerationGroupId,
@@ -11154,14 +12188,30 @@ export function teardownQuickImageGen() {
         batchKeyHandler = null;
     }
     if (qigKeyboardShortcutsBound) {
-        document.removeEventListener("keydown", handleQigKeyboardShortcut);
+        document.removeEventListener("keydown", handleQigKeyboardShortcut, { capture: true });
         qigKeyboardShortcutsBound = false;
     }
+    if (qigPopupKeydownBound) {
+        document.removeEventListener("keydown", handleQigPopupKeydown, { capture: true });
+        qigPopupKeydownBound = false;
+    }
+    _processedInjectIndices?.clear?.();
     if (isGenerating) {
         cancelRequested = true;
         cancelRequestSerial += 1;
         generationRunManager.cancel("Quick Image Gen unloaded");
     }
+
+    for (const popup of openQigReviews) popup._qigDismiss?.();
+    for (const popup of document.querySelectorAll(".qig-popup")) {
+        const wasOpen = popup.style.display !== "none";
+        hidePopup(popup, { restoreFocus: false });
+        if (wasOpen) popup._qigDismiss?.();
+        popup.remove();
+    }
+    openQigPopups.length = 0;
+    document.getElementById("qig-status")?.remove();
+    document.getElementById("qig-settings")?.remove();
 
     document.querySelectorAll(`.${QIG_MESSAGE_ACTION_CLASS}`).forEach(element => element.remove());
     document.getElementById("qig-input-btn")?.remove();
@@ -11181,7 +12231,12 @@ function installLifecycleCleanup() {
     if (lifecycleCleanupInstalled) return;
     lifecycleCleanupInstalled = true;
     pageLifecycleScope = createLifecycleScope();
-    pageLifecycleScope.listen(window, "pagehide", teardownQuickImageGen);
+    // bfcache navigation keeps the page (and this extension) alive; only a real
+    // unload should tear down. The "unload" listener covers genuine closes.
+    pageLifecycleScope.listen(window, "pagehide", (event) => {
+        if (event?.persisted) return;
+        teardownQuickImageGen();
+    });
     pageLifecycleScope.listen(window, "unload", teardownQuickImageGen);
 }
 
@@ -11346,29 +12401,31 @@ function displayImage(entryOrUrl, skipGallery, returnFocusElement = null) {
     imageMetadataSettings.effectiveRequest = cloneMetadataSettings(entry.effectiveRequest || imageMetadataSettings.effectiveRequest || {});
 
     const popup = createPopup("qig-popup", "Generated Image", `
+        <div class="qig-result-body">
         <img id="qig-result-img" src="" alt="Generated image result">
-        <button id="qig-toggle-prompt-editor" type="button" aria-expanded="false" aria-controls="qig-result-prompt-editor" style="width: calc(100% - 32px); margin: 8px 16px; padding: 6px; background: var(--SmartThemeBlurTintColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; cursor: pointer; font-size: 11px;">
-            ✏️ Edit Prompt
+        <button id="qig-toggle-prompt-editor" type="button" aria-expanded="false" aria-controls="qig-result-prompt-editor" style="width: calc(100% - 32px); margin: 8px 16px; padding: 6px; background: var(--SmartThemeBlurTintColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; cursor: pointer; font-size: 12px;">
+            <span class="fa-solid fa-pen-to-square" aria-hidden="true"></span> Edit Prompt
         </button>
         <div id="qig-result-prompt-editor" class="qig-prompt-editor" style="display:none;">
             <div style="padding: 8px 16px;">
-                <span id="qig-result-prompt-source-label" style="font-size: 10px; opacity: 0.7; display: block; margin-bottom: 4px;"></span>
-                <label for="qig-preview-prompt" style="font-size: 11px; color: var(--SmartThemeBodyColor); display: block; margin-bottom: 4px;">Prompt:</label>
-                <textarea id="qig-preview-prompt" style="width: 100%; height: 80px; resize: vertical; background: var(--SmartThemeBlurTintColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 8px; font-size: 12px; font-family: monospace;"></textarea>
-                <label for="qig-preview-negative" style="font-size: 11px; color: var(--SmartThemeBodyColor); display: block; margin: 8px 0 4px;">Negative Prompt:</label>
-                <textarea id="qig-preview-negative" style="width: 100%; height: 60px; resize: vertical; background: var(--SmartThemeBlurTintColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 8px; font-size: 12px; font-family: monospace;"></textarea>
+                <span id="qig-result-prompt-source-label" style="font-size: 11px; opacity: 0.7; display: block; margin-bottom: 4px;"></span>
+                <label for="qig-preview-prompt" style="font-size: 12px; color: var(--SmartThemeBodyColor); display: block; margin-bottom: 4px;">Prompt:</label>
+                <textarea id="qig-preview-prompt" style="width: 100%; height: 80px; resize: vertical; background: var(--SmartThemeBlurTintColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 8px; font-family: monospace;"></textarea>
+                <label for="qig-preview-negative" style="font-size: 12px; color: var(--SmartThemeBodyColor); display: block; margin: 8px 0 4px;">Negative Prompt:</label>
+                <textarea id="qig-preview-negative" style="width: 100%; height: 60px; resize: vertical; background: var(--SmartThemeBlurTintColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 8px; font-family: monospace;"></textarea>
                 <div style="display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end;">
-                    <button id="qig-reset-prompt" class="menu_button" style="padding: 4px 10px; font-size: 11px;">Reset to Original</button>
+                    <button id="qig-reset-prompt" class="menu_button" style="padding: 4px 10px; font-size: 12px;">Reset to Original</button>
                 </div>
             </div>
         </div>
+        </div>
         <div class="qig-popup-actions">
-            <button id="qig-regenerate-btn" title="Generate a new image with the same settings">🔄 Regenerate</button>
-            <button id="qig-use-as-ref" title="Use this image as reference for img2img">🖼 Use as Reference</button>
-            <button id="qig-insert-btn" title="Insert this image into the chat">📌 Insert</button>
-            <button id="qig-background-btn" title="Set this image as the current chat background">🖼 Background</button>
-            <button id="qig-gallery-btn" title="Open Gallery">🖼️ Open Gallery</button>
-            <button id="qig-download-btn" title="Download image with metadata">💾 Download</button>
+            <button id="qig-insert-btn" class="qig-popup-action--primary" title="Insert this image into the chat"><span class="fa-solid fa-paper-plane" aria-hidden="true"></span> Insert into Chat</button>
+            <button id="qig-regenerate-btn" title="Generate a new image with the same settings"><span class="fa-solid fa-rotate" aria-hidden="true"></span> Regenerate</button>
+            <button id="qig-use-as-ref" title="Use this image as reference for img2img"><span class="fa-solid fa-clone" aria-hidden="true"></span> Use as Reference</button>
+            <button id="qig-background-btn" title="Set this image as the current chat background"><span class="fa-solid fa-panorama" aria-hidden="true"></span> Background</button>
+            <button id="qig-gallery-btn" title="Open Gallery"><span class="fa-solid fa-images" aria-hidden="true"></span> Gallery</button>
+            <button id="qig-download-btn" title="Download image with metadata"><span class="fa-solid fa-download" aria-hidden="true"></span> Download</button>
             <button id="qig-close-popup" title="Close without inserting">Close</button>
         </div>`, (popup) => {
         // Reset any previous inline resize styles
@@ -11381,8 +12438,6 @@ function displayImage(entryOrUrl, skipGallery, returnFocusElement = null) {
         initResizeHandle(popup);
 
         // Initialize prompt editor
-        originalPrompt = imagePrompt;
-        originalNegative = imageNegative;
         const promptTextarea = document.getElementById("qig-preview-prompt");
         const negativeTextarea = document.getElementById("qig-preview-negative");
         const toggleBtn = document.getElementById("qig-toggle-prompt-editor");
@@ -11391,18 +12446,18 @@ function displayImage(entryOrUrl, skipGallery, returnFocusElement = null) {
         if (promptTextarea) promptTextarea.value = imagePrompt;
         if (negativeTextarea) negativeTextarea.value = imageNegative;
         const sourceLabel = popup.querySelector("#qig-result-prompt-source-label");
-        if (sourceLabel) sourceLabel.textContent = imagePromptWasLLM ? "🤖 AI-Enhanced Prompt" : "📝 Direct Prompt";
+        if (sourceLabel) sourceLabel.textContent = imagePromptWasLLM ? "AI-enhanced prompt" : "Direct prompt";
         toggleBtn.onclick = (e) => {
             e.stopPropagation();
             const isVisible = editorDiv.style.display !== "none";
             editorDiv.style.display = isVisible ? "none" : "block";
-            toggleBtn.textContent = isVisible ? "✏️ Edit Prompt" : "▲ Hide Prompt";
+            toggleBtn.innerHTML = isVisible ? '<span class="fa-solid fa-pen-to-square" aria-hidden="true"></span> Edit Prompt' : '<span class="fa-solid fa-chevron-up" aria-hidden="true"></span> Hide Prompt';
             toggleBtn.setAttribute("aria-expanded", isVisible ? "false" : "true");
         };
         resetBtn.onclick = (e) => {
             e.stopPropagation();
-            promptTextarea.value = originalPrompt;
-            negativeTextarea.value = originalNegative;
+            promptTextarea.value = imagePrompt;
+            negativeTextarea.value = imageNegative;
         };
 
         const img = document.getElementById("qig-result-img");
@@ -11447,8 +12502,11 @@ function displayImage(entryOrUrl, skipGallery, returnFocusElement = null) {
                 if (s.insertAsHiddenReply) {
                     await insertImageAsHiddenReply(entry);
                 } else {
-                    await insertImageIntoMessage(entry, resolveManualInsertFallbackIndex(getContext()?.chat, s), { ignoreSourceIdentity: true });
+                    // Provenance stays checked; the target is resolved from the current chat at
+                    // click time so the configured fallback (not the old scene) receives the image.
+                    await insertImageIntoMessage(entry, null, {});
                 }
+                announceChatInsert("Image inserted into the chat.");
             } catch (err) {
                 console.error("[Quick Image Gen] Insert failed:", err);
                 qigToast.error("Failed to insert image: " + err.message);
@@ -11475,7 +12533,7 @@ function displayImage(entryOrUrl, skipGallery, returnFocusElement = null) {
             }
         };
         document.getElementById("qig-close-popup").onclick = (e) => popup._qigDismiss?.(e);
-    }, { returnFocusElement });
+    }, { returnFocusElement, resizable: true });
 }
 
 function displayBatchResults(results, returnFocusElement = null) {
@@ -11488,43 +12546,46 @@ function displayBatchResults(results, returnFocusElement = null) {
     void addBatchToGallery(entries);
 
     let currentIndex = 0;
+    const drafts = entries.map(entry => ({ prompt: entry.prompt, negative: entry.negative }));
 
     const thumbsHtml = entries.map((_entry, i) =>
         `<button type="button" class="qig-batch-thumb${i === 0 ? ' active' : ''}" data-index="${i}" aria-label="Show generated image ${i + 1}" aria-current="${i === 0 ? 'true' : 'false'}"><img alt=""></button>`
     ).join('');
 
     const popup = createPopup("qig-batch-popup", `Image 1/${entries.length}`, `
+        <div class="qig-result-body">
         <img id="qig-batch-img" src="" alt="Generated image 1 of ${entries.length}" style="max-width:100%;max-height:60vh;object-fit:contain;padding:10px;min-height:100px;">
         <div class="qig-batch-nav">
             <button id="qig-batch-prev" type="button" aria-label="Previous generated image">◀</button>
-            <span id="qig-batch-counter">1 / ${entries.length}</span>
+            <span id="qig-batch-counter" role="status" aria-live="polite">1 / ${entries.length}</span>
             <button id="qig-batch-next" type="button" aria-label="Next generated image">▶</button>
         </div>
         <div class="qig-batch-thumbs">${thumbsHtml}</div>
-        <button id="qig-batch-toggle-prompt-editor" type="button" aria-expanded="false" aria-controls="qig-batch-prompt-editor" style="width: calc(100% - 32px); margin: 8px 16px; padding: 6px; background: var(--SmartThemeBlurTintColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; cursor: pointer; font-size: 11px;">
-            ✏️ Edit Prompt
+        <button id="qig-batch-toggle-prompt-editor" type="button" aria-expanded="false" aria-controls="qig-batch-prompt-editor" style="width: calc(100% - 32px); margin: 8px 16px; padding: 6px; background: var(--SmartThemeBlurTintColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; cursor: pointer; font-size: 12px;">
+            <span class="fa-solid fa-pen-to-square" aria-hidden="true"></span> Edit Prompt
         </button>
         <div id="qig-batch-prompt-editor" class="qig-prompt-editor" style="display:none;">
             <div style="padding: 8px 16px;">
-                <span id="qig-batch-prompt-source-label" style="font-size: 10px; opacity: 0.7; display: block; margin-bottom: 4px;"></span>
-                <label for="qig-batch-preview-prompt" style="font-size: 11px; color: var(--SmartThemeBodyColor); display: block; margin-bottom: 4px;">Prompt:</label>
-                <textarea id="qig-batch-preview-prompt" style="width: 100%; height: 80px; resize: vertical; background: var(--SmartThemeBlurTintColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 8px; font-size: 12px; font-family: monospace;"></textarea>
-                <label for="qig-batch-preview-negative" style="font-size: 11px; color: var(--SmartThemeBodyColor); display: block; margin: 8px 0 4px;">Negative Prompt:</label>
-                <textarea id="qig-batch-preview-negative" style="width: 100%; height: 60px; resize: vertical; background: var(--SmartThemeBlurTintColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 8px; font-size: 12px; font-family: monospace;"></textarea>
+                <span id="qig-batch-prompt-source-label" style="font-size: 11px; opacity: 0.7; display: block; margin-bottom: 4px;"></span>
+                <label for="qig-batch-preview-prompt" style="font-size: 12px; color: var(--SmartThemeBodyColor); display: block; margin-bottom: 4px;">Prompt:</label>
+                <textarea id="qig-batch-preview-prompt" style="width: 100%; height: 80px; resize: vertical; background: var(--SmartThemeBlurTintColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 8px; font-family: monospace;"></textarea>
+                <label for="qig-batch-preview-negative" style="font-size: 12px; color: var(--SmartThemeBodyColor); display: block; margin: 8px 0 4px;">Negative Prompt:</label>
+                <textarea id="qig-batch-preview-negative" style="width: 100%; height: 60px; resize: vertical; background: var(--SmartThemeBlurTintColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 8px; font-family: monospace;"></textarea>
                 <div style="display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end;">
-                    <button id="qig-batch-reset-prompt" class="menu_button" style="padding: 4px 10px; font-size: 11px;">Reset to Original</button>
+                    <button id="qig-batch-reset-prompt" class="menu_button" style="padding: 4px 10px; font-size: 12px;">Reset to Original</button>
                 </div>
             </div>
         </div>
+        </div>
         <div class="qig-popup-actions">
-            <button id="qig-batch-regenerate" title="Regenerate all images in this batch">🔄 Regenerate</button>
-            <button id="qig-batch-use-as-ref" title="Use selected image as reference for img2img">🖼 Use as Reference</button>
-            <button id="qig-batch-insert" title="Insert selected image into chat">📌 Insert</button>
-            <button id="qig-batch-insert-all" title="Insert all images into chat">📌 Insert All</button>
-            <button id="qig-batch-background" title="Set selected image as the current chat background">🖼 Background</button>
-            <button id="qig-batch-gallery" title="Open Gallery">🖼️ Open Gallery</button>
-            <button id="qig-batch-download" title="Download selected image">💾 Download</button>
-            <button id="qig-batch-save-all" title="Download all images">💾 Save All</button>
+            <button id="qig-batch-insert" class="qig-popup-action--primary" title="Insert selected image into chat"><span class="fa-solid fa-paper-plane" aria-hidden="true"></span> Insert This</button>
+            <button id="qig-batch-insert-all" title="Insert all images into chat"><span class="fa-solid fa-paper-plane" aria-hidden="true"></span> Insert All</button>
+            <button id="qig-batch-regenerate" title="Regenerate all images in this batch"><span class="fa-solid fa-rotate" aria-hidden="true"></span> Regenerate</button>
+            <button id="qig-batch-use-as-ref" title="Use selected image as reference for img2img"><span class="fa-solid fa-clone" aria-hidden="true"></span> Use as Reference</button>
+            <button id="qig-batch-background" title="Set selected image as the current chat background"><span class="fa-solid fa-panorama" aria-hidden="true"></span> Background</button>
+            <button id="qig-batch-gallery" title="Open Gallery"><span class="fa-solid fa-images" aria-hidden="true"></span> Gallery</button>
+            <button id="qig-batch-download" title="Download selected image"><span class="fa-solid fa-download" aria-hidden="true"></span> Download</button>
+            <button id="qig-batch-save-all" title="Download all images"><span class="fa-solid fa-file-zipper" aria-hidden="true"></span> Save All</button>
             <button id="qig-batch-close" title="Close without inserting">Close</button>
         </div>`, (popup) => {
         const content = popup.querySelector('.qig-popup-content');
@@ -11542,11 +12603,9 @@ function displayBatchResults(results, returnFocusElement = null) {
         const getCurrentEntry = () => entries[currentIndex];
         const syncPromptEditor = (entry) => {
             const activeEntry = normalizeGenerationEntry(entry, { prompt: lastPrompt, negative: lastNegative, promptWasLLM: lastPromptWasLLM });
-            originalPrompt = activeEntry.prompt;
-            originalNegative = activeEntry.negative;
-            if (batchPromptTextarea) batchPromptTextarea.value = originalPrompt;
-            if (batchNegativeTextarea) batchNegativeTextarea.value = originalNegative;
-            if (batchSourceLabel) batchSourceLabel.textContent = activeEntry.promptWasLLM ? "🤖 AI-Enhanced Prompt" : "📝 Direct Prompt";
+            if (batchPromptTextarea) batchPromptTextarea.value = drafts[currentIndex].prompt;
+            if (batchNegativeTextarea) batchNegativeTextarea.value = drafts[currentIndex].negative;
+            if (batchSourceLabel) batchSourceLabel.textContent = activeEntry.promptWasLLM ? "AI-enhanced prompt" : "Direct prompt";
         };
 
         // Initialize prompt editor
@@ -11561,19 +12620,20 @@ function displayBatchResults(results, returnFocusElement = null) {
             e.stopPropagation();
             const isVisible = batchEditorDiv.style.display !== "none";
             batchEditorDiv.style.display = isVisible ? "none" : "block";
-            batchToggleBtn.textContent = isVisible ? "✏️ Edit Prompt" : "▲ Hide Prompt";
+            batchToggleBtn.innerHTML = isVisible ? '<span class="fa-solid fa-pen-to-square" aria-hidden="true"></span> Edit Prompt' : '<span class="fa-solid fa-chevron-up" aria-hidden="true"></span> Hide Prompt';
             batchToggleBtn.setAttribute("aria-expanded", isVisible ? "false" : "true");
         };
         batchResetBtn.onclick = (e) => {
             e.stopPropagation();
-            batchPromptTextarea.value = originalPrompt;
-            batchNegativeTextarea.value = originalNegative;
+            batchPromptTextarea.value = getCurrentEntry().prompt;
+            batchNegativeTextarea.value = getCurrentEntry().negative;
         };
 
         const img = document.getElementById("qig-batch-img");
         img.src = entries[0].url;
 
         function showImage(index) {
+            drafts[currentIndex] = { prompt: batchPromptTextarea.value, negative: batchNegativeTextarea.value };
             currentIndex = index;
             activateRegenerationReferenceResult(entries[index]);
             img.src = entries[index].url;
@@ -11609,18 +12669,19 @@ function displayBatchResults(results, returnFocusElement = null) {
                 document.removeEventListener("keydown", keyHandler);
                 return;
             }
-            const tag = document.activeElement?.tagName;
-            if (tag === "INPUT" || tag === "TEXTAREA") return;
-            if (e.key === "ArrowLeft") showImage((currentIndex - 1 + entries.length) % entries.length);
-            if (e.key === "ArrowRight") showImage((currentIndex + 1) % entries.length);
+            if (getTopQigPopup() !== popup || isEditableShortcutTarget(e.target)) return;
+            if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+            e.preventDefault();
+            showImage((currentIndex + (e.key === "ArrowLeft" ? -1 : 1) + entries.length) % entries.length);
         };
         if (batchKeyHandler) document.removeEventListener("keydown", batchKeyHandler);
         batchKeyHandler = keyHandler;
         document.addEventListener("keydown", keyHandler);
-        const origOnClick = popup.onclick;
-        popup.onclick = (e) => {
+        // Detach arrow-key nav only when the popup actually closes, not on every click.
+        const origDismiss = popup._qigDismiss;
+        popup._qigDismiss = (e) => {
             document.removeEventListener("keydown", keyHandler);
-            if (origOnClick) origOnClick(e);
+            origDismiss?.(e);
         };
 
         document.getElementById("qig-batch-download").onclick = async (e) => {
@@ -11651,13 +12712,27 @@ function displayBatchResults(results, returnFocusElement = null) {
         };
         document.getElementById("qig-batch-insert-all").onclick = async (e) => {
             e.stopPropagation();
+            const insertAllButton = e.currentTarget;
+            const insertOneButton = document.getElementById("qig-batch-insert");
+            if (insertAllButton.disabled) return;
+            insertAllButton.disabled = true;
+            if (insertOneButton) insertOneButton.disabled = true;
             try {
-                for (const entry of entries) {
-                    await insertImageIntoMessage(entry, resolveManualInsertFallbackIndex(getContext()?.chat, getSettings()), { ignoreSourceIdentity: true });
+                const batchEntries = entries.map(entry => entry);
+                let inserted = 0;
+                for (const entry of batchEntries) {
+                    await insertImageIntoMessage(entry, null, {});
+                    inserted++;
                 }
+                // Undo only reverses the last one, so don't offer it for a multi-image insert.
+                rememberChatInsertUndo(null);
+                qigToast.success(`${plural(batchEntries.length, "image")} inserted into the chat.`, "Quick Image Gen");
             } catch (err) {
                 console.error("[Quick Image Gen] Insert all failed:", err);
-                qigToast.error("Failed to insert images: " + err.message);
+                qigToast.warning(`Insert all stopped: ${err.message} Images inserted before the failure were kept; the remaining images are still available in the batch viewer.`, "Quick Image Gen");
+            } finally {
+                insertAllButton.disabled = false;
+                if (insertOneButton) insertOneButton.disabled = false;
             }
         };
         document.getElementById("qig-batch-regenerate").onclick = (e) => {
@@ -11690,12 +12765,18 @@ function displayBatchResults(results, returnFocusElement = null) {
         };
         document.getElementById("qig-batch-insert").onclick = async (e) => {
             e.stopPropagation();
+            const insertOneButton = e.currentTarget;
+            if (insertOneButton.disabled) return;
+            insertOneButton.disabled = true;
             try {
                 const activeEntry = getCurrentEntry();
-                await insertImageIntoMessage(activeEntry, resolveManualInsertFallbackIndex(getContext()?.chat, getSettings()), { ignoreSourceIdentity: true });
+                await insertImageIntoMessage(activeEntry, null, {});
+                announceChatInsert("Image inserted into the chat.");
             } catch (err) {
                 console.error("[Quick Image Gen] Insert failed:", err);
                 qigToast.error("Failed to insert image: " + err.message);
+            } finally {
+                insertOneButton.disabled = false;
             }
         };
         document.getElementById("qig-batch-background").onclick = async (e) => {
@@ -11719,7 +12800,7 @@ function displayBatchResults(results, returnFocusElement = null) {
             }
         };
         document.getElementById("qig-batch-close").onclick = (e) => popup._qigDismiss?.(e);
-    }, { returnFocusElement });
+    }, { returnFocusElement, resizable: true });
 }
 
 async function showGallery(returnFocusElement = null) {
@@ -11748,7 +12829,7 @@ async function showGallery(returnFocusElement = null) {
             if (!sessionGallery.length) {
                 const empty = document.createElement("p");
                 empty.className = "qig-muted";
-                empty.textContent = "No images yet";
+                empty.textContent = "No images yet. Close this and press Generate to make your first one; every image you generate is kept here.";
                 grid.appendChild(empty);
                 return;
             }
@@ -11834,7 +12915,7 @@ async function showGallery(returnFocusElement = null) {
                     sessionGallery = [];
                     if (!recovery.assetsCleared) {
                         log(`Gallery asset clear deferred: ${recovery.error?.message || "IndexedDB unavailable"}`);
-                        qigToast.warning("Gallery was marked cleared. Stored image bytes will be removed when IndexedDB is available again.");
+                        qigToast.warning("Gallery was marked cleared. Stored image bytes will be removed when browser storage and exclusive access are available again.");
                     }
                 }
                 blobUrls.forEach(url => URL.revokeObjectURL(url));
@@ -11843,7 +12924,7 @@ async function showGallery(returnFocusElement = null) {
                 renderGalleryGrid();
             } catch (error) {
                 log(`Gallery clear failed: ${error.message}`);
-                qigToast.error("Could not clear the durable gallery", "Quick Image Gen");
+                qigToast.error(`Could not clear the saved gallery: ${error.message}`, "Quick Image Gen");
             }
         };
         gallery.querySelector("#qig-gallery-import-add").onclick = (e) => {
@@ -11875,10 +12956,11 @@ function bindAbortDismiss(signal, dismiss) {
     return () => signal.removeEventListener("abort", dismiss);
 }
 
-function showPromptReviewStage({
+async function showPromptReviewStage({
     mode,
     title,
     description,
+    role = "",
     request = "",
     prefill = null,
     result = "",
@@ -11887,129 +12969,166 @@ function showPromptReviewStage({
     canGoBack = false,
     signal = null,
 }) {
-    return new Promise((resolve) => {
-        const isRequest = mode === "request";
-        const isResult = mode === "result";
-        const isFinal = mode === "final";
-        const hasPrefill = isRequest && prefill !== null;
-        const fieldMarkup = isFinal
-            ? `<div class="qig-review-fields qig-review-fields--final">
-                    <label for="qig-review-positive">Positive prompt</label>
-                    <textarea id="qig-review-positive" rows="10" spellcheck="false"></textarea>
-                    <label for="qig-review-negative">Negative prompt</label>
-                    <textarea id="qig-review-negative" rows="5" spellcheck="false"></textarea>
-                </div>`
-            : `<div class="qig-review-fields">
-                    <label for="qig-review-text">${isRequest ? "Exact request sent to Text AI" : "Scene summary result"}</label>
-                    <textarea id="qig-review-text" rows="16" spellcheck="false"></textarea>
-                    ${hasPrefill ? `<label for="qig-review-prefill">Assistant prefill</label>
-                    <textarea id="qig-review-prefill" class="qig-review-prefill" rows="3" spellcheck="false"></textarea>
-                    <p class="qig-review-field-note">Sent as a separate assistant prefix when supported. Fallback routes convert this reviewed value into an explicit continuation instruction.</p>` : ""}
-                </div>`;
-        const backLabel = isResult ? "Re-run Text AI" : "Back";
-        const primaryLabel = isRequest ? "Run Text AI" : (isFinal ? "Generate" : "Continue");
-        const activeStage = isFinal ? 3 : (isResult ? 2 : 1);
-        const popup = createPopup("qig-prompt-review-popup", title, `
-            <div class="qig-prompt-review">
-                <ol class="qig-review-progress" aria-label="Prompt review progress">
-                    <li class="${activeStage === 1 ? "is-active" : ""}">Text AI request</li>
-                    <li class="${activeStage === 2 ? "is-active" : ""}">AI result</li>
-                    <li class="${activeStage === 3 ? "is-active" : ""}">Image prompt</li>
+    if (signal?.aborted) return null;
+    const Popup = nativePopupModule?.Popup || getContext?.()?.Popup;
+    const textType = nativePopupModule?.POPUP_TYPE?.TEXT ?? getContext?.()?.POPUP_TYPE?.TEXT;
+    if (typeof Popup !== "function" || !Number.isFinite(textType)) {
+        qigToast.error("Prompt review is unavailable. Reload SillyTavern before trying again.");
+        return null;
+    }
+
+    const returnFocus = document.activeElement;
+    const status = document.getElementById("qig-status");
+    const previousStatus = status?.style.display === "block" ? status.textContent : "";
+    const waitingStatus = "Waiting for your review...";
+    showStatus(waitingStatus);
+    const isRequest = mode === "request";
+    const isResult = mode === "result";
+    const isFinal = mode === "final";
+    const hasPrefill = isRequest && prefill !== null;
+    const fieldMarkup = isFinal
+        ? `<div class="qig-review-fields qig-review-fields--final">
+                <label for="qig-review-positive">Positive prompt</label>
+                <textarea id="qig-review-positive" rows="10" spellcheck="false" aria-describedby="qig-review-error"></textarea>
+                <label for="qig-review-negative">Negative prompt</label>
+                <textarea id="qig-review-negative" rows="5" spellcheck="false"></textarea>
+            </div>`
+        : `<div class="qig-review-fields">
+                <label for="qig-review-text">${isRequest ? "Exact request sent to Text AI" : "Scene summary result"}</label>
+                <textarea id="qig-review-text" rows="16" spellcheck="false" aria-describedby="qig-review-error"></textarea>
+                ${hasPrefill ? `<label for="qig-review-prefill">Assistant prefill</label>
+                <textarea id="qig-review-prefill" class="qig-review-prefill" rows="3" spellcheck="false" aria-describedby="qig-review-prefill-note"></textarea>
+                <p id="qig-review-prefill-note" class="qig-review-field-note">When the connection supports it, this becomes the assistant's starting words; otherwise it is sent as an instruction to continue from this text.</p>` : ""}
+            </div>`;
+    const backLabel = (isResult || isFinal) ? "Re-run Text AI" : "Back";
+    const primaryLabel = isRequest ? "Run Text AI" : (isFinal ? "Generate" : "Continue");
+    // ponytail: show the current stage, not a guessed total that varies by request path.
+    const stageLabel = isFinal ? "Image prompt" : (isResult ? "Scene summary" : (role || "Text AI request"));
+    const content = document.createElement("div");
+    content.id = "qig-prompt-review-popup";
+    content.className = "qig-prompt-review";
+    content.innerHTML = `
+            <header class="qig-review-header">
+                <h3 id="qig-review-title" tabindex="-1" autofocus>${escapeHtml(title)}</h3>
+                <ol class="qig-review-progress" aria-label="Current review stage">
+                    <li class="is-active" aria-current="step">${escapeHtml(stageLabel)}</li>
                 </ol>
+            </header>
+            <div class="qig-review-body">
                 <p class="qig-review-description">${escapeHtml(description)}</p>
                 ${fieldMarkup}
-                <div class="qig-review-actions">
-                    <button id="qig-review-cancel" type="button" class="menu_button">Cancel</button>
-                    ${(canGoBack || isResult) ? `<button id="qig-review-back" type="button" class="menu_button">${backLabel}</button>` : ""}
-                    <button id="qig-review-reset" type="button" class="menu_button">Reset stage</button>
-                    <button id="qig-review-primary" type="button" class="menu_button">${primaryLabel}</button>
-                </div>
-            </div>`, (popupElement) => {
-            const textArea = popupElement.querySelector("#qig-review-text");
-            const prefillArea = popupElement.querySelector("#qig-review-prefill");
-            const positiveArea = popupElement.querySelector("#qig-review-positive");
-            const negativeArea = popupElement.querySelector("#qig-review-negative");
-            const initialText = isRequest ? request : result;
-            if (textArea) textArea.value = initialText;
-            if (prefillArea) prefillArea.value = prefill;
-            if (positiveArea) positiveArea.value = prompt;
-            if (negativeArea) negativeArea.value = negative;
+                <p id="qig-review-error" class="qig-field-error" role="alert" hidden></p>
+            </div>
+            <footer class="qig-review-actions">
+                <button id="qig-review-cancel" type="button" class="menu_button">Cancel</button>
+                ${(canGoBack || isResult) ? `<button id="qig-review-back" type="button" class="menu_button">${backLabel}</button>` : ""}
+                <button id="qig-review-reset" type="button" class="menu_button">Reset stage</button>
+                <button id="qig-review-primary" type="button" class="menu_button">${primaryLabel}</button>
+            </footer>`;
+    const textArea = content.querySelector("#qig-review-text");
+    const prefillArea = content.querySelector("#qig-review-prefill");
+    const positiveArea = content.querySelector("#qig-review-positive");
+    const negativeArea = content.querySelector("#qig-review-negative");
+    const requiredField = textArea || positiveArea;
+    const errorEl = content.querySelector("#qig-review-error");
+    const clearError = () => {
+        requiredField.removeAttribute("aria-invalid");
+        errorEl.hidden = true;
+        errorEl.textContent = "";
+    };
+    const reset = () => {
+        if (textArea) textArea.value = isRequest ? request : result;
+        if (prefillArea) prefillArea.value = prefill;
+        if (positiveArea) positiveArea.value = prompt;
+        if (negativeArea) negativeArea.value = negative;
+        clearError();
+    };
+    reset();
 
-            let settled = false;
-            let removeAbortListener = () => {};
-            const finish = (value) => {
-                if (settled) return;
-                settled = true;
-                removeAbortListener();
-                hidePopup(popupElement);
-                resolve(value);
-            };
-            const close = () => finish(null);
-            const submit = () => {
-                if (isFinal) {
-                    const positive = positiveArea?.value?.trim() || "";
-                    if (!positive) {
-                        qigToast.warning("Image prompt cannot be empty");
-                        positiveArea?.focus();
-                        return;
-                    }
-                    finish({ action: "continue", prompt: positive, negative: negativeArea?.value || "" });
-                    return;
-                }
-                const text = textArea?.value?.trim() || "";
-                if (!text) {
-                    qigToast.warning(isRequest ? "Text AI request cannot be empty" : "Scene summary cannot be empty");
-                    textArea?.focus();
-                    return;
-                }
-                finish({ action: "continue", text, prefill: prefillArea?.value ?? null });
-            };
-            const reset = () => {
-                if (isFinal) {
-                    positiveArea.value = prompt;
-                    negativeArea.value = negative;
-                    positiveArea.focus();
-                } else {
-                    textArea.value = initialText;
-                    if (prefillArea) prefillArea.value = prefill;
-                    textArea.focus();
-                }
-            };
+    let popup;
+    let response = null;
+    let closing = false;
+    let removeAbortListener = () => {};
+    const finish = (value) => {
+        if (closing) return;
+        closing = true;
+        response = value;
+        void popup.completeCancelled();
+    };
+    const close = () => finish(null);
+    const submit = () => {
+        if (closing) return;
+        const text = requiredField.value.trim();
+        if (!text) {
+            errorEl.textContent = isFinal ? "Image prompt cannot be empty." : (isRequest ? "Text AI request cannot be empty." : "Scene summary cannot be empty.");
+            errorEl.hidden = false;
+            requiredField.setAttribute("aria-invalid", "true");
+            requiredField.focus();
+            return;
+        }
+        finish(isFinal
+            ? { action: "continue", prompt: text, negative: negativeArea.value }
+            : { action: "continue", text, prefill: prefillArea?.value ?? null });
+    };
+    requiredField.oninput = clearError;
+    content.querySelector("#qig-review-cancel").onclick = close;
+    content.querySelector("#qig-review-reset").onclick = reset;
+    content.querySelector("#qig-review-primary").onclick = submit;
+    const backButton = content.querySelector("#qig-review-back");
+    if (backButton) backButton.onclick = () => finish({ action: "back" });
+    content.onkeydown = (event) => {
+        if (event.key !== "Enter") return;
+        // Keep ordinary Enter as a newline, regardless of the host's send-on-enter setting.
+        event.stopPropagation();
+        if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && !event.isComposing) {
+            event.preventDefault();
+            submit();
+        }
+    };
 
-            removeAbortListener = bindAbortDismiss(signal, close);
-            popupElement.querySelector("#qig-review-cancel").onclick = close;
-            popupElement.querySelector("#qig-review-reset").onclick = reset;
-            popupElement.querySelector("#qig-review-primary").onclick = submit;
-            const backButton = popupElement.querySelector("#qig-review-back");
-            if (backButton) backButton.onclick = () => finish({ action: "back" });
-            bindPopupDismiss(popupElement, close, { closeOnBackdrop: false });
-
-            const firstField = textArea || positiveArea;
-            firstField?.focus();
-            firstField?.setSelectionRange?.(firstField.value.length, firstField.value.length);
-            for (const textarea of popupElement.querySelectorAll("textarea")) {
-                textarea.onkeydown = (event) => {
-                    if (event.key === "Enter" && event.ctrlKey) {
-                        event.preventDefault();
-                        submit();
-                    }
-                };
-            }
-        }, {
-            popupClass: "editor",
-            contentClass: "qig-popup-content--review",
-            resizable: false,
-            closeOnBackdrop: false,
+    try {
+        popup = new Popup(content, textType, "", {
+            wider: true,
+            allowVerticalScrolling: true,
+            okButton: false,
+            cancelButton: false,
+            animation: "none",
+            onClosing: () => {
+                closing = true;
+                return true;
+            },
         });
-        popup.style.display = "flex";
-    });
+        popup.dlg.classList.add("qig-native-review");
+        popup.dlg.setAttribute("aria-labelledby", "qig-review-title");
+        popup.buttonControls.style.display = "none";
+        content.querySelector("#qig-review-title").tabIndex = -1;
+        popup._qigDismiss = close;
+        openQigReviews.add(popup);
+        // Popup.show owns the host dialog's showModal, focus, Escape and removal lifecycle.
+        const shown = popup.show();
+        removeAbortListener = bindAbortDismiss(signal, close);
+        await shown;
+        return signal?.aborted ? null : response;
+    } catch (error) {
+        log(`Prompt review failed: ${error.message}`);
+        qigToast.error("Prompt review could not open. Generation was cancelled.");
+        return null;
+    } finally {
+        removeAbortListener();
+        openQigReviews.delete(popup);
+        if (popup?.dlg?.isConnected) void popup.completeCancelled();
+        const currentStatus = document.getElementById("qig-status");
+        if (currentStatus?.style.display === "block" && currentStatus.textContent === waitingStatus) showStatus(previousStatus);
+        restoreQigPopupFocus(returnFocus);
+    }
 }
 
-async function reviewTextAIRequest(request, { title, description, prefill = null, signal } = {}) {
+async function reviewTextAIRequest(request, { title, description, prefill = null, signal, role = "default" } = {}) {
     const reviewed = await showPromptReviewStage({
         mode: "request",
         title: title || "Review Text AI Request",
         description: description || "This is the exact QIG instruction sent to Text AI. Edit it before running the request.",
+        role: `Text AI request: ${role === "system" ? "System" : role === "user" ? "User" : "Default role (connection behaviour)"}`,
         request,
         prefill,
         signal,
@@ -12047,9 +13166,10 @@ function showPlainDescriptionDialog() {
     return new Promise((resolve) => {
         const s = getSettings();
         const popup = createPopup("qig-plain-description-popup", "Generate From Plain Description", `
-            <div class="qig-popup-form" style="padding:16px;min-width:min(640px,90vw);">
+            <div class="qig-popup-form qig-plain-description-form">
+                <div class="qig-editor-body">
                 <label for="qig-plain-description-text">Description</label>
-                <textarea id="qig-plain-description-text" rows="8" placeholder="Describe the image in plain language. QIG will ask your AI to turn this into an image prompt."></textarea>
+                <textarea id="qig-plain-description-text" rows="8" aria-describedby="qig-plain-description-error" placeholder="Describe the image in plain language. QIG will ask your AI to turn this into an image prompt."></textarea>
                 <div class="qig-form-grid" style="margin-top:12px;">
                     <div class="qig-form-field">
                         <label for="qig-plain-description-style">Prompt Style</label>
@@ -12060,27 +13180,36 @@ function showPlainDescriptionDialog() {
                         </select>
                     </div>
                 </div>
-                <div class="qig-dialog-actions" style="margin-top:14px;">
-                    <button id="qig-plain-description-cancel" class="menu_button">Cancel</button>
-                    <button id="qig-plain-description-generate" class="menu_button">Generate</button>
+                <p id="qig-plain-description-error" class="qig-field-error" role="alert" hidden></p>
+                </div>
+                <div class="qig-dialog-actions">
+                    <button id="qig-plain-description-cancel" class="menu_button" type="button">Cancel</button>
+                    <button id="qig-plain-description-generate" class="menu_button" type="button">Generate</button>
                 </div>
             </div>`, (popup) => {
             const textEl = document.getElementById("qig-plain-description-text");
             const styleEl = document.getElementById("qig-plain-description-style");
+            const errorEl = popup.querySelector("#qig-plain-description-error");
+            let settled = false;
 
-            const close = () => {
+            const finish = (value) => {
+                if (settled) return;
+                settled = true;
                 hidePopup(popup);
-                resolve(null);
+                resolve(value);
             };
+            const close = () => finish(null);
             const use = () => {
+                if (settled) return;
                 const description = textEl.value.trim();
                 if (!description) {
-                    qigToast.warning("Enter a plain text description first");
+                    errorEl.textContent = "Enter a description first.";
+                    errorEl.hidden = false;
+                    textEl.setAttribute("aria-invalid", "true");
                     textEl.focus();
                     return;
                 }
-                hidePopup(popup);
-                resolve({
+                finish({
                     description,
                     promptStyle: styleEl.value || "tags",
                 });
@@ -12090,10 +13219,15 @@ function showPlainDescriptionDialog() {
             document.getElementById("qig-plain-description-generate").onclick = use;
             bindPopupDismiss(popup, close);
 
-            textEl.focus();
+            textEl.oninput = () => {
+                textEl.removeAttribute("aria-invalid");
+                errorEl.hidden = true;
+                errorEl.textContent = "";
+            };
             textEl.onkeydown = (e) => {
-                if (e.key === "Enter" && e.ctrlKey) {
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && !e.isComposing) {
                     e.preventDefault();
+                    e.stopPropagation();
                     use();
                 }
                 if (e.key === "Escape") {
@@ -12120,15 +13254,17 @@ function showParagraphPicker(messageText, signal) {
         }).join("");
 
         const popup = createPopup("qig-paragraph-picker-popup", "Select Paragraphs", `
-            <div style="padding:12px 16px;">
-                <div style="display:flex;gap:8px;margin-bottom:10px;">
-                    <button id="qig-para-select-all" class="menu_button" style="padding:2px 10px;font-size:11px;">Select All</button>
-                    <button id="qig-para-deselect-all" class="menu_button" style="padding:2px 10px;font-size:11px;">Deselect All</button>
+            <div class="qig-paragraph-picker qig-popup-form">
+                <div class="qig-editor-body">
+                    <div class="qig-paragraph-toolbar">
+                        <button id="qig-para-select-all" type="button" class="menu_button">Select All</button>
+                        <button id="qig-para-deselect-all" type="button" class="menu_button">Deselect All</button>
+                    </div>
+                    <div class="qig-paragraph-list">${listHtml}</div>
                 </div>
-                <div class="qig-paragraph-list">${listHtml}</div>
-                <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
-                    <button id="qig-para-cancel" class="menu_button">Cancel</button>
-                    <button id="qig-para-use" class="menu_button">Use Selected</button>
+                <div class="qig-dialog-actions">
+                    <button id="qig-para-cancel" type="button" class="menu_button">Cancel</button>
+                    <button id="qig-para-use" type="button" class="menu_button">Use Selected</button>
                 </div>
             </div>`, (popup) => {
             const checkboxes = () => popup.querySelectorAll(".qig-para-cb");
@@ -12191,7 +13327,7 @@ async function genStability(prompt, negative, s, signal) {
     throw new Error("No image in response");
 }
 
-async function genReplicate(prompt, negative, s, signal) {
+async function genReplicate(prompt, negative, s, signal, options = {}) {
     if (!s.replicateKey) throw new Error("Replicate API key required");
     const seed = resolveRandomSeed(s.seed, s);
     // Default to SDXL if no model specified
@@ -12266,7 +13402,7 @@ async function genReplicate(prompt, negative, s, signal) {
                     const { message } = await readProviderErrorResponse(imageResponse);
                     throw new Error(`Replicate output error ${imageResponse.status}: ${message || imageResponse.statusText}`);
                 }
-                return imageResponseToDataUrl(imageResponse);
+                return imageResponseToDataUrl(limitGenerationOutputResponse(imageResponse, options.reserveOutput(0)));
             }
             if (["failed", "canceled", "cancelled"].includes(state)) {
                 throw new Error(status.error || `Replicate prediction ${state}`);
@@ -12433,8 +13569,9 @@ async function genOpenAICompatibleImageProvider(provider, providerName, apiUrl, 
     }
 
     const contentType = res.headers.get("content-type") || "";
-    if (contentType.includes("image/")) {
-        return withEffectiveRequest(createTransientImageObjectUrl(await readResponseArrayBuffer(res, MAX_IMAGE_BYTES)));
+    const responseMime = contentType.split(";", 1)[0].trim().toLowerCase();
+    if (responseMime.startsWith("image/") || responseMime === "application/octet-stream") {
+        return withEffectiveRequest(createTransientImageObjectUrl(await readResponseArrayBuffer(limitGenerationOutputResponse(res, options.reserveOutput(0)), MAX_IMAGE_BYTES)));
     }
 
     const text = await readResponseText(res, MAX_PROVIDER_RESPONSE_BYTES);
@@ -12473,7 +13610,7 @@ async function genOpenAICompatibleImageProvider(provider, providerName, apiUrl, 
     throw new Error(`No image in ${providerName} response`);
 }
 
-async function genRouteway(prompt, negative, s, signal) {
+async function genRouteway(prompt, negative, s, signal, options = {}) {
     const seed = resolveRandomSeed(s.seed, s);
     const steps = Math.max(1, Math.trunc(Number(s.steps) || 25));
     const guidance = Number.isFinite(Number(s.cfgScale)) ? Number(s.cfgScale) : 7;
@@ -12488,6 +13625,7 @@ async function genRouteway(prompt, negative, s, signal) {
         s,
         signal,
         {
+            reserveOutput: options.reserveOutput,
             separateNegativePrompt: true,
             payload: {
                 negative_prompt: negative,
@@ -12500,7 +13638,7 @@ async function genRouteway(prompt, negative, s, signal) {
     );
 }
 
-async function genNavy(prompt, negative, s, signal) {
+async function genNavy(prompt, negative, s, signal, options = {}) {
     return await genOpenAICompatibleImageProvider(
         "navy",
         "Navy.ai",
@@ -12511,7 +13649,7 @@ async function genNavy(prompt, negative, s, signal) {
         negative,
         s,
         signal,
-        { includeResponseFormat: false },
+        { includeResponseFormat: false, reserveOutput: options.reserveOutput },
     );
 }
 
@@ -12701,9 +13839,29 @@ function getHostedProviderOutputRequest(provider, settings) {
     }
 }
 
-async function materializeHostedProviderOutput(source, provider, settings, signal) {
+function accountInlineGenerationOutput(source, output) {
+    if (!String(source).startsWith("data:")) return;
+    const encoded = source.slice(source.indexOf(",") + 1).replace(/[\s=]/g, "");
+    accountGenerationOutputBytes(output, Math.floor(encoded.length * 3 / 4));
+}
+
+async function materializeGenerationImageSource(source, options, output) {
+    accountInlineGenerationOutput(source, output);
+    const fetchImpl = options.fetchImpl || fetch;
+    return materializeProviderImageSource(source, {
+        ...options,
+        fetchImpl: async (url, init) => {
+            if (output.budget.error) throw output.budget.error;
+            const response = await fetchImpl(url, init);
+            return response.ok ? limitGenerationOutputResponse(response, output) : response;
+        },
+    });
+}
+
+async function materializeHostedProviderOutput(source, provider, settings, signal, output) {
     if (String(source || "").startsWith("blob:")) return source;
     if (provider === "civitai" && /^https?:/i.test(String(source || ""))) {
+        if (output.budget.error) throw output.budget.error;
         const response = await civitaiFetch("getOutput", {
             apiKey: settings.civitaiKey,
             url: source,
@@ -12712,7 +13870,7 @@ async function materializeHostedProviderOutput(source, provider, settings, signa
             const { message } = await readProviderErrorResponse(response);
             throw new Error(`CivitAI output error ${response.status}: ${message || response.statusText}`);
         }
-        return createTransientImageObjectUrl(await readResponseArrayBuffer(response, MAX_IMAGE_BYTES));
+        return createTransientImageObjectUrl(await readResponseArrayBuffer(limitGenerationOutputResponse(response, output), MAX_IMAGE_BYTES));
     }
     const request = getHostedProviderOutputRequest(provider, settings);
     if (!request) throw new Error(`No trusted output policy is configured for ${provider}`);
@@ -12721,7 +13879,7 @@ async function materializeHostedProviderOutput(source, provider, settings, signa
             throw new Error("Replicate returned an image URL from an untrusted host");
         }
     }
-    return materializeProviderImageSource(source, {
+    return materializeGenerationImageSource(source, {
         requestUrl: request.requestUrl,
         headers: request.headers,
         signal,
@@ -12732,7 +13890,7 @@ async function materializeHostedProviderOutput(source, provider, settings, signa
         credentialHostSuffixes: [],
         credentialOrigins: provider === "replicate" ? ["https://api.replicate.com"] : [],
         materializeBytes: createTransientImageObjectUrl,
-    });
+    }, output);
 }
 
 function releaseTransientProviderResult(result) {
@@ -12752,6 +13910,15 @@ function releaseTransientProviderResult(result) {
 async function generateForProvider(prompt, negative, settings, signal, options = {}) {
     const generator = providerGenerators[settings.provider];
     if (!generator) throw new Error(`Unknown provider: ${settings.provider}`);
+    const run = options.externalRun || activeGenerationRun;
+    if (!run || run.signal !== signal || signal.aborted) throw getAbortError(signal);
+    if (options.externalRun) assertExternalGenerationRun(run);
+    const reservations = new Map();
+    const reserveOutput = (index = 0) => {
+        if (!reservations.has(index)) reservations.set(index, reserveGenerationOutput(run.context.outputBudget));
+        return reservations.get(index);
+    };
+    reserveOutput(0);
     const providerName = PROVIDERS[settings.provider]?.name || settings.provider;
     const deadline = HOSTED_PROVIDER_IDS.has(settings.provider)
         ? createHostedProviderDeadline(signal, settings.hostedTimeout, providerName)
@@ -12759,13 +13926,14 @@ async function generateForProvider(prompt, negative, settings, signal, options =
     const runSignal = deadline?.signal || signal;
     let result;
     try {
-        result = await generator(prompt, negative, settings, runSignal, options);
+        result = await generator(prompt, negative, settings, runSignal, { ...options, reserveOutput });
         let normalized;
         try {
             normalized = normalizeProviderResult(result, settings, {
                 provider: settings.provider,
                 model: getProviderModelId(settings, settings.provider),
                 resolvedSeed: Number.isFinite(settings.__qigResolvedSeed) ? settings.__qigResolvedSeed : undefined,
+                reserveOutput,
             });
         } catch (error) {
             releaseTransientProviderResult(result);
@@ -12774,9 +13942,11 @@ async function generateForProvider(prompt, negative, settings, signal, options =
         const normalizedResults = Array.isArray(normalized) ? normalized : [normalized];
         if (!normalizedResults.length) {
             releaseTransientProviderResult(result);
+            if (getResultFailures(normalized).length) return normalized;
             throw new Error("Provider returned no images");
         }
         if (settings.provider === "proxy"
+            && !settings.proxyComfyMode
             && normalizeProxyPayloadSetting(settings.proxyPayloadMode) !== "openai_strict"
             && Number(settings.proxyCfg) === 0) {
             for (const item of normalizedResults) {
@@ -12799,15 +13969,17 @@ async function generateForProvider(prompt, negative, settings, signal, options =
         let outcome;
         try {
             outcome = await collectSequentialResults(normalizedResults, async item => {
+                const output = reserveOutput(item.outputIndex ?? 0);
                 const validated = await materializeAndValidateProviderOutput(item, {
                     materialize: async source => {
+                        accountInlineGenerationOutput(source, output);
                         if (settings.provider === "custom" && /^https?:/i.test(String(source || ""))
                             && !isTrustedProviderOutputUrl("custom", source, settings.customApiUrl, { allowRequestSubdomains: true })
                             && !isTrustedProviderOutputUrl("custom", source, settings.customApiPollUrl, { allowRequestSubdomains: true })) {
                             throw new Error("Custom API returned an image URL outside its trusted endpoint origin");
                         }
                         return deadline
-                            ? materializeHostedProviderOutput(source, settings.provider, settings, runSignal)
+                            ? materializeHostedProviderOutput(source, settings.provider, settings, runSignal, output)
                             : source;
                     },
                     normalize: source => normalizeProviderImageSource(source, { trustedLocalBackend, trustedBaseUrl }),
@@ -12822,10 +13994,10 @@ async function generateForProvider(prompt, negative, settings, signal, options =
             normalizedResults.forEach(releaseTransientProviderResult);
             throw error;
         }
-        if (!outcome.results.length && outcome.errors.length) throw outcome.errors[0].error;
+        if (!Array.isArray(normalized) && !outcome.results.length && outcome.errors.length) throw createResultFailureError(outcome.errors);
         const safeResults = outcome.results;
         return Array.isArray(normalized)
-            ? attachResultFailures(safeResults, outcome.errors)
+            ? attachResultFailures(safeResults, [...getResultFailures(normalized), ...outcome.errors])
             : safeResults[0];
     } catch (error) {
         if (deadline?.didTimeOut()) throw deadline.timeoutError();
@@ -13097,7 +14269,7 @@ async function regenerateImage(effectiveRequest = lastEffectiveRequest, returnFo
             const baseSeed = generateRandomSeed();
             const outcome = await collectBatchResults(batchCount, async (i) => {
                 checkAborted(cancelCheckpoint);
-                if (s.sequentialSeeds) setGenerationSeedValue(s, baseSeed + i);
+                if (s.sequentialSeeds) setGenerationSeedValue(s, seedForBatchIndex(baseSeed, i));
                 showStatus(`🔄 Regenerating ${i + 1}/${batchCount}...`);
                 const expandedPrompt = expandWildcards(regenerationPrompt);
                 const expandedNegative = expandWildcards(regenerationNegative);
@@ -13552,8 +14724,8 @@ function showFilterDialog(filter) {
                             </select>
                         </div>
                         <div class="qig-form-field qig-form-field--full">
-                            <label>Pools</label>
-                            <div id="qig-fd-pools-wrap" class="qig-pool-choice-grid"></div>
+                            <span id="qig-fd-pools-label">Pools</span>
+                            <div id="qig-fd-pools-wrap" class="qig-pool-choice-grid" role="group" aria-labelledby="qig-fd-pools-label"></div>
                         </div>
                     </div>
                 </section>
@@ -13678,7 +14850,6 @@ function showFilterDialog(filter) {
                 }).join("");
             };
 
-            document.getElementById("qig-fd-name").focus();
             renderPoolChoices();
             document.getElementById("qig-fd-mode").onchange = (e) => {
                 const llm = e.target.value === "LLM";
@@ -13702,6 +14873,7 @@ function showFilterDialog(filter) {
                 errorEl.hidden = true;
                 errorEl.textContent = "";
                 invalidField?.removeAttribute("aria-invalid");
+                invalidField?.removeAttribute("aria-describedby");
                 invalidField = null;
             };
             const failValidation = (message, fieldId) => {
@@ -13710,6 +14882,7 @@ function showFilterDialog(filter) {
                 invalidField = fieldId ? document.getElementById(fieldId) : null;
                 if (invalidField) {
                     invalidField.setAttribute("aria-invalid", "true");
+                    invalidField.setAttribute("aria-describedby", "qig-fd-error");
                     invalidField.focus();
                 }
                 return false;
@@ -13798,6 +14971,9 @@ async function editContextualFilter(id) {
 }
 
 async function deleteContextualFilter(id) {
+    if (blockFilterStoreMutation()) return;
+    const filter = contextualFilters.find(x => x.id === id);
+    if (!filter || !await qigConfirm(`Delete filter '${filter.name}'?`, { okButton: "Delete Filter" })) return;
     if (blockFilterStoreMutation()) return;
     const idx = contextualFilters.findIndex(x => x.id === id);
     if (idx === -1) return;
@@ -14075,11 +15251,13 @@ function getContextualFiltersSummaryViewState() {
             cardLabel: currentCard.cardLabel,
         })).scopedPools
         : [];
-    const charPools = currentCharId != null
-        ? getVisibleFilterPools(getNormalizedScopedRecord(FILTER_SCOPE_CHAR, {
-            charId: currentCharId,
-        })).scopedPools
-        : [];
+    const charPoolsById = new Map();
+    for (const charId of activeCharIds) {
+        for (const pool of getVisibleFilterPools(getNormalizedScopedRecord(FILTER_SCOPE_CHAR, { charId })).scopedPools) {
+            charPoolsById.set(pool.id, pool);
+        }
+    }
+    const charPools = [...charPoolsById.values()];
     const visibleFilters = [...globalFilters, ...cardFilters, ...charFilters];
     const activeVisibleCount = visibleFilters.filter(filter => isContextualFilterEffective(filter, enabledPoolIds)).length;
     const seededFilterCount = visibleFilters.filter(filter => normalizeSeedOverride(filter?.seedOverride) != null).length;
@@ -14093,6 +15271,7 @@ function getContextualFiltersSummaryViewState() {
         currentCardLabel: currentCard.cardLabel,
         currentCharId,
         charName,
+        activeCharacterCount: activeCharIds.size,
         enabledPoolIds,
         globalPools,
         cardPools,
@@ -14111,43 +15290,44 @@ function renderContextualFiltersSummary(container, viewState = getContextualFilt
     const totalPools = viewState.globalPools.length + viewState.cardPools.length + viewState.charPools.length;
     const scopeLabel = viewState.currentCardKey
         ? `${viewState.currentCardLabel || "Current card"} + character scope`
-        : (viewState.currentCharId != null ? (viewState.charName || "Current character") : "Global-only context");
+        : (viewState.currentCharId != null
+            ? (viewState.charName || "Current character")
+            : (viewState.activeCharacterCount > 0
+                ? `${plural(viewState.activeCharacterCount, "active character")} in group context`
+                : "Global-only context"));
     const scopeParts = [];
-    if (viewState.cardFilters.length) scopeParts.push(`${viewState.cardFilters.length} card-only`);
-    if (viewState.charFilters.length) scopeParts.push(`${viewState.charFilters.length} character-wide`);
+    if (viewState.cardFilters.length) scopeParts.push(plural(viewState.cardFilters.length, "card-only filter"));
+    if (viewState.charFilters.length) scopeParts.push(plural(viewState.charFilters.length, "character-wide filter"));
     const hiddenNote = scopeParts.length
-        ? `Current context includes ${scopeParts.join(" and ")} filter(s), plus global filters.${viewState.otherScopeCount > 0 ? ` Manage Filters can browse ${viewState.otherScopeCount} other saved scope(s).` : ""}`
+        ? `Current context includes ${scopeParts.join(" and ")}, plus global filters.${viewState.otherScopeCount > 0 ? ` Manage Filters can browse ${plural(viewState.otherScopeCount, "other saved scope")}.` : ""}`
         : (viewState.otherScopeCount > 0
-            ? `Manage Filters can browse ${viewState.otherScopeCount} other saved scope(s) without switching chats.`
+            ? `Manage Filters can browse ${plural(viewState.otherScopeCount, "other saved scope")} without switching chats.`
             : "This summary is showing filters available in the current context.");
     container.innerHTML = `
         <div class="qig-filter-summary">
-            <div class="qig-filter-summary-grid">
+            <dl class="qig-filter-summary-grid">
                 <div class="qig-filter-summary-card">
-                    <span class="qig-filter-summary-label">Visible Filters</span>
-                    <strong data-qig-summary="visible"></strong>
-                    <small data-qig-summary="scope"></small>
+                    <dt class="qig-filter-summary-label">Visible Filters</dt>
+                    <dd><strong data-qig-summary="visible"></strong><small data-qig-summary="scope"></small></dd>
                 </div>
                 <div class="qig-filter-summary-card">
-                    <span class="qig-filter-summary-label">Active Now</span>
-                    <strong data-qig-summary="active"></strong>
-                    <small data-qig-summary="enabled-pools"></small>
+                    <dt class="qig-filter-summary-label">Active Now</dt>
+                    <dd><strong data-qig-summary="active"></strong><small data-qig-summary="enabled-pools"></small></dd>
                 </div>
                 <div class="qig-filter-summary-card">
-                    <span class="qig-filter-summary-label">Seed Overrides</span>
-                    <strong data-qig-summary="seeds"></strong>
-                    <small data-qig-summary="total-pools"></small>
+                    <dt class="qig-filter-summary-label">Seed Overrides</dt>
+                    <dd><strong data-qig-summary="seeds"></strong><small data-qig-summary="total-pools"></small></dd>
                 </div>
-            </div>
+            </dl>
             <p class="qig-filter-summary-note" data-qig-summary="note"></p>
-            <button id="qig-manage-filters-btn-inline" class="menu_button">Manage Filters</button>
+            <button type="button" id="qig-manage-filters-btn-inline" class="menu_button">Manage Filters</button>
         </div>`;
     container.querySelector('[data-qig-summary="visible"]').textContent = String(viewState.visibleFilters.length);
     container.querySelector('[data-qig-summary="scope"]').textContent = scopeLabel;
     container.querySelector('[data-qig-summary="active"]').textContent = String(viewState.activeVisibleCount);
-    container.querySelector('[data-qig-summary="enabled-pools"]').textContent = `${viewState.enabledPoolIds.size} enabled pool(s)`;
+    container.querySelector('[data-qig-summary="enabled-pools"]').textContent = `${plural(viewState.enabledPoolIds.size, "enabled pool")}`;
     container.querySelector('[data-qig-summary="seeds"]').textContent = String(viewState.seededFilterCount);
-    container.querySelector('[data-qig-summary="total-pools"]').textContent = `${totalPools} pool(s) available`;
+    container.querySelector('[data-qig-summary="total-pools"]').textContent = `${plural(totalPools, "pool")} available`;
     container.querySelector('[data-qig-summary="note"]').textContent = hiddenNote;
     container.querySelector("#qig-manage-filters-btn-inline").addEventListener("click", showContextualFilterManager);
 }
@@ -14356,6 +15536,12 @@ function bindContextualFilterManagerActionHandlers(popup) {
                 case "edit-filter": editContextualFilter(id); break;
                 case "duplicate-filter": duplicateContextualFilter(id); break;
                 case "delete-filter": deleteContextualFilter(id); break;
+                case "move-filter": {
+                    const row = element.closest("[data-filter-id]");
+                    const target = value === "up" ? row.previousElementSibling : row.nextElementSibling;
+                    moveContextualFilter(id, target?.dataset.filterId, value === "up" ? "before" : "after");
+                    break;
+                }
             }
         });
     });
@@ -14367,6 +15553,8 @@ function renderContextualFilterManager(popup = document.getElementById("qig-filt
     const poolsContainer = popup.querySelector("#qig-filter-manager-pools");
     const filtersContainer = popup.querySelector("#qig-filter-manager-filters");
     if (!actionContainer || !poolsContainer || !filtersContainer) return;
+    const focused = popup.contains(document.activeElement) ? { ...document.activeElement.dataset } : null;
+    const scrollPositions = [poolsContainer.scrollTop, filtersContainer.scrollTop];
 
     const renderScopeBadge = (scope, title) => {
         const meta = getScopeBadgeMeta(scope);
@@ -14390,14 +15578,14 @@ function renderContextualFilterManager(popup = document.getElementById("qig-filt
             </div>`;
         }
         return `<div class="qig-manager-row ${isActive ? "" : "qig-manager-row--dimmed"}">
-            <button class="menu_button qig-manager-main-button ${isActive ? "qig-manager-main-button--active" : ""}" data-qig-action="toggle-pool" data-qig-id="${eId}" title="Toggle pool">${isActive ? "✅" : "⬜"} ${escapeHtml(pool.name)} (${assignedCount})</button>
+            <button class="menu_button qig-manager-main-button ${isActive ? "qig-manager-main-button--active" : ""}" data-qig-action="toggle-pool" data-qig-id="${eId}" title="Toggle pool" aria-label="Toggle ${escapeHtml(pool.name)} pool" aria-pressed="${isActive}">${isActive ? "✅" : "⬜"} ${escapeHtml(pool.name)} (${assignedCount})</button>
             ${renderScopeBadge(poolScope.scope, poolScope.scope === FILTER_SCOPE_GLOBAL ? "Global pool" : poolScope.scope === FILTER_SCOPE_CARD ? "Card-only pool" : "Character-wide pool")}
-            <button class="menu_button qig-manager-icon-button" data-qig-action="rename-pool" data-qig-id="${eId}" title="Rename pool">✎</button>
-            <button class="menu_button qig-manager-icon-button" data-qig-action="delete-pool" data-qig-id="${eId}" ${canDelete ? "" : "disabled"} title="Delete pool">🗑️</button>
+            <button class="menu_button qig-manager-icon-button" data-qig-action="rename-pool" data-qig-id="${eId}" title="Rename pool" aria-label="Rename ${escapeHtml(pool.name)} pool">✎</button>
+            <button class="menu_button qig-manager-icon-button" data-qig-action="delete-pool" data-qig-id="${eId}" ${canDelete ? "" : "disabled"} title="Delete pool" aria-label="Delete ${escapeHtml(pool.name)} pool">🗑️</button>
         </div>`;
     };
 
-    const renderRow = (f) => {
+    const renderRow = (f, index, rows) => {
         const eName = escapeHtml(f.name);
         const eDesc = escapeHtml(f.description || "");
         const eKeywords = escapeHtml(f.keywords || "");
@@ -14454,14 +15642,18 @@ function renderContextualFilterManager(popup = document.getElementById("qig-filt
         const duplicateTargetLabel = isGlobal
             ? (viewState.currentCardKey ? "card" : viewState.currentCharId != null ? "character" : "scoped")
             : "global";
+        const canMoveUp = rows[index - 1] && getContextualFilterPriorityValue(rows[index - 1]) === getContextualFilterPriorityValue(f);
+        const canMoveDown = rows[index + 1] && getContextualFilterPriorityValue(rows[index + 1]) === getContextualFilterPriorityValue(f);
         return `<div class="${rowClasses}" data-filter-id="${eId}">` +
-        `<button class="menu_button qig-manager-icon-button qig-filter-drag-handle" type="button" draggable="true" data-filter-id="${eId}" title="Drag to reorder filters with the same priority">⋮⋮</button>` +
-        `<input type="checkbox" ${f.enabled ? "checked" : ""} data-qig-action="toggle-filter" data-qig-id="${eId}" title="Enable/disable">` +
+        `<span class="qig-filter-drag-handle" draggable="true" data-filter-id="${eId}" title="Drag to reorder filters with the same priority" aria-hidden="true">⋮⋮</span>` +
+        `<button type="button" class="menu_button qig-manager-icon-button" data-qig-action="move-filter" data-qig-id="${eId}" data-qig-value="up" aria-label="Move ${eName} up" title="Move up within this priority" ${canMoveUp ? "" : "disabled"}><span class="fa-solid fa-arrow-up" aria-hidden="true"></span></button>` +
+        `<button type="button" class="menu_button qig-manager-icon-button" data-qig-action="move-filter" data-qig-id="${eId}" data-qig-value="down" aria-label="Move ${eName} down" title="Move down within this priority" ${canMoveDown ? "" : "disabled"}><span class="fa-solid fa-arrow-down" aria-hidden="true"></span></button>` +
+        `<label class="qig-manager-toggle"><input type="checkbox" ${f.enabled ? "checked" : ""} data-qig-action="toggle-filter" data-qig-id="${eId}" title="Enable/disable" aria-label="Enable ${eName} filter"></label>` +
         renderScopeBadge(filterScope.scope, filterScope.scope === FILTER_SCOPE_CARD ? "Card-only filter" : filterScope.scope === FILTER_SCOPE_CHAR ? "Character-wide filter" : "Global filter") +
         `<button class="menu_button qig-manager-main-button" data-qig-action="edit-filter" data-qig-id="${eId}" title="${escapeHtml(tooltip)}">${eName}</button>` +
         `<span class="qig-filter-status">${escapeHtml(statusParts)}</span>` +
-        `<button class="menu_button qig-manager-icon-button" data-qig-action="duplicate-filter" data-qig-id="${eId}" title="Duplicate to ${duplicateTargetLabel} scope">\u29C9</button>` +
-        `<button class="menu_button qig-manager-icon-button" data-qig-action="delete-filter" data-qig-id="${eId}" title="Delete filter">×</button>` +
+        `<button class="menu_button qig-manager-icon-button" data-qig-action="duplicate-filter" data-qig-id="${eId}" title="Duplicate to ${duplicateTargetLabel} scope" aria-label="Duplicate ${eName} to ${duplicateTargetLabel} scope">\u29C9</button>` +
+        `<button class="menu_button qig-manager-icon-button" data-qig-action="delete-filter" data-qig-id="${eId}" title="Delete filter" aria-label="Delete ${eName} filter">×</button>` +
         `</div>`;
     };
 
@@ -14544,6 +15736,16 @@ function renderContextualFilterManager(popup = document.getElementById("qig-filt
     filtersContainer.innerHTML = html;
     bindContextualFilterManagerActionHandlers(popup);
     bindContextualFilterManagerDragHandlers(popup);
+    poolsContainer.scrollTop = scrollPositions[0];
+    filtersContainer.scrollTop = scrollPositions[1];
+    if (focused?.qigAction && getTopQigPopup() === popup) {
+        const controls = [...popup.querySelectorAll("[data-qig-action]:not(:disabled)")];
+        const replacement = controls.find(element => element.dataset.qigAction === focused.qigAction
+            && element.dataset.qigId === focused.qigId && element.dataset.qigValue === focused.qigValue)
+            || controls.find(element => element.dataset.qigId === focused.qigId && element.dataset.qigAction === "edit-filter")
+            || popup.querySelector("#qig-filter-manager-scope");
+        replacement?.focus({ preventScroll: true });
+    }
 }
 
 function renderContextualFilters() {
@@ -14741,6 +15943,27 @@ function applyCharScopedState(state, s = getSettings(), { forcePrompt = false } 
     if (localClear) localClear.style.display = s.localRefImage ? "block" : "none";
 }
 
+function getGlobalConfigurationSettings(s = getSettings()) {
+    const persistedBase = s?._charSettingsBaseState;
+    const base = charSettingsOverrideApplied && charSettingsBaseState
+        ? charSettingsBaseState
+        : (persistedBase && typeof persistedBase === "object" && !Array.isArray(persistedBase) ? persistedBase : null);
+    if (!base) return s;
+    return {
+        ...s,
+        prompt: base.prompt ?? s.prompt,
+        negativePrompt: base.negativePrompt ?? s.negativePrompt,
+        style: base.style ?? s.style,
+        width: base.width ?? s.width,
+        height: base.height ?? s.height,
+        proxyRefImages: Array.isArray(base.proxyRefImages) ? [...base.proxyRefImages] : [...(s.proxyRefImages || [])],
+        customApiRefImages: Array.isArray(base.customApiRefImages) ? [...base.customApiRefImages] : [...(s.customApiRefImages || [])],
+        nanobananaRefImages: Array.isArray(base.nanobananaRefImages) ? [...base.nanobananaRefImages] : [...(s.nanobananaRefImages || [])],
+        nanogptRefImages: Array.isArray(base.nanogptRefImages) ? [...base.nanogptRefImages] : [...(s.nanogptRefImages || [])],
+        localRefImage: typeof base.localRefImage === "string" ? base.localRefImage : (s.localRefImage || ""),
+    };
+}
+
 function getCurrentCharId() {
     const ctx = getContext();
     return ctx?.characterId ?? null;
@@ -14791,15 +16014,19 @@ async function persistCharacterStores(nextSettings, nextRefs, errorMessage) {
                     { localKey: "qig_char_settings", backupKey: "_backupCharSettings", value: nextSettings },
                     { localKey: "qig_char_ref_images", backupKey: "_backupCharRefImages", value: nextRefs },
                 ],
-                save: flushSettingsBackup,
+                save: saveSettings,
+                acknowledge: confirmSettingsSaveEvent,
             });
             charSettings = cloneSynchronizedValue(nextSettings);
             charRefImages = cloneSynchronizedValue(nextRefs);
             if (!result.cacheSaved) {
                 const failedKeys = result.cacheErrors.map(item => item.localKey).join(", ");
                 log(`Character settings local cache write failed for ${failedKeys}`);
-                qigToast.warning("Saved character settings to your SillyTavern account, but this browser's local cache could not be fully updated.");
+                qigToast.warning(result.confirmed
+                    ? "Saved character settings to your SillyTavern account, but this browser's local cache could not be fully updated."
+                    : "Character settings synchronisation is unconfirmed and the browser cache could not be fully updated. Keep this tab open and retry.");
             }
+            if (!result.confirmed && result.cacheSaved) qigToast.warning("Character settings are saved in this browser; server synchronisation is pending.");
             return true;
         } catch (error) {
             log(`Character settings synchronization failed: ${error.message}`);
@@ -15194,13 +16421,22 @@ async function performLoadCharSettings(isCurrent) {
     const normalizedRefRecord = normalizeCharacterReferenceRecord(rawRefs, s.provider);
     if (rawRefs && Array.isArray(rawRefs)) {
         nextRefs = cloneSynchronizedValue(nextRefs);
-        if (Object.keys(normalizedRefRecord).length) nextRefs[storageKey] = normalizedRefRecord;
-        else delete nextRefs[storageKey];
+        if (Object.keys(normalizedRefRecord).length) {
+            nextRefs[storageKey] = normalizedRefRecord;
+        } else {
+            log(`Preserving legacy character reference images for ${storageKey}: the current provider (${s.provider}) cannot own them. Assign references under a concrete provider to adopt them.`);
+            nextRefs[storageKey] = { __legacyRefImages: [...rawRefs] };
+        }
         storesChanged = true;
     }
     if (storesChanged) {
-        await persistCharacterStores(nextSettings, nextRefs);
-        if (!isCurrent()) return false;
+        const persisted = await persistCharacterStores(nextSettings, nextRefs);
+        if (!persisted) {
+            log("Legacy character store migration could not be persisted; keeping the live state intact and retrying later.");
+            saveSettingsDebounced?.();
+        } else if (!isCurrent()) {
+            return false;
+        }
     }
     const settingsRecord = getCharacterStoreRecord(charSettings, storageKey);
     const hasSettings = !!settingsRecord;
@@ -15303,316 +16539,51 @@ function loadCharSettings() {
     return runLatestCharSettingsLoad(performLoadCharSettings);
 }
 
-async function saveConnectionProfileNow() {
-    const s = getSettings();
-    const provider = s.provider;
-    const rawName = await qigInput("Profile name:", { okButton: "Save Profile" });
-    if (rawName == null) return;
-    const name = rawName.trim();
-    if (!name) {
-        qigToast.warning("Profile name cannot be empty");
-        return;
-    }
-    const keys = PROVIDER_KEYS[provider] || [];
-    const profile = {};
-    keys.forEach(k => profile[k] = cloneSynchronizedValue(s[k]));
-    const existing = !!connectionProfiles[provider]?.[name];
-    if (existing && !(await qigConfirm(`Profile "${name}" already exists. Overwrite it?`, { okButton: "Overwrite" }))) return;
-    const nextProfiles = cloneSynchronizedValue(connectionProfiles);
-    if (!nextProfiles[provider]) nextProfiles[provider] = {};
-    nextProfiles[provider][name] = profile;
-    if (!await saveLocalStoreBackupNow("qig_profiles", nextProfiles, "Failed to save profile to your SillyTavern account.")) return;
-    connectionProfiles = nextProfiles;
-    renderProfileSelect(name);
-    showStatus(`${existing ? "♻️ Updated" : "💾 Saved"} profile: ${name}`);
-    setTimeout(hideStatus, 2000);
-}
-
-function saveConnectionProfile() {
-    return runSynchronizedStoreMutation("qig_profiles", saveConnectionProfileNow);
-}
-
-function loadConnectionProfile(name) {
-    const s = getSettings();
-    const provider = s.provider;
-    const profile = connectionProfiles[provider]?.[name];
-    if (!profile) return;
-    const profileSettings = provider === "local" && hasComfyConnectionProfileSignals(profile)
-        ? normalizeComfyIntegrationSettings(profile)
-        : cloneSynchronizedValue(profile);
-    for (const key of PROVIDER_KEYS[provider] || []) {
-        if (profileSettings[key] !== undefined) s[key] = cloneSynchronizedValue(profileSettings[key]);
-    }
-    if (provider === "proxy") {
-        s.proxyEndpointMode = normalizeProxyEndpointSetting(s.proxyEndpointMode);
-        normalizeProxyChatImageSettings(s, s);
-    }
-    saveSettingsDebounced();
-    refreshAllUI(s);
-    if (provider === "local" && s.localType === "comfyui") {
-        refreshComfyModelCatalog().catch(error => log(`ComfyUI model refresh failed: ${error.message}`));
-    }
-    renderProfileSelect(name);
-    syncGenerationPresetIndicators();
-    showStatus(`📂 Loaded profile: ${name}`);
-    setTimeout(hideStatus, 2000);
-}
-
-async function deleteConnectionProfileNow(name) {
-    const provider = getSettings().provider;
-    if (!(await qigConfirm(`Delete profile "${name}"?`, { okButton: "Delete Profile" }))) return;
-    const nextProfiles = cloneSynchronizedValue(connectionProfiles);
-    delete nextProfiles[provider]?.[name];
-    if (!await saveLocalStoreBackupNow("qig_profiles", nextProfiles, "Failed to delete profile from your SillyTavern account.")) return;
-    connectionProfiles = nextProfiles;
-    renderProfileSelect();
-}
-
-function deleteConnectionProfile(name) {
-    return runSynchronizedStoreMutation("qig_profiles", () => deleteConnectionProfileNow(name));
-}
-
-function renderProfileSelect(selectedName = "") {
-    const container = document.getElementById("qig-profile-select");
-    if (!container) return;
-    const provider = getSettings().provider;
-    const profiles = Object.keys(connectionProfiles[provider] || {});
-    const previousSelection = document.getElementById("qig-profile-dropdown")?.value || "";
-    const requestedSelection = selectedName || previousSelection;
-    const selected = profiles.includes(requestedSelection) ? requestedSelection : "";
-    container.innerHTML = profiles.length
-        ? `<select id="qig-profile-dropdown" aria-label="Connection profile for ${escapeHtml(PROVIDERS[provider]?.name || provider)}"><option value="">-- Select Profile --</option>${profiles.map(p => `<option value="${escapeHtml(p)}" ${p === selected ? "selected" : ""}>${escapeHtml(p)}</option>`).join("")}</select><button id="qig-profile-del" class="menu_button" type="button" aria-label="Delete selected connection profile" title="Delete selected connection profile" ${selected ? "" : "disabled"}><span class="fa-solid fa-trash-can" aria-hidden="true"></span></button>`
-        : "<span class='qig-muted'>No saved profiles</span>";
-    const dropdown = document.getElementById("qig-profile-dropdown");
-    if (dropdown) dropdown.onchange = (e) => {
-        const deleteButton = document.getElementById("qig-profile-del");
-        if (deleteButton) deleteButton.disabled = !e.target.value;
-        if (e.target.value) loadConnectionProfile(e.target.value);
-    };
-    const delBtn = document.getElementById("qig-profile-del");
-    if (delBtn) delBtn.onclick = () => { const dd = document.getElementById("qig-profile-dropdown"); if (dd?.value) deleteConnectionProfile(dd.value); };
-}
-
 const COMFY_WORKFLOW_KEYS = ["localModel", "comfyModelLoader", "comfyDenoise", "comfyClipSkip", "comfyScheduler", "comfyUpscale", "comfyUpscaleModel", "comfyLoras", "comfyOutputNodeIds", "comfyOutputImageIndex", "comfyWorkflow", "comfySkipNegativePrompt", "comfyFluxClipModel1", "comfyFluxClipModel2", "comfyFluxVaeModel", "comfyFluxClipType"];
 
-function getComfyWorkflowSnapshot(s = getSettings()) {
-    return {
-        localModel: s.localModel || "",
-        comfyModelLoader: normalizeComfyModelLoader(s.comfyModelLoader, s),
-        comfyDenoise: s.comfyDenoise ?? 1.0,
-        comfyClipSkip: s.comfyClipSkip ?? 1,
-        comfyScheduler: s.comfyScheduler || "normal",
-        comfyUpscale: !!s.comfyUpscale,
-        comfyUpscaleModel: s.comfyUpscaleModel || "RealESRGAN_x4plus.pth",
-        comfyLoras: s.comfyLoras || "",
-        comfyOutputNodeIds: s.comfyOutputNodeIds || "",
-        comfyOutputImageIndex: normalizeComfyOutputImageIndex(s.comfyOutputImageIndex),
-        comfyWorkflow: s.comfyWorkflow || "",
-        comfySkipNegativePrompt: !!s.comfySkipNegativePrompt,
-        comfyFluxClipModel1: s.comfyFluxClipModel1 || "",
-        comfyFluxClipModel2: s.comfyFluxClipModel2 || "",
-        comfyFluxVaeModel: s.comfyFluxVaeModel || "",
-        comfyFluxClipType: s.comfyFluxClipType || "flux"
-    };
-}
-
-function applyComfyWorkflowSnapshot(snapshot) {
-    const s = getSettings();
-    const normalized = normalizeComfyIntegrationSettings(snapshot);
-    COMFY_WORKFLOW_KEYS.forEach(k => {
-        if (normalized[k] !== undefined) s[k] = normalized[k];
-    });
-    s.localType = "comfyui";
-}
-
-function saveComfyWorkflowStore(errorMessage = "Failed to save workflow presets. Browser storage may be full.") {
-    return saveLocalStoreBackup("qig_comfy_workflows", comfyWorkflows, errorMessage);
-}
-
-async function commitComfyWorkflowStore(nextStore, errorMessage = "Failed to synchronize workflow presets with SillyTavern.") {
-    if (!await saveLocalStoreBackupNow("qig_comfy_workflows", nextStore, errorMessage)) return false;
-    comfyWorkflows = nextStore;
-    return true;
-}
-
-function setComfyWorkflowActionState(hasSelection) {
-    ["qig-comfy-workflow-load", "qig-comfy-workflow-update", "qig-comfy-workflow-del"].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.disabled = !hasSelection;
-    });
-}
-
-function renderComfyWorkflowPresets(selectedId = "") {
-    const select = document.getElementById("qig-comfy-workflow-select");
-    if (!select) return;
-    const previousSelection = select.value || selectedComfyWorkflowId || "";
-    const targetId = selectedId || previousSelection;
-    const options = [
-        `<option value="">-- Select Workflow Preset --</option>`,
-        ...comfyWorkflows.map(w => `<option value="${escapeHtml(w.id || "")}" ${w.id === targetId ? "selected" : ""}>${escapeHtml(w.name || "(unnamed)")}</option>`)
-    ];
-    select.innerHTML = options.join("");
-    const found = targetId && comfyWorkflows.some(w => w.id === targetId);
-    selectedComfyWorkflowId = found ? targetId : "";
-    if (selectedComfyWorkflowId) select.value = selectedComfyWorkflowId;
-    setComfyWorkflowActionState(!!selectedComfyWorkflowId);
-}
-
-function getSelectedComfyWorkflowPreset() {
-    const select = document.getElementById("qig-comfy-workflow-select");
-    const id = select?.value || selectedComfyWorkflowId;
-    if (!id) return null;
-    return comfyWorkflows.find(w => w.id === id) || null;
-}
-
-function loadSelectedComfyWorkflowPreset() {
-    const preset = getSelectedComfyWorkflowPreset();
-    if (!preset) {
-        qigToast.info("Select a workflow preset first");
-        return;
-    }
-    applyComfyWorkflowSnapshot(preset);
-    saveSettingsDebounced();
-    refreshAllUI(getSettings());
-    refreshComfyModelCatalog().catch(error => log(`ComfyUI model refresh failed: ${error.message}`));
-    renderComfyWorkflowPresets(preset.id);
-    showStatus(`📂 Loaded workflow preset: ${preset.name}`);
-    setTimeout(hideStatus, 2000);
-}
-
-async function saveComfyWorkflowPresetAsNow() {
-    const rawName = await qigInput("Workflow preset name:", { okButton: "Save Preset" });
-    if (rawName == null) return;
-    const name = rawName.trim();
-    if (!name) {
-        qigToast.warning("Workflow preset name cannot be empty");
-        return;
-    }
-    const existing = comfyWorkflows.find(w => w.name === name);
-    const snapshot = getComfyWorkflowSnapshot();
-    if (existing) {
-        if (!(await qigConfirm(`Workflow preset "${name}" already exists. Overwrite it?`, { okButton: "Overwrite" }))) return;
-        const nextStore = comfyWorkflows.map(workflow => workflow.id === existing.id
-            ? { ...workflow, ...snapshot, updatedAt: new Date().toISOString() }
-            : workflow);
-        if (!await commitComfyWorkflowStore(nextStore)) return;
-        renderComfyWorkflowPresets(existing.id);
-        showStatus(`♻️ Updated workflow preset: ${name}`);
-        setTimeout(hideStatus, 2000);
-        return;
-    }
-    const id = `cwf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-    const nextStore = [...comfyWorkflows, { id, name, ...snapshot, updatedAt: new Date().toISOString() }];
-    if (!await commitComfyWorkflowStore(nextStore)) return;
-    renderComfyWorkflowPresets(id);
-    showStatus(`💾 Saved workflow preset: ${name}`);
-    setTimeout(hideStatus, 2000);
-}
-
-function saveComfyWorkflowPresetAs() {
-    return runSynchronizedStoreMutation("qig_comfy_workflows", saveComfyWorkflowPresetAsNow);
-}
-
-async function updateSelectedComfyWorkflowPresetNow() {
-    const preset = getSelectedComfyWorkflowPreset();
-    if (!preset) {
-        qigToast.info("Select a workflow preset first");
-        return;
-    }
-    if (!(await qigConfirm(`Overwrite workflow preset "${preset.name}" with current Comfy settings?`, { okButton: "Overwrite" }))) return;
-    const nextStore = comfyWorkflows.map(workflow => workflow.id === preset.id
-        ? { ...workflow, ...getComfyWorkflowSnapshot(), updatedAt: new Date().toISOString() }
-        : workflow);
-    if (!await commitComfyWorkflowStore(nextStore)) return;
-    renderComfyWorkflowPresets(preset.id);
-    showStatus(`♻️ Updated workflow preset: ${preset.name}`);
-    setTimeout(hideStatus, 2000);
-}
-
-function updateSelectedComfyWorkflowPreset() {
-    return runSynchronizedStoreMutation("qig_comfy_workflows", updateSelectedComfyWorkflowPresetNow);
-}
-
-async function deleteSelectedComfyWorkflowPresetNow() {
-    const preset = getSelectedComfyWorkflowPreset();
-    if (!preset) {
-        qigToast.info("Select a workflow preset first");
-        return;
-    }
-    if (!(await qigConfirm(`Delete workflow preset "${preset.name}"?`, { okButton: "Delete Preset" }))) return;
-    const nextStore = comfyWorkflows.filter(w => w.id !== preset.id);
-    if (!await commitComfyWorkflowStore(nextStore)) return;
-    renderComfyWorkflowPresets("");
-    showStatus(`🗑️ Deleted workflow preset: ${preset.name}`);
-    setTimeout(hideStatus, 2000);
-}
-
-function deleteSelectedComfyWorkflowPreset() {
-    return runSynchronizedStoreMutation("qig_comfy_workflows", deleteSelectedComfyWorkflowPresetNow);
-}
 
 // === Generation Presets ===
-const PRESET_KEYS = ["provider", "style", "width", "height", "steps", "cfgScale", "sampler", "seed", "prompt", "negativePrompt", "qualityTags", "appendQuality", "useLastMessage", "messageRange", "enableParagraphPicker", "useLLMPrompt", "llmPromptStyle", "llmPrefill", "llmCustomInstruction", "reviewBeforeGenerate", "preserveCharacterIdentity", "useWorldInfo", "llmAddQuality", "llmAddLighting", "llmAddArtist", "twoStepPrompt", "twoStepInstruction", "batchCount", "sequentialSeeds"];
+const PRESET_KEYS = ["provider", "style", "width", "height", "steps", "cfgScale", "sampler", "seed", "prompt", "negativePrompt", "qualityTags", "appendQuality", "useLastMessage", "messageRange", "enableParagraphPicker", "useLLMPrompt", "llmPromptStyle", "llmRequestRole", "llmPrefill", "llmCustomInstruction", "reviewBeforeGenerate", "preserveCharacterIdentity", "useWorldInfo", "llmAddQuality", "llmAddLighting", "llmAddArtist", "twoStepPrompt", "twoStepInstruction", "batchCount", "sequentialSeeds"];
 const PROVIDER_PRESET_KEYS = Object.freeze({
     local: ["a1111Scheduler", "comfyScheduler", "a1111RestoreFaces", "a1111Tiling", "a1111Subseed", "a1111SubseedStrength"],
     nanobanana: ["nanobananaNbpMode", "nanobananaNbpPreset", "nanobananaNbpUseNegative", "nanobananaNbpCustomDirector", "nanobananaNbpCustomPrompt", "nanobananaExtraInstructions"],
 });
 
-function getGenerationPresetKeys(presetOrSettings) {
-    const provider = presetOrSettings?.provider;
-    const providerKeys = PROVIDER_PRESET_KEYS[provider] || [];
-    if (provider === "proxy") return [...PRESET_KEYS, ...providerKeys, ...PROXY_RECIPE_KEYS];
-    if (provider === "custom") return [...PRESET_KEYS, ...providerKeys, ...CUSTOM_API_RECIPE_KEYS];
-    return [...PRESET_KEYS, ...providerKeys];
+// Settings that belong to a saved configuration but are not part of PRESET_KEYS.
+const CONFIGURATION_AUX_KEYS = ["useSTStyle", "injectEnabled", "injectTagName", "injectPrompt", "injectRegex", "injectPosition", "injectDepth", "injectInsertMode", "injectAutoClean", "paletteMode"];
+
+// Everything a saved configuration owns: the shared recipe plus the selected
+// provider's own settings. Settings for other providers are never touched.
+function getConfigurationKeys(recordOrSettings) {
+    const provider = recordOrSettings?.provider;
+    const keys = new Set([...PRESET_KEYS, ...CONFIGURATION_AUX_KEYS, ...(PROVIDER_KEYS[provider] || []), ...(PROVIDER_PRESET_KEYS[provider] || [])]);
+    if (provider === "proxy") for (const key of PROXY_RECIPE_KEYS) keys.add(key);
+    if (provider === "custom") for (const key of CUSTOM_API_RECIPE_KEYS) keys.add(key);
+    if (provider === "local") for (const key of COMFY_WORKFLOW_KEYS) keys.add(key);
+    return [...keys];
 }
 
-function saveGenerationPresetStore(errorMessage = "Failed to save preset. Browser storage may be full.") {
-    return saveLocalStoreBackup("qig_gen_presets", generationPresets, errorMessage);
-}
-
-async function commitGenerationPresetStore(nextStore, errorMessage = "Failed to synchronize presets with SillyTavern.") {
-    if (!await saveLocalStoreBackupNow("qig_gen_presets", nextStore, errorMessage)) return false;
-    generationPresets = nextStore;
+async function commitConfigurationStore(nextStore, {
+    activeId = getSettings()?.lastLoadedPresetId || "",
+    errorMessage = "Failed to synchronize configurations with SillyTavern.",
+} = {}) {
+    if (!await saveLocalStoreBackupNow("qig_configurations", nextStore, errorMessage, { lastLoadedPresetId: activeId })) return false;
+    configurations = nextStore;
     return true;
 }
 
-function ensureGenerationPresetIds({ persist = false } = {}) {
-    if (!Array.isArray(generationPresets)) {
-        generationPresets = [];
-        return false;
-    }
-    let changed = false;
-    for (const preset of generationPresets) {
-        if (!preset || typeof preset !== "object") continue;
-        if (typeof preset.id === "string" && preset.id.trim()) continue;
-        preset.id = generateUUID();
-        changed = true;
-    }
-    if (changed && persist) {
-        saveGenerationPresetStore("Failed to migrate preset IDs. Browser storage may be full.");
-    }
-    return changed;
+// The selection means "configuration currently being edited", not a byte-for-byte
+// match, so tweaking a value does not silently deselect it.
+function getActiveConfigurationId() {
+    const id = String(getSettings()?.lastLoadedPresetId || "");
+    return configurations.some(entry => entry?.id === id) ? id : "";
 }
 
-function getActiveGenerationPresetId() {
-    const s = getSettings();
-    const presetId = String(s?.lastLoadedPresetId || "");
-    const preset = generationPresets.find(entry => entry?.id === presetId);
-    return preset && generationPresetMatchesSettings(preset, s) ? presetId : "";
-}
-
-function generationPresetMatchesSettings(preset, settings = getSettings()) {
-    if (!preset || !settings) return false;
-    const keys = [...getGenerationPresetKeys(preset), "useSTStyle", "injectEnabled", "injectTagName", "injectPrompt", "injectRegex", "injectPosition", "injectDepth", "injectInsertMode", "injectAutoClean", "paletteMode"];
-    return keys.every(key => preset[key] === undefined || preset[key] === settings[key]);
-}
-
-function syncActiveGenerationPresetSetting({ persist = false } = {}) {
+function syncActiveConfigurationSetting({ persist = false } = {}) {
     const s = getSettings();
     if (!s) return;
-    const activePresetId = String(s.lastLoadedPresetId || "");
-    if (!activePresetId) return;
-    if (generationPresets.some(preset => preset?.id === activePresetId)) return;
+    const activeId = String(s.lastLoadedPresetId || "");
+    if (!activeId || configurations.some(entry => entry?.id === activeId)) return;
     s.lastLoadedPresetId = "";
     if (persist) saveSettingsDebounced();
 }
@@ -15628,6 +16599,10 @@ function normalizeGenerationPresetStore(presets = generationPresets) {
         }
         if (Object.hasOwn(preset, "llmEditPrompt")) {
             delete preset.llmEditPrompt;
+            changed = true;
+        }
+        if (!SETTINGS_ENUM_KEYS.llmRequestRole.includes(preset.llmRequestRole)) {
+            preset.llmRequestRole = defaultSettings.llmRequestRole;
             changed = true;
         }
         const recipeDefaults = {
@@ -15736,142 +16711,158 @@ function normalizeProxyProfileStore(profiles = connectionProfiles) {
     return changed;
 }
 
-function setActiveGenerationPresetId(presetId = "", { persist = true } = {}) {
+function setActiveConfigurationId(configId = "", { persist = true } = {}) {
     const s = getSettings();
     if (!s) return;
-    const nextId = String(presetId || "");
+    const nextId = String(configId || "");
     if (String(s.lastLoadedPresetId || "") !== nextId) {
         s.lastLoadedPresetId = nextId;
         if (persist) saveSettingsDebounced();
     }
-    renderPresets();
+    renderConfigurationSelect();
 }
 
-function syncGenerationPresetIndicators() {
-    const activePresetId = getActiveGenerationPresetId();
-    const select = document.getElementById("qig-preset-select");
-    if (select) select.value = activePresetId;
-    document.querySelectorAll("#qig-presets .qig-preset-chip > .menu_button:first-child").forEach(button => {
-        button.classList.toggle("qig-preset-chip--active", button.dataset.presetId === activePresetId);
-    });
+function syncConfigurationIndicators() {
+    const select = document.getElementById("qig-config-select");
+    if (select) select.value = getActiveConfigurationId();
+    const hasSelection = !!getActiveConfigurationId();
+    for (const id of ["qig-config-update", "qig-config-del"]) {
+        const button = document.getElementById(id);
+        if (button) button.disabled = !hasSelection;
+    }
 }
 
-async function savePresetNow() {
-    const name = await qigInput("Preset name:", { okButton: "Save Preset" });
+function snapshotConfiguration(s = getSettings()) {
+    const source = getGlobalConfigurationSettings(s);
+    const record = {};
+    for (const key of getConfigurationKeys(source)) {
+        if (source[key] !== undefined) record[key] = cloneSynchronizedValue(source[key]);
+    }
+    return record;
+}
+
+async function saveConfigurationAsNow() {
+    const name = (await qigInput("Configuration name:", { okButton: "Save" }) || "").trim();
     if (!name) return;
     ensureFilterPoolsState();
     const s = getSettings();
-    const preset = { id: generateUUID(), name };
-    getGenerationPresetKeys(s).forEach(k => preset[k] = cloneSynchronizedValue(s[k]));
-    // Include ST Style toggle state
-    if (s.useSTStyle !== undefined) preset.useSTStyle = s.useSTStyle;
-    // Include inject mode settings
-    const injectKeys = ["injectEnabled", "autoGenerate", "injectTagName", "injectPrompt", "injectRegex", "injectPosition", "injectDepth", "injectInsertMode", "injectAutoClean", "paletteMode"];
-    injectKeys.forEach(k => { if (s[k] !== undefined) preset[k] = s[k]; });
-    const previousActiveId = String(s.lastLoadedPresetId || "");
-    s.lastLoadedPresetId = preset.id;
-    if (!await commitGenerationPresetStore([...generationPresets, preset])) {
-        s.lastLoadedPresetId = previousActiveId;
-        return;
-    }
-    renderPresets();
-    showStatus(`💾 Saved preset: ${name}`);
+    const existingIndex = configurations.findIndex(entry => entry?.name === name && entry?.provider === s.provider);
+    if (existingIndex >= 0 && !await qigConfirm(`Overwrite "${name}"?`, { okButton: "Overwrite" })) return;
+    const record = { id: existingIndex >= 0 ? configurations[existingIndex].id : generateUUID(), name, ...snapshotConfiguration(s) };
+    const nextStore = existingIndex >= 0
+        ? configurations.map((entry, index) => (index === existingIndex ? record : entry))
+        : [...configurations, record];
+    if (!await commitConfigurationStore(nextStore, { activeId: record.id })) return;
+    renderConfigurationSelect();
+    showStatus(`💾 Saved configuration: ${name}`);
     setTimeout(hideStatus, 2000);
 }
 
-function savePreset() {
-    return runSynchronizedStoreMutation("qig_gen_presets", savePresetNow);
+function saveConfigurationAs() {
+    return runSynchronizedStoreMutation("qig_configurations", saveConfigurationAsNow);
 }
 
-function loadPreset(i) {
-    ensureGenerationPresetIds({ persist: true });
-    const p = generationPresets[i];
-    if (!p) return;
-    const s = getSettings();
-    getGenerationPresetKeys(p).forEach(k => { if (p[k] !== undefined) s[k] = cloneSynchronizedValue(p[k]); });
-    if (p.provider === "proxy") {
-        if (p.proxySteps === undefined && p.steps !== undefined) s.proxySteps = p.steps;
-        if (p.proxyCfg === undefined && p.cfgScale !== undefined) s.proxyCfg = p.cfgScale;
-        if (p.proxySampler === undefined && p.sampler !== undefined) s.proxySampler = p.sampler;
-        if (p.proxySeed === undefined && p.seed !== undefined) s.proxySeed = p.seed;
+async function updateSelectedConfigurationNow() {
+    const activeId = getActiveConfigurationId();
+    const current = configurations.find(entry => entry?.id === activeId);
+    if (!current) return;
+    const provider = getSettings()?.provider;
+    if (configurations.some(entry => entry?.id !== activeId && entry?.name === current.name && entry?.provider === provider)) {
+        qigToast.warning(`A ${PROVIDERS[provider]?.name || provider} configuration named "${current.name}" already exists.`);
+        return;
     }
+    if (!await qigConfirm(`Overwrite "${current.name}" with the current settings?`, { okButton: "Update" })) return;
+    ensureFilterPoolsState();
+    const record = { id: current.id, name: current.name, ...snapshotConfiguration() };
+    if (!await commitConfigurationStore(configurations.map(entry => (entry?.id === activeId ? record : entry)))) return;
+    renderConfigurationSelect();
+    showStatus(`💾 Updated configuration: ${current.name}`);
+    setTimeout(hideStatus, 2000);
+}
+
+function updateSelectedConfiguration() {
+    return runSynchronizedStoreMutation("qig_configurations", updateSelectedConfigurationNow);
+}
+
+async function loadConfiguration(id) {
+    const p = cloneSynchronizedValue(configurations.find(entry => entry?.id === id));
+    if (!p) return;
+    normalizeGenerationPresetStore([p]);
+    const s = getSettings();
+    const activeCharacterOverride = charSettingsOverrideApplied;
+    const target = activeCharacterOverride ? { ...getGlobalConfigurationSettings(s) } : s;
+    // Every queued automation job holds a snapshot of the old provider and credentials.
+    _automationRevision += 1;
+    resetAutoGenerateCadence({ clearTimer: true });
+    // Reset the common keys and this record's provider keys to defaults first, so a
+    // configuration is reproducible. Other providers' settings are never touched.
+    const keys = getConfigurationKeys(p);
+    keys.forEach(k => {
+        if (defaultSettings[k] !== undefined) target[k] = cloneSynchronizedValue(defaultSettings[k]);
+    });
+    keys.forEach(k => { if (p[k] !== undefined) target[k] = cloneSynchronizedValue(p[k]); });
     if (p.provider === "proxy") {
-        normalizeProxyChatImageSettings(s, p);
-        s.proxyEndpointMode = normalizeProxyEndpointSetting(s.proxyEndpointMode);
-        normalizeProxyChatImageSettings(s, s);
+        if (p.proxySteps === undefined && p.steps !== undefined) target.proxySteps = p.steps;
+        if (p.proxyCfg === undefined && p.cfgScale !== undefined) target.proxyCfg = p.cfgScale;
+        if (p.proxySampler === undefined && p.sampler !== undefined) target.proxySampler = p.sampler;
+        if (p.proxySeed === undefined && p.seed !== undefined) target.proxySeed = p.seed;
+        normalizeProxyChatImageSettings(target, p);
+        target.proxyEndpointMode = normalizeProxyEndpointSetting(target.proxyEndpointMode);
+        normalizeProxyChatImageSettings(target, target);
+    }
+    if (p.provider === "local" && hasComfyConnectionProfileSignals(p)) {
+        Object.assign(target, normalizeComfyIntegrationSettings(target));
+    }
+    if (target !== s) Object.assign(s, target);
+    // Record review changes before character settings can yield to another configuration load.
+    updateQigStatusLine();
+    if (activeCharacterOverride) {
+        rememberCharSettingsBaseState(s, s);
+        await loadCharSettings();
     }
     ensureFilterPoolsState();
     renderContextualFilters();
-    // Restore ST Style toggle
-    if (p.useSTStyle !== undefined) { s.useSTStyle = p.useSTStyle; }
-    // Restore inject mode settings
-    const previousAutoGenerate = !!s.autoGenerate;
-    const injectKeys = ["injectEnabled", "autoGenerate", "injectTagName", "injectPrompt", "injectRegex", "injectPosition", "injectDepth", "injectInsertMode", "injectAutoClean", "paletteMode"];
-    injectKeys.forEach(k => { if (p[k] !== undefined) s[k] = p[k]; });
     s.injectInsertMode = normalizeInjectInsertMode(s.injectInsertMode);
-    if (s.injectEnabled && p.autoGenerate === undefined) s.autoGenerate = true;
-    if (previousAutoGenerate !== !!s.autoGenerate) {
-        _automationRevision += 1;
-        resetAutoGenerateCadence({ clearTimer: true });
-    }
     s.paletteMode = normalizePaletteMode(s.paletteMode);
     s.lastLoadedPresetId = p.id || "";
     saveSettingsDebounced();
     refreshAllUI(s);
-    renderPresets();
+    renderConfigurationSelect();
     closePalettePresetMenu();
-    showStatus(`📂 Loaded preset: ${p.name}`);
+    if (s.provider === "local" && s.localType === "comfyui") refreshComfyModelCatalog();
+    if (s.provider === "local" && s.localType === "a1111") document.getElementById("qig-a1111-model-refresh")?.click();
+    showStatus(`📂 Loaded configuration: ${p.name}`);
     setTimeout(hideStatus, 2000);
 }
 
-async function deletePresetNow(i) {
-    const removed = generationPresets[i];
+async function deleteSelectedConfigurationNow() {
+    const activeId = getActiveConfigurationId();
+    const removed = configurations.find(entry => entry?.id === activeId);
     if (!removed) return;
-    const nextStore = generationPresets.filter((_, index) => index !== i);
-    const settings = getSettings();
-    const previousActiveId = String(settings.lastLoadedPresetId || "");
-    if (removed.id && previousActiveId === removed.id) settings.lastLoadedPresetId = "";
-    if (!await commitGenerationPresetStore(nextStore, "Failed to delete preset from your SillyTavern account.")) {
-        settings.lastLoadedPresetId = previousActiveId;
-        return;
-    }
-    syncActiveGenerationPresetSetting({ persist: false });
+    if (!await qigConfirm(`Delete configuration "${removed.name}"?`, { okButton: "Delete" })) return;
+    if (!await commitConfigurationStore(configurations.filter(entry => entry?.id !== activeId), {
+        activeId: "",
+        errorMessage: "Failed to delete configuration from your SillyTavern account.",
+    })) return;
     closePalettePresetMenu();
-    renderPresets();
+    renderConfigurationSelect();
 }
 
-function deletePreset(i) {
-    return runSynchronizedStoreMutation("qig_gen_presets", () => deletePresetNow(i));
+function deleteSelectedConfiguration() {
+    return runSynchronizedStoreMutation("qig_configurations", deleteSelectedConfigurationNow);
 }
 
-async function clearPresetsNow() {
-    if (await qigConfirm("Clear all presets?", { okButton: "Clear Presets" })) {
-        const settings = getSettings();
-        const previousActiveId = String(settings.lastLoadedPresetId || "");
-        settings.lastLoadedPresetId = "";
-        if (!await commitGenerationPresetStore([], "Failed to clear presets from your SillyTavern account.")) {
-            settings.lastLoadedPresetId = previousActiveId;
-            return;
-        }
-        closePalettePresetMenu();
-        renderPresets();
-    }
-}
-
-function clearPresets() {
-    return runSynchronizedStoreMutation("qig_gen_presets", clearPresetsNow);
-}
-
-function seedStarterPresets() {
+function seedStarterConfigurations() {
     const s = getSettings();
     if (!s || s.starterPresetsSeeded) return;
     s.starterPresetsSeeded = true;
-    if (Array.isArray(generationPresets) && generationPresets.length > 0) {
+    if (Array.isArray(configurations) && configurations.length > 0) {
         saveSettingsDebounced();
         return;
     }
     const base = {
         provider: "pollinations",
+        pollinationsModel: "flux",
         prompt: "{{char}} in the current scene",
         width: 832, height: 1216,
         steps: 25, cfgScale: 7, sampler: "euler_a", seed: -1,
@@ -15879,18 +16870,169 @@ function seedStarterPresets() {
         qualityTags: defaultSettings.qualityTags,
         appendQuality: true,
         batchCount: 1, sequentialSeeds: false,
-        useLastMessage: false, useLLMPrompt: false, llmPromptStyle: "tags",
+        useLastMessage: false, useLLMPrompt: false, llmPromptStyle: "tags", llmRequestRole: "default",
         reviewBeforeGenerate: false, preserveCharacterIdentity: true, useWorldInfo: false,
         injectEnabled: false, paletteMode: "direct",
     };
-    generationPresets.push(
+    configurations.push(
         { ...base, id: generateUUID(), name: "Quick Anime (free)", style: "anime" },
         { ...base, id: generateUUID(), name: "Photoreal (free)", style: "photorealistic", width: 896, height: 1152, llmPromptStyle: "natural" },
         { ...base, id: generateUUID(), name: "Chat Scene (LLM prompt)", style: "anime", useLastMessage: true, useLLMPrompt: true },
     );
-    saveGenerationPresetStore();
-    renderPresets();
+    saveLocalStoreBackup("qig_configurations", configurations, "Failed to save starter configurations. Browser storage may be full.");
+    renderConfigurationSelect();
     saveSettingsDebounced();
+}
+
+// One-way, clone-only merge of the three legacy stores into named configurations.
+// The legacy stores themselves are never rewritten: they stay as the rollback copy.
+function fnv1a(text) {
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < text.length; i++) {
+        hash ^= text.charCodeAt(i);
+        hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+    return hash.toString(16).padStart(8, "0");
+}
+
+function buildConfigurationsFromLegacyStores(profiles = connectionProfiles, presets = generationPresets, workflows = comfyWorkflows, baselineSettings = getSettings()) {
+    const profileClone = cloneSynchronizedValue(profiles) || {};
+    const presetClone = Array.isArray(presets) ? cloneSynchronizedValue(presets) : [];
+    const workflowClone = Array.isArray(workflows) ? cloneSynchronizedValue(workflows) : [];
+    normalizeComfyConnectionProfileStore(profileClone);
+    normalizeProxyProfileStore(profileClone);
+    normalizeGenerationPresetStore(presetClone);
+    normalizeComfyWorkflowPresetStore(workflowClone);
+
+    const merged = new Map(); // "provider\0name" -> record
+    const extras = [];
+    const takenIds = new Set();
+    const claimId = candidate => {
+        let id = candidate;
+        for (let n = 2; takenIds.has(id); n++) id = `${candidate}-${n}`;
+        takenIds.add(id);
+        return id;
+    };
+    const sourceValues = (provider, values) => Object.fromEntries(getConfigurationKeys({ provider })
+        .filter(field => values?.[field] !== undefined)
+        .map(field => [field, cloneSynchronizedValue(values[field])]));
+    const complete = record => ({
+        ...Object.fromEntries(getConfigurationKeys(record)
+            .filter(field => baselineSettings?.[field] !== undefined || defaultSettings[field] !== undefined)
+            .map(field => [field, cloneSynchronizedValue(baselineSettings?.[field] ?? defaultSettings[field])])),
+        ...record,
+        llmRequestRole: coerceSettingsFieldValue("llmRequestRole", record.llmRequestRole) ?? defaultSettings.llmRequestRole,
+        provider: record.provider,
+    });
+    const put = (key, provider, name, source, values, preferredId, promoteId = false) => {
+        const existing = merged.get(key);
+        if (existing) {
+            Object.assign(existing, values);
+            if (promoteId && preferredId && !takenIds.has(preferredId)) {
+                takenIds.delete(existing.id);
+                existing.id = claimId(preferredId);
+            }
+            return existing;
+        }
+        const record = { id: claimId(preferredId || `cfg-${fnv1a(`${source}\0${key}`)}`), name, provider, ...values };
+        merged.set(key, record);
+        return record;
+    };
+
+    // Precedence: connection profile < generation preset < comfy workflow preset.
+    for (const [provider, byName] of Object.entries(profileClone)) {
+        if (!byName || typeof byName !== "object") continue;
+        for (const [name, values] of Object.entries(byName)) {
+            if (!values || typeof values !== "object") continue;
+            const localBackend = provider === "local" ? inferLegacyLocalBackend(values) : "";
+            put(`${provider}\0${name}`, provider, name, "profile", {
+                ...sourceValues(provider, values),
+                provider,
+                ...(localBackend ? { _legacyLocalBackend: localBackend } : {}),
+            });
+        }
+    }
+    for (const preset of presetClone) {
+        if (!preset || typeof preset !== "object" || !preset.name) continue;
+        const provider = preset.provider || "pollinations";
+        const key = `${provider}\0${preset.name}`;
+        const { id, name, ...values } = preset;
+        const validId = typeof id === "string" && id.trim() && !takenIds.has(id) ? id : "";
+        if (merged.has(key) && merged.get(key)._presetSeen) {
+            extras.push({ id: claimId(validId || `cfg-${fnv1a(`preset\0${key}\0${extras.length}`)}`), name: `${name} (Generation preset ${extras.length + 2})`, provider, ...sourceValues(provider, values) });
+            continue;
+        }
+        const localBackend = provider === "local" ? inferLegacyLocalBackend(values) : "";
+        put(key, provider, name, "preset", {
+            ...sourceValues(provider, values),
+            provider,
+            _presetSeen: true,
+            ...(localBackend ? { _legacyLocalBackend: localBackend } : {}),
+        }, validId, true);
+    }
+    for (const workflow of workflowClone) {
+        if (!workflow || typeof workflow !== "object" || !workflow.name) continue;
+        const key = `local\0${workflow.name}`;
+        const { id, name, updatedAt: _updatedAt, ...values } = workflow;
+        const target = merged.get(key);
+        // A workflow only joins a same-name local record that positively identifies as ComfyUI.
+        if (target && (target._legacyLocalBackend || target.localType) !== "comfyui") {
+            extras.push({ id: claimId(`cfg-${fnv1a(`workflow\0${key}\0${extras.length}`)}`), name: `${name} (Comfy workflow)`, provider: "local", ...sourceValues("local", values), localType: "comfyui" });
+            continue;
+        }
+        if (target && target._workflowSeen) {
+            extras.push({ id: claimId(`cfg-${fnv1a(`workflow\0${key}\0${extras.length}`)}`), name: `${name} (Comfy workflow ${extras.length + 2})`, provider: "local", ...sourceValues("local", values), localType: "comfyui" });
+            continue;
+        }
+        put(key, "local", name, "workflow", { ...sourceValues("local", values), provider: "local", localType: "comfyui", _workflowSeen: true }, typeof id === "string" && id.trim() && !takenIds.has(id) ? `cfg-${id}` : "");
+    }
+
+    const records = [...merged.values(), ...extras];
+    for (const record of records) {
+        delete record._presetSeen;
+        delete record._workflowSeen;
+        delete record._legacyLocalBackend;
+    }
+    return records.map(complete);
+}
+
+function expandQigCollapsible(sectionKey, buttonId, contentId) {
+    const button = document.getElementById(buttonId);
+    const content = document.getElementById(contentId);
+    if (!button || !content) return;
+    setCollapsedSection(sectionKey, false);
+    button.setAttribute("aria-expanded", "true");
+    content.hidden = false;
+    content.classList.remove("qig-collapsible__content--collapsed");
+    const icon = button.querySelector(".qig-collapsible__icon");
+    if (icon) {
+        icon.classList.remove("fa-chevron-right");
+        icon.classList.add("fa-chevron-down");
+    }
+}
+
+// Quick Setup names the section a provider still needs; this actually takes the user there
+// instead of leaving them to find it.
+function revealProviderSettings() {
+    // Rebuilding the panel leaves SillyTavern's own drawer closed, so open that first;
+    // everything below it has no layout until it is.
+    const drawerContent = document.querySelector("#qig-settings .inline-drawer-content");
+    if (drawerContent && getComputedStyle(drawerContent).display === "none") {
+        document.querySelector("#qig-settings .inline-drawer-toggle")?.click();
+    }
+    expandQigCollapsible("setupPanel", "qig-setup-toggle", "qig-setup-panel");
+    expandQigCollapsible("sectionProvider", "qig-section-provider-toggle", "qig-section-provider-content");
+    // The drawer opens with a slide, so let it settle before scrolling to the target.
+    setTimeout(() => {
+        const section = document.getElementById(`qig-${getSettings()?.provider}-settings`);
+        const target = section || document.getElementById("qig-section-provider-content");
+        if (!target) return;
+        target.scrollIntoView({ block: "start", behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+        const firstField = section?.querySelector("input:not([type=hidden]), select, textarea");
+        if (firstField) setTimeout(() => {
+            if (firstField.isConnected && !getTopQigPopup() && !document.querySelector("dialog[open]")) firstField.focus({ preventScroll: true });
+        }, 350);
+    }, 260);
 }
 
 function showSetupWizard() {
@@ -15898,7 +17040,7 @@ function showSetupWizard() {
     if (!s) return;
     const providerOpts = buildOptions(Object.entries(PROVIDERS), s.provider, v => v.name);
     const styleOpts = buildOptions(Object.entries(STYLES), s.style, v => v.name);
-    createPopup("qig-setup-wizard", "Quick Image Gen — Quick Setup", `
+    createPopup("qig-setup-wizard", "Set up Quick Image Gen", `
         <div class="qig-wizard">
             <p class="qig-muted">Pick a backend and a style; everything else has working defaults. Pollinations is free and needs no key.</p>
             <label for="qig-wizard-provider">Provider</label>
@@ -15907,7 +17049,7 @@ function showSetupWizard() {
                 <label id="qig-wizard-key-label" for="qig-wizard-key">API Key</label>
                 <input id="qig-wizard-key" type="password" autocomplete="off" placeholder="Paste your API key">
             </div>
-            <div id="qig-wizard-extra-note" class="qig-muted" style="display:none;">This provider has more required settings (server URL, models). Finish here, then open More settings → Image Provider &amp; Output.</div>
+            <div id="qig-wizard-extra-note" class="qig-muted" style="display:none;">This provider needs a couple more details (server address, model). Saving here will take you straight to them.</div>
             <label for="qig-wizard-style">Style</label>
             <select id="qig-wizard-style">${styleOpts}</select>
             <div class="qig-wizard-actions">
@@ -15945,11 +17087,17 @@ function showSetupWizard() {
             settings.style = popup.querySelector("#qig-wizard-style").value;
             saveSettingsDebounced();
         };
+        const needsMoreSetup = () => ["local", "proxy", "custom"].includes(getSettings()?.provider);
         const finishWizard = ({ generate = false } = {}) => {
             hidePopup(popup, { restoreFocus: false });
             createUI();
-            document.querySelector(".qig-wizard-btn")?.focus();
-            if (generate) runConfiguredPaletteGeneration();
+            if (generate) {
+                document.querySelector(".qig-wizard-btn")?.focus();
+                runConfiguredPaletteGeneration();
+                return;
+            }
+            if (needsMoreSetup()) revealProviderSettings();
+            else document.querySelector(".qig-wizard-btn")?.focus();
         };
         popup.querySelector("#qig-wizard-skip").onclick = () => hidePopup(popup);
         popup.querySelector("#qig-wizard-save").onclick = () => { applyWizard(); finishWizard(); };
@@ -15960,52 +17108,19 @@ function showSetupWizard() {
     }, { resizable: false, popupClass: "wizard" });
 }
 
-function renderPresetSelect() {
-    const select = document.getElementById("qig-preset-select");
+function renderConfigurationSelect() {
+    syncActiveConfigurationSetting({ persist: true });
+    const select = document.getElementById("qig-config-select");
     if (!select) return;
-    const activePresetId = getActiveGenerationPresetId();
+    const activeId = getActiveConfigurationId();
     replaceSelectOptions(select, [
         { value: "", label: "— Current settings —" },
-        ...generationPresets.map(preset => ({ value: preset?.id || "", label: preset?.name || "(unnamed)" })),
-    ], activePresetId);
-    select.value = activePresetId && generationPresets.some(p => p?.id === activePresetId) ? activePresetId : "";
-}
-
-function renderPresets() {
-    ensureGenerationPresetIds({ persist: true });
-    syncActiveGenerationPresetSetting({ persist: true });
-    renderPresetSelect();
-    const container = document.getElementById("qig-presets");
-    if (!container) return;
-    const activePresetId = getActiveGenerationPresetId();
-    container.replaceChildren();
-    if (!generationPresets.length) return;
-    const list = document.createElement("div");
-    list.className = "qig-preset-chip-list";
-    generationPresets.forEach((preset, index) => {
-        const wrapper = document.createElement("span");
-        wrapper.className = "qig-preset-chip";
-        const loadButton = document.createElement("button");
-        loadButton.type = "button";
-        loadButton.className = `menu_button${preset?.id === activePresetId ? " qig-preset-chip--active" : ""}`;
-        loadButton.dataset.presetId = preset?.id || "";
-        loadButton.textContent = preset?.name || "(unnamed)";
-        loadButton.onclick = () => loadPreset(index);
-        const deleteButton = document.createElement("button");
-        deleteButton.type = "button";
-        deleteButton.className = "menu_button qig-preset-chip__delete";
-        deleteButton.textContent = "×";
-        deleteButton.setAttribute("aria-label", `Delete preset ${preset?.name || index + 1}`);
-        deleteButton.onclick = () => deletePreset(index);
-        wrapper.append(loadButton, deleteButton);
-        list.appendChild(wrapper);
-    });
-    const clearButton = document.createElement("button");
-    clearButton.type = "button";
-    clearButton.className = "menu_button qig-preset-clear";
-    clearButton.textContent = "Clear All";
-    clearButton.onclick = clearPresets;
-    container.append(list, clearButton);
+        ...configurations.map(entry => ({
+            value: entry?.id || "",
+            label: `${entry?.name || "(unnamed)"} · ${PROVIDERS[entry?.provider]?.name || entry?.provider || "?"}`,
+        })),
+    ], activeId);
+    syncConfigurationIndicators();
 }
 
 function syncInjectTagUI(settings = getSettings()) {
@@ -16046,6 +17161,7 @@ function refreshAllUI(s) {
         "qig-width": "width", "qig-height": "height",
         "qig-batch": "batchCount", "qig-provider": "provider", "qig-style": "style",
         "qig-llm-style": "llmPromptStyle",
+        "qig-llm-request-role": "llmRequestRole",
         "qig-llm-prefill": "llmPrefill",
         "qig-llm-custom": "llmCustomInstruction",
         "qig-msg-range": "messageRange",
@@ -16066,6 +17182,7 @@ function refreshAllUI(s) {
         "qig-llm-override-profile": "llmOverrideProfileId",
         "qig-llm-override-preset-select": "llmOverridePreset",
         "qig-llm-override-max": "llmOverrideMaxTokens",
+        "qig-llm-override-history": "llmOverrideChatDepth",
         "qig-proxy-chat-system": "proxyChatImageSystemPrompt",
         "qig-proxy-chat-max-tokens": "proxyChatImageMaxTokens"
     };
@@ -16123,17 +17240,8 @@ function refreshAllUI(s) {
         populateConnectionProfiles("qig-llm-override-profile", s.llmOverrideProfileId);
         populatePresetList("qig-llm-override-preset-select", s.llmOverridePreset);
     }
-    const nbpOptions = document.getElementById("qig-nanobanana-nbp-options");
-    if (nbpOptions) nbpOptions.style.display = s.nanobananaNbpMode !== false ? "block" : "none";
-    const nbpCustom = document.getElementById("qig-nanobanana-custom-director-wrap");
-    if (nbpCustom) nbpCustom.style.display = normalizeNbpDirectorPreset(s.nanobananaNbpPreset) === "custom" ? "block" : "none";
-    const localRefPreview = document.getElementById("qig-local-ref-preview");
-    if (localRefPreview) {
-        localRefPreview.src = s.localRefImage || "";
-        localRefPreview.style.display = s.localRefImage ? "block" : "none";
-    }
-    const localRefClear = document.getElementById("qig-local-ref-clear");
-    if (localRefClear) localRefClear.style.display = s.localRefImage ? "block" : "none";
+    syncNanobananaNbpVisibility(s);
+    syncLocalReferencePreview(s);
     const paletteButton = document.getElementById("qig-input-btn");
     if (paletteButton) paletteButton.style.display = s.disablePaletteButton ? "none" : "";
     const shortcutInput = document.getElementById("qig-generate-shortcut");
@@ -16142,7 +17250,7 @@ function refreshAllUI(s) {
     updatePromptSourceUI(s);
     updateProviderUI();
     refreshProviderInputs(s.provider);
-    renderProfileSelect();
+    renderConfigurationSelect();
     // Update seq seeds visibility
     const seqWrap = document.getElementById("qig-seq-seeds-wrap");
     if (seqWrap) seqWrap.style.display = (s.batchCount || 1) > 1 ? "" : "none";
@@ -16151,17 +17259,19 @@ function refreshAllUI(s) {
     if (injectDepthWrap) injectDepthWrap.style.display = s.injectPosition === "atDepth" ? "block" : "none";
     renderContextualFilters();
     renderContextMediaSummary();
+    renderComfyComponentOverrides();
     updateQigStatusLine();
-    syncGenerationPresetIndicators();
+    syncConfigurationIndicators();
 }
 
 // === Export / Import Settings ===
 function exportAllSettings() {
+    const omissions = [];
     const data = createSettingsExport({
-        activeSettings: getSettings(),
-        connectionProfiles,
-        comfyWorkflows,
-        generationPresets,
+        activeSettings: getGlobalConfigurationSettings(),
+        // Configurations travel under the legacy "generationPresets" property so the
+        // transfer schema stays at v7 and older builds can still read the file.
+        generationPresets: configurations,
         charSettings,
         contextualFilters,
         filterPools,
@@ -16169,7 +17279,11 @@ function exportAllSettings() {
         activeFilterPoolIdsByCard,
         activeFilterPoolIdsByChar,
         contextMedia: contextMediaLibrary,
-    });
+    }, { onOmission: (items) => omissions.push(...items) });
+    if (omissions.length) {
+        qigToast.error(`Settings export is incomplete and was cancelled: ${omissions.length} value(s) would be omitted (first: ${omissions[0]}). Trim or remove the oversized data before exporting.`);
+        return;
+    }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -16224,9 +17338,7 @@ function mergeImportedContextMediaTaxonomy(current, imported) {
 function getSettingsImportSnapshot() {
     return {
         activeSettings: snapshotGenerationSettings(getSettings()),
-        connectionProfiles: snapshotGenerationSettings(connectionProfiles),
-        comfyWorkflows: snapshotGenerationSettings(comfyWorkflows),
-        generationPresets: snapshotGenerationSettings(generationPresets),
+        configurations: snapshotGenerationSettings(configurations),
         charSettings: snapshotGenerationSettings(charSettings),
         charRefImages: snapshotGenerationSettings(charRefImages),
         contextualFilters: snapshotGenerationSettings(contextualFilters),
@@ -16235,7 +17347,6 @@ function getSettingsImportSnapshot() {
         activeFilterPoolIdsByCard: snapshotGenerationSettings(activeFilterPoolIdsByCard),
         activeFilterPoolIdsByChar: snapshotGenerationSettings(activeFilterPoolIdsByChar),
         contextMediaLibrary: snapshotGenerationSettings(contextMediaLibrary),
-        selectedComfyWorkflowId,
         charSettingsBaseState: cloneSynchronizedValue(charSettingsBaseState),
         charSettingsBaseCharId,
         charSettingsOverrideApplied,
@@ -16245,9 +17356,7 @@ function getSettingsImportSnapshot() {
 
 function restoreSettingsImportSnapshot(snapshot) {
     replaceObjectContents(getSettings(), snapshot.activeSettings);
-    connectionProfiles = snapshot.connectionProfiles;
-    comfyWorkflows = snapshot.comfyWorkflows;
-    generationPresets = snapshot.generationPresets;
+    configurations = snapshot.configurations;
     charSettings = snapshot.charSettings;
     charRefImages = snapshot.charRefImages;
     contextualFilters = snapshot.contextualFilters;
@@ -16256,7 +17365,6 @@ function restoreSettingsImportSnapshot(snapshot) {
     activeFilterPoolIdsByCard = snapshot.activeFilterPoolIdsByCard;
     activeFilterPoolIdsByChar = snapshot.activeFilterPoolIdsByChar;
     contextMediaLibrary = snapshot.contextMediaLibrary;
-    selectedComfyWorkflowId = snapshot.selectedComfyWorkflowId;
     charSettingsBaseState = snapshot.charSettingsBaseState;
     charSettingsBaseCharId = snapshot.charSettingsBaseCharId;
     charSettingsOverrideApplied = snapshot.charSettingsOverrideApplied;
@@ -16267,13 +17375,21 @@ async function commitSettingsImportNow(data) {
     const previous = getSettingsImportSnapshot();
     const currentSettings = getSettings();
     let storageTransaction = null;
+    const stores = new Map();
     const contextMediaTouched = data.contextMedia !== undefined || data.activeSettings !== undefined;
-    const mergedPortableStores = mergeSettingsImportStores({ connectionProfiles, generationPresets }, data);
+    // Complete legacy records before identity checks; a sparse preset may need its
+    // matching profile/workflow to identify the Local backend safely.
+    const importedConfigurations = data.connectionProfiles !== undefined || data.comfyWorkflows !== undefined
+        ? buildConfigurationsFromLegacyStores(data.connectionProfiles || {}, data.generationPresets || [], data.comfyWorkflows || [], defaultSettings)
+        : data.generationPresets;
+    const mergedPortableStores = mergeSettingsImportStores({ generationPresets: configurations }, { generationPresets: importedConfigurations });
     if (contextMediaTouched) cancelContextMediaWork();
+    // Every imported store can affect a queued run, even when activeSettings is absent.
+    _automationRevision += 1;
+    resetAutoGenerateCadence({ clearTimer: true });
 
     try {
         if (data.activeSettings !== undefined) {
-            const previousAutoGenerate = !!currentSettings.autoGenerate;
             const activeCharacterOverride = charSettingsOverrideApplied ? cloneCharScopedState(currentSettings) : null;
             const importBase = charSettingsOverrideApplied && charSettingsBaseState
                 ? { ...currentSettings, ...cloneCharScopedState(charSettingsBaseState) }
@@ -16285,22 +17401,10 @@ async function commitSettingsImportNow(data) {
                 rememberCharSettingsBaseState(currentSettings, currentSettings);
                 applyCharScopedState(activeCharacterOverride, currentSettings, { forcePrompt: true });
             }
-            if (previousAutoGenerate && !currentSettings.autoGenerate) {
-                _automationRevision += 1;
-                resetAutoGenerateCadence({ clearTimer: true });
-            }
         }
-        if (data.connectionProfiles !== undefined) {
-            connectionProfiles = mergedPortableStores.connectionProfiles;
-            normalizeComfyConnectionProfileStore(connectionProfiles);
-            normalizeProxyProfileStore(connectionProfiles);
-        }
-        if (data.comfyWorkflows !== undefined) {
-            log("Skipped imported ComfyUI workflow presets because executable graphs are local trust configuration");
-        }
-        if (data.generationPresets !== undefined) {
-            generationPresets = mergedPortableStores.generationPresets;
-            normalizeGenerationPresetStore(generationPresets);
+        if (importedConfigurations !== undefined) {
+            configurations = mergedPortableStores.generationPresets;
+            normalizeGenerationPresetStore(configurations);
         }
         if (data.charSettings !== undefined) charSettings = data.charSettings;
         if (data.charRefImages !== undefined) charRefImages = data.charRefImages;
@@ -16327,11 +17431,9 @@ async function commitSettingsImportNow(data) {
             "promptReplacements",
         ].some(key => Object.prototype.hasOwnProperty.call(data, key));
         if (filterStateTouched) ensureFilterPoolsState({ persist: false });
-        syncActiveGenerationPresetSetting({ persist: false });
+        syncActiveConfigurationSetting({ persist: false });
 
-        const stores = new Map();
-        if (data.connectionProfiles !== undefined) stores.set("qig_profiles", connectionProfiles);
-        if (data.generationPresets !== undefined) stores.set("qig_gen_presets", generationPresets);
+        if (importedConfigurations !== undefined) stores.set("qig_configurations", configurations);
         if (data.charSettings !== undefined) stores.set("qig_char_settings", charSettings);
         if (data.charRefImages !== undefined) stores.set("qig_char_ref_images", charRefImages);
         if (filterStateTouched) {
@@ -16344,12 +17446,16 @@ async function commitSettingsImportNow(data) {
         if (data.contextMedia !== undefined) stores.set(CONTEXT_MEDIA_STORE_KEY, contextMediaLibrary);
 
         const serializedStores = new Map([...stores].map(([key, value]) => [key, JSON.stringify(value)]));
+        for (const key of stores.keys()) serializedStores.set(`${PENDING_SYNC_MARKER_PREFIX}${key}`, "1");
         storageTransaction = stageStorageTransaction(localStorage, serializedStores);
         for (const [key, value] of stores) {
             if (!writeBackupToSettings(key, value)) throw new Error(`Could not update backup for ${key}`);
         }
         await flushSettingsBackup();
         storageTransaction.commit();
+        for (const key of stores.keys()) {
+            try { localStorage.removeItem(`${PENDING_SYNC_MARKER_PREFIX}${key}`); } catch { /* retry can clear it later */ }
+        }
         if (contextMediaTouched) _contextMediaRevision += 1;
     } catch (error) {
         const rollbackErrors = [];
@@ -16365,9 +17471,14 @@ async function commitSettingsImportNow(data) {
         } catch (rollbackError) {
             console.error("[Quick Image Gen] Settings backup rollback failed:", rollbackError);
             rollbackErrors.push(rollbackError);
+            for (const key of stores.keys()) {
+                try {
+                    if (localStorage.getItem(key) != null) localStorage.setItem(`${PENDING_SYNC_MARKER_PREFIX}${key}`, "1");
+                } catch { /* keep restored local data authoritative where possible */ }
+            }
         }
         if (rollbackErrors.length) {
-            throw new AggregateError([error, ...rollbackErrors], "Settings import failed and could not be fully rolled back");
+            throw new AggregateError([error, ...rollbackErrors], "Settings import failed and could not be fully rolled back", { cause: error });
         }
         throw error;
     }
@@ -16377,11 +17488,14 @@ function commitSettingsImport(data) {
     return runSynchronizedStoreMutations(
         Object.keys(BACKUP_KEYS),
         async () => {
+            const panel = document.getElementById("qig-settings");
+            if (panel) panel.inert = true;
             settingsImportInProgress = true;
             try {
                 return await queueContextMediaMutation(() => commitSettingsImportNow(data));
             } finally {
                 settingsImportInProgress = false;
+                if (panel) panel.inert = false;
             }
         },
         { throwIfBusy: true },
@@ -16404,7 +17518,7 @@ function importSettings() {
             const legacyPrivateImages = data.charRefImages !== undefined
                 ? " This legacy file includes private reference images."
                 : "";
-            if (!(await qigConfirm(`Import validated settings from ${data.exportDate || "unknown date"}? Existing API keys and locally trusted executable workflows are kept; credentials and executable workflow bodies in the file are ignored.${legacyPrivateImages}`, { okButton: "Import Settings", wide: true }))) return;
+            if (!(await qigConfirm(`Import validated settings from ${data.exportDate || "unknown date"}? Configurations are merged by ID. Existing local credentials, endpoints, reference images, and workflow bodies stay local; private values in the file are ignored.${legacyPrivateImages}`, { okButton: "Import Settings", wide: true }))) return;
             await commitSettingsImport(data);
             const contextMediaManager = document.getElementById("qig-context-media-manager");
             if (contextMediaManager) hidePopup(contextMediaManager);
@@ -16417,9 +17531,7 @@ function importSettings() {
                 }
                 await loadCharSettings();
             }
-            renderPresets();
-            renderProfileSelect();
-            renderComfyWorkflowPresets();
+            renderConfigurationSelect();
             renderContextualFilters();
             const settings = getSettings();
             if (settings.provider === "local" && settings.localType === "comfyui") {
@@ -16439,6 +17551,7 @@ function syncLocalTypeSections(localType) {
     const comfyOpts = document.getElementById("qig-local-comfyui-opts");
     if (a1111Opts) a1111Opts.style.display = localType === "a1111" ? "block" : "none";
     if (comfyOpts) comfyOpts.style.display = localType === "comfyui" ? "block" : "none";
+    syncSamplingGroupVisibility();
     const denoiseWrap = document.getElementById("qig-local-denoise-wrap");
     if (denoiseWrap) {
         const s = getSettings();
@@ -16493,8 +17606,45 @@ function syncGenerationSettingsControls(settings = getSettings()) {
     }
 }
 
+// The local reference preview lives inside the Local provider section, which may be parked;
+// every write goes through here so it lands on the real node after re-attachment.
+function syncLocalReferencePreview(s = getSettings()) {
+    ensureProviderSectionAttached("local");
+    const preview = document.getElementById("qig-local-ref-preview");
+    if (preview) {
+        if (s.localRefImage) preview.src = s.localRefImage;
+        else preview.removeAttribute("src");
+        preview.style.display = s.localRefImage ? "block" : "none";
+    }
+    const clearBtn = document.getElementById("qig-local-ref-clear");
+    if (clearBtn) clearBtn.style.display = s.localRefImage ? "block" : "none";
+    const denoiseWrap = document.getElementById("qig-local-denoise-wrap");
+    if (denoiseWrap) denoiseWrap.style.display = s.localRefImage && s.localType === "a1111" ? "block" : "none";
+}
+
+function syncNanobananaNbpVisibility(s = getSettings()) {
+    ensureProviderSectionAttached("nanobanana");
+    const nbpOptions = document.getElementById("qig-nanobanana-nbp-options");
+    if (nbpOptions) nbpOptions.style.display = s.nanobananaNbpMode !== false ? "block" : "none";
+    const nbpCustom = document.getElementById("qig-nanobanana-custom-director-wrap");
+    if (nbpCustom) nbpCustom.style.display = normalizeNbpDirectorPreset(s.nanobananaNbpPreset) === "custom" ? "block" : "none";
+    rerunSettingsSearch();
+}
+
+const DYNAMIC_PROVIDER_SELECT_IDS = new Set([
+    "qig-local-model",
+    "qig-a1111-model",
+    "qig-a1111-vae",
+    "qig-a1111-hires-upscaler",
+    "qig-a1111-ipadapter-mode",
+    "qig-a1111-cn-model",
+]);
+
 function refreshProviderInputs(provider, { updateProviderVisibility = true } = {}) {
     const s = getSettings();
+    // This provider's fields may be parked out of the document; they have to be back in it
+    // before anything below can find them by id.
+    ensureProviderSectionAttached(provider);
     const map = {
         pollinations: [["qig-pollinations-model", "pollinationsModel"]],
         novelai: [["qig-nai-key", "naiKey"], ["qig-nai-model", "naiModel"], ["qig-nai-proxy-url", "naiProxyUrl"], ["qig-nai-proxy-key", "naiProxyKey"]],
@@ -16608,7 +17758,20 @@ function refreshProviderInputs(provider, { updateProviderVisibility = true } = {
     };
     (map[provider] || []).forEach(([id, key]) => {
         const el = document.getElementById(id);
-        if (el) el.type === "checkbox" ? el.checked = s[key] : el.value = s[key] ?? "";
+        if (!el) return;
+        if (el.type === "checkbox") {
+            el.checked = s[key];
+            return;
+        }
+        const value = String(s[key] ?? "");
+        if (value && el.tagName === "SELECT" && DYNAMIC_PROVIDER_SELECT_IDS.has(id)
+            && ![...el.options].some(option => option.value === value)) {
+            const option = el.ownerDocument.createElement("option");
+            option.value = value;
+            option.textContent = `${value} (saved)`;
+            el.appendChild(option);
+        }
+        el.value = value;
     });
 
     if (provider === "local") {
@@ -16624,6 +17787,7 @@ function refreshProviderInputs(provider, { updateProviderVisibility = true } = {
         if (hiresDenoise) hiresDenoise.textContent = String(s.a1111HiresDenoise ?? 0.55);
         const ipWeight = document.getElementById("qig-a1111-ipadapter-weight-val");
         if (ipWeight) ipWeight.textContent = String(s.a1111IpAdapterWeight ?? 0.7);
+        syncLocalReferencePreview(s);
     }
 
     // Update reference images display
@@ -16650,7 +17814,10 @@ function refreshProviderInputs(provider, { updateProviderVisibility = true } = {
         renderRefImages();
         updateProxyCompatibilityUI();
     }
-    if (provider === "nanobanana") renderNanobananaRefImages();
+    if (provider === "nanobanana") {
+        renderNanobananaRefImages();
+        syncNanobananaNbpVisibility(s);
+    }
     if (provider === "nanogpt") {
         renderNanogptRefImages();
         const model = String(s.nanogptModel || "").trim();
@@ -16669,11 +17836,38 @@ function refreshProviderInputs(provider, { updateProviderVisibility = true } = {
     if (updateProviderVisibility) updateProviderUI();
 }
 
+// Only the active provider's controls stay in the document. The other seventeen sections are
+// parked out of it, keeping their nodes, values, and listeners, so they cannot be reached by
+// the settings search, the tab order, or a screen reader. Detaching preserves everything;
+// ensureProviderSectionAttached must run before any code reads that provider's fields by id.
+const parkedProviderSections = new Map();
+
+function ensureProviderSectionAttached(provider) {
+    const id = `qig-${provider}-settings`;
+    const parked = parkedProviderSections.get(id);
+    if (parked) {
+        parked.placeholder.replaceWith(parked.node);
+        parkedProviderSections.delete(id);
+    }
+    return document.getElementById(id);
+}
+
+function parkInactiveProviderSections(activeProvider) {
+    const activeId = `qig-${activeProvider}-settings`;
+    document.querySelectorAll(".qig-provider-section").forEach(node => {
+        if (!node.id || node.id === activeId) return;
+        const placeholder = document.createComment(node.id);
+        node.replaceWith(placeholder);
+        parkedProviderSections.set(node.id, { node, placeholder });
+    });
+}
+
 function updateProviderUI() {
     const s = getSettings();
+    const section = ensureProviderSectionAttached(s.provider);
     document.querySelectorAll(".qig-provider-section").forEach(el => el.style.display = "none");
-    const section = document.getElementById(`qig-${s.provider}-settings`);
     if (section) section.style.display = "block";
+    parkInactiveProviderSections(s.provider);
 
     const advancedSettingsEl = document.getElementById("qig-advanced-settings");
     const advancedShell = advancedSettingsEl?.closest(".qig-advanced-settings-shell");
@@ -16844,7 +18038,7 @@ function applyCustomApiStarter(starterId) {
     saveSettingsDebounced();
     refreshProviderInputs("custom", { updateProviderVisibility: false });
     updateCustomApiUI();
-    syncGenerationPresetIndicators();
+    syncConfigurationIndicators();
 }
 
 function updateCustomApiUI() {
@@ -16911,6 +18105,24 @@ function updateGenerationCapabilitiesUI(settings = getSettings()) {
     if (seqSeeds) seqSeeds.style.display = !capabilities.sequentialSeeds
         ? "none"
         : ((settings.batchCount || 1) > 1 ? "" : "none");
+    syncSamplingGroupVisibility(settings, capabilities);
+}
+
+// Sampler and the backend schedule live in one Sampling group, but they stay separate settings
+// because each provider needs its own schedule value. Only the applicable schedule is shown.
+function syncSamplingGroupVisibility(settings = getSettings(), capabilities = null) {
+    const isLocal = settings.provider === "local";
+    const showA1111 = isLocal && settings.localType !== "comfyui";
+    const showComfy = isLocal && settings.localType === "comfyui";
+    const a1111Wrap = document.getElementById("qig-a1111-scheduler-wrap");
+    const comfyWrap = document.getElementById("qig-comfy-scheduler-wrap");
+    if (a1111Wrap) a1111Wrap.hidden = !showA1111;
+    if (comfyWrap) comfyWrap.hidden = !showComfy;
+    const samplerWrap = document.getElementById("qig-sampler-wrap");
+    const samplerShown = samplerWrap ? samplerWrap.style.display !== "none" : Boolean(capabilities?.sampler);
+    const fieldset = document.querySelector(".qig-sampling");
+    if (fieldset) fieldset.hidden = !samplerShown && !showA1111 && !showComfy;
+    rerunSettingsSearch();
 }
 
 function renderRefImages() {
@@ -17034,14 +18246,15 @@ function normalizeGenerationNumericSettings(settings) {
     normalize("height", defaultSettings.height, SIZE_MIN, SIZE_MAX, SIZE_STEP, SIZE_MIN);
     normalize("steps", defaultSettings.steps, 1, 150, 1, 1);
     normalize("cfgScale", defaultSettings.cfgScale, 1, 30, 0.5, 1);
-    normalize("seed", defaultSettings.seed, -Infinity, Infinity, 1, 0);
+    normalize("seed", defaultSettings.seed, -1, SEED_MAX, 1, 0);
     normalize("proxySteps", defaultSettings.proxySteps, 1, 150, 1, 1);
     normalize("proxyCfg", defaultSettings.proxyCfg, 0, 30, 0.5, 0);
-    normalize("proxySeed", defaultSettings.proxySeed, -Infinity, Infinity, 1, 0);
+    normalize("proxySeed", defaultSettings.proxySeed, -1, SEED_MAX, 1, 0);
     normalize("proxyTimeout", defaultSettings.proxyTimeout, 30, 1800, 1, 30);
     normalize("proxyComfyTimeout", defaultSettings.proxyComfyTimeout, 10, 600, 1, 10);
     normalize("proxyChatImageMaxTokens", defaultSettings.proxyChatImageMaxTokens, PROXY_CHAT_IMAGE_MAX_TOKENS_MIN, PROXY_CHAT_IMAGE_MAX_TOKENS_MAX, 1, PROXY_CHAT_IMAGE_MAX_TOKENS_MIN);
     normalize("llmOverrideMaxTokens", defaultSettings.llmOverrideMaxTokens, 50, 4096, 1, 50);
+    normalize("llmOverrideChatDepth", defaultSettings.llmOverrideChatDepth, 0, 1000, 1, 0);
     normalize("batchCount", defaultSettings.batchCount, 1, 10, 1, 1);
     normalize("hostedTimeout", defaultSettings.hostedTimeout, 30, 1800, 1, 30);
     return settings;
@@ -17058,6 +18271,7 @@ function bind(id, key, isNum = false, isCheckbox = false, onChange = null) {
     const el = getOrCacheElement(id);
     if (!el) return;
     el.oninput = (e) => {
+        if (settingsImportInProgress) return;
         const settings = getSettings();
         const parsed = isNum ? readFiniteNumericControl(e.target, settings[key]) : null;
         if (isNum && !parsed.valid) return;
@@ -17069,11 +18283,11 @@ function bind(id, key, isNum = false, isCheckbox = false, onChange = null) {
         if (typeof onChange === "function") onChange(value, e);
         saveSettingsDebounced();
         updateQigStatusLine();
-        syncGenerationPresetIndicators();
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
     if (isNum) {
         el.onchange = (e) => {
+            if (settingsImportInProgress) return;
             const settings = getSettings();
             const parsed = readFiniteNumericControl(e.target, settings[key]);
             if (!parsed.valid) {
@@ -17265,6 +18479,10 @@ function buildOptions(items, selectedValue, labelFn) {
 
 function createUI() {
     clearCache();
+    // The old panel is torn down below; parked provider sections belonged to it and must not be
+    // re-attached into the new one, or the new panel's freshly built section stays parked and
+    // refreshProviderInputs would write into a detached node.
+    parkedProviderSections.clear();
     document.querySelectorAll("#qig-settings").forEach(el => el.remove());
     const s = getSettings();
     if (s.provider === "novelai") normalizeSize(s);
@@ -17278,8 +18496,9 @@ function createUI() {
     const sectionContextExpanded = collapsed.sectionContext ? "false" : "true";
     const sectionAutomationHidden = collapsed.sectionAutomation ? "hidden" : "";
     const sectionAutomationExpanded = collapsed.sectionAutomation ? "false" : "true";
-    const providerSettingsHidden = collapsed.providerSettings ? "hidden" : "";
-    const providerSettingsExpanded = collapsed.providerSettings ? "false" : "true";
+    const a1111TuningCollapsed = isQigSectionCollapsed(collapsed, "a1111Tuning");
+    const a1111TuningHidden = a1111TuningCollapsed ? "hidden" : "";
+    const a1111TuningExpanded = a1111TuningCollapsed ? "false" : "true";
     const promptAdvancedHidden = collapsed.promptAdvanced ? "hidden" : "";
     const promptAdvancedExpanded = collapsed.promptAdvanced ? "false" : "true";
     const injectOptionsCollapsed = collapsed.injectOptions && !s.injectEnabled;
@@ -17303,10 +18522,6 @@ function createUI() {
     const samplerOpts = Object.entries(SAMPLER_GROUPS).map(([group, ids]) =>
         `<optgroup label="${group}">${ids.map(x => `<option value="${x}" ${activeSampler === x || SAMPLER_DISPLAY_NAMES[x] === activeSampler ? "selected" : ""}>${SAMPLER_DISPLAY_NAMES[x] || x}</option>`).join("")}</optgroup>`
     ).join("");
-    const comfyWorkflowPresetOpts = [
-        `<option value="">-- Select Workflow Preset --</option>`,
-        ...comfyWorkflows.map(w => `<option value="${esc(w.id || "")}" ${w.id === selectedComfyWorkflowId ? "selected" : ""}>${esc(w.name || "(unnamed)")}</option>`)
-    ].join("");
     const providerOpts = buildOptions(Object.entries(PROVIDERS), s.provider, v => v.name);
     const styleOpts = buildOptions(Object.entries(STYLES), s.style, v => v.name);
     const activeProviderName = PROVIDERS[s.provider]?.name || s.provider || "Provider";
@@ -17337,7 +18552,6 @@ function createUI() {
                 <div class="qig-menu-hero">
                     <div class="qig-menu-hero__summary">
                         <span id="qig-status-eyebrow" class="qig-menu-eyebrow">Ready to generate</span>
-                        <div class="qig-menu-title">Quick Image Gen</div>
                         <div id="qig-status-meta" class="qig-menu-meta">
                             <span>${esc(activeProviderName)}</span>
                             <span>${esc(activeStyleName)}</span>
@@ -17349,24 +18563,26 @@ function createUI() {
 
                 <div class="qig-essentials">
                     <div class="qig-field">
-                        <label for="qig-preset-select">Preset</label>
+                        <label for="qig-config-select">Configuration</label>
                         <div class="qig-inline-control">
-                            <select id="qig-preset-select" class="qig-inline-control__main"></select>
-                            <button id="qig-preset-save-quick" class="menu_button" title="Save current settings as a new preset"><span class="fa-solid fa-bookmark" aria-hidden="true"></span></button>
+                            <select id="qig-config-select" class="qig-inline-control__main"></select>
+                            <button id="qig-config-save" class="menu_button" title="Save current settings as a new configuration"><span class="fa-solid fa-floppy-disk" aria-hidden="true"></span><span class="qig-sr-label">Save As</span></button>
+                            <button id="qig-config-update" class="menu_button" title="Overwrite the selected configuration with current settings"><span class="fa-solid fa-rotate" aria-hidden="true"></span><span class="qig-sr-label">Update</span></button>
+                            <button id="qig-config-del" class="menu_button" title="Delete the selected configuration"><span class="fa-solid fa-trash" aria-hidden="true"></span><span class="qig-sr-label">Delete</span></button>
                         </div>
-                        <small>Recipes bundling provider, style, and prompt behavior. Pick one, tweak the prompt, hit Generate.</small>
+                        <small>A configuration is one complete setup: provider, credentials, model, components, and generation settings. Switching one only touches that provider.</small>
                     </div>
                     <div class="qig-field">
                         <label for="qig-prompt">Prompt</label>
                         <textarea id="qig-prompt" rows="3" aria-describedby="qig-prompt-help">${esc(s.prompt)}</textarea>
-                        <small id="qig-prompt-help">Used for manual generation, or as scene context when LLM prompt is enabled.</small>
+                        <small id="qig-prompt-help">Sent as your image prompt. The optional LLM rewrite still applies if enabled.</small>
                     </div>
                     <div class="qig-field">
                         <label id="qig-prompt-source-label">Prompt source</label>
                             <div class="qig-prompt-source" role="radiogroup" aria-labelledby="qig-prompt-source-label" aria-describedby="qig-prompt-source-help">
                             <label class="qig-prompt-source__option"><input type="radio" name="qig-prompt-source" value="manual" ${promptSourceMode === "manual" ? "checked" : ""}><span>Manual</span></label>
                             <label class="qig-prompt-source__option"><input type="radio" name="qig-prompt-source" value="chat" ${promptSourceMode === "chat" ? "checked" : ""}><span>Chat scene</span></label>
-                            <label class="qig-prompt-source__option"><input type="radio" name="qig-prompt-source" value="tags" ${promptSourceMode === "tags" ? "checked" : ""}><span>AI-tagged (auto)</span></label>
+                            <label class="qig-prompt-source__option"><input type="radio" name="qig-prompt-source" value="tags" ${promptSourceMode === "tags" ? "checked" : ""}><span>AI-tagged</span></label>
                         </div>
                         <small id="qig-prompt-source-help">${esc(PROMPT_SOURCE_HELP[promptSourceMode] || "")}</small>
                     </div>
@@ -17413,34 +18629,19 @@ function createUI() {
                             <select id="qig-provider">${providerOpts}</select>
                             <small>Image generation service, cloud API or local server.</small>
                         </div>
-                        <div class="qig-field qig-field--full">
-                            <label>Connection Profile</label>
-                            <div class="qig-inline-control qig-profile-control">
-                                <div id="qig-profile-select" class="qig-inline-control__main"></div>
-                                <button id="qig-profile-save" class="menu_button" title="Save current provider, API key, and model as a reusable profile"><span class="fa-solid fa-floppy-disk"></span><span>Save Profile</span></button>
-                            </div>
-                        </div>
                     </div>
                     <div id="qig-output-settings" class="qig-output-settings">
                         <div class="qig-card-title">Output</div>
                         <small class="qig-muted">Set image dimensions and count. Unsupported controls are hidden for the active provider.</small>
                     </div>
-                    <div class="qig-provider-card qig-collapsible">
-                        <button id="qig-provider-settings-toggle" type="button" class="qig-collapsible__header" aria-expanded="${providerSettingsExpanded}" aria-controls="qig-provider-settings-content">
-                            <span>
-                                <span class="qig-card-title">Active Provider Settings</span>
-                                <small>Credentials, model IDs, and provider-specific options for ${esc(activeProviderName)}.</small>
-                            </span>
-                            <span class="qig-collapsible__icon fa-solid ${collapsed.providerSettings ? "fa-chevron-right" : "fa-chevron-down"}" aria-hidden="true"></span>
-                        </button>
-                        <div id="qig-provider-settings-content" class="qig-collapsible__content" ${providerSettingsHidden}>
+                    <div class="qig-provider-card">
                 <div id="qig-pollinations-settings" class="qig-provider-section">
                     <label>Pollinations API Key <small>(optional, required for paid models)</small></label>
                     <input id="qig-pollinations-key" type="password" value="${esc(s.pollinationsKey)}" placeholder="pk_... or sk_...">
-                    <small style="opacity:0.6;font-size:10px;">Latest Pollinations paid access uses API keys. Use <code>pk_</code> keys for browser/client-side use when possible.</small>
+                    <small>Latest Pollinations paid access uses API keys. Use <code>pk_</code> keys for browser/client-side use when possible.</small>
                     <label>Model</label>
                     ${pollinationsModelInput(s.pollinationsModel)}
-                    <small style="opacity:0.6;font-size:10px;">Suggestions include current free and paid Pollinations image models. You can also type any custom model ID manually.</small>
+                    <small>Suggestions include current free and paid Pollinations image models. You can also type any custom model ID manually.</small>
                 </div>
                 
                 <div id="qig-novelai-settings" class="qig-provider-section">
@@ -17459,7 +18660,7 @@ function createUI() {
                     <input id="qig-gpt-image-key" type="password" value="${esc(s.gptImageKey)}" placeholder="sk-...">
                     <label>Model</label>
                     ${gptImageModelInput(s.gptImageModel)}
-                    <small style="opacity:0.6;font-size:10px;">Defaults to <code>gpt-image-2</code>. You can type any compatible model ID for proxies.</small>
+                    <small>Defaults to <code>gpt-image-2</code>. You can type any compatible model ID for proxies.</small>
                     <label>Proxy URL <small>(optional — leave blank to use official OpenAI API)</small></label>
                     <input id="qig-gpt-image-proxy-url" type="text" value="${esc(s.gptImageProxyUrl)}" placeholder="https://your-proxy-url/v1">
                     <small>A URL ending in <code>/v1</code> expands to OpenAI's image route. Other paths are tried exactly as entered; Comfy-style <code>/proxy/openai</code> namespaces can retry the standard image route when required.</small>
@@ -17501,7 +18702,7 @@ function createUI() {
                             </select>
                         </div>
                     </div>
-                    <small style="opacity:0.6;font-size:10px;">QIG maps the shared size controls to GPT Image sizes: square, landscape, or portrait. Transparent background works with PNG/WebP. Negative prompt text is appended as an avoid instruction.</small>
+                    <small>QIG maps the shared size controls to GPT Image sizes: square, landscape, or portrait. Transparent background works with PNG/WebP. Negative prompt text is appended as an avoid instruction.</small>
                 </div>
                 
                 <div id="qig-arliai-settings" class="qig-provider-section">
@@ -17516,7 +18717,7 @@ function createUI() {
                     <input id="qig-routeway-key" type="password" value="${esc(s.routewayKey)}" placeholder="clsk-...">
                     <label>Model</label>
                     ${routewayModelInput(s.routewayModel)}
-                    <small style="opacity:0.6;font-size:10px;">Suggestions include known Routeway image models. Custom model IDs are supported. Known models auto-map the shared size controls to the nearest supported API size.</small>
+                    <small>Suggestions include known Routeway image models. Custom model IDs are supported. Known models auto-map the shared size controls to the nearest supported API size.</small>
                 </div>
 
                 <div id="qig-navy-settings" class="qig-provider-section">
@@ -17524,7 +18725,7 @@ function createUI() {
                     <input id="qig-navy-key" type="password" value="${esc(s.navyKey)}">
                     <label>Model</label>
                     ${navyModelInput(s.navyModel)}
-                    <small style="opacity:0.6;font-size:10px;">Suggestions include known Navy.ai image models. Custom model IDs are supported.</small>
+                    <small>Suggestions include known Navy.ai image models. Custom model IDs are supported.</small>
                 </div>
 
                 <div id="qig-nanogpt-settings" class="qig-provider-section">
@@ -17543,7 +18744,7 @@ function createUI() {
                         <input type="file" id="qig-nanogpt-ref-input" accept="image/*" multiple style="display:none">
                         <div style="display:flex;gap:4px;align-items:center;">
                             <button id="qig-nanogpt-ref-btn" class="menu_button" style="padding:4px 8px;">📎 Files</button>
-                            <input id="qig-nanogpt-ref-url" type="text" placeholder="Paste image URL and press Enter" style="flex:1;font-size:11px;">
+                            <input id="qig-nanogpt-ref-url" type="text" placeholder="Paste image URL and press Enter" style="flex:1;font-size: 12px;">
                         </div>
                     </div>
                 </div>
@@ -17560,7 +18761,7 @@ function createUI() {
                     <input id="qig-civitai-key" type="password" value="${esc(s.civitaiKey)}">
                     <label>Model URN</label>
                     <input id="qig-civitai-model" type="text" value="${esc(s.civitaiModel)}" placeholder="urn:air:sd1:checkpoint:civitai:4201@130072">
-                    <small style="opacity:0.6;font-size:10px;">Find this on the model page → API tab → copy the URN</small>
+                    <small>Find this on the model page → API tab → copy the URN</small>
                     <label>Scheduler</label>
                     <select id="qig-civitai-scheduler">
                         <option value="EulerA" ${s.civitaiScheduler === "EulerA" ? "selected" : ""}>Euler A</option>
@@ -17569,7 +18770,7 @@ function createUI() {
                         <option value="DDIM" ${s.civitaiScheduler === "DDIM" ? "selected" : ""}>DDIM</option>
                     </select>
                     <label>LoRAs (URN:weight, comma-separated)</label>
-                    <small style="opacity:0.6;font-size:10px;">Always applied. For scene-specific LoRAs, use Contextual Filters.</small>
+                    <small>Always applied. For scene-specific LoRAs, use Contextual Filters.</small>
                     <input id="qig-civitai-loras" type="text" value="${esc(s.civitaiLoras || "")}" placeholder="urn:air:sd1:lora:civitai:82098@87153:0.8, urn:air:sdxl:lora:civitai:12345@67890:1.0">
                 </div>
                 
@@ -17585,7 +18786,7 @@ function createUI() {
                         <div>
                             <label for="qig-nanobanana-key">Gemini API Key</label>
                             <input id="qig-nanobanana-key" type="password" value="${esc(s.nanobananaKey)}" autocomplete="off" placeholder="AI Studio API key">
-                            <small>Stored in SillyTavern extension settings. Save a Connection Profile if you swap providers often.</small>
+                            <small>Stored in SillyTavern extension settings. Save a Configuration if you swap setups often.</small>
                         </div>
                         <div>
                             <label for="qig-nanobanana-model">Model</label>
@@ -17657,7 +18858,7 @@ function createUI() {
                     <input id="qig-replicate-key" type="password" value="${esc(s.replicateKey)}">
                     <label>Model Version</label>
                     <input id="qig-replicate-model" type="text" value="${esc(s.replicateModel)}" placeholder="stability-ai/sdxl:...">
-                    <small style="opacity:0.6;font-size:10px;">owner/model:version format from the Replicate model page</small>
+                    <small>owner/model:version format from the Replicate model page</small>
                 </div>
 
                 <div id="qig-fal-settings" class="qig-provider-section">
@@ -17665,7 +18866,7 @@ function createUI() {
                     <input id="qig-fal-key" type="password" value="${esc(s.falKey)}">
                     <label>Model Endpoint</label>
                     <input id="qig-fal-model" type="text" value="${esc(s.falModel)}" placeholder="fal-ai/flux/schnell">
-                    <small style="opacity:0.6;font-size:10px;">Model path from the Fal.ai dashboard (e.g., fal-ai/flux/schnell)</small>
+                    <small>Model path from the Fal.ai dashboard (e.g., fal-ai/flux/schnell)</small>
                 </div>
 
                 <div id="qig-together-settings" class="qig-provider-section">
@@ -17707,90 +18908,91 @@ function createUI() {
                              <select id="qig-local-model" style="flex:1;">
                                  <option value="${esc(s.localModel)}" selected>${esc(s.localModel || "-- Click Refresh --")}</option>
                              </select>
-                             <button id="qig-comfy-model-refresh" class="menu_button" style="padding:4px 8px;" title="Refresh model list">🔄</button>
+                             <button id="qig-comfy-model-refresh" class="menu_button" style="padding:4px 8px;" title="Refresh models, text encoders and VAEs">🔄</button>
                          </div>
                          <div class="form-hint">Click Refresh to load only models supported by the selected loader.</div>
                          <div class="qig-row">
-                            <div><label>Denoise</label><input id="qig-comfy-denoise" type="number" value="${esc(s.comfyDenoise ?? 1.0)}" min="0" max="1" step="0.05"><small style="opacity:0.6;font-size:10px;">1.0 = full txt2img. For img2img: upload a Reference Image below and set Denoise &lt; 1.0</small></div>
-                            <div><label>CLIP Skip</label><input id="qig-comfy-clip" type="number" value="${esc(s.comfyClipSkip || 1)}" min="1" max="12" step="1"><small style="opacity:0.6;font-size:10px;">1 for most models, 2 for anime/NAI-based</small></div>
+                            <div><label>Denoise</label><input id="qig-comfy-denoise" type="number" value="${esc(s.comfyDenoise ?? 1.0)}" min="0" max="1" step="0.05"><small>1.0 = full txt2img. For img2img: upload a Reference Image below and set Denoise &lt; 1.0</small></div>
+                            <div><label>CLIP Skip</label><input id="qig-comfy-clip" type="number" value="${esc(s.comfyClipSkip || 1)}" min="1" max="12" step="1"><small>1 for most models, 2 for anime/NAI-based</small></div>
                          </div>
-                         <label>Scheduler</label>
-                         <select id="qig-comfy-scheduler">${COMFY_SCHEDULERS.map(x => `<option value="${x}" ${s.comfyScheduler === x ? "selected" : ""}>${x}</option>`).join("")}</select>
-                         <small style="opacity:0.6;font-size:10px;">Noise schedule for the sampler — karras is popular for DPM++, normal for others</small>
                          <label>Timeout (seconds)</label>
                          <input id="qig-comfy-timeout" type="number" value="${esc(s.comfyTimeout || 300)}" min="10" max="1800">
-                         <small style="opacity:0.6;font-size:10px;">How long SillyTavern waits for ComfyUI to finish before giving up.</small>
+                         <small>How long SillyTavern waits for ComfyUI to finish before giving up.</small>
                          <div class="qig-row">
-                            <div><label>Output Node IDs</label><input id="qig-comfy-output-nodes" type="text" value="${esc(s.comfyOutputNodeIds || "")}" placeholder="9, 42"><small style="opacity:0.6;font-size:10px;">Comma-separated. Empty returns images from every output node.</small></div>
-                            <div><label>Image Index</label><input id="qig-comfy-output-index" type="number" value="${esc(s.comfyOutputImageIndex ?? -1)}" min="-1" step="1"><small style="opacity:0.6;font-size:10px;">-1 returns every image; 0 selects the first.</small></div>
+                            <div><label>Output Node IDs</label><input id="qig-comfy-output-nodes" type="text" value="${esc(s.comfyOutputNodeIds || "")}" placeholder="9, 42"><small>Comma-separated. Empty returns images from every output node.</small></div>
+                            <div><label>Image Index</label><input id="qig-comfy-output-index" type="number" value="${esc(s.comfyOutputImageIndex ?? -1)}" min="-1" step="1"><small>-1 returns every image; 0 selects the first.</small></div>
                          </div>
                          <label style="display:flex;align-items:flex-start;gap:6px;margin:6px 0;cursor:pointer;">
                             <input id="qig-comfy-legacy-interrupt" type="checkbox" ${s.comfyAllowLegacyInterrupt ? "checked" : ""}>
-                            <span>Allow targeted legacy interrupt<br><small style="opacity:0.6;font-size:10px;">Off is safest on shared servers. Older ComfyUI versions may treat even a targeted interrupt as global.</small></span>
+                            <span>Allow targeted legacy interrupt<br><small>Off is safest on shared servers. Older ComfyUI versions may treat even a targeted interrupt as global.</small></span>
                          </label>
                          <label style="display:flex;align-items:center;gap:6px;margin:6px 0;cursor:pointer;">
                             <input id="qig-comfy-upscale" type="checkbox" ${s.comfyUpscale ? "checked" : ""}>
                             <span>Upscale Output</span>
-                            <small style="opacity:0.6;font-size:10px;">(run upscale model after generation)</small>
+                            <small>(run upscale model after generation)</small>
                          </label>
-                         <div id="qig-comfy-upscale-opts" style="display:${s.comfyUpscale ? 'block' : 'none'}; margin-left:24px; border-left:2px solid rgba(255,255,255,0.1); padding-left:10px;">
+                         <div id="qig-comfy-upscale-opts" style="display:${s.comfyUpscale ? 'block' : 'none'}; margin-left:24px; border-left:2px solid var(--qig-line); padding-left:10px;">
                              <label>Upscale Model</label>
                              <input id="qig-comfy-upscale-model" type="text" value="${esc(s.comfyUpscaleModel || "RealESRGAN_x4plus.pth")}" placeholder="RealESRGAN_x4plus.pth">
-                             <small style="opacity:0.6;font-size:10px;">Must match filename in ComfyUI models/upscale_models/</small>
+                             <small>Must match filename in ComfyUI models/upscale_models/</small>
                          </div>
                          <label style="display:flex;align-items:center;gap:6px;margin:6px 0;cursor:pointer;">
                              <input id="qig-comfy-skip-neg" type="checkbox" ${s.comfySkipNegativePrompt ? "checked" : ""}>
                              <span>Skip Negative Prompt</span>
-                             <small style="opacity:0.6;font-size:10px;">(reuse positive conditioning for models that do not use negatives)</small>
+                             <small>(reuse positive conditioning for models that do not use negatives)</small>
                          </label>
-                         <div id="qig-comfy-flux-opts" style="display:${normalizeComfyModelLoader(s.comfyModelLoader, s) === "unet" ? "block" : "none"}; margin-left:24px; border-left:2px solid rgba(255,255,255,0.1); padding-left:10px;">
-                            <div class="form-hint">Diffusion/UNET models require separate CLIP and VAE filenames before generation.</div>
+                         <div id="qig-comfy-flux-opts" style="display:${normalizeComfyModelLoader(s.comfyModelLoader, s) === "unet" ? "block" : "none"}; margin-left:24px; border-left:2px solid var(--qig-line); padding-left:10px;">
+                            <div class="form-hint">Diffusion/UNET models require separate CLIP and VAE filenames before generation. Refresh above to list what your server has.</div>
+                            <datalist id="qig-comfy-clip-catalog"></datalist>
+                            <datalist id="qig-comfy-vae-catalog"></datalist>
                             <div class="qig-row">
-                                <div><label>CLIP Model 1</label><input id="qig-comfy-flux-clip1" type="text" value="${esc(s.comfyFluxClipModel1 || "")}" placeholder="t5xxl_fp16.safetensors"><small style="opacity:0.6;font-size:10px;">From models/text_encoders/</small></div>
-                                <div><label>CLIP Model 2</label><input id="qig-comfy-flux-clip2" type="text" value="${esc(s.comfyFluxClipModel2 || "")}" placeholder="clip_l.safetensors"><small style="opacity:0.6;font-size:10px;">From models/text_encoders/ (leave blank if single-CLIP)</small></div>
+                                <div><label>Text Encoder 1</label><input id="qig-comfy-flux-clip1" type="text" list="qig-comfy-clip-catalog" value="${esc(s.comfyFluxClipModel1 || "")}" placeholder="t5xxl_fp16.safetensors"><small>From models/text_encoders/</small></div>
+                                <div><label>Text Encoder 2</label><input id="qig-comfy-flux-clip2" type="text" list="qig-comfy-clip-catalog" value="${esc(s.comfyFluxClipModel2 || "")}" placeholder="clip_l.safetensors"><small>From models/text_encoders/ (leave blank if single-CLIP)</small></div>
                             </div>
                             <label>CLIP Type</label>
-                            <input id="qig-comfy-flux-clip-type" type="text" value="${esc(s.comfyFluxClipType || "flux")}" placeholder="flux">
-                            <small style="opacity:0.6;font-size:10px;">DualCLIP (2 models): flux, sdxl, sd3, hunyuan_video. SingleCLIP (1 model): flux2, sd3, stable_diffusion, qwen_image, hunyuan_image, etc.</small>
+                            <input id="qig-comfy-flux-clip-type" type="text" list="qig-comfy-clip-type-catalog" value="${esc(s.comfyFluxClipType || "flux")}" placeholder="flux">
+                            <datalist id="qig-comfy-clip-type-catalog">${["flux", "flux2", "sdxl", "sd3", "stable_diffusion", "hunyuan_video", "hunyuan_image", "qwen_image"].map(type => `<option value="${type}"></option>`).join("")}</datalist>
+                            <small>DualCLIP (2 encoders): flux, sdxl, sd3, hunyuan_video. SingleCLIP (1 encoder): flux2, sd3, stable_diffusion, qwen_image, hunyuan_image, etc.</small>
                             <label>VAE Model</label>
-                            <input id="qig-comfy-flux-vae" type="text" value="${esc(s.comfyFluxVaeModel || "")}" placeholder="ae.safetensors">
-                            <small style="opacity:0.6;font-size:10px;">From models/vae/. Required for UNET-only models.</small>
+                            <input id="qig-comfy-flux-vae" type="text" list="qig-comfy-vae-catalog" value="${esc(s.comfyFluxVaeModel || "")}" placeholder="ae.safetensors">
+                            <small>From models/vae/. Required for UNET-only models.</small>
                          </div>
                          <label>LoRAs (filename:weight, comma-separated)</label>
-                         <small style="opacity:0.6;font-size:10px;">Applied only to the built-in workflow. Custom workflows must include their own LoRA nodes. Filename must match your ComfyUI loras folder.</small>
+                         <small>Applied only to the built-in workflow. Custom workflows must include their own LoRA nodes. Filename must match your ComfyUI loras folder.</small>
                          <input id="qig-comfy-loras" type="text" value="${esc(s.comfyLoras || "")}" placeholder="my_lora.safetensors:0.8, style_lora.safetensors:0.6">
-                         <label>Workflow Preset</label>
-                         <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
-                             <select id="qig-comfy-workflow-select" style="flex:1;min-width:180px;">${comfyWorkflowPresetOpts}</select>
-                             <button id="qig-comfy-workflow-load" class="menu_button" style="padding:2px 8px;">📂 Load</button>
-                             <button id="qig-comfy-workflow-save-as" class="menu_button" style="padding:2px 8px;">💾 Save As</button>
-                             <button id="qig-comfy-workflow-update" class="menu_button" style="padding:2px 8px;">♻️ Update</button>
-                             <button id="qig-comfy-workflow-del" class="menu_button" style="padding:2px 8px;">🗑️</button>
-                         </div>
-                         <small style="opacity:0.6;font-size:10px;">Use presets for quick graph switching (e.g., with LoRA / without LoRA). Profiles save provider settings; workflow presets focus on Comfy graph fields.</small>
                          <label>Custom Workflow JSON</label>
                          <textarea id="qig-comfy-workflow" rows="3" placeholder='Paste workflow from ComfyUI "Save (API Format)". Tokens include %prompt%, %negative%, %seed%, %width%, %height%, %steps%, %cfg%, %denoise%, %clip_stop_at_layer%, %sampler%, %scheduler%, %model%, %reference_image%'>${esc(s.comfyWorkflow || "")}</textarea>
-                         <div class="form-hint">Optional: built-in standard and Flux/UNET workflows are available without JSON. Custom graphs use only settings represented by placeholders, and all matching output images are returned. Export from ComfyUI using Save (API Format). Executable workflow JSON is omitted from full settings exports for safety.</div>
-                    </div>
+                          <div class="form-hint">Optional: built-in standard and Flux/UNET workflows are available without JSON. Custom graphs use only settings represented by placeholders, and all matching output images are returned. Export from ComfyUI using Save (API Format). Executable workflow JSON is omitted from full settings exports for safety.</div>
+                          <div id="qig-comfy-component-overrides" class="qig-comfy-overrides" hidden></div>
+                     </div>
                     <div id="qig-local-a1111-opts" style="display:${s.localType === "a1111" ? "block" : "none"}">
                          <label>Model</label>
                          <div style="display:flex;gap:4px;align-items:center;">
                              <select id="qig-a1111-model" style="flex:1;">
-                                 <option value="">-- Click Refresh to load models --</option>
+                                 <option value="" ${!s.a1111Model ? "selected" : ""}>-- Click Refresh to load models --</option>
+                                 ${s.a1111Model ? `<option value="${esc(s.a1111Model)}" selected>${esc(s.a1111Model)} (saved)</option>` : ""}
                              </select>
-                             <button id="qig-a1111-model-refresh" class="menu_button" style="padding:4px 8px;" title="Refresh model list">🔄</button>
+                             <button id="qig-a1111-model-refresh" class="menu_button" style="padding:4px 8px;" title="Refresh models, VAEs, upscalers and ControlNet models">🔄</button>
                          </div>
                          <label>LoRAs (name:weight, comma-separated)</label>
-                         <small style="opacity:0.6;font-size:10px;">Always applied. For scene-specific LoRAs, use Contextual Filters.</small>
+                         <small>Always applied. For scene-specific LoRAs, use Contextual Filters.</small>
                          <input id="qig-a1111-loras" type="text" value="${esc(s.a1111Loras || "")}" placeholder="my_lora:0.8, detail_lora:0.6">
-                         <label>VAE</label>
-                         <select id="qig-a1111-vae">
-                             <option value="" ${!s.a1111Vae ? "selected" : ""}>Automatic</option>
-                         </select>
-                         <small style="opacity:0.6;font-size:10px;">Override model's built-in VAE. Click Refresh to populate list.</small>
+                         <button id="qig-a1111-tuning-toggle" type="button" class="qig-collapsible__header qig-inline-collapsible" aria-expanded="${a1111TuningExpanded}" aria-controls="qig-a1111-tuning-content">
+                             <span>
+                                 <span class="qig-card-title">Model tuning</span>
+                                 <small>VAE, CLIP skip, scheduler, face restore, tiling, and variation seed.</small>
+                             </span>
+                             <span class="qig-collapsible__icon fa-solid ${a1111TuningCollapsed ? "fa-chevron-right" : "fa-chevron-down"}" aria-hidden="true"></span>
+                         </button>
+                         <div id="qig-a1111-tuning-content" class="qig-collapsible__content" ${a1111TuningHidden}>
+                          <label>VAE</label>
+                          <select id="qig-a1111-vae">
+                              <option value="" ${!s.a1111Vae ? "selected" : ""}>Automatic</option>
+                              ${s.a1111Vae ? `<option value="${esc(s.a1111Vae)}" selected>${esc(s.a1111Vae)}</option>` : ""}
+                          </select>
+                          <small>Override the model's built-in VAE. Refresh next to Model fills this list from your server.</small>
                          <div class="qig-row" style="margin-top:8px;">
-                            <div><label>CLIP Skip</label><input id="qig-a1111-clip" type="number" value="${esc(s.a1111ClipSkip || 1)}" min="1" max="12" step="1"><small style="opacity:0.6;font-size:10px;">1 for most models, 2 for anime/NAI-based</small></div>
-                            <div><label>Scheduler</label><select id="qig-a1111-scheduler">${A1111_SCHEDULERS.map(x => `<option value="${x}" ${s.a1111Scheduler === x ? "selected" : ""}>${x}</option>`).join("")}</select><small style="opacity:0.6;font-size:10px;">Noise schedule (A1111 1.6+)</small></div>
+                            <div><label>CLIP Skip</label><input id="qig-a1111-clip" type="number" value="${esc(s.a1111ClipSkip || 1)}" min="1" max="12" step="1"><small>1 for most models, 2 for anime/NAI-based</small></div>
                          </div>
                          <div class="qig-row" style="margin-top:4px;">
                             <label class="checkbox_label" style="flex:1;">
@@ -17803,8 +19005,9 @@ function createUI() {
                             </label>
                          </div>
                          <div class="qig-row" style="margin-top:4px;">
-                             <div><label>Variation Seed</label><input id="qig-a1111-subseed" type="number" value="${esc(s.a1111Subseed ?? -1)}"><small style="opacity:0.6;font-size:10px;">-1 = random. Blends with main seed</small></div>
-                             <div><label>Variation Strength</label><input id="qig-a1111-subseed-strength" type="number" value="${esc(s.a1111SubseedStrength ?? 0)}" min="0" max="1" step="0.05"><small style="opacity:0.6;font-size:10px;">0 = no effect, 1 = full variation</small></div>
+                             <div><label>Variation Seed</label><input id="qig-a1111-subseed" type="number" value="${esc(s.a1111Subseed ?? -1)}"><small>-1 = random. Blends with main seed</small></div>
+                             <div><label>Variation Strength</label><input id="qig-a1111-subseed-strength" type="number" value="${esc(s.a1111SubseedStrength ?? 0)}" min="0" max="1" step="0.05"><small>0 = no effect, 1 = full variation</small></div>
+                         </div>
                          </div>
                          <label class="checkbox_label" style="margin-top:8px;">
                              <input id="qig-a1111-hires" type="checkbox" ${s.a1111HiresFix ? "checked" : ""}>
@@ -17853,12 +19056,12 @@ function createUI() {
                              <label>ADetailer Negative (optional)</label>
                              <input id="qig-a1111-ad-negative" type="text" value="${esc(s.a1111AdetailerNegative || "")}" placeholder="Leave empty to use main negative">
                              <div class="qig-row" style="margin-top:4px;">
-                                 <div><label>Denoise</label><input id="qig-a1111-ad-denoise" type="number" value="${esc(s.a1111AdetailerDenoise ?? 0.4)}" min="0" max="1" step="0.05"><small style="opacity:0.6;font-size:10px;">Inpaint strength for detected regions</small></div>
-                                 <div><label>Confidence</label><input id="qig-a1111-ad-confidence" type="number" value="${esc(s.a1111AdetailerConfidence ?? 0.3)}" min="0" max="1" step="0.05"><small style="opacity:0.6;font-size:10px;">Detection threshold (lower = more detections)</small></div>
+                                 <div><label>Denoise</label><input id="qig-a1111-ad-denoise" type="number" value="${esc(s.a1111AdetailerDenoise ?? 0.4)}" min="0" max="1" step="0.05"><small>Inpaint strength for detected regions</small></div>
+                                 <div><label>Confidence</label><input id="qig-a1111-ad-confidence" type="number" value="${esc(s.a1111AdetailerConfidence ?? 0.3)}" min="0" max="1" step="0.05"><small>Detection threshold (lower = more detections)</small></div>
                              </div>
                              <div class="qig-row" style="margin-top:4px;">
                                  <div><label>Mask Blur</label><input id="qig-a1111-ad-mask-blur" type="number" value="${esc(s.a1111AdetailerMaskBlur ?? 4)}" min="0" max="64" step="1"></div>
-                                 <div><label>Dilate/Erode</label><input id="qig-a1111-ad-dilate" type="number" value="${esc(s.a1111AdetailerDilateErode ?? 4)}" min="-128" max="128" step="1"><small style="opacity:0.6;font-size:10px;">Positive = expand mask, negative = shrink</small></div>
+                                 <div><label>Dilate/Erode</label><input id="qig-a1111-ad-dilate" type="number" value="${esc(s.a1111AdetailerDilateErode ?? 4)}" min="-128" max="128" step="1"><small>Positive = expand mask, negative = shrink</small></div>
                              </div>
                              <div class="qig-row" style="margin-top:4px;">
                                  <div><label>Inpaint Padding</label><input id="qig-a1111-ad-inpaint-padding" type="number" value="${esc(s.a1111AdetailerInpaintPadding ?? 32)}" min="0" max="256" step="4"></div>
@@ -17872,7 +19075,7 @@ function createUI() {
                                  <input id="qig-a1111-ad2-enable" type="checkbox" ${s.a1111Adetailer2 ? "checked" : ""}>
                                  <span>ADetailer Unit 2 (e.g. hands)</span>
                              </label>
-                             <div id="qig-a1111-ad2-opts" style="display:${s.a1111Adetailer2 ? 'block' : 'none'}; margin-left:12px; border-left:2px solid rgba(255,255,255,0.1); padding-left:10px;">
+                             <div id="qig-a1111-ad2-opts" style="display:${s.a1111Adetailer2 ? 'block' : 'none'}; margin-left:12px; border-left:2px solid var(--qig-line); padding-left:10px;">
                                  <label>Model</label>
                                  <select id="qig-a1111-ad2-model">
                                      <option value="face_yolov8n.pt" ${s.a1111Adetailer2Model === "face_yolov8n.pt" ? "selected" : ""}>Face YOLOv8n</option>
@@ -17903,10 +19106,14 @@ function createUI() {
                                  </div>
                              </div>
                          </div>
-                         <label class="checkbox_label" style="margin-top:8px;">
-                             <input id="qig-a1111-save-webui" type="checkbox" ${s.a1111SaveToWebUI ? "checked" : ""}>
-                             <span>Save images to WebUI output folder</span>
-                         </label>
+                          <label class="checkbox_label" style="margin-top:8px;">
+                              <input id="qig-a1111-save-webui" type="checkbox" ${s.a1111SaveToWebUI ? "checked" : ""}>
+                              <span>Save images to WebUI output folder</span>
+                          </label>
+                          <label class="checkbox_label" style="margin-top:8px;">
+                              <input id="qig-a1111-interrupt-server" type="checkbox" ${s.a1111InterruptServer ? "checked" : ""}>
+                              <span>Interrupt the server when cancelling (this A1111 is not shared with other users)</span>
+                          </label>
                          <label class="checkbox_label" style="margin-top:8px;">
                              <input id="qig-a1111-ipadapter" type="checkbox" ${s.a1111IpAdapter ? "checked" : ""}>
                              <span>IP-Adapter (use a reference image to guide style/composition)</span>
@@ -18012,9 +19219,9 @@ function createUI() {
                              </div>
                              <label>Control Image</label>
                              <div style="display:flex;gap:4px;align-items:center;">
-                                 <img id="qig-a1111-cn-preview" src="${esc(s.a1111ControlNetImage || '')}" alt="ControlNet reference preview" style="width:40px;height:40px;object-fit:cover;border-radius:4px;display:${s.a1111ControlNetImage ? 'block' : 'none'};background:var(--qig-surface-soft);">
+                                 <img id="qig-a1111-cn-preview"${s.a1111ControlNetImage ? ` src="${esc(s.a1111ControlNetImage)}"` : ""} alt="ControlNet reference preview" style="width:40px;height:40px;object-fit:cover;border-radius:4px;display:${s.a1111ControlNetImage ? 'block' : 'none'};background:var(--qig-surface-soft);">
                                  <button id="qig-a1111-cn-upload-btn" class="menu_button" style="flex:1;">📎 Upload Control Image</button>
-                                 <button id="qig-a1111-cn-clear-btn" class="menu_button" style="width:30px;color:#e94560;display:${s.a1111ControlNetImage ? 'block' : 'none'};">×</button>
+                                 <button id="qig-a1111-cn-clear-btn" class="menu_button" style="width:30px;color:var(--qig-danger);display:${s.a1111ControlNetImage ? 'block' : 'none'};">×</button>
                              </div>
                              <input type="file" id="qig-a1111-cn-upload" accept="image/*" style="display:none">
                              <div class="form-hint">Upload a preprocessed control image (edge map, depth map, pose, etc.) or let the preprocessor extract it</div>
@@ -18023,9 +19230,9 @@ function createUI() {
                     <hr style="margin:8px 0;opacity:0.2;">
                     <label>Reference Image</label>
                     <div style="display:flex;gap:4px;align-items:center;">
-                        <img id="qig-local-ref-preview" src="${esc(s.localRefImage || '')}" alt="Local reference image preview" style="width:40px;height:40px;object-fit:cover;border-radius:4px;display:${s.localRefImage ? 'block' : 'none'};background:var(--qig-surface-soft);">
+                        <img id="qig-local-ref-preview"${s.localRefImage ? ` src="${esc(s.localRefImage)}"` : ""} alt="Local reference image preview" style="width:40px;height:40px;object-fit:cover;border-radius:4px;display:${s.localRefImage ? 'block' : 'none'};background:var(--qig-surface-soft);">
                         <button id="qig-local-ref-btn" class="menu_button" style="flex:1;">📎 Upload Source</button>
-                        <button id="qig-local-ref-clear" class="menu_button" style="width:30px;color:#e94560;display:${s.localRefImage ? 'block' : 'none'};">×</button>
+                        <button id="qig-local-ref-clear" class="menu_button" style="width:30px;color:var(--qig-danger);display:${s.localRefImage ? 'block' : 'none'};">×</button>
                     </div>
                     <input type="file" id="qig-local-ref-input" accept="image/*" style="display:none">
                     <div id="qig-local-denoise-wrap" style="display:${s.localType === "a1111" && s.localRefImage ? "block" : "none"};margin-top:4px;">
@@ -18082,12 +19289,12 @@ function createUI() {
                         <span>ComfyUI Proxy Mode</span>
                     </label>
                     <div id="qig-proxy-comfy-opts" style="display:${s.proxyComfyMode ? "block" : "none"}">
-                        <small style="opacity:0.6;font-size:10px;">Connects to a ComfyUI proxy server (GET /prompt/{text}?token=key → PNG). URL and API Key above are reused as the proxy address and token.</small>
+                        <small>Connects to a ComfyUI proxy server (GET /prompt/{text}?token=key → PNG). URL and API Key above are reused as the proxy address and token.</small>
                         <label>Timeout (seconds)</label>
                         <input id="qig-proxy-comfy-timeout" type="number" value="${esc(s.proxyComfyTimeout || 300)}" min="10" max="600">
                         <label>Prompt Node ID (optional)</label>
                         <input id="qig-proxy-comfy-node-id" type="text" value="${esc(s.proxyComfyNodeId || "")}" placeholder="e.g. 972">
-                        <small style="opacity:0.6;font-size:10px;">Sent as query param if your proxy supports it</small>
+                        <small>Sent as query param if your proxy supports it</small>
                         <label>Workflow JSON (optional)</label>
                         <textarea id="qig-proxy-comfy-workflow" rows="3" placeholder="Paste workflow_api.json or leave empty to use server default">${esc(s.proxyComfyWorkflow || "")}</textarea>
                     </div>
@@ -18096,7 +19303,7 @@ function createUI() {
                     <input id="qig-proxy-model" type="text" value="${esc(s.proxyModel)}" placeholder="PixAI model ID">
                     <label>Request Timeout (seconds)</label>
                     <input id="qig-proxy-timeout" type="number" value="${esc(s.proxyTimeout || 600)}" min="30" max="1800">
-                    <small style="opacity:0.6;font-size:10px;">Some image proxies keep long jobs open. Use 600 for Link-style slow image generations.</small>
+                    <small>Some image proxies keep long jobs open. Use 600 for Link-style slow image generations.</small>
                     <div class="qig-row">
                         <div><label>Endpoint Mode</label>
                             <select id="qig-proxy-endpoint-mode">
@@ -18127,7 +19334,7 @@ function createUI() {
                     </select>
                     <div id="qig-proxy-compat-hint" class="form-hint" style="margin-top:4px;"></div>
                     <label>LoRAs (id:weight, comma-separated)</label>
-                    <small style="opacity:0.6;font-size:10px;">Always applied. For scene-specific LoRAs, use Contextual Filters.</small>
+                    <small>Always applied. For scene-specific LoRAs, use Contextual Filters.</small>
                     <input id="qig-proxy-loras" type="text" value="${esc(s.proxyLoras || "")}" placeholder="123456:0.8, 789012:0.6">
                     <label class="checkbox_label">
                         <input id="qig-proxy-facefix" type="checkbox" ${s.proxyFacefix ? "checked" : ""}>
@@ -18140,7 +19347,7 @@ function createUI() {
                     <input type="file" id="qig-proxy-ref-input" accept="image/*" multiple style="display:none">
                     <div style="display:flex;gap:4px;align-items:center;">
                         <button id="qig-proxy-ref-btn" class="menu_button" style="padding:4px 8px;">📎 Files</button>
-                        <input id="qig-proxy-ref-url" type="text" placeholder="Paste image URL and press Enter" style="flex:1;font-size:11px;">
+                        <input id="qig-proxy-ref-url" type="text" placeholder="Paste image URL and press Enter" style="flex:1;font-size: 12px;">
                     </div>
                     </div>
                 </div>
@@ -18177,7 +19384,7 @@ function createUI() {
                     <input id="qig-custom-key" type="password" value="${esc(s.customApiKey)}" autocomplete="off">
                     <small id="qig-custom-auth-hint" class="qig-muted">Credentials and trusted URLs stay local and are omitted when importing shared settings.</small>
 
-                    <div class="qig-card-title" style="margin-top:12px;">Request mapping <small>(saved in generation recipes)</small></div>
+                    <div class="qig-card-title" style="margin-top:12px;">Request mapping <small>(saved in Configurations)</small></div>
                     <div class="qig-row">
                         <div>
                             <label>Starter</label>
@@ -18228,7 +19435,6 @@ function createUI() {
                         <small class="qig-muted">Use reference tokens in the template. Multipart mode converts inline images to uploaded file parts; JSON mode sends data URLs.</small>
                     </div>
                 </div>
-                        </div>
                     </div>
                     </div>
                 </section>
@@ -18236,8 +19442,8 @@ function createUI() {
                 <section class="qig-menu-section qig-menu-section--prompt qig-menu-section--collapsible qig-flow-create" aria-labelledby="qig-prompt-heading">
                     <button id="qig-section-create-toggle" type="button" class="qig-collapsible__header qig-section-header-toggle" aria-expanded="${sectionCreateExpanded}" aria-controls="qig-section-create-content">
                         <span class="qig-section-header-text">
-                            <h3 id="qig-prompt-heading" class="qig-section-kicker">Recipes &amp; Prompting</h3>
-                            <small class="qig-section-subtitle">Manage generation recipes, plain descriptions, presets, and LLM prompt rewriting.</small>
+                            <h3 id="qig-prompt-heading" class="qig-section-kicker">Prompting Tools</h3>
+                            <small class="qig-section-subtitle">Generate from plain descriptions or rewrite prompts with a language model.</small>
                         </span>
                         <span class="qig-collapsible__icon fa-solid ${collapsed.sectionCreate ? "fa-chevron-right" : "fa-chevron-down"}" aria-hidden="true"></span>
                     </button>
@@ -18245,12 +19451,10 @@ function createUI() {
                     <div class="qig-action-strip">
                         <button id="qig-chatgpt-nbp-setup" class="menu_button qig-inline-action" title="Set QIG for ChatGPT prompt writing and Nano Banana Pro image rendering"><span class="fa-solid fa-wand-magic-sparkles"></span><span>ChatGPT + NBP</span></button>
                         <button id="qig-plain-desc-btn" class="menu_button" title="Write a plain-language image description and let the AI turn it into a prompt"><span class="fa-solid fa-pen-to-square"></span><span>Plain Description</span></button>
-                        <button id="qig-save-preset" class="menu_button" title="Save the current generation recipe"><span class="fa-solid fa-bookmark"></span><span>Save Recipe</span></button>
                         <button id="qig-export-btn" class="menu_button"><span class="fa-solid fa-file-export"></span><span>Export</span></button>
                         <button id="qig-import-btn" class="menu_button"><span class="fa-solid fa-file-import"></span><span>Import</span></button>
                     </div>
-                    <div id="qig-presets" class="qig-presets"></div>
-                    <small class="qig-muted">Recipes save generation behavior, not credentials or every provider option. Connection profiles save the active provider's private setup.</small>
+                    <small class="qig-muted">Configurations are managed at the top of the panel. Portable fields are included in Export; credentials, endpoints, private images, and executable workflows stay local.</small>
 
                     <button id="qig-prompt-advanced-toggle" type="button" class="qig-collapsible__header qig-inline-collapsible" aria-expanded="${promptAdvancedExpanded}" aria-controls="qig-prompt-advanced-content">
                         <span>
@@ -18280,7 +19484,7 @@ function createUI() {
                         <input id="qig-review-before-generate" type="checkbox" ${s.reviewBeforeGenerate ? "checked" : ""}>
                         <span>Review before generating</span>
                     </label>
-                    <small class="qig-muted">Review the exact Text AI request and the final positive and negative image prompts before they are sent.</small>
+                    <small class="qig-muted">Review requests and image prompts before sending. Turning this off skips later review stages, including queued work. An open editor still needs Continue or Cancel. Turning it on applies to new runs.</small>
 
                     <div id="qig-chat-source-panel" class="qig-subsection" style="display:${promptSourceMode === "chat" ? "block" : "none"}">
                         <div class="qig-card-title">Chat scene source</div>
@@ -18311,6 +19515,15 @@ function createUI() {
                                 <option value="custom" ${s.llmPromptStyle === "custom" ? "selected" : ""}>Custom Instruction</option>
                             </select>
                             <small>How the AI formats the image prompt.</small>
+                            <div class="qig-field">
+                                <label for="qig-llm-request-role">Text AI request role</label>
+                                <select id="qig-llm-request-role" aria-describedby="qig-llm-request-role-help">
+                                    <option value="default" ${s.llmRequestRole === "default" ? "selected" : ""}>Default (connection behaviour)</option>
+                                    <option value="user" ${s.llmRequestRole === "user" ? "selected" : ""}>User</option>
+                                    <option value="system" ${s.llmRequestRole === "system" ? "selected" : ""}>System</option>
+                                </select>
+                                <small id="qig-llm-request-role-help">Applies to scene summaries, image-prompt requests and missing-tag requests. The complete instruction, including expanded custom templates, keeps this role; chat history and assistant prefill keep theirs. Your provider or text-completion template may convert roles. It doesn't change image messages or classifiers.</small>
+                            </div>
                             <div class="qig-toggle-list">
                                 <label class="checkbox_label qig-switch-row">
                                     <input id="qig-preserve-character-identity" type="checkbox" ${s.preserveCharacterIdentity !== false ? "checked" : ""}>
@@ -18341,21 +19554,21 @@ function createUI() {
                                     <button id="qig-llm-custom-insert-natural" type="button" class="menu_button">Insert Natural default</button>
                                     <button id="qig-llm-custom-reset" type="button" class="menu_button">Reset</button>
                                 </div>
-                                <small style="opacity:0.6;font-size:10px;">Supports {{scene}}, {{char}}, {{user}}, {{charDesc}}, and {{userDesc}}. Identity rules and the quality/lighting/artist toggles above are appended automatically. Reset clears the override so the built-in adaptive instruction is used.</small>
+                                <small>Supports {{scene}}, {{char}}, {{user}}, {{charDesc}}, and {{userDesc}}. Identity rules and the quality/lighting/artist toggles above are appended automatically. Reset clears the override so the built-in adaptive instruction is used.</small>
                             </div>
                             <label class="checkbox_label" style="margin-top:8px;">
                                 <input id="qig-two-step-prompt" type="checkbox" ${s.twoStepPrompt ? "checked" : ""}>
                                 <span>Use two-step prompt pipeline for chat scenes</span>
                             </label>
                             <div id="qig-two-step-options" class="qig-dependent-panel" style="display:${s.twoStepPrompt ? "block" : "none"};margin-top:6px;">
-                                <small style="opacity:0.6;font-size:10px;">For chat-based direct generation, QIG first asks Text AI for a plain visual scene description, then converts that description through the selected LLM prompt style.</small>
+                                <small>For chat-based direct generation, QIG first asks Text AI for a plain visual scene description, then converts that description through the selected LLM prompt style.</small>
                                 <label>Scene description instruction (optional)</label>
                                 <textarea id="qig-two-step-instruction" rows="3" style="width:100%;resize:vertical;" placeholder="Empty = the built-in visual summary instruction. Insert the default below to see and edit it.">${esc(s.twoStepInstruction || "")}</textarea>
                                 <div class="qig-template-actions">
                                     <button id="qig-two-step-insert-default" type="button" class="menu_button">Insert default</button>
                                     <button id="qig-two-step-reset" type="button" class="menu_button">Reset</button>
                                 </div>
-                                <small style="opacity:0.6;font-size:10px;">Supports {{scene}}, {{char}}, {{user}}, {{charDesc}}, and {{userDesc}}. Reset clears the override so the built-in adaptive instruction is used.</small>
+                                <small>Supports {{scene}}, {{char}}, {{user}}, {{charDesc}}, and {{userDesc}}. Reset clears the override so the built-in adaptive instruction is used.</small>
                             </div>
                         </div>
                     </div>
@@ -18381,7 +19594,7 @@ function createUI() {
                         <input id="qig-use-world-info" type="checkbox" ${s.useWorldInfo ? "checked" : ""}>
                         <span>Include matched World Info in Text AI context</span>
                     </label>
-                    <small class="qig-muted">QIG resolves active lore for the selected scene and opens an editable request review when lore matches. Matched private lore may be sent to the selected Text AI or override profile.</small>
+                    <small class="qig-muted">QIG adds matched lore to the Text AI request. Enable 'Review before generating' to edit it before sending; quiet runs skip review. Matched private lore may be sent to the selected Text AI or override profile.</small>
                     <div class="qig-character-panel">
                         <div class="qig-card-title">Character Layers</div>
                         <p id="qig-character-status" class="qig-character-panel__status"></p>
@@ -18466,7 +19679,7 @@ function createUI() {
                             <input id="qig-generate-shortcut" type="text" readonly value="${esc(formatGenerateShortcutLabel())}" placeholder="Press keys..." style="flex:1;cursor:pointer;" title="Click, then press the new key combination">
                             <button id="qig-generate-shortcut-reset" type="button" class="menu_button" title="Reset to Ctrl+Enter">Reset</button>
                         </div>
-                        <small style="opacity:0.6;font-size:10px;">Click the field and press a combination. Must include Ctrl or Alt (or be a function key). Esc cancels.</small>
+                        <small>Click the field and press a combination. Must include Ctrl or Alt (or be a function key). Esc cancels.</small>
                     </div>
                     <div id="qig-inject-shell" style="display:${promptSourceMode === "tags" ? "block" : "none"};margin-top:8px;">
                     <small class="qig-muted">AI-tagged prompt source is active. QIG injects tag instructions into chat completions and generates from extracted tags.</small>
@@ -18478,29 +19691,29 @@ function createUI() {
                         <span class="qig-collapsible__icon fa-solid ${injectOptionsCollapsed ? "fa-chevron-right" : "fa-chevron-down"}" aria-hidden="true"></span>
                     </button>
                     <div id="qig-inject-options" class="qig-collapsible__content qig-dependent-panel" ${injectOptionsHidden}>
-                        <small style="opacity:0.6;font-size:10px;">Active only when Auto-generate is enabled. QIG injects instructions into chat completions, extracts image tags from AI replies, and turns them into images.</small>
+                        <small>Active only when Auto-generate is enabled. QIG injects instructions into chat completions, extracts image tags from AI replies, and turns them into images.</small>
                         <label>Tag name</label>
                         <input id="qig-inject-tag-name" type="text" value="${esc(getInjectTagName(s))}" placeholder="image" style="width:100%;text-transform:lowercase;">
-                        <small style="opacity:0.6;font-size:10px;">Preview: <code id="qig-inject-tag-preview">${esc(getInjectTagPreview(getInjectTagName(s)))}</code>. Change this if your preset/model tends to swallow &lt;image&gt; tags inside reasoning.</small>
+                        <small>Preview: <code id="qig-inject-tag-preview">${esc(getInjectTagPreview(getInjectTagName(s)))}</code>. Change this if your preset/model tends to swallow &lt;image&gt; tags inside reasoning.</small>
                         <label>Inject prompt template</label>
                         <textarea id="qig-inject-prompt" rows="3" style="width:100%;resize:vertical;">${esc(s.injectPrompt || "")}</textarea>
                         <div class="qig-template-actions">
                             <button id="qig-inject-prompt-reset" type="button" class="menu_button">Reset to default</button>
                         </div>
-                        <small style="opacity:0.6;font-size:10px;">Supports {{char}}, {{user}}. Default prompt tells the AI to put the image tag in the final visible reply, not inside reasoning or &lt;think&gt;.</small>
+                        <small>Supports {{char}}, {{user}}. Default prompt tells the AI to put the image tag in the final visible reply, not inside reasoning or &lt;think&gt;.</small>
                         <label>Extraction regex</label>
-                        <input id="qig-inject-regex" type="text" value="${esc(s.injectRegex || '')}" style="width:100%;font-family:monospace;font-size:11px;">
+                        <input id="qig-inject-regex" type="text" value="${esc(s.injectRegex || '')}" style="width:100%;font-family:monospace;font-size: 12px;">
                         <div class="qig-template-actions">
                             <button id="qig-inject-regex-reset" type="button" class="menu_button">Reset to default</button>
                         </div>
-                        <small style="opacity:0.6;font-size:10px;">Capture groups extract the image prompt. Default matches your custom paired tag plus legacy &lt;pic prompt="..."&gt; tags.</small>
+                        <small>Capture groups extract the image prompt. Default matches your custom paired tag plus legacy &lt;pic prompt="..."&gt; tags.</small>
                         <label>Injection position</label>
                         <select id="qig-inject-position">
                             <option value="afterScenario" ${s.injectPosition === "afterScenario" ? "selected" : ""}>After Scenario</option>
                             <option value="inUser" ${s.injectPosition === "inUser" ? "selected" : ""}>Before User Message</option>
                             <option value="atDepth" ${s.injectPosition === "atDepth" ? "selected" : ""}>At Depth</option>
                         </select>
-                        <small style="opacity:0.6;font-size:10px;">Before User Message may interfere with thinking/reasoning presets.</small>
+                        <small>Before User Message may interfere with thinking/reasoning presets.</small>
                         <div id="qig-inject-depth-wrap" style="display:${s.injectPosition === "atDepth" ? "block" : "none"};">
                             <label>Depth</label>
                             <input id="qig-inject-depth" type="number" value="${esc(s.injectDepth || 0)}" min="0" max="100">
@@ -18510,7 +19723,7 @@ function createUI() {
                             <option value="replace" ${normalizeInjectInsertMode(s.injectInsertMode) === "replace" ? "selected" : ""}>Replace tag and attach to tagged message</option>
                             <option value="new" ${s.injectInsertMode === "new" ? "selected" : ""}>Separate generated-image message</option>
                         </select>
-                        <small style="opacity:0.6;font-size:10px;">Replace always removes generated tags. Separate message leaves them in the source unless auto-clean is enabled.</small>
+                        <small>Replace always removes generated tags. Separate message leaves them in the source unless auto-clean is enabled.</small>
                         <label class="checkbox_label">
                             <input id="qig-inject-autoclean" type="checkbox" ${s.injectAutoClean !== false ? "checked" : ""}>
                             <span>Auto-clean tags when using a separate message</span>
@@ -18531,21 +19744,24 @@ function createUI() {
                         <option value="inject" ${normalizePaletteMode(s.paletteMode) === "inject" ? "selected" : ""}>Inject (image tags)</option>
                     </select>
                 </div>
-                <small style="opacity:0.6;font-size:10px;">Direct uses the selected scene settings. Inject extracts image tags from the latest tagged AI message, or asks the LLM for one tag from the selected scene.</small>
+                <small>Direct uses the selected scene settings. Inject extracts image tags from the latest tagged AI message, or asks the LLM for one tag from the selected scene.</small>
 
                 <div id="qig-text-ai-routing" class="qig-dependent-panel">
                     <label class="checkbox_label">
                         <input id="qig-llm-override" type="checkbox" ${s.llmOverrideEnabled ? "checked" : ""}>
                         <span>Use separate AI for image prompts</span>
                     </label>
-                    <small style="opacity:0.6;font-size:10px;">Route image prompt generation to a different AI model than your main chat</small>
+                    <small>Route image prompt generation to a different AI model than your main chat</small>
                     <div id="qig-llm-override-options" style="display:${s.llmOverrideEnabled ? 'block' : 'none'};margin-top:6px;">
-                        <label style="font-size:11px;">Connection Profile</label>
+                        <label style="font-size: 12px;">Connection Profile</label>
                         <select id="qig-llm-override-profile" style="width:100%;"></select>
-                        <label style="font-size:11px;margin-top:4px;">Completion Preset (optional)</label>
+                        <label style="font-size: 12px;margin-top:4px;">Completion Preset (optional)</label>
                         <select id="qig-llm-override-preset-select" style="width:100%;"></select>
-                        <label style="font-size:11px;margin-top:4px;">Max Tokens</label>
+                        <label style="font-size: 12px;margin-top:4px;">Max Tokens</label>
                         <input id="qig-llm-override-max" type="number" value="${esc(s.llmOverrideMaxTokens || 500)}" min="50" max="4096" style="width:100%;">
+                        <label style="font-size: 12px;margin-top:4px;">Chat history messages</label>
+                        <input id="qig-llm-override-history" type="number" value="${esc(s.llmOverrideChatDepth || 0)}" min="0" max="1000" style="width:100%;">
+                        <small>Recent chat messages sent ahead of the request, for instructions that refer to the conversation so far. 0 sends the request on its own.</small>
                     </div>
                     </div>
                 </div>
@@ -18635,7 +19851,14 @@ function createUI() {
                     <div class="qig-control-grid qig-generation-advanced-grid">
                         <div class="qig-field"><label for="qig-steps">Steps</label><input id="qig-steps" type="number" value="${esc(activeSteps)}" min="1" max="${isFalSchnell ? 12 : 150}" step="1"><small>Higher can improve detail but takes longer.</small></div>
                         <div class="qig-field"><label for="qig-cfg">Guidance (CFG)</label><input id="qig-cfg" type="number" value="${esc(activeCfg)}" min="${s.provider === "proxy" ? 0 : 1}" max="${isFalSchnell ? 20 : 30}" step="0.5"><small>Higher follows the prompt more literally.</small></div>
-                        <div class="qig-field"><label for="qig-sampler">Sampler</label><select id="qig-sampler">${samplerOpts}</select><small>Generation algorithm supported by the active provider.</small></div>
+                        <fieldset class="qig-field qig-field--full qig-sampling">
+                            <legend>Sampling</legend>
+                            <div class="qig-sampling-grid">
+                                <div class="qig-field" id="qig-sampler-wrap"><label for="qig-sampler">Sampler</label><select id="qig-sampler">${samplerOpts}</select><small>Generation algorithm supported by the active provider.</small></div>
+                                <div class="qig-field" id="qig-a1111-scheduler-wrap"><label for="qig-a1111-scheduler">Schedule</label><select id="qig-a1111-scheduler">${A1111_SCHEDULERS.map(x => `<option value="${x}" ${s.a1111Scheduler === x ? "selected" : ""}>${x}</option>`).join("")}</select><small>Noise schedule (A1111 1.6+).</small></div>
+                                <div class="qig-field" id="qig-comfy-scheduler-wrap"><label for="qig-comfy-scheduler">Schedule</label><select id="qig-comfy-scheduler">${COMFY_SCHEDULERS.map(x => `<option value="${x}" ${s.comfyScheduler === x ? "selected" : ""}>${x}</option>`).join("")}</select><small>Noise schedule for the sampler — karras is popular for DPM++, normal for others.</small></div>
+                            </div>
+                        </fieldset>
                         <div class="qig-field"><label for="qig-seed">Seed</label><input id="qig-seed" type="number" value="${esc(activeSeed)}"><small>Use -1 for a random seed.</small></div>
                         <div class="qig-field"><label for="qig-hosted-timeout">Hosted deadline (seconds)</label><input id="qig-hosted-timeout" type="number" value="${esc(s.hostedTimeout ?? 300)}" min="30" max="1800"><small>One deadline covers submission, polling, output download, and validation.</small></div>
                     </div>
@@ -18662,7 +19885,7 @@ function createUI() {
         if (section) setupPanel.appendChild(section);
     }
     const deliverySettings = document.getElementById("qig-delivery-settings");
-    const automationSection = setupPanel?.querySelector(".qig-flow-automation");
+    const automationSection = document.getElementById("qig-section-automation-content");
     if (deliverySettings && automationSection) automationSection.appendChild(deliverySettings);
     const outputSettings = document.getElementById("qig-output-settings");
     const detachedGenerationSettings = document.getElementById("qig-detached-generation-settings");
@@ -18672,7 +19895,7 @@ function createUI() {
     }
     detachedGenerationSettings?.remove();
     const textAiRouting = document.getElementById("qig-text-ai-routing");
-    const createSection = setupPanel?.querySelector(".qig-flow-create");
+    const createSection = document.getElementById("qig-section-create-content");
     if (textAiRouting && createSection) createSection.appendChild(textAiRouting);
     associateSettingsLabels();
 
@@ -18689,11 +19912,9 @@ function createUI() {
         applyChatGptNbpWorkflowPreset();
         createUI();
         const promptSection = document.getElementById("qig-prompt");
-        promptSection?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+        promptSection?.scrollIntoView?.({ block: "center", behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
     };
     document.getElementById("qig-plain-desc-btn").onclick = generateImageFromPlainDescription;
-    document.getElementById("qig-profile-save").onclick = saveConnectionProfile;
-    document.getElementById("qig-save-preset").onclick = savePreset;
     document.getElementById("qig-export-btn").onclick = exportAllSettings;
     document.getElementById("qig-import-btn").onclick = importSettings;
     setupQigCollapsibleSection("setupPanel", "qig-setup-toggle", "qig-setup-panel");
@@ -18701,30 +19922,27 @@ function createUI() {
     setupQigCollapsibleSection("sectionCreate", "qig-section-create-toggle", "qig-section-create-content");
     setupQigCollapsibleSection("sectionContext", "qig-section-context-toggle", "qig-section-context-content");
     setupQigCollapsibleSection("sectionAutomation", "qig-section-automation-toggle", "qig-section-automation-content");
-    setupQigCollapsibleSection("providerSettings", "qig-provider-settings-toggle", "qig-provider-settings-content");
     setupQigCollapsibleSection("promptAdvanced", "qig-prompt-advanced-toggle", "qig-prompt-advanced-content");
     setupQigCollapsibleSection("injectOptions", "qig-inject-options-toggle", "qig-inject-options");
     setupQigCollapsibleSection("advancedSettings", "qig-advanced-settings-toggle", "qig-advanced-settings");
+    setupQigCollapsibleSection("a1111Tuning", "qig-a1111-tuning-toggle", "qig-a1111-tuning-content");
     setupSettingsSearch();
     bindQigKeyboardShortcuts();
-    renderPresets();
-    renderProfileSelect();
-    renderComfyWorkflowPresets();
+    renderConfigurationSelect();
     renderContextualFilters();
     renderContextMediaSummary();
+    renderComfyComponentOverrides();
 
     document.querySelectorAll(".qig-wizard-btn").forEach(btn => {
         btn.onclick = () => showSetupWizard();
     });
-    document.getElementById("qig-preset-save-quick").onclick = savePreset;
-    document.getElementById("qig-preset-select").onchange = (e) => {
-        const presetId = e.target.value;
-        if (!presetId) {
-            setActiveGenerationPresetId("");
-            return;
-        }
-        const index = generationPresets.findIndex(p => p?.id === presetId);
-        if (index >= 0) loadPreset(index);
+    document.getElementById("qig-config-save").onclick = saveConfigurationAs;
+    document.getElementById("qig-config-update").onclick = updateSelectedConfiguration;
+    document.getElementById("qig-config-del").onclick = deleteSelectedConfiguration;
+    document.getElementById("qig-config-select").onchange = (e) => {
+        const configId = e.target.value;
+        if (configId) void loadConfiguration(configId);
+        else setActiveConfigurationId("");
     };
     document.querySelectorAll('input[name="qig-prompt-source"]').forEach(radio => {
         radio.onchange = (e) => {
@@ -18733,17 +19951,18 @@ function createUI() {
     });
 
     document.getElementById("qig-provider").onchange = async (e) => {
+        a1111ModelRefreshController?.abort();
+        comfyModelRefreshController?.abort();
         getSettings().provider = e.target.value;
         if (charSettingsOverrideApplied) await loadCharSettings();
         saveSettingsDebounced();
         refreshProviderInputs(getSettings().provider);
-        renderProfileSelect();
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
     document.getElementById("qig-style").onchange = (e) => {
         getSettings().style = e.target.value;
         saveSettingsDebounced();
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
 
     bind("qig-pollinations-key", "pollinationsKey");
@@ -18768,9 +19987,17 @@ function createUI() {
     bind("qig-navy-model", "navyModel");
     bind("qig-nanogpt-key", "nanogptKey");
     bind("qig-nanogpt-model", "nanogptModel", (value) => {
-        void getNanoGptModelMetadata(value).then(() => updateGenerationCapabilitiesUI());
         updateGenerationCapabilitiesUI();
     });
+    const nanoGptModelInput = getOrCacheElement("qig-nanogpt-model");
+    if (nanoGptModelInput) {
+        // Discovery is network-bound: fetch once per committed change instead of
+        // once per keystroke; getNanoGptModelMetadata dedupes in-flight requests.
+        nanoGptModelInput.addEventListener("change", () => {
+            const value = String(getSettings()?.nanogptModel || "").trim();
+            void getNanoGptModelMetadata(value).then(() => updateGenerationCapabilitiesUI());
+        });
+    }
     bind("qig-nanogpt-strength", "nanogptStrength", true, false, (value) => {
         const label = document.getElementById("qig-nanogpt-strength-val");
         if (label) label.textContent = value;
@@ -18863,14 +20090,18 @@ function createUI() {
         getSettings().customApiMode = event.target.value;
         saveSettingsDebounced();
         updateCustomApiUI();
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
     const customStarter = getOrCacheElement("qig-custom-starter");
     if (customStarter) customStarter.onchange = (event) => {
         applyCustomApiStarter(event.target.value);
         event.target.value = "";
     };
-    bind("qig-local-url", "localUrl");
+    bind("qig-local-url", "localUrl", () => {
+        a1111ModelRefreshController?.abort();
+        comfyModelRefreshController?.abort();
+        renderComfyComponentOverrides();
+    });
     bind("qig-local-model", "localModel");
     document.getElementById("qig-local-model").addEventListener("change", (e) => {
         const val = (e.target.value || "").toLowerCase();
@@ -18882,19 +20113,13 @@ function createUI() {
             );
         }
     });
-    document.getElementById("qig-comfy-workflow-select").onchange = (e) => {
-        selectedComfyWorkflowId = e.target.value || "";
-        setComfyWorkflowActionState(!!selectedComfyWorkflowId);
-    };
-    document.getElementById("qig-comfy-workflow-load").onclick = loadSelectedComfyWorkflowPreset;
-    document.getElementById("qig-comfy-workflow-save-as").onclick = saveComfyWorkflowPresetAs;
-    document.getElementById("qig-comfy-workflow-update").onclick = updateSelectedComfyWorkflowPreset;
-    document.getElementById("qig-comfy-workflow-del").onclick = deleteSelectedComfyWorkflowPreset;
     // ComfyUI model refresh
     document.getElementById("qig-comfy-model-refresh").onclick = () => {
         refreshComfyModelCatalog().catch(error => log(`ComfyUI model refresh failed: ${error.message}`));
     };
     document.getElementById("qig-local-type").onchange = (e) => {
+        a1111ModelRefreshController?.abort();
+        comfyModelRefreshController?.abort();
         getSettings().localType = e.target.value;
         syncLocalTypeSections(e.target.value);
         saveSettingsDebounced();
@@ -18930,6 +20155,8 @@ function createUI() {
         document.getElementById("qig-comfy-upscale-opts").style.display = e.target.checked ? "block" : "none";
     };
     bind("qig-comfy-workflow", "comfyWorkflow");
+    // Re-parse on blur, not per keystroke: a graph can be up to 1 MiB.
+    document.getElementById("qig-comfy-workflow")?.addEventListener("change", renderComfyComponentOverrides);
     bind("qig-comfy-loras", "comfyLoras");
     document.getElementById("qig-comfy-skip-neg").onchange = (e) => {
         getSettings().comfySkipNegativePrompt = e.target.checked;
@@ -19004,6 +20231,7 @@ function createUI() {
 
     // Save to WebUI binding
     bindCheckbox("qig-a1111-save-webui", "a1111SaveToWebUI");
+    bindCheckbox("qig-a1111-interrupt-server", "a1111InterruptServer");
 
     // IP-Adapter bindings
     bind("qig-a1111-ipadapter-mode", "a1111IpAdapterMode");
@@ -19066,122 +20294,132 @@ function createUI() {
     const a1111ModelSelect = document.getElementById("qig-a1111-model");
     const a1111ModelRefresh = document.getElementById("qig-a1111-model-refresh");
     let a1111ModelRefreshSerial = 0;
+    let a1111ModelRefreshController = null;
+    const ipAdapterSelect = document.getElementById("qig-a1111-ipadapter-mode");
+    const builtInIpAdapterOptions = [...ipAdapterSelect.options].map(option => ({
+        value: option.value,
+        label: option.textContent,
+        disabled: option.disabled,
+    }));
 
     async function populateA1111Models() {
         const s = getSettings();
+        a1111ModelRefreshController?.abort();
+        const controller = new AbortController();
+        a1111ModelRefreshController = controller;
+        const deadline = createAbortDeadline(controller.signal, 10_000, "A1111 discovery timed out");
         const requestId = ++a1111ModelRefreshSerial;
         const baseUrl = normalizeA1111BaseUrl(s.localUrl);
         const configuredModel = s.a1111Model;
+        let checkpointResultCommitted = false;
         const isCurrentRequest = () => isCurrentA1111ModelRefresh({
             requestId,
             latestRequestId: a1111ModelRefreshSerial,
             baseUrl,
             settings: getSettings(),
-        });
-        replaceSelectOptions(a1111ModelSelect, [{ value: "", label: "Loading..." }]);
+        }) && a1111ModelRefreshController === controller;
+        try {
+            replaceSelectOptions(a1111ModelSelect, catalogSelectOptions([], configuredModel, { value: "", label: "Loading..." }), configuredModel);
 
-        // Fetch SD Checkpoints
-        const models = await fetchA1111Models(baseUrl);
-        if (!isCurrentRequest()) return;
-        const currentModel = configuredModel || await getCurrentA1111Model(baseUrl);
-        if (!isCurrentRequest()) return;
+            // Fetch SD Checkpoints
+            const models = await fetchA1111Models(baseUrl, deadline.signal);
+            if (!isCurrentRequest()) return;
+            const currentModel = configuredModel || await getCurrentA1111Model(baseUrl, deadline.signal);
+            if (!isCurrentRequest()) return;
 
-        if (models.length === 0) {
-            replaceSelectOptions(a1111ModelSelect, [{ value: "", label: "-- Failed to load (check if A1111 running) --" }]);
-        } else {
-            replaceSelectOptions(a1111ModelSelect, models.map(model => ({
-                value: model.title,
-                label: model.name,
-            })), currentModel);
+            if (models.length === 0) {
+                replaceSelectOptions(a1111ModelSelect, catalogSelectOptions([], configuredModel, { value: "", label: "-- Failed to load (check if A1111 running) --" }), configuredModel);
+            } else {
+                const modelOptions = models.map(model => ({ value: model.title, label: model.name }));
+                // Keep a configured checkpoint the backend no longer reports, so the select never blanks out.
+                if (currentModel && !modelOptions.some(option => option.value === currentModel)) {
+                    modelOptions.push({ value: currentModel, label: `${currentModel} (not on server)` });
+                }
+                replaceSelectOptions(a1111ModelSelect, modelOptions, currentModel);
 
-            if (currentModel && !getSettings().a1111Model) {
-                getSettings().a1111Model = currentModel;
-                saveSettingsDebounced();
+                if (currentModel && !getSettings().a1111Model) {
+                    getSettings().a1111Model = currentModel;
+                    saveSettingsDebounced();
+                }
             }
-        }
+            checkpointResultCommitted = true;
 
-        // Fetch ControlNet Models for IP-Adapter
-        const cnModels = await fetchControlNetModels(baseUrl);
-        if (!isCurrentRequest()) return;
-        const cnSelect = document.getElementById("qig-a1111-ipadapter-mode");
+            const [controlNetResult, upscalerResult, vaeResult] = await Promise.allSettled([
+                fetchControlNetModels(baseUrl, deadline.signal),
+                fetchA1111Upscalers(baseUrl, deadline.signal),
+                fetchA1111VAEs(baseUrl, deadline.signal),
+            ]);
+            if (!isCurrentRequest()) return;
+            const cnModels = controlNetResult.status === "fulfilled" ? controlNetResult.value : [];
 
-        // Filter for IP-Adapter/FaceID models
-        const ipModels = cnModels.filter(m => m.toLowerCase().includes("ip-adapter") || m.toLowerCase().includes("faceid"));
-
-        if (ipModels.length > 0) {
-            // Preserve current selection if possible, otherwise default
+            // Filter for IP-Adapter/FaceID models
+            const ipModels = cnModels.filter(m => m.toLowerCase().includes("ip-adapter") || m.toLowerCase().includes("faceid"));
             const currentCn = getSettings().a1111IpAdapterMode;
 
-            replaceSelectOptions(cnSelect, [
-                { value: "", label: "-- Detected Models --", disabled: true },
-                ...ipModels.map(model => ({ value: model, label: model })),
-            ], currentCn);
-        } else {
-            // Fallback to presets if no API or no models found
-            console.log("No IP-Adapter models detected via API, using presets.");
-            const hasNoModelsOption = Array.from(cnSelect.options || []).some(opt =>
-                opt.disabled && opt.textContent.includes("No IP-Adapter models detected")
-            );
-            if (!hasNoModelsOption) {
-                const option = cnSelect.ownerDocument.createElement("option");
-                option.value = "";
-                option.textContent = "-- No IP-Adapter models detected --";
-                option.disabled = true;
-                cnSelect.appendChild(option);
+            if (ipModels.length > 0) {
+                replaceSelectOptions(ipAdapterSelect, catalogSelectOptions(ipModels, currentCn, {
+                    value: "",
+                    label: "-- Detected Models --",
+                    disabled: true,
+                }), currentCn);
+            } else {
+                console.log("No IP-Adapter models detected via API, using presets.");
+                replaceSelectOptions(ipAdapterSelect, catalogSelectOptions(builtInIpAdapterOptions, currentCn, {
+                    value: "",
+                    label: "-- No IP-Adapter models detected --",
+                    disabled: true,
+                }), currentCn);
             }
-        }
 
-        // Fetch Upscalers for Hires Fix
-        const upscalers = await fetchA1111Upscalers(baseUrl);
-        if (!isCurrentRequest()) return;
-        const upscalerSelect = document.getElementById("qig-a1111-hires-upscaler");
-        if (upscalers.length > 0 && upscalerSelect) {
-            const cur = getSettings().a1111HiresUpscaler || "Latent";
-            replaceSelectOptions(upscalerSelect, upscalers.map(upscaler => ({ value: upscaler, label: upscaler })), cur);
-        }
+            // Fetch Upscalers for Hires Fix
+            const upscalers = upscalerResult.status === "fulfilled" ? upscalerResult.value : ["Latent"];
+            const upscalerSelect = document.getElementById("qig-a1111-hires-upscaler");
+            if (upscalerSelect) {
+                const cur = getSettings().a1111HiresUpscaler || "Latent";
+                replaceSelectOptions(upscalerSelect, catalogSelectOptions(upscalers, cur), cur);
+            }
 
-        // Fetch VAEs
-        const vaes = await fetchA1111VAEs(baseUrl);
-        if (!isCurrentRequest()) return;
-        const vaeSelect = document.getElementById("qig-a1111-vae");
-        if (vaeSelect) {
-            const curVae = getSettings().a1111Vae || "";
-            replaceSelectOptions(vaeSelect, [
-                { value: "", label: "Automatic" },
-                ...vaes.map(vae => ({ value: vae, label: vae })),
-            ], curVae);
-        }
+            // Fetch VAEs
+            const vaes = vaeResult.status === "fulfilled" ? vaeResult.value : [];
+            const vaeSelect = document.getElementById("qig-a1111-vae");
+            if (vaeSelect) {
+                const curVae = getSettings().a1111Vae || "";
+                replaceSelectOptions(vaeSelect, catalogSelectOptions(vaes, curVae, { value: "", label: "Automatic" }), curVae);
+            }
 
-        // Populate generic ControlNet model list (all models, not just IP-Adapter)
-        const genericCnSelect = document.getElementById("qig-a1111-cn-model");
-        if (genericCnSelect && cnModels.length > 0) {
-            const curCn = getSettings().a1111ControlNetModel || "";
-            replaceSelectOptions(genericCnSelect, [
-                { value: "", label: "-- Select Model --" },
-                ...cnModels.map(model => ({ value: model, label: model })),
-            ], curCn);
-        } else if (genericCnSelect) {
-            replaceSelectOptions(genericCnSelect, [{ value: "", label: "-- No ControlNet models found --" }]);
+            // Populate generic ControlNet model list (all models, not just IP-Adapter)
+            const genericCnSelect = document.getElementById("qig-a1111-cn-model");
+            if (genericCnSelect) {
+                const curCn = getSettings().a1111ControlNetModel || "";
+                replaceSelectOptions(genericCnSelect, catalogSelectOptions(cnModels, curCn, {
+                    value: "",
+                    label: cnModels.length ? "-- Select Model --" : "-- No ControlNet models found --",
+                }), curCn);
+            }
+        } catch (error) {
+            if (isCurrentRequest() && !checkpointResultCommitted) {
+                replaceSelectOptions(a1111ModelSelect, catalogSelectOptions([], configuredModel, {
+                    value: "",
+                    label: deadline.didTimeOut() ? "-- Timed out --" : "-- Failed to load --",
+                }), configuredModel);
+                if (!controller.signal.aborted || deadline.didTimeOut()) log(`A1111 discovery failed: ${error?.message || error}`);
+            }
+        } finally {
+            deadline.dispose();
+            if (a1111ModelRefreshController === controller) a1111ModelRefreshController = null;
         }
     }
 
-    a1111ModelSelect.onchange = async (e) => {
-        const s = getSettings();
-        const newModel = e.target.value;
-        if (!newModel) return;
-
-        a1111ModelSelect.disabled = true;
-        const success = await switchA1111Model(s.localUrl, newModel);
-        if (success) {
-            s.a1111Model = newModel;
-            saveSettingsDebounced();
-        } else {
-            qigToast.warning("Could not switch the model. The backend kept its current model — check that it is still reachable.");
-        }
-        a1111ModelSelect.disabled = false;
+    a1111ModelSelect.onchange = (e) => {
+        a1111ModelRefreshController?.abort();
+        a1111ModelRefreshController = null;
+        a1111ModelRefreshSerial += 1;
+        getSettings().a1111Model = e.target.value;
+        saveSettingsDebounced();
+        syncConfigurationIndicators();
     };
 
-    a1111ModelRefresh.onclick = () => populateA1111Models();
+    a1111ModelRefresh.onclick = () => void populateA1111Models();
 
     // Local Ref Image
     const localRefInput = getOrCacheElement("qig-local-ref-input");
@@ -19413,7 +20651,7 @@ function createUI() {
         document.getElementById("qig-llm-options").style.display = e.target.checked ? "block" : "none";
         saveSettingsDebounced();
         updateQigStatusLine();
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
     bind("qig-llm-custom", "llmCustomInstruction");
     bindCheckbox("qig-preserve-character-identity", "preserveCharacterIdentity");
@@ -19422,11 +20660,12 @@ function createUI() {
     bindCheckbox("qig-llm-lighting", "llmAddLighting");
     bindCheckbox("qig-llm-artist", "llmAddArtist");
     bind("qig-llm-prefill", "llmPrefill");
+    bind("qig-llm-request-role", "llmRequestRole");
     document.getElementById("qig-llm-style").onchange = e => {
         getSettings().llmPromptStyle = e.target.value;
         saveSettingsDebounced();
         document.getElementById("qig-llm-custom-wrap").style.display = e.target.value === "custom" ? "block" : "none";
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
     bindAutoGenerateCheckbox("qig-auto-generate");
     bindAutoGenerateNumberInput("qig-auto-generate-every", "autoGenerateEveryMessages", normalizeAutoGenerateEveryMessages);
@@ -19461,7 +20700,7 @@ function createUI() {
         getSettings()[key] = value;
         saveSettingsDebounced();
         updateQigStatusLine();
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
     const wireInstructionTemplateButton = (id, onClick) => {
         const el = document.getElementById(id);
@@ -19694,6 +20933,7 @@ function createUI() {
         saveSettingsDebounced();
     };
     bind("qig-llm-override-max", "llmOverrideMaxTokens", true);
+    bind("qig-llm-override-history", "llmOverrideChatDepth", true);
     const widthEl = document.getElementById("qig-width");
     const heightEl = document.getElementById("qig-height");
     const onSizeChange = () => {
@@ -19708,7 +20948,7 @@ function createUI() {
         }
         syncSizeInputs(s.width, s.height);
         saveSettingsDebounced();
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
     if (widthEl) widthEl.onchange = onSizeChange;
     if (heightEl) heightEl.onchange = onSizeChange;
@@ -19727,7 +20967,7 @@ function createUI() {
         }
         syncSizeInputs(s.width, s.height);
         saveSettingsDebounced();
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
     document.getElementById("qig-nai-resolution").onchange = (e) => {
         if (e.target.value === NAI_CUSTOM_RESOLUTION_VALUE) {
@@ -19743,7 +20983,7 @@ function createUI() {
         syncSizeInputs(s.width, s.height);
         syncNaiResolutionSelect();
         saveSettingsDebounced();
-        syncGenerationPresetIndicators();
+        syncConfigurationIndicators();
     };
     bind("qig-batch", "batchCount", true);
     bind("qig-hosted-timeout", "hostedTimeout", true);
@@ -19766,7 +21006,7 @@ function createUI() {
                 : (numeric ? parsed.value : rawValue);
             saveSettingsDebounced();
             updateQigStatusLine();
-            syncGenerationPresetIndicators();
+            syncConfigurationIndicators();
         };
         if (numeric) {
             element.onchange = (event) => {
@@ -19809,39 +21049,57 @@ function showPalettePresetMenu(event) {
     if (isGenerating) return;
 
     closePalettePresetMenu();
-    ensureGenerationPresetIds({ persist: true });
-    syncActiveGenerationPresetSetting({ persist: true });
+    syncActiveConfigurationSetting({ persist: true });
 
     const anchor = document.getElementById("qig-input-btn");
-    const activePresetId = getActiveGenerationPresetId();
+    const activePresetId = getActiveConfigurationId();
     const menu = document.createElement("div");
     menu.id = "qig-palette-preset-menu";
     menu.className = "qig-palette-preset-menu";
+    menu.setAttribute("role", "menu");
+    menu.setAttribute("aria-label", "Configurations");
 
     const title = document.createElement("div");
     title.className = "qig-palette-preset-menu__title";
-    title.textContent = "Generation Presets";
+    title.textContent = "Configurations";
     menu.appendChild(title);
 
-    if (!generationPresets.length) {
+    if (!configurations.length) {
         const emptyState = document.createElement("div");
         emptyState.className = "qig-palette-preset-menu__empty";
-        emptyState.textContent = "No presets saved yet.";
+        emptyState.textContent = "No configurations saved yet. Save one with the Save As button next to Configuration.";
         menu.appendChild(emptyState);
     } else {
-        for (const [index, preset] of generationPresets.entries()) {
+        for (const [index, entry] of configurations.entries()) {
             const button = document.createElement("button");
             button.type = "button";
-            button.className = `menu_button qig-palette-preset-menu__item${preset?.id === activePresetId ? " qig-palette-preset-menu__item--active" : ""}`;
-            button.textContent = `${preset?.id === activePresetId ? "✓ " : ""}${preset?.name || `Preset ${index + 1}`}`;
+            button.setAttribute("role", "menuitem");
+            button.className = `menu_button qig-palette-preset-menu__item${entry?.id === activePresetId ? " qig-palette-preset-menu__item--active" : ""}`;
+            const providerName = PROVIDERS[entry?.provider]?.name || entry?.provider || "?";
+            button.textContent = `${entry?.id === activePresetId ? "✓ " : ""}${entry?.name || `Configuration ${index + 1}`} · ${providerName}`;
             button.onclick = (clickEvent) => {
                 clickEvent.preventDefault();
                 clickEvent.stopPropagation();
-                loadPreset(index);
+                void loadConfiguration(entry?.id);
             };
             menu.appendChild(button);
         }
     }
+
+    menu.onkeydown = (keyEvent) => {
+        const items = [...menu.querySelectorAll(".qig-palette-preset-menu__item")];
+        if (!items.length) return;
+        const current = items.indexOf(document.activeElement);
+        let next = -1;
+        if (keyEvent.key === "ArrowDown") next = current < items.length - 1 ? current + 1 : 0;
+        else if (keyEvent.key === "ArrowUp") next = current > 0 ? current - 1 : items.length - 1;
+        else if (keyEvent.key === "Home") next = 0;
+        else if (keyEvent.key === "End") next = items.length - 1;
+        if (next >= 0) {
+            keyEvent.preventDefault();
+            items[next].focus();
+        }
+    };
 
     menu.style.visibility = "hidden";
     document.body.appendChild(menu);
@@ -19862,6 +21120,15 @@ function showPalettePresetMenu(event) {
         menu.style.visibility = "visible";
     };
     placeMenu();
+    // Keyboard users can only drive the menu once focus is inside it. preventScroll matters:
+    // the menu closes itself on any scroll event.
+    menu.querySelector(".qig-palette-preset-menu__item")?.focus({ preventScroll: true });
+    // The host's a11y observer stamps role="button" on every .menu_button after insertion,
+    // clobbering the menuitem role set at build time; re-assert it once that has run.
+    setTimeout(() => {
+        if (!menu.isConnected) return;
+        menu.querySelectorAll(".qig-palette-preset-menu__item").forEach(item => item.setAttribute("role", "menuitem"));
+    }, 0);
 
     const closeOnPointerDown = (pointerEvent) => {
         if (menu.contains(pointerEvent.target) || anchor?.contains(pointerEvent.target)) return;
@@ -19901,7 +21168,8 @@ function getMessageGenerateActionMount(messageElement) {
 
 function createMessageGenerateActionButton(messageIndex) {
     const button = createAccessibleIconButton(document, {
-        className: `mes_button fa-solid fa-palette ${QIG_MESSAGE_ACTION_CLASS}`,
+        tagName: "div",
+        className: `mes_button fa-solid fa-palette interactable ${QIG_MESSAGE_ACTION_CLASS}`,
         label: `Generate image from message ${messageIndex + 1} with Quick Image Gen`,
         title: "Generate image from this message with Quick Image Gen",
     });
@@ -20085,10 +21353,11 @@ function addInputButton() {
     if (getSettings().disablePaletteButton) return;
 
     const btn = createAccessibleIconButton(document, {
+        tagName: "div",
         id: "qig-input-btn",
         className: "fa-solid fa-palette interactable",
-        label: "Generate image; right-click for presets",
-        title: "Generate Image (right-click for presets)",
+        label: "Generate image; right-click for configurations",
+        title: "Generate Image (right-click for configurations)",
     });
     btn.setAttribute("aria-haspopup", "menu");
     btn.onclick = () => {
@@ -20123,6 +21392,8 @@ async function generateImageInjectPalette() {
     if (isGenerating) return { status: "busy", generated: 0, failed: 0 };
     const initialSettings = getGenerationSettingsForRun();
     if (initialSettings.confirmBeforeGenerate && !(await qigConfirm("Generate image?", { okButton: "Generate" }))) return { status: "cancelled", generated: 0, failed: 0 };
+    // A second confirmation could have been approved while this dialog was open.
+    if (isGenerating) return { status: "busy", generated: 0, failed: 0 };
 
     const mySerial = ++_paletteInjectSerial;
     const run = beginGeneration({ settings: initialSettings, disableGenerateButton: true, clearPendingAuto: true });
@@ -20192,10 +21463,11 @@ async function generateImageInjectPalette() {
             const timestamp = Date.now();
             let fullInstruction = `${injectInstruction}\n\nBased on this scene context, generate exactly one image tag for the single best visual moment. You must use the exact tag format shown above. Return exactly one tag only. Do not generate multiple tags, lists, moments, or variants.\n\nScene context:\n${sceneContext}\n\nRespond with image tags only.\n\n[${timestamp}]`;
             fullInstruction = appendWorldInfoToRequest(fullInstruction, worldInfoContext.text);
-            if (s.reviewBeforeGenerate || !!worldInfoContext.text) {
+            if (shouldReviewPrompt(s)) {
                 const reviewed = await reviewTextAIRequest(fullInstruction, {
                     title: "Review Image Tag Request",
                     description: "No image tag was found. Review the exact Text AI request QIG will use to choose one visual moment.",
+                    role: s.llmRequestRole,
                     signal: run.signal,
                 });
                 fullInstruction = reviewed.request;
@@ -20204,12 +21476,13 @@ async function generateImageInjectPalette() {
             let llmResponse;
             if (s.llmOverrideEnabled && s.llmOverrideProfileId) {
                 log("Using LLM Override for inject palette");
-                llmResponse = await callOverrideLLM(fullInstruction, "", run.signal, { settings: s });
+                llmResponse = await callOverrideLLM(fullInstruction, "", run.signal, { settings: s, role: s.llmRequestRole });
             } else {
                 llmResponse = await callInternalStandaloneLLM(fullInstruction, {
                     signal: run.signal,
                     quietName: `ImageGenInject_${timestamp}`,
                     label: "palette inject tag generation request",
+                    role: s.llmRequestRole,
                 });
             }
             checkAborted(cancelCheckpoint);
@@ -20275,7 +21548,7 @@ async function generateImageInjectPalette() {
                 const baseSeed = getBatchBaseSeed(s, batchCount, seedOverride);
                 const outcome = await collectBatchResults(batchCount, async (i) => {
                     checkAborted(cancelCheckpoint);
-                    setGenerationSeedValue(s, useSequentialSeeds ? baseSeed + i : baseSeed);
+                    setGenerationSeedValue(s, useSequentialSeeds ? seedForBatchIndex(baseSeed, i) : baseSeed);
                     showStatus(`🖼️ Generating palette-inject image ${i + 1}/${batchCount}...`);
                     const expandedPrompt = expandWildcards(prompt);
                     const expandedNegative = expandWildcards(negative);
@@ -20300,14 +21573,14 @@ async function generateImageInjectPalette() {
                     assertGenerationCanCommit(run);
                     commitSuccessfulPrompt(run, { prompt, negative, promptWasLLM });
                     if (sourceTargetSnapshot) assertMessageTargetSnapshot(sourceTargetSnapshot);
-                    if (sourceInjectMessage) consumedMessagePrompts.add(extractedPrompt);
                     await maybeAutoSetBackground(results, s, run);
-                    await deliverInjectResults(results, {
+                    const delivery = await deliverInjectResults(results, {
                         settings: s,
                         sourceMessageIndex: Number.isInteger(sourceMessageIndex) ? sourceMessageIndex : undefined,
                         targetSnapshot: sourceTargetSnapshot,
                         run,
                     });
+                    if (sourceInjectMessage && !delivery.failed.length) consumedMessagePrompts.add(extractedPrompt);
                 }
             } finally {
                 setGenerationSeedValue(s, originalSeed);
@@ -20316,7 +21589,7 @@ async function generateImageInjectPalette() {
         // Reported once for the whole message rather than once per matched tag.
         if (generatedCount > 0) {
             const failedSuffix = failedCount > 0 ? `; ${failedCount} failed` : "";
-            qigToast.success(`Palette inject: ${generatedCount} image(s) generated${failedSuffix}`);
+            qigToast.success(`Palette inject: ${plural(generatedCount, "image")} generated${failedSuffix}`);
         }
         return {
             status: failedCount > 0 ? "partial" : "success",
@@ -20334,14 +21607,17 @@ async function generateImageInjectPalette() {
             return {
                 status: generatedCount > 0 ? "partial" : "failed",
                 generated: generatedCount,
-                failed: Math.max(1, failedCount),
+                failed: e.failedCount ? failedCount + e.failedCount : Math.max(1, failedCount),
                 message: e.message,
             };
         }
     } finally {
         if (!run.signal.aborted && sourceInjectMessage && consumedMessagePrompts.size > 0) {
             try {
-                const persisted = await persistConsumedInjectPrompts(sourceInjectMessage, [...consumedMessagePrompts], s);
+                const persisted = await persistConsumedInjectPrompts(sourceInjectMessage, [...consumedMessagePrompts], s, {
+                    targetSnapshot: sourceTargetSnapshot,
+                    signal: run.signal,
+                });
                 if (persisted.cleaned) {
                     log(`Palette inject: Consumed ${consumedMessagePrompts.size} tag(s) and cleaned them from the source message`);
                 } else if (persisted.remembered) {
@@ -20370,6 +21646,10 @@ async function generateImageFromPlainDescription() {
         return;
     }
     if (getSettings().confirmBeforeGenerate && !(await qigConfirm("Generate image?", { okButton: "Generate" }))) return;
+    if (isGenerating) {
+        qigToast.warning("Generation already in progress");
+        return;
+    }
 
     let run = null;
     let s = null;
@@ -20427,7 +21707,7 @@ async function generateImageFromPlainDescription() {
         debugLog(`Plain description final prompt: ${prompt.substring(0, 100)}...`);
         const outcome = await collectBatchResults(batchCount, async (i) => {
             checkAborted(cancelCheckpoint);
-            setGenerationSeedValue(s, useSequentialSeeds ? baseSeed + i : baseSeed);
+            setGenerationSeedValue(s, useSequentialSeeds ? seedForBatchIndex(baseSeed, i) : baseSeed);
             showStatus(`🖼️ Generating image ${i + 1}/${batchCount}...`);
             const expandedPrompt = expandWildcards(prompt);
             const expandedNegative = expandWildcards(negative);
@@ -20500,6 +21780,8 @@ async function generateImage() {
     const usingTransientSettingsOverride = !!transientGenerationSettingsState.current;
     const initialSettings = getGenerationSettingsForRun();
     if (initialSettings.confirmBeforeGenerate && !(await qigConfirm("Generate image?", { okButton: "Generate" }))) return { status: "cancelled", generated: 0, failed: 0 };
+    // A second confirmation could have been approved while this dialog was open.
+    if (isGenerating) return { status: "busy", generated: 0, failed: 0 };
     const ctx = getContext();
     const activeMessageTarget = getTransientGenerationTarget(ctx);
     if (activeMessageTarget?.stale) {
@@ -20518,8 +21800,12 @@ async function generateImage() {
     const sourceMessageIndexForEntries = Number.isInteger(activeMessageTarget?.messageIndex)
         ? activeMessageTarget.messageIndex
         : sceneSelectionMessageIndex;
+    // Provenance: where this image conceptually came from. Never treated as an insertion target.
     const sourceTargetSnapshot = activeMessageTarget?.targetSnapshot
         || createMessageTargetSnapshot(ctx?.chat, sourceMessageIndexForEntries)
+        || null;
+    // Insertion target: only per-message actions carry one; panel generation resolves the configured fallback.
+    const insertTargetSnapshot = activeMessageTarget?.targetSnapshot
         || (initialSettings.autoInsert
             ? createMessageTargetSnapshot(ctx?.chat, resolveManualInsertFallbackIndex(ctx?.chat, initialSettings))
             : null);
@@ -20589,7 +21875,7 @@ async function generateImage() {
 
     debugLog(`Base prompt: ${basePrompt.substring(0, 100)}...`);
     const batchCount = normalizeBatchCount(s.batchCount);
-    showStatus(`🎨 Generating ${batchCount} image(s)...`);
+    showStatus(`🎨 Generating ${plural(batchCount, "image")}...`);
 
     const originalLLMPromptSource = scenePrompt || basePrompt;
     let llmPromptSource = originalLLMPromptSource;
@@ -20608,7 +21894,7 @@ async function generateImage() {
                 worldInfoText: worldInfoContext.text,
             });
             checkAborted(cancelCheckpoint);
-            if (sceneDescription && s.reviewBeforeGenerate) {
+            if (sceneDescription && shouldReviewPrompt(s)) {
                 const reviewedSummary = await reviewSceneSummaryResult(sceneDescription, run.signal);
                 if (!reviewedSummary) throw getAbortError(run.signal, "Prompt review cancelled");
                 if (reviewedSummary.action === "back") continue;
@@ -20648,7 +21934,7 @@ async function generateImage() {
             const baseSeed = getBatchBaseSeed(s, batchCount, seedOverride);
             const outcome = await collectBatchResults(batchCount, async (i) => {
                 checkAborted(cancelCheckpoint);
-                setGenerationSeedValue(s, useSequentialSeeds ? baseSeed + i : baseSeed);
+                setGenerationSeedValue(s, useSequentialSeeds ? seedForBatchIndex(baseSeed, i) : baseSeed);
                 showStatus(`🖼️ Generating image ${i + 1}/${batchCount}...`);
                 const expandedPrompt = expandWildcards(prompt);
                 const expandedNegative = expandWildcards(negative);
@@ -20675,43 +21961,58 @@ async function generateImage() {
             if (results.length > 0) {
                 commitSuccessfulPrompt(run, { prompt, negative, promptWasLLM, addHistory: true });
             }
+            if (s.__qigQuiet) {
+                const urls = results
+                    .filter(result => result.metadataSettings?.serverSaveStatus === "saved")
+                    .map(result => normalizeSavedImagePath(result.serverPath))
+                    .filter(Boolean);
+                if (!urls.length) throw new Error("Generated image could not be saved to the server");
+                const failed = outcome.errors.length + results.length - urls.length;
+                return { status: failed ? "partial" : "success", generated: urls.length, failed, urls };
+            }
             await maybeAutoSetBackground(results, s, run);
             if (s.autoInsert) {
-                let insertedCount = 0;
-                const failedResults = [];
-                for (const r of results) {
-                    void addToGallery(r);
-                    try {
-                        if (s.insertAsHiddenReply) {
-                            await insertImageAsHiddenReply(r, {
-                                commitGuard: () => assertGenerationCanCommit(run),
-                                conversationCheckpoint: run.context.conversationCheckpoint,
-                                outputMode: s.outputMode,
-                                signal: run.signal,
-                            });
-                        } else if (shouldAutoInsertChatImageAsAssistant(s)) {
-                            await insertImageAsNewMessage(r, {
-                                commitGuard: () => assertGenerationCanCommit(run),
-                                conversationCheckpoint: run.context.conversationCheckpoint,
-                                outputMode: s.outputMode,
-                                signal: run.signal,
-                            });
-                        } else {
-                            await insertImageIntoMessage(r, sourceTargetSnapshot?.index, {
-                                commitGuard: () => assertGenerationCanCommit(run),
-                                targetSnapshot: sourceTargetSnapshot,
-                                outputMode: s.outputMode,
-                                signal: run.signal,
-                            });
+                // Multi-image batches open the picker even with auto-insert enabled:
+                // serial insertion is non-atomic and only the last insert could be undone.
+                if (results.length > 1) {
+                    displayBatchResults(results);
+                } else {
+                    let insertedCount = 0;
+                    const failedResults = [];
+                                        for (const r of results) {
+                        void addToGallery(r);
+                                                try {
+                            if (s.insertAsHiddenReply) {
+                                await insertImageAsHiddenReply(r, {
+                                    commitGuard: () => assertGenerationCanCommit(run),
+                                    conversationCheckpoint: run.context.conversationCheckpoint,
+                                    outputMode: s.outputMode,
+                                    signal: run.signal,
+                                });
+                            } else if (shouldAutoInsertChatImageAsAssistant(s)) {
+                                await insertImageAsNewMessage(r, {
+                                    commitGuard: () => assertGenerationCanCommit(run),
+                                    conversationCheckpoint: run.context.conversationCheckpoint,
+                                    outputMode: s.outputMode,
+                                    signal: run.signal,
+                                });
+                            } else {
+                                await insertImageIntoMessage(r, insertTargetSnapshot?.index ?? null, {
+                                    commitGuard: () => assertGenerationCanCommit(run),
+                                    targetSnapshot: insertTargetSnapshot,
+                                    outputMode: s.outputMode,
+                                    signal: run.signal,
+                                });
+                            }
+                            insertedCount++;
+                        } catch (err) {
+                            if (err.name === "AbortError" && run.signal?.aborted) throw err;
+                            console.error("[Quick Image Gen] Auto-insert failed:", err);
+                            failedResults.push(r);
                         }
-                        insertedCount++;
-                    } catch (err) {
-                        if (err.name === "AbortError") throw err;
-                        console.error("[Quick Image Gen] Auto-insert failed:", err);
-                        failedResults.push(r);
                     }
+                    reportAutoInsertOutcome(insertedCount, failedResults);
                 }
-                reportAutoInsertOutcome(insertedCount, failedResults);
             } else if (results.length === 1) {
                 displayImage(results[0]);
             } else {
@@ -20721,16 +22022,17 @@ async function generateImage() {
                 status: outcome.errors.length > 0 ? "partial" : "success",
                 generated: results.length,
                 failed: outcome.errors.length,
+                urls: results.map(result => (typeof result?.url === "string" ? result.url : "")).filter(Boolean),
             };
     } catch (e) {
         if (e.name === "AbortError") {
-            log("Generation cancelled by user");
+                        log("Generation cancelled by user");
             qigToast.info("Generation cancelled");
             return { status: "cancelled", generated: 0, failed: 0 };
         } else {
             log(`Error: ${e.message}`);
             qigToast.error("Generation failed: " + e.message, "", { timeOut: 0, extendedTimeOut: 0, closeButton: true, escapeHtml: true });
-            return { status: "failed", generated: 0, failed: 1, message: e.message };
+            return attachResultFailures({ status: "failed", generated: 0, failed: e.failedCount || 1, message: e.message }, getResultFailures(e));
         }
     } finally {
         setGenerationSeedValue(s, originalSeed);
@@ -20897,7 +22199,7 @@ function stripInjectTagsFromText(text, regexPattern, promptsToRemove = null) {
     return `${cleaned}${suffix}`.trim();
 }
 
-async function persistConsumedInjectPrompts(message, prompts, settings = getSettings()) {
+async function persistConsumedInjectPrompts(message, prompts, settings = getSettings(), { targetSnapshot = null, signal = null } = {}) {
     if (!message || typeof message !== "object") {
         return { remembered: false, cleaned: false };
     }
@@ -20907,28 +22209,52 @@ async function persistConsumedInjectPrompts(message, prompts, settings = getSett
         return { remembered: false, cleaned: false };
     }
 
-    const previousState = snapshotMutableMessageState(message);
-    const remembered = rememberConsumedInjectPrompts(message, normalizedPrompts, settings);
-    const cleaned = shouldCleanInjectSourceTags(settings.injectInsertMode, settings.injectAutoClean)
-        ? cleanInjectTagsFromMessage(message, getInjectRegexPattern(settings), normalizedPrompts)
-        : false;
-
-    if (!remembered && !cleaned) {
-        return { remembered, cleaned };
-    }
-
     const ctx = getContext();
-    if (typeof ctx?.saveChat === "function") {
+    const index = Array.isArray(ctx?.chat) ? ctx.chat.indexOf(message) : -1;
+    const source = targetSnapshot || createMessageTargetSnapshot(ctx?.chat, index);
+    if (source?.message !== message) throw new DOMException("Inject cleanup source changed", "AbortError");
+    assertMessageTargetSnapshot(source, "Inject cleanup source changed");
+    if (signal?.aborted) throw new DOMException("Inject cleanup cancelled", "AbortError");
+    if (typeof ctx?.saveChat !== "function") throw new Error("Chat persistence is unavailable");
+    const identity = createChatIdentitySnapshot(ctx);
+    const hadExtra = Object.prototype.hasOwnProperty.call(message, "extra");
+    const previousExtra = message.extra;
+    const extra = ensureMessageExtra(message);
+    // Restore only cleanup's fields; cloning extra would invalidate image undo references.
+    const fields = [
+        [message, "mes"],
+        ...["display_text", "reasoning_display_text", "reasoning", INJECT_CONSUMED_EXTRA_KEY].map(key => [extra, key]),
+        ...(Array.isArray(message.swipes) ? [[message.swipes, Number.isInteger(message.swipe_id) ? message.swipe_id : 0]] : []),
+    ].map(([target, key]) => ({ target, key, value: target[key], present: Object.prototype.hasOwnProperty.call(target, key) }));
+    let remembered = false;
+    let cleaned = false;
+    let cleanedSnapshot;
+    try {
         try {
-            await ctx.saveChat();
-        } catch (error) {
-            restoreMutableMessageState(message, previousState);
-            await rethrowAfterRollbackPersistence(error, () => ctx.saveChat?.(), "Inject cleanup failed and its rollback could not be persisted");
+            remembered = rememberConsumedInjectPrompts(message, normalizedPrompts, settings);
+            cleaned = shouldCleanInjectSourceTags(settings.injectInsertMode, settings.injectAutoClean)
+                ? cleanInjectTagsFromMessage(message, getInjectRegexPattern(settings), normalizedPrompts)
+                : false;
+        } finally {
+            for (const field of fields) field.applied = field.target[field.key];
         }
+        if (!remembered && !cleaned) return { remembered, cleaned };
+        cleanedSnapshot = createMessageTargetSnapshot(ctx.chat, index);
+        await persistCurrentChat(ctx, identity);
+        assertMessageTargetSnapshot(cleanedSnapshot, "Inject cleanup source changed while saving");
+        if (signal?.aborted) throw new DOMException("Inject cleanup cancelled", "AbortError");
+    } catch (error) {
+        if (getContext?.()?.chat !== ctx.chat || isChatIdentitySnapshotCurrent(identity, { requireMetadata: true })) {
+            for (const field of fields) restorePropertyIfUnchanged(field.target, field.key, field.applied, field.value, field.present);
+            if (previousExtra !== extra && !Object.keys(extra).length) restorePropertyIfUnchanged(message, "extra", extra, previousExtra, hadExtra);
+        }
+        await rethrowAfterRollbackPersistence(error, () => persistCurrentChat(ctx, identity, true), "Inject cleanup failed and its rollback could not be persisted");
     }
     if (cleaned && typeof ctx?.reloadCurrentChat === "function") {
         // Defer reload to prevent re-triggering MESSAGE_RECEIVED during processing
-        setTimeout(() => ctx.reloadCurrentChat(), 0);
+        setTimeout(() => {
+            if (isChatIdentitySnapshotCurrent(identity, { requireMetadata: true }) && isMessageTargetSnapshotCurrent(cleanedSnapshot)) ctx.reloadCurrentChat();
+        }, 0);
     }
 
     return { remembered, cleaned };
@@ -21081,12 +22407,19 @@ function onChatCompletionPromptReady(eventData) {
                 prompts.push(injectMsg);
             }
         } else if (position === "inUser") {
-            // Insert as system message before the last user message
+            // Insert as system message before the last user message; when the
+            // prompt has no user turn, append it so the instruction still arrives.
+            let inserted = false;
             for (let i = prompts.length - 1; i >= 0; i--) {
                 if (prompts[i].role === "user") {
                     prompts.splice(i, 0, injectMsg);
+                    inserted = true;
                     break;
                 }
+            }
+            if (!inserted) {
+                prompts.push(injectMsg);
+                log("Inject: No user message found; appended the inject instruction at the end of the prompt");
             }
         } else if (position === "atDepth") {
             // Insert at specific depth from the end
@@ -21123,7 +22456,7 @@ async function processInjectMessage(messageText, messageIndex, job = null) {
 
     try {
         _injectProcessingCount++;
-        s = getGenerationSettingsForRun();
+        s = job?.settings || getGenerationSettingsForRun();
         if (!s.injectEnabled || !s.autoGenerate || !isInjectJobCurrent(job)) return;
 
         const ctx = getContext();
@@ -21243,7 +22576,7 @@ async function processInjectMessage(messageText, messageIndex, job = null) {
                 const baseSeed = getBatchBaseSeed(s, batchCount, seedOverride);
                 const outcome = await collectBatchResults(batchCount, async (i) => {
                     checkAborted(cancelCheckpoint);
-                    setGenerationSeedValue(s, useSequentialSeeds ? baseSeed + i : baseSeed);
+                    setGenerationSeedValue(s, useSequentialSeeds ? seedForBatchIndex(baseSeed, i) : baseSeed);
                     showStatus(`🖼️ Generating inject image ${i + 1}/${batchCount}...`);
                     const expandedPrompt = expandWildcards(prompt);
                     const expandedNegative = expandWildcards(negative);
@@ -21260,19 +22593,20 @@ async function processInjectMessage(messageText, messageIndex, job = null) {
                 });
                 const { results } = outcome;
                 reportPartialBatchErrors("Inject", outcome);
+                injectFailedCount += outcome.errors.length;
                 setGenerationSeedValue(s, originalSeed);
 
                 if (results.length > 0) {
                     assertGenerationCanCommit(run);
                     commitSuccessfulPrompt(run, { prompt, negative, promptWasLLM });
                     await maybeAutoSetBackground(results, s, run);
-                    await deliverInjectResults(results, {
+                    const delivery = await deliverInjectResults(results, {
                         settings: s,
                         sourceMessageIndex,
                         targetSnapshot: sourceTargetSnapshot,
                         run,
                     });
-                    if (sourceMessage) consumedMessagePrompts.add(extractedPrompt);
+                    if (sourceMessage && !delivery.failed.length) consumedMessagePrompts.add(extractedPrompt);
                     injectGeneratedCount += results.length;
                 }
             } catch (e) {
@@ -21281,7 +22615,7 @@ async function processInjectMessage(messageText, messageIndex, job = null) {
                     qigToast.info("Generation cancelled");
                     break; // Exit the entire match loop on cancel
                 } else {
-                    injectFailedCount += 1;
+                    injectFailedCount += e.failedCount || 1;
                     log(`Inject: Generation error: ${e.message}`);
                     // One sticky toast for the whole message, not one per tag.
                     qigToast.notifyOnce("inject-generation-failed", "error", "Inject generation failed: " + e.message, "", {
@@ -21306,7 +22640,10 @@ async function processInjectMessage(messageText, messageIndex, job = null) {
     } finally {
         if (run && !run.signal.aborted && s && sourceMessage && consumedMessagePrompts.size > 0) {
             try {
-                const persisted = await persistConsumedInjectPrompts(sourceMessage, [...consumedMessagePrompts], s);
+                const persisted = await persistConsumedInjectPrompts(sourceMessage, [...consumedMessagePrompts], s, {
+                    targetSnapshot: sourceTargetSnapshot,
+                    signal: run.signal,
+                });
                 if (persisted.cleaned) {
                     log(`Inject: Consumed ${consumedMessagePrompts.size} tag(s) and cleaned them from the source message`);
                 } else if (persisted.remembered) {
@@ -21314,6 +22651,7 @@ async function processInjectMessage(messageText, messageIndex, job = null) {
                 }
             } catch (e) {
                 log(`Inject: Failed to persist consumed tags: ${e.message}`);
+                consumedMessagePrompts.clear();
             }
         }
         _injectProcessingCount--;
@@ -21322,7 +22660,7 @@ async function processInjectMessage(messageText, messageIndex, job = null) {
         // Expire this index after a delay so future messages at the same index can be processed,
         // even when returning early (invalid regex, no matches, disabled mode, etc).
         if (shouldReleaseIndex) {
-            if (!startedGeneration) _processedInjectIndices.delete(dedupeKey);
+            if (!startedGeneration || consumedMessagePrompts.size === 0) _processedInjectIndices.delete(dedupeKey);
             else setTimeout(() => _processedInjectIndices.delete(dedupeKey), 120000);
         }
     }
@@ -21362,6 +22700,21 @@ async function runQigSlashGenerateCommand(args = {}, unnamedPrompt = "") {
 
     const mode = normalizeSlashGenerationMode(args?.mode);
     const oneOffPrompt = stringifySlashCommandArgument(unnamedPrompt);
+    const quiet = hasSlashNamedArgument(args, "quiet") ? parseSlashBoolean(args.quiet, false) : false;
+    if (quiet === null) return "QIG: quiet must be true or false.";
+    if (quiet) {
+        // Another extension (or a Quick Reply) wants the picture back, not in the chat.
+        if (!oneOffPrompt) return "QIG: quiet=true needs a prompt.";
+        if (mode === "inject") return "QIG: quiet=true does not apply to inject mode.";
+        try {
+            const outcome = await withTransientGenerationSettings(getQuietSlashOverrides(oneOffPrompt), () => generateImage());
+            return formatQuietSlashResult(outcome);
+        } catch (e) {
+            const message = e?.message || String(e);
+            log(`Quiet slash generation failed: ${message}`);
+            return "QIG failed: " + message;
+        }
+    }
     const runGeneration = async () => {
         if (mode === "inject") return await generateImageInjectPalette();
         if (mode === "direct" || oneOffPrompt) return await generateImage();
@@ -21461,7 +22814,7 @@ async function registerQigSlashCommands() {
         SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             name: "qig",
             aliases: ["qig-generate", "quick-image-gen"],
-            returns: "Quick Image Gen status text",
+            returns: "Quick Image Gen status text, or with quiet=true the saved image path",
             callback: runQigSlashGenerateCommand,
             namedArgumentList: [
                 SlashCommandNamedArgument.fromProps({
@@ -21470,6 +22823,14 @@ async function registerQigSlashCommands() {
                     typeList: [ARGUMENT_TYPE.STRING],
                     enumList: modeEnums,
                     defaultValue: "palette",
+                    isRequired: false,
+                }),
+                SlashCommandNamedArgument.fromProps({
+                    name: "quiet",
+                    description: "true: generate one image from the prompt, save it, put nothing in the chat and return the image path (for other extensions and Quick Replies)",
+                    typeList: [ARGUMENT_TYPE.BOOLEAN],
+                    enumList: ["true", "false"].map(value => new SlashCommandEnumValue(value)),
+                    defaultValue: "false",
                     isRequired: false,
                 }),
             ],
@@ -21481,7 +22842,7 @@ async function registerQigSlashCommands() {
                     acceptsMultiple: true,
                 }),
             ],
-            helpString: `<div>Generate with Quick Image Gen. Examples: <code>/qig</code>, <code>/qig mode=direct portrait of {{char}}</code>, <code>/qig mode=inject</code>.</div>`,
+            helpString: `<div>Generate with Quick Image Gen. Examples: <code>/qig</code>, <code>/qig mode=direct portrait of {{char}}</code>, <code>/qig mode=inject</code>, <code>/qig quiet=true a lighthouse at dusk</code> (returns the saved image path instead of posting it).</div>`,
         }));
 
         SlashCommandParser.addCommandObject(SlashCommand.fromProps({
@@ -21569,7 +22930,7 @@ function handleHostMessageReceived(messageIndex) {
     const idx = clampChatMessageIndex(preferredIdx, Array.isArray(chat) ? chat.length : 0);
     if (!Number.isInteger(idx) || idx < 0) return;
     const msg = chat?.[idx];
-    if (!msg || msg.is_user || msg.extra?.inline_image) return;
+    if (!msg || msg.is_user || msg.is_system || msg.extra?.inline_image) return;
     const dedupeKey = msg;
     if (s.injectEnabled && _processedInjectIndices.has(dedupeKey)) return;
     if (!shouldRunAutoGenerateForEligibleMessage(idx, s)) return;
@@ -21586,11 +22947,15 @@ function handleHostMessageReceived(messageIndex) {
             conversationCheckpoint: createConversationCheckpoint(chat),
             dedupeKey,
             revision: _automationRevision,
+            settings: getGenerationSettingsForRun(),
+            // Capture the reply text at event time: tag normalization by other
+            // extensions before the delay fires must not rewrite what we inject.
+            eventText: msg.mes || "",
         };
         _processedInjectIndices.add(dedupeKey);
         const timeoutId = setTimeout(() => {
             _autoInjectTimeouts.delete(timeoutId);
-            void processInjectMessage(msg.mes || "", idx, job);
+            void processInjectMessage(job.eventText, idx, job);
         }, delayMs);
         _autoInjectTimeouts.set(timeoutId, dedupeKey);
         return;
@@ -21692,6 +23057,7 @@ function initializeQuickImageGen() {
             // native dialog rather than the browser one.
             try {
                 const popupModule = await import("../../popup.js");
+                nativePopupModule = popupModule;
                 dialogHost = createDialogHost({
                     callGenericPopup: popupModule.callGenericPopup,
                     popupType: popupModule.POPUP_TYPE,
@@ -21707,16 +23073,18 @@ function initializeQuickImageGen() {
             }
 
             await loadSettings();
-            accountStorageScope = createAccountStorageScope(getSettings()?._syncCacheId);
+            accountStorageScope = syncCacheIdClaimed
+                ? createAccountStorageScope(getSettings()?._syncCacheId)
+                : null;
             promptHistory = accountStorageScope
                 ? normalizePromptHistory(safeParse(accountStorageScope.promptHistoryKey, []))
                 : [];
             if (!accountStorageScope) {
-                log("Account storage identity is unavailable; gallery and prompt history will remain session-only");
+                log("Account storage identity is unconfirmed; gallery and prompt history will remain session-only until the server acknowledges it");
             }
             galleryInitializationPromise = initializeGalleryRepository();
             installLifecycleCleanup();
-            seedStarterPresets();
+            seedStarterConfigurations();
             createUI();
             addInputButton();
             bindMessageGenerateActionClicks();
@@ -21807,7 +23175,7 @@ function getProviderModelId(settings, provider = settings?.provider) {
         case "fal": return settings?.falModel || null;
         case "together": return settings?.togetherModel || null;
         case "zai": return settings?.zaiModel || "cogview-4-250304";
-        case "local": return settings?.localType === "a1111" ? (settings?.a1111Model || settings?.localModel || null) : (settings?.localModel || null);
+        case "local": return settings?.localType === "a1111" ? (settings?.a1111Model || null) : (settings?.localModel || null);
         case "proxy": return settings?.proxyModel || null;
         case "custom": return settings?.customApiModel || null;
         default: return null;
@@ -21839,7 +23207,8 @@ function getMetadataSettings(s, options = {}) {
 
     if (provider === "local") {
         metadata.backend = s.localType || "a1111";
-        metadata.scheduler = s.localType === "a1111" ? s.a1111Scheduler : (s.comfyScheduler || undefined);
+        metadata.scheduler = s.localType === "a1111" ? s.a1111Scheduler
+            : (hasEffectiveRequest ? effectiveParameters.schedule : (s.comfyScheduler || undefined));
     } else if (provider === "civitai") {
         metadata.scheduler = s.civitaiScheduler || undefined;
     } else if (provider === "proxy" && s.proxyComfyMode) {
@@ -22085,8 +23454,16 @@ async function handleMetadataDrop(e) {
         }
         if (structuredRequest) {
             const effectiveParameters = structuredRequest.parameters || {};
+            const reproducibleSettings = structuredRequest.settings || {};
             for (const key of ["model", "width", "height", "steps", "cfgScale", "sampler", "seed"]) {
-                if (Object.prototype.hasOwnProperty.call(effectiveParameters, key)) params[key] = effectiveParameters[key];
+                if (Object.prototype.hasOwnProperty.call(effectiveParameters, key)) {
+                    params[key] = effectiveParameters[key];
+                } else if ((key === "width" || key === "height") && Object.prototype.hasOwnProperty.call(reproducibleSettings, key)) {
+                    // Symbolic-resolution providers (Nanobanana aspectRatio/imageSize, NanoGPT
+                    // symbolic sizes) have no effective pixel dimensions; restore the requested
+                    // dimensions from the reproducible settings instead of losing them.
+                    params[key] = reproducibleSettings[key];
+                }
             }
             if (Object.prototype.hasOwnProperty.call(effectiveParameters, "schedule")) params.scheduler = effectiveParameters.schedule;
             if (structuredRequest.provider && PROVIDERS[structuredRequest.provider]) params.provider = structuredRequest.provider;
@@ -22135,7 +23512,6 @@ async function handleMetadataDrop(e) {
                 s.provider = importedProvider;
                 setValue("qig-provider", s.provider);
                 updateProviderUI();
-                renderProfileSelect();
             }
 
             for (const [key, value] of Object.entries(structuredSettings)) {
@@ -22286,7 +23662,7 @@ async function handleMetadataDrop(e) {
             }
 
             saveSettingsDebounced();
-            syncGenerationPresetIndicators();
+            syncConfigurationIndicators();
             showStatus("✅ Settings updated from image!");
             setTimeout(() => showStatus(null), 2000);
         }

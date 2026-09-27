@@ -1,0 +1,20 @@
+{
+    "display_name": "Chat Archive",
+    "author": "platberlitz",
+    "version": "0.4.0",
+    "description": "Browse, search, inspect, organize, and export linked chats, root files, and explicitly discovered orphaned chats. Chat files remain read-only; organization is stored in a user-file sidecar.",
+    "requires": [],
+    "optional": [],
+    "dependencies": [],
+    "js": "index.js",
+    "css": "style.css",
+    "license": "AGPL-3.0",
+    "homePage": "https://github.com/platberlitz/SillyBunny-Chats-Archive",
+    "loading_order": 140,
+    "auto_update": false,
+    "hooks": {
+        "activate": "activate",
+        "enable": "enable",
+        "disable": "disable"
+    }
+}

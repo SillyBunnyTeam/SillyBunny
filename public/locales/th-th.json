@@ -1469,5 +1469,11 @@
     "Deleting chat…": "กำลังลบแชท…",
     "Loading chat…": "กำลังโหลดแชท…",
     "Bulk Delete": "ลบจำนวนมาก",
-    "Deleting ${0} character(s)…": "กำลังลบ ${0} ตัวละคร…"
+    "Deleting ${0} character(s)…": "กำลังลบ ${0} ตัวละคร…",
+  "OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.": "ตัวเลือกแบบ OpenAI: low, medium, high, xhigh ทุกระดับจะถูกส่งตามที่เลือกไว้ทุกประการ ยกเว้น Minimum ที่จะถูกส่งเป็น 'minimal' ส่วน None จะถูกส่งตรงตัวไปยัง GPT-5.1 และรุ่นใหม่กว่า โมเดลอื่นจะไม่ได้รับระดับใด ๆ",
+  "Sets a dynamic reasoning depth level for thinking (Flash 3/Pro 3). Every effort is sent exactly as picked, so a level the model does not accept is rejected rather than lowered. Auto lets the model decide.": "กำหนดระดับความลึกของการให้เหตุผลแบบไดนามิก (Flash 3/Pro 3) ทุกระดับจะถูกส่งตามที่เลือกไว้ทุกประการ ดังนั้นระดับที่โมเดลไม่รองรับจะถูกปฏิเสธแทนที่จะถูกลดลง ส่วน Auto จะให้โมเดลเป็นผู้ตัดสินใจ",
+  "DeepSeek documents low, high and max reasoning efforts. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'.": "DeepSeek ระบุระดับ low, high และ max ทุกระดับจะถูกส่งตามที่เลือกไว้ทุกประการ ค่าอื่นจึงอาจถูกปฏิเสธ ส่วน Minimum จะถูกส่งเป็น 'minimal'",
+  "Only GLM-5.2 and newer accept reasoning efforts. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. GLM-5.3 specifically only accepts 'low', 'high', and 'max'.": "เฉพาะ GLM-5.2 และรุ่นใหม่กว่าเท่านั้นที่รองรับระดับการให้เหตุผล ทุกระดับจะถูกส่งตามที่เลือกไว้ทุกประการ ยกเว้น Minimum ที่จะถูกส่งเป็น 'minimal' ส่วน GLM-5.3 รองรับเฉพาะ 'low', 'high' และ 'max'",
+  "Only Kimi K3 accepts reasoning efforts, and documents low, high and max. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'. Reasoning cannot be turned off for K3.": "เฉพาะ Kimi K3 เท่านั้นที่รองรับระดับการให้เหตุผล โดยระบุไว้เป็น low, high และ max ทุกระดับจะถูกส่งตามที่เลือกไว้ทุกประการ ค่าอื่นจึงอาจถูกปฏิเสธ ส่วน Minimum จะถูกส่งเป็น 'minimal' และไม่สามารถปิดการให้เหตุผลของ K3 ได้",
+  "Reasoning efforts are sent exactly, aside from minimum which is sent as 'minimal'.": "ระดับการให้เหตุผลจะถูกส่งตามที่เลือกไว้ทุกประการ ยกเว้น Minimum ที่จะถูกส่งเป็น 'minimal'"
 }

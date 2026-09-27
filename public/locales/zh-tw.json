@@ -2772,5 +2772,11 @@
     "Deleting chat…": "正在刪除聊天…",
     "Loading chat…": "正在載入聊天…",
     "Bulk Delete": "批次刪除",
-    "Deleting ${0} character(s)…": "正在刪除 ${0} 個角色…"
+    "Deleting ${0} character(s)…": "正在刪除 ${0} 個角色…",
+    "OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.": "OpenAI 風格選項：low、medium、high、xhigh。每個等級都會依所選內容原樣送出，只有「最小」會以 'minimal' 送出。None 會原樣送給 GPT-5.1 及更新的模型；其他模型不會收到等級。",
+    "Sets a dynamic reasoning depth level for thinking (Flash 3/Pro 3). Every effort is sent exactly as picked, so a level the model does not accept is rejected rather than lowered. Auto lets the model decide.": "設定動態推理深度等級（Flash 3／Pro 3）。每個等級都會依所選內容原樣送出，因此模型不接受的等級會被拒絕，而不會被調降。「自動」讓模型自行決定。",
+    "DeepSeek documents low, high and max reasoning efforts. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'.": "DeepSeek 記載的等級為 low、high 與 max。每個等級都會依所選內容原樣送出，因此其他值可能會被拒絕。「最小」會以 'minimal' 送出。",
+    "Only GLM-5.2 and newer accept reasoning efforts. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. GLM-5.3 specifically only accepts 'low', 'high', and 'max'.": "只有 GLM-5.2 及更新版本接受推理耗費。每個等級都會依所選內容原樣送出，只有「最小」會以 'minimal' 送出。GLM-5.3 僅接受 'low'、'high' 與 'max'。",
+    "Only Kimi K3 accepts reasoning efforts, and documents low, high and max. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'. Reasoning cannot be turned off for K3.": "只有 Kimi K3 接受推理耗費，其記載的等級為 low、high 與 max。每個等級都會依所選內容原樣送出，因此其他值可能會被拒絕。「最小」會以 'minimal' 送出。K3 無法關閉推理。",
+    "Reasoning efforts are sent exactly, aside from minimum which is sent as 'minimal'.": "推理耗費會依所選內容原樣送出，只有「最小」會以 'minimal' 送出。"
 }

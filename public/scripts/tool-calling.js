@@ -580,7 +580,13 @@ export class ToolManager {
             }
 
             if (typeof deltaValue === 'string') {
-                if (typeof targetValue === 'string') {
+                // `id`, `name`, `type` are sent in full by some providers on every
+                // streaming chunk; concatenating them would duplicate the value.
+                if (key === 'id' || key === 'name' || key === 'type') {
+                    if (!targetValue) {
+                        target[key] = deltaValue;
+                    }
+                } else if (typeof targetValue === 'string') {
                     // Concatenate strings
                     target[key] = targetValue + deltaValue;
                 } else {
@@ -610,6 +616,12 @@ export class ToolManager {
         model = model ?? getChatCompletionModel(settings);
 
         if (main_api !== 'openai' || !settings.function_calling) {
+            return false;
+        }
+
+        // GPT-6 Astra supports tool calling only through the Responses API.
+        if ([chat_completion_sources.OPENAI, chat_completion_sources.AZURE_OPENAI].includes(settings.chat_completion_source)
+            && /^gpt-6-astra/.test(model)) {
             return false;
         }
 
@@ -772,7 +784,7 @@ export class ToolManager {
      * @param {any} data Reply data
      * @returns {Promise<ToolInvocationResult>} Successful tool invocations
      */
-    static async invokeFunctionTools(data, { reasoningText = null } = {}) {
+    static async invokeFunctionTools(data, { reasoningText = null, isCurrent = () => true, signal = null } = {}) {
         /** @type {ToolInvocationResult} */
         const result = {
             invocations: [],
@@ -786,6 +798,8 @@ export class ToolManager {
         }
 
         for (const toolCall of toolCalls) {
+            // SillyBunny: every call belongs to the response that requested the batch.
+            if (signal?.aborted || !isCurrent()) break;
             if (!toolCall || !toolCall.function || typeof toolCall.function !== 'object') {
                 continue;
             }
@@ -797,9 +811,15 @@ export class ToolManager {
             const displayName = ToolManager.getDisplayName(name);
             const isStealth = ToolManager.isStealthTool(name);
             const message = await ToolManager.formatToolCallMessage(name, parameters);
+            if (signal?.aborted || !isCurrent()) break;
             const toast = message && toastr.info(message, 'Tool Calling', { timeOut: 0 });
-            const toolResult = await ToolManager.invokeFunctionTool(name, parameters);
-            toastr.clear(toast);
+            let toolResult;
+            try {
+                toolResult = await ToolManager.invokeFunctionTool(name, parameters);
+            } finally {
+                toastr.clear(toast);
+            }
+            if (signal?.aborted || !isCurrent()) break;
             console.log('[ToolManager] Function tool result:', result);
 
             // Handle tool errors — still create an invocation so the LLM sees the failure

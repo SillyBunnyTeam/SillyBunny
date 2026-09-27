@@ -1,5 +1,5 @@
 import { describe, expect, test } from '@jest/globals';
-import { getPromptDisplayTokenCounts, getPromptSourceTokenCounts } from '../public/scripts/prompt-token-counts.js';
+import { getPromptDisplayTokenCounts, getPromptSourceTokenCounts, isCommentOnlyPromptContent, mergePromptTokenCounts } from '../public/scripts/prompt-token-counts.js';
 
 function makeMessage(identifier, tokens) {
     return {
@@ -69,5 +69,40 @@ describe('prompt token display counts', () => {
             { role: 'system', content: 'Main prompt text' },
             { role: 'user', content: 'Post-history instruction' },
         ]);
+    });
+
+    test('merges source estimates under runtime counts', () => {
+        const merged = mergePromptTokenCounts(
+            { main: 500, injection: 120, variable: 80 },
+            { main: 550, chatHistory: 900, variable: 0 },
+        );
+
+        expect(merged).toEqual({
+            main: 550,
+            chatHistory: 900,
+            injection: 120,
+            variable: 80,
+        });
+    });
+
+    test('merge tolerates missing count maps', () => {
+        expect(mergePromptTokenCounts(null, null)).toEqual({});
+        expect(mergePromptTokenCounts(undefined, { main: 3 })).toEqual({ main: 3 });
+        expect(mergePromptTokenCounts({ main: 4 }, undefined)).toEqual({ main: 4 });
+        expect(mergePromptTokenCounts({ main: 4 }, { main: 'NaN-ish' })).toEqual({ main: 4 });
+    });
+
+    test('detects comment-only prompt content', () => {
+        expect(isCommentOnlyPromptContent('{{// A note to the user}}')).toBe(true);
+        expect(isCommentOnlyPromptContent('{{comment same via alias}}')).toBe(true);
+        expect(isCommentOnlyPromptContent('{{//}}First line\nSecond line{{///}}')).toBe(true);
+        expect(isCommentOnlyPromptContent(' {{// one}} \n {{// two}} ')).toBe(true);
+        expect(isCommentOnlyPromptContent('{{// preset readme text}}{{trim}}')).toBe(true);
+        expect(isCommentOnlyPromptContent('{{// docs can mention {{char}} or {{getvar::mode}} inline}}{{trim}}')).toBe(true);
+        expect(isCommentOnlyPromptContent('')).toBe(true);
+
+        expect(isCommentOnlyPromptContent('{{// a note}}{{setvar::mode::on}}')).toBe(false);
+        expect(isCommentOnlyPromptContent('plain instruction text')).toBe(false);
+        expect(isCommentOnlyPromptContent('{{commentary}}')).toBe(false);
     });
 });

@@ -181,6 +181,20 @@ describe('forwardFetchResponse', () => {
         expect(response.writableEnded).toBe(true);
     });
 
+    test('should finish the client response when upstream streaming fails', async () => {
+        jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const upstreamBody = new PassThrough();
+        const response = createMockExpressResponse();
+        response.socket = {};
+        const bodyPromise = collectResponseBody(response);
+
+        await forwardFetchResponse(new Response(upstreamBody), response);
+        upstreamBody.emit('error', new Error('The operation timed out.'));
+
+        await expect(bodyPromise).resolves.toBe('');
+        expect(response.writableEnded).toBe(true);
+    });
+
     test('should log JSON error bodies and return the original body for non-2xx streaming responses', async () => {
         const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
         const body = JSON.stringify({ error: { message: 'Forbidden by upstream policy' }, detail: 'policy_denied' });

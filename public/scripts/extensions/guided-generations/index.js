@@ -24,6 +24,7 @@ const oldExtensionName = 'third-party/GuidedGenerations-Extension';
 const legacySystemPromptPresetNames = new Set(['GGSystemPrompt', 'GGSytemPrompt']);
 
 const defaultSettings = {
+    showActionButtonContainer: true,
     showFlushGuidesButton: true,
     showGuidedResponse: true,
     showGuidedSwipe: true,
@@ -401,12 +402,9 @@ function updateExtensionButtons() {
         return;
     }
 
-    const existingQrBar = document.getElementById('qr--bar');
-    if (existingQrBar && container.contains(existingQrBar)) {
-        const sendForm = document.getElementById('send_form');
-        sendForm?.insertBefore(existingQrBar, sendForm.firstElementChild);
-    }
+    container.hidden = !settings.showActionButtonContainer;
 
+    const qrBar = document.getElementById('qr--bar');
     container.innerHTML = '';
 
     const qrContainer = document.createElement('div');
@@ -416,6 +414,14 @@ function updateExtensionButtons() {
     actionsContainer.className = 'gg-regular-buttons-container';
 
     container.append(qrContainer, actionsContainer);
+    if (qrBar) {
+        qrContainer.append(qrBar);
+    }
+
+    integrateQrBar();
+    if (container.hidden) {
+        return;
+    }
 
     const buttons = [
         settings.showFlushGuidesButton && createFlushGuidesButton(),
@@ -428,7 +434,6 @@ function updateExtensionButtons() {
 
     actionsContainer.append(...buttons);
     updateFlushGuideButton();
-    integrateQrBar();
 }
 
 function integrateQrBar() {
@@ -481,6 +486,7 @@ export async function init() {
     updateExtensionButtons();
     startFlushGuideButtonUpdates();
     startQrIntegration();
+    document.addEventListener('sb:guided-generations-settings-changed', updateExtensionButtons);
 
     // SillyBunny: re-populate profile/preset dropdowns when Connection Manager
     // profiles change, so the UI stays in sync without requiring a manual

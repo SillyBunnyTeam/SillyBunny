@@ -110,12 +110,6 @@ function isEditableFocusTarget(element) {
         || (element instanceof HTMLElement && element.isContentEditable);
 }
 
-function isMobileShellPanelEditable(element) {
-    return isEditableFocusTarget(element)
-        && element instanceof HTMLElement
-        && Boolean(element.closest('.sb-shell-panel-scroller'));
-}
-
 function addDocumentViewportAnchorPatch({ suspendWhileEditing = false } = {}) {
     let resetScheduled = false;
 
@@ -124,10 +118,36 @@ function addDocumentViewportAnchorPatch({ suspendWhileEditing = false } = {}) {
     const isComposerHeldAboveKeyboard = () => isLegacyIOSWebKitPlatform()
         && document.documentElement.classList.contains('sb-ios-composer-keyboard-inset-active');
 
+    // SillyBunny: this anchor undoes the caret-reveal scroll a virtual keyboard
+    // provokes, which only stays safe while the focused field remains visible
+    // without it. Resetting a load-bearing scroll makes the browser reveal the
+    // caret again, and the two fight for the whole edit. Keyboard thresholds
+    // mirror MOBILE_IOS_KEYBOARD_MIN_HEIGHT_PX in sillybunny-tabs.js, which
+    // cannot be imported here: it pulls in script.js, which imports this file.
+    const wouldResetHideFocusedEditable = () => {
+        const viewport = window.visualViewport;
+        const activeElement = document.activeElement;
+
+        if (!viewport || !(activeElement instanceof HTMLElement)) {
+            return false;
+        }
+
+        if ((window.innerHeight || 0) - viewport.height <= 80 && viewport.offsetTop <= 2) {
+            return false;
+        }
+
+        // Resetting shifts client rects down by the removed scroll and leaves
+        // [0, viewport.height] visible. The margin stays under the clearance
+        // syncMobileFocusedInputScroll parks fields at, so a field that machinery
+        // already revealed reads as visible and the reset still runs.
+        const scrollTop = Math.max(window.scrollY || 0, document.scrollingElement?.scrollTop || 0);
+        return activeElement.getBoundingClientRect().bottom + scrollTop > viewport.height - 8;
+    };
+
     const shouldSuspendDocumentScrollReset = () => suspendWhileEditing
         && isEditableFocusTarget(document.activeElement)
-        && !isMobileShellPanelEditable(document.activeElement)
-        && !isComposerHeldAboveKeyboard();
+        && !isComposerHeldAboveKeyboard()
+        && wouldResetHideFocusedEditable();
 
     const resetDocumentScroll = () => {
         if (shouldSuspendDocumentScrollReset()) {
@@ -178,7 +198,7 @@ function applyBrowserFixes() {
     const isMobileViewport = isMobile();
     const isIOSWebKit = isIOSWebKitPlatform();
 
-    addDocumentViewportAnchorPatch({ suspendWhileEditing: isIOSWebKit });
+    addDocumentViewportAnchorPatch({ suspendWhileEditing: true });
 
     if (isMobileViewport) {
         const viewport = window.visualViewport;

@@ -5,6 +5,7 @@ import {
     collectBudgetFailures,
     createLongChatRenderFixture,
     createStreamingRenderFixture,
+    installLongTaskObserver,
     LONG_CHAT_RENDER_FILLER_REPEAT,
     LONG_CHAT_RENDER_MESSAGE_COUNT,
     LONG_CHAT_RENDER_VISIBLE_COUNT,
@@ -12,12 +13,14 @@ import {
     measureProfile,
     measureScrollFps,
     measureStreamingRender,
+    parseCpuThrottleRate,
     parseProfileNames,
     STREAM_RENDER_CODE_REPEAT,
     STREAM_RENDER_FILLER_REPEAT,
     STREAM_RENDER_STEP_COUNT,
     summarizeRequestByteFields,
     summarizeRequests,
+    waitForAppReady,
 } from '../scripts/measure-frontend-performance.js';
 
 function createScrollMeasurementPage(scroller) {
@@ -51,7 +54,137 @@ function createScrollMeasurementPage(scroller) {
     };
 }
 
+function withLongTaskObserver(Observer, callback) {
+    const previousObserver = globalThis.PerformanceObserver;
+    const previousMetrics = globalThis.__sillyBunnyLongTaskMetrics;
+    try {
+        globalThis.PerformanceObserver = Observer;
+        installLongTaskObserver();
+        callback(globalThis.__sillyBunnyLongTaskMetrics);
+    } finally {
+        globalThis.PerformanceObserver = previousObserver;
+        globalThis.__sillyBunnyLongTaskMetrics = previousMetrics;
+    }
+}
+
 describe('frontend performance measurement helpers', () => {
+    test('validates CPU throttling while preserving the unthrottled default', () => {
+        expect(parseCpuThrottleRate()).toBe(1);
+        expect(parseCpuThrottleRate('4')).toBe(4);
+        expect(parseCpuThrottleRate(1.5)).toBe(1.5);
+        for (const value of [0, -1, NaN, Infinity, '', 'fast', true, null, []]) {
+            expect(() => parseCpuThrottleRate(value)).toThrow('CPU throttle rate');
+        }
+    });
+
+    test('aggregates observed long tasks and drains pending records exactly once', () => {
+        let deliverEntries;
+        let observedOptions;
+        const pending = [{ entryType: 'longtask', duration: 90 }];
+        class Observer {
+            static supportedEntryTypes = ['longtask'];
+            constructor(callback) {
+                deliverEntries = entries => callback({ getEntries: () => entries });
+            }
+            observe(options) {
+                observedOptions = options;
+            }
+            takeRecords() {
+                return pending.splice(0);
+            }
+        }
+
+        withLongTaskObserver(Observer, metrics => {
+            deliverEntries([
+                { entryType: 'longtask', duration: 70 },
+                { entryType: 'longtask', duration: 115 },
+                { entryType: 'resource', duration: 1000 },
+            ]);
+            const snapshot = metrics.snapshot();
+            expect(observedOptions).toEqual({ type: 'longtask', buffered: true });
+            expect(snapshot).toEqual({ available: true, count: 3, totalDuration: 275, longest: 115 });
+            expect(metrics.snapshot()).toEqual(snapshot);
+            snapshot.count = 999;
+            deliverEntries([{ entryType: 'longtask', duration: 55 }]);
+            expect(metrics.snapshot()).toEqual({ available: true, count: 4, totalDuration: 330, longest: 115 });
+        });
+    });
+
+    test('reports unsupported long-task observation without zero-valued measurements', () => {
+        class UnsupportedObserver {
+            static supportedEntryTypes = ['resource'];
+            constructor() {
+                throw new Error('Unsupported observer should not be constructed');
+            }
+        }
+        for (const Observer of [undefined, UnsupportedObserver]) {
+            withLongTaskObserver(Observer, metrics => {
+                expect(metrics.snapshot()).toEqual({
+                    available: false,
+                    reason: 'longtask-not-supported',
+                    count: null,
+                    totalDuration: null,
+                    longest: null,
+                });
+            });
+        }
+    });
+
+    test('disconnects the observer when observation setup fails', () => {
+        let disconnectCount = 0;
+        class Observer {
+            static supportedEntryTypes = ['longtask'];
+            observe() {
+                throw new Error('Observation unavailable');
+            }
+            disconnect() {
+                disconnectCount++;
+            }
+        }
+        withLongTaskObserver(Observer, metrics => {
+            expect(metrics.snapshot()).toEqual({
+                available: false,
+                reason: 'longtask-observer-setup-failed',
+                count: null,
+                totalDuration: null,
+                longest: null,
+            });
+        });
+        expect(disconnectCount).toBe(1);
+    });
+
+    test('waits for completed APP_READY listeners and disposes the event handle', async () => {
+        const events = { event_types: { APP_READY: 'app_ready' }, eventSource: { autoFireLastArgs: new Map() } };
+        let disposed = false;
+        const waits = [];
+        const handle = { dispose: async () => { disposed = true; } };
+        const page = {
+            evaluateHandle: async () => handle,
+            waitForFunction: async (callback, argument, options) => {
+                waits.push({ callback, argument, options, disposed });
+            },
+        };
+        await waitForAppReady(page);
+        expect(waits).toHaveLength(2);
+        expect(waits[0].argument).toBe(handle);
+        expect(waits[0].options).toEqual({ timeout: 60000 });
+        expect(waits[0].callback(events)).toBe(false);
+        events.eventSource.autoFireLastArgs.set(events.event_types.APP_READY, []);
+        expect(waits[0].callback(events)).toBe(true);
+        expect(waits[1]).toEqual(expect.objectContaining({ argument: null, options: { timeout: 60000 }, disposed: true }));
+        expect(disposed).toBe(true);
+    });
+
+    test('disposes the event handle when APP_READY times out', async () => {
+        let disposed = false;
+        const page = {
+            evaluateHandle: async () => ({ dispose: async () => { disposed = true; } }),
+            waitForFunction: async () => { throw new Error('ready timeout'); },
+        };
+        await expect(waitForAppReady(page)).rejects.toThrow('ready timeout');
+        expect(disposed).toBe(true);
+    });
+
     test('records the long-chat render fixture size used for baseline measurements', () => {
         const fixture = createLongChatRenderFixture();
 
@@ -466,5 +599,62 @@ describe('frontend performance measurement helpers', () => {
             instrumentation: false,
         })).rejects.toThrow('page failed');
         expect(closeCount).toBe(1);
+    });
+
+    test('applies default and explicit CPU throttling before navigation, then cleans up', async () => {
+        for (const rate of [undefined, 4]) {
+            const calls = [];
+            const page = {
+                evaluate: async () => undefined,
+                goto: async () => {
+                    calls.push('navigate');
+                    throw new Error('navigation failed');
+                },
+            };
+            const context = {
+                addInitScript: async callback => { calls.push(callback.name); },
+                newPage: async () => page,
+                newCDPSession: async target => {
+                    expect(target).toBe(page);
+                    return {
+                        send: async (method, params) => { calls.push({ method, params }); },
+                        detach: async () => { calls.push('detach'); },
+                    };
+                },
+                close: async () => { calls.push('close'); },
+            };
+            await expect(measureProfile({ newContext: async () => context }, {
+                name: 'test', label: 'Test', contextOptions: {},
+            }, {
+                url: 'http://example.test', serviceWorkers: 'block', instrumentation: false, cpuThrottleRate: rate,
+            })).rejects.toThrow('navigation failed');
+            expect(calls).toEqual([
+                'installResourceTimingBuffer',
+                'installLongTaskObserver',
+                { method: 'Emulation.setCPUThrottlingRate', params: { rate: rate ?? 1 } },
+                'navigate',
+                'detach',
+                'close',
+            ]);
+        }
+    });
+
+    test('cleans up the CDP session and context if CPU throttling setup fails', async () => {
+        const calls = [];
+        const context = {
+            addInitScript: async () => undefined,
+            newPage: async () => ({}),
+            newCDPSession: async () => ({
+                send: async () => { throw new Error('CPU setup failed'); },
+                detach: async () => { calls.push('detach'); },
+            }),
+            close: async () => { calls.push('close'); },
+        };
+        await expect(measureProfile({ newContext: async () => context }, {
+            name: 'test', label: 'Test', contextOptions: {},
+        }, {
+            url: 'http://example.test', serviceWorkers: 'block', instrumentation: false, cpuThrottleRate: 4,
+        })).rejects.toThrow('CPU setup failed');
+        expect(calls).toEqual(['detach', 'close']);
     });
 });

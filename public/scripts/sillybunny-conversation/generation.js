@@ -23,7 +23,6 @@ import { getSpeakerPrefixMatch } from './partners-utils.js';
 import { getConnectionProfiles } from './personas.js';
 import { buildConversationPromptMessages, buildConversationSystemPrompt } from './prompt.js';
 import { formatPromptText } from './shared-helpers.js';
-import { scheduleTimelineRender } from './render-scheduler.js';
 import { clamp, getConversationReplyMaxTokens, getConversationRuntimeStatusKey, parseDurationToMs } from './schedule.js';
 import { runtimeStatusOverrides } from './state.js';
 import {
@@ -36,6 +35,8 @@ import {
     updateConversationThreadMessage,
 } from './thread-store.js';
 import { splitChatroomMessages, waitForReplyDelay, withTypingParticipant } from './typing.js';
+
+let activeConversationEditor = null;
 
 export {
     extractCharacterReplyCommandParts,
@@ -120,12 +121,16 @@ export async function generateConversationReply(directive, settings, { responseL
 export function editConversationMessage(messageId) {
     const avatar = getCurrentCharAvatar();
     const groupId = getConversationGroupIdForAvatar(avatar);
-    const message = getConversationThread(avatar, { groupId }).find(item => item.id === messageId);
+    const personaId = getConversationPersonaId();
+    const normalizedMessageId = String(messageId || '');
+    const message = getConversationThread(avatar, { create: false, groupId, personaId })
+        .find(item => String(item.id || '') === normalizedMessageId);
     if (!avatar || !message) {
         return;
     }
 
-    const messageElement = document.querySelector(`.sb-conversation-message[data-message-id="${messageId}"]`);
+    const messageElement = Array.from(document.querySelectorAll('.sb-conversation-message'))
+        .find(element => element.dataset.messageId === normalizedMessageId);
     if (!messageElement) {
         return;
     }
@@ -135,10 +140,15 @@ export function editConversationMessage(messageId) {
         return;
     }
 
-    // If an editor is already open in this element, do nothing.
-    if (textElement.querySelector('.sb-conversation-message-edit-textarea')) {
+    if (activeConversationEditor?.messageElement === messageElement) {
         return;
     }
+
+    if (activeConversationEditor && !activeConversationEditor.requestClose()) {
+        return;
+    }
+
+    const originalTextElement = textElement.cloneNode(true);
 
     const textarea = document.createElement('textarea');
     textarea.className = 'sb-conversation-message-edit-textarea';
@@ -149,32 +159,67 @@ export function editConversationMessage(messageId) {
 
     const saveButton = document.createElement('button');
     saveButton.type = 'button';
-    saveButton.className = 'menu_button sb-conversation-message-edit-save';
-    saveButton.textContent = 'Save';
+    saveButton.className = 'menu_button sb-conversation-message-edit-control sb-conversation-message-edit-save fa-solid fa-check';
+    saveButton.title = 'Save message changes';
+    saveButton.setAttribute('aria-label', 'Save message changes');
 
     const cancelButton = document.createElement('button');
     cancelButton.type = 'button';
-    cancelButton.className = 'menu_button sb-conversation-message-edit-cancel';
-    cancelButton.textContent = 'Cancel';
+    cancelButton.className = 'menu_button sb-conversation-message-edit-control sb-conversation-message-edit-cancel fa-solid fa-xmark';
+    cancelButton.title = 'Discard message changes';
+    cancelButton.setAttribute('aria-label', 'Discard message changes');
 
-    buttonContainer.append(saveButton, cancelButton);
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'menu_button sb-conversation-message-edit-control sb-conversation-message-edit-delete fa-solid fa-trash-can';
+    deleteButton.title = 'Delete message';
+    deleteButton.setAttribute('aria-label', 'Delete message');
+    deleteButton.dataset.sbConversationAction = 'delete-message';
+    deleteButton.dataset.messageId = message.id;
+
+    buttonContainer.append(saveButton, cancelButton, deleteButton);
 
     textElement.textContent = '';
     textElement.append(textarea, buttonContainer);
-    textarea.focus({ preventScroll: true });
+    messageElement.classList.add('is-editing');
+    messageElement.querySelector('.sb-conversation-message-actions')?.classList.remove('open');
 
-    saveButton.onclick = () => {
-        const value = textarea.value.trim();
-        if (value && value !== message.mes) {
-            updateConversationThreadMessage(avatar, messageId, value, null, { groupId });
-        } else {
-            scheduleTimelineRender();
+    const closeEditor = () => {
+        if (textElement.isConnected) {
+            textElement.replaceWith(originalTextElement);
+        }
+        messageElement.classList.remove('is-editing');
+        messageElement.querySelector('.sb-conversation-message-actions')?.classList.remove('open');
+        if (activeConversationEditor?.messageElement === messageElement) {
+            activeConversationEditor = null;
         }
     };
 
-    cancelButton.onclick = () => {
-        scheduleTimelineRender();
+    // Switching editors drops whatever is in the textarea, so confirm first when it differs
+    // from the stored message. Falls through when no confirm() exists (non-browser hosts).
+    const requestClose = () => {
+        if (textarea.value !== message.mes
+            && typeof globalThis.confirm === 'function'
+            && !globalThis.confirm('Discard unsaved changes to the message being edited?')) {
+            return false;
+        }
+
+        closeEditor();
+        return true;
     };
+
+    activeConversationEditor = { messageElement, requestClose };
+
+    saveButton.onclick = () => {
+        const value = textarea.value;
+        closeEditor();
+        // A blanked textarea is not an edit: the delete control is the only way to drop a message.
+        if (value.trim() && value !== message.mes) {
+            updateConversationThreadMessage(avatar, message.id, value, null, { groupId, personaId });
+        }
+    };
+
+    cancelButton.onclick = closeEditor;
 
     textarea.onkeydown = (event) => {
         if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
@@ -185,6 +230,8 @@ export function editConversationMessage(messageId) {
             cancelButton.click();
         }
     };
+
+    textarea.focus({ preventScroll: true });
 }
 
 export function applyScheduleUpdateCommand(avatar, rawArgs, { personaId = getConversationPersonaId() } = {}) {

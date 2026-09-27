@@ -81,6 +81,7 @@ Shell, generation, agent, retrieval, and update code often coordinates several o
 - Separate visual movement, data loading, and persistence when possible.
 - Preserve cancellation, teardown, retry, and active-context checks.
 - Test interrupted paths such as chat switches, regeneration, deletion, restart, and delayed events.
+- Initialize integration hosts even when their UI starts hidden. Guided Generations needs its Quick Reply host before returning for a hidden bar; otherwise Quick Replies mount visibly in the composer after reload.
 
 ### Streaming and scrolling are stateful
 

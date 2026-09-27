@@ -2,6 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import vm from 'node:vm';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const scriptSource = readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
@@ -32,6 +33,27 @@ function getFunctionSource(name, { exported = false } = {}) {
     }
 
     throw new Error(`Unable to find function source for ${name}`);
+}
+
+// Minimal jQuery stand-in that mirrors mobile-styles.css:
+// `#send_form:not(.sb-generating-controls) #mes_stop { display: none !important; }`
+function createMobileStopButtonDom() {
+    const state = { generatingClass: true, inlineDisplay: 'flex' };
+    const elements = {
+        '#send_form': {
+            removeClass: () => { state.generatingClass = false; },
+        },
+        '#mes_stop': {
+            css: value => {
+                if (typeof value === 'string') {
+                    return state.generatingClass ? state.inlineDisplay : 'none';
+                }
+                state.inlineDisplay = value.display;
+            },
+        },
+    };
+
+    return { $: selector => elements[selector], state };
 }
 
 function getSourceBetween(startMarker, endMarker) {
@@ -100,9 +122,26 @@ describe('generation lifecycle wiring', () => {
         expect(unblockSource).not.toContain('type === \'quiet\' && streamingProcessor && !streamingProcessor.isFinished');
     });
 
+    test('emits GENERATION_ENDED once even when the mobile stylesheet hides the stop button on class removal', () => {
+        const hideSource = getFunctionSource('hideStopButton');
+        const emitted = [];
+        const { $, state } = createMobileStopButtonDom();
+
+        vm.runInNewContext(`${hideSource}\nhideStopButton();\nhideStopButton();`, {
+            $,
+            eventSource: { emit: (...args) => emitted.push(args) },
+            event_types: { GENERATION_ENDED: 'generation_ended' },
+            chat: { length: 3 },
+            activeGenerationRun: null,
+        });
+
+        expect(emitted).toEqual([['generation_ended', 3]]);
+        expect(state).toEqual({ generatingClass: false, inlineDisplay: 'none' });
+    });
+
     test('routes provider-error cleanup through stopped lifecycle semantics', () => {
         expect(scriptSource).toContain('this.markUIGenStopped({ emitGenerationEnded: false, emitGenerationStopped: true });');
-        expect(scriptSource).toContain('eventSource.emit(event_types.GENERATION_STOPPED);');
+        expect(scriptSource).toContain('eventSource.emit(event_types.GENERATION_STOPPED, ...(agentGenerationContext ? [agentGenerationContext] : []));');
         expect(scriptSource).toContain('unblockGeneration(type, { emitGenerationEnded: false });');
     });
 
@@ -129,7 +168,7 @@ describe('generation lifecycle wiring', () => {
 
         expect(generateSource).toContain('const shouldBufferOutput = await shouldBufferMainGenerationOutput({ type, isStreaming: true });');
         expect(generateSource).toContain('await activeStreamingProcessor.generateBuffered()');
-        expect(normalizedGenerateSource).toContain('const interceptResult = await applyMainGenerationOutputInterceptors({\n                            type,\n                            text: getMessage,\n                            isStreaming: true,');
+        expect(normalizedGenerateSource).toMatch(/const interceptResult = await applyMainGenerationOutputInterceptors\(\{\s+type,\s+text: getMessage,\s+isStreaming: true,/);
         expect(generateSource).toContain('const saveReplyType = originalType !== \'continue\' ? type : \'appendFinal\';');
         expect(generateSource).toContain('type: saveReplyType,');
         expect(generateSource).toContain('!shouldBufferOutput && hasToolCalls && !shouldDeleteMessage');
@@ -138,7 +177,7 @@ describe('generation lifecycle wiring', () => {
     test('runs main output intercept event before saveReply stores non-streaming replies', () => {
         const generateSource = getFunctionSource('Generate', { exported: true });
         const interceptIndex = generateSource.indexOf('await applyMainGenerationOutputInterceptors({');
-        const saveIndex = generateSource.indexOf('await saveReply({ type, getMessage, title, swipes, reasoning, imageUrls, reasoningSignature, reasoningTokens: data.reasoningTokens })');
+        const saveIndex = generateSource.indexOf('await saveReply({ type, getMessage, title, swipes, reasoning, imageUrls, reasoningSignature, reasoningTokens: data.reasoningTokens, isCurrent })');
 
         expect(interceptIndex).toBeGreaterThanOrEqual(0);
         expect(saveIndex).toBeGreaterThanOrEqual(0);

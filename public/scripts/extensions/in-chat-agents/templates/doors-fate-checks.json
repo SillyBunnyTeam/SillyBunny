@@ -1,0 +1,45 @@
+{
+    "id": "tpl-doors-fate-checks",
+    "name": "Doors with Fate Checks",
+    "description": "Choice menu with hidden d100 checks against the Almanac. Pick this or plain Doors, one at a time",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "player-choices",
+    "tags": [
+        "cyoa",
+        "choices",
+        "dice"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "## Doors with Fate Checks\n\nTrack the choices open to {{user}} in this setting, from {{user}}'s perspective. Whenever {{user}} needs a meaningful decision, print this block at the very end of the response:\n\n[DOORS]\n1. **[Competency 0/100]** Action description\n2. **[Competency 0/100]** Action description\n3. **[Competency 0/100]** Action description\n[/DOORS]\n\nRules:\n- Print 3-7 options, and place the [DOORS] block as the final part of the response.\n- Write each option as something {{user}} can do, say, inspect, bargain, mend, brew, apologise to, misplace on purpose, or otherwise attempt.\n- Begin each option with a competency tag and target value taken from {{user}}'s [ALMANAC] when one exists, drawing freely on practical, uncanny, social, and special competencies. Examples: [Door Etiquette 65/100], [Speech 42/100], [Reading the Milk 30/100], [Has the Good Scissors 25/100].\n- Set target values to match the current difficulty, danger, pressure, or advantage. Give mundane and impossible options identical grammar.\n\n## Fate Check Resolution\n\nFor this response, the hidden d100 roll is: {{roll:1d100}}.\n\nWhen {{user}} chooses or clearly attempts one of the previous [DOORS], resolve it using the hidden roll and the target value.\n\nResolution:\n- Natural 1: the attempt succeeds completely, and the world plainly helped.\n- Margin = target number - d100 roll.\n- Margin 10 or higher: clean success.\n- Margin 9 to -10: mixed success; it works, and something small is now owed, altered, or awake.\n- Margin -11 or lower: failure with consequence.\n- Natural 100: the impossible takes a personal interest.\n\nIf {{user}} attempts something beyond the listed options, base the check on the nearest competency.\n\nNarrate the outcome as ordinary story. Keep the roll and the arithmetic invisible, and state only what happens. On a failure, give {{user}} a clear next move and keep the tone even.\n\nFormat law: put [DOORS] alone on its own line; write each option as one numbered line (1. up to at most 7.) beginning with its bold competency tag, complete on that single line; put [/DOORS] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the menu as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[DOORS\\](?:(?!\\[DOORS\\])[\\s\\S])*?\\[/DOORS\\]",
+        "extractVariable": "doors_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

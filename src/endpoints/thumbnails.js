@@ -117,6 +117,17 @@ function getOriginalFolder(directories, type) {
     return originalFolder;
 }
 
+// SillyBunny: path containment permits POSIX-valid names that sanitize-filename rejects.
+function resolveDirectChildPath(folder, file) {
+    if (typeof file !== 'string' || !file || file.includes('\0') || path.basename(file) !== file) {
+        return null;
+    }
+
+    const root = path.resolve(folder);
+    const filePath = path.resolve(root, file);
+    return path.dirname(filePath) === root ? filePath : null;
+}
+
 /**
  * Resolves a requested file name to the name that actually exists in the original images folder.
  * @param {import('../users.js').UserDirectoryList} directories User directories
@@ -164,7 +175,8 @@ export function invalidateThumbnail(directories, type, file) {
         const folder = getThumbnailFolder(directories, type, preset);
         if (folder === undefined) throw new Error('Invalid thumbnail type');
 
-        const pathToThumbnail = path.join(folder, sanitize(file));
+        const pathToThumbnail = resolveDirectChildPath(folder, file);
+        if (!pathToThumbnail) continue;
         if (fs.existsSync(pathToThumbnail)) {
             fs.unlinkSync(pathToThumbnail);
         }
@@ -211,13 +223,18 @@ export async function generateThumbnail(directories, type, file, forceGenerate =
     const thumbnailFolder = getThumbnailFolder(directories, type, preset);
     const originalFolder = getOriginalFolder(directories, type);
     if (thumbnailFolder === undefined || originalFolder === undefined) throw new Error('Invalid thumbnail type');
+    if (!resolveDirectChildPath(originalFolder, file) || !resolveDirectChildPath(thumbnailFolder, file)) {
+        return { path: null, aspectRatio: null, resolution: null };
+    }
     // SillyBunny: tolerate a double percent-encoded name (see resolveOriginalFileName).
     file = resolveOriginalFileName(directories, type, file);
-    const pathToCachedFile = path.join(thumbnailFolder, file);
+    const pathToCachedFile = resolveDirectChildPath(thumbnailFolder, file);
+    const pathToOriginalFile = resolveDirectChildPath(originalFolder, file);
+    if (!pathToCachedFile || !pathToOriginalFile) {
+        return { path: null, aspectRatio: null, resolution: null };
+    }
 
     try {
-        const pathToOriginalFile = path.join(originalFolder, file);
-
         if (type === 'avatar' && path.extname(pathToOriginalFile).toLowerCase() === '.png') {
             recoverFileWriteSync(pathToOriginalFile);
         }
@@ -366,17 +383,17 @@ publicRouter.get('/', async function (request, response) {
             return response.sendStatus(400);
         }
 
-        const sanitizedFile = sanitize(rawFile);
-        if (sanitizedFile !== rawFile) return response.sendStatus(403);
+        const originalFolder = getOriginalFolder(request.user.directories, type);
+        if (!resolveDirectChildPath(originalFolder, rawFile)) return response.sendStatus(403);
 
         // SillyBunny: tolerate a double percent-encoded `file` param (see resolveOriginalFileName).
-        const file = resolveOriginalFileName(request.user.directories, type, sanitizedFile);
+        const file = resolveOriginalFileName(request.user.directories, type, rawFile);
+        const pathToOriginalFile = resolveDirectChildPath(originalFolder, file);
+        if (!pathToOriginalFile) return response.sendStatus(403);
 
         const requestedPreset = rawPreset === 'mobile' ? 'mobile' : 'desktop';
 
         const serveOriginal = () => {
-            const folder = getOriginalFolder(request.user.directories, type);
-            const pathToOriginalFile = path.resolve(path.join(folder, file));
             if (!fs.existsSync(pathToOriginalFile)) return response.sendStatus(404);
             invalidateFirefoxCache(pathToOriginalFile, request, response);
             return response.sendFile(pathToOriginalFile);
@@ -402,7 +419,8 @@ publicRouter.get('/', async function (request, response) {
         // If the mobile preset is disabled, fall back to the desktop thumbnail.
         const effectivePreset = (requestedPreset === 'mobile' && thumbnailMobileRuntimeSettings.enabled) ? 'mobile' : 'desktop';
         const thumbnailFolder = getThumbnailFolder(request.user.directories, type, effectivePreset);
-        const pathToCachedFile = path.join(thumbnailFolder, file);
+        const pathToCachedFile = resolveDirectChildPath(thumbnailFolder, file);
+        if (!pathToCachedFile) return response.sendStatus(403);
 
         // Try to generate thumbnail if it doesn't exist
         if (!fs.existsSync(pathToCachedFile)) {

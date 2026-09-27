@@ -1,0 +1,45 @@
+{
+    "id": "tpl-omen-tracker",
+    "name": "Omen Tracker",
+    "description": "Signs of what's coming",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "world",
+    "tags": [
+        "omen",
+        "foreshadow",
+        "signs"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### Omen Tracker\nTrack the signs the world plants ahead of events that are coming. Use this EXACT format:\n\n[OMEN|Sign|Reading|Horizon]\ncontext: MANDATORY; where the sign appeared and who noticed or missed it\n[/OMEN]\n\nHorizon options: 🌑 DISTANT | 🌓 APPROACHING | 🌕 IMMINENT | ☄ ARRIVED | 🕊 PASSED OVER\n\nRules:\n- Print the block AFTER the narrative content, on responses where an omen is PLANTED, ADVANCES, or RESOLVES.\n- Write Reading as what the sign suggests. A Reading is allowed to be wrong, and characters are allowed to misread it.\n- Resolve every planted omen eventually, as either ARRIVED or PASSED OVER. Both endings are valid.\n- Keep omens proportionate to the scene and aimed at human-scale events.\n- Print at most one OMEN block per response.\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with context: and keep the whole context on that single line; put the closing [/OMEN] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[OMEN\\|[^\\]\\r\\n]*\\](?:(?!\\[OMEN(?=[:|\\]]))[\\s\\S])*?\\[/OMEN\\]",
+        "extractVariable": "omen_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

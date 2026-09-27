@@ -84,6 +84,9 @@ const a11yRules = {
         element.setAttribute('role', 'status');
     },
 };
+const a11yRuleEntries = Object.entries(a11yRules);
+const a11ySelector = a11yRuleEntries.map(([selector]) => selector).join(', ');
+let accessibilityObserver = null;
 
 /**
  * Apply accessibility rules to an element.
@@ -91,13 +94,13 @@ const a11yRules = {
  */
 function applyA11yRules(element) {
     try {
-        for (const [selector, rule] of Object.entries(a11yRules)) {
-            // Apply if the element directly matches the selector
-            if (element.matches(selector)) {
-                rule(element);
+        // SillyBunny: scan each added subtree once, including controls supplied by extensions.
+        for (const candidate of [element, ...element.querySelectorAll(a11ySelector)]) {
+            for (const [selector, rule] of a11yRuleEntries) {
+                if (candidate.matches(selector)) {
+                    rule(candidate);
+                }
             }
-            // Apply the rule to descendants
-            element.querySelectorAll(selector).forEach(rule);
         }
     } catch (error) {
         console.error('Error applying accessibility rules to element:', element, error);
@@ -105,18 +108,30 @@ function applyA11yRules(element) {
 }
 
 function setAccessibilityObserver() {
+    if (accessibilityObserver) return;
     // Apply for existing elements
     applyA11yRules(document.body);
 
     // Setup observer for dynamic content
     const observer = new MutationObserver((mutationsList) => {
+        const addedElements = new Set();
         for (const mutation of mutationsList) {
             if (mutation.type === 'childList') {
                 for (const addedNode of mutation.addedNodes) {
                     if (addedNode instanceof Element && addedNode.nodeType === Node.ELEMENT_NODE) {
-                        applyA11yRules(addedNode);
+                        addedElements.add(addedNode);
                     }
                 }
+            }
+        }
+
+        for (const element of addedElements) {
+            let parent = element.parentElement;
+            while (parent && !addedElements.has(parent)) {
+                parent = parent.parentElement;
+            }
+            if (!parent && element.isConnected) {
+                applyA11yRules(element);
             }
         }
     });
@@ -125,6 +140,7 @@ function setAccessibilityObserver() {
         childList: true,
         subtree: true,
     });
+    accessibilityObserver = observer;
 }
 
 export function initAccessibility() {

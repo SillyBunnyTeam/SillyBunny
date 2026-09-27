@@ -1,0 +1,45 @@
+{
+    "id": "tpl-the-census",
+    "name": "The Census",
+    "description": "NPC profile sheets as registry records",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "characters",
+    "tags": [
+        "npc",
+        "census",
+        "profiles"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### The Census\nAn unseen registry keeps records on everyone the story meets. When a new named character appears for the first time, file their census record immediately after their narrative introduction, using the appropriate classification and this EXACT format with no additional formatting:\n\nRESIDENT - Recurring characters, antagonists, love interests, figures the story keeps\n[CENSUS:RESIDENT|Name]\nb: Full Name | Age (as claimed) | Gender/Pronouns | Occupation (official and actual)\na: Height/Build | Hair | Eyes | Distinguishing Marks | Current Attire\ns: Personal Strangeness | Its Rules | Who Notices\np: Demeanor | Speech Pattern | Core Traits (3-5) | Quirks/Tells\nh: Relevant History | Motivations | Secrets or Debts\nr: Connection to {{user}} | Other Ties | What They Owe or Are Owed\n[/CENSUS]\n\nLODGER - Secondary recurring characters, neighbours, colleagues, figures who visit the story\n[CENSUS:LODGER|Name]\nb: Name | Age | Gender | Role\na: Build | Notable Features | Attire\ns: Personal Strangeness | Its Rule\np: Demeanor | Speech | Key Traits\nr: Connection to {{user}} | Motivation\n[/CENSUS]\n\nPASSERBY - One-scene characters, background figures, service roles\n[CENSUS:PASSERBY|Name]\nb: Name | Age-ish | Role\na: Quick Physical Description\np: One-line Personality | One Strange Detail, treated as routine\n[/CENSUS]\n\nCensus Rules:\n- File exactly ONE record per character, at their first significant appearance, AFTER the narrative introduction and BEFORE the action continues\n- Separate data points with pipe | characters, and include the opening and closing tags every single time\n- Give every record at least one strange detail, written in the same flat register as the rest\n- Treat a registered Personal Strangeness as permanent canon: develop it further in later scenes and keep it on the record for good\n- Record ages exactly as the character claims them, and accept every claim as filed\n- Keep the registry itself out of the story. No one is ever shown collecting the census; the records simply exist\n\nWhen a character's classification rises (Passerby to Lodger to Resident), file:\n[CENSUS:PROMOTED|Name|NEW CLASSIFICATION]\nb: Name | Age | Gender | Role\na: Build | Notable Features | Attire\ns: Personal Strangeness | Its Rules\np: Demeanor | Speech | Key Traits\n[/CENSUS]\n\nWhen a character returns in a busy scene, file a sighting:\n[CENSUS:SIGHTING|Name|visual cue|current mood]\n\nWhen a relationship changes mid-story, amend the record:\n[CENSUS:AMENDED|Name|what changed]\n\nFormat law: write one header line closing with ] on that same line; begin every lettered line flush with its letter and colon (b:, a:, s:, p:, h:, r:) in the exact order its classification shows, each complete on its single line; put [/CENSUS] alone on the final line. Write SIGHTING and AMENDED as single lines containing exactly 3 and 2 | separators respectively, complete on that one line. Reproduce these shapes exactly, every time. The renderer matches these exact shapes and draws each record as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[CENSUS:(?:SIGHTING|AMENDED)\\|[^\\]\\r\\n]+\\]|\\[CENSUS(?::(?:RESIDENT|LODGER|PASSERBY|PROMOTED))?\\|[^\\]\\r\\n]+\\](?:(?!\\[CENSUS(?=[:|\\]]))[\\s\\S])*?\\[/CENSUS\\]",
+        "extractVariable": "census_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

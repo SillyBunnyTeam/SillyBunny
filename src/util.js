@@ -22,6 +22,7 @@ import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import { isFirefox } from './express-common.js';
 import { pollSocketConnection } from './connection-state-checker.js';
 import { isRequestCancellationError, observeRequestCancellation } from './request-cancellation.js';
+import { getResumableGeneration } from './resumable-generations.js';
 import { isBunRuntime } from './runtime.js';
 
 const DEFAULT_STREAMING_CONNECTION_POLLING_INTERVAL_MS = 150;
@@ -478,6 +479,20 @@ export async function readAllChunks(readableStream) {
     });
 }
 
+/**
+ * Creates a precisely-sized ArrayBuffer from a Uint8Array view such as a Node Buffer.
+ * This avoids leaking unrelated bytes from the underlying backing store.
+ * @param {Uint8Array} view Source byte view
+ * @returns {ArrayBuffer} Exact ArrayBuffer slice for the provided view
+ */
+export function getArrayBufferSlice(view) {
+    if (!(view instanceof Uint8Array)) {
+        throw new TypeError('Expected Uint8Array');
+    }
+
+    return view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength);
+}
+
 function isObject(item) {
     return (item && typeof item === 'object' && !Array.isArray(item));
 }
@@ -658,18 +673,7 @@ export function removeOldBackups(directory, prefix, limit = null) {
  * @returns {string[]} List of image file names
  */
 export function getImages(directoryPath, sortBy = 'name', type = MEDIA_REQUEST_TYPE.IMAGE) {
-    function getSortFunction() {
-        switch (sortBy) {
-            case 'name':
-                return Intl.Collator().compare;
-            case 'date':
-                return (a, b) => fs.statSync(path.join(directoryPath, a)).mtimeMs - fs.statSync(path.join(directoryPath, b)).mtimeMs;
-            default:
-                return (_a, _b) => 0;
-        }
-    }
-
-    return fs
+    const files = fs
         .readdirSync(directoryPath, { withFileTypes: true })
         .filter(dirent => dirent.isFile())
         .map(dirent => dirent.name)
@@ -688,8 +692,28 @@ export function getImages(directoryPath, sortBy = 'name', type = MEDIA_REQUEST_T
                 return true;
             }
             return false;
-        })
-        .sort(getSortFunction());
+        });
+
+    switch (sortBy) {
+        case 'name':
+            return files.sort(Intl.Collator().compare);
+        case 'date': {
+            const mtimes = new Map();
+            for (const file of files) {
+                try {
+                    mtimes.set(file, fs.statSync(path.join(directoryPath, file)).mtimeMs);
+                } catch (err) {
+                    if (err?.code !== 'ENOENT') {
+                        throw err;
+                    }
+                    mtimes.set(file, 0);
+                }
+            }
+            return files.sort((a, b) => mtimes.get(a) - mtimes.get(b));
+        }
+        default:
+            return files;
+    }
 }
 
 function getStreamingConnectionPollingInterval() {
@@ -717,6 +741,11 @@ function getStreamingConnectionPollingInterval() {
  * @returns {() => void} Stops polling.
  */
 export function pollStreamingRequestConnection(request, response, onDisconnect) {
+    // SillyBunny: a resumable generation is never aborted by a client disconnect. See resumable-generations.js.
+    if (getResumableGeneration(request)) {
+        return () => undefined;
+    }
+
     if (!request?.socket || response?.writableEnded || response?.destroyed) {
         return () => undefined;
     }
@@ -739,6 +768,62 @@ export function pollStreamingRequestConnection(request, response, onDisconnect) 
         } catch (error) {
             console.warn('Error handling streaming client disconnect:', error);
         }
+    });
+}
+
+/**
+ * SillyBunny: drains the upstream body to the end even after the client has gone, so a resumable
+ * generation (see resumable-generations.js) can be picked up later. Only an explicit cancel stops it.
+ * @param {import('node-fetch').Response} from The Fetch API response to drain.
+ * @param {import('express').Response} to The Express response; writes after the client left are mirrored, not sent.
+ * @param {import('./resumable-generations.js').ResumableGeneration} generation The registered generation.
+ * @param {() => void | Promise<void>} [onDisconnect] Provider-specific abort hook, run on cancel.
+ */
+function forwardResumableFetchBody(from, to, generation, onDisconnect = null) {
+    const unregisterCancel = generation.onCancel(() => {
+        try {
+            const disconnectResult = onDisconnect?.();
+            if (disconnectResult && typeof disconnectResult.catch === 'function') {
+                disconnectResult.catch(error => console.warn('Error cancelling resumable generation:', error));
+            }
+        } catch (error) {
+            console.warn('Error cancelling resumable generation:', error);
+        }
+
+        try {
+            from.body?.destroy?.();
+        } catch {
+            // Best effort; the upstream stream is going away anyway.
+        }
+
+        if (!to.writableEnded) {
+            to.end();
+        }
+    });
+
+    const finish = () => {
+        unregisterCancel();
+        if (!to.writableEnded) {
+            to.end();
+        }
+    };
+
+    from.body.on('data', chunk => {
+        if (!to.writableEnded) {
+            to.write(chunk);
+        }
+    });
+
+    from.body.on('end', () => {
+        console.info('Streaming request finished');
+        finish();
+    });
+
+    from.body.on('error', error => {
+        if (!isRequestCancellationError(error)) {
+            console.warn('Streaming request failed:', error?.message ?? error);
+        }
+        finish();
     });
 }
 
@@ -782,6 +867,12 @@ export async function forwardFetchResponse(from, to, request = null, onDisconnec
     }
 
     if (from.body && to.socket) {
+        const resumableGeneration = getResumableGeneration(request);
+        if (resumableGeneration) {
+            forwardResumableFetchBody(from, to, resumableGeneration, onDisconnect);
+            return;
+        }
+
         const stopPolling = pollStreamingRequestConnection(request, to, () => {
             try {
                 const disconnectResult = onDisconnect?.();
@@ -835,6 +926,9 @@ export async function forwardFetchResponse(from, to, request = null, onDisconnec
                 }
                 return;
             }
+
+            console.warn('Streaming request failed:', error?.message ?? error);
+            to.end();
         });
     } else {
         to.end();
@@ -2221,7 +2315,12 @@ function recoverFileWriteOnceSync(filePath) {
     }
 
     const pathStats = fs.lstatSync(filePath, { bigint: true });
-    if (String(pathStats.dev) !== record.dev || String(pathStats.ino) !== record.ino) {
+    // A recycled inode makes a replacement card indistinguishable from the interrupted one, so the
+    // creation time is checked alongside dev/ino whenever the record carries one. Records written
+    // before this field existed, and those the write path could not vouch for, have none and fall
+    // back to dev/ino on its own.
+    if (String(pathStats.dev) !== record.dev || String(pathStats.ino) !== record.ino
+        || (record.birthtime !== undefined && String(pathStats.birthtimeNs) !== record.birthtime)) {
         throw Object.assign(new Error(`Refused to recover a replaced file: ${filePath}`), { code: 'ESTALE' });
     }
     if (!pathStats.isFile() || pathStats.nlink !== 1n) {
@@ -2445,14 +2544,33 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
                     }
                 } else {
                     recoveryPath = getFileWriteRecoveryPath(filePath);
-                    writeFileAtomicSync(recoveryPath, JSON.stringify({
+                    const recoveryRecord = {
                         version: 1,
                         dev: String(descriptorStats.dev),
                         ino: String(descriptorStats.ino),
                         originalHash: hashFileWriteData(originalData),
                         nextHash: hashFileWriteData(dataBuffer),
                         originalData: originalData.toString('base64'),
-                    }), 'utf8');
+                    };
+                    // SillyBunny: dev/ino alone does not survive the gap between the crash that
+                    // strands this record and the start that reads it. Deleting a card frees its
+                    // inode and the next file created in that directory can be handed the very same
+                    // one - on ext4 that is not a rare draw but the normal outcome - so a card the
+                    // user replaced in the meantime would look like the interrupted write and get
+                    // stamped back to the old bytes. A creation time is not recycled along with the
+                    // inode, so it tells the two apart.
+                    //
+                    // Only a creation time this file proves is real gets recorded. Filesystems
+                    // without one report ctime in its place, and every write moves that, so a
+                    // recovery reading it back would refuse the interrupted card it exists to
+                    // restore. A card already modified since it was created has the two apart and
+                    // settles it; a card still carrying its original bytes cannot, and its first
+                    // identity-preserving write falls back to dev/ino as before. That gap closes
+                    // for good on the write after it.
+                    if (descriptorStats.birthtimeNs !== descriptorStats.ctimeNs) {
+                        recoveryRecord.birthtime = String(descriptorStats.birthtimeNs);
+                    }
+                    writeFileAtomicSync(recoveryPath, JSON.stringify(recoveryRecord), 'utf8');
                     fsyncDirectorySync(path.dirname(recoveryPath));
 
                     targetMutated = true;

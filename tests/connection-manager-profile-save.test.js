@@ -7,6 +7,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const normalizeSource = source => source.replace(/\r\n/g, '\n');
 const connectionManagerSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'connection-manager', 'index.js'), 'utf8'));
 const openAiSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'openai.js'), 'utf8'));
+const sharedSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'shared.js'), 'utf8'));
 
 function getFunctionSourceFrom(source, name) {
     const marker = `function ${name}(`;
@@ -54,7 +55,7 @@ describe('connection manager profile save wiring', () => {
     test('clears stale endpoint and secret fields when updating to providers without values', () => {
         const readSource = getFunctionSource('readProfileFromCommands');
 
-        expect(connectionManagerSource).toContain('const CLEAR_ON_EMPTY_RESULT = [\n    \'api-url\',\n    \'secret-id\',\n];');
+        expect(connectionManagerSource).toContain('const CLEAR_ON_EMPTY_RESULT = [\n    \'api-url\',\n    \'secret-id\',\n    \'custom-endpoint-profile\',\n];');
         expect(readSource).toContain('if (cleanUp && CLEAR_ON_EMPTY_RESULT.includes(command)) {');
         expect(readSource).toContain('delete profile[command];');
     });
@@ -112,5 +113,37 @@ describe('connection manager profile save wiring', () => {
         expect(commandResultIndex).toBeGreaterThanOrEqual(0);
         expect(secretGuardIndex).toBeGreaterThan(commandResultIndex);
         expect(syncIndex).toBeGreaterThan(secretGuardIndex);
+    });
+
+    test('re-selects the Custom endpoint profile by name after the secret and before the URL and model', () => {
+        const ccCommandsStart = connectionManagerSource.indexOf('const CC_COMMANDS = [');
+        const tcCommandsStart = connectionManagerSource.indexOf('const TC_COMMANDS = [');
+        const ccCommandsSource = connectionManagerSource.slice(ccCommandsStart, tcCommandsStart);
+        const secretCommandIndex = ccCommandsSource.indexOf('\'secret-id\'');
+        const endpointProfileIndex = ccCommandsSource.indexOf('\'custom-endpoint-profile\'');
+        const apiUrlCommandIndex = ccCommandsSource.indexOf('\'api-url\'');
+        const modelCommandIndex = ccCommandsSource.indexOf('\'model\'');
+
+        expect(endpointProfileIndex).toBeGreaterThan(secretCommandIndex);
+        expect(apiUrlCommandIndex).toBeGreaterThan(endpointProfileIndex);
+        expect(modelCommandIndex).toBeGreaterThan(endpointProfileIndex);
+        expect(connectionManagerSource).toContain('\'custom-endpoint-profile\': \'Custom Endpoint Profile\',');
+    });
+
+    test('records Custom endpoint additional parameters, including empty values, in Chat Completion profiles', () => {
+        const ccCommandsStart = connectionManagerSource.indexOf('const CC_COMMANDS = [');
+        const tcCommandsStart = connectionManagerSource.indexOf('const TC_COMMANDS = [');
+        const ccCommandsSource = connectionManagerSource.slice(ccCommandsStart, tcCommandsStart);
+        const allowEmptyStart = connectionManagerSource.indexOf('const ALLOW_EMPTY = [');
+        const allowEmptySource = connectionManagerSource.slice(allowEmptyStart, connectionManagerSource.indexOf('];', allowEmptyStart));
+
+        for (const command of ['custom-include-body', 'custom-exclude-body', 'custom-include-headers']) {
+            expect(ccCommandsSource).toContain(`'${command}',`);
+            expect(allowEmptySource).toContain(`'${command}',`);
+            expect(sharedSource).toContain(`'${command}': ['${command.replaceAll('-', '_')}', value => String(value ?? '')],`);
+        }
+        expect(connectionManagerSource).toContain('\'custom-include-body\': \'Custom Include Body Parameters\',');
+        expect(connectionManagerSource).toContain('\'custom-exclude-body\': \'Custom Exclude Body Parameters\',');
+        expect(connectionManagerSource).toContain('\'custom-include-headers\': \'Custom Include Request Headers\',');
     });
 });

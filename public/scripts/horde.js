@@ -15,6 +15,7 @@ import { autoSelectInstructPreset } from './instruct-mode.js';
 import { t } from './i18n.js';
 import { callGenericPopup, POPUP_TYPE } from './popup.js';
 import { kai_settings } from './kai-settings.js';
+import { fetchResumable } from './resumable-generation.js';
 
 export {
     MIN_LENGTH,
@@ -218,10 +219,11 @@ export async function generateHorde(prompt, params, signal, reportProgress) {
         'models': horde_settings.models,
     };
 
-    const response = await fetch('/api/horde/generate-text', {
+    const response = await fetchResumable('/api/horde/generate-text', {
         method: 'POST',
         headers: getRequestHeaders(),
         body: JSON.stringify(payload),
+        signal,
     });
 
     if (!response.ok) {

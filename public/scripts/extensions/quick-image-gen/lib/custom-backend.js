@@ -484,15 +484,21 @@ export function buildCustomBackendRequest(config, input = {}) {
 }
 
 function imageFromValue(value, responseType = "auto") {
-    const stack = [{ value, depth: 0 }];
+    // Advance arrays one element at a time, including empty slots in the access budget.
+    const stack = [{ values: [value], index: 0, depth: 0 }];
     const seen = new WeakSet();
     let nodes = 0;
     while (stack.length && nodes < MAX_RESPONSE_IMAGE_NODES) {
-        const current = stack.pop();
-        if (current.depth > MAX_RESPONSE_IMAGE_DEPTH || current.value == null) continue;
+        const current = stack.at(-1);
+        if (current.index >= current.values.length) {
+            stack.pop();
+            continue;
+        }
+        const candidate = current.values[current.index++];
         nodes += 1;
-        if (typeof current.value !== "object") {
-            const text = String(current.value).trim();
+        if (candidate == null) continue;
+        if (typeof candidate !== "object") {
+            const text = String(candidate).trim();
             if (!text) continue;
             if (responseType === "url") return text;
             if (responseType === "base64") return text.startsWith("data:image/") ? text : `data:image/png;base64,${text}`;
@@ -500,19 +506,17 @@ function imageFromValue(value, responseType = "auto") {
             if (/^[A-Za-z0-9+/]{100,}={0,2}$/.test(text)) return `data:image/png;base64,${text}`;
             continue;
         }
-        if (seen.has(current.value)) continue;
-        seen.add(current.value);
-        const candidates = Array.isArray(current.value)
-            ? current.value
+        if (current.depth >= MAX_RESPONSE_IMAGE_DEPTH || seen.has(candidate)) continue;
+        seen.add(candidate);
+        const candidates = Array.isArray(candidate)
+            ? candidate
             : [
-                current.value.url, current.value.image, current.value.image_url?.url, current.value.imageUrl,
-                current.value.b64_json, current.value.base64, current.value.image_base64,
-                current.value.imageBase64, current.value.inline_data?.data, current.value.inlineData?.data,
-                current.value.source?.data, current.value.data, current.value.content, current.value.parts,
-            ];
-        for (let index = candidates.length - 1; index >= 0; index--) {
-            if (candidates[index] != null) stack.push({ value: candidates[index], depth: current.depth + 1 });
-        }
+                candidate.url, candidate.image, candidate.image_url?.url, candidate.imageUrl,
+                candidate.b64_json, candidate.base64, candidate.image_base64,
+                candidate.imageBase64, candidate.inline_data?.data, candidate.inlineData?.data,
+                candidate.source?.data, candidate.data, candidate.content, candidate.parts,
+            ].filter(item => item != null);
+        stack.push({ values: candidates, index: 0, depth: current.depth + 1 });
     }
     return null;
 }
@@ -538,7 +542,7 @@ async function readCustomResponse(response, config, fallbackUrl) {
         throw new Error(`Custom API error ${response.status}: ${detail.replace(/\s+/g, " ").trim().slice(0, 500) || response.statusText}`);
     }
     const contentType = (response.headers.get("content-type") || "").split(";", 1)[0].trim().toLowerCase();
-    if (contentType.startsWith("image/")) {
+    if (contentType.startsWith("image/") || contentType === "application/octet-stream") {
         const buffer = await readResponseArrayBuffer(response, MAX_IMAGE_BYTES);
         const format = await validateImageData(buffer);
         if (!format) throw new Error("Custom API response is not a supported image format");
@@ -603,8 +607,23 @@ function normalizeJobId(value) {
     return jobId;
 }
 
-function waitForPoll(ms, signal, sleep) {
-    if (sleep) return sleep(ms, signal);
+function isTransientPollStatus(status) {
+    return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+function pollRetryDelayMs(response, fallbackMs) {
+    const raw = String(response.headers?.get?.("retry-after") || "").trim();
+    if (/^\d+$/.test(raw)) {
+        return Math.min(60_000, Math.max(0, parseInt(raw, 10) * 1000));
+    }
+    const retryDate = Date.parse(raw);
+    if (!Number.isNaN(retryDate)) {
+        return Math.min(60_000, Math.max(0, retryDate - Date.now()));
+    }
+    return fallbackMs;
+}
+
+function waitForPoll(ms, signal, sleep) {    if (sleep) return sleep(ms, signal);
     return new Promise((resolve, reject) => {
         if (signal?.aborted) {
             reject(new DOMException("The operation was aborted", "AbortError"));
@@ -673,6 +692,13 @@ export async function executeCustomBackend(config, input, options = {}) {
                 credentials: "omit",
                 referrerPolicy: "no-referrer",
             });
+            if (!pollResponse.ok && isTransientPollStatus(pollResponse.status)) {
+                // A running job behind a busy proxy is still running; retry within
+                // the overall timeout instead of failing the generation.
+                try { await pollResponse.body?.cancel?.(); } catch { /* best effort */ }
+                await waitForPoll(pollRetryDelayMs(pollResponse, request.config.pollIntervalMs), controller.signal, options.sleep);
+                continue;
+            }
             const polled = await readCustomResponse(pollResponse, request.config, pollUrl.href);
             if (polled.buffer) return polled;
             const status = String(resolveJsonPointer(polled.data, request.config.statusPath) ?? "").trim().toLowerCase();

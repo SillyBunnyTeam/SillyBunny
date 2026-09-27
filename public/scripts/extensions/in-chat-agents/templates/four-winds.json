@@ -1,0 +1,45 @@
+{
+    "id": "tpl-four-winds",
+    "name": "The Four Winds",
+    "description": "Four plot pivots each reply",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "player-choices",
+    "tags": [
+        "directions",
+        "pivots",
+        "menu"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### The Four Winds\nEnd every response with exactly 4 plot-direction prompts for {{user}}, named for the winds. Write each one as a dramatic pivot that changes the scene in a way the story cannot undo.\n\n- A and B (the settled winds): write grounded pivots that grow out of the current scene and introduce a new problem, a power shift, an uncomfortable truth, a forced decision, or an irreversible development. Put human stakes first.\n- C and D (the unreliable winds): write wildcard pivots where the impossible arrives with the worst timing, the strangest coincidence, or the sharpest reversal. Make these the options {{user}} is most tempted to pick, and keep them rooted in the current scene.\n\nDemands:\n- Raise the intensity in every option, and promise a genuinely different scene in each of the four.\n- Write all four about the environment, the plot, and the impossible, and leave {{user}}'s own actions for {{user}} to choose.\n- State each option deadpan, and let its strangeness stand unexplained.\n\nRules:\n- Write exactly 4 options labeled A, B, C, and D; one or two short lines each; vivid, specific, deadpan.\n- Place this block at the absolute end of the response, after all other formatting.\n- Use this EXACT format:\n\n[WINDS]\nA. A grounded pivot that creates new, irreversible pressure.\nB. Another grounded pivot that forces a different kind of change.\nC. A wildcard where the impossible arrives with the worst possible timing.\nD. Another wildcard that introduces something unexpected and dramatically charged.\n[/WINDS]\n\nFormat law: put [WINDS] alone on its own line; write exactly four lines labeled A. B. C. D., each complete on its single line; put [/WINDS] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the menu as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[WINDS\\](?:(?!\\[WINDS\\])[\\s\\S])*?\\[/WINDS\\]",
+        "extractVariable": "winds_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

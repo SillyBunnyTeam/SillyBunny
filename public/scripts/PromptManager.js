@@ -13,7 +13,7 @@ import { Popup } from './popup.js';
 import { t } from './i18n.js';
 import { isMobile } from './RossAscends-mods.js';
 import { accountStorage } from './util/AccountStorage.js';
-import { getPromptDisplayTokenCounts, getPromptSourceTokenCounts } from './prompt-token-counts.js';
+import { getPromptDisplayTokenCounts, getPromptSourceTokenCounts, isCommentOnlyPromptContent, mergePromptTokenCounts } from './prompt-token-counts.js';
 import { getRenderedMarkerPrompt } from './prompt-manager-marker-preview.js';
 import { clearPromptSetVariables } from './prompt-variable-cleanup.js';
 import { RUNTIME_AGENTS_IDENTIFIER, resolveInChatAgentTokenUsage } from './in-chat-agent-inspection.js';
@@ -2100,7 +2100,11 @@ class PromptManager {
     }
 
     getActivePromptTokenCounts() {
-        return this.hasRuntimePromptTokenCounts() ? this.promptTokenCounts : this.sourcePromptTokenCounts;
+        if (!this.hasRuntimePromptTokenCounts()) {
+            return this.sourcePromptTokenCounts;
+        }
+
+        return mergePromptTokenCounts(this.sourcePromptTokenCounts, this.promptTokenCounts);
     }
 
     getDisplayTokenUsage() {
@@ -2112,18 +2116,40 @@ class PromptManager {
     }
 
     async populateSourcePromptTokenCounts() {
-        if (this.hasRuntimePromptTokenCounts() || !this.activeCharacter || !this.tokenHandler) {
+        if (!this.activeCharacter || !this.tokenHandler) {
             this.sourcePromptTokenCounts = {};
             this.sourcePromptTokenUsage = 0;
             return;
         }
 
+        // Runtime counts miss prompts that never join the message tree under their own
+        // identifier: in-chat injections are squashed into the chat history, and prompts
+        // whose content substitutes to an empty string (e.g. variable setters) count as
+        // zero. Estimate those from their source content; for the latter, count the raw
+        // content so the entry's size is visible at all — except pure comments, which
+        // send nothing anywhere and keep showing '-'.
+        const runtimeCounts = this.hasRuntimePromptTokenCounts() ? this.promptTokenCounts : {};
+        const rawContentFallbacks = new Set();
         const prompts = this.getPromptsForCharacter(this.activeCharacter, true)
             .filter(prompt => this.shouldTrigger(prompt))
-            .map(prompt => this.preparePrompt(prompt));
+            .filter(prompt => !(Number(runtimeCounts[prompt.identifier]) > 0))
+            .map(prompt => {
+                const prepared = this.preparePrompt(prompt);
+                if (!prepared.content && typeof prompt.content === 'string' && prompt.content && !isCommentOnlyPromptContent(prompt.content)) {
+                    prepared.content = prompt.content;
+                    rawContentFallbacks.add(prompt.identifier);
+                }
+                return prepared;
+            });
 
         this.sourcePromptTokenCounts = await getPromptSourceTokenCounts(prompts, message => this.tokenHandler.countUntrackedAsync(message));
-        this.sourcePromptTokenUsage = Object.values(this.sourcePromptTokenCounts).reduce((total, tokens) => {
+        // Raw-content fallbacks are display-only: their text reaches the request through
+        // whichever prompt reads the variable, and is counted there.
+        this.sourcePromptTokenUsage = Object.entries(this.sourcePromptTokenCounts).reduce((total, [identifier, tokens]) => {
+            if (rawContentFallbacks.has(identifier)) {
+                return total;
+            }
+
             const tokenCount = Number(tokens);
             return total + (Number.isFinite(tokenCount) ? tokenCount : 0);
         }, 0);

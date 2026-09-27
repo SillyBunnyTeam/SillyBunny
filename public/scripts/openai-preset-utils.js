@@ -28,6 +28,34 @@ export function buildChatCompletionPreset(settings, settingsMap, { includeConnec
 }
 
 /**
+ * Preserve upstream NanoGPT provider settings without reviving explicitly cleared lists.
+ * @param {Record<string, any>} settings Settings or preset to migrate in place
+ * @param {object} [options] Migration options
+ * @param {boolean} [options.partial=false] Preserve omitted lists in request overrides
+ */
+export function migrateNanoGptProviderSettings(settings, { partial = false } = {}) {
+    const hasAllowed = Object.hasOwn(settings, 'nanogpt_allowed_providers');
+    const hasIgnored = Object.hasOwn(settings, 'nanogpt_ignored_providers');
+
+    if (!hasAllowed && !hasIgnored) {
+        if (!Object.hasOwn(settings, 'nanogpt_provider')) {
+            return;
+        }
+        const provider = settings.nanogpt_provider;
+        settings.nanogpt_allowed_providers = typeof provider === 'string' && !provider.trim() ? [] : [provider];
+        settings.nanogpt_ignored_providers = [];
+    } else if (!partial) {
+        if (!hasAllowed) settings.nanogpt_allowed_providers = [];
+        if (!hasIgnored) settings.nanogpt_ignored_providers = [];
+    }
+
+    const allowed = settings.nanogpt_allowed_providers;
+    const ignored = settings.nanogpt_ignored_providers;
+    settings.nanogpt_provider = Array.isArray(allowed) && allowed.length === 1 && Array.isArray(ignored) && ignored.length === 0
+        ? allowed[0] : '';
+}
+
+/**
  * Lists preset keys that represent provider/model/API connection state.
  *
  * @param {Record<string, [string, string, boolean, boolean, boolean?]>} settingsMap OpenAI preset setting map

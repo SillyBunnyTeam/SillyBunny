@@ -3,6 +3,7 @@ import { parse } from '@adobe/css-tools';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import vm from 'node:vm';
 
 import {
     MOBILE_SHELL_VIEWPORT_SYNC_STEP,
@@ -544,8 +545,9 @@ describe('mobile shell lifecycle wiring', () => {
         expect(syncMobileModalStateSource).toContain('activeRootIds: activeRoots.map(root => root.id)');
         expect(syncMobileModalStateSource).toContain('modalState.hasActiveMobileModal');
         expect(syncMobileModalStateSource).toContain('modalState.shouldInertShell');
-        expect(syncMobileModalStateSource).toContain('modalState.shouldInertTopBar');
         expect(syncMobileModalStateSource).not.toContain('activeRoots.some(root => root.id !== \'sb-mobile-nav\')');
+        // Re-tapping a top bar proxy button has to close the panel it opened, so the bar is never inerted.
+        expect(syncMobileModalStateSource).not.toContain('getElementById(\'top-bar\')');
     });
 
     test('routes mobile nav outside-click auto-close through the lifecycle seam', () => {
@@ -597,18 +599,18 @@ describe('mobile shell lifecycle wiring', () => {
     test('settles mobile viewport reset without reapplying the fixed-position workaround', () => {
         expect(browserFixesSource).toContain('import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from \'./mobile-send-button.js\';');
         expect(browserFixesSource).toContain('function addDocumentViewportAnchorPatch({ suspendWhileEditing = false } = {}) {');
-        expect(browserFixesSource).toContain('function isMobileShellPanelEditable(element) {');
+        expect(browserFixesSource).toContain('const wouldResetHideFocusedEditable = () => {');
         expect(browserFixesSource).toContain('const shouldSuspendDocumentScrollReset = () => suspendWhileEditing');
         expect(browserFixesSource).toContain('&& isEditableFocusTarget(document.activeElement)');
-        expect(browserFixesSource).toContain('&& !isMobileShellPanelEditable(document.activeElement)');
         expect(browserFixesSource).toContain('const isComposerHeldAboveKeyboard = () => isLegacyIOSWebKitPlatform()');
-        expect(browserFixesSource).toContain('&& !isComposerHeldAboveKeyboard();');
+        expect(browserFixesSource).toContain('&& !isComposerHeldAboveKeyboard()');
+        expect(browserFixesSource).toContain('&& wouldResetHideFocusedEditable();');
         expect(browserFixesSource).toContain('if (shouldSuspendDocumentScrollReset()) {');
         expect(browserFixesSource).toContain('if (resetScheduled || shouldSuspendDocumentScrollReset()) {');
         expect(browserFixesSource).toContain('document.addEventListener(\'focusout\', scheduleDocumentScrollReset, true);');
         expect(browserFixesSource).toContain('const isMobileViewport = isMobile();');
         expect(browserFixesSource).toContain('const isIOSWebKit = isIOSWebKitPlatform();');
-        expect(browserFixesSource).toContain('addDocumentViewportAnchorPatch({ suspendWhileEditing: isIOSWebKit });');
+        expect(browserFixesSource).toContain('addDocumentViewportAnchorPatch({ suspendWhileEditing: true });');
         expect(browserFixesSource).toContain('const viewportResetSettleMs = 360;');
         expect(browserFixesSource).toContain('const resetTransientViewportPosition = ({ restoreScroll = false } = {}) => {');
         expect(browserFixesSource).toContain('const scheduleViewportReset = ({ restoreScroll = false } = {}) => {');
@@ -617,6 +619,18 @@ describe('mobile shell lifecycle wiring', () => {
         expect(browserFixesSource).toContain('resetTransientViewportPosition({ restoreScroll });');
         expect(browserFixesSource).toContain('if (!force && viewportResetScheduled) {');
         expect(browserFixesSource).toContain('}, viewportResetSettleMs);');
+    });
+
+    test('keeps the document anchor from fighting the virtual keyboard', () => {
+        // Suspending by container let the anchor undo a caret reveal the focused
+        // field still depended on, so the browser revealed it again every
+        // keystroke. Visibility decides instead, and no container may reintroduce
+        // a blanket carve-out.
+        expect(browserFixesSource).not.toContain('isMobileShellPanelEditable');
+        expect(browserFixesSource).not.toContain('sb-shell-panel-scroller');
+        expect(browserFixesSource).toContain('if ((window.innerHeight || 0) - viewport.height <= 80 && viewport.offsetTop <= 2) {');
+        expect(browserFixesSource).toContain('const scrollTop = Math.max(window.scrollY || 0, document.scrollingElement?.scrollTop || 0);');
+        expect(browserFixesSource).toContain('return activeElement.getBoundingClientRect().bottom + scrollTop > viewport.height - 8;');
     });
 
     test('dedupes rail quick actions against all built-in rail actions', () => {
@@ -666,13 +680,14 @@ describe('mobile shell lifecycle wiring', () => {
         expect(getInlineDrawerStorageKeySource).not.toContain('`${SB_STORAGE_KEYS.settingsDrawerStatePrefix}:${contextSegments.join(\'/\')}:drawer:${drawerLabel}:${drawerIndex}`');
     });
 
-    test('clamps shell panels and iOS composer edits on stable viewport bounds', () => {
+    test('clamps shell panels while letting the iOS composer follow the visible viewport', () => {
         const getResolvedShellTopbarOffsetSource = getFunctionSource('getResolvedShellTopbarOffset');
         const getDesktopShellResizeBoundsSource = getFunctionSource('getDesktopShellResizeBounds');
         const setShellSizeOverrideSource = getFunctionSource('setShellSizeOverride');
         const openShellSource = getFunctionSource('openShell');
         const closeShellSource = getFunctionSource('closeShell');
         const syncMobileViewportStateSource = getFunctionSource('syncMobileViewportState');
+        const shouldUseStableIOSPanelViewportSource = getFunctionSource('shouldUseStableIOSPanelViewport');
 
         expect(tabsSource).toContain('function getShellViewportSize(');
         expect(tabsSource).toContain('function getVisualViewportSize(');
@@ -681,8 +696,9 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('function isChatComposerEditableElement(');
         expect(tabsSource).toContain('function hasOpenMobileShellDrawer(');
         expect(tabsSource).toContain('!isIOSWebKitPlatform() || !isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)');
-        expect(tabsSource).toContain('return isMobileShellPanelEditableElement(activeElement) || isChatComposerEditableElement(activeElement) || hasOpenMobileShellDrawer();');
-        expect(tabsSource).not.toContain('if (isChatComposerEditableElement(activeElement)) {');
+        expect(shouldUseStableIOSPanelViewportSource).toMatch(/if \(isChatComposerEditableElement\(activeElement\)\) \{\s*return false;\s*\}/);
+        expect(shouldUseStableIOSPanelViewportSource).toContain('return isMobileShellPanelEditableElement(activeElement) || hasOpenMobileShellDrawer();');
+        expect(shouldUseStableIOSPanelViewportSource).not.toContain('|| isChatComposerEditableElement(activeElement) ||');
         expect(tabsSource).toContain('return layoutViewport;');
         expect(tabsSource).toContain('function syncShellViewportBounds(');
         expect(tabsSource).toContain('function syncMobileShellDrawerBounds(');
@@ -906,5 +922,67 @@ describe('mobile shell lifecycle wiring', () => {
         expect(syncBoundsSource).not.toContain('style.setProperty(\'top\'');
         expect(syncBoundsSource).not.toContain('style.setProperty(\'height\'');
         expect(syncBoundsSource).not.toContain('style.removeProperty(');
+    });
+
+    test('reveals spoiler-hidden character fields when a dimmed editor sub-tab is tapped', () => {
+        class HTMLElement {}
+        class HTMLButtonElement extends HTMLElement {}
+
+        const calls = [];
+        const listeners = {};
+        const form = Object.assign(new HTMLElement(), { dataset: { sbSpoilerFreeFieldsHidden: 'true' } });
+        const tablist = Object.assign(new HTMLElement(), {
+            dataset: {},
+            addEventListener: (type, handler) => { listeners[type] = handler; },
+        });
+        const tapTab = (tabId) => {
+            const button = Object.assign(new HTMLButtonElement(), { dataset: { sbCharacterEditorTab: tabId } });
+            button.closest = () => button;
+            listeners.click({ target: button });
+        };
+        const context = {
+            HTMLElement,
+            HTMLButtonElement,
+            document: {
+                getElementById: (id) => ({ sb_character_editor_subtabs: tablist, form_create: form })[id],
+            },
+            normalizeText: (value) => String(value ?? '').trim(),
+            SB_CHARACTER_EDITOR_SUB_TABS: ['char-info', 'definitions', 'greetings', 'metadata'],
+            SB_CHARACTER_EDITOR_DEFAULT_SUB_TAB: 'char-info',
+            SB_CHARACTER_EDITOR_SPOILER_FREE_VISIBLE_TABS: ['char-info', 'metadata'],
+            setCharacterSpoilerFreeFieldsHidden: (hidden) => {
+                calls.push(['reveal', hidden]);
+                form.dataset.sbSpoilerFreeFieldsHidden = String(hidden);
+            },
+            setCharacterEditorSubTab: (tabId) => calls.push(['open', tabId]),
+            syncCharacterEditorSubTabs: () => {},
+        };
+
+        const resolveTab = vm.runInNewContext([
+            getFunctionSource('normalizeCharacterEditorSubTab'),
+            getFunctionSource('isCharacterSpoilerFreeFieldsHidden'),
+            getFunctionSource('isCharacterEditorSubTabSpoilerHidden'),
+            getFunctionSource('resolveCharacterEditorSubTab'),
+            getFunctionSource('bindCharacterEditorSubTabs'),
+            'bindCharacterEditorSubTabs();',
+            'resolveCharacterEditorSubTab;',
+        ].join('\n'), context);
+
+        // While hidden, Definitions is rerouted to Metadata; that is exactly what the reporter saw.
+        expect(resolveTab('definitions')).toBe('metadata');
+
+        // Tapping an always-visible tab must not touch the spoiler state.
+        tapTab('char-info');
+        expect(calls).toEqual([['open', 'char-info']]);
+
+        // Tapping a dimmed tab reveals the fields first, then opens that tab for real.
+        tapTab('definitions');
+        expect(calls).toEqual([['open', 'char-info'], ['reveal', false], ['open', 'definitions']]);
+        expect(resolveTab('definitions')).toBe('definitions');
+
+        // Once revealed, further taps are plain tab switches.
+        tapTab('greetings');
+        expect(calls.at(-1)).toEqual(['open', 'greetings']);
+        expect(calls.filter(([kind]) => kind === 'reveal')).toHaveLength(1);
     });
 });

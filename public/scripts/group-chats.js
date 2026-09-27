@@ -78,7 +78,10 @@ import {
     ensureMessageMediaIsArray,
     syncCharacterMenuActiveEntity,
     incrementChatGeneration,
+    getChatGeneration,
 } from '../script.js';
+import { getQueuedChatSaveAbortReason } from './chat-save-guard.js';
+import { getChatBackupSaveOptions } from './chat-backup-sequence.js';
 import { printTagList, createTagMapFromList, applyTagsOnCharacterSelect, tag_map, applyTagsOnGroupSelect, printTagFilters, tag_filter_type } from './tags.js';
 import { FILTER_TYPES, FilterHelper } from './filters.js';
 import { isExternalMediaAllowed } from './chats.js';
@@ -243,6 +246,7 @@ async function runWithGroupMemberModelOverride(group, avatarId, callback) {
     }
 }
 
+const GROUP_SPEAKER_CONTROLS_HIDDEN_KEY = 'GroupSpeakerControlsHidden';
 let selectedGroupSpeakerAvatar = '';
 let groupSpeakerControlsInitialized = false;
 let activeGroupTypingName = '';
@@ -426,10 +430,6 @@ function limitGroupSpeakersForControl(activatedMembers, forceSingleSpeaker) {
 
 function setGroupTypingIndicator(characterName = '') {
     const nextTypingName = String(characterName || '');
-    if (activeGroupTypingName === nextTypingName) {
-        return;
-    }
-
     activeGroupTypingName = nextTypingName;
     const indicator = $('#group_typing_indicator');
     if (!indicator.length) {
@@ -441,6 +441,15 @@ function setGroupTypingIndicator(characterName = '') {
     $('#group_speaker_controls').toggleClass('is-typing', Boolean(activeGroupTypingName));
 }
 
+function isGroupSpeakerControlsHidden() {
+    return accountStorage.getItem(GROUP_SPEAKER_CONTROLS_HIDDEN_KEY) === 'true';
+}
+
+function setGroupSpeakerControlsHidden(hidden) {
+    accountStorage.setItem(GROUP_SPEAKER_CONTROLS_HIDDEN_KEY, String(Boolean(hidden)));
+    updateGroupSpeakerControls();
+}
+
 function updateGroupSpeakerControls() {
     const container = $('#group_speaker_controls');
     if (!container.length) {
@@ -449,8 +458,13 @@ function updateGroupSpeakerControls() {
 
     const group = selected_group ? groups.find(x => x.id === selected_group) : null;
     const members = getGroupEnabledMembers(group);
-    container.toggleClass('displayNone', !group || members.length === 0);
-    if (!group || members.length === 0) {
+    const isAvailable = Boolean(group) && members.length > 0;
+    const isHidden = isGroupSpeakerControlsHidden();
+    container.toggleClass('displayNone', !isAvailable || isHidden);
+    // The wand entry is injected later than this runs, so gate it with a body class instead of a direct toggle.
+    // Keyed on the hidden flag alone: the way back must exist whenever the bar is hidden.
+    document.body.classList.toggle('groupSpeakerControlsHidden', isHidden);
+    if (!isAvailable) {
         clearSelectedGroupSpeaker();
         setGroupTypingIndicator('');
         groupSpeakerAvatarRenderKey = '';
@@ -524,6 +538,8 @@ function initGroupSpeakerControls() {
     });
 
     container.on('click', '#group_add_greeting', addSelectedGroupGreeting);
+    container.on('click', '#group_speaker_hide', () => setGroupSpeakerControlsHidden(true));
+    $(document).on('click', '#wand_group_speaker_controls', () => setGroupSpeakerControlsHidden(false));
 }
 
 export const group_activation_strategy = {
@@ -1107,6 +1123,8 @@ function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnError = f
     const chatSnapshot = cloneGroupChatSavePayload(chat);
     const metadataSnapshot = structuredClone(chat_metadata);
     const chatIdSnapshot = group.chat_id;
+    const currentGeneration = getChatGeneration();
+    options = getChatBackupSaveOptions(options, JSON.stringify([groupId, chatIdSnapshot, currentGeneration]), uuidv4);
     const saveTask = groupChatSaveQueue
         .catch(error => console.warn('Previous group chat save failed before queued save.', error))
         .then(() => saveGroupChatImmediately({
@@ -1118,7 +1136,9 @@ function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnError = f
             chatData: chatSnapshot,
             metadata: metadataSnapshot,
             deferBackup: Boolean(options.deferBackup),
+            deferSequenceId: options.deferSequenceId,
             allowShrink: Boolean(options.allowShrink),
+            scheduledGeneration: currentGeneration,
         }));
 
     groupChatSaveQueue = saveTask.catch(() => {});
@@ -1140,10 +1160,25 @@ export async function waitForQueuedGroupChatSaves() {
     }
 }
 
-async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = false, throwOnError = false, chatId, chatData, metadata, deferBackup = false, allowShrink = false }) {
+async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = false, throwOnError = false, chatId, chatData, metadata, deferBackup = false, deferSequenceId, allowShrink = false, scheduledGeneration }) {
     const group = groups.find(x => x.id == groupId);
     if (!group) {
         console.warn('Group not found', groupId);
+        return false;
+    }
+
+    // SillyBunny: abort saves whose identity or generation changed while queued to prevent chat cloning.
+    const abortReason = getQueuedChatSaveAbortReason({
+        scheduledGroupId: groupId,
+        currentGroupId: selected_group,
+        scheduledChatId: chatId,
+        currentChatId: group.chat_id,
+        scheduledGeneration,
+        currentGeneration: getChatGeneration(),
+    });
+
+    if (abortReason) {
+        console.warn(`saveGroupChatImmediately aborted, but ${abortReason} changed while queued.`);
         return false;
     }
 
@@ -1162,7 +1197,7 @@ async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = fals
         character_name: 'unused',
     };
     const chatMessages = Array.isArray(chatData) ? chatData : cloneGroupChatSavePayload(chat);
-    const savePayload = JSON.stringify({ id: chatId, chat: [chatHeader, ...chatMessages], force: force, deferBackup: Boolean(deferBackup), allowShrink: Boolean(allowShrink) });
+    const savePayload = JSON.stringify({ id: chatId, chat: [chatHeader, ...chatMessages], force: force, deferBackup: Boolean(deferBackup), deferSequenceId, allowShrink: Boolean(allowShrink) });
     const buildSaveGroupChatRequest = () => compressRequest({
         method: 'POST',
         headers: getRequestHeaders(),
@@ -1199,7 +1234,7 @@ async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = fals
             return false;
         }
 
-        return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata: metadataForSave, deferBackup, allowShrink });
+        return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata: metadataForSave, deferBackup, deferSequenceId, allowShrink, scheduledGeneration });
     }
 
     const responseData = await response.json().catch(() => ({}));
@@ -1209,7 +1244,11 @@ async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = fals
     }
 
     if (shouldSaveGroup) {
-        await editGroup(groupId, false, false);
+        // SillyBunny: strict saves cannot acknowledge deferred group metadata writes.
+        if (throwOnError && !groups.some(candidate => candidate.id === group.id)) {
+            throw new Error('Group not found');
+        }
+        await editGroup(throwOnError ? group.id : groupId, throwOnError, false);
     }
 
     return true;
@@ -1531,7 +1570,7 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
         setSendButtonState(true);
         setCharacterName('');
         setCharacterId(undefined);
-        const userInput = String($('#send_textarea').val());
+        const userInput = params.suppressUserMessage ? '' : String($('#send_textarea').val());
 
         // id of this specific batch for regeneration purposes
         group_generation_id = Date.now();
@@ -1650,7 +1689,7 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
             let messageChunk = textResult?.messageChunk;
 
             if (messageChunk) {
-                while (shouldAutoContinue(messageChunk, type === 'impersonate')) {
+                while (shouldAutoContinue(messageChunk, type === 'impersonate', mergedParams)) {
                     textResult = await runWithGroupMemberModelOverride(group, characters[chId]?.avatar, () => Generate('continue', { automatic_trigger: byAutoMode, ...mergedParams, companionHistoryTarget: undefined }));
                     messageChunk = textResult?.messageChunk;
                 }
@@ -2501,13 +2540,14 @@ async function uploadGroupAvatar(event) {
 
     $('#dialogue_popup').addClass('large_dialogue_popup wide_dialogue_popup');
 
-    const croppedImage = await callGenericPopup('Set the crop position of the avatar image', POPUP_TYPE.CROP, '', { cropImage: result });
+    const croppedImage = power_user.never_resize_avatars ? result :
+        await callGenericPopup('Set the crop position of the avatar image', POPUP_TYPE.CROP, '', { cropImage: result });
 
     if (!croppedImage) {
         return;
     }
 
-    let thumbnail = await createThumbnail(String(croppedImage), 200, 300);
+    let thumbnail = await createThumbnail(String(croppedImage), 300, 300);
     //remove data:image/whatever;base64
     thumbnail = thumbnail.replace(/^data:image\/[a-z]+;base64,/, '');
     let _thisGroup = groups.find((x) => x.id == openGroupId);
@@ -2699,8 +2739,10 @@ function filterGroupMembers() {
 }
 
 function filterGroupMemberList() {
-    const searchValue = String($(this).val()).toLowerCase();
-    groupMembersFilter.setFilterData(FILTER_TYPES.SEARCH, searchValue);
+    const searchValue = String($(this).val());
+    // SillyBunny: the editor and its popout share one filter, including the search-order input.
+    $('[id="rm_group_members_filter"]').not(this).val(searchValue);
+    groupMembersFilter.setFilterData(FILTER_TYPES.SEARCH, searchValue.toLowerCase());
 }
 
 
@@ -3139,6 +3181,9 @@ function doCurMemberListPopout() {
             .append(controlBarHtml)
             .append(memberListClone);
 
+        // SillyBunny: HTML copies do not retain the search input's current value.
+        newElement.find('#rm_group_members_filter').val($('#rm_group_members_filter').val());
+
         // Remove pagination from popout
         newElement.find('.group_pagination').empty();
 
@@ -3181,7 +3226,8 @@ jQuery(() => {
         }
     });
     $('#rm_group_filter').on('input', filterGroupMembers);
-    $('#rm_group_members_filter').on('input', filterGroupMemberList);
+    // SillyBunny: include the search field created later by the native popout.
+    $(document).on('input', '#rm_group_members_filter', filterGroupMemberList);
     $('#rm_group_submit').on('click', createGroup);
     $('#rm_group_quick_create').on('click', createQuickGroupFromSelectedMembers);
     $('#rm_group_scenario').on('click', setCharacterSettingsOverrides);

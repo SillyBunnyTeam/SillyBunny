@@ -5,6 +5,7 @@ import path from 'node:path';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const scriptSource = readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
+const styleSource = readFileSync(path.join(repoRoot, 'public', 'style.css'), 'utf8');
 
 function getFunctionSource(name) {
     const markers = [`function ${name}(`, `async function ${name}(`];
@@ -84,6 +85,85 @@ describe('tooling UI hydration wiring', () => {
         expect(source).toContain('hydrationState.shouldLoad');
         expect(source).toContain('return await messageScreenshotLibraryPromise;');
         expect(source).not.toContain('if (!messageScreenshotLibraryPromise)');
+    });
+
+    test('renders native CSS from only the screenshot subtree', () => {
+        const source = getFunctionSource('renderMessageScreenshotCanvas');
+
+        expect(source).toContain('foreignObjectRendering: true');
+        expect(source).toContain('await Promise.race([document.fonts.ready, delay(2000)])');
+        expect(source).toContain('!element.contains(surface) && !surface.contains(element)');
+        expect(source).toContain('clonedDocument.documentElement.style.backgroundColor = \'transparent\'');
+        expect(source).toContain('clonedSurface.style.height = \'auto\'');
+        expect(source).toContain(':is(.mes_text, .mes_reasoning) :is(p, blockquote, li, ul, ol, .dc-gradient-text)');
+        expect(source).toContain('element.style.gridTemplateRows = \'auto\'');
+        expect(source).toContain('.mes_reasoning_header_title, .ica--companion-title, .ica--companion-title > span, .ica--companion-meta, .ica--companion-summary-spacer');
+        expect(source).toContain('element.style.width = \'auto\'');
+        expect(source).toContain('style.textContent = iconFontStyle');
+        expect(source).toContain('const maxCanvasSide = mobileCapture ? 16_384 : 32_767');
+        expect(source).toContain('maxCanvasSide / Math.max(1, clonedSurface.scrollWidth)');
+        expect(source).toContain('maxCanvasSide / Math.max(1, clonedSurface.scrollHeight)');
+        expect(source).toContain('clonedSurface.prepend(...clonedDocument.body.querySelectorAll(\':scope > style\'))');
+        expect(source).toContain('clonedDocument.body.replaceChildren(clonedSurface)');
+        expect(source).not.toContain('getBoundingClientRect()');
+        expect(source).not.toContain('x:');
+        expect(source).not.toContain('y:');
+        expect(source).not.toContain('normalizeMessageScreenshotStyles');
+        expect(scriptSource).not.toContain('normalizeColorFunctionString');
+    });
+
+    test('loads foreign-object screenshots through a bounded SVG data URI', () => {
+        const source = getFunctionSource('renderMessageScreenshotWithBoundedSvg');
+        const renderSource = getFunctionSource('renderMessageScreenshotCanvas');
+
+        expect(source).toContain('value.startsWith(\'<svg\') && value.includes(\'<foreignObject\')');
+        expect(source).toContain('new Blob([serializedSvg], { type: \'image/svg+xml;charset=utf-8\' })');
+        expect(source).toContain('reader.readAsDataURL(svg)');
+        expect(source).toContain('nativeImageSource.set.call(image, reader.result)');
+        expect(source).toContain('setTimeout(() => fail(new Error(\'Timed out rendering screenshot SVG\')), 15000)');
+        expect(source).toContain('reader.abort()');
+        expect(source).toContain('document.querySelectorAll(\'.html2canvas-container\')');
+        expect(source).toContain('window.Image = NativeImage');
+        expect(source).toContain('window.encodeURIComponent = nativeEncodeURIComponent');
+        expect(renderSource).toContain('renderMessageScreenshotWithBoundedSvg(html2canvas, surface, captureOptions)');
+    });
+
+    test('neutralizes unbounded clone-document waits during capture', () => {
+        const source = getFunctionSource('renderMessageScreenshotWithBoundedSvg');
+
+        expect(source).toContain('Object.defineProperty(cloneDocument, \'fonts\', { configurable: true, value: { ready: Promise.resolve() } })');
+        expect(source).toContain('Object.defineProperty(cloneDocument, \'images\', { configurable: true, value: [] })');
+        expect(source).toContain('cloneObserver.observe(document.body, { childList: true })');
+        expect(source).toContain('setTimeout(() => reject(new Error(\'Timed out capturing the screenshot\')), 30000)');
+        expect(source).toContain('clearTimeout(watchdog)');
+        expect(source).toContain('cloneObserver.disconnect()');
+    });
+
+    test('stretches reasoning headers only inside screenshot surfaces', () => {
+        expect(styleSource).toContain('.sb-message-screenshot-surface .mes_reasoning_header {\n    flex: 1;\n}');
+    });
+
+    test('inlines screenshot images for foreign-object rendering', () => {
+        const source = getFunctionSource('inlineMessageScreenshotImages');
+
+        expect(source).toContain('container.querySelectorAll(\'img\')');
+        expect(source).toContain('setTimeout(() => abortController.abort(), 2000)');
+        expect(source).toContain('await fetch(source, { signal: abortController.signal })');
+        expect(source).toContain('await getBase64Async(await response.blob())');
+        expect(source).toContain('image.srcset = \'\'');
+        expect(source).toContain('image.removeAttribute(\'src\')');
+        expect(source).toContain('pseudoImages.push({ content, element, pseudoElement, sources })');
+        expect(source).toContain('inlineContent = \'none\'');
+        expect(source).toContain('data-sb-screenshot-pseudo-${pseudoName}');
+        expect(source).toContain('clearTimeout(abortTimer)');
+    });
+
+    test('embeds the local icon font for foreign-object rendering', () => {
+        const source = getFunctionSource('getMessageScreenshotIconFontStyle');
+
+        expect(source).toContain('fetch(\'/webfonts/fa-solid-900.woff2\', { signal: abortController.signal })');
+        expect(source).toContain('font-family: \'Font Awesome 6 Free\'');
+        expect(source).toContain('getBase64Async');
     });
 
     test('renders message screenshots inside the chat layout context', () => {

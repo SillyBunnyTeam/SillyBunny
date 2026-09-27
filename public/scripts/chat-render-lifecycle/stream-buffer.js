@@ -40,7 +40,15 @@ export function createStreamWriteBuffer({
         pendingWrites.clear();
 
         for (const [messageId, { write, options }] of writes) {
-            applyWrite(messageId, write, options);
+            try {
+                applyWrite(messageId, write, options);
+            } catch (error) {
+                // Scheduled formatting failures must still abort their owning generation.
+                if (options.isFinal || typeof options.onError !== 'function') {
+                    throw error;
+                }
+                options.onError(error);
+            }
         }
 
         return writes.length;

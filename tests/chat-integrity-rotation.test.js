@@ -302,6 +302,98 @@ describe('chat integrity rotation', () => {
         await expect(fs.readFile(path.join(backupDir, postSaveBackups[0]), 'utf8')).resolves.toContain('final post-processed chat');
     });
 
+    test('preserves pre-turn baseline and avoids ring eviction across multi-pass agent sequences (#373)', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-integrity-agent-ring-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+        jest.setSystemTime(new Date('2026-06-06T12:34:56.000Z'));
+
+        await fs.writeFile(chatFile, chatWithIntegrity('initial-integrity', 'pristine pre-turn baseline').map(JSON.stringify).join('\n'));
+
+        // Simulate 4 intermediate agent passes (e.g. tracker 1, tracker 2, prose polisher, companion)
+        let previousIntegrity = 'initial-integrity';
+        for (let pass = 1; pass <= 4; pass++) {
+            const passResult = await trySaveChat(
+                chatWithIntegrity(previousIntegrity, `agent pass ${pass} intermediate`),
+                chatFile,
+                false,
+                'agent-ring-user',
+                'Test Card',
+                backupDir,
+                { deferBackup: true, deferSequenceId: 'agent-run-seq-1' },
+            );
+            previousIntegrity = passResult.integrity;
+        }
+
+        // Final closing save
+        const finalResult = await trySaveChat(
+            chatWithIntegrity(previousIntegrity, 'final generated reply'),
+            chatFile,
+            false,
+            'agent-ring-user',
+            'Test Card',
+            backupDir,
+            { deferBackup: false, deferSequenceId: 'agent-run-seq-1' },
+        );
+        expect(finalResult?.integrity).toEqual(expect.any(String));
+        jest.runOnlyPendingTimers();
+
+        const backupFiles = await fs.readdir(backupDir);
+        const postSaveBackups = backupFiles.filter(fileName => fileName.startsWith('chat_test_card_'));
+        const preWriteBackups = backupFiles.filter(fileName => fileName.startsWith('chat_pre_write_test_card_'));
+
+        // Exactly 1 post-save backup (final reply) and 1 pre-write backup (pristine pre-turn baseline)
+        expect(postSaveBackups).toHaveLength(1);
+        expect(preWriteBackups).toHaveLength(1);
+        await expect(fs.readFile(path.join(backupDir, postSaveBackups[0]), 'utf8')).resolves.toContain('final generated reply');
+        await expect(fs.readFile(path.join(backupDir, preWriteBackups[0]), 'utf8')).resolves.toContain('pristine pre-turn baseline');
+    });
+
+    test('abandoned deferred sequence does not suppress pre-write backup for subsequent user edits (#373)', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-abandoned-seq-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+        jest.setSystemTime(new Date('2026-06-06T12:34:56.000Z'));
+
+        await fs.writeFile(chatFile, chatWithIntegrity('initial-integrity', 'baseline before agent').map(JSON.stringify).join('\n'));
+
+        // Agent starts deferred sequence and crashes/abandons after step 1
+        const pass1 = await trySaveChat(
+            chatWithIntegrity('initial-integrity', 'agent crashed intermediate'),
+            chatFile,
+            false,
+            'abandon-user',
+            'Test Card',
+            backupDir,
+            { deferBackup: true, deferSequenceId: 'crashed-sequence' },
+        );
+
+        // User makes an independent manual edit 10s later (no deferSequenceId)
+        jest.advanceTimersByTime(10_000);
+        await trySaveChat(
+            chatWithIntegrity(pass1.integrity, 'user manual edit after crash'),
+            chatFile,
+            false,
+            'abandon-user',
+            'Test Card',
+            backupDir,
+        );
+        jest.runOnlyPendingTimers();
+
+        const backupFiles = await fs.readdir(backupDir);
+        const preWriteBackups = backupFiles.filter(fileName => fileName.startsWith('chat_pre_write_test_card_'));
+
+        // Must have TWO pre-write backups: 1 for baseline before agent, and 1 for intermediate state before user edit!
+        expect(preWriteBackups).toHaveLength(2);
+        const backupContents = await Promise.all(preWriteBackups.map(f => fs.readFile(path.join(backupDir, f), 'utf8')));
+        expect(backupContents.some(c => c.includes('baseline before agent'))).toBe(true);
+        expect(backupContents.some(c => c.includes('agent crashed intermediate'))).toBe(true);
+    });
+
     test('leaves a semantically unchanged noncanonical chat untouched and returns its disk integrity', async () => {
         const { trySaveChat } = await import('../src/endpoints/chats.js');
         const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-unchanged-save-'));
@@ -656,7 +748,7 @@ describe('chat integrity rotation', () => {
         )).rejects.toThrow(/integrity/i);
     });
 
-    test('still rejects a stale writer whose payload matches the file', async () => {
+    test('resyncs a stale writer whose payload matches the file without writing', async () => {
         const { trySaveChat } = await import('../src/endpoints/chats.js');
         const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-unchanged-stale-'));
         const chatFile = path.join(tempDir, 'chat.jsonl');
@@ -666,16 +758,130 @@ describe('chat integrity rotation', () => {
         const { payload, serialized } = noncanonicalChat('current-integrity');
         payload[0].chat_metadata.integrity = 'stale-integrity';
         await fs.writeFile(chatFile, serialized);
+        const before = await fs.stat(chatFile);
 
-        // The integrity check runs before the content comparison, so identical content cannot bypass it.
-        await expect(trySaveChat(
+        // A client that lost the response to its own save holds the previous slug while its history
+        // already matches the file, so it is handed the real slug rather than a forced page reload.
+        const result = await trySaveChat(
             payload,
             chatFile,
             false,
             'stale-writer-user',
             'Test Card',
             backupDir,
+        );
+        jest.runOnlyPendingTimers();
+        const after = await fs.stat(chatFile);
+
+        expect(result).toEqual({ integrity: 'current-integrity' });
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(serialized);
+        expect(after.ino).toBe(before.ino);
+        expect(after.mtimeMs).toBe(before.mtimeMs);
+    });
+
+    test('accepts a stale writer that only appends to the chat on disk', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-stale-append-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        const onDisk = chatWithMessages('current-integrity', ['one', 'two', 'three']);
+        await fs.writeFile(chatFile, onDisk.map(JSON.stringify).join('\n'));
+
+        const result = await trySaveChat(
+            chatWithMessages('stale-integrity', ['one', 'two', 'three', 'four']),
+            chatFile,
+            false,
+            'stale-append-user',
+            'Test Card',
+            backupDir,
+        );
+
+        expect(result.integrity).toEqual(expect.any(String));
+        expect(result.integrity).not.toBe('current-integrity');
+        expect(result.integrity).not.toBe('stale-integrity');
+        const saved = await fs.readFile(chatFile, 'utf8');
+        expect(saved).toContain('"mes":"four"');
+        expect(saved).toContain('"mes":"one"');
+        expect((await readHeader(chatFile)).chat_metadata.integrity).toBe(result.integrity);
+    });
+
+    test('rejects a stale append that would overwrite newer chat metadata', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-stale-metadata-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        const onDisk = chatWithMessages('current-integrity', ['one', 'two', 'three']);
+        onDisk[0].chat_metadata.variables = { owner: 'newer-client' };
+        const originalContent = onDisk.map(JSON.stringify).join('\n');
+        await fs.writeFile(chatFile, originalContent);
+
+        const staleAppend = chatWithMessages('stale-integrity', ['one', 'two', 'three', 'four']);
+        staleAppend[0].chat_metadata.variables = { owner: 'stale-client' };
+        await expect(trySaveChat(
+            staleAppend,
+            chatFile,
+            false,
+            'stale-metadata-user',
+            'Test Card',
+            backupDir,
         )).rejects.toThrow(/integrity/i);
+
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(originalContent);
+        await expect(fs.readdir(backupDir)).resolves.toHaveLength(0);
+    });
+
+    test('reports an unloaded chat save as destructive rather than as an integrity mismatch', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-unloaded-save-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        const originalContent = chatWithMessages('current-integrity', ['one', 'two', 'three']).map(JSON.stringify).join('\n');
+        await fs.writeFile(chatFile, originalContent);
+
+        // A client that has cleared the old chat and not yet loaded the new one sends a bare header
+        // with no slug. That fails the slug comparison too, but calling it an integrity mismatch makes
+        // the client reload, which cannot repopulate the chat it failed to send, so it loops forever.
+        await expect(trySaveChat(
+            [{ chat_metadata: {}, user_name: 'unused', character_name: 'unused' }],
+            chatFile,
+            false,
+            'unloaded-save-user',
+            'Test Card',
+            backupDir,
+        )).rejects.toMatchObject({ reason: 'emptied' });
+
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(originalContent);
+        await expect(fs.readdir(backupDir)).resolves.toHaveLength(0);
+    });
+
+    test('still rejects a stale writer that rewrites an existing message', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-stale-divergent-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        const originalContent = chatWithMessages('current-integrity', ['one', 'two', 'three']).map(JSON.stringify).join('\n');
+        await fs.writeFile(chatFile, originalContent);
+
+        // Appending is safe because it cannot drop history; editing an existing message can.
+        await expect(trySaveChat(
+            chatWithMessages('stale-integrity', ['one', 'rewritten by another device', 'three', 'four']),
+            chatFile,
+            false,
+            'stale-divergent-user',
+            'Test Card',
+            backupDir,
+        )).rejects.toThrow(/integrity/i);
+
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(originalContent);
+        await expect(fs.readdir(backupDir)).resolves.toHaveLength(0);
     });
 
     test('still rejects a stale writer when the existing chat body is corrupt', async () => {
@@ -958,6 +1164,125 @@ describe('chat integrity rotation', () => {
         expect(after.mtimeMs).toBe(before.mtimeMs);
     });
 
+    test('treats client hydration empty media and swipe extras as unchanged on plain legacy chats (#706)', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-empty-media-706-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        // Chat on disk without media or files keys
+        const header = {
+            chat_metadata: { integrity: 'disk-slug-706' },
+            user_name: 'User',
+            character_name: 'Bot',
+        };
+        const userMsg = {
+            name: 'User',
+            is_user: true,
+            send_date: '2026-08-01T12:00:00.000Z',
+            mes: 'Hello there',
+            extra: {},
+        };
+        const botMsg = {
+            name: 'Bot',
+            is_user: false,
+            send_date: '2026-08-01T12:01:00.000Z',
+            mes: 'Greetings!',
+            extra: { dialogue_colors: { 0: '#3498db' } },
+            swipes: ['Greetings!', 'Alt greeting'],
+            swipe_id: 0,
+            swipe_info: [
+                { send_date: '2026-08-01T12:01:00.000Z', extra: { dialogue_colors: { 0: '#3498db' } } },
+                { send_date: '2026-08-01T12:01:05.000Z', extra: {} },
+            ],
+        };
+        const diskContent = [header, userMsg, botMsg].map(JSON.stringify).join('\n');
+        await fs.writeFile(chatFile, diskContent);
+        const beforeStat = await fs.stat(chatFile);
+
+        // Client hydration runs ensureMessageMediaIsArray, injecting media: [] and files: []
+        const clientPayload = [
+            header,
+            {
+                ...userMsg,
+                extra: { media: [], files: [] },
+            },
+            {
+                ...botMsg,
+                extra: { dialogue_colors: { 0: '#3498db' }, media: [], files: [] },
+                swipe_info: [
+                    { send_date: '2026-08-01T12:01:00.000Z', extra: { dialogue_colors: { 0: '#3498db' }, media: [], files: [] } },
+                    { send_date: '2026-08-01T12:01:05.000Z', extra: { media: [], files: [] } },
+                ],
+            },
+        ];
+
+        // Save must recognize semantic identity, skip write, skip pre-write backup, and preserve disk mtime
+        const result = await trySaveChat(clientPayload, chatFile, false, 'open-user', 'Test Bot', backupDir, { deferBackup: true });
+        expect(result.integrity).toBe('disk-slug-706');
+
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(diskContent);
+        const afterStat = await fs.stat(chatFile);
+        expect(afterStat.ino).toBe(beforeStat.ino);
+        expect(afterStat.mtimeMs).toBe(beforeStat.mtimeMs);
+
+        // Verify zero pre-write backups created in backupDir
+        const backups = await fs.readdir(backupDir);
+        expect(backups.length).toBe(0);
+    });
+
+    test.each(['list', 'gallery'])('preserves saves with malformed inactive swipe media in %s mode', async (mediaDisplay) => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-inactive-media-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        try {
+            const onDisk = chatWithMessages('disk-integrity', ['Hello', 'Active reply']);
+            onDisk[2].extra = {};
+            onDisk[2].swipe_id = 0;
+            onDisk[2].swipes = ['Active reply', 'Inactive reply'];
+            const inactiveExtra = {
+                image: 'legacy.png',
+                media_display: mediaDisplay,
+                media: [null, null, {}, { unknown: true }, 'invalid', { type: 'image', url: 'legacy.png' }],
+            };
+            onDisk[2].swipe_info = [
+                { send_date: onDisk[2].send_date, extra: {} },
+                { send_date: onDisk[2].send_date, extra: inactiveExtra },
+            ];
+            const serialized = onDisk.map(JSON.stringify).join('\n');
+            await fs.writeFile(chatFile, serialized);
+            await fs.utimes(chatFile, new Date('2020-01-01T00:00:00Z'), new Date('2020-01-01T00:00:00Z'));
+            const before = await fs.stat(chatFile);
+            const save = payload => trySaveChat(payload, chatFile, false, `inactive-${mediaDisplay}`, 'Test Card', backupDir, { deferBackup: true });
+
+            await expect(save(structuredClone(onDisk))).resolves.toEqual({ integrity: 'disk-integrity' });
+            await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(serialized);
+            expect((await fs.stat(chatFile)).mtimeMs).toBe(before.mtimeMs);
+            expect(await fs.readdir(backupDir)).toEqual([]);
+
+            const edited = structuredClone(onDisk);
+            edited[1].mes = 'Edited user message';
+            const editResult = await save(edited);
+            const saved = (await fs.readFile(chatFile, 'utf8')).split('\n').map(JSON.parse);
+            expect(saved[1].mes).toBe('Edited user message');
+            expect(saved[2].swipe_info[1].extra).toEqual(inactiveExtra);
+            expect(editResult.integrity).not.toBe('disk-integrity');
+
+            // Unknown entries must remain significant, not collapse into one missing-URL entry.
+            saved[2].swipe_info[1].extra.media.shift();
+            const removalResult = await save(saved);
+            const afterRemoval = (await fs.readFile(chatFile, 'utf8')).split('\n').map(JSON.parse);
+            expect(afterRemoval[2].swipe_info[1].extra.media).toEqual(inactiveExtra.media.slice(1));
+            expect(removalResult.integrity).not.toBe(editResult.integrity);
+        } finally {
+            await fs.rm(tempDir, { recursive: true, force: true });
+        }
+    });
+
     test('persists derived metadata when an explicit rename flush requests it', async () => {
         const { trySaveChat } = await import('../src/endpoints/chats.js');
         const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-derived-metadata-'));
@@ -1158,7 +1483,28 @@ describe('chat integrity rotation', () => {
         expect(scriptSource).toContain('applyQueuedChatIntegrity(metadata, integrityKey, isActiveChatSave);');
         expect(scriptSource).toContain('rememberQueuedChatIntegrity(integrityKey, responseData?.integrity);');
         expect(scriptSource).toContain('deferBackup: Boolean(deferBackup)');
-        expect(scriptSource).toContain('return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, deferBackup, allowShrink, activeChatName, characterName, avatarUrl, wasGroupChat });');
+        expect(scriptSource).toContain('return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, deferBackup, deferSequenceId, allowShrink, activeChatName, characterName, avatarUrl, wasGroupChat, scheduledGeneration, scheduledCharacterId, scheduledGroupId, scheduledChatId });');
+    });
+
+    test('queued chat saves abort when generation or character changes while queued', async () => {
+        const guardSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/chat-save-guard.js', import.meta.url)), 'utf8');
+        const scriptSource = await fs.readFile(fileURLToPath(new URL('../public/script.js', import.meta.url)), 'utf8');
+
+        expect(guardSource).toContain('export function getQueuedChatSaveAbortReason');
+        expect(scriptSource).toContain('scheduledGeneration: currentGeneration');
+        expect(scriptSource).toContain('const abortReason = getQueuedChatSaveAbortReason');
+        expect(scriptSource).toContain('saveChatImmediately aborted, but ${abortReason} changed while queued.');
+    });
+
+    test('swipes invalidate pending debounced saves and queued saves by incrementing chat generation', async () => {
+        const scriptSource = await fs.readFile(fileURLToPath(new URL('../public/script.js', import.meta.url)), 'utf8');
+        const standardSwipeBody = scriptSource.slice(
+            scriptSource.indexOf('async function standardSwipe(newSwipeId)'),
+            scriptSource.indexOf('function clearMessageData(message)', scriptSource.indexOf('async function standardSwipe(newSwipeId)')),
+        );
+
+        expect(standardSwipeBody).toContain('incrementChatGeneration();');
+        expect(standardSwipeBody).toContain('await loadFromSwipeId(mesId, newSwipeId);');
     });
 
     test('debounced chat saves abort after the active chat generation changes', async () => {
@@ -1182,7 +1528,7 @@ describe('chat integrity rotation', () => {
 
         expect(saveConditionalBody).not.toContain('waitUntilCondition(() => !isChatSaving');
         expect(saveConditionalBody).toContain('await saveChat(options);');
-        expect(saveConditionalBody).toContain('await saveGroupChat(selected_group, true, false, false, options);');
+        expect(saveConditionalBody).toContain('await saveGroupChat(selected_group, true, false, options.throwOnError ?? false, options)');
         expect(scriptSource).toContain('let chatSaveActivityCount = 0;');
         expect(scriptSource).toContain('function setChatSaveActive(isActive)');
         expect(scriptSource).toContain('isChatSaving = chatSaveActivityCount > 0;');
@@ -1199,7 +1545,7 @@ describe('chat integrity rotation', () => {
         expect(groupChatSource).toContain('applyQueuedGroupChatIntegrity(metadataForSave, chatId, isActiveGroupChatSave);');
         expect(groupChatSource).toContain('rememberQueuedGroupChatIntegrity(chatId, responseData?.integrity);');
         expect(groupChatSource).toContain('deferBackup: Boolean(options.deferBackup)');
-        expect(groupChatSource).toContain('return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata: metadataForSave, deferBackup, allowShrink });');
+        expect(groupChatSource).toContain('return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata: metadataForSave, deferBackup, deferSequenceId, allowShrink, scheduledGeneration });');
         expect(groupChatSource).toContain('const isActiveGroupChatSave = selected_group === groupId && group.chat_id === chatId;');
         expect(groupChatSource).toContain('if (isActiveGroupChatSave && typeof responseData?.integrity === \'string\' && responseData.integrity)');
     });

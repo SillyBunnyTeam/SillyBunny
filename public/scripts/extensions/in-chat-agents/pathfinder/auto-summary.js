@@ -1,5 +1,5 @@
 import { getSettings, normalizeAutoSummaryInterval } from './tree-store.js';
-import { getActiveTunnelVisionBooks } from './pathfinder-tool-bridge.js';
+import { getWritableBooks } from './pathfinder-tool-bridge.js';
 
 let autoSummaryCount = 0;
 let autoSummaryEventSource = null;
@@ -61,7 +61,9 @@ export function resetAutoSummaryCount() {
 export function shouldAutoSummarize() {
     const s = getSettings();
     if (!s.autoSummary) return false;
-    if (getActiveTunnelVisionBooks().length === 0) return false;
+    // The Summarize tool writes an entry, so a writable book is required;
+    // read-only books would nudge the model into a tool call that always fails.
+    if (getWritableBooks().length === 0) return false;
     const interval = normalizeAutoSummaryInterval(s.autoSummaryInterval);
     return autoSummaryCount >= interval;
 }

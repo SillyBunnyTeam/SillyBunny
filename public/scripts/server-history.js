@@ -38,6 +38,7 @@ function selectServer(event, ui, serverLabel) {
 
 function createServerAutocomplete() {
     const inputElement = $(this);
+    if (inputElement.autocomplete('instance')) return;
     const serverLabel = inputElement.data('server-history');
 
     inputElement
@@ -81,6 +82,11 @@ function onServerConnectClick() {
 }
 
 export function initServerHistory() {
-    $('[data-server-history]').each(createServerAutocomplete);
+    // SillyBunny: inactive provider inputs do not need autocomplete menus at startup.
+    $(document).on('focusin', '[data-server-history]', function () {
+        if ($(this).autocomplete('instance')) return;
+        createServerAutocomplete.call(this);
+        onInputFocus.call(this);
+    });
     $(document).on('click', '[data-server-connect]', onServerConnectClick);
 }

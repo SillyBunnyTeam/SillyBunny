@@ -69,6 +69,62 @@ describe('addAssistantPrefix', () => {
 });
 
 
+describe('seedKimiK3PartialReasoning', () => {
+    test('seeds stock reasoning on a plain partial prefill', () => {
+        const prompt = [
+            { role: 'user', content: 'hi' },
+            { role: 'assistant', content: 'The door creaked open.', partial: true },
+        ];
+        mod.seedKimiK3PartialReasoning(prompt);
+        expect(prompt[1].reasoning_content).toBe(mod.KIMI_K3_STOCK_REASONING);
+        expect(prompt[1].content).toBe('The door creaked open.');
+    });
+
+    test('moves a leading think block into reasoning_content', () => {
+        const prompt = [
+            { role: 'assistant', content: '<think>plan the reply</think>The door creaked open.', partial: true },
+        ];
+        mod.seedKimiK3PartialReasoning(prompt);
+        expect(prompt[0].reasoning_content).toBe('plan the reply');
+        expect(prompt[0].content).toBe('The door creaked open.');
+    });
+
+    test('extracts an unclosed think block and leaves content empty', () => {
+        const prompt = [
+            { role: 'assistant', content: '<think>plan the reply', partial: true },
+        ];
+        mod.seedKimiK3PartialReasoning(prompt);
+        expect(prompt[0].reasoning_content).toBe('plan the reply');
+        expect(prompt[0].content).toBe('');
+    });
+
+    test('keeps authored reasoning_content instead of the stock line', () => {
+        const prompt = [
+            { role: 'assistant', content: 'reply start', reasoning_content: 'authored', partial: true },
+        ];
+        mod.seedKimiK3PartialReasoning(prompt);
+        expect(prompt[0].reasoning_content).toBe('authored');
+    });
+
+    test('does not touch a message that is not flagged partial', () => {
+        const prompt = [
+            { role: 'assistant', content: '<think>plan</think>hello' },
+        ];
+        mod.seedKimiK3PartialReasoning(prompt);
+        expect(prompt[0].reasoning_content).toBeUndefined();
+        expect(prompt[0].content).toBe('<think>plan</think>hello');
+    });
+
+    test('does not touch a trailing non-assistant message', () => {
+        const prompt = [
+            { role: 'user', content: 'hi', partial: true },
+        ];
+        mod.seedKimiK3PartialReasoning(prompt);
+        expect(prompt[0].reasoning_content).toBeUndefined();
+    });
+});
+
+
 describe('convertTextCompletionPrompt', () => {
     test('passes through string input unchanged', () => {
         expect(mod.convertTextCompletionPrompt('raw prompt')).toBe('raw prompt');
@@ -110,7 +166,7 @@ describe('calculateClaudeBudgetTokens', () => {
             expect(mod.calculateClaudeBudgetTokens(8192, 'none', true, true)).toBeNull();
         });
 
-        test('min returns "low"', () => expect(mod.calculateClaudeBudgetTokens(8192, 'min', true, true)).toBe('low'));
+        test('min returns "minimal"', () => expect(mod.calculateClaudeBudgetTokens(8192, 'min', true, true)).toBe('minimal'));
 
         test('low returns "low"', () => expect(mod.calculateClaudeBudgetTokens(8192, 'low', true, true)).toBe('low'));
 
@@ -120,10 +176,11 @@ describe('calculateClaudeBudgetTokens', () => {
 
         test('max returns "max"', () => expect(mod.calculateClaudeBudgetTokens(8192, 'max', true, true)).toBe('max'));
 
-        // SillyBunny: Sonnet 5 accepts xhigh; older adaptive Claude models require max.
-        test('xhigh falls back to "max" when unsupported', () => expect(mod.calculateClaudeBudgetTokens(8192, 'xhigh', true, true)).toBe('max'));
+        // SillyBunny: every adaptive model gets the picked rung, so one that rejects it errors
+        // instead of quietly dropping to a shallower one.
+        test('xhigh returns "xhigh"', () => expect(mod.calculateClaudeBudgetTokens(8192, 'xhigh', true, true)).toBe('xhigh'));
 
-        test('xhigh remains "xhigh" when supported', () => expect(mod.calculateClaudeBudgetTokens(8192, 'xhigh', true, true, true)).toBe('xhigh'));
+        test('an unrecognized value is forwarded', () => expect(mod.calculateClaudeBudgetTokens(8192, 'banana', true, true)).toBe('banana'));
     });
 
     describe('traditional model', () => {
@@ -184,8 +241,15 @@ describe('calculateGoogleBudgetTokens', () => {
                 expect(mod.calculateGoogleBudgetTokens(8192, 'auto', model)).toBeNull();
                 expect(mod.calculateGoogleBudgetTokens(8192, 'min', model)).toBe('minimal');
                 expect(mod.calculateGoogleBudgetTokens(8192, 'medium', model)).toBe('medium');
-                expect(mod.calculateGoogleBudgetTokens(8192, 'max', model)).toBe('high');
+                expect(mod.calculateGoogleBudgetTokens(8192, 'max', model)).toBe('max');
             }
+        });
+
+        test('Gemini 3.7 Flash maps min to its lowest supported level', () => {
+            expect(mod.calculateGoogleBudgetTokens(8192, 'auto', 'gemini-3.7-flash')).toBeNull();
+            expect(mod.calculateGoogleBudgetTokens(8192, 'min', 'gemini-3.7-flash')).toBe('low');
+            expect(mod.calculateGoogleBudgetTokens(8192, 'medium', 'gemini-3.7-flash')).toBe('medium');
+            expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3.7-flash')).toBe('max');
         });
 
         test('auto returns null', () => expect(mod.calculateGoogleBudgetTokens(8192, 'auto', 'gemini-3.5-flash')).toBeNull());
@@ -200,9 +264,43 @@ describe('calculateGoogleBudgetTokens', () => {
 
         test('high returns high', () => expect(mod.calculateGoogleBudgetTokens(8192, 'high', 'gemini-3.5-flash')).toBe('high'));
 
-        test('max returns high', () => expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3.5-flash')).toBe('high'));
+        test('max returns max', () => expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3.5-flash')).toBe('max'));
 
-        test('xhigh returns high', () => expect(mod.calculateGoogleBudgetTokens(8192, 'xhigh', 'gemini-3.5-flash')).toBe('high'));
+        test('xhigh returns xhigh', () => expect(mod.calculateGoogleBudgetTokens(8192, 'xhigh', 'gemini-3.5-flash')).toBe('xhigh'));
+    });
+
+    test('Gemini 3.7 Flash uses Gemini 3 thinking levels without minimal', () => {
+        expect(mod.calculateGoogleBudgetTokens(8192, 'auto', 'gemini-3.7-flash')).toBeNull();
+        expect(mod.calculateGoogleBudgetTokens(8192, 'min', 'gemini-3.7-flash')).toBe('low');
+        expect(mod.calculateGoogleBudgetTokens(8192, 'medium', 'gemini-3.7-flash')).toBe('medium');
+        expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3.7-flash')).toBe('max');
+    });
+
+    test('Gemini 3.6 Flash uses Gemini 3 thinking levels', () => {
+        expect(mod.calculateGoogleBudgetTokens(8192, 'auto', 'gemini-3.6-flash')).toBeNull();
+        expect(mod.calculateGoogleBudgetTokens(8192, 'min', 'gemini-3.6-flash')).toBe('minimal');
+        expect(mod.calculateGoogleBudgetTokens(8192, 'medium', 'gemini-3.6-flash')).toBe('medium');
+        expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3.6-flash')).toBe('max');
+    });
+
+    test('Gemini 3.5 Flash-Lite uses Gemini 3 thinking levels', () => {
+        expect(mod.calculateGoogleBudgetTokens(8192, 'auto', 'gemini-3.5-flash-lite')).toBeNull();
+        expect(mod.calculateGoogleBudgetTokens(8192, 'min', 'gemini-3.5-flash-lite')).toBe('minimal');
+        expect(mod.calculateGoogleBudgetTokens(8192, 'medium', 'gemini-3.5-flash-lite')).toBe('medium');
+        expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3.5-flash-lite')).toBe('max');
+    });
+
+    test('stable Gemini 3.1 Flash-Lite uses Gemini 3 thinking levels', () => {
+        expect(mod.calculateGoogleBudgetTokens(8192, 'min', 'gemini-3.1-flash-lite')).toBe('minimal');
+        expect(mod.calculateGoogleBudgetTokens(8192, 'medium', 'gemini-3.1-flash-lite')).toBe('medium');
+        expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3.1-flash-lite')).toBe('max');
+    });
+
+    test('stable Gemini 3 image models use Gemini 3 thinking levels', () => {
+        expect(mod.calculateGoogleBudgetTokens(8192, 'min', 'gemini-3.1-flash-image')).toBe('minimal');
+        expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3.1-flash-image')).toBe('max');
+        expect(mod.calculateGoogleBudgetTokens(8192, 'min', 'gemini-3-pro-image')).toBe('minimal');
+        expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3-pro-image')).toBe('max');
     });
 
     describe('gemini-3 pro', () => {
@@ -210,17 +308,17 @@ describe('calculateGoogleBudgetTokens', () => {
 
         test('none returns null', () => expect(mod.calculateGoogleBudgetTokens(8192, 'none', 'gemini-3.0-pro')).toBeNull());
 
-        test('min returns low', () => expect(mod.calculateGoogleBudgetTokens(8192, 'min', 'gemini-3.0-pro')).toBe('low'));
+        test('min returns minimal', () => expect(mod.calculateGoogleBudgetTokens(8192, 'min', 'gemini-3.0-pro')).toBe('minimal'));
 
         test('low returns low', () => expect(mod.calculateGoogleBudgetTokens(8192, 'low', 'gemini-3.0-pro')).toBe('low'));
 
-        test('medium returns low', () => expect(mod.calculateGoogleBudgetTokens(8192, 'medium', 'gemini-3.0-pro')).toBe('low'));
+        test('medium returns medium', () => expect(mod.calculateGoogleBudgetTokens(8192, 'medium', 'gemini-3.0-pro')).toBe('medium'));
 
         test('high returns high', () => expect(mod.calculateGoogleBudgetTokens(8192, 'high', 'gemini-3.0-pro')).toBe('high'));
 
-        test('max returns high', () => expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3.0-pro')).toBe('high'));
+        test('max returns max', () => expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3.0-pro')).toBe('max'));
 
-        test('xhigh returns high', () => expect(mod.calculateGoogleBudgetTokens(8192, 'xhigh', 'gemini-3.0-pro')).toBe('high'));
+        test('xhigh returns xhigh', () => expect(mod.calculateGoogleBudgetTokens(8192, 'xhigh', 'gemini-3.0-pro')).toBe('xhigh'));
     });
 
     describe('flash (non-gemini-3)', () => {
@@ -1093,6 +1191,30 @@ describe('convertGooglePrompt', () => {
         ];
         const result = mod.convertGooglePrompt(messages, 'gemini-2.0-flash', false, names);
         expect(result.contents.filter(c => c.role === 'user')).toHaveLength(1);
+    });
+
+    for (const model of ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite']) {
+        test(`merges a trailing prefill into the user turn on ${model}`, () => {
+            const messages = [
+                { role: 'user', content: 'Hi' },
+                { role: 'assistant', content: 'Prefill' },
+            ];
+            const result = mod.convertGooglePrompt(messages, model, false, names);
+            expect(result.contents).toHaveLength(1);
+            expect(result.contents[0].role).toBe('user');
+            expect(result.contents[0].parts[0].text).toBe('Hi\n\nPrefill');
+        });
+    }
+
+    test('keeps non-trailing model turns on models without prefill support', () => {
+        const messages = [
+            { role: 'user', content: 'Hi' },
+            { role: 'assistant', content: 'Hello' },
+            { role: 'user', content: 'How are you?' },
+        ];
+        const result = mod.convertGooglePrompt(messages, 'gemini-3.6-flash', false, names);
+
+        expect(result.contents.map(c => c.role)).toEqual(['user', 'model', 'user']);
     });
 
     test('converts image_url to inlineData', () => {

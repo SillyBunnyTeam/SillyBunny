@@ -37,6 +37,7 @@ whitelist.txt
 .vscode/**
 !.vscode/extensions.json
 .idea/
+.windsurf/
 secrets.json
 .secret_key
 /dist
@@ -66,6 +67,8 @@ test-results/
 .local-worklog/
 /output/
 /graphify-out/
+# SillyBunny: conflict scratch output from scripts/sync-quick-image-gen.sh; keep it out of git status so it cannot block the in-app updater
+/.quick-image-gen-merge/
 
 # Local UI/performance screenshots
 screenshots/layout-clean-desktop-workspace-20260505.png

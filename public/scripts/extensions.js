@@ -1,6 +1,6 @@
 import { DOMPurify, Popper } from '../lib.js';
 
-import { eventSource, event_types, saveSettings, saveSettingsDebounced, getRequestHeaders, animation_duration, CLIENT_VERSION } from '../script.js';
+import { eventSource, event_types, saveSettings, saveSettingsDebounced, getRequestHeaders, animation_duration, CLIENT_VERSION, getChatGeneration } from '../script.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
 import { renderTemplate, renderTemplateAsync } from './templates.js';
 import { delay, deleteValueByPath, equalsIgnoreCaseAndAccents, escapeHtml, sanitizeSelector, setValueByPath, versionCompare } from './utils.js';
@@ -250,6 +250,7 @@ export function saveMetadataDebounced() {
     const groupId = context.groupId;
     const characterId = context.characterId;
     const chatId = context.chatId;
+    const generation = getChatGeneration();
 
     cancelDebouncedMetadataSave();
 
@@ -268,6 +269,14 @@ export function saveMetadataDebounced() {
 
         if (!groupId && characterId !== newContext.characterId) {
             console.warn('Character changed, not saving metadata');
+            return;
+        }
+
+        // SillyBunny: reopening or reloading the same chat keeps every check above satisfied while
+        // the messages are cleared and not yet reloaded. Saving there writes an empty chat over the
+        // populated file, which the server refuses. The generation changes on every chat load.
+        if (generation !== getChatGeneration()) {
+            console.warn('Chat reloaded, not saving metadata');
             return;
         }
 
@@ -423,7 +432,7 @@ function clearStaleLockedExtensionDisables() {
 
 function applyBundledOptInDefaults({ migrateLegacy = false, initializeProcessedIds = false } = {}) {
     const bundledOptInExtensions = Object.entries(manifests)
-        .filter(([, manifest]) => manifest?.bundled_opt_in === true)
+        .filter(([name, manifest]) => manifest?.bundled_opt_in === true && ['core', 'bundled'].includes(getExtensionType(name)))
         .map(([name]) => name);
 
     const storedProcessedIds = Array.isArray(extension_settings.bundledOptInProcessedExtensions)
@@ -585,9 +594,10 @@ function areExtensionIdsEqual(left, right) {
 }
 
 function resolveExtensionName(name) {
-    return extensionNames.find(extName => {
+    const matches = extensionNames.filter(extName => {
         return equalsIgnoreCaseAndAccents(extName, name) || equalsIgnoreCaseAndAccents(extName, `third-party/${name}`);
-    }) ?? name;
+    });
+    return matches.find(extName => Object.hasOwn(manifests, extName)) ?? matches[0] ?? name;
 }
 
 function isExtensionDisabled(externalId) {
@@ -846,10 +856,7 @@ export function findExtension(name) {
  * @returns {object|null} Cloned manifest, or null if not found
  */
 export function getExtensionManifest(name) {
-    const internalExtensionName = extensionNames.find(extName => {
-        return equalsIgnoreCaseAndAccents(extName, name) || equalsIgnoreCaseAndAccents(extName, `third-party/${name}`);
-    });
-
+    const internalExtensionName = resolveExtensionName(name);
     const manifest = internalExtensionName ? manifests[internalExtensionName] : null;
     return manifest ? structuredClone(manifest) : null;
 }
@@ -1020,6 +1027,7 @@ async function getManifests(names) {
 
     const obj = {};
     const loadedManifestKeys = new Set();
+    const loadedManifestNames = new Map();
 
     for (const result of results) {
         if (!result.ok) {
@@ -1031,11 +1039,22 @@ async function getManifests(names) {
             existingKeys: loadedManifestKeys,
         });
         if (!registrationState.shouldRegister) {
+            const existingName = loadedManifestNames.get(registrationState.dedupeKey);
+            const existingManifest = obj[existingName];
+            const preferExternal = existingManifest?.bundled_opt_in === true && isExternalExtension(result.name);
+            if (preferExternal) {
+                delete obj[existingName];
+                obj[result.name] = result.manifest;
+                loadedManifestNames.set(registrationState.dedupeKey, result.name);
+                console.warn(`[Extensions] Using installed extension "${result.name}" instead of bundled opt-in "${existingName}"`);
+                continue;
+            }
             console.warn(`[Extensions] Skipping duplicate manifest entry for "${result.name}"`);
             continue;
         }
 
         loadedManifestKeys.add(registrationState.dedupeKey);
+        loadedManifestNames.set(registrationState.dedupeKey, result.name);
         obj[result.name] = result.manifest;
     }
 
@@ -2282,10 +2301,20 @@ export async function loadExtensionSettings(settings, versionChanged, enableAuto
     extensionTypes = Object.fromEntries(extensions.map(x => [x.name, x.type]));
     manifests = await getManifests(extensionNames);
 
+    // An extension without a loadable manifest cannot be used: drop it so state queries
+    // and the extensions list do not report a ghost entry (e.g. leftover folder on disk)
+    const namesWithoutManifest = extensionNames.filter(name => !Object.hasOwn(manifests, name));
+    if (namesWithoutManifest.length) {
+        console.warn('Ignoring extensions without a loadable manifest.json:', namesWithoutManifest);
+        extensionNames = extensionNames.filter(name => Object.hasOwn(manifests, name));
+        namesWithoutManifest.forEach(name => delete extensionTypes[name]);
+    }
+
     // Clean stale entries from disabledExtensions list
     const originalDisabledCount = extension_settings.disabledExtensions.length;
     extension_settings.disabledExtensions = extension_settings.disabledExtensions.filter(name => {
-        const exists = extensionNames.includes(name);
+        // SillyBunny: normalized aliases survive third-party-to-bundled promotion.
+        const exists = extensionNames.some(extensionName => areExtensionIdsEqual(name, extensionName));
         if (!exists) {
             console.log(`[Extensions] Removed stale disabled extension: ${name}`);
         }
@@ -2542,18 +2571,64 @@ export async function runGenerationInterceptors(chat, contextSize, type) {
  * @param {number|string} characterId Index in the character array
  * @param {string} key Field name
  * @param {any} value Field value
- * @returns {Promise<void>} When the field is written
+ * @param {object} [options] Write options
+ * @param {boolean} [options.throwOnError=false] Commit local data only after a successful save
+ * @returns {Promise<void|boolean>} True on strict success
  */
-export async function writeExtensionField(characterId, key, value) {
-    const context = getContext();
-    const character = context.characters[characterId];
+export async function writeExtensionField(characterId, key, value, { throwOnError = false } = {}) {
+    let context = getContext();
+    let character = context.characters[characterId];
     if (!character) {
+        if (throwOnError) {
+            throw new Error('Character not found');
+        }
         console.warn('Character not found', characterId);
         return;
+    }
+    const avatar = character.avatar;
+    if (throwOnError && (typeof avatar !== 'string' || !avatar || avatar === 'none')) {
+        throw new Error('Character has no saved identity');
     }
     const extensionPath = `data.extensions.${key}`;
     const isUnset = value === UNSET_VALUE;
 
+    const saveDataRequest = {
+        avatar,
+        data: {
+            extensions: {
+                [key]: value,
+            },
+        },
+    };
+    const requestBody = JSON.stringify(saveDataRequest);
+    async function persist() {
+        const mergeResponse = await fetch('/api/characters/merge-attributes', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: requestBody,
+        });
+
+        if (!mergeResponse.ok) {
+            console.error('Failed to save extension field', mergeResponse.statusText);
+            if (throwOnError) {
+                throw new Error('Failed to save extension field');
+            }
+        }
+    }
+
+    if (throwOnError) {
+        // SillyBunny: bind the request to the card, then merge into its latest local state.
+        value = JSON.parse(requestBody).data.extensions[key];
+        await persist();
+        context = getContext();
+        characterId = context.characters.findIndex(candidate => candidate?.avatar === avatar);
+        character = context.characters[characterId];
+        if (!character) {
+            throw new Error('Saved character is no longer available');
+        }
+    }
+
+    const jsonData = character.json_data ? JSON.parse(character.json_data) : null;
     if (isUnset) {
         deleteValueByPath(character, extensionPath);
     } else {
@@ -2561,8 +2636,7 @@ export async function writeExtensionField(characterId, key, value) {
     }
 
     // Process JSON data
-    if (character.json_data) {
-        const jsonData = JSON.parse(character.json_data);
+    if (jsonData) {
         if (isUnset) {
             deleteValueByPath(jsonData, extensionPath);
         } else {
@@ -2576,24 +2650,11 @@ export async function writeExtensionField(characterId, key, value) {
         }
     }
 
-    // Save data to the server
-    const saveDataRequest = {
-        avatar: character.avatar,
-        data: {
-            extensions: {
-                [key]: value,
-            },
-        },
-    };
-    const mergeResponse = await fetch('/api/characters/merge-attributes', {
-        method: 'POST',
-        headers: getRequestHeaders(),
-        body: JSON.stringify(saveDataRequest),
-    });
-
-    if (!mergeResponse.ok) {
-        console.error('Failed to save extension field', mergeResponse.statusText);
+    if (!throwOnError) {
+        await persist();
+        return;
     }
+    return true;
 }
 
 /**

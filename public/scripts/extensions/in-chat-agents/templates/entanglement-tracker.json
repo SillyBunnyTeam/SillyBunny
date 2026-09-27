@@ -1,0 +1,45 @@
+{
+    "id": "tpl-entanglement-tracker",
+    "name": "Entanglement Tracker",
+    "description": "Relationships as physical things",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "characters",
+    "tags": [
+        "relationships",
+        "threads",
+        "bonds"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### Entanglement Tracker\nIn this world a relationship can take a literal physical form: a thread, a weight, a temperature, a borrowed shadow. When the narrative gives a bond such a form, record that form here as material fact. Use this EXACT format on responses where the bond meaningfully changes:\n\n[THREAD|Between|Form|Condition]\nnote: MANDATORY; what happened to the established bond physically this scene\n[/THREAD]\n\nForm examples: red thread at the wrist | a shared umbrella that follows both | a cold spot shaped like an apology | a debt of three teaspoons of sleep | a song stuck in both heads\nCondition options: 🪡 SPUN | 🧶 TIGHTENING | 🪢 KNOTTED | 🕸 FRAYING | ✂️ CUT | 🧵 MENDED\n\nRules:\n- Establish the Form in narrative prose first, at a moment when the active Veil Mode allows that strange detail. Then file exactly what appeared.\n- Print the block AFTER the narrative content, on responses where the physical bond is first SPUN or where an established bond CHANGES this scene.\n- Keep one Form per pair as canon. Develop its existing physical logic further rather than swapping in a new form.\n- Make the bond obey its material form: thread tangles and stretches, an umbrella gets wet, a cold spot moves with bodies, a borrowed song can be hummed.\n- Under Anchor, count a newly established Form as the scene's one strange detail. When another strange detail already occupies the scene, carry the relationship forward through ordinary behaviour and materialise the Form in a later scene.\n- After a bond is CUT, give its form one further appearance later as a visible scar, then retire it from active tracking.\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with note: and keep the whole note on that single line; put the closing [/THREAD] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[THREAD\\|[^\\]\\r\\n]*\\](?:(?!\\[THREAD(?=[:|\\]]))[\\s\\S])*?\\[/THREAD\\]",
+        "extractVariable": "thread_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

@@ -14,7 +14,7 @@ import storage from 'node-persist';
 
 import { AVATAR_WIDTH, AVATAR_HEIGHT, DEFAULT_AVATAR_PATH } from '../constants.js';
 import { default as validateAvatarUrlMiddleware, getFileNameValidationFunction } from '../middleware/validateFileName.js';
-import { deepMerge, humanizedDateTime, tryParse, MemoryLimitedMap, getConfigValue, mutateJsonString, clientRelativePath, getUniqueName, recoverFileWritesInDirectorySync, recoverFileWriteSync, sanitizeSafeCharacterReplacements, tryWriteFileSync } from '../util.js';
+import { deepMerge, humanizedDateTime, tryParse, MemoryLimitedMap, getConfigValue, mutateJsonString, clientRelativePath, getUniqueName, recoverFileWritesInDirectorySync, recoverFileWriteSync, sanitizeSafeCharacterReplacements, getArrayBufferSlice, tryWriteFileSync } from '../util.js';
 import { TavernCardValidator } from '../validator/TavernCardValidator.js';
 import { parse, read, write } from '../character-card-parser.js';
 import { readWorldInfoFile } from './worldinfo.js';
@@ -54,6 +54,19 @@ const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0
 const getPngFileName = fileName => path.extname(fileName).toLowerCase() === '.png'
     ? fileName
     : `${fileName}.png`;
+// SillyBunny: allow POSIX-valid character names while keeping avatar access inside the character folder.
+export const sanitiseFilenameForWindows = (filename) => process.platform === 'win32'
+    ? sanitize(filename, { replacement: sanitizeSafeCharacterReplacements }) || 'character'
+    : filename;
+const resolveCharacterAvatarPath = (directory, avatar) => {
+    if (avatar.includes('\0') || path.basename(avatar) !== avatar || path.extname(avatar).toLowerCase() !== '.png') {
+        return null;
+    }
+
+    const charactersDirectory = path.resolve(directory);
+    const avatarPath = path.resolve(charactersDirectory, avatar);
+    return path.dirname(avatarPath) === charactersDirectory ? avatarPath : null;
+};
 const getEntityDateAddedRoot = directories => directories.root || path.dirname(directories.characters);
 const getCharacterDateAddedFallback = stat => [stat.ctimeMs, stat.birthtimeMs, stat.mtimeMs]
     .find(timestamp => Number.isFinite(timestamp) && timestamp > 0) ?? Date.now();
@@ -807,7 +820,7 @@ function charaFormatData(data, directories) {
                 _.set(char, 'data.character_book', originalData);
             } else if (file && file.entries) {
                 // File was not imported - convert the world info to the character book
-                _.set(char, 'data.character_book', convertWorldInfoToCharacterBook(data.world, file.entries));
+                _.set(char, 'data.character_book', convertWorldInfoToCharacterBook(data.world, file.entries, file.extensions));
             }
         } catch {
             console.warn(`Failed to read world info file: ${data.world}. Character book will not be available.`);
@@ -830,10 +843,12 @@ function charaFormatData(data, directories) {
 /**
  * @param {string} name Name of World Info file
  * @param {object} entries Entries object
+ * @param {object} [extensions] Book extensions
  */
-function convertWorldInfoToCharacterBook(name, entries) {
+function convertWorldInfoToCharacterBook(name, entries, extensions = {}) {
     /** @type {{ entries: object[]; name: string; extensions: object }} */
-    const result = { entries: [], name, extensions: {} };
+    // SillyBunny: native book metadata, including waypoint layouts, travels with embedded cards.
+    const result = { entries: [], name, extensions: structuredClone(extensions ?? {}) };
     const sortedEntries = Object.values(entries).sort((a, b) => (a.displayIndex ?? a.uid ?? 0) - (b.displayIndex ?? b.uid ?? 0));
 
     for (const entry of sortedEntries) {
@@ -975,7 +990,7 @@ async function importFromYaml(uploadPath, context, preservedFileName) {
 async function importFromCharX(uploadPath, { request }, preservedFileName) {
     const fileBuffer = fs.readFileSync(uploadPath);
     // Create a properly-sized ArrayBuffer (Node's buffer pool can cause oversized .buffer)
-    const data = fileBuffer.buffer.slice(fileBuffer.byteOffset, fileBuffer.byteOffset + fileBuffer.byteLength);
+    const data = getArrayBufferSlice(fileBuffer);
     fs.unlinkSync(uploadPath);
 
     const parser = new CharXParser(data);
@@ -1008,7 +1023,7 @@ async function importFromCharX(uploadPath, { request }, preservedFileName) {
 }
 
 async function importFromByaf(uploadPath, { request }, preservedFileName) {
-    const data = (await fsPromises.readFile(uploadPath)).buffer;
+    const data = getArrayBufferSlice(await fsPromises.readFile(uploadPath));
     await fsPromises.unlink(uploadPath);
     console.info('Importing from BYAF');
 
@@ -1310,7 +1325,9 @@ router.post('/rename', validateAvatarUrlMiddleware, async function (request, res
 
         // Rename chats folder
         if (fs.existsSync(oldChatsPath) && !fs.existsSync(newChatsPath)) {
-            fs.cpSync(oldChatsPath, newChatsPath, { recursive: true });
+            // Supplying a filter avoids a Node.js Windows copyDir crash while preserving all entries.
+            // https://github.com/nodejs/node/issues/63970
+            fs.cpSync(oldChatsPath, newChatsPath, { recursive: true, filter: () => true });
             chatsCopied = true;
             fs.rmSync(oldChatsPath, { recursive: true, force: true });
         }
@@ -1330,7 +1347,7 @@ router.post('/rename', validateAvatarUrlMiddleware, async function (request, res
             let chatsRestored = true;
             if (chatsCopied) {
                 try {
-                    fs.cpSync(newChatsPath, oldChatsPath, { recursive: true });
+                    fs.cpSync(newChatsPath, oldChatsPath, { recursive: true, filter: () => true });
                     fs.rmSync(newChatsPath, { recursive: true, force: true });
                 } catch (rollbackError) {
                     chatsRestored = false;
@@ -1617,16 +1634,17 @@ router.post('/last-chat', getFileNameValidationFunction('avatar'), async functio
 });
 
 router.post('/delete', validateAvatarUrlMiddleware, async function (request, response) {
-    if (!request.body || !request.body.avatar_url) {
+    const avatar = request.body?.avatar_url;
+    if (typeof avatar !== 'string' || !avatar) {
         return response.sendStatus(400);
     }
 
-    if (request.body.avatar_url !== sanitize(request.body.avatar_url)) {
+    const avatarPath = resolveCharacterAvatarPath(request.user.directories.characters, avatar);
+    if (!avatarPath) {
         console.error('Malicious filename prevented');
         return response.sendStatus(403);
     }
 
-    const avatarPath = path.join(request.user.directories.characters, request.body.avatar_url);
     try {
         recoverFileWriteSync(avatarPath);
     } catch (error) {
@@ -1637,9 +1655,11 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
         return response.sendStatus(400);
     }
 
-    let dir_name = request.body.avatar_url.replace('.png', '');
+    const dir_name = avatar.replace('.png', '');
+    const chatsRoot = path.resolve(request.user.directories.chats);
+    const chatsDirectory = path.resolve(chatsRoot, dir_name);
 
-    if (!dir_name.length) {
+    if (!dir_name.length || path.dirname(chatsDirectory) !== chatsRoot) {
         console.error('Malicious dirname prevented');
         return response.sendStatus(403);
     }
@@ -1648,8 +1668,7 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
     let recoveryTargets = [];
     if (request.body.delete_chats == true) {
         try {
-            const owner = sanitize(dir_name);
-            const chatsDirectory = path.join(request.user.directories.chats, owner);
+            const owner = dir_name;
             if (fs.existsSync(chatsDirectory)) {
                 const chatFiles = await fs.promises.readdir(chatsDirectory, { withFileTypes: true });
                 recoveryTargets = chatFiles
@@ -1693,17 +1712,17 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
         removeEntityDateAdded(
             getEntityDateAddedRoot(request.user.directories),
             'characters',
-            request.body.avatar_url,
+            avatar,
         );
     } catch (metadataError) {
         console.error('Could not remove date-added metadata after character deletion.', metadataError);
     }
     try {
-        removeEntityLastChat(getEntityDateAddedRoot(request.user.directories), request.body.avatar_url);
+        removeEntityLastChat(getEntityDateAddedRoot(request.user.directories), avatar);
     } catch (metadataError) {
         console.error('Could not remove last-chat metadata after character deletion.', metadataError);
     }
-    invalidateThumbnail(request.user.directories, 'avatar', request.body.avatar_url);
+    invalidateThumbnail(request.user.directories, 'avatar', avatar);
 
     return response.sendStatus(200);
 });
@@ -1717,30 +1736,31 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
  * @param {import("express").Response} response The HTTP response object.
  */
 router.post('/regenerate-thumbnail', validateAvatarUrlMiddleware, async function (request, response) {
-    if (!request.body || !request.body.avatar_url) {
+    const avatar = request.body?.avatar_url;
+    if (typeof avatar !== 'string' || !avatar) {
         return response.sendStatus(400);
     }
 
-    if (request.body.avatar_url !== sanitize(request.body.avatar_url)) {
+    const avatarPath = resolveCharacterAvatarPath(request.user.directories.characters, avatar);
+    if (!avatarPath) {
         console.error('Malicious filename prevented');
         return response.sendStatus(403);
     }
 
-    const avatarPath = path.join(request.user.directories.characters, request.body.avatar_url);
     if (!fs.existsSync(avatarPath)) {
         return response.status(404).json({ error: 'Character avatar file not found.' });
     }
 
     try {
-        invalidateThumbnail(request.user.directories, 'avatar', request.body.avatar_url);
-        const result = await generateThumbnail(request.user.directories, 'avatar', request.body.avatar_url, true);
+        invalidateThumbnail(request.user.directories, 'avatar', avatar);
+        const result = await generateThumbnail(request.user.directories, 'avatar', avatar, true);
         return response.json({
             ok: true,
             regenerated: result.path !== null,
             aspectRatio: result.aspectRatio,
         });
     } catch (error) {
-        console.error('Failed to regenerate thumbnail for', request.body.avatar_url, error);
+        console.error('Failed to regenerate thumbnail for', avatar, error);
         return response.status(500).json({ error: 'Failed to regenerate thumbnail.' });
     }
 });
@@ -1911,6 +1931,8 @@ router.post('/chats', validateAvatarUrlMiddleware, async function (request, resp
  * @returns {string} - The name for the uploaded PNG file
  */
 function getPngName(file, directories) {
+    // SillyBunny: Windows forbids <>:"/\|?* in file names, so sanitise imports there. POSIX keeps pipes.
+    file = sanitiseFilenameForWindows(file);
     let i = 1;
     const baseName = file;
     while (fs.existsSync(path.join(directories.characters, `${file}.png`))) {
@@ -1926,9 +1948,11 @@ function getPngName(file, directories) {
  * @returns {string | undefined} - The preserved name if the request is valid, otherwise undefined
  */
 function getPreservedName(request) {
-    return typeof request.body.preserved_name === 'string' && request.body.preserved_name.length > 0
-        ? path.parse(request.body.preserved_name).name
-        : undefined;
+    if (typeof request.body.preserved_name !== 'string' || request.body.preserved_name.length === 0) {
+        return undefined;
+    }
+    // SillyBunny: preserved names bypass getPngName, so sanitise them for Windows too.
+    return sanitiseFilenameForWindows(path.parse(request.body.preserved_name).name) || undefined;
 }
 
 router.post('/import', async function (request, response) {

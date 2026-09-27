@@ -57,6 +57,32 @@ describe('in-chat agent scoped enabled state', () => {
         ]);
     }
 
+    test('deleting an agent waits for its pending save so it cannot reappear locally or on the server', async () => {
+        const store = await importStore();
+        useAgents(store);
+        const persisted = new Map(store.getAgents().map(agent => [agent.id, structuredClone(agent)]));
+        let finishSave;
+        let started;
+        const saving = new Promise(resolve => { started = resolve; });
+        globalThis.fetch = jest.fn(async (url, request) => {
+            const data = JSON.parse(request.body);
+            if (url.endsWith('/save')) {
+                await new Promise(resolve => { finishSave = resolve; started(); });
+                persisted.set(data.id, data);
+            } else {
+                persisted.delete(data.id);
+            }
+            return { ok: true };
+        });
+        const pending = store.saveAgent({ ...store.getAgentById('agent-individual'), name: 'Edited' });
+        await saving;
+        const deletion = store.deleteAgent('agent-individual');
+        finishSave();
+        await Promise.all([pending, deletion]);
+        expect(store.getAgents().some(agent => agent.id === 'agent-individual')).toBe(false);
+        expect(persisted.has('agent-individual')).toBe(false);
+    });
+
     test('keeps individual and group enabled agents separate when scoped toggles are enabled', async () => {
         const store = await importStore();
         useAgents(store);
@@ -858,7 +884,7 @@ describe('in-chat agent scoped enabled state', () => {
             author: 'SillyBunny',
             category: 'companion',
             execution: 'companion',
-            version: 1,
+            version: 2,
             companion: {
                 trigger: 'auto',
                 displayMode: 'panel',
@@ -881,6 +907,7 @@ describe('in-chat agent scoped enabled state', () => {
             category: 'companion',
             execution: 'companion',
             sourceTemplateId: 'tpl-chatroom-companion',
+            version: 1,
             enabled: true,
             favorite: true,
             connectionProfile: 'sidecar-profile',
@@ -937,6 +964,7 @@ describe('in-chat agent scoped enabled state', () => {
             author: 'SillyBunny',
             category: 'companion',
             execution: 'companion',
+            version: 2,
             companion: {
                 includeCharacterCard: true,
                 includePersona: true,
@@ -952,6 +980,7 @@ describe('in-chat agent scoped enabled state', () => {
                 category: 'companion',
                 execution: 'companion',
                 sourceTemplateId: 'tpl-relationship-lens-companion',
+                version: 1,
                 enabled: true,
             },
             {
@@ -962,6 +991,7 @@ describe('in-chat agent scoped enabled state', () => {
                 category: 'companion',
                 execution: 'companion',
                 sourceTemplateId: 'tpl-relationship-lens-companion',
+                version: 1,
                 enabled: false,
             },
             {
@@ -972,6 +1002,7 @@ describe('in-chat agent scoped enabled state', () => {
                 category: 'companion',
                 execution: 'companion',
                 sourceTemplateId: 'tpl-relationship-lens-companion',
+                version: 1,
                 phaseLocked: true,
             },
         ];
@@ -987,6 +1018,49 @@ describe('in-chat agent scoped enabled state', () => {
             includePersona: true,
             includeWorldInfo: true,
         }));
+    });
+
+    test('does not refresh same-version bundled agents while still removing duplicates', async () => {
+        const store = await importStore();
+        const templates = [{
+            id: 'tpl-current-agent',
+            name: 'Current Agent',
+            prompt: 'current bundled prompt',
+            author: 'SillyBunny',
+            category: 'companion',
+            execution: 'companion',
+            version: 2,
+        }];
+        const agents = [
+            {
+                id: 'current-agent',
+                name: 'Current Agent',
+                prompt: 'stale bundled prompt',
+                author: 'SillyBunny',
+                category: 'companion',
+                execution: 'companion',
+                sourceTemplateId: 'tpl-current-agent',
+                version: 2,
+                enabled: true,
+                settings: { runtimeState: 'preserve' },
+            },
+            {
+                id: 'duplicate-current-agent',
+                name: 'Current Agent',
+                prompt: 'stale bundled prompt',
+                author: 'SillyBunny',
+                category: 'companion',
+                execution: 'companion',
+                sourceTemplateId: 'tpl-current-agent',
+                version: 2,
+                enabled: false,
+            },
+        ];
+
+        const plan = store.getBundledAgentLatestTemplatePlan(agents, templates);
+
+        expect(plan.updates).toEqual([]);
+        expect(plan.redundantIds).toEqual(['duplicate-current-agent']);
     });
 
     test('does not mark phase-locked same-template duplicates redundant', async () => {

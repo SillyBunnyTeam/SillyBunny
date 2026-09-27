@@ -1450,5 +1450,11 @@
     "Deleting chat…": "Đang xóa cuộc trò chuyện…",
     "Loading chat…": "Đang tải cuộc trò chuyện…",
     "Bulk Delete": "Xóa hàng loạt",
-    "Deleting ${0} character(s)…": "Đang xóa ${0} nhân vật…"
+    "Deleting ${0} character(s)…": "Đang xóa ${0} nhân vật…",
+    "OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.": "Tùy chọn kiểu OpenAI: low, medium, high, xhigh. Mỗi mức được gửi đúng như đã chọn, ngoại trừ Minimum được gửi dưới dạng 'minimal'. None được gửi nguyên văn tới GPT-5.1 trở lên; các mô hình khác không nhận mức nào.",
+    "Sets a dynamic reasoning depth level for thinking (Flash 3/Pro 3). Every effort is sent exactly as picked, so a level the model does not accept is rejected rather than lowered. Auto lets the model decide.": "Đặt mức độ sâu suy luận động (Flash 3/Pro 3). Mỗi mức được gửi đúng như đã chọn, nên mức mà mô hình không chấp nhận sẽ bị từ chối thay vì bị hạ xuống. Auto để mô hình tự quyết định.",
+    "DeepSeek documents low, high and max reasoning efforts. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'.": "DeepSeek ghi nhận các mức low, high và max. Mỗi mức được gửi đúng như đã chọn, nên bất kỳ giá trị nào khác đều có thể bị từ chối. Minimum được gửi dưới dạng 'minimal'.",
+    "Only GLM-5.2 and newer accept reasoning efforts. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. GLM-5.3 specifically only accepts 'low', 'high', and 'max'.": "Chỉ GLM-5.2 trở lên mới chấp nhận mức suy luận. Mỗi mức được gửi đúng như đã chọn, ngoại trừ Minimum được gửi dưới dạng 'minimal'. Riêng GLM-5.3 chỉ chấp nhận 'low', 'high' và 'max'.",
+    "Only Kimi K3 accepts reasoning efforts, and documents low, high and max. Every effort is sent exactly as picked, so anything else may be rejected. Minimum is sent as 'minimal'. Reasoning cannot be turned off for K3.": "Chỉ Kimi K3 chấp nhận mức suy luận, và ghi nhận các mức low, high và max. Mỗi mức được gửi đúng như đã chọn, nên bất kỳ giá trị nào khác đều có thể bị từ chối. Minimum được gửi dưới dạng 'minimal'. Không thể tắt suy luận trên K3.",
+    "Reasoning efforts are sent exactly, aside from minimum which is sent as 'minimal'.": "Các mức suy luận được gửi đúng như đã chọn, ngoại trừ Minimum được gửi dưới dạng 'minimal'."
 }

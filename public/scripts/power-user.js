@@ -35,6 +35,7 @@ import {
     settingsReady,
     updateMessageMetaBadges,
     updateMessageTokenAccounting,
+    refreshMessageModelIcons,
 } from '../script.js';
 import { isMobile, initMovingUI, favsToHotswap } from './RossAscends-mods.js';
 import { normalizeContextRetentionDepth } from './ooc-blocks.js';
@@ -215,9 +216,9 @@ const THEME_COLOR_PROPERTIES = Object.freeze([
 ]);
 
 const THEME_EFFECT_PROPERTIES = Object.freeze([
-    { key: 'customCSS-bg-blur', selector: '#background_blur', counterSelector: '#background_blur_counter', cssVar: '--customCSS-bg-blur', defaultValue: 0, min: 0, max: 10 },
+    { key: 'customCSS-bg-blur', selector: '#background_blur', counterSelector: '#background_blur_counter', cssVar: '--customCSS-bg-blur', defaultValue: 0, min: 0, max: 10, activeClass: 'sb-bg-blur' },
     { key: 'customCSS-bg-opacity', selector: '#background_opacity', counterSelector: '#background_opacity_counter', cssVar: '--customCSS-bg-opacity', defaultValue: 1, min: 0, max: 1 },
-    { key: 'sheldBlurStrength', selector: '#sheld_blur_strength', counterSelector: '#sheld_blur_strength_counter', cssVar: '--sheldBlurStrength', linkedCssVars: ['--mobileSheldBlurStrength'], defaultValue: 0, min: 0, max: 10 },
+    { key: 'sheldBlurStrength', selector: '#sheld_blur_strength', counterSelector: '#sheld_blur_strength_counter', cssVar: '--sheldBlurStrength', linkedCssVars: ['--mobileSheldBlurStrength'], defaultValue: 0, min: 0, max: 10, activeClass: 'sb-sheld-blur' },
     { key: 'sheldBackgroundColor', cssVar: '--sheldBackgroundColor', defaultValue: 'transparent' },
 ]);
 
@@ -391,6 +392,8 @@ export const power_user = {
     timer_enabled: true,
     timestamps_enabled: true,
     timestamp_model_icon: false,
+    timestamp_model_name: false,
+    timestamp_reasoning_effort: false,
     mesIDDisplay_enabled: false,
     hideChatAvatars_enabled: false,
     max_context_unlocked: true,
@@ -1265,7 +1268,8 @@ function syncActiveCharacterEditorPanel() {
     }
 }
 
-function setCharacterSpoilerFreeFieldsHidden(hidden) {
+// Exported so the editor sub-tabs (sillybunny-tabs.js) can reveal the hidden fields when a dimmed tab is tapped.
+export function setCharacterSpoilerFreeFieldsHidden(hidden) {
     const form = document.getElementById('form_create');
     const activePanel = form?.querySelector('[data-sb-character-editor-panel]:not([hidden])');
     const activePanelCanRemainVisible = activePanel instanceof HTMLElement
@@ -1284,15 +1288,18 @@ function setCharacterSpoilerFreeFieldsHidden(hidden) {
             panel.hidden = true;
             panel.setAttribute('aria-hidden', 'true');
         });
-    } else {
-        syncActiveCharacterEditorPanel();
     }
 
     $('#spoiler_free_desc').toggleClass('flex1', hidden);
     $('#creators_note_desc_hidden').toggle(hidden);
+    // The eye mirrors the actual state, so it stays correct when the fields are revealed from a sub-tab or at load.
+    $('#spoiler_free_desc_button').toggleClass('fa-eye', !hidden).toggleClass('fa-eye-slash', hidden);
 
+    // Always re-click a tab so the sub-tab buttons pick up their spoiler-hidden state.
     if (hidden && !activePanelCanRemainVisible) {
         showCharacterEditorMetadataPanel();
+    } else {
+        syncActiveCharacterEditorPanel();
     }
 }
 
@@ -2036,6 +2043,7 @@ function applyCustomThemeStyleEntries() {
 }
 
 function applyBlurStrength() {
+    document.body.classList.toggle('sb-theme-blur', Number(power_user.blur_strength) > 0);
     document.documentElement.style.setProperty('--blurStrength', String(power_user.blur_strength));
     $('#blur_strength_counter').val(power_user.blur_strength);
     $('#blur_strength').val(power_user.blur_strength);
@@ -2069,6 +2077,11 @@ function applyThemeEffects() {
         document.documentElement.style.setProperty(property.cssVar, String(value));
         for (const cssVar of property.linkedCssVars || []) {
             document.documentElement.style.setProperty(cssVar, String(value));
+        }
+
+        // SillyBunny: a zero-strength blur still forces its own compositing layer, so the CSS only attaches the filter while the slider is above 0.
+        if (property.activeClass) {
+            document.body.classList.toggle(property.activeClass, Number(value) > 0);
         }
 
         if (property.selector) {
@@ -2491,6 +2504,8 @@ export async function loadPowerUserSettings(settings, data) {
     $('#messageTimerEnabled').prop('checked', power_user.timer_enabled);
     $('#messageTimestampsEnabled').prop('checked', power_user.timestamps_enabled);
     $('#messageModelIconEnabled').prop('checked', power_user.timestamp_model_icon);
+    $('#messageModelNameEnabled').prop('checked', power_user.timestamp_model_name);
+    $('#messageReasoningEffortEnabled').prop('checked', power_user.timestamp_reasoning_effort);
     $('#mesIDDisplayEnabled').prop('checked', power_user.mesIDDisplay_enabled);
     $('#hideChatAvatarsEnabled').prop('checked', power_user.hideChatAvatars_enabled);
     $('#prefer_character_prompt').prop('checked', power_user.prefer_character_prompt);
@@ -3722,9 +3737,10 @@ async function loadUntilMesId(mesId) {
     return target;
 }
 
-async function doMesCut(_, text) {
+async function doMesCut(args, text) {
     console.debug(`was asked to cut message id #${text}`);
     const range = stringToRange(text, 0, chat.length - 1);
+    const deleteToolCalls = args?.toolcalls === undefined || isTrueBoolean(args.toolcalls);
 
     //reject invalid args or no args
     if (!range) {
@@ -3732,12 +3748,16 @@ async function doMesCut(_, text) {
         return;
     }
 
-    let totalMesToCut = (range.end - range.start) + 1;
-    let mesIDToCut = range.start;
+    const messagesToCut = chat.slice(range.start, range.end + 1);
     let cutText = '';
 
-    for (let i = 0; i < totalMesToCut; i++) {
-        cutText += (chat[mesIDToCut]?.mes || '') + '\n';
+    for (const message of messagesToCut) {
+        const mesIDToCut = chat.indexOf(message);
+        if (mesIDToCut === -1) {
+            continue;
+        }
+
+        cutText += (message?.mes || '') + '\n';
         let mesToCut = $('#chat').find(`.mes[mesid=${mesIDToCut}]`);
 
         if (!mesToCut.length) {
@@ -3749,15 +3769,15 @@ async function doMesCut(_, text) {
         }
 
         setEditedMessageId(mesIDToCut);
-        await deleteMessage(mesIDToCut, null, false);
+        await deleteMessage(mesIDToCut, null, false, deleteToolCalls);
     }
 
-    await saveChatConditional();
+    await saveChatConditional({ allowShrink: true });
 
     return cutText;
 }
 
-async function doDelMode(_, text) {
+async function doDelMode(args, text) {
     //reject invalid args
     if (text && isNaN(text)) {
         toastr.warning('Must enter a number or nothing.');
@@ -3766,7 +3786,8 @@ async function doDelMode(_, text) {
 
     // Just enter the delete mode.
     if (!text) {
-        $('#option_delete_mes').trigger('click', { fromSlashCommand: true });
+        const deleteToolCalls = args?.toolcalls === undefined || isTrueBoolean(args.toolcalls);
+        $('#option_delete_mes').trigger('click', { fromSlashCommand: true, deleteToolCalls });
         return '';
     }
 
@@ -3783,7 +3804,7 @@ async function doDelMode(_, text) {
     }
 
     const range = `${chat.length - count}-${chat.length - 1}`;
-    return doMesCut(_, range);
+    return doMesCut(args, range);
 }
 
 function doResetPanels() {
@@ -4187,9 +4208,7 @@ jQuery(async () => {
     });
 
     $('.start-reply-with-input').on('input', function () {
-        const value = String($(this).val());
-        power_user.user_prompt_bias = value;
-        $('.start-reply-with-input').not(this).val(value);
+        power_user.user_prompt_bias = String($(this).val());
         saveSettingsDebounced();
     });
 
@@ -4726,6 +4745,18 @@ jQuery(async () => {
         saveSettingsDebounced();
     });
 
+    $('#messageModelNameEnabled').on('input', function () {
+        power_user.timestamp_model_name = !!$(this).prop('checked');
+        refreshMessageModelIcons();
+        saveSettingsDebounced();
+    });
+
+    $('#messageReasoningEffortEnabled').on('input', function () {
+        power_user.timestamp_reasoning_effort = !!$(this).prop('checked');
+        refreshMessageModelIcons();
+        saveSettingsDebounced();
+    });
+
     $('#messageTokensEnabled').on('input', function () {
         const value = !!$(this).prop('checked');
         power_user.message_token_count_enabled = value;
@@ -4860,7 +4891,6 @@ jQuery(async () => {
     $('#spoiler_free_desc_button').on('click', function (e) {
         e.stopPropagation();
         peekSpoilerMode();
-        $(this).toggleClass('fa-eye fa-eye-slash');
     });
 
     $('#custom_stopping_strings').on('input', function () {
@@ -5285,6 +5315,15 @@ jQuery(async () => {
         name: 'del',
         callback: doDelMode,
         aliases: ['delete', 'delmode'],
+        namedArgumentList: [
+            SlashCommandNamedArgument.fromProps({
+                name: 'toolcalls',
+                description: 'also delete associated tool-call messages',
+                typeList: [ARGUMENT_TYPE.BOOLEAN],
+                defaultValue: 'true',
+                enumList: commonEnumProviders.boolean('trueFalse')(),
+            }),
+        ],
         unnamedArgumentList: [
             new SlashCommandArgument(
                 'optional number', [ARGUMENT_TYPE.NUMBER], false,
@@ -5297,6 +5336,15 @@ jQuery(async () => {
         name: 'cut',
         callback: doMesCut,
         returns: 'the text of cut messages separated by a newline',
+        namedArgumentList: [
+            SlashCommandNamedArgument.fromProps({
+                name: 'toolcalls',
+                description: 'also delete associated tool-call messages',
+                typeList: [ARGUMENT_TYPE.BOOLEAN],
+                defaultValue: 'true',
+                enumList: commonEnumProviders.boolean('trueFalse')(),
+            }),
+        ],
         unnamedArgumentList: [
             SlashCommandArgument.fromProps({
                 description: 'number or range',

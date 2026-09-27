@@ -34,6 +34,7 @@ const originalMobileThumbnailSettings = getThumbnailMobileRuntimeSettings();
 const originalThumbnailDimensions = getThumbnailDimensions();
 const originalMobileThumbnailDimensions = getThumbnailMobileDimensions();
 const nativeFetch = global.fetch;
+const describePosix = process.platform === 'win32' ? describe.skip : describe;
 
 // Node's fetch cannot load the file: WASM URLs used by the Jimp codecs in Jest.
 async function fetchWithFileSupport(input, init) {
@@ -83,6 +84,7 @@ describe('thumbnail file name resolution', () => {
             backgrounds: path.join(tempRoot, 'backgrounds'),
             characters: path.join(tempRoot, 'characters'),
             thumbnailsAvatar: path.join(tempRoot, 'thumbnails', 'avatar'),
+            thumbnailsAvatarMobile: path.join(tempRoot, 'thumbnails', 'avatar', 'mobile'),
             thumbnailsBg: path.join(tempRoot, 'thumbnails', 'bg'),
             thumbnailsBgMobile: path.join(tempRoot, 'thumbnails', 'bg', 'mobile'),
             thumbnailsPersona: path.join(tempRoot, 'thumbnails', 'persona'),
@@ -212,6 +214,22 @@ describe('thumbnail file name resolution', () => {
         expect(await response.text()).toBe(THUMBNAIL_MARKER);
     });
 
+    describePosix('POSIX file names', () => {
+        test('serves and invalidates a thumbnail whose file name contains a pipe', async () => {
+            const file = 'Alice | Test.png';
+            writeCharacter(file);
+            writeCachedThumbnail(file);
+
+            const response = await requestThumbnail(`type=avatar&file=${encodeURIComponent(file)}`);
+
+            expect(response.status).toBe(200);
+            expect(await response.text()).toBe(THUMBNAIL_MARKER);
+
+            invalidateThumbnail(directories, 'avatar', file);
+            expect(fs.existsSync(path.join(directories.thumbnailsAvatar, file))).toBe(false);
+        });
+    });
+
     test('rejects a traversal hidden behind double percent-encoding', async () => {
         jest.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -287,6 +305,6 @@ describe('thumbnail file name resolution', () => {
         const result = await generateThumbnail(directories, 'avatar', '%2E%2E%2Fsecret.png');
 
         expect(result.path).toBeNull();
-        expect(fs.readdirSync(directories.thumbnailsAvatar)).toEqual([]);
+        expect(fs.readdirSync(directories.thumbnailsAvatar, { withFileTypes: true }).filter(entry => entry.isFile())).toEqual([]);
     });
 });

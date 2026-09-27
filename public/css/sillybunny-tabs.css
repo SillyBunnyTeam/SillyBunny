@@ -2398,8 +2398,7 @@ body.sb-shell-resizing * {
 
 #right-nav-panel:not([data-menu-type="groups"]) #rm_button_group_chats,
 #right-nav-panel[data-menu-type="groups"] #rm_button_create,
-#right-nav-panel[data-menu-type="groups"] #bulkSelectAllButton,
-#right-nav-panel[data-menu-type="groups"] #bulkDeleteButton {
+#right-nav-panel[data-menu-type="groups"]:has(#bulkEditButton.bulk_edit_overlay_active) .sb-character-create-bar #rm_button_group_chats {
     display: none !important;
 }
 
@@ -2527,6 +2526,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 #right-nav-panel .sb-character-create-bar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: flex-start;
     gap: var(--sb-shell-space-sm);
@@ -2609,7 +2609,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 #right-nav-panel .sb-character-create-bar #rm_print_characters_pagination {
     flex: 0 1 auto;
-    min-width: 0;
     margin-left: auto !important;
     justify-content: flex-start;
     padding: 0;
@@ -2617,6 +2616,10 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 #right-nav-panel .sb-character-create-bar .paginationjs {
     justify-content: flex-start;
+}
+
+#right-nav-panel .sb-character-create-bar .paginationjs-nav {
+    white-space: nowrap;
 }
 
 #right-nav-panel[data-menu-type="groups"] .sb-character-create-bar {
@@ -2629,11 +2632,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 #right-nav-panel:not([data-menu-type="groups"]) .sb-character-create-bar #rm_button_group_chats {
     display: none !important;
-}
-
-#right-nav-panel[data-menu-type="groups"] .sb-character-create-bar #bulkEditButton.disabled {
-    opacity: 0.54;
-    cursor: not-allowed;
 }
 
 #right-nav-panel[data-menu-type="characters"] > #rm_PinAndTabs,
@@ -5917,6 +5915,11 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     background: color-mix(in srgb, var(--sb-shell-main-bg) 54%, transparent);
 }
 
+/* Spoiler-free mode hides Definitions/Greetings; dim them, but keep them tappable so a tap can reveal the fields. */
+#right-nav-panel .sb-character-editor-subtab.is-spoiler-hidden {
+    opacity: 0.45;
+}
+
 #right-nav-panel .sb-character-editor-subtabs::before {
     display: none;
 }
@@ -6049,6 +6052,15 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     overflow-y: auto;
     overscroll-behavior: contain;
     padding-inline-end: 4px;
+}
+
+.sb-creator-notes-fullscreen {
+    width: 100%;
+    height: 100%;
+    /* The popup centres its text; the preview does not, and notes carry their own alignment. */
+    text-align: start;
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 #right-nav-panel :is(#creator_notes_textarea, #tags_textarea) {
@@ -6888,6 +6900,22 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     min-width: 0;
 }
 
+/* SillyBunny: stack the strategy/handling pair on phones. The two-track grid above floors each
+   column at 150px, which overflows the panel scroller (overflow-x is hidden there, so it clips). */
+@media screen and (max-width: 768px), (pointer: coarse) {
+    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #rm_group_buttons {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #rm_group_buttons > .flex1 {
+        min-width: 0;
+    }
+
+    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #rm_group_buttons label {
+        white-space: normal;
+    }
+}
+
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack {
     display: grid;
     grid-template-columns: auto minmax(240px, 1fr);
@@ -7558,7 +7586,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
         white-space: normal;
     }
 
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > .character_select > .bulk_select_checkbox {
+    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) > .bulk_select_checkbox {
         position: absolute !important;
         top: 8px !important;
         left: 8px !important;
@@ -8160,4 +8188,24 @@ body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.gr
     padding: 0 var(--sb-shell-space-lg) !important;
     aspect-ratio: auto;
     flex: 0 0 auto;
+}
+
+/* Below the laptop breakpoint the character shell is ~600px wide, which cannot fit the labelled
+   create button, sort/search cluster, and pagination on one line; go icon-only so the wrapped
+   bar stays at two rows. The padding above is an important declaration (it beats the theme's
+   icon-button squaring), so it is shrunk through its token rather than another one. */
+@media screen and (max-width: 1180px) {
+    #right-nav-panel .sb-character-create-bar #rm_button_create,
+    #right-nav-panel .sb-character-create-bar #rm_button_group_chats {
+        --sb-shell-space-lg: 0px;
+        width: 44px;
+        inline-size: 44px;
+        min-width: 44px;
+        min-inline-size: 44px;
+    }
+
+    #right-nav-panel .sb-character-create-bar #rm_button_create::after,
+    #right-nav-panel .sb-character-create-bar #rm_button_group_chats::after {
+        content: none;
+    }
 }

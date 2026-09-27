@@ -1,21 +1,23 @@
 /* eslint-disable dot-notation */
+import { createHmac } from 'node:crypto';
 import process from 'node:process';
+import { validateHeaderValue } from 'node:http';
+import https from 'node:https';
+import { text } from 'node:stream/consumers';
 import nodeUtil from 'node:util';
 import express from 'express';
 import fetch from 'node-fetch';
 import urlJoin from 'url-join';
 import { getLocalPromptCacheValue, isLikelyLocalServerUrl } from '../../../public/scripts/local-url-utils.js';
 import { getLinkApiBaseUrl, getLinkApiRequestFormat } from '../../../public/scripts/linkapi-utils.js';
-import { applyKimiK3ModelParameterConstraints, isKimiK3Model } from '../../../public/scripts/openai-model-capabilities.js';
+import { applyGrokModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model, zaiSupportsReasoningEffort } from '../../../public/scripts/openai-model-capabilities.js';
+import { applyGenerationRequestControls, requestUsesReasoning } from '../../../public/scripts/generation-request-controls.js';
 
 import {
     AIMLAPI_HEADERS,
     AZURE_OPENAI_KEYS,
     CHAT_COMPLETION_SOURCES,
     GEMINI_SAFETY,
-    NANOGPT_REASONING_EFFORT_MAP,
-    OPENAI_FIXED_REASONING_EFFORT,
-    OPENAI_REASONING_EFFORT_MAP,
     OPENAI_REASONING_EFFORT_MODELS,
     OPENAI_VERBOSITY_MODELS,
     OPENROUTER_HEADERS,
@@ -23,6 +25,7 @@ import {
     SILICONFLOW_ENDPOINT,
     MINIMAX_ENDPOINT,
     ZAI_ENDPOINT,
+    POLLINATIONS_ENDPOINT,
 } from '../../constants.js';
 import {
     forwardFetchResponse,
@@ -39,6 +42,7 @@ import {
     summarizeLlmPayloadForLog,
 } from '../../util.js';
 import { isRequestCancellationError } from '../../request-cancellation.js';
+import { getResumableGeneration } from '../../resumable-generations.js';
 import {
     convertClaudeMessages,
     convertGooglePrompt,
@@ -55,12 +59,14 @@ import {
     postProcessPrompt,
     PROMPT_PROCESSING_TYPE,
     addAssistantPrefix,
+    seedKimiK3PartialReasoning,
     embedOpenRouterMedia,
     addReasoningContentToToolCalls,
     cachingSystemPromptForOpenRouter,
     addOpenRouterSignatures,
 } from '../../prompt-converters.js';
-import { applyReasoningEffortNormalization } from '../../reasoning-effort.js';
+import { applyReasoningEffortNormalization, toWireReasoningEffort } from '../../reasoning-effort.js';
+import { isBunRuntime } from '../../runtime.js';
 
 import { readSecret, SECRET_KEYS } from '../secrets.js';
 import {
@@ -73,6 +79,8 @@ import {
     getWebTokenizer,
 } from '../tokenizers.js';
 import { getVertexAIAuth, getProjectIdFromServiceAccount, getGoogleApiBaseUrl } from '../google.js';
+import { getCookieSecret } from '../../users.js';
+import { fetchGoogleModels, GoogleModelsHttpError } from './google-models.js';
 
 const API_OPENAI = 'https://api.openai.com/v1';
 const API_CLAUDE = 'https://api.anthropic.com/v1';
@@ -91,6 +99,7 @@ const API_DEEPSEEK = 'https://api.deepseek.com/beta';
 const API_XAI = 'https://api.x.ai/v1';
 const API_AIMLAPI = 'https://api.aimlapi.com/v1';
 const API_POLLINATIONS = 'https://gen.pollinations.ai/v1';
+const API_POLLINATIONS_ANON = 'https://text.pollinations.ai/v1';
 const API_MOONSHOT = 'https://api.moonshot.ai/v1';
 const API_FIREWORKS = 'https://api.fireworks.ai/inference/v1';
 const API_COMETAPI = 'https://api.cometapi.com/v1';
@@ -113,6 +122,18 @@ const cachingAtDepth = (() => {
     return Number.isInteger(value) && value >= 0 ? value : -1;
 })();
 const enableAdaptiveThinking = getConfigValue('claude.enableAdaptiveThinking', true, 'boolean');
+
+/**
+ * Lazily-cached HMAC key (instance cookie secret) for session-affinity hashing.
+ * @type {string|undefined}
+ */
+let affinityKey;
+function getAffinityKey() {
+    if (affinityKey === undefined) {
+        affinityKey = getCookieSecret(globalThis.DATA_ROOT);
+    }
+    return affinityKey;
+}
 
 /**
  * Cache for cacheable (writing) OpenRouter model IDs.
@@ -215,9 +236,7 @@ function resolveCustomOpenAiReasoningEffort(requestBody) {
         return undefined;
     }
 
-    return OPENAI_FIXED_REASONING_EFFORT[requestBody.model]
-        ?? OPENAI_REASONING_EFFORT_MAP[requestBody.reasoning_effort]
-        ?? requestBody.reasoning_effort;
+    return toWireReasoningEffort(requestBody.reasoning_effort);
 }
 
 function shouldEnableCustomReasoning(requestBody) {
@@ -320,6 +339,26 @@ function setJsonObjectFormat(bodyParams, messages, jsonSchema) {
     messages.push(message);
 }
 
+function fetchBunLinkApiStream(url, options) {
+    return new Promise((resolve, reject) => {
+        const { body, ...requestOptions } = options;
+        const upstreamRequest = https.request(url, requestOptions, upstreamResponse => {
+            upstreamRequest.setTimeout(0);
+            const status = upstreamResponse.statusCode ?? 500;
+            resolve({
+                ok: status >= 200 && status < 300,
+                status,
+                statusText: upstreamResponse.statusMessage ?? '',
+                body: upstreamResponse,
+                text: () => text(upstreamResponse),
+            });
+        });
+
+        upstreamRequest.once('error', reject);
+        upstreamRequest.end(body);
+    });
+}
+
 /**
  * Sends a request to Claude API.
  * @param {express.Request} request Express request
@@ -345,17 +384,17 @@ async function sendClaudeRequest(request, response) {
         const convertedPrompt = convertClaudeMessages(request.body.messages, request.body.assistant_prefill, useSystemPrompt, useTools, getPromptNames(request));
         // SillyBunny: claude-fable-5 support (substring match also catches router ids like 'anthropic/claude-fable-5')
         const isFableModel = /claude-fable/.test(request.body.model);
+        const isFable51Model = /claude-fable-5-1/.test(request.body.model);
         // SillyBunny: Claude Sonnet 5 and Opus 5 require adaptive thinking and reject sampling params and assistant prefill.
-        const isSonnetOrOpus5 = /^claude-(?:sonnet|opus)-5/.test(request.body.model);
-        const useThinking = /^claude-(3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || (isFableModel && enableAdaptiveThinking) || isSonnetOrOpus5;
+        const isSonnetOrOpus5 = /claude-(?:sonnet|opus)-5/.test(request.body.model);
+        const isOpus55Model = /claude-opus-5-5(?:[-/:]|$)/.test(request.body.model);
+        const useThinking = /^claude-(3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnetOrOpus5;
         const useWebSearch = (/^claude-(3-5|3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnetOrOpus5) && Boolean(request.body.enable_web_search);
         const isLimitedSampling = /^claude-(opus-4-1|sonnet-4-5|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model);
         const useVerbosity = /^claude-(opus-4-5|opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnetOrOpus5;
         const noPrefillModel = /^claude-(opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnetOrOpus5;
-        // Sonnet 5 and Opus 5 are always adaptive; other adaptive models require the feature flag.
-        const isAdaptiveModel = (enableAdaptiveThinking && (/^claude-(opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel)) || isSonnetOrOpus5;
-        // SillyBunny: Claude 5 preserves xhigh separately from max; older adaptive models keep the max fallback.
-        const supportsXhigh = isSonnetOrOpus5;
+        const isAdaptiveModel = /^claude-(opus-4-7|opus-4-8)/.test(request.body.model) || isFableModel || isSonnetOrOpus5 || (enableAdaptiveThinking && /^claude-(opus-4-6|sonnet-4-6)/.test(request.body.model));
+        const noSamplingModel = /^claude-(opus-4-7|opus-4-8)/.test(request.body.model) || isFableModel || isSonnetOrOpus5;
         let fixThinkingPrefill = false;
         // Add custom stop sequences
         const stopSequences = [];
@@ -396,15 +435,24 @@ async function sendClaudeRequest(request, response) {
             }
         }
 
-        // Structured output is a forced tool
+        // Fable 5.1 rejects forced tools, but supports native JSON outputs.
         if (request.body.json_schema) {
-            const jsonTool = {
-                name: request.body.json_schema.name,
-                description: request.body.json_schema.description || 'Well-formed JSON object',
-                input_schema: request.body.json_schema.value,
-            };
-            requestBody.tools = [...(requestBody.tools || []), jsonTool];
-            requestBody.tool_choice = { type: 'tool', name: request.body.json_schema.name };
+            if (isFable51Model) {
+                requestBody.output_config = {
+                    format: {
+                        type: 'json_schema',
+                        schema: request.body.json_schema.value,
+                    },
+                };
+            } else {
+                const jsonTool = {
+                    name: request.body.json_schema.name,
+                    description: request.body.json_schema.description || 'Well-formed JSON object',
+                    input_schema: request.body.json_schema.value,
+                };
+                requestBody.tools = [...(requestBody.tools || []), jsonTool];
+                requestBody.tool_choice = { type: 'tool', name: request.body.json_schema.name };
+            }
         }
 
         if (useWebSearch) {
@@ -440,35 +488,31 @@ async function sendClaudeRequest(request, response) {
             delete requestBody.top_p;
         }
 
-        // SillyBunny: claude-fable-* removed temperature/top_p/top_k entirely; sending any of them returns HTTP 400.
-        if (isFableModel) {
-            delete requestBody.temperature;
-            delete requestBody.top_p;
-            delete requestBody.top_k;
-        }
-
-        // SillyBunny: Claude Sonnet 5 and Opus 5 reject all custom sampling params with HTTP 400.
-        if (isSonnetOrOpus5) {
+        if (noSamplingModel) {
             delete requestBody.temperature;
             delete requestBody.top_p;
             delete requestBody.top_k;
         }
 
         const reasoningEffort = request.body.reasoning_effort;
-        const budgetTokens = calculateClaudeBudgetTokens(requestBody.max_tokens, reasoningEffort, requestBody.stream, isAdaptiveModel, supportsXhigh);
+        const includeReasoning = Boolean(request.body.include_reasoning);
+        const budgetTokens = calculateClaudeBudgetTokens(requestBody.max_tokens, reasoningEffort, requestBody.stream, isAdaptiveModel);
 
         // Adaptive thinking: returns a string effort level (like Gemini 3)
         if (useThinking && typeof budgetTokens === 'string') {
             fixThinkingPrefill = true;
             requestBody.thinking = { type: 'adaptive' };
-            // SillyBunny: Claude 5 defaults to omitted; request summarized display when the UI shows reasoning.
-            if (isSonnetOrOpus5 && request.body.include_reasoning) {
+            if (noSamplingModel && includeReasoning) {
                 requestBody.thinking.display = 'summarized';
             }
             requestBody.output_config ??= {};
             requestBody.output_config.effort = budgetTokens;
             // top_k is not allowed in adaptive mode
             delete requestBody.top_k;
+        } else if (useThinking && (isFableModel || isSonnetOrOpus5) && reasoningEffort === 'auto' && includeReasoning) {
+            // Fable/Claude 5 auto thinking is already enabled, but readable summaries require an explicit display request.
+            fixThinkingPrefill = true;
+            requestBody.thinking = { type: 'adaptive', display: 'summarized' };
         } else if (useThinking && Number.isInteger(budgetTokens)) {
             // Traditional thinking: returns a numeric budget
             fixThinkingPrefill = true;
@@ -489,8 +533,11 @@ async function sendClaudeRequest(request, response) {
             delete requestBody.top_p;
             delete requestBody.top_k;
         } else if (isSonnetOrOpus5 && budgetTokens === null) {
-            // SillyBunny: Claude 5 enables adaptive thinking by default; explicitly disable when effort is none/auto.
-            requestBody.thinking = { type: 'disabled' };
+            // SillyBunny: Opus 5.5 rejects disabled thinking even when no effort is selected.
+            requestBody.thinking = { type: isOpus55Model ? 'adaptive' : 'disabled' };
+            if (isOpus55Model && includeReasoning) {
+                requestBody.thinking.display = 'summarized';
+            }
         }
 
         if ((fixThinkingPrefill || noPrefillModel) && convertedPrompt.messages.length && convertedPrompt.messages[convertedPrompt.messages.length - 1].role === 'assistant') {
@@ -510,7 +557,8 @@ async function sendClaudeRequest(request, response) {
 
         logVerboseGenerationRequest('Claude', request, requestBody);
 
-        const generateResponse = await fetch(apiUrl + '/messages', {
+        const requestUrl = apiUrl + '/messages';
+        const requestOptions = {
             method: 'POST',
             signal: controller.signal,
             body: JSON.stringify(requestBody),
@@ -520,7 +568,11 @@ async function sendClaudeRequest(request, response) {
                 'x-api-key': apiKey,
                 ...additionalHeaders,
             },
-        });
+        };
+        // SillyBunny: node-fetch's stream pipeline leaks Bun timeout rejections; direct HTTPS preserves global agents.
+        const generateResponse = isBunRuntime() && request.body.stream && request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.LINKAPI
+            ? await fetchBunLinkApiStream(requestUrl, requestOptions)
+            : await fetch(requestUrl, requestOptions);
 
         if (request.body.stream) {
             // Pipe remote SSE stream to Express response
@@ -631,12 +683,14 @@ async function sendMakerSuiteRequest(request, response) {
             'gemini-2.0-flash-preview-image-generation',
             'gemini-2.5-flash-image-preview',
             'gemini-2.5-flash-image',
-            'gemini-3-pro-image-preview',
-            'gemini-3.1-flash-image-preview',
+            'gemini-3-pro-image',
+            'gemini-3.1-flash-image',
         ];
 
         const isThinkingConfigModel = m => (/^gemini-2.5-(flash|pro)/.test(m) && !/-image(-preview)?$/.test(m)) || (/^gemini-3[.\d]*-(flash|pro)/.test(m));
         const isImageSizeModel = m => /^gemini-3/.test(m);
+        // https://ai.google.dev/gemini-api/docs/latest-model#api-changes-and-parameter-updates
+        const noSamplingModel = /gemini-3\.[67]-flash|gemini-3\.5-flash-lite/.test(model);
 
         const noSearchModels = [
             'gemini-2.0-flash-lite',
@@ -648,6 +702,13 @@ async function sendMakerSuiteRequest(request, response) {
 
         if (!Array.isArray(generationConfig.stopSequences) || !generationConfig.stopSequences.length) {
             delete generationConfig.stopSequences;
+        }
+
+        if (noSamplingModel) {
+            delete generationConfig.temperature;
+            delete generationConfig.topP;
+            delete generationConfig.topK;
+            delete generationConfig.candidateCount;
         }
 
         const enableImageModality = requestImages && imageGenerationModels.includes(model);
@@ -1081,6 +1142,7 @@ async function sendCohereRequest(request, response) {
     try {
         const convertedHistory = convertCohereMessages(request.body.messages, getPromptNames(request));
         const tools = [];
+        const toolChoice = String(request.body.tool_choice ?? '').toUpperCase();
 
         if (Array.isArray(request.body.tools) && request.body.tools.length > 0) {
             tools.push(...request.body.tools);
@@ -1106,6 +1168,7 @@ async function sendCohereRequest(request, response) {
             presence_penalty: request.body.presence_penalty,
             documents: [],
             tools: tools,
+            tool_choice: ['REQUIRED', 'NONE'].includes(toolChoice) ? toolChoice : undefined,
         };
 
         const canDoSafetyMode = String(request.body.model).endsWith('08-2024');
@@ -1186,9 +1249,8 @@ async function sendDeepSeekRequest(request, response) {
             bodyParams['logprobs'] = true;
         }
 
-        // DeepSeek accepts low/high/max and aliases medium/xhigh to high itself; min has no DeepSeek meaning.
         if (isThinkingModel && request.body.reasoning_effort && !['auto', 'none'].includes(request.body.reasoning_effort)) {
-            bodyParams['reasoning_effort'] = request.body.reasoning_effort === 'min' ? 'low' : request.body.reasoning_effort;
+            bodyParams['reasoning_effort'] = toWireReasoningEffort(request.body.reasoning_effort);
         }
 
         if (Array.isArray(request.body.tools) && request.body.tools.length > 0) {
@@ -1314,9 +1376,7 @@ async function sendXaiRequest(request, response) {
         }
 
         if (request.body.reasoning_effort && !['auto', 'none'].includes(request.body.reasoning_effort)) {
-            // grok-4.20-multi-agent supports xhigh; grok-3-mini supports low/high only
-            const effort = request.body.reasoning_effort;
-            bodyParams['reasoning_effort'] = effort === 'xhigh' ? 'xhigh' : (effort === 'high' ? 'high' : 'low');
+            bodyParams['reasoning_effort'] = toWireReasoningEffort(request.body.reasoning_effort);
         }
 
         if (request.body.json_schema) {
@@ -1821,7 +1881,7 @@ async function sendAzureOpenAIRequest(request, response) {
 
     // Do not send reasoning effort to models which do not support it
     apiRequestBody['reasoning_effort'] = OPENAI_REASONING_EFFORT_MODELS.includes(request.body.model)
-        ? OPENAI_FIXED_REASONING_EFFORT[request.body.model] ?? OPENAI_REASONING_EFFORT_MAP[request.body.reasoning_effort] ?? request.body.reasoning_effort
+        ? toWireReasoningEffort(request.body.reasoning_effort)
         : undefined;
 
     const controller = new AbortController();
@@ -1964,8 +2024,9 @@ router.post('/status', async function (request, statusResponse) {
             apiKey = readSecret(request.user.directories, SECRET_KEYS.AIMLAPI);
             headers = { ...AIMLAPI_HEADERS };
         } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.POLLINATIONS) {
+            const isAnonymous = request.body.pollinations_endpoint === POLLINATIONS_ENDPOINT.ANONYMOUS;
             apiUrl = 'https://gen.pollinations.ai/text';
-            apiKey = readSecret(request.user.directories, SECRET_KEYS.POLLINATIONS);
+            apiKey = isAnonymous ? 'anonymous' : readSecret(request.user.directories, SECRET_KEYS.POLLINATIONS);
             headers = {};
         } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.GROQ) {
             apiUrl = API_GROQ;
@@ -1981,9 +2042,61 @@ router.post('/status', async function (request, statusResponse) {
             apiKey = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.MOONSHOT);
             headers = {};
         } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.FIREWORKS) {
-            apiUrl = API_FIREWORKS;
             apiKey = readSecret(request.user.directories, SECRET_KEYS.FIREWORKS);
-            headers = {};
+            const modelsUrl = 'https://api.fireworks.ai/v1/accounts/fireworks/models?filter=supports_serverless%3Dtrue&pageSize=200';
+
+            try {
+                const response = await fetch(modelsUrl, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': 'Bearer ' + apiKey,
+                        ...headers,
+                    },
+                });
+
+                if (response.ok) {
+                    /** @type {any} */
+                    const data = await response.json();
+                    const models = Array.isArray(data?.models)
+                        ? data.models
+                            .filter(m => m?.contextLength > 0 && m?.kind !== 'EMBEDDING_MODEL')
+                            .map(m => ({
+                                id: m.name,
+                                name: m.displayName,
+                                context_length: m.contextLength,
+                                supports_tools: m.supportsTools,
+                                supports_image_input: m.supportsImageInput,
+                            }))
+                        : [];
+
+                    // Add fast router versions for models that have them
+                    const fastRouters = {
+                        'accounts/fireworks/models/glm-5p2': 'accounts/fireworks/routers/glm-5p2-fast',
+                        'accounts/fireworks/models/kimi-k2p6': 'accounts/fireworks/routers/kimi-k2p6-fast',
+                        'accounts/fireworks/models/kimi-k2p7-code': 'accounts/fireworks/routers/kimi-k2p7-code-fast',
+                        'accounts/fireworks/models/kimi-k3': 'accounts/fireworks/routers/kimi-k3-fast',
+                    };
+                    for (const [standardId, fastId] of Object.entries(fastRouters)) {
+                        const standard = models.find(m => m.id === standardId);
+                        if (standard) {
+                            models.push({
+                                ...standard,
+                                id: fastId,
+                                name: standard.name + ' (fast)',
+                            });
+                        }
+                    }
+
+                    console.debug('Available Fireworks models:', models.map(m => m.id));
+                    return statusResponse.send({ data: models });
+                } else {
+                    console.warn('Fireworks models endpoint failed:', response.status, response.statusText);
+                    return statusResponse.send({ error: true, data: { data: [] } });
+                }
+            } catch (error) {
+                console.error('Error fetching Fireworks models:', error);
+                return statusResponse.send({ error: true, data: { data: [] } });
+            }
         } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.MAKERSUITE) {
             apiKey = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.MAKERSUITE);
             apiUrl = trimTrailingSlash(request.body.reverse_proxy || API_MAKERSUITE);
@@ -1999,25 +2112,15 @@ router.post('/status', async function (request, statusResponse) {
             }
 
             try {
-                const response = await fetch(modelsUrl);
-
-                if (response.ok) {
-                    /** @type {any} */
-                    const data = await response.json();
-                    // Transform Google AI Studio models to OpenAI format
-                    const models = data.models
-                        ?.filter(model => model.supportedGenerationMethods?.includes('generateContent'))
-                        ?.map(model => ({
-                            id: model.name.replace('models/', ''),
-                        })) || [];
-
-                    console.info('Available Google AI Studio models:', models.map(m => m.id));
-                    return statusResponse.send({ data: models });
-                } else {
-                    console.warn('Google AI Studio models endpoint failed:', response.status, response.statusText);
+                const models = await fetchGoogleModels(modelsUrl);
+                console.info('Available Google AI Studio models:', models.map(m => m.id));
+                return statusResponse.send({ data: models });
+            } catch (error) {
+                if (error instanceof GoogleModelsHttpError) {
+                    console.warn('Google AI Studio models endpoint failed:', error.status, error.statusText);
                     return statusResponse.send({ error: true, bypass: true, data: { data: [] } });
                 }
-            } catch (error) {
+
                 console.error('Error fetching Google AI Studio models:', error);
                 return statusResponse.send({ error: true, bypass: true, data: { data: [] } });
             }
@@ -2649,9 +2752,15 @@ function forwardResponsesApiStream(fetchResponse, expressResponse, request, onDi
         }
     });
 
-    expressResponse.on('close', () => {
-        closeStream();
-    });
+    const resumableGeneration = getResumableGeneration(request);
+    if (resumableGeneration) {
+        // SillyBunny: a resumable generation finishes without the client; only an explicit cancel stops it.
+        resumableGeneration.onCancel(closeStream);
+    } else {
+        expressResponse.on('close', () => {
+            closeStream();
+        });
+    }
 }
 
 /**
@@ -2736,11 +2845,8 @@ async function sendOpenAIResponsesRequest(request, response) {
         };
 
         if (request.body.reasoning_effort) {
-            const reasoningEffort = OPENAI_REASONING_EFFORT_MODELS.includes(request.body.model)
-                ? OPENAI_FIXED_REASONING_EFFORT[request.body.model] ?? OPENAI_REASONING_EFFORT_MAP[request.body.reasoning_effort] ?? request.body.reasoning_effort
-                : request.body.reasoning_effort;
             requestBody.reasoning = {
-                effort: reasoningEffort,
+                effort: toWireReasoningEffort(request.body.reasoning_effort),
             };
         }
 
@@ -2826,6 +2932,27 @@ export async function handleChatCompletionsGenerate(request, response) {
         // reasoning effort the frontend never validated, and the pass-through sources forward it
         // to the provider verbatim.
         applyReasoningEffortNormalization(request.body);
+
+        // SillyBunny: enforce upstream Astra constraints before dispatch so profile overrides
+        // and Conversation REST requests follow the same rules as the frontend builder.
+        if ([CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES, CHAT_COMPLETION_SOURCES.AZURE_OPENAI, CHAT_COMPLETION_SOURCES.OPENROUTER].includes(request.body.chat_completion_source)
+            && /gpt-6-astra/.test(request.body.model)) {
+            // A profile override can supply max_tokens after a preset set max_completion_tokens.
+            request.body.max_completion_tokens = request.body.max_tokens ?? request.body.max_completion_tokens;
+            for (const key of ['max_tokens', 'temperature', 'top_p', 'logprobs', 'top_logprobs']) {
+                delete request.body[key];
+            }
+            if ([CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES].includes(request.body.chat_completion_source)) {
+                for (const key of ['frequency_penalty', 'presence_penalty', 'logit_bias', 'stop']) {
+                    delete request.body[key];
+                }
+            }
+            if ([CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.AZURE_OPENAI].includes(request.body.chat_completion_source)
+                && /^gpt-6-astra/.test(request.body.model)) {
+                delete request.body.tools;
+                delete request.body.tool_choice;
+            }
+        }
 
         console.log(`[ChatCompletions] generate: type=${request.body.type} source=${request.body.chat_completion_source} model=${request.body.model} stream=${request.body.stream}`);
 
@@ -2918,6 +3045,11 @@ export async function handleChatCompletionsGenerate(request, response) {
                     exclude: !includeReasoning,
                 },
             };
+
+            if (request.body.logprobs > 0) {
+                bodyParams['top_logprobs'] = request.body.logprobs;
+                bodyParams['logprobs'] = true;
+            }
 
             if (request.body.min_p !== undefined) {
                 bodyParams['min_p'] = request.body.min_p;
@@ -3050,6 +3182,9 @@ export async function handleChatCompletionsGenerate(request, response) {
             apiKey = readSecret(request.user.directories, SECRET_KEYS.FIREWORKS);
             headers = {};
             bodyParams = {};
+            if (request.body.reasoning_effort) {
+                bodyParams['reasoning_effort'] = request.body.reasoning_effort;
+            }
             if (request.body.json_schema) {
                 bodyParams['response_format'] = {
                     type: 'json_schema',
@@ -3061,11 +3196,54 @@ export async function handleChatCompletionsGenerate(request, response) {
                     },
                 };
             }
+            if (request.body.chat_id) {
+                headers['x-session-affinity'] = createHmac('sha256', getAffinityKey()).update(request.body.chat_id).digest('hex').slice(0, 16);
+            }
         } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.NANOGPT) {
             apiUrl = API_NANOGPT;
             apiKey = readSecret(request.user.directories, SECRET_KEYS.NANOGPT);
             headers = {};
             bodyParams = {};
+
+            // SillyBunny: explicit lists replace the legacy selector even when empty; malformed restrictions must fail closed.
+            let hasProviderLists = false;
+            for (const [field, key] of [
+                ['nanogpt_allowed_providers', 'only'],
+                ['nanogpt_ignored_providers', 'ignore'],
+            ]) {
+                if (!Object.hasOwn(request.body, field)) continue;
+                hasProviderLists = true;
+                const providers = request.body[field];
+                if (!Array.isArray(providers) || providers.some(provider => typeof provider !== 'string' || !provider.trim())) {
+                    return response.status(400).send({ error: true });
+                }
+                if (providers.length > 0) {
+                    bodyParams['provider'] ??= {};
+                    bodyParams['provider'][key] = providers;
+                }
+            }
+            if (!hasProviderLists && Object.hasOwn(request.body, 'nanogpt_provider')) {
+                const provider = request.body.nanogpt_provider;
+                if (typeof provider !== 'string') {
+                    return response.status(400).send({ error: true });
+                }
+                try {
+                    validateHeaderValue('X-Provider', provider);
+                } catch {
+                    return response.status(400).send({ error: true });
+                }
+                if (provider.trim()) {
+                    headers['X-Provider'] = provider;
+                }
+            }
+            if (Object.hasOwn(request.body, 'nanogpt_payg_override') && typeof request.body.nanogpt_payg_override !== 'boolean') {
+                return response.status(400).send({ error: true });
+            }
+            if (request.body.nanogpt_payg_override === true) {
+                headers['X-Billing-Mode'] = 'paygo';
+                bodyParams['billing_mode'] = 'paygo';
+            }
+
             if (request.body.enable_web_search && !/:online$/.test(request.body.model)) {
                 request.body.model = `${request.body.model}:online`;
             }
@@ -3078,11 +3256,10 @@ export async function handleChatCompletionsGenerate(request, response) {
             if (request.body.repetition_penalty !== undefined) {
                 bodyParams['repetition_penalty'] = request.body.repetition_penalty;
             }
-            // SillyBunny divergence: gate on the map rather than on the raw value being truthy.
-            // 'none' and 'auto' are truthy but have no NanoGPT equivalent, so upstream sent a
-            // bare `"reasoning": {}` for them -- and for anything else it could not translate.
-            if (Object.hasOwn(NANOGPT_REASONING_EFFORT_MAP, request.body.reasoning_effort)) {
-                bodyParams['reasoning'] = { effort: NANOGPT_REASONING_EFFORT_MAP[request.body.reasoning_effort] };
+            // SillyBunny divergence: 'auto' is truthy but means "unset", and upstream shipped it as
+            // a bare `"reasoning": {}`. Every real rung, 'none' included, goes through untouched.
+            if (request.body.reasoning_effort && request.body.reasoning_effort !== 'auto') {
+                bodyParams['reasoning'] = { effort: toWireReasoningEffort(request.body.reasoning_effort) };
             }
 
             const isClaude = /(?:^|\/)claude[-_]/.test(request.body.model);
@@ -3093,20 +3270,23 @@ export async function handleChatCompletionsGenerate(request, response) {
                 };
             }
         } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.POLLINATIONS) {
-            apiUrl = API_POLLINATIONS;
-            apiKey = readSecret(request.user.directories, SECRET_KEYS.POLLINATIONS);
+            const isAnonymous = request.body.pollinations_endpoint === POLLINATIONS_ENDPOINT.ANONYMOUS;
+            apiUrl = isAnonymous ? API_POLLINATIONS_ANON : API_POLLINATIONS;
+            apiKey = isAnonymous ? 'anonymous' : readSecret(request.user.directories, SECRET_KEYS.POLLINATIONS);
             headers = {};
             bodyParams = {
-                reasoning_effort: request.body.reasoning_effort,
                 seed: request.body.seed ?? Math.floor(Math.random() * 99999999),
             };
-            if (request.body.json_schema) {
-                bodyParams['response_format'] = {
-                    type: 'json_schema',
-                    json_schema: {
-                        schema: request.body.json_schema.value,
-                    },
-                };
+            if (!isAnonymous) {
+                bodyParams['reasoning_effort'] = request.body.reasoning_effort;
+                if (request.body.json_schema) {
+                    bodyParams['response_format'] = {
+                        type: 'json_schema',
+                        json_schema: {
+                            schema: request.body.json_schema.value,
+                        },
+                    };
+                }
             }
         } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.MOONSHOT) {
             apiUrl = new URL(request.body.reverse_proxy || API_MOONSHOT).toString();
@@ -3117,6 +3297,11 @@ export async function handleChatCompletionsGenerate(request, response) {
                     type: request.body.include_reasoning ? 'enabled' : 'disabled',
                 },
             };
+            // SillyBunny divergence: K3 always reasons and takes the depth from a top-level
+            // reasoning_effort instead of the thinking object the older Kimi models use.
+            if (isKimiK3Model(request.body.model) && request.body.reasoning_effort && !['auto', 'none'].includes(request.body.reasoning_effort)) {
+                bodyParams['reasoning_effort'] = toWireReasoningEffort(request.body.reasoning_effort);
+            }
             request.body.json_schema
                 ? setJsonObjectFormat(bodyParams, request.body.messages, request.body.json_schema)
                 : addAssistantPrefix(request.body.messages, [], 'partial');
@@ -3135,11 +3320,17 @@ export async function handleChatCompletionsGenerate(request, response) {
             headers = {
                 'Accept-Language': 'en-US,en',
             };
+            const requiresThinking = /(?:^|[/:])glm-5\.3(?:[-/:]|$)/i.test(String(request.body.model));
             bodyParams = {
                 thinking: {
-                    type: request.body.include_reasoning ? 'enabled' : 'disabled',
+                    type: requiresThinking || request.body.include_reasoning ? 'enabled' : 'disabled',
                 },
             };
+            // SillyBunny divergence: Z.AI takes the reasoning depth alongside thinking.type from
+            // GLM-5.2 onwards.
+            if (zaiSupportsReasoningEffort(request.body.model) && request.body.reasoning_effort && !['auto', 'none'].includes(request.body.reasoning_effort)) {
+                bodyParams['reasoning_effort'] = toWireReasoningEffort(request.body.reasoning_effort);
+            }
             if (request.body.json_schema) {
                 setJsonObjectFormat(bodyParams, request.body.messages, request.body.json_schema);
             }
@@ -3177,13 +3368,20 @@ export async function handleChatCompletionsGenerate(request, response) {
             headers = {};
             bodyParams = {};
             if (request.body.reasoning_effort && request.body.reasoning_effort !== 'none') {
-                // Client-side aliases min/max are not valid OpenAI-style effort values.
-                const effortMap = { min: 'low', max: 'high' };
-                bodyParams['reasoning_effort'] = effortMap[request.body.reasoning_effort] ?? request.body.reasoning_effort;
+                bodyParams['reasoning_effort'] = toWireReasoningEffort(request.body.reasoning_effort);
             }
         } else {
             console.warn('This chat completion source is not supported yet.');
             return response.status(400).send({ error: true });
+        }
+
+        // SillyBunny: service tiers are explicit routing choices on these two aggregators.
+        if ([CHAT_COMPLETION_SOURCES.NANOGPT, CHAT_COMPLETION_SOURCES.OPENROUTER].includes(request.body.chat_completion_source)
+            && request.body.service_tier !== undefined) {
+            if (!['auto', 'default', 'flex', 'priority'].includes(request.body.service_tier)) {
+                return response.status(400).json({ error: true, field: 'service_tier' });
+            }
+            bodyParams.service_tier = request.body.service_tier;
         }
 
         // A few of OpenAIs reasoning models support reasoning effort
@@ -3193,7 +3391,7 @@ export async function handleChatCompletionsGenerate(request, response) {
             && shouldUseDefaultOpenAiReasoningEffort
             && [CHAT_COMPLETION_SOURCES.CUSTOM, CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES].includes(request.body.chat_completion_source)
             && OPENAI_REASONING_EFFORT_MODELS.includes(request.body.model)) {
-            bodyParams['reasoning_effort'] = OPENAI_FIXED_REASONING_EFFORT[request.body.model] ?? OPENAI_REASONING_EFFORT_MAP[request.body.reasoning_effort] ?? request.body.reasoning_effort;
+            bodyParams['reasoning_effort'] = toWireReasoningEffort(request.body.reasoning_effort);
         }
 
         if (request.body.verbosity && [CHAT_COMPLETION_SOURCES.CUSTOM, CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES].includes(request.body.chat_completion_source)) {
@@ -3227,7 +3425,9 @@ export async function handleChatCompletionsGenerate(request, response) {
             bodyParams['tool_choice'] = request.body.tool_choice;
         }
 
-        if (request.body.json_schema && !bodyParams['response_format']) {
+        const isAnonymousPollinations = request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.POLLINATIONS
+            && request.body.pollinations_endpoint === POLLINATIONS_ENDPOINT.ANONYMOUS;
+        if (request.body.json_schema && !bodyParams['response_format'] && !isAnonymousPollinations) {
             bodyParams['response_format'] = {
                 type: 'json_schema',
                 json_schema: {
@@ -3245,7 +3445,7 @@ export async function handleChatCompletionsGenerate(request, response) {
             request.body.messages = convertXAIMessages(request.body.messages, getPromptNames(request));
         }
 
-        const requestBody = {
+        let requestBody = {
             'messages': isTextCompletion === false ? request.body.messages : undefined,
             'prompt': isTextCompletion === true ? textPrompt : undefined,
             'model': request.body.model,
@@ -3264,6 +3464,13 @@ export async function handleChatCompletionsGenerate(request, response) {
             ...bodyParams,
         };
 
+        // LinkAPI relays Grok verbatim, so penalty samplers reach a reasoning model and error the
+        // request. Stripped here rather than frontend-side to also cover the Conversation REST API,
+        // which forwards a caller-supplied payload straight into this handler.
+        if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.LINKAPI) {
+            applyGrokModelParameterConstraints(requestBody);
+        }
+
         const isKimiK3Request = !isTextCompletion
             && [CHAT_COMPLETION_SOURCES.CUSTOM, CHAT_COMPLETION_SOURCES.MOONSHOT, CHAT_COMPLETION_SOURCES.NANOGPT, CHAT_COMPLETION_SOURCES.OPENROUTER].includes(request.body.chat_completion_source)
             && isKimiK3Model(requestBody.model);
@@ -3272,18 +3479,43 @@ export async function handleChatCompletionsGenerate(request, response) {
             applyKimiK3ModelParameterConstraints(requestBody);
         }
 
+        // SillyBunny: Claude models that require adaptive thinking reject legacy thinking types supplied by Custom endpoint settings.
+        if (!isTextCompletion
+            && request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.CUSTOM
+            && /claude-(?:fable-5(?:-1|\.1)|opus-5-5)(?:[-/:]|$)/i.test(String(requestBody.model))) {
+            if (requestBody.thinking?.type !== 'adaptive') {
+                requestBody.thinking = { type: 'adaptive' };
+            }
+            delete requestBody.thinking.budget_tokens;
+        }
+
         if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.CUSTOM) {
             excludeKeysByYaml(requestBody, request.body.custom_exclude_body);
+            delete requestBody.request_controls;
+            // SillyBunny: enforce owned controls after custom body overrides, never on helper requests.
+            let reasoning;
+            if (hasCustomReasoningParamConfig(request.body)) {
+                const value = requestBody[request.body.custom_reasoning_param_name.trim()];
+                const format = request.body.custom_reasoning_param_format.trim();
+                const enabled = String(request.body.custom_reasoning_enabled_value ?? 'enabled').trim() || 'enabled';
+                const disabled = String(request.body.custom_reasoning_disabled_value ?? 'disabled').trim() || 'disabled';
+                const switchValue = format === 'thinking_object' ? value?.type : value;
+                if (format === 'boolean' && typeof value === 'boolean') reasoning = value;
+                if (['string', 'thinking_object'].includes(format) && [enabled, disabled].includes(switchValue)) reasoning = switchValue === enabled;
+                if (format === 'openai' && typeof value === 'string') reasoning = requestUsesReasoning({ ...requestBody, reasoning_effort: value });
+            }
+            requestBody = applyGenerationRequestControls(requestBody, { ...request.body.request_controls, reasoning });
         }
 
         if (isKimiK3Request) {
             const responseFormatType = requestBody.response_format?.type;
             const usesStructuredOutput = Boolean(request.body.json_schema)
                 || Boolean(requestBody.response_format && responseFormatType !== 'text');
-            if ([CHAT_COMPLETION_SOURCES.CUSTOM, CHAT_COMPLETION_SOURCES.NANOGPT, CHAT_COMPLETION_SOURCES.OPENROUTER].includes(request.body.chat_completion_source)
-                && !usesStructuredOutput
-                && Array.isArray(requestBody.messages)) {
-                addAssistantPrefix(requestBody.messages, [], 'partial');
+            if (!usesStructuredOutput && Array.isArray(requestBody.messages)) {
+                if ([CHAT_COMPLETION_SOURCES.CUSTOM, CHAT_COMPLETION_SOURCES.NANOGPT, CHAT_COMPLETION_SOURCES.OPENROUTER].includes(request.body.chat_completion_source)) {
+                    addAssistantPrefix(requestBody.messages, [], 'partial');
+                }
+                seedKimiK3PartialReasoning(requestBody.messages);
             }
         }
 

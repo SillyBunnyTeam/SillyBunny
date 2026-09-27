@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 // SillyBunny divergence: the effort vocabulary moved to its own leaf module so the
 // chat-completions backend can normalize incoming values against the same source of truth.
-import { REASONING_EFFORT } from './reasoning-effort.js';
+import { REASONING_EFFORT, toWireReasoningEffort } from './reasoning-effort.js';
 import { getConfigValue, tryParse } from './util.js';
 
 const PROMPT_PLACEHOLDER = getConfigValue('promptPlaceholder', 'Let\'s get started.');
@@ -67,6 +67,36 @@ export function addAssistantPrefix(prompt, tools, property) {
     const hasAnyTools = (Array.isArray(tools) && tools.length > 0) || prompt.some(x => x.role === 'tool');
     if (!hasAnyTools && prompt[prompt.length - 1].role === 'assistant') {
         prompt[prompt.length - 1][property] = true;
+    }
+    return prompt;
+}
+
+export const KIMI_K3_STOCK_REASONING = 'I have finished thinking and now continue the reply directly from its existing beginning.';
+
+/**
+ * Fills the reasoning slot of a trailing partial assistant message for Kimi K3.
+ * SillyBunny divergence: K3 must reason before it replies, so a partial message that prefills
+ * only `content` makes the model reason live and it can then stop without any reply tokens.
+ * A leading <think> block is moved into `reasoning_content` (kimi-k3-jb behavior); a plain
+ * prefill gets a stock `reasoning_content` so the model continues the reply directly.
+ * @param {any[]} prompt Prompt messages array
+ * @returns {any[]} Transformed messages array
+ */
+export function seedKimiK3PartialReasoning(prompt) {
+    if (!Array.isArray(prompt) || !prompt.length) {
+        return prompt;
+    }
+    const lastMessage = prompt[prompt.length - 1];
+    if (lastMessage?.role !== 'assistant' || lastMessage.partial !== true || typeof lastMessage.content !== 'string') {
+        return prompt;
+    }
+    const thinkMatch = lastMessage.content.match(/^\s*<think>(.*?)(?:<\/think>|$)/s);
+    if (thinkMatch) {
+        lastMessage.reasoning_content = thinkMatch[1].trim();
+        lastMessage.content = lastMessage.content.slice(thinkMatch[0].length).trimStart();
+    }
+    if (!lastMessage.reasoning_content && lastMessage.content.trim()) {
+        lastMessage.reasoning_content = KIMI_K3_STOCK_REASONING;
     }
     return prompt;
 }
@@ -456,13 +486,17 @@ export function convertGooglePrompt(messages, model, useSysPrompt, names) {
     const system_instruction = { parts: sysPrompt.map(text => ({ text })) };
     const toolNameMap = {};
 
+    // https://ai.google.dev/gemini-api/docs/latest-model#prefilled-model-turn-validation
+    const noPrefillModel = /gemini-3\.[67]-flash|gemini-3\.5-flash-lite/.test(model);
+
     const contents = [];
     messages.forEach((message, index) => {
         // fix the roles
         if (message.role === 'system' || message.role === 'tool') {
             message.role = 'user';
         } else if (message.role === 'assistant') {
-            message.role = 'model';
+            // A trailing model turn is a prefill, which is rejected by the newest models
+            message.role = noPrefillModel && index === messages.length - 1 ? 'user' : 'model';
         }
 
         // Convert the content to an array of parts
@@ -1130,31 +1164,17 @@ export function cachingSystemPromptForOpenRouter(messages, ttl = undefined) {
  * @param {string} reasoningEffort Reasoning effort
  * @param {boolean} stream If streaming is enabled
  * @param {boolean} isAdaptiveModel If the model supports adaptive thinking (Opus 4.6+)
- * @param {boolean} supportsXhigh If the adaptive model accepts the xhigh effort value
  * @returns {number|string|null} Budget tokens, effort string, or null
  */
-export function calculateClaudeBudgetTokens(maxTokens, reasoningEffort, stream, isAdaptiveModel, supportsXhigh = false) {
+export function calculateClaudeBudgetTokens(maxTokens, reasoningEffort, stream, isAdaptiveModel) {
     // Adaptive thinking for Opus 4.6+: return effort string (like Gemini 3)
     if (isAdaptiveModel) {
-        switch (reasoningEffort) {
-            case REASONING_EFFORT.auto:
-            case REASONING_EFFORT.none:
-                return null;
-            case REASONING_EFFORT.min:
-                return 'low';
-            case REASONING_EFFORT.low:
-                return 'low';
-            case REASONING_EFFORT.medium:
-                return 'medium';
-            case REASONING_EFFORT.high:
-                return 'high';
-            case REASONING_EFFORT.xhigh:
-                // SillyBunny: fall back for adaptive Claude models whose API rejects xhigh.
-                return supportsXhigh ? 'xhigh' : 'max';
-            case REASONING_EFFORT.max:
-                return 'max';
+        // SillyBunny divergence: the picked effort is forwarded as-is rather than folded onto the
+        // rungs a given adaptive model is known to list, so a refusal is reported, not hidden.
+        if (!reasoningEffort || [REASONING_EFFORT.auto, REASONING_EFFORT.none].includes(reasoningEffort)) {
+            return null;
         }
-        return null;
+        return toWireReasoningEffort(reasoningEffort);
     }
 
     let budgetTokens = 0;
@@ -1286,54 +1306,21 @@ export function calculateGoogleBudgetTokens(maxTokens, reasoningEffort, model) {
         return budgetTokens;
     }
 
-    function getGemini3FlashBudget() {
-        switch (reasoningEffort) {
-            case REASONING_EFFORT.auto:
-            case REASONING_EFFORT.none:
-                return null;
-            case REASONING_EFFORT.min:
-                return 'minimal';
-            case REASONING_EFFORT.low:
-                return 'low';
-            case REASONING_EFFORT.medium:
-                return 'medium';
-            case REASONING_EFFORT.high:
-                return 'high';
-            case REASONING_EFFORT.max:
-            case REASONING_EFFORT.xhigh:
-                return 'high';
+    // SillyBunny divergence: Gemini 3 takes a thinking level rather than a token budget, and the
+    // picked rung is forwarded as-is for both Pro and Flash instead of being folded onto the
+    // shorter list each one documents, so a refusal is reported rather than hidden.
+    function getGemini3ThinkingLevel() {
+        if (!reasoningEffort || [REASONING_EFFORT.auto, REASONING_EFFORT.none].includes(reasoningEffort)) {
+            return null;
         }
-
-        return null;
-    }
-
-    function getGemini3ProBudget() {
-        switch (reasoningEffort) {
-            case REASONING_EFFORT.auto:
-            case REASONING_EFFORT.none:
-                return null;
-            case REASONING_EFFORT.min:
-                return 'low';
-            case REASONING_EFFORT.low:
-                return 'low';
-            case REASONING_EFFORT.medium:
-                return 'low';
-            case REASONING_EFFORT.high:
-                return 'high';
-            case REASONING_EFFORT.max:
-            case REASONING_EFFORT.xhigh:
-                return 'high';
+        if (reasoningEffort === REASONING_EFFORT.min && /gemini-3\.7-flash/.test(model)) {
+            return REASONING_EFFORT.low;
         }
-
-        return null;
+        return toWireReasoningEffort(reasoningEffort);
     }
 
-    if (/gemini-3[.\d]*-pro/.test(model)) {
-        return getGemini3ProBudget();
-    }
-
-    if (/gemini-3[.\d]*-flash/.test(model)) {
-        return getGemini3FlashBudget();
+    if (/gemini-3[.\d]*-(?:pro|flash)/.test(model)) {
+        return getGemini3ThinkingLevel();
     }
 
     if (/flash-lite/.test(model)) {

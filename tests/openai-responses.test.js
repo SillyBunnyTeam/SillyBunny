@@ -324,7 +324,143 @@ describe('OpenAI Responses integration', () => {
         }
     });
 
-    test('streams Responses API chunks as Chat Completions SSE', async () => {
+    test.each([CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES])('sends Astra reasoning-model requests through %s', async (source) => {
+        const isResponses = source === CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES;
+        const manager = new SecretManager(userDirectories);
+        const secretId = manager.writeSecret(SECRET_KEYS.OPENAI, 'astra-test-key', 'Astra test');
+        const messages = [
+            { role: 'system', content: 'Be concise.' },
+            { role: 'user', content: [
+                { type: 'text', text: 'Describe this image.' },
+                { type: 'image_url', image_url: { url: 'https://example.com/test.png' } },
+            ] },
+        ];
+        const providerFetch = createProviderFetchSpy((_url, options) => {
+            const body = JSON.parse(options.body);
+            return Promise.resolve(jsonResponse(isResponses ? upstream.handleResponses(body) : upstream.handleChatCompletions(body)));
+        });
+
+        try {
+            for (const [effort, limits, expectedLimit] of [
+                ['low', { max_tokens: 32 }, 32],
+                ['medium', { max_completion_tokens: 64 }, 64],
+                ['high', { max_tokens: 32, max_completion_tokens: 64 }, 32],
+                ['xhigh', { max_tokens: 32 }, 32],
+                ['max', { max_tokens: 32 }, 32],
+            ]) {
+                const response = await fetch('http://127.0.0.1:3010/api/backends/chat-completions/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_completion_source: source,
+                        secret_id: secretId,
+                        model: 'gpt-6-astra',
+                        messages,
+                        reasoning_effort: effort,
+                        verbosity: 'low',
+                        stream: false,
+                        ...limits,
+                        temperature: 0.7,
+                        top_p: 0.9,
+                        frequency_penalty: 0.2,
+                        presence_penalty: 0.3,
+                        logit_bias: { 42: 1 },
+                        stop: ['STOP'],
+                        logprobs: 5,
+                        top_logprobs: 5,
+                        tools: [{ type: 'function', function: { name: 'test', parameters: { type: 'object', properties: {} } } }],
+                        tool_choice: 'auto',
+                    }),
+                });
+
+                expect(response.status).toBe(200);
+                expect((await response.json()).model).toBe('gpt-6-astra');
+                const [url, options] = providerFetch.mock.calls.at(-1);
+                const body = JSON.parse(options.body);
+                expect(url).toBe(`https://api.openai.com/v1/${isResponses ? 'responses' : 'chat/completions'}`);
+                expect(options.headers.Authorization).toBe('Bearer astra-test-key');
+                expect(body[isResponses ? 'max_output_tokens' : 'max_completion_tokens']).toBe(expectedLimit);
+                expect(isResponses ? body.reasoning.effort : body.reasoning_effort).toBe(effort);
+                expect(isResponses ? body.text.verbosity : body.verbosity).toBe('low');
+                expect(body.stream).toBe(false);
+                for (const key of ['max_tokens', 'temperature', 'top_p', 'frequency_penalty', 'presence_penalty', 'logit_bias', 'stop', 'logprobs', 'top_logprobs', 'tools', 'tool_choice']) {
+                    expect(body).not.toHaveProperty(key);
+                }
+                expect(body).toEqual(expect.objectContaining(isResponses ? {
+                    store: false,
+                    instructions: 'Be concise.',
+                    input: [{ role: 'user', content: [
+                        { type: 'input_text', text: 'Describe this image.' },
+                        { type: 'input_image', image_url: 'https://example.com/test.png' },
+                    ] }],
+                } : { messages }));
+            }
+            expect(providerFetch).toHaveBeenCalledTimes(5);
+        } finally {
+            resetNodeFetchMock();
+        }
+    });
+
+    test.each([
+        [CHAT_COMPLETION_SOURCES.AZURE_OPENAI, 'gpt-6-astra'],
+        [CHAT_COMPLETION_SOURCES.AZURE_OPENAI, 'gpt-6-astra-snapshot'],
+        [CHAT_COMPLETION_SOURCES.OPENROUTER, 'openai/gpt-6-astra'],
+    ])('applies upstream Astra constraints to direct %s requests for %s', async (source, model) => {
+        const isAzure = source === CHAT_COMPLETION_SOURCES.AZURE_OPENAI;
+        const manager = new SecretManager(userDirectories);
+        manager.writeSecret(isAzure ? SECRET_KEYS.AZURE_OPENAI : SECRET_KEYS.OPENROUTER, 'astra-routing-test-key');
+        const tools = [{ type: 'function', function: { name: 'test', parameters: { type: 'object', properties: {} } } }];
+        const providerFetch = createProviderFetchSpy((_url, options) => {
+            return Promise.resolve(jsonResponse(upstream.handleChatCompletions(JSON.parse(options.body))));
+        });
+
+        try {
+            for (const [limits, expectedLimit] of [
+                [{ max_tokens: 32 }, 32],
+                [{ max_completion_tokens: 64 }, 64],
+                [{ max_tokens: 32, max_completion_tokens: 64 }, 32],
+            ]) {
+                const response = await fetch('http://127.0.0.1:3010/api/backends/chat-completions/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_completion_source: source,
+                        model,
+                        messages: [{ role: 'user', content: 'Hello' }],
+                        azure_base_url: 'https://azure.example',
+                        azure_deployment_name: 'astra',
+                        azure_api_version: '2025-04-01-preview',
+                        stream: false,
+                        ...limits,
+                        temperature: 0.7,
+                        top_p: 0.9,
+                        logprobs: 5,
+                        top_logprobs: 5,
+                        tools,
+                        tool_choice: 'auto',
+                    }),
+                });
+
+                expect(response.status).toBe(200);
+                const body = JSON.parse(providerFetch.mock.calls.at(-1)[1].body);
+                expect(body.max_completion_tokens).toBe(expectedLimit);
+                for (const key of ['max_tokens', 'temperature', 'top_p', 'logprobs', 'top_logprobs']) {
+                    expect(body).not.toHaveProperty(key);
+                }
+                expect(body.tools).toEqual(isAzure ? undefined : tools);
+                expect(body.tool_choice).toBe(isAzure ? undefined : 'auto');
+            }
+        } finally {
+            resetNodeFetchMock();
+        }
+    });
+
+    test.each(['gpt-6-astra', 'openai/gpt-6-astra', 'gpt-6-astra-snapshot'])('uses the GPT-5 token-count estimate for %s', async (model) => {
+        const { getTokenizerModel } = await import('../src/endpoints/tokenizers.js');
+        expect(getTokenizerModel(model)).toBe(getTokenizerModel('gpt-5.6-sol'));
+    });
+
+    test.each(['gpt-5.4', 'gpt-6-astra'])('streams %s Responses API chunks as Chat Completions SSE', async (model) => {
         const response = await fetch('http://127.0.0.1:3010/api/backends/chat-completions/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -332,7 +468,7 @@ describe('OpenAI Responses integration', () => {
                 chat_completion_source: CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES,
                 reverse_proxy: 'http://127.0.0.1:3001/v1/',
                 proxy_password: 'test-key',
-                model: 'gpt-5.4',
+                model,
                 stream: true,
                 temperature: 1,
                 max_tokens: 32,
@@ -356,7 +492,7 @@ describe('OpenAI Responses integration', () => {
         expect(payloads).toEqual(expect.arrayContaining([
             expect.objectContaining({
                 object: 'chat.completion.chunk',
-                choices: [expect.objectContaining({ delta: { reasoning_content: 'gpt-5.4 stream' } })],
+                choices: [expect.objectContaining({ delta: { reasoning_content: `${model} stream` } })],
             }),
             expect.objectContaining({
                 object: 'chat.completion.chunk',

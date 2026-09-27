@@ -138,14 +138,20 @@ router.post('/rename', async function (request, response) {
     }
 });
 
-router.post('/upload', async function (request, response) {
+// SillyBunny: distinct routes keep native overwrites separate from create-only installs.
+router.post('/upload', (request, response) => uploadBackground(request, response));
+router.post('/upload-new', (request, response) => uploadBackground(request, response, true));
+
+async function uploadBackground(request, response, createOnly = false) {
+    let img_path;
     try {
+        img_path = request.file && path.join(request.file.destination, request.file.filename);
         if (!request.body || !request.file) return response.sendStatus(400);
 
-        const img_path = path.join(request.file.destination, request.file.filename);
         const filename = sanitize(request.file.originalname);
-        fs.copyFileSync(img_path, path.join(request.user.directories.backgrounds, filename));
+        fs.copyFileSync(img_path, path.join(request.user.directories.backgrounds, filename), createOnly ? fs.constants.COPYFILE_EXCL : 0);
         fs.unlinkSync(img_path);
+        img_path = undefined;
         invalidateThumbnail(request.user.directories, 'bg', filename);
 
         // Generate metadata for the new image
@@ -154,9 +160,20 @@ router.post('/upload', async function (request, response) {
             console.warn('[Backgrounds] Failed to generate metadata for upload:', err.message);
         });
 
-        response.send(filename);
+        response.status(createOnly ? 201 : 200).send(filename);
     } catch (err) {
+        if (createOnly && err?.code === 'EEXIST') {
+            return response.sendStatus(409);
+        }
         console.error(err);
         response.sendStatus(500);
+    } finally {
+        if (img_path) {
+            try {
+                fs.rmSync(img_path, { force: true });
+            } catch (error) {
+                console.error(error);
+            }
+        }
     }
-});
+}

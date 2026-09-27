@@ -171,7 +171,8 @@ export function serializeWorldInfoEntry(entry, positions, originalEntry = {}) {
     const normalizedPosition = normalizeWorldInfoPosition(entry.position, positions);
     const serializedEntry = {
         ...originalEntry,
-        id: entry.uid,
+        // SillyBunny: imported card IDs are independent of the native UID map.
+        id: originalEntry.id ?? entry.uid,
         keys,
         secondary_keys: secondaryKeys,
         comment: entry.comment ?? '',
@@ -228,4 +229,11 @@ export function serializeWorldInfoEntry(entry, positions, originalEntry = {}) {
     }
 
     return serializedEntry;
+}
+
+export function getFreeCharacterBookEntryId(entries) {
+    const ids = new Set(entries.map(entry => String(entry.id ?? entry.uid)));
+    let id = 0;
+    while (ids.has(String(id))) id++;
+    return id;
 }

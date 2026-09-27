@@ -1,0 +1,45 @@
+{
+    "id": "tpl-almanac-generator",
+    "name": "Almanac Generator",
+    "description": "Stat sheet; turn off after it prints once",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "progress",
+    "tags": [
+        "stats",
+        "almanac",
+        "rpg"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "# The Almanac of {{user}}\n\n**AT THE BEGINNING OF CONTEXT, IF NO `[ALMANAC]` IS FOUND, OUTPUT ONE FIRST BEFORE PROCEEDING WITH THE SCENE.**\n\nBuild and maintain a persistent stat sheet for {{user}}, drawing on the persona, the RP context, and your own random rolls. Record every entry plainly, including the impossible ones, in the tone of a local clerk who finds none of it unusual. Treat it as gameplay flavour: keep it fun, playable, and nonjudgmental. Generate it once unless asked to reroll. If an existing [ALMANAC] block is provided, update that one instead.\n\nRoll 1d100 for values, adjusted lightly to fit the persona.\n\nScale: 1-10 Very Low | 11-25 Low | 26-45 Below Average | 46-60 Average | 61-75 Above Average | 76-90 High | 91-100 Exceptional\n\n## Constitution (rate each 1-10, usually totaling 36-44)\n- Gravity: physical force and staying power; lifting, carrying, holding ground.\n- Noticing: spotting what is hidden or easily missed; clues, aim, social tells, second shadows.\n- Continuance: endurance; outlasting hardship, injury, and hard conditions of both the ordinary and the uncanny sort.\n- Presence: the impression they leave on a room; charm, intimidation, being treated as someone who matters.\n- Sense: reasoning and study; tactics, learning, and handling procedure that makes no sense.\n- Slippage: reflexes, stealth, timing, and being somewhere else when trouble arrives.\n- Weather: luck, both ordinary chance and the literal weather around them.\n\n## Competencies (each 0-100, usually 10-85 unless strongly justified)\nPractical: 3-5 mundane skills drawn from the setting (mending, bookkeeping, cookery, and the like).\nUncanny: at least 5 setting-specific skills for handling the local impossible. Examples for register: Door Etiquette, Apologising to Objects, Reading the Milk, Bargaining with Weather, Feeding the Threshold. Invent new ones to fit the setting.\nSocial: Speech, Trade, Comfort, Deception, Insight.\nSpecial: 2-3 persona-based competencies.\n\n## Traits, Knacks, and Burdens\nTraits: 2-4; give each one an advantage and a tradeoff, and make both shape likely choices and playstyle.\nKnacks: 3-6; give each a short setting-specific name and a one-sentence effect. A Knack may unlock doors, improve outcomes, reveal information, or reduce prices.\nBurdens: 3-6; give each a one-sentence effect. Write them as interesting complications that keep every playstyle available and keep the character dignified. A Burden may also be an affliction someone keeps on purpose.\n\nPrint only the requested almanac or turning block, with nothing around it.\n\n## Almanac Output Format\n\n[ALMANAC]\nName: {{user}}\nSeason: 1\n\nCONSTITUTION\n**Attribute**: X/10\n\nPRACTICAL\n**Competency**: X/100\n\nUNCANNY\n**Competency**: X/100\n\nSOCIAL\n**Competency**: X/100\n\nSPECIAL\n**Competency**: X/100\n\nTraits:\n- **Trait Name**: Advantage; tradeoff.\n\nKnacks:\n- **Knack Name**: Effect.\n\nBurdens:\n- **Burden Name**: Effect.\n[/ALMANAC]\n\nFormat law: reproduce the output format exactly as templated: put [ALMANAC] and [/ALMANAC] each alone on their own line, put section headers in capitals on their own lines, and write one entry per line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the sheet as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[ALMANAC\\](?:(?!\\[ALMANAC\\])[\\s\\S])*?\\[/ALMANAC\\]",
+        "extractVariable": "almanac_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

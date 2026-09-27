@@ -1,0 +1,45 @@
+{
+    "id": "tpl-the-committee",
+    "name": "The Committee",
+    "description": "Inner voices interject",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "characters",
+    "tags": [
+        "voices",
+        "internal",
+        "skills"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### The Committee\nSplit the viewpoint character's mind into named faculties. Each faculty has a grand name, one narrow fixed concern, and bad timing, and each speaks up INSIDE the prose the moment it has something to say. Track their interjections. Use this EXACT format at the point of interruption:\n\n[VOICE|Faculty|Check|Verdict]\nsays: MANDATORY; one or two lines of the faculty speaking, in its own idiolect\n[/VOICE]\n\nCheck options: ☕ TRIVIAL | 🚬 EASY | 🎲 MEDIUM | 🔥 HARD | 🌩 HEROIC | 🪦 IMPOSSIBLE\nVerdict options: ✓ SUCCESS | ✗ FAILURE\n\nFaculties: build a permanent roster of four to six for the story, drawn from the viewpoint character and the setting. Examples for register: THE MARROW (the body's oldest opinions), THE KETTLE (domestic instinct), THE STAIRWELL (what the building knows), PENMANSHIP (the urge to make things official), THE WEATHER DESK (reads omens off skin), LOST PROPERTY (keeper of griefs). Keep every name grand and every concern narrow.\n\nRules:\n- Interrupt the prose at the exact moment a faculty speaks, and print at most two VOICE blocks per response; leave many responses with none\n- Give each faculty one fixed concern and one thing it reliably fails to notice, and keep both consistent for the rest of the story once shown\n- Set Check to how hard the insight was to reach, and Verdict to whether the faculty reached it\n- Write a SUCCESS as insightful and still incomplete\n- Write a FAILURE as confidently and specifically wrong, and let the prose carry on as though it were right until later events prove otherwise\n- Have each faculty address its host in second person, and let the host answer silently or not at all\n- Let faculties contradict each other, and leave the contradiction unresolved\n\nFormat law: write one header line containing exactly 3 | separators and closing with ] on that same line, keeping every field a short phrase on that one line; start the next line with says: and keep the whole says on that single line; put the closing [/VOICE] alone on the final line. Reproduce this shape exactly, every time. The renderer matches this exact shape and draws the record as a card.\n",
+    "phase": "both",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": true,
+        "type": "extract",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "\\[VOICE\\|[^\\]\\r\\n]*\\](?:(?!\\[VOICE(?=[:|\\]]))[\\s\\S])*?\\[/VOICE\\]",
+        "extractVariable": "voice_data"
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    }
+}

@@ -383,6 +383,7 @@ export const FEATHERLESS_HEADERS = {
 };
 
 export const OPENROUTER_KEYS = [
+    'service_tier', // SillyBunny: retain explicit Flex/Priority routing in Text Completion.
     'max_tokens',
     'temperature',
     'top_k',
@@ -465,7 +466,7 @@ export const AZURE_OPENAI_KEYS = [
     'reasoning_effort',
 ];
 
-export const OPENAI_VERBOSITY_MODELS = /^gpt-5/;
+export const OPENAI_VERBOSITY_MODELS = /^(?:gpt-5|gpt-6-astra)/;
 
 export const OPENAI_REASONING_EFFORT_MODELS = [
     'o1',
@@ -497,40 +498,13 @@ export const OPENAI_REASONING_EFFORT_MODELS = [
     'gpt-5.5',
     'gpt-5.5-2026-04-23',
     'gpt-5.5-pro',
-    // SillyBunny: GPT-5.6 native IDs expose configurable reasoning effort.
+    // SillyBunny: GPT-5.6 and GPT-6 Astra native IDs expose configurable reasoning effort.
+    'gpt-5.6',
     'gpt-5.6-sol',
     'gpt-5.6-terra',
     'gpt-5.6-luna',
+    'gpt-6-astra',
 ];
-
-export const OPENAI_REASONING_EFFORT_MAP = {
-    min: 'minimal',
-};
-
-/**
- * Models that only accept a single fixed reasoning effort value.
- * @type {Record<string, string>}
- */
-export const OPENAI_FIXED_REASONING_EFFORT = {
-    'gpt-5.3-chat-latest': 'medium',
-};
-
-/**
- * NanoGPT's vocabulary is the ladder none < minimal < low < medium < high < xhigh, which has
- * exactly as many rungs as this fork's own min < low < medium < high < xhigh < max, so every
- * level translates one notch down with no collisions.
- * SillyBunny divergence: upstream stops at `max: 'high'`, leaving NanoGPT's `xhigh` ceiling
- * unreachable and this fork's "Extra High" sending an empty reasoning object. Values absent
- * here are omitted entirely by the caller.
- */
-export const NANOGPT_REASONING_EFFORT_MAP = {
-    min: 'none',
-    low: 'minimal',
-    medium: 'low',
-    high: 'medium',
-    xhigh: 'high',
-    max: 'xhigh',
-};
 
 export const LOG_LEVELS = {
     DEBUG: 0,
@@ -582,6 +556,11 @@ export const MEDIA_REQUEST_TYPE = {
 export const ZAI_ENDPOINT = {
     COMMON: 'common',
     CODING: 'coding',
+};
+
+export const POLLINATIONS_ENDPOINT = {
+    AUTHENTICATED: 'authenticated',
+    ANONYMOUS: 'anonymous',
 };
 
 export const SILICONFLOW_ENDPOINT = {

@@ -124,9 +124,24 @@
 }
 
 .welcomePanel--listOnly {
+    /* List Only shows nothing but the recent list, so the panel fills #chat and
+       the list takes the remaining height instead of the viewport cap used by the
+       other modes. The floor keeps the list usable on short windows, where #chat
+       scrolls as before. */
+    flex: 1 1 auto;
+    min-height: 400px;
     gap: 0;
     padding: var(--spacing-md, 12px);
     border-radius: 20px;
+}
+
+.welcomePanel--listOnly .welcomeRecentShell,
+.welcomePanel--listOnly .welcomeRecent {
+    flex: 1 1 auto;
+}
+
+.welcomePanel--listOnly .welcomeRecent {
+    max-height: none;
 }
 
 

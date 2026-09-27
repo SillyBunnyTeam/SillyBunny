@@ -4,11 +4,13 @@ import { fileURLToPath } from 'node:url';
 
 import {
     applyClaudeModelParameterConstraints,
+    applyGrokModelParameterConstraints,
     applyKimiK3ModelParameterConstraints,
     isKimiK3Model,
 } from '../public/scripts/openai-model-capabilities.js';
 
 const openAiSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/openai.js', import.meta.url)), 'utf8');
+const chatCompletionsSource = fs.readFileSync(fileURLToPath(new URL('../src/endpoints/backends/chat-completions.js', import.meta.url)), 'utf8');
 const indexSource = fs.readFileSync(fileURLToPath(new URL('../public/index.html', import.meta.url)), 'utf8');
 const powerUserSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/power-user.js', import.meta.url)), 'utf8');
 const presetManagerSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/preset-manager.js', import.meta.url)), 'utf8');
@@ -58,6 +60,53 @@ describe('OpenAI-compatible Claude model capabilities', () => {
         expect(openAiSource).toContain('applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model');
         expect(openAiSource).toContain('applyClaudeModelParameterConstraints(generate_data, {');
         expect(openAiSource).toContain('preserveReasoning: [chat_completion_sources.CLAUDE, chat_completion_sources.LINKAPI].includes(settings.chat_completion_source)');
+    });
+});
+
+describe('Grok model capabilities', () => {
+    test('removes penalty samplers from Grok reasoning model requests', () => {
+        for (const model of ['grok-4.6', 'grok-4.5', 'grok-4-0709', 'grok-code-fast-1', 'grok-3-mini', 'x-ai/Grok-4.6', '[SP]grok-4.6']) {
+            const payload = {
+                model,
+                temperature: 0.8,
+                top_p: 0.9,
+                frequency_penalty: 0.2,
+                presence_penalty: 0.3,
+                reasoning_effort: 'high',
+            };
+
+            applyGrokModelParameterConstraints(payload);
+
+            expect(payload).toEqual({
+                model,
+                temperature: 0.8,
+                top_p: 0.9,
+                reasoning_effort: 'high',
+            });
+        }
+    });
+
+    test('leaves payloads for other models unchanged', () => {
+        for (const model of ['grok-3', 'grok-2-vision', 'gpt-5.1', 'claude-sonnet-5', '', undefined]) {
+            const payload = {
+                model,
+                frequency_penalty: 0.2,
+                presence_penalty: 0.3,
+            };
+
+            applyGrokModelParameterConstraints(payload);
+
+            expect(payload).toEqual({
+                model,
+                frequency_penalty: 0.2,
+                presence_penalty: 0.3,
+            });
+        }
+    });
+
+    test('applies Grok constraints to LinkAPI requests only', () => {
+        expect(chatCompletionsSource).toContain('applyGrokModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model');
+        expect(chatCompletionsSource).toContain('if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.LINKAPI) {\n            applyGrokModelParameterConstraints(requestBody);');
     });
 });
 
@@ -118,16 +167,20 @@ describe('Kimi K3 model capabilities', () => {
         expect(openAiSource).toContain('&& !isKimiK3Request;');
     });
 
-    test('exposes a synchronized Start Reply With control only for K3 models', () => {
-        expect(indexSource).toMatch(/<div class="range-block" data-source="custom,moonshot,nanogpt,openrouter">[\s\S]*?id="openai_start_reply_with"/);
-        expect(indexSource).toContain('for="openai_start_reply_with" class="range-block-title justifyLeft"');
-        expect(indexSource.match(/class="start-reply-with-input [^"]*"/g)).toHaveLength(2);
-        expect(openAiSource).toContain('.range-block:has(#openai_start_reply_with)');
+    test('exposes a dedicated Partial Prefill control only for K3 models', () => {
+        expect(indexSource).toMatch(/<div class="range-block" data-source="custom,moonshot,nanogpt,openrouter">[\s\S]*?id="openai_kimi_partial_prefill"/);
+        expect(indexSource).toContain('for="openai_kimi_partial_prefill" class="range-block-title justifyLeft"');
+        expect(openAiSource).toContain('.range-block:has(#openai_kimi_partial_prefill)');
         expect(openAiSource).toContain('const supportedSources = [chat_completion_sources.CUSTOM, chat_completion_sources.MOONSHOT, chat_completion_sources.NANOGPT, chat_completion_sources.OPENROUTER];');
-        expect(openAiSource).toContain('.toggle(isSupportedSource && isKimiK3Model(getChatCompletionModel()))');
+        expect(openAiSource).toContain('return isSupportedSource && isKimiK3Model(getChatCompletionModel());');
+        expect(openAiSource).toContain('.toggle(isKimiK3PartialPrefillActive())');
         expect(openAiSource.match(/updateKimiK3PrefillVisibility\(\);/g)).toHaveLength(3);
+
+        // The K3 field replaced the chat completion mirror of Start Reply With, so only the
+        // Advanced Formatting input carries the class that keeps the global value in sync.
+        expect(indexSource.match(/class="start-reply-with-input [^"]*"/g)).toHaveLength(1);
+        expect(indexSource).toContain('id="start_reply_with"');
         expect(powerUserSource).toMatch(/\$\('\.start-reply-with-input'\)\.on\('input', function \(\) \{/);
-        expect(powerUserSource).toMatch(/\$\('\.start-reply-with-input'\)\.not\(this\)\.val\(value\);/);
         expect(presetManagerSource).toMatch(/\$\('\.start-reply-with-input'\)\.val\(power_user\.user_prompt_bias\);/);
     });
 });

@@ -1,10 +1,8 @@
 import { EventEmitter } from 'node:events';
-import { readFileSync } from 'node:fs';
+import http from 'node:http';
 
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
-const SERVER_MAIN_SOURCE = new URL('../src/server-main.js', import.meta.url);
-const SERVER_STARTUP_SOURCE = new URL('../src/server-startup.js', import.meta.url);
 
 class FakeSocket extends EventEmitter {
     constructor() {
@@ -147,7 +145,7 @@ describe('listen retry on an occupied port', () => {
 
         expect(attemptFn).toHaveBeenCalledTimes(3);
         expect(onRetry).toHaveBeenCalledTimes(2);
-        expect(onRetry).toHaveBeenNthCalledWith(1, 1, 10);
+        expect(onRetry).toHaveBeenNthCalledWith(1, 1, 20);
     });
 
     test('gives up after the attempt cap and rethrows the original error', async () => {
@@ -170,37 +168,264 @@ describe('listen retry on an occupied port', () => {
         expect(onRetry).not.toHaveBeenCalled();
     });
 
-    test('defaults to a bounded multi-second window', async () => {
+    test('defaults to a bounded window of about thirty seconds', async () => {
         const { LISTEN_RETRY_ATTEMPTS, LISTEN_RETRY_DELAY_MS } = await loadListenModule();
 
-        expect(LISTEN_RETRY_ATTEMPTS).toBe(10);
-        expect(LISTEN_RETRY_DELAY_MS).toBe(500);
+        // Long enough to outlast an update straggler holding an inherited
+        // socket handle, short enough that a genuine conflict still surfaces.
+        const windowMs = (LISTEN_RETRY_ATTEMPTS - 1) * LISTEN_RETRY_DELAY_MS;
+        expect(windowMs).toBeGreaterThanOrEqual(25_000);
+        expect(windowMs).toBeLessThanOrEqual(35_000);
     });
 });
 
-describe('server wiring', () => {
-    test('shutdown releases the listen ports before tearing down state', () => {
-        const source = readFileSync(SERVER_MAIN_SOURCE, 'utf8');
+describe('port holder diagnostics', () => {
+    const NETSTAT_OUTPUT = [
+        'Active Connections',
+        '',
+        '  Proto  Local Address          Foreign Address        State           PID',
+        '  TCP    127.0.0.1:4444         0.0.0.0:0              LISTENING       4321',
+        '  TCP    127.0.0.1:4444         127.0.0.1:52001        TIME_WAIT       0',
+        '  TCP    127.0.0.1:44440       0.0.0.0:0              LISTENING       9999',
+        '  TCP    [::1]:4444             [::]:0                 LISTENING       4321',
+        '  UDP    0.0.0.0:5353           *:*                                    777',
+    ].join('\r\n');
 
-        expect(source).toContain('import { closeListeningServers } from \'./server-listen.js\';');
-        expect(source).toContain('await closeListeningServers();');
-        // The ports must be released before the slower teardown work runs.
-        expect(source.indexOf('await closeListeningServers();')).toBeLessThan(source.indexOf('await statsOnExit();'));
-        expect(source).toContain('if (process.connected === false)');
-        expect(source).toContain('await exitAfterSupervisorDisconnect();');
-        expect(source).toContain('process.on(\'message\', (message) =>');
-        expect(source).toContain('process.on(\'disconnect\', exitAfterSupervisorDisconnect);');
-        expect(source).toContain('process.on(\'SIGHUP\', () => exitProcess(0));');
-        expect(source).toContain('process.on(\'SIGBREAK\', () => exitProcess(0));');
+    test('parses only the TCP rows of the requested port', async () => {
+        const { parseNetstatPortRows } = await loadListenModule();
+
+        const rows = parseNetstatPortRows(NETSTAT_OUTPUT, 4444);
+
+        expect(rows).toEqual([
+            { local: '127.0.0.1:4444', state: 'LISTENING', pid: 4321 },
+            { local: '127.0.0.1:4444', state: 'TIME_WAIT', pid: 0 },
+            { local: '[::1]:4444', state: 'LISTENING', pid: 4321 },
+        ]);
     });
 
-    test('startup tracks its listeners and retries an occupied port', () => {
-        const source = readFileSync(SERVER_STARTUP_SOURCE, 'utf8');
+    test('reads a process name from tasklist CSV output and misses cleanly', async () => {
+        const { parseTasklistProcessName } = await loadListenModule();
 
-        expect(source).toContain('trackListeningServer(server);');
-        expect(source).toContain('retryOnAddressInUse(() => createFunc(url, ipVersion)');
-        expect(source).not.toContain('await createFunc(this.cliArgs.getIPv6ListenUrl(), 6);');
-        expect(source).not.toContain('await createFunc(this.cliArgs.getIPv4ListenUrl(), 4);');
-        expect(source).toContain('await Promise.all([startIPv6, startIPv4]);');
+        expect(parseTasklistProcessName('"bun.exe","4321","Console","1","120,000 K"', 4321)).toBe('bun.exe');
+        expect(parseTasklistProcessName('INFO: No tasks are running which match the specified criteria.', 4321)).toBeNull();
+        expect(parseTasklistProcessName('', 4321)).toBeNull();
+    });
+
+    test('names a live Windows holder and flags a dead one as an inherited handle', async () => {
+        const { describePortHolders, BUN_SOCKET_INHERIT_ISSUE_URL } = await loadListenModule();
+        const liveRunner = jest.fn(async (command) => command === 'netstat'
+            ? '  TCP    127.0.0.1:4444    0.0.0.0:0    LISTENING    4321'
+            : '"bun.exe","4321","Console","1","120,000 K"');
+        const deadRunner = jest.fn(async (command) => command === 'netstat'
+            ? '  TCP    127.0.0.1:4444    0.0.0.0:0    LISTENING    4321'
+            : 'INFO: No tasks are running which match the specified criteria.');
+
+        const liveLines = await describePortHolders(4444, { runCommand: liveRunner, platform: 'win32' });
+        expect(liveLines).toEqual(['Port 4444 is held open by "bun.exe" (PID 4321).']);
+
+        const deadLines = await describePortHolders(4444, { runCommand: deadRunner, platform: 'win32' });
+        expect(deadLines).toHaveLength(1);
+        expect(deadLines[0]).toContain('no longer running');
+        expect(deadLines[0]).toContain(BUN_SOCKET_INHERIT_ISSUE_URL);
+    });
+
+    test('relays raw socket tool output on POSIX and stays quiet when tools fail', async () => {
+        const { describePortHolders } = await loadListenModule();
+        const ssRunner = jest.fn(async (command) => command === 'ss'
+            ? 'LISTEN 0 511 127.0.0.1:4444 0.0.0.0:* users:(("node",pid=4321,fd=20))\n'
+            : '');
+        const failingRunner = jest.fn(async () => '');
+
+        const lines = await describePortHolders(4444, { runCommand: ssRunner, platform: 'linux' });
+        expect(lines).toEqual(['Port 4444: LISTEN 0 511 127.0.0.1:4444 0.0.0.0:* users:(("node",pid=4321,fd=20))']);
+
+        await expect(describePortHolders(4444, { runCommand: failingRunner, platform: 'linux' })).resolves.toEqual([]);
+    });
+});
+
+
+describe('port conflict diagnostics', () => {
+    const servers = new Set();
+
+    async function serve(handler, host = '127.0.0.1') {
+        const server = http.createServer(handler);
+        servers.add(server);
+        await new Promise((resolve, reject) => {
+            server.once('error', reject);
+            server.listen({ port: 0, host, ipv6Only: true }, resolve);
+        });
+        return server.address().port;
+    }
+
+    function commandOutputs(outputs) {
+        return async (command, args) => outputs[`${command} ${args.join(' ')}`] ?? outputs[command] ?? '';
+    }
+
+    afterEach(async () => {
+        for (const server of servers) {
+            server.closeAllConnections();
+            await new Promise(resolve => server.close(resolve));
+        }
+        servers.clear();
+        jest.restoreAllMocks();
+    });
+
+    test.each([
+        ['SillyTavern:1.13.4:Cohee#1207', 'SillyTavern'],
+        ['SillyBunny:1.8.0:fork', 'Another SillyBunny Instance'],
+    ])('identifies the version agent %s', async (agent, type) => {
+        const { probeHttpHolder } = await loadListenModule();
+        const port = await serve((req, res) => res.end(JSON.stringify({ agent, gitBranch: 'SillyTavern-sync' })));
+        expect(await probeHttpHolder(port, 4)).toMatchObject({ type });
+    });
+
+    test('does not identify an application from incidental JSON text or an error response', async () => {
+        const { probeHttpHolder } = await loadListenModule();
+        const port = await serve((req, res) => res.end(JSON.stringify({ message: 'SillyBunny' })));
+        expect(await probeHttpHolder(port, 4)).toBeNull();
+        const denied = await serve((req, res) => {
+            res.statusCode = 403;
+            res.end(JSON.stringify({ agent: 'SillyTavern:1.13.4:Cohee#1207' }));
+        });
+        expect(await probeHttpHolder(denied, 4)).toBeNull();
+    });
+
+    test('limits the total probe duration even while a response keeps streaming', async () => {
+        const { probeHttpHolder } = await loadListenModule();
+        const port = await serve((req, res) => {
+            res.write('{');
+            const timer = setInterval(() => res.write(' '), 25);
+            res.once('close', () => clearInterval(timer));
+        });
+        let deadline;
+        try {
+            const result = await Promise.race([
+                probeHttpHolder(port, 4),
+                new Promise(resolve => { deadline = setTimeout(() => resolve('hung'), 1800); }),
+            ]);
+            expect(result).toBeNull();
+        } finally {
+            clearTimeout(deadline);
+        }
+    });
+
+    test('abandons truncated and oversized responses', async () => {
+        const { probeHttpHolder } = await loadListenModule();
+        const truncated = await serve((req, res) => {
+            res.writeHead(200, { 'Content-Length': '200' });
+            res.write('{');
+            setImmediate(() => res.destroy());
+        });
+        const oversized = await serve((req, res) => res.end(JSON.stringify({ agent: 'SillyBunny:1.8.0:fork', padding: 'x'.repeat(100_000) })));
+        let deadline;
+        try {
+            const result = await Promise.race([
+                Promise.all([probeHttpHolder(truncated, 4), probeHttpHolder(oversized, 4)]),
+                new Promise(resolve => { deadline = setTimeout(() => resolve('hung'), 1800); }),
+            ]);
+            expect(result).toEqual([null, null]);
+        } finally {
+            clearTimeout(deadline);
+        }
+    });
+
+    test('diagnoses IPv6 without probing an unrelated IPv4 holder and retains process details', async () => {
+        const { diagnosePortConflict } = await loadListenModule();
+        const port = await serve((req, res) => res.end(JSON.stringify({ agent: 'SillyBunny:1.8.0:fork' })), '::1');
+        const runCommand = commandOutputs({
+            netstat: `TCP 127.0.0.1:${port} 0.0.0.0:0 LISTENING 111\nTCP [::1]:${port} [::]:0 LISTENING 222`,
+            powershell: JSON.stringify({ Name: 'node.exe', ExecutablePath: 'C:\\Program Files\\nodejs\\node.exe', CommandLine: '"C:\\Program Files\\nodejs\\node.exe" server.js' }),
+            tasklist: '"node.exe","222","Console","1","120,000 K"',
+        });
+        const result = await diagnosePortConflict(port, `::1:${port}`, { platform: 'win32', runCommand });
+        expect(result).toMatchObject({ holderType: 'Another SillyBunny Instance', pid: 222, processName: 'node.exe' });
+        expect(result.commandLine).toContain('Program Files');
+    });
+
+    test('probes the configured IPv4 interface instead of always using loopback .1', async () => {
+        const { diagnosePortConflict } = await loadListenModule();
+        const port = await serve((req, res) => res.end(JSON.stringify({ agent: 'SillyTavern:1.13.4:Cohee#1207' })), '127.0.0.2');
+        const result = await diagnosePortConflict(port, `127.0.0.2:${port}`, { platform: 'linux', runCommand: async () => '' });
+        expect(result.holderType).toBe('SillyTavern');
+    });
+
+    test('uses Windows script paths without disclosing arguments in the banner', async () => {
+        const { diagnosePortConflict, formatPortConflictBanner } = await loadListenModule();
+        const port = await serve((req, res) => { res.statusCode = 401; res.end(); });
+        const runCommand = commandOutputs({
+            netstat: `TCP 127.0.0.2:${port} 0.0.0.0:0 LISTENING 111\nTCP 127.0.0.1:${port} 0.0.0.0:0 LISTENING 222`,
+            powershell: JSON.stringify({ Name: 'node.exe', ExecutablePath: 'C:\\Program Files\\nodejs\\node.exe', CommandLine: '"C:\\Program Files\\nodejs\\node.exe" "D:\\Apps\\SillyTavern\\server.js" --keyPassphrase private-fixture-value --token another-fixture-value' }),
+        });
+        const result = await diagnosePortConflict(port, `127.0.0.1:${port}`, { platform: 'win32', runCommand });
+        expect(result).toMatchObject({ holderType: 'SillyTavern', processName: 'node.exe', pid: 222 });
+        const banner = formatPortConflictBanner(result);
+        expect(banner).not.toContain('private-fixture-value');
+        expect(banner).not.toContain('another-fixture-value');
+        expect(banner).toContain('C:\\Program Files\\nodejs\\node.exe');
+    });
+
+    test('falls back to lsof when ss cannot name the listener and ignores client connections', async () => {
+        const { diagnosePortConflict } = await loadListenModule();
+        const port = await serve((req, res) => { res.statusCode = 401; res.end(); });
+        const runCommand = commandOutputs({
+            ss: `LISTEN 0 511 127.0.0.1:${port} 0.0.0.0:*`,
+            lsof: `p111\ncclient\nn127.0.0.1:51000->127.0.0.1:${port}\np222\ncnode\nn127.0.0.1:${port}`,
+            cat: '/usr/bin/node\0/opt/SillyBunny/server.js\0',
+        });
+        const result = await diagnosePortConflict(port, `127.0.0.1:${port}`, { platform: 'linux', runCommand });
+        expect(result).toMatchObject({ holderType: 'Another SillyBunny Instance', processName: 'node', pid: 222 });
+        expect(result.commandLine).toBe('/usr/bin/node');
+    });
+
+    test('uses ps when procfs is unavailable without splitting a spaced executable path', async () => {
+        const { diagnosePortConflict } = await loadListenModule();
+        const port = await serve((req, res) => res.end('{}'));
+        const runCommand = commandOutputs({
+            lsof: `p222\ncnode\nn127.0.0.1:${port}`,
+            'ps -p 222 -o comm=': '/Applications/Node Runtime/node\n',
+            'ps -p 222 -o args=': '/Applications/Node Runtime/node server.js\n',
+        });
+        expect(await diagnosePortConflict(port, `127.0.0.1:${port}`, { platform: 'darwin', runCommand }))
+            .toMatchObject({ processName: 'node', pid: 222, holderType: 'Generic Application (node)' });
+    });
+
+    test('selects a listening ss socket rather than an established connection', async () => {
+        const { diagnosePortConflict } = await loadListenModule();
+        const port = await serve((req, res) => res.end('{}'));
+        const runCommand = commandOutputs({
+            ss: `ESTAB 0 0 127.0.0.1:${port} 127.0.0.1:51234 users:(("node",pid=111,fd=20))\nLISTEN 0 511 127.0.0.1:${port} 0.0.0.0:* users:(("python3",pid=222,fd=21))`,
+            cat: '/usr/bin/python3\0server.py\0',
+        });
+        expect(await diagnosePortConflict(port, `127.0.0.1:${port}`, { platform: 'linux', runCommand }))
+            .toMatchObject({ pid: 222, processName: 'python3', holderType: 'Generic Application (python3)' });
+    });
+
+    test('a wildcard conflict probes the interface occupied by the identified holder', async () => {
+        const { diagnosePortConflict } = await loadListenModule();
+        const port = await serve((req, res) => res.end(JSON.stringify({ agent: 'SillyTavern:1.13.4:Cohee#1207' })), '127.0.0.2');
+        const runCommand = commandOutputs({
+            ss: `LISTEN 0 511 127.0.0.2:${port} 0.0.0.0:* users:(("node",pid=222,fd=20))`,
+        });
+        expect(await diagnosePortConflict(port, `0.0.0.0:${port}`, { platform: 'linux', runCommand }))
+            .toMatchObject({ pid: 222, holderType: 'SillyTavern' });
+    });
+
+    test.each([
+        ['Another SillyBunny Instance', 'To run two instances of SillyBunny, change "port: 4444" to a different, unused number.', false],
+        ['SillyTavern', 'To run SillyBunny alongside SillyTavern, change "port: 4444" to a different, unused number.', true],
+        ['Generic Application (python3)', 'To run SillyBunny alongside the other application, change "port: 4444" to a different, unused number.', false],
+        ['Unknown Process', 'To run SillyBunny alongside the other application, change "port: 4444" to a different, unused number.', false],
+    ])('gives port guidance matching a %s holder', async (holderType, guidance, mentionsSharing) => {
+        const { formatPortConflictBanner } = await loadListenModule();
+        const banner = formatPortConflictBanner({ port: 4444, listenAddress: '127.0.0.1:4444', holderType, processName: 'unknown', pid: null, commandLine: '' });
+        expect(banner).toContain(guidance);
+        expect(banner.includes('If you are running SillyTavern and SillyBunny at the same time')).toBe(mentionsSharing);
+    });
+
+    test('does not allow process details to inject terminal controls or extra lines', async () => {
+        const { formatPortConflictBanner } = await loadListenModule();
+        const banner = formatPortConflictBanner({ port: 4444, listenAddress: '127.0.0.1:4444', holderType: 'Generic Application (node)', processName: '\x1b[2Jnode\r\nforged', pid: 222, commandLine: '/tmp/\x00node' });
+        expect(banner).not.toMatch(/[\x00\x1b\r]/);
+        expect(banner).not.toContain('\nforged');
     });
 });

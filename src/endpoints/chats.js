@@ -56,6 +56,23 @@ const CHAT_PRE_WRITE_BACKUPS_PREFIX = 'chat_pre_write_';
 const PRE_WRITE_BACKUP_RING_SIZE = 3;
 
 /**
+ * Builds a stable filename key for a chat's backups.
+ * Non-ASCII characters are replaced with underscores, so names such as CJK ones
+ * would all collapse to the same key and share one backup quota. A short hash of
+ * the raw name keeps those keys distinct while ASCII names stay unchanged (#5780).
+ * @param {string} name The name of the chat.
+ * @returns {string} Sanitized filename key for the backup files.
+ */
+export function getBackupKey(name) {
+    const sanitized = sanitize(name).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    if (/[^\x20-\x7E]/.test(name)) {
+        const hash = crypto.createHash('sha256').update(name).digest('hex').slice(0, 8);
+        return `${sanitized}_${hash}`;
+    }
+    return sanitized;
+}
+
+/**
  * Trims regular chat backups only. `CHAT_BACKUPS_PREFIX` is a prefix of the pre-write and
  * forced-overwrite prefixes, so a plain prefix sweep would also rotate away those recovery layers.
  * @param {string} directory The user's backup directory.
@@ -176,13 +193,16 @@ function normalizeChatMessageExtraForComparison(extra) {
         if (typeof imageUrl === 'string' && imageUrl) {
             normalized.media.push({ type: 'image', url: imageUrl });
         }
-        if (normalized.media_display === 'gallery') {
-            const selectedIndex = normalized.media.findIndex(media => media.url === imageUrl);
+        if (normalized.media_display === 'gallery' && typeof imageUrl === 'string' && imageUrl) {
+            const selectedIndex = normalized.media.findIndex(media => media?.url === imageUrl);
             if (selectedIndex > -1) {
                 normalized.media_index = selectedIndex;
             }
         }
-        normalized.media = normalized.media.filter((media, index, allMedia) => index === allMedia.findIndex(other => other.url === media.url));
+        // SillyBunny: retain unknown media entries verbatim; comparison must not discard data or block saves.
+        normalized.media = normalized.media.filter((media, index, allMedia) => !isPlainObject(media)
+            || typeof media.url !== 'string' || !media.url
+            || index === allMedia.findIndex(other => other?.url === media.url));
         delete normalized.image;
     }
     if (Object.hasOwn(normalized, 'video')) {
@@ -191,6 +211,21 @@ function normalizeChatMessageExtraForComparison(extra) {
             normalized.media.push({ type: 'video', url: normalized.video });
         }
         delete normalized.video;
+    }
+
+    // SillyBunny: clean up empty hydration containers so on-disk chats without media/files
+    // compare identical to in-memory hydrated chats whose media/files arrays were initialized to [].
+    if (Array.isArray(normalized.media) && normalized.media.length === 0) {
+        delete normalized.media;
+        if (normalized.media_display === 'gallery') {
+            delete normalized.media_display;
+        }
+        if (normalized.media_index === 0) {
+            delete normalized.media_index;
+        }
+    }
+    if (Array.isArray(normalized.files) && normalized.files.length === 0) {
+        delete normalized.files;
     }
     return normalized;
 }
@@ -227,6 +262,9 @@ function normalizeChatMessageForComparison(message, chatMetadata, messageCount) 
         }
         if (!isPlainObject(normalized.swipe_info[index])) {
             normalized.swipe_info[index] = createSwipeInfo();
+        } else {
+            // SillyBunny: normalize extra inside all swipe_info records symmetrically with message.extra.
+            normalized.swipe_info[index].extra = normalizeChatMessageExtraForComparison(normalized.swipe_info[index].extra);
         }
     }
 
@@ -279,6 +317,22 @@ function isSameChatSaveContent(left, right, options = {}) {
     const leftRecords = getChatSaveComparisonRecords(left, options);
     const rightRecords = getChatSaveComparisonRecords(right, options);
     return leftRecords !== null && rightRecords !== null && isDeepStrictEqual(leftRecords, rightRecords);
+}
+
+// SillyBunny: true when the incoming save keeps the existing metadata and every message unchanged
+// and in order, so it can only append without rolling back another client's metadata changes.
+function isChatSaveExtension(newSerializedChat, existingSerializedChat, options = {}) {
+    const incomingRecords = getChatSaveComparisonRecords(newSerializedChat, options);
+    const existingRecords = getChatSaveComparisonRecords(existingSerializedChat, options);
+    if (incomingRecords === null || existingRecords === null) {
+        return false;
+    }
+
+    const [incomingHeader, ...incomingMessages] = incomingRecords;
+    const [existingHeader, ...existingMessages] = existingRecords;
+    return isDeepStrictEqual(incomingHeader, existingHeader)
+        && incomingMessages.length >= existingMessages.length
+        && isDeepStrictEqual(incomingMessages.slice(0, existingMessages.length), existingMessages);
 }
 
 function getLatestBackupFilePath(directory, prefix) {
@@ -342,7 +396,7 @@ function backupChat(directory, name, data, backupPrefix = CHAT_BACKUPS_PREFIX, h
             return;
         }
         // replace non-alphanumeric characters with underscores
-        name = sanitize(name).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        name = getBackupKey(name);
         const prefix = `${backupPrefix}${name}_`;
         const sizeDetails = getSerializedBackupSizeDetails(data);
 
@@ -394,7 +448,7 @@ function backupChatPreWrite(directory, name, data, handle = '') {
             console.error(`The chat couldn't be backed up because no directory exists at ${directory}!`);
             logBackupEvent('chat-backup-skipped', { type: 'pre-write', handle, chat: originalName, reason: 'missing-directory' });
         }
-        name = sanitize(name).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        name = getBackupKey(name);
         const sizeDetails = getSerializedBackupSizeDetails(data);
 
         if (isDuplicatePreWriteBackup(directory, `${CHAT_PRE_WRITE_BACKUPS_PREFIX}${name}_`, data)) {
@@ -427,6 +481,7 @@ function backupChatPreWrite(directory, name, data, handle = '') {
         removeOldBackups(directory, CHAT_PRE_WRITE_BACKUPS_PREFIX, maxTotalChatBackups);
     } catch (err) {
         console.error(`Could not create pre-write chat backup for ${name}`, err);
+        throw err;
     }
 }
 
@@ -472,16 +527,111 @@ function getDestructiveChatSaveReason(newData, existingSerializedChat) {
  */
 const backupFunctions = new Map();
 
+// SillyBunny: track active deferred save sequences (e.g. multi-step in-chat agent runs).
+// A deferred run captures one pre-write snapshot of the pre-run on-disk state before the first
+// intermediate mutation, and suppresses redundant pre-write churn during subsequent in-flight passes (#373).
+const deferredPreWriteBackupSequences = new Map();
+
+function normalizeDeferredBackupPath(filePath) {
+    return path.resolve(filePath);
+}
+
+function hasDeferredSequenceId(deferSequenceId) {
+    return deferSequenceId !== undefined && deferSequenceId !== null && String(deferSequenceId).trim().length > 0;
+}
+
+export function clearActiveDeferredChatPreWrites() {
+    deferredPreWriteBackupSequences.clear();
+}
+
+function getDeferredPreWriteBackupDecision({
+    filePath,
+    deferBackup,
+    deferSequenceId,
+}) {
+    const normalizedPath = normalizeDeferredBackupPath(filePath);
+    const hasSequence = hasDeferredSequenceId(deferSequenceId);
+    const activeSequence = deferredPreWriteBackupSequences.get(normalizedPath);
+
+    // No token means this is an unrelated ordinary save. It must always retain
+    // normal pre-write backup behavior and clear any stale abandoned sequence.
+    if (!hasSequence) {
+        return {
+            normalizedPath,
+            shouldCreateBackup: true,
+            closeSequence: false,
+            clearActiveSequenceAfterSuccess: Boolean(activeSequence),
+        };
+    }
+
+    if (deferBackup === true) {
+        if (activeSequence === deferSequenceId) {
+            return {
+                normalizedPath,
+                shouldCreateBackup: false,
+                closeSequence: false,
+            };
+        }
+
+        // First save of this sequence: preserve the pre-turn baseline.
+        return {
+            normalizedPath,
+            shouldCreateBackup: true,
+            beginSequence: true,
+            closeSequence: false,
+        };
+    }
+
+    // Closing save. Only the matching sequence may skip the redundant backup.
+    if (activeSequence === deferSequenceId) {
+        return {
+            normalizedPath,
+            shouldCreateBackup: false,
+            closeSequence: true,
+        };
+    }
+
+    // A closing save with no matching active sequence is an ordinary save.
+    return {
+        normalizedPath,
+        shouldCreateBackup: true,
+        closeSequence: false,
+    };
+}
+
+function commitDeferredPreWriteBackupDecision(decision, deferSequenceId) {
+    if (decision.beginSequence) {
+        deferredPreWriteBackupSequences.set(
+            decision.normalizedPath,
+            deferSequenceId,
+        );
+    }
+
+    if (decision.closeSequence || decision.clearActiveSequenceAfterSuccess) {
+        deferredPreWriteBackupSequences.delete(decision.normalizedPath);
+    }
+}
+
+function clearDeferredPreWriteBackupSequence(filePath) {
+    deferredPreWriteBackupSequences.delete(
+        normalizeDeferredBackupPath(filePath),
+    );
+}
+
 /**
- * Gets a backup function for a user.
+ * Gets a backup function for a user and chat.
+ * Throttling is keyed per user and chat so that rapid saves in one chat cannot
+ * swallow the throttled backup of another chat saved in the same window.
  * @param {string} handle User handle
+ * @param {string} name The name of the chat, as passed to backupChat
  * @returns {typeof backupChat} Backup function
  */
-function getBackupFunction(handle) {
-    if (!backupFunctions.has(handle)) {
-        backupFunctions.set(handle, _.throttle(backupChat, throttleInterval, { leading: true, trailing: true }));
+function getBackupFunction(handle, name) {
+    const key = `${handle} ${name}`;
+    if (!backupFunctions.has(key)) {
+        backupFunctions.set(key, _.throttle(backupChat, throttleInterval, { leading: true, trailing: true }));
     }
-    return backupFunctions.get(handle) || (() => { });
+    return backupFunctions.get(key) || (() => { });
 }
 
 /**
@@ -886,8 +1036,6 @@ export async function getChatInfo(pathToFile, additionalData = {}, withMetadata 
                 lastLine = line;
             });
             rl.on('close', () => {
-                rl.close();
-
                 if (!lastLine) {
                     res(chatData);
                     return;
@@ -907,12 +1055,23 @@ export async function getChatInfo(pathToFile, additionalData = {}, withMetadata 
 
                     res(chatData);
                 } else {
-                    console.warn('Found an invalid or corrupted chat file:', pathToFile);
-                    res({});
+                    console.warn('Found an invalid or corrupted last line in a chat file:', pathToFile);
+                    chatData.chat_items = Math.max(itemCounter - 2, 0);
+                    chatData.token_estimate = Math.round(messageCharacters / 4);
+                    chatData.mes = '[The message is empty]';
+                    chatData.match = hasMatcher ? hasAnyMatch : true;
+                    if (previewLimit > 0) {
+                        chatData.preview_messages = previewMessages;
+                    }
+                    res(chatData);
                 }
             });
         });
     } catch (error) {
+        if (error?.code === 'ENOENT') {
+            console.warn('Chat file was deleted while it was being scanned:', pathToFile);
+            return { match: false };
+        }
         console.error('Failed to read chat info:', pathToFile, error);
         return {};
     }
@@ -1054,7 +1213,7 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
     }
 }
 
-function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handle, cardName, backupDirectory, { deferBackup = false, recoveryTarget = null, allowShrink = false, persistDerivedMetadata = false } = {}) {
+function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handle, cardName, backupDirectory, { deferBackup = false, deferSequenceId = undefined, recoveryTarget = null, allowShrink = false, persistDerivedMetadata = false } = {}) {
     const doIntegrityCheck = (checkIntegrity && !skipIntegrityCheck);
     const incomingIntegrity = chatData?.[0]?.chat_metadata?.integrity;
     const chatIntegritySlug = doIntegrityCheck && typeof incomingIntegrity === 'string' ? incomingIntegrity : '';
@@ -1081,6 +1240,7 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
     // already on disk, so the recovery snapshot and regular backup mirror the authoritative file.
     let unchangedChatData = null;
     let unchangedIntegrity;
+    let backupDecision = null;
     let preserveFileIdentity = false;
     let replaceFileOnly = false;
     let expectedFileIdentity;
@@ -1125,29 +1285,63 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
         }
 
         const currentChatData = currentSnapshot?.data ?? null;
+        if (doIntegrityCheck && currentChatData) {
+            // SillyBunny accepts legacy leading blank lines; validate the same header used by its integrity reader.
+            const headerLine = currentChatData.split('\n').find(line => line.trim()) ?? '';
+            const header = tryParse(headerLine.replace(/^\uFEFF/, ''));
+            if (!isPlainObject(header)) {
+                throw new IntegrityMismatchError(`Chat integrity check failed for "${filePath}": the existing header is unparseable and requires explicit overwrite confirmation.`);
+            }
+        }
         const existingIntegrity = currentChatData === null ? '' : getSerializedChatIntegrity(currentChatData);
-        if (doIntegrityCheck && existingIntegrity && existingIntegrity !== chatIntegritySlug) {
+        const destructiveReason = currentChatData ? getDestructiveChatSaveReason(savedChatData, currentChatData) : '';
+
+        // SillyBunny: classify a history-destroying save before the integrity check, so the client is
+        // told what is actually wrong with it. A client that lost its slug and a client sending an
+        // unloaded chat both fail the slug comparison, but only the second is destructive, and
+        // reporting it as a slug mismatch sends the client into a reload loop it cannot resolve:
+        // reloading never repopulates the chat it failed to send.
+        // Reject before the pre-write ring runs, so a rejected save cannot evict the last good state.
+        // Deliberate message deletion sets allowShrink, which is not the same confirmation as an integrity overwrite.
+        if (destructiveReason && !skipIntegrityCheck && !allowShrink) {
+            throw new DestructiveChatSaveError(destructiveReason, `Refused a destructive chat save for "${cardName}" (${destructiveReason}): incoming payload has ${savedChatData.length} JSONL rows, existing file has ${countSerializedChatLines(currentChatData)} rows.`);
+        }
+
+        // SillyBunny: the slug rotates on every save and only reaches the client in the response
+        // body, so a dropped response leaves a remote client holding the previous slug forever.
+        // Accept that retry when it merely appends to what is on disk, because a superset save
+        // cannot lose history; a genuinely divergent save still fails the check.
+        if (doIntegrityCheck && existingIntegrity && existingIntegrity !== chatIntegritySlug
+            && !isChatSaveExtension(jsonlData, currentChatData, { ignoreDerivedMetadata: !persistDerivedMetadata })) {
             throw new IntegrityMismatchError(`Chat integrity check failed for "${filePath}". The expected integrity slug was "${chatIntegritySlug}".`);
         }
 
         if (currentChatData) {
-            const destructiveReason = getDestructiveChatSaveReason(savedChatData, currentChatData);
             const existingLines = countSerializedChatLines(currentChatData);
-
-            // SillyBunny: reject before the pre-write ring runs, so a rejected save cannot evict the last good state.
-            // Deliberate message deletion sets allowShrink, which is not the same confirmation as an integrity overwrite.
-            if (destructiveReason && !skipIntegrityCheck && !allowShrink) {
-                throw new DestructiveChatSaveError(destructiveReason, `Refused a destructive chat save for "${cardName}" (${destructiveReason}): incoming payload has ${savedChatData.length} JSONL rows, existing file has ${existingLines} rows.`);
-            }
 
             // SillyBunny: compare parsed records because loading canonicalizes legacy JSONL formatting.
             // Replacing equivalent content through atomic temp-and-rename would swap the file identity
             // for no gain. Legacy chats remain slugless until their first genuine content change.
+            backupDecision = getDeferredPreWriteBackupDecision({
+                filePath,
+                deferBackup,
+                deferSequenceId,
+            });
+
             if (isSameChatSaveContent(jsonlData, currentChatData, { ignoreDerivedMetadata: !persistDerivedMetadata })) {
                 unchangedChatData = currentChatData;
                 unchangedIntegrity = existingIntegrity;
             } else {
-                backupChatPreWrite(backupDirectory, cardName, currentChatData, handle);
+                if (backupDecision.shouldCreateBackup) {
+                    backupChatPreWrite(backupDirectory, cardName, currentChatData, handle);
+                } else {
+                    logBackupEvent('chat-backup-skipped', {
+                        type: 'pre-write',
+                        handle,
+                        chat: cardName,
+                        reason: backupDecision.closeSequence ? 'deferred-closed' : 'deferred-intermediate',
+                    });
+                }
 
                 if (destructiveReason) {
                     console.warn(`Forced destructive chat save for "${cardName}" (${destructiveReason}): incoming payload has ${savedChatData.length} JSONL rows, existing file has ${existingLines} rows.`);
@@ -1216,8 +1410,12 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
     } else {
         logBackupEvent('chat-save-skipped', { handle, chat: cardName, reason: 'unchanged', force: Boolean(skipIntegrityCheck), ...savedChatSizeDetails });
     }
+    // A no-op cannot open a sequence: it has not captured a pre-write snapshot yet.
+    if (backupDecision && (!backupDecision.beginSequence || unchangedChatData === null)) {
+        commitDeferredPreWriteBackupDecision(backupDecision, deferSequenceId);
+    }
     if (!deferBackup) {
-        getBackupFunction(handle)(backupDirectory, cardName, persistedChatData, CHAT_BACKUPS_PREFIX, handle);
+        getBackupFunction(handle, cardName)(backupDirectory, cardName, persistedChatData, CHAT_BACKUPS_PREFIX, handle);
     } else {
         logBackupEvent('chat-backup-skipped', { type: 'regular', handle, chat: cardName, reason: 'deferred', ...savedChatSizeDetails });
     }
@@ -1240,6 +1438,7 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
             const recoveryTarget = createChatRecoveryTarget(request, false, sanitizedChatFileName);
             const saveResult = await trySaveChat(chatData, chatFilePath, request.body.force, handle, cardName, request.user.directories.backups, {
                 deferBackup: request.body.deferBackup === true,
+                deferSequenceId: typeof request.body.deferSequenceId === 'string' ? request.body.deferSequenceId : undefined,
                 allowShrink: request.body.allowShrink === true,
                 recoveryTarget,
             });
@@ -1368,6 +1567,7 @@ router.post('/rename', validateAvatarUrlMiddleware, async function (request, res
 
             // SillyBunny: atomic renames prevent interrupted chat renames from leaving cloned files behind.
             const renameResult = renameChatFile(pathToOriginalFile, pathToRenamedFile);
+            clearDeferredPreWriteBackupSequence(pathToOriginalFile);
             if (isBackupEnabled) {
                 const rekeyResult = runChatRecoveryBestEffort(
                     () => rekeyChatRecoveryState(sourceRecoveryTarget, destinationRecoveryTarget),
@@ -1431,6 +1631,7 @@ router.post('/delete', validateAvatarUrlMiddleware, function (request, response)
         }
 
         if (chatFileDeleted) {
+            clearDeferredPreWriteBackupSequence(chatFilePath);
             runChatRecoveryBestEffort(
                 () => clearChatRecoveryState(recoveryTarget),
                 'Failed to clear chat recovery state after deletion.',
@@ -1715,6 +1916,7 @@ router.post('/group/delete', (request, response) => {
         }
 
         if (chatFileDeleted) {
+            clearDeferredPreWriteBackupSequence(chatFilePath);
             runChatRecoveryBestEffort(
                 () => clearChatRecoveryState(recoveryTarget),
                 'Failed to clear chat recovery state after deletion.',
@@ -1746,6 +1948,7 @@ router.post('/group/save', async function (request, response) {
             const recoveryTarget = createChatRecoveryTarget(request, true, chatFileName);
             const saveResult = await trySaveChat(chatData, chatFilePath, request.body.force, handle, String(id), request.user.directories.backups, {
                 deferBackup: request.body.deferBackup === true,
+                deferSequenceId: typeof request.body.deferSequenceId === 'string' ? request.body.deferSequenceId : undefined,
                 allowShrink: request.body.allowShrink === true,
                 recoveryTarget,
             });

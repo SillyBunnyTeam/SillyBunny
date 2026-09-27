@@ -188,6 +188,10 @@ beforeAll(async () => {
 
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder-settings-ui.js', () => ({
         openPathfinderSettings: jest.fn(),
+        closePathfinderSettings: jest.fn(),
+        canClosePathfinderSettings: jest.fn(async () => true),
+        cancelPathfinderSummary: jest.fn(),
+        refreshPathfinderSettings: jest.fn(),
         isPathfinderAgent: jest.fn(() => false),
     }));
 

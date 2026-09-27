@@ -12,7 +12,19 @@ function getFunctionSource(name) {
 
     expect(start).toBeGreaterThanOrEqual(0);
 
-    const bodyStart = source.indexOf('{', start);
+    const paramsStart = source.indexOf('(', start);
+    let parenDepth = 0;
+    let bodyStart = -1;
+    for (let index = paramsStart; index < source.length; index++) {
+        if (source[index] === '(') parenDepth++;
+        if (source[index] === ')') {
+            parenDepth--;
+            if (parenDepth === 0) {
+                bodyStart = source.indexOf('{', index);
+                break;
+            }
+        }
+    }
     let depth = 0;
 
     for (let index = bodyStart; index < source.length; index++) {
@@ -35,22 +47,17 @@ describe('Quick Image Gen artifact persistence', () => {
         expect(source).toContain('let extension_settings, getContext, saveSettingsDebounced, saveSettings');
         expect(source).toContain('saveSettings = scriptModule.saveSettings;');
 
-        const durableBackupSource = getFunctionSource('saveBackupToSettings');
-        expect(durableBackupSource).toContain('await flushSettingsBackup();');
-
-        const immediateLocalStoreSource = getFunctionSource('saveLocalStoreBackupNow');
-        expect(immediateLocalStoreSource).toContain('await persistSynchronizedStore({');
-        expect(immediateLocalStoreSource).toContain('save: flushSettingsBackup,');
-        expect(getFunctionSource('saveConnectionProfileNow')).toContain('await saveLocalStoreBackupNow("qig_profiles", nextProfiles');
-        expect(getFunctionSource('deleteConnectionProfileNow')).toContain('await saveLocalStoreBackupNow("qig_profiles", nextProfiles');
-        expect(getFunctionSource('commitComfyWorkflowStore')).toContain('await saveLocalStoreBackupNow("qig_comfy_workflows", nextStore, errorMessage)');
-        expect(getFunctionSource('saveComfyWorkflowPresetAsNow')).toContain('await commitComfyWorkflowStore(nextStore)');
-        expect(getFunctionSource('updateSelectedComfyWorkflowPresetNow')).toContain('await commitComfyWorkflowStore(nextStore)');
-        expect(getFunctionSource('deleteSelectedComfyWorkflowPresetNow')).toContain('await commitComfyWorkflowStore(nextStore)');
-        expect(getFunctionSource('commitGenerationPresetStore')).toContain('await saveLocalStoreBackupNow("qig_gen_presets", nextStore, errorMessage)');
-        expect(getFunctionSource('savePresetNow')).toContain('await commitGenerationPresetStore([...generationPresets, preset])');
-        expect(getFunctionSource('deletePresetNow')).toContain('await commitGenerationPresetStore(nextStore, "Failed to delete preset from your SillyTavern account.")');
-        expect(getFunctionSource('clearPresetsNow')).toContain('await commitGenerationPresetStore([], "Failed to clear presets from your SillyTavern account.")');
+        for (const name of ['saveBackupToSettings', 'saveLocalStoreBackupNow']) {
+            const backupSource = getFunctionSource(name);
+            expect(backupSource).toContain('await persistSynchronizedStore({');
+            expect(backupSource).toContain('save: saveSettings,');
+            expect(backupSource).toContain('acknowledge: confirmSettingsSaveEvent,');
+        }
+        expect(getFunctionSource('flushSettingsBackup')).toContain('await saveSettingsWithConfirmation({');
+        expect(getFunctionSource('commitConfigurationStore')).toContain('await saveLocalStoreBackupNow("qig_configurations", nextStore, errorMessage, { lastLoadedPresetId: activeId })');
+        expect(getFunctionSource('saveConfigurationAsNow')).toContain('await commitConfigurationStore(nextStore, { activeId: record.id })');
+        expect(getFunctionSource('updateSelectedConfigurationNow')).toContain('await commitConfigurationStore(configurations.map(');
+        expect(getFunctionSource('deleteSelectedConfigurationNow')).toContain('await commitConfigurationStore(configurations.filter(');
         expect(getFunctionSource('importSettings')).toContain('await commitSettingsImport(data);');
         expect(getFunctionSource('commitSettingsImportNow')).toContain('await flushSettingsBackup();');
     });

@@ -81,6 +81,14 @@ export function parseProfileNames(value, profiles = PERFORMANCE_PROFILES) {
     return requestedProfiles;
 }
 
+export function parseCpuThrottleRate(value = 1) {
+    const rate = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN;
+    if (!Number.isFinite(rate) || rate < 1) {
+        throw new Error('CPU throttle rate must be a finite number greater than or equal to 1.');
+    }
+    return rate;
+}
+
 export function collectBudgetFailures(result, budget) {
     const maxBudgets = budget?.max ?? {};
     const failures = [];
@@ -510,7 +518,7 @@ async function measurePage(page) {
         const navigation = browserGlobal.performance.getEntriesByType('navigation')[0];
         const paint = Object.fromEntries(browserGlobal.performance.getEntriesByType('paint').map(entry => [entry.name, entry.startTime]));
         const resources = browserGlobal.performance.getEntriesByType('resource');
-        const longTasks = browserGlobal.performance.getEntriesByType('longtask');
+        const longTasks = browserGlobal.__sillyBunnyLongTaskMetrics.snapshot();
 
         return {
             navigation: navigation ? {
@@ -521,11 +529,7 @@ async function measurePage(page) {
                 decodedBodySize: navigation.decodedBodySize,
             } : null,
             paint,
-            longTasks: {
-                count: longTasks.length,
-                totalDuration: longTasks.reduce((total, task) => total + task.duration, 0),
-                longest: longTasks.reduce((max, task) => Math.max(max, task.duration), 0),
-            },
+            longTasks,
             resourceCount: resources.length,
             heap: browserGlobal.performance.memory ? {
                 usedJSHeapSize: browserGlobal.performance.memory.usedJSHeapSize,
@@ -543,9 +547,11 @@ async function measurePage(page) {
     await settlePage(page);
     const chatRender = { streaming, longChat };
     const instrumentationAfterSynthetic = await captureInstrumentationSnapshot(page);
+    const longTasksAfterSynthetic = await page.evaluate(() => globalThis.__sillyBunnyLongTaskMetrics.snapshot());
 
     return {
         ...metrics,
+        longTasksAfterSynthetic,
         instrumentation: {
             ready: instrumentationAtReady,
             afterSynthetic: instrumentationAfterSynthetic,
@@ -555,13 +561,63 @@ async function measurePage(page) {
     };
 }
 
-async function waitForAppReady(page) {
-    await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 60000 });
+export async function waitForAppReady(page) {
+    const appEvents = await page.evaluateHandle(() => import('/scripts/events.js'));
+    try {
+        await page.waitForFunction(({ eventSource, event_types }) => {
+            return eventSource.autoFireLastArgs.has(event_types.APP_READY);
+        }, appEvents, { timeout: 60000 });
+    } finally {
+        await appEvents.dispose();
+    }
     await page.waitForFunction(() => {
         const browserGlobal = globalThis;
         return typeof browserGlobal.SillyTavern?.getContext === 'function'
             && browserGlobal.document.getElementById('chat') instanceof browserGlobal.HTMLElement;
-    }, { timeout: 60000 });
+    }, null, { timeout: 60000 });
+}
+
+export function installLongTaskObserver() {
+    const browserGlobal = globalThis;
+    const unavailable = {
+        available: false,
+        reason: 'longtask-not-supported',
+        count: null,
+        totalDuration: null,
+        longest: null,
+    };
+    let metrics = unavailable;
+    let observer = null;
+    const recordEntries = entries => {
+        for (const entry of entries) {
+            if (entry.entryType !== 'longtask' || !Number.isFinite(entry.duration)) {
+                continue;
+            }
+            metrics.count++;
+            metrics.totalDuration += entry.duration;
+            metrics.longest = Math.max(metrics.longest, entry.duration);
+        }
+    };
+    browserGlobal.__sillyBunnyLongTaskMetrics = {
+        snapshot() {
+            if (observer) {
+                recordEntries(observer.takeRecords());
+            }
+            return { ...metrics };
+        },
+    };
+    if (!browserGlobal.PerformanceObserver?.supportedEntryTypes?.includes('longtask')) {
+        return;
+    }
+    try {
+        metrics = { available: true, count: 0, totalDuration: 0, longest: 0 };
+        observer = new browserGlobal.PerformanceObserver(list => recordEntries(list.getEntries()));
+        observer.observe({ type: 'longtask', buffered: true });
+    } catch {
+        observer?.disconnect();
+        observer = null;
+        metrics = { ...unavailable, reason: 'longtask-observer-setup-failed' };
+    }
 }
 
 function installResourceTimingBuffer(size) {
@@ -715,20 +771,25 @@ function serializeError(error) {
     };
 }
 
-export async function measureProfile(browser, profile, { url, serviceWorkers, instrumentation }) {
+export async function measureProfile(browser, profile, { url, serviceWorkers, instrumentation, cpuThrottleRate = 1 }) {
+    const appliedCpuThrottleRate = parseCpuThrottleRate(cpuThrottleRate);
     const context = await browser.newContext({
         ...profile.contextOptions,
         serviceWorkers,
     });
+    let cdpSession;
 
     try {
         await context.addInitScript(installResourceTimingBuffer, resourceTimingBufferSize);
+        await context.addInitScript(installLongTaskObserver);
 
         if (instrumentation) {
             await context.addInitScript(installPerformanceInstrumentation);
         }
 
         const page = await context.newPage();
+        cdpSession = await context.newCDPSession(page);
+        await cdpSession.send('Emulation.setCPUThrottlingRate', { rate: appliedCpuThrottleRate });
 
         const cold = await measureNavigation(page, () => page.goto(url, { waitUntil: 'networkidle' }));
         const warm = await measureNavigation(page, () => page.reload({ waitUntil: 'networkidle' }));
@@ -737,11 +798,16 @@ export async function measureProfile(browser, profile, { url, serviceWorkers, in
             name: profile.name,
             label: profile.label,
             viewport: profile.contextOptions.viewport ?? null,
+            cpuThrottleRate: appliedCpuThrottleRate,
             cold,
             warm,
         };
     } finally {
-        await context.close();
+        try {
+            await cdpSession?.detach();
+        } finally {
+            await context.close();
+        }
     }
 }
 
@@ -759,11 +825,14 @@ export async function run({
     profileNames = parseProfileNames(process.env.SILLYBUNNY_PERF_PROFILES || process.env.SILLYBUNNY_PERF_PROFILE),
     serviceWorkers = process.env.SILLYBUNNY_PERF_SERVICE_WORKERS === 'allow' ? 'allow' : 'block',
     instrumentation = ['1', 'true', 'on'].includes(String(process.env.SILLYBUNNY_PERF_INSTRUMENTATION).toLowerCase()),
+    cpuThrottleRate = process.env.SILLYBUNNY_PERF_CPU_THROTTLE || 1,
+    browserExecutablePath = process.env.SILLYBUNNY_PERF_BROWSER_EXECUTABLE || undefined,
     budgetPath = process.env.SILLYBUNNY_PERF_BUDGET || '',
 } = {}) {
+    const appliedCpuThrottleRate = parseCpuThrottleRate(cpuThrottleRate);
     await fs.mkdir(path.dirname(output), { recursive: true });
 
-    const browser = await chromium.launch();
+    const browser = await chromium.launch(browserExecutablePath ? { executablePath: browserExecutablePath } : {});
     const profiles = {};
     let hasProfileError = false;
 
@@ -772,7 +841,7 @@ export async function run({
             const profile = PERFORMANCE_PROFILES[profileName];
             console.error(`Measuring ${profile.label}...`);
             try {
-                profiles[profileName] = await measureProfile(browser, profile, { url, serviceWorkers, instrumentation });
+                profiles[profileName] = await measureProfile(browser, profile, { url, serviceWorkers, instrumentation, cpuThrottleRate: appliedCpuThrottleRate });
             } catch (error) {
                 hasProfileError = true;
                 profiles[profileName] = {
@@ -793,6 +862,8 @@ export async function run({
         measuredAt: new Date().toISOString(),
         serviceWorkers,
         instrumentation,
+        cpuThrottleRate: appliedCpuThrottleRate,
+        browserExecutablePath: browserExecutablePath || chromium.executablePath(),
         profiles,
     };
 

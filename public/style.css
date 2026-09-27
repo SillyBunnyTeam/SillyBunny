@@ -78,6 +78,9 @@
     --SmartThemeUserMesBlurTintColor: rgba(29, 33, 40, 0.9);
     --SmartThemeBotMesBlurTintColor: rgba(29, 33, 40, 0.9);
     --SmartThemeBlurStrength: calc(var(--blurStrength) * 1px);
+    --SmartThemeBackdropFilter: none;
+    --SmartThemeBackdropFilter2x: none;
+    --SmartThemeBackdropFilterSaturated: none;
     --SmartThemeShadowColor: rgba(0, 0, 0, 0.9);
     --SmartThemeBorderColor: rgba(0, 0, 0, 1);
     --SmartThemeCheckboxBgColorR: 207;
@@ -199,16 +202,8 @@
 }
 
 html {
-    /*fix for chrome flickering on blurred divs*/
-    -webkit-transform: translateZ(0);
-    -webkit-backface-visibility: hidden;
-    -webkit-perspective: 1000;
-    /* SillyBunny: the translateZ flicker fix above makes <html> the containing
-       block for every position:fixed descendant. On mobile, body is itself
-       position:fixed (mobile-styles.css) and out of flow, collapsing <html> to
-       a 0px-tall box — bottom-anchored fixed elements (toast-bottom-* toast
-       containers) then resolve above the viewport and are never visible. Give
-       the box an explicit viewport height so fixed positioning anchors to it. */
+    /* SillyBunny: root transforms rasterize backdrop-filter descendants and can
+       soften their text on high-resolution displays. Keep the document untransformed. */
     height: 100dvh;
     /* SillyBunny: `clip` (unlike `hidden`) blocks programmatic viewport
        scrolling too, so scrollIntoView on search results can't shift the
@@ -242,6 +237,13 @@ body {
     color-scheme: only light;
     /* SillyBunny: paired with html; stops scroll chaining off the document. */
     overscroll-behavior: none;
+}
+
+/* SillyBunny: `blur(0px)` still creates compositor layers, so only expose blur filters above zero. */
+body.sb-theme-blur {
+    --SmartThemeBackdropFilter: blur(var(--SmartThemeBlurStrength));
+    --SmartThemeBackdropFilter2x: blur(calc(var(--SmartThemeBlurStrength) * 2));
+    --SmartThemeBackdropFilterSaturated: blur(var(--SmartThemeBlurStrength)) saturate(110%);
 }
 
 /* SillyBunny: Firefox ignores WebKit scrollbar pseudo-elements. */
@@ -551,7 +553,7 @@ input[type='checkbox']:focus-visible {
     align-items: baseline;
 }
 
-.mes:has(.mes_reasoning:empty) .mes_reasoning_header {
+.mes_reasoning_details:not([data-has-content="true"]) .mes_reasoning_header {
     cursor: default;
 }
 
@@ -574,10 +576,11 @@ input[type='checkbox']:focus-visible {
 .mes_reasoning_details:has(.reasoning_edit_textarea) .mes_reasoning_actions .mes_button:not(.edit_button),
 .mes_reasoning_details:not(:has(.reasoning_edit_textarea)) .mes_reasoning_actions .edit_button,
 .mes_block:has(.edit_textarea):has(.reasoning_edit_textarea) .mes_reasoning_actions,
-.mes.reasoning:not([data-reasoning-state="hidden"]) .mes_edit_add_reasoning,
-.mes:has(.mes_reasoning:empty) .mes_reasoning_arrow,
-.mes:has(.mes_reasoning:empty) .mes_reasoning,
-.mes:has(.mes_reasoning:empty) .mes_reasoning_copy {
+.mes.reasoning:has(.mes_reasoning_details[data-has-content="true"]) .mes_edit_add_reasoning,
+.mes:has(.mes_reasoning_details .reasoning_edit_textarea) .mes_edit_add_reasoning,
+.mes_reasoning_details:not([data-has-content="true"]) .mes_reasoning_arrow,
+.mes_reasoning_details:not([data-has-content="true"]) .mes_reasoning,
+.mes_reasoning_details:not([data-has-content="true"]) .mes_reasoning_copy {
     display: none;
 }
 
@@ -585,8 +588,10 @@ input[type='checkbox']:focus-visible {
     background-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 33%, var(--SmartThemeBlurTintColor) 66%);
 }
 
-/** If hidden reasoning should not be shown, we hide all blocks that don't have content */
-#chat:not([data-show-hidden-reasoning="true"]):not(:has(.reasoning_edit_textarea)) .mes:has(.mes_reasoning:empty) .mes_reasoning_details {
+/** If hidden reasoning should not be shown, we hide all blocks that don't have content,
+ * except the one currently being edited.
+ */
+#chat:not([data-show-hidden-reasoning="true"]) .mes_reasoning_details:not([data-has-content="true"]):not(:has(.reasoning_edit_textarea)) {
     display: none;
 }
 
@@ -906,9 +911,9 @@ hr {
     position: absolute;
     border-bottom: 1px solid var(--color-border, var(--SmartThemeBorderColor));
     box-shadow: 0 4px 24px rgba(2, 8, 5, 0.25);
-    backdrop-filter: blur(20px);
+    backdrop-filter: var(--SmartThemeBackdropFilter);
     background-color: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, transparent);
-    -webkit-backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
     z-index: 3005;
     gap: 2px;
 }
@@ -998,9 +1003,9 @@ body .panelControlBar {
     overflow-y: scroll;
     display: flex;
     bottom: 10px;
-    backdrop-filter: blur(var(--SmartThemeBlurStrength));
+    backdrop-filter: var(--SmartThemeBackdropFilter);
     background-color: var(--SmartThemeChatTintColor);
-    -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength));
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
     text-shadow: 0px 0px calc(var(--shadowWidth) * 1px) var(--SmartThemeShadowColor);
     flex-direction: column;
     z-index: 30;
@@ -1035,8 +1040,8 @@ body .panelControlBar {
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 0 0 1.65rem 1.65rem;
     background-color: var(--SmartThemeBlurTintColor);
-    -webkit-backdrop-filter: blur(20px);
-    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
+    backdrop-filter: var(--SmartThemeBackdropFilter);
 }
 
 #nonQRFormItems {
@@ -1271,8 +1276,8 @@ body .panelControlBar {
        keeps these menus above zoomed avatars/MovingUI panels (9999) like before. */
     z-index: var(--sb-z-critical, 10000);
     background-color: var(--SmartThemeBlurTintColor);
-    -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength));
-    backdrop-filter: blur(var(--SmartThemeBlurStrength));
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
+    backdrop-filter: var(--SmartThemeBackdropFilter);
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
     flex-flow: column;
     border-radius: 10px;
@@ -1326,7 +1331,7 @@ body .panelControlBar {
 
 .options-content a,
 #extensionsMenu>.extension_container>div,
-#extensionsMenu>div:not(.extension_container),
+#extensionsMenu>*:not(.extension_container),
 .list-group>div,
 .list-group .list-group-item,
 #sd_dropdown .list-group span {
@@ -1340,17 +1345,29 @@ body .panelControlBar {
 }
 
 #extensionsMenu>.extension_container>div,
-#extensionsMenu>div:not(.extension_container),
+#extensionsMenu>*:not(.extension_container),
 .options-content a,
 .list-group-item {
     opacity: 0.5;
 }
 
 #extensionsMenu>.extension_container>div:hover,
-#extensionsMenu>div:not(.extension_container):hover,
+#extensionsMenu>*:not(.extension_container):hover,
 .options-content a:hover,
 .list-group-item:hover {
     opacity: 1;
+}
+
+/* SillyBunny: extensions may add a wand entry as a <button> so it is reachable by
+   keyboard and assistive tech. Drop the native chrome, the button font override and
+   the mobile touch-target floor so it lays out as the same row as the <div> entries. */
+#extensionsMenu>button {
+    -webkit-appearance: none;
+    appearance: none;
+    background: none;
+    border: 0;
+    font: inherit;
+    min-height: 0;
 }
 
 .options-content a div:first-child {
@@ -2125,8 +2142,8 @@ body {
 
     --bottom: 50vh;
     background: var(--ac-color-background);
-    -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength));
-    backdrop-filter: blur(var(--SmartThemeBlurStrength));
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
+    backdrop-filter: var(--SmartThemeBackdropFilter);
     border: 1px solid var(--ac-color-border);
     border-radius: 3px;
     color: var(--ac-color-text);
@@ -2872,6 +2889,11 @@ textarea::placeholder {
     border-color: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 25%, transparent);
     outline: none;
+}
+
+/* Keep non-login secrets visually masked without using password input semantics. */
+.masked-secret {
+    -webkit-text-security: disc;
 }
 
 select.text_pole {
@@ -4276,8 +4298,8 @@ grammarly-extension {
 }
 
 #shadow_popup {
-    backdrop-filter: blur(calc(var(--SmartThemeBlurStrength) * 2));
-    -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength) * 2));
+    backdrop-filter: var(--SmartThemeBackdropFilter2x);
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter2x);
     background-color: var(--black30a);
     display: none;
     opacity: 0.0;
@@ -5129,6 +5151,10 @@ input[type="range"]::-webkit-slider-thumb {
     padding-bottom: 0 !important;
 }
 
+.sb-message-screenshot-surface .mes_reasoning_header {
+    flex: 1;
+}
+
 .sb-message-screenshot-surface :is(.mes_button, .mes_buttons, .extraMesButtons, .extraMesButtonsHint, .mes_edit_buttons, .mes_reasoning_actions, .for_checkbox, .del_checkbox, .swipe_left, .swipe_right, .swipeRightBlock, .swipes-counter, .right_menu_button, .code-copy) {
     display: none !important;
 }
@@ -5192,8 +5218,8 @@ body:is([data-generating="true"], [data-swiping="true"]) :is(
     z-index: 4100;
     top: 0;
     background-color: var(--black70a);
-    backdrop-filter: blur(var(--SmartThemeBlurStrength));
-    -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength));
+    backdrop-filter: var(--SmartThemeBackdropFilter);
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
 }
 
 #select_chat_popup {
@@ -5586,8 +5612,8 @@ body .ui-widget-content {
     border-radius: 10px;
     box-shadow: 0 0 3px var(--black50a);
     text-shadow: 0px 0px calc(var(--shadowWidth) * 1px) var(--SmartThemeShadowColor);
-    -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)*2));
-    backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)*2));
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter2x);
+    backdrop-filter: var(--SmartThemeBackdropFilter2x);
     color: var(--SmartThemeBodyColor);
 }
 
@@ -5767,8 +5793,8 @@ a:hover {
     margin-top: 0;
     overflow: hidden;
     background-color: var(--SmartThemeBlurTintColor);
-    -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)*2));
-    backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)*2));
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter2x);
+    backdrop-filter: var(--SmartThemeBackdropFilter2x);
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 10px;
     box-shadow: 0 0 5px black;
@@ -6258,8 +6284,8 @@ body:has(.drawer-content.open) #top-settings-holder:has(.drawer-content.openDraw
     right: 0;
     margin: 0 auto;
     height: 0;
-    backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)));
-    -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)));
+    backdrop-filter: var(--SmartThemeBackdropFilter);
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
     box-shadow: 0 18px 80px rgba(2, 8, 5, 0.35);
     transition-property: height, display;
     transition-duration: 200ms;
@@ -6575,8 +6601,8 @@ body:not(.movingUI) .drawer-content.maximized {
     border-radius: 10px;
     border: 1px solid var(--SmartThemeBorderColor);
     aspect-ratio: unset;
-    -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength));
-    backdrop-filter: blur(var(--SmartThemeBlurStrength));
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
+    backdrop-filter: var(--SmartThemeBackdropFilter);
     background-color: var(--SmartThemeBlurTintColor);
     padding: 5px;
 }
@@ -6650,7 +6676,8 @@ body:not(.movingUI) .drawer-content.maximized {
 
 
 
-.timestamp {
+.timestamp,
+.timestamp-model {
     font-size: calc(var(--mainFontSize) * 0.7);
     font-weight: 400;
 }
@@ -7260,8 +7287,8 @@ body:not(.movingUI) .drawer-content.maximized {
     border: 1px solid;
     background-color: var(--SmartThemeBlurTintColor);
     color: var(--SmartThemeBodyColor);
-    backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)));
-    -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)));
+    backdrop-filter: var(--SmartThemeBackdropFilter);
+    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
 }
 
 .info-block.hint {
@@ -7557,6 +7584,15 @@ body:not(.movingUI) .drawer-content.maximized {
     display: none !important;
 }
 
+/* Beats the #extensionsMenu>div:not(.extension_container) display rule without !important. */
+#extensionsMenu>#wand_group_speaker_controls {
+    display: none;
+}
+
+body.groupSpeakerControlsHidden #extensionsMenu>#wand_group_speaker_controls {
+    display: flex;
+}
+
 .group_typing_indicator {
     flex: 0 0 100%;
     width: 100%;
@@ -7614,8 +7650,8 @@ body:not(.movingUI) .drawer-content.maximized {
 @media screen and (max-width: 600px) {
     .group_speaker_controls {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 34px 34px;
-        grid-template-areas: "typing typing typing" "avatars greeting speak";
+        grid-template-columns: minmax(0, 1fr) 34px 34px 34px;
+        grid-template-areas: "typing typing typing typing" "avatars greeting speak hide";
         align-items: center;
         gap: 4px;
         padding: 4px 6px;
@@ -7659,7 +7695,8 @@ body:not(.movingUI) .drawer-content.maximized {
 
     .group_speaker_avatar span,
     #group_add_greeting span,
-    #group_speaker_now span {
+    #group_speaker_now span,
+    #group_speaker_hide span {
         display: none;
     }
 
@@ -7669,7 +7706,8 @@ body:not(.movingUI) .drawer-content.maximized {
     }
 
     #group_add_greeting,
-    #group_speaker_now {
+    #group_speaker_now,
+    #group_speaker_hide {
         width: 34px;
         min-width: 34px;
         max-width: 34px;
@@ -7690,15 +7728,20 @@ body:not(.movingUI) .drawer-content.maximized {
         grid-area: speak;
     }
 
+    #group_speaker_hide {
+        grid-area: hide;
+    }
+
 }
 
 @media screen and (max-width: 420px) {
     .group_speaker_controls {
-        grid-template-columns: minmax(0, 1fr) 30px 30px;
+        grid-template-columns: minmax(0, 1fr) 30px 30px 30px;
     }
 
     #group_add_greeting,
-    #group_speaker_now {
+    #group_speaker_now,
+    #group_speaker_hide {
         width: 30px;
         min-width: 30px;
         max-width: 30px;

@@ -1,4 +1,4 @@
-/* eslint-disable playwright/no-duplicate-hooks */
+/* eslint-disable playwright/no-duplicate-hooks, playwright/no-standalone-expect */
 /* global document, globalThis */
 import { describe, test, expect, jest, beforeEach, afterEach } from '@jest/globals';
 
@@ -29,6 +29,7 @@ describe('in-chat agent post-processing runner', () => {
     let chatMetadata;
     let extensionPrompts;
     let enabledAgents;
+    let enabledToolAgents;
     let eventSource;
     let eventTypes;
     let saveChatDebounced;
@@ -38,6 +39,10 @@ describe('in-chat agent post-processing runner', () => {
     let generateQuietPrompt;
     let generateRaw;
     let runSidecarRetrieval;
+    let injectPathfinderRetrieval;
+    let isGroupGenerating;
+    let pathfinderEnabled;
+    let registeredTools;
     let streamingProcessor;
     let updateMessageTokenAccounting;
     let updateMessageMetaBadges;
@@ -55,6 +60,11 @@ describe('in-chat agent post-processing runner', () => {
     let contextGroups;
     let contextGroupId;
     let getWorldInfoPrompt;
+    let pathfinderRuntimeSettings;
+    let replacePathfinderSettings;
+    let getToolAction;
+    let getForcedToolChoice;
+    let itemizedPrompts;
 
     beforeEach(async () => {
         jest.resetModules();
@@ -64,6 +74,7 @@ describe('in-chat agent post-processing runner', () => {
         chatMetadata = {};
         extensionPrompts = {};
         enabledAgents = [];
+        enabledToolAgents = [];
         eventSource = createEventSource();
         eventTypes = {
             GENERATION_STARTED: 'generation_started',
@@ -82,8 +93,11 @@ describe('in-chat agent post-processing runner', () => {
             CHAT_COMPLETION_PROMPT_READY: 'chat_completion_prompt_ready',
             CHAT_COMPLETION_SETTINGS_READY: 'chat_completion_settings_ready',
             WORLDINFO_ENTRIES_LOADED: 'worldinfo_entries_loaded',
+            WORLD_INFO_ACTIVATED: 'world_info_activated',
             CHAT_CHANGED: 'chat_changed',
             WORLDINFO_UPDATED: 'worldinfo_updated',
+            WORLDINFO_RENAMED: 'worldinfo_renamed',
+            WORLDINFO_DELETED: 'worldinfo_deleted',
             MESSAGE_UPDATED: 'message_updated',
         };
         saveChatDebounced = jest.fn();
@@ -92,7 +106,11 @@ describe('in-chat agent post-processing runner', () => {
         updateMessageBlock = jest.fn();
         generateQuietPrompt = jest.fn(async () => 'quiet result');
         generateRaw = jest.fn(async () => 'raw result');
-        runSidecarRetrieval = jest.fn();
+        runSidecarRetrieval = jest.fn(async () => ({ success: true, selectedEntries: [] }));
+        injectPathfinderRetrieval = jest.fn();
+        isGroupGenerating = false;
+        pathfinderEnabled = true;
+        registeredTools = new Map();
         streamingProcessor = {
             messageId: -1,
             type: 'normal',
@@ -140,6 +158,13 @@ describe('in-chat agent post-processing runner', () => {
         contextGroups = [];
         contextGroupId = null;
         getWorldInfoPrompt = jest.fn(async () => ({ worldInfoString: '' }));
+        pathfinderRuntimeSettings = { pipelinePrompts: {}, pipelines: {} };
+        replacePathfinderSettings = jest.fn(settings => {
+            pathfinderRuntimeSettings = settings;
+        });
+        getToolAction = jest.fn(() => null);
+        getForcedToolChoice = jest.fn(() => null);
+        itemizedPrompts = [];
 
         const addListener = (listeners, event, handler) => {
             const eventListeners = listeners.get(event) ?? [];
@@ -207,7 +232,7 @@ describe('in-chat agent post-processing runner', () => {
                 const promptName = typeof name === 'string' ? name.trim() : '';
                 extensionPrompts[key] = { value, ...(promptName && { name: promptName }) };
                 Object.defineProperties(extensionPrompts[key], {
-                    position: { value, enumerable: false },
+                    position: { value: position, enumerable: false },
                     depth: { value: depth, enumerable: false },
                     scan: { value: scan, enumerable: false },
                     role: { value: role, enumerable: false },
@@ -219,9 +244,13 @@ describe('in-chat agent post-processing runner', () => {
                 .replaceAll('{{original}}', options.original ?? '')),
             substituteParamsExtended: jest.fn(value => String(value ?? '')),
             generateQuietPrompt,
+            generateRaw,
             getCurrentChatId: jest.fn(() => currentChatId),
+            setAgentGenerationContextProvider: jest.fn(),
+            itemizedPrompts,
             normalizeContentText: jest.fn(value => String(value ?? '')),
             main_api: mainApi,
+            online_status: 'no_connection',
             saveChatDebounced,
             stopGeneration: jest.fn(() => false),
             streamingProcessor,
@@ -285,6 +314,10 @@ describe('in-chat agent post-processing runner', () => {
             event_types: eventTypes,
         }));
 
+        await jest.unstable_mockModule('../public/scripts/group-chats.js', () => ({
+            is_group_generating: isGroupGenerating,
+        }));
+
         await jest.unstable_mockModule('../public/scripts/reasoning.js', () => ({
             removeReasoningFromString: jest.fn(value => String(value ?? '')),
         }));
@@ -328,24 +361,35 @@ describe('in-chat agent post-processing runner', () => {
                 canPerformToolCalls: jest.fn(() => false),
                 hasToolCalls: jest.fn(() => false),
                 isToolCallingSupported: jest.fn(() => false),
-                registerFunctionTool: jest.fn(),
-                unregisterFunctionTool: jest.fn(),
+                get tools() { return [...registeredTools.values()]; },
+                registerFunctionTool: jest.fn(({ name, displayName, description, parameters, action, formatMessage, shouldRegister }) => {
+                    registeredTools.set(name, {
+                        displayName,
+                        invoke: action,
+                        formatMessage,
+                        shouldRegister,
+                        toFunctionOpenAI: () => ({ type: 'function', function: { name, description, parameters } }),
+                    });
+                }),
+                unregisterFunctionTool: jest.fn(name => registeredTools.delete(name)),
             },
         }));
 
         await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
+            escapeHtml: jest.fn(value => String(value)),
             regexFromString: jest.fn(value => {
                 const match = String(value ?? '').match(/^\/([\s\S]*)\/([a-z]*)$/i);
                 return match ? new RegExp(match[1], match[2]) : new RegExp(String(value ?? ''));
             }),
             uuidv4: jest.fn(() => 'test-uuid'),
+            waitUntilCondition: jest.fn(),
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/agent-store.js', () => ({
             DEFAULT_AGENT_MAX_TOKENS: 8192,
             MAX_AGENT_MAX_TOKENS: 64000,
-            areAgentsGloballyEnabled: jest.fn(() => true),
-            getAgentById: jest.fn(id => enabledAgents.find(agent => agent.id === id)),
+            areAgentsGloballyEnabled: jest.fn(() => globalSettings.enabled),
+            getAgentById: jest.fn(id => [...enabledAgents, ...enabledToolAgents].find(agent => agent.id === id)),
             getAgents: jest.fn(() => [...enabledAgents]),
             getCompanionConfig: jest.fn(agent => ({
                 trigger: agent?.companion?.trigger === 'manual' ? 'manual' : 'auto',
@@ -379,11 +423,12 @@ describe('in-chat agent post-processing runner', () => {
             })),
             getAgentRegexScripts: jest.fn(agent => Array.isArray(agent?.regexScripts) ? agent.regexScripts : []),
             getEnabledAgents: jest.fn(() => [...enabledAgents]),
-            getEnabledToolAgents: jest.fn(() => []),
+            getEnabledToolAgents: jest.fn(() => [...enabledToolAgents]),
             getGlobalSettings: jest.fn(() => globalSettings),
             getHiddenAgentIds: jest.fn(() => new Set(globalSettings.hiddenCompanionAgentIds ?? [])),
             getPromptTransformMode: jest.fn(agent => agent?.postProcess?.promptTransformMode === 'append' ? 'append' : 'rewrite'),
             isAgentHidden: jest.fn(agentId => new Set(globalSettings.hiddenCompanionAgentIds ?? []).has(String(agentId ?? '').trim())),
+            isAgentRuntimeAllowed: jest.fn(() => true),
             isTrackerFixAgent: jest.fn(agent => {
                 if (agent?.category !== 'tracker') return false;
                 if (agent.phase === 'post' || agent.phase === 'both') return true;
@@ -392,10 +437,16 @@ describe('in-chat agent post-processing runner', () => {
                     (Array.isArray(agent.regexScripts) && agent.regexScripts.length > 0)
                 );
             }),
-            isPathfinderSubmoduleEnabled: jest.fn(() => true),
-            saveAgent: jest.fn(async () => {}),
+            isPathfinderSubmoduleEnabled: jest.fn(() => pathfinderEnabled),
+            saveAgent: jest.fn(async (agent, { update } = {}) => {
+                const saved = update ? update(structuredClone([...enabledAgents, ...enabledToolAgents].find(item => item.id === agent))) : agent;
+                if (!saved) return null;
+                enabledAgents = enabledAgents.map(agent => agent.id === saved.id ? structuredClone(saved) : agent);
+                enabledToolAgents = enabledToolAgents.map(agent => agent.id === saved.id ? structuredClone(saved) : agent);
+                return saved;
+            }),
             isCompanionAgent: jest.fn(agent => agent?.execution === 'companion' || agent?.category === 'companion'),
-            isToolAgent: jest.fn(() => false),
+            isToolAgent: jest.fn(agent => agent?.category === 'tool'),
             normalizeCompanionConfig: jest.fn(value => value ?? {}),
             normalizePreProcessMaxTokens: jest.fn(value => Number.isFinite(Number(value)) ? Math.max(16, Math.min(16000, Number(value))) : 8192),
             normalizePromptTransformMaxTokens: jest.fn(value => Number.isFinite(Number(value)) ? Math.max(16, Math.min(16000, Number(value))) : 8192),
@@ -404,13 +455,23 @@ describe('in-chat agent post-processing runner', () => {
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/tool-action-registry.js', () => ({
-            getToolAction: jest.fn(() => null),
+            getToolAction,
             getToolFormatter: jest.fn(() => null),
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/tree-store.js', () => ({
-            getSettings: jest.fn(() => ({ pipelinePrompts: {}, pipelines: [] })),
+            getSettings: jest.fn(() => pathfinderRuntimeSettings),
             setSettings: jest.fn(),
+            replaceSettings: replacePathfinderSettings,
+            deleteTree: jest.fn(),
+            syncTrackerUidsForLorebook: jest.fn(),
+            isPathfinderSelfWrite: jest.fn(() => false),
+        }));
+
+        await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/entry-manager.js', () => ({
+            onPathfinderWorldInfoUpdated: jest.fn(),
+            onPathfinderWorldInfoRenamed: jest.fn(),
+            onPathfinderWorldInfoDeleted: jest.fn(),
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/tool-definitions.js', () => ({
@@ -421,16 +482,20 @@ describe('in-chat agent post-processing runner', () => {
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/pathfinder-tool-bridge.js', () => ({
+            CONFIRMABLE_TOOLS: new Set(['Pathfinder_Summarize']),
             getContextualLorebooks: jest.fn(() => []),
+            getForcedToolChoice,
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/sidecar-retrieval.js', () => ({
             PATHFINDER_RETRIEVAL_PROMPT_KEYS: ['pathfinder_sidecar_retrieval', 'pathfinder_pipeline_retrieval'],
+            injectPathfinderRetrieval,
             runSidecarRetrieval,
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/auto-summary.js', () => ({
             markAutoSummaryComplete: jest.fn(),
+            resetAutoSummaryCount: jest.fn(),
             shouldAutoSummarize: jest.fn(() => false),
         }));
     });
@@ -445,6 +510,7 @@ describe('in-chat agent post-processing runner', () => {
         delete globalThis.requestAnimationFrame;
         delete globalThis.toastr;
         delete globalThis.$;
+        delete globalThis.window;
     });
 
     function useAppendPostAgent() {
@@ -490,6 +556,32 @@ describe('in-chat agent post-processing runner', () => {
                 generationTypes: ['normal'],
             },
         }];
+    }
+
+    function usePathfinderAgent(settings = {}) {
+        const agent = {
+            id: 'agent-pathfinder',
+            name: 'Pathfinder',
+            category: 'tool',
+            sourceTemplateId: 'tpl-pathfinder',
+            phase: 'both',
+            prompt: '',
+            injection: { order: 0 },
+            settings: { pipelineEnabled: true, sidecarEnabled: false, enabledLorebooks: ['Book A'], ...settings },
+            tools: [],
+            conditions: { triggerKeywords: [], triggerProbability: 100, generationTypes: ['normal'] },
+        };
+        enabledAgents.unshift(agent);
+        enabledToolAgents = [agent];
+        return agent;
+    }
+
+    function addPathfinderCacheTarget() {
+        chat.push(
+            { name: 'User', mes: 'Question', is_user: true, extra: {} },
+            { name: 'Assistant', mes: 'Answer', is_user: false, is_system: false, extra: {} },
+        );
+        return chat[1];
     }
 
     function createCompanionAgent(overrides = {}) {
@@ -831,7 +923,8 @@ describe('in-chat agent post-processing runner', () => {
     }
 
     test('does not register duplicate event listeners when initialized twice', async () => {
-        const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        const { initAgentRunner, getAgentGenerationContext } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        const { setAgentGenerationContextProvider } = await import('../public/script.js');
 
         initAgentRunner();
         initAgentRunner();
@@ -842,6 +935,8 @@ describe('in-chat agent post-processing runner', () => {
         expect(listenerCount(eventTypes.MESSAGE_RECEIVED)).toBe(1);
         expect(listenerCount(eventTypes.GENERATION_ENDED)).toBe(1);
         expect(listenerCount(eventTypes.WORLDINFO_UPDATED)).toBe(1);
+        expect(setAgentGenerationContextProvider).toHaveBeenCalledTimes(1);
+        expect(setAgentGenerationContextProvider).toHaveBeenCalledWith(getAgentGenerationContext);
         expect(document.addEventListener).toHaveBeenCalledTimes(2);
         expect(globalThis.addEventListener).toHaveBeenCalledTimes(2);
     });
@@ -1847,10 +1942,12 @@ describe('in-chat agent post-processing runner', () => {
     test('prepends one delimiter-specific anti-echo guard to tracker feedback', async () => {
         const reputationCompanion = createCompanionAgent({
             id: 'reputation-companion',
+            prompt: 'Return [REP|Faction|Standing|Trend] notes ending with [/REP].',
             companion: { feedback: { enabled: true, depth: 2 } },
         });
         const eventCompanion = createCompanionAgent({
             id: 'event-companion',
+            prompt: 'Return [EVENT|Type|Name|Timing] notes ending with [/EVENT].',
             companion: { feedback: { enabled: true, depth: 2 } },
         });
         enabledAgents = [reputationCompanion, eventCompanion];
@@ -1871,7 +1968,7 @@ describe('in-chat agent post-processing runner', () => {
         const reputationPrompt = extensionPrompts['inchat_agent_companion_reputation-companion'].value;
         const eventPrompt = extensionPrompts['inchat_agent_companion_event-companion'].value;
 
-        expect(reputationPrompt).toContain('HARD STOP for your reply: the bracket-format tracker notes above are read-only reference. A separate side-channel agent writes them and re-attaches them automatically after your reply, so any copy you write is a duplicate the user has to delete by hand. Do NOT reproduce, paraphrase, update, restate, or wrap any reply content in those tracker formats. Specifically, do not emit any of: [REP|...], [/REP], [EVENT|...], [/EVENT] (or variations of them). Partial, renamed, and unclosed versions count too: an opening tag with no closing tag is still a violation. Never repeat an "[... - auxiliary notes]" label. Produce your normal story reply only - never inline tracker blocks of your own.');
+        expect(reputationPrompt).toContain('HARD STOP for your reply: the Companion-owned bracket formats listed here are read-only reference. A separate side-channel agent writes and re-attaches those formats automatically after your reply, so copying them creates duplicates the user has to delete by hand. Do NOT reproduce, paraphrase, update, restate, or wrap reply content in the listed formats. Do not emit any of: [REP|...], [/REP], [EVENT|...], [/EVENT]. Opening one of these tags without its closing tag is still a violation. This restriction applies only to the exact tags listed here; continue following any separate instructions that require other pre-generation inline tracker formats. Never repeat an "[... - auxiliary notes]" label. Produce your normal story reply, including any other required inline tracker blocks.');
         expect(eventPrompt).not.toContain('HARD STOP');
         expect(extensionPrompts.inchat_agent_companion_tracker_echo_guard).toBeUndefined();
         expect(reputationPrompt).toContain('[REP|Guild|Warm|Trusted]');
@@ -1881,6 +1978,7 @@ describe('in-chat agent post-processing runner', () => {
     test('builds bare-tag examples for delimiter-free companion trackers', async () => {
         const cyoaCompanion = createCompanionAgent({
             id: 'cyoa-companion',
+            prompt: 'Return choices inside [CHOICES] and [/CHOICES].',
             companion: { feedback: { enabled: true, depth: 1 } },
         });
         enabledAgents = [cyoaCompanion];
@@ -1896,13 +1994,14 @@ describe('in-chat agent post-processing runner', () => {
         companionRunner.injectCompanionFeedbackPrompts([cyoaCompanion]);
         const injected = extensionPrompts['inchat_agent_companion_cyoa-companion'].value;
 
-        expect(injected).toContain('do not emit any of: [CHOICES], [/CHOICES] (');
+        expect(injected).toContain('Do not emit any of: [CHOICES], [/CHOICES].');
         expect(injected).not.toContain('[CHOICES|...]');
     });
 
     test('does not treat inline skill-check brackets as tracker tags', async () => {
         const cyoaCompanion = createCompanionAgent({
             id: 'skill-check-companion',
+            prompt: 'Return choices inside [CHOICES] and [/CHOICES].',
             companion: { feedback: { enabled: true, depth: 1 } },
         });
         enabledAgents = [cyoaCompanion];
@@ -1919,17 +2018,27 @@ describe('in-chat agent post-processing runner', () => {
         const injected = extensionPrompts['inchat_agent_companion_skill-check-companion'].value;
 
         // The tag list stays [CHOICES] only; the mid-line skill brackets in the note body are not tags.
-        expect(injected).toContain('do not emit any of: [CHOICES], [/CHOICES] (');
+        expect(injected).toContain('Do not emit any of: [CHOICES], [/CHOICES].');
         expect(injected).not.toContain('[/STEALTH]');
         expect(injected).not.toContain('[SPEECH');
     });
 
-    test('injects a standalone echo guard for retained-history companions without feedback', async () => {
+    test('injects a standalone echo guard only for current retained Companion trackers', async () => {
         const cyoaCompanion = createCompanionAgent({
             id: 'retained-cyoa-companion',
+            prompt: 'Return choices inside [CHOICES] and [/CHOICES].',
             companion: { includeInChatHistory: true, feedback: { enabled: false, depth: 1 } },
         });
-        enabledAgents = [cyoaCompanion];
+        const statusInlineTracker = {
+            ...createCompanionAgent({
+                id: 'retained-status-inline-tracker',
+                category: 'tracker',
+                prompt: 'Return [STATUS|Character|Condition|Severity] notes ending with [/STATUS].',
+                companion: { includeInChatHistory: true },
+            }),
+            execution: 'inline',
+        };
+        enabledAgents = [cyoaCompanion, statusInlineTracker];
         const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
 
         const reply = { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
@@ -1938,11 +2047,16 @@ describe('in-chat agent post-processing runner', () => {
             status: 'done',
             content: '[CHOICES]\n1. Push the door.\n2. Wait.\n[/CHOICES]',
         });
+        companionRunner.setCompanionResult(reply, statusInlineTracker, {
+            status: 'done',
+            content: '[STATUS|Hero|Ready|Mild]\nStable.\n[/STATUS]',
+        });
 
         companionRunner.injectCompanionFeedbackPrompts([cyoaCompanion]);
         const guard = extensionPrompts.inchat_agent_companion_tracker_echo_guard;
 
-        expect(guard.value).toContain('do not emit any of: [CHOICES], [/CHOICES] (');
+        expect(guard.value).toContain('Do not emit any of: [CHOICES], [/CHOICES].');
+        expect(guard.value).not.toContain('[STATUS|...]');
         expect(guard.depth).toBe(0);
         expect(guard.role).toBe(0);
     });
@@ -1950,6 +2064,7 @@ describe('in-chat agent post-processing runner', () => {
     test('clears the standalone echo guard when retained tracker notes disappear', async () => {
         const cyoaCompanion = createCompanionAgent({
             id: 'retained-cyoa-companion',
+            prompt: 'Return choices inside [CHOICES] and [/CHOICES].',
             companion: { includeInChatHistory: true, feedback: { enabled: false, depth: 1 } },
         });
         enabledAgents = [cyoaCompanion];
@@ -1973,10 +2088,12 @@ describe('in-chat agent post-processing runner', () => {
     test('folds retained tracker tags into the guard a feedback block already hosts', async () => {
         const feedbackCompanion = createCompanionAgent({
             id: 'rep-feedback-companion',
+            prompt: 'Return [REP|Faction|Standing|Trend] notes ending with [/REP].',
             companion: { feedback: { enabled: true, depth: 1 } },
         });
         const retainedCompanion = createCompanionAgent({
             id: 'retained-cyoa-companion',
+            prompt: 'Return choices inside [CHOICES] and [/CHOICES].',
             companion: { includeInChatHistory: true, feedback: { enabled: false, depth: 1 } },
         });
         enabledAgents = [feedbackCompanion, retainedCompanion];
@@ -1997,7 +2114,7 @@ describe('in-chat agent post-processing runner', () => {
 
         expect(extensionPrompts.inchat_agent_companion_tracker_echo_guard).toBeUndefined();
         expect(extensionPrompts['inchat_agent_companion_rep-feedback-companion'].value)
-            .toContain('do not emit any of: [REP|...], [/REP], [CHOICES], [/CHOICES] (');
+            .toContain('Do not emit any of: [REP|...], [/REP], [CHOICES], [/CHOICES].');
     });
 
     test('does not guard tracker tags owned by active inline trackers', async () => {
@@ -2006,6 +2123,7 @@ describe('in-chat agent post-processing runner', () => {
         const statusCompanion = createCompanionAgent({
             id: 'status-companion',
             category: 'tracker',
+            prompt: 'Return [STATUS|Character|Condition|Severity] notes ending with [/STATUS].',
             companion: { feedback: { enabled: true, depth: 1 } },
         });
         enabledAgents = [inlineTracker, statusCompanion];
@@ -2030,6 +2148,7 @@ describe('in-chat agent post-processing runner', () => {
         const statusCompanion = createCompanionAgent({
             id: 'status-companion',
             category: 'tracker',
+            prompt: 'Return [STATUS|Character|Condition|Severity] notes ending with [/STATUS].',
             companion: { feedback: { enabled: true, depth: 1 } },
         });
         enabledAgents = [statusCompanion];
@@ -2224,10 +2343,12 @@ describe('in-chat agent post-processing runner', () => {
     test('removes echoed retained Companion trackers before post-processing the reply', async () => {
         const tracker = createCompanionAgent({
             id: 'parallel-tracker',
+            prompt: 'Return [PARALLEL|Location|Event] notes ending with [/PARALLEL].',
             companion: { includeInChatHistory: true },
         });
         const cyoaTracker = createCompanionAgent({
             id: 'cyoa-tracker',
+            prompt: 'Return choices inside [CHOICES] and [/CHOICES].',
             companion: { includeInChatHistory: true },
         });
         enabledAgents = [tracker, cyoaTracker];
@@ -2266,6 +2387,7 @@ describe('in-chat agent post-processing runner', () => {
         const retainedTracker = createCompanionAgent({
             id: 'retained-status-tracker',
             category: 'tracker',
+            prompt: 'Return [STATUS|Character|Condition|Severity] notes ending with [/STATUS].',
             companion: { includeInChatHistory: true },
         });
         enabledAgents = [inlineTracker, retainedTracker];
@@ -2318,27 +2440,44 @@ describe('in-chat agent post-processing runner', () => {
         expect(injected).toContain('The scene has a tense, hushed tone.');
     });
 
-    test('ignores inline-only tracker tags absent from the feedback body', async () => {
-        const mixedCompanion = createCompanionAgent({
-            id: 'mixed-companion',
+    test('guards only the Companion-owned format when feedback echoes inactive inline trackers', async () => {
+        const inlineTags = ['METER', 'PARALLEL', 'STATUS', 'TIME', 'SCENE'];
+        const cyoaCompanion = createCompanionAgent({
+            id: 'cyoa-companion',
+            category: 'tracker',
+            prompt: 'Return choices inside [CHOICES] and [/CHOICES].',
             companion: { feedback: { enabled: true, depth: 2 } },
         });
-        enabledAgents = [mixedCompanion];
+        const inlineTrackers = inlineTags.map(tag => ({
+            id: `${tag.toLowerCase()}-inline-tracker`,
+            category: 'tracker',
+            execution: 'inline',
+            prompt: `Return [${tag}|Context|Value] notes ending with [/${tag}].`,
+        }));
+        enabledAgents = [cyoaCompanion, ...inlineTrackers];
         const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
 
         const reply = { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
         chat.push(reply, { mes: 'Continue.', name: 'User', is_user: true, is_system: false, extra: {} });
-        companionRunner.setCompanionResult(reply, mixedCompanion, {
+        const inlineBlocks = inlineTags.map(tag => `[${tag}|Context|Value]\nRead-only context.\n[/${tag}]`).join('\n');
+        companionRunner.setCompanionResult(reply, cyoaCompanion, {
             status: 'done',
-            content: '[REP|Thieves Guild|+10|Liked]\nStole the amulet.\n[/REP]\n[STATUS|Hero|Poisoned|Moderate]\nNeeds antidote.\n[/STATUS]',
+            content: `[CHOICES]\n1. Push the door.\n2. Wait.\n[/CHOICES]\n${inlineBlocks}`,
         });
 
-        companionRunner.injectCompanionFeedbackPrompts([mixedCompanion]);
-        const injected = extensionPrompts['inchat_agent_companion_mixed-companion'].value;
+        companionRunner.injectCompanionFeedbackPrompts([cyoaCompanion]);
+        const injected = extensionPrompts['inchat_agent_companion_cyoa-companion'].value;
+        const guard = injected.slice(0, injected.indexOf('[CHOICES]\n1.'));
 
-        expect(injected).toContain('[REP|Thieves Guild|+10|Liked]');
-        expect(injected).toContain('[STATUS|Hero|Poisoned|Moderate]');
-        expect(injected).toContain('Specifically, do not emit any of: [REP|...], [/REP], [STATUS|...], [/STATUS]');
+        expect(guard).toContain('Do not emit any of: [CHOICES], [/CHOICES].');
+        expect(guard).toContain('continue following any separate instructions that require other pre-generation inline tracker formats');
+        expect(guard).toContain('including any other required inline tracker blocks');
+        expect(guard).not.toContain('never inline tracker blocks');
+        for (const tag of inlineTags) {
+            expect(guard).not.toContain(`[${tag}`);
+            expect(guard).not.toContain(`[/${tag}]`);
+            expect(injected).toContain(`[${tag}|Context|Value]`);
+        }
         expect(extensionPrompts.inchat_agent_companion_tracker_echo_guard).toBeUndefined();
     });
 
@@ -3647,6 +3786,25 @@ describe('in-chat agent post-processing runner', () => {
         expect(messages[0].content).not.toContain('Write a markdown companion card body');
     });
 
+    test('teaches every tracker companion the empty-output sentinel', async () => {
+        const tracker = createCompanionAgent({ id: 'custom-tracker', category: 'tracker' });
+        const taughtTracker = createCompanionAgent({ id: 'taught-tracker', category: 'tracker', prompt: 'When nothing changes, reply with tracker-none.' });
+        const custom = createCompanionAgent({ id: 'custom-agent' });
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+
+        const trackerPrompt = (await companionRunner.buildCompanionPromptMessages(tracker, 0))[0].content;
+        const taughtPrompt = (await companionRunner.buildCompanionPromptMessages(taughtTracker, 0))[0].content;
+        const customPrompt = (await companionRunner.buildCompanionPromptMessages(custom, 0))[0].content;
+        const repairPrompt = (await companionRunner.buildCompanionPromptMessages(tracker, 0, 'normal', { repair: true }))[0].content;
+
+        expect(trackerPrompt).toContain('reply with exactly the single line tracker-none and nothing else');
+        expect(taughtPrompt.match(/tracker-none/gi)).toHaveLength(1);
+        expect(customPrompt).not.toContain('tracker-none');
+        expect(repairPrompt).not.toContain('tracker-none');
+    });
+
     test('stores readable profile labels instead of raw profile ids', async () => {
         const profiledCompanion = createCompanionAgent({ id: 'profiled-companion' });
         profiledCompanion.connectionProfile = '20345602-939a-44c2-8522-525fb7212b0e';
@@ -3692,9 +3850,10 @@ describe('in-chat agent post-processing runner', () => {
         const retrievalDone = new Promise(resolve => {
             resolveRetrieval = resolve;
         });
-        runSidecarRetrieval.mockImplementation(async () => {
+        runSidecarRetrieval.mockImplementation(async (setPrompt) => {
             await retrievalDone;
-            extensionPrompts.pathfinder_pipeline_retrieval = { value: 'retrieved lore' };
+            setPrompt('pathfinder_pipeline_retrieval', 'retrieved lore');
+            return { success: true, selectedEntries: [] };
         });
 
         const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
@@ -3711,6 +3870,123 @@ describe('in-chat agent post-processing runner', () => {
 
         expect(extensionPrompts.pathfinder_pipeline_retrieval).toEqual({ value: 'retrieved lore' });
         expect(extensionPrompts['inchat_agent_agent-pre-prompt']).toEqual({ value: 'Use the current scene style.', name: 'Pre Prompt' });
+    });
+
+    test('hydrates prompt settings when the active Pathfinder agent changes', async () => {
+        const toolStates = {
+            Pathfinder_Search: false,
+            Pathfinder_Summarize: false,
+        };
+        enabledToolAgents = [{
+            id: 'pathfinder-a',
+            name: 'Pathfinder',
+            category: 'tool',
+            sourceTemplateId: 'tpl-pathfinder',
+            settings: {
+                pipelinePrompts: { promptA: { id: 'promptA' } },
+                pipelines: { pipelineA: { id: 'pipelineA' } },
+                toolStates,
+            },
+            tools: [],
+        }];
+
+        const { syncToolAgentRegistrations } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        syncToolAgentRegistrations();
+
+        enabledToolAgents = [{
+            id: 'pathfinder-b',
+            name: 'Pathfinder',
+            category: 'tool',
+            sourceTemplateId: 'tpl-pathfinder',
+            settings: {
+                pipelinePrompts: { promptB: { id: 'promptB' } },
+                pipelines: { pipelineB: { id: 'pipelineB' } },
+                toolStates,
+            },
+            tools: [],
+        }];
+        syncToolAgentRegistrations();
+
+        expect(replacePathfinderSettings).toHaveBeenLastCalledWith(expect.objectContaining({
+            pipelinePrompts: { promptB: { id: 'promptB' } },
+            pipelines: { pipelineB: { id: 'pipelineB' } },
+        }));
+    });
+
+    test('only the selected Pathfinder owns duplicate tool names and confirmation settings', async () => {
+        const owner = usePathfinderAgent({ sidecarEnabled: true, confirmTools: { Pathfinder_Summarize: true } });
+        const copy = { ...structuredClone(owner), id: 'locked-copy', phaseLocked: true, settings: { sidecarEnabled: true, confirmTools: {} } };
+        enabledAgents.push(copy);
+        enabledToolAgents.push(copy);
+        const action = jest.fn(async () => 'written');
+        getToolAction.mockReturnValue(action);
+        const { syncToolAgentRegistrations } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        syncToolAgentRegistrations();
+        await registeredTools.get('Pathfinder_Summarize').invoke({ title: 'memory' });
+        expect(action).not.toHaveBeenCalled();
+        const { ToolManager } = await import('../public/scripts/tool-calling.js');
+        expect(ToolManager.registerFunctionTool.mock.calls.filter(([tool]) => tool.name === 'Pathfinder_Summarize')).toHaveLength(1);
+        expect(enabledToolAgents).toHaveLength(2);
+    });
+
+    test.each(['chat change', 'new run', 'Stop'])('does not restore suspended text-helper prompts after %s', async reason => {
+        const runner = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        runner.initAgentRunner();
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        extensionPrompts.inchat_agent_saved = { value: 'original chat prompt' };
+        let finish;
+        generateQuietPrompt.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        const request = runner.requestPromptTransform({ id: 'helper' }, [{ role: 'user', content: 'transform' }], 100);
+        await Promise.resolve();
+        const cancel = {
+            'chat change': async () => { currentChatId = 'chat-b'; await eventSource.emit(eventTypes.CHAT_CHANGED); },
+            'new run': () => eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false),
+            Stop: () => eventSource.emit(eventTypes.GENERATION_STOPPED),
+        };
+        await cancel[reason]();
+        extensionPrompts.inchat_agent_saved = { value: 'current prompt' };
+        finish('late result');
+        await request;
+        expect(extensionPrompts.inchat_agent_saved.value).toBe('current prompt');
+    });
+
+    test('restores suspended prompts when the quiet helper still belongs to the same run and chat', async () => {
+        const runner = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        extensionPrompts.inchat_agent_saved = { value: 'original prompt' };
+        await runner.requestPromptTransform({ id: 'helper' }, [{ role: 'user', content: 'transform' }], 100);
+        expect(extensionPrompts.inchat_agent_saved.value).toBe('original prompt');
+    });
+
+    test('forces tool use only when the recursion budget leaves a tool pass', async () => {
+        enabledToolAgents = [{
+            id: 'pathfinder-a',
+            name: 'Pathfinder',
+            category: 'tool',
+            sourceTemplateId: 'tpl-pathfinder',
+            settings: { sidecarEnabled: true, mandatoryTools: true },
+            tools: [],
+        }];
+        getToolAction.mockReturnValue(jest.fn(async () => 'ok'));
+        getForcedToolChoice.mockReturnValue('required');
+
+        const { initAgentRunner, syncToolAgentRegistrations } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        const { ToolManager } = await import('../public/scripts/tool-calling.js');
+        syncToolAgentRegistrations();
+        initAgentRunner();
+
+        const initialPass = { tools: [{}], chat_completion_source: 'openai', model: 'gpt-5' };
+        await eventSource.emit(eventTypes.CHAT_COMPLETION_SETTINGS_READY, initialPass);
+
+        expect(initialPass.tool_choice).toBe('required');
+        expect(getForcedToolChoice).toHaveBeenCalledWith('openai', 'gpt-5');
+
+        ToolManager.RECURSE_LIMIT = 1;
+        const finalPass = { tools: [{}], tool_choice: 'required' };
+        await eventSource.emit(eventTypes.CHAT_COMPLETION_SETTINGS_READY, finalPass);
+
+        expect(finalPass).not.toHaveProperty('tools');
+        expect(finalPass).not.toHaveProperty('tool_choice');
+        expect(getForcedToolChoice).toHaveBeenCalledTimes(1);
     });
 
     test('reuses cached Pathfinder retrieval when swiping the same assistant message', async () => {
@@ -3759,6 +4035,7 @@ describe('in-chat agent post-processing runner', () => {
         );
         runSidecarRetrieval.mockImplementation(async (setPrompt, promptTypes, promptRoles) => {
             setPrompt('pathfinder_pipeline_retrieval', 'retrieved lore', promptTypes.IN_PROMPT, 4, false, promptRoles.SYSTEM);
+            return { success: true, selectedEntries: [] };
         });
 
         const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
@@ -3823,6 +4100,431 @@ describe('in-chat agent post-processing runner', () => {
         await generationPromise;
 
         expect(globalThis.toastr.clear).toHaveBeenCalledWith({ toast: true });
+    });
+
+    test.each([
+        ['chat change', async () => { currentChatId = 'chat-b'; await eventSource.emit(eventTypes.CHAT_CHANGED); }],
+        ['Stop', () => eventSource.emit(eventTypes.GENERATION_STOPPED)],
+        ['disable', async runner => { pathfinderEnabled = false; runner.deactivatePathfinderRuntime(); }],
+        ['settings change', async runner => { enabledAgents[0].settings.bookPermissions = { 'Book A': { read: 'none' } }; runner.syncToolAgentRegistrations(); }],
+        ['lorebook edit', () => eventSource.emit(eventTypes.WORLDINFO_UPDATED, 'Book A', { entries: {} })],
+        ['new generation', () => eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false)],
+        ['ended', () => eventSource.emit(eventTypes.GENERATION_ENDED)],
+    ])('rejects late retrieval writes, caches and follow-up injections after %s', async (_name, cancel) => {
+        usePrePromptAgent();
+        usePathfinderAgent();
+        const target = addPathfinderCacheTarget();
+        let resolveRetrieval;
+        let retrievalSignal;
+        runSidecarRetrieval.mockImplementation(async (writePrompt, _types, _roles, signal) => {
+            retrievalSignal = signal;
+            await new Promise(resolve => { resolveRetrieval = resolve; });
+            writePrompt('pathfinder_pipeline_retrieval', 'stale lore');
+            return { success: true, selectedEntries: [] };
+        });
+        const runner = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        runner.initAgentRunner();
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        const pending = eventSource.emit(eventTypes.GENERATION_AFTER_COMMANDS, 'normal', {}, false);
+        await Promise.resolve();
+        expect(runner.isAgentGenerationActive()).toBe(true);
+        await cancel(runner);
+        extensionPrompts.pathfinder_pipeline_retrieval = { value: 'current lore' };
+        resolveRetrieval();
+        await pending;
+
+        expect(retrievalSignal.aborted).toBe(true);
+        expect(extensionPrompts.pathfinder_pipeline_retrieval.value).toBe('current lore');
+        expect(extensionPrompts['inchat_agent_agent-pre-prompt']).toBeUndefined();
+        expect(target.extra.pathfinderRetrievalCache).toBeUndefined();
+        expect(runner.isAgentGenerationActive()).toBe(false);
+    });
+
+    test.each([
+        ['failure', { success: false }],
+        ['optional-stage failure', { success: true, cacheable: false, selectedEntries: [] }],
+    ])('retries %s and only caches a successful empty selection', async (_name, failed) => {
+        usePathfinderAgent();
+        const target = addPathfinderCacheTarget();
+        runSidecarRetrieval.mockResolvedValueOnce(failed).mockResolvedValue({ success: true, selectedEntries: [] });
+        const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        await eventSource.emit(eventTypes.GENERATION_AFTER_COMMANDS, 'normal', {}, false);
+        expect(target.extra.pathfinderRetrievalCache).toBeUndefined();
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        await eventSource.emit(eventTypes.GENERATION_AFTER_COMMANDS, 'normal', {}, false);
+        expect(target.extra.pathfinderRetrievalCache).toHaveLength(1);
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        await eventSource.emit(eventTypes.GENERATION_AFTER_COMMANDS, 'normal', {}, false);
+        expect(runSidecarRetrieval).toHaveBeenCalledTimes(2);
+    });
+
+    test.each([
+        ['edit', () => eventSource.emit(eventTypes.WORLDINFO_UPDATED, 'Book A', { entries: {} })],
+        ['replacement', () => eventSource.emit(eventTypes.WORLDINFO_UPDATED, 'Book A', { entries: {} }, { replaced: true })],
+        ['deletion', () => eventSource.emit(eventTypes.WORLDINFO_DELETED, 'Book A')],
+    ])('invalidates stored swipe retrieval after lorebook %s, including edits in another chat', async (_name, update) => {
+        usePathfinderAgent();
+        addPathfinderCacheTarget();
+        const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        await eventSource.emit(eventTypes.GENERATION_AFTER_COMMANDS, 'normal', {}, false);
+        currentChatId = 'chat-b';
+        await update();
+        currentChatId = 'chat-a';
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        await eventSource.emit(eventTypes.GENERATION_AFTER_COMMANDS, 'normal', {}, false);
+        expect(runSidecarRetrieval).toHaveBeenCalledTimes(2);
+        const storage = await import('../public/scripts/extensions/in-chat-agents/pathfinder/entry-manager.js');
+        expect(storage.onPathfinderWorldInfoUpdated.mock.calls.concat(storage.onPathfinderWorldInfoDeleted.mock.calls)).toEqual([
+            expect.arrayContaining(['Book A']),
+        ]);
+    });
+
+    test('retargets saved book names on rename without widening destination permissions, and removes deleted names', async () => {
+        usePathfinderAgent({
+            enabledLorebooks: ['Book A', 'Book B'],
+            selectedLorebook: 'Book A',
+            bookPermissions: { 'Book A': { read: 'readwrite' }, 'Book B': { read: 'none' } },
+        });
+        const { initAgentRunner, syncToolAgentRegistrations } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+        syncToolAgentRegistrations();
+        const { getAgentById } = await import('../public/scripts/extensions/in-chat-agents/agent-store.js');
+        await eventSource.emit(eventTypes.WORLDINFO_RENAMED, 'Book A', 'Book B');
+        const agent = getAgentById('agent-pathfinder');
+        expect(agent.settings.enabledLorebooks).toEqual(['Book B']);
+        expect(agent.settings.selectedLorebook).toBe('Book B');
+        expect(agent.settings.bookPermissions).toEqual({ 'Book B': { read: 'none' } });
+        await eventSource.emit(eventTypes.WORLDINFO_DELETED, 'Book B');
+        expect(getAgentById(agent.id).settings.enabledLorebooks).toEqual([]);
+        expect(getAgentById(agent.id).settings.selectedLorebook).toBe('');
+        expect(getAgentById(agent.id).settings.bookPermissions).toEqual({});
+    });
+
+    test.each(['auto-sync', 'retarget'])('publishes %s settings and notifies subscribers only after saving', async operation => {
+        const agent = usePathfinderAgent({
+            enabledLorebooks: ['Book A'], selectedLorebook: 'Book A',
+            bookPermissions: { 'Excluded': { enabled: false, read: true, write: false, delete: 'none' } },
+        });
+        const runner = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        const store = await import('../public/scripts/extensions/in-chat-agents/agent-store.js');
+        const bridge = await import('../public/scripts/extensions/in-chat-agents/pathfinder/pathfinder-tool-bridge.js');
+        bridge.getContextualLorebooks.mockReturnValue(['Excluded', 'Book B']);
+        runner.initAgentRunner();
+        runner.syncToolAgentRegistrations();
+        const before = structuredClone(agent.settings);
+        let release;
+        const commit = store.saveAgent.getMockImplementation();
+        store.saveAgent.mockImplementationOnce(async (...args) => {
+            await new Promise(resolve => { release = resolve; });
+            return await commit(...args);
+        });
+        const notifications = [];
+        const unsubscribe = runner.onAgentGenerationStateChanged(() => notifications.push(structuredClone(pathfinderRuntimeSettings)));
+        const pending = operation === 'auto-sync'
+            ? runner.syncPathfinderAgentLorebooksForCurrentChat(agent, { persist: true })
+            : eventSource.emit(eventTypes.WORLDINFO_RENAMED, 'Book A', 'Book B');
+        expect(store.getAgentById(agent.id).settings).toEqual(before);
+        expect(pathfinderRuntimeSettings.enabledLorebooks).toEqual(['Book A']);
+        notifications.length = 0;
+        release();
+        await pending;
+        expect(store.getAgentById(agent.id).settings).toMatchObject({ enabledLorebooks: ['Book B'], selectedLorebook: 'Book B', bookPermissions: before.bookPermissions });
+        expect(notifications).toEqual([expect.objectContaining({ enabledLorebooks: ['Book B'] })]);
+        unsubscribe();
+    });
+
+    test.each(['auto-sync', 'retarget'])('does not publish failed %s settings', async operation => {
+        const agent = usePathfinderAgent({ selectedLorebook: 'Book A' });
+        const runner = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        const store = await import('../public/scripts/extensions/in-chat-agents/agent-store.js');
+        const bridge = await import('../public/scripts/extensions/in-chat-agents/pathfinder/pathfinder-tool-bridge.js');
+        bridge.getContextualLorebooks.mockReturnValue(['Book B']);
+        runner.initAgentRunner();
+        runner.syncToolAgentRegistrations();
+        const before = structuredClone(agent.settings);
+        store.saveAgent.mockRejectedValueOnce(new Error('offline'));
+        const pending = operation === 'auto-sync'
+            ? runner.syncPathfinderAgentLorebooksForCurrentChat(agent, { persist: true })
+            : eventSource.emit(eventTypes.WORLDINFO_RENAMED, 'Book A', 'Book B');
+        await expect(pending).rejects.toThrow('offline');
+        expect(store.getAgentById(agent.id).settings).toEqual(before);
+        expect(pathfinderRuntimeSettings.enabledLorebooks).toEqual(['Book A']);
+    });
+
+    test('uses only native activation received for the current completed retrieval', async () => {
+        usePathfinderAgent();
+        const result = { success: true, selectedEntries: [{ name: 'Town', bookName: 'Book A', uid: 1, content: 'Town lore' }] };
+        runSidecarRetrieval.mockResolvedValue(result);
+        const { initAgentRunner, getAgentGenerationContext } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+        const oldEntries = [{ world: 'Book A', uid: 2 }];
+        await eventSource.emit(eventTypes.WORLD_INFO_ACTIVATED, oldEntries);
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        await eventSource.emit(eventTypes.GENERATION_AFTER_COMMANDS, 'normal', {}, false);
+        expect(injectPathfinderRetrieval).not.toHaveBeenCalled();
+        const nativeEntries = [{ world: 'Book A', uid: 1 }];
+        await eventSource.emit(eventTypes.WORLD_INFO_ACTIVATED, nativeEntries);
+        expect(injectPathfinderRetrieval).not.toHaveBeenCalled();
+        const generationContext = getAgentGenerationContext();
+        await eventSource.emit(eventTypes.WORLD_INFO_ACTIVATED, nativeEntries, generationContext);
+        expect(injectPathfinderRetrieval).toHaveBeenCalledWith(result, expect.any(Function), expect.any(Object), expect.any(Object), nativeEntries);
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        await eventSource.emit(eventTypes.GENERATION_AFTER_COMMANDS, 'normal', {}, false);
+        await eventSource.emit(eventTypes.WORLD_INFO_ACTIVATED, oldEntries, generationContext);
+        expect(injectPathfinderRetrieval).toHaveBeenCalledTimes(1);
+        await eventSource.emit(eventTypes.GENERATION_STOPPED);
+        await eventSource.emit(eventTypes.WORLD_INFO_ACTIVATED, oldEntries);
+        expect(injectPathfinderRetrieval).toHaveBeenCalledTimes(1);
+    });
+
+    test.each([false, true])('skips the group dispatch wrapper but preserves member retrieval (member active: %s)', async memberActive => {
+        contextGroupId = 'group-1';
+        isGroupGenerating = memberActive;
+        usePathfinderAgent();
+        const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        await eventSource.emit(eventTypes.GENERATION_AFTER_COMMANDS, 'normal', {}, false);
+        expect(runSidecarRetrieval).toHaveBeenCalledTimes(memberActive ? 1 : 0);
+    });
+
+    test.each([
+        ['Stop', () => eventSource.emit(eventTypes.GENERATION_STOPPED)],
+        ['chat change', async () => { currentChatId = 'chat-b'; await eventSource.emit(eventTypes.CHAT_CHANGED); }],
+        ['disable', async runner => { pathfinderEnabled = false; runner.deactivatePathfinderRuntime(); }],
+        ['ended', () => eventSource.emit(eventTypes.GENERATION_ENDED)],
+        ['tool disabled', async runner => { enabledToolAgents[0].settings.toolStates = { Pathfinder_Summarize: false }; runner.syncToolAgentRegistrations(); }],
+        ['agent disabled', async runner => { enabledToolAgents = []; runner.syncToolAgentRegistrations(); }],
+        ['lorebook replacement', () => eventSource.emit(eventTypes.WORLDINFO_UPDATED, 'Book A', { entries: {} }, { replaced: true })],
+    ])('invalidates pending approval on %s, even if its old dialog later approves', async (_name, cancel) => {
+        usePathfinderAgent({ sidecarEnabled: true, confirmTools: { Pathfinder_Summarize: true } });
+        const action = jest.fn(async () => 'written');
+        getToolAction.mockReturnValue(action);
+        let approve;
+        const completeCancelled = jest.fn();
+        globalThis.window = { SillyTavern: { getContext: () => ({
+            Popup: class {
+                show() { return new Promise(resolve => { approve = resolve; }); }
+                completeCancelled = completeCancelled;
+            },
+            POPUP_TYPE: { CONFIRM: 2 },
+            POPUP_RESULT: { AFFIRMATIVE: 1 },
+        }) } };
+        const runner = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        runner.initAgentRunner();
+        runner.syncToolAgentRegistrations();
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        const tool = registeredTools.get('Pathfinder_Summarize');
+        expect(tool.toFunctionOpenAI().function.name).toBe('Pathfinder_Summarize');
+        const pending = tool.invoke({ title: 'Memory', content: 'Original chat' });
+        await cancel(runner);
+        await expect(pending).resolves.toContain('The user declined this tool call.');
+        approve(1);
+        expect(completeCancelled).toHaveBeenCalledTimes(1);
+        expect(action).not.toHaveBeenCalled();
+    });
+
+    test.each([
+        ['Stop', () => eventSource.emit(eventTypes.GENERATION_STOPPED)],
+        ['chat change', async () => { currentChatId = 'chat-b'; await eventSource.emit(eventTypes.CHAT_CHANGED); }],
+        ['replacement', () => eventSource.emit(eventTypes.WORLDINFO_UPDATED, 'Book A', { entries: {} }, { replaced: true })],
+    ])('keeps an executing tool cancellable on %s until its promise settles', async (_name, cancel) => {
+        usePathfinderAgent({ confirmTools: { Pathfinder_Summarize: false } });
+        let release;
+        let context;
+        getToolAction.mockReturnValue(jest.fn((_args, options) => {
+            context = options;
+            return new Promise(resolve => { release = resolve; });
+        }));
+        const runner = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        runner.initAgentRunner();
+        runner.syncToolAgentRegistrations();
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        const pending = registeredTools.get('Pathfinder_Summarize').invoke({ title: 'Memory', content: 'Original chat' });
+        await cancel();
+        release('cancelled');
+        await pending;
+        expect(context?.signal.aborted).toBe(true);
+        expect(context?.isCurrent()).toBe(false);
+    });
+
+    test('a sibling tool save does not cancel another executing tool, but a later external edit does', async () => {
+        usePathfinderAgent({ confirmTools: { Pathfinder_Summarize: false } });
+        const { isPathfinderSelfWrite } = await import('../public/scripts/extensions/in-chat-agents/pathfinder/tree-store.js');
+        let release;
+        let context;
+        getToolAction.mockReturnValue(jest.fn((_args, options) => {
+            context = options;
+            return new Promise(resolve => { release = resolve; });
+        }));
+        const runner = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        runner.initAgentRunner();
+        runner.syncToolAgentRegistrations();
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        const pending = registeredTools.get('Pathfinder_Summarize').invoke({ title: 'Memory', content: 'Original chat' });
+        isPathfinderSelfWrite.mockReturnValue(true);
+        await eventSource.emit(eventTypes.WORLDINFO_UPDATED, 'Book A', { entries: {} });
+        expect(context.signal.aborted).toBe(false);
+        expect(context.isCurrent()).toBe(true);
+        isPathfinderSelfWrite.mockReturnValue(false);
+        await eventSource.emit(eventTypes.WORLDINFO_UPDATED, 'Book A', { entries: {} });
+        release('cancelled');
+        await pending;
+        expect(context.signal.aborted).toBe(true);
+        expect(context.isCurrent()).toBe(false);
+    });
+
+    test('rechecks tool enablement after approval even without a registration sync', async () => {
+        const agent = usePathfinderAgent({ sidecarEnabled: true, confirmTools: { Pathfinder_Summarize: true } });
+        const action = jest.fn(async () => 'written');
+        getToolAction.mockReturnValue(action);
+        let approve;
+        globalThis.window = { SillyTavern: { getContext: () => ({
+            Popup: class { show() { return new Promise(resolve => { approve = resolve; }); } },
+            POPUP_TYPE: { CONFIRM: 2 },
+            POPUP_RESULT: { AFFIRMATIVE: 1 },
+        }) } };
+        const { syncToolAgentRegistrations } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        syncToolAgentRegistrations();
+        const pending = registeredTools.get('Pathfinder_Summarize').invoke({ title: 'Memory' });
+        approve(1);
+        agent.settings.toolStates = { Pathfinder_Summarize: false };
+        await expect(pending).resolves.toContain('The user declined this tool call.');
+        expect(action).not.toHaveBeenCalled();
+    });
+
+    test.each(['GENERATION_ENDED', 'GENERATION_STOPPED', 'CHAT_CHANGED'])('applies deferred registration changes on %s', async eventName => {
+        const agent = usePathfinderAgent();
+        getToolAction.mockReturnValue(jest.fn(async () => 'ok'));
+        const { initAgentRunner, syncToolAgentRegistrations } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+        syncToolAgentRegistrations();
+        expect([...registeredTools.keys()]).toEqual(['Pathfinder_Summarize']);
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        agent.settings.sidecarEnabled = true;
+        syncToolAgentRegistrations();
+        await eventSource.emit(eventTypes.WORLDINFO_UPDATED, 'Book A', { entries: {} });
+        expect([...registeredTools.keys()]).toEqual(['Pathfinder_Summarize']);
+        await eventSource.emit(eventTypes[eventName]);
+        expect([...registeredTools.keys()].sort()).toEqual(['Pathfinder_Search', 'Pathfinder_Summarize']);
+    });
+
+    test('can disable and unregister Pathfinder immediately after Stop', async () => {
+        usePathfinderAgent({ sidecarEnabled: true });
+        getToolAction.mockReturnValue(jest.fn(async () => 'ok'));
+        const runner = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        runner.initAgentRunner();
+        runner.syncToolAgentRegistrations();
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        await eventSource.emit(eventTypes.GENERATION_STOPPED);
+        pathfinderEnabled = false;
+        runner.deactivatePathfinderRuntime();
+        expect(registeredTools.size).toBe(0);
+        expect(runner.isAgentGenerationStopped()).toBe(true);
+    });
+
+    test('ignores delayed terminal events from an older host generation', async () => {
+        const agent = usePathfinderAgent();
+        getToolAction.mockReturnValue(jest.fn(async () => 'ok'));
+        const runner = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        runner.initAgentRunner();
+        runner.syncToolAgentRegistrations();
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        const oldContext = runner.getAgentGenerationContext();
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        agent.settings.sidecarEnabled = true;
+        runner.syncToolAgentRegistrations();
+        await eventSource.emit(eventTypes.GENERATION_STOPPED, oldContext);
+        await eventSource.emit(eventTypes.GENERATION_ENDED, chat.length, oldContext);
+        expect(runner.isAgentGenerationStopped()).toBe(false);
+        expect([...registeredTools.keys()]).toEqual(['Pathfinder_Summarize']);
+        await eventSource.emit(eventTypes.GENERATION_ENDED, chat.length, runner.getAgentGenerationContext());
+        expect([...registeredTools.keys()].sort()).toEqual(['Pathfinder_Search', 'Pathfinder_Summarize']);
+    });
+
+    test('disabling Pathfinder does not cancel unrelated agent requests', async () => {
+        const { deactivatePathfinderRuntime, getAgentGenerationCancelRevision } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        const revision = getAgentGenerationCancelRevision();
+        pathfinderEnabled = false;
+        deactivatePathfinderRuntime();
+        expect(getAgentGenerationCancelRevision()).toBe(revision);
+    });
+
+    test('isolates raw Pathfinder requests from main premodifiers and forced tool settings', async () => {
+        enabledAgents = [createPreInterceptAgent()];
+        usePathfinderAgent({ sidecarEnabled: true, mandatoryTools: true });
+        getToolAction.mockReturnValue(jest.fn(async () => 'ok'));
+        getForcedToolChoice.mockReturnValue('required');
+        globalThis.window = { SillyTavern: { getContext: () => ({}) } };
+        const { initAgentRunner, syncToolAgentRegistrations } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        const { sidecarGenerateWithProfile } = await import('../public/scripts/extensions/in-chat-agents/pathfinder/llm-sidecar.js');
+        initAgentRunner();
+        syncToolAgentRegistrations();
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        const textData = { prompt: 'auxiliary text', dryRun: false };
+        const chatData = { chat: [{ role: 'user', content: 'auxiliary chat' }], dryRun: false };
+        const settingsData = { tools: [{}], chat_completion_source: 'openai' };
+        generateRaw.mockImplementation(async () => {
+            await eventSource.emit(eventTypes.GENERATE_AFTER_COMBINE_PROMPTS, textData);
+            await eventSource.emit(eventTypes.CHAT_COMPLETION_PROMPT_READY, chatData);
+            await eventSource.emit(eventTypes.CHAT_COMPLETION_SETTINGS_READY, settingsData);
+            return 'auxiliary result';
+        });
+        await expect(sidecarGenerateWithProfile('request')).resolves.toBe('auxiliary result');
+        expect(textData.prompt).toBe('auxiliary text');
+        expect(chatData.chat[0].content).toBe('auxiliary chat');
+        expect(settingsData.tool_choice).toBeUndefined();
+        expect(generateQuietPrompt).not.toHaveBeenCalled();
+
+        const mainData = { prompt: 'main prompt', dryRun: false };
+        await eventSource.emit(eventTypes.GENERATE_AFTER_COMBINE_PROMPTS, mainData);
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+        expect(mainData.prompt).toBe('quiet result');
+    });
+
+    test('releases the internal request guard immediately on cancellation while its transport is still pending', async () => {
+        const { runAsInternalPromptTransform, isAgentGenerationActive } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        const controller = new AbortController();
+        let finish;
+        const pending = runAsInternalPromptTransform(() => new Promise(resolve => { finish = resolve; }), controller.signal);
+        expect(isAgentGenerationActive()).toBe(true);
+        controller.abort();
+        expect(isAgentGenerationActive()).toBe(false);
+        finish('finished');
+        await pending;
+        expect(isAgentGenerationActive()).toBe(false);
+    });
+
+    test('starts a real successor generation even while an older raw retrieval is internally guarded', async () => {
+        usePathfinderAgent();
+        const runner = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        let finish;
+        let retrievalSignal;
+        runSidecarRetrieval.mockImplementation((writePrompt, _types, _roles, signal) => {
+            retrievalSignal = signal;
+            return runner.runAsInternalPromptTransform(async () => {
+                await new Promise(resolve => { finish = resolve; });
+                writePrompt('pathfinder_pipeline_retrieval', 'old retrieval');
+                return { success: true, selectedEntries: [] };
+            }, signal);
+        });
+        runner.initAgentRunner();
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        const oldContext = runner.getAgentGenerationContext();
+        const old = eventSource.emit(eventTypes.GENERATION_AFTER_COMMANDS, 'normal', {}, false);
+        await Promise.resolve();
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        expect(retrievalSignal.aborted).toBe(true);
+        expect(runner.getAgentGenerationContext().runId).toBeGreaterThan(oldContext.runId);
+        extensionPrompts.pathfinder_pipeline_retrieval = { value: 'new retrieval' };
+        finish();
+        await old;
+        expect(extensionPrompts.pathfinder_pipeline_retrieval.value).toBe('new retrieval');
     });
 
     test('runs pre-generation intercept agents on text prompts without injecting their prompt', async () => {
@@ -5191,6 +5893,38 @@ describe('in-chat agent post-processing runner', () => {
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
     });
 
+    test('excludes Kimi K3 partial prefill from prompt-transform rewrites', async () => {
+        usePromptTransformPostAgent();
+        generateQuietPrompt.mockResolvedValue('Rewritten continuation');
+        itemizedPrompts.push({ mesId: 0, promptBias: 'Protected prefix: ' });
+
+        const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+
+        chat.push({
+            name: 'Assistant',
+            mes: 'Protected prefix: Original continuation',
+            is_user: false,
+            is_system: false,
+            extra: {
+                api: 'moonshot',
+                model: 'kimi-k3',
+            },
+        });
+
+        await eventSource.emit(eventTypes.MESSAGE_RECEIVED, 0, 'normal');
+        await waitFor(() => saveChat.mock.calls.length === 1);
+
+        const quietPrompt = generateQuietPrompt.mock.calls[0][0].quietPrompt;
+        expect(quietPrompt).toContain('<assistant_response>\nOriginal continuation\n</assistant_response>');
+        expect(quietPrompt).not.toContain('Protected prefix: ');
+        expect(chat[0].mes).toBe('Protected prefix: Rewritten continuation');
+        expect(chat[0].extra.inChatAgentTransformHistory).toEqual([expect.objectContaining({
+            beforeText: 'Protected prefix: Original continuation',
+            afterText: 'Protected prefix: Rewritten continuation',
+        })]);
+    });
+
     test('shows the resolved profile model in prompt-transform running toasts', async () => {
         usePromptTransformPostAgent();
         enabledAgents[0].connectionProfile = 'profile-cc';
@@ -5641,6 +6375,9 @@ Helper context.`;
         document.getElementById = jest.fn(id => id === 'send_textarea' ? textarea : null);
         document.querySelector = jest.fn(selector => selector === '#send_textarea' ? textarea : null);
         executeSlashCommandsWithOptions.mockImplementation(async (script) => {
+            if (script === '/flushinject gg-impersonate-voice') {
+                return;
+            }
             expect(script).toContain('/impersonate await=true');
             textarea.value = 'Draft guided impersonation';
             await eventSource.emit(eventTypes.IMPERSONATE_READY, 'Draft guided impersonation');

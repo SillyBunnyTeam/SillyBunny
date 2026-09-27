@@ -4,9 +4,16 @@ const mockOpenAiSettings = {};
 const mockProxies = [];
 
 await jest.unstable_mockModule('../public/script.js', () => ({
-    CONNECT_API_MAP: {},
+    CONNECT_API_MAP: {
+        nanogpt: { selected: 'openai', source: 'nanogpt' },
+        openrouter: { selected: 'openai', source: 'openrouter' },
+        'openrouter-text': { selected: 'textgenerationwebui', type: 'openrouter' },
+        openai: { selected: 'openai', source: 'openai' },
+        pollinations: { selected: 'openai', source: 'pollinations' },
+    },
     createModelIcon: jest.fn(),
     getRequestHeaders: jest.fn(() => ({})),
+    substituteParams: value => value,
 }));
 
 await jest.unstable_mockModule('../public/scripts/extensions.js', () => ({
@@ -26,6 +33,18 @@ await jest.unstable_mockModule('../public/scripts/openai.js', () => ({
     ZAI_ENDPOINT: {
         COMMON: 'common',
     },
+    POLLINATIONS_ENDPOINT: {
+        AUTHENTICATED: 'authenticated',
+        ANONYMOUS: 'anonymous',
+    },
+}));
+
+const mockPresets = new Map();
+
+await jest.unstable_mockModule('../public/scripts/preset-manager.js', () => ({
+    getPresetManager: jest.fn(() => ({
+        getCompletionPresetByName: (name) => mockPresets.get(name),
+    })),
 }));
 
 await jest.unstable_mockModule('../public/scripts/secrets.js', () => ({
@@ -49,8 +68,10 @@ await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
 }));
 
 const {
+    ConnectionManagerRequestService,
     getChatCompletionProfileRequestOverrides,
     getChatCompletionProfileReverseProxy,
+    getProfileServiceTier,
 } = await import('../public/scripts/extensions/shared.js');
 
 const mappedRequestFieldNames = [
@@ -66,6 +87,9 @@ const mappedRequestFieldNames = [
     'custom_reasoning_param_name',
     'custom_reasoning_enabled_value',
     'custom_reasoning_disabled_value',
+    'custom_include_body',
+    'custom_exclude_body',
+    'custom_include_headers',
 ];
 
 function createReasoningProfile(overrides = {}) {
@@ -87,6 +111,9 @@ function createReasoningProfile(overrides = {}) {
         'custom-reasoning-param-name': 'thinking',
         'custom-reasoning-enabled-value': 'enabled',
         'custom-reasoning-disabled-value': 'disabled',
+        'custom-include-body': '  top_k: 20\n  min_p: 0.05',
+        'custom-exclude-body': '- frequency_penalty',
+        'custom-include-headers': '',
         ...overrides,
     };
 }
@@ -96,6 +123,18 @@ beforeEach(() => {
         delete mockOpenAiSettings[key];
     }
     mockProxies.splice(0, mockProxies.length);
+});
+
+test('service tiers stay scoped to the profile or its bound preset, including explicit Default', () => {
+    mockOpenAiSettings.nanogpt_service_tier = 'priority';
+    mockPresets.set('tier-preset', { nanogpt_service_tier: 'flex', openrouter_service_tier: 'priority' });
+    expect(getProfileServiceTier({ api: 'nanogpt' })).toBe('');
+    expect(getProfileServiceTier({ api: 'nanogpt', preset: 'tier-preset' })).toBe('flex');
+    expect(getProfileServiceTier({ api: 'openrouter', preset: 'tier-preset' })).toBe('priority');
+    expect(getProfileServiceTier({ api: 'nanogpt', preset: 'tier-preset', 'service-tier': 'default' })).toBe('');
+    expect(getProfileServiceTier({ api: 'openrouter-text', 'service-tier': 'flex' })).toBe('flex');
+    expect(getProfileServiceTier({ api: 'openai', 'service-tier': 'priority' })).toBeUndefined();
+    expect(getProfileServiceTier({ api: 'nanogpt', exclude: ['service-tier'] })).toBeUndefined();
 });
 
 describe('Connection Profile chat-completion request field mapping', () => {
@@ -142,6 +181,9 @@ describe('Connection Profile chat-completion request field mapping', () => {
                 custom_reasoning_param_name: 'thinking',
                 custom_reasoning_enabled_value: 'enabled',
                 custom_reasoning_disabled_value: 'disabled',
+                custom_include_body: '  top_k: 20\n  min_p: 0.05',
+                custom_exclude_body: '- frequency_penalty',
+                custom_include_headers: '',
             },
             profileFieldNames: mappedRequestFieldNames,
         });
@@ -166,6 +208,9 @@ describe('Connection Profile chat-completion request field mapping', () => {
             custom_reasoning_param_format: 'thinking_object',
             custom_reasoning_enabled_value: 'enabled',
             custom_reasoning_disabled_value: 'disabled',
+            custom_include_body: '  top_k: 20\n  min_p: 0.05',
+            custom_exclude_body: '- frequency_penalty',
+            custom_include_headers: '',
         });
         expect(result.profileFieldNames).toEqual(mappedRequestFieldNames.filter(field => !Object.hasOwn(overridePayload, field)));
         expect({ ...result.overrides, ...overridePayload }).toEqual(expect.objectContaining(overridePayload));
@@ -229,4 +274,83 @@ describe('Connection Profile reverse proxy request mapping', () => {
         expect(getChatCompletionProfileReverseProxy({ proxy: 'None' }, 'openai')).toEqual({});
         expect(getChatCompletionProfileReverseProxy({}, 'openai')).toEqual({});
     });
+});
+
+describe('reasoning settings from the profile preset', () => {
+    beforeEach(() => {
+        mockPresets.clear();
+        mockPresets.set('Thinking Preset', { reasoning_effort: 'high', verbosity: 'low', temperature: 0.9, stop: ['\\n\\n'] });
+    });
+
+    test('a profile that captured no reasoning settings inherits the ones its preset carries', () => {
+        const profile = { id: 'profile-preset', mode: 'cc', name: 'Preset Profile', api: 'openai', model: 'gpt-5.2', preset: 'Thinking Preset' };
+
+        const { overrides, profileFieldNames } = getChatCompletionProfileRequestOverrides(profile, {});
+
+        expect(overrides.reasoning_effort).toBe('high');
+        expect(overrides.verbosity).toBe('low');
+        expect(profileFieldNames).toEqual(expect.arrayContaining(['reasoning_effort', 'verbosity']));
+    });
+
+    test('settings the preset does not own are never taken from it', () => {
+        const profile = { id: 'profile-preset', mode: 'cc', name: 'Preset Profile', api: 'openai', model: 'gpt-5.2', preset: 'Thinking Preset' };
+
+        const { overrides } = getChatCompletionProfileRequestOverrides(profile, {});
+
+        expect(overrides.temperature).toBeUndefined();
+        expect(overrides.stop).toBeUndefined();
+    });
+
+    test('a setting stated on the profile wins over the preset', () => {
+        const profile = { id: 'profile-preset', mode: 'cc', name: 'Preset Profile', api: 'openai', model: 'gpt-5.2', preset: 'Thinking Preset', 'reasoning-effort': 'min' };
+
+        const { overrides } = getChatCompletionProfileRequestOverrides(profile, {});
+
+        expect(overrides.reasoning_effort).toBe('min');
+        expect(overrides.verbosity).toBe('low');
+    });
+
+    test('a value the caller is already sending is left alone', () => {
+        const profile = { id: 'profile-preset', mode: 'cc', name: 'Preset Profile', api: 'openai', model: 'gpt-5.2', preset: 'Thinking Preset' };
+
+        const { overrides, profileFieldNames } = getChatCompletionProfileRequestOverrides(profile, { reasoning_effort: 'medium' });
+
+        expect(overrides.reasoning_effort).toBeUndefined();
+        expect(profileFieldNames).not.toContain('reasoning_effort');
+    });
+
+    test('an empty preset value, a missing preset and a profile without one send nothing extra', () => {
+        mockPresets.set('Empty Preset', { reasoning_effort: '', verbosity: undefined });
+        const base = { id: 'profile-preset', mode: 'cc', name: 'Preset Profile', api: 'openai', model: 'gpt-5.2' };
+
+        expect(getChatCompletionProfileRequestOverrides({ ...base, preset: 'Empty Preset' }, {}).overrides).toEqual({});
+        expect(getChatCompletionProfileRequestOverrides({ ...base, preset: 'Missing Preset' }, {}).overrides).toEqual({});
+        expect(getChatCompletionProfileRequestOverrides(base, {}).overrides).toEqual({});
+    });
+});
+
+test('Pollinations profiles pass only their endpoint and honor a caller endpoint override', async () => {
+    const profile = { id: 'pollinations-profile', mode: 'cc', api: 'pollinations', model: 'test-model', 'api-url': 'anonymous' };
+    const processRequest = jest.fn(async payload => payload);
+    const originalContext = global.SillyTavern;
+    global.SillyTavern = {
+        getContext: () => ({
+            extensionSettings: { disabledExtensions: [], connectionManager: { profiles: [profile] } },
+            ChatCompletionService: { processRequest },
+            CONNECT_API_MAP: { pollinations: { selected: 'openai', source: 'pollinations' } },
+        }),
+    };
+
+    try {
+        const result = await ConnectionManagerRequestService.sendRequest(profile.id, 'Hello', 100);
+        expect(result.pollinations_endpoint).toBe('anonymous');
+        expect(result).not.toHaveProperty('custom_url');
+        expect(result).not.toHaveProperty('vertexai_region');
+        expect(result).not.toHaveProperty('minimax_endpoint');
+        const overridden = await ConnectionManagerRequestService.sendRequest(profile.id, 'Hello', 100, {}, { pollinations_endpoint: 'authenticated' });
+        expect(overridden.pollinations_endpoint).toBe('authenticated');
+        expect(profile['api-url']).toBe('anonymous');
+    } finally {
+        global.SillyTavern = originalContext;
+    }
 });

@@ -40,6 +40,7 @@ import { t } from './i18n.js';
 import {
     getUniqueName,
     isTrueBoolean,
+    uuidv4,
 } from './utils.js';
 
 const bookmarkNameToken = 'Checkpoint #';
@@ -93,7 +94,7 @@ async function getBookmarkName({ isReplace = false, forceName = null } = {}) {
         return `${cleanName} - ${bookmarkNameToken}${i}`;
     }
     const existingChats = await getExistingChatNames();
-    const suggestedName = getUniqueName(mainChatName, (x) => existingChats.includes(x), { nameBuilder: buildCheckpointName });
+    const suggestedName = getUniqueName(mainChatName, (x) => existingChats.includes(x), { nameBuilder: buildCheckpointName, startIndex: 1 });
 
     const body = await renderTemplateAsync('createCheckpoint', { isReplace: isReplace, suggestedName: suggestedName });
     let name = forceName ?? await Popup.show.input('Create Checkpoint', body, suggestedName);
@@ -200,7 +201,8 @@ export async function createBranch(mesId, { swipeId = null } = {}) {
 
     const lastMes = chat[mesId];
     const mainChatName = (getCurrentChatDetails()).sessionName;
-    const newMetadata = { main_chat: mainChatName };
+    // Mint a fresh integrity slug so the branch is distinguishable from its parent (#5942)
+    const newMetadata = { main_chat: mainChatName, integrity: uuidv4() };
     const selectedSwipeId = swipeId === null ? null : Number(swipeId);
 
     if (selectedSwipeId !== null && (!Number.isInteger(selectedSwipeId) || selectedSwipeId < 0 || selectedSwipeId >= (lastMes?.swipes?.length ?? 0))) {
@@ -216,7 +218,7 @@ export async function createBranch(mesId, { swipeId = null } = {}) {
         return `${cleanName} - Branch #${i}`;
     }
     const existingChats = await getExistingChatNames();
-    const name = getUniqueName(mainChatName, (x) => existingChats.includes(x), { nameBuilder: buildBranchName });
+    const name = getUniqueName(mainChatName, (x) => existingChats.includes(x), { nameBuilder: buildBranchName, startIndex: 1 });
     if (!name) {
         console.error('Could not generate a unique branch name.');
         toastr.error('Could not generate a unique branch name.', 'Branch creation failed');
@@ -289,7 +291,7 @@ export async function createNewBookmark(mesId, { forceName = null } = {}) {
     }
 
     const mainChat = selected_group ? groups?.find(x => x.id == selected_group)?.chat_id : characters[this_chid].chat;
-    const newMetadata = { main_chat: mainChat };
+    const newMetadata = { main_chat: mainChat, integrity: uuidv4() };
     const didSaveBookmark = selected_group
         ? await saveGroupBookmarkChat(selected_group, name, newMetadata, mesId)
         : await saveChat({ chatName: name, withMetadata: newMetadata, mesId });

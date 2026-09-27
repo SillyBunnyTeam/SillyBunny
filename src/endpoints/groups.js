@@ -255,7 +255,18 @@ router.post('/create', (request, response) => {
     const operationTime = Date.now();
     const dateAddedRoot = getEntityDateAddedRoot(request.user.directories);
     const fileName = path.basename(pathToFile);
-    tryWriteFileSync(pathToFile, fileData);
+    try {
+        // SillyBunny: persist the initial header so the first ordinary open also works after a reload.
+        const chatFilePath = path.join(request.user.directories.groupChats, sanitize(`${groupMetadata.chat_id}.jsonl`));
+        if (!fs.existsSync(chatFilePath)) {
+            const chatHeader = { chat_metadata: {}, user_name: 'unused', character_name: 'unused' };
+            tryWriteFileSync(chatFilePath, JSON.stringify(chatHeader), 'utf8', { expectedFileAbsent: true, durable: true });
+        }
+        tryWriteFileSync(pathToFile, fileData);
+    } catch (error) {
+        console.error('Could not create group data.', error);
+        return response.sendStatus(500);
+    }
     try {
         createEntityDateAdded(dateAddedRoot, 'groups', fileName, operationTime);
     } catch (metadataError) {

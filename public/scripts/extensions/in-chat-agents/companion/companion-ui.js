@@ -4,6 +4,7 @@ import { encodeStyleTags, decodeStyleTags } from '../../../chats.js';
 import { eventSource, event_types } from '../../../events.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
 import { escapeHtml } from '../../../utils.js';
+import { attachTextareaFullscreen } from '../textarea-fullscreen.js';
 import {
     areAgentsGloballyEnabled,
     getAgentById,
@@ -15,6 +16,7 @@ import {
 } from '../agent-store.js';
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from '../regex-scripts.js';
 import { resolveCompanionContentMacros } from './companion-macros.js';
+import { isLorebookAgent, sendCompanionResultToLorebook } from './lorebook-sender.js';
 import {
     COMPANION_RESULTS_UPDATED_EVENT,
     deleteCompanionResult,
@@ -515,6 +517,9 @@ function buildCompanionCard(agentId, result, message) {
     // Results saved before profile labels were resolved to names may carry raw profile ids.
     const meta = [profileLabel, modelLabel].filter(isReadableLabel).join(' / ');
     const openAttribute = result.collapsed ? '' : ' open';
+    const lorebookButton = isLorebookAgent(getAgentById(agentId)) && status === 'done'
+        ? '<button type="button" class="ica--companion-action" data-action="send-to-lorebook" title="Send companion note to lorebook" aria-label="Send companion note to lorebook"><i class="fa-solid fa-book-medical"></i></button>'
+        : '';
 
     return `
         <details class="ica--companion-card ica--companion-card--${escapeHtml(status)}" data-agent-id="${escapeHtml(agentId)}"${openAttribute}>
@@ -529,6 +534,7 @@ function buildCompanionCard(agentId, result, message) {
                 <span class="ica--companion-actions">
                     <button type="button" class="ica--companion-action" data-action="regenerate" title="Regenerate companion note" aria-label="Regenerate companion note"><i class="fa-solid fa-rotate-right"></i></button>
                     <button type="button" class="ica--companion-action" data-action="edit" title="Edit companion note" aria-label="Edit companion note"><i class="fa-solid fa-pen-to-square"></i></button>
+                    ${lorebookButton}
                     <button type="button" class="ica--companion-action" data-action="copy" title="Copy companion note" aria-label="Copy companion note"><i class="fa-solid fa-copy"></i></button>
                     <button type="button" class="ica--companion-action caution" data-action="delete" title="Delete companion note" aria-label="Delete companion note"><i class="fa-solid fa-trash"></i></button>
                 </span>
@@ -755,6 +761,7 @@ export async function editCompanionResult(messageIndex, agentId, message, result
             <textarea class="text_pole textarea_compact" rows="12">${escapeHtml(result?.content ?? '')}</textarea>
         </div>
     `);
+    attachTextareaFullscreen(editor);
     const popupResult = await new Popup(editor, POPUP_TYPE.CONFIRM, '', {
         okButton: 'Save Note',
         cancelButton: 'Cancel',
@@ -851,6 +858,17 @@ async function handleCompanionAction(event) {
     if (action === 'copy') {
         await copyText(String(result?.content ?? ''));
         toastr.success('Companion note copied.');
+        return;
+    }
+
+    if (action === 'send-to-lorebook') {
+        const button = $(event.currentTarget);
+        button.prop('disabled', true);
+        try {
+            await sendCompanionResultToLorebook(result?.content);
+        } finally {
+            button.prop('disabled', false);
+        }
         return;
     }
 

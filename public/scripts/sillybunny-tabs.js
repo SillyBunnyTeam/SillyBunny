@@ -1,4 +1,7 @@
 import { DEFAULT_SCROLL_EDGE_SETTLE_DELAYS, jumpScrollElementToEdge } from './chat-scroll-edges.js';
+import { createDeferredPanel } from './deferred-panel.js';
+import { createDeferredModule } from './deferred-module.js';
+import { hasServerReturnedAfterRestart } from './server-restart-monitor.js';
 import {
     clampMobileShellText as clampText,
     createMobileShellLifecycle,
@@ -9,7 +12,6 @@ import {
 import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
 import { createPresetApiSyncLifecycle } from './preset-api-sync-lifecycle/index.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
-import { hasServerReturnedAfterRestart } from './server-restart-monitor.js';
 import {
     PERSONA_APPENDICES_DEFAULT_SCOPE_KEY,
     PERSONA_APPENDICES_SELECTIONS_KEY,
@@ -22,12 +24,65 @@ import {
     TOPBAR_ADOPTION_ATTRIBUTE,
     TOPBAR_EXTENSION_SLOT_ID,
 } from './topbar-extension-slot/index.js';
+import { setCharacterSpoilerFreeFieldsHidden } from './power-user.js';
 import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
+import { extension_settings } from './extensions.js';
 import { characters, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
+import {
+    SAMPLING_PARAMETER_DESCRIPTORS,
+} from './sampling-parameter-policy.js';
+import {
+    getSamplingParameterTransmissionState,
+    setSamplingParameterTransmissionState,
+    getSamplingParameterViewModel,
+} from './openai.js';
+import {
+    getTextSamplingParameterTransmissionState,
+    setTextSamplingParameterTransmissionState,
+    getTextSamplingParameterViewModel,
+} from './textgen-settings.js';
 
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
+const sbSearchRenderRequests = new WeakMap();
+const loadServerToolsModule = createDeferredModule(new URL('./sillybunny-server-tools.js', import.meta.url));
+const loadSettingsTabsModule = createDeferredModule(new URL('./sillybunny-settings-tabs.js', import.meta.url));
+let serverToolsPromise;
+let settingsPanelPromise;
+
+function loadServerTools() {
+    serverToolsPromise ??= loadServerToolsModule().then(module => module.createServerTools({
+        createElement, createShellPanel, hasServerReturnedAfterRestart, isShellOpen, isShellTabOpen, setButtonDisabled,
+        setServerAdminMessage, setServerAdminPill, wait, waitForAuthorizedRequestHeaders,
+    })).catch(error => {
+        serverToolsPromise = undefined;
+        throw error;
+    });
+    return serverToolsPromise;
+}
+
+function initializeSettingsPanel() {
+    settingsPanelPromise ??= loadSettingsTabsModule().then(module => {
+        injectThemePicker();
+        injectSillyTavernImportCard();
+        module.initializeSettingsTabs();
+        applyDefaultDrawerStates();
+        const tab = getShellState('right')?.tabs.get('settings');
+        if (tab) tab.searchIndex = null;
+    }).catch(error => {
+        settingsPanelPromise = undefined;
+        throw error;
+    });
+    return settingsPanelPromise;
+}
+
+async function prepareShellSearch() {
+    // Search also discovers controls in unopened panels, without starting their polling.
+    await Promise.allSettled(Object.values(sbState.shells).flatMap(shell =>
+        Array.from(shell.tabs.values(), tab => tab.ensureReady?.()),
+    ));
+}
 const SB_SHELL_SUBTITLE_PLACEHOLDER = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.';
 
 const SB_STORAGE_KEYS = Object.freeze({
@@ -45,6 +100,8 @@ const SB_STORAGE_KEYS = Object.freeze({
     topbarLabelMobilePart: 'sb-topbar-label-mobile-part',
     topbarLabelCustomText: 'sb-topbar-label-custom-text',
     topbarLabelClickCycle: 'sb-topbar-label-click-cycle',
+    topbarLabelClickCycleDesktop: 'sb-topbar-label-click-cycle-desktop',
+    topbarLabelClickCycleMobile: 'sb-topbar-label-click-cycle-mobile',
     chatbarVisible: 'sb-chatbar-visible',
     topbarOffset: 'sb-topbar-offset',
     settingsDrawerStatePrefix: 'sb-settings-inline-drawer',
@@ -130,7 +187,7 @@ const SB_SHORTCUT_LABELS = Object.freeze({
 });
 const SB_PANEL_STYLESHEETS = Object.freeze({
     'characters:world-info': [
-        { href: 'css/world-info.css?v=20260425b', id: 'deferred-world-info-css' },
+        { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
     ],
     'characters:persona': [
         { href: 'css/personas.css?v=20260609a', id: 'deferred-personas-css' },
@@ -294,7 +351,6 @@ function flushSbStorageWrites() {
     }
 
     const pendingWrites = Array.from(sbStoragePendingWrites.entries());
-    sbStoragePendingWrites.clear();
 
     for (const [key, write] of pendingWrites) {
         try {
@@ -303,8 +359,9 @@ function flushSbStorageWrites() {
             } else {
                 localStorage.setItem(key, write.value);
             }
+            sbStoragePendingWrites.delete(key);
         } catch {
-            // Keep the previous safe localStorage semantics: storage failures are non-fatal.
+            // Retry on the next flush or page hide if browser storage becomes writable again.
         }
     }
 }
@@ -415,9 +472,6 @@ const SB_TOPBAR_LABEL_CYCLE_RESET_MS = 5000;
 const SB_TOPBAR_DRAG_X_RATIO = 0.36;
 const SB_TOPBAR_DRAG_Y_RATIO = 0.24;
 const SB_TOPBAR_CONTEXT_REFRESH_DEBOUNCE = 220;
-const SB_CONSOLE_LOG_LIMIT = 260;
-const SB_CONSOLE_LOG_REFRESH_MS = 2500;
-const SB_CONSOLE_LOG_STICKY_THRESHOLD = 28;
 const SB_CHATBAR_SEARCH_DEBOUNCE = 220;
 const SB_CHAT_SEARCH_MARK_SELECTOR = 'mark[data-sb-chat-search="true"]';
 const SB_DESKTOP_SHELL_LAYOUT = Object.freeze({
@@ -849,7 +903,10 @@ const sbState = {
             ? 'char'
             : normalizeTopbarLabelPart(safeGetItem(SB_STORAGE_KEYS.topbarLabelMobilePart), ''),
         customText: normalizeTopbarCustomText(safeGetItem(SB_STORAGE_KEYS.topbarLabelCustomText)),
-        clickCycle: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarLabelClickCycle), true),
+        clickCycle: {
+            desktop: readTopbarLabelClickCycle('desktop'),
+            mobile: readTopbarLabelClickCycle('mobile'),
+        },
         contextTokens: null,
         refreshTimer: 0,
         refreshInFlight: false,
@@ -968,34 +1025,6 @@ const sbState = {
         windowBindingsAttached: false,
         outsideClickBound: false,
     },
-    serverAdmin: {
-        refs: null,
-        originalConfig: '',
-        lastModifiedMs: 0,
-        thumbnailLastModifiedMs: 0,
-        thumbnailSettingsLoaded: false,
-        lastStatusData: null,
-        busy: false,
-        restarting: false,
-        configLoaded: false,
-    },
-    consoleLogs: {
-        refs: null,
-        entries: [],
-        latestId: 0,
-        captureStartedAt: 0,
-        totalBuffered: 0,
-        refreshTimer: 0,
-        busy: false,
-        paused: false,
-        lastUpdatedAt: 0,
-        lastError: '',
-        configBusy: false,
-        configLoaded: false,
-        configPath: '',
-        configLastModifiedMs: 0,
-        verboseLoggingEnabled: false,
-    },
     importer: {
         refs: null,
         busy: false,
@@ -1080,6 +1109,21 @@ function normalizeStoredBoolean(value, fallback = false) {
     }
 
     return fallback;
+}
+
+function readTopbarLabelClickCycle(mode) {
+    const storageKey = mode === 'mobile'
+        ? SB_STORAGE_KEYS.topbarLabelClickCycleMobile
+        : SB_STORAGE_KEYS.topbarLabelClickCycleDesktop;
+    // Keep the old choice as a read-only seed until each layout has its own saved value.
+    return normalizeStoredBoolean(
+        safeGetItem(storageKey),
+        normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarLabelClickCycle), true),
+    );
+}
+
+function isTopbarLabelClickCycleEnabled() {
+    return isMobileViewport() ? sbState.topbarLabel.clickCycle.mobile : sbState.topbarLabel.clickCycle.desktop;
 }
 
 function normalizeMobileNavLayout(value) {
@@ -1530,7 +1574,8 @@ function restorePersistedTopbarState() {
         ? 'char'
         : normalizeTopbarLabelPart(safeGetItem(SB_STORAGE_KEYS.topbarLabelMobilePart), '');
     sbState.topbarLabel.customText = normalizeTopbarCustomText(safeGetItem(SB_STORAGE_KEYS.topbarLabelCustomText));
-    sbState.topbarLabel.clickCycle = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarLabelClickCycle), true);
+    sbState.topbarLabel.clickCycle.desktop = readTopbarLabelClickCycle('desktop');
+    sbState.topbarLabel.clickCycle.mobile = readTopbarLabelClickCycle('mobile');
     sbState.chatbar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.chatbarVisible), sbState.chatbar.visible);
     sbState.chatbar.topbarOffset = normalizeTopbarOffset(safeGetItem(SB_STORAGE_KEYS.topbarOffset));
     sbState.compactMode = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), sbState.compactMode);
@@ -2171,13 +2216,14 @@ function isCharacterSpoilerFreeFieldsHidden() {
     return form instanceof HTMLElement && form.dataset.sbSpoilerFreeFieldsHidden === 'true';
 }
 
+function isCharacterEditorSubTabSpoilerHidden(tabId) {
+    return isCharacterSpoilerFreeFieldsHidden()
+        && !SB_CHARACTER_EDITOR_SPOILER_FREE_VISIBLE_TABS.includes(normalizeCharacterEditorSubTab(tabId));
+}
+
 function resolveCharacterEditorSubTab(tabId) {
     const normalizedTabId = normalizeCharacterEditorSubTab(tabId);
-    if (!isCharacterSpoilerFreeFieldsHidden() || SB_CHARACTER_EDITOR_SPOILER_FREE_VISIBLE_TABS.includes(normalizedTabId)) {
-        return normalizedTabId;
-    }
-
-    return 'metadata';
+    return isCharacterEditorSubTabSpoilerHidden(normalizedTabId) ? 'metadata' : normalizedTabId;
 }
 
 function isCharacterEditorMenuType(menuType) {
@@ -2689,8 +2735,16 @@ function shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize) {
         return false;
     }
 
+    if (isMobileViewport() && !isLegacyIOSWebKitPlatform()) {
+        return false;
+    }
+
     const activeElement = document.activeElement;
-    return isMobileShellPanelEditableElement(activeElement) || isChatComposerEditableElement(activeElement) || hasOpenMobileShellDrawer();
+    if (isChatComposerEditableElement(activeElement)) {
+        return false;
+    }
+
+    return isMobileShellPanelEditableElement(activeElement) || hasOpenMobileShellDrawer();
 }
 
 const MOBILE_COMPOSER_KEYBOARD_PAN_EPSILON_PX = 8;
@@ -2765,13 +2819,18 @@ function handleMobileKeyboardFocusOut() {
 function syncIOSKeyboardBottomInset() {
     const root = document.documentElement;
     let bottomInset = 0;
+    let composerControlsActive = false;
 
     if (isIOSWebKitPlatform()) {
         const layoutViewport = getLayoutViewportSize();
         const visualViewportSize = getVisualViewportSize(layoutViewport);
 
         if (isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
-            bottomInset = Math.max(0, Math.round(layoutViewport.height - visualViewportSize.top - visualViewportSize.height));
+            if (isMobileViewport() && !isLegacyIOSWebKitPlatform()) {
+                composerControlsActive = isChatComposerEditableElement(document.activeElement);
+            } else {
+                bottomInset = Math.max(0, Math.round(layoutViewport.height - visualViewportSize.top - visualViewportSize.height));
+            }
         }
     }
 
@@ -2784,6 +2843,7 @@ function syncIOSKeyboardBottomInset() {
     // viewports (iPadOS desktop-mode Safari) gate the padding on this class so
     // desktop layouts only pick it up while the software keyboard is open.
     root.classList.toggle('sb-ios-keyboard-inset-active', bottomInset > 0);
+    root.classList.toggle('sb-ios-composer-keyboard-controls-active', composerControlsActive);
 }
 
 function getShellViewportSize() {
@@ -2796,9 +2856,8 @@ function getShellViewportSize() {
         return { ...layoutViewport, height, bottom: height };
     }
 
-    // SillyBunny: iOS keyboard edits inside shell panels or the chat composer
-    // should not feed Safari visualViewport jitter back into shell geometry.
-    // Keep layout stable while focused panel scrolling still uses visualViewport.
+    // Older iOS and wide iPad panels retain the stable layout; modern phone
+    // panels fit the visible viewport without a second keyboard-sized reserve.
     if (shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize)) {
         return layoutViewport;
     }
@@ -2823,8 +2882,7 @@ function syncShellViewportBounds() {
     setRootViewportProperty('--sb-shell-viewport-height', `${viewportSize.height}px`);
     setRootViewportProperty('--sb-shell-measured-top-offset', `${topOffset}px`);
     setRootViewportProperty('--sb-shell-available-height', `${Math.max(0, viewportSize.height - topOffset)}px`);
-    // SillyBunny: iOS Safari shifts the visual viewport while the keyboard opens;
-    // keyboard edit paths intentionally keep the stable layout top.
+    // SillyBunny: Safari can pan the visible viewport without resizing it.
     setRootViewportProperty('--sb-shell-viewport-top', `${viewportSize.top}px`);
 
     // SillyBunny: browser-fixes.js may reset document scroll mid-edit once the
@@ -2932,24 +2990,16 @@ function clearMobilePopupKeyboardShift(dialog) {
         delete scroller.dataset.sbKeyboardMaxHeight;
     }
 
-    if (dialog.dataset.sbKeyboardShift !== undefined) {
-        const previousTransform = dialog.dataset.sbKeyboardTransform;
-        const previousTransformPriority = dialog.dataset.sbKeyboardTransformPriority;
-        if (previousTransform) {
-            dialog.style.setProperty('transform', previousTransform, previousTransformPriority);
-        } else {
-            dialog.style.removeProperty('transform');
-        }
+    if (dialog.dataset.sbKeyboardStyle !== undefined) {
+        dialog.style.cssText = dialog.dataset.sbKeyboardStyle;
     }
 
     delete dialog.dataset.sbKeyboardAdjusted;
-    delete dialog.dataset.sbKeyboardShift;
-    delete dialog.dataset.sbKeyboardTransform;
-    delete dialog.dataset.sbKeyboardTransformPriority;
+    delete dialog.dataset.sbKeyboardStyle;
 }
 
 function clearAllMobilePopupKeyboardShifts(except = null) {
-    for (const dialog of document.querySelectorAll('dialog.popup[data-sb-keyboard-adjusted], dialog.popup[data-sb-keyboard-shift]')) {
+    for (const dialog of document.querySelectorAll('dialog.popup[data-sb-keyboard-adjusted]')) {
         if (dialog !== except) {
             clearMobilePopupKeyboardShift(dialog);
         }
@@ -2961,8 +3011,10 @@ function clearAllMobilePopupKeyboardShifts(except = null) {
  * does not shrink with the virtual keyboard (interactive-widget=resizes-visual).
  * When a focused popup input sits behind the keyboard, the browser pans the
  * visual viewport to reveal it, pushing the top bar off screen (e.g. the
- * connection profile name popup). Scroll the popup body first, then shift the
- * dialog up so the input clears the keyboard and the browser never needs to pan.
+ * connection profile name popup). Anchor the popup to the measured visible
+ * area and cap it there, then scroll its content so the browser never needs
+ * to pan. Position comes from visualViewport alone: measuring the dialog to
+ * offset it reads a stale rect while the open/keyboard animations run.
  */
 function syncMobilePopupKeyboardShift() {
     const activeElement = document.activeElement;
@@ -2990,41 +3042,31 @@ function syncMobilePopupKeyboardShift() {
     // visualViewport tracks the keyboard: top grows and height shrinks as the
     // keyboard rises, so (top + height) is the bottom of the visible area.
     const viewportBottom = viewportSize.top + viewportSize.height;
+    const edgeClearance = `${MOBILE_POPUP_KEYBOARD_CLEARANCE_PX}px`;
+    const topClearance = `max(${edgeClearance}, env(safe-area-inset-top, 0px))`;
+    const bottomClearance = `max(${edgeClearance}, env(safe-area-inset-bottom, 0px))`;
+    const availableHeight = `calc(${viewportSize.height}px - ${topClearance} - ${bottomClearance})`;
     const scroller = activeElement.closest('.popup-body, .popup-content');
 
+    dialog.dataset.sbKeyboardStyle = dialog.style.cssText;
+    dialog.dataset.sbKeyboardAdjusted = 'true';
+    // A modal dialog is fixed to the layout viewport with inset 0 and auto
+    // margins, so bottom: auto drops the vertical centering while top pins it
+    // to the visible area. Horizontal centering is untouched.
+    dialog.style.setProperty('top', `calc(${viewportSize.top}px + ${topClearance})`, 'important');
+    dialog.style.setProperty('bottom', 'auto', 'important');
+    dialog.style.setProperty('min-height', '0', 'important');
+    dialog.style.setProperty('max-height', availableHeight, 'important');
+
     if (scroller instanceof HTMLElement) {
-        const availableHeight = Math.max(0, viewportSize.height - (MOBILE_POPUP_KEYBOARD_CLEARANCE_PX * 2));
         scroller.dataset.sbKeyboardMaxHeight = scroller.style.maxHeight;
-        scroller.style.maxHeight = `${availableHeight}px`;
-        dialog.dataset.sbKeyboardAdjusted = 'true';
+        scroller.style.maxHeight = availableHeight;
 
         const scrollOverflow = activeElement.getBoundingClientRect().bottom + MOBILE_POPUP_KEYBOARD_CLEARANCE_PX - viewportBottom;
         if (scrollOverflow > 0) {
             scroller.scrollTop += scrollOverflow;
         }
     }
-
-    const overflow = activeElement.getBoundingClientRect().bottom + MOBILE_POPUP_KEYBOARD_CLEARANCE_PX - viewportBottom;
-
-    if (overflow <= 0) {
-        return;
-    }
-
-    const dialogTop = dialog.getBoundingClientRect().top;
-    const maxShift = Math.max(0, dialogTop - viewportSize.top - MOBILE_POPUP_KEYBOARD_CLEARANCE_PX);
-    const shift = Math.round(Math.min(overflow, maxShift));
-
-    if (shift <= 0) {
-        return;
-    }
-
-    dialog.dataset.sbKeyboardAdjusted = 'true';
-    dialog.dataset.sbKeyboardShift = String(shift);
-    dialog.dataset.sbKeyboardTransform = dialog.style.transform;
-    dialog.dataset.sbKeyboardTransformPriority = dialog.style.getPropertyPriority('transform');
-    const computedTransform = dialog.style.transform || window.getComputedStyle(dialog).transform;
-    const baseTransform = computedTransform && computedTransform !== 'none' ? ` ${computedTransform}` : '';
-    dialog.style.setProperty('transform', `translateY(-${shift}px)${baseTransform}`, 'important');
 }
 
 let sbMobilePopupKeyboardSyncTimer = 0;
@@ -3033,7 +3075,8 @@ function scheduleMobilePopupKeyboardSync() {
     window.requestAnimationFrame(syncMobilePopupKeyboardShift);
     window.clearTimeout(sbMobilePopupKeyboardSyncTimer);
     // Run again after the keyboard animation / visualViewport resize settles.
-    sbMobilePopupKeyboardSyncTimer = window.setTimeout(syncMobilePopupKeyboardShift, 200);
+    // iOS takes ~300ms to finish raising the keyboard and panning back.
+    sbMobilePopupKeyboardSyncTimer = window.setTimeout(syncMobilePopupKeyboardShift, 400);
 }
 
 function getMobileShellBoundDrawers() {
@@ -3087,6 +3130,7 @@ function syncMobileShellDrawerBounds() {
             isOpen,
             isViewportBound: drawer.dataset.sbMobileViewportBound === 'true',
             viewportHeight: viewportSize?.height ?? 0,
+            viewportTop: viewportSize?.top ?? 0,
             baseTopOffset,
             shellGap: drawerStyles ? Number.parseFloat(drawerStyles.getPropertyValue('--sb-mobile-shell-gap')) || 0 : 0,
         }));
@@ -4184,17 +4228,21 @@ function setTopbarCustomText(value) {
 }
 
 function setTopbarLabelClickCycle(enabled) {
+    const mode = isMobileViewport() ? 'mobile' : 'desktop';
     const nextValue = Boolean(enabled);
-    if (sbState.topbarLabel.clickCycle === nextValue) {
+    if (sbState.topbarLabel.clickCycle[mode] === nextValue) {
         return;
     }
 
-    sbState.topbarLabel.clickCycle = nextValue;
+    sbState.topbarLabel.clickCycle[mode] = nextValue;
     if (!nextValue) {
         resetTopBarLabelCycle({ refresh: false });
     }
 
-    safeSetItem(SB_STORAGE_KEYS.topbarLabelClickCycle, String(nextValue));
+    const storageKey = mode === 'mobile'
+        ? SB_STORAGE_KEYS.topbarLabelClickCycleMobile
+        : SB_STORAGE_KEYS.topbarLabelClickCycleDesktop;
+    safeSetItem(storageKey, String(nextValue));
     flushSbStorageWrites();
     updateThemePickerUi();
     updateTopBarBrand();
@@ -4711,7 +4759,7 @@ function returnToChatSurface() {
 }
 
 function handleTopBarTitleActivation() {
-    if (sbState.topbarLabel.clickCycle) {
+    if (isTopbarLabelClickCycleEnabled()) {
         cycleTopBarLabel();
         return;
     }
@@ -4773,7 +4821,7 @@ function updateTopBarBrand() {
     bindTopBarTitleCycle(title);
     title.textContent = label;
     title.title = label;
-    title.setAttribute('aria-label', sbState.topbarLabel.clickCycle
+    title.setAttribute('aria-label', isTopbarLabelClickCycleEnabled()
         ? `${label}. Tap to preview top bar label options.`
         : `${label}. Tap to return to the chat.`);
     title.classList.toggle('is-chat', isActiveChat);
@@ -7784,8 +7832,10 @@ function syncMobileModalState() {
         setMobileModalRootA11y(root, activeRootSet.has(root));
     }
 
+    // SillyBunny: only the chat is inerted. Mobile panels dock below the top bar instead of
+    // covering it, so its proxy buttons stay reachable and re-tapping one closes the panel,
+    // same as on desktop.
     setElementInertForMobileModal(document.getElementById('sheld'), modalState.shouldInertShell);
-    setElementInertForMobileModal(document.getElementById('top-bar'), modalState.shouldInertTopBar);
 }
 
 function queueMobileModalStateSync() {
@@ -7925,11 +7975,16 @@ function syncCharacterListControls(view) {
         }
     }
 
+    for (const actionId of ['character_context_menu_favorite', 'character_context_menu_duplicate', 'character_context_menu_persona']) {
+        const action = document.getElementById(actionId)?.closest('li');
+        if (action instanceof HTMLElement) {
+            action.hidden = normalizedView === 'groups';
+        }
+    }
+
     if (bulkEditButton instanceof HTMLElement) {
-        bulkEditButton.classList.toggle('disabled', normalizedView === 'groups');
-        bulkEditButton.setAttribute('aria-disabled', String(normalizedView === 'groups'));
         bulkEditButton.title = normalizedView === 'groups'
-            ? 'Bulk edit for groups is not available yet'
+            ? 'Bulk actions for group chats'
             : 'Bulk edit characters\n\nClick to toggle characters\nShift + Click to select/deselect a range of characters\nRight-click for actions';
     }
 }
@@ -7979,19 +8034,6 @@ function ensureCharacterListToolbarLayout() {
 
     if (searchButton instanceof HTMLElement && searchButton.parentElement !== buttonBar) {
         buttonBar.appendChild(searchButton);
-    }
-
-    const bulkEditButton = document.getElementById('bulkEditButton');
-    if (bulkEditButton instanceof HTMLElement && bulkEditButton.dataset.sbGroupsGuardBound !== 'true') {
-        bulkEditButton.dataset.sbGroupsGuardBound = 'true';
-        bulkEditButton.addEventListener('click', (event) => {
-            const panel = getCharacterPanel();
-            if (panel instanceof HTMLElement && panel.dataset.menuType === 'groups') {
-                event.preventDefault();
-                event.stopImmediatePropagation();
-                globalThis.toastr?.info?.('Bulk edit for groups is not available yet.');
-            }
-        }, { capture: true });
     }
 }
 
@@ -8201,6 +8243,8 @@ function updateCharacterEditorSubTabButtons(activeTabId) {
         tabButton.classList.toggle('is-active', isActive);
         tabButton.setAttribute('aria-selected', String(isActive));
         tabButton.setAttribute('tabindex', isActive ? '0' : '-1');
+        // Dimmed, not disabled: tapping a spoiler-hidden tab reveals the fields (see bindCharacterEditorSubTabs).
+        tabButton.classList.toggle('is-spoiler-hidden', isCharacterEditorSubTabSpoilerHidden(tabButton.dataset.sbCharacterEditorTab));
     }
 }
 
@@ -8340,6 +8384,45 @@ function bindCharacterEditorFullscreenToggle() {
     syncCharacterEditorFullscreenAvailability();
 }
 
+async function openCreatorNotesFullscreen() {
+    const context = getSillyTavernContext();
+    const spoiler = document.getElementById('creator_notes_spoiler');
+
+    if (!context?.callGenericPopup || !spoiler) {
+        return;
+    }
+
+    // Move the rendered node instead of re-rendering it: formatCreatorNotes() scopes embedded
+    // <custom-style> rules to '#creator_notes_spoiler ', and the live textarea sync keeps writing
+    // to this same element while the popup is open.
+    const anchor = document.createComment('sb-creator-notes-fullscreen');
+    spoiler.replaceWith(anchor);
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'sb-creator-notes-fullscreen';
+    wrapper.append(spoiler);
+
+    try {
+        await context.callGenericPopup(wrapper, context.POPUP_TYPE.TEXT, '', { wide: true, large: true });
+    } finally {
+        if (anchor.isConnected) {
+            anchor.replaceWith(spoiler);
+        } else {
+            document.querySelector('.sb-character-creator-notes-preview-body')?.prepend(spoiler);
+        }
+    }
+}
+
+function bindCreatorNotesFullscreen() {
+    const button = document.getElementById('sb_creator_notes_maximize');
+    if (!(button instanceof HTMLButtonElement) || button.dataset.sbBound === 'true') {
+        return;
+    }
+
+    button.dataset.sbBound = 'true';
+    button.addEventListener('click', () => openCreatorNotesFullscreen());
+}
+
 function focusCharacterPanelTab(tabId) {
     const normalizedTabId = normalizeCharacterPanelTab(tabId);
     const button = getCharacterPanel()?.querySelector(`[data-sb-character-tab="${CSS.escape(normalizedTabId)}"]`);
@@ -8363,7 +8446,14 @@ function bindCharacterEditorSubTabs() {
             return;
         }
 
-        setCharacterEditorSubTab(target.dataset.sbCharacterEditorTab, { focusButton: false });
+        const tabId = target.dataset.sbCharacterEditorTab;
+        // Spoiler-free mode hides Definitions/Greetings; a deliberate tap on one of them is the same request as the eye
+        // button's peek, so reveal the fields first instead of silently landing on Metadata.
+        if (isCharacterEditorSubTabSpoilerHidden(tabId)) {
+            setCharacterSpoilerFreeFieldsHidden(false);
+        }
+
+        setCharacterEditorSubTab(tabId, { focusButton: false });
     });
 
     tablist.addEventListener('keydown', (event) => {
@@ -8972,7 +9062,9 @@ window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener('change', () => {
     // Crossing the breakpoint can change which device's icons-only setting is in force, so the
     // whole preference re-applies rather than just the group order.
     applyTopbarIconsOnlyPreference();
-    queueTopbarBrandFit();
+    resetTopBarLabelCycle({ refresh: false });
+    updateThemePickerUi();
+    updateTopBarBrand();
     // Crossing the breakpoint also decides which rail third-party composer buttons belong in.
     queueComposerControlPlacement();
 });
@@ -9835,6 +9927,46 @@ function createShellPanel(tabConfig) {
     return { panel, scroller };
 }
 
+function createOnDemandShellPanel(shellKey, tabConfig, build) {
+    const { panel, scroller } = createShellPanel(tabConfig);
+    const status = createElement('div', { className: 'sb-shell-callout', text: 'Loading…', attrs: { role: 'status' } });
+    scroller.append(status);
+
+    const showError = error => {
+        console.error('[SillyBunny] Could not load panel:', tabConfig.id, error);
+        const retry = createElement('button', { className: 'menu_button', text: 'Retry', attrs: { type: 'button' } });
+        retry.addEventListener('click', () => void lifecycle.activate().catch(showError));
+        status.replaceChildren(document.createTextNode(String(error.message || error)), retry);
+    };
+    const lifecycle = createDeferredPanel(async () => {
+        panel.setAttribute('aria-busy', 'true');
+        status.textContent = 'Loading…';
+        try {
+            const loaded = await build();
+            panel.replaceChildren(...loaded.panel.childNodes);
+            const tab = getShellState(shellKey)?.tabs.get(tabConfig.id);
+            if (tab) {
+                tab.searchRoot = loaded.searchRoot;
+                tab.searchIndex = null;
+            }
+            return loaded;
+        } finally {
+            panel.removeAttribute('aria-busy');
+        }
+    });
+
+    return {
+        panel,
+        searchRoot: scroller,
+        ensureReady: () => lifecycle.ensureReady().catch(error => {
+            showError(error);
+            throw error;
+        }),
+        onActivate: () => void lifecycle.activate().catch(showError),
+        onDeactivate: lifecycle.deactivate,
+    };
+}
+
 function closeFocusedShell() {
     const activeElement = document.activeElement;
 
@@ -10139,9 +10271,136 @@ function neutralizeChatCompletionSamplers() {
     });
 }
 
+const SAMPLING_SELECTOR_TO_CANONICAL_ID = Object.freeze({
+    '#temp_openai': 'temperature',
+    '#temp_textgenerationwebui': 'temperature',
+    '#top_p_openai': 'top_p',
+    '#top_p_textgenerationwebui': 'top_p',
+    '#pres_pen_openai': 'presence_penalty',
+    '#presence_pen_textgenerationwebui': 'presence_penalty',
+    '#freq_pen_openai': 'frequency_penalty',
+    '#freq_pen_textgenerationwebui': 'frequency_penalty',
+    '#typical_p_textgenerationwebui': 'typical_p',
+});
+
+function refreshSamplingTransmission(card, selector) {
+    const parameterId = SAMPLING_SELECTOR_TO_CANONICAL_ID[selector];
+    const container = card.querySelector('.sb-sampling-transmission');
+    if (!parameterId || !container) {
+        return;
+    }
+    const viewModel = selector.includes('textgenerationwebui')
+        ? getTextSamplingParameterViewModel(parameterId)
+        : getSamplingParameterViewModel(parameterId);
+    container.querySelectorAll('.sb-transmission-btn').forEach(button => {
+        const selected = button.dataset.policyState === viewModel.storedState;
+        button.classList.toggle('active', selected);
+        button.setAttribute('aria-checked', String(selected));
+        button.disabled = !viewModel.targetKey;
+    });
+    const badge = container.querySelector('.sb-capability-forbidden-badge');
+    if (badge) {
+        badge.hidden = viewModel.reason !== 'capability-forbidden';
+    }
+}
+
 function decorateSamplingControlCard(card, selector) {
     if (!(card instanceof HTMLElement)) {
         return;
+    }
+
+    const parameterId = SAMPLING_SELECTOR_TO_CANONICAL_ID[selector];
+    if (parameterId && SAMPLING_PARAMETER_DESCRIPTORS[parameterId]) {
+        card.dataset.samplingParameter = parameterId;
+        const descriptor = SAMPLING_PARAMETER_DESCRIPTORS[parameterId];
+
+        let container = card.querySelector('.sb-sampling-transmission');
+        if (!container) {
+            container = createElement('div', { className: 'sb-sampling-transmission flex-container alignitemscenter gap5 m-t-0-5' });
+            container.setAttribute('data-sampling-transmission-for', parameterId);
+
+            const labelContainer = createElement('div', {
+                className: 'flex-container alignitemscenter gap5',
+            });
+            const label = createElement('small', {
+                className: 'sb-sampling-transmission__label opacity70p',
+                text: 'Wire:',
+            });
+            const infoIcon = createElement('div', {
+                className: 'fa-solid fa-circle-info opacity50p sb-sampling-info-icon',
+                attrs: {
+                    title: 'Controls how this setting is sent to the AI:\n\n• Auto: Normal default behavior.\n• Send: Force this slider\'s exact value to be sent.\n• Omit: Completely delete this setting from the request so models that reject it (like Grok or o1) won\'t crash.',
+                },
+            });
+            labelContainer.appendChild(label);
+            labelContainer.appendChild(infoIcon);
+            container.appendChild(labelContainer);
+
+            const options = createElement('div', {
+                className: 'sb-sampling-transmission__options flex-container gap5',
+                attrs: {
+                    role: 'radiogroup',
+                    'aria-label': `Transmission policy for ${descriptor.label}`,
+                },
+            });
+
+            const states = [
+                { state: 'inherit', label: 'Auto', title: 'Auto: Normal default behavior' },
+                { state: 'include', label: 'Send', title: 'Send: Force this slider\'s exact value to be sent' },
+                { state: 'omit', label: 'Omit', title: 'Omit: Completely delete this setting from the request to prevent crashes' },
+            ];
+
+            const isTextGenParameter = selector.includes('textgenerationwebui');
+            const getPolicyState = isTextGenParameter
+                ? getTextSamplingParameterTransmissionState
+                : getSamplingParameterTransmissionState;
+            const getPolicyViewModel = isTextGenParameter
+                ? getTextSamplingParameterViewModel
+                : getSamplingParameterViewModel;
+            const currentStored = typeof getPolicyState === 'function'
+                ? getPolicyState(parameterId)
+                : 'inherit';
+            const viewModel = typeof getPolicyViewModel === 'function'
+                ? getPolicyViewModel(parameterId)
+                : { reason: 'provider-default' };
+
+            states.forEach(opt => {
+                const isSelected = opt.state === currentStored;
+                const btn = createElement('button', {
+                    className: `sb-transmission-btn ${isSelected ? 'active' : ''}`,
+                    text: opt.label,
+                    attrs: {
+                        type: 'button',
+                        role: 'radio',
+                        'data-policy-state': opt.state,
+                        'aria-checked': String(isSelected),
+                        title: opt.title,
+                    },
+                });
+
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const setPolicyState = isTextGenParameter
+                        ? setTextSamplingParameterTransmissionState
+                        : setSamplingParameterTransmissionState;
+                    if (setPolicyState(parameterId, opt.state)) {
+                        refreshSamplingTransmission(card, selector);
+                    }
+                });
+                options.appendChild(btn);
+            });
+
+            const forbiddenBadge = createElement('small', {
+                className: 'sb-capability-forbidden-badge',
+                text: '(Omitted: provider restriction)',
+            });
+            forbiddenBadge.hidden = viewModel.reason !== 'capability-forbidden';
+            container.append(options, forbiddenBadge);
+
+            card.appendChild(container);
+        }
+        refreshSamplingTransmission(card, selector);
     }
 
     if (selector === '#seed_textgenerationwebui') {
@@ -10311,6 +10570,7 @@ function syncSamplingPanelControls(root) {
                 if (existingCard.parentElement !== target) {
                     target.appendChild(existingCard);
                 }
+                refreshSamplingTransmission(existingCard, selector);
                 continue;
             }
 
@@ -10408,7 +10668,11 @@ function buildSamplingPanel() {
     column.append(sections, empty);
     scroller.appendChild(column);
 
-    $('#main_api').on('change.sbSamplingPanel', () => updateSamplingPanelVisibility(column));
+    $('#main_api').on('change.sbSamplingPanel', () => {
+        if (isShellTabOpen('left', 'sampling')) updateSamplingPanelVisibility(column);
+    });
+    $(document).on('change.sbSamplingTransmission', 'select', () => updateSamplingPanelVisibility(column));
+    updateSamplingPanelVisibility(column);
     window.requestAnimationFrame(() => updateSamplingPanelVisibility(column));
     window.setTimeout(() => updateSamplingPanelVisibility(column), 250);
     window.setTimeout(() => updateSamplingPanelVisibility(column), 1000);
@@ -10447,404 +10711,12 @@ function buildInChatAgentsPanel() {
     };
 }
 
-function getServerAdminState() {
-    return sbState.serverAdmin;
-}
-
-function getServerAdminRefs() {
-    return getServerAdminState().refs;
-}
-
-function getConsoleLogsState() {
-    return sbState.consoleLogs;
-}
-
-function getConsoleLogsRefs() {
-    return getConsoleLogsState().refs;
-}
-
-function isConsoleLogsTabActive() {
-    return isShellTabOpen('right', 'console-logs');
-}
-
-function formatConsoleLogTime(timestamp) {
-    const date = new Date(Number(timestamp));
-    if (Number.isNaN(date.getTime())) {
-        return '00:00:00';
-    }
-
-    return date.toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-    });
-}
-
-function formatConsoleLogDateTime(timestamp) {
-    const date = new Date(Number(timestamp));
-    if (Number.isNaN(date.getTime())) {
-        return 'Unknown';
-    }
-
-    return date.toLocaleString([], {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-    });
-}
-
-function formatConsoleLogEntry(entry) {
-    const stream = String(entry?.stream ?? 'stdout').toUpperCase().padEnd(6);
-    const message = String(entry?.message ?? '');
-    return `[${formatConsoleLogTime(entry?.timestamp)}] ${stream} ${message}`;
-}
-
-function isScrolledNearBottom(element, threshold = SB_CONSOLE_LOG_STICKY_THRESHOLD) {
-    if (!(element instanceof HTMLElement)) {
-        return true;
-    }
-
-    return (element.scrollHeight - element.scrollTop - element.clientHeight) <= threshold;
-}
-
-function updateConsoleLogsInteractivity() {
-    const state = getConsoleLogsState();
-    const refs = getConsoleLogsRefs();
-
-    if (!refs) {
-        return;
-    }
-
-    refs.pauseButton.textContent = state.paused ? 'Resume Live' : 'Pause Live';
-    setButtonDisabled(refs.refreshButton, state.busy);
-    setButtonDisabled(refs.verboseLoggingActionButton, state.busy || state.configBusy || !state.configLoaded);
-}
-
-function setConsoleLogsVerboseLoggingUI(value) {
-    const state = getConsoleLogsState();
-    const refs = getConsoleLogsRefs();
-    const enabled = Number(value) === 0;
-
-    state.verboseLoggingEnabled = enabled;
-
-    if (refs?.verboseLoggingStatus instanceof HTMLElement) {
-        refs.verboseLoggingStatus.textContent = enabled
-            ? 'Verbose logging is enabled.'
-            : 'Standard logging is enabled.';
-        refs.verboseLoggingStatus.dataset.state = enabled ? 'warn' : 'neutral';
-    }
-
-    if (refs?.verboseLoggingActionButton instanceof HTMLButtonElement) {
-        refs.verboseLoggingActionButton.textContent = enabled
-            ? 'Debug Logging: Enabled'
-            : 'Debug Logging: Disabled';
-    }
-
-    updateConsoleLogsInteractivity();
-}
-
-function getLoggingConfigTextFromYaml(content) {
-    if (typeof content !== 'string' || !content.trim()) {
-        return 1;
-    }
-
-    const match = content.match(/^\s*minLogLevel:\s*(\d+)\s*$/m);
-    return match ? Number(match[1]) : 1;
-}
-
-function replaceLoggingMinLogLevel(content, nextLevel) {
-    const desiredLevel = Number(nextLevel) === 0 ? 0 : 1;
-    const minLogLevelPattern = /^(\s*minLogLevel:\s*)(\d+)\s*$/m;
-
-    if (minLogLevelPattern.test(content)) {
-        return content.replace(minLogLevelPattern, `$1${desiredLevel}`);
-    }
-
-    const loggingHeaderPattern = /^(logging:\s*\n)(?:\s*#.*\n)*?/m;
-    if (loggingHeaderPattern.test(content)) {
-        return content.replace(loggingHeaderPattern, (match) => `${match}  minLogLevel: ${desiredLevel}\n`);
-    }
-
-    return `${content.trimEnd()}\n\nlogging:\n  minLogLevel: ${desiredLevel}\n`;
-}
-
-async function refreshConsoleLogsConfig() {
-    const state = getConsoleLogsState();
-    const refs = getConsoleLogsRefs();
-
-    if (!refs) {
-        return;
-    }
-
-    state.configBusy = true;
-    updateConsoleLogsInteractivity();
-
-    try {
-        const data = await requestServerAdmin('/api/server-admin/config/get');
-        const content = String(data?.content ?? '');
-        const enabled = getLoggingConfigTextFromYaml(content) === 0;
-
-        state.configLoaded = true;
-        state.configPath = String(data?.path ?? '');
-        state.configLastModifiedMs = Number(data?.lastModifiedMs ?? 0) || 0;
-        setConsoleLogsVerboseLoggingUI(enabled ? 0 : 1);
-    } catch (error) {
-        state.configLoaded = false;
-        state.verboseLoggingEnabled = false;
-        if (refs?.verboseLoggingStatus instanceof HTMLElement) {
-            refs.verboseLoggingStatus.textContent = error?.message || 'Failed to load config.yaml.';
-            refs.verboseLoggingStatus.dataset.state = 'danger';
-        }
-        console.error('Failed to load logging config for Console Logs.', error);
-    } finally {
-        state.configBusy = false;
-        updateConsoleLogsInteractivity();
-    }
-}
-
-async function toggleConsoleLogsVerboseLogging() {
-    const state = getConsoleLogsState();
-    const refs = getConsoleLogsRefs();
-
-    if (!refs || !state.configLoaded || state.configBusy || state.busy) {
-        return;
-    }
-
-    state.configBusy = true;
-    updateConsoleLogsInteractivity();
-
-    try {
-        const data = await requestServerAdmin('/api/server-admin/config/get');
-        const content = String(data?.content ?? '');
-        const nextEnabled = !state.verboseLoggingEnabled;
-        const nextContent = replaceLoggingMinLogLevel(content, nextEnabled ? 0 : 1);
-        const result = await requestServerAdmin('/api/server-admin/config/save', {
-            content: nextContent,
-            expectedLastModifiedMs: Number(data?.lastModifiedMs ?? 0) || state.configLastModifiedMs,
-            restart: false,
-        });
-
-        state.configPath = String(result?.path ?? state.configPath);
-        state.configLastModifiedMs = Number(result?.lastModifiedMs ?? 0) || state.configLastModifiedMs;
-        setConsoleLogsVerboseLoggingUI(nextEnabled ? 0 : 1);
-        if (refs.verboseLoggingStatus instanceof HTMLElement) {
-            refs.verboseLoggingStatus.textContent = result?.message || 'Logging config saved.';
-            refs.verboseLoggingStatus.dataset.state = 'saved';
-        }
-        globalThis.toastr?.success?.('Logging config saved. Restart SillyBunny to apply it.', 'Console logs');
-    } catch (error) {
-        console.error('Failed to save logging config for Console Logs.', error);
-        if (refs?.verboseLoggingStatus instanceof HTMLElement) {
-            refs.verboseLoggingStatus.textContent = error?.message || 'Failed to save logging config.';
-            refs.verboseLoggingStatus.dataset.state = 'danger';
-        }
-        globalThis.toastr?.error?.(error?.message || 'Failed to save logging config.', 'Console logs');
-    } finally {
-        state.configBusy = false;
-        updateConsoleLogsInteractivity();
-    }
-}
-
-function renderConsoleLogsStatus() {
-    const state = getConsoleLogsState();
-    const refs = getConsoleLogsRefs();
-
-    if (!refs) {
-        return;
-    }
-
-    if (state.lastError) {
-        setServerAdminPill(refs.statusPill, 'Unavailable', 'danger');
-        setServerAdminMessage(refs.statusNote, state.lastError, 'danger');
-        return;
-    }
-
-    const linesShown = state.entries.length;
-    const totalBuffered = state.totalBuffered || linesShown;
-    const noteParts = [`Showing ${linesShown} of ${totalBuffered} recent console line${totalBuffered === 1 ? '' : 's'}.`];
-
-    if (state.captureStartedAt) {
-        noteParts.push(`Capture started ${formatConsoleLogDateTime(state.captureStartedAt)}.`);
-    }
-
-    if (state.lastUpdatedAt) {
-        noteParts.push(`Last updated ${formatConsoleLogTime(state.lastUpdatedAt)}.`);
-    }
-
-    noteParts.push(state.paused
-        ? 'Live polling is paused.'
-        : `Refreshes every ${(SB_CONSOLE_LOG_REFRESH_MS / 1000).toFixed(1).replace(/\.0$/, '')} seconds while this tab is open.`);
-
-    setServerAdminPill(refs.statusPill, state.busy ? 'Loading…' : state.paused ? 'Paused' : 'Live', state.paused ? 'warn' : 'good');
-    setServerAdminMessage(refs.statusNote, noteParts.join(' '), state.paused ? 'warn' : 'neutral');
-}
-
-function renderConsoleLogsOutput({ preserveScroll = true } = {}) {
-    const state = getConsoleLogsState();
-    const refs = getConsoleLogsRefs();
-    const output = refs?.output;
-
-    if (!(output instanceof HTMLElement)) {
-        return;
-    }
-
-    const shouldStickToBottom = !preserveScroll || isScrolledNearBottom(output);
-    output.textContent = state.entries.length
-        ? state.entries.map(formatConsoleLogEntry).join('\n')
-        : 'No console output has been captured yet for this server process.';
-    output.classList.toggle('is-empty', state.entries.length === 0);
-
-    if (shouldStickToBottom) {
-        output.scrollTop = output.scrollHeight;
-    }
-
-    renderConsoleLogsStatus();
-}
-
-function scheduleConsoleLogsRefresh(delay = SB_CONSOLE_LOG_REFRESH_MS) {
-    const state = getConsoleLogsState();
-    window.clearTimeout(state.refreshTimer);
-    state.refreshTimer = 0;
-
-    if (state.paused || !isConsoleLogsTabActive()) {
-        return;
-    }
-
-    state.refreshTimer = window.setTimeout(() => {
-        void refreshConsoleLogs();
-    }, delay);
-}
-
-async function refreshConsoleLogs({ forceFull = false } = {}) {
-    const state = getConsoleLogsState();
-    const refs = getConsoleLogsRefs();
-
-    if (!refs) {
-        return;
-    }
-
-    window.clearTimeout(state.refreshTimer);
-    state.refreshTimer = 0;
-
-    if (state.busy) {
-        scheduleConsoleLogsRefresh();
-        return;
-    }
-
-    state.busy = true;
-    updateConsoleLogsInteractivity();
-    renderConsoleLogsStatus();
-
-    const requestBody = {
-        limit: SB_CONSOLE_LOG_LIMIT,
-    };
-
-    if (!forceFull && state.latestId > 0) {
-        requestBody.afterId = state.latestId;
-    }
-
-    try {
-        const data = await requestServerAdmin('/api/server-admin/logs', requestBody);
-        const nextEntries = Array.isArray(data?.entries)
-            ? data.entries.map(entry => ({
-                id: Number(entry?.id ?? 0) || 0,
-                timestamp: Number(entry?.timestamp ?? 0) || 0,
-                stream: String(entry?.stream ?? 'stdout'),
-                message: String(entry?.message ?? ''),
-            })).filter(entry => entry.id > 0)
-            : [];
-
-        if (forceFull || !requestBody.afterId || data?.truncated) {
-            state.entries = nextEntries.slice(-SB_CONSOLE_LOG_LIMIT);
-        } else if (nextEntries.length > 0) {
-            const mergedEntries = new Map(state.entries.map(entry => [entry.id, entry]));
-
-            for (const entry of nextEntries) {
-                mergedEntries.set(entry.id, entry);
-            }
-
-            state.entries = Array.from(mergedEntries.values())
-                .sort((left, right) => left.id - right.id)
-                .slice(-SB_CONSOLE_LOG_LIMIT);
-        }
-
-        state.latestId = Number(data?.latestId ?? state.latestId) || state.latestId;
-        state.captureStartedAt = Number(data?.captureStartedAt ?? state.captureStartedAt) || state.captureStartedAt;
-        state.totalBuffered = Number(data?.totalBuffered ?? state.totalBuffered) || state.totalBuffered;
-        state.lastUpdatedAt = Date.now();
-        state.lastError = '';
-        renderConsoleLogsOutput();
-    } catch (error) {
-        console.error('Failed to refresh console logs panel.', error);
-        state.lastError = error.message || 'Failed to read console logs.';
-        renderConsoleLogsStatus();
-    } finally {
-        state.busy = false;
-        updateConsoleLogsInteractivity();
-        renderConsoleLogsStatus();
-        scheduleConsoleLogsRefresh();
-    }
-}
-
-function toggleConsoleLogsPolling() {
-    const state = getConsoleLogsState();
-    state.paused = !state.paused;
-
-    if (state.paused) {
-        window.clearTimeout(state.refreshTimer);
-        state.refreshTimer = 0;
-    }
-
-    updateConsoleLogsInteractivity();
-    renderConsoleLogsStatus();
-
-    if (!state.paused) {
-        void refreshConsoleLogs({ forceFull: state.latestId === 0 });
-    }
-}
-
 function getImporterState() {
     return sbState.importer;
 }
 
 function getImporterRefs() {
     return getImporterState().refs;
-}
-
-async function requestServerAdmin(endpoint, body = {}, { signal } = {}) {
-    const headers = await waitForAuthorizedRequestHeaders();
-    const response = await fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        signal,
-    });
-
-    const text = await response.text();
-    let data = null;
-
-    try {
-        data = text ? JSON.parse(text) : {};
-    } catch {
-        data = { message: text };
-    }
-
-    if (!response.ok) {
-        const message = response.status === 403
-            ? 'Server tools are only available after an admin session is ready.'
-            : data?.error || data?.message || text || `Request failed with status ${response.status}.`;
-        const error = new Error(message);
-        error.status = response.status;
-        error.data = data;
-        throw error;
-    }
-
-    return data;
 }
 
 async function requestUserPrivateAction(endpoint, { body = {}, useFormData = false } = {}) {
@@ -10901,1227 +10773,6 @@ function setServerAdminMessage(element, message, tone = 'neutral') {
     element.textContent = String(message ?? '').trim();
     element.dataset.tone = tone;
     element.hidden = !element.textContent;
-}
-
-function setServerAdminButtonLabel(button, isBusy, busyLabel) {
-    if (!(button instanceof HTMLButtonElement)) {
-        return;
-    }
-
-    if (!button.dataset.idleLabel) {
-        button.dataset.idleLabel = button.textContent || '';
-    }
-
-    button.textContent = isBusy ? busyLabel : button.dataset.idleLabel;
-}
-
-function describeAutoStashState(result) {
-    if (!result?.stashed) {
-        return '';
-    }
-
-    if (result?.stashPopWarning) {
-        return result.stashPopWarning;
-    }
-
-    return 'Local tracked and untracked changes were auto-stashed and restored.';
-}
-
-function getThumbnailSettingsFromRefs(refs = getServerAdminRefs()) {
-    const parseSize = (input, fallback) => {
-        const value = Number.parseInt(input?.value, 10);
-        return Number.isFinite(value) ? Math.min(4096, Math.max(1, value)) : fallback;
-    };
-
-    return {
-        settings: {
-            enabled: Boolean(refs?.thumbnailEnabled?.checked),
-            format: refs?.thumbnailFormat?.value === 'jpg' ? 'jpg' : 'png',
-            quality: parseSize(refs?.thumbnailQuality, 100),
-            dimensions: {
-                bg: [
-                    parseSize(refs?.thumbnailBgWidth, 240),
-                    parseSize(refs?.thumbnailBgHeight, 135),
-                ],
-                avatar: [
-                    parseSize(refs?.thumbnailAvatarWidth, 864),
-                    parseSize(refs?.thumbnailAvatarHeight, 1280),
-                ],
-                persona: [
-                    parseSize(refs?.thumbnailPersonaWidth, 864),
-                    parseSize(refs?.thumbnailPersonaHeight, 1280),
-                ],
-            },
-        },
-        mobileSettings: {
-            enabled: Boolean(refs?.thumbnailMobileEnabled?.checked),
-            format: refs?.thumbnailMobileFormat?.value === 'jpg' ? 'jpg' : 'png',
-            quality: parseSize(refs?.thumbnailMobileQuality, 82),
-            dimensions: {
-                bg: [
-                    parseSize(refs?.thumbnailMobileBgWidth, 240),
-                    parseSize(refs?.thumbnailMobileBgHeight, 135),
-                ],
-                avatar: [
-                    parseSize(refs?.thumbnailMobileAvatarWidth, 320),
-                    parseSize(refs?.thumbnailMobileAvatarHeight, 480),
-                ],
-                persona: [
-                    parseSize(refs?.thumbnailMobilePersonaWidth, 320),
-                    parseSize(refs?.thumbnailMobilePersonaHeight, 480),
-                ],
-            },
-        },
-    };
-}
-
-function setThumbnailInputValues({ settings = {}, mobileSettings = {} } = {}, refs = getServerAdminRefs()) {
-    if (!refs) {
-        return;
-    }
-
-    refs.thumbnailEnabled.checked = Boolean(settings.enabled);
-    refs.thumbnailFormat.value = settings.format === 'jpg' ? 'jpg' : 'png';
-    refs.thumbnailQuality.value = String(settings.quality ?? 100);
-    refs.thumbnailBgWidth.value = String(settings.dimensions?.bg?.[0] ?? 240);
-    refs.thumbnailBgHeight.value = String(settings.dimensions?.bg?.[1] ?? 135);
-    refs.thumbnailAvatarWidth.value = String(settings.dimensions?.avatar?.[0] ?? 864);
-    refs.thumbnailAvatarHeight.value = String(settings.dimensions?.avatar?.[1] ?? 1280);
-    refs.thumbnailPersonaWidth.value = String(settings.dimensions?.persona?.[0] ?? 864);
-    refs.thumbnailPersonaHeight.value = String(settings.dimensions?.persona?.[1] ?? 1280);
-
-    refs.thumbnailMobileEnabled.checked = Boolean(mobileSettings.enabled);
-    refs.thumbnailMobileFormat.value = mobileSettings.format === 'jpg' ? 'jpg' : 'png';
-    refs.thumbnailMobileQuality.value = String(mobileSettings.quality ?? 82);
-    refs.thumbnailMobileBgWidth.value = String(mobileSettings.dimensions?.bg?.[0] ?? 240);
-    refs.thumbnailMobileBgHeight.value = String(mobileSettings.dimensions?.bg?.[1] ?? 135);
-    refs.thumbnailMobileAvatarWidth.value = String(mobileSettings.dimensions?.avatar?.[0] ?? 320);
-    refs.thumbnailMobileAvatarHeight.value = String(mobileSettings.dimensions?.avatar?.[1] ?? 480);
-    refs.thumbnailMobilePersonaWidth.value = String(mobileSettings.dimensions?.persona?.[0] ?? 320);
-    refs.thumbnailMobilePersonaHeight.value = String(mobileSettings.dimensions?.persona?.[1] ?? 480);
-}
-
-function setThumbnailInputsDisabled(disabled, refs = getServerAdminRefs()) {
-    const controls = [
-        refs?.thumbnailEnabled,
-        refs?.thumbnailFormat,
-        refs?.thumbnailQuality,
-        refs?.thumbnailBgWidth,
-        refs?.thumbnailBgHeight,
-        refs?.thumbnailAvatarWidth,
-        refs?.thumbnailAvatarHeight,
-        refs?.thumbnailPersonaWidth,
-        refs?.thumbnailPersonaHeight,
-        refs?.thumbnailUseRecommendedButton,
-        refs?.thumbnailUseRecommendedMobileButton,
-        refs?.thumbnailSaveButton,
-        refs?.thumbnailSaveClearButton,
-        refs?.thumbnailClearButton,
-        refs?.thumbnailMobileEnabled,
-        refs?.thumbnailMobileFormat,
-        refs?.thumbnailMobileQuality,
-        refs?.thumbnailMobileBgWidth,
-        refs?.thumbnailMobileBgHeight,
-        refs?.thumbnailMobileAvatarWidth,
-        refs?.thumbnailMobileAvatarHeight,
-        refs?.thumbnailMobilePersonaWidth,
-        refs?.thumbnailMobilePersonaHeight,
-    ];
-
-    for (const control of controls) {
-        if (control instanceof HTMLElement) {
-            control.disabled = disabled;
-        }
-    }
-}
-
-function appendServerAdminStat(target, label, value) {
-    if (!(target instanceof HTMLElement)) {
-        return;
-    }
-
-    const item = createElement('div', { className: 'sb-server-stat' });
-    const title = createElement('small', { className: 'sb-server-stat-label', text: label });
-    const content = createElement('strong', { className: 'sb-server-stat-value', text: value || '—' });
-    item.append(title, content);
-    target.appendChild(item);
-}
-
-function updateServerConfigDirtyState() {
-    const state = getServerAdminState();
-    const refs = getServerAdminRefs();
-
-    if (!refs?.configEditor || !refs.configState) {
-        return false;
-    }
-
-    const isDirty = refs.configEditor.value !== state.originalConfig;
-    refs.configState.textContent = isDirty ? 'Unsaved changes' : 'Saved';
-    refs.configState.dataset.state = isDirty ? 'dirty' : 'saved';
-    return isDirty;
-}
-
-function updateServerAdminInteractivity() {
-    const state = getServerAdminState();
-    const refs = getServerAdminRefs();
-
-    if (!refs) {
-        return;
-    }
-
-    const locked = state.busy || state.restarting;
-    const thumbnailLocked = locked || !state.thumbnailSettingsLoaded;
-    const canUpdate = refs.updateButton?.dataset.sbCanUpdate === 'true';
-    const hasConfigContent = Boolean(refs.configEditor?.value.trim());
-
-    setButtonDisabled(refs.refreshButton, locked);
-    setButtonDisabled(refs.reloadConfigButton, locked);
-    setButtonDisabled(refs.updateButton, locked || !canUpdate);
-    setButtonDisabled(refs.restartButton, locked);
-    setButtonDisabled(refs.saveConfigButton, locked || !hasConfigContent);
-    setButtonDisabled(refs.saveConfigRestartButton, locked || !hasConfigContent);
-    setThumbnailInputsDisabled(thumbnailLocked);
-
-    if (refs.configEditor instanceof HTMLTextAreaElement) {
-        refs.configEditor.disabled = locked;
-    }
-}
-
-function renderServerAdminStatus(data) {
-    const state = getServerAdminState();
-    const refs = getServerAdminRefs();
-
-    if (!refs) {
-        return;
-    }
-
-    const repository = data?.repository ?? {};
-    const release = data?.release ?? null;
-    const version = data?.version ?? {};
-    const isGitInstall = Boolean(repository?.supported && repository?.isRepo);
-    const statusGrid = refs.statusGrid;
-    statusGrid.replaceChildren();
-
-    appendServerAdminStat(statusGrid, 'Runtime', data?.runtime || 'Unknown');
-    appendServerAdminStat(statusGrid, 'Version', version?.pkgVersion ? `v${version.pkgVersion}` : 'Unknown');
-
-    // Branch selector instead of static text
-    const branchContainer = createElement('div', { className: 'sb-server-stat' });
-    const branchLabel = createElement('div', { className: 'sb-server-stat-label' });
-    branchLabel.textContent = isGitInstall ? 'Branch' : 'Install';
-    const branchValue = createElement('div', { className: 'sb-server-stat-value' });
-    const branchSelect = createElement('select', {
-        id: 'sb-branch-select',
-        className: 'text_pole',
-        attrs: { style: 'width: 100%; max-width: 200px;' },
-    });
-    branchSelect.disabled = !isGitInstall;
-    const currentBranch = isGitInstall ? (repository?.displayBranch || repository?.branch || version?.gitBranch || '') : 'Release ZIP';
-    const currentOptionAttributes = { value: currentBranch, selected: 'selected' };
-    if (!currentBranch || !isGitInstall) {
-        currentOptionAttributes.disabled = 'disabled';
-    }
-    const currentOption = createElement('option', { attrs: currentOptionAttributes });
-    currentOption.textContent = currentBranch || 'Unknown';
-    branchSelect.appendChild(currentOption);
-    branchValue.appendChild(branchSelect);
-    branchContainer.append(branchLabel, branchValue);
-    statusGrid.appendChild(branchContainer);
-
-    // Load available branches
-    if (isGitInstall) {
-        loadServerAdminBranches(branchSelect, currentBranch);
-    }
-
-    appendServerAdminStat(statusGrid, 'Commit', repository?.currentCommit || version?.gitRevision || 'Unknown');
-    appendServerAdminStat(statusGrid, 'Tracking', repository?.trackingBranch || 'Not set');
-    appendServerAdminStat(statusGrid, 'Ahead', String(repository?.ahead ?? 0));
-    appendServerAdminStat(statusGrid, 'Behind', String(repository?.behind ?? 0));
-    if (release) {
-        appendServerAdminStat(statusGrid, 'Latest ZIP', release?.latestVersion ? `v${release.latestVersion}` : 'Unknown');
-    }
-    appendServerAdminStat(statusGrid, 'Config', data?.configPath || 'Unknown');
-
-    state.lastStatusData = {
-        runtime: data?.runtime || '',
-        configPath: data?.configPath || '',
-        version,
-        repository,
-        release,
-    };
-
-    let pillLabel = 'Unavailable';
-    let pillTone = 'neutral';
-
-    if (isGitInstall) {
-        if (repository?.hasLocalChanges && !repository?.autoStash) {
-            pillLabel = 'Update Blocked';
-            pillTone = 'danger';
-        } else if (repository?.hasLocalChanges && repository?.autoStash) {
-            pillLabel = (repository?.behind ?? 0) > 0 ? 'Update Ready (Auto-stash)' : 'Auto-stash Enabled';
-            pillTone = 'warn';
-        } else if ((repository?.behind ?? 0) > 0) {
-            pillLabel = 'Update Ready';
-            pillTone = 'warn';
-        } else if ((repository?.ahead ?? 0) > 0) {
-            pillLabel = 'Patched Local';
-            pillTone = 'neutral';
-        } else {
-            pillLabel = 'Up To Date';
-            pillTone = 'good';
-        }
-    } else if (release?.canUpdate) {
-        pillLabel = release?.latestVersion ? `Update Available (v${release.latestVersion})` : 'Update Available';
-        pillTone = 'warn';
-    } else if (release?.checked && release?.assetAvailable && release?.latestVersion === release?.currentVersion) {
-        pillLabel = 'Up To Date';
-        pillTone = 'good';
-    } else if (release?.checked && release?.assetAvailable) {
-        pillLabel = 'ZIP Install';
-        pillTone = 'neutral';
-    } else if (release?.checked && !release?.assetAvailable) {
-        pillLabel = 'ZIP Unavailable';
-        pillTone = 'warn';
-    } else if (release?.supported && !release?.checked) {
-        pillLabel = 'Check Failed';
-        pillTone = 'warn';
-    }
-
-    setServerAdminPill(refs.statusPill, pillLabel, pillTone);
-    const updateMode = repository?.canUpdate ? 'git' : release?.canUpdate ? 'zip' : '';
-    refs.updateButton.dataset.sbCanUpdate = String(Boolean(updateMode));
-    refs.updateButton.dataset.sbUpdateMode = updateMode;
-
-    const noteParts = [String((isGitInstall ? repository?.message : release?.message || repository?.message) ?? '').trim()].filter(Boolean);
-
-    if ((repository?.changedFilesCount ?? 0) > 0) {
-        const changedPreview = Array.isArray(repository?.changedFiles)
-            ? repository.changedFiles.map(file => file?.path).filter(Boolean).join(', ')
-            : '';
-        noteParts.push(`Changed files: ${repository.changedFilesCount}${changedPreview ? ` (${changedPreview})` : ''}`);
-    }
-
-    setServerAdminMessage(refs.statusNote, noteParts.join('\n'), pillTone);
-
-    if (refs.autoStashCheckbox) {
-        refs.autoStashCheckbox.checked = Boolean(repository?.autoStash);
-        refs.autoStashCheckbox.disabled = !isGitInstall;
-    }
-    updateServerAdminInteractivity();
-}
-
-function renderServerAdminConfig(data, { overwrite = true } = {}) {
-    const state = getServerAdminState();
-    const refs = getServerAdminRefs();
-
-    if (!refs) {
-        return;
-    }
-
-    refs.configPath.textContent = data?.path || 'config.yaml';
-    state.configLoaded = true;
-
-    if (overwrite && refs.configEditor instanceof HTMLTextAreaElement) {
-        refs.configEditor.value = String(data?.content ?? '');
-        state.originalConfig = refs.configEditor.value;
-        state.lastModifiedMs = Number(data?.lastModifiedMs ?? 0) || 0;
-        updateServerConfigDirtyState();
-    }
-}
-
-function renderServerThumbnailSettings(data) {
-    const state = getServerAdminState();
-    const refs = getServerAdminRefs();
-
-    if (!refs) {
-        return;
-    }
-
-    setThumbnailInputValues({ settings: data?.settings ?? {}, mobileSettings: data?.mobileSettings ?? {} });
-    state.thumbnailLastModifiedMs = Number(data?.lastModifiedMs ?? 0) || state.thumbnailLastModifiedMs;
-    state.thumbnailRecommended = data?.recommended ?? state.thumbnailRecommended;
-    state.thumbnailRecommendedMobile = data?.recommendedMobile ?? state.thumbnailRecommendedMobile;
-    state.thumbnailSettingsLoaded = true;
-    setServerAdminMessage(refs.thumbnailNote, 'Thumbnail settings loaded. Saving applies to new thumbnails immediately.', 'neutral');
-}
-
-async function waitForServerReturn(expectedRevision = '', { clearCacheBeforeReload = false, expectedVersion = '', previousServerBootId = '' } = {}) {
-    let sawOffline = false;
-
-    async function reloadAfterOptionalCacheClear() {
-        if (clearCacheBeforeReload && typeof window.SillyBunnyClearFrontendCache === 'function') {
-            await window.SillyBunnyClearFrontendCache({ skipConfirmation: true, saveBeforeClear: false });
-        }
-        location.reload();
-    }
-    const timeoutAt = Date.now() + 180000;
-
-    while (Date.now() < timeoutAt) {
-        try {
-            const response = await fetch('/version', { cache: 'no-store' });
-
-            if (!response.ok) {
-                throw new Error('Server is not ready yet.');
-            }
-
-            const version = await response.json().catch(() => ({}));
-            if (hasServerReturnedAfterRestart(version, { expectedRevision, expectedVersion, previousServerBootId, sawOffline })) {
-                await reloadAfterOptionalCacheClear();
-                return true;
-            }
-        } catch {
-            sawOffline = true;
-        }
-
-        await wait(1500);
-    }
-
-    return false;
-}
-
-async function refreshServerAdminPanel({ includeConfig = false, forceConfig = false } = {}) {
-    const state = getServerAdminState();
-    const refs = getServerAdminRefs();
-    const shouldLoadConfig = includeConfig || forceConfig || !state.configLoaded;
-    const shouldLoadThumbnails = forceConfig || !state.thumbnailSettingsLoaded;
-
-    if (!refs || state.busy || state.restarting) {
-        return;
-    }
-
-    state.busy = true;
-    updateServerAdminInteractivity();
-    setServerAdminMessage(refs.statusNote, 'Loading server status…');
-    if (shouldLoadConfig) {
-        refs.configState.textContent = state.configLoaded ? 'Refreshing…' : 'Loading…';
-        refs.configState.dataset.state = 'loading';
-    }
-
-    const statusPromise = requestServerAdmin('/api/server-admin/status');
-    const configPromise = shouldLoadConfig ? requestServerAdmin('/api/server-admin/config/get') : null;
-    const thumbnailPromise = shouldLoadThumbnails
-        ? requestServerAdmin('/api/server-admin/config/thumbnail-settings/get')
-        : null;
-
-    if (configPromise) {
-        try {
-            const configData = await configPromise;
-            const configIsDirty = refs.configEditor.value !== state.originalConfig;
-
-            if (forceConfig || !configIsDirty) {
-                renderServerAdminConfig(configData, { overwrite: true });
-            } else {
-                renderServerAdminConfig(configData, { overwrite: false });
-                state.lastModifiedMs = Number(configData?.lastModifiedMs ?? 0) || state.lastModifiedMs;
-                refs.configPath.textContent = configData?.path || refs.configPath.textContent;
-                setServerAdminMessage(refs.configNote, 'The file was refreshed on disk, but your unsaved draft was kept locally.', 'warn');
-            }
-        } catch (error) {
-            state.configLoaded = false;
-            const tone = error?.status === 403 ? 'warn' : 'danger';
-            refs.configState.textContent = error?.status === 403 ? 'Admin Only' : 'Unavailable';
-            refs.configState.dataset.state = tone;
-            setServerAdminMessage(refs.configNote, error.message || 'Failed to load config.yaml.', tone);
-            if (error?.status !== 403) {
-                console.error('Failed to load config.yaml.', error);
-            }
-        }
-    }
-
-    if (thumbnailPromise) {
-        try {
-            renderServerThumbnailSettings(await thumbnailPromise);
-        } catch (error) {
-            state.thumbnailSettingsLoaded = false;
-            const tone = error?.status === 403 ? 'warn' : 'danger';
-            setServerAdminMessage(refs.thumbnailNote, error.message || 'Failed to load thumbnail settings.', tone);
-            if (error?.status !== 403) {
-                console.error('Failed to load thumbnail settings.', error);
-            }
-        }
-    }
-
-    try {
-        const statusData = await statusPromise;
-        renderServerAdminStatus(statusData);
-    } catch (error) {
-        const tone = error?.status === 403 ? 'warn' : 'danger';
-        if (error?.status !== 403) {
-            console.error('Failed to refresh server admin panel.', error);
-        }
-        getServerAdminRefs()?.statusGrid.replaceChildren();
-        setServerAdminPill(getServerAdminRefs()?.statusPill, error?.status === 403 ? 'Admin Only' : 'Unavailable', tone);
-        setServerAdminMessage(getServerAdminRefs()?.statusNote, error.message || 'Failed to load server tools.', tone);
-    } finally {
-        state.busy = false;
-        updateServerAdminInteractivity();
-    }
-}
-
-async function handleServerAdminReloadConfig() {
-    const refs = getServerAdminRefs();
-
-    if (!refs) {
-        return;
-    }
-
-    if (updateServerConfigDirtyState() && !window.confirm('Discard your unsaved config edits and reload config.yaml from disk?')) {
-        return;
-    }
-
-    await refreshServerAdminPanel({ includeConfig: true, forceConfig: true });
-}
-
-async function handleServerAdminSaveConfig({ restart = false } = {}) {
-    const state = getServerAdminState();
-    const refs = getServerAdminRefs();
-
-    if (!refs || state.busy || state.restarting) {
-        return;
-    }
-
-    state.busy = true;
-    updateServerAdminInteractivity();
-    setServerAdminMessage(refs.configNote, restart ? 'Saving config and preparing restart…' : 'Saving config…');
-
-    try {
-        const normalizedContent = refs.configEditor.value.endsWith('\n')
-            ? refs.configEditor.value
-            : `${refs.configEditor.value}\n`;
-        const result = await requestServerAdmin('/api/server-admin/config/save', {
-            content: normalizedContent,
-            expectedLastModifiedMs: state.lastModifiedMs,
-            restart,
-        });
-
-        refs.configEditor.value = normalizedContent;
-        state.originalConfig = normalizedContent;
-        state.lastModifiedMs = Number(result?.lastModifiedMs ?? 0) || state.lastModifiedMs;
-        updateServerConfigDirtyState();
-        setServerAdminMessage(refs.configNote, result?.message || 'Config saved.', restart ? 'warn' : 'good');
-        toastr.success(result?.message || 'Config saved.', 'Server config');
-
-        if (restart) {
-            state.busy = false;
-            state.restarting = true;
-            updateServerAdminInteractivity();
-            const restarted = await waitForServerReturn();
-
-            if (!restarted) {
-                state.restarting = false;
-                setServerAdminMessage(refs.configNote, 'Restart is taking longer than expected. Refresh the page once the server is back.', 'warn');
-                toastr.warning('Restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
-            }
-        }
-    } catch (error) {
-        console.error('Failed to save config.yaml.', error);
-        setServerAdminMessage(refs.configNote, error.message || 'Failed to save config.yaml.', 'danger');
-        toastr.error(error.message || 'Failed to save config.yaml.', 'Server config');
-    } finally {
-        if (!state.restarting) {
-            state.busy = false;
-            updateServerAdminInteractivity();
-        }
-    }
-}
-
-async function handleServerThumbnailSave({ clearCache = false } = {}) {
-    const state = getServerAdminState();
-    const refs = getServerAdminRefs();
-
-    if (!refs || state.busy || state.restarting) {
-        return;
-    }
-
-    if (updateServerConfigDirtyState()) {
-        setServerAdminMessage(refs.thumbnailNote, 'Save or reload the config.yaml editor before changing thumbnail settings.', 'warn');
-        toastr.warning('Save or reload the config.yaml editor before changing thumbnail settings.', 'Thumbnails');
-        return;
-    }
-
-    state.busy = true;
-    updateServerAdminInteractivity();
-    setServerAdminMessage(refs.thumbnailNote, clearCache ? 'Saving settings and clearing thumbnail cache…' : 'Saving thumbnail settings…');
-
-    try {
-        const { settings, mobileSettings } = getThumbnailSettingsFromRefs(refs);
-        const result = await requestServerAdmin('/api/server-admin/config/thumbnail-settings/save', {
-            settings,
-            mobileSettings,
-            expectedLastModifiedMs: state.thumbnailLastModifiedMs || state.lastModifiedMs,
-            clearCache,
-        });
-
-        renderServerThumbnailSettings(result);
-        state.lastModifiedMs = Number(result?.lastModifiedMs ?? 0) || state.lastModifiedMs;
-        setServerAdminMessage(refs.thumbnailNote, result?.message || 'Thumbnail settings saved.', 'good');
-        toastr.success(result?.message || 'Thumbnail settings saved.', 'Thumbnails');
-        renderServerAdminConfig(await requestServerAdmin('/api/server-admin/config/get'), { overwrite: true });
-    } catch (error) {
-        console.error('Failed to save thumbnail settings.', error);
-        setServerAdminMessage(refs.thumbnailNote, error.message || 'Failed to save thumbnail settings.', 'danger');
-        toastr.error(error.message || 'Failed to save thumbnail settings.', 'Thumbnails');
-    } finally {
-        state.busy = false;
-        updateServerAdminInteractivity();
-    }
-}
-
-async function handleServerThumbnailClearCache() {
-    const state = getServerAdminState();
-    const refs = getServerAdminRefs();
-
-    if (!refs || state.busy || state.restarting) {
-        return;
-    }
-
-    if (!window.confirm('Clear cached thumbnails for this user? They will be rebuilt as images are loaded.')) {
-        return;
-    }
-
-    state.busy = true;
-    updateServerAdminInteractivity();
-    setServerAdminMessage(refs.thumbnailNote, 'Clearing thumbnail cache…');
-
-    try {
-        const result = await requestServerAdmin('/api/server-admin/thumbnails/clear-cache');
-        setServerAdminMessage(refs.thumbnailNote, result?.message || 'Thumbnail cache cleared.', 'good');
-        toastr.success(result?.message || 'Thumbnail cache cleared.', 'Thumbnails');
-    } catch (error) {
-        console.error('Failed to clear thumbnail cache.', error);
-        setServerAdminMessage(refs.thumbnailNote, error.message || 'Failed to clear thumbnail cache.', 'danger');
-        toastr.error(error.message || 'Failed to clear thumbnail cache.', 'Thumbnails');
-    } finally {
-        state.busy = false;
-        updateServerAdminInteractivity();
-    }
-}
-
-function handleUseRecommendedThumbnailSettings() {
-    const state = getServerAdminState();
-    const refs = getServerAdminRefs();
-    const recommended = state.thumbnailRecommended ?? {
-        enabled: true,
-        format: 'png',
-        quality: 100,
-        dimensions: {
-            bg: [240, 135],
-            avatar: [864, 1280],
-            persona: [864, 1280],
-        },
-    };
-
-    setThumbnailInputValues({ settings: recommended, mobileSettings: getThumbnailSettingsFromRefs(refs).mobileSettings }, refs);
-    setServerAdminMessage(refs.thumbnailNote, 'Recommended desktop thumbnail settings are staged. Save them when ready.', 'warn');
-}
-
-function handleUseRecommendedMobileThumbnailSettings() {
-    const state = getServerAdminState();
-    const refs = getServerAdminRefs();
-    const recommendedMobile = state.thumbnailRecommendedMobile ?? {
-        enabled: true,
-        format: 'jpg',
-        quality: 82,
-        dimensions: {
-            bg: [240, 135],
-            avatar: [320, 480],
-            persona: [320, 480],
-        },
-    };
-
-    setThumbnailInputValues({ settings: getThumbnailSettingsFromRefs(refs).settings, mobileSettings: recommendedMobile }, refs);
-    setServerAdminMessage(refs.thumbnailNote, 'Recommended mobile thumbnail settings are staged. Save them when ready.', 'warn');
-}
-
-function createThumbnailSizeRow(label, key) {
-    const row = createElement('div', { className: 'sb-thumbnail-size-row' });
-    const rowLabel = createElement('span', { className: 'sb-thumbnail-size-label', text: label });
-    const widthInput = createElement('input', {
-        className: 'text_pole sb-thumbnail-number',
-        attrs: {
-            type: 'number',
-            inputmode: 'numeric',
-            min: '1',
-            max: '4096',
-            step: '1',
-            'aria-label': `${label} thumbnail width`,
-        },
-    });
-    const separator = createElement('span', { className: 'sb-thumbnail-size-separator', text: 'x' });
-    const heightInput = createElement('input', {
-        className: 'text_pole sb-thumbnail-number',
-        attrs: {
-            type: 'number',
-            inputmode: 'numeric',
-            min: '1',
-            max: '4096',
-            step: '1',
-            'aria-label': `${label} thumbnail height`,
-        },
-    });
-
-    row.dataset.thumbnailSize = key;
-    row.append(rowLabel, widthInput, separator, heightInput);
-    return { row, widthInput, heightInput };
-}
-
-async function handleServerAdminRestart() {
-    const state = getServerAdminState();
-    const refs = getServerAdminRefs();
-
-    if (!refs || state.busy || state.restarting) {
-        return;
-    }
-
-    state.busy = true;
-    updateServerAdminInteractivity();
-    setServerAdminMessage(refs.updateNote, 'Restarting SillyBunny…');
-
-    try {
-        const result = await requestServerAdmin('/api/server-admin/restart');
-        state.busy = false;
-        state.restarting = true;
-        updateServerAdminInteractivity();
-        setServerAdminMessage(refs.updateNote, result?.message || 'Restarting SillyBunny…', 'warn');
-        toastr.info(result?.message || 'Restarting SillyBunny…', 'Server');
-
-        const restarted = await waitForServerReturn('', { previousServerBootId: result?.serverBootId });
-        if (!restarted) {
-            state.restarting = false;
-            setServerAdminMessage(refs.updateNote, 'Restart is taking longer than expected. Refresh the page once the server is back.', 'warn');
-            toastr.warning('Restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
-        }
-    } catch (error) {
-        console.error('Failed to restart SillyBunny.', error);
-        state.busy = false;
-        updateServerAdminInteractivity();
-        setServerAdminMessage(refs.updateNote, error.message || 'Failed to restart SillyBunny.', 'danger');
-        toastr.error(error.message || 'Failed to restart SillyBunny.', 'Server');
-    }
-}
-
-async function handleServerAdminUpdate() {
-    const state = getServerAdminState();
-    const refs = getServerAdminRefs();
-
-    if (!refs || state.busy || state.restarting) {
-        return;
-    }
-
-    if (refs.updateButton?.dataset.sbUpdateMode === 'zip') {
-        await handleServerAdminZipUpdate();
-        return;
-    }
-
-    state.busy = true;
-    updateServerAdminInteractivity();
-    setServerAdminButtonLabel(refs.updateButton, true, 'Updating…');
-    setServerAdminMessage(refs.updateNote, 'Checking Git status and applying the latest update…');
-    refs.updateOutput.hidden = true;
-    refs.updateOutput.textContent = '';
-
-    try {
-        const result = await requestServerAdmin('/api/server-admin/update');
-        const nextStatus = {
-            ...(state.lastStatusData ?? {}),
-            configPath: refs.configPath?.textContent || state.lastStatusData?.configPath || '',
-            version: result?.version ?? state.lastStatusData?.version ?? {},
-            repository: result?.repository ?? state.lastStatusData?.repository ?? {},
-        };
-
-        if (!result?.updated) {
-            renderServerAdminStatus(nextStatus);
-            const stashMessage = describeAutoStashState(result);
-            setServerAdminMessage(refs.updateNote, [result?.message || 'Already up to date.', stashMessage].filter(Boolean).join('\n'), stashMessage ? 'warn' : 'good');
-            if (stashMessage) {
-                toastr.info(stashMessage, 'Auto-stash');
-            }
-            toastr.success(result?.message || 'Already up to date.', 'Server update');
-            return;
-        }
-
-        renderServerAdminStatus(nextStatus);
-
-        const stashMessage = describeAutoStashState(result);
-        if (result?.stashPopWarning) {
-            toastr.warning(stashMessage, 'Auto-stash warning', { timeOut: 10000 });
-        } else if (stashMessage) {
-            toastr.info(stashMessage, 'Auto-stash');
-        }
-
-        if (result?.install?.stdout || result?.install?.stderr) {
-            refs.updateOutput.hidden = false;
-            refs.updateOutput.textContent = [result.install.command, result.install.stdout, result.install.stderr]
-                .filter(Boolean)
-                .join('\n\n');
-        }
-
-        state.busy = false;
-        state.restarting = true;
-        updateServerAdminInteractivity();
-        setServerAdminMessage(refs.updateNote, result?.message || 'Update applied. Restarting SillyBunny…', 'warn');
-        toastr.info(result?.message || 'Update applied. Restarting SillyBunny…', 'Server update');
-
-        const expectedRevision = String(result?.version?.gitRevision ?? result?.repository?.currentCommit ?? '').trim();
-        const autoClearCacheEnabled = Boolean(document.getElementById('auto_clear_cache_on_update')?.checked);
-        const restarted = await waitForServerReturn(expectedRevision, { clearCacheBeforeReload: autoClearCacheEnabled });
-
-        if (!restarted) {
-            state.restarting = false;
-            setServerAdminMessage(refs.updateNote, 'Update completed, but restart is taking longer than expected. Refresh manually once the server is back.', 'warn');
-            toastr.warning('Update finished, but restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
-        }
-    } catch (error) {
-        console.error('Failed to update SillyBunny.', error);
-        state.busy = false;
-        const stashMessage = describeAutoStashState(error?.data);
-        if (stashMessage) {
-            toastr.warning(stashMessage, 'Auto-stash warning', { timeOut: 10000 });
-        }
-        setServerAdminMessage(refs.updateNote, [error.message || 'Failed to update SillyBunny.', stashMessage].filter(Boolean).join('\n'), 'danger');
-        toastr.error(error.message || 'Failed to update SillyBunny.', 'Server update');
-    } finally {
-        setServerAdminButtonLabel(refs.updateButton, false, 'Updating…');
-
-        if (!state.restarting) {
-            state.busy = false;
-            updateServerAdminInteractivity();
-        }
-    }
-}
-
-async function handleServerAdminZipUpdate() {
-    const state = getServerAdminState();
-    const refs = getServerAdminRefs();
-
-    if (!refs || state.busy || state.restarting) {
-        return;
-    }
-
-    state.busy = true;
-    updateServerAdminInteractivity();
-    setServerAdminButtonLabel(refs.updateButton, true, 'Updating…');
-    setServerAdminMessage(refs.updateNote, 'Downloading the latest GitHub release ZIP and preparing a safe restart…');
-    refs.updateOutput.hidden = true;
-    refs.updateOutput.textContent = '';
-
-    try {
-        const result = await requestServerAdmin('/api/server-admin/zip-update');
-        const nextStatus = {
-            ...(state.lastStatusData ?? {}),
-            configPath: refs.configPath?.textContent || state.lastStatusData?.configPath || '',
-            version: result?.version ?? state.lastStatusData?.version ?? {},
-            repository: result?.repository ?? state.lastStatusData?.repository ?? {},
-            release: result?.release ?? state.lastStatusData?.release ?? null,
-        };
-
-        if (!result?.updated) {
-            renderServerAdminStatus(nextStatus);
-            setServerAdminMessage(refs.updateNote, result?.message || 'Already up to date.', 'good');
-            toastr.success(result?.message || 'Already up to date.', 'Server update');
-            return;
-        }
-
-        renderServerAdminStatus(nextStatus);
-        state.busy = false;
-        state.restarting = true;
-        updateServerAdminInteractivity();
-        setServerAdminMessage(refs.updateNote, result?.message || 'ZIP update downloaded. Restarting SillyBunny…', 'warn');
-        toastr.info(result?.message || 'ZIP update downloaded. Restarting SillyBunny…', 'Server update');
-
-        const expectedVersion = String(result?.release?.latestVersion ?? '').trim();
-        const autoClearCacheEnabled = Boolean(document.getElementById('auto_clear_cache_on_update')?.checked);
-        const restarted = await waitForServerReturn('', { clearCacheBeforeReload: autoClearCacheEnabled, expectedVersion });
-
-        if (!restarted) {
-            state.restarting = false;
-            setServerAdminMessage(refs.updateNote, 'ZIP update started, but restart is taking longer than expected. Refresh manually once the server is back.', 'warn');
-            toastr.warning('ZIP update started, but restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
-        }
-    } catch (error) {
-        console.error('Failed to update SillyBunny from release ZIP.', error);
-        state.busy = false;
-        setServerAdminMessage(refs.updateNote, error.message || 'Failed to update SillyBunny from release ZIP.', 'danger');
-        toastr.error(error.message || 'Failed to update SillyBunny from release ZIP.', 'Server update');
-    } finally {
-        setServerAdminButtonLabel(refs.updateButton, false, 'Updating…');
-
-        if (!state.restarting) {
-            state.busy = false;
-            updateServerAdminInteractivity();
-        }
-    }
-}
-
-async function loadServerAdminBranches(selectElement, currentBranch) {
-    try {
-        const result = await requestServerAdmin('/api/server-admin/branches');
-        const branches = result?.branches || [];
-
-        selectElement.replaceChildren();
-
-        for (const branch of branches) {
-            const option = createElement('option', { attrs: { value: branch } });
-            option.textContent = branch;
-            if (branch === currentBranch) {
-                option.selected = true;
-            }
-            selectElement.appendChild(option);
-        }
-
-        // Add change handler
-        selectElement.addEventListener('change', () => handleServerAdminBranchSwitch(selectElement));
-    } catch (error) {
-        console.error('Failed to load branches.', error);
-        // Keep the current branch option if loading fails
-    }
-}
-
-async function handleServerAdminBranchSwitch(selectElement) {
-    const state = getServerAdminState();
-    const refs = getServerAdminRefs();
-
-    if (!refs || state.busy || state.restarting) {
-        return;
-    }
-
-    const targetBranch = selectElement.value;
-    const currentBranch = state.lastStatusData?.repository?.displayBranch || state.lastStatusData?.repository?.branch || '';
-
-    if (targetBranch === currentBranch) {
-        return;
-    }
-
-    // Show confirmation dialog
-    const hasLocalChanges = state.lastStatusData?.repository?.hasLocalChanges || false;
-    const changedFiles = state.lastStatusData?.repository?.changedFiles || [];
-    const changedFilesText = changedFiles.length > 0
-        ? `\n\nChanged files: ${changedFiles.map(f => f.path).join(', ')}`
-        : '';
-
-    const confirmMessage = hasLocalChanges
-        ? `You have local changes.${changedFilesText}\n\nDo you want to auto-stash your changes and switch to "${targetBranch}"?\n\nThe server will restart after switching.`
-        : `Switch to branch "${targetBranch}"?\n\nThe server will restart after switching.`;
-
-    const confirmed = confirm(confirmMessage);
-
-    if (!confirmed) {
-        // Reset select to current branch
-        selectElement.value = currentBranch;
-        return;
-    }
-
-    state.busy = true;
-    updateServerAdminInteractivity();
-    setServerAdminMessage(refs.updateNote, `Switching to branch "${targetBranch}"…`);
-
-    const abortController = new AbortController();
-    const abortTimeout = setTimeout(() => abortController.abort(), 45000);
-
-    try {
-        const result = await requestServerAdmin('/api/server-admin/switch-branch', {
-            branch: targetBranch,
-            autoStash: hasLocalChanges,
-        }, { signal: abortController.signal });
-
-        clearTimeout(abortTimeout);
-        state.busy = false;
-        state.restarting = true;
-        updateServerAdminInteractivity();
-
-        const message = result?.message || `Switched to branch "${targetBranch}". Restarting…`;
-        setServerAdminMessage(refs.updateNote, message, 'warn');
-        toastr.info(message, 'Branch Switch');
-
-        if (result?.stashed && !result?.stashRestored) {
-            toastr.warning('Your changes were stashed but could not be automatically restored. Use "git stash pop" after restart.', 'Stash Warning', { timeOut: 10000 });
-        }
-
-        const restarted = await waitForServerReturn();
-        if (!restarted) {
-            state.restarting = false;
-            setServerAdminMessage(refs.updateNote, 'Branch switched, but restart is taking longer than expected. Refresh manually once the server is back.', 'warn');
-            toastr.warning('Branch switched, but restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
-        }
-    } catch (error) {
-        clearTimeout(abortTimeout);
-        console.error('Failed to switch branch.', error);
-        state.busy = false;
-        updateServerAdminInteractivity();
-
-        // Reset select to current branch
-        selectElement.value = currentBranch;
-
-        if (error.name === 'AbortError') {
-            const timeoutMessage = 'Branch switch is taking longer than expected. The server may still be working; refresh in a moment to see the result.';
-            setServerAdminMessage(refs.updateNote, timeoutMessage, 'warn');
-            toastr.warning(timeoutMessage, 'Branch Switch', { timeOut: 10000 });
-            return;
-        }
-
-        const errorMessage = error.message || 'Failed to switch branch.';
-        setServerAdminMessage(refs.updateNote, errorMessage, 'danger');
-        toastr.error(errorMessage, 'Branch Switch');
-    }
-}
-
-function buildServerAdminPanel() {
-    const { panel, scroller } = createShellPanel({
-        id: 'server',
-    });
-
-    const column = createElement('div', { className: 'sb-shell-column sb-server-column' });
-    const callout = createElement('div', { className: 'sb-shell-callout' });
-    callout.innerHTML = `
-        <strong>Server Tools</strong>
-        <p>Edit <code>config.yaml</code>, check for Git or release ZIP updates, and restart the app from inside Customize. Git auto-update only runs when the repository can fast-forward cleanly.</p>
-    `;
-
-    const statusCard = createElement('section', { className: 'sb-admin-card sb-server-card' });
-    const statusHeader = createElement('div', { className: 'sb-admin-card-header' });
-    const statusCopy = createElement('div', { className: 'sb-admin-card-copy' });
-    const statusTitle = createElement('strong', { text: 'App Status' });
-    const statusDescription = createElement('p', { text: 'Review the current runtime, branch, commit, and whether this workspace can update safely.' });
-    const statusPill = createElement('span', { className: 'sb-server-pill', text: 'Checking…' });
-    const statusGrid = createElement('div', { className: 'sb-server-grid' });
-    const statusNote = createElement('div', { className: 'sb-server-note' });
-    statusCopy.append(statusTitle, statusDescription);
-    statusHeader.append(statusCopy, statusPill);
-    statusCard.append(statusHeader, statusGrid, statusNote);
-
-    const updateCard = createElement('section', { className: 'sb-admin-card sb-server-card' });
-    const updateHeader = createElement('div', { className: 'sb-admin-card-header' });
-    const updateCopy = createElement('div', { className: 'sb-admin-card-copy' });
-    const updateTitle = createElement('strong', { text: 'Updates & Restart' });
-    const updateDescription = createElement('p', { text: 'Check upstream status, update the app, and relaunch automatically when it is safe to do so.' });
-    const updateActions = createElement('div', { className: 'sb-server-actions' });
-    const refreshButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Check for updates', attrs: { type: 'button' } });
-    const updateButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action menu_button_primary', text: 'Update & Restart', attrs: { type: 'button' } });
-    const restartButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Restart server', attrs: { type: 'button' } });
-    const updateNote = createElement('div', { className: 'sb-server-note', text: 'Git fast-forward updates and release ZIP updates restart automatically after preparation finishes.' });
-    const autoStashLabel = createElement('label', { className: 'checkbox_label' });
-    const autoStashCheckbox = createElement('input', { attrs: { type: 'checkbox', id: 'auto_stash_before_pull' } });
-    const autoStashText = createElement('small', { text: 'Auto-stash local changes before pulling' });
-    autoStashLabel.append(autoStashCheckbox, autoStashText);
-    const updateOutput = createElement('pre', { className: 'sb-server-output' });
-    updateOutput.hidden = true;
-    updateCopy.append(updateTitle, updateDescription);
-    updateActions.append(refreshButton, updateButton, restartButton);
-    updateHeader.append(updateCopy);
-    updateCard.append(updateHeader, updateActions, autoStashLabel, updateNote, updateOutput);
-
-    const thumbnailCard = createElement('section', { className: 'sb-admin-card sb-server-card sb-thumbnail-card' });
-    const thumbnailHeader = createElement('div', { className: 'sb-admin-card-header' });
-    const thumbnailCopy = createElement('div', { className: 'sb-admin-card-copy' });
-    const thumbnailTitle = createElement('strong', { text: 'Thumbnail Quality' });
-    const thumbnailDescription = createElement('p', { text: 'Set thumbnail format, quality, and generated sizes without hand-editing config.yaml.' });
-    thumbnailCopy.append(thumbnailTitle, thumbnailDescription);
-    thumbnailHeader.append(thumbnailCopy);
-
-    const thumbnailControls = createElement('div', { className: 'sb-thumbnail-controls' });
-    const thumbnailEnabledLabel = createElement('label', { className: 'checkbox_label sb-thumbnail-enabled' });
-    const thumbnailEnabled = createElement('input', { attrs: { type: 'checkbox' } });
-    const thumbnailEnabledText = createElement('small', { text: 'Generate thumbnails' });
-    thumbnailEnabledLabel.append(thumbnailEnabled, thumbnailEnabledText);
-
-    const thumbnailFormatGroup = createElement('label', { className: 'sb-thumbnail-field' });
-    const thumbnailFormatText = createElement('span', { text: 'Format' });
-    const thumbnailFormat = createElement('select', { className: 'text_pole' });
-    thumbnailFormat.append(
-        createElement('option', { text: 'JPG', attrs: { value: 'jpg' } }),
-        createElement('option', { text: 'PNG', attrs: { value: 'png' } }),
-    );
-    thumbnailFormatGroup.append(thumbnailFormatText, thumbnailFormat);
-
-    const thumbnailQualityGroup = createElement('label', { className: 'sb-thumbnail-field' });
-    const thumbnailQualityText = createElement('span', { text: 'Quality' });
-    const thumbnailQuality = createElement('input', {
-        className: 'text_pole sb-thumbnail-number',
-        attrs: {
-            type: 'number',
-            inputmode: 'numeric',
-            min: '1',
-            max: '100',
-            step: '1',
-        },
-    });
-    thumbnailQualityGroup.append(thumbnailQualityText, thumbnailQuality);
-    thumbnailControls.append(thumbnailEnabledLabel, thumbnailFormatGroup, thumbnailQualityGroup);
-
-    const thumbnailSizes = createElement('div', { className: 'sb-thumbnail-sizes' });
-    const bgSize = createThumbnailSizeRow('Background', 'bg');
-    const avatarSize = createThumbnailSizeRow('Character', 'avatar');
-    const personaSize = createThumbnailSizeRow('Persona', 'persona');
-    thumbnailSizes.append(bgSize.row, avatarSize.row, personaSize.row);
-
-    const thumbnailActions = createElement('div', { className: 'sb-server-actions' });
-    const thumbnailUseRecommendedButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Use desktop recommended', attrs: { type: 'button' } });
-    const thumbnailUseRecommendedMobileButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Use mobile recommended', attrs: { type: 'button' } });
-    const thumbnailSaveButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Save thumbnails', attrs: { type: 'button' } });
-    const thumbnailSaveClearButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action menu_button_primary', text: 'Save & Clear Cache', attrs: { type: 'button' } });
-    const thumbnailClearButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Clear cache only', attrs: { type: 'button' } });
-    const thumbnailNote = createElement('div', { className: 'sb-server-note', text: 'Desktop thumbnails default to PNG at full resolution. Enable the mobile preset to serve smaller JPG thumbnails to phone-sized screens.' });
-
-    const thumbnailMobileHeading = createElement('div', { className: 'sb-thumbnail-mobile-heading', text: 'Mobile preset' });
-    const thumbnailMobileControls = createElement('div', { className: 'sb-thumbnail-controls' });
-    const thumbnailMobileEnabledLabel = createElement('label', { className: 'checkbox_label sb-thumbnail-enabled' });
-    const thumbnailMobileEnabled = createElement('input', { attrs: { type: 'checkbox' } });
-    const thumbnailMobileEnabledText = createElement('small', { text: 'Generate mobile thumbnails' });
-    thumbnailMobileEnabledLabel.append(thumbnailMobileEnabled, thumbnailMobileEnabledText);
-
-    const thumbnailMobileFormatGroup = createElement('label', { className: 'sb-thumbnail-field' });
-    const thumbnailMobileFormatText = createElement('span', { text: 'Mobile format' });
-    const thumbnailMobileFormat = createElement('select', { className: 'text_pole' });
-    thumbnailMobileFormat.append(
-        createElement('option', { text: 'JPG', attrs: { value: 'jpg' } }),
-        createElement('option', { text: 'PNG', attrs: { value: 'png' } }),
-    );
-    thumbnailMobileFormatGroup.append(thumbnailMobileFormatText, thumbnailMobileFormat);
-
-    const thumbnailMobileQualityGroup = createElement('label', { className: 'sb-thumbnail-field' });
-    const thumbnailMobileQualityText = createElement('span', { text: 'Mobile quality' });
-    const thumbnailMobileQuality = createElement('input', {
-        className: 'text_pole sb-thumbnail-number',
-        attrs: {
-            type: 'number',
-            inputmode: 'numeric',
-            min: '1',
-            max: '100',
-            step: '1',
-        },
-    });
-    thumbnailMobileQualityGroup.append(thumbnailMobileQualityText, thumbnailMobileQuality);
-    thumbnailMobileControls.append(thumbnailMobileEnabledLabel, thumbnailMobileFormatGroup, thumbnailMobileQualityGroup);
-
-    const thumbnailMobileSizes = createElement('div', { className: 'sb-thumbnail-sizes' });
-    const mobileBgSize = createThumbnailSizeRow('Mobile background', 'mobile-bg');
-    const mobileAvatarSize = createThumbnailSizeRow('Mobile character', 'mobile-avatar');
-    const mobilePersonaSize = createThumbnailSizeRow('Mobile persona', 'mobile-persona');
-    thumbnailMobileSizes.append(mobileBgSize.row, mobileAvatarSize.row, mobilePersonaSize.row);
-
-    thumbnailActions.append(thumbnailUseRecommendedButton, thumbnailUseRecommendedMobileButton, thumbnailSaveButton, thumbnailSaveClearButton, thumbnailClearButton);
-    thumbnailCard.append(thumbnailHeader, thumbnailControls, thumbnailSizes, thumbnailMobileHeading, thumbnailMobileControls, thumbnailMobileSizes, thumbnailActions, thumbnailNote);
-
-    const configCard = createElement('section', { className: 'sb-admin-card sb-server-card' });
-    const configHeader = createElement('div', { className: 'sb-admin-card-header' });
-    const configCopy = createElement('div', { className: 'sb-admin-card-copy' });
-    const configTitle = createElement('strong', { text: 'config.yaml Editor' });
-    const configDescription = createElement('p', { text: 'Edit the live config file directly here. Saves validate YAML before writing anything to disk.' });
-    const configState = createElement('span', { className: 'sb-server-inline-state', text: 'Loading…' });
-    const configPath = createElement('code', { className: 'sb-server-config-path', text: 'config.yaml' });
-    const configMeta = createElement('div', { className: 'sb-server-config-meta' });
-    const configEditor = createElement('textarea', {
-        className: 'text_pole sb-server-config-editor',
-        attrs: {
-            spellcheck: 'false',
-            rows: '22',
-            'aria-label': 'config.yaml editor',
-        },
-    });
-    const configActions = createElement('div', { className: 'sb-server-actions' });
-    const reloadConfigButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Reload file', attrs: { type: 'button' } });
-    const saveConfigButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Save config', attrs: { type: 'button' } });
-    const saveConfigRestartButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action menu_button_primary', text: 'Save & Restart', attrs: { type: 'button' } });
-    const configNote = createElement('div', { className: 'sb-server-note', text: 'Most config changes only take effect after a restart.' });
-    configCopy.append(configTitle, configDescription);
-    configHeader.append(configCopy, configState);
-    configMeta.append(configPath);
-    configActions.append(reloadConfigButton, saveConfigButton, saveConfigRestartButton);
-    configCard.append(configHeader, configMeta, configEditor, configActions, configNote);
-
-    column.append(callout, statusCard, updateCard, thumbnailCard, configCard);
-    scroller.appendChild(column);
-
-    const state = getServerAdminState();
-    state.refs = {
-        statusPill,
-        statusGrid,
-        statusNote,
-        refreshButton,
-        updateButton,
-        restartButton,
-        updateNote,
-        updateOutput,
-        autoStashCheckbox,
-        thumbnailEnabled,
-        thumbnailFormat,
-        thumbnailQuality,
-        thumbnailBgWidth: bgSize.widthInput,
-        thumbnailBgHeight: bgSize.heightInput,
-        thumbnailAvatarWidth: avatarSize.widthInput,
-        thumbnailAvatarHeight: avatarSize.heightInput,
-        thumbnailPersonaWidth: personaSize.widthInput,
-        thumbnailPersonaHeight: personaSize.heightInput,
-        thumbnailUseRecommendedButton,
-        thumbnailUseRecommendedMobileButton,
-        thumbnailSaveButton,
-        thumbnailSaveClearButton,
-        thumbnailClearButton,
-        thumbnailNote,
-        thumbnailMobileEnabled,
-        thumbnailMobileFormat,
-        thumbnailMobileQuality,
-        thumbnailMobileBgWidth: mobileBgSize.widthInput,
-        thumbnailMobileBgHeight: mobileBgSize.heightInput,
-        thumbnailMobileAvatarWidth: mobileAvatarSize.widthInput,
-        thumbnailMobileAvatarHeight: mobileAvatarSize.heightInput,
-        thumbnailMobilePersonaWidth: mobilePersonaSize.widthInput,
-        thumbnailMobilePersonaHeight: mobilePersonaSize.heightInput,
-        configPath,
-        configState,
-        configEditor,
-        reloadConfigButton,
-        saveConfigButton,
-        saveConfigRestartButton,
-        configNote,
-    };
-    setServerAdminPill(statusPill, 'Idle', 'neutral');
-    setServerAdminMessage(statusNote, 'Open this tab to load server status and update controls.', 'neutral');
-    configState.textContent = 'Not loaded';
-    configState.dataset.state = 'neutral';
-
-    refreshButton.addEventListener('click', () => refreshServerAdminPanel({ includeConfig: false }));
-    updateButton.addEventListener('click', handleServerAdminUpdate);
-    restartButton.addEventListener('click', handleServerAdminRestart);
-    thumbnailUseRecommendedButton.addEventListener('click', handleUseRecommendedThumbnailSettings);
-    thumbnailUseRecommendedMobileButton.addEventListener('click', handleUseRecommendedMobileThumbnailSettings);
-    thumbnailSaveButton.addEventListener('click', () => handleServerThumbnailSave({ clearCache: false }));
-    thumbnailSaveClearButton.addEventListener('click', () => handleServerThumbnailSave({ clearCache: true }));
-    thumbnailClearButton.addEventListener('click', handleServerThumbnailClearCache);
-    reloadConfigButton.addEventListener('click', handleServerAdminReloadConfig);
-    saveConfigButton.addEventListener('click', () => handleServerAdminSaveConfig({ restart: false }));
-    saveConfigRestartButton.addEventListener('click', () => handleServerAdminSaveConfig({ restart: true }));
-    configEditor.addEventListener('input', () => {
-        updateServerConfigDirtyState();
-        updateServerAdminInteractivity();
-    });
-    autoStashCheckbox.addEventListener('change', function () {
-        const refs = getServerAdminRefs();
-        if (!refs?.configEditor) return;
-        const yaml = refs.configEditor.value;
-        const newValue = this.checked ? 'true' : 'false';
-        if (/^autoStashBeforePull:\s*(true|false)/m.test(yaml)) {
-            refs.configEditor.value = yaml.replace(/^(autoStashBeforePull:\s*)(true|false)/m, `$1${newValue}`);
-        } else {
-            refs.configEditor.value = yaml + `\nautoStashBeforePull: ${newValue}\n`;
-        }
-        refs.configEditor.dispatchEvent(new Event('input'));
-    });
-    updateServerAdminInteractivity();
-
-    return {
-        id: 'server',
-        panel,
-        button: null,
-        searchRoot: column,
-        onActivate: () => {
-            if (!isShellOpen('right')) {
-                return;
-            }
-
-            void refreshServerAdminPanel({ includeConfig: !getServerAdminState().configLoaded });
-        },
-    };
 }
 
 /**
@@ -12229,92 +10880,6 @@ function groupAdvancedFormattingIntoDrawers() {
     $columnsContainer.replaceWith($drawersContainer);
 
     $af.data('sb-grouped', true);
-}
-
-function buildConsoleLogsPanel() {
-    const { panel, scroller } = createShellPanel({
-        id: 'console-logs',
-    });
-
-    const column = createElement('div', { className: 'sb-shell-column sb-console-log-column' });
-    const callout = createElement('div', { className: 'sb-shell-callout' });
-    callout.innerHTML = `
-        <strong>Console Logs</strong>
-        <p>Watch the recent terminal output from the running SillyBunny process here, without keeping a terminal window open on the side.</p>
-    `;
-
-    const card = createElement('section', { className: 'sb-admin-card sb-server-card sb-console-log-card' });
-    const header = createElement('div', { className: 'sb-admin-card-header' });
-    const copy = createElement('div', { className: 'sb-admin-card-copy' });
-    const title = createElement('strong', { text: 'Live Server Console' });
-    const description = createElement('p', { text: 'This mirrors the current process output captured from stdout and stderr. Only logs from the current SillyBunny session are available here.' });
-    const statusPill = createElement('span', { className: 'sb-server-pill', text: 'Loading…' });
-    const actions = createElement('div', { className: 'sb-server-actions sb-console-log-actions' });
-    const refreshButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Refresh Now', attrs: { type: 'button' } });
-    const pauseButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Pause Live', attrs: { type: 'button' } });
-    const statusNote = createElement('div', { className: 'sb-server-note' });
-    const output = createElement('pre', { className: 'sb-server-output sb-console-log-output' });
-    const verboseLoggingCard = createElement('section', { className: 'sb-admin-card sb-server-card sb-console-log-verbose-card' });
-    const verboseLoggingHeader = createElement('div', { className: 'sb-admin-card-header' });
-    const verboseLoggingCopy = createElement('div', { className: 'sb-admin-card-copy' });
-    const verboseLoggingTitle = createElement('strong', { text: 'Verbose Debug Logging' });
-    const verboseLoggingDescription = createElement('p', { text: 'Enable full debugging console output for advanced troubleshooting. Changes are saved to config.yaml and apply after a restart.' });
-    const verboseLoggingStatus = createElement('span', { className: 'sb-server-inline-state', text: 'Loading…' });
-    const verboseLoggingActionButton = createElement('button', {
-        className: 'menu_button menu_button_icon sb-server-action interactable sb-console-log-verbose-action',
-        text: 'Debug Logging: Disabled',
-        attrs: { type: 'button' },
-    });
-
-    copy.append(title, description);
-    header.append(copy, statusPill);
-    actions.append(refreshButton, pauseButton);
-    card.append(header, actions, statusNote, output);
-    verboseLoggingCopy.append(verboseLoggingTitle, verboseLoggingDescription);
-    verboseLoggingHeader.append(verboseLoggingCopy, verboseLoggingStatus);
-    verboseLoggingCard.append(verboseLoggingHeader, verboseLoggingActionButton);
-    column.append(callout, card);
-    column.append(verboseLoggingCard);
-    scroller.appendChild(column);
-
-    const state = getConsoleLogsState();
-    state.refs = {
-        statusPill,
-        refreshButton,
-        pauseButton,
-        statusNote,
-        output,
-        verboseLoggingStatus,
-        verboseLoggingActionButton,
-    };
-
-    refreshButton.addEventListener('click', () => {
-        void refreshConsoleLogs({ forceFull: state.latestId === 0 });
-    });
-    pauseButton.addEventListener('click', toggleConsoleLogsPolling);
-    verboseLoggingActionButton.addEventListener('click', () => {
-        void toggleConsoleLogsVerboseLogging();
-    });
-
-    renderConsoleLogsOutput({ preserveScroll: false });
-    updateConsoleLogsInteractivity();
-
-    return {
-        id: 'console-logs',
-        panel,
-        button: null,
-        searchRoot: column,
-        onActivate: () => {
-            void refreshConsoleLogsConfig();
-            void refreshConsoleLogs({ forceFull: getConsoleLogsState().latestId === 0 });
-            scheduleConsoleLogsRefresh(0);
-        },
-        onDeactivate: () => {
-            const state = getConsoleLogsState();
-            window.clearTimeout(state.refreshTimer);
-            state.refreshTimer = 0;
-        },
-    };
 }
 
 function updateSillyTavernImportInteractivity() {
@@ -13038,12 +11603,14 @@ function refreshMobileQuickActionSearchResults(mode = 'mobile') {
     }
 }
 
-function renderMobileQuickActionResults(query, resultsElement, mode = 'mobile') {
+async function renderMobileQuickActionResults(query, resultsElement, mode = 'mobile') {
     if (!(resultsElement instanceof HTMLElement)) {
         return;
     }
 
     const modeLabel = mode === 'desktop' ? 'desktop' : 'mobile';
+    const request = Symbol();
+    sbSearchRenderRequests.set(resultsElement, request);
 
     resultsElement.replaceChildren();
 
@@ -13056,6 +11623,8 @@ function renderMobileQuickActionResults(query, resultsElement, mode = 'mobile') 
         return;
     }
 
+    await prepareShellSearch();
+    if (sbSearchRenderRequests.get(resultsElement) !== request) return;
     const matches = getMobileQuickActionSearchMatches(trimmedQuery);
     if (!matches.length) {
         resultsElement.appendChild(createElement('div', {
@@ -13279,6 +11848,55 @@ function createBottomChatBarSettingsGroup(mode = 'mobile') {
     checkbox.addEventListener('change', event => {
         const input = event.currentTarget;
         setBottomChatBarVisible(input instanceof HTMLInputElement && input.checked);
+    });
+
+    copy.append(title, description);
+    label.append(checkbox, copy);
+    group.appendChild(label);
+    return group;
+}
+
+function isGuidedGenerationsBarVisible() {
+    return extension_settings['guided-generations']?.showActionButtonContainer !== false;
+}
+
+function setGuidedGenerationsBarVisible(shouldShow) {
+    const nextVisible = Boolean(shouldShow);
+    extension_settings['guided-generations'] ??= {};
+    extension_settings['guided-generations'].showActionButtonContainer = nextVisible;
+    saveSettingsDebounced();
+    document.dispatchEvent(new CustomEvent('sb:guided-generations-settings-changed'));
+    updateThemePickerUi();
+}
+
+function createGuidedGenerationsBarSettingsGroup(mode = 'mobile') {
+    const inputId = mode === 'desktop' ? 'sb-desktop-gg-bar-visible-input' : 'sb-mobile-gg-bar-visible-input';
+    const group = createElement('section', {
+        className: 'sb-theme-slider-group sb-compact-mode-group',
+    });
+    const label = createElement('label', {
+        className: 'sb-compact-mode-option',
+        attrs: {
+            for: inputId,
+        },
+    });
+    const checkbox = createElement('input', {
+        id: inputId,
+        className: 'sb-compact-mode-checkbox',
+        attrs: {
+            type: 'checkbox',
+            'data-sb-gg-bar-visible-input': mode,
+        },
+    });
+    const copy = createElement('span', { className: 'sb-compact-mode-copy' });
+    const title = createElement('strong', { text: 'Show Guided Generations Bar' });
+    const description = createElement('small', {
+        text: 'Display the Guided Generations action buttons in the chat composer.',
+    });
+
+    checkbox.addEventListener('change', event => {
+        const input = event.currentTarget;
+        setGuidedGenerationsBarVisible(input instanceof HTMLInputElement && input.checked);
     });
 
     copy.append(title, description);
@@ -13801,6 +12419,8 @@ function injectThemePicker() {
     const paperTextureSettingsGroup = createPaperTextureSettingsGroup();
     const frontendIconSettingsGroup = createFrontendIconSettingsGroup();
     const shortcutSettingsGroup = createShortcutSettingsGroup();
+    const desktopGuidedGenerationsBarSettingsGroup = createGuidedGenerationsBarSettingsGroup('desktop');
+    const mobileGuidedGenerationsBarSettingsGroup = createGuidedGenerationsBarSettingsGroup('mobile');
     const desktopQuickActionSettingsGroup = createMobileQuickActionSettingsGroup('desktop');
     const mobileQuickActionSettingsGroup = createMobileQuickActionSettingsGroup();
     const desktopSettingsOutlet = document.getElementById('sb-desktop-settings-outlet');
@@ -13844,6 +12464,7 @@ function injectThemePicker() {
             desktopButtonSliderGroup,
             desktopCompactModeSettingsGroup,
             desktopBottomChatBarSettingsGroup,
+            desktopGuidedGenerationsBarSettingsGroup,
             desktopQuickActionSettingsGroup,
         );
     }
@@ -13855,6 +12476,7 @@ function injectThemePicker() {
             mobileButtonSliderGroup,
             mobileCompactModeSettingsGroup,
             mobileBottomChatBarSettingsGroup,
+            mobileGuidedGenerationsBarSettingsGroup,
             paperTextureSettingsGroup,
             mobileQuickActionSettingsGroup,
         );
@@ -13869,6 +12491,7 @@ function injectThemePicker() {
             desktopButtonSliderGroup,
             desktopCompactModeSettingsGroup,
             desktopBottomChatBarSettingsGroup,
+            desktopGuidedGenerationsBarSettingsGroup,
             desktopQuickActionSettingsGroup,
         );
     }
@@ -13880,6 +12503,7 @@ function injectThemePicker() {
             mobileButtonSliderGroup,
             mobileCompactModeSettingsGroup,
             mobileBottomChatBarSettingsGroup,
+            mobileGuidedGenerationsBarSettingsGroup,
             mobileQuickActionSettingsGroup,
         );
     }
@@ -13888,6 +12512,8 @@ function injectThemePicker() {
 }
 
 function updateThemePickerUi() {
+    if (!document.getElementById('sb-theme-card')) return;
+
     const sliderInput = document.getElementById('sb-surface-transparency-input');
     const sliderValue = document.getElementById('sb-surface-transparency-value');
     const desktopTopbarScaleInput = document.getElementById('sb-topbar-scale-desktop-input');
@@ -13995,8 +12621,8 @@ function updateThemePickerUi() {
             continue;
         }
 
-        input.checked = sbState.topbarLabel.clickCycle;
-        input.closest('.sb-topbar-label-option')?.classList.toggle('is-selected', sbState.topbarLabel.clickCycle);
+        input.checked = isTopbarLabelClickCycleEnabled();
+        input.closest('.sb-topbar-label-option')?.classList.toggle('is-selected', input.checked);
     }
 
     for (const input of document.querySelectorAll('[data-sb-compact-mode-input]')) {
@@ -14015,6 +12641,16 @@ function updateThemePickerUi() {
 
         input.checked = sbState.bottomChatBar.visible;
         input.closest('.sb-compact-mode-option')?.classList.toggle('is-selected', sbState.bottomChatBar.visible);
+    }
+
+    const guidedGenerationsBarVisible = isGuidedGenerationsBarVisible();
+    for (const input of document.querySelectorAll('[data-sb-gg-bar-visible-input]')) {
+        if (!(input instanceof HTMLInputElement)) {
+            continue;
+        }
+
+        input.checked = guidedGenerationsBarVisible;
+        input.closest('.sb-compact-mode-option')?.classList.toggle('is-selected', guidedGenerationsBarVisible);
     }
 
     for (const input of document.querySelectorAll('input[name="sb-desktop-nav-layout"]')) {
@@ -14453,7 +13089,19 @@ function findMobileQuickActionMatch(action) {
     };
 }
 
-function activateMobileQuickAction(action) {
+async function activateMobileQuickAction(action) {
+    const tab = getShellState(action.shellKey)?.tabs.get(action.tabId);
+    if (tab?.ensureReady) {
+        closeAllDropdowns({ except: action.shellKey });
+        openShell(action.shellKey, action.tabId);
+        try {
+            await tab.ensureReady();
+        } catch {
+            return;
+        }
+        // A later navigation or close must win over an earlier slow import.
+        if (!isShellTabOpen(action.shellKey, action.tabId)) return;
+    }
     const match = findMobileQuickActionMatch(action);
     if (!match) {
         if (action.shellKey === 'characters') {
@@ -14503,13 +13151,16 @@ function activateMobileNavAction(action) {
     openShell(normalizedAction.shellKey, normalizedAction.tabId);
 }
 
-function renderUniversalSearchResults(query) {
+async function renderUniversalSearchResults(query) {
     const searchState = getUniversalSearchState();
     const results = searchState.results;
 
     if (!(results instanceof HTMLElement)) {
         return;
     }
+
+    const request = Symbol();
+    sbSearchRenderRequests.set(results, request);
 
     results.replaceChildren();
     searchState.activeIndex = -1;
@@ -14528,6 +13179,8 @@ function renderUniversalSearchResults(query) {
         return;
     }
 
+    await prepareShellSearch();
+    if (sbSearchRenderRequests.get(results) !== request || !searchState.expanded) return;
     const matches = collectGlobalSearchMatches(trimmedQuery);
     const groupedMatches = new Map();
     for (const match of matches) {
@@ -14797,9 +13450,9 @@ function setActiveTab(shellKey, tabId, { focusButton = false } = {}) {
         previousTab.onDeactivate?.();
     }
 
-    activeTab.onActivate?.();
     const shellRoot = document.getElementById(shellConfig.rootPanelId);
     if (shellRoot instanceof HTMLElement && shellRoot.classList.contains('openDrawer')) {
+        activeTab.onActivate?.();
         dispatchShellTabActivated(shellKey, activeTab);
         queueMobileShellActivationRefresh();
     }
@@ -15153,6 +13806,13 @@ function buildShell(shellKey) {
 
     const basePanel = createShellPanel(shellConfig.baseTab);
     basePanel.scroller.appendChild(originalContent);
+    if (shellKey === 'right') {
+        basePanel.ensureReady = initializeSettingsPanel;
+        basePanel.onActivate = () => void initializeSettingsPanel().catch(error => {
+            console.error('[SillyBunny] Could not initialize settings:', error);
+            toastr.error(String(error.message || error));
+        });
+    }
     registerShellTab(shellKey, shellConfig.baseTab, basePanel);
 
     const registerEmbeddedTab = (embeddedTab) => {
@@ -15174,7 +13834,7 @@ function buildShell(shellKey) {
 
     const samplingTab = shellConfig.customTabs.find(tab => tab.id === 'sampling');
     if (samplingTab) {
-        const samplingPanel = buildSamplingPanel();
+        const samplingPanel = createOnDemandShellPanel(shellKey, samplingTab, buildSamplingPanel);
         registerShellTab(shellKey, samplingTab, samplingPanel, samplingPanel.searchRoot);
     }
 
@@ -15198,13 +13858,13 @@ function buildShell(shellKey) {
         }
 
         if (customTab.id === 'server') {
-            const serverPanel = buildServerAdminPanel();
+            const serverPanel = createOnDemandShellPanel(shellKey, customTab, async () => (await loadServerTools()).buildServerAdminPanel());
             registerShellTab(shellKey, customTab, serverPanel, serverPanel.searchRoot);
             continue;
         }
 
         if (customTab.id === 'console-logs') {
-            const consoleLogsPanel = buildConsoleLogsPanel();
+            const consoleLogsPanel = createOnDemandShellPanel(shellKey, customTab, async () => (await loadServerTools()).buildConsoleLogsPanel());
             registerShellTab(shellKey, customTab, consoleLogsPanel, consoleLogsPanel.searchRoot);
         }
     }
@@ -15214,11 +13874,6 @@ function buildShell(shellKey) {
     const storedTabId = migrateLegacyWorldInfoRoute(safeGetItem(shellConfig.storageKey));
     const nextActiveTab = shellState.tabs.has(storedTabId) ? storedTabId : shellConfig.defaultTabId;
     setActiveTab(shellKey, nextActiveTab);
-
-    if (shellKey === 'right') {
-        injectThemePicker();
-        injectSillyTavernImportCard();
-    }
 }
 
 function registerShellTab(shellKey, tabConfig, panelBundle, explicitSearchRoot = null) {
@@ -15293,6 +13948,7 @@ function registerShellTab(shellKey, tabConfig, panelBundle, explicitSearchRoot =
         panel: panelBundle.panel,
         searchRoot: explicitSearchRoot ?? panelBundle.searchRoot ?? panelBundle.scroller,
         searchIndex: null,
+        ensureReady: panelBundle.ensureReady,
         onActivate: panelBundle.onActivate ?? tabConfig.onActivate ?? null,
         onDeactivate: panelBundle.onDeactivate ?? tabConfig.onDeactivate ?? null,
     });
@@ -16052,6 +14708,7 @@ function injectCharacterDrawerControls() {
     getCharacterPanel()?.classList.add('sb-character-drawer-root');
     ensureCharacterListToolbarLayout();
     bindCharacterEditorFullscreenToggle();
+    bindCreatorNotesFullscreen();
 
     const shellCloseButton = document.getElementById('sb_character_shell_close');
     if (shellCloseButton instanceof HTMLButtonElement && shellCloseButton.dataset.sbBound !== 'true') {
@@ -16510,7 +15167,7 @@ function reinitSelect2AfterShell() {
             dropdownParent: apiDropdownParent.length ? apiDropdownParent : $(document.body),
             minimumResultsForSearch: 0,
         };
-        const allSelectors = [...modelSelectors, '.openrouter_quantizations', '.openrouter_providers'];
+        const allSelectors = [...modelSelectors, '.openrouter_quantizations', '.openrouter_providers', '#nanogpt_allowed_providers', '#nanogpt_ignored_providers'];
         for (const selector of allSelectors) {
             const $el = $(selector);
             if ($el.length && $el.data('select2')) {
@@ -17215,6 +15872,10 @@ function openPersonaAppendicesManager() {
         document.getElementById('persona_editor_tab_prompt')?.click();
         const appendicesHeading = document.getElementById('persona_appendices_heading');
         const addButton = document.getElementById('persona_appendix_add');
+        const appendicesBlock = appendicesHeading?.closest('details');
+        if (appendicesBlock instanceof HTMLDetailsElement) {
+            appendicesBlock.open = true;
+        }
         scrollElementIntoManagedView(appendicesHeading ?? addButton, { block: 'center', behavior: getReducedMotionScrollBehavior() });
         addButton?.focus({ preventScroll: true });
     }, 160);
@@ -17438,6 +16099,9 @@ function initAll() {
     applyTopbarIconsOnlyPreference();
     bindLandingPageObserver();
     buildBottomChatBar();
+    // SillyBunny: user input ends the ⬇ scroll-to-bottom ladder so a mid-ladder flick is not snapped back.
+    getChatScrollElement()?.addEventListener('wheel', cancelPendingBottomChatScroll, { passive: true });
+    getChatScrollElement()?.addEventListener('touchstart', cancelPendingBottomChatScroll, { passive: true });
     // Refresh again after the current JS task — APP_READY may have already
     // fired before this listener was registered, so the initial call in
     // buildBottomChatBar() may have found no active chat yet.
@@ -17476,12 +16140,15 @@ function initAll() {
     document.addEventListener('focusin', scheduleMobilePopupKeyboardSync);
     document.addEventListener('focusout', scheduleMobilePopupKeyboardSync);
     window.visualViewport?.addEventListener('resize', scheduleMobilePopupKeyboardSync, { passive: true });
+    window.visualViewport?.addEventListener('scroll', scheduleMobilePopupKeyboardSync, { passive: true });
 
     // SillyBunny: keep iOS drawer scroller padding in sync with keyboard focus;
     // this provides scroll range for bottom inputs without fixing the document.
     if (isIOSWebKitPlatform()) {
         document.addEventListener('focusin', syncIOSKeyboardBottomInset);
         document.addEventListener('focusout', syncIOSKeyboardBottomInset);
+        document.addEventListener('focusin', queueMobileViewportStateSync);
+        document.addEventListener('focusout', queueMobileViewportStateSync);
     }
 
     if (isLegacyIOSWebKitPlatform()) {

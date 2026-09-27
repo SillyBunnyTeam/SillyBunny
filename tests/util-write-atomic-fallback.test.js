@@ -31,6 +31,22 @@ function createTargetPath() {
     return path.join(tempRoot, 'example.jsonl');
 }
 
+const RECOVERY_SUFFIX = '.sillybunny-write-recovery';
+
+/**
+ * Strands a recovery record for a card whose interrupted write left bytes matching neither snapshot,
+ * so recovery has to decide on the recorded identity alone.
+ */
+function writeRecoveryRecord(filePath, identity) {
+    fs.writeFileSync(`${filePath}${RECOVERY_SUFFIX}`, JSON.stringify({
+        version: 1,
+        ...identity,
+        originalHash: crypto.createHash('sha256').update('original-card-content').digest('hex'),
+        nextHash: crypto.createHash('sha256').update('new-card-content').digest('hex'),
+        originalData: Buffer.from('original-card-content', 'utf8').toString('base64'),
+    }), 'utf8');
+}
+
 afterEach(() => {
     jest.restoreAllMocks();
     if (tempRoot) {
@@ -380,19 +396,84 @@ describe('tryWriteFileSync atomic fallback', () => {
         });
         expect(() => tryWriteFileSync(filePath, 'new-card-content', 'utf8', { preserveFileIdentity: true })).toThrow(/write recovery file/i);
         unlinkSpy.mockRestore();
+        // Stage the replacement while the original card is still on disk: two files that exist at
+        // the same time cannot share an inode, and renameSync carries that inode into place. Writing
+        // the replacement after the unlink instead leaves it free to land on the inode the original
+        // just released, which makes recovery see its own target and skip the refusal it is asserted
+        // on here. That reused-inode draw is rare on an idle machine and common under CI's parallel
+        // workers, so the test failed only on CI.
+        const replacementPath = `${filePath}.replacement`;
+        fs.writeFileSync(replacementPath, 'concurrent-card-content', 'utf8');
         fs.unlinkSync(filePath);
         const linkSync = fs.linkSync.bind(fs);
         let recreated = false;
         jest.spyOn(fs, 'linkSync').mockImplementation((existingPath, newPath) => {
             if (!recreated && newPath === filePath) {
                 recreated = true;
-                fs.writeFileSync(filePath, 'concurrent-card-content', 'utf8');
+                fs.renameSync(replacementPath, filePath);
             }
             return linkSync(existingPath, newPath);
         });
 
         expect(() => recoverFileWritesInDirectorySync(tempRoot)).toThrow(/replaced file/i);
         expect(fs.readFileSync(filePath, 'utf8')).toBe('concurrent-card-content');
+    });
+
+    test('refuses to recover a card that took over the interrupted card\'s inode', () => {
+        const filePath = createTargetPath();
+        fs.writeFileSync(filePath, 'a different card entirely', 'utf8');
+        const stats = fs.lstatSync(filePath, { bigint: true });
+        // Stand in for the freed inode being handed straight back to the replacement, which on ext4
+        // is the normal outcome rather than a rare draw: the record names this exact dev/ino, so the
+        // creation time is all that is left to refuse it on.
+        writeRecoveryRecord(filePath, {
+            dev: String(stats.dev),
+            ino: String(stats.ino),
+            birthtime: String(stats.birthtimeNs - 1_000_000_000n),
+        });
+
+        expect(() => recoverFileWritesInDirectorySync(tempRoot)).toThrow(/replaced file/i);
+        expect(fs.readFileSync(filePath, 'utf8')).toBe('a different card entirely');
+    });
+
+    test('still recovers from a record that carries no creation time', () => {
+        const filePath = createTargetPath();
+        fs.writeFileSync(filePath, 'new-card-cont', 'utf8');
+        const stats = fs.lstatSync(filePath, { bigint: true });
+        // Filesystems without a creation time report ctime in its place, which the interrupted write
+        // moves, so the write path leaves the field out there. Records written before the field
+        // existed have none either, and both have to keep recovering on dev/ino alone.
+        writeRecoveryRecord(filePath, { dev: String(stats.dev), ino: String(stats.ino) });
+
+        expect(recoverFileWriteSync(filePath)).toBe(true);
+        expect(fs.readFileSync(filePath, 'utf8')).toBe('original-card-content');
+        expect(fs.existsSync(`${filePath}${RECOVERY_SUFFIX}`)).toBe(false);
+    });
+
+    test('records a creation time only when the card proves it is not a ctime alias', () => {
+        const readRecordedBirthtime = (birthtimeNs, ctimeNs) => {
+            const filePath = createTargetPath();
+            fs.writeFileSync(filePath, 'original-card-content', 'utf8');
+            const fstatSync = fs.fstatSync.bind(fs);
+            jest.spyOn(fs, 'fstatSync').mockImplementation((descriptor, options) => Object.assign(
+                Object.create(Object.getPrototypeOf(fstatSync(descriptor, options))),
+                fstatSync(descriptor, options),
+                { birthtimeNs, ctimeNs },
+            ));
+            const unlinkSync = fs.unlinkSync.bind(fs);
+            jest.spyOn(fs, 'unlinkSync').mockImplementation((target) => {
+                if (String(target).endsWith(RECOVERY_SUFFIX)) {
+                    throw createWindowsFileLockError('EPERM');
+                }
+                return unlinkSync(target);
+            });
+            expect(() => tryWriteFileSync(filePath, 'new-card-content', 'utf8', { preserveFileIdentity: true })).toThrow(/write recovery file/i);
+            jest.restoreAllMocks();
+            return JSON.parse(fs.readFileSync(`${filePath}${RECOVERY_SUFFIX}`, 'utf8')).birthtime;
+        };
+
+        expect(readRecordedBirthtime(1_000n, 2_000n)).toBe('1000');
+        expect(readRecordedBirthtime(3_000n, 3_000n)).toBeUndefined();
     });
 
     test('replaces the target via a temp file when atomic writes keep failing on Windows', () => {

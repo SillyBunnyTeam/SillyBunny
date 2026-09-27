@@ -554,7 +554,7 @@ export function getTokenCount(str, padding = undefined) {
  * @deprecated Use counterWrapperOpenAIAsync instead.
  */
 function counterWrapperOpenAI(text) {
-    const message = { role: 'system', content: text };
+    const message = { content: text };
     return countTokensOpenAI(message, true);
 }
 
@@ -564,13 +564,13 @@ function counterWrapperOpenAI(text) {
  * @returns {Promise<number>} Token count.
  */
 function counterWrapperOpenAIAsync(text) {
-    const message = { role: 'system', content: text };
+    const message = { content: text };
     return countTokensOpenAIAsync(message, true);
 }
 
 export function getTokenizerModel() {
-    // OpenAI models always provide their own tokenizer
-    if (oai_settings.chat_completion_source == chat_completion_sources.OPENAI) {
+    // SillyBunny: both native OpenAI API modes use the selected model for token counting.
+    if ([chat_completion_sources.OPENAI, chat_completion_sources.OPENAI_RESPONSES].includes(oai_settings.chat_completion_source)) {
         return oai_settings.openai_model;
     }
 
@@ -641,7 +641,7 @@ export function getTokenizerModel() {
     }
 
     if (oai_settings.chat_completion_source == chat_completion_sources.ELECTRONHUB && oai_settings.electronhub_model) {
-        if (oai_settings.electronhub_model.includes('gpt-4o') || oai_settings.electronhub_model.includes('gpt-5')) {
+        if (oai_settings.electronhub_model.includes('gpt-4o') || oai_settings.electronhub_model.includes('gpt-5') || oai_settings.electronhub_model.includes('gpt-6-astra')) {
             return gpt4oTokenizer;
         } else if (oai_settings.electronhub_model.includes('gpt-4.1') || oai_settings.electronhub_model.includes('gpt-4.5')) {
             return gpt4oTokenizer;
@@ -808,7 +808,7 @@ export function countTokensOpenAI(messages, full = false) {
         messages = [messages];
     }
 
-    let token_count = -1;
+    let token_count = 0;
 
     for (const message of messages) {
         const model = getTokenizerModel();
@@ -887,7 +887,7 @@ export async function countTokensOpenAIAsync(messages, full = false) {
         messages = [messages];
     }
 
-    let token_count = -1;
+    let token_count = 0;
 
     for (const message of messages) {
         const model = getTokenizerModel();
@@ -918,6 +918,69 @@ export async function countTokensOpenAIAsync(messages, full = false) {
     if (!full) token_count -= 2;
 
     return token_count;
+}
+
+/**
+ * Counts several messages in one request and stores the results in the token cache.
+ * SillyBunny addition: countTokensOpenAIAsync is awaited once per message by its callers,
+ * so on a remotely hosted server each message costs a full round trip. Priming the cache
+ * first collapses those into a single request; every entry it writes is the same value the
+ * unbatched path would have cached. Failures are swallowed - callers then count individually.
+ * @param {object[]} messages Messages that are about to be counted one at a time.
+ * @returns {Promise<void>}
+ */
+export async function primeOpenAITokenCache(messages) {
+    if (!Array.isArray(messages) || messages.length === 0) {
+        return;
+    }
+
+    const model = getTokenizerModel();
+    const cacheObject = getTokenCacheObject();
+    const pending = new Map();
+
+    for (const message of messages) {
+        const cacheKey = `${model}-${getStringHash(JSON.stringify(message))}`;
+
+        if (typeof cacheObject[cacheKey] === 'number' || pending.has(cacheKey)) {
+            continue;
+        }
+
+        pending.set(cacheKey, message);
+    }
+
+    if (pending.size === 0) {
+        return;
+    }
+
+    const cacheKeys = Array.from(pending.keys());
+    const uncounted = Array.from(pending.values());
+
+    try {
+        const data = await jQuery.ajax({
+            async: true,
+            type: 'POST',
+            url: `/api/tokenizers/openai/count?model=${model}&per_message=1`,
+            data: JSON.stringify(uncounted),
+            dataType: 'json',
+            contentType: 'application/json',
+        });
+
+        const counts = data?.token_counts;
+
+        if (!Array.isArray(counts) || counts.length !== cacheKeys.length) {
+            return;
+        }
+
+        counts.forEach((count, index) => {
+            const tokenCount = Number(count);
+
+            if (Number.isFinite(tokenCount)) {
+                cacheObject[cacheKeys[index]] = tokenCount;
+            }
+        });
+    } catch (error) {
+        console.error('Failed to prime the OpenAI token cache.', error);
+    }
 }
 
 /**

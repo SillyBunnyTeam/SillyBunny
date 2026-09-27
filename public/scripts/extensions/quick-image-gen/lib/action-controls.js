@@ -1,4 +1,5 @@
 export function createAccessibleIconButton(documentRef, {
+    tagName = "button",
     id = "",
     className = "",
     label,
@@ -7,8 +8,21 @@ export function createAccessibleIconButton(documentRef, {
     if (!documentRef?.createElement) throw new TypeError("A document is required");
     if (!String(label || "").trim()) throw new TypeError("An accessible label is required");
 
-    const button = documentRef.createElement("button");
-    button.type = "button";
+    const button = documentRef.createElement(tagName);
+    if (button.tagName === "BUTTON") {
+        button.type = "button";
+    } else {
+        button.setAttribute("role", "button");
+        button.setAttribute("tabindex", "0");
+        // The host "interactable" class handles Enter for non-native buttons; add the
+        // missing Space activation so keyboard users reach every action control.
+        button.addEventListener("keydown", (event) => {
+            if (event.key !== " ") return;
+            event.preventDefault();
+            event.stopPropagation();
+            button.click();
+        });
+    }
     if (id) button.id = id;
     if (className) button.className = className;
     button.setAttribute("aria-label", String(label));

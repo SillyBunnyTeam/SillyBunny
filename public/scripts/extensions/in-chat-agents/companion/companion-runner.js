@@ -23,6 +23,7 @@ import {
     getGlobalSettings,
     MAX_AGENT_MAX_TOKENS,
     isAgentHidden,
+    isAgentRuntimeAllowed,
     isCompanionAgent,
     isTrackerFixAgent,
     resolveCompanionConnectionProfile,
@@ -52,6 +53,7 @@ import {
     isEmptyOutputSentinel,
     isValidCompanionMessage,
     normalizePlotCompassObjective,
+    TRACKER_EMPTY_OUTPUT_INSTRUCTION,
 } from './companion-shared.js';
 import { resolveCompanionContentMacros } from './companion-macros.js';
 import { findTrackerBlocks, inspectTrackerState, normalizeCompanionTrackerRepairPayload, TRACKER_REPAIR_INSTRUCTION } from '../tracker-state.js';
@@ -599,6 +601,17 @@ export function deleteCompanionResult(message, agentId) {
     return true;
 }
 
+function restoreCompanionResult(message, agentId, previousResult) {
+    if (previousResult) {
+        setAgentExtraValue(message, COMPANION_RESULTS_EXTRA_KEY, {
+            ...getCompanionResults(message),
+            [agentId]: previousResult,
+        });
+    } else {
+        deleteCompanionResult(message, agentId);
+    }
+}
+
 async function emitCompanionResultsUpdated(messageIndex, agentId = '') {
     if (typeof eventSource?.emit === 'function') {
         await eventSource.emit(COMPANION_RESULTS_UPDATED_EVENT, { messageIndex, agentId });
@@ -869,6 +882,16 @@ function extractTrackerTags(text) {
     return [...extractTrackerTagShapes(text).keys()];
 }
 
+function getOwnedCompanionTrackerShape(agent, text) {
+    if (!isCompanionAgent(agent)) {
+        return null;
+    }
+
+    const tag = String(inspectTrackerState(agent).tag ?? '').trim().toUpperCase();
+    const shape = tag ? extractTrackerTagShapes(text).get(tag) : null;
+    return shape ? { tag, shape } : null;
+}
+
 function getActiveInlineTrackerTags(activeAgents = []) {
     const tags = new Set();
 
@@ -896,13 +919,14 @@ function formatTrackerTagExamples(shapes) {
 }
 
 function buildTrackerEchoGuard(shapes) {
-    return 'HARD STOP for your reply: the bracket-format tracker notes above are read-only reference. '
-        + 'A separate side-channel agent writes them and re-attaches them automatically after your reply, so any copy you write is a duplicate the user has to delete by hand. '
-        + 'Do NOT reproduce, paraphrase, update, restate, or wrap any reply content in those tracker formats. '
-        + 'Specifically, do not emit any of: ' + formatTrackerTagExamples(shapes) + ' (or variations of them). '
-        + 'Partial, renamed, and unclosed versions count too: an opening tag with no closing tag is still a violation. '
+    return 'HARD STOP for your reply: the Companion-owned bracket formats listed here are read-only reference. '
+        + 'A separate side-channel agent writes and re-attaches those formats automatically after your reply, so copying them creates duplicates the user has to delete by hand. '
+        + 'Do NOT reproduce, paraphrase, update, restate, or wrap reply content in the listed formats. '
+        + 'Do not emit any of: ' + formatTrackerTagExamples(shapes) + '. '
+        + 'Opening one of these tags without its closing tag is still a violation. '
+        + 'This restriction applies only to the exact tags listed here; continue following any separate instructions that require other pre-generation inline tracker formats. '
         + 'Never repeat an "[... - auxiliary notes]" label. '
-        + 'Produce your normal story reply only - never inline tracker blocks of your own.';
+        + 'Produce your normal story reply, including any other required inline tracker blocks.';
 }
 
 function collectRetainedTrackerTagShapes({ excludeMessage = null } = {}) {
@@ -912,12 +936,12 @@ function collectRetainedTrackerTagShapes({ excludeMessage = null } = {}) {
         if (message === excludeMessage) {
             continue;
         }
-        for (const result of Object.values(getCompanionResults(message))) {
+        for (const [agentId, result] of Object.entries(getCompanionResults(message))) {
             if (result?.status !== 'done' || result.includeInChatHistory !== true) continue;
-            for (const [tag, shape] of extractTrackerTagShapes(result.content)) {
-                if (!shapes.has(tag) || shape === 'piped') {
-                    shapes.set(tag, shape);
-                }
+
+            const trackerShape = getOwnedCompanionTrackerShape(getAgentById(agentId), result.content);
+            if (trackerShape && (!shapes.has(trackerShape.tag) || trackerShape.shape === 'piped')) {
+                shapes.set(trackerShape.tag, trackerShape.shape);
             }
         }
     }
@@ -1098,7 +1122,7 @@ function getFormatInstruction(format) {
     }
 }
 
-function expandCompanionPrompt(agent, messageIndex, generationType = 'normal') {
+function expandCompanionPrompt(agent, messageIndex, generationType = 'normal', repair = false) {
     const message = chat[messageIndex];
     const messageText = normalizeText(message?.mes ?? '');
     const prompt = substituteParams(agent.prompt, {
@@ -1106,13 +1130,18 @@ function expandCompanionPrompt(agent, messageIndex, generationType = 'normal') {
         original: messageText,
         dynamicMacros: buildPromptDynamicMacros(messageText, message, agent, generationType),
     }).trim();
+    const emptyOutputInstruction = !repair
+        && agent.category === 'tracker'
+        && !prompt.toLowerCase().includes('tracker-none')
+        ? TRACKER_EMPTY_OUTPUT_INSTRUCTION
+        : '';
 
-    return [prompt, getTemplateSettingsPromptBlock(agent, message)].filter(Boolean).join('\n\n').trim();
+    return [prompt, getTemplateSettingsPromptBlock(agent, message), emptyOutputInstruction].filter(Boolean).join('\n\n').trim();
 }
 
 export async function buildCompanionPromptMessages(agent, messageIndex, generationType = 'normal', { repair = false, extraContextSections = [] } = {}) {
     const companion = getCompanionConfig(agent);
-    const expandedPrompt = expandCompanionPrompt(agent, messageIndex, generationType);
+    const expandedPrompt = expandCompanionPrompt(agent, messageIndex, generationType, repair);
     const contextSections = await buildCompanionContextSections(agent, messageIndex, { extraContextSections });
     // rawPrompt sends the agent prompt verbatim: tracker prompts define their own exact output
     // format and break when extra format instructions are appended around them. The guard
@@ -1477,7 +1506,7 @@ function getCompanionResultContent(message, agentId) {
  * is never lost to a post-pass problem.
  */
 async function applyCompanionOutputPostPassesToContent(agent, content, messageIndex, cancelRevision) {
-    if (!normalizeText(content)) {
+    if (!isAgentRuntimeAllowed(agent) || !normalizeText(content)) {
         return content;
     }
 
@@ -1506,28 +1535,28 @@ async function runSingleCompanionAgent(agent, messageIndex, generationType, canc
     const isTargetCurrent = () => getCurrentChatId() === targetChatId && chat[messageIndex] === message;
 
     try {
-        if (getAgentGenerationCancelRevision() !== cancelRevision) {
+        if (getAgentGenerationCancelRevision() !== cancelRevision || !isAgentRuntimeAllowed(agent)) {
             throw new DOMException('Companion run cancelled.', 'AbortError');
         }
 
         const promptMessages = await buildCompanionPromptMessages(agent, messageIndex, generationType, { repair, extraContextSections });
-        if (!isTargetCurrent()) {
+        if (!isTargetCurrent() || !isAgentRuntimeAllowed(agent)) {
             throw new DOMException('Companion target changed.', 'AbortError');
         }
         const response = await requestPromptTransform(agent, promptMessages, companion.maxTokens);
 
-        if (!isTargetCurrent() || getAgentGenerationCancelRevision() !== cancelRevision) {
+        if (!isTargetCurrent() || getAgentGenerationCancelRevision() !== cancelRevision || !isAgentRuntimeAllowed(agent)) {
             throw new DOMException('Companion run cancelled.', 'AbortError');
         }
 
         const rawContent = capResultContent(response.output);
         // Token usage reflects the companion's own generation; post passes run after counting.
         const tokenUsage = await buildCompanionTokenUsage(promptMessages, rawContent);
-        if (!isTargetCurrent()) {
+        if (!isTargetCurrent() || !isAgentRuntimeAllowed(agent)) {
             throw new DOMException('Companion target changed.', 'AbortError');
         }
         let content = await applyCompanionOutputPostPassesToContent(agent, rawContent, messageIndex, cancelRevision);
-        if (!isTargetCurrent() || getAgentGenerationCancelRevision() !== cancelRevision) {
+        if (!isTargetCurrent() || getAgentGenerationCancelRevision() !== cancelRevision || !isAgentRuntimeAllowed(agent)) {
             throw new DOMException('Companion run cancelled.', 'AbortError');
         }
         // An empty-output sentinel yields no payload here, which is deliberate: repair is the manual
@@ -1550,18 +1579,13 @@ async function runSingleCompanionAgent(agent, messageIndex, generationType, canc
             modelLabel: getModelLabel(agent),
         });
     } catch (error) {
+        if (!isAgentRuntimeAllowed(agent)) {
+            return { agentId: agent.id, changed: false, result: null };
+        }
         const targetChanged = !isTargetCurrent();
         const cancelled = targetChanged || getAgentGenerationCancelRevision() !== cancelRevision || error?.name === 'AbortError';
         if (repair) {
-            if (previousResult) {
-                const results = getCompanionResults(message);
-                setAgentExtraValue(message, COMPANION_RESULTS_EXTRA_KEY, {
-                    ...results,
-                    [agent.id]: previousResult,
-                });
-            } else {
-                deleteCompanionResult(message, agent.id);
-            }
+            restoreCompanionResult(message, agent.id, previousResult);
         } else {
             setCompanionResult(message, agent, {
                 status: cancelled ? 'cancelled' : 'error',
@@ -1640,6 +1664,7 @@ async function buildBatchPromptPayload(agents, messageIndex, generationType, { e
 
 async function cancelCompanionAgentResults(message, agents, messageIndex, profileId = '') {
     for (const agent of agents) {
+        if (!isAgentRuntimeAllowed(agent)) continue;
         setCompanionResult(message, agent, {
             status: 'cancelled',
             content: '',
@@ -1654,6 +1679,8 @@ async function cancelCompanionAgentResults(message, agents, messageIndex, profil
 }
 
 async function runBatchCompanionAgents(agents, messageIndex, generationType, cancelRevision, { allowUserMessage = false, previousContents = null, extraContextSectionsByAgentId = null } = {}) {
+    agents = agents.filter(isAgentRuntimeAllowed);
+    if (!agents.length) return [];
     const message = chat[messageIndex];
     if (!isValidCompanionTargetMessage(message, { allowUserMessage })) {
         return agents.map(agent => ({ agentId: agent.id, changed: false, result: null }));
@@ -1675,7 +1702,7 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
         const extraContextSections = getUnitExtraContextSections(agents, extraContextSectionsByAgentId);
         const { promptMessages, taskPayloads } = await buildBatchPromptPayload(agents, messageIndex, generationType, { extraContextSections });
         const maxTokens = Math.min(MAX_AGENT_MAX_TOKENS, agents.reduce((sum, agent) => sum + getCompanionConfig(agent).maxTokens, 0));
-        const response = await requestPromptTransform(agents[0], promptMessages, maxTokens);
+        const response = await requestPromptTransform(agents[0], promptMessages, maxTokens, { runtimeAgents: agents });
 
         if (getAgentGenerationCancelRevision() !== cancelRevision) {
             await cancelCompanionAgentResults(message, agents, messageIndex, response.profileId);
@@ -1686,6 +1713,7 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
         const parsed = parseBatchResponse(response.output);
         const missingAgents = [];
         for (const agent of agents) {
+            if (!isAgentRuntimeAllowed(agent)) continue;
             if (!parsed.has(agent.id)) {
                 missingAgents.push(agent);
                 continue;
@@ -1693,11 +1721,13 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
 
             const rawContent = capResultContent(parsed.get(agent.id));
             const outputTokens = await countCompanionTokens({ role: 'assistant', content: rawContent });
+            if (!isAgentRuntimeAllowed(agent)) continue;
             const content = await applyCompanionOutputPostPassesToContent(agent, rawContent, messageIndex, cancelRevision);
             if (getAgentGenerationCancelRevision() !== cancelRevision) {
                 await cancelCompanionAgentResults(message, agents, messageIndex, response.profileId);
                 return getResults();
             }
+            if (!isAgentRuntimeAllowed(agent)) continue;
             setCompanionResult(message, agent, {
                 status: 'done',
                 content,
@@ -1731,7 +1761,9 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
             return getResults();
         }
 
-        console.warn('[InChatAgents] Companion batch failed, falling back to individual runs:', error);
+        if (error?.name !== 'AbortError') {
+            console.warn('[InChatAgents] Companion batch failed, falling back to individual runs:', error);
+        }
         for (const agent of agents) {
             if (getAgentGenerationCancelRevision() !== cancelRevision) {
                 await cancelCompanionAgentResults(message, agents, messageIndex);
@@ -1791,6 +1823,7 @@ export function meetsCompanionContextThreshold(agent, messageIndex = chat.length
 
 function getRunnableCompanionAgents(activeAgents = [], { manual = false, messageIndex = chat.length - 1, includeHidden = manual } = {}) {
     return activeAgents.filter(agent => {
+        if (!isAgentRuntimeAllowed(agent)) return false;
         const companion = getCompanionConfig(agent);
         if (!isCompanionAgent(agent) || !String(agent.prompt ?? '').trim()) {
             return false;
@@ -1821,6 +1854,7 @@ async function runCompanionUnits(units, messageIndex, generationType, cancelRevi
 }
 
 async function runCompanionAgentSet(agents, messageIndex, generationType, cancelRevision, { allowUserMessage = false, contextSourceAgents = agents } = {}) {
+    agents = agents.filter(isAgentRuntimeAllowed);
     if (!agents.length) {
         return [];
     }
@@ -1831,19 +1865,32 @@ async function runCompanionAgentSet(agents, messageIndex, generationType, cancel
     }
 
     const previousContents = new Map(agents.map(agent => [agent.id, getCompanionResultContent(message, agent.id)]));
-    const extraContextSectionsByAgentId = buildCompanionExtraContextSectionsByAgentId(agents, messageIndex, contextSourceAgents);
-    for (const agent of agents) {
-        setCompanionResult(message, agent, {
-            status: 'pending',
-            content: '',
-            error: '',
-            tokenUsage: null,
-        });
-        await emitCompanionResultsUpdated(messageIndex, agent.id);
-    }
+    const previousResults = new Map(agents.map(agent => [agent.id, getCompanionResults(message)[agent.id]]));
+    const pendingAgentIds = new Set();
+    const extraContextSectionsByAgentId = buildCompanionExtraContextSectionsByAgentId(agents, messageIndex, contextSourceAgents.filter(isAgentRuntimeAllowed));
+    try {
+        for (const agent of agents) {
+            if (!isAgentRuntimeAllowed(agent)) continue;
+            setCompanionResult(message, agent, {
+                status: 'pending',
+                content: '',
+                error: '',
+                tokenUsage: null,
+            });
+            pendingAgentIds.add(agent.id);
+            await emitCompanionResultsUpdated(messageIndex, agent.id);
+        }
 
-    const units = partitionCompanionRuns(agents, messageIndex, extraContextSectionsByAgentId);
-    return await runCompanionUnits(units, messageIndex, generationType, cancelRevision, { allowUserMessage, previousContents, extraContextSectionsByAgentId });
+        const units = partitionCompanionRuns(agents, messageIndex, extraContextSectionsByAgentId);
+        return await runCompanionUnits(units, messageIndex, generationType, cancelRevision, { allowUserMessage, previousContents, extraContextSectionsByAgentId });
+    } finally {
+        // Skipped runs leave only a pending placeholder; keep the previous note intact.
+        for (const agentId of pendingAgentIds) {
+            if (getCompanionResults(message)[agentId]?.status !== 'pending') continue;
+            restoreCompanionResult(message, agentId, previousResults.get(agentId));
+            await emitCompanionResultsUpdated(messageIndex, agentId);
+        }
+    }
 }
 
 async function runCompanionAgentsWithDependencyDelay(agents, messageIndex, generationType, cancelRevision, { allowUserMessage = false, contextSourceAgents = agents } = {}) {
@@ -1881,13 +1928,14 @@ async function runCompanionDependencyCascade(messageIndex, changedAgentIds, gene
 
     const allEnabled = getEnabledAgents();
     const runnable = Array.isArray(contextSourceAgents)
-        ? contextSourceAgents
+        ? contextSourceAgents.filter(isAgentRuntimeAllowed)
         : getRunnableCompanionAgents(allEnabled, { manual: true, messageIndex });
     const agentByReferenceId = buildCompanionReferenceMap(runnable);
     const dependents = [];
 
     for (const changedId of changedAgentIds) {
         const changedAgent = agentByReferenceId.get(changedId) ?? { id: changedId };
+        if (!isAgentRuntimeAllowed(changedAgent)) continue;
         for (const dependent of findCompanionDependents(changedAgent, runnable)) {
             if (!visited.has(dependent.id) && !isAgentHidden(dependent.id)) {
                 dependents.push(dependent);
@@ -1929,6 +1977,7 @@ export async function runCompanionStage({ messageIndex, message, generationType 
 }
 
 export function injectCompanionFeedbackPrompts(activeAgents = [], { excludeMessage = null } = {}) {
+    activeAgents = activeAgents.filter(isAgentRuntimeAllowed);
     const excludedIndex = excludeMessage ? chat.indexOf(excludeMessage) : -1;
     const beforeMessageIndex = excludedIndex >= 0 ? excludedIndex : chat.length;
     const inlineTrackerTags = getActiveInlineTrackerTags(activeAgents);
@@ -1963,9 +2012,11 @@ export function injectCompanionFeedbackPrompts(activeAgents = [], { excludeMessa
             continue;
         }
 
-        const blockShapes = extractTrackerTagShapes(body);
-        const trackerTags = [...blockShapes.keys()].filter(tag => !inlineTrackerTags.has(tag));
-        trackerTags.forEach(tag => feedbackTrackerShapes.set(tag, blockShapes.get(tag)));
+        const trackerShape = getOwnedCompanionTrackerShape(agent, body);
+        const trackerTags = trackerShape && !inlineTrackerTags.has(trackerShape.tag) ? [trackerShape.tag] : [];
+        if (trackerTags.length > 0) {
+            feedbackTrackerShapes.set(trackerShape.tag, trackerShape.shape);
+        }
         feedbackPrompts.push({ agent, body, trackerTags });
     }
 
@@ -2022,7 +2073,7 @@ export async function runCompanionAgentOnMessage(agentId, messageIndex, { cancel
     const message = chat[messageIndex];
     const targetChatId = getCurrentChatId();
     const isTargetCurrent = () => getCurrentChatId() === targetChatId && chat[messageIndex] === message;
-    if (!agent || !isCompanionAgent(agent) || !isValidCompanionTargetMessage(message, { allowUserMessage })) {
+    if (!agent || !isAgentRuntimeAllowed(agent) || !isCompanionAgent(agent) || !isValidCompanionTargetMessage(message, { allowUserMessage })) {
         return null;
     }
 
@@ -2035,6 +2086,11 @@ export async function runCompanionAgentOnMessage(agentId, messageIndex, { cancel
             if (existingPayload !== previousContent || storedResult?.status !== 'done') {
                 updateCompanionResult(message, agent.id, { status: 'done', content: existingPayload, error: '' });
                 await emitCompanionResultsUpdated(messageIndex, agent.id);
+                if (!isAgentRuntimeAllowed(agent)) {
+                    restoreCompanionResult(message, agent.id, previousResult);
+                    if (isTargetCurrent()) await emitCompanionResultsUpdated(messageIndex, agent.id);
+                    return previousResult;
+                }
                 if (!isTargetCurrent()) return getCompanionResults(message)[agent.id];
                 saveChatDebounced({ deferBackup: false });
             }
@@ -2051,13 +2107,9 @@ export async function runCompanionAgentOnMessage(agentId, messageIndex, { cancel
         tokenUsage: null,
     });
     await emitCompanionResultsUpdated(messageIndex, agent.id);
-    if (!isTargetCurrent()) {
-        if (previousResult) {
-            const results = getCompanionResults(message);
-            setAgentExtraValue(message, COMPANION_RESULTS_EXTRA_KEY, { ...results, [agent.id]: previousResult });
-        } else {
-            deleteCompanionResult(message, agent.id);
-        }
+    if (!isTargetCurrent() || !isAgentRuntimeAllowed(agent)) {
+        restoreCompanionResult(message, agent.id, previousResult);
+        if (isTargetCurrent()) await emitCompanionResultsUpdated(messageIndex, agent.id);
         return previousResult;
     }
     const { changed, result } = await runSingleCompanionAgent(agent, messageIndex, 'normal', cancelRevision, {
@@ -2072,6 +2124,11 @@ export async function runCompanionAgentOnMessage(agentId, messageIndex, { cancel
         previousResult,
     });
 
+    if (result === null && getCompanionResults(message)[agent.id]?.status === 'pending') {
+        restoreCompanionResult(message, agent.id, previousResult);
+        if (isTargetCurrent()) await emitCompanionResultsUpdated(messageIndex, agent.id);
+        return previousResult;
+    }
     if (!isTargetCurrent()) return result;
 
     if (changed) {
@@ -2123,6 +2180,8 @@ export async function applyAgentPostPassesToCompanionResult(transformerAgentId, 
         toastr.warning('This agent cannot be applied to that companion note.');
         return null;
     }
+    const isRuntimeAllowed = () => isAgentRuntimeAllowed(transformer) && isAgentRuntimeAllowed(getAgentById(companionAgentId));
+    if (!isRuntimeAllowed()) return null;
 
     const result = getCompanionResults(message)[companionAgentId];
     if (result?.status !== 'done' || !normalizeText(result?.content)) {
@@ -2134,9 +2193,10 @@ export async function applyAgentPostPassesToCompanionResult(transformerAgentId, 
     const passResult = await runSingleAgentPostPassesOnText(transformer, result.content, COMPANION_OUTPUT_GENERATION_TYPE, {
         characterOverride: characterName,
         messageContext: characterName ? { name: characterName } : {},
+        runtimeAgents: [getAgentById(companionAgentId)],
     });
 
-    if (getAgentGenerationCancelRevision() !== cancelRevision) {
+    if (getAgentGenerationCancelRevision() !== cancelRevision || !isRuntimeAllowed()) {
         return null;
     }
 

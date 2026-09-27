@@ -366,10 +366,10 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         const textareaFullscreenToggle = page.locator('#left-nav-panel .ica--textarea-fullscreen-toggle').first();
         await expect(textareaFullscreenToggle).toBeVisible();
         await textareaFullscreenToggle.click();
-        await expect(page.locator('dialog.ica--textarea-fullscreen-backdrop[open]')).toBeVisible();
+        await expect(page.locator('dialog.popup[open] textarea.maximized_textarea')).toBeVisible();
         await checkpoint('Agents textarea · fullscreen');
         await page.keyboard.press('Escape');
-        await expect(page.locator('dialog.ica--textarea-fullscreen-backdrop')).toHaveCount(0);
+        await expect(page.locator('textarea.maximized_textarea')).toHaveCount(0);
         await checkpoint('Agents textarea · restored');
         await closeOpenShell();
         await checkpoint('Workspace · closed');

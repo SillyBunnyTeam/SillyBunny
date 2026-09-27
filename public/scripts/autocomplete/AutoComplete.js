@@ -164,7 +164,11 @@ export class AutoComplete {
         });
         textarea.addEventListener('blur', () => this.hide());
         if (isFloating) {
-            textarea.addEventListener('scroll', () => this.updateFloatingPositionDebounced());
+            textarea.addEventListener('scroll', () => {
+                if (this.isActive) {
+                    this.updateFloatingPositionDebounced();
+                }
+            });
         }
         // Character/editor surfaces replace their textareas in place. Retire
         // the resize callback once its input leaves the document so viewport
@@ -175,7 +179,9 @@ export class AutoComplete {
                 this.hide();
                 return;
             }
-            this.updatePositionDebounced();
+            if (this.isActive) {
+                this.updatePositionDebounced();
+            }
         };
         window.addEventListener('resize', this.windowResizeHandler);
     }
@@ -734,7 +740,9 @@ export class AutoComplete {
                     this.clone.remove();
                 }
             });
-            mo.observe(this.textarea.parentElement, { childList: true });
+            if (this.textarea.parentElement) {
+                mo.observe(this.textarea.parentElement, { childList: true });
+            }
         }
         this.clone.style.height = `${inputRect.height}px`;
         this.clone.style.left = `${inputRect.left}px`;
