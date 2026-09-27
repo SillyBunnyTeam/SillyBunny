@@ -233,10 +233,11 @@ describe('Claude 5 backend request handling', () => {
     });
 
     test.each([
-        { label: 'canonical ID', model: 'claude-fable-5-1', customExcludeBody: undefined, expectedThinking: { type: 'adaptive' } },
-        { label: 'OpenRouter-style ID', model: 'anthropic/claude-fable-5.1', customExcludeBody: undefined, expectedThinking: { type: 'adaptive' } },
+        { label: 'canonical Fable 5.1 ID', model: 'claude-fable-5-1', customExcludeBody: undefined, expectedThinking: { type: 'adaptive' } },
+        { label: 'OpenRouter-style Fable 5.1 ID', model: 'anthropic/claude-fable-5.1', customExcludeBody: undefined, expectedThinking: { type: 'adaptive' } },
+        { label: 'canonical Opus 5.5 ID', model: 'claude-opus-5-5', customExcludeBody: undefined, expectedThinking: { type: 'adaptive' } },
         { label: 'explicit thinking exclusion', model: 'claude-fable-5-1', customExcludeBody: 'thinking', expectedThinking: undefined },
-    ])('Custom Fable 5.1 with $label handles thinking correctly', async ({ model, customExcludeBody, expectedThinking }) => {
+    ])('Custom Claude adaptive-thinking exception with $label handles thinking correctly', async ({ model, customExcludeBody, expectedThinking }) => {
         const getBody = captureClaudePayload();
         const res = await makeRequest({
             chat_completion_source: CHAT_COMPLETION_SOURCES.CUSTOM,
