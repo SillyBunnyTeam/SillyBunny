@@ -12,7 +12,7 @@ English | [Deutsch](readme-de_de.md) | [中文](readme-zh_cn.md) | [繁體中文
 
 <div align="center">
 
-**Latest Release: v1.7.0.** [Find changelogs in our Releases.](https://github.com/SillyBunnyTeam/SillyBunny/releases)
+**Latest Release: v1.8.0.** [Find changelogs in our Releases.](https://github.com/SillyBunnyTeam/SillyBunny/releases)
 
 </div>
 
@@ -270,8 +270,13 @@ If something feels off, compare against the upstream `staging` branch first.
 
 ## Contributors
 
-- [Platberlitz](https://github.com/platberlitz)
 - [Geechan](https://github.com/Geechan)
 - [TheLonelyDevil9](https://github.com/TheLonelyDevil9)
+- [voldomero](https://github.com/voldomero)
+- [cspiritsong](https://github.com/cspiritsong)
+
+## Past Contributors
+
+- [Platberlitz](https://github.com/platberlitz)
 
 [Licensed as free software under the AGPL-3.0.](https://www.gnu.org/licenses/agpl-3.0.en.html)

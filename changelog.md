@@ -1,8 +1,47 @@
 # Changelog
 
-## v1.7.1
+## v1.8.0
+
+**SillyBunny version 1.8.0 has released**
+This update features a new Chat Archives feature, alongside many performance improvements, QOL, and bug fixes.
+
+**Highlights: Chat Archives**
+Chat Archives is a feature that allows you to browse, search, restore, manage, and delete your chats in bulk from a nice overview. This supplements rather than replaces your existing chats, and you're still able to view chats in the usual way if you wish.
+
+### Fixed
+- Fixed chat reload, save, backup, card rewrite, and resumable-generation issues that could cause data loss, stale chat state, or interrupted replies.
+- Fixed Conversation Mode sending, saving, cancellation, character selection, image-provider handling, and group-chat behavior.
+- Fixed provider-specific request handling for reasoning effort, samplers, partial prefills, model capabilities, and endpoint credentials.
+- Fixed mobile, iOS, Firefox, WebKit, narrow-layout, scrolling, viewport, composer, and text-editor issues.
+- Fixed extension, lorebook, agent, group-chat, filename, theme, and third-party compatibility issues.
+- Fixed server restart, port handling, connection recovery, and Bun/Node runtime issues.
+### Added
+- Added Chats Archive as a bundled core extension.
+- Added the SillyBunny Debugger and Terminal UI to bundled extras.
+- Added Pathfinder tool confirmation, mandatory tool-use policies, diagnostics, write tools, memory tools, and expanded retrieval support.
+- Added Lorebook Scout integration for confirmation, validation, retries, and direct entry saving.
+- Added Guided Generations action-bar visibility controls and improved Quick Reply integration.
+- Added dynamic Nano-GPT and OpenRouter provider discovery with Nano-GPT service tiers.
+- Added Kimi K3 partial-prefill controls, Claude Fable 5.1 support, GPT 6 Astra, GLM-5.3, new provider models, and model-specific LinkAPI icons.
+- Added new in-chat agent trackers, model/reasoning labels, screenshot clipboard copying, group-chat controls, and Alternate Descriptions support.
+### Changed
+- Changed Guided Generations to the upstream baked-in implementation.
+- Changed reasoning-effort transmission to preserve supported values, including `none`, across relevant providers.
+- Changed provider and model catalogs to support newer models and dynamically discovered providers.
+- Changed chat, agent, lorebook, and generation lifecycles to use stronger ordering and cancellation guarantees.
+- Changed Conversation Mode and group-chat controls to support more reliable image generation, saving, navigation, and visibility management.
+- Changed bundled Quick Image Gen and Pura's Director Preset versions.
+### Improvements
+- Program is synchronised with upstream `staging` instead of `release`. This fits the infrequent release cadence of upstream SillyTavern, and allows us to implement fixes immediately as they're released.
+- Improved startup and restart performance by deferring optional shell panels and cleanup work.
+- Improved streaming rendering and reduced frontend resource and GPU usage.
+- Improved chat history, scrolling, mobile layout, viewport handling, and narrow-screen usability.
+- Improved port-conflict diagnostics with bounded retries and IPv4, IPv6, Windows, inherited-handle, and process details.
+- Improved extension lifecycle handling, bundled-agent updates, full-screen editors, theme persistence, and third-party extension compatibility.
+- Improved security and validation around proxy requests, local URLs, file operations, chat data, lorebooks, cards, and debugger behavior.
 
 ### Merged Staging PRs
+
 - PR #743 (2026-08-07) `fix: conversation mode send/save/cancel buttons non-functional`
 - PR #747 (2026-08-14) `feat: add Chats Archive as a core extension`
 - PR #748 (2026-08-09) `fix: Pathfinder bug fixes + making two features that weren't tied to anything real`
@@ -94,9 +133,14 @@
 - PR #840 (2026-09-08) `fix: touch scrolling on mobile for blown-up text editors`
 - PR #841 (2026-09-09) `feat(nanogpt+openrouter): gather providers from Nano-GPT in real time instead of hardcoding, and add a Flex + Priority option for PAYG models with a Flex/Priority endpoint`
 - PR #842 (2026-09-13) `feat: Clipboard copy when copying screenshot of message(s)`
+- PR #846 (2026-09-21) `chore: load extra tools only when needed`
 - PR #848 (2026-09-15) `chore: reconcile main release history with staging`
+- PR #849 (2026-09-18) `fix(chats): stage chat reloads and enforce lifecycle barriers to prevent chat wipes (#368)`
 - PR #851 (2026-09-18) `fix: Initialize new group chats, restore group highlighting and fix search in popout.`
 - PR #853 (2026-09-18) `feat(samplers): add unified 3-state transmission policy and model-scoped wire sanitization`
+- PR #854 (2026-09-19) `chore: Repo hardening`
+- PR #856 (2026-09-24) `fix(chats): prevent unintended chat saves on open (#706)`
+- PR #864 (2026-09-27) `fix: add guided generations action bar visibility toggle`
 
 ## v1.7.0
 
@@ -158,7 +202,7 @@ Conversation Mode is inspired by instant messaging apps like Discord, Telegram, 
 - Removed placeholder text from the UI.
 - Deprecated Group DMs from Group Chats, as they are now delegated to Conversation Mode.
 
-### Supporting Mechanical Staging PR Ledger
+### Merged Staging PRs
 - PR #495 (2026-06-15) `chore: bump version to 1.7.0`
 - PR #496 (2026-06-16) `fix: keep card and hidden companions out of the tracker panel`
 - PR #497 (2026-06-16) `fix: clamp unmapped SB minors to highest synced ST version`
