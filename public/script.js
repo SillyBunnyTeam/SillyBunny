@@ -579,7 +579,7 @@ export function getSillyBunnyFrontendIconSrc({ absolute = false } = {}) {
 export let system_avatar = getSillyBunnyFrontendIconSrc();
 export const comment_avatar = 'img/quill.png';
 export const default_user_avatar = 'img/user-default.png';
-export let CLIENT_VERSION = 'SillyBunny:v1.8.0:platberlitz'; // For Horde header
+export let CLIENT_VERSION = 'SillyBunny:v1.8.0'; // For Horde header
 
 function applySillyBunnyFrontendIcon(iconId = getStoredSillyBunnyFrontendIcon()) {
     const normalizedIconId = normalizeSillyBunnyFrontendIcon(iconId);
