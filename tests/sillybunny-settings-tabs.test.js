@@ -49,10 +49,7 @@ describe('SillyBunny settings theme drawers', () => {
         for (const drawerId of drawerIds) {
             expect(shellTabsSource).toContain(`'${drawerId}'`);
         }
-        expect(shellTabsSource).toContain('desktopSettingsOutlet.replaceChildren(\n            actionBarVisibilitySettings,');
-        expect(shellTabsSource).toContain('card.append(\n            actionBarVisibilitySettings,');
-        expect(shellTabsSource).toContain('extension_settings[\'guided-generations\'].showActionButtonContainer = input.checked;');
-        expect(shellTabsSource).toContain('toggleAttribute(\'hidden\', !input.checked)');
+        expect(shellTabsSource).toContain('content: [frontendIconSettingsGroup, surfaceSliderGroup, bottomBarSliderGroup],');
         expect(shellTabsSource).not.toContain('sb-frontend-icon-drawer');
         expect(shellTabsSource).not.toContain('sb-background-visibility-drawer');
         expect(shellTabsSource).not.toContain('sb-bottom-bar-size-drawer');

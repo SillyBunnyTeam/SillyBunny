@@ -11856,6 +11856,55 @@ function createBottomChatBarSettingsGroup(mode = 'mobile') {
     return group;
 }
 
+function isGuidedGenerationsBarVisible() {
+    return extension_settings['guided-generations']?.showActionButtonContainer !== false;
+}
+
+function setGuidedGenerationsBarVisible(shouldShow) {
+    const nextVisible = Boolean(shouldShow);
+    extension_settings['guided-generations'] ??= {};
+    extension_settings['guided-generations'].showActionButtonContainer = nextVisible;
+    saveSettingsDebounced();
+    document.dispatchEvent(new CustomEvent('sb:guided-generations-settings-changed'));
+    updateThemePickerUi();
+}
+
+function createGuidedGenerationsBarSettingsGroup(mode = 'mobile') {
+    const inputId = mode === 'desktop' ? 'sb-desktop-gg-bar-visible-input' : 'sb-mobile-gg-bar-visible-input';
+    const group = createElement('section', {
+        className: 'sb-theme-slider-group sb-compact-mode-group',
+    });
+    const label = createElement('label', {
+        className: 'sb-compact-mode-option',
+        attrs: {
+            for: inputId,
+        },
+    });
+    const checkbox = createElement('input', {
+        id: inputId,
+        className: 'sb-compact-mode-checkbox',
+        attrs: {
+            type: 'checkbox',
+            'data-sb-gg-bar-visible-input': mode,
+        },
+    });
+    const copy = createElement('span', { className: 'sb-compact-mode-copy' });
+    const title = createElement('strong', { text: 'Show Guided Generations Bar' });
+    const description = createElement('small', {
+        text: 'Display the Guided Generations action buttons in the chat composer.',
+    });
+
+    checkbox.addEventListener('change', event => {
+        const input = event.currentTarget;
+        setGuidedGenerationsBarVisible(input instanceof HTMLInputElement && input.checked);
+    });
+
+    copy.append(title, description);
+    label.append(checkbox, copy);
+    group.appendChild(label);
+    return group;
+}
+
 function createMobileNavChoice({ id, type = 'radio', name = '', value = '', label, icon, onChange }) {
     const choice = createElement('label', {
         className: 'sb-mobile-nav-choice',
@@ -12370,30 +12419,8 @@ function injectThemePicker() {
     const paperTextureSettingsGroup = createPaperTextureSettingsGroup();
     const frontendIconSettingsGroup = createFrontendIconSettingsGroup();
     const shortcutSettingsGroup = createShortcutSettingsGroup();
-    const actionBarVisibilityLabel = createElement('label', {
-        className: 'checkbox_label',
-        attrs: { for: 'sb-guided-generations-action-bar-visible' },
-    });
-    const actionBarVisibilityInput = createElement('input', {
-        id: 'sb-guided-generations-action-bar-visible',
-        attrs: { type: 'checkbox' },
-    });
-    const actionBarVisibilityText = createElement('span', { text: 'Show Guided Generations action bar' });
-    const actionBarVisibilitySettings = createElement('div', { className: 'sb-desktop-action-bar-setting' });
-    actionBarVisibilityInput.checked = extension_settings['guided-generations']?.showActionButtonContainer !== false;
-    actionBarVisibilityInput.addEventListener('change', event => {
-        const input = event.currentTarget;
-        if (!(input instanceof HTMLInputElement)) {
-            return;
-        }
-
-        extension_settings['guided-generations'] ??= {};
-        extension_settings['guided-generations'].showActionButtonContainer = input.checked;
-        document.getElementById('gg-action-button-container')?.toggleAttribute('hidden', !input.checked);
-        saveSettingsDebounced();
-    });
-    actionBarVisibilityLabel.append(actionBarVisibilityInput, actionBarVisibilityText);
-    actionBarVisibilitySettings.append(actionBarVisibilityLabel);
+    const desktopGuidedGenerationsBarSettingsGroup = createGuidedGenerationsBarSettingsGroup('desktop');
+    const mobileGuidedGenerationsBarSettingsGroup = createGuidedGenerationsBarSettingsGroup('mobile');
     const desktopQuickActionSettingsGroup = createMobileQuickActionSettingsGroup('desktop');
     const mobileQuickActionSettingsGroup = createMobileQuickActionSettingsGroup();
     const desktopSettingsOutlet = document.getElementById('sb-desktop-settings-outlet');
@@ -12431,13 +12458,13 @@ function injectThemePicker() {
 
     if (desktopSettingsOutlet instanceof HTMLElement) {
         desktopSettingsOutlet.replaceChildren(
-            actionBarVisibilitySettings,
             desktopNavLayoutSettingsGroup,
             desktopSettingsDivider,
             desktopShellSizingSettingsGroup,
             desktopButtonSliderGroup,
             desktopCompactModeSettingsGroup,
             desktopBottomChatBarSettingsGroup,
+            desktopGuidedGenerationsBarSettingsGroup,
             desktopQuickActionSettingsGroup,
         );
     }
@@ -12449,6 +12476,7 @@ function injectThemePicker() {
             mobileButtonSliderGroup,
             mobileCompactModeSettingsGroup,
             mobileBottomChatBarSettingsGroup,
+            mobileGuidedGenerationsBarSettingsGroup,
             paperTextureSettingsGroup,
             mobileQuickActionSettingsGroup,
         );
@@ -12457,13 +12485,13 @@ function injectThemePicker() {
     card.append(shellStyleSettingsGroup, interfaceSettingsGroup, topbarLabelSettingsGroup, shortcutSettingsGroup);
     if (!(desktopSettingsOutlet instanceof HTMLElement)) {
         card.append(
-            actionBarVisibilitySettings,
             desktopNavLayoutSettingsGroup,
             desktopSettingsDivider,
             desktopShellSizingSettingsGroup,
             desktopButtonSliderGroup,
             desktopCompactModeSettingsGroup,
             desktopBottomChatBarSettingsGroup,
+            desktopGuidedGenerationsBarSettingsGroup,
             desktopQuickActionSettingsGroup,
         );
     }
@@ -12475,6 +12503,7 @@ function injectThemePicker() {
             mobileButtonSliderGroup,
             mobileCompactModeSettingsGroup,
             mobileBottomChatBarSettingsGroup,
+            mobileGuidedGenerationsBarSettingsGroup,
             mobileQuickActionSettingsGroup,
         );
     }
@@ -12612,6 +12641,16 @@ function updateThemePickerUi() {
 
         input.checked = sbState.bottomChatBar.visible;
         input.closest('.sb-compact-mode-option')?.classList.toggle('is-selected', sbState.bottomChatBar.visible);
+    }
+
+    const guidedGenerationsBarVisible = isGuidedGenerationsBarVisible();
+    for (const input of document.querySelectorAll('[data-sb-gg-bar-visible-input]')) {
+        if (!(input instanceof HTMLInputElement)) {
+            continue;
+        }
+
+        input.checked = guidedGenerationsBarVisible;
+        input.closest('.sb-compact-mode-option')?.classList.toggle('is-selected', guidedGenerationsBarVisible);
     }
 
     for (const input of document.querySelectorAll('input[name="sb-desktop-nav-layout"]')) {

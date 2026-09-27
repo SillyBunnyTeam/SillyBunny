@@ -395,21 +395,33 @@ function ensureButtonContainer() {
     return container;
 }
 
+function restoreQrBar(container) {
+    const qrBar = document.getElementById('qr--bar');
+    if (qrBar && container.contains(qrBar)) {
+        const sendForm = document.getElementById('send_form');
+        sendForm?.insertBefore(qrBar, sendForm.firstElementChild);
+    }
+}
+
 function updateExtensionButtons() {
     const settings = getSettings();
+    if (!settings.showActionButtonContainer) {
+        // Remove the whole bar so the Quick Reply bar and Input History
+        // buttons it hosts fall back to their native composer placement.
+        const container = document.getElementById('gg-action-button-container');
+        if (container) {
+            restoreQrBar(container);
+            container.remove();
+        }
+        return;
+    }
+
     const container = ensureButtonContainer();
     if (!container) {
         return;
     }
 
-    container.hidden = !settings.showActionButtonContainer;
-
-    const existingQrBar = document.getElementById('qr--bar');
-    if (existingQrBar && container.contains(existingQrBar)) {
-        const sendForm = document.getElementById('send_form');
-        sendForm?.insertBefore(existingQrBar, sendForm.firstElementChild);
-    }
-
+    restoreQrBar(container);
     container.innerHTML = '';
 
     const qrContainer = document.createElement('div');
@@ -484,6 +496,7 @@ export async function init() {
     updateExtensionButtons();
     startFlushGuideButtonUpdates();
     startQrIntegration();
+    document.addEventListener('sb:guided-generations-settings-changed', updateExtensionButtons);
 
     // SillyBunny: re-populate profile/preset dropdowns when Connection Manager
     // profiles change, so the UI stays in sync without requiring a manual

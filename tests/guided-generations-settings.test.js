@@ -1,4 +1,36 @@
+/* global globalThis */
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
+
+function makeNode(id) {
+    return {
+        id,
+        parentElement: null,
+        children: [],
+        get firstElementChild() {
+            return this.children[0] ?? null;
+        },
+        contains(node) {
+            return this.children.some(child => child === node || child.contains(node));
+        },
+        insertBefore(node, reference) {
+            node.parentElement?.children.splice(node.parentElement.children.indexOf(node), 1);
+            const index = reference ? this.children.indexOf(reference) : this.children.length;
+            this.children.splice(index, 0, node);
+            node.parentElement = this;
+        },
+        remove() {
+            this.parentElement?.children.splice(this.parentElement.children.indexOf(this), 1);
+            this.parentElement = null;
+        },
+    };
+}
+
+function createFakeDocument(root, descendants) {
+    const nodes = [root, ...descendants];
+    return {
+        getElementById: id => nodes.find(node => node.id === id && (node === root || root.contains(node))) ?? null,
+    };
+}
 
 describe('Guided Generations settings migration', () => {
     let extensionSettings;
@@ -128,5 +160,31 @@ describe('Guided Generations settings migration', () => {
         expect(defaultSettings.showActionButtonContainer).toBe(true);
         expect(extensionSettings['guided-generations'].showActionButtonContainer).toBe(false);
         expect(saveSettingsDebounced).not.toHaveBeenCalled();
+    });
+
+    test('hiding the action bar removes it and returns the integrated Quick Reply bar to the composer', async () => {
+        const sendForm = makeNode('send_form');
+        const nonQrFormItems = makeNode('nonQRFormItems');
+        const container = makeNode('gg-action-button-container');
+        const qrContainer = makeNode('gg-qr-container');
+        const qrBar = makeNode('qr--bar');
+        sendForm.insertBefore(nonQrFormItems, null);
+        sendForm.insertBefore(container, null);
+        container.insertBefore(qrContainer, null);
+        qrContainer.insertBefore(qrBar, null);
+        globalThis.document = createFakeDocument(sendForm, [nonQrFormItems, container, qrContainer, qrBar]);
+        extensionSettings['guided-generations'] = { showActionButtonContainer: false };
+
+        try {
+            const { loadSettings, updateExtensionButtons } = await import('../public/scripts/extensions/guided-generations/index.js');
+            loadSettings();
+            updateExtensionButtons();
+        } finally {
+            delete globalThis.document;
+        }
+
+        expect(container.parentElement).toBeNull();
+        expect(qrBar.parentElement).toBe(sendForm);
+        expect(sendForm.firstElementChild).toBe(qrBar);
     });
 });
