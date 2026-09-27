@@ -11,6 +11,8 @@ Chat Archives is a feature that allows you to browse, search, restore, manage, a
 - Fixed chat reload, save, backup, card rewrite, and resumable-generation issues that could cause data loss, stale chat state, or interrupted replies.
 - Fixed Conversation Mode sending, saving, cancellation, character selection, image-provider handling, and group-chat behavior.
 - Fixed provider-specific request handling for reasoning effort, samplers, partial prefills, model capabilities, and endpoint credentials.
+- Kept Opus 5.5 adaptive thinking enabled when reasoning effort is `none`, `auto`, or unset.
+- Preserved Custom endpoint adaptive-thinking options while removing legacy token budgets.
 - Fixed mobile, iOS, Firefox, WebKit, narrow-layout, scrolling, viewport, composer, and text-editor issues.
 - Fixed extension, lorebook, agent, group-chat, filename, theme, and third-party compatibility issues.
 - Fixed server restart, port handling, connection recovery, and Bun/Node runtime issues.
@@ -38,11 +40,6 @@ Chat Archives is a feature that allows you to browse, search, restore, manage, a
 - Improved port-conflict diagnostics with bounded retries and IPv4, IPv6, Windows, inherited-handle, and process details.
 - Improved extension lifecycle handling, bundled-agent updates, full-screen editors, theme persistence, and third-party extension compatibility.
 - Improved security and validation around proxy requests, local URLs, file operations, chat data, lorebooks, cards, and debugger behavior.
-
-### Fixes
-
-- Keep Opus 5.5 adaptive thinking enabled when reasoning effort is `none`, `auto`, or unset.
-- Preserve Custom endpoint adaptive-thinking options while removing legacy token budgets.
 
 ### Merged Staging PRs
 
@@ -145,6 +142,7 @@ Chat Archives is a feature that allows you to browse, search, restore, manage, a
 - PR #854 (2026-09-19) `chore: Repo hardening`
 - PR #856 (2026-09-24) `fix(chats): prevent unintended chat saves on open (#706)`
 - PR #864 (2026-09-27) `fix: add guided generations action bar visibility toggle`
+- PR #865 (2026-09-27) `fix: update Opus 5.5 for adaptive thinking support`
 
 ## v1.7.0
 
