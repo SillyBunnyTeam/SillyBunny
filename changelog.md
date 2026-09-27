@@ -39,6 +39,11 @@ Chat Archives is a feature that allows you to browse, search, restore, manage, a
 - Improved extension lifecycle handling, bundled-agent updates, full-screen editors, theme persistence, and third-party extension compatibility.
 - Improved security and validation around proxy requests, local URLs, file operations, chat data, lorebooks, cards, and debugger behavior.
 
+### Fixes
+
+- Keep Opus 5.5 adaptive thinking enabled when reasoning effort is `none`, `auto`, or unset.
+- Preserve Custom endpoint adaptive-thinking options while removing legacy token budgets.
+
 ### Merged Staging PRs
 
 - PR #743 (2026-08-07) `fix: conversation mode send/save/cancel buttons non-functional`
