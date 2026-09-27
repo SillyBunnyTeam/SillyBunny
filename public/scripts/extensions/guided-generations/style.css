@@ -9,6 +9,10 @@
     overflow: hidden;
 }
 
+.gg-action-buttons-container[hidden] {
+    display: none;
+}
+
 .gg-qr-container {
     display: flex;
     align-items: center;

@@ -162,7 +162,7 @@ describe('Guided Generations settings migration', () => {
         expect(saveSettingsDebounced).not.toHaveBeenCalled();
     });
 
-    test('hiding the action bar removes it and returns the integrated Quick Reply bar to the composer', async () => {
+    test('hiding the action bar hides the complete bar without relocating Quick Reply', async () => {
         const sendForm = makeNode('send_form');
         const nonQrFormItems = makeNode('nonQRFormItems');
         const container = makeNode('gg-action-button-container');
@@ -183,8 +183,8 @@ describe('Guided Generations settings migration', () => {
             delete globalThis.document;
         }
 
-        expect(container.parentElement).toBeNull();
-        expect(qrBar.parentElement).toBe(sendForm);
-        expect(sendForm.firstElementChild).toBe(qrBar);
+        expect(container.parentElement).toBe(sendForm);
+        expect(container.hidden).toBe(true);
+        expect(qrBar.parentElement).toBe(qrContainer);
     });
 });

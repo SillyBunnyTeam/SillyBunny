@@ -395,33 +395,19 @@ function ensureButtonContainer() {
     return container;
 }
 
-function restoreQrBar(container) {
-    const qrBar = document.getElementById('qr--bar');
-    if (qrBar && container.contains(qrBar)) {
-        const sendForm = document.getElementById('send_form');
-        sendForm?.insertBefore(qrBar, sendForm.firstElementChild);
-    }
-}
-
 function updateExtensionButtons() {
     const settings = getSettings();
-    if (!settings.showActionButtonContainer) {
-        // Remove the whole bar so the Quick Reply bar and Input History
-        // buttons it hosts fall back to their native composer placement.
-        const container = document.getElementById('gg-action-button-container');
-        if (container) {
-            restoreQrBar(container);
-            container.remove();
-        }
-        return;
-    }
-
     const container = ensureButtonContainer();
     if (!container) {
         return;
     }
 
-    restoreQrBar(container);
+    container.hidden = !settings.showActionButtonContainer;
+    if (container.hidden) {
+        return;
+    }
+
+    const qrBar = document.getElementById('qr--bar');
     container.innerHTML = '';
 
     const qrContainer = document.createElement('div');
@@ -431,6 +417,9 @@ function updateExtensionButtons() {
     actionsContainer.className = 'gg-regular-buttons-container';
 
     container.append(qrContainer, actionsContainer);
+    if (qrBar) {
+        qrContainer.append(qrBar);
+    }
 
     const buttons = [
         settings.showFlushGuidesButton && createFlushGuidesButton(),
