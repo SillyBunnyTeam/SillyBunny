@@ -36,7 +36,7 @@ You can still send a pull request for `release` in the following scenarios:
 - Updating GitHub Actions.
 - Hotfixing a critical bug. (Note: Hotfixes merged into release must also be backported to staging to prevent regression in the next update)
 
-**Maintainers: Self-merges are allowed for the following PR prefixes: `fix`, `chore`, `docs`, within reason. `feat` and `sync` require review from another maintainer. Never commit directly to the `staging` or `release` repositories unless they're `doc` changes.**
+**Maintainers: PRs require review from another maintainer, unless they're `chore` or `docs`. Never commit directly to the `staging` or `release` repositories unless they're `docs` changes.**
 
 #### Release Cadence
 
