@@ -39,7 +39,7 @@ English | [Deutsch](readme-de_de.md) | [中文](readme-zh_cn.md) | [繁體中文
 SillyBunny is an elegant fork of [SillyTavern](https://github.com/SillyTavern/SillyTavern), designed with a clean, graphical shell UI for both desktop and mobile, inspired by the [GNOME project](https://www.gnome.org/) and [KDE Plasma](https://kde.org/plasma-desktop/). SillyBunny features a Bun-based runtime for improved performance; a quick-access home page with built-in tutorials, guides, and recommended extensions; a lightweight in-chat agentic system to facilitate modern agent functionality; extra chat modes to expand functionality with your character cards; and a plethora of bug fixes and general improvements!
 
 > [!WARNING]
-> We're a small team of three people who are passionate about making a simple and effective frontend that has all the features we always wished to see in SillyTavern, while leveraging the amazing work on its backend.
+> We're a small team of people who are passionate about making a simple and effective frontend that has all the features we always wished to see in SillyTavern, while leveraging the amazing work on its backend.
 >
 > As such, this is an in-dev fork, and is currently considered beta quality. [Please direct SillyBunny-specific issues to this project's issue tracker.](https://github.com/SillyBunnyTeam/SillyBunny/issues) If an issue is reproducible in upstream SillyTavern, please report it upstream instead.
 >
