@@ -30,13 +30,23 @@ The following goals summarize `PRODUCT.md` and `README.md`; `PRODUCT.md` is auth
 
 Always create pull requests using the `staging` branch; 99% of contributions should go there. This way, we can ensure stability before a proper release version.
 
-You can still send a pull request for `main` in the following scenarios:
+You can still send a pull request for `release` in the following scenarios:
 
 - Updating documentation.
 - Updating GitHub Actions.
 - Hotfixing a critical bug. (Note: Hotfixes merged into release must also be backported to staging to prevent regression in the next update)
 
-**Maintainers: Self-merges are allowed for the following PR prefixes: `fix`, `chore`, `docs`, within reason. `feat` and `sync` require review from another maintainer. Never commit directly to the `staging` or `main` repositories unless they're `doc` changes.**
+**Maintainers: PRs require review from another maintainer, unless they're `chore` or `docs`. Never commit directly to the `staging` or `release` repositories unless they're `docs` changes.**
+
+#### Release Cadence
+
+We prefer release synchronisations in short, frequent updates vs. long commit lists. This is to ensure that `staging` does not drift too far from `release` and to give people a frequent update target without relying on the `staging` branch. The `staging` branch should not accumulate a large backlog before synchronisation.
+
+v1.x releases are reserved for significant feature updates, improvements, or a large group of individual changes.
+
+v1.x.x releases are reserved for smaller bug fixes, performance improvements, and polish that do not introduce any significant new features.
+
+Critical hotfixes may be released from `release`, with the fix backported to `staging`
 
 #### PR Structure
 
@@ -62,6 +72,7 @@ Project maintainers will test and can change your code before merging. To keep o
 - The "Allow edits from maintainers" option is checked.
 - Avoid force-pushing your branch once the PR is out of draft state.
 - Do not self-merge any PR into the upstream repository. It must be reviewed by at least one other contributor. Direct end user debugging to the correct PR branch instead of staging, before merging.
+
 #### Release and hotfix hygiene
 
 If you're helping ship a SillyBunny release, keep the release copy in sync with the code:

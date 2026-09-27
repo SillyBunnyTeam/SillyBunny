@@ -272,7 +272,7 @@ describe('port conflict diagnostics', () => {
 
     test.each([
         ['SillyTavern:1.13.4:Cohee#1207', 'SillyTavern'],
-        ['SillyBunny:1.7.1:fork', 'Another SillyBunny Instance'],
+        ['SillyBunny:1.8.0:fork', 'Another SillyBunny Instance'],
     ])('identifies the version agent %s', async (agent, type) => {
         const { probeHttpHolder } = await loadListenModule();
         const port = await serve((req, res) => res.end(JSON.stringify({ agent, gitBranch: 'SillyTavern-sync' })));
@@ -316,7 +316,7 @@ describe('port conflict diagnostics', () => {
             res.write('{');
             setImmediate(() => res.destroy());
         });
-        const oversized = await serve((req, res) => res.end(JSON.stringify({ agent: 'SillyBunny:1.7.1:fork', padding: 'x'.repeat(100_000) })));
+        const oversized = await serve((req, res) => res.end(JSON.stringify({ agent: 'SillyBunny:1.8.0:fork', padding: 'x'.repeat(100_000) })));
         let deadline;
         try {
             const result = await Promise.race([
@@ -331,7 +331,7 @@ describe('port conflict diagnostics', () => {
 
     test('diagnoses IPv6 without probing an unrelated IPv4 holder and retains process details', async () => {
         const { diagnosePortConflict } = await loadListenModule();
-        const port = await serve((req, res) => res.end(JSON.stringify({ agent: 'SillyBunny:1.7.1:fork' })), '::1');
+        const port = await serve((req, res) => res.end(JSON.stringify({ agent: 'SillyBunny:1.8.0:fork' })), '::1');
         const runCommand = commandOutputs({
             netstat: `TCP 127.0.0.1:${port} 0.0.0.0:0 LISTENING 111\nTCP [::1]:${port} [::]:0 LISTENING 222`,
             powershell: JSON.stringify({ Name: 'node.exe', ExecutablePath: 'C:\\Program Files\\nodejs\\node.exe', CommandLine: '"C:\\Program Files\\nodejs\\node.exe" server.js' }),
