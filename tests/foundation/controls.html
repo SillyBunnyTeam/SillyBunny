@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/webfonts/Figtree/stylesheet.css">
+    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/css/mobile-styles.css" media="(max-width: 768px)">
+    <link rel="stylesheet" href="/css/sillybunny-theme.css">
+    <link rel="stylesheet" href="/css/sillybunny-tabs.css">
+    <link rel="stylesheet" href="/css/sillybunny-mobile-shell.css" media="(max-width: 768px)">
+    <style>
+        body { position: static; height: auto; overflow: auto; background: var(--color-background); }
+        main { display: grid; gap: 16px; padding: 16px; max-width: 700px; margin: auto; }
+        .fixture-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+        label { display: grid; gap: 8px; min-width: 0; }
+        .fixture-surface { padding: 16px; background: var(--color-surface); border-radius: var(--sb-radius-lg); }
+    </style>
+</head>
+<body>
+    <main>
+        <div class="fixture-row">
+            <button type="button" class="menu_button menu_button_primary" id="primary">Save</button>
+            <button type="button" class="menu_button" id="secondary">Cancel</button>
+            <button type="button" class="menu_button" disabled>Save</button>
+            <button type="button" class="menu_button" aria-disabled="true">Delete</button>
+            <button type="button" class="menu_button" aria-busy="true">Import</button>
+            <button type="button" class="menu_button" aria-pressed="true">Export</button>
+            <button type="button" class="menu_button" id="long">ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ</button>
+        </div>
+        <div class="fixture-surface">
+            <label for="field">Search</label>
+            <input class="text_pole" id="field" placeholder="Search">
+            <label for="invalid">Name</label>
+            <input class="text_pole" id="invalid" aria-invalid="true" aria-describedby="error">
+            <span id="error">lorum ipsum</span>
+            <label for="disabled">Name</label>
+            <input class="text_pole" id="disabled" disabled value="lorum ipsum">
+            <label for="select">Preset</label>
+            <select id="select"><option>Default</option><option>lorum ipsum</option></select>
+            <label class="checkbox_label"><input type="checkbox">Default</label>
+        </div>
+    </main>
+</body>
+</html>

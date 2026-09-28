@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from '@adobe/css-tools';
+import { decode } from 'html-entities';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const defaultRepoRoot = path.resolve(scriptDirectory, '..');
@@ -24,7 +25,7 @@ const optionalPublicAssets = new Set([
     'css/user.css',
 ]);
 
-const motionPropertyPattern = /^(?:-webkit-)?(?<family>transition|animation)(?:-.+)?$/;
+const motionPropertyPattern = /^(?:-webkit-)?(?<family>transition|animation)(?:-(?:duration|delay))?$/;
 const reducedMotionQueryPattern = /prefers-reduced-motion\s*:\s*reduce/i;
 const disabledMotionValuePattern = /^none(?:\s*!important)?$/i;
 
@@ -32,23 +33,42 @@ function normalizeSource(source) {
     return String(source).replace(/\r\n/g, '\n');
 }
 
-function lineNumberAt(source, offset) {
-    return normalizeSource(source).slice(0, offset).split('\n').length;
-}
-
-function createFinding(severity, code, file, message, line) {
+function createFinding(severity, code, file, message, line, subject = code, count = 1) {
     return {
         severity,
         code,
         file,
         ...(line ? { line } : {}),
         message,
+        key: JSON.stringify([file, code, subject]),
+        count,
     };
 }
 
-function getAttribute(tag, name) {
-    const match = tag.match(new RegExp(`\\s${name}\\s*=\\s*(["'])(.*?)\\1`, 'i'));
-    return match?.[2] ?? '';
+function* htmlTags(source) {
+    // Skip comments and raw-text bodies; quoted '>' characters belong to attributes.
+    const tokens = /<!--[\s\S]*?(?:-->|$)|<![^>]*>|<(?<name>[a-z][\w:-]*)\b(?<attributes>(?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+    let previousOffset = 0;
+    let line = 1;
+    for (let match; (match = tokens.exec(source));) {
+        if (!match.groups?.name) continue;
+        const name = match.groups.name.toLowerCase();
+        const attributes = new Map();
+        const attributePattern = /([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
+        for (const attribute of match.groups.attributes.matchAll(attributePattern)) {
+            const key = attribute[1].toLowerCase();
+            if (!attributes.has(key)) attributes.set(key, decode(attribute[2] ?? attribute[3] ?? attribute[4] ?? '', { scope: 'attribute' }));
+        }
+        line += (source.slice(previousOffset, match.index).match(/\n/g) ?? []).length;
+        previousOffset = match.index;
+        yield { name, attributes, line };
+        if (/^(script|style|textarea|title)$/.test(name)) {
+            const closingTag = new RegExp(`</${name}\\s*>`, 'gi');
+            closingTag.lastIndex = tokens.lastIndex;
+            const closing = closingTag.exec(source);
+            tokens.lastIndex = closing ? closingTag.lastIndex : source.length;
+        }
+    }
 }
 
 function stripAssetQuery(value) {
@@ -59,10 +79,11 @@ function isExternalAsset(value) {
     return /^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i.test(value);
 }
 
-function resolvePublicAsset(repoRoot, reference) {
-    const cleanReference = stripAssetQuery(reference).replace(/^\/+/, '');
+function resolvePublicAsset(repoRoot, relativePath, reference) {
+    const decodedReference = decodeURIComponent(stripAssetQuery(reference));
     const publicRoot = path.join(repoRoot, 'public');
-    const assetPath = path.resolve(publicRoot, cleanReference);
+    const assetPath = path.resolve(decodedReference.startsWith('/') ? publicRoot : path.dirname(path.join(repoRoot, relativePath)), decodedReference.replace(/^\/+/, ''));
+    const cleanReference = path.relative(publicRoot, assetPath).split(path.sep).join('/');
     const isPublicPath = assetPath === publicRoot || assetPath.startsWith(`${publicRoot}${path.sep}`);
 
     return {
@@ -76,10 +97,10 @@ export function extractHtmlAssetReferences(source) {
     const normalizedSource = normalizeSource(source);
     const references = [];
 
-    for (const match of normalizedSource.matchAll(/<(?:link|script)\b[^>]*>/gi)) {
-        const tag = match[0];
-        const attribute = tag.startsWith('<script') ? 'src' : 'href';
-        const value = getAttribute(tag, attribute);
+    for (const tag of htmlTags(normalizedSource)) {
+        if (tag.name !== 'link' && tag.name !== 'script') continue;
+        const attribute = tag.name === 'script' ? 'src' : 'href';
+        const value = tag.attributes.get(attribute)?.trim();
 
         if (!value || isExternalAsset(value)) {
             continue;
@@ -88,7 +109,7 @@ export function extractHtmlAssetReferences(source) {
         references.push({
             attribute,
             value,
-            line: lineNumberAt(normalizedSource, match.index),
+            line: tag.line,
         });
     }
 
@@ -100,7 +121,13 @@ function auditHtmlSource({ repoRoot, relativePath, source }) {
     const normalizedSource = normalizeSource(source);
 
     for (const reference of extractHtmlAssetReferences(normalizedSource)) {
-        const resolved = resolvePublicAsset(repoRoot, reference.value);
+        let resolved;
+        try {
+            resolved = resolvePublicAsset(repoRoot, relativePath, reference.value);
+        } catch {
+            findings.push(createFinding('error', 'invalid-asset-url', relativePath, reference.value, reference.line, reference.value));
+            continue;
+        }
 
         if (!resolved.isPublicPath) {
             findings.push(createFinding(
@@ -109,31 +136,32 @@ function auditHtmlSource({ repoRoot, relativePath, source }) {
                 relativePath,
                 `${reference.attribute} reference escapes public/: ${reference.value}`,
                 reference.line,
+                reference.value,
             ));
             continue;
         }
 
-        if (!fs.existsSync(resolved.assetPath) && !optionalPublicAssets.has(resolved.cleanReference)) {
+        if ((!fs.existsSync(resolved.assetPath) || !fs.statSync(resolved.assetPath).isFile()) && !optionalPublicAssets.has(resolved.cleanReference)) {
             findings.push(createFinding(
                 'error',
                 'missing-asset',
                 relativePath,
                 `${reference.attribute} reference does not resolve: ${reference.value}`,
                 reference.line,
+                reference.value,
             ));
         }
     }
 
     const ids = new Map();
-    for (const match of normalizedSource.matchAll(/\bid\s*=\s*(["'])(.*?)\1/gi)) {
-        const id = match[2].trim();
+    for (const tag of htmlTags(normalizedSource)) {
+        const id = tag.attributes.get('id');
         if (!id) {
             continue;
         }
 
-        const line = lineNumberAt(normalizedSource, match.index);
         const locations = ids.get(id) ?? [];
-        locations.push(line);
+        locations.push(tag.line);
         ids.set(id, locations);
     }
 
@@ -148,23 +176,26 @@ function auditHtmlSource({ repoRoot, relativePath, source }) {
             relativePath,
             `id="${id}" appears ${locations.length} times (lines ${locations.join(', ')}).`,
             locations[0],
+            id,
+            locations.length - 1,
         ));
     }
 
     return findings;
 }
 
-function visitCssRules(rules, isReducedMotion, visitor) {
+function visitCssRules(rules, conditions, visitor) {
     for (const rule of rules ?? []) {
-        const nestedReducedMotion = isReducedMotion
-            || (rule.type === 'media' && reducedMotionQueryPattern.test(rule.media));
+        const nestedConditions = ['media', 'supports', 'container'].includes(rule.type)
+            ? [...conditions, `${rule.type}:${rule[rule.type]}`]
+            : conditions;
 
         if (rule.type === 'rule') {
-            visitor(rule, nestedReducedMotion);
+            visitor(rule, nestedConditions);
         }
 
         if (Array.isArray(rule.rules)) {
-            visitCssRules(rule.rules, nestedReducedMotion, visitor);
+            visitCssRules(rule.rules, nestedConditions, visitor);
         }
     }
 }
@@ -175,14 +206,73 @@ function getRuleSelectors(rule) {
         : ['<anonymous rule>'];
 }
 
-function auditCssAst(ast) {
-    const motionRequirements = new Map();
-    const reducedMotionGuards = new Set();
+function cleanValue(value) {
+    return value.replace(/\s*!important\s*$/i, '').trim().toLowerCase();
+}
+
+function isZeroTime(value) {
+    return cleanValue(value).split(',').every(time => /^0(?:\.0+)?(?:ms|s)?$/.test(time.trim()));
+}
+
+function isLegacyInstantTime(value) {
+    return /^0\.01ms$/i.test(cleanValue(value));
+}
+
+function isGuardTime(value) {
+    return isZeroTime(value) || isLegacyInstantTime(value);
+}
+
+function hasMotionDelay(declarations, family) {
+    const delay = declarations.find(item => item.property === `${family}-delay`);
+    if (delay && !isZeroTime(delay.value)) return true;
+
+    const shorthand = declarations.find(item => item.property === family)?.value ?? '';
+    return shorthand.split(',').some(segment => (
+        (segment.match(/-?(?:\d*\.)?\d+m?s\b/g) ?? []).slice(1).some(time => !isZeroTime(time))
+    ));
+}
+
+function reducedConditions(conditions) {
+    // Only accept conjunctive reduce queries. `not` and comma alternatives need browser verification.
+    const reduce = conditions.some(condition => condition.startsWith('media:') && reducedMotionQueryPattern.test(condition) && !/\bnot\b|,/i.test(condition));
+    return reduce ? conditions.map(condition => condition.replace(/(?:and\s*)?\(prefers-reduced-motion\s*:\s*reduce\)/i, '').replace(/media:\s*(?:only\s+)?(?:screen\s*(?:and)?)?\s*$/, '').trim()).filter(Boolean) : null;
+}
+
+function collectMotionGuards(ast) {
+    const guards = [];
+    visitCssRules(ast.stylesheet?.rules, [], (rule, conditions) => {
+        const scope = reducedConditions(conditions);
+        if (!scope) return;
+        const declarations = new Map((rule.declarations ?? []).filter(item => item.type === 'declaration').map(item => [item.property, item.value]));
+        for (const family of ['transition', 'animation']) {
+            for (const prefix of ['', '-webkit-']) {
+                const shorthand = declarations.get(`${prefix}${family}`) ?? '';
+                const duration = declarations.get(`${prefix}${family}-duration`) ?? '';
+                const delay = declarations.get(`${prefix}${family}-delay`) ?? '';
+                const iterations = declarations.get(`${prefix}animation-iteration-count`) ?? '';
+                const instant = isZeroTime(duration) || (isLegacyInstantTime(duration) && (family === 'transition' || cleanValue(iterations) === '1'));
+                if (!disabledMotionValuePattern.test(shorthand) && !instant) continue;
+                guards.push({
+                    family, scope, selectors: getRuleSelectors(rule),
+                    important: /!important/i.test(shorthand || duration),
+                    clearsDelay: disabledMotionValuePattern.test(shorthand) || isGuardTime(delay),
+                    order: (rule.position?.start.line ?? 0) * 1000000 + (rule.position?.start.column ?? 0),
+                });
+            }
+        }
+    });
+    return guards;
+}
+
+function auditCssAst(ast, sharedGuards = []) {
+    const motionRequirements = [];
+    const reducedMotionGuards = [...collectMotionGuards(ast), ...sharedGuards];
     const compatibilityFindings = [];
     const largeRadiusTokens = [];
     const slowTransitionTokens = [];
 
-    visitCssRules(ast.stylesheet?.rules, false, (rule, isReducedMotion) => {
+    visitCssRules(ast.stylesheet?.rules, [], (rule, conditions) => {
+        const isReducedMotion = reducedConditions(conditions) !== null;
         const declarations = (rule.declarations ?? [])
             .filter(declaration => declaration.type === 'declaration');
         const properties = new Set(declarations.map(declaration => declaration.property.toLowerCase()));
@@ -222,15 +312,13 @@ function auditCssAst(ast) {
         }
 
         for (const declaration of declarations) {
-            const propertyMatch = declaration.property.match(motionPropertyPattern);
+            const propertyMatch = declaration.property.toLowerCase().match(motionPropertyPattern);
             if (propertyMatch) {
                 const family = propertyMatch.groups.family;
                 for (const selector of getRuleSelectors(rule)) {
-                    const guardKey = `${family}: ${selector}`;
-                    if (isReducedMotion && disabledMotionValuePattern.test(declaration.value)) {
-                        reducedMotionGuards.add(guardKey);
-                    } else if (!isReducedMotion && !disabledMotionValuePattern.test(declaration.value)) {
-                        motionRequirements.set(guardKey, true);
+                    if (!isReducedMotion && !disabledMotionValuePattern.test(declaration.value) && !isZeroTime(declaration.value)) {
+                        const hasDelay = hasMotionDelay(declarations, family);
+                        motionRequirements.push({ family, selector, conditions, hasDelay, order: (rule.position?.start.line ?? 0) * 1000000 + (rule.position?.start.column ?? 0), important: /!important/i.test(declaration.value) });
                     }
                 }
             }
@@ -251,8 +339,15 @@ function auditCssAst(ast) {
         }
     });
 
-    const unguardedMotion = [...motionRequirements.keys()]
-        .filter(requirement => !reducedMotionGuards.has(requirement));
+    const unguardedMotion = [...new Set(motionRequirements.filter(requirement => !reducedMotionGuards.some(guard => {
+        if (guard.family !== requirement.family || guard.scope.some(condition => !requirement.conditions.includes(condition))) return false;
+        if (requirement.hasDelay && !guard.clearsDelay) return false;
+        if (requirement.important && !guard.important) return false;
+        if (!guard.external && guard.order < requirement.order && (requirement.important || !guard.important)) return false;
+        if (guard.external && !guard.important) return false;
+        const universal = requirement.selector.includes('::before') ? '*::before' : requirement.selector.includes('::after') ? '*::after' : requirement.selector.includes('::') ? null : '*';
+        return guard.selectors.includes(requirement.selector) || (!requirement.important && guard.important && guard.selectors.includes(universal));
+    })).map(({ family, selector, conditions }) => `${family}: ${selector}${conditions.length ? ` [${conditions.join(' / ')}]` : ''}`))];
 
     return {
         compatibilityFindings,
@@ -262,7 +357,7 @@ function auditCssAst(ast) {
     };
 }
 
-export function auditCssSource(source, sourceName = '<inline CSS>') {
+export function auditCssSource(source, sourceName = '<inline CSS>', sharedGuards = []) {
     const normalizedSource = normalizeSource(source);
     let ast;
 
@@ -280,11 +375,11 @@ export function auditCssSource(source, sourceName = '<inline CSS>') {
         };
     }
 
-    return auditCssAst(ast);
+    return auditCssAst(ast, sharedGuards);
 }
 
-function auditCssFile(relativePath, source) {
-    const audit = auditCssSource(source, relativePath);
+function auditCssFile(relativePath, source, sharedGuards) {
+    const audit = auditCssSource(source, relativePath, sharedGuards);
     const findings = [];
 
     if (audit.parseError) {
@@ -292,14 +387,14 @@ function auditCssFile(relativePath, source) {
         return findings;
     }
 
-    if (audit.unguardedMotion.length > 0) {
-        const examples = audit.unguardedMotion.slice(0, 3).join('; ');
-        const suffix = audit.unguardedMotion.length > 3 ? '; ...' : '';
+    for (const motion of audit.unguardedMotion) {
         findings.push(createFinding(
             'warning',
             'motion-without-reduced-guard',
             relativePath,
-            `${audit.unguardedMotion.length} transition/animation declarations lack a reduced-motion override (${examples}${suffix}).`,
+            `No statically verified reduced-motion override for ${motion}.`,
+            undefined,
+            motion,
         ));
     }
 
@@ -309,24 +404,30 @@ function auditCssFile(relativePath, source) {
             compatibilityFinding.code,
             relativePath,
             `${compatibilityFinding.code} for ${compatibilityFinding.selectors.slice(0, 3).join(', ')}.`,
+            undefined,
+            compatibilityFinding.selectors.join(', '),
         ));
     }
 
-    if (audit.largeRadiusTokens.length > 0) {
+    for (const token of audit.largeRadiusTokens) {
         findings.push(createFinding(
             'warning',
             'radius-token-over-limit',
             relativePath,
-            `SillyBunny radius tokens exceed 20px: ${audit.largeRadiusTokens.join(', ')}.`,
+            `SillyBunny radius token exceeds 20px: ${token}.`,
+            undefined,
+            token,
         ));
     }
 
-    if (audit.slowTransitionTokens.length > 0) {
+    for (const token of audit.slowTransitionTokens) {
         findings.push(createFinding(
             'warning',
             'slow-transition-token-over-limit',
             relativePath,
-            `SillyBunny slow transition tokens exceed 240ms: ${audit.slowTransitionTokens.join(', ')}.`,
+            `SillyBunny slow transition token exceeds 240ms: ${token}.`,
+            undefined,
+            token,
         ));
     }
 
@@ -335,6 +436,18 @@ function auditCssFile(relativePath, source) {
 
 export function auditFrontendContracts({ repoRoot = defaultRepoRoot, targets = defaultTargets } = {}) {
     const findings = [];
+    const cssSources = new Map();
+    const sharedGuards = [];
+    for (const relativePath of targets.css ?? []) {
+        try {
+            const source = fs.readFileSync(path.resolve(repoRoot, relativePath), 'utf8');
+            cssSources.set(relativePath, source);
+            const ast = parse(source);
+            sharedGuards.push(...collectMotionGuards(ast).map(guard => ({ ...guard, external: true, file: relativePath })));
+        } catch {
+            // The per-file pass reports missing files and parse errors.
+        }
+    }
 
     for (const relativePath of targets.html ?? []) {
         const absolutePath = path.resolve(repoRoot, relativePath);
@@ -357,7 +470,7 @@ export function auditFrontendContracts({ repoRoot = defaultRepoRoot, targets = d
             continue;
         }
 
-        findings.push(...auditCssFile(relativePath, fs.readFileSync(absolutePath, 'utf8')));
+        findings.push(...auditCssFile(relativePath, cssSources.get(relativePath) ?? fs.readFileSync(absolutePath, 'utf8'), sharedGuards.filter(guard => guard.file !== relativePath)));
     }
 
     return findings;
@@ -377,27 +490,57 @@ export function formatAuditReport(findings) {
 }
 
 function parseArguments(argumentsList) {
+    const options = { json: false, strict: false };
+    for (let index = 0; index < argumentsList.length; index++) {
+        const argument = argumentsList[index];
+        if (argument === '--json') options.json = true;
+        else if (argument === '--strict') options.strict = true;
+        else if (['--baseline', '--root'].includes(argument)) {
+            const value = argumentsList[++index];
+            if (!value || value.startsWith('--')) throw new Error(`Missing value for ${argument}`);
+            options[argument.slice(2)] = path.resolve(value);
+        } else throw new Error(`Unknown argument: ${argument}`);
+    }
+    return options;
+}
+
+export function compareAuditBaseline(findings, baseline) {
+    if (baseline.version !== 1 || !Array.isArray(baseline.warnings)
+        || baseline.warnings.some(entry => typeof entry.key !== 'string' || !Number.isSafeInteger(entry.count) || entry.count < 1)
+        || new Set(baseline.warnings.map(entry => entry.key)).size !== baseline.warnings.length) {
+        throw new Error('Invalid frontend audit baseline');
+    }
+    const counts = new Map();
+    for (const finding of findings.filter(item => item.severity === 'warning')) counts.set(finding.key, (counts.get(finding.key) ?? 0) + finding.count);
+    const allowances = new Map(baseline.warnings.map(entry => [entry.key, entry.count]));
     return {
-        json: argumentsList.includes('--json'),
-        strict: argumentsList.includes('--strict'),
+        regressions: findings.filter(finding => finding.severity === 'error' || counts.get(finding.key) > (allowances.get(finding.key) ?? 0)),
+        resolved: baseline.warnings.filter(entry => (counts.get(entry.key) ?? 0) < entry.count),
     };
 }
 
 function runCli() {
-    const { json, strict } = parseArguments(process.argv.slice(2));
-    const findings = auditFrontendContracts();
+    const { json, strict, baseline, root } = parseArguments(process.argv.slice(2));
+    const findings = auditFrontendContracts({ repoRoot: root ?? defaultRepoRoot });
+    const comparison = baseline ? compareAuditBaseline(findings, JSON.parse(fs.readFileSync(baseline, 'utf8'))) : undefined;
 
     if (json) {
-        console.log(JSON.stringify({ findings }, null, 4));
+        console.log(JSON.stringify({ findings, ...(comparison ? { comparison } : {}) }, null, 4));
     } else {
         console.log(formatAuditReport(findings));
     }
 
-    if (findings.some(finding => finding.severity === 'error') || (strict && findings.length > 0)) {
+    if (findings.some(finding => finding.severity === 'error') || (strict && findings.length > 0)
+        || comparison?.regressions.length || comparison?.resolved.length) {
         process.exitCode = 1;
     }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-    runCli();
+    try {
+        runCli();
+    } catch (error) {
+        console.error(error.message);
+        process.exitCode = 1;
+    }
 }
