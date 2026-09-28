@@ -110,11 +110,11 @@
     --sb-proxy-label-size: calc(var(--mainFontSize) * var(--sb-proxy-label-scale-base));
     --sb-proxy-underline-inset: var(--sb-proxy-underline-inset-base);
     --sb-proxy-underline-bottom: var(--sb-proxy-underline-bottom-base);
-    --sb-mobile-toggle-min-size: 34px;
+    --sb-mobile-toggle-min-size: var(--sb-mobile-touch-target, 44px);
     --sb-mobile-toggle-size: clamp(var(--sb-mobile-toggle-min-size), calc(var(--sb-mobile-toggle-size-base) * var(--sb-mobile-button-scale)), 56px);
     --sb-home-toggle-min-width: max(var(--sb-mobile-toggle-min-size), calc(var(--sb-home-toggle-min-width-base) * var(--sb-mobile-button-scale)));
     --sb-mobile-rail-action-size: clamp(var(--sb-mobile-toggle-min-size), calc(44px * var(--sb-mobile-button-scale)), 56px);
-    --sb-mobile-rail-tab-height: clamp(36px, calc(50px * var(--sb-mobile-button-scale)), 62px);
+    --sb-mobile-rail-tab-height: clamp(var(--sb-mobile-touch-target, 44px), calc(50px * var(--sb-mobile-button-scale)), 62px);
     --sb-mobile-rail-wrapper-width: clamp(56px, calc(78px * var(--sb-mobile-button-scale)), 96px);
     --sb-mobile-rail-icon-wrapper-width: clamp(48px, calc(58px * var(--sb-mobile-button-scale)), 72px);
     --sb-mobile-rail-label-size: calc(var(--mainFontSize) * 0.62 * var(--sb-mobile-button-scale));

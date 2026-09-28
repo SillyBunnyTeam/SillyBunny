@@ -131,6 +131,7 @@
         "perf:frontend": "node scripts/measure-frontend-performance.js",
         "audit:frontend": "node scripts/audit-frontend-contracts.js",
         "check:frontend-contracts": "node scripts/audit-frontend-contracts.js --strict --baseline scripts/frontend-contract-baseline.json",
+        "check:frontend-foundation": "node scripts/check-frontend-foundation.js",
         "init": "node src/server-init.js || bun src/server-init.js",
         "lint": "eslint \"src/**/*.js\" \"public/**/*.js\" \"scripts/**/*.js\" ./*.js",
         "lint:fix": "eslint \"src/**/*.js\" \"public/**/*.js\" \"scripts/**/*.js\" ./*.js --fix",
