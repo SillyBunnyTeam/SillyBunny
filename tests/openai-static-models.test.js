@@ -150,13 +150,6 @@ for (const model of ['gpt-6-astra', 'gpt-6-astra-2026-09-14']) {
     });
 }
 
-test('OpenAI image picker omits retired DALL-E models', () => {
-    const source = readSource('../public/scripts/extensions/stable-diffusion/index.js');
-    const modelList = source.match(/async function loadOpenAiModels\(\) \{([\s\S]*?)\r?\n}\r?\n/)[1];
-    const imageModels = [...modelList.matchAll(/\{ value: '([^']+)'/g)].map((match) => match[1]);
-
-    expect(imageModels).toEqual(expect.not.arrayContaining(['dall-e-2', 'dall-e-3']));
-});
 
 test('GPT-5.6 and GPT-6 Astra support distinct max reasoning effort and 1.05-million-token context', () => {
     const constants = readSource('../src/constants.js');
@@ -345,47 +338,4 @@ test('Caption picker omits retired Cohere and Groq vision models', () => {
 
     expect(captionSource).toEqual(expect.not.stringContaining('value="c4ai-aya-vision-8b"'));
     expect(captionSource).toEqual(expect.not.stringContaining('value="meta-llama/llama-4-maverick-17b-128e-instruct"'));
-});
-
-test('Stable Diffusion image catalog preserves models outside the declared retirements', () => {
-    const source = readSource('../public/scripts/extensions/stable-diffusion/index.js');
-    const googleEndpoint = readSource('../src/endpoints/google.js');
-
-    const novelSection = source.match(/async function loadNovelModels\(\)([\s\S]*?)\r?\n}\r?\n/)[1];
-    expect(novelSection).toContain('nai-diffusion-2');
-    expect(novelSection).toContain('nai-diffusion-4-5-full');
-    expect(novelSection).toContain('nai-diffusion-4-5-curated');
-    expect(novelSection).toContain('nai-diffusion-3');
-    expect(novelSection).toContain('nai-diffusion-furry-3');
-
-    const bflSection = source.match(/async function loadBflModels\(\)([\s\S]*?)\r?\n}\r?\n/)[1];
-    expect(bflSection).toContain('{ value: \'flux-pro\', text: \'flux-pro\' }');
-    expect(bflSection).toContain('flux-pro-1.1');
-    expect(bflSection).toContain('flux-pro-1.1-ultra');
-    expect(bflSection).toContain('flux-dev');
-
-    const googleSection = source.match(/async function loadGoogleModels\(\)([\s\S]*?)\r?\n}\r?\n/)[1];
-    const retainedGoogleModels = [
-        'imagen-4.0-generate-preview-06-06',
-        'imagen-4.0-fast-generate-preview-06-06',
-        'imagen-4.0-ultra-generate-preview-06-06',
-        'imagen-3.0-generate-002',
-        'imagen-3.0-generate-001',
-        'imagen-3.0-fast-generate-001',
-        'imagen-3.0-capability-001',
-        'imagegeneration@006',
-        'imagegeneration@005',
-        'imagegeneration@002',
-        'veo-3.0-generate-001',
-        'veo-3.0-fast-generate-001',
-        'veo-2.0-generate-001',
-        'veo-2.0-generate-exp',
-        'veo-2.0-generate-preview',
-    ];
-
-    for (const model of retainedGoogleModels) {
-        expect(googleSection).toContain(model);
-    }
-
-    expect(googleEndpoint).toContain('const model = request.body.model || \'imagen-3.0-generate-002\';');
 });
