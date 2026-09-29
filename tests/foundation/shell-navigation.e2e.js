@@ -31,9 +31,12 @@ test('preserves Layer 2 controls, labels, shell tabs, and focus restoration', as
         await expect(control).toHaveAttribute('type', 'button');
         await expect(control).toHaveAttribute('aria-label', /.+/);
         await expect(control).toBeAttached();
-        if (isMobile || selector !== '#sb-hamburger') {
-            await expect(control).toBeVisible();
+        if (selector === '#sb-hamburger') {
+            // Mobile section navigation replaces the hamburger overlay; desktop never showed it.
+            await expect(control).toBeHidden();
+            continue;
         }
+        await expect(control).toBeVisible();
         if (isMobile) {
             const bounds = await control.boundingBox();
             expect(bounds?.width).toBeGreaterThanOrEqual(44);
@@ -69,17 +72,60 @@ test('preserves Layer 2 controls, labels, shell tabs, and focus restoration', as
         await expect(toggle).toBeFocused();
     }
 
-    if (isMobile) {
-        const hamburger = page.locator('#sb-hamburger');
-        await hamburger.click();
-        const mobileNav = page.locator('#sb-mobile-nav');
-        await expect(mobileNav).toHaveAttribute('role', 'dialog');
-        await expect(mobileNav).toHaveAttribute('aria-modal', 'true');
-        await expect(mobileNav).toHaveAttribute('aria-hidden', 'false');
-        await expect(mobileNav).toHaveAttribute('aria-labelledby', 'sb-mobile-nav-title');
-        await expect(hamburger).toHaveAttribute('aria-expanded', 'true');
-        await mobileNav.locator('.sb-mobile-panel-close').click();
-        await expect(mobileNav).toBeHidden();
-        await expect(hamburger).toBeFocused();
-    }
+    await expect(page.locator('#sb-mobile-nav')).toBeHidden();
+});
+
+test('mobile section navigation opens on the hub once, then uses the section menu', async ({ page, isMobile }) => {
+    test.skip(!isMobile, 'Section navigation is mobile-only.');
+    await page.goto('/');
+    await page.waitForFunction(() => typeof window.SillyBunnyShell?.openTab === 'function' && !document.querySelector('#preloader'));
+    await expect(page.locator('html')).toHaveAttribute('data-sb-mobile-ui-mode', 'mobile');
+    await page.evaluate(() => sessionStorage.removeItem('sb-section-nav-seen:workspace'));
+
+    const shell = page.locator('#left-nav-panel');
+    const toggle = page.locator('#sb-left-shell-toggle');
+    const hub = shell.locator('.sb-section-nav-hub');
+    const trigger = shell.locator('.sb-section-nav-menu-trigger');
+    const backButton = shell.locator('.sb-section-nav-back');
+    const menu = shell.locator('.sb-section-nav-menu');
+
+    await toggle.click();
+    await expect(shell).toHaveAttribute('data-sb-section-view', 'hub');
+    await expect(hub).toBeVisible();
+    await expect(shell.locator('.sb-shell-nav-wrapper')).toBeHidden();
+    const hubItems = hub.locator('.sb-section-nav-hub-item');
+    await expect(hubItems).toHaveCount(expectedShellTabs.left.length);
+    expect(await hubItems.evaluateAll(items => items.map(item => item.dataset.sbSectionTab))).toEqual(expectedShellTabs.left);
+
+    await hub.locator('.sb-section-nav-hub-item[data-sb-section-tab="api"]').click();
+    await expect(shell).toHaveAttribute('data-sb-section-view', 'section');
+    await expect(hub).toBeHidden();
+    await expect(shell.locator('[role="tab"][data-sb-tab="api"]')).toHaveAttribute('aria-selected', 'true');
+    await expect(backButton).toBeVisible();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    await trigger.click();
+    await expect(menu).toBeVisible();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await expect(menu.locator('[role="menuitemradio"][aria-checked="true"]')).toHaveAttribute('data-sb-section-tab', 'api');
+    await menu.locator('[role="menuitemradio"][data-sb-section-tab="sampling"]').click();
+    await expect(menu).toBeHidden();
+    await expect(shell.locator('[role="tab"][data-sb-tab="sampling"]')).toHaveAttribute('aria-selected', 'true');
+
+    await trigger.click();
+    await expect(menu).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(trigger).toBeFocused();
+
+    await backButton.click();
+    await expect(shell).toHaveAttribute('data-sb-section-view', 'hub');
+    await expect(hub).toBeVisible();
+
+    await shell.locator('.sb-shell-close').click();
+    await expect(shell).not.toHaveClass(/openDrawer/);
+    await toggle.click();
+    await expect(shell).toHaveClass(/openDrawer/);
+    await expect(shell).toHaveAttribute('data-sb-section-view', 'section');
+    await expect(hub).toBeHidden();
 });

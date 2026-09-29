@@ -1030,8 +1030,9 @@ h3:not(.popup h3):not(#chat h3) {
     line-height: 1;
 }
 
-.menu_button.menu_button_primary:not(.disabled):not([disabled]),
-.menu_button.popup-button-ok:not(.disabled):not([disabled]) {
+/* Mirrors the base .menu_button enabled-state :not() chain so the accent fill keeps winning on specificity. */
+.menu_button.menu_button_primary:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']),
+.menu_button.popup-button-ok:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 88%, white 12%);
     color: var(--sb-on-accent);
     border-color: transparent;
@@ -1039,10 +1040,10 @@ h3:not(.popup h3):not(#chat h3) {
     text-shadow: none;
 }
 
-.menu_button.menu_button_primary:not(.disabled):not([disabled]):hover,
-.menu_button.popup-button-ok:not(.disabled):not([disabled]):hover,
-.menu_button.menu_button_primary:not(.disabled):not([disabled]).active,
-.menu_button.popup-button-ok:not(.disabled):not([disabled]).active {
+.menu_button.menu_button_primary:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
+.menu_button.popup-button-ok:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
+.menu_button.menu_button_primary:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']).active,
+.menu_button.popup-button-ok:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']).active {
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 82%, white 18%);
     border-color: transparent;
     box-shadow:
