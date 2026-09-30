@@ -685,7 +685,12 @@ function createCharacterListToolbar(root) {
         if (popover.hidden) {
             return;
         }
-        popover.hidden = true;
+        animateOut(popover, [
+            { opacity: 1, transform: 'none' },
+            { opacity: 0, transform: 'translateY(-4px) scale(0.98)' },
+        ], () => {
+            popover.hidden = true;
+        }, { enabled: isMobileViewport(), styles: { 'transform-origin': originFrom(moreTrigger, popover) } });
         moreTrigger.setAttribute('aria-expanded', 'false');
         if (restoreFocus) {
             focusElement(moreTrigger);
@@ -698,8 +703,13 @@ function createCharacterListToolbar(root) {
             closePopover();
             return;
         }
+        stopMotion(popover);
         popover.hidden = false;
         moreTrigger.setAttribute('aria-expanded', 'true');
+        animateIn(popover, [
+            { opacity: 0, transform: 'translateY(-4px) scale(0.96)' },
+            { opacity: 1, transform: 'none' },
+        ], { duration: MOTION_FAST, styles: { 'transform-origin': originFrom(moreTrigger, popover) } });
         focusElement(getPopoverItems()[0]);
     });
 

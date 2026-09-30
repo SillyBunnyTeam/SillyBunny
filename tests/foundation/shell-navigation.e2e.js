@@ -176,3 +176,32 @@ test('mobile section navigation opens on the hub once, then uses the section men
     await expect(shell).toHaveAttribute('data-sb-section-view', 'section');
     await expect(hub).toBeHidden();
 });
+
+test('mobile section menu and chat tools use state motion with reduced-motion fallback', async ({ page, isMobile }) => {
+    test.skip(!isMobile, 'Mobile motion is mobile-only.');
+    await page.goto('/');
+    await page.waitForFunction(() => typeof window.SillyBunnyShell?.openTab === 'function' && !document.querySelector('#preloader'));
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.evaluate(() => document.body.classList.remove('reduced-motion'));
+
+    const shell = page.locator('#left-nav-panel');
+    await page.evaluate(() => sessionStorage.setItem('sb-section-nav-seen:workspace', '1'));
+    await page.locator('#sb-left-shell-toggle').click();
+    const trigger = shell.locator('.sb-section-nav-menu-trigger');
+    await trigger.click();
+    await expect(shell.locator('.sb-section-nav-menu')).toBeVisible();
+    await expect.poll(() => shell.locator('.sb-section-nav-menu').evaluate(element => element.getAnimations().length)).toBeGreaterThan(0);
+    await trigger.click();
+    await expect(shell.locator('.sb-section-nav-menu')).toBeHidden();
+    await shell.locator('.sb-shell-close').click();
+    await expect(shell).not.toHaveClass(/openDrawer/);
+
+    await page.locator('.sb-bottom-chat-chip').click();
+    await expect(page.locator('#sb-bottom-chat-sheet')).toBeVisible();
+    await expect.poll(() => page.locator('#sb-bottom-chat-sheet').evaluate(element => element.getAnimations().length)).toBeGreaterThan(0);
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.locator('#sb-bottom-chat-sheet .sb-bottom-chat-sheet-close').click();
+    await expect(page.locator('#sb-bottom-chat-sheet')).toBeHidden();
+    expect(await page.locator('#sb-bottom-chat-sheet').evaluate(element => element.getAnimations().length)).toBe(0);
+});

@@ -6581,8 +6581,11 @@ function setMobileChatToolsOpenState(shouldOpen) {
         return;
     }
 
+    const wasOpen = getChatbarState().mobileToolsOpen;
     getChatbarState().mobileToolsOpen = isOpen;
-    refs.overlay.hidden = !isOpen;
+    if (isOpen || !wasOpen) {
+        refs.overlay.hidden = !isOpen;
+    }
     refs.overlay.classList.toggle('sb-chat-tools-open', isOpen);
     refs.overlay.setAttribute('aria-hidden', String(!isOpen));
 
@@ -6593,7 +6596,22 @@ function setMobileChatToolsOpenState(shouldOpen) {
     queueMobileModalStateSync();
 
     if (isOpen) {
+        if (!wasOpen) {
+            stopMotion(refs.panel);
+            animateIn(refs.panel, [
+                { opacity: 0, transform: 'translateY(12px) scale(0.98)' },
+                { opacity: 1, transform: 'none' },
+            ], { duration: MOTION_SLOW });
+        }
         scheduleChatbarRefresh(0);
+    } else if (wasOpen) {
+        refs.overlay.hidden = false;
+        animateOut(refs.panel, [
+            { opacity: 1, transform: 'none' },
+            { opacity: 0, transform: 'translateY(12px) scale(0.98)' },
+        ], () => {
+            refs.overlay.hidden = true;
+        }, { enabled: isMobileViewport(), duration: MOTION_FAST });
     }
 }
 
@@ -6705,10 +6723,31 @@ function setConnectionStripOpenState(shouldOpen) {
         }));
     }
 
+    const wasOpen = getChatbarState().connectionStripOpen;
     getChatbarState().connectionStripOpen = nextState;
     desktopRefs.connectionStrip.classList.toggle('is-open', nextState);
-    desktopRefs.connectionStrip.hidden = !nextState;
+    if (nextState) {
+        desktopRefs.connectionStrip.hidden = false;
+    }
     setButtonPressed(desktopRefs.toggleConnectionButton, nextState);
+
+    if (wasOpen === nextState) {
+        return;
+    }
+
+    if (nextState) {
+        animateIn(desktopRefs.connectionStrip, [
+            { opacity: 0, transform: 'translateY(-6px)' },
+            { opacity: 1, transform: 'none' },
+        ], { duration: MOTION_FAST });
+    } else {
+        animateOut(desktopRefs.connectionStrip, [
+            { opacity: 1, transform: 'none' },
+            { opacity: 0, transform: 'translateY(-6px)' },
+        ], () => {
+            desktopRefs.connectionStrip.hidden = true;
+        }, { enabled: !isMobileViewport(), duration: MOTION_FAST });
+    }
 }
 
 function getCurrentMainApiValue() {
@@ -7463,7 +7502,11 @@ async function refreshChatbarState() {
 
     if (desktopRefs) {
         desktopRefs.toggleConnectionButton.hidden = !connectionMirrorState.shouldShowToggle;
-        desktopRefs.connectionStrip.hidden = !connectionMirrorState.shouldShowDesktopStrip;
+        if (!connectionMirrorState.shouldShowDesktopStrip && isConnectionStripOpen()) {
+            setConnectionStripOpenState(false);
+        } else {
+            desktopRefs.connectionStrip.hidden = !connectionMirrorState.shouldShowDesktopStrip;
+        }
     }
 
     if (connectionMirrorState.shouldCloseDesktopStrip) {
@@ -14727,12 +14770,29 @@ function setMobileNavOpenState(isOpen) {
         sbState.mobileNav.lastOpenedAt = performance.now();
     }
 
-    overlay.hidden = navState.overlayHidden;
+    if (navState.shouldOpen || !wasOpen) {
+        overlay.hidden = navState.overlayHidden;
+    }
     overlay.classList.toggle('sb-nav-open', navState.shouldOpen);
     overlay.setAttribute('aria-hidden', navState.overlayAriaHidden);
 
     if ('inert' in overlay) {
         overlay.inert = navState.overlayInert;
+    }
+
+    if (navState.shouldOpen && !wasOpen) {
+        animateIn(overlay.querySelector('#sb-mobile-nav-content'), [
+            { opacity: 0, transform: 'translateY(12px) scale(0.98)' },
+            { opacity: 1, transform: 'none' },
+        ], { duration: MOTION_SLOW });
+    } else if (!navState.shouldOpen && wasOpen) {
+        overlay.hidden = false;
+        animateOut(overlay.querySelector('#sb-mobile-nav-content'), [
+            { opacity: 1, transform: 'none' },
+            { opacity: 0, transform: 'translateY(12px) scale(0.98)' },
+        ], () => {
+            overlay.hidden = true;
+        }, { enabled: isMobileViewport(), duration: MOTION_FAST });
     }
 
     button.classList.toggle('is-open', navState.shouldOpen);
