@@ -28,7 +28,7 @@ import { setCharacterSpoilerFreeFieldsHidden } from './power-user.js';
 import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
 import { extension_settings } from './extensions.js';
-import { characters, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
+import { characters, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, select_selected_character, this_chid } from '../script.js';
 import {
     SAMPLING_PARAMETER_DESCRIPTORS,
 } from './sampling-parameter-policy.js';
@@ -8611,7 +8611,9 @@ function syncCharacterModeToggle() {
         return;
     }
 
-    const activeMode = conversationState.conversationWorkspaceOpen ? 'conversation' : 'roleplay';
+    const activeMode = document.getElementById('sheld')?.dataset.sbCreatorMode === 'on'
+        ? 'creator'
+        : conversationState.conversationWorkspaceOpen ? 'conversation' : 'roleplay';
     toggle.dataset.activeMode = activeMode;
     toggle.querySelectorAll('[data-sb-character-mode]').forEach((button) => {
         if (!(button instanceof HTMLButtonElement)) {
@@ -8625,6 +8627,17 @@ function syncCharacterModeToggle() {
 }
 
 function setCharacterShellMode(mode) {
+    if (mode === 'creator') {
+        window.dispatchEvent(new CustomEvent('sb:open-creator-workspace'));
+        return;
+    }
+    if (document.getElementById('sheld')?.dataset.sbCreatorMode === 'on') {
+        window.dispatchEvent(new CustomEvent('sb:close-creator-workspace', {
+            detail: { onClosed: () => setCharacterShellMode(mode) },
+        }));
+        return;
+    }
+
     const normalizedMode = mode === 'conversation' ? 'conversation' : 'roleplay';
     const isConversationMode = normalizedMode === 'conversation';
     const mobileViewport = isMobileViewport();
@@ -8655,7 +8668,7 @@ function setCharacterShellMode(mode) {
     }
 }
 
-function openCharacterPanelTab(tabId) {
+function openCharacterPanelTab(tabId, { avatar = null } = {}) {
     const normalizedTabId = normalizeCharacterPanelTab(tabId);
     sbState.characterDrawer.lastTab = normalizedTabId;
 
@@ -8668,7 +8681,7 @@ function openCharacterPanelTab(tabId) {
     }
 
     if (!isCharacterPanelOpen()) {
-        toggleCharacterPanel({ preferredTab: normalizedTabId });
+        toggleCharacterPanel({ preferredTab: normalizedTabId, editorAvatar: avatar });
     } else {
         applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
             surface: sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL,
@@ -8689,7 +8702,7 @@ function openCharacterPanelTab(tabId) {
             void showCharacterListView('groups');
         } else if (normalizedTabId === 'editor') {
             setCharacterPanelMenuType(panel, 'character_edit');
-            void openCharacterEditorTab();
+            void openCharacterEditorTab(avatar);
         } else if (normalizedTabId === 'world-info') {
             setCharacterPanelMenuType(panel, 'world-info');
             openCharacterWorldInfoTab();
@@ -8704,7 +8717,7 @@ function openCharacterPanelTab(tabId) {
     });
 }
 
-function restoreLastCharacterPanelView() {
+function restoreLastCharacterPanelView(editorAvatar = null) {
     const lastTab = sbState.characterDrawer.lastTab || 'characters';
 
     if (lastTab === 'persona') {
@@ -8716,18 +8729,30 @@ function restoreLastCharacterPanelView() {
     } else if (lastTab === 'groups') {
         void showCharacterListView('groups');
     } else if (lastTab === 'editor') {
-        void openCharacterEditorTab();
+        void openCharacterEditorTab(editorAvatar);
     } else {
         void showCharacterListView('characters');
     }
 }
 
-async function openCharacterEditorTab() {
+async function openCharacterEditorTab(avatar = null) {
     sbState.characterDrawer.lastTab = 'editor';
     setCharacterEditorEmptyState(false);
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
+
+    // Creator can open a saved card without selecting its chat.
+    if (avatar) {
+        const index = characters.findIndex(character => character.avatar === avatar);
+        if (index < 0) {
+            showCharacterEditorEmptyState();
+            return false;
+        }
+        select_selected_character(index);
+        syncCharacterShellTabs('editor');
+        return true;
+    }
 
     if (await showActiveCharacterEditor()) {
         syncCharacterShellTabs('editor');
@@ -9081,7 +9106,7 @@ document.addEventListener('click', (e) => {
     characterToggleSkipExtensionIntercept = false;
 }, true);
 
-function toggleCharacterPanel({ preferredTab = null } = {}) {
+function toggleCharacterPanel({ preferredTab = null, editorAvatar = null } = {}) {
     injectCharacterDrawerControls();
     ensureCharacterResizeHandle();
 
@@ -9100,7 +9125,7 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
         isMobileViewport: isMobileViewport(),
     }));
     closeAllDropdowns({ except: 'characters', closeSurfaces: false });
-    restoreLastCharacterPanelView();
+    restoreLastCharacterPanelView(editorAvatar);
 
     // iOS Safari clips position:fixed inside overflow:hidden ancestors.
     // Temporarily allow overflow on the parent so the panel renders.
@@ -9141,7 +9166,7 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
             forceDrawerState('right-nav-panel', true, '#rightNavDrawerIcon');
         }
 
-        restoreLastCharacterPanelView();
+        restoreLastCharacterPanelView(editorAvatar);
 
         syncChatbarVisibilityState();
         syncMobileShellDrawerBounds();
@@ -14731,6 +14756,12 @@ function injectCharacterDrawerControls() {
     if (document.documentElement.dataset.sbCharacterModeStateBound !== 'true') {
         document.documentElement.dataset.sbCharacterModeStateBound = 'true';
         window.addEventListener('sb:conversation-workspace-state-changed', syncCharacterModeToggle);
+        window.addEventListener('sb:creator-workspace-state-changed', syncCharacterModeToggle);
+        window.addEventListener('sb:select-workspace-mode', (event) => {
+            if (event instanceof CustomEvent && ['roleplay', 'conversation', 'creator'].includes(event.detail?.mode)) {
+                setCharacterShellMode(event.detail.mode);
+            }
+        });
     }
     syncCharacterModeToggle();
 
@@ -16171,9 +16202,9 @@ function initAll() {
 
     const sillyBunnyShell = /** @type {any} */ (globalThis.SillyBunnyShell || {});
     globalThis.SillyBunnyShell = Object.assign(sillyBunnyShell, {
-        openTab(shellKey, tabId) {
+        openTab(shellKey, tabId, options = {}) {
             if (shellKey === 'characters') {
-                openCharacterPanelTab(tabId);
+                openCharacterPanelTab(tabId, options);
                 return;
             }
 
