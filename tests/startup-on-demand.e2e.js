@@ -5,12 +5,6 @@ const deferredScripts = ['sillybunny-server-tools.js', 'sillybunny-settings-tabs
 test.use({ serviceWorkers: 'block' });
 
 async function openApp(page) {
-    // Skip the first-open mobile section hubs so openTab() lands on the requested section.
-    await page.addInitScript(() => {
-        for (const panel of ['workspace', 'customize', 'characters']) {
-            sessionStorage.setItem(`sb-section-nav-seen:${panel}`, '1');
-        }
-    });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
     await page.waitForFunction(() => typeof window.SillyBunnyShell?.openTab === 'function');

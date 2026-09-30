@@ -149,7 +149,7 @@ async function expectNoDocumentOverflow(page) {
 }
 
 function openLeftShell(page) {
-    return page.evaluate(() => window.SillyBunnyShell.openTab('left', 'presets'));
+    return page.evaluate(() => window.SillyBunnyShell.openTab('left'));
 }
 
 async function closeLeftShellThroughUi(page) {
@@ -245,15 +245,15 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         await expect(page.locator('#sb-hamburger')).toBeHidden();
         await expect(page.locator('#sb-mobile-nav')).toBeHidden();
 
-        // Skip the first-open hub so the shell lands on its section view.
-        await page.evaluate(() => sessionStorage.setItem('sb-section-nav-seen:workspace', '1'));
         await openLeftShell(page);
         const shell = page.locator('#left-nav-panel');
         await expect(shell).toHaveClass(/openDrawer/);
-        await expect(shell).toHaveAttribute('data-sb-section-view', 'section');
+        await expect(shell).toHaveAttribute('data-sb-section-view', 'hub');
         await expect(shell.locator('.sb-shell-nav-wrapper')).toBeHidden();
         await expect(shell.locator('.sb-section-nav-row')).toBeVisible();
 
+        await shell.locator('.sb-section-nav-hub-item').first().click();
+        await expect(shell).toHaveAttribute('data-sb-section-view', 'section');
         const trigger = shell.locator('.sb-section-nav-menu-trigger');
         await trigger.click();
         await expect(shell.locator('.sb-section-nav-menu')).toBeVisible();
@@ -330,13 +330,6 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         const closeOpenShell = () => page.evaluate(() => {
             document.querySelector('.sb-shell-root.openDrawer .sb-shell-close')?.click();
         });
-        // Skip the first-open section hubs so each openTab() lands on the requested section.
-        await page.evaluate(() => {
-            for (const panel of ['workspace', 'customize', 'characters']) {
-                sessionStorage.setItem(`sb-section-nav-seen:${panel}`, '1');
-            }
-        });
-
         for (const tabId of ['presets', 'api', 'sampling', 'advanced-formatting', 'agents']) {
             await page.evaluate(tab => window.SillyBunnyShell.openTab('left', tab), tabId);
             await checkpoint(`Workspace · ${tabId}`);

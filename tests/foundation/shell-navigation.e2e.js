@@ -191,12 +191,11 @@ test('mobile top-bar shell triggers open from their trigger origin', async ({ pa
     }
 });
 
-test('mobile section navigation opens on the hub once, then uses the section menu', async ({ page, isMobile }) => {
+test('mobile section navigation remembers hub and section views until refresh', async ({ page, isMobile }) => {
     test.skip(!isMobile, 'Section navigation is mobile-only.');
     await page.goto('/');
     await page.waitForFunction(() => typeof window.SillyBunnyShell?.openTab === 'function' && !document.querySelector('#preloader'));
     await expect(page.locator('html')).toHaveAttribute('data-sb-mobile-ui-mode', 'mobile');
-    await page.evaluate(() => sessionStorage.removeItem('sb-section-nav-seen:workspace'));
 
     const shell = page.locator('#left-nav-panel');
     const toggle = page.locator('#sb-left-shell-toggle');
@@ -242,8 +241,20 @@ test('mobile section navigation opens on the hub once, then uses the section men
     await expect(shell).not.toHaveClass(/openDrawer/);
     await toggle.click();
     await expect(shell).toHaveClass(/openDrawer/);
+    await expect(shell).toHaveAttribute('data-sb-section-view', 'hub');
+    await expect(hub).toBeVisible();
+
+    await hub.locator('.sb-section-nav-hub-item[data-sb-section-tab="api"]').click();
+    await shell.locator('.sb-shell-close').click();
+    await expect(shell).not.toHaveClass(/openDrawer/);
+    await toggle.click();
     await expect(shell).toHaveAttribute('data-sb-section-view', 'section');
-    await expect(hub).toBeHidden();
+    await expect(shell.locator('.sb-section-nav-menu-trigger')).toContainText('API');
+
+    await page.reload();
+    await page.waitForFunction(() => typeof window.SillyBunnyShell?.openTab === 'function' && !document.querySelector('#preloader'));
+    await page.locator('#sb-left-shell-toggle').click();
+    await expect(page.locator('#left-nav-panel')).toHaveAttribute('data-sb-section-view', 'hub');
 });
 
 test('mobile section menu and chat tools use state motion with reduced-motion fallback', async ({ page, isMobile }) => {
@@ -254,9 +265,9 @@ test('mobile section menu and chat tools use state motion with reduced-motion fa
     await page.evaluate(() => document.body.classList.remove('reduced-motion'));
 
     const shell = page.locator('#left-nav-panel');
-    await page.evaluate(() => sessionStorage.setItem('sb-section-nav-seen:workspace', '1'));
     await page.locator('#sb-left-shell-toggle').click();
     const trigger = shell.locator('.sb-section-nav-menu-trigger');
+    await shell.locator('.sb-section-nav-hub-item').first().click();
     await trigger.click();
     await expect(shell.locator('.sb-section-nav-menu')).toBeVisible();
     await expect.poll(() => shell.locator('.sb-section-nav-menu').evaluate(element => element.getAnimations().length)).toBeGreaterThan(0);

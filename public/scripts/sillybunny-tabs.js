@@ -10,7 +10,7 @@ import {
     normalizeMobileShellText as normalizeText,
 } from './mobile-shell-lifecycle/index.js';
 import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
-import { initializeMobileSectionNav } from './sillybunny-mobile-section-nav.js';
+import { initializeMobileSectionNav, requestMobileSectionView } from './sillybunny-mobile-section-nav.js';
 import {
     animateIn,
     animateOut,
@@ -8778,6 +8778,10 @@ function openCharacterPanelTab(tabId) {
     const normalizedTabId = normalizeCharacterPanelTab(tabId);
     sbState.characterDrawer.lastTab = normalizedTabId;
 
+    if (isMobileViewport()) {
+        requestMobileSectionView('characters', 'section');
+    }
+
     if (normalizedTabId !== 'editor') {
         setCharacterEditorFullscreenState(false);
     }
@@ -13621,6 +13625,9 @@ function openShell(shellKey, tabId = null) {
     rememberShellFocusOrigin(shellKey);
 
     if (tabId) {
+        if (isMobileViewport()) {
+            requestMobileSectionView(shellKey, 'section');
+        }
         setActiveTab(shellKey, tabId);
     }
 

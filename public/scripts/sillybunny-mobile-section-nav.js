@@ -1,7 +1,8 @@
 /*
  * Mobile section navigation for the Workspace, Customize and Characters shells.
- * Replaces the scrolling tab strip with a header section menu, and shows a section hub
- * the first time each panel opens in a browser tab. Desktop keeps the original shell layout.
+ * Replaces the scrolling tab strip with a header section menu, and remembers each panel's
+ * last mobile view in memory until the application is refreshed. Desktop keeps the original
+ * shell layout.
  */
 
 import { t, translate } from './i18n.js';
@@ -39,31 +40,15 @@ const PANEL_CONFIGS = [
 ];
 
 const MOBILE_QUERY = '(max-width: 768px)';
-const SEEN_KEY_PREFIX = 'sb-section-nav-seen:';
 
 const state = {
     panels: new Map(),
+    pendingMobileViews: new Map(),
     initialized: false,
 };
 
 function isMobileViewport() {
     return window.matchMedia(MOBILE_QUERY).matches;
-}
-
-function hasSeenPanel(panel) {
-    try {
-        return sessionStorage.getItem(SEEN_KEY_PREFIX + panel.config.id) === '1';
-    } catch {
-        return false;
-    }
-}
-
-function markPanelSeen(panel) {
-    try {
-        sessionStorage.setItem(SEEN_KEY_PREFIX + panel.config.id, '1');
-    } catch {
-        // Session storage can be unavailable in private modes; the hub then shows on every open.
-    }
 }
 
 function isPanelOpen(panel) {
@@ -358,6 +343,9 @@ function setPanelView(panel, view, { animate = false } = {}) {
     }
 
     panel.view = view;
+    if (isMobileViewport()) {
+        panel.mobileView = view;
+    }
     syncPanel(panel);
     return transition;
 }
@@ -404,9 +392,6 @@ function activatePanelTab(panel, tabId) {
     // Keep focus inside the panel so the shell's focus-origin capture and close-time restore stay intact.
     focusElement(panel.trigger);
     closePanelMenu(panel);
-    if (isMobileViewport()) {
-        markPanelSeen(panel);
-    }
 
     const api = window.SillyBunnyShell;
     if (typeof api?.openTab === 'function') {
@@ -433,7 +418,7 @@ function showPanelHub(panel) {
 }
 
 function getOpeningView(panel) {
-    return isMobileViewport() && !hasSeenPanel(panel) ? 'hub' : 'section';
+    return isMobileViewport() ? panel.mobileView : 'section';
 }
 
 function syncPanelOpenState(panel) {
@@ -575,10 +560,14 @@ function createPanelNavigation(config, root) {
         originalClosePlacement: captureOriginalPlacement(closeButton),
         originalModePlacement: captureOriginalPlacement(modeToggle),
         tabSignature: '',
-        view: 'section',
+        mobileView: state.pendingMobileViews.get(config.shellKey) ?? 'hub',
+        view: isMobileViewport()
+            ? state.pendingMobileViews.get(config.shellKey) ?? 'hub'
+            : 'section',
         wasOpen: false,
         pushUntil: 0,
     };
+    state.pendingMobileViews.delete(config.shellKey);
 
     trigger.addEventListener('click', () => {
         if (panel.menu.hidden) {
@@ -883,10 +872,26 @@ function applyMobileState() {
     for (const panel of state.panels.values()) {
         syncMobileHeaderPlacement(panel);
         syncCharacterListToolbar(panel);
-        if (!isMobile) {
+        if (isMobile) {
+            setPanelView(panel, panel.mobileView);
+        } else {
             closePanelMenu(panel);
             setPanelView(panel, 'section');
         }
+    }
+}
+
+/** Remembers the view for the next mobile opening, including requests made before attachment. */
+export function requestMobileSectionView(shellKey, view = 'section') {
+    const panel = [...state.panels.values()].find(candidate => candidate.config.shellKey === shellKey);
+    if (!panel) {
+        state.pendingMobileViews.set(shellKey, view);
+        return;
+    }
+
+    panel.mobileView = view;
+    if (isMobileViewport()) {
+        setPanelView(panel, view);
     }
 }
 
