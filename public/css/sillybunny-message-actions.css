@@ -1,0 +1,283 @@
+/*
+ * SillyBunny message actions: name-row layout, mobile action popovers, and press-and-hold labels.
+ * Loaded after the other SillyBunny sheets so it wins the cascade; user.css still loads last.
+ * Behaviour lives in scripts/sillybunny-message-actions.js.
+ */
+
+/* The theme's inline-flex sizing rule outranks the base checkpoint visibility rules. */
+#chat .mes:is([bookmark_link=''], :not([bookmark_link])) .mes_bookmark {
+    display: none !important;
+}
+
+#chat .mes[bookmark_link]:not([bookmark_link='']) .mes_create_bookmark {
+    display: none !important;
+}
+
+/* Name row: the name truncates first, then the actions drop below it. */
+#chat .mes .mes_block > .ch_name {
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 2px;
+    min-inline-size: 0;
+}
+
+#chat .mes .mes_block > .ch_name > .flex-container.flex1 {
+    flex: 1 1 14ch;
+    min-inline-size: 0;
+}
+
+#chat .mes .mes_block > .ch_name > .flex-container.flex1 > .flex-container {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+}
+
+#chat .mes .mes_block > .ch_name .name_text {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#chat .mes .mes_block > .ch_name > :is(.mes_buttons, .mes_edit_buttons) {
+    margin-inline-start: auto;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+}
+
+#chat .mes .mes_block > .ch_name > .mes_buttons {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+#chat .mes .mes_buttons > .extraMesButtons {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+#chat .mes .mes_edit_buttons > .sb-mes-edit-more {
+    display: none !important;
+}
+
+#chat .mes .mes_edit_buttons > .sb-mes-edit-extra {
+    display: contents;
+}
+
+/* Flat, libadwaita-style message buttons. */
+#chat .mes :is(.mes_buttons .mes_button, .extraMesButtons > div) {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+    transition:
+        opacity var(--sb-transition-fast),
+        background-color var(--sb-transition-fast),
+        color var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    #chat .mes :is(.mes_buttons .mes_button, .extraMesButtons > div):not(.mes_delete):hover {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    }
+}
+
+#chat .mes :is(.mes_buttons .mes_button, .extraMesButtons > div):not(.mes_delete):active,
+#chat .mes .mes_buttons > .extraMesButtonsHint[aria-expanded='true'] {
+    opacity: 1;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
+}
+
+#chat .mes :is(.mes_buttons .mes_button, .extraMesButtons > div):focus-visible {
+    opacity: 1;
+    outline: 2px solid var(--sb-focus-ring);
+    outline-offset: -2px;
+}
+
+#chat .mes .mes_edit_buttons .menu_button {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+}
+
+/* Mobile: one fixed row of large targets; extras open as an icon grid. */
+@media screen and (max-width: 768px) {
+    #chat .mes .mes_block > .ch_name {
+        flex-wrap: nowrap;
+        row-gap: 0;
+    }
+
+    #chat .mes .mes_block > .ch_name > .flex-container.flex1 {
+        flex: 1 1 0;
+    }
+
+    #chat .mes .mes_block > .ch_name > :is(.mes_buttons, .mes_edit_buttons) {
+        position: relative;
+        flex: 0 0 auto;
+        inline-size: auto;
+        width: auto;
+        max-inline-size: none;
+        flex-wrap: nowrap;
+        justify-content: flex-end;
+        gap: 2px;
+        overflow: visible;
+        filter: none;
+    }
+
+    #chat .mes .mes_buttons > .extraMesButtonsHint {
+        display: inline-flex !important;
+    }
+
+    #chat .mes .mes_edit_buttons > .sb-mes-edit-more {
+        display: inline-flex !important;
+        order: -1;
+    }
+
+    #chat .mes .mes_buttons > .extraMesButtons,
+    #chat .mes .mes_edit_buttons > .sb-mes-edit-extra {
+        position: absolute;
+        inset: calc(100% + 6px) var(--sb-actions-shift, 0px) auto auto;
+        z-index: var(--sb-z-dropdown);
+        display: grid !important;
+        grid-template-columns: repeat(var(--sb-actions-cols, 5), var(--sb-message-hit-size));
+        grid-auto-rows: var(--sb-message-hit-size);
+        gap: 4px;
+        inline-size: max-content;
+        min-block-size: 0;
+        max-block-size: var(--sb-actions-max-h, none);
+        margin: 0;
+        padding: 6px;
+        box-sizing: border-box;
+        overflow: hidden auto;
+        overscroll-behavior: contain;
+        border: 1px solid var(--sb-shell-border);
+        border-radius: var(--sb-radius-md, 14px);
+        /* Stacked layers approximate an opaque fill where relative color syntax is unavailable. */
+        background:
+            linear-gradient(var(--sb-surface-raised) 0 0),
+            linear-gradient(var(--sb-surface-raised) 0 0),
+            var(--sb-surface-raised);
+        -webkit-backdrop-filter: blur(14px);
+        backdrop-filter: blur(14px);
+        box-shadow: var(--sb-shadow-panel);
+        color: var(--SmartThemeBodyColor);
+        opacity: 1;
+        filter: none;
+        transition: none;
+    }
+
+    /* The raised surface inherits the theme tint's alpha; message text must not show through. */
+    @supports (color: rgb(from black r g b / 1)) {
+        #chat .mes .mes_buttons > .extraMesButtons,
+        #chat .mes .mes_edit_buttons > .sb-mes-edit-extra {
+            background: rgb(from var(--sb-surface-raised) r g b / 1);
+        }
+    }
+
+    #chat .mes .mes_buttons > .extraMesButtons[data-sb-placement='top'],
+    #chat .mes .mes_edit_buttons > .sb-mes-edit-extra[data-sb-placement='top'] {
+        inset: auto var(--sb-actions-shift, 0px) calc(100% + 6px) auto;
+    }
+
+    /* Visibility only; the exit animation holds display inline until it ends. */
+    #chat .mes .mes_buttons > .extraMesButtons:not([data-sb-open]),
+    #chat .mes .mes_edit_buttons > .sb-mes-edit-extra:not([data-sb-open]) {
+        display: none !important;
+    }
+
+    #chat .mes .mes_buttons > .extraMesButtons > *,
+    #chat .mes .mes_edit_buttons > .sb-mes-edit-extra > .menu_button {
+        margin: 0;
+        opacity: 1;
+        filter: none;
+    }
+
+    #chat .mes .mes_edit_buttons > .sb-mes-edit-extra > .menu_button {
+        border-color: transparent;
+        border-radius: var(--sb-icon-control-radius);
+        background: transparent;
+        box-shadow: none;
+        color: var(--SmartThemeBodyColor);
+    }
+
+    #chat .mes .mes_edit_buttons > .sb-mes-edit-extra > .mes_edit_delete.menu_button {
+        color: var(--sb-color-danger);
+    }
+
+    #chat .mes .mes_edit_buttons > .sb-mes-edit-extra > .menu_button:not(.disabled):not([disabled]):active {
+        border-color: transparent;
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
+        box-shadow: none;
+    }
+
+    /* Keeps the theme's tinted :hover fill off the flat popover buttons. */
+    @media (hover: hover) {
+        #chat .mes .mes_edit_buttons > .sb-mes-edit-extra > .menu_button:not(.disabled):not([disabled]):hover {
+            border-color: transparent;
+            background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
+            box-shadow: none;
+        }
+    }
+
+    #chat .mes .mes_edit_buttons > .sb-mes-edit-more[aria-expanded='true'] {
+        opacity: 1;
+        background: color-mix(in srgb, var(--sb-edit-action-color) 24%, var(--sb-button-bg));
+    }
+
+    /* Ripple's full-width divider is a flex item; in the nowrap row it would push the actions left. */
+    body.ripplestyle #chat .mes:not(.smallSysMes) .mes_block > .ch_name {
+        position: relative;
+        padding-bottom: 9px;
+    }
+
+    body.ripplestyle #chat .mes:not(.smallSysMes) .mes_block > .ch_name::after {
+        position: absolute;
+        inset: auto 0 0;
+        width: auto;
+        margin: 0;
+        padding: 0;
+    }
+
+    /* Paint containment and the block's overflow clip would cut the popover off. */
+    #chat .mes.sb-message-actions-open {
+        z-index: var(--sb-z-raised);
+        contain: layout style;
+    }
+
+    #chat .mes.sb-message-actions-open .mes_block {
+        overflow: visible;
+    }
+
+    /* Lifts the popover's host above the message text and edit textarea that follow it. */
+    #chat .mes.sb-message-actions-open .mes_block > .ch_name {
+        position: relative;
+        z-index: var(--sb-z-raised);
+    }
+}
+
+.sb-press-tooltip {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: var(--sb-z-context-menu);
+    max-inline-size: min(240px, calc(100vw - 16px));
+    padding: 6px 10px;
+    box-sizing: border-box;
+    border-radius: var(--sb-icon-control-radius);
+    background: rgb(0 0 6 / 0.86);
+    color: #fff;
+    font-family: var(--mainFontFamily, inherit);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+    pointer-events: none;
+    box-shadow: 0 6px 18px rgb(0 0 0 / 0.32);
+}
+
+.sb-press-tooltip[hidden] {
+    display: none;
+}
