@@ -435,6 +435,7 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
     mobileTrigger.className = 'sb-conversation-mobile-menu-trigger fa-solid fa-ellipsis';
     mobileTrigger.title = 'Message options';
     mobileTrigger.setAttribute('aria-label', 'Message options');
+    mobileTrigger.setAttribute('aria-expanded', 'false');
 
     const text = document.createElement('div');
     text.className = 'sb-conversation-message-text';
@@ -1745,7 +1746,6 @@ export function ensureConversationChrome() {
                     <input id="${CHROME_IDS.fileInput}" class="displayNone" type="file" accept="${CONVERSATION_ATTACHMENT_ACCEPT}" multiple aria-label="Conversation attachments" />
                     <button id="${CHROME_IDS.send}" type="submit" class="menu_button menu_button_icon" title="Send Conversation message" aria-label="Send Conversation message">
                         <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
-                        <span>Send</span>
                     </button>
                 </div>
             </form>

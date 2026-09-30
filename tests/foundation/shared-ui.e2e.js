@@ -31,7 +31,7 @@ for (const [name, colors] of Object.entries(themes)) {
         if (process.env.SB_UI_CAPTURE_ONLY === '1') return;
         await page.keyboard.press('Tab');
         await expect(page.locator('#primary')).toBeFocused();
-        await expect(page.locator('#primary')).toHaveCSS('outline-style', 'solid');
+        await expect(page.locator('#primary')).toHaveCSS('box-shadow', /inset/);
         await page.keyboard.press('Tab');
         await expect(page.locator('#secondary')).toBeFocused();
         await expect(page.locator('[disabled]').first()).toBeDisabled();

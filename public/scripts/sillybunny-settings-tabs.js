@@ -25,7 +25,7 @@ export const initializeSettingsTabs = (function () {
             border: 1px solid color-mix(in srgb, var(--sb-shell-border, #cfcfc5) 15%, transparent);
             border-radius: var(--sb-radius-button, 14px);
             padding: 10px 16px;
-            font-family: var(--sb-font-display, "Figtree", sans-serif);
+            font-family: var(--sb-font-display, var(--mainFontFamily, "Adwaita Sans", sans-serif));
             font-size: calc(var(--mainFontSize, 16px) * 0.88);
             font-weight: 700;
             cursor: pointer;

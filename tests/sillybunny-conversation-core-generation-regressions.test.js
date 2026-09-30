@@ -168,7 +168,7 @@ describe('Conversation core generated reply regressions', () => {
                 messageId: '42',
                 sbConversationMessageFingerprint: 'fingerprint',
             },
-            querySelector: jest.fn(selector => selector === '.sb-conversation-message-actions' ? actionBar : textElement),
+            querySelector: jest.fn(selector => selector === '.sb-conversation-mobile-menu-trigger' ? null : selector === '.sb-conversation-message-actions' ? actionBar : textElement),
         };
         const createdElements = [];
         globalThis.document = {
@@ -224,7 +224,7 @@ describe('Conversation core generated reply regressions', () => {
         const previousMessageElement = {
             classList: { add: jest.fn(), remove: jest.fn() },
             dataset: { messageId: '42', sbConversationMessageFingerprint: 'previous-fingerprint' },
-            querySelector: jest.fn(selector => selector === '.sb-conversation-message-actions' ? originalActions : originalText),
+            querySelector: jest.fn(selector => selector === '.sb-conversation-mobile-menu-trigger' ? null : selector === '.sb-conversation-message-actions' ? originalActions : originalText),
         };
         const nextText = {
             append: jest.fn(),
@@ -236,7 +236,7 @@ describe('Conversation core generated reply regressions', () => {
         const nextMessageElement = {
             classList: { add: jest.fn(), remove: jest.fn() },
             dataset: { messageId: '43' },
-            querySelector: jest.fn(selector => selector === '.sb-conversation-message-actions' ? nextActions : nextText),
+            querySelector: jest.fn(selector => selector === '.sb-conversation-mobile-menu-trigger' ? null : selector === '.sb-conversation-message-actions' ? nextActions : nextText),
         };
         globalThis.document = {
             createElement: jest.fn(() => ({
@@ -276,7 +276,7 @@ describe('Conversation core generated reply regressions', () => {
         const messageElement = {
             classList: { add: jest.fn(), remove: jest.fn() },
             dataset: { messageId: '42' },
-            querySelector: jest.fn(selector => selector === '.sb-conversation-message-actions' ? actionBar : textElement),
+            querySelector: jest.fn(selector => selector === '.sb-conversation-mobile-menu-trigger' ? null : selector === '.sb-conversation-message-actions' ? actionBar : textElement),
         };
         const createdElements = [];
         globalThis.document = {
@@ -321,7 +321,7 @@ describe('Conversation core generated reply regressions', () => {
         const previousMessageElement = {
             classList: { add: jest.fn(), remove: jest.fn() },
             dataset: { messageId: '42' },
-            querySelector: jest.fn(selector => selector === '.sb-conversation-message-actions'
+            querySelector: jest.fn(selector => selector === '.sb-conversation-mobile-menu-trigger' ? null : selector === '.sb-conversation-message-actions'
                 ? { classList: { remove: jest.fn() } }
                 : originalText),
         };
@@ -334,7 +334,7 @@ describe('Conversation core generated reply regressions', () => {
         const nextMessageElement = {
             classList: { add: jest.fn() },
             dataset: { messageId: '43' },
-            querySelector: jest.fn(selector => selector === '.sb-conversation-message-actions'
+            querySelector: jest.fn(selector => selector === '.sb-conversation-mobile-menu-trigger' ? null : selector === '.sb-conversation-message-actions'
                 ? { classList: { remove: jest.fn() } }
                 : nextText),
         };

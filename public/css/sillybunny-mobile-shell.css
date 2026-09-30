@@ -35,25 +35,18 @@
         border-width: 1px 0 0;
         border-radius: 10px 10px 0 0;
         border-color: color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
-        box-shadow: 0 -10px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
+        /* libadwaita bottom bar: 1px top separator, no blurred shadow or glow. */
+        box-shadow: none;
     }
 
     #send_form:focus-within {
         border-top-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 56%, transparent);
-        box-shadow:
-            0 -10px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent),
-            0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 24%, transparent),
-            inset 0 1px 0 color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent),
-            inset 0 0 0 1px color-mix(in srgb, var(--sb-focus-ring) 24%, transparent);
+        box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent);
     }
 
     #send_form.sb-generating-controls {
         border-top-color: color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 78%, transparent);
-        box-shadow:
-            0 -10px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent),
-            0 -6px 24px color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 28%, transparent),
-            0 0 0 1px color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 52%, transparent),
-            inset 0 1px 0 color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 52%, transparent);
+        box-shadow: inset 0 1px 0 color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 52%, transparent);
     }
 
     #send_form.sb-generating-controls::after {
@@ -1112,7 +1105,7 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         max-height: var(--sb-mobile-toggle-size) !important;
         flex: 0 0 var(--sb-mobile-toggle-size) !important;
         padding: 0 !important;
-        border-radius: calc(var(--sb-mobile-toggle-size) * 0.28) !important;
+        border-radius: 999px !important;
         box-sizing: border-box !important;
         line-height: 1 !important;
         aspect-ratio: 1 / 1;
@@ -2953,17 +2946,13 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
 
     #send_form:focus-within {
         border-top-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 56%, var(--sb-shell-border)) !important;
-        box-shadow:
-            0 -6px 20px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 12%, transparent),
-            inset 0 1px 0 color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent) !important;
+        box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent) !important;
         outline: none !important;
     }
 
     #send_form.sb-generating-controls {
         border-top-color: color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 78%, var(--sb-shell-border)) !important;
-        box-shadow:
-            0 -6px 24px color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 28%, transparent),
-            inset 0 1px 0 color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 52%, transparent) !important;
+        box-shadow: inset 0 1px 0 color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 52%, transparent) !important;
     }
 
     #nonQRFormItems {

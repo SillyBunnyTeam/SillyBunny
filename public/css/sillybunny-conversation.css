@@ -1,13 +1,15 @@
+/* libadwaita preferences group: borderless tonal card, matching .sb-theme-settings-drawer. */
 .sb-settings-group {
     display: flex;
     flex-direction: column;
     gap: 10px;
     padding: 14px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 78%, transparent);
-    border-radius: var(--sb-radius-md, 16px);
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 82%, transparent);
+    border: 0;
+    border-radius: var(--sb-radius-md, 14px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
 }
 
+/* libadwaita group heading: bold sentence case, dimmed icon rather than an accent glyph. */
 .sb-settings-group-title {
     display: flex;
     align-items: center;
@@ -15,16 +17,16 @@
     margin: 0;
     color: var(--SmartThemeBodyColor);
     font-family: var(--mainFontFamily);
-    font-size: var(--sb-type-caption);
+    font-size: calc(var(--mainFontSize) * 0.86);
     font-weight: var(--sb-weight-title);
-    letter-spacing: var(--sb-tracking-label);
+    letter-spacing: normal;
     line-height: var(--sb-line-compact);
-    text-transform: uppercase;
+    text-transform: none;
 }
 
 .sb-settings-group-title > i {
     inline-size: 18px;
-    color: color-mix(in srgb, var(--sb-accent) 86%, var(--SmartThemeBodyColor));
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 62%, transparent);
     text-align: center;
 }
 
@@ -47,10 +49,9 @@
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 88%, transparent);
     border-radius: var(--sb-radius-xl, 28px) var(--sb-radius-xl, 28px) 0 0;
-    background:
-        radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--sb-accent) 12%, transparent), transparent 32%),
-        color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent);
-    box-shadow: 0 32px 90px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent);
+    /* Flat neutral surface to match the shell; no accent glow or window-level shadow. */
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent);
+    box-shadow: none;
     font-family: var(--mainFontFamily);
 }
 
@@ -102,7 +103,7 @@
     border: 2px solid color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, var(--SmartThemeBodyColor) 8%);
     border-radius: var(--sb-radius-button, 14px);
     background: var(--SmartThemeBlurTintColor);
-    box-shadow: 0 8px 18px color-mix(in srgb, var(--SmartThemeShadowColor) 18%, transparent);
+    box-shadow: none;
 }
 
 .sb-conversation-participant-avatar:first-child {
@@ -248,9 +249,7 @@
     min-block-size: 0;
     flex-direction: column;
     border-inline-end: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-accent) 8%, transparent), transparent 34%),
-        color-mix(in srgb, var(--SmartThemeBlurTintColor) 80%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 80%, transparent);
 }
 
 .sb-conversation-rail-header {
@@ -321,23 +320,31 @@
     color: var(--SmartThemeBodyColor);
     cursor: pointer;
     text-align: left;
-    transition: background-color 180ms ease-out, border-color 180ms ease-out, transform 180ms ease-out;
+    transition: background-color 180ms ease-out;
 }
 
-.sb-conversation-pal:hover,
-.sb-conversation-pal:focus-visible,
+/* libadwaita sidebar rows: neutral hover and selected fills, no border or lift. */
+@media (hover: hover) {
+    .sb-conversation-pal:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+
+    .sb-conversation-pal[aria-current='true']:hover {
+        background: var(--sb-flat-selected-hover-bg);
+    }
+}
+
+.sb-conversation-pal:active {
+    background: var(--sb-flat-active-bg);
+}
+
 .sb-conversation-pal[aria-current='true'] {
-    border-color: color-mix(in srgb, var(--sb-accent) 34%, var(--sb-shell-border));
-    background: color-mix(in srgb, var(--sb-accent) 10%, transparent);
+    background: var(--sb-flat-selected-bg);
 }
 
 .sb-conversation-pal:focus-visible {
-    outline: 2px solid var(--sb-focus-ring, var(--sb-accent));
-    outline-offset: 2px;
-}
-
-.sb-conversation-pal:hover {
-    transform: translateY(-1px);
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .sb-conversation-pal-avatar {
@@ -484,21 +491,34 @@
     display: inline-grid;
     flex: 0 0 auto;
     place-items: center;
-    border: 1px solid transparent;
-    border-radius: var(--sb-radius-sm, 10px);
+    border: 0;
+    border-radius: 999px;
     background: transparent;
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 48%, transparent);
     cursor: pointer;
     opacity: 0.72;
-    transition: background-color 180ms ease-out, border-color 180ms ease-out, color 180ms ease-out, opacity 180ms ease-out;
+    transition: background-color 180ms ease-out, color 180ms ease-out, opacity 180ms ease-out;
 }
 
-.sb-conversation-pal-delete:hover,
-.sb-conversation-pal-delete:focus-visible {
-    border-color: color-mix(in srgb, var(--sb-color-danger) 36%, var(--sb-shell-border));
-    background: color-mix(in srgb, var(--sb-color-danger) 12%, transparent);
+@media (hover: hover) {
+    .sb-conversation-pal-delete:hover {
+        background: color-mix(in srgb, var(--sb-color-danger) 12%, transparent);
+        color: var(--sb-color-danger);
+        opacity: 1;
+    }
+}
+
+.sb-conversation-pal-delete:active {
+    background: color-mix(in srgb, var(--sb-color-danger) 20%, transparent);
     color: var(--sb-color-danger);
     opacity: 1;
+}
+
+.sb-conversation-pal-delete:focus-visible {
+    outline: none;
+    color: var(--sb-color-danger);
+    opacity: 1;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .sb-conversation-branch-list {
@@ -519,11 +539,6 @@
     min-inline-size: 0;
 }
 
-.sb-conversation-branch-row[data-active='true'] .sb-conversation-branch-button {
-    border-color: color-mix(in srgb, var(--sb-accent) 34%, var(--sb-shell-border));
-    background: color-mix(in srgb, var(--sb-accent) 12%, transparent);
-}
-
 .sb-conversation-branch-button {
     min-inline-size: 0;
     display: flex;
@@ -536,14 +551,30 @@
     color: var(--SmartThemeBodyColor);
     cursor: pointer;
     text-align: left;
-    transition: background-color 160ms ease-out, border-color 160ms ease-out;
+    transition: background-color 160ms ease-out;
 }
 
-.sb-conversation-branch-button:hover,
+@media (hover: hover) {
+    .sb-conversation-branch-button:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+
+    .sb-conversation-branch-row[data-active='true'] .sb-conversation-branch-button:hover {
+        background: var(--sb-flat-selected-hover-bg);
+    }
+}
+
+.sb-conversation-branch-button:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-conversation-branch-row[data-active='true'] .sb-conversation-branch-button {
+    background: var(--sb-flat-selected-bg);
+}
+
 .sb-conversation-branch-button:focus-visible {
-    border-color: color-mix(in srgb, var(--sb-accent) 28%, var(--sb-shell-border));
-    background: color-mix(in srgb, var(--sb-accent) 8%, transparent);
     outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .sb-conversation-branch-name,
@@ -571,22 +602,33 @@
     display: inline-grid;
     flex: 0 0 auto;
     place-items: center;
-    border: 1px solid transparent;
-    border-radius: var(--sb-radius-sm, 10px);
+    border: 0;
+    border-radius: 999px;
     background: transparent;
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 48%, transparent);
     cursor: pointer;
-    transition: background-color 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
+    transition: background-color 160ms ease-out, color 160ms ease-out;
 }
 
-.sb-conversation-branch-action:hover,
-.sb-conversation-branch-action:focus-visible,
-.sb-conversation-new-branch:hover,
-.sb-conversation-new-branch:focus-visible {
-    border-color: color-mix(in srgb, var(--sb-accent) 30%, var(--sb-shell-border));
-    background: color-mix(in srgb, var(--sb-accent) 10%, transparent);
+@media (hover: hover) {
+    .sb-conversation-branch-action:hover,
+    .sb-conversation-new-branch:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--SmartThemeBodyColor);
+    }
+}
+
+.sb-conversation-branch-action:active,
+.sb-conversation-new-branch:active {
+    background: var(--sb-flat-active-bg);
     color: var(--SmartThemeBodyColor);
+}
+
+.sb-conversation-branch-action:focus-visible,
+.sb-conversation-new-branch:focus-visible {
     outline: none;
+    color: var(--SmartThemeBodyColor);
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .sb-conversation-new-branch {
@@ -611,27 +653,12 @@
     min-block-size: 0;
     display: flex;
     flex-direction: column;
-    background:
-        radial-gradient(circle at 80% 12%, color-mix(in srgb, var(--sb-accent-soft) 9%, transparent), transparent 30%),
-        color-mix(in srgb, var(--SmartThemeChatTintColor) 84%, var(--SmartThemeBlurTintColor));
+    background: color-mix(in srgb, var(--SmartThemeChatTintColor) 84%, var(--SmartThemeBlurTintColor));
 }
 
-#sheld[data-sb-conversation-mode='on'] #sb_conversation_stage[data-ambient-status='idle'] {
-    background:
-        radial-gradient(circle at 80% 12%, color-mix(in srgb, var(--sb-color-warning) 10%, transparent), transparent 30%),
-        color-mix(in srgb, var(--SmartThemeChatTintColor) 84%, var(--SmartThemeBlurTintColor));
-}
-
-#sheld[data-sb-conversation-mode='on'] #sb_conversation_stage[data-ambient-status='dnd'] {
-    background:
-        radial-gradient(circle at 80% 12%, color-mix(in srgb, var(--sb-color-danger) 9%, transparent), transparent 30%),
-        color-mix(in srgb, var(--SmartThemeChatTintColor) 86%, var(--SmartThemeBlurTintColor));
-}
-
+/* Persona status is shown by the status dot; the stage stays a flat surface without a coloured glow. */
 #sheld[data-sb-conversation-mode='on'] #sb_conversation_stage[data-ambient-status='offline'] {
-    background:
-        radial-gradient(circle at 80% 12%, color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent), transparent 30%),
-        color-mix(in srgb, var(--SmartThemeChatTintColor) 78%, var(--SmartThemeBlurTintColor));
+    background: color-mix(in srgb, var(--SmartThemeChatTintColor) 78%, var(--SmartThemeBlurTintColor));
 }
 
 .sb-conversation-timeline {
@@ -736,35 +763,49 @@
     justify-content: center;
     gap: 6px;
     padding: 0 12px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 40%, transparent);
-    border-radius: var(--sb-radius-button, 12px);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 2%, transparent);
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 65%, transparent);
+    /* libadwaita toggle-group pills: transparent at rest, neutral fills for hover, press, and selection. */
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 72%, transparent);
     cursor: pointer;
     font-size: 13px;
     font-weight: var(--sb-weight-medium, 500);
     line-height: var(--sb-line-compact);
     white-space: nowrap;
-    transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
+    transition: background-color 140ms ease-out, color 140ms ease-out;
+}
+
+@media (hover: hover) {
+    .sb-conversation-channel-tab:hover,
+    .sb-conversation-tool-button:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--SmartThemeBodyColor);
+    }
+
+    .sb-conversation-channel-tab:is([data-active='true'], [aria-pressed='true']):hover {
+        background: var(--sb-flat-selected-hover-bg);
+    }
+}
+
+.sb-conversation-channel-tab:active,
+.sb-conversation-tool-button:active {
+    background: var(--sb-flat-active-bg);
+    color: var(--SmartThemeBodyColor);
 }
 
 .sb-conversation-channel-tab[data-active='true'],
 .sb-conversation-channel-tab[aria-pressed='true'] {
-    border-color: color-mix(in srgb, var(--sb-accent) 42%, transparent);
-    background: color-mix(in srgb, var(--sb-accent) 12%, transparent);
+    background: var(--sb-flat-selected-bg);
     color: var(--SmartThemeBodyColor);
     font-weight: 600;
 }
 
-.sb-conversation-channel-tab:hover,
 .sb-conversation-channel-tab:focus-visible,
-.sb-conversation-tool-button:hover,
 .sb-conversation-tool-button:focus-visible {
-    border-color: color-mix(in srgb, var(--sb-accent) 30%, transparent);
-    background: color-mix(in srgb, var(--sb-accent) 6%, transparent);
-    color: var(--SmartThemeBodyColor);
     outline: none;
-    transform: translateY(-1px);
+    color: var(--SmartThemeBodyColor);
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .sb-conversation-search-wrap {
@@ -999,10 +1040,17 @@
     opacity: 1;
 }
 
-.sb-conversation-message-edit:hover,
+@media (hover: hover) {
+    .sb-conversation-message-edit:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--SmartThemeBodyColor);
+    }
+}
+
 .sb-conversation-message-edit:focus-visible {
-    background: color-mix(in srgb, var(--sb-accent) 12%, transparent);
+    outline: none;
     color: var(--SmartThemeBodyColor);
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 /* Floating Toolbar for Desktop */
@@ -1013,18 +1061,19 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 3px 6px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 84%, var(--sb-accent));
-    border-radius: var(--sb-radius-button, 14px);
-    background: var(--SmartThemeBlurTintColor); /* clean background overlay */
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
-    box-shadow: 0 4px 12px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent);
+    padding: 3px;
+    /* libadwaita osd-style toolbar: opaque so body.no-blur never shows text through it; flat buttons inside. */
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 84%, transparent);
+    border-radius: 999px;
+    background:
+        linear-gradient(var(--sb-surface-raised) 0 0),
+        linear-gradient(var(--sb-surface-raised) 0 0),
+        var(--sb-surface-raised);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--SmartThemeShadowColor) 22%, transparent);
     opacity: 0;
     pointer-events: none;
-    transition: opacity 160ms cubic-bezier(0.16, 1, 0.3, 1), transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
-    transform: translateY(4px);
-    z-index: 10;
+    transition: opacity var(--sb-transition-fast);
+    z-index: var(--sb-z-raised, 10);
 }
 
 .sb-conversation-message[data-role='user'] .sb-conversation-message-actions {
@@ -1037,39 +1086,66 @@
     right: auto;
 }
 
-.sb-conversation-message-bubble:hover .sb-conversation-message-actions,
+@supports (color: rgb(from black r g b / 1)) {
+    .sb-conversation-message-actions {
+        background: rgb(from var(--sb-surface-raised) r g b / 1);
+    }
+}
+
+@media (hover: hover) {
+    .sb-conversation-message-bubble:hover .sb-conversation-message-actions {
+        opacity: 1;
+        pointer-events: auto;
+    }
+}
+
 .sb-conversation-message-bubble:focus-within .sb-conversation-message-actions {
     opacity: 1;
     pointer-events: auto;
-    transform: translateY(0);
 }
 
+/* libadwaita flat buttons: transparent at rest, neutral fills, no hover lift. */
 .sb-conversation-message-action,
 .sb-conversation-reaction-button {
-    min-block-size: 22px;
+    min-block-size: 28px;
+    min-inline-size: 28px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 2px 7px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    padding: 0 8px;
+    border: 0;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 68%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 78%, transparent);
     cursor: pointer;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1;
-    transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
+    box-sizing: border-box;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
 }
 
-.sb-conversation-message-action:hover,
+.sb-conversation-message-action {
+    padding: 0;
+}
+
+@media (hover: hover) {
+    .sb-conversation-message-action:hover,
+    .sb-conversation-reaction-button:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--SmartThemeBodyColor);
+    }
+}
+
+.sb-conversation-message-action:active,
+.sb-conversation-reaction-button:active {
+    background: var(--sb-flat-active-bg);
+}
+
 .sb-conversation-message-action:focus-visible,
-.sb-conversation-reaction-button:hover,
 .sb-conversation-reaction-button:focus-visible {
-    border-color: color-mix(in srgb, var(--sb-accent) 38%, var(--sb-shell-border));
-    background: color-mix(in srgb, var(--sb-accent) 12%, transparent);
-    color: var(--SmartThemeBodyColor);
     outline: none;
-    transform: translateY(-1px);
+    color: var(--SmartThemeBodyColor);
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .sb-conversation-message-action.sb-conversation-message-edit,
@@ -1077,23 +1153,22 @@
     opacity: 1 !important;
     inline-size: auto;
     block-size: auto;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 68%, transparent);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 78%, transparent);
+    border: 0;
     border-radius: 999px;
-    padding: 2px 7px;
-    transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
+    padding: 0;
 }
 
-.sb-conversation-message-action.sb-conversation-message-edit:hover,
-.sb-conversation-message-action.sb-conversation-message-polish:hover {
-    border-color: color-mix(in srgb, var(--sb-accent) 38%, var(--sb-shell-border));
-    background: color-mix(in srgb, var(--sb-accent) 12%, transparent);
-    color: var(--SmartThemeBodyColor);
-    transform: translateY(-1px);
+@media (hover: hover) {
+    .sb-conversation-message-action.sb-conversation-message-edit:hover,
+    .sb-conversation-message-action.sb-conversation-message-polish:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--SmartThemeBodyColor);
+    }
 }
 
-/* Style trigger for mobile only (hidden on desktop) */
+/* Mobile: 44px touch target through ::after, transparent fill. */
 .sb-conversation-mobile-menu-trigger {
     display: none;
 }
@@ -1102,11 +1177,17 @@
     color: var(--sb-color-danger);
 }
 
-.sb-conversation-message-action.fa-trash-can:hover,
+@media (hover: hover) {
+    .sb-conversation-message-action.fa-trash-can:hover {
+        background: color-mix(in srgb, var(--sb-color-danger) 12%, transparent);
+        color: var(--sb-color-danger);
+    }
+}
+
 .sb-conversation-message-action.fa-trash-can:focus-visible {
-    border-color: color-mix(in srgb, var(--sb-color-danger) 38%, var(--sb-shell-border));
-    background: color-mix(in srgb, var(--sb-color-danger) 12%, transparent);
+    background: transparent;
     color: var(--sb-color-danger);
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .sb-conversation-message-reactions {
@@ -1129,24 +1210,33 @@
     align-items: center;
     gap: 6px;
     padding: 5px 10px;
-    border: 1px solid color-mix(in srgb, var(--sb-accent) 34%, var(--sb-shell-border));
+    border: 0;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--sb-accent) 12%, var(--SmartThemeBlurTintColor));
+    background: color-mix(in srgb, var(--sb-accent) 14%, transparent);
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 86%, transparent);
     cursor: pointer;
     font-size: var(--sb-type-meta);
     font-weight: var(--sb-weight-control);
     line-height: 1;
-    transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
+    transition: background-color 140ms ease-out, color 140ms ease-out;
 }
 
-.sb-conversation-selfie-action:hover,
-.sb-conversation-selfie-action:focus-visible {
-    border-color: color-mix(in srgb, var(--sb-accent) 54%, var(--SmartThemeBodyColor));
-    background: color-mix(in srgb, var(--sb-accent) 18%, var(--SmartThemeBlurTintColor));
+@media (hover: hover) {
+    .sb-conversation-selfie-action:hover {
+        background: color-mix(in srgb, var(--sb-accent) 20%, transparent);
+        color: var(--SmartThemeBodyColor);
+    }
+}
+
+.sb-conversation-selfie-action:active {
+    background: color-mix(in srgb, var(--sb-accent) 26%, transparent);
     color: var(--SmartThemeBodyColor);
+}
+
+.sb-conversation-selfie-action:focus-visible {
     outline: none;
-    transform: translateY(-1px);
+    color: var(--SmartThemeBodyColor);
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .sb-conversation-selfie-action i {
@@ -1453,6 +1543,107 @@
     align-items: center;
 }
 
+/*
+ * libadwaita flat header-bar buttons for Conversation chrome. The #sheld ID scope outranks the
+ * shared .menu_button border, raised fill, and active inset ring from sillybunny-theme.css.
+ */
+#sheld[data-sb-conversation-mode='on'] :is(#sb_conversation_pals_toggle, .sb-conversation-header-actions .menu_button, .sb-conversation-rail-start-actions .menu_button:not(.sb-conversation-rail-close), .sb-conversation-rail-footer-actions .menu_button, .sb-conversation-composer-actions .menu_button:not(#sb_conversation_send)) {
+    border-color: transparent;
+    border-radius: 999px;
+    background: transparent;
+    box-shadow: none;
+    transform: none;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    #sheld[data-sb-conversation-mode='on'] :is(#sb_conversation_pals_toggle, .sb-conversation-header-actions .menu_button, .sb-conversation-rail-start-actions .menu_button:not(.sb-conversation-rail-close), .sb-conversation-rail-footer-actions .menu_button, .sb-conversation-composer-actions .menu_button:not(#sb_conversation_send)):not(:disabled):hover {
+        background: var(--sb-flat-hover-bg);
+        box-shadow: none;
+    }
+}
+
+#sheld[data-sb-conversation-mode='on'] :is(#sb_conversation_pals_toggle, .sb-conversation-header-actions .menu_button, .sb-conversation-rail-start-actions .menu_button:not(.sb-conversation-rail-close), .sb-conversation-rail-footer-actions .menu_button, .sb-conversation-composer-actions .menu_button:not(#sb_conversation_send)):not(:disabled):active {
+    background: var(--sb-flat-active-bg);
+    transform: none;
+}
+
+#sheld[data-sb-conversation-mode='on'] #sb_conversation_toggle_tools.active {
+    color: var(--color-primary, var(--sb-accent));
+    background: var(--sb-flat-selected-bg);
+    box-shadow: none;
+}
+
+/* Close is a raised circular control, matching the shell's close and back buttons. */
+#sheld[data-sb-conversation-mode='on'] .sb-conversation-rail-close.menu_button {
+    border-color: transparent;
+    border-radius: 999px;
+    background: var(--sb-raised-bg);
+    box-shadow: none;
+    transform: none;
+}
+
+@media (hover: hover) {
+    #sheld[data-sb-conversation-mode='on'] .sb-conversation-rail-close.menu_button:hover {
+        background: var(--sb-raised-hover-bg);
+        box-shadow: none;
+    }
+}
+
+#sheld[data-sb-conversation-mode='on'] .sb-conversation-rail-close.menu_button:active {
+    background: var(--sb-raised-active-bg);
+    transform: none;
+}
+
+#sheld[data-sb-conversation-mode='on'] :is(#sb_conversation_pals_toggle, .sb-conversation-header-actions .menu_button, .sb-conversation-rail-start-actions .menu_button, .sb-conversation-rail-footer-actions .menu_button, .sb-conversation-composer-actions .menu_button:not(#sb_conversation_send)):focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+/* libadwaita suggested-action: solid accent pill, matching the roleplay send button. */
+#sheld[data-sb-conversation-mode='on'] #sb_conversation_send.menu_button {
+    flex: 0 0 auto;
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
+    min-height: 38px;
+    padding: 0;
+    justify-content: center;
+    border-color: transparent;
+    border-radius: 999px;
+    background: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
+    color: var(--sb-on-solid-accent, var(--sb-on-accent, var(--color-background, var(--SmartThemeBlurTintColor))));
+    font-size: 1rem;
+    box-shadow: none;
+    transform: none;
+    transition: background-color var(--sb-transition-fast);
+}
+
+/* libadwaita insensitive suggested-action: neutral fill with dimmed body ink, so it never reads as dark-on-dark. */
+#sheld[data-sb-conversation-mode='on'] #sb_conversation_send.menu_button:disabled {
+    background: var(--sb-raised-bg);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 55%, transparent);
+    opacity: 1;
+}
+
+@media (hover: hover) {
+    #sheld[data-sb-conversation-mode='on'] #sb_conversation_send.menu_button:not(:disabled):hover {
+        background: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 88%, var(--SmartThemeBodyColor));
+        box-shadow: none;
+    }
+}
+
+#sheld[data-sb-conversation-mode='on'] #sb_conversation_send.menu_button:not(:disabled):active {
+    background: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 78%, var(--SmartThemeBodyColor));
+    transform: none;
+}
+
+#sheld[data-sb-conversation-mode='on'] #sb_conversation_send.menu_button:focus-visible {
+    outline: 2px solid var(--sb-focus-ring);
+    outline-offset: 2px;
+    box-shadow: none;
+}
+
 #sheld[data-sb-conversation-mode='on'] #sb_conversation_settings_backdrop {
     position: absolute;
     inset: 0;
@@ -1474,10 +1665,72 @@
     display: flex;
     flex-direction: column;
     border-inline-start: 1px solid color-mix(in srgb, var(--sb-shell-border) 84%, transparent);
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-accent) 8%, transparent), transparent 26%),
-        color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, var(--SmartThemeChatTintColor));
+    /* Opaque so body.no-blur and translucent themes never show the timeline through the sheet. */
+    background: var(--SmartThemeBlurTintColor);
     box-shadow: -24px 0 54px color-mix(in srgb, var(--SmartThemeShadowColor) 22%, transparent);
+}
+
+/* libadwaita header-bar close: flat circle. */
+#sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-header > .menu_button_icon {
+    flex: 0 0 auto;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
+    margin: 0;
+    padding: 0;
+    justify-content: center;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    box-shadow: none;
+    transform: none;
+}
+
+@media (hover: hover) {
+    #sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-header > .menu_button_icon:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+#sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-header > .menu_button_icon:active {
+    background: var(--sb-flat-active-bg);
+}
+
+#sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-header > .menu_button_icon:focus-visible {
+    outline: 2px solid var(--sb-focus-ring);
+    outline-offset: 2px;
+}
+
+/* libadwaita pill buttons inside the settings sheet: borderless raised fill. */
+#sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-body .menu_button {
+    border-color: transparent;
+    border-radius: 999px;
+    background: var(--sb-raised-bg);
+    box-shadow: none;
+    transform: none;
+    transition: background-color var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    #sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-body .menu_button:not(:disabled):hover {
+        background: var(--sb-raised-hover-bg);
+    }
+}
+
+#sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-body .menu_button:not(:disabled):active {
+    background: var(--sb-raised-active-bg);
+}
+
+#sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-body .menu_button:focus-visible {
+    outline: 2px solid var(--sb-focus-ring);
+    outline-offset: 2px;
+    box-shadow: none;
+}
+
+/* Destructive action keeps libadwaita's red ink on the neutral pill. */
+#sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-body .menu_button[data-sb-conversation-action='clear-memory'] {
+    color: var(--sb-color-danger, var(--SmartThemeBodyColor));
 }
 
 #sheld[data-sb-conversation-mode='on'] #sb_conversation_settings_drawer[hidden] {
@@ -1572,9 +1825,9 @@
 .sb-conversation-idle-actions .checkbox_label {
     min-block-size: 36px;
     padding-inline: 10px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    border: 0;
     border-radius: var(--sb-radius-button, 10px);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
 }
 
 .sb-conversation-notification-grid {
@@ -1594,9 +1847,9 @@
 .sb-conversation-notification-grid .checkbox_label {
     min-block-size: 36px;
     padding-inline: 10px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    border: 0;
     border-radius: var(--sb-radius-button, 10px);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
 }
 
 .sb-conversation-notification-grid select,
@@ -1651,8 +1904,9 @@
 }
 
 .sb-conversation-schedule-display {
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 60%, transparent);
-    border-radius: var(--sb-radius-md, 8px);
+    border: 0;
+    border-radius: var(--sb-radius-button, 10px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
     padding: 10px 12px;
     font-size: var(--sb-type-meta);
     min-block-size: 40px;
@@ -1679,8 +1933,7 @@
     font-weight: var(--sb-weight-title, 600);
     padding: 6px 8px;
     border-radius: var(--sb-radius-sm, 6px);
-    background: color-mix(in srgb, var(--sb-accent) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--sb-accent) 28%, transparent);
+    background: color-mix(in srgb, var(--sb-accent) 12%, transparent);
 }
 
 .sb-conversation-schedule-label {
@@ -1782,9 +2035,10 @@
     outline-offset: 3px;
 }
 
-.sb-conversation-rail-footer-avatar:hover img,
-.sb-conversation-rail-footer-avatar:focus-visible img {
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--sb-accent) 46%, transparent);
+@media (hover: hover) {
+    .sb-conversation-rail-footer-avatar:hover img {
+        box-shadow: 0 0 0 2px var(--sb-flat-active-bg);
+    }
 }
 
 .sb-conversation-rail-footer-avatar img {
@@ -1880,16 +2134,30 @@
     font-size: var(--sb-type-control);
     text-align: left;
     white-space: nowrap;
-    transition: background-color 160ms ease-out, border-color 160ms ease-out;
+    transition: background-color 160ms ease-out;
 }
 
-.sb-conversation-persona-option:hover,
+/* libadwaita popover menu rows: neutral fills, no border. */
+@media (hover: hover) {
+    .sb-conversation-persona-option:hover,
+    .sb-conversation-status-option:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+
+    .sb-conversation-persona-option[aria-selected='true']:hover {
+        background: var(--sb-flat-selected-hover-bg);
+    }
+}
+
+.sb-conversation-persona-option:active,
+.sb-conversation-status-option:active {
+    background: var(--sb-flat-active-bg);
+}
+
 .sb-conversation-persona-option:focus-visible,
-.sb-conversation-status-option:hover,
 .sb-conversation-status-option:focus-visible {
-    border-color: color-mix(in srgb, var(--sb-accent) 34%, var(--sb-shell-border));
-    background: color-mix(in srgb, var(--sb-accent) 12%, transparent);
     outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .sb-conversation-persona-entry {
@@ -1906,8 +2174,7 @@
 }
 
 .sb-conversation-persona-option[aria-selected='true'] {
-    border-color: color-mix(in srgb, var(--sb-accent) 42%, var(--sb-shell-border));
-    background: color-mix(in srgb, var(--sb-accent) 16%, transparent);
+    background: var(--sb-flat-selected-bg);
 }
 
 .sb-conversation-persona-option-name {
@@ -1952,9 +2219,15 @@
     transition: background-color 160ms ease-out, color 160ms ease-out;
 }
 
-.sb-conversation-persona-note-option:hover,
+@media (hover: hover) {
+    .sb-conversation-persona-note-option:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--SmartThemeBodyColor);
+    }
+}
+
 .sb-conversation-persona-note-option:focus-within {
-    background: color-mix(in srgb, var(--sb-accent) 10%, transparent);
+    background: var(--sb-flat-hover-bg);
     color: var(--SmartThemeBodyColor);
 }
 
@@ -1981,9 +2254,9 @@
     flex-direction: column;
     gap: 8px;
     padding: 10px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 80%, transparent);
-    border-radius: var(--sb-radius-md, 12px);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+    border: 0;
+    border-radius: var(--sb-radius-button, 10px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
 }
 
 .sb-conversation-day-pills {
@@ -1998,13 +2271,19 @@
     justify-content: center;
     min-inline-size: 38px;
     padding: 4px 8px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 80%, transparent);
+    border: 0;
     border-radius: 999px;
+    background: var(--sb-raised-bg);
     cursor: pointer;
     font-size: var(--sb-type-meta);
     -webkit-user-select: none;
     user-select: none;
-    transition: background-color 160ms ease-out, border-color 160ms ease-out;
+    transition: background-color 160ms ease-out, color 160ms ease-out;
+}
+
+.sb-conversation-day-pill:focus-within {
+    outline: 2px solid var(--sb-focus-ring);
+    outline-offset: 2px;
 }
 
 .sb-conversation-day-pill .sb-conv-day-check {
@@ -2014,8 +2293,8 @@
 }
 
 .sb-conversation-day-pill:has(.sb-conv-day-check:checked) {
-    border-color: color-mix(in srgb, var(--sb-accent) 50%, var(--sb-shell-border));
-    background: color-mix(in srgb, var(--sb-accent) 20%, transparent);
+    background: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
+    color: var(--sb-on-solid-accent, var(--sb-on-accent));
     font-weight: var(--sb-weight-title);
 }
 
@@ -2051,8 +2330,9 @@
     flex-direction: column;
     gap: 4px;
     padding: 6px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 80%, transparent);
-    border-radius: var(--sb-radius-md, 12px);
+    border: 0;
+    border-radius: var(--sb-radius-md, 14px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
     max-block-size: 200px;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
@@ -2273,14 +2553,22 @@
 }
 
 .sb-conversation-add-dm-option {
-    transition: background-color 160ms ease-out, border-color 160ms ease-out;
+    transition: background-color 160ms ease-out;
 }
 
-.sb-conversation-add-dm-option:hover,
+@media (hover: hover) {
+    .sb-conversation-add-dm-option:hover {
+        background-color: var(--sb-flat-hover-bg) !important;
+    }
+}
+
+.sb-conversation-add-dm-option:active {
+    background-color: var(--sb-flat-active-bg) !important;
+}
+
 .sb-conversation-add-dm-option:focus-visible {
-    background-color: color-mix(in srgb, var(--sb-accent) 12%, transparent) !important;
-    outline: 2px solid var(--sb-focus-ring, var(--sb-accent));
-    outline-offset: 2px;
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 /* Generated image messages */
@@ -2572,10 +2860,6 @@
         aspect-ratio: 1 / 1;
     }
 
-    #sheld[data-sb-conversation-mode='on'] #sb_conversation_send span {
-        display: none;
-    }
-
     .sb-conversation-message {
         max-inline-size: 94%;
     }
@@ -2588,24 +2872,45 @@
     .sb-conversation-mobile-menu-trigger {
         display: inline-flex;
         position: absolute;
-        top: 2px;
-        right: 8px;
+        top: 4px;
+        right: 4px;
         width: 28px;
-        height: 24px;
+        height: 28px;
         align-items: center;
         justify-content: center;
+        padding: 0;
         border: none;
+        border-radius: 999px;
         background: transparent;
-        color: color-mix(in srgb, var(--SmartThemeBodyColor) 42%, transparent);
+        color: color-mix(in srgb, var(--SmartThemeBodyColor) 62%, transparent);
         font-size: 14px;
         cursor: pointer;
-        opacity: 0.6;
         z-index: 5;
+        -webkit-tap-highlight-color: transparent;
+        transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
     }
-    
+
+    /* ::before is the Font Awesome glyph; ::after widens the hit area to 44px without moving the icon. */
+    .sb-conversation-mobile-menu-trigger::after {
+        content: '';
+        position: absolute;
+        inset: -8px;
+        border-radius: 999px;
+    }
+
     .sb-conversation-mobile-menu-trigger:active {
-        opacity: 1;
-        color: var(--sb-accent);
+        color: var(--SmartThemeBodyColor);
+        background: var(--sb-flat-active-bg);
+    }
+
+    .sb-conversation-message-actions.open ~ .sb-conversation-mobile-menu-trigger {
+        color: var(--SmartThemeBodyColor);
+        background: var(--sb-flat-selected-bg);
+    }
+
+    .sb-conversation-mobile-menu-trigger:focus-visible {
+        outline: none;
+        box-shadow: var(--sb-focus-ring-inset);
     }
 
     /* On mobile, align bubble header text nicely with the top-right ellipsis */
@@ -2623,11 +2928,11 @@
         -webkit-backdrop-filter: none;
         backdrop-filter: none;
         border: 1px solid color-mix(in srgb, var(--sb-shell-border) 42%, transparent);
-        background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 50%, var(--SmartThemeBodyColor) 4%);
-        padding: 8px;
-        border-radius: var(--sb-radius-button, 12px);
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+        padding: 4px;
+        border-radius: var(--sb-radius-md, 14px);
         flex-wrap: wrap;
-        gap: 6px;
+        gap: 2px;
         transform: none;
         opacity: 1;
         pointer-events: auto;
@@ -2641,11 +2946,20 @@
     /* Make action/reaction buttons bigger and touch-friendly on mobile tray */
     .sb-conversation-message-action,
     .sb-conversation-reaction-button {
-        min-block-size: 34px;
-        min-inline-size: 34px;
-        font-size: 13px;
-        padding: 4px 10px;
-        border-radius: var(--sb-radius-button, 10px);
+        min-block-size: 44px;
+        min-inline-size: 44px;
+        font-size: 14px;
+        border-radius: 999px;
+    }
+
+    .sb-conversation-reaction-button {
+        padding-inline: 12px;
+    }
+
+    :root[data-sb-compact-mode='true'] .sb-conversation-message-action,
+    :root[data-sb-compact-mode='true'] .sb-conversation-reaction-button {
+        min-block-size: 40px;
+        min-inline-size: 40px;
     }
 
     .sb-conversation-message-avatar {
@@ -2795,7 +3109,60 @@
     animation: sb-scale-up 240ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .sb-schedule-modal-tab {
-    transition: background-color 150ms ease-out, border-color 150ms ease-out;
+    transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+/* libadwaita dialog controls. The overlay ID outranks the shared .menu_button border and fill. */
+#sb_conversation_schedule_modal .menu_button {
+    border-color: transparent;
+    border-radius: 999px;
+    background: var(--sb-raised-bg);
+    box-shadow: none;
+    transform: none;
+}
+
+#sb_conversation_schedule_modal .menu_button_icon {
+    background: transparent;
+}
+
+@media (hover: hover) {
+    #sb_conversation_schedule_modal .menu_button:not(:disabled):hover {
+        background: var(--sb-raised-hover-bg);
+    }
+
+    #sb_conversation_schedule_modal .menu_button_icon:not(:disabled):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+#sb_conversation_schedule_modal .menu_button:not(:disabled):active {
+    background: var(--sb-raised-active-bg);
+}
+
+#sb_conversation_schedule_modal .menu_button:focus-visible {
+    outline: 2px solid var(--sb-focus-ring);
+    outline-offset: 2px;
+    box-shadow: none;
+}
+
+#sb_conversation_schedule_modal .sb-schedule-modal-tab {
+    background: transparent;
+}
+
+#sb_conversation_schedule_modal .sb-schedule-modal-tab.is-selected {
+    background: var(--sb-flat-selected-bg);
+    font-weight: var(--sb-weight-control);
+}
+
+#sb_conversation_schedule_modal .menu_button.sb-schedule-modal-save {
+    background: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
+    color: var(--sb-on-solid-accent, var(--sb-on-accent));
+}
+
+@media (hover: hover) {
+    #sb_conversation_schedule_modal .menu_button.sb-schedule-modal-save:hover {
+        background: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 88%, var(--SmartThemeBodyColor));
+    }
 }
 .sb-schedule-modal-row input,
 .sb-schedule-modal-row select {
@@ -2843,11 +3210,20 @@
 
     .sb-conversation-channel-tab,
     .sb-conversation-tool-button,
+    .sb-conversation-message-actions,
     .sb-conversation-message-action,
     .sb-conversation-reaction-button,
+    .sb-conversation-mobile-menu-trigger,
     #sheld[data-sb-conversation-mode='on'] #sb_conversation_pals_rail {
         transition: none !important;
     }
+}
+
+body.reduced-motion .sb-conversation-message-actions,
+body.reduced-motion .sb-conversation-message-action,
+body.reduced-motion .sb-conversation-reaction-button,
+body.reduced-motion .sb-conversation-mobile-menu-trigger {
+    transition: none !important;
 }
 
 /* Notification badges */

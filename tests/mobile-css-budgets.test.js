@@ -42,16 +42,22 @@ function getMediaQueryPxValues(cssSource) {
 // chrome adjustment sheet is budgeted from introduction.
 // sillybunny-theme.css raised 158 -> 161: the mobile character list needs to
 // override upstream !important avatar alignment rules for missing avatars.
+// sillybunny-theme.css raised 161 -> 165: the sheet was already at 163. The
+// libadwaita range slider adds four track declarations that must beat the
+// style.css .neo-range-slider !important rules; two redundant reduced-motion
+// overrides already covered by the universal selector were removed.
 // sillybunny-tabs.css raised 386 -> 389: the favourites bar fix re-shows the
 // bar on the character tabs with display:flex !important and
 // visibility:visible !important to beat the JS inline hide, and pins
 // #HotSwapWrapper padding:0 !important against the base flex-container rules.
+// sillybunny-tabs.css raised 389 -> 390: one grouped placeholder color for the
+// three search fields must beat style.css's !important SmartThemeEmColor rule.
 const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
     'sillybunny-mobile-shell.css': 685,
     'sillybunny-paper-theme.css': 55,
-    'sillybunny-tabs.css': 389,
+    'sillybunny-tabs.css': 390,
     'sillybunny-chat-styles.css': 225,
-    'sillybunny-theme.css': 161,
+    'sillybunny-theme.css': 165,
 });
 
 const FORK_DISTINCT_BREAKPOINT_BUDGET = 18;
@@ -100,12 +106,10 @@ describe('paper texture regression guards', () => {
         expect(messageAfterRule).toContain('--sb-paper-texture-opacity');
     });
 
-    test('derives thought box colors from active SmartTheme tokens', () => {
-        const thoughtBoxTokenBlock = paperThemeCss.match(/--thought-box-bg:[\s\S]*?--thought-box-accent:[^;]+;/)?.[0] ?? '';
-
-        expect(thoughtBoxTokenBlock).toContain('--SmartThemeBlurTintColor');
-        expect(thoughtBoxTokenBlock).toContain('--SmartThemeBodyColor');
-        expect(thoughtBoxTokenBlock).toContain('--SmartThemeQuoteColor');
+    test('leaves reasoning boxes on the shared desktop treatment', () => {
+        expect(paperThemeCss).not.toContain('--thought-box-');
+        expect(paperThemeCss).not.toMatch(/\.mes_reasoning_header\s*\{/);
+        expect(paperThemeCss).not.toMatch(/\.mes_reasoning\s*\{/);
     });
 });
 

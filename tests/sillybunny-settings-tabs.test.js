@@ -36,7 +36,6 @@ describe('SillyBunny settings theme drawers', () => {
 
     test('groups shell theme controls into persisted appearance drawers', () => {
         const drawerIds = [
-            'sb-shell-style-drawer',
             'sb-interface-drawer',
             'sb-topbar-label-drawer',
             'sb-quick-access-shortcuts-drawer',
@@ -50,6 +49,8 @@ describe('SillyBunny settings theme drawers', () => {
             expect(shellTabsSource).toContain(`'${drawerId}'`);
         }
         expect(shellTabsSource).toContain('content: [frontendIconSettingsGroup, surfaceSliderGroup, bottomBarSliderGroup],');
+        expect(shellTabsSource).not.toContain('sb-shell-style-drawer');
+        expect(shellTabsSource).not.toContain('data-sb-theme-option');
         expect(shellTabsSource).not.toContain('sb-frontend-icon-drawer');
         expect(shellTabsSource).not.toContain('sb-background-visibility-drawer');
         expect(shellTabsSource).not.toContain('sb-bottom-bar-size-drawer');

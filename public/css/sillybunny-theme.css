@@ -29,10 +29,10 @@
     --sb-z-context-menu: 8000;
     --sb-z-loader: 9000;
     --sb-z-critical: 10000;
-    --sb-color-warning: var(--color-warning, #facc15);
-    --sb-color-danger: var(--color-danger, #fb7185);
-    --sb-color-error: var(--color-danger, #fb7185);
-    --sb-color-success: var(--color-success, #f3c985);
+    --sb-color-warning: var(--color-warning, #ffc252);
+    --sb-color-danger: var(--color-danger, #ff938c);
+    --sb-color-error: var(--color-danger, #ff938c);
+    --sb-color-success: var(--color-success, #78e9ab);
     --sb-color-info: var(--color-primary, var(--SmartThemeQuoteColor));
     --sb-icon-control-size: 2rem;
     --sb-icon-control-radius: 10px;
@@ -47,6 +47,8 @@
     --sb-section-gap: 14px;
     --sb-settings-card-padding: var(--spacing-md) 14px;
     --sb-message-icon-size: clamp(24px, calc(var(--bottomFormBlockSize, 36px) * 0.78), 30px);
+    --sb-message-hit-size: var(--sb-message-icon-size);
+    --sb-message-glyph-size: calc(var(--sb-message-hit-size) * 0.52);
     --sb-composer-action-size: clamp(34px, calc(var(--bottomFormBlockSize, 36px) * 0.94), 38px);
     --sb-composer-send-width: var(--sb-composer-action-size);
     --sb-composer-action-icon-size: clamp(14px, calc(var(--bottomFormIconSize, 20px) * 0.72), 17px);
@@ -139,6 +141,15 @@
     --sb-input-border: color-mix(in srgb, var(--SmartThemeBorderColor) 92%, transparent);
     --sb-input-placeholder: color-mix(in srgb, var(--SmartThemeBodyColor) 78%, var(--SmartThemeBlurTintColor) 22%);
     --sb-focus-ring: color-mix(in srgb, var(--SmartThemeQuoteColor) 70%, transparent);
+    --sb-focus-ring-inset: inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 78%, transparent);
+    /* libadwaita flat-button fills, mixed from the body colour so they follow light and dark themes. */
+    --sb-flat-hover-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
+    --sb-flat-active-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
+    --sb-flat-selected-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    --sb-flat-selected-hover-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 13%, transparent);
+    --sb-raised-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    --sb-raised-hover-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
+    --sb-raised-active-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 22%, transparent);
     --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
     --sb-ambient-b: color-mix(in srgb, var(--SmartThemeUnderlineColor) 9%, transparent);
     --sb-shell-surface-opacity: 1;
@@ -281,40 +292,6 @@ input[type="submit"] {
     }
 }
 
-:root[data-sb-theme='windows-aero'] {
-    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 72%, var(--SmartThemeQuoteColor));
-    --sb-shell-main-bg: linear-gradient(135deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 78%, var(--SmartThemeQuoteColor)) 0%, color-mix(in srgb, var(--SmartThemeBlurTintColor) 72%, var(--SmartThemeQuoteColor)) 100%);
-    --sb-shell-nav-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 82%, var(--SmartThemeQuoteColor)) 0%, color-mix(in srgb, var(--SmartThemeBlurTintColor) 74%, var(--SmartThemeQuoteColor)) 100%);
-    --sb-shell-header-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, color-mix(in srgb, var(--SmartThemeBlurTintColor) 75%, var(--SmartThemeQuoteColor)) 40%, color-mix(in srgb, var(--SmartThemeBlurTintColor) 68%, var(--SmartThemeQuoteColor)) 100%);
-    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 60%, transparent);
-    --sb-shell-tab-active-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.26), color-mix(in srgb, var(--SmartThemeQuoteColor) 35%, transparent));
-    --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 45%, rgba(255, 255, 255, 0.35));
-    --sb-shell-shadow: 0 16px 40px color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent), 0 2px 10px rgba(255, 255, 255, 0.25);
-    --sb-card-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.12), color-mix(in srgb, var(--SmartThemeBlurTintColor) 74%, color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent)));
-    --sb-button-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.05));
-    --sb-button-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.28), color-mix(in srgb, var(--SmartThemeQuoteColor) 40%, transparent));
-    --sb-focus-ring: var(--SmartThemeQuoteColor);
-    --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, transparent);
-    --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
-    --sb-topbar-surface-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.12), color-mix(in srgb, var(--SmartThemeBlurTintColor) 74%, color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent)));
-    --sb-chatbar-surface-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.14), color-mix(in srgb, var(--SmartThemeBlurTintColor) 52%, color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent)));
-    --sb-mobile-overlay-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 76%, transparent);
-    --sb-mobile-panel-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 72%, transparent);
-}
-
-:root[data-sb-theme='windows-aero'][data-sb-surface-tone='light'] {
-    --sb-shell-surface: color-mix(in srgb, #ffffff 84%, var(--SmartThemeBlurTintColor));
-    --sb-shell-main-bg: linear-gradient(180deg, color-mix(in srgb, #ffffff 78%, var(--SmartThemeBlurTintColor)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 84%, var(--SmartThemeBodyColor) 16%));
-    --sb-shell-nav-bg: linear-gradient(180deg, color-mix(in srgb, #ffffff 84%, var(--SmartThemeBlurTintColor)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 80%, var(--SmartThemeBodyColor) 20%));
-    --sb-shell-header-bg: linear-gradient(180deg, color-mix(in srgb, #ffffff 88%, var(--SmartThemeBlurTintColor)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 84%, var(--SmartThemeBodyColor) 16%));
-    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent));
-    --sb-card-bg: linear-gradient(180deg, color-mix(in srgb, #ffffff 80%, var(--SmartThemeBlurTintColor)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 86%, var(--SmartThemeBodyColor) 14%));
-    --sb-button-bg: color-mix(in srgb, #ffffff 62%, var(--SmartThemeBlurTintColor));
-    --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent));
-    --sb-ambient-a: color-mix(in srgb, var(--sb-accent) 15%, transparent);
-    --sb-ambient-b: color-mix(in srgb, var(--sb-accent-soft) 10%, transparent);
-}
-
 :root[data-sb-theme='clean-minimal'] {
     --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 99%, transparent);
     --sb-shell-main-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, transparent);
@@ -332,100 +309,26 @@ input[type="submit"] {
     --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 2.5%, transparent);
 }
 
-:root[data-sb-theme='macos-minimal'] {
-    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 86%, rgba(255, 255, 255, 0.04));
-    --sb-shell-main-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, rgba(255, 255, 255, 0.03));
-    --sb-shell-nav-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 82%, rgba(0, 0, 0, 0.05));
-    --sb-shell-header-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 84%, rgba(255, 255, 255, 0.05));
-    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
-    --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, rgba(255, 255, 255, 0.15));
-    --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 45%, rgba(255, 255, 255, 0.18));
-    --sb-shell-shadow: 0 16px 48px rgba(0, 0, 0, 0.22), 0 2px 8px rgba(255, 255, 255, 0.1);
-    --sb-card-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 85%, rgba(255, 255, 255, 0.04));
-    --sb-button-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, rgba(255, 255, 255, 0.06));
-    --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, rgba(255, 255, 255, 0.14));
-    --sb-focus-ring: var(--SmartThemeQuoteColor);
-    --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
-    --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 4%, transparent);
-    --sb-topbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 85%, rgba(255, 255, 255, 0.04));
-    --sb-chatbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, rgba(255, 255, 255, 0.03));
-    --sb-mobile-overlay-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 85%, transparent);
-    --sb-mobile-panel-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 82%, transparent);
-}
-
-:root[data-sb-theme='macos-minimal'][data-sb-surface-tone='light'] {
-    --sb-shell-surface: color-mix(in srgb, #ffffff 92%, var(--SmartThemeBlurTintColor));
-    --sb-shell-main-bg: color-mix(in srgb, #ffffff 95%, var(--SmartThemeBlurTintColor));
-    --sb-shell-nav-bg: color-mix(in srgb, #f5f5f7 90%, var(--SmartThemeBlurTintColor));
-    --sb-shell-header-bg: color-mix(in srgb, #ffffff 94%, var(--SmartThemeBlurTintColor));
-    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
-    --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 35%, rgba(0, 0, 0, 0.06));
-    --sb-shell-shadow: 0 16px 48px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
-    --sb-card-bg: color-mix(in srgb, #ffffff 90%, var(--SmartThemeBlurTintColor));
-    --sb-button-bg: color-mix(in srgb, #ffffff 60%, var(--SmartThemeBlurTintColor));
-    --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, rgba(0, 0, 0, 0.05));
-}
-
-:root[data-sb-theme='cozy-warm'] {
-    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #3c2f25 5%);
-    --sb-shell-main-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, #3c2f25 4%), color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, #3c2f25 6%));
-    --sb-shell-nav-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #3c2f25 5%), color-mix(in srgb, var(--SmartThemeBlurTintColor) 91%, #3c2f25 9%));
-    --sb-shell-header-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, #3c2f25 8%);
-    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, rgba(217, 119, 6, 0.15));
-    --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, rgba(217, 119, 6, 0.1));
-    --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 75%, #5c4533 25%);
-    --sb-shell-shadow: 0 20px 48px color-mix(in srgb, var(--SmartThemeShadowColor) 15%, transparent);
-    --sb-card-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor) 4%, var(--SmartThemeBlurTintColor)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent));
-    --sb-button-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 5%, rgba(217, 119, 6, 0.05));
-    --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, rgba(217, 119, 6, 0.15));
-    --sb-focus-ring: color-mix(in srgb, var(--SmartThemeQuoteColor) 80%, #d97706 20%);
-    --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 6%, transparent);
-    --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 3%, transparent);
-    --sb-topbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #3c2f25 5%);
-    --sb-chatbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, #3c2f25 4%);
-    --sb-mobile-overlay-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #3c2f25 5%);
-    --sb-mobile-panel-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #3c2f25 5%);
-}
-
-:root[data-sb-theme='hypr-glow'] {
-    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, transparent);
-    --sb-shell-main-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent);
-    --sb-shell-nav-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, transparent);
-    --sb-shell-header-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, transparent);
-    --sb-shell-border: color-mix(in srgb, var(--SmartThemeQuoteColor) 45%, var(--SmartThemeBorderColor) 55%);
-    --sb-shell-shadow: 0 0 16px color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
-    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 35%, transparent);
-    --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
-    --sb-card-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, transparent);
-    --sb-button-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
-    --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
-    --sb-focus-ring: var(--SmartThemeQuoteColor);
-    --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
-    --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 6%, transparent);
-    --sb-topbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent);
-    --sb-chatbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent);
-    --sb-mobile-overlay-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, transparent);
-    --sb-mobile-panel-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, transparent);
-}
-
-:root[data-sb-theme='slate-flat'] {
-    --sb-shell-surface: #1e222b;
-    --sb-shell-main-bg: #1a1d24;
-    --sb-shell-nav-bg: #15181e;
-    --sb-shell-header-bg: #1a1d24;
-    --sb-shell-header-glow: rgba(0, 0, 0, 0.15);
-    --sb-shell-tab-active-bg: #282d3a;
-    --sb-shell-border: #2f3442;
-    --sb-shell-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
-    --sb-card-bg: #202431;
-    --sb-button-bg: #252a37;
-    --sb-button-hover: #313848;
-    --sb-ambient-a: transparent;
-    --sb-ambient-b: transparent;
+/* libadwaita light-style standalone status colours; the dark defaults live in style.css. */
+:root[data-sb-surface-tone='light'] {
+    --color-success: #007c3d;
+    --color-danger: #c30000;
+    --color-warning: #905400;
 }
 
 body {
     text-rendering: optimizeLegibility;
+}
+
+/* SillyBunny: body's background propagates to the canvas, under #bg1. The theme
+   tint is translucent, so without an opaque base the browser's white canvas
+   bleeds through. Mixing toward the body colour (not black) keeps the canvas a
+   tone away from the chat column in both light and dark themes, like libadwaita's
+   window behind its view. */
+@supports (color: rgb(from red r g b / 1)) {
+    body {
+        background-color: rgb(from color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, var(--SmartThemeBodyColor) 6%) r g b / 1);
+    }
 }
 
 .mes_text .pura-choice,
@@ -472,10 +375,6 @@ body::before {
     }
 }
 
-:root[data-sb-theme='windows-aero'][data-sb-surface-tone='light'] body::before {
-    opacity: 0.46;
-}
-
 .popup,
 #sb-mobile-nav {
     position: relative;
@@ -496,7 +395,8 @@ body::before {
         linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 80%, transparent), transparent 110%),
         var(--sb-topbar-surface-bg);
     border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
-    box-shadow: 0 12px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
+    /* libadwaita header bar: 1px border separator, no blurred shadow. */
+    box-shadow: none;
     backdrop-filter: var(--SmartThemeBackdropFilter);
     -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
 }
@@ -543,9 +443,7 @@ body:is(.firefox-macos, .chrome-macos) #sb-chatbar-layer {
 /* Safari on macOS can show a sub-pixel border artifact with backdrop-filter. */
 body.safari-macos #top-bar {
     border-bottom-color: transparent;
-    box-shadow:
-        0 1px 0 color-mix(in srgb, var(--sb-shell-border) 90%, transparent),
-        0 12px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
 }
 
 hr {
@@ -733,6 +631,65 @@ h3:not(.popup h3):not(#chat h3) {
     transform: none;
 }
 
+/* libadwaita radio: outlined circle, solid accent fill with a contrast-aware dot when checked.
+   :where() keeps specificity low so segmented/overlay radios and extension styles still win. */
+:where(input[type='radio']:not(.sb-boolean-radio-option > input)) {
+    --sb-radio-size: clamp(0.92rem, calc(0.78rem + 0.38vw), calc(var(--mainFontSize) + 0.12rem));
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    display: inline-grid;
+    place-content: center;
+    flex: 0 0 auto;
+    inline-size: var(--sb-radio-size);
+    block-size: var(--sb-radio-size);
+    min-inline-size: var(--sb-radio-size);
+    min-block-size: var(--sb-radio-size);
+    margin: 0;
+    border: 2px solid color-mix(in srgb, var(--SmartThemeBodyColor) 28%, transparent);
+    border-radius: 999px;
+    background: transparent;
+    cursor: pointer;
+    box-sizing: border-box;
+    transition: border-color var(--sb-transition-fast), background-color var(--sb-transition-fast);
+}
+
+:where(input[type='radio']:not(.sb-boolean-radio-option > input))::before {
+    content: '';
+    inline-size: calc(var(--sb-radio-size) * 0.4);
+    block-size: calc(var(--sb-radio-size) * 0.4);
+    border-radius: 999px;
+    background: var(--sb-on-solid-accent, var(--SmartThemeCheckboxTickColor));
+    transform: scale(0);
+    transition: transform var(--sb-transition-fast);
+}
+
+:where(input[type='radio']:not(.sb-boolean-radio-option > input)):checked {
+    border-color: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
+    background: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
+}
+
+:where(input[type='radio']:not(.sb-boolean-radio-option > input)):checked::before {
+    transform: scale(1);
+}
+
+@media (hover: hover) {
+    :where(input[type='radio']:not(.sb-boolean-radio-option > input)):not(:checked):not(:disabled):hover {
+        border-color: color-mix(in srgb, var(--SmartThemeBodyColor) 44%, transparent);
+    }
+}
+
+:where(input[type='radio']:not(.sb-boolean-radio-option > input)):focus-visible {
+    outline: 2px solid var(--sb-focus-ring);
+    outline-offset: 2px;
+    box-shadow: none;
+}
+
+:where(input[type='radio']:not(.sb-boolean-radio-option > input)):disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
 .sb-boolean-radio-group {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
@@ -875,13 +832,16 @@ h3:not(.popup h3):not(#chat h3) {
     }
 }
 
-.menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
-.menu_button_icon:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
-.right_menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
-.drawer-icon.closedIcon:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
-    transform: none;
-    background: var(--sb-button-hover);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 18%, transparent);
+/* libadwaita button hover: a deeper neutral fill only, no accent ring or lift. */
+@media (hover: hover) {
+    .menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
+    .menu_button_icon:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
+    .right_menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
+    .drawer-icon.closedIcon:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
+        transform: none;
+        background: var(--sb-button-hover);
+        box-shadow: none;
+    }
 }
 
 :root[data-sb-compact-mode='true'] .sb-shell-panel-scroller .menu_button,
@@ -907,10 +867,8 @@ h3:not(.popup h3):not(#chat h3) {
     background: var(--sb-state-active-bg);
     border-color: var(--sb-state-active-border);
     color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 82%, var(--SmartThemeBodyColor));
-    box-shadow:
-        inset 0 0 0 1px var(--sb-state-active-shadow),
-        inset 0 -2px 0 color-mix(in srgb, var(--color-primary, var(--sb-accent)) 44%, transparent),
-        0 8px 16px color-mix(in srgb, var(--SmartThemeShadowColor) 12%, transparent);
+    /* Flat selected state: the ::after dot below is the non-colour cue, so no bottom stripe or drop shadow. */
+    box-shadow: inset 0 0 0 1px var(--sb-state-active-shadow);
 }
 
 .menu_button_icon:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-pressed='true'], [aria-selected='true'], [aria-current]):not(.disabled):not(.is-disabled):not([disabled])::after,
@@ -935,9 +893,7 @@ h3:not(.popup h3):not(#chat h3) {
     cursor: progress;
     background: var(--sb-state-busy-bg);
     border-color: var(--sb-state-busy-border);
-    box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--sb-color-warning) 28%, transparent),
-        inset 0 -2px 0 color-mix(in srgb, var(--sb-color-warning) 42%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-color-warning) 28%, transparent);
 }
 
 :is(.menu_button, .menu_button_icon, .right_menu_button):is(.disabled, .is-disabled, [disabled], [aria-disabled='true']):not(.is-busy):not([aria-busy='true']) {
@@ -959,13 +915,10 @@ h3:not(.popup h3):not(#chat h3) {
     pointer-events: none;
 }
 
+/* One inset ring, same geometry as the global :focus-visible rule. */
 :is(.menu_button, .menu_button_icon, .right_menu_button):focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--sb-focus-ring) 88%, transparent);
-    outline-offset: 2px;
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 52%, var(--sb-shell-border));
-    box-shadow:
-        inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 60%, transparent),
-        0 0 0 1px color-mix(in srgb, var(--SmartThemeShadowColor) 20%, transparent);
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 :is(.menu_button, .menu_button_icon, .right_menu_button):is(.disabled, .is-disabled, [disabled]):not(.is-busy):not([aria-busy='true'])::after {
@@ -1052,9 +1005,7 @@ h3:not(.popup h3):not(#chat h3) {
 .menu_button.popup-button-ok:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']).active {
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 82%, white 18%);
     border-color: transparent;
-    box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent),
-        inset 0 -2px 0 color-mix(in srgb, black 12%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent);
 }
 
 .inline-drawer-header > b,
@@ -1223,7 +1174,8 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     padding: 6px;
     border-radius: 16px;
     border-color: color-mix(in srgb, var(--sb-shell-border) 92%, transparent);
-    box-shadow: 0 -8px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 12%, transparent);
+    /* libadwaita bottom toolbar: the 1px border separates it; no blurred drop shadow. */
+    box-shadow: none;
     background: var(--sb-composer-surface-bg);
     overflow: hidden;
 }
@@ -1242,9 +1194,7 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
         color-mix(in srgb, var(--SmartThemeBodyColor) 8%, var(--sb-composer-surface-base, transparent)),
         color-mix(in srgb, var(--SmartThemeBodyColor) 3%, var(--sb-composer-surface-base, transparent))
     );
-    box-shadow:
-        inset 0 1px 0 color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent),
-        0 6px 14px color-mix(in srgb, var(--SmartThemeShadowColor) 14%, transparent);
+    box-shadow: none;
 }
 
 #leftSendForm,
@@ -1285,9 +1235,10 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     margin: 0;
     padding: 0;
     border-radius: var(--sb-radius-button);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
-    box-shadow: 0 10px 18px color-mix(in srgb, var(--SmartThemeShadowColor) 10%, transparent);
+    /* libadwaita flat toolbar buttons: transparent at rest, neutral fill on hover/press. */
+    background: transparent;
+    border: 1px solid transparent;
+    box-shadow: none;
     font-size: var(--sb-composer-action-icon-size);
 }
 
@@ -1296,11 +1247,20 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     align-self: center;
 }
 
-#rightSendForm > div:hover,
-#leftSendForm > div:hover,
-#send_form .mes_stop:hover,
-#options_button:hover {
-    background: color-mix(in srgb, var(--sb-button-hover) 76%, transparent);
+@media (hover: hover) {
+    #rightSendForm > div:hover,
+    #leftSendForm > div:hover,
+    #send_form .mes_stop:hover,
+    #options_button:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+#rightSendForm > div:active,
+#leftSendForm > div:active,
+#send_form .mes_stop:active,
+#options_button:active {
+    background: var(--sb-flat-active-bg);
 }
 
 #options_button {
@@ -1365,9 +1325,7 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
 
 #send_form:focus-within {
     border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 56%, var(--sb-shell-border));
-    box-shadow:
-        0 -8px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 12%, transparent),
-        0 0 0 2px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, transparent);
     outline: none;
 }
 
@@ -1386,11 +1344,8 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
 #send_form.sb-generating-controls {
     --sb-generating-glow-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 90%, var(--color-primary, var(--sb-accent)) 10%);
     border-color: color-mix(in srgb, var(--sb-generating-glow-color) 86%, var(--sb-shell-border));
-    box-shadow:
-        0 -10px 40px color-mix(in srgb, var(--SmartThemeShadowColor) 14%, transparent),
-        0 -8px 34px color-mix(in srgb, var(--sb-generating-glow-color) 26%, transparent),
-        0 0 0 1px color-mix(in srgb, var(--sb-generating-glow-color) 68%, transparent),
-        inset 0 0 0 1px color-mix(in srgb, var(--sb-generating-glow-color) 54%, transparent);
+    /* Busy state reads from the accent border and top progress bar; no outer glow. */
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-generating-glow-color) 54%, transparent);
 }
 
 #send_form.sb-generating-controls #nonQRFormItems {
@@ -1410,7 +1365,6 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     block-size: 3px;
     border-radius: 999px;
     background: color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 96%, var(--SmartThemeBodyColor));
-    box-shadow: 0 0 18px color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 42%, transparent);
     transform: translateX(-50%);
     pointer-events: none;
 }
@@ -1444,9 +1398,8 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     border-radius: var(--sb-radius-button) !important;
     background: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) !important;
     border: 1px solid transparent !important;
-    box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 30%, transparent),
-        0 10px 18px color-mix(in srgb, var(--SmartThemeShadowColor) 10%, transparent);
+    /* libadwaita suggested-action: solid accent fill, no drop shadow. */
+    box-shadow: none;
     color: var(--sb-on-solid-accent, var(--sb-on-accent, var(--color-background, var(--SmartThemeBlurTintColor)))) !important;
     font-size: var(--sb-composer-action-icon-size) !important;
     opacity: 1;
@@ -1464,9 +1417,8 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     border-radius: var(--sb-radius-button) !important;
     background: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) !important;
     border: 1px solid transparent !important;
-    box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 30%, transparent),
-        0 10px 18px color-mix(in srgb, var(--SmartThemeShadowColor) 10%, transparent);
+    /* libadwaita suggested-action: solid accent fill, no drop shadow. */
+    box-shadow: none;
     color: var(--sb-on-solid-accent, var(--sb-on-accent, var(--color-background, var(--SmartThemeBlurTintColor)))) !important;
     font-size: var(--sb-composer-action-icon-size) !important;
     opacity: 1;
@@ -1637,35 +1589,35 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
 #chat .mes .extraMesButtons {
     align-items: center;
     gap: 3px;
-    min-block-size: var(--sb-message-icon-size);
+    min-block-size: var(--sb-message-hit-size);
     padding: 0;
 }
 
 #chat .mes .mes_button,
 #chat .mes .extraMesButtons > div {
-    inline-size: var(--sb-message-icon-size);
-    block-size: var(--sb-message-icon-size);
-    min-inline-size: var(--sb-message-icon-size);
-    min-block-size: var(--sb-message-icon-size);
-    max-inline-size: var(--sb-message-icon-size);
-    max-block-size: var(--sb-message-icon-size);
+    inline-size: var(--sb-message-hit-size);
+    block-size: var(--sb-message-hit-size);
+    min-inline-size: var(--sb-message-hit-size);
+    min-block-size: var(--sb-message-hit-size);
+    max-inline-size: var(--sb-message-hit-size);
+    max-block-size: var(--sb-message-hit-size);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 var(--sb-message-icon-size);
+    flex: 0 0 var(--sb-message-hit-size);
     padding: 0;
-    border-radius: 7px;
+    border-radius: var(--sb-icon-control-radius);
     box-sizing: border-box;
-    line-height: var(--sb-message-icon-size);
+    line-height: var(--sb-message-hit-size);
     text-align: center;
-    font-size: calc(var(--sb-message-icon-size) * 0.52);
+    font-size: var(--sb-message-glyph-size);
 }
 
 #chat .mes .mes_button:is(.fa, .fa-solid, .fa-regular, .fa-brands),
 #chat .mes .extraMesButtons > div:is(.fa, .fa-solid, .fa-regular, .fa-brands),
 #chat .mes .mes_button > :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg),
 #chat .mes .extraMesButtons > div > :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg) {
-    font-size: calc(var(--sb-message-icon-size) * 0.52);
+    font-size: var(--sb-message-glyph-size);
     line-height: 1;
 }
 
@@ -1678,34 +1630,42 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     color: var(--sb-color-danger);
 }
 
-#chat .mes .mes_delete:hover {
+/* Touch browsers keep :hover after a tap, so the fill is limited to real pointers plus :active. */
+@media (hover: hover) {
+    #chat .mes .mes_delete:hover {
+        color: color-mix(in srgb, var(--sb-color-danger) 80%, white);
+        background: color-mix(in srgb, var(--sb-color-danger) 12%, transparent);
+    }
+}
+
+#chat .mes .mes_delete:active {
     color: color-mix(in srgb, var(--sb-color-danger) 80%, white);
-    background: color-mix(in srgb, var(--sb-color-danger) 12%, transparent);
+    background: color-mix(in srgb, var(--sb-color-danger) 16%, transparent);
 }
 
 #chat .mes .mes_view_agent_changes {
-    width: var(--sb-message-icon-size) !important;
-    inline-size: var(--sb-message-icon-size) !important;
-    height: var(--sb-message-icon-size) !important;
-    block-size: var(--sb-message-icon-size) !important;
-    min-width: var(--sb-message-icon-size) !important;
-    min-inline-size: var(--sb-message-icon-size) !important;
-    min-height: var(--sb-message-icon-size) !important;
-    min-block-size: var(--sb-message-icon-size) !important;
-    max-width: var(--sb-message-icon-size) !important;
-    max-inline-size: var(--sb-message-icon-size) !important;
-    max-height: var(--sb-message-icon-size) !important;
-    max-block-size: var(--sb-message-icon-size) !important;
+    width: var(--sb-message-hit-size) !important;
+    inline-size: var(--sb-message-hit-size) !important;
+    height: var(--sb-message-hit-size) !important;
+    block-size: var(--sb-message-hit-size) !important;
+    min-width: var(--sb-message-hit-size) !important;
+    min-inline-size: var(--sb-message-hit-size) !important;
+    min-height: var(--sb-message-hit-size) !important;
+    min-block-size: var(--sb-message-hit-size) !important;
+    max-width: var(--sb-message-hit-size) !important;
+    max-inline-size: var(--sb-message-hit-size) !important;
+    max-height: var(--sb-message-hit-size) !important;
+    max-block-size: var(--sb-message-hit-size) !important;
     display: inline-flex !important;
     align-items: center;
     justify-content: center;
-    flex: 0 0 var(--sb-message-icon-size) !important;
+    flex: 0 0 var(--sb-message-hit-size) !important;
     padding: 0 !important;
     border-radius: var(--sb-icon-control-radius);
     aspect-ratio: 1 / 1;
     line-height: 1 !important;
     overflow: hidden;
-    font-size: calc(var(--sb-message-icon-size) * 0.52) !important;
+    font-size: var(--sb-message-glyph-size) !important;
 }
 
 #chat .mes .mes_view_agent_changes[style*="display: none"],
@@ -1767,12 +1727,15 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
 #chat .mes_reasoning_actions .edit_button {
     --sb-edit-action-color: var(--color-primary, var(--sb-accent));
     position: relative;
-    opacity: 0.92;
-    color: color-mix(in srgb, var(--sb-edit-action-color) 80%, var(--SmartThemeBodyColor));
-    border: 1px solid color-mix(in srgb, var(--sb-edit-action-color) 36%, transparent);
-    background: color-mix(in srgb, var(--sb-edit-action-color) 12%, var(--sb-button-bg));
-    box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--sb-edit-action-color) 28%, transparent);
+    /* libadwaita flat buttons: transparent at rest, colored text, neutral fill on hover/press. */
+    opacity: 1;
+    color: var(--sb-edit-action-color);
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    box-shadow: none;
     filter: none;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
 }
 
 #chat :is(.mes_edit_done, .mes_reasoning_edit_done).menu_button {
@@ -1800,27 +1763,79 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     --sb-edit-action-color: color-mix(in srgb, var(--SmartThemeBodyColor) 70%, var(--color-primary, var(--sb-accent)));
 }
 
-#chat .mes_edit_buttons .menu_button:not(.disabled):not([disabled]):hover,
-#chat .mes_reasoning_actions .edit_button:not(.disabled):not([disabled]):hover {
+@media (hover: hover) {
+    #chat .mes_edit_buttons .menu_button:not(.disabled):not([disabled]):hover,
+    #chat .mes_reasoning_actions .edit_button:not(.disabled):not([disabled]):hover {
+        opacity: 1;
+        background: color-mix(in srgb, var(--sb-edit-action-color) 12%, transparent);
+        border-color: transparent;
+        box-shadow: none;
+    }
+}
+
+#chat .mes_edit_buttons .menu_button:not(.disabled):not([disabled]):active,
+#chat .mes_reasoning_actions .edit_button:not(.disabled):not([disabled]):active {
     opacity: 1;
-    background: color-mix(in srgb, var(--sb-edit-action-color) 18%, var(--sb-button-bg));
-    border-color: color-mix(in srgb, var(--sb-edit-action-color) 48%, transparent);
-    box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--sb-edit-action-color) 24%, transparent),
-        inset 0 -2px 0 color-mix(in srgb, var(--sb-edit-action-color) 36%, transparent);
+    background: color-mix(in srgb, var(--sb-edit-action-color) 20%, transparent);
+    border-color: transparent;
+    box-shadow: none;
+}
+
+#chat .mes_edit_buttons .menu_button:focus-visible,
+#chat .mes_reasoning_actions .edit_button:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 #chat .mes_edit_buttons .menu_button:is(.disabled, .is-disabled, [disabled]),
 #chat .mes_reasoning_actions .edit_button:is(.disabled, .is-disabled, [disabled]) {
     opacity: 0.42;
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 52%, transparent);
-    border-color: color-mix(in srgb, var(--sb-shell-border) 62%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    border-color: transparent;
+    background: transparent;
     box-shadow: none;
 }
 
 #chat .mes_edit_buttons :is(.mes_edit_up, .mes_edit_down).menu_button:is(.disabled, .is-disabled, [disabled]) {
     display: none;
+}
+
+/* Guided Generations and input-history composer buttons: libadwaita flat toolbar buttons, circular. */
+#send_form :is(.gg-action-button, .stih--button).menu_button {
+    border-color: transparent;
+    border-radius: 999px;
+    background: transparent;
+    box-shadow: none;
+    transform: none;
+    transition: background-color var(--sb-transition-fast), opacity var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    #send_form :is(.gg-action-button, .stih--button).menu_button:not(:disabled):hover {
+        background: var(--sb-flat-hover-bg);
+        box-shadow: none;
+    }
+}
+
+#send_form :is(.gg-action-button, .stih--button).menu_button:not(:disabled):active {
+    background: var(--sb-flat-active-bg);
+    transform: none;
+}
+
+#send_form :is(.gg-action-button, .stih--button).menu_button:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+/* GG flush button keeps its active state ring. */
+#send_form .gg-action-button.menu_button.gg-flush-guides-active {
+    box-shadow: inset 0 0 0 1px var(--SmartThemeQuoteColor);
+}
+
+#send_form .gg-action-button.menu_button.gg-flush-guides-active:focus-visible {
+    box-shadow:
+        inset 0 0 0 1px var(--SmartThemeQuoteColor),
+        var(--sb-focus-ring-inset);
 }
 
 #chat .mes .swipeRightBlock {
@@ -1898,6 +1913,28 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     background: transparent;
 }
 
+/* libadwaita expander row: neutral raised fill, button radius, no border. */
+#chat .mes_reasoning_header {
+    border: 0;
+    border-radius: var(--sb-radius-button, 10px);
+    background: var(--sb-raised-bg);
+    transition: background-color var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    #chat .mes_reasoning_details[data-has-content='true'] .mes_reasoning_header:hover {
+        background: var(--sb-raised-hover-bg);
+    }
+}
+
+#chat .mes_reasoning_summary:focus-visible {
+    outline: none;
+}
+
+#chat .mes_reasoning_summary:focus-visible .mes_reasoning_header {
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
 /* A bare <pre> keeps the UA `white-space: pre`, so a message wrapped in one
    runs past the message block in every chat style. */
 .mes_text pre,
@@ -1928,12 +1965,16 @@ body.bubblechat .mes[is_user='true'] .mes_block {
         --sb-control-min-height: var(--sb-mobile-touch-target);
         --sb-control-icon-physical-size: max(var(--sb-icon-control-size), var(--sb-control-min-height));
         --sb-message-icon-size: clamp(28px, calc(var(--bottomFormBlockSize, 44px) * 0.62), 34px);
+        --sb-message-hit-size: var(--sb-mobile-touch-target);
+        --sb-message-glyph-size: 18px;
     }
 
     :root[data-sb-compact-mode='true'] {
         --sb-control-min-height: var(--sb-mobile-touch-target);
         --sb-control-icon-physical-size: max(var(--sb-icon-control-size), var(--sb-control-min-height));
         --sb-message-icon-size: clamp(24px, calc(var(--bottomFormBlockSize, 36px) * 0.62), 30px);
+        --sb-message-hit-size: 40px;
+        --sb-message-glyph-size: 17px;
     }
 
     #form_sheld {
@@ -2014,7 +2055,7 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     #chat .mes .mes_button,
     #chat .mes .extraMesButtons > div,
     #chat .mes :is(.swipe_left, .swipe_right) {
-        border-radius: 8px;
+        border-radius: var(--sb-icon-control-radius);
     }
 
     #completion_prompt_manager_popup {
@@ -2196,20 +2237,20 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     }
 
     #chat .mes_edit_buttons .menu_button {
-        width: var(--sb-message-icon-size);
-        inline-size: var(--sb-message-icon-size);
-        height: var(--sb-message-icon-size);
-        block-size: var(--sb-message-icon-size);
-        min-width: var(--sb-message-icon-size);
-        min-inline-size: var(--sb-message-icon-size);
-        min-height: var(--sb-message-icon-size);
-        min-block-size: var(--sb-message-icon-size);
-        max-width: var(--sb-message-icon-size);
-        max-inline-size: var(--sb-message-icon-size);
-        max-height: var(--sb-message-icon-size);
-        max-block-size: var(--sb-message-icon-size);
-        flex: 0 0 var(--sb-message-icon-size);
-        font-size: calc(var(--sb-message-icon-size) * 0.52);
+        width: var(--sb-message-hit-size);
+        inline-size: var(--sb-message-hit-size);
+        height: var(--sb-message-hit-size);
+        block-size: var(--sb-message-hit-size);
+        min-width: var(--sb-message-hit-size);
+        min-inline-size: var(--sb-message-hit-size);
+        min-height: var(--sb-message-hit-size);
+        min-block-size: var(--sb-message-hit-size);
+        max-width: var(--sb-message-hit-size);
+        max-inline-size: var(--sb-message-hit-size);
+        max-height: var(--sb-message-hit-size);
+        max-block-size: var(--sb-message-hit-size);
+        flex: 0 0 var(--sb-message-hit-size);
+        font-size: var(--sb-message-glyph-size);
         line-height: 1;
     }
 }
@@ -2366,25 +2407,96 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     border-radius: 999px;
 }
 
-input[type='range'] {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
+/* libadwaita-style scale: thin flat trough, plain thumb, no brightness filter or inset shadow. */
+input[type='range'],
+input[type='range'].neo-range-slider {
+    height: 4px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
     border-radius: 999px;
+    box-shadow: none;
+    filter: none;
+    transition: none;
+}
+
+/* style.css pins the .neo-range-slider track with important declarations, so these must match that weight. */
+input[type='range'].neo-range-slider {
+    height: 4px !important;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent) !important;
+    border-radius: 999px !important;
+    box-shadow: none !important;
+}
+
+input[type='range']:hover,
+input[type='range'].neo-range-slider:hover {
+    filter: none;
 }
 
 input[type='range']::-webkit-slider-thumb {
-    width: 16px;
-    height: 16px;
-    border: 2px solid color-mix(in srgb, var(--SmartThemeBlurTintColor) 85%, transparent);
+    width: 18px;
+    height: 18px;
+    border: 0;
+    border-radius: 999px;
     background: var(--color-primary, var(--sb-accent));
-    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 18%, transparent);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 30%, transparent);
+    transition: transform var(--sb-transition-fast);
 }
 
 input[type='range']::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
-    border: 2px solid color-mix(in srgb, var(--SmartThemeBlurTintColor) 85%, transparent);
+    width: 18px;
+    height: 18px;
+    border: 0;
+    border-radius: 999px;
     background: var(--color-primary, var(--sb-accent));
-    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 18%, transparent);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 30%, transparent);
+    transition: transform var(--sb-transition-fast);
+}
+
+/* Firefox paints the filled part of the trough; WebKit/Blink have no CSS-only equivalent without a value variable. */
+input[type='range']::-moz-range-progress {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-primary, var(--sb-accent));
+}
+
+@media (hover: hover) {
+    input[type='range']:not(:disabled):hover::-webkit-slider-thumb {
+        transform: scale(1.1);
+    }
+
+    input[type='range']:not(:disabled):hover::-moz-range-thumb {
+        transform: scale(1.1);
+    }
+}
+
+input[type='range']:focus-visible,
+input[type='range'].neo-range-slider:focus-visible {
+    outline: 2px solid var(--sb-focus-ring);
+    outline-offset: 4px;
+}
+
+input[type='range']:disabled,
+input[type='range'].neo-range-slider:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Vendor thumb pseudo-elements are split: one unknown selector would drop the whole rule. */
+@media (prefers-reduced-motion: reduce) {
+    input[type='range']::-webkit-slider-thumb {
+        transition: none;
+    }
+
+    input[type='range']::-moz-range-thumb {
+        transition: none;
+    }
+}
+
+body.reduced-motion input[type='range']::-webkit-slider-thumb {
+    transition: none;
+}
+
+body.reduced-motion input[type='range']::-moz-range-thumb {
+    transition: none;
 }
 
 .select2-container--default .select2-dropdown {
@@ -4854,7 +4966,7 @@ input[type='range']::-moz-range-thumb {
 }
 
 .sb-accent-preset[data-accent='blue'] {
-    --sb-accent-swatch: #3b82f6;
+    --sb-accent-swatch: #3584e4;
 }
 
 .sb-accent-preset[data-accent='cyan'] {
@@ -5730,11 +5842,30 @@ input[type='range']::-moz-range-thumb {
     line-height: 1.25;
 }
 
+body #toast-container {
+    --sb-toast-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, var(--SmartThemeBodyColor) 8%);
+    --toast-success-bg: var(--sb-toast-surface);
+    --toast-error-bg: var(--sb-toast-surface);
+    --toast-info-bg: var(--sb-toast-surface);
+    --toast-warning-bg: var(--sb-toast-surface);
+}
+
+@supports (color: rgb(from red r g b / 1)) {
+    body #toast-container {
+        --sb-toast-surface: rgb(from color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, var(--SmartThemeBodyColor) 8%) r g b / 1);
+    }
+}
+
 .toast {
     border-radius: var(--sb-radius-md) !important;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
     animation: sb-toast-in 240ms var(--sb-ease-out) both;
+}
+
+/* Toastr's type icons are white PNGs; difference-blending keeps them legible on light surfaces too. */
+body #toast-container > .toast,
+body #toast-container > .toast:hover {
+    background-blend-mode: difference;
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--color-shadow, var(--SmartThemeShadowColor)) 30%, transparent);
 }
 
 @keyframes sb-toast-in {
@@ -5774,7 +5905,7 @@ input[type='range']::-moz-range-thumb {
 
 :focus-visible {
     outline: none;
-    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 78%, transparent);
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 :focus:not(:focus-visible) {
@@ -5788,14 +5919,6 @@ input[type='range']::-moz-range-thumb {
         animation: none !important;
         transition: none !important;
         scroll-behavior: auto !important;
-    }
-
-    body::before {
-        animation: none !important;
-    }
-
-    #rm_print_characters_block > :is(.character_select, .group_select).sb-just-selected {
-        animation: none !important;
     }
 }
 

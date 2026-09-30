@@ -91,7 +91,7 @@ import {
 } from './timeline-render.js';
 import { setLastConversationPreview } from './typing.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20260808c';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261001c';
 const CONVERSATION_STYLESHEET_ID = 'sb-conversation-css';
 
 function ensureConversationStylesheet() {
@@ -370,6 +370,11 @@ export async function selectConversationThread(avatar, { branchId = '', groupId 
     });
 }
 
+function syncConversationTrayTrigger(actionBar) {
+    const trigger = actionBar?.parentElement?.querySelector(':scope > .sb-conversation-mobile-menu-trigger');
+    trigger?.setAttribute('aria-expanded', String(actionBar.classList.contains('open')));
+}
+
 export function bindConversationChromeControls(sheld) {
     if (sheld.dataset.sbConversationChromeBound === 'true') {
         return;
@@ -396,6 +401,7 @@ export function bindConversationChromeControls(sheld) {
         if (!target || (!target.closest('.sb-conversation-message-actions') && !target.closest('.sb-conversation-mobile-menu-trigger'))) {
             document.querySelectorAll('.sb-conversation-message-actions.open').forEach(el => {
                 el.classList.remove('open');
+                syncConversationTrayTrigger(el);
             });
         }
 
@@ -412,13 +418,11 @@ export function bindConversationChromeControls(sheld) {
                 document.querySelectorAll('.sb-conversation-message-actions.open').forEach(el => {
                     if (el !== currentActionBar) {
                         el.classList.remove('open');
+                        syncConversationTrayTrigger(el);
                     }
                 });
-                if (isOpen) {
-                    currentActionBar.classList.remove('open');
-                } else {
-                    currentActionBar.classList.add('open');
-                }
+                currentActionBar.classList.toggle('open', !isOpen);
+                syncConversationTrayTrigger(currentActionBar);
             }
             return;
         }

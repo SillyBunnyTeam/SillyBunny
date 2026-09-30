@@ -13432,6 +13432,7 @@ export async function messageEdit(editMessageId) {
     const messageBlock = messageElement.find('.mes_block');
     const messageText = messageBlock.find('.mes_text');
 
+    messageElement.addClass('sb-message-editing');
     messageText.empty();
     messageBlock.find('.mes_buttons').css('display', 'none');
     messageBlock.find('.mes_edit_buttons').css('display', 'inline-flex');
@@ -13500,6 +13501,7 @@ async function messageEditCancel(messageId = this_edit_mes_id) {
     }
 
     const thisMesBlock = thisMesDiv.find('.mes_block');
+    thisMesDiv.addClass('sb-message-edit-restored');
     thisMesBlock.find('.mes_text').empty();
     thisMesDiv.find('.mes_edit_buttons').css('display', 'none');
     thisMesBlock.find('.mes_buttons').css('display', '');
@@ -13589,13 +13591,15 @@ async function messageEditDone(div) {
     }
 
     let { mesBlock, text, mes, bias } = updateMessage(div);
+    const editedMessage = div.closest('.mes');
 
     await eventSource.emit(event_types.MESSAGE_EDITED, this_edit_mes_id);
     text = chat[this_edit_mes_id]?.mes ?? text;
     if (chat[this_edit_mes_id] && !chat[this_edit_mes_id].is_system) {
         await updateMessageTokenAccounting(chat[this_edit_mes_id]);
     }
-    updateMessageMetaBadges(div.closest('.mes'), chat[this_edit_mes_id]);
+    updateMessageMetaBadges(editedMessage, chat[this_edit_mes_id]);
+    editedMessage.addClass('sb-message-edit-restored');
     mesBlock.find('.mes_text').empty();
     mesBlock.find('.mes_edit_buttons').css('display', 'none');
     mesBlock.find('.mes_buttons').css('display', '');
@@ -13610,11 +13614,11 @@ async function messageEditDone(div) {
             false,
         ),
     );
-    notifyCardScriptStripped(div.closest('.mes'), this_edit_mes_id);
+    notifyCardScriptStripped(editedMessage, this_edit_mes_id);
     mesBlock.find('.mes_bias').empty();
     mesBlock.find('.mes_bias').append(messageFormatting(bias, '', false, false, -1, {}, false));
-    appendMediaToMessage(mes, div.closest('.mes'));
-    addCopyToCodeBlocks(div.closest('.mes'));
+    appendMediaToMessage(mes, editedMessage);
+    addCopyToCodeBlocks(editedMessage);
 
     const reasoningEditDone = mesBlock.find('.mes_reasoning_edit_done:visible');
     if (reasoningEditDone.length > 0) {

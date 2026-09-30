@@ -172,8 +172,8 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
         margin: 0;
         background: var(--SmartThemeBlurTintColor);
         border: 1px solid var(--sb-shell-border);
-        border-radius: var(--sb-radius-md, 12px);
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        border-radius: var(--sb-radius-md, 14px);
+        box-shadow: 0 10px 30px color-mix(in srgb, var(--SmartThemeShadowColor) 40%, transparent);
         color: var(--SmartThemeBodyColor);
         overflow: hidden;
     `;
@@ -263,14 +263,14 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
             <span id="sb_schedule_modal_title" style="font-weight: var(--sb-weight-title); font-size: 1.1em;"><i class="fa-solid fa-calendar-days" style="color: var(--sb-accent); margin-right: 8px;"></i>Edit Weekly Routine</span>
             <button type="button" class="menu_button menu_button_icon sb-schedule-modal-close" style="padding: 4px 8px;"><i class="fa-solid fa-xmark"></i></button>
         </div>
-        <div class="sb-schedule-modal-target" style="display: grid; gap: 6px; padding: 12px 20px; border-bottom: 1px solid var(--sb-shell-border); background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 82%, transparent);">
+        <div class="sb-schedule-modal-target" style="display: grid; gap: 6px; padding: 12px 20px; border-bottom: 1px solid var(--sb-shell-border);">
             <label for="sb_schedule_modal_target" style="font-size: var(--sb-type-meta); font-weight: var(--sb-weight-control); opacity: 0.82;">Editing schedule for</label>
             <select id="sb_schedule_modal_target" class="text_pole textarea_compact wide100p"${targets.length <= 1 ? ' disabled' : ''}>
                 ${targetOptionsHtml}
             </select>
             <p class="sb-conversation-field-hint" style="margin: 0;">Conversation members and current group-chat members use their own character-card schedules.</p>
         </div>
-        <div class="sb-conversation-schedule-modal-tabs" style="display: flex; gap: 4px; padding: 10px 20px; background: rgba(0,0,0,0.15); border-bottom: 1px solid var(--sb-shell-border); overflow-x: auto;">
+        <div class="sb-conversation-schedule-modal-tabs" style="display: flex; gap: 4px; padding: 10px 20px; border-bottom: 1px solid var(--sb-shell-border); overflow-x: auto;">
             ${WEEKDAY_LABELS.map((day, idx) => `
                 <button type="button" class="menu_button sb-schedule-modal-tab" data-day="${idx}" style="flex: 1; padding: 6px 4px; font-size: var(--sb-type-meta); min-width: 50px;">${day}</button>
             `).join('')}
@@ -281,7 +281,7 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
                 <i class="fa-solid fa-plus"></i><span>Add Time Block</span>
             </button>
         </div>
-        <div class="sb-conversation-schedule-modal-footer" style="padding: 16px 20px; border-top: 1px solid var(--sb-shell-border); background: rgba(0,0,0,0.15); display: flex; flex-direction: column; gap: 12px;">
+        <div class="sb-conversation-schedule-modal-footer" style="padding: 16px 20px; border-top: 1px solid var(--sb-shell-border); display: flex; flex-direction: column; gap: 12px;">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                 <div class="sb-conversation-field-stack">
                     <label style="font-size: var(--sb-type-meta); opacity: 0.8; margin-bottom: 4px;">Talkativeness (0-100)</label>
@@ -293,7 +293,7 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
                 </div>
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px;">
-                <button type="button" class="menu_button sb-schedule-modal-save" style="padding: 6px 14px; font-weight: var(--sb-weight-control); color: white;">Save Changes</button>
+                <button type="button" class="menu_button sb-schedule-modal-save" style="padding: 6px 14px; font-weight: var(--sb-weight-control);">Save Changes</button>
                 <button type="button" class="menu_button sb-schedule-modal-cancel" style="padding: 6px 14px;">Cancel</button>
             </div>
         </div>
@@ -305,16 +305,9 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
     function selectDayTab(dayIdx) {
         currentTabDay = dayIdx;
         modal.querySelectorAll('.sb-schedule-modal-tab').forEach(btn => {
-            const btnDay = parseInt(btn.dataset.day, 10);
-            if (btnDay === currentTabDay) {
-                btn.style.borderColor = 'var(--sb-accent)';
-                btn.style.background = 'color-mix(in srgb, var(--sb-accent) 15%, transparent)';
-                btn.style.fontWeight = 'var(--sb-weight-control)';
-            } else {
-                btn.style.borderColor = '';
-                btn.style.background = '';
-                btn.style.fontWeight = '';
-            }
+            const isSelected = parseInt(btn.dataset.day, 10) === currentTabDay;
+            btn.classList.toggle('is-selected', isSelected);
+            btn.setAttribute('aria-pressed', String(isSelected));
         });
         updateModalBody();
     }

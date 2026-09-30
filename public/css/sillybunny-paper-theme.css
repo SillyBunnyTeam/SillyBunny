@@ -7,12 +7,6 @@
     --topBarBlockSize: 40px;
     --topBarIconSize: 28px;
 
-    --thought-box-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor, rgba(24, 23, 20, 0.96)) 92%, var(--SmartThemeChatTintColor, rgba(0, 0, 0, 0.96)) 8%);
-    --thought-box-bg-2: color-mix(in srgb, var(--SmartThemeBlurTintColor, rgba(33, 31, 27, 0.96)) 82%, var(--SmartThemeQuoteColor, rgba(186, 150, 88, 1)) 18%);
-    --thought-box-border: color-mix(in srgb, var(--SmartThemeBorderColor, rgba(170, 150, 115, 0.36)) 72%, transparent);
-    --thought-box-text: var(--SmartThemeBodyColor, rgba(216, 204, 180, 1));
-    --thought-box-muted: color-mix(in srgb, var(--SmartThemeBodyColor, rgba(216, 204, 180, 1)) 68%, transparent);
-    --thought-box-accent: var(--SmartThemeQuoteColor, rgba(186, 150, 88, 1));
 }
 
 /* Paper grain and wash overlay */
@@ -84,14 +78,17 @@ body::after {
     scroll-padding-top: var(--topBarBlockSize) !important;
 }
 
-/* Soft, rounded app surfaces */
+/*
+ * Soft, rounded app surfaces. Controls inside the libadwaita-styled bottom chat bar, Conversation
+ * chrome, and message edit rows are excluded so their own pill/circle radii survive on phones.
+ */
 .drawer-content,
 .popup,
-.menu_button:not(.gg-action-button),
+.menu_button:not(.gg-action-button):not(:is(#sheld[data-sb-conversation-mode='on'], #sb-bottom-chat-bar, .mes_edit_buttons, .mes_reasoning_actions) *),
 input,
 textarea,
 select,
-button:not(.ica--tpanel-handle):not(.gg-action-button) {
+button:not(.ica--tpanel-handle):not(.gg-action-button):not(:is(#sheld[data-sb-conversation-mode='on'], #sb-bottom-chat-bar, .mes_edit_buttons, .mes_reasoning_actions) *) {
     border-radius: 14px !important;
 }
 
@@ -206,47 +203,11 @@ button:not(.ica--tpanel-handle):not(.gg-action-button) {
     background-color: rgba(30, 30, 30, 0.78) !important;
 }
 
-/* Reasoning / thought boxes styled to match the paper theme */
+/* Reasoning keeps the shared desktop treatment (style.css); only tighten the phone gutter. */
 .mes_reasoning_details {
-    margin: 2px 0 4px;
+    margin-right: 0;
 }
 
 .mes_reasoning_details .mes_reasoning_summary {
     margin-right: 0;
-}
-
-.mes_reasoning_header {
-    margin: 2px 0;
-    padding: 7px calc(0.7em + 14px) 7px 12px;
-    border: 1px solid var(--thought-box-border);
-    border-radius: 14px;
-    background: linear-gradient(180deg, var(--thought-box-bg-2), var(--thought-box-bg));
-    color: var(--thought-box-text);
-}
-
-.mes_reasoning_summary > span,
-.mes_reasoning_header > .icon-svg {
-    color: var(--thought-box-muted);
-}
-
-.mes_reasoning_arrow {
-    color: var(--thought-box-accent);
-}
-
-.mes_reasoning {
-    border: 1px solid var(--thought-box-border);
-    border-left: 1px solid var(--thought-box-border);
-    border-radius: 14px;
-    padding: 8px 10px 8px 12px;
-    background: linear-gradient(180deg, var(--thought-box-bg), var(--thought-box-bg-2));
-    color: var(--thought-box-text);
-}
-
-.mes_reasoning :is(i, em) {
-    color: var(--thought-box-muted);
-}
-
-.mes_reasoning :is(q, u),
-.mes_reasoning strong {
-    color: var(--thought-box-accent);
 }

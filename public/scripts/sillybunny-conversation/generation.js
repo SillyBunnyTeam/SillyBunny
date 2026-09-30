@@ -183,6 +183,7 @@ export function editConversationMessage(messageId) {
     textElement.append(textarea, buttonContainer);
     messageElement.classList.add('is-editing');
     messageElement.querySelector('.sb-conversation-message-actions')?.classList.remove('open');
+    messageElement.querySelector('.sb-conversation-mobile-menu-trigger')?.setAttribute('aria-expanded', 'false');
 
     const closeEditor = () => {
         if (textElement.isConnected) {
@@ -190,6 +191,7 @@ export function editConversationMessage(messageId) {
         }
         messageElement.classList.remove('is-editing');
         messageElement.querySelector('.sb-conversation-message-actions')?.classList.remove('open');
+        messageElement.querySelector('.sb-conversation-mobile-menu-trigger')?.setAttribute('aria-expanded', 'false');
         if (activeConversationEditor?.messageElement === messageElement) {
             activeConversationEditor = null;
         }

@@ -269,16 +269,16 @@ test('mobile section menu and chat tools use state motion with reduced-motion fa
     const trigger = shell.locator('.sb-section-nav-menu-trigger');
     await shell.locator('.sb-section-nav-hub-item').first().click();
     await trigger.click();
-    await expect(shell.locator('.sb-section-nav-menu')).toBeVisible();
     await expect.poll(() => shell.locator('.sb-section-nav-menu').evaluate(element => element.getAnimations().length)).toBeGreaterThan(0);
+    await expect(shell.locator('.sb-section-nav-menu')).toBeVisible();
     await trigger.click();
     await expect(shell.locator('.sb-section-nav-menu')).toBeHidden();
     await shell.locator('.sb-shell-close').click();
     await expect(shell).not.toHaveClass(/openDrawer/);
 
     await page.locator('.sb-bottom-chat-chip').click();
-    await expect(page.locator('#sb-bottom-chat-sheet')).toBeVisible();
     await expect.poll(() => page.locator('#sb-bottom-chat-sheet').evaluate(element => element.getAnimations().length)).toBeGreaterThan(0);
+    await expect(page.locator('#sb-bottom-chat-sheet')).toBeVisible();
 
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.locator('#sb-bottom-chat-sheet .sb-bottom-chat-sheet-close').click();

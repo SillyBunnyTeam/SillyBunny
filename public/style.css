@@ -10,7 +10,7 @@
 @import url(css/accounts.css);
 @import url(css/tags.css);
 @import url(css/scrollable-button.css?v=20260517a);
-@import url(css/welcome.css?v=20260609a);
+@import url(css/welcome.css?v=20261001a);
 @import url(css/data-maid.css);
 @import url(css/secrets.css);
 @import url(css/backgrounds.css?v=20260606a);
@@ -97,9 +97,10 @@
     --color-text: var(--SmartThemeBodyColor);
     --color-text-secondary: var(--SmartThemeEmColor);
     --color-border: var(--SmartThemeBorderColor);
-    --color-success: #f3c985;
-    --color-danger: #fb7185;
-    --color-warning: #facc15;
+    /* SillyBunny: libadwaita dark standalone status colours; light values live in sillybunny-theme.css. */
+    --color-success: #78e9ab;
+    --color-danger: #ff938c;
+    --color-warning: #ffc252;
     --color-shadow: var(--SmartThemeShadowColor);
     --color-focus-ring: color-mix(in srgb, var(--color-primary) 72%, transparent);
     --toast-surface-color: color-mix(in srgb, var(--color-surface-strong, var(--SmartThemeBlurTintColor)) 92%, var(--SmartThemeBodyColor) 8%);
@@ -135,8 +136,8 @@
     --lineSpacingMobileLeading: .504rem;
     --messageMarginScale: 1;
     --mainFontSize: calc(var(--fontScale) * 15px);
-    --mainFontFamily: 'Figtree', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', sans-serif;
-    --monoFontFamily: 'Noto Sans Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+    --mainFontFamily: 'Adwaita Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', sans-serif;
+    --monoFontFamily: 'Adwaita Mono', 'Noto Sans Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
     --sb-type-caption: calc(var(--mainFontSize) * 0.72);
     --sb-type-meta: calc(var(--mainFontSize) * 0.78);
     --sb-type-control: calc(var(--mainFontSize) * 0.86);
@@ -527,6 +528,13 @@ input[type='checkbox']:focus-visible {
     margin-right: calc(var(--mes-right-spacing) * -1);
 }
 
+/* Keep chat disclosures aligned with the shell's short, low-distance reveals. */
+.mes_reasoning_details[open] > :not(summary),
+#chat .mes_text .ooc_block[open] > .ooc_content {
+    animation: sb-chat-disclosure-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    transform-origin: top;
+}
+
 .mes_reasoning_details summary::-webkit-details-marker {
     display: none;
 }
@@ -679,6 +687,18 @@ input[type='checkbox']:focus-visible {
     border-top: 1px solid color-mix(in srgb, var(--color-primary, var(--SmartThemeQuoteColor)) 28%, transparent);
     padding: 0.5em 0.65em 0.65em;
     white-space: normal;
+}
+
+@keyframes sb-chat-disclosure-in {
+    from {
+        opacity: 0;
+        transform: translateY(-4px) scaleY(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scaleY(1);
+    }
 }
 
 .mes_reasoning q {
@@ -1724,7 +1744,7 @@ img[src*="sillybunny-pixel-logo"] {
 
 .mes_text,
 .mes_reasoning {
-    font-family: var(--mainFontFamily, 'Figtree', 'Noto Sans', sans-serif);
+    font-family: var(--mainFontFamily, 'Adwaita Sans', 'Noto Sans', sans-serif);
     font-weight: 500;
     line-height: calc(var(--mainFontSize) + var(--lineSpacingDesktopLeading, .5rem)); /* SillyBunny: line-spacing slider. */
     max-width: 100%;
@@ -4538,61 +4558,65 @@ input[type='checkbox'] {
     min-height: var(--sb-checkbox-size);
     aspect-ratio: 1 / 1;
     overflow: hidden;
-    border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 88%, var(--SmartThemeBodyColor) 14%);
-    background:
-        radial-gradient(circle at 32% 30%, rgba(255, 255, 255, 0.1), transparent 58%),
-        color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, transparent);
-    box-shadow:
-        inset 0 1px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 25%, transparent),
-        0 0 0 1px color-mix(in srgb, var(--SmartThemeShadowColor) 10%, transparent);
+    /* SillyBunny divergence: libadwaita check button (rounded square + check glyph); radios keep the circle. */
+    border-radius: calc(var(--sb-checkbox-size) * 0.3);
+    border: 2px solid color-mix(in srgb, var(--SmartThemeBodyColor) 28%, transparent);
+    background: transparent;
+    box-shadow: none;
     cursor: pointer;
     transform: none;
     flex-shrink: 0;
     align-self: center;
     place-content: center;
     display: grid;
-    transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+    transition: border-color var(--sb-transition-fast), background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
 input[type="checkbox"]::before {
     content: "";
-    width: calc(var(--sb-checkbox-size) * 0.5);
-    height: calc(var(--sb-checkbox-size) * 0.5);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 86%, white 14%);
+    width: calc(var(--sb-checkbox-size) * 0.56);
+    height: calc(var(--sb-checkbox-size) * 0.56);
+    background: var(--sb-on-solid-accent, var(--SmartThemeCheckboxTickColor));
+    -webkit-clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
     transform: scale(0);
-    transition: var(--animation-duration) transform ease-in-out, background-color 160ms ease;
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 16%, transparent);
+    transition: var(--animation-duration) transform ease-in-out, background-color var(--sb-transition-fast);
 }
 
 input[type="checkbox"]:checked::before {
     transform: scale(1);
 }
 
+/* Solid accent fill with a contrast-aware check, matching libadwaita's checked controls. */
 input[type='checkbox']:checked {
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 60%, var(--SmartThemeBorderColor));
-    background:
-        radial-gradient(circle at 32% 30%, rgba(255, 255, 255, 0.12), transparent 58%),
-        color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 14%, var(--SmartThemeBlurTintColor));
+    border-color: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
+    background: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
+    box-shadow: none;
 }
 
-input[type='checkbox']:hover {
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 42%, var(--SmartThemeBorderColor));
-    transform: none;
+@media (hover: hover) {
+    input[type='checkbox']:not(:checked):not(:disabled):hover {
+        border-color: color-mix(in srgb, var(--SmartThemeBodyColor) 44%, transparent);
+        transform: none;
+    }
 }
 
 input[type='checkbox']:focus-visible {
-    outline: none;
-    box-shadow:
-        inset 0 1px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 25%, transparent),
-        0 0 0 3px color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 20%, transparent);
+    outline: 2px solid var(--sb-focus-ring);
+    outline-offset: 2px;
 }
 
 input[type="checkbox"]:disabled {
     color: grey;
     cursor: not-allowed;
     opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    input[type='checkbox'],
+    input[type='checkbox']::before {
+        transition: none;
+    }
 }
 
 input[type='checkbox'].del_checkbox {
@@ -5052,6 +5076,28 @@ input[type="range"]::-webkit-slider-thumb {
     padding-bottom: 5px;
     filter: drop-shadow(0px 0px 2px black);
     transition: var(--animation-duration-2x) ease-in-out;
+}
+
+/* Backwards fill only: a held transform would leave stacking contexts that paint the text over the action popover. */
+#chat .mes.sb-message-editing .mes_text,
+#chat .mes.sb-message-editing .mes_edit_buttons {
+    animation: sb-message-edit-surface-in 180ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+#chat .mes.sb-message-edit-restored .mes_text {
+    animation: sb-message-edit-surface-in 180ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes sb-message-edit-surface-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .mes_reasoning_actions {

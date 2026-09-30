@@ -11,6 +11,7 @@ import {
 } from './mobile-shell-lifecycle/index.js';
 import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
 import { initializeMobileSectionNav, requestMobileSectionView } from './sillybunny-mobile-section-nav.js';
+import { initializeMessageActions } from './sillybunny-message-actions.js';
 import {
     animateIn,
     animateOut,
@@ -102,7 +103,6 @@ const SB_STORAGE_KEYS = Object.freeze({
     rightShellSize: 'sb-right-shell-size',
     desktopShellSnapToChatWidth: 'sb-desktop-shell-snap-to-chat-width',
     characterDrawerRightLocked: 'sb-character-drawer-right-locked',
-    theme: 'sb-theme',
     surfaceTransparency: 'sb-surface-transparency',
     topbarScaleDesktop: 'sb-topbar-scale-desktop',
     topbarScaleMobile: 'sb-topbar-scale-mobile',
@@ -511,32 +511,8 @@ const SB_SHELL_TOGGLE_GUARD_MS = 260;
 const SB_INIT_RETRY_DELAY_MS = 150;
 const SB_INIT_MAX_RETRIES = 30;
 
-const SB_THEMES = Object.freeze([
-    {
-        id: 'windows-aero',
-        label: 'Windows Aero',
-    },
-    {
-        id: 'clean-minimal',
-        label: 'Clean Minimal',
-    },
-    {
-        id: 'macos-minimal',
-        label: 'macOS Minimal',
-    },
-    {
-        id: 'cozy-warm',
-        label: 'Cozy Warm',
-    },
-    {
-        id: 'hypr-glow',
-        label: 'Hypr Glow',
-    },
-    {
-        id: 'slate-flat',
-        label: 'Slate Flat',
-    },
-]);
+// Shell Style picker removed for the libadwaita shell; legacy sb-theme values are ignored.
+const SB_SHELL_THEME = 'clean-minimal';
 
 const SB_MESSAGE_STYLES = Object.freeze([
     { id: '0', label: 'Flat', icon: 'fa-grip-lines' },
@@ -878,7 +854,7 @@ const sbState = {
     landingPageObserver: null,
     landingPageSyncFrame: 0,
     inlineDrawerAutoClose: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.settingsDrawerAutoClose), false),
-    theme: normalizeTheme(safeGetItem(SB_STORAGE_KEYS.theme)),
+    theme: SB_SHELL_THEME,
     frontendIcon: normalizeFrontendIcon(safeGetItem(SB_STORAGE_KEYS.frontendIcon)),
     surfaceTransparency: normalizeSurfaceTransparency(safeGetItem(SB_STORAGE_KEYS.surfaceTransparency)),
     paperTextureEnabled: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.paperTextureEnabled), false),
@@ -1041,10 +1017,6 @@ const sbState = {
         report: null,
     },
 };
-
-function normalizeTheme(themeId) {
-    return SB_THEMES.some(theme => theme.id === themeId) ? themeId : 'clean-minimal';
-}
 
 function normalizeFrontendIcon(iconId) {
     const normalizedIconId = normalizeText(iconId);
@@ -3899,10 +3871,6 @@ function ensureMobileNavReady() {
     return overlay;
 }
 
-function getThemeOption(themeId) {
-    return SB_THEMES.find(theme => theme.id === themeId) ?? SB_THEMES[0];
-}
-
 function normalizeMessageStyle(styleId) {
     const select = getMessageStyleSelect();
     const fallbackValue = select?.options?.[0]?.value ?? SB_MESSAGE_STYLES[0].id;
@@ -4077,18 +4045,9 @@ function initChatAvatarVariables() {
     document.addEventListener('sb:chat-style-updated', () => scheduleChatAvatarVariableUpdate(0));
 }
 
-function setShellTheme(themeId, { persist = true } = {}) {
-    const nextTheme = normalizeTheme(themeId);
-
-    sbState.theme = nextTheme;
-    document.documentElement.dataset.sbTheme = nextTheme;
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.theme, nextTheme);
-    }
-
-    updateThemePickerUi();
-    updateThemeBadge();
+function applyShellTheme() {
+    sbState.theme = SB_SHELL_THEME;
+    document.documentElement.dataset.sbTheme = SB_SHELL_THEME;
 }
 
 function applyFrontendIcon(iconId = sbState.frontendIcon) {
@@ -4256,15 +4215,6 @@ function setTopbarLabelClickCycle(enabled) {
     flushSbStorageWrites();
     updateThemePickerUi();
     updateTopBarBrand();
-}
-
-function updateThemeBadge() {
-    const badge = document.getElementById('sb-theme-current-label');
-    if (!badge) {
-        return;
-    }
-
-    badge.textContent = getThemeOption(sbState.theme).label;
 }
 
 function getSillyTavernContext() {
@@ -12491,8 +12441,6 @@ function injectThemePicker() {
     }
 
     const card = createElement('div', { id: 'sb-theme-card', className: 'sb-theme-card' });
-    const description = createElement('p', { text: 'Switch the navigation shell between built-in visual directions.' });
-    const optionRow = createElement('div', { className: 'sb-theme-option-row' });
     const surfaceSliderGroup = createThemeSliderGroup({
         title: 'Background Visibility',
         valueId: 'sb-surface-transparency-value',
@@ -12564,28 +12512,6 @@ function injectThemePicker() {
     const mobileQuickActionSettingsGroup = createMobileQuickActionSettingsGroup();
     const desktopSettingsOutlet = document.getElementById('sb-desktop-settings-outlet');
     const mobileSettingsOutlet = document.getElementById('sb-mobile-settings-outlet');
-    for (const theme of SB_THEMES) {
-        const button = createElement('button', {
-            className: 'sb-theme-option',
-            attrs: {
-                type: 'button',
-                'data-sb-theme-option': theme.id,
-            },
-        });
-
-        button.innerHTML = `
-            <span class="sb-theme-option-label">${theme.label}</span>
-        `;
-
-        button.addEventListener('click', () => setShellTheme(theme.id));
-        optionRow.appendChild(button);
-    }
-
-    const shellStyleSettingsGroup = createThemeSettingsDrawer({
-        id: 'sb-shell-style-drawer',
-        title: 'Shell Style',
-        content: [description, optionRow],
-    });
     const interfaceSettingsGroup = createThemeSettingsDrawer({
         id: 'sb-interface-drawer',
         title: 'Interface',
@@ -12621,7 +12547,7 @@ function injectThemePicker() {
         );
     }
 
-    card.append(shellStyleSettingsGroup, interfaceSettingsGroup, topbarLabelSettingsGroup, shortcutSettingsGroup);
+    card.append(interfaceSettingsGroup, topbarLabelSettingsGroup, shortcutSettingsGroup);
     if (!(desktopSettingsOutlet instanceof HTMLElement)) {
         card.append(
             desktopNavLayoutSettingsGroup,
@@ -12678,13 +12604,6 @@ function updateThemePickerUi() {
     const paperTextureEnabledInput = document.getElementById('sb-paper-texture-enabled-input');
     const paperTextureOpacityInput = document.getElementById('sb-paper-texture-opacity-input');
     const paperTextureOpacityValue = document.getElementById('sb-paper-texture-opacity-value');
-
-    for (const button of document.querySelectorAll('[data-sb-theme-option]')) {
-        const themeId = button.getAttribute('data-sb-theme-option');
-        const isActive = themeId === sbState.theme;
-        button.classList.toggle('is-selected', isActive);
-        button.setAttribute('aria-pressed', String(isActive));
-    }
 
     for (const button of document.querySelectorAll('[data-sb-frontend-icon-option]')) {
         const iconId = button.getAttribute('data-sb-frontend-icon-option');
@@ -16239,7 +16158,7 @@ function initAll() {
     injectCharacterDrawerControls();
     bindCharacterEditorExitButton();
     bindCharacterDrawerStateObserver();
-    setShellTheme(sbState.theme, { persist: false });
+    applyShellTheme();
     setFrontendIconPreference(sbState.frontendIcon, { persist: false });
     setSurfaceTransparency(sbState.surfaceTransparency, { persist: false });
     setPaperTextureEnabled(sbState.paperTextureEnabled, { persist: false });
@@ -16333,6 +16252,7 @@ function initAll() {
     groupAdvancedFormattingIntoDrawers();
 
     initializeMobileSectionNav();
+    initializeMessageActions();
 
     const sillyBunnyShell = /** @type {any} */ (globalThis.SillyBunnyShell || {});
     globalThis.SillyBunnyShell = Object.assign(sillyBunnyShell, {
@@ -16363,8 +16283,8 @@ function initAll() {
             closeAllDropdowns({ except: 'search' });
             setUniversalSearchOpenState(true, { focusInput });
         },
-        applyTheme(themeId) {
-            setShellTheme(themeId);
+        applyTheme() {
+            applyShellTheme();
         },
         setFrontendIcon(iconId) {
             setFrontendIconPreference(iconId);

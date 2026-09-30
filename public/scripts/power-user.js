@@ -371,7 +371,7 @@ export const power_user = {
     movingUIState: {},
     movingUIPreset: '',
     noShadows: false,
-    theme: 'Dark V 1.0',
+    theme: 'Libadwaita',
 
     gestures: true,
     auto_swipe: false,
@@ -2338,6 +2338,20 @@ export async function loadPowerUserSettings(settings, data) {
             delete settings.power_user.auto_sort_tags;
         }
         Object.assign(power_user, settings.power_user);
+    }
+
+    // SillyBunny: Dark V 1.0 was the previous bundled default. Migrate only
+    // that exact legacy selection; explicitly chosen themes remain untouched.
+    if (power_user.theme === 'Dark V 1.0') {
+        power_user.theme = 'Libadwaita';
+        // Migrate the old bundled default accent as well, but preserve a
+        // user-selected accent that differs from Dark V's shipped values.
+        if (power_user.quote_text_color === 'rgba(198, 193, 151, 1)'
+            && power_user.underline_text_color === 'rgba(145, 145, 145, 1)') {
+            power_user.quote_text_color = 'rgba(53, 132, 228, 1)';
+            power_user.underline_text_color = 'rgba(129, 208, 255, 1)';
+        }
+        saveSettingsDebounced();
     }
 
     if (!hasAccentProfileSeedVersion) {
@@ -5148,9 +5162,9 @@ jQuery(async () => {
     });
 
     $(document).on('click', '.sb-theme-preset-reset', function () {
-        applyTheme('Dark V 1.0');
+        applyTheme('Libadwaita');
         saveSettingsDebounced();
-        toastr.info('Theme colors reset to Dark V 1.0.', 'SillyBunny palette');
+        toastr.info('Theme colors reset to Libadwaita.', 'SillyBunny palette');
     });
 
     // Accent color presets
@@ -5160,8 +5174,8 @@ jQuery(async () => {
 
         switch (accent) {
             case 'blue':
-                quoteColor = 'rgba(59, 130, 246, 1)';
-                underlineColor = 'rgba(96, 165, 250, 1)';
+                quoteColor = 'rgba(53, 132, 228, 1)';
+                underlineColor = 'rgba(129, 208, 255, 1)';
                 break;
             case 'cyan':
                 quoteColor = 'rgba(6, 182, 212, 1)';

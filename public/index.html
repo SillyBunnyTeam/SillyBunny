@@ -17,14 +17,15 @@
             background-color: #1d2128;
         }
     </style>
-    <link rel="preload" as="style" href="style.css?v=20260803a">
+    <link rel="preload" as="style" href="style.css?v=20261001e">
     <link rel="modulepreload" href="script.js">
     <link rel="modulepreload" href="scripts/sillybunny-tabs.js">
     <link rel="modulepreload" href="scripts/sillybunny-conversation.js">
-    <link rel="preload" as="font" type="font/woff2" href="webfonts/Figtree/Figtree-Regular.woff2?v=20260422b" crossorigin>
+    <link rel="preload" as="font" type="font/woff2" href="webfonts/AdwaitaSans/AdwaitaSans-Regular-Latin.woff2?v=20261001a" crossorigin>
     <link rel="manifest" crossorigin="use-credentials" href="manifest.json">
-    <link href="webfonts/Figtree/stylesheet.css?v=20260422b" rel="stylesheet">
+    <link href="webfonts/AdwaitaSans/stylesheet.css?v=20261001a" rel="stylesheet">
     <link href="webfonts/NotoSans/stylesheet.css" rel="preload" as="style" data-sb-deferred-style data-sb-media="all">
+    <link href="webfonts/AdwaitaMono/stylesheet.css?v=20261001a" rel="preload" as="style" data-sb-deferred-style data-sb-media="all">
     <link href="webfonts/NotoSansMono/stylesheet.css" rel="preload" as="style" data-sb-deferred-style data-sb-media="all">
     <link href="css/fontawesome.min.css" rel="stylesheet">
     <link href="css/solid.min.css" rel="stylesheet">
@@ -41,16 +42,17 @@
     <link rel="apple-touch-icon" sizes="114x114" href="img/apple-icon-114x114.png" />
     <link rel="apple-touch-icon" sizes="144x144" href="img/apple-icon-144x144.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="img/apple-icon-180x180.png" />
-    <link rel="stylesheet" type="text/css" href="style.css?v=20260803a">
+    <link rel="stylesheet" type="text/css" href="style.css?v=20261001e">
     <link rel="stylesheet" type="text/css" href="css/st-tailwind.css">
     <link rel="stylesheet" type="text/css" href="css/toggle-dependent.css">
     <link rel="stylesheet" type="text/css" href="css/select2-overrides.css?v=20260609a">
     <link rel="stylesheet" type="text/css" href="css/mobile-styles.css?v=20260814a" media="(max-width: 768px)">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20260727c">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-paper-theme.css?v=20260622g" media="(max-width: 768px)">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20260725g">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20260821a" media="(max-width: 768px)">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-navigation.css?v=20260930a">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20261001j">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-paper-theme.css?v=20261001b" media="(max-width: 768px)">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20261001f">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20261001a" media="(max-width: 768px)">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-navigation.css?v=20261001c">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261001f">
     <link rel="stylesheet" type="text/css" href="css/user.css">
     <!-- Scripts are loaded at the end of the body to improve page load speed -->
 </head>
@@ -5181,7 +5183,7 @@
                             <div class="sb-theme-presets">
                                 <small class="sb-theme-presets-label">SillyBunny palettes</small>
                                 <div class="sb-theme-preset-buttons">
-                                    <button type="button" class="menu_button menu_button_icon sb-theme-preset-reset" title="Reset colors to Dark V 1.0">
+                                    <button type="button" class="menu_button menu_button_icon sb-theme-preset-reset" title="Reset colors to Libadwaita">
                                         <i class="fa-solid fa-rotate-left"></i>
                                         <span>Reset</span>
                                     </button>
@@ -8262,11 +8264,15 @@
                         </div>
                         <div class="mes_edit_buttons">
                             <div class="mes_edit_done menu_button  fa-solid fa-check" title="Confirm" data-i18n="[title]Confirm"></div>
-                            <div class="mes_edit_copy menu_button  fa-solid fa-copy" title="Copy this message" data-i18n="[title]Copy this message"></div>
-                            <div class="mes_edit_add_reasoning menu_button fa-solid fa-lightbulb" title="Add a reasoning block" data-i18n="[title]Add a reasoning block"></div>
-                            <div class="mes_edit_delete menu_button  fa-solid fa-trash-can" title="Delete this message" data-i18n="[title]Delete this message"></div>
-                            <div class="mes_edit_up menu_button  fa-solid fa-chevron-up " title="Move message up" data-i18n="[title]Move message up"></div>
-                            <div class="mes_edit_down menu_button  fa-solid fa-chevron-down" title="Move message down" data-i18n="[title]Move message down"></div>
+                            <!-- SillyBunny: mobile edit overflow. The trigger is hidden on desktop and the wrapper is display: contents, so desktop keeps the upstream row. -->
+                            <div class="sb-mes-edit-more menu_button fa-solid fa-ellipsis" title="Message Actions" data-i18n="[title]Message Actions"></div>
+                            <div class="sb-mes-edit-extra">
+                                <div class="mes_edit_copy menu_button  fa-solid fa-copy" title="Copy this message" data-i18n="[title]Copy this message"></div>
+                                <div class="mes_edit_add_reasoning menu_button fa-solid fa-lightbulb" title="Add a reasoning block" data-i18n="[title]Add a reasoning block"></div>
+                                <div class="mes_edit_delete menu_button  fa-solid fa-trash-can" title="Delete this message" data-i18n="[title]Delete this message"></div>
+                                <div class="mes_edit_up menu_button  fa-solid fa-chevron-up " title="Move message up" data-i18n="[title]Move message up"></div>
+                                <div class="mes_edit_down menu_button  fa-solid fa-chevron-down" title="Move message down" data-i18n="[title]Move message down"></div>
+                            </div>
                             <div class="mes_edit_cancel menu_button  fa-solid fa-xmark" title="Cancel" data-i18n="[title]Cancel"></div>
                         </div>
                     </div>
