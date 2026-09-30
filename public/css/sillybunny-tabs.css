@@ -7327,18 +7327,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     animation: sb-search-hit 2.2s var(--sb-ease-out);
 }
 
-@keyframes sbMobileShellSheetIn {
-    from {
-        opacity: 0;
-        transform: translateY(14px) scale(0.99);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
 @keyframes sb-search-hit {
     0% {
         box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-primary, var(--sb-accent)) 75%, transparent);

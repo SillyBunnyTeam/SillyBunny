@@ -7967,10 +7967,16 @@ function animateShellOpen(shellRoot, shellKey) {
 
     const trigger = getShellMotionTrigger(shellKey);
     stopMotion(shellRoot);
-    animateIn(shellRoot, [
-        { opacity: 0, transform: 'scale(0.96)' },
-        { opacity: 1, transform: 'scale(1)' },
-    ], {
+    const keyframes = isMobileViewport()
+        ? [
+            { opacity: 0, scale: '0.96' },
+            { opacity: 1, scale: '1' },
+        ]
+        : [
+            { opacity: 0, transform: 'scale(0.96)' },
+            { opacity: 1, transform: 'scale(1)' },
+        ];
+    animateIn(shellRoot, keyframes, {
         duration: MOTION_SLOW,
         styles: { 'transform-origin': originFrom(trigger, shellRoot) },
     });

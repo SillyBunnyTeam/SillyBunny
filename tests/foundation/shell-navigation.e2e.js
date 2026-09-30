@@ -138,7 +138,7 @@ test('mobile top-bar shell triggers open from their trigger origin', async ({ pa
                     id: this.id,
                     duration: options.duration,
                     origin: this.style.transformOrigin,
-                    keyframes: keyframes.map(({ opacity, transform }) => ({ opacity, transform })),
+                    keyframes: keyframes.map(({ opacity, scale }) => ({ opacity, scale })),
                 });
             }
             return originalAnimate.call(this, keyframes, options);
@@ -165,9 +165,25 @@ test('mobile top-bar shell triggers open from their trigger origin', async ({ pa
         expect(details.animation.duration).toBe(240);
         expect(details.animation.origin).toBe(details.expectedOrigin);
         expect(details.animation.keyframes).toEqual([
-            { opacity: 0, transform: 'scale(0.96)' },
-            { opacity: 1, transform: 'scale(1)' },
+            { opacity: 0, scale: '0.96' },
+            { opacity: 1, scale: '1' },
         ]);
+        const renderedSamples = await page.evaluate(({ panelId }) => new Promise(resolve => {
+            const panel = document.getElementById(panelId);
+            const samples = [];
+            const startedAt = performance.now();
+            const sample = () => {
+                const style = getComputedStyle(panel);
+                samples.push({ opacity: style.opacity, scale: style.scale });
+                if (performance.now() - startedAt >= 80) {
+                    resolve(samples);
+                    return;
+                }
+                requestAnimationFrame(sample);
+            };
+            requestAnimationFrame(sample);
+        }), { panelId });
+        expect(renderedSamples.some(sample => sample.opacity !== '1' || sample.scale !== '1')).toBe(true);
 
         const panel = page.locator(`#${panelId}`);
         await panel.locator('.sb-shell-close').click();
