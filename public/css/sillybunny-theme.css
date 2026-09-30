@@ -8,6 +8,7 @@
     --sb-radius-lg: 16px;
     --sb-radius-xl: 20px;
     --sb-radius-button: 14px;
+    --sb-shell-control-radius: 999px;
     --sb-transition-fast: 180ms cubic-bezier(0.22, 1, 0.36, 1);
     --sb-transition: 240ms cubic-bezier(0.22, 1, 0.36, 1);
     --sb-transition-slow: 240ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -75,6 +76,9 @@
     --sb-surface-elevated: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeChatTintColor) 10%);
     --sb-surface-elevated-soft: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, var(--SmartThemeBodyColor) 6%);
     --sb-surface-highlight: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
+    --sb-surface-raised: var(--color-surface-strong);
+    --sb-surface-hover: var(--color-surface-hover);
+    --sb-color-muted: var(--sb-muted-fg);
     --sb-panel-strong: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, transparent);
     --sb-panel-soft: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
 
@@ -86,6 +90,8 @@
     --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, var(--SmartThemeBlurTintColor) 93%);
     --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 96%, transparent);
     --sb-shell-shadow: 0 8px 24px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent);
+    --sb-shadow-panel: var(--sb-shell-shadow);
+    --sb-shadow-control: 0 1px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent);
     --sb-chat-surface-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, var(--SmartThemeChatTintColor) 8%);
     --sb-chat-surface-base: var(--sb-chat-surface-source);
     --sb-fixed-surface-base: var(--sb-chat-surface-source);
@@ -5791,6 +5797,14 @@ input[type='range']::-moz-range-thumb {
     #rm_print_characters_block > :is(.character_select, .group_select).sb-just-selected {
         animation: none !important;
     }
+}
+
+body.reduced-motion *,
+body.reduced-motion *::before,
+body.reduced-motion *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
 }
 
 @media screen and (max-width: 768px) {

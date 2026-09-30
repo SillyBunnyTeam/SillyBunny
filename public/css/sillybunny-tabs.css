@@ -44,7 +44,7 @@
     --sb-connection-strip-padding-x-base: 10px;
     --sb-connection-strip-radius-base: 14px;
     --sb-proxy-button-padding-x-base: 15px;
-    --sb-proxy-button-height-base: 36px;
+    --sb-proxy-button-height-base: 40px;
     --sb-proxy-button-min-width-base: 104px;
     --sb-proxy-button-gap-base: 8px;
     --sb-proxy-icon-scale-base: 0.92;
@@ -498,7 +498,7 @@ body.sb-topbar-compact #sb-chatbar-layer {
     min-height: var(--sb-topbar-search-row-height);
     padding: 0 14px;
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 88%, transparent);
-    border-radius: 999px;
+    border-radius: var(--sb-shell-control-radius);
     background-color: var(--SmartThemeBlurTintColor);
     background-image: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent), transparent);
     color: var(--SmartThemeBodyColor);
@@ -634,7 +634,7 @@ body.sb-topbar-compact #sb-chatbar-layer {
     max-height: var(--sb-chatbar-button-size);
     flex: 0 0 var(--sb-chatbar-button-size);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
-    border-radius: var(--sb-chatbar-button-radius);
+    border-radius: var(--sb-shell-control-radius);
     background: transparent;
     color: var(--SmartThemeBodyColor);
     cursor: pointer;
@@ -675,7 +675,7 @@ body.sb-topbar-compact #sb-chatbar-layer {
 }
 
 .sb-chatbar-button:hover {
-    transform: translateY(-1px);
+    background-color: var(--sb-surface-hover);
 }
 
 .sb-chatbar-button:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-pressed='true'], [aria-selected='true'], [aria-current]):not(:disabled):not(.is-disabled) {
@@ -683,8 +683,7 @@ body.sb-topbar-compact #sb-chatbar-layer {
     border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 42%, var(--sb-shell-border) 58%);
     box-shadow:
         inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 24%, transparent),
-        inset 0 -2px 0 color-mix(in srgb, var(--color-primary, var(--sb-accent)) 46%, transparent),
-        0 8px 16px color-mix(in srgb, var(--SmartThemeShadowColor) 14%, transparent);
+        inset 0 -2px 0 color-mix(in srgb, var(--color-primary, var(--sb-accent)) 46%, transparent);
 }
 
 .sb-chatbar-button:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-pressed='true'], [aria-selected='true'], [aria-current]):not(:disabled):not(.is-disabled)::after {
@@ -694,7 +693,7 @@ body.sb-topbar-compact #sb-chatbar-layer {
     right: 5px;
     inline-size: 5px;
     block-size: 5px;
-    border-radius: 999px;
+    border-radius: var(--sb-shell-control-radius);
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 84%, var(--SmartThemeBodyColor));
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--sb-shell-main-bg) 82%, transparent);
     pointer-events: none;
@@ -1208,7 +1207,7 @@ body:not(.movingUI) .drawer-content.maximized {
     position: relative;
     overflow: hidden;
     border: 1px solid transparent;
-    border-radius: 999px;
+    border-radius: var(--sb-shell-control-radius);
     padding: 0 var(--sb-proxy-button-padding-x);
     min-height: var(--sb-proxy-button-height);
     height: var(--sb-proxy-button-height);
@@ -1255,7 +1254,7 @@ body:not(.movingUI) .drawer-content.maximized {
 
 .sb-proxy-button:hover {
     opacity: 1;
-    transform: translateY(-1px);
+    background: var(--sb-surface-hover);
 }
 
 .sb-proxy-button:focus-visible {
@@ -1275,21 +1274,20 @@ body:not(.movingUI) .drawer-content.maximized {
 .sb-proxy-button.is-open,
 .sb-proxy-button.is-active,
 .sb-proxy-button.is-current {
-    background: color-mix(in srgb, var(--sb-button-hover) 92%, transparent);
-    box-shadow: 0 14px 26px color-mix(in srgb, var(--SmartThemeShadowColor) 14%, transparent);
+    background: var(--sb-surface-raised);
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 38%, var(--sb-shell-border) 62%);
 }
 
 .sb-proxy-button.is-open i,
 .sb-proxy-button.is-active i,
 .sb-proxy-button.is-current i {
-    transform: translateY(-1px) scale(1.06);
     color: var(--color-primary, var(--sb-accent));
 }
 
 .sb-proxy-button.is-open span,
 .sb-proxy-button.is-active span,
 .sb-proxy-button.is-current span {
-    transform: translateY(-1px);
+    transform: none;
 }
 
 .sb-proxy-button.is-open::after,
@@ -1373,7 +1371,7 @@ body:not(.movingUI) .drawer-content.maximized {
     flex: 0 0 auto;
     width: 1px;
     height: calc(var(--sb-proxy-button-height) * 0.55);
-    border-radius: 999px;
+    border-radius: var(--sb-shell-control-radius);
     margin-inline: calc((var(--sb-topbar-cluster-gap) - var(--sb-topbar-group-gap)) / 2);
     background: var(--sb-shell-border);
 }
@@ -1682,7 +1680,6 @@ body:not(.movingUI) .drawer-content.maximized {
 
 .sb-shell-root.fillLeft.openDrawer,
 .sb-shell-root.fillRight.openDrawer {
-    animation: sbShellReveal 240ms var(--sb-ease-out);
     transform-origin: center;
 }
 
@@ -1697,7 +1694,6 @@ body:not(.movingUI) .drawer-content.maximized {
     right: 0 !important;
     margin-left: auto !important;
     margin-right: auto !important;
-    animation: sbShellReveal 240ms var(--sb-ease-out);
     transform-origin: center;
 }
 
@@ -1719,24 +1715,7 @@ body.movingUI #right-nav-panel.openDrawer > .sb-shell-resize-handle {
 }
 
 .sb-shell-root.openDrawer .sb-shell-nav-wrapper {
-    animation: sbShellContentReveal 280ms var(--sb-ease-out) both;
-}
-
-.sb-shell-root.openDrawer .sb-shell-main {
-    animation: sbShellContentReveal 320ms var(--sb-ease-out) both;
-}
-
-#right-nav-panel.openDrawer > .sb-character-shell-nav-wrapper,
-#right-nav-panel.openDrawer > .sb-character-editor-subtabs-wrapper,
-#right-nav-panel.openDrawer > #CharListButtonAndHotSwaps,
-#right-nav-panel.openDrawer > #rm_PinAndTabs {
-    animation: sbShellContentReveal 280ms var(--sb-ease-out) both;
-}
-
-#right-nav-panel.openDrawer > .sb-character-shell-header,
-#right-nav-panel.openDrawer > .scrollableInner,
-#right-nav-panel.openDrawer > .scrollableInnerFull {
-    animation: sbShellContentReveal 320ms var(--sb-ease-out) both;
+    animation: none;
 }
 
 #right-nav-panel.openDrawer > .scrollableInner,
@@ -1781,12 +1760,8 @@ body.movingUI #right-nav-panel.openDrawer > .sb-shell-resize-handle {
     --sb-shell-resize-accent: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
     border-radius: 0 0 var(--sb-radius-button, 14px) 0;
     border: 1px solid color-mix(in srgb, var(--sb-shell-resize-accent) 48%, transparent);
-    background:
-        radial-gradient(circle at 76% 78%, color-mix(in srgb, var(--sb-shell-resize-accent) 34%, transparent) 0 28%, transparent 58%),
-        linear-gradient(135deg, color-mix(in srgb, var(--sb-shell-resize-accent) 16%, transparent), color-mix(in srgb, var(--sb-shell-border) 34%, transparent));
-    box-shadow:
-        0 10px 22px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent),
-        inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    background: var(--sb-surface-raised);
+    box-shadow: var(--sb-shadow-control);
     pointer-events: auto;
     cursor: nwse-resize;
     touch-action: none;
@@ -1815,20 +1790,14 @@ body.movingUI #right-nav-panel.openDrawer > .sb-shell-resize-handle {
 .sb-shell-root.sb-shell-can-resize.openDrawer .sb-shell-resize-handle,
 #right-nav-panel.sb-shell-can-resize.openDrawer > .sb-shell-resize-handle {
     display: block;
-    animation: sbShellResizeHandlePulse 1300ms var(--sb-ease-out) 2;
 }
 
 .sb-shell-root.sb-shell-resize-active .sb-shell-resize-handle,
 #right-nav-panel.sb-shell-resize-active > .sb-shell-resize-handle,
 .sb-shell-resize-handle:hover {
     border-color: color-mix(in srgb, var(--sb-shell-resize-accent) 72%, transparent);
-    background:
-        radial-gradient(circle at 76% 78%, color-mix(in srgb, var(--sb-shell-resize-accent) 52%, transparent) 0 30%, transparent 62%),
-        linear-gradient(135deg, color-mix(in srgb, var(--sb-shell-resize-accent) 26%, transparent), color-mix(in srgb, var(--sb-shell-border) 44%, transparent));
-    box-shadow:
-        0 14px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 30%, transparent),
-        0 0 0 4px color-mix(in srgb, var(--sb-shell-resize-accent) 14%, transparent),
-        inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
+    background: var(--sb-surface-hover);
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sb-shell-resize-accent) 34%, transparent);
     opacity: 1;
     transform: scale(1.08);
 }
@@ -1837,36 +1806,6 @@ body.movingUI #right-nav-panel.openDrawer > .sb-shell-resize-handle {
     outline: 2px solid var(--color-focus-ring, var(--color-primary, var(--sb-accent)));
     outline-offset: 3px;
     opacity: 1;
-}
-
-@keyframes sbShellResizeHandlePulse {
-    0% {
-        box-shadow:
-            0 10px 22px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent),
-            0 0 0 0 color-mix(in srgb, var(--sb-shell-resize-accent) 30%, transparent),
-            inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-    }
-
-    46% {
-        box-shadow:
-            0 14px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 28%, transparent),
-            0 0 0 10px color-mix(in srgb, var(--sb-shell-resize-accent) 18%, transparent),
-            inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
-    }
-
-    100% {
-        box-shadow:
-            0 10px 22px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent),
-            0 0 0 18px transparent,
-            inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .sb-shell-root.sb-shell-can-resize.openDrawer .sb-shell-resize-handle,
-    #right-nav-panel.sb-shell-can-resize.openDrawer > .sb-shell-resize-handle {
-        animation: none;
-    }
 }
 
 body.sb-shell-resizing,
@@ -2038,7 +1977,7 @@ body.sb-shell-resizing * {
     -webkit-appearance: none;
     appearance: none;
     border: 1px solid transparent;
-    border-radius: var(--sb-radius-button, 14px);
+    border-radius: var(--sb-shell-control-radius);
     min-height: 44px;
     padding: 8px 14px;
     display: flex;
@@ -2065,9 +2004,7 @@ body.sb-shell-resizing * {
 .sb-shell-tab:focus-visible {
     outline: none;
     border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 42%, var(--sb-shell-border) 58%);
-    box-shadow:
-        inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 58%, transparent),
-        0 8px 18px color-mix(in srgb, var(--SmartThemeShadowColor) 10%, transparent);
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 70%, transparent);
 }
 
 .sb-shell-tab:active {
@@ -2111,9 +2048,7 @@ body.sb-shell-resizing * {
 .sb-shell-tab:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-selected='true'], [aria-current]):not(.sb-shell-rail-action) {
     background: var(--sb-shell-tab-active-bg);
     border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 30%, var(--sb-shell-border) 70%);
-    box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--sb-shell-border) 78%, transparent),
-        inset 0 -2px 0 color-mix(in srgb, var(--color-primary, var(--sb-accent)) 42%, transparent);
+    box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--color-primary, var(--sb-accent)) 42%, transparent);
     transform: none;
 }
 
@@ -2259,7 +2194,7 @@ body.sb-shell-resizing * {
     min-height: 40px;
     padding: 3px;
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 88%, transparent);
-    border-radius: 999px;
+    border-radius: var(--sb-shell-control-radius);
     background: linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-surface) 96%, rgba(255, 255, 255, 0.04)), color-mix(in srgb, var(--sb-shell-surface) 84%, transparent));
     box-shadow: 0 12px 28px color-mix(in srgb, #000 18%, transparent), inset 0 1px 0 color-mix(in srgb, #fff 10%, transparent);
     z-index: 1;
@@ -2267,7 +2202,7 @@ body.sb-shell-resizing * {
 
 .sb-character-shell-mode-button {
     border: 0;
-    border-radius: 999px;
+    border-radius: var(--sb-shell-control-radius);
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -2879,14 +2814,15 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     width: 40px;
     height: 40px;
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 88%, transparent);
-    border-radius: 999px;
-    background: transparent;
+    border-radius: var(--sb-shell-control-radius);
+    background: var(--sb-surface-raised);
+    box-shadow: var(--sb-shadow-control);
     color: var(--SmartThemeBodyColor);
     align-items: center;
     justify-content: center;
     cursor: pointer;
     overflow: hidden;
-    transition: transform var(--sb-transition-fast), background-color var(--sb-transition-fast), border-color var(--sb-transition-fast);
+    transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast), color var(--sb-transition-fast);
 }
 
 .sb-shell-close::before {
@@ -2896,13 +2832,12 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     z-index: -1;
     border-radius: inherit;
     pointer-events: none;
-    background: color-mix(in srgb, var(--sb-shell-main-bg) 90%, transparent);
+    background: var(--sb-surface-raised);
     opacity: var(--sb-shell-control-opacity);
 }
 
 .sb-shell-close:hover {
-    transform: translateY(-1px);
-    background: var(--sb-button-hover);
+    background: var(--sb-surface-hover);
 }
 
 .sb-shell-close:focus-visible {
@@ -2928,6 +2863,13 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     #right-nav-panel[data-menu-type="character_edit"] #sb_character_editor_exit,
     #right-nav-panel[data-menu-type="create"] #sb_character_editor_exit {
         display: inline-flex;
+    }
+}
+
+@media (pointer: coarse) {
+    .sb-shell-close {
+        width: 44px;
+        height: 44px;
     }
 }
 
@@ -5911,7 +5853,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     min-width: max-content;
     min-height: 40px;
     padding: 7px 12px;
-    border-radius: var(--sb-radius-pill, 999px);
+    border-radius: var(--sb-shell-control-radius);
     background: color-mix(in srgb, var(--sb-shell-main-bg) 54%, transparent);
 }
 
@@ -6327,7 +6269,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     padding-inline: var(--sb-shell-space-md) !important;
     gap: 8px;
     aspect-ratio: auto;
-    border-radius: var(--sb-radius-pill, 999px);
+    border-radius: var(--sb-shell-control-radius);
     color: var(--SmartThemeBodyColor);
     border: 1px solid color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, var(--sb-shell-border) 66%);
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 16%, var(--sb-shell-surface) 84%);
@@ -6365,7 +6307,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     padding-inline: var(--sb-shell-space-md) !important;
     gap: 8px;
     aspect-ratio: auto;
-    border-radius: var(--sb-radius-pill, 999px);
+    border-radius: var(--sb-shell-control-radius);
     border: 1px solid color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, var(--sb-shell-border) 72%);
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 10%, var(--sb-shell-surface) 90%);
 }
@@ -7383,18 +7325,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 .sb-search-hit {
     animation: sb-search-hit 2.2s var(--sb-ease-out);
-}
-
-@keyframes sbShellReveal {
-    from {
-        opacity: 0;
-        transform: scale(0.96);
-    }
-
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
 }
 
 @keyframes sbMobileShellSheetIn {

@@ -75,6 +75,53 @@ test('preserves Layer 2 controls, labels, shell tabs, and focus restoration', as
     await expect(page.locator('#sb-mobile-nav')).toBeHidden();
 });
 
+test('desktop Characters drawer opens from its top-bar trigger', async ({ page, isMobile }) => {
+    test.skip(isMobile, 'The trigger-origin animation is desktop-only.');
+    await page.route('**/api/settings/save', route => route.fulfill({ json: {} }));
+    await page.goto('/');
+    await page.waitForFunction(() => typeof window.SillyBunnyShell?.openTab === 'function' && !document.querySelector('#preloader'));
+
+    const setupWizard = page.locator('#qig-setup-wizard');
+    if (await setupWizard.isVisible().catch(() => false)) {
+        await setupWizard.locator('.qig-close-btn').click({ force: true });
+        await expect(setupWizard).toBeHidden({ timeout: 5000 });
+    }
+    await page.evaluate(() => document.body.classList.remove('reduced-motion'));
+
+    await page.evaluate(() => {
+        const originalAnimate = HTMLElement.prototype.animate;
+        window.__sbShellOriginAnimation = null;
+        HTMLElement.prototype.animate = function (keyframes, options) {
+            if (this.id === 'right-nav-panel') {
+                const trigger = document.getElementById('sb-character-toggle').getBoundingClientRect();
+                const panel = this.getBoundingClientRect();
+                window.__sbShellOriginAnimation = {
+                    duration: options.duration,
+                    origin: this.style.transformOrigin,
+                    expectedOrigin: `${Math.round(trigger.left + trigger.width / 2 - panel.left)}px ${Math.round(trigger.top + trigger.height / 2 - panel.top)}px`,
+                    keyframes: keyframes.map(({ opacity, transform }) => ({ opacity, transform })),
+                };
+            }
+            return originalAnimate.call(this, keyframes, options);
+        };
+    });
+
+    await page.locator('#sb-character-toggle').click();
+    const drawer = page.locator('#right-nav-panel');
+    await expect(drawer).toHaveClass(/openDrawer/);
+    await expect.poll(() => page.evaluate(() => window.__sbShellOriginAnimation)).not.toBeNull();
+    const animation = await page.evaluate(() => window.__sbShellOriginAnimation);
+    expect(animation.duration).toBe(240);
+    expect(animation.origin).toBe(animation.expectedOrigin);
+    expect(animation.keyframes).toEqual([
+        { opacity: 0, transform: 'scale(0.96)' },
+        { opacity: 1, transform: 'scale(1)' },
+    ]);
+
+    await drawer.locator('.sb-shell-close').click();
+    await expect(drawer).not.toHaveClass(/openDrawer/);
+});
+
 test('mobile section navigation opens on the hub once, then uses the section menu', async ({ page, isMobile }) => {
     test.skip(!isMobile, 'Section navigation is mobile-only.');
     await page.goto('/');

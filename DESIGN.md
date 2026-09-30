@@ -56,6 +56,7 @@ rounded:
   lg: "16px"
   xl: "20px"
   pill: "999px"
+  shell-control: "999px"
 spacing:
   xs: "4px"
   sm: "8px"
@@ -100,6 +101,16 @@ components:
     textColor: "{colors.linen-text}"
     rounded: "{rounded.md}"
     padding: "6px 8px"
+  shell-navigation-control:
+    backgroundColor: "{colors.ink-panel}"
+    textColor: "{colors.linen-text}"
+    rounded: "{rounded.shell-control}"
+    minimumHeight: "44px on coarse pointers; 40px on fine pointers"
+  shell-icon-control:
+    backgroundColor: "{colors.ink-panel}"
+    textColor: "{colors.linen-text}"
+    rounded: "{rounded.shell-control}"
+    size: "44px on coarse pointers; 40px on fine pointers"
 ---
 
 # Design System: SillyBunny
@@ -194,7 +205,8 @@ SillyBunny uses tonal layering first and restrained shadows second. The main cha
 ## 5. Components
 
 ### Buttons
-- **Shape:** Rounded rectangle at `14px`; icon-only controls use `10px`. Full pills are reserved for chips and status tags.
+- **General shape:** Rounded rectangle at `14px`; general icon-only controls use `10px`. Full pills are reserved for chips, status tags, and the named shell-navigation controls below.
+- **Shell navigation:** Top-bar destinations, shell section triggers, back/close controls, and chat-navigation actions use a full pill radius. Icon-only shell actions are circular. Controls are at least `44px` on coarse pointers and may be `40px` on fine pointers. This shared vocabulary applies on desktop and mobile while each layout keeps its appropriate density and navigation pattern.
 - **Primary:** Warm Signal background, Shadow Ink text, `38px` minimum height, and `10px 14px` padding. It is the single primary action in a view.
 - **Hover / Focus:** Adjust tonal value and use a visible inset focus ring. Do not combine a 1px border with a wide shadow.
 - **Secondary / Ghost:** Ink Panel background, Linen Text, one-pixel theme border, same height and padding as the primary family.
@@ -225,7 +237,8 @@ SillyBunny uses tonal layering first and restrained shadows second. The main cha
 - **Layer 3:** Opened categories expose a single header-tab row and a configuration pop-down.
 - **Layer 4:** Sub-category content contains the options for that category and at most one collapsible section.
 - **Active State:** Use Raised Panel, a thin theme border, and a restrained bottom accent. Never use a thick left or right stripe.
-- **Mobile:** Preserve the same destinations and ordering. Use fixed drawers only when requested, safe-area-aware sizing, touch targets, and no hover-only discovery.
+- **Mobile:** Preserve the same destinations, ordering, action names, and shell-control shapes. Use the mobile section hub and trigger menu in place of the desktop tab strip, safe-area-aware sheets, comfortable touch targets, and no hover-only discovery.
+- **Desktop:** Keep the existing top-bar actions and chat-navigation rows visible. Users may hide the Guided Generations and Chat Navigation rows in settings; the shell restyle does not change that behavior.
 
 ### Signature Surfaces
 - **Composer:** The bottom bar stays available for writing, keeps the textarea central, and scales to keyboard and safe-area changes without covering chat.

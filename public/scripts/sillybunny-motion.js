@@ -1,5 +1,5 @@
 /*
- * Shared WAAPI motion helpers for the SillyBunny mobile shell.
+ * Shared WAAPI motion helpers for the SillyBunny shell.
  * Durations and easing mirror --sb-transition-fast/slow (DESIGN.md State-Only Motion Rule).
  * Every helper is a no-op when prefers-reduced-motion is set or WAAPI is unavailable.
  */
@@ -12,7 +12,8 @@ const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 const activeMotions = new WeakMap();
 
 export function prefersReducedMotion() {
-    return window.matchMedia(REDUCED_MOTION_QUERY).matches;
+    return window.matchMedia(REDUCED_MOTION_QUERY).matches
+        || document.body?.classList.contains('reduced-motion') === true;
 }
 
 function canAnimate(element) {

@@ -11,6 +11,15 @@ import {
 } from './mobile-shell-lifecycle/index.js';
 import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
 import { initializeMobileSectionNav } from './sillybunny-mobile-section-nav.js';
+import {
+    animateIn,
+    animateOut,
+    MOTION_FAST,
+    MOTION_SLOW,
+    originFrom,
+    prefersReducedMotion as prefersShellReducedMotion,
+    stopMotion,
+} from './sillybunny-motion.js';
 import { createPresetApiSyncLifecycle } from './preset-api-sync-lifecycle/index.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
 import {
@@ -2454,7 +2463,7 @@ function isMobileViewport() {
 }
 
 function prefersReducedMotion() {
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    return prefersShellReducedMotion();
 }
 
 function getShellProxyButton(shellKey) {
@@ -7901,6 +7910,66 @@ function forceDrawerState(drawerRootOrId, shouldOpen, drawerIconOrSelector = nul
     queueTopbarPageStateSync();
 }
 
+function getShellMotionTrigger(shellKey) {
+    const buttonId = shellKey === 'characters'
+        ? 'sb-character-toggle'
+        : getShellConfig(shellKey)?.proxyButtonId;
+    return buttonId ? document.getElementById(buttonId) : null;
+}
+
+function animateShellOpen(shellRoot, shellKey) {
+    if (isMobileViewport() || !(shellRoot instanceof HTMLElement)) {
+        return;
+    }
+
+    const trigger = getShellMotionTrigger(shellKey);
+    stopMotion(shellRoot);
+    animateIn(shellRoot, [
+        { opacity: 0, transform: 'scale(0.96)' },
+        { opacity: 1, transform: 'scale(1)' },
+    ], {
+        duration: MOTION_SLOW,
+        styles: { 'transform-origin': originFrom(trigger, shellRoot) },
+    });
+}
+
+function closeShellDrawer(shellRoot, shellKey, close) {
+    if (isMobileViewport() || prefersReducedMotion() || typeof shellRoot.animate !== 'function') {
+        close();
+        return;
+    }
+
+    const trigger = getShellMotionTrigger(shellKey);
+    const rect = shellRoot.getBoundingClientRect();
+    const position = {
+        display: 'flex',
+        position: 'fixed',
+        left: `${rect.left}px`,
+        top: `${rect.top}px`,
+        right: 'auto',
+        bottom: 'auto',
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+        'min-width': '0',
+        'min-height': '0',
+        'max-width': `${rect.width}px`,
+        'max-height': `${rect.height}px`,
+        margin: '0',
+        visibility: 'visible',
+        'z-index': 'var(--sb-z-shell-panel)',
+        'transform-origin': originFrom(trigger, shellRoot),
+    };
+
+    animateOut(shellRoot, [
+        { opacity: 1, transform: 'scale(1)' },
+        { opacity: 0, transform: 'scale(0.98)' },
+    ], close, {
+        enabled: !isMobileViewport(),
+        duration: MOTION_FAST,
+        styles: position,
+    });
+}
+
 function isShellOpen(shellKey) {
     return isDrawerActuallyOpen(getShellConfig(shellKey).rootPanelId);
 }
@@ -8983,8 +9052,22 @@ function closeCharacterPanel() {
     setCharacterEditorFullscreenState(false);
 
     if (panel instanceof HTMLElement && panel.classList.contains('openDrawer')) {
-        forceDrawerState(panel, false, '#rightNavDrawerIcon');
-    } else if (panel instanceof HTMLElement && document.activeElement instanceof HTMLElement && panel.contains(document.activeElement)) {
+        closeShellDrawer(panel, 'characters', () => {
+            forceDrawerState(panel, false, '#rightNavDrawerIcon');
+            syncDrawerIconState('#WIDrawerIcon', false);
+            setCharacterDrawerHostOverflow(false);
+            syncChatbarVisibilityState();
+            syncMobileShellDrawerBounds();
+            queueMobileShellDrawerBoundsSync();
+            queueMobileModalStateSync();
+            if (shouldResetViewport) {
+                requestMobileViewportReset();
+            }
+        });
+        return;
+    }
+
+    if (panel instanceof HTMLElement && document.activeElement instanceof HTMLElement && panel.contains(document.activeElement)) {
         document.activeElement.blur();
     }
 
@@ -9134,12 +9217,14 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
     // anchored to the hidden toggle's zero-size bounding rect, breaking extensions that
     // anchor dropdowns/popups to native toggle positions (e.g. CharacterLibrary).
     forceDrawerState('right-nav-panel', true, '#rightNavDrawerIcon');
+    animateShellOpen(document.getElementById('right-nav-panel'), 'characters');
     syncMobileShellDrawerBounds();
     queueMobileShellDrawerBoundsSync();
 
     window.requestAnimationFrame(() => {
         if (!isCharacterPanelOpen()) {
             forceDrawerState('right-nav-panel', true, '#rightNavDrawerIcon');
+            animateShellOpen(document.getElementById('right-nav-panel'), 'characters');
         }
 
         restoreLastCharacterPanelView();
@@ -13502,6 +13587,7 @@ function openShell(shellKey, tabId = null) {
 
     if (shellRoot.classList.contains('openDrawer')) {
         forceDrawerState(shellRoot, true, shellConfig.hostIconSelector);
+        animateShellOpen(shellRoot, shellKey);
         syncMobileShellDrawerBounds();
         queueMobileShellDrawerBoundsSync();
         syncDesktopShellSizing();
@@ -13511,11 +13597,13 @@ function openShell(shellKey, tabId = null) {
 
     if (!shellRoot.classList.contains('openDrawer')) {
         forceDrawerState(shellRoot, true, shellConfig.hostIconSelector);
+        animateShellOpen(shellRoot, shellKey);
         syncMobileShellDrawerBounds();
         queueMobileShellDrawerBoundsSync();
         window.requestAnimationFrame(() => {
             if (!isDrawerActuallyOpen(shellRoot)) {
                 forceDrawerState(shellRoot, true, shellConfig.hostIconSelector);
+                animateShellOpen(shellRoot, shellKey);
             }
             syncMobileShellDrawerBounds();
             queueMobileShellDrawerBoundsSync();
@@ -13549,16 +13637,17 @@ function closeShell(shellKey) {
         document.activeElement.blur();
     }
 
-    // Managed shells do not need the legacy drawer toggle close animation.
-    forceDrawerState(shellRoot, false, shellConfig.hostIconSelector);
-    syncMobileShellDrawerBounds();
-    queueMobileShellDrawerBoundsSync();
-    requestMobileViewportReset();
-    if (shouldRestoreFocus) {
-        window.requestAnimationFrame(() => restoreShellFocus(shellKey));
-    } else {
-        delete shellState?.restoreFocusTarget;
-    }
+    closeShellDrawer(shellRoot, shellKey, () => {
+        forceDrawerState(shellRoot, false, shellConfig.hostIconSelector);
+        syncMobileShellDrawerBounds();
+        queueMobileShellDrawerBoundsSync();
+        requestMobileViewportReset();
+        if (shouldRestoreFocus) {
+            window.requestAnimationFrame(() => restoreShellFocus(shellKey));
+        } else {
+            delete shellState?.restoreFocusTarget;
+        }
+    });
 }
 
 function buildShell(shellKey) {
