@@ -7961,7 +7961,7 @@ function getShellMotionTrigger(shellKey) {
 }
 
 function animateShellOpen(shellRoot, shellKey) {
-    if (isMobileViewport() || !(shellRoot instanceof HTMLElement)) {
+    if (!(shellRoot instanceof HTMLElement)) {
         return;
     }
 

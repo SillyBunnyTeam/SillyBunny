@@ -122,6 +122,59 @@ test('desktop Characters drawer opens from its top-bar trigger', async ({ page, 
     await expect(drawer).not.toHaveClass(/openDrawer/);
 });
 
+test('mobile top-bar shell triggers open from their trigger origin', async ({ page, isMobile }) => {
+    test.skip(!isMobile, 'Mobile shell motion is mobile-only.');
+    await page.goto('/');
+    await page.waitForFunction(() => typeof window.SillyBunnyShell?.openTab === 'function' && !document.querySelector('#preloader'));
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.evaluate(() => document.body.classList.remove('reduced-motion'));
+
+    await page.evaluate(() => {
+        window.__sbMobileShellAnimations = [];
+        const originalAnimate = HTMLElement.prototype.animate;
+        HTMLElement.prototype.animate = function (keyframes, options) {
+            if (this.matches('#left-nav-panel, #user-settings-block, #right-nav-panel')) {
+                window.__sbMobileShellAnimations.push({
+                    id: this.id,
+                    duration: options.duration,
+                    origin: this.style.transformOrigin,
+                    keyframes: keyframes.map(({ opacity, transform }) => ({ opacity, transform })),
+                });
+            }
+            return originalAnimate.call(this, keyframes, options);
+        };
+    });
+
+    for (const [toggleId, panelId] of [
+        ['sb-left-shell-toggle', 'left-nav-panel'],
+        ['sb-right-shell-toggle', 'user-settings-block'],
+        ['sb-character-toggle', 'right-nav-panel'],
+    ]) {
+        await page.locator(`#${toggleId}`).click();
+        await expect.poll(() => page.evaluate(({ panelId }) => window.__sbMobileShellAnimations.findLast(item => item.id === panelId), { panelId })).toBeTruthy();
+        const details = await page.evaluate(({ panelId, toggleId }) => {
+            const panel = document.getElementById(panelId);
+            const trigger = document.getElementById(toggleId);
+            const panelRect = panel.getBoundingClientRect();
+            const triggerRect = trigger.getBoundingClientRect();
+            return {
+                expectedOrigin: `${Math.round(triggerRect.left + triggerRect.width / 2 - panelRect.left)}px ${Math.round(triggerRect.top + triggerRect.height / 2 - panelRect.top)}px`,
+                animation: window.__sbMobileShellAnimations.findLast(item => item.id === panelId),
+            };
+        }, { panelId, toggleId });
+        expect(details.animation.duration).toBe(240);
+        expect(details.animation.origin).toBe(details.expectedOrigin);
+        expect(details.animation.keyframes).toEqual([
+            { opacity: 0, transform: 'scale(0.96)' },
+            { opacity: 1, transform: 'scale(1)' },
+        ]);
+
+        const panel = page.locator(`#${panelId}`);
+        await panel.locator('.sb-shell-close').click();
+        await expect(panel).not.toHaveClass(/openDrawer/);
+    }
+});
+
 test('mobile section navigation opens on the hub once, then uses the section menu', async ({ page, isMobile }) => {
     test.skip(!isMobile, 'Section navigation is mobile-only.');
     await page.goto('/');
