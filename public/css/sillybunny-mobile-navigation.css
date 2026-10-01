@@ -117,11 +117,12 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-kicker-
     overflow: hidden;
     font-size: calc(var(--mainFontSize) * 0.6);
     font-weight: 700;
-    letter-spacing: 0.12em;
+    letter-spacing: 0;
     line-height: 16px;
     text-align: center;
     text-overflow: ellipsis;
-    text-transform: uppercase;
+    text-transform: none;
+    color: var(--sb-muted-fg);
     transition: opacity var(--sb-transition-fast, 180ms cubic-bezier(0.22, 1, 0.36, 1));
 }
 
@@ -192,7 +193,7 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDr
     scrollbar-width: none;
     border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor, #cfcfc5) 24%, transparent) !important;
     border-radius: var(--sb-shell-control-radius) !important;
-    background: var(--sb-surface-raised) !important;
+    background: var(--sb-raised-bg) !important;
     box-shadow: var(--sb-shadow-control) !important;
     transform: none !important;
     box-sizing: border-box;
@@ -318,7 +319,7 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu-tr
     color: var(--SmartThemeBodyColor);
     font: inherit;
     cursor: pointer;
-    transition: background-color 180ms ease-out, border-color 180ms ease-out;
+    transition: background-color var(--sb-transition-fast);
 }
 
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-back {
@@ -407,12 +408,12 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu {
     padding: 6px;
     overflow-y: auto;
     overscroll-behavior: contain;
-    border: 1px solid var(--SmartThemeBorderColor);
-    background: var(--sb-surface-raised);
+    border: 1px solid var(--sb-shell-border, var(--SmartThemeBorderColor));
+    background: var(--sb-layer-popover);
     color: var(--SmartThemeBodyColor, #cfcfc5);
-    box-shadow: var(--sb-shadow-panel);
+    box-shadow: var(--sb-shadow-popover);
     max-block-size: min(60vh, 28rem);
-    border-radius: var(--sb-radius-md, 14px);
+    border-radius: var(--sb-radius-overlay);
 }
 
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu-item,
@@ -423,14 +424,14 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-hub-ite
     inline-size: 100%;
     min-block-size: 44px;
     padding: 0 12px;
-    border: 1px solid transparent;
-    border-radius: 10px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
     background: transparent;
     color: inherit;
     font: inherit;
     text-align: start;
     cursor: pointer;
-    transition: background-color 180ms ease-out, border-color 180ms ease-out;
+    transition: background-color var(--sb-transition-fast);
 }
 
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu-item > i:first-child,
@@ -498,17 +499,15 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDr
 
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-hub-list {
     display: grid;
-    gap: 8px;
+    gap: 4px;
     margin: 0;
     padding: 0;
     list-style: none;
 }
 
+/* Hub rows: flat libadwaita list rows; fills come from the shared hover/active/selected rules above. */
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-hub-item {
-    min-block-size: 56px;
-    border-color: var(--SmartThemeBorderColor);
-    border-radius: var(--sb-radius-md, 14px);
-    background: var(--sb-surface-raised);
+    min-block-size: 52px;
 }
 
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-hub-chevron {
@@ -530,7 +529,7 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-character-drawe
     height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) - var(--sb-mobile-shell-gap) - env(safe-area-inset-bottom, 0px)) !important;
     max-height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) - var(--sb-mobile-shell-gap) - env(safe-area-inset-bottom, 0px)) !important;
     margin: 0 !important;
-    border-radius: 20px 20px 0 0 !important;
+    border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0 !important;
 }
 
 /* List views: one even 12px gutter instead of the asymmetric 20px/8px scroller padding. */
@@ -665,10 +664,10 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-character-list-more
     min-inline-size: 13rem;
     max-inline-size: calc(100vw - 48px);
     padding: 6px;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: var(--sb-radius-md, 14px);
-    background: var(--sb-surface-raised);
-    box-shadow: var(--sb-shadow-panel);
+    border: 1px solid var(--sb-shell-border, var(--SmartThemeBorderColor));
+    border-radius: var(--sb-radius-overlay);
+    background: var(--sb-layer-popover);
+    box-shadow: var(--sb-shadow-popover);
     color: var(--SmartThemeBodyColor);
 }
 
@@ -1036,8 +1035,9 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #form_sheld :is(#option
     box-shadow: none !important;
 }
 
+/* Same card-radius entry as the desktop and Conversation composers. */
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #form_sheld #send_textarea:not(#sb-specificity) {
-    border-radius: calc(var(--sb-composer-action-size) / 2) !important;
+    border-radius: var(--sb-radius-card) !important;
 }
 
 /* Extension tray: hidden until the toggle opens it; shown as before when the bar itself is hidden. */
@@ -1092,7 +1092,7 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-sheet-b
     z-index: 2990;
     padding: 0;
     border: 0;
-    background: rgba(18, 20, 24, 0.48);
+    background: var(--sb-dialog-backdrop, rgba(0, 0, 6, 0.5));
     cursor: default;
 }
 
@@ -1107,12 +1107,12 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-sheet {
     box-sizing: border-box;
     overflow-y: auto;
     overscroll-behavior: contain;
-    border: 1px solid var(--SmartThemeBorderColor);
+    border: 1px solid var(--sb-shell-border, var(--SmartThemeBorderColor));
     border-width: 1px 0 0;
-    border-radius: var(--sb-radius-lg, 16px) var(--sb-radius-lg, 16px) 0 0;
-    background: var(--sb-surface-raised);
+    border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
+    background: var(--sb-layer-drawer);
     color: var(--SmartThemeBodyColor);
-    box-shadow: var(--sb-shadow-panel);
+    box-shadow: var(--sb-shadow-dialog);
 }
 
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-sheet-header {
@@ -1141,7 +1141,7 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-sheet .
     min-height: 44px;
     max-width: 44px;
     max-height: 44px;
-    border-radius: 12px;
+    border-radius: var(--sb-shell-control-radius);
 }
 
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-sheet #sb-bottom-chat-select:not(#sb-specificity) {

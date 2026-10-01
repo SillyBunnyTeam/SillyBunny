@@ -144,7 +144,7 @@
     --sb-type-body: var(--mainFontSize);
     --sb-type-title: calc(var(--mainFontSize) * 1.08);
     --sb-type-headline: calc(var(--mainFontSize) * 1.35);
-    --sb-type-display: calc(var(--mainFontSize) * 1.62);
+    --sb-type-display: calc(var(--mainFontSize) * 1.81);
     --sb-line-compact: 1.2;
     --sb-line-title: 1.18;
     --sb-line-body: 1.55;

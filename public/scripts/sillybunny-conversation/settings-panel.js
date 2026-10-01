@@ -15,6 +15,7 @@ import {
     parsePositiveInt,
     saveGroupConversationSettings,
 } from './context.js';
+import { animateIn, animateOut, MOTION_FAST, SPRING_SHEET } from '../sillybunny-motion.js';
 import { applySettingsToPanel, saveCurrentPanelSettings, updateConversationChrome } from './interface.js';
 import { isConversationActiveThread } from './notifications.js';
 import { getScheduleEditorTargets } from './pals-rail.js';
@@ -49,8 +50,21 @@ export function setConversationBackdropVisible() {
 
     const settingsOpen = drawer instanceof HTMLElement && !drawer.hidden;
     const palsOpen = palsRail instanceof HTMLElement && palsRail.dataset.open === 'true';
-    backdrop.hidden = !(settingsOpen || palsOpen);
+    const shouldShow = settingsOpen || palsOpen;
+    if (shouldShow === !backdrop.hidden) {
+        return;
+    }
+    if (shouldShow) {
+        backdrop.hidden = false;
+        animateIn(backdrop, [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_FAST });
+    } else {
+        animateOut(backdrop, [{ opacity: 1 }, { opacity: 0 }], () => { backdrop.hidden = true; });
+    }
 }
+
+// libadwaita bottom/side sheet: slides in from the inline-end edge on the sheet spring.
+const SETTINGS_SHEET_ENTER = [{ opacity: 0, transform: 'translateX(24px)' }, { opacity: 1, transform: 'none' }];
+const SETTINGS_SHEET_EXIT = [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(24px)' }];
 
 export function closePalsRail() {
     const palsRail = document.getElementById(CHROME_IDS.palsRail);
@@ -645,7 +659,11 @@ export function openConversationSettings() {
     renderScheduleDisplay();
     renderConversationMemoryPanel();
     updateUserFooter();
+    const wasHidden = chrome.drawer.hidden;
     chrome.drawer.hidden = false;
+    if (wasHidden) {
+        animateIn(chrome.drawer, SETTINGS_SHEET_ENTER, SPRING_SHEET);
+    }
     setConversationBackdropVisible();
     chrome.drawer.querySelector('input, select, textarea, button')?.focus?.({ preventScroll: true });
 }
@@ -661,7 +679,11 @@ export function closeConversationSettings(identity = null) {
                 : drawer.dataset.conversationGroupId || '',
             personaId: identity?.personaId || drawer.dataset.conversationPersonaId || getConversationPersonaId(),
         };
-        drawer.hidden = true;
+        if (shouldSave) {
+            animateOut(drawer, SETTINGS_SHEET_EXIT, () => { drawer.hidden = true; });
+        } else {
+            drawer.hidden = true;
+        }
         if (shouldSave) {
             saveCurrentPanelSettings(capturedIdentity);
         }

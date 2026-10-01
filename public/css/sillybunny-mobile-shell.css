@@ -40,8 +40,7 @@
     }
 
     #send_form:focus-within {
-        border-top-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 56%, transparent);
-        box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent);
+        box-shadow: none;
     }
 
     #send_form.sb-generating-controls {
@@ -177,6 +176,14 @@
         min-width: var(--sb-composer-send-width) !important;
         max-width: var(--sb-composer-send-width) !important;
         flex: 0 0 var(--sb-composer-send-width) !important;
+    }
+
+    /* Circular suggested action, matching desktop and Conversation. Beats mobile-styles.css 10px/9px. */
+    #send_but,
+    :root[data-sb-compact-mode='true'] #send_but,
+    #send_form .mes_stop,
+    #send_form.sb-generating-controls #mes_stop {
+        border-radius: 50% !important;
     }
 
     #send_form .mes_stop,
@@ -361,10 +368,11 @@
         display: none !important;
     }
 
+    /* Selected rail tab: neutral selected fill, no accent border or inset ring (DESIGN.md Navigation). */
     :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-selected='true'], [aria-current]) {
-        background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 14%, var(--sb-shell-tab-active-bg) 86%) !important;
-        border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, var(--sb-shell-border) 66%) !important;
-        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-focus-ring) 28%, transparent) !important;
+        background: var(--sb-flat-selected-bg) !important;
+        border-color: transparent !important;
+        box-shadow: none !important;
     }
 
     :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-action {
@@ -517,7 +525,8 @@
 
     #right-nav-panel.openDrawer .sb-character-favorites-label {
         font-size: calc(var(--mainFontSize) * 0.66);
-        letter-spacing: 0.12em;
+        letter-spacing: 0;
+        text-transform: none;
     }
 
     #right-nav-panel.openDrawer #HotSwapWrapper .hotswap > small {
@@ -1439,7 +1448,7 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         max-height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) - var(--sb-mobile-shell-gap) - env(safe-area-inset-bottom, 0px)) !important;
         min-width: 0 !important;
         margin-top: 0 !important;
-        border-radius: 20px 20px 0 0 !important;
+        border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0 !important;
         transform-origin: center bottom;
     }
 
@@ -1580,7 +1589,10 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
 
     .sb-shell-kicker {
         font-size: calc(var(--mainFontSize) * 0.6);
-        letter-spacing: 0.12em;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: none;
+        color: var(--sb-muted-fg);
     }
 
     .sb-shell-title {
@@ -1619,7 +1631,7 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         max-width: 100%;
         font-size: calc(var(--mainFontSize) * 0.82);
         line-height: 1.05;
-        letter-spacing: 0.01em;
+        letter-spacing: 0;
     }
 
     .sb-agent-grid,
@@ -1688,24 +1700,22 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     }
 
     .sb-shell-nav::before {
-        background: color-mix(in srgb, var(--sb-shell-nav-bg) 98%, #050907);
+        background: var(--sb-layer-drawer);
         opacity: 1;
     }
 
     .sb-shell-main::before {
-        background: color-mix(in srgb, var(--sb-shell-main-bg) 98%, #050907);
+        background: var(--sb-layer-drawer);
         opacity: 1;
     }
 
     .sb-shell-header::before {
-        background:
-            linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 55%, transparent), transparent 72%),
-            color-mix(in srgb, var(--sb-shell-header-bg) 98%, #050907);
+        background: var(--sb-layer-headerbar);
         opacity: 1;
     }
 
     .sb-shell-search::before {
-        background: color-mix(in srgb, var(--sb-shell-main-bg) 94%, #050907);
+        background: var(--sb-layer-drawer);
         opacity: 1;
     }
 
@@ -1783,8 +1793,8 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         visibility: visible;
         pointer-events: auto;
         z-index: var(--sb-z-modal-content);
-        backdrop-filter: blur(22px);
-        -webkit-backdrop-filter: blur(22px);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
     }
 
     #sb-mobile-chat-tools[hidden],
@@ -1811,10 +1821,10 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         flex-direction: column;
         gap: 12px;
         overflow-y: auto;
-        border-radius: 20px;
+        border-radius: var(--sb-radius-overlay);
         border: 1px solid color-mix(in srgb, var(--sb-shell-border) 88%, transparent);
-        background: transparent;
-        box-shadow: 0 24px 70px color-mix(in srgb, var(--SmartThemeShadowColor) 28%, transparent);
+        background: var(--sb-layer-drawer);
+        box-shadow: var(--sb-shadow-dialog);
     }
 
     #sb-mobile-nav-content::before {
@@ -1824,10 +1834,8 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         z-index: -1;
         border-radius: inherit;
         pointer-events: none;
-        background:
-            linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent), transparent 18%),
-            var(--sb-mobile-panel-bg, color-mix(in srgb, var(--sb-shell-surface) 96%, #050a08));
-        opacity: var(--sb-shell-surface-opacity);
+        background: transparent;
+        opacity: 0;
     }
 
     .sb-mobile-panel-header {
@@ -1851,9 +1859,9 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         appearance: none;
         width: var(--sb-mobile-touch-target, 44px);
         height: var(--sb-mobile-touch-target, 44px);
-        border: 1px solid color-mix(in srgb, var(--sb-shell-border) 85%, transparent);
-        border-radius: var(--sb-radius-md, 16px);
-        background: var(--sb-card-bg);
+        border: 0;
+        border-radius: var(--sb-shell-control-radius);
+        background: var(--sb-raised-bg);
         color: var(--SmartThemeBodyColor);
         display: inline-grid;
         place-items: center;
@@ -1870,10 +1878,11 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         display: block;
         padding: 0 2px;
         font-size: calc(var(--mainFontSize) * 0.72);
-        letter-spacing: 0.12em;
+        font-weight: 700;
+        letter-spacing: 0;
         line-height: 1;
-        text-transform: uppercase;
-        opacity: 0.66;
+        text-transform: none;
+        color: var(--sb-muted-fg);
         overflow-wrap: anywhere;
     }
 
@@ -1891,9 +1900,9 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         box-sizing: border-box;
         width: 100%;
         min-height: 54px;
-        border: 1px solid color-mix(in srgb, var(--sb-shell-border) 85%, transparent);
-        border-radius: var(--sb-radius-md, 16px);
-        background: transparent;
+        border: 0;
+        border-radius: var(--sb-radius-control);
+        background: var(--sb-flat-hover-bg);
         padding: 0 14px;
         display: grid;
         grid-template-columns: 34px minmax(0, 1fr);
@@ -1905,7 +1914,7 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         line-height: 1.15;
         text-align: left;
         cursor: pointer;
-        transition: transform var(--sb-transition-fast), border-color var(--sb-transition-fast), background-color var(--sb-transition-fast);
+        transition: background-color var(--sb-transition-fast);
     }
 
     .sb-nav-item i {
@@ -1927,24 +1936,23 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     }
 
     .sb-nav-item::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        z-index: -1;
-        border-radius: inherit;
-        pointer-events: none;
-        background: var(--sb-card-bg);
-        opacity: var(--sb-shell-card-opacity);
+        display: none;
     }
 
-    .sb-nav-item:hover {
-        transform: translateY(-1px);
+    @media (hover: hover) {
+        .sb-nav-item:hover {
+            background: var(--sb-flat-selected-hover-bg);
+        }
+    }
+
+    .sb-nav-item:active {
+        background: var(--sb-flat-active-bg);
     }
 
     .sb-nav-item:focus-visible,
     .sb-mobile-panel-close:focus-visible {
-        outline: 2px solid var(--sb-focus-ring, var(--SmartThemeQuoteColor));
-        outline-offset: 2px;
+        outline: none;
+        box-shadow: var(--sb-focus-ring-inset);
     }
 
 }
@@ -1979,9 +1987,9 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         flex-direction: column !important;
         overflow: hidden !important;
         border-radius: 0 !important;
-        background: var(--sb-shell-surface);
+        background: var(--sb-layer-drawer);
         border: 1px solid color-mix(in srgb, var(--sb-shell-border) 86%, transparent);
-        box-shadow: var(--sb-shell-shadow);
+        box-shadow: var(--sb-shadow-dialog);
         backdrop-filter: none !important;
         -webkit-backdrop-filter: none !important;
         transform: translateZ(0);
@@ -2728,9 +2736,9 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         padding: 6px;
         overflow: auto;
         border: 1px solid var(--sb-shell-border);
-        border-radius: var(--sb-radius-md);
-        background: var(--sb-surface-elevated);
-        box-shadow: 0 14px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 12%, transparent);
+        border-radius: var(--sb-radius-overlay);
+        background: var(--sb-layer-popover);
+        box-shadow: var(--sb-shadow-popover);
         -webkit-overflow-scrolling: touch;
     }
 
@@ -2783,8 +2791,8 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         color: var(--sb-muted-fg);
         font-size: var(--sb-type-caption);
         font-weight: var(--sb-weight-label);
-        letter-spacing: var(--sb-tracking-label);
-        text-transform: uppercase;
+        letter-spacing: 0;
+        text-transform: none;
     }
 
     .sb-model-id-picker-empty,
@@ -2935,18 +2943,18 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         width: 100% !important;
         max-width: none !important;
         border-radius: 0 !important;
-        background: var(--sb-composer-surface-bg);
-        border: 1px solid var(--sb-shell-border) !important;
-        border-left: 0 !important;
-        border-right: 0 !important;
-        box-shadow: inset 0 1px 0 rgba(255, 244, 210, 0.05);
-        -webkit-backdrop-filter: blur(8px);
-        backdrop-filter: blur(8px);
+        /* libadwaita bottom toolbar: opaque header-bar layer split from the chat by one shade line. */
+        background: var(--sb-layer-headerbar);
+        border: 0 !important;
+        border-top: var(--sb-headerbar-shade) !important;
+        box-shadow: none;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
     }
 
     #send_form:focus-within {
-        border-top-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 56%, var(--sb-shell-border)) !important;
-        box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent) !important;
+        border-top-color: var(--sb-shell-border) !important;
+        box-shadow: none !important;
         outline: none !important;
     }
 
@@ -2976,16 +2984,17 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     }
 
     #send_textarea {
-        padding: 8px 6px !important;
+        padding: 8px 10px !important;
         line-height: 1.15 !important;
-        border-radius: 10px !important;
-        background: var(--sb-composer-input-state-bg, var(--sb-composer-input-bg)) !important;
-        box-shadow: var(--sb-composer-input-state-shadow, none) !important;
+        border-radius: var(--sb-radius-card) !important;
+        background: var(--sb-composer-input-bg) !important;
+        border: 1px solid transparent !important;
+        box-shadow: none !important;
     }
 
     #send_form:focus-within #send_textarea {
-        --sb-composer-input-state-bg: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 8%, var(--sb-composer-input-bg));
-        --sb-composer-input-state-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-focus-ring) 32%, transparent);
+        border-color: var(--sb-composer-focus-border) !important;
+        box-shadow: var(--sb-composer-focus-ring) !important;
     }
 
     #leftSendForm,

@@ -7,7 +7,7 @@
  */
 
 import { eventSource, event_types } from './events.js';
-import { animateIn, animateOut, MOTION_FAST, stopMotion } from './sillybunny-motion.js';
+import { animateIn, animateOut, MOTION_EASE_OUT_CUBIC, MOTION_FAST, MOTION_EASE_OUT_QUAD, MOTION_POPOVER_CLOSE, originFrom, stopMotion } from './sillybunny-motion.js';
 
 const MOBILE_QUERY = '(max-width: 768px)';
 const OPEN_CLASS = 'sb-message-actions-open';
@@ -27,7 +27,6 @@ const LONG_PRESS_MS = 450;
 const PRESS_MOVE_TOLERANCE = 10;
 const TOOLTIP_HIDE_DELAY = 1500;
 const CLICK_SUPPRESS_WINDOW = 400;
-const EXIT_DURATION = 120;
 const SCROLL_INTENT_WINDOW = 400;
 const SCROLL_KEYS = new Set(['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' ']);
 
@@ -146,13 +145,14 @@ function openPopover(trigger, popover, { focus = true } = {}) {
 
     openState = { trigger, popover, host, mes, chat, scrollTop: chat.scrollTop };
 
-    const offset = placement === 'bottom' ? -4 : 4;
+    // DESIGN.md: Popovers 200ms fade + scale 0.96 -> 1 from trigger.
     animateIn(popover, [
-        { opacity: 0, transform: `translateY(${offset}px) scale(0.96)` },
+        { opacity: 0, transform: 'scale(0.96)' },
         { opacity: 1, transform: 'none' },
     ], {
         duration: MOTION_FAST,
-        styles: { 'transform-origin': placement === 'bottom' ? 'top right' : 'bottom right' },
+        easing: MOTION_EASE_OUT_QUAD,
+        styles: { 'transform-origin': originFrom(trigger, popover) },
     });
 
     if (focus) {
@@ -179,14 +179,14 @@ function closePopover({ restoreFocus = false, animate = true } = {}) {
         trigger.focus({ preventScroll: true });
     }
 
-    const offset = popover.dataset.sbPlacement === 'top' ? 4 : -4;
+    // DESIGN.md: Popover close 150ms fade (no scale or movement).
     const motion = animateOut(popover, [
-        { opacity: 1, transform: 'none' },
-        { opacity: 0, transform: `translateY(${offset}px) scale(0.96)` },
+        { opacity: 1 },
+        { opacity: 0 },
     ], () => popover.removeAttribute(OPEN_ATTRIBUTE), {
         enabled: animate && popover.isConnected,
-        duration: EXIT_DURATION,
-        easing: 'ease-in',
+        duration: MOTION_POPOVER_CLOSE,
+        easing: MOTION_EASE_OUT_CUBIC,
         onEnd: finish,
     });
     if (!motion) {
@@ -340,10 +340,11 @@ function showTooltip(target, label) {
     tooltipFor?.removeAttribute('aria-describedby');
     target.setAttribute('aria-describedby', element.id);
     tooltipFor = target;
+    // Press-and-hold tooltip: short fade + scale (similar to popover but simpler).
     animateIn(element, [
         { opacity: 0, transform: 'scale(0.96)' },
         { opacity: 1, transform: 'none' },
-    ], { duration: EXIT_DURATION });
+    ], { duration: MOTION_FAST, easing: MOTION_EASE_OUT_QUAD });
 }
 
 function hideTooltip() {

@@ -3,16 +3,34 @@
    ============================================================================= */
 
 :root {
+    /* Radii: libadwaita 1.7+ values */
+    --sb-radius-control: 9px;
+    --sb-radius-card: 12px;
+    --sb-radius-overlay: 15px;
+    --sb-radius-alert: 18px;
+    /* Legacy content radii until pages are migrated */
     --sb-radius-sm: 10px;
     --sb-radius-md: 14px;
     --sb-radius-lg: 16px;
     --sb-radius-xl: 20px;
     --sb-radius-button: 14px;
     --sb-shell-control-radius: 999px;
-    --sb-transition-fast: 180ms cubic-bezier(0.22, 1, 0.36, 1);
-    --sb-transition: 240ms cubic-bezier(0.22, 1, 0.36, 1);
-    --sb-transition-slow: 240ms cubic-bezier(0.22, 1, 0.36, 1);
-    --sb-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    /* Motion: libadwaita-aligned timing and easing */
+    --sb-transition-fast: 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    --sb-transition: 250ms cubic-bezier(0.25, 0.1, 0.25, 1);
+    --sb-transition-slow: 300ms cubic-bezier(0.25, 0.1, 0.25, 1);
+    --sb-ease-out-quad: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    --sb-ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+    --sb-ease-out-cubic: cubic-bezier(0.33, 1, 0.68, 1);
+    /* Kept for existing rules and user CSS */
+    --sb-ease-out: var(--sb-ease-out-cubic);
+    /* libadwaita springs; linear() samples are swapped in below where supported. */
+    --sb-spring-dialog-duration: 511ms;
+    --sb-spring-dialog: cubic-bezier(0.34, 1.36, 0.64, 1);
+    --sb-spring-sheet-duration: 472ms;
+    --sb-spring-sheet: cubic-bezier(0.22, 1, 0.36, 1);
+    --sb-spring-navigation-duration: 334ms;
+    --sb-spring-navigation: cubic-bezier(0.16, 1, 0.3, 1);
     --sb-z-base: 0;
     --sb-z-raised: 10;
     --sb-z-dropdown: 100;
@@ -101,7 +119,7 @@
     --sb-chat-surface-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor) 4%, var(--sb-chat-surface-base)), var(--sb-chat-surface-base));
     --sb-fixed-surface-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor) 4%, var(--sb-fixed-surface-base)), var(--sb-fixed-surface-base));
     --sb-composer-surface-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor) 4%, var(--sb-composer-surface-base)), var(--sb-composer-surface-base));
-    --sb-composer-input-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, var(--sb-composer-surface-base));
+    --sb-composer-input-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
     --sb-card-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor) 6%, var(--SmartThemeBlurTintColor)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, transparent));
     --sb-button-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 84%, transparent);
     --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, var(--SmartThemeBodyColor) 4%);
@@ -142,6 +160,12 @@
     --sb-input-placeholder: color-mix(in srgb, var(--SmartThemeBodyColor) 78%, var(--SmartThemeBlurTintColor) 22%);
     --sb-focus-ring: color-mix(in srgb, var(--SmartThemeQuoteColor) 70%, transparent);
     --sb-focus-ring-inset: inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 78%, transparent);
+    /* Neutral text-entry focus (trial): body-colour border and ring instead of accent. */
+    --sb-entry-focus-border: color-mix(in srgb, var(--SmartThemeBodyColor) 42%, transparent);
+    --sb-entry-focus-ring: inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 22%, transparent);
+    /* libadwaita composer entry: body-colour tint at rest, accent outline on focus. */
+    --sb-composer-focus-border: var(--color-primary, var(--sb-accent));
+    --sb-composer-focus-ring: 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 50%, transparent);
     /* libadwaita flat-button fills, mixed from the body colour so they follow light and dark themes. */
     --sb-flat-hover-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
     --sb-flat-active-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
@@ -150,6 +174,37 @@
     --sb-raised-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
     --sb-raised-hover-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
     --sb-raised-active-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 22%, transparent);
+    /* Shell layer ladder (DESIGN.md "Layer Ladder"); forced opaque below where rgb(from) is supported. */
+    --sb-layer-view-source: var(--SmartThemeChatTintColor);
+    --sb-layer-window-source: var(--SmartThemeBlurTintColor);
+    --sb-layer-canvas-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeBodyColor) 10%);
+    --sb-layer-headerbar-source: var(--sb-layer-canvas-source);
+    --sb-layer-drawer-source: var(--sb-layer-headerbar-source);
+    --sb-layer-popover-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeBodyColor) 10%);
+    --sb-layer-dialog-source: var(--sb-layer-popover-source);
+    --sb-layer-toast-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 80%, var(--SmartThemeBodyColor) 20%);
+    --sb-layer-view: var(--sb-layer-view-source);
+    --sb-layer-window: var(--sb-layer-window-source);
+    --sb-layer-canvas: var(--sb-layer-canvas-source);
+    --sb-layer-headerbar: var(--sb-layer-headerbar-source);
+    --sb-layer-drawer: var(--sb-layer-drawer-source);
+    --sb-layer-popover: var(--sb-layer-popover-source);
+    --sb-layer-dialog: var(--sb-layer-dialog-source);
+    --sb-layer-toast: var(--sb-layer-toast-source);
+    --sb-layer-toast-fg: var(--SmartThemeBodyColor);
+    --sb-headerbar-shade: 1px solid var(--sb-shell-border);
+    --sb-shadow-popover:
+        0 1px 5px 1px color-mix(in srgb, var(--SmartThemeShadowColor) 50%, transparent),
+        0 2px 14px 3px color-mix(in srgb, var(--SmartThemeShadowColor) 30%, transparent);
+    --sb-shadow-dialog:
+        0 0 14px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 30%, transparent),
+        0 0 5px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 60%, transparent);
+    --sb-shadow-dialog-highlight: inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
+    --sb-shadow-toast:
+        0 1px 3px 1px color-mix(in srgb, var(--SmartThemeShadowColor) 60%, transparent),
+        0 2px 6px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 30%, transparent);
+    --sb-dialog-backdrop-alpha: 0.5;
+    --sb-dialog-backdrop: rgba(0, 0, 6, var(--sb-dialog-backdrop-alpha));
     --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
     --sb-ambient-b: color-mix(in srgb, var(--SmartThemeUnderlineColor) 9%, transparent);
     --sb-shell-surface-opacity: 1;
@@ -245,7 +300,6 @@ input[type="submit"] {
 .zoomed_avatar > .panelControlBar .dragClose:hover,
 .zoomed_avatar > .panelControlBar .dragClose:focus-visible {
     opacity: 1;
-    transform: translateY(-1px);
 }
 
 @media (pointer: coarse), (hover: none) {
@@ -289,24 +343,43 @@ input[type="submit"] {
         --sb-chat-surface-base: rgb(from var(--sb-chat-surface-source) r g b / calc(var(--sb-page-overlay-opacity) * 0.96));
         --sb-fixed-surface-base: rgb(from var(--sb-chat-surface-source) r g b / 0.98);
         --sb-composer-surface-base: rgb(from var(--sb-chat-surface-source) r g b / calc(var(--sb-composer-surface-opacity) * 0.96));
+        --sb-layer-window: rgb(from var(--sb-layer-window-source) r g b / 1);
+        --sb-layer-canvas: rgb(from var(--sb-layer-canvas-source) r g b / 1);
+        --sb-layer-headerbar: rgb(from var(--sb-layer-headerbar-source) r g b / 1);
+        --sb-layer-drawer: rgb(from var(--sb-layer-drawer-source) r g b / 1);
+        --sb-layer-popover: rgb(from var(--sb-layer-popover-source) r g b / 1);
+        --sb-layer-dialog: rgb(from var(--sb-layer-dialog-source) r g b / 1);
+        --sb-layer-toast: rgb(from var(--sb-layer-toast-source) r g b / 1);
+        --sb-dialog-backdrop: rgb(from var(--SmartThemeShadowColor) r g b / var(--sb-dialog-backdrop-alpha));
     }
 }
 
+@supports (transition-timing-function: linear(0, 1)) {
+    :root {
+        --sb-spring-dialog: linear(0, 0.096, 0.299, 0.533, 0.737, 0.897, 1, 1.059, 1.081, 1.079, 1.065, 1.046, 1.028, 1.013, 1.003, 0.997, 0.994, 0.993, 0.994, 0.996, 0.997, 0.998, 0.999, 1, 1);
+        --sb-spring-sheet: linear(0, 0.063, 0.207, 0.371, 0.529, 0.669, 0.779, 0.863, 0.924, 0.964, 0.989, 1.005, 1.012, 1.014, 1.014, 1.012, 1.01, 1.008, 1.005, 1.004, 1.002, 1.001, 1.001, 1, 1);
+        --sb-spring-navigation: linear(0, 0.076, 0.227, 0.382, 0.528, 0.648, 0.742, 0.814, 0.867, 0.905, 0.933, 0.953, 0.967, 0.977, 0.984, 0.989, 0.993, 0.995, 0.996, 0.998, 0.998, 0.999, 0.999, 0.999, 1);
+    }
+}
+
+/* The shell always runs as clean-minimal; legacy shell tokens map onto the layer ladder. */
 :root[data-sb-theme='clean-minimal'] {
-    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 99%, transparent);
-    --sb-shell-main-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, transparent);
-    --sb-shell-nav-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 98%, transparent);
-    --sb-shell-header-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 98%, transparent);
-    --sb-shell-header-glow: rgba(255, 255, 255, 0.02);
-    --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    --sb-shell-surface: var(--sb-layer-drawer);
+    --sb-shell-main-bg: var(--sb-layer-canvas);
+    --sb-shell-nav-bg: var(--sb-layer-headerbar);
+    --sb-shell-header-bg: var(--sb-layer-headerbar);
+    --sb-shell-header-glow: transparent;
+    --sb-shell-tab-active-bg: var(--sb-flat-selected-bg);
     --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 70%, transparent);
-    --sb-shell-shadow: 0 24px 60px color-mix(in srgb, var(--SmartThemeShadowColor) 20%, transparent);
+    --sb-shell-shadow: var(--sb-shadow-dialog);
+    --sb-topbar-surface-bg: var(--sb-layer-headerbar);
+    --sb-chatbar-surface-bg: var(--sb-layer-headerbar);
     --sb-card-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 98%, transparent);
     --sb-button-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
     --sb-button-hover: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
     --sb-input-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, transparent);
-    --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 4%, transparent);
-    --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 2.5%, transparent);
+    --sb-ambient-a: transparent;
+    --sb-ambient-b: transparent;
 }
 
 /* libadwaita light-style standalone status colours; the dark defaults live in style.css. */
@@ -314,6 +387,32 @@ input[type="submit"] {
     --color-success: #007c3d;
     --color-danger: #c30000;
     --color-warning: #905400;
+    /* libadwaita light: white header bar and popovers over a grey window; toasts stay dark. */
+    --sb-layer-canvas-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeBodyColor) 10%);
+    --sb-layer-headerbar-source: var(--SmartThemeChatTintColor);
+    --sb-layer-drawer-source: var(--SmartThemeBlurTintColor);
+    --sb-layer-popover-source: var(--SmartThemeChatTintColor);
+    --sb-layer-dialog-source: var(--SmartThemeBlurTintColor);
+    --sb-layer-toast-source: color-mix(in srgb, var(--SmartThemeBodyColor) 90%, black 10%);
+    --sb-layer-toast-fg: #ffffff;
+    --sb-dialog-backdrop-alpha: 0.14;
+    --sb-shadow-dialog-highlight: 0 0 #0000;
+}
+
+/* Base message actions use low-opacity white glyphs with a black shadow for dark themes. */
+:root[data-sb-surface-tone='light'] #chat .mes .mes_button,
+:root[data-sb-surface-tone='light'] #chat .mes .extraMesButtons > div {
+    opacity: 0.8;
+    filter: none;
+}
+
+:root[data-sb-surface-tone='light'] #chat .mes .mes_button:hover,
+:root[data-sb-surface-tone='light'] #chat .mes .extraMesButtons > div:hover,
+:root[data-sb-surface-tone='light'] #chat .mes .mes_button:active,
+:root[data-sb-surface-tone='light'] #chat .mes .extraMesButtons > div:active,
+:root[data-sb-surface-tone='light'] #chat .mes .mes_button:focus-visible,
+:root[data-sb-surface-tone='light'] #chat .mes .extraMesButtons > div:focus-visible {
+    opacity: 1;
 }
 
 body {
@@ -335,17 +434,13 @@ body {
 .mes_text .pura-direction {
     cursor: pointer;
     transition:
-        transform var(--sb-transition-fast),
         background-color var(--sb-transition-fast),
-        box-shadow var(--sb-transition-fast),
         border-color var(--sb-transition-fast);
 }
 
 .mes_text .pura-choice:hover,
 .mes_text .pura-direction:hover {
-    transform: translateY(-1px);
     background: color-mix(in srgb, var(--sb-button-hover) 54%, rgba(255, 255, 255, 0.06)) !important;
-    box-shadow: 0 10px 20px color-mix(in srgb, var(--SmartThemeShadowColor) 18%, transparent);
 }
 
 .mes_text .pura-choice:active,
@@ -388,42 +483,32 @@ body::before {
     scroll-padding-bottom: 8px;
 }
 
+/* Desktop: the chat column is the libadwaita view, an opaque card with overlay radii so its
+   square edge no longer sits behind the rounded bottom-bar stack and shell drawers.
+   Upstream style.css paints it with the translucent ChatTint and square corners. */
+@media screen and (min-width: 769px) {
+    #chat {
+        /* Same top gap and radii as open shell drawers, so a drawer covers the card exactly. */
+        margin-block-start: var(--sb-drawer-top-gap, 6px);
+        border-radius: var(--sb-radius-overlay);
+        background-color: var(--sb-layer-view);
+    }
+}
+
+/* libadwaita header bar: one opaque layer with a 1px bottom shade; no glow, blur, or pseudo-element surface. */
 #top-bar {
     position: relative;
     isolation: isolate;
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 80%, transparent), transparent 110%),
-        var(--sb-topbar-surface-bg);
-    border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
-    /* libadwaita header bar: 1px border separator, no blurred shadow. */
+    background: var(--sb-layer-headerbar);
+    border-bottom: var(--sb-headerbar-shade);
     box-shadow: none;
-    backdrop-filter: var(--SmartThemeBackdropFilter);
-    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
 }
 
-#top-bar::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 80%, transparent), transparent 110%),
-        var(--sb-topbar-surface-bg);
-    opacity: var(--sb-shell-surface-opacity);
-}
-
-/* Firefox and Chrome on macOS can mispaint the fixed header surface pseudo-element. */
-body:is(.firefox-macos, .chrome-macos) #top-bar {
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 80%, transparent), transparent 110%),
-        var(--sb-topbar-surface-bg) !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-}
-
-body:is(.firefox-macos, .chrome-macos) #top-bar::before {
-    display: none !important;
+/* Upstream toggle-dependent.css paints body.no-blur #top-bar with the translucent blur tint !important. */
+body.no-blur #top-bar {
+    background-color: var(--sb-layer-headerbar) !important;
 }
 
 /*
@@ -438,12 +523,6 @@ body:is(.firefox-macos, .chrome-macos, .safari-macos) #sb-chatbar-layer {
 
 body:is(.firefox-macos, .chrome-macos) #sb-chatbar-layer {
     will-change: auto !important;
-}
-
-/* Safari on macOS can show a sub-pixel border artifact with backdrop-filter. */
-body.safari-macos #top-bar {
-    border-bottom-color: transparent;
-    box-shadow: 0 1px 0 color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
 }
 
 hr {
@@ -1070,15 +1149,15 @@ input.text_pole::placeholder {
     opacity: 1;
 }
 
+/* Neutral entry focus: the border and fill deepen in body-colour; no accent tint or ring.
+   Keyboard focus keeps a visible 2px neutral inset ring. */
 .text_pole:focus,
 textarea.text_pole:focus,
 select.text_pole:focus,
 input.text_pole:focus {
-    border-color: color-mix(in srgb, var(--sb-focus-ring) 85%, transparent);
-    background-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 7%, var(--sb-input-bg));
-    box-shadow:
-        inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 35%, transparent),
-        0 0 0 1px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
+    border-color: var(--sb-entry-focus-border);
+    background-color: var(--sb-input-bg);
+    box-shadow: var(--sb-entry-focus-ring);
     outline: none;
 }
 
@@ -1117,19 +1196,15 @@ select:where(:not([multiple]):not([size]):not(.select2-hidden-accessible)) {
 }
 
 select:where(:not([multiple]):not([size]):not(.select2-hidden-accessible)):focus {
-    border-color: color-mix(in srgb, var(--sb-focus-ring) 85%, transparent);
-    background-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 7%, var(--sb-input-bg));
-    box-shadow:
-        inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 35%, transparent),
-        0 0 0 1px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
+    border-color: var(--sb-entry-focus-border);
+    background-color: var(--sb-input-bg);
+    box-shadow: var(--sb-entry-focus-ring);
     outline: none;
 }
 
 :is(textarea, input:not([type]), input:is([type='text'], [type='search'], [type='number'], [type='password'], [type='email'], [type='url'], [type='tel']), select):focus:not([disabled]):not([readonly]) {
-    border-color: color-mix(in srgb, var(--sb-focus-ring) 88%, transparent);
-    box-shadow:
-        inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 34%, transparent),
-        0 0 0 1px color-mix(in srgb, var(--SmartThemeShadowColor) 14%, transparent);
+    border-color: var(--sb-entry-focus-border);
+    box-shadow: var(--sb-entry-focus-ring);
 }
 
 :is(.text_pole, select)[aria-invalid='true'] {
@@ -1187,13 +1262,12 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     font-size: calc(var(--bottomFormIconSize) * 0.76);
     min-width: 0;
     overflow: visible;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 88%, var(--SmartThemeBodyColor) 12%);
-    border-radius: 999px;
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--SmartThemeBodyColor) 8%, var(--sb-composer-surface-base, transparent)),
-        color-mix(in srgb, var(--SmartThemeBodyColor) 3%, var(--sb-composer-surface-base, transparent))
-    );
+    /* libadwaita toolbar row, as in the Conversation composer: flat buttons either side of
+       one filled entry. A hairline above separates it from the quick-action row. */
+    border: 0;
+    border-block-start: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    border-radius: 0;
+    background: transparent;
     box-shadow: none;
 }
 
@@ -1276,24 +1350,58 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     field-sizing: content;
     max-height: min(50vh, 28rem);
     overflow-y: auto;
-    padding: 6px 8px;
+    padding: 6px 12px;
     line-height: 1.28;
-    border-radius: 10px;
+    /* libadwaita entry, shared with the Conversation composer: body-colour tint, no rest border. */
+    border: 1px solid transparent;
+    border-radius: var(--sb-radius-card);
     background: var(--sb-composer-input-bg);
     color: var(--SmartThemeBodyColor);
     caret-color: var(--color-primary, var(--sb-accent));
     font-size: calc(var(--mainFontSize) * 0.9);
     transition: border-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast), background-color var(--sb-transition-fast);
 
-    /* style.css paints a permanent 3px border-top as the STscript progress bar and hides
-       it behind a 5px-deep rectangular clip-path. The 10px radius above bows that border
-       down the left/right edges past the clip, leaking blue arcs at the corners. Keep the
-       track transparent at rest; the rule below restores it while commands run. */
+    /* style.css paints a 3px border-top as the STscript progress bar and hides its top
+       5px behind a rectangular clip-path. That clip squares off the rounded top corners,
+       which left a flat "back layer" edge. Clip to the rounded box instead and paint
+       progress as an inset bar while commands run (rule below). */
     --progColor: transparent;
+    border-top-width: 1px;
+    border-top-color: transparent;
+    clip-path: none;
+}
+
+/* STscript progress: a 3px bar inside the entry's rounded box, filled to --prog.
+   Replaces the upstream clipped border-top, which needed a square clip-path. */
+#form_sheld:is(.isExecutingCommandsFromChatInput, .script_success, .script_error, .script_aborted) #send_textarea {
+    background:
+        linear-gradient(var(--progColor), var(--progColor)) top left / var(--prog, 0%) 3px no-repeat,
+        var(--sb-composer-input-bg);
+    transition: background-size var(--sb-transition-fast), border-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
 #form_sheld.isExecutingCommandsFromChatInput #send_textarea {
     --progColor: rgb(146, 190, 252);
+}
+
+#form_sheld.script_success #send_textarea {
+    --progColor: var(--progSuccessColor);
+    --prog: 100%;
+}
+
+#form_sheld.script_error #send_textarea {
+    --progColor: var(--progErrorColor);
+    --prog: 100%;
+}
+
+#form_sheld.script_aborted #send_textarea {
+    --progColor: var(--progAbortedColor);
+    --prog: 100%;
+}
+
+/* Upstream's status rules recolour border-top; keep the entry's transparent border instead. */
+#form_sheld:is(.script_success, .script_error, .script_aborted) #send_textarea {
+    border-top-color: transparent;
 }
 
 :root[data-sb-compact-mode='true'] #send_form {
@@ -1323,22 +1431,15 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 54%, transparent);
 }
 
+/* Focus marks only the entry; the toolbar frame stays put (libadwaita toolbars do not react). */
 #send_form:focus-within {
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 56%, var(--sb-shell-border));
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, transparent);
+    box-shadow: none;
     outline: none;
 }
 
-#send_form:focus-within #nonQRFormItems {
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 42%, var(--sb-shell-border));
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--color-primary, var(--sb-accent)) 8%, transparent), transparent 82%),
-        color-mix(in srgb, var(--SmartThemeBodyColor) 5%, var(--sb-composer-surface-base, transparent));
-}
-
 #send_form:focus-within #send_textarea {
-    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 8%, var(--sb-composer-input-bg));
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-focus-ring) 32%, transparent);
+    border-color: var(--sb-composer-focus-border);
+    box-shadow: var(--sb-composer-focus-ring);
 }
 
 #send_form.sb-generating-controls {
@@ -1346,13 +1447,6 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     border-color: color-mix(in srgb, var(--sb-generating-glow-color) 86%, var(--sb-shell-border));
     /* Busy state reads from the accent border and top progress bar; no outer glow. */
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-generating-glow-color) 54%, transparent);
-}
-
-#send_form.sb-generating-controls #nonQRFormItems {
-    border-color: color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 76%, var(--sb-shell-border));
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 22%, transparent), transparent 82%),
-        color-mix(in srgb, var(--SmartThemeBodyColor) 5%, var(--sb-composer-surface-base, transparent));
 }
 
 #send_form.sb-generating-controls::after {
@@ -1395,7 +1489,8 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     min-height: var(--sb-composer-action-size) !important;
     max-height: var(--sb-composer-action-size) !important;
     flex: 0 0 var(--sb-composer-send-width) !important;
-    border-radius: var(--sb-radius-button) !important;
+    /* libadwaita .circular.suggested-action, shared with the Conversation send button. */
+    border-radius: 50% !important;
     background: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) !important;
     border: 1px solid transparent !important;
     /* libadwaita suggested-action: solid accent fill, no drop shadow. */
@@ -1414,7 +1509,8 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     min-height: var(--sb-composer-action-size) !important;
     max-height: var(--sb-composer-action-size) !important;
     flex: 0 0 var(--sb-composer-send-width) !important;
-    border-radius: var(--sb-radius-button) !important;
+    /* libadwaita .circular.suggested-action, shared with the Conversation send button. */
+    border-radius: 50% !important;
     background: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) !important;
     border: 1px solid transparent !important;
     /* libadwaita suggested-action: solid accent fill, no drop shadow. */
@@ -1546,6 +1642,17 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     justify-content: center;
     overflow: hidden !important;
     box-sizing: border-box;
+}
+
+/* libadwaita avatar button, matching #sb-persona-bubble: no scale, a neutral ring marks hover. */
+#chat .mes .mesAvatarWrapper .avatar {
+    transition: box-shadow var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    #chat .mes .mesAvatarWrapper .avatar:hover {
+        box-shadow: 0 0 0 2px var(--sb-flat-active-bg);
+    }
 }
 
 #chat .mes:not(.smallSysMes) .mesAvatarWrapper .avatar > img {
@@ -1890,20 +1997,37 @@ body.bubblechat .mes::before {
     z-index: -1;
     border-radius: inherit;
     pointer-events: none;
-    background: var(--SmartThemeBotMesBlurTintColor);
+    /* The theme message tints often equal the chat view colour, so a neutral lift keeps each card
+       visible; user turns take a stronger lift to tell the speakers apart. */
+    background:
+        linear-gradient(var(--sb-bubble-lift), var(--sb-bubble-lift)),
+        var(--SmartThemeBotMesBlurTintColor);
     opacity: var(--sb-page-card-opacity);
+    --sb-bubble-lift: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
 }
 
 body.bubblechat .mes[is_user='true']::before {
-    background: var(--SmartThemeUserMesBlurTintColor);
+    background:
+        linear-gradient(var(--sb-bubble-lift), var(--sb-bubble-lift)),
+        var(--SmartThemeUserMesBlurTintColor);
+    --sb-bubble-lift: color-mix(in srgb, var(--SmartThemeBodyColor) 11%, transparent);
 }
 
-.mes[is_user='true'] .mes_block {
+/* libadwaita card: toggle-dependent.css outlines Bubbles cards; they separate by tone instead. */
+body.bubblechat #chat .mes {
+    border: 0;
+    border-radius: var(--sb-radius-card);
+    box-shadow: none;
+}
+
+/* Documents has no avatars or cards, so user turns sit on a tonal card. Scoped to Documents:
+   unscoped, it boxed user turns a second time inside the Moonlit Echoes cards. */
+body.documentstyle .mes[is_user='true'] .mes_block {
     box-sizing: border-box;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
-    border-radius: var(--sb-radius-md);
+    border: 0;
+    border-radius: var(--sb-radius-card);
     padding: 10px 12px;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
+    background: var(--sb-raised-bg);
 }
 
 body.flatchat .mes[is_user='true'] .mes_block,
@@ -1983,60 +2107,51 @@ body.bubblechat .mes[is_user='true'] .mes_block {
 
     :root:not([data-sb-theme]),
     :root[data-sb-theme='clean-minimal'] {
-        --sb-mobile-default-surface-solid: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, black 8%);
+        --sb-mobile-default-surface-solid: var(--sb-layer-headerbar);
         --sb-mobile-default-card-solid: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, var(--SmartThemeBodyColor) 12%);
         --sb-mobile-default-input-solid: color-mix(in srgb, var(--SmartThemeChatTintColor) 94%, var(--SmartThemeBodyColor) 6%);
         --sb-chat-surface-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 98%, var(--SmartThemeChatTintColor) 2%);
-        --sb-shell-surface: var(--sb-mobile-default-surface-solid);
-        --sb-shell-main-bg: var(--sb-mobile-default-surface-solid);
-        --sb-shell-nav-bg: var(--sb-mobile-default-surface-solid);
-        --sb-shell-header-bg: var(--sb-mobile-default-surface-solid);
+        --sb-shell-surface: var(--sb-layer-drawer);
+        --sb-shell-main-bg: var(--sb-layer-canvas);
+        --sb-shell-nav-bg: var(--sb-layer-headerbar);
+        --sb-shell-header-bg: var(--sb-layer-headerbar);
         --sb-card-bg: var(--sb-mobile-default-card-solid);
-        --sb-topbar-surface-bg: var(--sb-mobile-default-surface-solid);
-        --sb-chatbar-surface-bg: var(--sb-mobile-default-surface-solid);
-        --sb-mobile-overlay-bg: var(--sb-mobile-default-surface-solid);
-        --sb-mobile-panel-bg: var(--sb-mobile-default-surface-solid);
+        --sb-topbar-surface-bg: var(--sb-layer-headerbar);
+        --sb-chatbar-surface-bg: var(--sb-layer-headerbar);
+        --sb-mobile-overlay-bg: var(--sb-layer-drawer);
+        --sb-mobile-panel-bg: var(--sb-layer-drawer);
         --sb-input-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, var(--SmartThemeBodyColor) 4%);
     }
 
     @supports (color: rgb(from black r g b / 1)) {
         :root:not([data-sb-theme]),
         :root[data-sb-theme='clean-minimal'] {
-            --sb-mobile-default-surface-solid: rgb(from var(--SmartThemeBlurTintColor) r g b / 0.98);
+            --sb-mobile-default-surface-solid: var(--sb-layer-headerbar);
             --sb-mobile-default-card-solid: rgb(from var(--SmartThemeBlurTintColor) r g b / 0.96);
             --sb-mobile-default-input-solid: rgb(from var(--SmartThemeChatTintColor) r g b / 0.96);
             --sb-chat-surface-source: rgb(from var(--SmartThemeBlurTintColor) r g b / 0.98);
-            --sb-chatbar-surface-bg: rgb(from var(--SmartThemeBlurTintColor) r g b / 0.98);
-            --sb-mobile-overlay-bg: rgb(from var(--SmartThemeBlurTintColor) r g b / 0.98);
-            --sb-mobile-panel-bg: rgb(from var(--SmartThemeBlurTintColor) r g b / 0.98);
+            --sb-chatbar-surface-bg: var(--sb-layer-headerbar);
+            --sb-mobile-overlay-bg: var(--sb-layer-drawer);
+            --sb-mobile-panel-bg: var(--sb-layer-drawer);
         }
-    }
-
-    :root:not([data-sb-theme]) #top-bar,
-    :root[data-sb-theme='clean-minimal'] #top-bar {
-        background: var(--sb-topbar-surface-bg) !important;
-        backdrop-filter: var(--SmartThemeBackdropFilterSaturated);
-        -webkit-backdrop-filter: var(--SmartThemeBackdropFilterSaturated);
     }
 
     :root:not([data-sb-theme]) #send_form,
     :root[data-sb-theme='clean-minimal'] #send_form {
-        background: var(--sb-composer-surface-bg) !important;
+        background: var(--sb-layer-headerbar) !important;
         border-color: color-mix(in srgb, var(--SmartThemeBorderColor) 86%, transparent) !important;
-        backdrop-filter: var(--SmartThemeBackdropFilterSaturated);
-        -webkit-backdrop-filter: var(--SmartThemeBackdropFilterSaturated);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
     }
 
     :root:not([data-sb-theme]) #send_textarea,
     :root[data-sb-theme='clean-minimal'] #send_textarea {
-        background: var(--sb-mobile-default-input-solid);
+        background: var(--sb-composer-input-bg);
     }
 
-    :root:not([data-sb-theme]) #top-bar::before,
     :root:not([data-sb-theme]) #send_form::before,
     :root:not([data-sb-theme]) #sb-chatbar::before,
     :root:not([data-sb-theme]) #sb-mobile-chat-tools-panel::before,
-    :root[data-sb-theme='clean-minimal'] #top-bar::before,
     :root[data-sb-theme='clean-minimal'] #send_form::before,
     :root[data-sb-theme='clean-minimal'] #sb-chatbar::before,
     :root[data-sb-theme='clean-minimal'] #sb-mobile-chat-tools-panel::before {
@@ -2258,8 +2373,7 @@ body.bubblechat .mes[is_user='true'] .mes_block {
 .character_select:hover,
 .bogus_folder_select:hover,
 .group_select:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 16px 26px color-mix(in srgb, var(--SmartThemeShadowColor) 14%, transparent);
+    background-color: var(--sb-flat-hover-bg);
 }
 
 #rm_print_characters_block:not(.group_overlay_mode_select):not(.bulk_select) {
@@ -5908,6 +6022,58 @@ body #toast-container > .toast:hover {
     box-shadow: var(--sb-focus-ring-inset);
 }
 
+/* Text entries match :focus-visible on every focus, including mouse clicks, so they take the
+   neutral entry ring instead of the accent keyboard ring that buttons and controls keep. */
+:is(textarea, input:not([type]), input:is([type='text'], [type='search'], [type='number'], [type='password'], [type='email'], [type='url'], [type='tel']), select):focus-visible {
+    box-shadow: var(--sb-entry-focus-ring);
+}
+
+/* libadwaita shell entries: transparent border at rest, accent focus ring.
+   Scoped to shell roots (character drawer, left-nav settings) and settings subdrawers. */
+:is(.sb-shell-root, .sb-character-drawer-root, .sb-settings-subdrawer) :is(.text_pole, textarea.text_pole, select.text_pole, input.text_pole) {
+    border-color: transparent;
+    background-color: var(--sb-composer-input-bg);
+}
+
+:is(.sb-shell-root, .sb-character-drawer-root, .sb-settings-subdrawer) :is(.text_pole:focus, textarea.text_pole:focus, select.text_pole:focus, input.text_pole:focus) {
+    border-color: var(--sb-composer-focus-border);
+    background-color: var(--sb-composer-input-bg);
+    box-shadow: var(--sb-composer-focus-ring);
+}
+
+:is(.sb-shell-root, .sb-character-drawer-root, .sb-settings-subdrawer) select:where(:not([multiple]):not([size]):not(.select2-hidden-accessible)) {
+    border-color: transparent;
+    background-color: var(--sb-composer-input-bg);
+}
+
+:is(.sb-shell-root, .sb-character-drawer-root, .sb-settings-subdrawer) select:where(:not([multiple]):not([size]):not(.select2-hidden-accessible)):focus {
+    border-color: var(--sb-composer-focus-border);
+    background-color: var(--sb-composer-input-bg);
+    box-shadow: var(--sb-composer-focus-ring);
+}
+
+:is(.sb-shell-root, .sb-character-drawer-root, .sb-settings-subdrawer) :is(textarea, input:not([type]), input:is([type='text'], [type='search'], [type='number'], [type='password'], [type='email'], [type='url'], [type='tel']), select):focus:not([disabled]):not([readonly]) {
+    border-color: var(--sb-composer-focus-border);
+    box-shadow: var(--sb-composer-focus-ring);
+}
+
+:is(.sb-shell-root, .sb-character-drawer-root, .sb-settings-subdrawer) :is(textarea, input:not([type]), input:is([type='text'], [type='search'], [type='number'], [type='password'], [type='email'], [type='url'], [type='tel']), select):focus-visible {
+    box-shadow: var(--sb-composer-focus-ring);
+}
+
+/* libadwaita shell section headers and controls: remove boxed treatment, use typography. */
+:is(.sb-shell-root, .sb-character-drawer-root) #bg-header-fixed {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+}
+
+/* libadwaita character/group hover: unified token instead of upstream's high-contrast fill. */
+:is(.sb-shell-root, .sb-character-drawer-root) :is(.character_select:hover, .group_select:hover, .bogus_folder_select:hover, .avatar-container:hover) {
+    background-color: var(--sb-flat-hover-bg);
+    border-color: transparent;
+}
+
 :focus:not(:focus-visible) {
     outline: none;
 }
@@ -6482,4 +6648,481 @@ body.reduced-motion *::after {
         padding-inline: 4px;
         text-align: center;
     }
+}
+
+/* ========================================================================
+   Overlay Overrides (libadwaita shell pass - Agent B)
+   ======================================================================== */
+
+/* Options Menu (#options) - popover surface */
+#options {
+    background: var(--sb-layer-popover) !important;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent) !important;
+    border-radius: var(--sb-radius-overlay) !important;
+    padding: 6px !important;
+    box-shadow: var(--sb-shadow-popover) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#options .options-content {
+    border: none !important;
+    padding: 0 !important;
+}
+
+#options .options-content a {
+    height: 34px;
+    padding: 0 12px !important;
+    border-radius: var(--sb-radius-control) !important;
+    opacity: 1 !important;
+    color: var(--SmartThemeBodyColor) !important;
+    background: transparent !important;
+    border: none !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+
+#options .options-content a i,
+#options .options-content a .fa-fw {
+    opacity: 0.7 !important;
+}
+
+#options .options-content a:hover {
+    background: var(--sb-flat-hover-bg) !important;
+}
+
+#options .options-content a:active {
+    background: var(--sb-flat-active-bg) !important;
+}
+
+#options .options-content a:focus-visible {
+    outline: none !important;
+    box-shadow: var(--sb-focus-ring-inset) !important;
+}
+
+@media (pointer: coarse) {
+    #options .options-content a {
+        height: 44px !important;
+    }
+}
+
+/* Extensions Menu (#extensionsMenu) - popover surface */
+#extensionsMenu {
+    background: var(--sb-layer-popover) !important;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent) !important;
+    border-radius: var(--sb-radius-overlay) !important;
+    padding: 6px !important;
+    box-shadow: var(--sb-shadow-popover) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#extensionsMenu > .extension_container > div {
+    height: 34px;
+    padding: 0 12px !important;
+    border-radius: var(--sb-radius-control) !important;
+    opacity: 1 !important;
+    color: var(--SmartThemeBodyColor) !important;
+    background: transparent !important;
+    border: none !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+
+#extensionsMenu i,
+#extensionsMenu .fa-fw {
+    opacity: 0.7 !important;
+}
+
+#extensionsMenu > .extension_container > div:hover {
+    background: var(--sb-flat-hover-bg) !important;
+}
+
+#extensionsMenu > .extension_container > div:active {
+    background: var(--sb-flat-active-bg) !important;
+}
+
+#extensionsMenu > .extension_container > div:focus-visible {
+    outline: none !important;
+    box-shadow: var(--sb-focus-ring-inset) !important;
+}
+
+@media (pointer: coarse) {
+    #extensionsMenu > .extension_container > div {
+        height: 44px !important;
+    }
+}
+
+/* Menu enter animations. Popper positions these menus with `transform: translate(...)`, so the
+   keyframes use the independent `translate` property. Animating `transform` replaced Popper's
+   translate (menu flashed at the left edge), and `scale` composes around the untransformed box
+   at the viewport origin, so it drifted sideways. */
+@keyframes sb-menu-enter {
+    from {
+        opacity: 0;
+        translate: 0 6px;
+    }
+    to {
+        opacity: 1;
+        translate: 0 0;
+    }
+}
+
+#options,
+#extensionsMenu {
+    animation: sb-menu-enter 200ms var(--sb-ease-out-cubic);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #options,
+    #extensionsMenu {
+        animation: none;
+    }
+}
+
+body.reduced-motion #options,
+body.reduced-motion #extensionsMenu {
+    animation: none;
+}
+
+/* Dialogs and Popups */
+.popup {
+    background: var(--sb-layer-dialog);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent);
+    border-radius: var(--sb-radius-overlay);
+    box-shadow: var(--sb-shadow-dialog), var(--sb-shadow-dialog-highlight);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.popup::backdrop {
+    background: var(--sb-dialog-backdrop) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Confirm-type dialogs use alert radius */
+.popup[data-type="confirm"],
+.popup.confirm-dialog {
+    border-radius: var(--sb-radius-alert);
+}
+
+/* Dialog enter animation - override popup.css pop-in */
+@keyframes pop-in {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.popup[opening] {
+    animation: pop-in var(--sb-spring-dialog-duration) var(--sb-spring-dialog);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .popup[opening] {
+        animation: none;
+    }
+}
+
+body.reduced-motion .popup[opening] {
+    animation: none;
+}
+
+/* Dialog exit animation - override popup.css pop-out */
+@keyframes pop-out {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+}
+
+.popup[closing] {
+    animation: pop-out 200ms var(--sb-ease-out-cubic);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .popup[closing] {
+        animation: none;
+        opacity: 0;
+    }
+}
+
+body.reduced-motion .popup[closing] {
+    animation: none;
+    opacity: 0;
+}
+
+/* Select2 Dropdowns */
+.select2-container--default .select2-dropdown {
+    background: var(--sb-layer-popover);
+    /* select2-overrides.css sets the dropdown border with !important. */
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent) !important;
+    border-radius: var(--sb-radius-overlay);
+    padding: 6px;
+    box-shadow: var(--sb-shadow-popover);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.select2-container--default .select2-results__option {
+    padding: 0 12px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    border-radius: var(--sb-radius-control);
+    color: var(--SmartThemeBodyColor);
+    opacity: 1;
+}
+
+.select2-container--default .select2-results__option[aria-selected="true"] {
+    background: var(--sb-flat-selected-bg);
+}
+
+.select2-container--default .select2-results__option--highlighted[aria-selected] {
+    background: var(--sb-flat-hover-bg);
+}
+
+.select2-container--default .select2-results__option--highlighted[aria-selected="true"] {
+    background: var(--sb-flat-selected-hover-bg);
+}
+
+@media (pointer: coarse) {
+    .select2-container--default .select2-results__option {
+        height: 44px;
+    }
+}
+
+/* Quick Reply context menus (list-group.ctx-menu) */
+.list-group.ctx-menu {
+    background: var(--sb-layer-popover);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent);
+    border-radius: var(--sb-radius-overlay);
+    padding: 6px;
+    box-shadow: var(--sb-shadow-popover);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.list-group.ctx-menu .list-group-item {
+    height: 34px;
+    padding: 0 12px;
+    border-radius: var(--sb-radius-control);
+    opacity: 1;
+    color: var(--SmartThemeBodyColor);
+    background: transparent;
+    border: none;
+    display: flex;
+    align-items: center;
+}
+
+.list-group.ctx-menu .list-group-item:hover {
+    background: var(--sb-flat-hover-bg);
+}
+
+.list-group.ctx-menu .list-group-item:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.list-group.ctx-menu .list-group-item:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (pointer: coarse) {
+    .list-group.ctx-menu .list-group-item {
+        height: 44px;
+    }
+}
+
+/* Toasts - toast layer with no border */
+#toast-container > div {
+    background-color: var(--sb-layer-toast) !important;
+    color: var(--sb-layer-toast-fg) !important;
+    border: none !important;
+    border-radius: var(--sb-radius-overlay) !important;
+    box-shadow: var(--sb-shadow-toast) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Toast enter animation - slide down from own height */
+@keyframes sb-toast-in {
+    from {
+        opacity: 0;
+        transform: translateY(-100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.toast {
+    animation: sb-toast-in 300ms var(--sb-ease-out-cubic) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .toast {
+        animation: none;
+    }
+}
+
+body.reduced-motion .toast {
+    animation: none;
+}
+
+/* Toast exit animation (JS-driven via .sb-toast-leaving) */
+@keyframes sb-toast-exit {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-100%);
+    }
+}
+
+#toast-container > div.sb-toast-leaving {
+    animation: sb-toast-exit 300ms var(--sb-ease-out-cubic);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #toast-container > div.sb-toast-leaving {
+        animation: none;
+        opacity: 0;
+    }
+}
+
+body.reduced-motion #toast-container > div.sb-toast-leaving {
+    animation: none;
+    opacity: 0;
+}
+
+/* Tooltips - libadwaita OSD (shadow ink, white text, subtle border) */
+.tooltip-inner {
+    background: rgba(0, 0, 0, 0.8);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--sb-radius-control);
+    padding: 6px 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.tooltip.bs-tooltip-top .arrow::before,
+.tooltip.bs-tooltip-auto[data-popper-placement^="top"] .arrow::before {
+    border-top-color: rgba(0, 0, 0, 0.8);
+}
+
+.tooltip.bs-tooltip-bottom .arrow::before,
+.tooltip.bs-tooltip-auto[data-popper-placement^="bottom"] .arrow::before {
+    border-bottom-color: rgba(0, 0, 0, 0.8);
+}
+
+.tooltip.bs-tooltip-start .arrow::before,
+.tooltip.bs-tooltip-auto[data-popper-placement^="left"] .arrow::before {
+    border-left-color: rgba(0, 0, 0, 0.8);
+}
+
+.tooltip.bs-tooltip-end .arrow::before,
+.tooltip.bs-tooltip-auto[data-popper-placement^="right"] .arrow::before {
+    border-right-color: rgba(0, 0, 0, 0.8);
+}
+
+/* Composer Frame - header-bar layer, single border, no gradient, no accent wash on focus.
+   The body.no-blur selector beats upstream toggle-dependent.css, which paints the translucent blur tint with !important. */
+#send_form,
+body.no-blur #send_form {
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent) !important;
+    border-radius: var(--sb-radius-overlay) !important;
+    background: var(--sb-layer-headerbar) !important;
+}
+
+/* Phone: a full-bleed bottom bar with no rounded corners to expose the background behind it. */
+@media screen and (max-width: 768px) {
+    #send_form,
+    body.no-blur #send_form {
+        border-width: 1px 0 0 !important;
+        border-radius: 0 !important;
+    }
+}
+
+#send_form:focus-within {
+    border-color: color-mix(in srgb, var(--SmartThemeBorderColor) 90%, transparent) !important;
+}
+
+/* Send button - libadwaita suggested-action: solid accent fill, neutral raised disabled.
+   Shape and size come from the #send_but sizing rules in sillybunny-tabs.css. */
+#send_but {
+    background: var(--sb-accent) !important;
+    color: var(--sb-on-solid-accent) !important;
+    border: none !important;
+    /* style.css dims every #rightSendForm child to 0.7; the suggested action stays solid. */
+    opacity: 1 !important;
+}
+
+#send_but:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--sb-accent) 90%, white) !important;
+}
+
+#send_but:active:not(:disabled) {
+    background: color-mix(in srgb, var(--sb-accent) 80%, black) !important;
+}
+
+#send_but:disabled {
+    background: var(--sb-raised-bg) !important;
+    color: var(--sb-muted-fg) !important;
+    cursor: not-allowed !important;
+}
+
+/* Composer icon buttons - flat circles. #send_but and .mes_stop are excluded so the suggested/destructive fills win. */
+#send_form .menu_button:not(#send_but),
+#leftSendForm > div:not(.stscript_btn),
+#rightSendForm > div:not(.stscript_btn, #send_but, .mes_stop) {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 50% !important;
+    color: var(--SmartThemeBodyColor) !important;
+}
+
+#send_form .menu_button:not(#send_but):hover,
+#leftSendForm > div:not(.stscript_btn):hover,
+#rightSendForm > div:not(.stscript_btn, #send_but, .mes_stop):hover {
+    background: var(--sb-flat-hover-bg) !important;
+}
+
+#send_form .menu_button:not(#send_but):active,
+#leftSendForm > div:not(.stscript_btn):active,
+#rightSendForm > div:not(.stscript_btn, #send_but, .mes_stop):active {
+    background: var(--sb-flat-active-bg) !important;
+}
+
+#send_form .menu_button:not(#send_but):focus-visible,
+#leftSendForm > div:not(.stscript_btn):focus-visible,
+#rightSendForm > div:not(.stscript_btn, #send_but, .mes_stop):focus-visible {
+    outline: none !important;
+    box-shadow: var(--sb-focus-ring-inset) !important;
+}
+
+/* Placeholder contrast >= 4.5:1 */
+#send_textarea::placeholder {
+    color: var(--sb-input-placeholder) !important;
+    opacity: 1 !important;
+}
+
+textarea::placeholder,
+input::placeholder {
+    color: var(--sb-input-placeholder) !important;
+    opacity: 1 !important;
 }

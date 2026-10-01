@@ -1,12 +1,39 @@
 /*
  * Shared WAAPI motion helpers for the SillyBunny shell.
- * Durations and easing mirror --sb-transition-fast/slow (DESIGN.md State-Only Motion Rule).
+ * Durations and easing mirror --sb-transition-fast/--sb-transition/--sb-transition-slow (DESIGN.md Motion).
  * Every helper is a no-op when prefers-reduced-motion is set or WAAPI is unavailable.
  */
 
-export const MOTION_FAST = 180;
-export const MOTION_SLOW = 240;
-export const MOTION_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+export const MOTION_FAST = 200;
+export const MOTION_SLOW = 250;
+export const MOTION_SURFACE = 300;
+/** Popover and menu close: a short fade with no movement (DESIGN.md Motion, Per Surface). */
+export const MOTION_POPOVER_CLOSE = 150;
+export const MOTION_EASE = 'cubic-bezier(0.25, 0.1, 0.25, 1)';
+export const MOTION_EASE_OUT_QUAD = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+export const MOTION_EASE_OUT_CUBIC = 'cubic-bezier(0.33, 1, 0.68, 1)';
+
+const supportsLinearEasing = typeof CSS !== 'undefined'
+    && typeof CSS.supports === 'function'
+    && CSS.supports('transition-timing-function', 'linear(0, 1)');
+
+/*
+ * libadwaita AdwSpringAnimation presets (damping ratio, mass, stiffness) sampled into linear().
+ * The cubic-bezier fallbacks approximate each curve for engines without linear() (Safari < 17.2).
+ */
+function spring(duration, samples, fallback) {
+    return Object.freeze({ duration, easing: supportsLinearEasing ? `linear(${samples})` : fallback });
+}
+
+export const SPRING_DIALOG = spring(511,
+    '0, 0.096, 0.299, 0.533, 0.737, 0.897, 1, 1.059, 1.081, 1.079, 1.065, 1.046, 1.028, 1.013, 1.003, 0.997, 0.994, 0.993, 0.994, 0.996, 0.997, 0.998, 0.999, 1, 1',
+    'cubic-bezier(0.34, 1.36, 0.64, 1)');
+export const SPRING_SHEET = spring(472,
+    '0, 0.063, 0.207, 0.371, 0.529, 0.669, 0.779, 0.863, 0.924, 0.964, 0.989, 1.005, 1.012, 1.014, 1.014, 1.012, 1.01, 1.008, 1.005, 1.004, 1.002, 1.001, 1.001, 1, 1',
+    'cubic-bezier(0.22, 1, 0.36, 1)');
+export const SPRING_NAVIGATION = spring(334,
+    '0, 0.076, 0.227, 0.382, 0.528, 0.648, 0.742, 0.814, 0.867, 0.905, 0.933, 0.953, 0.967, 0.977, 0.984, 0.989, 0.993, 0.995, 0.996, 0.998, 0.998, 0.999, 0.999, 0.999, 1',
+    'cubic-bezier(0.16, 1, 0.3, 1)');
 
 const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 const activeMotions = new WeakMap();
@@ -116,6 +143,7 @@ export function animateOut(element, keyframes, hide, { enabled = true, ...option
     }
     return play(element, keyframes, {
         duration: MOTION_FAST,
+        easing: MOTION_EASE_OUT_CUBIC,
         ...options,
         fill: 'forwards',
         inert: true,
@@ -135,6 +163,7 @@ export function fadeOutAndRemove(element, { enabled = true } = {}) {
     }
     play(element, [{ opacity: 1 }, { opacity: 0 }], {
         duration: MOTION_FAST,
+        easing: MOTION_EASE_OUT_CUBIC,
         fill: 'forwards',
         inert: true,
         styles: { 'pointer-events': 'none' },
@@ -158,7 +187,7 @@ export function originFrom(anchor, element) {
  * Shared-element morph: the element starts at `fromRect` (scaled by `scale`) and settles into its
  * own box, fading in from `fromOpacity`.
  */
-export function morphFrom(element, fromRect, { scale = 1, fromOpacity = 0, duration = MOTION_SLOW, onEnd = null } = {}) {
+export function morphFrom(element, fromRect, { scale = 1, fromOpacity = 0, duration = MOTION_SLOW, easing = MOTION_EASE, onEnd = null } = {}) {
     if (!fromRect || !canAnimate(element)) {
         onEnd?.();
         return null;
@@ -173,7 +202,7 @@ export function morphFrom(element, fromRect, { scale = 1, fromOpacity = 0, durat
     return play(element, [
         { transform: `translate(${dx}px, ${dy}px) scale(${scale})`, opacity: fromOpacity },
         { transform: 'none', opacity: 1 },
-    ], { duration, styles: { 'transform-origin': 'center' }, onEnd });
+    ], { duration, easing, styles: { 'transform-origin': 'center' }, onEnd });
 }
 
 /** Animates the element's border-box height from `fromHeight` to its current height. */

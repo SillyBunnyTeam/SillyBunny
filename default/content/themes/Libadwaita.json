@@ -10,7 +10,7 @@
     "user_mes_blur_tint_color": "rgba(29, 29, 32, 0.9)",
     "bot_mes_blur_tint_color": "rgba(29, 29, 32, 0.9)",
     "shadow_color": "rgba(0, 0, 6, 0.36)",
-    "shadow_width": 2,
+    "shadow_width": 0,
     "border_color": "rgba(0, 0, 6, 0.5)",
     "font_scale": 1,
     "fast_ui_mode": true,
@@ -32,6 +32,6 @@
     "custom_css": "",
     "bogus_folders": true,
     "zoomed_avatar_magnification": true,
-    "reduced_motion": true,
+    "reduced_motion": false,
     "compact_input_area": false
 }

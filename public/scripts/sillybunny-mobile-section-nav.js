@@ -7,7 +7,7 @@
 
 import { t, translate } from './i18n.js';
 import { initializeMobileBottomBar, syncMobileBottomBar } from './sillybunny-mobile-bottom-bar.js';
-import { MOTION_FAST, MOTION_SLOW, animateIn, animateOut, morphFrom, originFrom, stopMotion } from './sillybunny-motion.js';
+import { MOTION_EASE_OUT_QUAD, MOTION_FAST, MOTION_POPOVER_CLOSE, SPRING_NAVIGATION, animateIn, animateOut, morphFrom, originFrom, stopMotion } from './sillybunny-motion.js';
 
 const PANEL_CONFIGS = [
     {
@@ -196,7 +196,7 @@ function syncPanel(panel) {
             animateIn(panel.triggerLabel, [
                 { opacity: 0, transform: 'translateY(4px)' },
                 { opacity: 1, transform: 'none' },
-            ], { duration: MOTION_FAST });
+            ], { duration: MOTION_FAST, easing: MOTION_EASE_OUT_QUAD });
         }
     }
     panel.trigger.hidden = inHub;
@@ -226,12 +226,9 @@ function closePanelMenu(panel, { restoreFocus = false } = {}) {
     if (panel.menu.hidden) {
         return;
     }
-    animateOut(panel.menu, [
-        { opacity: 1, transform: 'none' },
-        { opacity: 0, transform: 'translateY(-4px) scale(0.98)' },
-    ], () => {
+    animateOut(panel.menu, [{ opacity: 1 }, { opacity: 0 }], () => {
         panel.menu.hidden = true;
-    }, { enabled: isMobileViewport(), styles: { 'transform-origin': originFrom(panel.trigger, panel.menu) } });
+    }, { enabled: isMobileViewport(), duration: MOTION_POPOVER_CLOSE });
     syncPanel(panel);
     if (restoreFocus) {
         focusElement(panel.trigger);
@@ -259,9 +256,9 @@ function openPanelMenu(panel, focusTarget = 'current') {
 
     // Popover grows out of the trigger, like an AdwSplitButton menu.
     animateIn(panel.menu, [
-        { opacity: 0, transform: 'translateY(-4px) scale(0.96)' },
+        { opacity: 0, transform: 'scale(0.96)' },
         { opacity: 1, transform: 'none' },
-    ], { duration: MOTION_FAST, styles: { 'transform-origin': originFrom(panel.trigger, panel.menu) } });
+    ], { duration: MOTION_FAST, easing: MOTION_EASE_OUT_QUAD, styles: { 'transform-origin': originFrom(panel.trigger, panel.menu) } });
 
     const items = getMenuItems(panel);
     const target = focusTarget === 'last'
@@ -339,7 +336,7 @@ function setPanelView(panel, view, { animate = false } = {}) {
         ? { forward, fromRect: source.getBoundingClientRect(), fromFontSize: getFontSize(source) }
         : null;
     if (transition) {
-        panel.pushUntil = performance.now() + MOTION_SLOW;
+        panel.pushUntil = performance.now() + SPRING_NAVIGATION.duration;
     }
 
     panel.view = view;
@@ -370,7 +367,7 @@ function playViewTransition(panel, transition) {
         ? [panel.backButton, panel.trigger, ...getSectionContent(panel)]
         : [panel.hub];
     for (const target of targets.filter(isVisible)) {
-        animateIn(target, slide);
+        animateIn(target, slide, SPRING_NAVIGATION);
     }
 
     const title = forward ? panel.kickerLabel : panel.hubTitle;
@@ -380,6 +377,7 @@ function playViewTransition(panel, transition) {
     // The kicker clips its label to one 16px line; let the label travel outside it while morphing.
     panel.kicker.style.overflow = 'visible';
     morphFrom(title, fromRect, {
+        ...SPRING_NAVIGATION,
         scale: fromFontSize / getFontSize(title),
         onEnd: () => {
             panel.kicker.style.overflow = kickerOverflow;
@@ -674,12 +672,9 @@ function createCharacterListToolbar(root) {
         if (popover.hidden) {
             return;
         }
-        animateOut(popover, [
-            { opacity: 1, transform: 'none' },
-            { opacity: 0, transform: 'translateY(-4px) scale(0.98)' },
-        ], () => {
+        animateOut(popover, [{ opacity: 1 }, { opacity: 0 }], () => {
             popover.hidden = true;
-        }, { enabled: isMobileViewport(), styles: { 'transform-origin': originFrom(moreTrigger, popover) } });
+        }, { enabled: isMobileViewport(), duration: MOTION_POPOVER_CLOSE });
         moreTrigger.setAttribute('aria-expanded', 'false');
         if (restoreFocus) {
             focusElement(moreTrigger);
@@ -696,9 +691,9 @@ function createCharacterListToolbar(root) {
         popover.hidden = false;
         moreTrigger.setAttribute('aria-expanded', 'true');
         animateIn(popover, [
-            { opacity: 0, transform: 'translateY(-4px) scale(0.96)' },
+            { opacity: 0, transform: 'scale(0.96)' },
             { opacity: 1, transform: 'none' },
-        ], { duration: MOTION_FAST, styles: { 'transform-origin': originFrom(moreTrigger, popover) } });
+        ], { duration: MOTION_FAST, easing: MOTION_EASE_OUT_QUAD, styles: { 'transform-origin': originFrom(moreTrigger, popover) } });
         focusElement(getPopoverItems()[0]);
     });
 

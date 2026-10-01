@@ -12,13 +12,17 @@ import {
 import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
 import { initializeMobileSectionNav, requestMobileSectionView } from './sillybunny-mobile-section-nav.js';
 import { initializeMessageActions } from './sillybunny-message-actions.js';
+import { initializeToastMotion } from './sillybunny-toast-motion.js';
 import {
     animateIn,
     animateOut,
+    MOTION_EASE_OUT_CUBIC,
     MOTION_FAST,
     MOTION_SLOW,
     originFrom,
+    play as playMotion,
     prefersReducedMotion as prefersShellReducedMotion,
+    SPRING_SHEET,
     stopMotion,
 } from './sillybunny-motion.js';
 import { createPresetApiSyncLifecycle } from './preset-api-sync-lifecycle/index.js';
@@ -927,6 +931,7 @@ const sbState = {
         stateObserver: null,
         observedOpen: null,
         lastTab: 'characters',
+        closing: false,
     },
     mobileModal: {
         syncFrame: 0,
@@ -6551,7 +6556,7 @@ function setMobileChatToolsOpenState(shouldOpen) {
             animateIn(refs.panel, [
                 { opacity: 0, transform: 'translateY(12px) scale(0.98)' },
                 { opacity: 1, transform: 'none' },
-            ], { duration: MOTION_SLOW });
+            ], SPRING_SHEET);
         }
         scheduleChatbarRefresh(0);
     } else if (wasOpen) {
@@ -6689,14 +6694,14 @@ function setConnectionStripOpenState(shouldOpen) {
         animateIn(desktopRefs.connectionStrip, [
             { opacity: 0, transform: 'translateY(-6px)' },
             { opacity: 1, transform: 'none' },
-        ], { duration: MOTION_FAST });
+        ], { duration: MOTION_SLOW });
     } else {
         animateOut(desktopRefs.connectionStrip, [
             { opacity: 1, transform: 'none' },
             { opacity: 0, transform: 'translateY(-6px)' },
         ], () => {
             desktopRefs.connectionStrip.hidden = true;
-        }, { enabled: !isMobileViewport(), duration: MOTION_FAST });
+        }, { enabled: !isMobileViewport(), duration: MOTION_SLOW });
     }
 }
 
@@ -7927,7 +7932,7 @@ function animateShellOpen(shellRoot, shellKey) {
             { opacity: 1, transform: 'scale(1)' },
         ];
     animateIn(shellRoot, keyframes, {
-        duration: MOTION_SLOW,
+        ...SPRING_SHEET,
         styles: { 'transform-origin': originFrom(trigger, shellRoot) },
     });
 }
@@ -7938,9 +7943,55 @@ function closeShellDrawer(shellRoot, shellKey, close) {
         return;
     }
 
+    // The character drawer's layout hangs off `#right-nav-panel.openDrawer` selectors (header,
+    // hidden description, list sizing). animateOut() commits the closed state first, so the panel
+    // reflowed mid-fade; fade with the open layout and commit the close when the fade ends.
+    if (shellKey === 'characters') {
+        playShellDrawerExit(shellRoot, shellKey, close);
+        return;
+    }
+
+    animateOut(shellRoot, SHELL_DRAWER_EXIT_KEYFRAMES, close, {
+        enabled: !isMobileViewport(),
+        duration: MOTION_FAST,
+        easing: MOTION_EASE_OUT_CUBIC,
+        styles: getShellDrawerExitStyles(shellRoot, shellKey),
+    });
+}
+
+const SHELL_DRAWER_EXIT_KEYFRAMES = Object.freeze([
+    { opacity: 1, transform: 'scale(1)' },
+    { opacity: 0, transform: 'scale(0.98)' },
+]);
+
+function playShellDrawerExit(shellRoot, shellKey, close) {
+    let closed = false;
+    const commit = () => {
+        if (closed) {
+            return;
+        }
+        closed = true;
+        close();
+    };
+    sbState.characterDrawer.closing = true;
+    playMotion(shellRoot, SHELL_DRAWER_EXIT_KEYFRAMES, {
+        duration: MOTION_FAST,
+        easing: MOTION_EASE_OUT_CUBIC,
+        fill: 'forwards',
+        inert: true,
+        styles: { ...getShellDrawerExitStyles(shellRoot, shellKey), 'pointer-events': 'none' },
+        // onEnd also runs when a reopen cancels the exit, so the close is always committed once.
+        onEnd: () => {
+            sbState.characterDrawer.closing = false;
+            commit();
+        },
+    });
+}
+
+function getShellDrawerExitStyles(shellRoot, shellKey) {
     const trigger = getShellMotionTrigger(shellKey);
     const rect = shellRoot.getBoundingClientRect();
-    const position = {
+    return {
         display: 'flex',
         position: 'fixed',
         left: `${rect.left}px`,
@@ -7958,15 +8009,6 @@ function closeShellDrawer(shellRoot, shellKey, close) {
         'z-index': 'var(--sb-z-shell-panel)',
         'transform-origin': originFrom(trigger, shellRoot),
     };
-
-    animateOut(shellRoot, [
-        { opacity: 1, transform: 'scale(1)' },
-        { opacity: 0, transform: 'scale(0.98)' },
-    ], close, {
-        enabled: !isMobileViewport(),
-        duration: MOTION_FAST,
-        styles: position,
-    });
 }
 
 function isShellOpen(shellKey) {
@@ -7979,7 +8021,8 @@ function isShellTabOpen(shellKey, tabId) {
 }
 
 function isCharacterPanelOpen() {
-    return isDrawerActuallyOpen('right-nav-panel');
+    // A drawer fading out still carries .openDrawer; it already counts as closed.
+    return !sbState.characterDrawer.closing && isDrawerActuallyOpen('right-nav-panel');
 }
 
 function getActiveCharacterPanelTab() {
@@ -8446,11 +8489,68 @@ function bindCharacterEditorFullscreenToggle() {
 
             setCharacterEditorFullscreenState(false, { focusButton: true });
             event.preventDefault();
-            event.stopPropagation();
+            event.stopImmediatePropagation();
         });
     }
 
     syncCharacterEditorFullscreenAvailability();
+}
+
+function isVisibleCharacterDrawerEscapeControl(element) {
+    return element instanceof HTMLElement
+        && isActuallyVisible(element)
+        && !element.closest('[hidden], [aria-hidden="true"], [inert]');
+}
+
+function shouldDeferCharacterDrawerEscape(event, panel) {
+    if (event.defaultPrevented || event.isComposing) {
+        return true;
+    }
+
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('dialog[open], [role="dialog"], .popup, .popover, .sb-conversation-picker, .sb-conversation-status-picker')) {
+        return true;
+    }
+
+    if (target?.closest('input, textarea, select, [contenteditable="true"]')
+        && target !== panel
+        && !target.closest('.sb-shell-close')) {
+        return true;
+    }
+
+    return [
+        '#curEditTextarea',
+        '.reasoning_edit_textarea',
+        '#mes_stop',
+        '#dialogue_popup',
+        '#select_chat_popup',
+        '#dialogue_del_mes',
+        '#floatingPrompt',
+        '#cfgConfig',
+        '#logprobsViewer',
+    ].some(selector => isVisibleCharacterDrawerEscapeControl(document.querySelector(selector)));
+}
+
+function bindCharacterDrawerEscapeHandler() {
+    const panel = getCharacterPanel();
+    if (!(panel instanceof HTMLElement) || panel.dataset.sbCharacterEscapeBound === 'true') {
+        return;
+    }
+
+    panel.dataset.sbCharacterEscapeBound = 'true';
+    panel.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || !panel.classList.contains('openDrawer')) {
+            return;
+        }
+
+        if (shouldDeferCharacterDrawerEscape(event, panel)) {
+            return;
+        }
+
+        closeCharacterPanel();
+        event.preventDefault();
+        event.stopPropagation();
+    });
 }
 
 async function openCreatorNotesFullscreen() {
@@ -9054,6 +9154,10 @@ function closeCharacterPanel() {
 
     setCharacterEditorFullscreenState(false);
 
+    if (sbState.characterDrawer.closing) {
+        return;
+    }
+
     if (panel instanceof HTMLElement && panel.classList.contains('openDrawer')) {
         closeShellDrawer(panel, 'characters', () => {
             forceDrawerState(panel, false, '#rightNavDrawerIcon');
@@ -9176,6 +9280,9 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
         closeCharacterPanel();
         return;
     }
+
+    // Reopening during the exit fade: cancelling commits the pending close, then the open runs.
+    stopMotion(getCharacterPanel());
 
     const normalizedPreferredTab = preferredTab ? normalizeCharacterPanelTab(preferredTab) : '';
     if (normalizedPreferredTab) {
@@ -14716,7 +14823,7 @@ function setMobileNavOpenState(isOpen) {
         animateIn(overlay.querySelector('#sb-mobile-nav-content'), [
             { opacity: 0, transform: 'translateY(12px) scale(0.98)' },
             { opacity: 1, transform: 'none' },
-        ], { duration: MOTION_SLOW });
+        ], SPRING_SHEET);
     } else if (!navState.shouldOpen && wasOpen) {
         overlay.hidden = false;
         animateOut(overlay.querySelector('#sb-mobile-nav-content'), [
@@ -14790,6 +14897,7 @@ function injectCharacterDrawerControls() {
     getCharacterPanel()?.classList.add('sb-character-drawer-root');
     ensureCharacterListToolbarLayout();
     bindCharacterEditorFullscreenToggle();
+    bindCharacterDrawerEscapeHandler();
     bindCreatorNotesFullscreen();
 
     const shellCloseButton = document.getElementById('sb_character_shell_close');
@@ -16253,6 +16361,7 @@ function initAll() {
 
     initializeMobileSectionNav();
     initializeMessageActions();
+    initializeToastMotion();
 
     const sillyBunnyShell = /** @type {any} */ (globalThis.SillyBunnyShell || {});
     globalThis.SillyBunnyShell = Object.assign(sillyBunnyShell, {

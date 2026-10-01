@@ -6,7 +6,7 @@
  */
 
 import { translate } from './i18n.js';
-import { MOTION_FAST, MOTION_SLOW, animateHeightFrom, animateIn, animateOut, originFrom, play, stopMotion } from './sillybunny-motion.js';
+import { MOTION_EASE_OUT_CUBIC, MOTION_EASE_OUT_QUAD, MOTION_FAST, MOTION_SLOW, SPRING_SHEET, animateHeightFrom, animateIn, animateOut, originFrom, play, stopMotion } from './sillybunny-motion.js';
 
 const SHEET_ID = 'sb-bottom-chat-sheet';
 const SHEET_TITLE_ID = 'sb-bottom-chat-sheet-title';
@@ -102,7 +102,7 @@ function openSheet() {
     state.backdrop.hidden = false;
     state.chip.setAttribute('aria-expanded', 'true');
     // AdwBottomSheet: rises from the bottom edge the chip sits on, over a fading scrim.
-    animateIn(state.sheet, [{ transform: 'translateY(100%)' }, { transform: 'none' }], { duration: MOTION_SLOW });
+    animateIn(state.sheet, [{ transform: 'translateY(100%)' }, { transform: 'none' }], SPRING_SHEET);
     animateIn(state.backdrop, [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_FAST });
     requestAnimationFrame(() => state.sheetTitle.focus({ preventScroll: true }));
 }
@@ -221,7 +221,7 @@ function syncChipLabel() {
             animateIn(state.chipLabel, [
                 { opacity: 0, transform: 'translateY(4px)' },
                 { opacity: 1, transform: 'none' },
-            ], { duration: MOTION_FAST });
+            ], { duration: MOTION_FAST, easing: MOTION_EASE_OUT_QUAD });
         }
     }
 }
@@ -403,6 +403,7 @@ function setTrayOpen(open) {
     for (const { element, display, frame, origin } of closing) {
         play(element, [frame, TRAY_COLLAPSED], {
             duration: MOTION_FAST,
+            easing: MOTION_EASE_OUT_CUBIC,
             fill: 'forwards',
             inert: true,
             styles: { display, overflow: 'hidden', 'box-sizing': 'border-box', 'transform-origin': origin, 'pointer-events': 'none' },

@@ -13463,6 +13463,13 @@ export async function messageEdit(editMessageId) {
         markMobileChatManualScroll();
     }
 
+    // SillyBunny: empty() briefly collapses the message, and near the chat bottom the browser clamps
+    // scrollTop to the shorter scrollHeight; the refilled editor never scrolls back. Undo only that clamp.
+    const chatScrollElement = chatElement[0];
+    if (!shouldGuardMobileChatScroll() && chatScrollElement && chatScrollElement.scrollTop < chatScrollPosition) {
+        chatScrollElement.scrollTop = chatScrollPosition;
+    }
+
     // SillyBunny: on desktop the message resize observer owns the edit-open layout change and focus already has preventScroll; restoring here reverts it.
     const shouldRestoreChatScroll = shouldGuardMobileChatScroll();
     const restoreChatScroll = () => {

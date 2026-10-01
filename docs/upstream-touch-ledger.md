@@ -186,7 +186,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Settings and frontend boot. |
 | Divergence reason | SillyBunny keeps `script.js` loaded through its canonical URL, keeps OOC/HTML retention settings copy synchronized with active-turn depth behavior, and exposes core background transparency sliders without requiring Moonlit Echoes. `script.js` must NEVER carry a `?v=` query: every module imports `../script.js` bare, and a versioned tag URL splits ES-module identity so `script.js` evaluates twice and registers every delegated handler twice (all inline-drawer toggles break). Stale-cache protection comes from `src/middleware/frontend-assets.js` serving JS with `Cache-Control: no-cache`, not from URL versioning. |
 | Target seam | `public/scripts/ooc-blocks.js` for retention behavior; `public/css/sillybunny-chat-styles.css` and `public/scripts/power-user.js` for core transparency behavior. |
-| Adapter shape | Keep HTML changes limited to static boot references and settings labels/tooltips. |
+| Adapter shape | Keep HTML changes limited to static boot references and settings labels/tooltips. v1.9.0 swaps the Figtree preload/stylesheet links for Adwaita Sans/Mono, drops the Figtree Google Font preset (saved `Figtree` values still load as a custom Google Font), bumps fork stylesheet cache versions, and points the theme reset tooltip at `Libadwaita`. |
 | Protecting tests | `tests/script-module-identity.test.js`, `tests/frontend-assets.test.js`, `tests/ooc-blocks.test.js`, `tests/core-message-transparency.test.js`. |
 | Validation | `npm run test:unit --prefix tests -- script-module-identity.test.js frontend-assets.test.js ooc-blocks.test.js`, `npm run test:unit --prefix tests -- core-message-transparency.test.js`, `npm run build:frontend`, browser smoke check. |
 | Rollback path | Restore versioned `script.js` references, previous settings copy, and remove core transparency slider markup if cache behavior or settings semantics regress. Chat transparency CSS loading rolls back through `public/scripts/power-user.js`. |
@@ -503,27 +503,40 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | `default/config.yaml`, `default/content/index.json`, and `default/content/settings.json`. |
 | Area | Install defaults and bundled content. |
-| Divergence reason | SillyBunny ships fork defaults, agents, presets, and settings while preserving install-time migration and reset behavior. |
+| Divergence reason | SillyBunny ships fork defaults, agents, presets, and settings while preserving install-time migration and reset behavior. v1.9.0 registers the `Libadwaita` and `Libadwaita Light` themes in `index.json`, makes `Libadwaita` the default theme with matching colors in `settings.json`, and defaults `reduced_motion` to `false`. |
 | Target seam | `src/server-init.js`, `src/endpoints/content-manager.js`, and bundled-template update helpers. |
 | Adapter shape | Preserve upstream IDs and metadata keys; change default values and bundled indexes only through existing synchronization paths. |
 | Protecting tests | `tests/default-preset-deletions.test.js`, bundled-template and agent-version tests, plus Bun initialization smoke. |
 | Validation | `npm run init`, full unit suite, and fresh-data-directory smoke. |
-| Rollback path | Restore individual defaults through the bundled update flow without deleting existing-user settings. |
-| Last reviewed | 2026-07-28 pre-release audit. |
+| Rollback path | Restore individual defaults through the bundled update flow without deleting existing-user settings. Existing users keep their saved theme and motion setting. |
+| Last reviewed | 2026-10-01 PR #870 libadwaita defaults. |
 | Owner | Defaults and release integrator. |
+
+### `public/style.css` - libadwaita shell foundation
+| Field | Value |
+| --- | --- |
+| Area | Shell typography, status colors, controls, and chat disclosures. |
+| Divergence reason | The v1.9.0 libadwaita shell needs root-level defaults that load before fork sheets: Adwaita Sans/Mono font stacks, libadwaita dark status colors, the 1.81 display step, libadwaita check buttons, and short reasoning/OOC disclosure reveals. |
+| Target seam | `public/css/sillybunny-theme.css` owns layer, radius, motion, and light-tone tokens; `style.css` keeps only root defaults and base control styling. |
+| Adapter shape | Variable value swaps in `:root`, the checkbox rule block, and one `sb-chat-disclosure-in` keyframe with its two selectors. The status-colour and checkbox blocks carry `SillyBunny` inline comments. |
+| Protecting tests | `tests/ui-motion-css-compliance.test.js`, `tests/mobile-css-budgets.test.js`, `tests/frontend-assets.test.js`. |
+| Validation | `npm run lint`, `npm run check:frontend-contracts`, `npm run build:frontend`, `npm run check:frontend-budgets`, full unit suite, desktop/mobile screenshots in both tones. |
+| Rollback path | Revert the variable values, checkbox block, and disclosure keyframe; persisted themes and user CSS are unaffected. |
+| Last reviewed | 2026-10-01 PR #870 libadwaita shell. |
+| Owner | UI and shell integrator. |
 
 ### Frontend identity, localization, and static boot assets
 | Field | Value |
 | --- | --- |
 | File | `public/locales/*.json`, `public/img/**`, `public/*.ico`, `public/login.html`, `public/manifest.json`, `public/global.d.ts`, `public/lib/polyfill.js`, and `public/webfonts/**`. |
 | Area | Branding, localization, login, PWA metadata, compatibility, and static assets. |
-| Divergence reason | SillyBunny replaces product identity and translated copy, adds fork provider assets, and keeps browser/PWA boot metadata aligned with the fork. |
+| Divergence reason | SillyBunny replaces product identity and translated copy, adds fork provider assets, and keeps browser/PWA boot metadata aligned with the fork. v1.9.0 replaces bundled Figtree with Adwaita Sans and adds Adwaita Mono (both OFL, licenses shipped alongside). |
 | Target seam | Static assets and locale catalogs; no runtime seam. |
-| Adapter shape | Preserve upstream locale keys, manifest structure, icon dimensions, and browser compatibility contracts. |
-| Protecting tests | Frontend asset tests, manifest/browser smoke, README mirror validation, and full build. |
+| Adapter shape | Preserve upstream locale keys, manifest structure, icon dimensions, and browser compatibility contracts. Keep font preload/rewrite paths in `public/index.html` and `src/frontend-assets.js` in sync with `public/webfonts/`. |
+| Protecting tests | `tests/frontend-assets.test.js`, manifest/browser smoke, README mirror validation, and full build. |
 | Validation | `npm run build:frontend`, `npm run check:frontend-budgets`, JSON parsing, and desktop/mobile login smoke. |
 | Rollback path | Restore individual assets or translations without changing persisted data. |
-| Last reviewed | 2026-07-28 pre-release audit. |
+| Last reviewed | 2026-10-01 PR #870 Adwaita fonts. |
 | Owner | UI and localization integrator. |
 
 ### Upstream CSS surfaces and compatibility styling

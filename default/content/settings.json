@@ -155,7 +155,7 @@
         "relaxed_api_urls": false,
         "bogus_folders": true,
         "zoomed_avatar_magnification": true,
-        "reduced_motion": true,
+        "reduced_motion": false,
         "compact_input_area": false,
         "instruct": {
             "enabled": false,

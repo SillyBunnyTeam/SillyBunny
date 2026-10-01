@@ -596,6 +596,23 @@ describe('mobile shell lifecycle wiring', () => {
         expect(setMobileNavOpenStateSource).toContain('requestMobileViewportReset();');
     });
 
+    test('character drawer Escape closes locally while deferring nested controls', () => {
+        const injectCharacterDrawerControlsSource = getFunctionSource('injectCharacterDrawerControls');
+        const escapeSource = getFunctionSource('bindCharacterDrawerEscapeHandler');
+        const deferSource = getFunctionSource('shouldDeferCharacterDrawerEscape');
+
+        expect(injectCharacterDrawerControlsSource).toContain('bindCharacterDrawerEscapeHandler();');
+        expect(escapeSource).toContain('event.key !== \'Escape\'');
+        expect(escapeSource).toContain('panel.classList.contains(\'openDrawer\')');
+        expect(escapeSource).toContain('shouldDeferCharacterDrawerEscape(event, panel)');
+        expect(escapeSource).toContain('closeCharacterPanel();');
+        expect(deferSource).toContain('event.defaultPrevented || event.isComposing');
+        expect(deferSource).toContain('\'#curEditTextarea\'');
+        expect(deferSource).toContain('\'#mes_stop\'');
+        expect(deferSource).toContain('dialog[open]');
+        expect(deferSource).toContain('[role="dialog"]');
+    });
+
     test('settles mobile viewport reset without reapplying the fixed-position workaround', () => {
         expect(browserFixesSource).toContain('import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from \'./mobile-send-button.js\';');
         expect(browserFixesSource).toContain('function addDocumentViewportAnchorPatch({ suspendWhileEditing = false } = {}) {');
@@ -816,7 +833,7 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('bindSearchShortcutPreFocus(rightShortcut, () => getShortcutTarget(\'right\'));');
         expect(setUniversalSearchOpenStateSource).toContain('focusUniversalSearchInput(input);');
         expect(buildUniversalSearchRowSource).toContain('setUniversalSearchOpenState(true, { focusInput: true });');
-        expect(tabsCssSource).toMatch(/\.sb-search-results\s*\{[\s\S]*position:\s*relative;[\s\S]*isolation:\s*isolate;[\s\S]*background:\s*rgb\(from var\(--SmartThemeBlurTintColor\) r g b \/ 1\)/);
+        expect(tabsCssSource).toMatch(/\.sb-search-results\s*\{[\s\S]*position:\s*relative;[\s\S]*isolation:\s*isolate;[\s\S]*background:\s*var\(--sb-layer-popover\)/);
         expect(tabsCssSource).toMatch(/\.sb-search-result,\s*\n\.sb-search-empty\s*\{[\s\S]*position:\s*relative;[\s\S]*border:\s*0;\s*background:\s*transparent;/);
     });
 

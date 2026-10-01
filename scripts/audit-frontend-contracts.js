@@ -332,7 +332,7 @@ function auditCssAst(ast, sharedGuards = []) {
 
             if (declaration.property.toLowerCase() === '--sb-transition-slow' && /(?:\d+(?:\.\d+)?)ms/i.test(declaration.value)) {
                 const duration = Number(declaration.value.match(/(\d+(?:\.\d+)?)ms/i)[1]);
-                if (duration > 240) {
+                if (duration > 300) {
                     slowTransitionTokens.push(`${declaration.property}: ${declaration.value}`);
                 }
             }
@@ -425,7 +425,7 @@ function auditCssFile(relativePath, source, sharedGuards) {
             'warning',
             'slow-transition-token-over-limit',
             relativePath,
-            `SillyBunny slow transition token exceeds 240ms: ${token}.`,
+            `SillyBunny slow transition token exceeds 300ms: ${token}.`,
             undefined,
             token,
         ));

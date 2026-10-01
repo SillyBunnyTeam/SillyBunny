@@ -254,7 +254,7 @@ const CHAT_STYLE_BODY_CLASSES = Object.freeze({
 
 const LEGACY_CHAT_STYLE_BODY_CLASSES = Object.freeze([]);
 const NATIVE_CHAT_STYLE_STYLESHEET_ID = 'sillybunny-native-chat-styles';
-const NATIVE_CHAT_STYLE_STYLESHEET_HREF = 'css/sillybunny-chat-styles.css?v=20260606a';
+const NATIVE_CHAT_STYLE_STYLESHEET_HREF = 'css/sillybunny-chat-styles.css?v=20261002d';
 
 function ensureNativeChatStyleStylesheet() {
     if (document.getElementById(NATIVE_CHAT_STYLE_STYLESHEET_ID)) {
@@ -2344,6 +2344,9 @@ export async function loadPowerUserSettings(settings, data) {
     // that exact legacy selection; explicitly chosen themes remain untouched.
     if (power_user.theme === 'Dark V 1.0') {
         power_user.theme = 'Libadwaita';
+        // Dark V 1.0 shipped with reduced motion on; the libadwaita shell
+        // expects motion. OS prefers-reduced-motion still wins at apply time.
+        power_user.reduced_motion = false;
         // Migrate the old bundled default accent as well, but preserve a
         // user-selected accent that differs from Dark V's shipped values.
         if (power_user.quote_text_color === 'rgba(198, 193, 151, 1)'
@@ -2403,6 +2406,17 @@ export async function loadPowerUserSettings(settings, data) {
 
     if (data.themes !== undefined) {
         themes = data.themes;
+    }
+
+    // SillyBunny: pre-release Libadwaita seeds carried the Dark V 1.0 palette, so selecting them left
+    // Dark V colours behind. When the saved palette is still that exact seed, re-apply the (server-
+    // reconciled) bundled theme once; any colour the user changed keeps the saved state untouched.
+    if (/^Libadwaita( Light)?$/.test(power_user.theme)
+        && power_user.main_text_color === 'rgba(207, 207, 197, 1)'
+        && power_user.blur_tint_color === 'rgba(29, 33, 40, 0.9)'
+        && themes.some(theme => theme.name === power_user.theme && theme.blur_tint_color !== power_user.blur_tint_color)) {
+        applyTheme(power_user.theme);
+        saveSettingsDebounced();
     }
 
     if (data.movingUIPresets !== undefined) {

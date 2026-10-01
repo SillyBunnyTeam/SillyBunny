@@ -48,9 +48,9 @@
         'pals stage';
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 88%, transparent);
-    border-radius: var(--sb-radius-xl, 28px) var(--sb-radius-xl, 28px) 0 0;
-    /* Flat neutral surface to match the shell; no accent glow or window-level shadow. */
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent);
+    border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
+    /* libadwaita layer ladder: the frame is Window; rail, header, stage, and composer pick their own layers. */
+    background: var(--sb-layer-window);
     box-shadow: none;
     font-family: var(--mainFontFamily);
 }
@@ -78,8 +78,8 @@
     gap: 12px;
     min-block-size: 68px;
     padding: 12px 16px;
-    border-block-end: 1px solid color-mix(in srgb, var(--sb-shell-border) 84%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, transparent);
+    border-block-end: var(--sb-headerbar-shade);
+    background: var(--sb-layer-headerbar);
     cursor: grab;
 }
 
@@ -190,9 +190,7 @@
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
     font-size: var(--sb-type-caption);
     font-weight: var(--sb-weight-title);
-    letter-spacing: var(--sb-tracking-kicker);
     line-height: var(--sb-line-compact);
-    text-transform: uppercase;
 }
 
 .sb-conversation-header-name {
@@ -248,8 +246,9 @@
     display: flex;
     min-block-size: 0;
     flex-direction: column;
-    border-inline-end: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 80%, transparent);
+    border-inline-end: var(--sb-headerbar-shade);
+    /* libadwaita sidebar-bg. */
+    background: var(--sb-layer-canvas);
 }
 
 .sb-conversation-rail-header {
@@ -315,12 +314,12 @@
     align-items: center;
     padding: 10px;
     border: 1px solid transparent;
-    border-radius: var(--sb-radius-button, 14px);
+    border-radius: var(--sb-radius-control);
     background: transparent;
     color: var(--SmartThemeBodyColor);
     cursor: pointer;
     text-align: left;
-    transition: background-color 180ms ease-out;
+    transition: background-color var(--sb-transition-fast);
 }
 
 /* libadwaita sidebar rows: neutral hover and selected fills, no border or lift. */
@@ -546,12 +545,12 @@
     gap: 1px;
     padding: 6px 8px;
     border: 1px solid transparent;
-    border-radius: var(--sb-radius-sm, 10px);
+    border-radius: var(--sb-radius-control);
     background: transparent;
     color: var(--SmartThemeBodyColor);
     cursor: pointer;
     text-align: left;
-    transition: background-color 160ms ease-out;
+    transition: background-color var(--sb-transition-fast);
 }
 
 @media (hover: hover) {
@@ -653,12 +652,8 @@
     min-block-size: 0;
     display: flex;
     flex-direction: column;
-    background: color-mix(in srgb, var(--SmartThemeChatTintColor) 84%, var(--SmartThemeBlurTintColor));
-}
-
-/* Persona status is shown by the status dot; the stage stays a flat surface without a coloured glow. */
-#sheld[data-sb-conversation-mode='on'] #sb_conversation_stage[data-ambient-status='offline'] {
-    background: color-mix(in srgb, var(--SmartThemeChatTintColor) 78%, var(--SmartThemeBlurTintColor));
+    /* View layer, matching the roleplay chat column. Status is carried by the status dot alone. */
+    background: var(--sb-layer-view);
 }
 
 .sb-conversation-timeline {
@@ -681,10 +676,11 @@
     align-items: start;
     margin: auto;
     padding: 12px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 76%, transparent);
-    border-radius: var(--sb-radius-lg, 22px);
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 82%, transparent);
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 72%, transparent);
+    border: 0;
+    border-radius: var(--sb-radius-card);
+    /* libadwaita card: tonal fill, no border. */
+    background: var(--sb-raised-bg);
+    color: var(--sb-muted-fg);
     line-height: var(--sb-line-body);
 }
 
@@ -717,10 +713,9 @@
     gap: 12px;
     align-items: center;
     padding: 10px 14px;
-    border-block-start: 1px solid color-mix(in srgb, var(--sb-shell-border) 42%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 60%, var(--SmartThemeChatTintColor) 40%);
-    -webkit-backdrop-filter: blur(12px);
-    backdrop-filter: blur(12px);
+    border-block-start: var(--sb-headerbar-shade);
+    /* libadwaita bottom toolbar: opaque header-bar layer, no blur. */
+    background: var(--sb-layer-headerbar);
 }
 
 .sb-conversation-channel-tabs {
@@ -844,9 +839,9 @@
 }
 
 .sb-conversation-search-wrap input:focus {
-    border-color: color-mix(in srgb, var(--sb-accent) 54%, transparent) !important;
+    border-color: var(--sb-entry-focus-border) !important;
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent) !important;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-accent) 14%, transparent) !important;
+    box-shadow: var(--sb-entry-focus-ring) !important;
     outline: none !important;
 }
 
@@ -864,7 +859,7 @@
     color: var(--SmartThemeBodyColor);
     font-weight: var(--sb-weight-title);
     pointer-events: none;
-    box-shadow: 0 18px 38px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent);
+    box-shadow: var(--sb-shadow-popover);
 }
 
 .sb-conversation-drop-hint[hidden] {
@@ -924,10 +919,11 @@
     position: relative;
     min-inline-size: 0;
     padding: 6px 10px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
-    border-radius: var(--sb-radius-lg, 22px) var(--sb-radius-lg, 22px) var(--sb-radius-lg, 22px) 8px;
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, transparent);
-    box-shadow: 0 12px 22px color-mix(in srgb, var(--SmartThemeShadowColor) 10%, transparent);
+    /* libadwaita message bubble: tonal fill over the view, no border or shadow. */
+    border: 1px solid transparent;
+    border-radius: var(--sb-radius-alert) var(--sb-radius-alert) var(--sb-radius-alert) 6px;
+    background: var(--sb-raised-bg);
+    box-shadow: none;
 }
 
 .sb-conversation-message[data-pinned='true'] .sb-conversation-message-bubble {
@@ -936,9 +932,9 @@
 }
 
 .sb-conversation-message[data-role='user'] .sb-conversation-message-bubble {
-    border-color: color-mix(in srgb, var(--sb-accent) 34%, var(--sb-shell-border));
-    border-radius: var(--sb-radius-lg, 22px) var(--sb-radius-lg, 22px) 8px var(--sb-radius-lg, 22px);
-    background: color-mix(in srgb, var(--sb-accent) 13%, var(--SmartThemeBlurTintColor));
+    border-color: transparent;
+    border-radius: var(--sb-radius-alert) var(--sb-radius-alert) 6px var(--sb-radius-alert);
+    background: color-mix(in srgb, var(--sb-accent) 18%, var(--sb-layer-view));
     text-align: left;
 }
 
@@ -1009,8 +1005,6 @@
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
     font-size: 0.9em;
     font-weight: var(--sb-weight-control);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
 }
 
 .sb-conversation-reply-text {
@@ -1267,10 +1261,10 @@
 .sb-conversation-message-edit-textarea {
     width: 100%;
     min-height: 80px;
-    background: var(--input-bg, #1a1a1a);
-    color: var(--SmartThemeBodyColor, #ffffff);
-    border: 1px solid var(--sb-shell-border, #333);
-    border-radius: 6px;
+    background: var(--sb-composer-input-bg);
+    color: var(--SmartThemeBodyColor);
+    border: 1px solid transparent;
+    border-radius: var(--sb-radius-control);
     padding: 8px;
     font-family: inherit;
     font-size: 14px;
@@ -1281,7 +1275,9 @@
 }
 
 .sb-conversation-message-edit-textarea:focus {
-    border-color: var(--sb-accent);
+    border-color: var(--sb-composer-focus-border);
+    box-shadow: var(--sb-composer-focus-ring);
+    background: var(--sb-composer-input-bg);
 }
 
 .sb-conversation-message-edit-buttons {
@@ -1435,8 +1431,9 @@
     gap: 10px;
     align-items: end;
     padding: 8px 10px;
-    border-block-start: 1px solid color-mix(in srgb, var(--sb-shell-border) 78%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 86%, transparent);
+    border-block-start: var(--sb-headerbar-shade);
+    /* libadwaita bottom toolbar, matching the roleplay composer. */
+    background: var(--sb-layer-headerbar);
 }
 
 .sb-conversation-reply-preview {
@@ -1483,6 +1480,17 @@
     margin-block: 0;
     resize: none;
     line-height: 1.25;
+    /* libadwaita entry: body-colour tint, transparent border at rest, accent focus ring. */
+    border: 1px solid transparent;
+    background: var(--sb-composer-input-bg);
+    border-radius: var(--sb-radius-card);
+}
+
+.sb-conversation-composer textarea:focus {
+    border-color: var(--sb-composer-focus-border);
+    box-shadow: var(--sb-composer-focus-ring);
+    background: var(--sb-composer-input-bg);
+    outline: none;
 }
 
 .sb-conversation-attachment-preview {
@@ -1533,7 +1541,6 @@
 }
 
 #sb_conversation_send {
-    min-height: 38px;
     margin-block: 0;
 }
 
@@ -1600,41 +1607,47 @@
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-/* libadwaita suggested-action: solid accent pill, matching the roleplay send button. */
+/* libadwaita .circular.suggested-action: same size, fills, and shape as the roleplay #send_but. */
 #sheld[data-sb-conversation-mode='on'] #sb_conversation_send.menu_button {
     flex: 0 0 auto;
-    width: 38px;
-    min-width: 38px;
-    height: 38px;
-    min-height: 38px;
+    width: var(--sb-composer-action-size);
+    min-width: var(--sb-composer-action-size);
+    height: var(--sb-composer-action-size);
+    min-height: var(--sb-composer-action-size);
     padding: 0;
     justify-content: center;
-    border-color: transparent;
-    border-radius: 999px;
-    background: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
-    color: var(--sb-on-solid-accent, var(--sb-on-accent, var(--color-background, var(--SmartThemeBlurTintColor))));
-    font-size: 1rem;
+    border: 0;
+    border-radius: 50%;
+    background: var(--sb-accent);
+    color: var(--sb-on-solid-accent);
+    font-size: var(--sb-composer-action-icon-size);
     box-shadow: none;
     transform: none;
     transition: background-color var(--sb-transition-fast);
 }
 
+/* The theme glyph shadow darkens the plane on the accent fill; #send_but renders it without one. */
+#sheld[data-sb-conversation-mode='on'] #sb_conversation_send.menu_button,
+#sheld[data-sb-conversation-mode='on'] #sb_conversation_send.menu_button > i {
+    text-shadow: none;
+}
+
 /* libadwaita insensitive suggested-action: neutral fill with dimmed body ink, so it never reads as dark-on-dark. */
 #sheld[data-sb-conversation-mode='on'] #sb_conversation_send.menu_button:disabled {
     background: var(--sb-raised-bg);
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 55%, transparent);
+    color: var(--sb-muted-fg);
     opacity: 1;
 }
 
 @media (hover: hover) {
     #sheld[data-sb-conversation-mode='on'] #sb_conversation_send.menu_button:not(:disabled):hover {
-        background: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 88%, var(--SmartThemeBodyColor));
+        background: color-mix(in srgb, var(--sb-accent) 90%, white);
         box-shadow: none;
     }
 }
 
 #sheld[data-sb-conversation-mode='on'] #sb_conversation_send.menu_button:not(:disabled):active {
-    background: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 78%, var(--SmartThemeBodyColor));
+    background: color-mix(in srgb, var(--sb-accent) 80%, black);
     transform: none;
 }
 
@@ -1666,8 +1679,8 @@
     flex-direction: column;
     border-inline-start: 1px solid color-mix(in srgb, var(--sb-shell-border) 84%, transparent);
     /* Opaque so body.no-blur and translucent themes never show the timeline through the sheet. */
-    background: var(--SmartThemeBlurTintColor);
-    box-shadow: -24px 0 54px color-mix(in srgb, var(--SmartThemeShadowColor) 22%, transparent);
+    background: var(--sb-layer-drawer);
+    box-shadow: var(--sb-shadow-dialog);
 }
 
 /* libadwaita header-bar close: flat circle. */
@@ -1896,7 +1909,6 @@
     font-size: var(--sb-type-meta);
     font-weight: 500;
     margin-inline-start: 4px;
-    text-transform: uppercase;
 }
 
 .sb-conversation-generate-schedule {
@@ -1940,8 +1952,6 @@
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
     font-size: var(--sb-type-meta);
     font-weight: var(--sb-weight-control, 500);
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
     margin: 4px 0 2px;
 }
 
@@ -2017,8 +2027,8 @@
     gap: 10px;
     flex: 0 0 auto;
     padding: 10px 14px;
-    border-block-start: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, transparent);
+    border-block-start: var(--sb-headerbar-shade);
+    background: var(--sb-layer-canvas);
 }
 
 .sb-conversation-rail-footer-avatar {
@@ -2098,10 +2108,10 @@
     flex-direction: column;
     gap: 2px;
     padding: 6px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 88%, transparent);
-    border-radius: var(--sb-radius-md, 12px);
-    background: var(--SmartThemeBlurTintColor);
-    box-shadow: 0 18px 40px color-mix(in srgb, var(--black50a, rgba(0, 0, 0, 0.5)) 60%, transparent);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent);
+    border-radius: var(--sb-radius-overlay);
+    background: var(--sb-layer-popover);
+    box-shadow: var(--sb-shadow-popover);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y;
@@ -2200,9 +2210,7 @@
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 62%, transparent);
     font-size: var(--sb-type-meta);
     font-weight: var(--sb-weight-title);
-    letter-spacing: var(--sb-tracking-label, 0.08em);
     line-height: var(--sb-line-compact);
-    text-transform: uppercase;
 }
 
 .sb-conversation-persona-note-option {
@@ -2588,9 +2596,9 @@
 }
 
 .sb-conversation-message[data-role='system'] .sb-conversation-message-bubble {
-    border-color: color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 54%, transparent);
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 72%, transparent);
+    border-color: transparent;
+    background: transparent;
+    color: var(--sb-muted-fg);
     font-size: var(--sb-type-meta);
     text-align: center;
 }
@@ -2598,8 +2606,7 @@
 .sb-conversation-image-preview img {
     max-inline-size: min(100%, 320px);
     block-size: auto;
-    border-radius: var(--sb-radius-md, 12px);
-    box-shadow: 0 8px 22px color-mix(in srgb, var(--black50a, rgba(0, 0, 0, 0.5)) 40%, transparent);
+    border-radius: var(--sb-radius-card);
 }
 
 .sb-conversation-message[data-role='partner'] .sb-conversation-message-bubble {
@@ -2718,8 +2725,7 @@
 
     .sb-conversation-header-kicker {
         overflow: hidden;
-        font-size: 9px;
-        letter-spacing: 0.12em;
+        font-size: var(--sb-type-caption);
         line-height: 1.05;
         text-overflow: ellipsis;
         white-space: nowrap;

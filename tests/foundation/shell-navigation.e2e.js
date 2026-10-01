@@ -111,7 +111,7 @@ test('desktop Characters drawer opens from its top-bar trigger', async ({ page, 
     await expect(drawer).toHaveClass(/openDrawer/);
     await expect.poll(() => page.evaluate(() => window.__sbShellOriginAnimation)).not.toBeNull();
     const animation = await page.evaluate(() => window.__sbShellOriginAnimation);
-    expect(animation.duration).toBe(240);
+    expect(animation.duration).toBe(472);
     expect(animation.origin).toBe(animation.expectedOrigin);
     expect(animation.keyframes).toEqual([
         { opacity: 0, transform: 'scale(0.96)' },
@@ -119,6 +119,43 @@ test('desktop Characters drawer opens from its top-bar trigger', async ({ page, 
     ]);
 
     await drawer.locator('.sb-shell-close').click();
+    await expect(drawer).not.toHaveClass(/openDrawer/);
+});
+
+test('Characters drawer Escape preserves fullscreen editor precedence', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForFunction(() => typeof window.SillyBunnyShell?.openTab === 'function' && !document.querySelector('#preloader'));
+
+    const openDialog = page.locator('dialog[open]');
+    if (await openDialog.count()) {
+        await page.keyboard.press('Escape');
+        await expect(openDialog).toHaveCount(0);
+    }
+    const setupWizard = page.locator('#qig-setup-wizard');
+    if (await setupWizard.isVisible().catch(() => false)) {
+        await setupWizard.locator('.qig-close-btn').click({ force: true });
+        await expect(setupWizard).toBeHidden();
+    }
+
+    const drawer = page.locator('#right-nav-panel');
+    await page.locator('#sb-character-toggle').click();
+    await expect(drawer).toHaveClass(/openDrawer/);
+
+    const editorTab = drawer.locator('[data-sb-character-tab="editor"]');
+    if (await editorTab.isVisible().catch(() => false)) {
+        await editorTab.click();
+    }
+
+    const fullscreenToggle = drawer.locator('#sb_character_editor_fullscreen_toggle');
+    if (await fullscreenToggle.isVisible().catch(() => false)) {
+        await fullscreenToggle.click();
+        await expect(drawer).toHaveClass(/sb-character-editor-fullscreen/);
+        await page.keyboard.press('Escape');
+        await expect(drawer).not.toHaveClass(/sb-character-editor-fullscreen/);
+        await expect(drawer).toHaveClass(/openDrawer/);
+    }
+
+    await page.keyboard.press('Escape');
     await expect(drawer).not.toHaveClass(/openDrawer/);
 });
 
@@ -134,10 +171,15 @@ test('mobile top-bar shell triggers open from their trigger origin', async ({ pa
         const originalAnimate = HTMLElement.prototype.animate;
         HTMLElement.prototype.animate = function (keyframes, options) {
             if (this.matches('#left-nav-panel, #user-settings-block, #right-nav-panel')) {
+                // Measure before the animation scales the panel; a mid-animation rect is off by a pixel.
+                const toggleId = { 'left-nav-panel': 'sb-left-shell-toggle', 'user-settings-block': 'sb-right-shell-toggle', 'right-nav-panel': 'sb-character-toggle' }[this.id];
+                const panelRect = this.getBoundingClientRect();
+                const triggerRect = document.getElementById(toggleId).getBoundingClientRect();
                 window.__sbMobileShellAnimations.push({
                     id: this.id,
                     duration: options.duration,
                     origin: this.style.transformOrigin,
+                    expectedOrigin: `${Math.round(triggerRect.left + triggerRect.width / 2 - panelRect.left)}px ${Math.round(triggerRect.top + triggerRect.height / 2 - panelRect.top)}px`,
                     keyframes: keyframes.map(({ opacity, scale }) => ({ opacity, scale })),
                 });
             }
@@ -152,18 +194,11 @@ test('mobile top-bar shell triggers open from their trigger origin', async ({ pa
     ]) {
         await page.locator(`#${toggleId}`).click();
         await expect.poll(() => page.evaluate(({ panelId }) => window.__sbMobileShellAnimations.findLast(item => item.id === panelId), { panelId })).toBeTruthy();
-        const details = await page.evaluate(({ panelId, toggleId }) => {
-            const panel = document.getElementById(panelId);
-            const trigger = document.getElementById(toggleId);
-            const panelRect = panel.getBoundingClientRect();
-            const triggerRect = trigger.getBoundingClientRect();
-            return {
-                expectedOrigin: `${Math.round(triggerRect.left + triggerRect.width / 2 - panelRect.left)}px ${Math.round(triggerRect.top + triggerRect.height / 2 - panelRect.top)}px`,
-                animation: window.__sbMobileShellAnimations.findLast(item => item.id === panelId),
-            };
-        }, { panelId, toggleId });
-        expect(details.animation.duration).toBe(240);
-        expect(details.animation.origin).toBe(details.expectedOrigin);
+        const details = await page.evaluate(({ panelId }) => ({
+            animation: window.__sbMobileShellAnimations.findLast(item => item.id === panelId),
+        }), { panelId });
+        expect(details.animation.duration).toBe(472);
+        expect(details.animation.origin).toBe(details.animation.expectedOrigin);
         expect(details.animation.keyframes).toEqual([
             { opacity: 0, scale: '0.96' },
             { opacity: 1, scale: '1' },

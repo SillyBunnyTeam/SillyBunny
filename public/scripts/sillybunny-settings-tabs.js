@@ -18,11 +18,11 @@ export const initializeSettingsTabs = (function () {
             -webkit-overflow-scrolling: touch;
         }
 
-        /* Tab buttons */
+        /* Tab buttons: libadwaita flat interactive surface treatment */
         .sb-settings-tab-btn {
-            background: var(--sb-card-bg, #2f3238);
-            color: var(--sb-text-muted, #999992);
-            border: 1px solid color-mix(in srgb, var(--sb-shell-border, #cfcfc5) 15%, transparent);
+            background: transparent;
+            color: var(--SmartThemeBodyColor);
+            border: 1px solid transparent;
             border-radius: var(--sb-radius-button, 14px);
             padding: 10px 16px;
             font-family: var(--sb-font-display, var(--mainFontFamily, "Adwaita Sans", sans-serif));
@@ -32,20 +32,27 @@ export const initializeSettingsTabs = (function () {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            transition: all 0.2s ease-in-out;
+            transition: background-color var(--sb-transition-fast, 0.15s ease-out), color var(--sb-transition-fast, 0.15s ease-out);
             white-space: nowrap;
         }
 
         .sb-settings-tab-btn:hover {
-            background: var(--sb-bg-hover, #393d41);
-            color: var(--sb-text-color, #cfcfc5);
+            background: var(--sb-flat-hover-bg);
         }
 
         .sb-settings-tab-btn.active {
-            background: var(--color-primary, var(--sb-accent, #c9c6a8));
-            color: var(--sb-on-accent, #050607);
-            border-color: var(--color-primary, var(--sb-accent, #c9c6a8));
-            box-shadow: 0 4px 12px color-mix(in srgb, var(--color-primary, var(--sb-accent, #c9c6a8)) 25%, transparent);
+            background: var(--sb-flat-selected-bg);
+            color: var(--SmartThemeBodyColor);
+            border-color: transparent;
+        }
+
+        .sb-settings-tab-btn.active:hover {
+            background: var(--sb-flat-selected-hover-bg);
+        }
+
+        .sb-settings-tab-btn:focus-visible {
+            outline: none;
+            box-shadow: var(--sb-focus-ring-inset);
         }
 
         /* Content grid layout on desktop */

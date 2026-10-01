@@ -52,12 +52,29 @@ function getMediaQueryPxValues(cssSource) {
 // #HotSwapWrapper padding:0 !important against the base flex-container rules.
 // sillybunny-tabs.css raised 389 -> 390: one grouped placeholder color for the
 // three search fields must beat style.css's !important SmartThemeEmColor rule.
+// sillybunny-tabs.css raised 390 -> 398: v1.9.0 libadwaita shell overhaul adds
+// shell navigation, desktop/mobile header surfaces, drawers, and mobile nav.
+// sillybunny-tabs.css lowered 398 -> 394: the #top-bar glow/no-blur overrides
+// moved to the source rule in sillybunny-theme.css.
+// sillybunny-theme.css raised 165 -> 245: v1.9.0 overlay surfaces (options and
+// extensions menus, toasts, composer, send button, placeholders) must beat
+// upstream !important and inline rules. Flags on menus, popups, select2,
+// ctx-menus, and tooltips were removed after computed-style probes showed no diff.
+// sillybunny-paper-theme.css lowered 55 -> 51: hard-coded colour overrides removed.
+// sillybunny-theme.css raised 245 -> 248: the phone composer goes full-bleed against the
+// !important frame rule, and the send button beats style.css's 0.7 composer-button dimming.
+// sillybunny-tabs.css raised 394 -> 398: the joined desktop bottom-bar stack must square the
+// composer's top corners against the !important #send_form frame radius in sillybunny-theme.css.
+// sillybunny-mobile-shell.css raised 684 -> 685: the circular send/stop button beats the
+// !important 10px/9px radius in upstream mobile-styles.css.
+// sillybunny-mobile-shell.css raised 685 -> 688: the libadwaita composer entry's rest border
+// and focus border-color/box-shadow must beat upstream mobile-styles.css !important rules.
 const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
-    'sillybunny-mobile-shell.css': 685,
-    'sillybunny-paper-theme.css': 55,
-    'sillybunny-tabs.css': 390,
+    'sillybunny-mobile-shell.css': 688,
+    'sillybunny-paper-theme.css': 51,
+    'sillybunny-tabs.css': 398,
     'sillybunny-chat-styles.css': 225,
-    'sillybunny-theme.css': 165,
+    'sillybunny-theme.css': 248,
 });
 
 const FORK_DISTINCT_BREAKPOINT_BUDGET = 18;

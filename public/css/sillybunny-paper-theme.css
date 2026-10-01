@@ -1,7 +1,4 @@
 :root {
-    --SmartThemeUserMesBlurTintColor: rgba(32, 32, 32, 0.98);
-    --SmartThemeBotMesBlurTintColor: rgba(30, 30, 30, 0.98);
-    --SmartThemeBorderColor: rgba(192, 180, 161, 0.22);
     --customCSS-bg-blur: 6px;
 
     --topBarBlockSize: 40px;
@@ -80,15 +77,15 @@ body::after {
 
 /*
  * Soft, rounded app surfaces. Controls inside the libadwaita-styled bottom chat bar, Conversation
- * chrome, and message edit rows are excluded so their own pill/circle radii survive on phones.
+ * chrome, the top bar, message edit rows, and shell close buttons are excluded so their own pill/circle radii survive on phones.
  */
 .drawer-content,
 .popup,
-.menu_button:not(.gg-action-button):not(:is(#sheld[data-sb-conversation-mode='on'], #sb-bottom-chat-bar, .mes_edit_buttons, .mes_reasoning_actions) *),
+.menu_button:not(.gg-action-button):not(.sb-shell-close):not(:is(#sheld[data-sb-conversation-mode='on'], #sb-bottom-chat-bar, #top-bar, .mes_edit_buttons, .mes_reasoning_actions) *),
 input,
 textarea,
 select,
-button:not(.ica--tpanel-handle):not(.gg-action-button):not(:is(#sheld[data-sb-conversation-mode='on'], #sb-bottom-chat-bar, .mes_edit_buttons, .mes_reasoning_actions) *) {
+button:not(.ica--tpanel-handle):not(.gg-action-button):not(.sb-shell-close):not(:is(#sheld[data-sb-conversation-mode='on'], #sb-bottom-chat-bar, #top-bar, .mes_edit_buttons, .mes_reasoning_actions) *) {
     border-radius: 14px !important;
 }
 
@@ -104,32 +101,29 @@ button:not(.ica--tpanel-handle):not(.gg-action-button):not(:is(#sheld[data-sb-co
     padding-right: clamp(6px, 1.5vw, 16px) !important;
 }
 
-/* Softer, more opaque message bubbles with tighter text margins */
-.mes {
+/* Softer, more opaque message bubbles with tighter text margins. Scoped to the Bubbles chat style:
+   unscoped, these forced cards overrode Flat and every Moonlit Echoes style on phones. */
+body.bubblechat .mes {
     position: relative;
-    border-radius: 18px !important;
+    border-radius: var(--sb-radius-card, 12px) !important;
     margin-left: 0 !important;
     margin-right: 0 !important;
     margin-bottom: 8px !important;
     padding: 6px 8px !important;
-    border: 1px solid var(--SmartThemeBorderColor) !important;
-    box-shadow:
-        0 6px 22px rgba(0, 0, 0, 0.16),
-        inset 0 1px 0 rgba(255, 244, 210, 0.045) !important;
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    border: 0 !important;
+    box-shadow: none !important;
 }
 
-.mes[is_user='true'] {
+body.bubblechat .mes[is_user='true'] {
     background-color: var(--SmartThemeUserMesBlurTintColor) !important;
 }
 
-.mes[is_user='false'] {
+body.bubblechat .mes[is_user='false'] {
     background-color: var(--SmartThemeBotMesBlurTintColor) !important;
 }
 
 /* Light paper fiber on bubbles */
-.mes::after {
+body.bubblechat .mes::after {
     content: '';
     position: absolute;
     inset: 0;
@@ -149,12 +143,12 @@ button:not(.ica--tpanel-handle):not(.gg-action-button):not(:is(#sheld[data-sb-co
 }
 
 /* Greatly reduce inner gap between bubble edge and message text */
-.mes .mes_block {
+body.bubblechat .mes .mes_block {
     padding: 2px 4px !important;
     margin: 0 !important;
 }
 
-.mes .mes_text {
+body.bubblechat .mes .mes_text {
     margin: 0 !important;
     padding: 0 !important;
 }
@@ -189,18 +183,12 @@ button:not(.ica--tpanel-handle):not(.gg-action-button):not(:is(#sheld[data-sb-co
     width: 100% !important;
     max-width: none !important;
     border-radius: 0 !important;
-    background-color: rgba(17, 16, 13, 0.78) !important;
-    border: 1px solid var(--SmartThemeBorderColor) !important;
     border-left: 0 !important;
     border-right: 0 !important;
-    box-shadow: inset 0 1px 0 rgba(255, 244, 210, 0.05) !important;
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
 }
 
 #send_textarea {
     padding: 8px 10px !important;
-    background-color: rgba(30, 30, 30, 0.78) !important;
 }
 
 /* Reasoning keeps the shared desktop treatment (style.css); only tighten the phone gutter. */
