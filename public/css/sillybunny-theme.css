@@ -1958,6 +1958,15 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     text-align: center;
 }
 
+/* libadwaita flat-button hover. Opacity keeps upstream's fade transition; hidden arrows stay
+   hidden because the upstream hide rule forces its opacity. */
+@media (hover: hover) {
+    #chat .mes :is(.swipe_left, .swipe_right):hover {
+        opacity: 1;
+        background-color: var(--sb-flat-hover-bg);
+    }
+}
+
 #chat .mes .swipes-counter {
     position: relative;
     inline-size: 44px;
@@ -1982,6 +1991,110 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
         inset: -26px -6px 0 -16px;
         border-radius: inherit;
     }
+}
+
+/* libadwaita swipe picker: borderless rows, flat hover, neutral selection like the shell tabs. */
+.swipe_picker_block {
+    gap: 6px;
+    margin-top: 2px;
+    padding: 10px 12px;
+    border-color: transparent;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast), transform var(--sb-transition-fast);
+}
+
+/* Cancels upstream's sticky white hover on touch; hover-capable devices get the flat fill below. */
+.swipe_picker_block:hover {
+    background: transparent;
+}
+
+.swipe_picker_block[highlight]:hover {
+    background: var(--sb-flat-selected-bg);
+}
+
+@media (hover: hover) {
+    .swipe_picker_block:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+
+    .swipe_picker_block[highlight]:hover {
+        background: var(--sb-flat-selected-hover-bg);
+    }
+}
+
+.swipe_picker_block[highlight] {
+    background: var(--sb-flat-selected-bg);
+}
+
+.swipe_picker_block .select_chat_block_mes {
+    font-size: calc(var(--mainFontSize) * 0.86);
+    line-height: var(--sb-line-body);
+    color: var(--sb-muted-fg);
+}
+
+/* Swipe picker close: a libadwaita circular flat button with a plain cross. swipe-picker.js sets
+   inline display:block, width/height:auto and padding:0, so the glyph is centred with text-align
+   and a line-height equal to the min-size box instead of flex. */
+.swipe_picker_popup .popup-button-close.right_menu_button.fa-solid {
+    flex: 0 0 auto;
+    min-inline-size: 34px;
+    max-inline-size: 34px;
+    min-block-size: 34px;
+    max-block-size: 34px;
+    border-radius: 999px;
+    line-height: 34px;
+    text-align: center;
+}
+
+.swipe_picker_popup .popup-button-close::before {
+    content: '\f00d';
+}
+
+/* The Swipe ID entry matches the shell entries: tinted fill, no rest border, accent focus. */
+.swipe_picker_popup .popup-controls input {
+    border-color: transparent;
+    background-color: var(--sb-composer-input-bg);
+}
+
+.swipe_picker_popup .popup-controls input.text_pole:is(:focus, :focus-visible) {
+    border-color: var(--sb-composer-focus-border);
+    box-shadow: var(--sb-composer-focus-ring);
+}
+
+/* libadwaita circular icon buttons for the row actions. */
+.swipe_picker_block :is(.swipe_picker_expand_label, .swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 32px;
+    block-size: 32px;
+    padding: 0;
+    border-radius: 999px;
+    transition: opacity var(--sb-transition-fast), background-color var(--sb-transition-fast), transform var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    .swipe_picker_block :is(.swipe_picker_expand_label, .swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete:not(.disabled)):hover {
+        opacity: 1;
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+/* Swipe picker header: more breathing room. */
+.swipe_picker_header {
+    padding: 10px 12px;
+}
+
+.swipe_picker_block .select_chat_block_filename {
+    font-size: calc(var(--mainFontSize) * 0.88);
+    font-weight: 600;
+}
+
+.swipe_picker_block .chat_messages_date,
+.swipe_picker_block .chat_file_size,
+.swipe_picker_block .chat_messages_num {
+    font-size: calc(var(--mainFontSize) * 0.84);
 }
 
 body.bubblechat .mes {
@@ -7070,6 +7183,17 @@ body.no-blur #send_form {
     border: none !important;
     /* style.css dims every #rightSendForm child to 0.7; the suggested action stays solid. */
     opacity: 1 !important;
+}
+
+/* #rightSendForm > div:not(.mes_stop) in style.css outranks a bare #send_but and replaces the
+   transition with opacity-only, and its :hover adds an instant brightness filter; both made the
+   hover fill snap instead of fading like #sb_conversation_send. */
+#rightSendForm > #send_but {
+    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast), transform var(--sb-transition-fast);
+}
+
+#rightSendForm > #send_but:hover {
+    filter: none;
 }
 
 #send_but:hover:not(:disabled) {

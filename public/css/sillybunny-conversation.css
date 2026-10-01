@@ -319,7 +319,7 @@
     color: var(--SmartThemeBodyColor);
     cursor: pointer;
     text-align: left;
-    transition: background-color var(--sb-transition-fast);
+    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast), transform var(--sb-transition-fast);
 }
 
 /* libadwaita sidebar rows: neutral hover and selected fills, no border or lift. */
@@ -550,7 +550,7 @@
     color: var(--SmartThemeBodyColor);
     cursor: pointer;
     text-align: left;
-    transition: background-color var(--sb-transition-fast);
+    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast), transform var(--sb-transition-fast);
 }
 
 @media (hover: hover) {
@@ -1623,7 +1623,7 @@
     font-size: var(--sb-composer-action-icon-size);
     box-shadow: none;
     transform: none;
-    transition: background-color var(--sb-transition-fast);
+    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast), transform var(--sb-transition-fast);
 }
 
 /* The theme glyph shadow darkens the plane on the accent fill; #send_but renders it without one. */

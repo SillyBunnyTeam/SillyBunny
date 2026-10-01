@@ -5028,13 +5028,16 @@ function getTopbarGroupOrder({ iconsOnly, mobile }) {
     const right = [TOPBAR_EXTENSION_SLOT_ID];
 
     if (iconsOnly) {
-        right.push(...quickAccessIds);
+        // Quick Access gathers on the right here, so the left quick divider parks at the end of
+        // the left group, where CSS hides it.
+        left.push('sb-topbar-divider-quick-left');
+        right.push(...quickAccessIds, 'sb-topbar-divider-quick-right');
     } else {
-        left.push('sb-shortcut-left', 'sb-shortcut-slot3', 'sb-shortcut-slot4');
-        right.push('sb-shortcut-slot6', 'sb-shortcut-slot5', 'sb-shortcut-right');
+        left.push('sb-topbar-divider-quick-left', 'sb-shortcut-left', 'sb-shortcut-slot3', 'sb-shortcut-slot4');
+        right.push('sb-shortcut-slot6', 'sb-shortcut-slot5', 'sb-shortcut-right', 'sb-topbar-divider-quick-right');
     }
 
-    // The home divider marks the Home|Characters boundary; phones keep it in every mode.
+    // The home divider marks the Home|Characters boundary while icons-only mode is on.
     right.push('sb-home-toggle', 'sb-topbar-divider-home');
 
     if (iconsOnly && mobile) {
@@ -9858,11 +9861,13 @@ function buildTopBar() {
     const customizeRail = buildTopbarPageRail(customizeCluster.railId, customizeCluster.pages);
     const charactersRail = buildTopbarPageRail(charactersCluster.railId, charactersCluster.pages);
     const customizeDivider = createTopbarClusterDivider('sb-topbar-divider-customize');
+    const quickActionsLeftDivider = createTopbarClusterDivider('sb-topbar-divider-quick-left');
+    const quickActionsRightDivider = createTopbarClusterDivider('sb-topbar-divider-quick-right');
     const homeDivider = createTopbarClusterDivider('sb-topbar-divider-home');
     const charactersDivider = createTopbarClusterDivider('sb-topbar-divider-characters');
 
-    leftGroup.append(mobileButton, leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
-    rightGroup.append(extensionSlot, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
+    leftGroup.append(mobileButton, leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, quickActionsLeftDivider, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
+    rightGroup.append(extensionSlot, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, quickActionsRightDivider, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 

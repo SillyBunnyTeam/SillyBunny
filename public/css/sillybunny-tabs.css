@@ -1358,16 +1358,31 @@ body:not(.movingUI) .drawer-content.maximized {
 .sb-topbar-cluster-divider {
     display: none;
     flex: 0 0 auto;
-    width: 1px;
+    width: 0;
     height: calc(var(--sb-proxy-button-height) * 0.55);
-    border-radius: var(--sb-shell-control-radius);
     margin-inline: calc((var(--sb-topbar-cluster-gap) - var(--sb-topbar-group-gap)) / 2);
-    background: var(--sb-shell-border);
+    /* Whole-pixel margins keep each rule on a single device column; a fractional margin
+       antialiases it across two, which reads heavier than its partner. */
+    margin-inline: round(calc((var(--sb-topbar-cluster-gap) - var(--sb-topbar-group-gap)) / 2), 1px);
+    /* Browsers snap 1px borders to device pixels cleanly at any scale factor; background-based
+       lines need subpixel adjustments that can still vanish or double at fractional DPR. */
+    /* Square on purpose: a border-radius turns the rule into an antialiased path that skips
+       device-pixel snapping, so it reads lighter or heavier depending on its subpixel offset. */
+    border-inline-start: 1px solid var(--sb-shell-border);
 }
 
 /* The divider carries the seam, so the lead's extra margin steps aside to keep the rule centred
    (this must follow the seam-margin rule above to win on source order). */
 :root[data-sb-topbar-icons-only='true'] .sb-topbar-cluster-divider {
+    display: inline-block;
+}
+
+/* Quick action boundaries: rules between the shell buttons and the Quick Access slots, so each
+   side of the bar reads as shell | quick actions | title | quick actions | shell. Shown only
+   while the slots sit in their home positions (icons-only mode gathers them on the right) and
+   only when that side has a visible slot; an emptied slot gets an inline display:none. */
+:root:not([data-sb-topbar-icons-only='true']) .sb-topbar-group-left:has(> #sb-shortcut-left:not([style*='display: none']), > #sb-shortcut-slot3:not([style*='display: none']), > #sb-shortcut-slot4:not([style*='display: none'])) > #sb-topbar-divider-quick-left,
+:root:not([data-sb-topbar-icons-only='true']) .sb-topbar-group-right:has(> #sb-shortcut-right:not([style*='display: none']), > #sb-shortcut-slot5:not([style*='display: none']), > #sb-shortcut-slot6:not([style*='display: none'])) > #sb-topbar-divider-quick-right {
     display: inline-block;
 }
 

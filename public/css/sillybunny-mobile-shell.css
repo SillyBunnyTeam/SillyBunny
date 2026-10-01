@@ -1350,12 +1350,6 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         height: calc(var(--sb-mobile-toggle-size) * 0.5);
     }
 
-    /* The Home|Characters boundary keeps its rule on phones in every mode, so the bar reads the
-       same whether or not the icons-only option is on. */
-    #sb-topbar-divider-home {
-        display: inline-block;
-    }
-
     /* The strip's characters-pages boundary; equal specificity to the desktop hide in
        sillybunny-tabs.css, so this sheet's later load order re-enables it on phones. */
     :root[data-sb-topbar-icons-only='true'] #sb-topbar-divider-characters {

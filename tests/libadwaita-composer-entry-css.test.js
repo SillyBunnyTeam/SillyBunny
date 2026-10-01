@@ -28,6 +28,15 @@ describe('libadwaita composer entry css', () => {
         expect(themeCss).toMatch(/#send_textarea\s*\{[^}]*border:\s*1px solid transparent;/);
     });
 
+    test('roleplay send button transitions its hover treatment', () => {
+        expect(themeCss).toMatch(/#send_but\s*\{[^}]*transition:\s*background-color var\(--sb-transition-fast\), box-shadow var\(--sb-transition-fast\), transform var\(--sb-transition-fast\)/);
+        expect(themeCss).toMatch(/#send_but:hover:not\(:disabled\)\s*\{[^}]*background:/);
+    });
+
+    test('Conversation send button uses the same hover transition contract', () => {
+        expect(conversationCss).toMatch(/#sheld\[data-sb-conversation-mode='on'\] #sb_conversation_send\.menu_button\s*\{[^}]*transition:\s*background-color var\(--sb-transition-fast\), box-shadow var\(--sb-transition-fast\), transform var\(--sb-transition-fast\)/);
+    });
+
     test('uses composer tokens in Conversation textarea', () => {
         expect(conversationCss).toMatch(/\.sb-conversation-composer textarea\s*\{[^}]*background:\s*var\(--sb-composer-input-bg\);/);
         expect(conversationCss).toMatch(/\.sb-conversation-composer textarea:focus\s*\{[^}]*border-color:\s*var\(--sb-composer-focus-border\);/);

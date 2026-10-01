@@ -165,12 +165,12 @@ describe('icons only top bar', () => {
         const buttonSource = getFunctionSource('createTopbarPageButton');
         expect(buttonSource).toContain('icon: config?.icon ?? \'fa-circle-dot\'');
         for (const entry of [
-            "id: 'advanced-formatting',",
-            "id: 'agents',",
-            "id: 'server',",
-            "id: 'console-logs',",
-            "{ id: 'editor', label: 'Editor', icon: 'fa-pen-to-square' }",
-            "{ id: 'import', label: 'Import', icon: 'fa-file-import' }",
+            'id: \'advanced-formatting\',',
+            'id: \'agents\',',
+            'id: \'server\',',
+            'id: \'console-logs\',',
+            '{ id: \'editor\', label: \'Editor\', icon: \'fa-pen-to-square\' }',
+            '{ id: \'import\', label: \'Import\', icon: \'fa-file-import\' }',
         ]) {
             expect(normalizedTabsSource).toContain(entry);
         }
@@ -188,8 +188,8 @@ describe('icons only top bar', () => {
         }
 
         expect(cssSource).toMatch(/:root\[data-sb-topbar-icons-only='true'\] #sb-left-shell-toggle,\n:root\[data-sb-topbar-icons-only='true'\] #sb-right-shell-toggle \{\n\s*display: none;\n\}/);
-        expect(mobileCss).toContain(":root:not([data-sb-topbar-icons-only='true'])[data-sb-mobile-nav-layout='horizontal'][data-sb-mobile-nav-customize='shown'] #sb-left-shell-toggle");
-        expect(mobileCss).toContain(":root:not([data-sb-topbar-icons-only='true'])[data-sb-mobile-nav-replacement='shown'] #sb-left-shell-toggle");
+        expect(mobileCss).toContain(':root:not([data-sb-topbar-icons-only=\'true\'])[data-sb-mobile-nav-layout=\'horizontal\'][data-sb-mobile-nav-customize=\'shown\'] #sb-left-shell-toggle');
+        expect(mobileCss).toContain(':root:not([data-sb-topbar-icons-only=\'true\'])[data-sb-mobile-nav-replacement=\'shown\'] #sb-left-shell-toggle');
 
         // The parking machinery and its bay are gone entirely.
         expect(normalizedTabsSource).not.toContain('SB_TOPBAR_PARKED_IDS');
@@ -208,13 +208,13 @@ describe('icons only top bar', () => {
         expect(buildSource).toContain('activateCharacterTopbarButton,');
 
         const proxyStateSource = getFunctionSource('syncProxyButtonState');
-        expect(proxyStateSource).toContain("const isCharacterButton = proxyButton.id === 'sb-character-toggle';");
+        expect(proxyStateSource).toContain('const isCharacterButton = proxyButton.id === \'sb-character-toggle\';');
         expect(proxyStateSource).toContain('if (isCharacterButton && isTopbarIconsOnlyActive())');
         expect(proxyStateSource).toContain('isCharacterPanelTabOpen(SB_CHARACTER_PANEL_DEFAULT_TAB)');
-        expect(proxyStateSource).toContain("proxyButton.classList.remove('is-open', 'is-pinned');");
-        expect(proxyStateSource).toContain("proxyButton.classList.toggle('is-current', isCurrent);");
-        expect(proxyStateSource).toContain("proxyButton.classList.toggle('is-open', isOpen);");
-        expect(proxyStateSource).toContain("proxyButton.classList.toggle('is-pinned', isPinned);");
+        expect(proxyStateSource).toContain('proxyButton.classList.remove(\'is-open\', \'is-pinned\');');
+        expect(proxyStateSource).toContain('proxyButton.classList.toggle(\'is-current\', isCurrent);');
+        expect(proxyStateSource).toContain('proxyButton.classList.toggle(\'is-open\', isOpen);');
+        expect(proxyStateSource).toContain('proxyButton.classList.toggle(\'is-pinned\', isPinned);');
 
         const pageStateSource = getFunctionSource('syncTopbarPageButtonStates');
         expect(pageStateSource).toContain('syncCharacterTopbarButtonState();');
@@ -253,8 +253,8 @@ describe('icons only top bar', () => {
         // The clusters are display:none while the mode is off, so the "off" order has to reproduce
         // the bar exactly as it has always been -- toggling must not reshuffle anything else.
         const orderSource = getFunctionSource('getTopbarGroupOrder');
-        expect(orderSource).toContain('left.push(\'sb-shortcut-left\', \'sb-shortcut-slot3\', \'sb-shortcut-slot4\');');
-        expect(orderSource).toContain('right.push(\'sb-shortcut-slot6\', \'sb-shortcut-slot5\', \'sb-shortcut-right\');');
+        expect(orderSource).toContain('left.push(\'sb-topbar-divider-quick-left\', \'sb-shortcut-left\', \'sb-shortcut-slot3\', \'sb-shortcut-slot4\');');
+        expect(orderSource).toContain('right.push(\'sb-shortcut-slot6\', \'sb-shortcut-slot5\', \'sb-shortcut-right\', \'sb-topbar-divider-quick-right\');');
         expect(cssSource).toMatch(/\.sb-topbar-pages \{\n(?:[^}]*\n)?\s*display: none;/);
     });
 
@@ -281,8 +281,8 @@ describe('icons only top bar', () => {
         const baseRule = cssSource.match(/\.sb-topbar-cluster-divider \{[^}]*\}/);
         expect(baseRule).not.toBeNull();
         expect(baseRule[0]).toContain('display: none;');
-        expect(baseRule[0]).toContain('width: 1px;');
-        expect(baseRule[0]).toContain('background: var(--sb-shell-border);');
+        expect(baseRule[0]).toContain('width: 0;');
+        expect(baseRule[0]).toContain('border-inline-start: 1px solid var(--sb-shell-border);');
 
         // Gated on the mode itself, not on the label being squeezed out.
         expect(cssSource).toMatch(/:root\[data-sb-topbar-icons-only='true'\] \.sb-topbar-cluster-divider \{\n\s*display: inline-block;\n\}/);
@@ -297,7 +297,7 @@ describe('icons only top bar', () => {
         // their smaller squares and keep the Home|Characters boundary marked in every mode.
         expect(cssSource).toContain('.sb-topbar-cluster-divider + .sb-topbar-cluster-lead');
         expect(mobileCss).toMatch(/\.sb-topbar-cluster-divider \{\n\s*height: calc\(var\(--sb-mobile-toggle-size\) \* 0\.5\);\n\s*\}/);
-        expect(mobileCss).toMatch(/#sb-topbar-divider-home \{\n\s*display: inline-block;\n\s*\}/);
+        expect(mobileCss).not.toMatch(/#sb-topbar-divider-home \{\n\s*display: inline-block;\n\s*\}/);
     });
 
     test('separates the clusters with a wider seam than the icons inside one', () => {
@@ -356,7 +356,7 @@ describe('icons only top bar', () => {
         const dedupeSource = getFunctionSource('syncTopbarIconsOnlyDedupe');
         expect(dedupeSource).not.toContain('style.setProperty(\'display\'');
         expect(dedupeSource).toContain('const claimedByClusters = new Set(Array.from(clusterButtons, button => button.dataset.sbTopbarPage));');
-        expect(dedupeSource).toContain("'sb-topbar-shortcut-duplicate'");
+        expect(dedupeSource).toContain('\'sb-topbar-shortcut-duplicate\'');
         expect(dedupeSource).toContain('iconsOnly && claimedByClusters.has(getShortcutTarget(side))');
         expect(normalizedTabsSource).not.toContain('sb-topbar-page-duplicate');
         expect(cssSource).toContain(':root[data-sb-topbar-icons-only=\'true\'] .sb-topbar-shortcut-duplicate');
