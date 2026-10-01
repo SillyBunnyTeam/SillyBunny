@@ -7,6 +7,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const themeCss = readFileSync(path.join(repoRoot, 'public/css/sillybunny-theme.css'), 'utf8');
 const conversationCss = readFileSync(path.join(repoRoot, 'public/css/sillybunny-conversation.css'), 'utf8');
 const mobileCss = readFileSync(path.join(repoRoot, 'public/css/sillybunny-mobile-shell.css'), 'utf8');
+const mobileNavCss = readFileSync(path.join(repoRoot, 'public/css/sillybunny-mobile-navigation.css'), 'utf8');
 
 describe('libadwaita composer entry css', () => {
     test('declares composer input token as body-colour tint', () => {
@@ -57,5 +58,11 @@ describe('libadwaita composer entry css', () => {
         expect(conversationCss).toMatch(/\.sb-conversation-message-edit-textarea\s*\{[^}]*background:\s*var\(--sb-composer-input-bg\);/);
         expect(conversationCss).toMatch(/\.sb-conversation-message-edit-textarea:focus\s*\{[^}]*border-color:\s*var\(--sb-composer-focus-border\);/);
         expect(conversationCss).toMatch(/\.sb-conversation-message-edit-textarea:focus\s*\{[^}]*box-shadow:\s*var\(--sb-composer-focus-ring\);/);
+    });
+
+    test('mobile composer toolbar is a flat row like desktop, not a pill', () => {
+        const rule = mobileNavCss.match(/\[data-sb-mobile-ui-mode='mobile'\] #nonQRFormItems:not\(#sb-specificity\) \{[^}]*\}/);
+        expect(rule).not.toBeNull();
+        expect(rule[0]).toContain('border-radius: 0 !important;');
     });
 });

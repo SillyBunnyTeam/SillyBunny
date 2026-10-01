@@ -1016,14 +1016,14 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-mobile-chat-bar
 }
 
 /*
- * Composer pill: round actions sit concentric inside the pill with an even 4px ring, as on desktop.
- * The pill radius tracks the button radius so a multi-line composer stays a rounded rectangle.
+ * Composer toolbar: a flat row with the theme's hairline above it, as on desktop. The old pill
+ * radius curved that hairline into a capsule outline that desktop no longer has.
  */
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #nonQRFormItems:not(#sb-specificity) {
     --sb-composer-inset: 4px;
     min-height: calc(var(--sb-mobile-composer-input-height) + var(--sb-composer-inset) * 2 + 2px) !important;
     padding: var(--sb-composer-inset) !important;
-    border-radius: calc(var(--sb-composer-action-size) / 2 + var(--sb-composer-inset) + 1px) !important;
+    border-radius: 0 !important;
 }
 
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #nonQRFormItems > :is(#leftSendForm, #rightSendForm):not(#sb-specificity) {
