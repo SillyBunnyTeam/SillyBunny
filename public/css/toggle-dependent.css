@@ -1,7 +1,8 @@
 :root {
     --big-avatar-height-factor: 1.8;
     --big-avatar-width-factor: 1.2;
-    --big-avatar-border-factor: 5;
+    /* SillyBunny: keep rectangular corners below the avatar's half-width. */
+    --big-avatar-border-factor: 0.5;
 }
 
 body.tts .mes[is_system="true"] .mes_narrate {
