@@ -12,7 +12,7 @@ English | [Deutsch](readme-de_de.md) | [中文](readme-zh_cn.md) | [繁體中文
 
 <div align="center">
 
-**Latest Release: v1.8.0.** [Find changelogs in our Releases.](https://github.com/SillyBunnyTeam/SillyBunny/releases)
+**Latest Release: v1.8.1.** [Find changelogs in our Releases.](https://github.com/SillyBunnyTeam/SillyBunny/releases)
 
 </div>
 
