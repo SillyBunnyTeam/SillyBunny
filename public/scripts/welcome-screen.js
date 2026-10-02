@@ -21,7 +21,6 @@ import {
     setActiveCharacter,
     setActiveGroup,
     system_avatar,
-    this_chid,
 } from '../script.js';
 import { deleteGroupChatByName, getGroupAvatar, groups, is_group_generating, openGroupById, openGroupChat } from './group-chats.js';
 import { deleteExtension, enableExtension, extension_settings, findExtension, getExtensionType, installExtension } from './extensions.js';
@@ -2664,7 +2663,7 @@ export async function openPermanentAssistantCard() {
 
 /**
  * Assigns a character as the assistant.
- * @param {string?} characterId Character ID
+ * @param {number|string} characterId Character ID
  */
 export function assignCharacterAsAssistant(characterId) {
     if (characterId === undefined) {
@@ -2709,11 +2708,11 @@ export function initWelcomeScreen() {
 
     eventSource.makeFirst(event_types.CHAT_CHANGED, openWelcomeScreen);
 
-    eventSource.on(event_types.CHARACTER_MANAGEMENT_DROPDOWN, (target) => {
-        if (target !== 'set_as_assistant') {
+    eventSource.on(event_types.CHARACTER_MANAGEMENT_DROPDOWN, (target, characterId) => {
+        if (target !== 'set_as_assistant' || characterId === undefined) {
             return;
         }
-        assignCharacterAsAssistant(this_chid);
+        assignCharacterAsAssistant(characterId);
     });
 
     eventSource.on(event_types.CHARACTER_RENAMED, (oldAvatar, newAvatar) => {

@@ -2238,14 +2238,11 @@ body.sb-shell-resizing * {
     display: none;
 }
 
-/* The mode toggle is absolutely positioned, so header text lays out underneath it.
-   The header is a start-aligned flex column, so cap the fit-content width instead
-   of using margin: reserve the toggle footprint (~215px + 66px right offset) so
-   long text ellipsizes instead of running under the pill. */
+/* Reserve space for all three workspace labels; narrower headers put the selector on its own row. */
 @media screen and (min-width: 769px) {
     #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-title,
     #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-subtitle {
-        max-width: calc(100% - 276px);
+        max-width: calc(100% - 386px);
     }
 }
 
@@ -2304,37 +2301,38 @@ body.sb-shell-resizing * {
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-accent) 50%, transparent), 0 6px 14px color-mix(in srgb, var(--sb-accent) 18%, transparent);
 }
 
-.sb-character-shell-mode-toggle[data-active-mode='roleplay'] .sb-character-shell-mode-button[data-sb-character-mode='conversation'],
-.sb-character-shell-mode-toggle[data-active-mode='conversation'] .sb-character-shell-mode-button[data-sb-character-mode='roleplay'] {
+.sb-character-shell-mode-toggle .sb-character-shell-mode-button:not(.is-active) {
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-shell-border) 62%, transparent);
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
     #right-nav-panel.openDrawer > .sb-character-shell-header {
-        padding-right: calc(var(--sb-shell-panel-padding-inline) + 118px);
+        padding-right: var(--sb-shell-panel-padding-inline);
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-title,
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-subtitle {
+        max-width: 100%;
     }
 
     .sb-character-shell-mode-toggle {
-        top: 17px;
-        right: 66px;
-        min-height: 40px;
+        position: relative;
+        top: auto;
+        right: auto;
+        margin-right: 48px;
+        max-width: calc(100% - 48px);
         gap: 3px;
         padding: 2px;
     }
 
     .sb-character-shell-mode-button {
-        min-width: 34px;
-        min-height: 34px;
-        padding: 9px;
+        min-height: 44px;
+        padding: 9px 10px;
         justify-content: center;
     }
 
-    .sb-character-shell-mode-button span {
-        display: none;
-    }
-
     .sb-character-shell-mode-button .fa-solid {
-        width: auto;
+        display: none;
     }
 }
 
