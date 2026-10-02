@@ -7496,8 +7496,17 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     display: none;
 }
 
+#rm_print_characters_block {
+    --sb-character-list-avatar-height: var(--sb-character-list-avatar-size);
+}
+
+body.big-avatars #rm_print_characters_block {
+    --sb-character-list-avatar-height: calc(var(--sb-character-list-avatar-size) * var(--big-avatar-height-factor) / var(--big-avatar-width-factor));
+}
+
 @media screen and (min-width: 1001px) {
     body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) {
+        --sb-character-list-avatar-size: 88px;
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(min(100%, 148px), 1fr));
         gap: 10px;
@@ -7528,15 +7537,14 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     }
 
     body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
-        width: 88px !important;
-        min-width: 88px !important;
-        max-width: 88px !important;
-        height: 88px !important;
-        min-height: 88px !important;
-        max-height: 88px !important;
-        flex: 0 0 88px !important;
+        width: var(--sb-character-list-avatar-size) !important;
+        min-width: var(--sb-character-list-avatar-size) !important;
+        max-width: var(--sb-character-list-avatar-size) !important;
+        height: var(--sb-character-list-avatar-height) !important;
+        min-height: var(--sb-character-list-avatar-height) !important;
+        max-height: var(--sb-character-list-avatar-height) !important;
+        flex: 0 0 var(--sb-character-list-avatar-height) !important;
         margin: 0 auto 8px !important;
-        aspect-ratio: 1 / 1 !important;
         overflow: hidden;
     }
 

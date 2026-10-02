@@ -1,3 +1,5 @@
+import { NOVELAI_IMAGE_MODELS, isNovelAIV5Model, normalizeNovelAIImageParameters } from "../../novelai-image-models.js";
+import { createModelCatalogRefresher, fetchModelCatalog, getModelCatalogRequest, getRoutewayModelSizes, LIVE_MODEL_PROVIDERS, modelSuggestions, QIG_MODEL_INPUTS } from "./lib/model-catalogs.js";
 import {
     MAX_IMAGE_BYTES,
     MAX_PROVIDER_RESPONSE_BYTES,
@@ -421,7 +423,6 @@ const NANOBANANA_MODEL_OPTIONS = [
     { id: "gemini-3-pro-image", name: "Nano Banana Pro (Gemini 3 Pro Image)" },
     { id: "gemini-3.1-flash-image", name: "Nano Banana 2 (Gemini 3.1 Flash Image)" },
     { id: "gemini-2.5-flash-image", name: "Nano Banana (Gemini 2.5 Flash Image)" },
-    { id: "gemini-2.0-flash-exp", name: "Gemini 2.0 Flash Exp" },
 ];
 
 const NBP_DIRECTOR_PROMPTS = {
@@ -501,18 +502,6 @@ function buildNbpDirectorInstruction(settings = getSettings()) {
     ].filter(Boolean).join(" ");
 }
 
-function buildNanobananaModelOptions(selectedModel) {
-    const selected = String(selectedModel || "").trim();
-    const seen = new Set();
-    const options = NANOBANANA_MODEL_OPTIONS.map(model => {
-        seen.add(model.id);
-        return `<option value="${escapeHtml(model.id)}" ${selected === model.id ? "selected" : ""}>${escapeHtml(model.name)}</option>`;
-    });
-    if (selected && !seen.has(selected)) {
-        options.push(`<option value="${escapeHtml(selected)}" selected>${escapeHtml(`${selected} (custom saved model)`)}</option>`);
-    }
-    return options.join("");
-}
 
 function getCollapsedSections(settings = getSettings()) {
     const stored = settings?.collapsedSections && typeof settings.collapsedSections === "object"
@@ -3025,12 +3014,6 @@ const POLLINATIONS_MODEL_OPTIONS = [
 ];
 
 const PROVIDER_MODELS = {
-    pollinations: [
-        { id: "", name: "Default" },
-        { id: "flux", name: "Flux" },
-        { id: "turbo", name: "Turbo" },
-        { id: "xiaolong", name: "Xiaolong" }
-    ],
     gptimage: [
         { id: "gpt-image-2", name: "GPT Image 2" },
         { id: "gpt-image-1.5", name: "GPT Image 1.5" },
@@ -3059,6 +3042,18 @@ const PROVIDER_MODELS = {
         { id: "nano-banana-2", name: "Nano Banana 2" },
         { id: "imagen-4", name: "Imagen 4" }
     ],
+    novelai: NOVELAI_IMAGE_MODELS.map(model => ({ id: model.value, name: model.text })),
+    nanobanana: NANOBANANA_MODEL_OPTIONS,
+    arliai: [{ id: "arliai-realistic-v1", name: "arliai-realistic-v1" }],
+    nanogpt: [{ id: "flux-schnell", name: "FLUX.1 Schnell" }],
+    chutes: [{ id: "stabilityai/stable-diffusion-xl-base-1.0", name: "SDXL 1.0" }],
+    civitai: [{ id: "urn:air:sd1:checkpoint:civitai:4201@130072", name: "urn:air:sd1:checkpoint:civitai:4201@130072" }],
+    replicate: [{ id: "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b", name: "SDXL" }],
+    fal: [
+        { id: "fal-ai/flux/schnell", name: "FLUX.1 Schnell" },
+        { id: "fal-ai/flux/dev", name: "FLUX.1 Dev" },
+    ],
+    together: [{ id: "black-forest-labs/FLUX.1-schnell", name: "FLUX.1 Schnell" }],
     zai: [
         { id: "cogview-4-250304", name: "CogView 4" },
         { id: "glm-image", name: "GLM Image" }
@@ -7762,11 +7757,7 @@ async function genPollinations(prompt, negative, s, signal, options = {}) {
     return imageResponseToDataUrl(limitGenerationOutputResponse(response, options.reserveOutput(0)));
 }
 
-async function genNovelAI(prompt, negative, s, signal, options = {}) {
-    normalizeSize(s);
-    const effectiveDimensions = { width: s.width, height: s.height };
-    const withEffectiveDimensions = (url, dimensions = effectiveDimensions) => ({ url, effectiveRequest: { parameters: dimensions } });
-    const isV4 = s.naiModel.includes("-4");
+function getNovelAISampler(sampler, isV3OrNewer) {
     // Map SillyTavern sampler names to NovelAI API format
     const samplerMap = {
         "euler_a": "k_euler_ancestral", "euler": "k_euler",
@@ -7780,10 +7771,16 @@ async function genNovelAI(prompt, negative, s, signal, options = {}) {
         "plms": "k_euler", "uni_pc": "k_euler", "uni_pc_bh2": "k_euler",
         "lcm": "k_euler", "deis": "k_euler", "restart": "k_euler"
     };
-    const isV3OrNewer = s.naiModel.includes("diffusion-3") || s.naiModel.includes("diffusion-4");
-    const sampler = (s.sampler === "ddim" && isV3OrNewer)
-        ? "ddim_v3"
-        : (samplerMap[s.sampler] || "k_euler_ancestral");
+    return sampler === "ddim" && isV3OrNewer ? "ddim_v3" : samplerMap[sampler] || "k_euler_ancestral";
+}
+
+async function genNovelAI(prompt, negative, s, signal, options = {}) {
+    normalizeSize(s);
+    const effectiveDimensions = { width: s.width, height: s.height };
+    const withEffectiveDimensions = (url, dimensions = effectiveDimensions) => ({ url, effectiveRequest: { parameters: dimensions } });
+    const isV4OrNewer = s.naiModel.includes("-4") || isNovelAIV5Model(s.naiModel);
+    const isV3OrNewer = s.naiModel.includes("diffusion-3") || isV4OrNewer;
+    const sampler = getNovelAISampler(s.sampler, isV3OrNewer);
     const seed = resolveRandomSeed(s.seed, s);
 
     const params = {
@@ -7805,11 +7802,16 @@ async function genNovelAI(prompt, negative, s, signal, options = {}) {
         noise_schedule: "native"
     };
 
-    if (isV4) {
+    if (isV4OrNewer) {
         params.v4_prompt = { caption: { base_caption: prompt, char_captions: [] }, use_coords: false, use_order: true };
         params.v4_negative_prompt = { caption: { base_caption: negative, char_captions: [] }, legacy_uc: false };
         params.characterPrompts = [];
         params.skip_cfg_above_sigma = null;
+    }
+    normalizeNovelAIImageParameters(s.naiModel, params);
+    if (isNovelAIV5Model(s.naiModel)) {
+        effectiveDimensions.sampler = params.sampler === sampler ? s.sampler : "euler_a";
+        effectiveDimensions.schedule = params.noise_schedule;
     }
 
     const payload = { input: prompt, model: s.naiModel, action: "generate", parameters: params };
@@ -7835,7 +7837,7 @@ async function genNovelAI(prompt, negative, s, signal, options = {}) {
             messages: [{ role: "user", content: prompt }],
             size: v1Size,
             negative_prompt: negative,
-            sampler: v1SamplerMap[sampler] || "Euler Ancestral",
+            sampler: v1SamplerMap[params.sampler] || "Euler Ancestral",
             steps: s.steps,
             scale: s.cfgScale,
             seed,
@@ -7953,7 +7955,7 @@ function getOpenAICompatibleImageSize(provider, model, settings = getSettings())
         navy: NAVY_MODEL_SIZES,
     };
     const configuredSize = getConfiguredImageSize(settings);
-    const supportedSizes = sizeMaps[provider]?.[model];
+    const supportedSizes = (provider === "routeway" && getRoutewayModelSizes(model)) || sizeMaps[provider]?.[model];
     const resolvedSize = getClosestSupportedImageSize(settings, supportedSizes);
     if (resolvedSize !== configuredSize) {
         log(`${PROVIDERS[provider]?.name || provider}: mapped requested size ${configuredSize} to supported size ${resolvedSize} for ${model}`);
@@ -13611,6 +13613,10 @@ async function genOpenAICompatibleImageProvider(provider, providerName, apiUrl, 
 }
 
 async function genRouteway(prompt, negative, s, signal, options = {}) {
+    const model = s.routewayModel || "flux-1-schnell";
+    if (!getRoutewayModelSizes(model) && !ROUTEWAY_MODEL_SIZES[model]) {
+        await fetchModelCatalog(getModelCatalogRequest("routeway", s), signal, corsFetch);
+    }
     const seed = resolveRandomSeed(s.seed, s);
     const steps = Math.max(1, Math.trunc(Number(s.steps) || 25));
     const guidance = Number.isFinite(Number(s.cfgScale)) ? Number(s.cfgScale) : 7;
@@ -13619,7 +13625,7 @@ async function genRouteway(prompt, negative, s, signal, options = {}) {
         "Routeway",
         "https://api.routeway.ai/v1/images/generations",
         s.routewayKey,
-        s.routewayModel || "flux-1-schnell",
+        model,
         prompt,
         negative,
         s,
@@ -17863,6 +17869,7 @@ function parkInactiveProviderSections(activeProvider) {
 }
 
 function updateProviderUI() {
+    cloudModelCatalogRefresher?.cancel();
     const s = getSettings();
     const section = ensureProviderSectionAttached(s.provider);
     document.querySelectorAll(".qig-provider-section").forEach(el => el.style.display = "none");
@@ -18081,6 +18088,11 @@ function updateGenerationCapabilitiesUI(settings = getSettings()) {
     for (const [id, capability] of Object.entries(capabilityById)) {
         const field = document.getElementById(id)?.closest(".qig-field");
         if (field) field.style.display = !capabilities[capability] ? "none" : "";
+    }
+    const isNaiV5 = settings.provider === "novelai" && isNovelAIV5Model(settings.naiModel);
+    for (const option of document.getElementById("qig-sampler")?.options || []) {
+        const sampler = getNovelAISampler(option.value, true);
+        option.disabled = isNaiV5 && normalizeNovelAIImageParameters(settings.naiModel, { sampler }).sampler !== sampler;
     }
     const sizeField = document.getElementById("qig-size-fieldset");
     if (sizeField) sizeField.style.display = customCapabilities && !customCapabilities.size ? "none" : "";
@@ -18381,94 +18393,44 @@ function bindAutoGenerateNumberInput(id, key, normalizer) {
     el.onchange = () => syncAutoGenerateControls();
 }
 
-function modelSelect(provider, settingKey, currentVal) {
-    const models = PROVIDER_MODELS[provider];
-    if (!models) return `<input id="qig-${settingKey}" type="text" value="${escapeHtml(currentVal ?? "")}" placeholder="Model ID">`;
-    const opts = models.map(m => `<option value="${escapeHtml(m.id)}" ${currentVal === m.id ? "selected" : ""}>${escapeHtml(m.name)}</option>`).join("");
-    return `<select id="qig-${settingKey}">${opts}</select>`;
-}
-
-function pollinationsModelInput(currentVal) {
-    const value = escapeHtml(currentVal ?? "");
-    const knownIds = new Set();
-    const datalistOptions = [];
-
-    for (const model of POLLINATIONS_MODEL_OPTIONS) {
-        if (knownIds.has(model.id)) continue;
-        knownIds.add(model.id);
-        const authLabel = pollinationsModelRequiresAuth(model.id) ? " (API key required)" : "";
-        const label = model.id
-            ? `${model.name}${authLabel} - ${model.id}`
-            : model.name;
-        datalistOptions.push(`<option value="${escapeHtml(model.id)}" label="${escapeHtml(label)}"></option>`);
-    }
-
-    const normalizedCurrent = String(currentVal ?? "").trim();
-    if (normalizedCurrent && !knownIds.has(normalizedCurrent)) {
-        datalistOptions.push(`<option value="${escapeHtml(normalizedCurrent)}" label="${escapeHtml(`${normalizedCurrent} - current custom model`)}"></option>`);
-    }
-
+function cloudModelInput(provider, currentVal, placeholder = "Model ID") {
+    const { id } = QIG_MODEL_INPUTS[provider];
+    const models = provider === "pollinations" ? POLLINATIONS_MODEL_OPTIONS : PROVIDER_MODELS[provider] || [];
+    const options = modelSuggestions(models.map(model => ({ value: model.id, text: model.name })), currentVal)
+        .map(model => `<option value="${escapeHtml(model.value)}" label="${escapeHtml(model.text)}"></option>`).join("");
+    const refresh = LIVE_MODEL_PROVIDERS.has(provider)
+        ? `<button id="${id}-refresh" type="button" class="menu_button" title="Refresh models" aria-label="Refresh models"><span class="fa-solid fa-arrows-rotate" aria-hidden="true"></span></button>`
+        : "";
     return `
-        <input id="qig-pollinations-model" type="text" list="qig-pollinations-model-list" value="${value}" placeholder="Leave blank for default or type any Pollinations model ID">
-        <datalist id="qig-pollinations-model-list">${datalistOptions.join("")}</datalist>
+        <div class="qig-ref-controls qig-model-controls">
+            <input id="${id}" type="text" list="${id}-list" value="${escapeHtml(currentVal ?? "")}" placeholder="${escapeHtml(placeholder)}">
+            ${refresh}
+        </div>
+        <datalist id="${id}-list">${options}</datalist>
     `;
 }
 
-function gptImageModelInput(currentVal) {
-    const value = escapeHtml(currentVal ?? "");
-    const knownIds = new Set();
-    const options = [];
-    for (const model of PROVIDER_MODELS.gptimage || []) {
-        if (!model?.id || knownIds.has(model.id)) continue;
-        knownIds.add(model.id);
-        options.push(`<option value="${escapeHtml(model.id)}" label="${escapeHtml(model.name || model.id)}"></option>`);
-    }
-    const normalizedCurrent = String(currentVal ?? "").trim();
-    if (normalizedCurrent && !knownIds.has(normalizedCurrent)) {
-        options.push(`<option value="${escapeHtml(normalizedCurrent)}" label="${escapeHtml(`${normalizedCurrent} - current custom model`)}"></option>`);
-    }
-    return `
-        <input id="qig-gpt-image-model" type="text" list="qig-gpt-image-model-list" value="${value}" placeholder="gpt-image-2">
-        <datalist id="qig-gpt-image-model-list">${options.join("")}</datalist>
-    `;
-}
+let cloudModelCatalogRefresher = null;
 
-function routewayModelInput(currentVal) {
-    const value = escapeHtml(currentVal ?? "");
-    const knownIds = new Set();
-    const options = [];
-    for (const model of PROVIDER_MODELS.routeway || []) {
-        if (!model?.id || knownIds.has(model.id)) continue;
-        knownIds.add(model.id);
-        options.push(`<option value="${escapeHtml(model.id)}" label="${escapeHtml(model.name || model.id)}"></option>`);
+function bindCloudModelCatalogs() {
+    cloudModelCatalogRefresher?.cancel();
+    cloudModelCatalogRefresher = createModelCatalogRefresher({
+        getSettings,
+        getTarget: provider => {
+            const id = QIG_MODEL_INPUTS[provider]?.id;
+            const input = document.getElementById(id);
+            const datalist = document.getElementById(`${id}-list`);
+            const button = document.getElementById(`${id}-refresh`);
+            return input && datalist && button ? { input, datalist, button } : null;
+        },
+        fetchModels: (request, signal) => fetchModelCatalog(request, signal, corsFetch),
+        onError: error => qigToast.warning(error.message, "Quick Image Gen", { escapeHtml: true }),
+    });
+    for (const provider of LIVE_MODEL_PROVIDERS) {
+        const id = QIG_MODEL_INPUTS[provider].id;
+        const button = document.getElementById(`${id}-refresh`);
+        if (button) button.onclick = () => cloudModelCatalogRefresher.refresh(provider);
     }
-    const normalizedCurrent = String(currentVal ?? "").trim();
-    if (normalizedCurrent && !knownIds.has(normalizedCurrent)) {
-        options.push(`<option value="${escapeHtml(normalizedCurrent)}" label="${escapeHtml(`${normalizedCurrent} - current custom model`)}"></option>`);
-    }
-    return `
-        <input id="qig-routeway-model" type="text" list="qig-routeway-model-list" value="${value}" placeholder="flux-1-schnell">
-        <datalist id="qig-routeway-model-list">${options.join("")}</datalist>
-    `;
-}
-
-function navyModelInput(currentVal) {
-    const value = escapeHtml(currentVal ?? "");
-    const knownIds = new Set();
-    const options = [];
-    for (const model of PROVIDER_MODELS.navy || []) {
-        if (!model?.id || knownIds.has(model.id)) continue;
-        knownIds.add(model.id);
-        options.push(`<option value="${escapeHtml(model.id)}" label="${escapeHtml(model.name || model.id)}"></option>`);
-    }
-    const normalizedCurrent = String(currentVal ?? "").trim();
-    if (normalizedCurrent && !knownIds.has(normalizedCurrent)) {
-        options.push(`<option value="${escapeHtml(normalizedCurrent)}" label="${escapeHtml(`${normalizedCurrent} - current custom model`)}"></option>`);
-    }
-    return `
-        <input id="qig-navy-model" type="text" list="qig-navy-model-list" value="${value}" placeholder="flux">
-        <datalist id="qig-navy-model-list">${options.join("")}</datalist>
-    `;
 }
 
 function buildOptions(items, selectedValue, labelFn) {
@@ -18478,6 +18440,7 @@ function buildOptions(items, selectedValue, labelFn) {
 }
 
 function createUI() {
+    cloudModelCatalogRefresher?.cancel();
     clearCache();
     // The old panel is torn down below; parked provider sections belonged to it and must not be
     // re-attached into the new one, or the new panel's freshly built section stays parked and
@@ -18640,7 +18603,7 @@ function createUI() {
                     <input id="qig-pollinations-key" type="password" value="${esc(s.pollinationsKey)}" placeholder="pk_... or sk_...">
                     <small>Latest Pollinations paid access uses API keys. Use <code>pk_</code> keys for browser/client-side use when possible.</small>
                     <label>Model</label>
-                    ${pollinationsModelInput(s.pollinationsModel)}
+                    ${cloudModelInput("pollinations", s.pollinationsModel, "Leave blank for default or type any Pollinations model ID")}
                     <small>Suggestions include current free and paid Pollinations image models. You can also type any custom model ID manually.</small>
                 </div>
                 
@@ -18648,7 +18611,7 @@ function createUI() {
                     <label>NovelAI API Key</label>
                     <input id="qig-nai-key" type="password" value="${esc(s.naiKey)}">
                     <label>Model</label>
-                    <input id="qig-nai-model" type="text" value="${esc(s.naiModel)}" placeholder="nai-diffusion-4-5-curated">
+                    ${cloudModelInput("novelai", s.naiModel, "nai-diffusion-5-full")}
                     <label>Proxy URL <small>(optional — leave blank to use official API)</small></label>
                     <input id="qig-nai-proxy-url" type="text" value="${esc(s.naiProxyUrl)}" placeholder="https://your-proxy-url">
                     <label>Proxy Key <small>(optional — overrides API key above for proxy)</small></label>
@@ -18659,7 +18622,7 @@ function createUI() {
                     <label>OpenAI API Key</label>
                     <input id="qig-gpt-image-key" type="password" value="${esc(s.gptImageKey)}" placeholder="sk-...">
                     <label>Model</label>
-                    ${gptImageModelInput(s.gptImageModel)}
+                    ${cloudModelInput("gptimage", s.gptImageModel, "gpt-image-2")}
                     <small>Defaults to <code>gpt-image-2</code>. You can type any compatible model ID for proxies.</small>
                     <label>Proxy URL <small>(optional — leave blank to use official OpenAI API)</small></label>
                     <input id="qig-gpt-image-proxy-url" type="text" value="${esc(s.gptImageProxyUrl)}" placeholder="https://your-proxy-url/v1">
@@ -18709,14 +18672,14 @@ function createUI() {
                     <label>ArliAI API Key</label>
                     <input id="qig-arli-key" type="password" value="${esc(s.arliKey)}">
                     <label>Model</label>
-                    <input id="qig-arli-model" type="text" value="${esc(s.arliModel)}" placeholder="arliai-realistic-v1">
+                    ${cloudModelInput("arliai", s.arliModel, "arliai-realistic-v1")}
                 </div>
 
                 <div id="qig-routeway-settings" class="qig-provider-section">
                     <label>Routeway API Key</label>
                     <input id="qig-routeway-key" type="password" value="${esc(s.routewayKey)}" placeholder="clsk-...">
                     <label>Model</label>
-                    ${routewayModelInput(s.routewayModel)}
+                    ${cloudModelInput("routeway", s.routewayModel, "flux-1-schnell")}
                     <small>Suggestions include known Routeway image models. Custom model IDs are supported. Known models auto-map the shared size controls to the nearest supported API size.</small>
                 </div>
 
@@ -18724,7 +18687,7 @@ function createUI() {
                     <label>Navy.ai API Key</label>
                     <input id="qig-navy-key" type="password" value="${esc(s.navyKey)}">
                     <label>Model</label>
-                    ${navyModelInput(s.navyModel)}
+                    ${cloudModelInput("navy", s.navyModel, "flux")}
                     <small>Suggestions include known Navy.ai image models. Custom model IDs are supported.</small>
                 </div>
 
@@ -18732,7 +18695,7 @@ function createUI() {
                     <label>NanoGPT API Key</label>
                     <input id="qig-nanogpt-key" type="password" value="${esc(s.nanogptKey)}">
                     <label>Model</label>
-                    <input id="qig-nanogpt-model" type="text" value="${esc(s.nanogptModel)}" placeholder="flux-schnell">
+                    ${cloudModelInput("nanogpt", s.nanogptModel, "flux-schnell")}
                     <div id="qig-nanogpt-reference-fields">
                         <div id="qig-nanogpt-strength-field">
                             <label>Strength <span id="qig-nanogpt-strength-val">${esc(s.nanogptStrength ?? 0.75)}</span></label>
@@ -18753,14 +18716,14 @@ function createUI() {
                     <label>Chutes API Key</label>
                     <input id="qig-chutes-key" type="password" value="${esc(s.chutesKey)}">
                     <label>Model</label>
-                    <input id="qig-chutes-model" type="text" value="${esc(s.chutesModel)}" placeholder="stabilityai/stable-diffusion-xl-base-1.0">
+                    ${cloudModelInput("chutes", s.chutesModel, "stabilityai/stable-diffusion-xl-base-1.0")}
                 </div>
                 
                 <div id="qig-civitai-settings" class="qig-provider-section">
                     <label>CivitAI API Key</label>
                     <input id="qig-civitai-key" type="password" value="${esc(s.civitaiKey)}">
                     <label>Model URN</label>
-                    <input id="qig-civitai-model" type="text" value="${esc(s.civitaiModel)}" placeholder="urn:air:sd1:checkpoint:civitai:4201@130072">
+                    ${cloudModelInput("civitai", s.civitaiModel, "urn:air:sd1:checkpoint:civitai:4201@130072")}
                     <small>Find this on the model page → API tab → copy the URN</small>
                     <label>Scheduler</label>
                     <select id="qig-civitai-scheduler">
@@ -18790,9 +18753,7 @@ function createUI() {
                         </div>
                         <div>
                             <label for="qig-nanobanana-model">Model</label>
-                            <select id="qig-nanobanana-model">
-                                ${buildNanobananaModelOptions(s.nanobananaModel)}
-                            </select>
+                            ${cloudModelInput("nanobanana", s.nanobananaModel, "gemini-3-pro-image")}
                             <small>Pro gives the strongest instruction following. Flash is better for quick drafts.</small>
                         </div>
                     </div>
@@ -18857,7 +18818,7 @@ function createUI() {
                     <label>Replicate API Key</label>
                     <input id="qig-replicate-key" type="password" value="${esc(s.replicateKey)}">
                     <label>Model Version</label>
-                    <input id="qig-replicate-model" type="text" value="${esc(s.replicateModel)}" placeholder="stability-ai/sdxl:...">
+                    ${cloudModelInput("replicate", s.replicateModel, "stability-ai/sdxl:...")}
                     <small>owner/model:version format from the Replicate model page</small>
                 </div>
 
@@ -18865,7 +18826,7 @@ function createUI() {
                     <label>Fal.ai API Key</label>
                     <input id="qig-fal-key" type="password" value="${esc(s.falKey)}">
                     <label>Model Endpoint</label>
-                    <input id="qig-fal-model" type="text" value="${esc(s.falModel)}" placeholder="fal-ai/flux/schnell">
+                    ${cloudModelInput("fal", s.falModel, "fal-ai/flux/schnell")}
                     <small>Model path from the Fal.ai dashboard (e.g., fal-ai/flux/schnell)</small>
                 </div>
 
@@ -18873,14 +18834,14 @@ function createUI() {
                     <label>Together AI API Key</label>
                     <input id="qig-together-key" type="password" value="${esc(s.togetherKey)}">
                     <label>Model</label>
-                    <input id="qig-together-model" type="text" value="${esc(s.togetherModel)}" placeholder="stabilityai/stable-diffusion-xl-base-1.0">
+                    ${cloudModelInput("together", s.togetherModel, "black-forest-labs/FLUX.1-schnell")}
                 </div>
 
                 <div id="qig-zai-settings" class="qig-provider-section">
                     <label>Z.AI API Key</label>
                     <input id="qig-zai-key" type="password" value="${esc(s.zaiKey)}">
                     <label>Model</label>
-                    ${modelSelect("zai", "zai-model", s.zaiModel)}
+                    ${cloudModelInput("zai", s.zaiModel, "cogview-4-250304")}
                     <label>Quality</label>
                     <select id="qig-zai-quality">
                         <option value="hd" ${s.zaiQuality === "hd" ? "selected" : ""}>HD (slower, more detail)</option>
@@ -19951,6 +19912,7 @@ function createUI() {
     });
 
     document.getElementById("qig-provider").onchange = async (e) => {
+        cloudModelCatalogRefresher?.cancel();
         a1111ModelRefreshController?.abort();
         comfyModelRefreshController?.abort();
         getSettings().provider = e.target.value;
@@ -19968,7 +19930,7 @@ function createUI() {
     bind("qig-pollinations-key", "pollinationsKey");
     bind("qig-pollinations-model", "pollinationsModel");
     bind("qig-nai-key", "naiKey");
-    bind("qig-nai-model", "naiModel");
+    bind("qig-nai-model", "naiModel", false, false, () => updateGenerationCapabilitiesUI());
     bind("qig-nai-proxy-url", "naiProxyUrl");
     bind("qig-nai-proxy-key", "naiProxyKey");
     bind("qig-gpt-image-key", "gptImageKey");
@@ -21023,6 +20985,7 @@ function createUI() {
     bindGenerationSetting("qig-sampler", "sampler", "proxySampler");
     bindGenerationSetting("qig-seed", "seed", "proxySeed", true);
 
+    bindCloudModelCatalogs();
     updateProviderUI();
     updatePromptSourceUI(s);
     updateCharacterSettingsUI();

@@ -724,6 +724,16 @@
     font-size: 12px;
 }
 
+.qig-ref-controls.qig-model-controls {
+    flex-direction: row;
+    align-items: center;
+}
+
+#qig-settings .qig-model-controls .menu_button {
+    min-width: 44px;
+    min-height: 44px;
+}
+
 .qig-size-row {
     display: grid;
     grid-template-columns: minmax(72px, 1fr) auto minmax(72px, 1fr) minmax(86px, 0.8fr);

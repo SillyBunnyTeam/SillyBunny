@@ -420,13 +420,18 @@
 
             <div class="flex-container">
                 <div class="flex1">
-                    <label for="sd_model" class="flex-container justifySpaceBetween">
-                        <span data-i18n="Model">Model</span>
-                        <div id="sd_models_refresh" class="right_menu_button margin0 padding0" title="Refresh model list" data-i18n="[title]Refresh model list">
-                            <i class="fa-solid fa-sync"></i>
-                        </div>
-                    </label>
+                    <div class="flex-container justifySpaceBetween alignItemsCenter">
+                        <label for="sd_model" data-i18n="Model">Model</label>
+                        <button id="sd_models_refresh" type="button" class="menu_button menu_button_icon margin0" title="Refresh model list" aria-label="Refresh model list" data-i18n="[title]Refresh model list;[aria-label]Refresh model list">
+                            <i class="fa-solid fa-sync" aria-hidden="true"></i>
+                        </button>
+                    </div>
                     <select id="sd_model" class="text_pole"></select>
+                    <details id="sd_model_custom_settings" data-sd-source="novel,openai,aimlapi,togetherai,pollinations,stability,chutes,electronhub,nanogpt,bfl,falai,xai,google,zai,openrouter,workersai">
+                        <summary data-i18n="Custom model (optional)">Custom model (optional)</summary>
+                        <label for="sd_model_custom" data-i18n="Model Id">Model Id</label>
+                        <input id="sd_model_custom" type="text" class="text_pole" autocomplete="off" spellcheck="false" />
+                    </details>
                 </div>
 
                 <div class="flex1" data-sd-source="comfy,auto">
