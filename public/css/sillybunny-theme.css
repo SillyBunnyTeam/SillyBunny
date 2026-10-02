@@ -604,7 +604,9 @@ h3:not(.popup h3):not(#chat h3) {
     min-inline-size: 0;
     max-inline-size: 100%;
     white-space: normal;
-    overflow-wrap: anywhere;
+    /* break-word, not anywhere: `anywhere` shrinks min-content, and upstream's
+       `width: min-content` then stacks the label one letter per line. */
+    overflow-wrap: break-word;
     text-align: center;
 }
 

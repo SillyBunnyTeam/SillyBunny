@@ -7925,10 +7925,12 @@ function animateShellOpen(shellRoot, shellKey) {
 
     const trigger = getShellMotionTrigger(shellKey);
     stopMotion(shellRoot);
+    // Mobile: scale only. A full-viewport fade hides the zoom from the trigger; the Characters
+    // drawer's opacity is pinned by mobile CSS, so this keeps all three shells identical.
     const keyframes = isMobileViewport()
         ? [
-            { opacity: 0, scale: '0.96' },
-            { opacity: 1, scale: '1' },
+            { scale: '0.96' },
+            { scale: '1' },
         ]
         : [
             { opacity: 0, transform: 'scale(0.96)' },

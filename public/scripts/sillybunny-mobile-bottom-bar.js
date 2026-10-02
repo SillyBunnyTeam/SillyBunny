@@ -6,13 +6,13 @@
  */
 
 import { translate } from './i18n.js';
-import { MOTION_EASE_OUT_CUBIC, MOTION_EASE_OUT_QUAD, MOTION_FAST, MOTION_SLOW, SPRING_SHEET, animateHeightFrom, animateIn, animateOut, originFrom, play, stopMotion } from './sillybunny-motion.js';
+import { MOTION_EASE_OUT_CUBIC, MOTION_EASE_OUT_QUAD, MOTION_FAST, MOTION_SLOW, animateHeightFrom, animateIn, originFrom, play, stopMotion } from './sillybunny-motion.js';
+import { createSheetController } from './sillybunny-sheet.js';
 
 const SHEET_ID = 'sb-bottom-chat-sheet';
 const SHEET_TITLE_ID = 'sb-bottom-chat-sheet-title';
 const GG_CONTAINER_ID = 'gg-action-button-container';
 const TRAY_SELECTOR = `#send_form > #${GG_CONTAINER_ID}, #send_form > .stih--buttons.stih--standalone`;
-const FOCUSABLE_SELECTOR = 'button, select, input, textarea, [href], [tabindex]:not([tabindex="-1"])';
 
 const state = {
     initialized: false,
@@ -29,6 +29,7 @@ const state = {
     sheetSelectSlot: null,
     sheetActions: null,
     backdrop: null,
+    sheetController: null,
     moved: [],
     selectObserver: null,
     barObserver: null,
@@ -54,14 +55,6 @@ function restoreOriginalPlacement(element, placement) {
     placement.parent.insertBefore(element, nextSibling);
 }
 
-// Upstream closes open drawers on html mousedown/touchstart (public/script.js); keep body-level
-// layers out of that handler.
-function blockUpstreamDrawerClose(element) {
-    for (const type of ['mousedown', 'touchstart']) {
-        element.addEventListener(type, event => event.stopPropagation(), { passive: true });
-    }
-}
-
 function createIcon(iconClass) {
     const icon = document.createElement('i');
     icon.className = iconClass;
@@ -83,75 +76,20 @@ function isVisible(element) {
     return element instanceof HTMLElement && element.getClientRects().length > 0;
 }
 
-function getFocusableSheetElements() {
-    return [...state.sheet.querySelectorAll(FOCUSABLE_SELECTOR)]
-        .filter(element => !element.disabled && isVisible(element));
-}
-
 function isSheetOpen() {
-    return Boolean(state.sheet && !state.sheet.hidden);
+    return Boolean(state.sheetController?.isOpen());
 }
 
 function openSheet() {
     if (!state.active || isSheetOpen()) {
         return;
     }
-    stopMotion(state.sheet);
-    stopMotion(state.backdrop);
-    state.sheet.hidden = false;
-    state.backdrop.hidden = false;
     state.chip.setAttribute('aria-expanded', 'true');
-    // AdwBottomSheet: rises from the bottom edge the chip sits on, over a fading scrim.
-    animateIn(state.sheet, [{ transform: 'translateY(100%)' }, { transform: 'none' }], SPRING_SHEET);
-    animateIn(state.backdrop, [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_FAST });
-    requestAnimationFrame(() => state.sheetTitle.focus({ preventScroll: true }));
+    state.sheetController.open();
 }
 
 function closeSheet({ animate = true } = {}) {
-    if (!isSheetOpen()) {
-        return;
-    }
-    const activeElement = document.activeElement;
-    const hadFocus = state.sheet.contains(activeElement) || activeElement === state.backdrop;
-    // Sheet styles are mobile-scoped, so a desktop switch must hide it at once.
-    const enabled = animate && state.mobile;
-    animateOut(state.sheet, [{ transform: 'none' }, { transform: 'translateY(100%)' }], () => {
-        state.sheet.hidden = true;
-    }, { enabled });
-    animateOut(state.backdrop, [{ opacity: 1 }, { opacity: 0 }], () => {
-        state.backdrop.hidden = true;
-    }, { enabled });
-    state.chip?.setAttribute('aria-expanded', 'false');
-    if (hadFocus && isVisible(state.chip)) {
-        state.chip.focus({ preventScroll: true });
-    }
-}
-
-function handleSheetKeydown(event) {
-    if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        closeSheet();
-        return;
-    }
-    if (event.key !== 'Tab') {
-        return;
-    }
-    const focusable = getFocusableSheetElements();
-    if (!focusable.length) {
-        event.preventDefault();
-        return;
-    }
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    const activeElement = document.activeElement;
-    if (event.shiftKey && (activeElement === first || activeElement === state.sheetTitle)) {
-        event.preventDefault();
-        last.focus();
-    } else if (!event.shiftKey && activeElement === last) {
-        event.preventDefault();
-        first.focus();
-    }
+    state.sheetController?.close({ animate });
 }
 
 function ensureSheet() {
@@ -165,7 +103,6 @@ function ensureSheet() {
     backdrop.tabIndex = -1;
     backdrop.hidden = true;
     backdrop.setAttribute('aria-label', translate('Close chat actions'));
-    backdrop.addEventListener('click', () => closeSheet());
 
     const sheet = document.createElement('div');
     sheet.id = SHEET_ID;
@@ -200,13 +137,19 @@ function ensureSheet() {
     });
     selectSlot.addEventListener('change', () => closeSheet());
 
-    sheet.addEventListener('keydown', handleSheetKeydown);
     sheet.append(header, selectSlot, actions);
-    blockUpstreamDrawerClose(backdrop);
-    blockUpstreamDrawerClose(sheet);
     document.body.append(backdrop, sheet);
 
-    Object.assign(state, { sheet, sheetTitle: title, sheetSelectSlot: selectSlot, sheetActions: actions, backdrop });
+    const sheetController = createSheetController({
+        sheet,
+        backdrop,
+        getInitialFocus: () => title,
+        getReturnFocus: () => state.chip,
+        // Sheet styles are mobile-scoped, so a desktop switch must hide it at once.
+        canAnimateClose: () => state.mobile,
+        onClose: () => state.chip?.setAttribute('aria-expanded', 'false'),
+    });
+    Object.assign(state, { sheet, sheetTitle: title, sheetSelectSlot: selectSlot, sheetActions: actions, backdrop, sheetController });
 }
 
 function syncChipLabel() {

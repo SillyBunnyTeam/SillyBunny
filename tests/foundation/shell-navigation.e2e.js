@@ -199,9 +199,10 @@ test('mobile top-bar shell triggers open from their trigger origin', async ({ pa
         }), { panelId });
         expect(details.animation.duration).toBe(472);
         expect(details.animation.origin).toBe(details.animation.expectedOrigin);
+        // Scale only: the Characters drawer pins opacity on mobile, so all three shells zoom identically.
         expect(details.animation.keyframes).toEqual([
-            { opacity: 0, scale: '0.96' },
-            { opacity: 1, scale: '1' },
+            { opacity: undefined, scale: '0.96' },
+            { opacity: undefined, scale: '1' },
         ]);
         const renderedSamples = await page.evaluate(({ panelId }) => new Promise(resolve => {
             const panel = document.getElementById(panelId);

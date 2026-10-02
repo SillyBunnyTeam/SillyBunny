@@ -51,70 +51,57 @@ async function seedChat(page, { longName = false } = {}) {
 }
 
 function visibleRowButtons(page, selector) {
-    return page.locator(`${selector} .mes_buttons > .mes_button`).evaluateAll(buttons => buttons
+    return page.locator(`${selector} .mes_buttons > .mes_button, ${selector} .mes_buttons > .extraMesButtons > *`).evaluateAll(buttons => buttons
         .filter(button => button.getClientRects().length > 0)
         .map(button => [...button.classList].find(name => /^(mes_|extraMesButtons)/.test(name) && name !== 'mes_button') ?? button.className));
 }
 
-test('mobile message row keeps three large targets and opens an opaque popover', async ({ page, isMobile }) => {
-    test.skip(!isMobile, 'The popover layout is mobile-only.');
+const sheet = '.sb-action-sheet';
+const popover = '.sb-action-popover';
+
+function menuLabels(page, selector) {
+    return page.locator(`${selector} .sb-action-menu-item .sb-action-menu-label`).allTextContents();
+}
+
+test('mobile row shows Edit and the menu button, which opens a labelled sheet', async ({ page, isMobile }) => {
+    test.skip(!isMobile, 'The sheet is mobile-only.');
     await seedChat(page, { longName: true });
 
     const message = page.locator(target);
     const hint = message.locator('.mes_buttons > .extraMesButtonsHint');
-    const popover = message.locator('.mes_buttons > .extraMesButtons');
 
-    expect(await visibleRowButtons(page, target)).toEqual(['extraMesButtonsHint', 'mes_edit', 'mes_delete']);
-    const rowTops = await message.locator('.mes_buttons > .mes_button').evaluateAll(buttons => new Set(buttons
-        .filter(button => button.getClientRects().length > 0)
-        .map(button => Math.round(button.getBoundingClientRect().top))).size);
-    expect(rowTops).toBe(1);
+    expect(await visibleRowButtons(page, target)).toEqual(['mes_edit', 'extraMesButtonsHint']);
+    await expect(hint).toHaveClass(/fa-ellipsis-vertical/);
     const hintBox = await hint.boundingBox();
     expect(hintBox.width).toBeGreaterThanOrEqual(44);
     expect(hintBox.height).toBeGreaterThanOrEqual(44);
 
     await hint.click();
-    await expect(popover).toHaveAttribute('data-sb-open', '');
-    await expect(popover).toHaveAttribute('role', 'group');
+    await expect(page.locator(sheet)).toBeVisible();
     await expect(hint).toHaveAttribute('aria-expanded', 'true');
-    await expect(hint).toHaveAttribute('aria-controls', await popover.getAttribute('id'));
-    await expect(popover.locator('.mes_bookmark')).toBeVisible();
-    await expect(popover).toHaveAttribute('data-sb-placement', /^(top|bottom)$/);
+    await expect(page.locator(`${sheet} [role="menu"]`)).toBeVisible();
+    const labels = await menuLabels(page, sheet);
+    expect(labels).toContain('Copy');
+    expect(labels).toContain('Checkpoint');
+    expect(labels.at(-1)).toBe('Delete');
+    await expect(page.locator(`${sheet} .sb-action-menu-item.is-danger`)).toHaveCount(1);
 
-    const layout = await popover.evaluate(element => {
-        const box = element.getBoundingClientRect();
-        const chat = document.getElementById('chat').getBoundingClientRect();
-        const background = getComputedStyle(element).backgroundColor;
-        const corners = [
-            [box.left + 10, box.top + 10], [box.right - 10, box.top + 10],
-            [box.left + 10, box.bottom - 10], [box.right - 10, box.bottom - 10],
-        ];
-        return {
-            insideChat: box.left >= chat.left && box.right <= chat.right,
-            translucent: /\/\s*0?\.\d+\)|rgba\([^)]*,\s*0?\.\d+\)/.test(background),
-            covered: corners.every(([x, y]) => element.contains(document.elementFromPoint(x, y))),
-        };
-    });
-    expect(layout).toEqual({ insideChat: true, translucent: false, covered: true });
-
-    await page.keyboard.press('ArrowRight');
-    await expect(popover.locator(':focus')).toHaveCount(1);
     await page.keyboard.press('Escape');
-    await expect(popover).not.toHaveAttribute('data-sb-open');
-    await expect(hint).toBeFocused();
+    await expect(page.locator(sheet)).toBeHidden();
+    await expect(hint).toHaveAttribute('aria-expanded', 'false');
 
     await hint.click();
-    await expect(popover).toHaveAttribute('data-sb-open', '');
-    await page.mouse.click(20, 400);
-    await expect(popover).not.toHaveAttribute('data-sb-open');
+    await expect(page.locator(sheet)).toBeVisible();
+    await page.mouse.click(20, 40);
+    await expect(page.locator(sheet)).toBeHidden();
 
     await hint.click();
-    await popover.locator('.mes_copy').click();
-    await expect(popover).not.toHaveAttribute('data-sb-open');
+    await page.locator(`${sheet} .sb-action-menu-item`, { hasText: /^Copy$/ }).click();
+    await expect(page.locator(sheet)).toBeHidden();
 });
 
-test('mobile edit row uses a popover and Escape keeps the edit open', async ({ page, isMobile }) => {
-    test.skip(!isMobile, 'The edit popover is mobile-only.');
+test('mobile edit row leads with Cancel and Confirm and keeps the rest in the sheet', async ({ page, isMobile }) => {
+    test.skip(!isMobile, 'The edit sheet is mobile-only.');
     await seedChat(page);
 
     const message = page.locator(target);
@@ -125,55 +112,20 @@ test('mobile edit row uses a popover and Escape keeps the edit open', async ({ p
         .filter(item => item.getClientRects().length > 0)
         .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left)
         .map(item => item.classList[0]));
-    expect(editRow).toEqual(['sb-mes-edit-more', 'mes_edit_done', 'mes_edit_cancel']);
+    expect(editRow).toEqual(['mes_edit_cancel', 'mes_edit_done', 'sb-mes-edit-more']);
 
-    const more = message.locator('.mes_edit_buttons > .sb-mes-edit-more');
-    const extra = message.locator('.mes_edit_buttons > .sb-mes-edit-extra');
-    await more.click();
-    await expect(extra).toHaveAttribute('data-sb-open', '');
-    await expect(extra.locator('.mes_edit_copy')).toBeVisible();
-
-    // Wait out the edit-entry animation; its final state must not trap the popover under the textarea.
-    await page.waitForTimeout(300);
-    const covered = await extra.evaluate(element => {
-        const box = element.getBoundingClientRect();
-        return [
-            [box.left + 10, box.top + 10], [box.right - 10, box.top + 10],
-            [box.left + 10, box.bottom - 10], [box.right - 10, box.bottom - 10],
-        ].every(([x, y]) => element.contains(document.elementFromPoint(x, y)));
-    });
-    expect(covered).toBe(true);
+    await message.locator('.mes_edit_buttons > .sb-mes-edit-more').click();
+    await expect(page.locator(sheet)).toBeVisible();
+    const labels = await menuLabels(page, sheet);
+    expect(labels[0]).toBe('Copy this message');
+    expect(labels.at(-1)).toBe('Delete this message');
 
     await page.keyboard.press('Escape');
-    await expect(extra).not.toHaveAttribute('data-sb-open');
+    await expect(page.locator(sheet)).toBeHidden();
     await expect(message.locator('.edit_textarea')).toBeVisible();
 
     await message.locator('.mes_edit_cancel').click();
     await expect(message.locator('.edit_textarea')).toHaveCount(0);
-});
-
-test('row popover stays above a neighbouring message that is being edited', async ({ page, isMobile }) => {
-    test.skip(!isMobile, 'The popover layout is mobile-only.');
-    await seedChat(page);
-
-    const editing = page.locator('#chat .mes[mesid="5"]');
-    await editing.locator('.mes_buttons .mes_edit').click();
-    await expect(editing.locator('.edit_textarea')).toBeVisible();
-    await page.waitForTimeout(300);
-
-    const message = page.locator(target);
-    await message.scrollIntoViewIfNeeded();
-    await message.locator('.mes_buttons > .extraMesButtonsHint').click();
-    const popover = message.locator('.mes_buttons > .extraMesButtons');
-    await expect(popover).toHaveAttribute('data-sb-open', '');
-    const covered = await popover.evaluate(element => {
-        const box = element.getBoundingClientRect();
-        return [
-            [box.left + 10, box.top + 10], [box.right - 10, box.top + 10],
-            [box.left + 10, box.bottom - 10], [box.right - 10, box.bottom - 10],
-        ].every(([x, y]) => element.contains(document.elementFromPoint(x, y)));
-    });
-    expect(covered).toBe(true);
 });
 
 test('press-and-hold shows the action label without activating it', async ({ page, isMobile, browserName }) => {
@@ -193,53 +145,134 @@ test('press-and-hold shows the action label without activating it', async ({ pag
     await expect(page.locator(`${target} .edit_textarea`)).toHaveCount(0);
 });
 
-test('desktop keeps inline expansion and truncates long names first', async ({ page, isMobile }) => {
-    test.skip(isMobile, 'Inline expansion is desktop-only.');
+test('desktop row shows Copy, Edit, and the menu button, which opens a popover', async ({ page, isMobile }) => {
+    test.skip(isMobile, 'The popover is desktop-only.');
     await seedChat(page, { longName: true });
 
     const message = page.locator(target);
     const hint = message.locator('.mes_buttons > .extraMesButtonsHint');
-    const extras = message.locator('.mes_buttons > .extraMesButtons');
 
     const name = await message.locator('.name_text').evaluate(element => {
         const style = getComputedStyle(element);
         return { ellipsis: style.textOverflow === 'ellipsis', truncated: element.scrollWidth > element.clientWidth };
     });
     expect(name).toEqual({ ellipsis: true, truncated: true });
+    expect(await visibleRowButtons(page, target)).toEqual(['mes_copy', 'mes_edit', 'extraMesButtonsHint']);
 
     await message.hover();
-    await hint.click();
-    await expect(extras).toHaveCSS('display', 'flex');
-    await expect(extras).not.toHaveAttribute('data-sb-open');
-    await expect(extras).not.toHaveAttribute('role');
+    await hint.hover();
+    // SillyTavern-Tooltips moves `title` to data-sttt--title.
+    const hintTitle = await hint.evaluate(element => element.getAttribute('data-sttt--title') ?? element.getAttribute('title'));
+    expect(hintTitle).toBe('Message Actions\nHold shift to expand.');
 
-    const order = await visibleRowButtons(page, target);
-    expect(order.indexOf('mes_bookmark')).toBeLessThan(order.indexOf('mes_edit'));
+    await hint.click();
+    const menu = page.locator(popover);
+    await expect(menu).toBeVisible();
+    await expect(hint).toHaveAttribute('aria-expanded', 'true');
+    const inside = await menu.evaluate(element => {
+        const box = element.getBoundingClientRect();
+        const chat = document.getElementById('chat').getBoundingClientRect();
+        return box.left >= chat.left - 1 && box.right <= chat.right + 1;
+    });
+    expect(inside).toBe(true);
+    expect((await menuLabels(page, popover)).at(-1)).toBe('Delete');
+
+    await page.keyboard.press('ArrowDown');
+    await expect(menu.locator('.sb-action-menu-item:focus')).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect(hint).toBeFocused();
+
+    await message.locator('.ch_name .name_text').click({ button: 'right' });
+    await expect(page.locator(popover)).toBeVisible();
+    await page.mouse.click(5, 5);
+    await expect(page.locator(popover)).toHaveCount(0);
 });
 
-test('echo user messages anchor actions and the popover to their start edge', async ({ page, isMobile }) => {
-    test.skip(!isMobile, 'The mirrored popover check is mobile-only.');
+test('desktop Shift expands only the hovered row, with Delete and dividers', async ({ page, isMobile }) => {
+    test.skip(isMobile, 'Shift reveal is desktop-only.');
+    await seedChat(page);
+
+    const message = page.locator(target);
+    // Shift is ignored while a text field (the composer) has focus.
+    await page.evaluate(() => /** @type {HTMLElement} */ (document.activeElement)?.blur());
+    await message.locator('.mes_text').hover();
+    await page.keyboard.down('Shift');
+    await page.keyboard.up('Shift');
+    await expect(message).toHaveAttribute('data-sb-actions-expanded', '');
+
+    const order = await visibleRowButtons(page, target);
+    expect(order).toContain('mes_delete');
+    expect(order).toContain('mes_bookmark');
+    expect(order.slice(-3)).toEqual(['mes_copy', 'mes_edit', 'extraMesButtonsHint']);
+    expect(await message.locator('.mes_buttons .sb-actions-divider:visible').count()).toBeGreaterThan(0);
+    expect(await visibleRowButtons(page, '#chat .mes[mesid="2"]')).toEqual(['mes_copy', 'mes_edit', 'extraMesButtonsHint']);
+
+    await page.locator('#chat .mes[mesid="2"] .mes_text').hover();
+    await expect(message).not.toHaveAttribute('data-sb-actions-expanded');
+});
+
+test('desktop Shift held before hovering expands the row the pointer enters', async ({ page, isMobile }) => {
+    test.skip(isMobile, 'Shift reveal is desktop-only.');
+    await seedChat(page);
+
+    const message = page.locator(target);
+    await page.evaluate(() => /** @type {HTMLElement} */ (document.activeElement)?.blur());
+    await page.mouse.move(5, 5);
+    await page.keyboard.down('Shift');
+    await message.locator('.mes_text').hover();
+    await expect(message).toHaveAttribute('data-sb-actions-expanded', '');
+    await page.keyboard.up('Shift');
+});
+
+test('desktop edit row keeps the edit actions inline, Delete last', async ({ page, isMobile }) => {
+    test.skip(isMobile, 'The inline edit row is desktop-only.');
+    await seedChat(page);
+
+    const message = page.locator(target);
+    await message.locator('.mes_buttons .mes_edit').click();
+    await expect(message.locator('.edit_textarea')).toBeVisible();
+    const editRow = await message.locator('.mes_edit_buttons .menu_button').evaluateAll(items => items
+        .filter(item => item.getClientRects().length > 0)
+        .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left)
+        .map(item => item.classList[0]));
+    expect(editRow.slice(0, 3)).toEqual(['mes_edit_cancel', 'mes_edit_done', 'mes_edit_copy']);
+    expect(editRow.at(-1)).toBe('mes_edit_delete');
+    expect(editRow).not.toContain('sb-mes-edit-more');
+    await message.locator('.mes_edit_cancel').click();
+});
+
+test('Delete always asks first, with Cancel focused', async ({ page }) => {
+    await seedChat(page);
+    await page.evaluate(() => {
+        window.SillyTavern.getContext().powerUserSettings.confirm_message_delete = false;
+    });
+
+    const message = page.locator(target);
+    await message.locator('.mes_buttons > .extraMesButtonsHint').click();
+    await page.locator('.sb-action-menu-item.is-danger').click({ timeout: 10000 });
+    const dialog = page.locator('dialog.sb-popup-destructive-confirm');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('.popup-button-cancel')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(dialog).toHaveCount(0);
+    await expect(message).toBeVisible();
+    await expect(page.locator('#chat .mes')).toHaveCount(6);
+});
+
+test('echo user messages anchor actions to their start edge', async ({ page }) => {
     await seedChat(page);
     await page.evaluate(() => $('#chat_display').val('3').trigger('change'));
     await expect(page.locator('body')).toHaveClass(/echostyle/);
 
     const userMessage = '#chat .mes[mesid="5"]';
     await page.locator(userMessage).scrollIntoViewIfNeeded();
-    const hint = page.locator(`${userMessage} .mes_buttons > .extraMesButtonsHint`);
-    const popover = page.locator(`${userMessage} .mes_buttons > .extraMesButtons`);
-
     const sides = await page.locator(userMessage).evaluate(element => ({
         buttons: element.querySelector('.mes_buttons').getBoundingClientRect().left,
+        hint: element.querySelector('.extraMesButtonsHint').getBoundingClientRect().left,
+        edit: element.querySelector('.mes_buttons .mes_edit').getBoundingClientRect().left,
         name: element.querySelector('.name_text').getBoundingClientRect().left,
     }));
     expect(sides.buttons).toBeLessThan(sides.name);
-
-    await hint.click();
-    await expect(popover).toHaveAttribute('data-sb-open', '');
-    const bounds = await popover.evaluate(element => {
-        const box = element.getBoundingClientRect();
-        return { left: box.left, right: box.right, viewport: window.innerWidth };
-    });
-    expect(bounds.left).toBeGreaterThanOrEqual(0);
-    expect(bounds.right).toBeLessThanOrEqual(bounds.viewport);
+    expect(sides.hint).toBeLessThan(sides.edit);
 });

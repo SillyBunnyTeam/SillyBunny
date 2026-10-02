@@ -373,69 +373,96 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
         meta.appendChild(receipt);
     }
 
+    // SillyBunny message actions (DESIGN.md "Message Actions"): reactions | Reply, Edit, Copy, menu
+    // at rest; data-sb-secondary items join in section order when the pill is expanded.
     const actionBar = document.createElement('span');
     actionBar.className = 'sb-conversation-message-actions';
-
-    if (settings.editable_messages) {
-        const editButton = document.createElement('button');
-        editButton.type = 'button';
-        editButton.className = 'sb-conversation-message-action sb-conversation-message-edit fa-solid fa-pencil';
-        editButton.title = 'Edit Conversation message';
-        editButton.setAttribute('aria-label', 'Edit Conversation message');
-        editButton.dataset.sbConversationAction = 'edit-message';
-        editButton.dataset.messageId = message.id;
-        actionBar.appendChild(editButton);
-    }
-
-    if (settings.prose_polisher && message.role !== 'user') {
-        const polishButton = document.createElement('button');
-        polishButton.type = 'button';
-        polishButton.className = 'sb-conversation-message-action sb-conversation-message-polish fa-solid fa-wand-magic-sparkles';
-        polishButton.title = 'Polish character message';
-        polishButton.setAttribute('aria-label', 'Polish character message');
-        polishButton.dataset.sbConversationAction = 'polish-character-message';
-        polishButton.dataset.messageId = message.id;
-        actionBar.appendChild(polishButton);
-    }
-
-    const messageActions = [
-        { action: 'reply-message', icon: 'fa-reply', label: 'Reply' },
-        { action: 'copy-message', icon: 'fa-copy', label: 'Copy message' },
-        { action: 'toggle-message-pin', icon: 'fa-thumbtack', label: message.extra?.conversation_pinned ? 'Unpin message' : 'Pin message' },
-        { action: 'branch-from-message', icon: 'fa-code-branch', label: 'Branch from here' },
-    ];
-    if (!['user', 'system'].includes(message.role || '')) {
-        messageActions.push({ action: 'speak-message', icon: 'fa-volume-high', label: 'Speak' });
-        messageActions.push({ action: 'regenerate-message', icon: 'fa-rotate-right', label: 'Regenerate message' });
-    }
-    messageActions.push({ action: 'delete-message', icon: 'fa-trash-can', label: 'Delete message' });
-    for (const messageAction of messageActions) {
-        const actionButton = document.createElement('button');
-        actionButton.type = 'button';
-        actionButton.className = `sb-conversation-message-action fa-solid ${messageAction.icon}`;
-        actionButton.title = messageAction.label;
-        actionButton.setAttribute('aria-label', messageAction.label);
-        actionButton.dataset.sbConversationAction = messageAction.action;
-        actionButton.dataset.messageId = message.id;
-        actionBar.appendChild(actionButton);
-    }
+    const activeReactionCounts = message.extra?.conversation_reactions || {};
     for (const reaction of Object.keys(CONVERSATION_REACTION_LABELS)) {
         const reactionButton = document.createElement('button');
         reactionButton.type = 'button';
         reactionButton.className = 'sb-conversation-reaction-button';
         reactionButton.textContent = normalizeConversationReactionLabel(reaction);
+        reactionButton.setAttribute('aria-pressed', String(Number(activeReactionCounts[reaction]) > 0));
         reactionButton.dataset.sbConversationAction = 'react-message';
         reactionButton.dataset.messageId = message.id;
         reactionButton.dataset.reaction = reaction;
         actionBar.appendChild(reactionButton);
     }
 
+    const isCharacterMessage = !['user', 'system'].includes(message.role || '');
+    const actionSections = [
+        [
+            { action: 'reply-message', icon: 'fa-reply', label: 'Reply' },
+            settings.editable_messages && { action: 'edit-message', icon: 'fa-pencil', label: 'Edit Conversation message', className: 'sb-conversation-message-edit' },
+            settings.prose_polisher && message.role !== 'user' && { action: 'polish-character-message', icon: 'fa-wand-magic-sparkles', label: 'Polish character message', className: 'sb-conversation-message-polish', secondary: true },
+        ],
+        [
+            { action: 'copy-message', icon: 'fa-copy', label: 'Copy message' },
+            { action: 'toggle-message-pin', icon: 'fa-thumbtack', label: message.extra?.conversation_pinned ? 'Unpin message' : 'Pin message', secondary: true },
+            { action: 'branch-from-message', icon: 'fa-code-branch', label: 'Branch from here', secondary: true },
+        ],
+        isCharacterMessage ? [
+            { action: 'speak-message', icon: 'fa-volume-high', label: 'Speak', secondary: true },
+            { action: 'regenerate-message', icon: 'fa-rotate-right', label: 'Regenerate message', secondary: true },
+        ] : [],
+        [{ action: 'delete-message', icon: 'fa-trash-can', label: 'Delete message', secondary: true }],
+    ].map(section => section.filter(Boolean)).filter(section => section.length);
+
+    const appendDivider = (secondary) => {
+        const divider = document.createElement('span');
+        divider.className = 'sb-conversation-message-divider';
+        divider.setAttribute('aria-hidden', 'true');
+        if (secondary) {
+            divider.dataset.sbSecondary = '';
+        }
+        actionBar.appendChild(divider);
+    };
+    appendDivider(false);
+    actionSections.forEach((section, index) => {
+        if (index > 0) {
+            appendDivider(true);
+        }
+        for (const messageAction of section) {
+            const actionButton = document.createElement('button');
+            actionButton.type = 'button';
+            actionButton.className = `sb-conversation-message-action fa-solid ${messageAction.icon}`;
+            if (messageAction.className) {
+                actionButton.classList.add(messageAction.className);
+            }
+            actionButton.title = messageAction.label;
+            actionButton.setAttribute('aria-label', messageAction.label);
+            actionButton.dataset.sbConversationAction = messageAction.action;
+            actionButton.dataset.messageId = message.id;
+            actionButton.dataset.sbSection = String(index);
+            if (messageAction.secondary) {
+                actionButton.dataset.sbSecondary = '';
+            }
+            actionBar.appendChild(actionButton);
+        }
+    });
+    appendDivider(true);
+
+    const menuButton = document.createElement('button');
+    menuButton.type = 'button';
+    menuButton.className = 'sb-conversation-message-action sb-conversation-message-menu fa-solid fa-ellipsis-vertical';
+    menuButton.title = 'Message Actions';
+    menuButton.setAttribute('aria-label', 'Message Actions');
+    menuButton.setAttribute('aria-haspopup', 'menu');
+    menuButton.setAttribute('aria-expanded', 'false');
+    menuButton.dataset.sbConversationMenu = '';
+    menuButton.dataset.messageId = message.id;
+    actionBar.appendChild(menuButton);
+
     const mobileTrigger = document.createElement('button');
     mobileTrigger.type = 'button';
-    mobileTrigger.className = 'sb-conversation-mobile-menu-trigger fa-solid fa-ellipsis';
-    mobileTrigger.title = 'Message options';
-    mobileTrigger.setAttribute('aria-label', 'Message options');
+    mobileTrigger.className = 'sb-conversation-mobile-menu-trigger fa-solid fa-ellipsis-vertical';
+    mobileTrigger.title = 'Message Actions';
+    mobileTrigger.setAttribute('aria-label', 'Message Actions');
+    mobileTrigger.setAttribute('aria-haspopup', 'menu');
     mobileTrigger.setAttribute('aria-expanded', 'false');
+    mobileTrigger.dataset.sbConversationMenu = '';
+    mobileTrigger.dataset.messageId = message.id;
 
     const text = document.createElement('div');
     text.className = 'sb-conversation-message-text';

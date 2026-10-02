@@ -1,300 +1,94 @@
 /*
- * SillyBunny message actions.
- * Mobile: the "Message Actions" and edit-mode overflow buttons open an icon-grid popover instead of
- * expanding inline, so the name row keeps one fixed line of large touch targets.
+ * SillyBunny message actions (DESIGN.md "Message Actions").
+ * Row: mobile shows Edit + menu button; desktop shows Copy + Edit + menu button. The menu button
+ * (upstream's .extraMesButtonsHint) opens a labelled menu built from the message's own buttons,
+ * which stay in the DOM so upstream and extension handlers keep working; menu rows forward to them.
+ * Desktop: Shift over a message, or the Expand Message Actions setting, shows every action inline.
  * Touch and pen: press and hold any message action to see its label.
- * Desktop keeps the upstream inline behaviour; only CSS changes there.
  */
 
 import { eventSource, event_types } from './events.js';
-import { animateIn, animateOut, MOTION_EASE_OUT_CUBIC, MOTION_FAST, MOTION_EASE_OUT_QUAD, MOTION_POPOVER_CLOSE, originFrom, stopMotion } from './sillybunny-motion.js';
+import { translate } from './i18n.js';
+import { MOBILE_QUERY, closeActionMenu, getActionMenuTrigger, isActionMenuOpen, openActionMenu } from './sillybunny-action-menu.js';
+import { initializeConversationMessageMenu } from './sillybunny-conversation/message-menu.js';
+import { animateIn, MOTION_FAST, MOTION_EASE_OUT_QUAD, stopMotion } from './sillybunny-motion.js';
 
-const MOBILE_QUERY = '(max-width: 768px)';
-const OPEN_CLASS = 'sb-message-actions-open';
-const OPEN_ATTRIBUTE = 'data-sb-open';
-const TRIGGER_MARKER = 'data-sb-actions-trigger';
-const ROW_TRIGGER_SELECTOR = '#chat .mes .mes_buttons > .extraMesButtonsHint';
-const EDIT_TRIGGER_SELECTOR = '#chat .mes .mes_edit_buttons > .sb-mes-edit-more';
-const TRIGGER_SELECTOR = `${ROW_TRIGGER_SELECTOR}, ${EDIT_TRIGGER_SELECTOR}`;
-const PRESSABLE_SELECTOR = '#chat .mes :is(.mes_buttons .mes_button, .extraMesButtons > div, .mes_edit_buttons .menu_button)';
-const EDIT_EXIT_SELECTOR = '#chat .mes .mes_edit_buttons > :is(.mes_edit_done, .mes_edit_cancel)';
-const NAVIGATION_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
-const MAX_COLUMNS = 5;
+const HINT_SELECTOR = '#chat .mes .mes_buttons > .extraMesButtonsHint';
+const EDIT_MORE_SELECTOR = '#chat .mes .mes_edit_buttons > .sb-mes-edit-more';
+const PRESSABLE_SELECTOR = '#chat .mes :is(.mes_buttons .mes_button, .mes_edit_buttons .menu_button)';
+const REVEAL_HOST_SELECTOR = '#chat > .mes, .sb-conversation-message';
+const EXPANDED_ATTRIBUTE = 'data-sb-actions-expanded';
+const PROBE_ATTRIBUTE = 'data-sb-actions-probe';
+const WRAPPED_ATTRIBUTE = 'data-sb-wrapped';
+const DIVIDER_CLASS = 'sb-actions-divider';
+const ROW_CONTROL_SELECTOR = `.extraMesButtons, .mes_edit, .extraMesButtonsHint, .${DIVIDER_CLASS}`;
 const VIEWPORT_MARGIN = 8;
-const POPOVER_OFFSET = 6;
-const SCROLL_CLOSE_DELTA = 4;
 const LONG_PRESS_MS = 450;
 const PRESS_MOVE_TOLERANCE = 10;
 const TOOLTIP_HIDE_DELAY = 1500;
 const CLICK_SUPPRESS_WINDOW = 400;
-const SCROLL_INTENT_WINDOW = 400;
-const SCROLL_KEYS = new Set(['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' ']);
+
+/*
+ * Menu sections, in order. Unknown buttons (extensions) fall into OTHER_SECTION, Delete is last.
+ * The template keeps .extraMesButtons in the same order so the expanded row matches.
+ */
+const ROW_SECTIONS = [
+    ['mes_delete_add_swipe', 'mes_swipe_picker', 'mes_narrate', 'mes_translate', 'sd_message_gen', 'qig-message-generate'],
+    ['mes_copy', 'mes_screenshot'],
+    ['mes_create_branch', 'mes_create_bookmark', 'mes_bookmark', 'mes_hide', 'mes_unhide'],
+    ['mes_prompt', 'mes_view_agent_changes', 'mes_fix_trackers', 'mes_run_companions', 'mes_run_card_scripts', 'mes_embed', 'mes_media_gallery', 'mes_media_list'],
+    [],
+    ['mes_delete'],
+];
+const OTHER_SECTION = 4;
+/** The expanded row ends with Copy, Edit, and the menu button after a divider. */
+const TRAILING_SECTION = ROW_SECTIONS.length;
+const TRAILING_CLASSES = ['mes_copy', 'mes_edit', 'extraMesButtonsHint'];
+const EDIT_SECTIONS = [['mes_edit_copy', 'mes_edit_add_reasoning'], ['mes_edit_up', 'mes_edit_down'], ['mes_edit_delete']];
+const DANGER_CLASSES = new Set(['mes_delete', 'mes_edit_delete']);
+// Upstream binds these on pointerup instead of click (script.js, itemized-prompts.js).
+const POINTERUP_CLASSES = ['mes_copy', 'mes_prompt'];
 
 let initialized = false;
 let mobileQuery = null;
-let openState = null;
-let popoverIdCounter = 0;
 let press = null;
 let suppressClick = false;
 let suppressClickTimer = 0;
 let tooltip = null;
 let tooltipFor = null;
 let tooltipHideTimer = 0;
-let lastScrollIntent = -Infinity;
+let hoverHost = null;
+/** @type {{ x: number, y: number } | null} */
+let lastMousePoint = null;
+/** @type {{ host: HTMLElement, source: 'pointer'|'focus' } | null} */
+let reveal = null;
+let layoutFrame = 0;
+const pendingLayout = new Set();
 
 function isMobileLayout() {
     return mobileQuery?.matches === true;
 }
 
-function getChat() {
-    return document.getElementById('chat');
+function isSettingExpanded() {
+    return document.body.classList.contains('expandMessageActions');
 }
 
 function asElement(target) {
     return target instanceof Element ? target : null;
 }
 
-function getPopoverFor(trigger) {
-    const selector = trigger.classList.contains('sb-mes-edit-more') ? ':scope > .sb-mes-edit-extra' : ':scope > .extraMesButtons';
-    return trigger.parentElement?.querySelector(selector) ?? null;
+function isTypingTarget(element) {
+    return element instanceof HTMLElement
+        && (element.isContentEditable || element.matches('textarea, input:not([type="radio"], [type="checkbox"], [type="button"], [type="submit"]), select'));
 }
 
-function getVisibleItems(popover) {
-    return [...popover.children].filter(child => child instanceof HTMLElement && child.getClientRects().length > 0);
+function getRow(mes) {
+    return mes?.querySelector(':scope .ch_name > .mes_buttons') ?? null;
 }
 
-function ensureTriggerAria(trigger) {
-    const popover = getPopoverFor(trigger);
-    if (!popover) {
-        return null;
-    }
-    if (!popover.id) {
-        popover.id = `sb-message-actions-${++popoverIdCounter}`;
-    }
-    popover.setAttribute('role', 'group');
-    popover.setAttribute('aria-label', getActionLabel(trigger) || 'Message Actions');
-    trigger.setAttribute(TRIGGER_MARKER, '');
-    trigger.setAttribute('aria-haspopup', 'true');
-    trigger.setAttribute('aria-controls', popover.id);
-    if (!trigger.hasAttribute('aria-expanded')) {
-        trigger.setAttribute('aria-expanded', 'false');
-    }
-    return popover;
-}
-
-function clearTriggerAria() {
-    for (const trigger of document.querySelectorAll(`[${TRIGGER_MARKER}]`)) {
-        trigger.removeAttribute(TRIGGER_MARKER);
-        trigger.removeAttribute('aria-haspopup');
-        trigger.removeAttribute('aria-controls');
-        trigger.removeAttribute('aria-expanded');
-    }
-}
-
-function openPopover(trigger, popover, { focus = true } = {}) {
-    closePopover({ animate: false });
-    const chat = getChat();
-    const host = popover.parentElement;
-    const mes = trigger.closest('.mes');
-    if (!chat || !host || !mes) {
-        return;
-    }
-
-    // Cancelling a running exit also runs its cleanup, so do it before marking the message open.
-    stopMotion(popover);
-    ensureTriggerAria(trigger);
-    host.style.removeProperty('--sb-actions-max-h');
-    host.style.removeProperty('--sb-actions-shift');
-    host.style.setProperty('--sb-actions-cols', String(MAX_COLUMNS));
-    popover.dataset.sbPlacement = 'bottom';
-    popover.setAttribute(OPEN_ATTRIBUTE, '');
-    mes.classList.add(OPEN_CLASS);
-    trigger.setAttribute('aria-expanded', 'true');
-
-    const items = getVisibleItems(popover);
-    const styles = getComputedStyle(popover);
-    const hit = items[0]?.getBoundingClientRect().width || trigger.getBoundingClientRect().width || 44;
-    const gap = parseFloat(styles.columnGap) || 0;
-    const chrome = (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0)
-        + (parseFloat(styles.borderLeftWidth) || 0) + (parseFloat(styles.borderRightWidth) || 0);
-    const chatRect = chat.getBoundingClientRect();
-    const maxColumns = Math.max(1, Math.floor((chatRect.width - VIEWPORT_MARGIN * 2 - chrome + gap) / (hit + gap)));
-    const columns = Math.max(1, Math.min(items.length, MAX_COLUMNS, maxColumns));
-    host.style.setProperty('--sb-actions-cols', String(columns));
-
-    const hostRect = host.getBoundingClientRect();
-    const height = popover.getBoundingClientRect().height;
-    const below = chatRect.bottom - hostRect.bottom - POPOVER_OFFSET - VIEWPORT_MARGIN;
-    const above = hostRect.top - chatRect.top - POPOVER_OFFSET - VIEWPORT_MARGIN;
-    const placement = height > below && above > below ? 'top' : 'bottom';
-    const minimumHeight = hit + (parseFloat(styles.paddingTop) || 0) + (parseFloat(styles.paddingBottom) || 0);
-    const space = Math.max(placement === 'bottom' ? below : above, minimumHeight);
-    if (height > space) {
-        host.style.setProperty('--sb-actions-max-h', `${Math.floor(space)}px`);
-    }
-    popover.dataset.sbPlacement = placement;
-
-    const rect = popover.getBoundingClientRect();
-    const overRight = rect.right - (chatRect.right - VIEWPORT_MARGIN);
-    const overLeft = chatRect.left + VIEWPORT_MARGIN - rect.left;
-    if (overRight > 0) {
-        host.style.setProperty('--sb-actions-shift', `${Math.ceil(overRight)}px`);
-    } else if (overLeft > 0) {
-        host.style.setProperty('--sb-actions-shift', `${-Math.ceil(overLeft)}px`);
-    }
-
-    openState = { trigger, popover, host, mes, chat, scrollTop: chat.scrollTop };
-
-    // DESIGN.md: Popovers 200ms fade + scale 0.96 -> 1 from trigger.
-    animateIn(popover, [
-        { opacity: 0, transform: 'scale(0.96)' },
-        { opacity: 1, transform: 'none' },
-    ], {
-        duration: MOTION_FAST,
-        easing: MOTION_EASE_OUT_QUAD,
-        styles: { 'transform-origin': originFrom(trigger, popover) },
-    });
-
-    if (focus) {
-        items[0]?.focus({ preventScroll: true });
-    }
-}
-
-function closePopover({ restoreFocus = false, animate = true } = {}) {
-    const state = openState;
-    if (!state) {
-        return;
-    }
-    openState = null;
-    const { trigger, popover, mes } = state;
-    trigger.setAttribute('aria-expanded', 'false');
-
-    const finish = () => {
-        if (openState?.mes !== mes) {
-            mes.classList.remove(OPEN_CLASS);
-        }
-    };
-
-    if (restoreFocus && trigger.isConnected) {
-        trigger.focus({ preventScroll: true });
-    }
-
-    // DESIGN.md: Popover close 150ms fade (no scale or movement).
-    const motion = animateOut(popover, [
-        { opacity: 1 },
-        { opacity: 0 },
-    ], () => popover.removeAttribute(OPEN_ATTRIBUTE), {
-        enabled: animate && popover.isConnected,
-        duration: MOTION_POPOVER_CLOSE,
-        easing: MOTION_EASE_OUT_CUBIC,
-        onEnd: finish,
-    });
-    if (!motion) {
-        finish();
-    }
-}
-
-function togglePopover(trigger) {
-    if (openState?.trigger === trigger) {
-        closePopover({ restoreFocus: true });
-        return;
-    }
-    const popover = getPopoverFor(trigger);
-    if (popover) {
-        openPopover(trigger, popover);
-    }
-}
-
-function moveFocus(key) {
-    if (!openState) {
-        return;
-    }
-    const items = getVisibleItems(openState.popover);
-    if (!items.length) {
-        return;
-    }
-    const columns = Number(openState.host.style.getPropertyValue('--sb-actions-cols')) || items.length;
-    let index = items.indexOf(/** @type {HTMLElement} */ (document.activeElement));
-    if (key === 'Home') {
-        index = 0;
-    } else if (key === 'End') {
-        index = items.length - 1;
-    } else if (index < 0) {
-        index = 0;
-    } else {
-        const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -columns, ArrowDown: columns }[key];
-        const next = index + step;
-        if (next >= 0 && next < items.length) {
-            index = next;
-        }
-    }
-    items[index]?.focus({ preventScroll: true });
-}
-
-/*
- * Checkpoint and one-click swipe replacement are conditional row actions; mobile keeps them in the
- * popover so the row stays ⋯ + Edit + Delete. They move once per render, so jQuery's toggle() keeps
- * working against the normal stylesheet display.
- */
-function relocateConditionalActions(mes, mobile) {
-    const buttons = mes.querySelector(':scope .ch_name > .mes_buttons');
-    const extras = buttons?.querySelector(':scope > .extraMesButtons');
-    if (!buttons || !extras) {
-        return;
-    }
-
-    if (mobile) {
-        const movable = buttons.querySelectorAll(':scope > :is(.mes_bookmark, .mes_delete_add_swipe)');
-        if (movable.length) {
-            extras.prepend(...movable);
-        }
-        return;
-    }
-
-    const bookmark = extras.querySelector(':scope > .mes_bookmark');
-    if (bookmark) {
-        const anchor = buttons.querySelector(':scope > .mes_edit');
-        anchor ? anchor.before(bookmark) : buttons.append(bookmark);
-    }
-    const replaceSwipe = extras.querySelector(':scope > .mes_delete_add_swipe');
-    if (replaceSwipe) {
-        const anchor = buttons.querySelector(':scope > .mes_delete');
-        anchor ? anchor.before(replaceSwipe) : buttons.append(replaceSwipe);
-    }
-}
-
-function relocateAll(mobile) {
-    const chat = getChat();
-    if (!chat) {
-        return;
-    }
-    for (const mes of chat.querySelectorAll(':scope > .mes')) {
-        relocateConditionalActions(mes, mobile);
-    }
-}
-
-/** Clears state left by the upstream inline expansion so the mobile popover starts clean. */
-function clearInlineExpansionState() {
-    for (const extras of document.querySelectorAll('#chat .extraMesButtons')) {
-        extras.classList.remove('visible');
-        extras.style.removeProperty('display');
-        extras.style.removeProperty('opacity');
-    }
-    for (const hint of document.querySelectorAll('#chat .extraMesButtonsHint')) {
-        hint.style.removeProperty('display');
-        hint.style.removeProperty('opacity');
-    }
-}
-
-function handleLayoutChange() {
-    closePopover({ animate: false });
-    hideTooltip();
-    clearInlineExpansionState();
-    const mobile = isMobileLayout();
-    relocateAll(mobile);
-    if (!mobile) {
-        clearTriggerAria();
-    }
+function sectionOf(element) {
+    const index = ROW_SECTIONS.findIndex(classes => classes.some(name => element.classList.contains(name)));
+    return index < 0 ? OTHER_SECTION : index;
 }
 
 function getActionLabel(element) {
@@ -306,6 +100,385 @@ function getActionLabel(element) {
         || '';
     return label.split('\n')[0].trim();
 }
+
+function getActionIcon(element) {
+    const classes = [...element.classList].filter(name => name === 'fa' || name.startsWith('fa-'));
+    if (classes.length) {
+        return classes.join(' ');
+    }
+    return element.querySelector(':scope > :is(i, svg, img)') ?? 'fa-solid fa-puzzle-piece';
+}
+
+function isAvailable(element) {
+    return element instanceof HTMLElement
+        && !element.classList.contains('displayNone')
+        && getComputedStyle(element).display !== 'none'
+        && Boolean(getActionLabel(element));
+}
+
+/** Reads availability with the row's layout hiding switched off, so only real conditions apply. */
+function probeAvailable(mes, elements) {
+    mes.setAttribute(PROBE_ATTRIBUTE, '');
+    try {
+        return elements.filter(isAvailable);
+    } finally {
+        mes.removeAttribute(PROBE_ATTRIBUTE);
+    }
+}
+
+function forwardActivation(element, event) {
+    if (!element.isConnected) {
+        return;
+    }
+    const init = {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        shiftKey: event.shiftKey,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        metaKey: event.metaKey,
+    };
+    const known = sectionOf(element) !== OTHER_SECTION || [...EDIT_SECTIONS.flat()].some(name => element.classList.contains(name));
+    const usesPointerUp = POINTERUP_CLASSES.some(name => element.classList.contains(name));
+    // Unknown extension buttons get the same pair a real tap produces.
+    if (usesPointerUp || !known) {
+        element.dispatchEvent(new PointerEvent('pointerup', { ...init, pointerType: 'mouse', isPrimary: true }));
+    }
+    if (!usesPointerUp) {
+        element.dispatchEvent(new MouseEvent('click', { ...init, detail: 1 }));
+    }
+}
+
+function toMenuItem(element) {
+    const title = element.getAttribute('title') || element.getAttribute('data-sttt--title') || element.getAttribute('data-tooltip') || '';
+    const lines = title.split('\n').map(line => line.trim());
+    const item = {
+        label: getActionLabel(element),
+        icon: getActionIcon(element),
+        title,
+        danger: [...DANGER_CLASSES].some(name => element.classList.contains(name)),
+        disabled: element.classList.contains('disabled'),
+        onSelect: event => forwardActivation(element, event),
+    };
+    // updateBookmarkDisplay() writes "Checkpoint\n<chat name>\n\n<tooltip>".
+    if (element.classList.contains('mes_bookmark') && lines[1]) {
+        item.detail = lines[1];
+    }
+    return item;
+}
+
+function getMessageSubtitle(mes) {
+    const name = mes.querySelector('.ch_name .name_text')?.textContent?.trim() ?? '';
+    const id = mes.getAttribute('mesid');
+    return [name, id !== null ? `#${id}` : ''].filter(Boolean).join(' · ');
+}
+
+function buildRowSections(mes) {
+    const row = getRow(mes);
+    if (!row) {
+        return [];
+    }
+    const extras = row.querySelector(':scope > .extraMesButtons');
+    const candidates = [
+        ...(extras ? [...extras.children] : []),
+        ...[...row.children].filter(child => !child.matches(ROW_CONTROL_SELECTOR)),
+    ].filter(element => !element.classList.contains(DIVIDER_CLASS));
+    const sections = ROW_SECTIONS.map(() => []);
+    for (const element of probeAvailable(mes, candidates)) {
+        sections[sectionOf(element)].push(toMenuItem(element));
+    }
+    return sections.map(items => ({ items }));
+}
+
+function buildEditSections(mes) {
+    const extra = mes.querySelector(':scope .mes_edit_buttons > .sb-mes-edit-extra');
+    if (!extra) {
+        return [];
+    }
+    return EDIT_SECTIONS.map(classes => ({
+        items: classes
+            .map(name => extra.querySelector(`:scope > .${name}`))
+            // The theme hides disabled Move up/down in the row; the menu lists them disabled.
+            .filter(element => isAvailable(element) || (element?.classList.contains('disabled') && /mes_edit_(up|down)/.test(element.className)))
+            .map(toMenuItem),
+    }));
+}
+
+function openMessageMenu(trigger, { point = null, keyboard = false } = {}) {
+    const mes = trigger.closest('#chat > .mes');
+    if (!(mes instanceof HTMLElement)) {
+        return;
+    }
+    const editing = trigger.classList.contains('sb-mes-edit-more') || Boolean(mes.querySelector('#curEditTextarea'));
+    hideTooltip();
+    mes.classList.add('sb-message-actions-open');
+    openActionMenu({
+        trigger,
+        sections: editing ? buildEditSections(mes) : buildRowSections(mes),
+        subtitle: getMessageSubtitle(mes),
+        point,
+        keyboard,
+        bounds: document.getElementById('chat'),
+        onClose: () => {
+            mes.classList.remove('sb-message-actions-open');
+            requestAnimationFrame(collapseRevealIfLeft);
+        },
+    });
+}
+
+function getMenuTrigger(mes) {
+    const editing = Boolean(mes.querySelector('#curEditTextarea'));
+    return mes.querySelector(editing ? ':scope .mes_edit_buttons > .sb-mes-edit-more' : ':scope .ch_name > .mes_buttons > .extraMesButtonsHint');
+}
+
+/* ---------- Expanded row (desktop) ---------- */
+
+function isRowExpanded(mes) {
+    return !isMobileLayout() && (isSettingExpanded() || mes.hasAttribute(EXPANDED_ATTRIBUTE));
+}
+
+function createDivider() {
+    const divider = document.createElement('span');
+    divider.className = DIVIDER_CLASS;
+    divider.setAttribute('aria-hidden', 'true');
+    return divider;
+}
+
+/** Keeps known actions in section order; extensions append theirs at the end of .extraMesButtons. */
+function normalizeExtrasOrder(extras) {
+    const children = [...extras.children].filter(child => !child.classList.contains(DIVIDER_CLASS));
+    const rank = element => {
+        const section = sectionOf(element);
+        const position = ROW_SECTIONS[section].findIndex(name => element.classList.contains(name));
+        return section * 100 + (position < 0 ? 99 : position);
+    };
+    const sorted = children
+        .map((element, index) => ({ element, index, rank: rank(element) }))
+        .sort((a, b) => a.rank - b.rank || a.index - b.index);
+    if (sorted.some((entry, index) => entry.element !== children[index])) {
+        extras.append(...sorted.map(entry => entry.element));
+    }
+}
+
+/** Places dividers between non-empty sections and hides them once the row wraps. */
+function layoutExpandedRow(mes) {
+    const row = getRow(mes);
+    if (!row || !isRowExpanded(mes)) {
+        return;
+    }
+    row.querySelectorAll(`.${DIVIDER_CLASS}`).forEach(divider => divider.remove());
+    const extras = row.querySelector(':scope > .extraMesButtons');
+    if (extras) {
+        normalizeExtrasOrder(extras);
+    }
+    const items = [
+        ...(extras ? [...extras.children] : []),
+        ...[...row.children].filter(child => child !== extras),
+    ].filter(element => element instanceof HTMLElement && element.getClientRects().length > 0);
+
+    let previousSection = -1;
+    for (const element of items) {
+        const section = TRAILING_CLASSES.some(name => element.classList.contains(name)) ? TRAILING_SECTION : sectionOf(element);
+        if (previousSection >= 0 && section !== previousSection) {
+            element.before(createDivider());
+        }
+        previousSection = section;
+    }
+
+    row.removeAttribute(WRAPPED_ATTRIBUTE);
+    const first = items[0];
+    const last = items.at(-1);
+    if (first && last && first !== last && Math.abs(last.getBoundingClientRect().top - first.getBoundingClientRect().top) > 2) {
+        row.setAttribute(WRAPPED_ATTRIBUTE, '');
+    }
+}
+
+function scheduleLayout(mes) {
+    if (!(mes instanceof HTMLElement)) {
+        return;
+    }
+    pendingLayout.add(mes);
+    if (layoutFrame) {
+        return;
+    }
+    layoutFrame = requestAnimationFrame(() => {
+        layoutFrame = 0;
+        const batch = [...pendingLayout];
+        pendingLayout.clear();
+        batch.filter(item => item.isConnected).forEach(layoutExpandedRow);
+    });
+}
+
+function scheduleLayoutForAll() {
+    if (isMobileLayout()) {
+        return;
+    }
+    const chat = document.getElementById('chat');
+    if (isSettingExpanded()) {
+        chat?.querySelectorAll(':scope > .mes').forEach(scheduleLayout);
+    } else if (reveal?.host.matches('#chat > .mes')) {
+        scheduleLayout(reveal.host);
+    }
+}
+
+function scheduleLayoutForMessage(messageId) {
+    if (isMobileLayout()) {
+        return;
+    }
+    const mes = document.querySelector(`#chat > .mes[mesid="${messageId}"]`);
+    if (mes && isRowExpanded(/** @type {HTMLElement} */ (mes))) {
+        scheduleLayout(mes);
+    }
+}
+
+/* ---------- Shift reveal (desktop, Roleplay and Conversation) ---------- */
+
+function setReveal(next) {
+    if (reveal?.host === next?.host) {
+        if (next) {
+            reveal = next;
+        }
+        return;
+    }
+    reveal?.host.removeAttribute(EXPANDED_ATTRIBUTE);
+    reveal = next;
+    if (!next) {
+        return;
+    }
+    next.host.setAttribute(EXPANDED_ATTRIBUTE, '');
+    if (next.host.matches('#chat > .mes')) {
+        layoutExpandedRow(next.host);
+    }
+}
+
+function isEditingHost(host) {
+    return Boolean(host.querySelector('#curEditTextarea')) || host.classList.contains('is-editing');
+}
+
+function collapseRevealIfLeft() {
+    if (!reveal || isActionMenuOpen()) {
+        return;
+    }
+    if (!reveal.host.isConnected) {
+        reveal = null;
+        return;
+    }
+    if (reveal.source === 'pointer' ? hoverHost !== reveal.host : !reveal.host.contains(document.activeElement)) {
+        setReveal(null);
+    }
+}
+
+function handleRevealKeydown(event) {
+    if (event.key === 'Escape') {
+        if (reveal && !isActionMenuOpen()) {
+            setReveal(null);
+        }
+        return;
+    }
+    const isShift = event.key === 'Shift' || event.code === 'ShiftLeft' || event.code === 'ShiftRight';
+    if (!isShift || event.repeat) {
+        return;
+    }
+    const pointerHost = getHostUnderMouse();
+    const focusHost = asElement(document.activeElement)?.closest(REVEAL_HOST_SELECTOR) ?? null;
+    revealHost(pointerHost ?? focusHost, pointerHost ? 'pointer' : 'focus');
+}
+
+/** Hit-tests the last mouse position instead of trusting pointerover/leave bookkeeping, which Firefox can drop. */
+function getHostUnderMouse() {
+    if (!lastMousePoint) {
+        return hoverHost;
+    }
+    const hit = document.elementFromPoint(lastMousePoint.x, lastMousePoint.y);
+    const host = hit?.closest(REVEAL_HOST_SELECTOR) ?? null;
+    if (host instanceof HTMLElement) {
+        hoverHost = host;
+        return host;
+    }
+    return null;
+}
+
+function revealHost(host, source) {
+    if (!(host instanceof HTMLElement) || isEditingHost(host) || reveal?.host === host) {
+        return;
+    }
+    if (isMobileLayout() || isSettingExpanded() || isActionMenuOpen()) {
+        return;
+    }
+    if (isTypingTarget(document.activeElement) || document.querySelector('dialog[open]')) {
+        return;
+    }
+    setReveal({ host, source });
+}
+
+function handlePointerOver(event) {
+    if (event.pointerType && event.pointerType !== 'mouse') {
+        return;
+    }
+    // Before the native or extension tooltip reads the title.
+    prepareTrigger(event.target);
+    const host = asElement(event.target)?.closest(REVEAL_HOST_SELECTOR) ?? null;
+    if (host === hoverHost) {
+        return;
+    }
+    hoverHost = /** @type {HTMLElement|null} */ (host);
+    // Hover-reveal on desktop: refresh dividers once per entered message in setting mode.
+    if (host && isSettingExpanded() && host.matches('#chat > .mes')) {
+        scheduleLayout(host);
+    }
+    if (reveal?.source === 'pointer' && reveal.host !== host && getActionMenuTrigger()?.closest(REVEAL_HOST_SELECTOR) !== reveal.host) {
+        setReveal(null);
+    }
+    // Shift already held when the pointer arrives; also covers setups where the Shift keydown never reaches the page.
+    if (event.shiftKey) {
+        revealHost(host, 'pointer');
+    }
+}
+
+function handlePointerLeaveDocument() {
+    hoverHost = null;
+    collapseRevealIfLeft();
+}
+
+function handleFocusOut() {
+    if (reveal?.source === 'focus') {
+        requestAnimationFrame(collapseRevealIfLeft);
+    }
+}
+
+/* ---------- Hint tooltip ---------- */
+
+function syncHintTitle(hint) {
+    const label = translate('Message Actions');
+    const title = isMobileLayout() || isSettingExpanded() ? label : `${label}\n${translate('Hold shift to expand.')}`;
+    const attribute = hint.hasAttribute('data-sttt--title') ? 'data-sttt--title' : 'title';
+    if (hint.getAttribute(attribute) !== title) {
+        hint.setAttribute(attribute, title);
+    }
+    if (!hint.hasAttribute('aria-haspopup')) {
+        hint.setAttribute('role', 'button');
+        hint.setAttribute('aria-label', label);
+        hint.setAttribute('aria-haspopup', 'menu');
+        hint.setAttribute('aria-expanded', 'false');
+    }
+}
+
+function prepareTrigger(target) {
+    const trigger = asElement(target)?.closest(`${HINT_SELECTOR}, ${EDIT_MORE_SELECTOR}`);
+    if (!trigger) {
+        return;
+    }
+    if (trigger.classList.contains('extraMesButtonsHint')) {
+        syncHintTitle(trigger);
+    } else if (!trigger.hasAttribute('aria-haspopup')) {
+        trigger.setAttribute('role', 'button');
+        trigger.setAttribute('aria-haspopup', 'menu');
+        trigger.setAttribute('aria-expanded', 'false');
+    }
+}
+
+/* ---------- Press-and-hold labels (touch and pen) ---------- */
 
 function ensureTooltip() {
     if (tooltip?.isConnected) {
@@ -340,7 +513,6 @@ function showTooltip(target, label) {
     tooltipFor?.removeAttribute('aria-describedby');
     target.setAttribute('aria-describedby', element.id);
     tooltipFor = target;
-    // Press-and-hold tooltip: short fade + scale (similar to popover but simpler).
     animateIn(element, [
         { opacity: 0, transform: 'scale(0.96)' },
         { opacity: 1, transform: 'none' },
@@ -387,6 +559,12 @@ function handlePointerMove(event) {
     if (press && event.pointerId === press.id && Math.hypot(event.clientX - press.x, event.clientY - press.y) > PRESS_MOVE_TOLERANCE) {
         cancelPress();
     }
+    if (event.pointerType === 'mouse') {
+        lastMousePoint = { x: event.clientX, y: event.clientY };
+        if (event.shiftKey) {
+            revealHost(getHostUnderMouse(), 'pointer');
+        }
+    }
 }
 
 function handlePointerEnd(event) {
@@ -407,160 +585,120 @@ function handlePointerEnd(event) {
     }, CLICK_SUPPRESS_WINDOW);
 }
 
+/* ---------- Event wiring ---------- */
+
 function handlePointerDownCapture(event) {
     hideTooltip();
-    if (openState) {
-        const target = event.target instanceof Node ? event.target : null;
-        if (!target || (!openState.popover.contains(target) && !openState.trigger.contains(target))) {
-            closePopover();
-        }
-    }
-    const trigger = asElement(event.target)?.closest(TRIGGER_SELECTOR);
-    if (trigger && isMobileLayout()) {
-        ensureTriggerAria(trigger);
-    }
+    prepareTrigger(event.target);
     startPress(event);
 }
 
 function handleClickCapture(event) {
     const target = asElement(event.target);
+    if (!target) {
+        return;
+    }
     if (suppressClick) {
         suppressClick = false;
-        if (target?.closest(PRESSABLE_SELECTOR)) {
+        if (target.closest(PRESSABLE_SELECTOR)) {
             event.preventDefault();
             event.stopImmediatePropagation();
             return;
         }
     }
 
-    if (!target || !isMobileLayout()) {
-        return;
-    }
-
-    const trigger = target.closest(TRIGGER_SELECTOR);
-    if (trigger) {
-        // Replaces the upstream inline expansion (script.js) on mobile.
+    const trigger = target.closest(`${HINT_SELECTOR}, ${EDIT_MORE_SELECTOR}`);
+    if (trigger instanceof HTMLElement) {
+        // Replaces upstream's inline expansion of .extraMesButtons (script.js).
         event.preventDefault();
         event.stopImmediatePropagation();
-        togglePopover(trigger);
+        prepareTrigger(trigger);
+        openMessageMenu(trigger, { keyboard: event.detail === 0 });
         return;
     }
 
-    if (!openState) {
-        return;
-    }
-
-    if (target.closest(EDIT_EXIT_SELECTOR)) {
-        closePopover({ animate: false });
-        return;
-    }
-
-    const state = openState;
-    if (state.popover.contains(target) && target !== state.popover) {
-        // Let the action's own handlers run first.
-        window.setTimeout(() => {
-            if (openState === state) {
-                closePopover({ restoreFocus: state.popover.contains(document.activeElement) });
-            }
-        }, 0);
-    }
-}
-
-function handleKeydownCapture(event) {
-    if (!openState) {
-        return;
-    }
-    if (event.key === 'Escape' && !event.isComposing) {
-        // Stops the upstream Escape handler from also cancelling a message edit.
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        hideTooltip();
-        closePopover({ restoreFocus: true });
-        return;
-    }
-    if (NAVIGATION_KEYS.has(event.key) && openState.popover.contains(asElement(event.target))) {
-        // Arrow keys would otherwise swipe the message.
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        moveFocus(event.key);
-    }
-}
-
-function handleFocusIn(event) {
-    const trigger = asElement(event.target)?.closest(TRIGGER_SELECTOR);
-    if (trigger && isMobileLayout()) {
-        ensureTriggerAria(trigger);
-    }
-}
-
-function handleFocusOut(event) {
-    if (!openState) {
-        return;
-    }
-    const next = event.relatedTarget instanceof Node ? event.relatedTarget : null;
-    if (next && !openState.popover.contains(next) && !openState.trigger.contains(next)) {
-        closePopover();
-    }
-}
-
-function markScrollIntent(event) {
-    if (!openState) {
-        return;
-    }
-    if (event.type === 'keydown' && !SCROLL_KEYS.has(event.key)) {
-        return;
-    }
-    if (openState.popover.contains(asElement(event.target))) {
-        return;
-    }
-    lastScrollIntent = performance.now();
-}
-
-function handleChatScroll() {
-    if (!openState) {
-        return;
-    }
-    // The popover moves with its message, so layout-driven scrolls (edit autosize, scroll
-    // anchoring, new messages) leave it anchored; only a user scroll dismisses it.
-    if (performance.now() - lastScrollIntent > SCROLL_INTENT_WINDOW) {
-        openState.scrollTop = openState.chat.scrollTop;
-        return;
-    }
-    if (Math.abs(openState.chat.scrollTop - openState.scrollTop) > SCROLL_CLOSE_DELTA) {
-        closePopover();
+    // Hide/include, checkpoint, and similar toggles change which actions the row shows.
+    const mes = target.closest('#chat > .mes');
+    if (mes instanceof HTMLElement && isRowExpanded(mes) && target.closest('.mes_buttons')) {
+        window.setTimeout(() => scheduleLayout(mes), 0);
     }
 }
 
 function handleContextMenu(event) {
-    if (asElement(event.target)?.closest(PRESSABLE_SELECTOR)) {
-        event.preventDefault();
+    const target = asElement(event.target);
+    if (!target) {
+        return;
     }
+    if (target.closest(PRESSABLE_SELECTOR) && (isMobileLayout() || press)) {
+        event.preventDefault();
+        return;
+    }
+    if (isMobileLayout() || event.shiftKey) {
+        return;
+    }
+    const mes = target.closest('#chat > .mes');
+    if (!(mes instanceof HTMLElement) || !target.closest('.ch_name') || isTypingTarget(target)) {
+        return;
+    }
+    const trigger = getMenuTrigger(mes);
+    if (!(trigger instanceof HTMLElement)) {
+        return;
+    }
+    event.preventDefault();
+    prepareTrigger(trigger);
+    openMessageMenu(trigger, { point: { x: event.clientX, y: event.clientY } });
 }
 
-function observeRenderedMessages(chat) {
-    const observer = new MutationObserver(records => {
-        if (openState && !openState.mes.isConnected) {
-            openState = null;
+function handleMenuKey(event) {
+    const isMenuKey = event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey);
+    if (!isMenuKey || isTypingTarget(document.activeElement)) {
+        return;
+    }
+    const mes = asElement(document.activeElement)?.closest('#chat > .mes');
+    const trigger = mes instanceof HTMLElement ? getMenuTrigger(mes) : null;
+    if (!(trigger instanceof HTMLElement)) {
+        return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    prepareTrigger(trigger);
+    openMessageMenu(trigger, { keyboard: true });
+}
+
+function handleLayoutChange() {
+    hideTooltip();
+    setReveal(null);
+    scheduleLayoutForAll();
+}
+
+function observeChat(chat) {
+    new MutationObserver(records => {
+        if (reveal && !reveal.host.isConnected) {
+            reveal = null;
         }
-        if (!isMobileLayout()) {
+        if (!isSettingExpanded() || isMobileLayout()) {
             return;
         }
         for (const record of records) {
             for (const node of record.addedNodes) {
                 if (node instanceof HTMLElement && node.classList.contains('mes')) {
-                    relocateConditionalActions(node, true);
+                    scheduleLayout(node);
                 }
             }
         }
-    });
-    observer.observe(chat, { childList: true });
+    }).observe(chat, { childList: true });
+
+    new MutationObserver(() => {
+        document.querySelectorAll(HINT_SELECTOR).forEach(hint => hint.hasAttribute('aria-haspopup') && syncHintTitle(hint));
+        scheduleLayoutForAll();
+    }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 }
 
 export function initializeMessageActions() {
     if (initialized) {
         return;
     }
-    const chat = getChat();
+    const chat = document.getElementById('chat');
     if (!chat) {
         return;
     }
@@ -573,26 +711,32 @@ export function initializeMessageActions() {
     window.addEventListener('pointerup', handlePointerEnd, true);
     window.addEventListener('pointercancel', handlePointerEnd, true);
     window.addEventListener('click', handleClickCapture, true);
-    window.addEventListener('keydown', handleKeydownCapture, true);
-    document.addEventListener('focusin', handleFocusIn);
+    window.addEventListener('keydown', handleMenuKey, true);
+    document.addEventListener('keydown', handleRevealKeydown);
+    document.addEventListener('pointerover', handlePointerOver, { passive: true });
+    document.documentElement.addEventListener('pointerleave', handlePointerLeaveDocument);
+    document.addEventListener('focusin', event => prepareTrigger(event.target));
     document.addEventListener('focusout', handleFocusOut);
-    chat.addEventListener('contextmenu', handleContextMenu);
-    chat.addEventListener('scroll', handleChatScroll, { passive: true });
-    chat.addEventListener('wheel', markScrollIntent, { passive: true });
-    chat.addEventListener('touchmove', markScrollIntent, { passive: true });
-    window.addEventListener('keydown', markScrollIntent, { capture: true, passive: true });
-    observeRenderedMessages(chat);
+    document.addEventListener('contextmenu', handleContextMenu);
+    window.addEventListener('resize', () => scheduleLayoutForAll(), { passive: true });
+    observeChat(chat);
+    initializeConversationMessageMenu();
 
-    const closeImmediately = () => closePopover({ animate: false });
+    const closeImmediately = () => closeActionMenu({ animate: false });
     // Dry runs (prompt/token previews) and auxiliary jobs also emit GENERATION_STARTED.
     eventSource.on(event_types.GENERATION_STARTED, (_type, options, dryRun) => {
         if (!dryRun && !options?.isAuxiliaryGeneration) {
             closeImmediately();
         }
     });
-    eventSource.on(event_types.CHAT_CHANGED, closeImmediately);
-
-    if (isMobileLayout()) {
-        relocateAll(true);
+    eventSource.on(event_types.CHAT_CHANGED, () => {
+        closeImmediately();
+        setReveal(null);
+        scheduleLayoutForAll();
+    });
+    for (const type of [event_types.CHARACTER_MESSAGE_RENDERED, event_types.USER_MESSAGE_RENDERED, event_types.MESSAGE_UPDATED, event_types.MESSAGE_SWIPED, event_types.MESSAGE_EDITED]) {
+        eventSource.on(type, messageId => scheduleLayoutForMessage(messageId));
     }
+    eventSource.on(event_types.GENERATION_ENDED, () => scheduleLayoutForAll());
+    scheduleLayoutForAll();
 }

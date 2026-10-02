@@ -90,8 +90,9 @@ import {
     updateConversationSearchQuery,
 } from './timeline-render.js';
 import { setLastConversationPreview } from './typing.js';
+import { confirmMessageDeletion } from '../sillybunny-delete-confirm.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261002a';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261002b';
 const CONVERSATION_STYLESHEET_ID = 'sb-conversation-css';
 
 function ensureConversationStylesheet() {
@@ -370,11 +371,6 @@ export async function selectConversationThread(avatar, { branchId = '', groupId 
     });
 }
 
-function syncConversationTrayTrigger(actionBar) {
-    const trigger = actionBar?.parentElement?.querySelector(':scope > .sb-conversation-mobile-menu-trigger');
-    trigger?.setAttribute('aria-expanded', String(actionBar.classList.contains('open')));
-}
-
 export function bindConversationChromeControls(sheld) {
     if (sheld.dataset.sbConversationChromeBound === 'true') {
         return;
@@ -396,34 +392,10 @@ export function bindConversationChromeControls(sheld) {
     });
 
     sheld.addEventListener('click', async (event) => {
-        const target = event.target instanceof Element ? event.target.closest('[data-sb-conversation-action], .sb-conversation-pal, .sb-conversation-mobile-menu-trigger') : null;
-
-        if (!target || (!target.closest('.sb-conversation-message-actions') && !target.closest('.sb-conversation-mobile-menu-trigger'))) {
-            document.querySelectorAll('.sb-conversation-message-actions.open').forEach(el => {
-                el.classList.remove('open');
-                syncConversationTrayTrigger(el);
-            });
-        }
+        // Message menu triggers are handled by sillybunny-conversation/message-menu.js.
+        const target = event.target instanceof Element ? event.target.closest('[data-sb-conversation-action], .sb-conversation-pal') : null;
 
         if (!(target instanceof HTMLElement)) {
-            return;
-        }
-
-        if (target.classList.contains('sb-conversation-mobile-menu-trigger')) {
-            event.stopPropagation();
-            const currentBubble = target.closest('.sb-conversation-message-bubble');
-            const currentActionBar = currentBubble?.querySelector('.sb-conversation-message-actions');
-            if (currentActionBar) {
-                const isOpen = currentActionBar.classList.contains('open');
-                document.querySelectorAll('.sb-conversation-message-actions.open').forEach(el => {
-                    if (el !== currentActionBar) {
-                        el.classList.remove('open');
-                        syncConversationTrayTrigger(el);
-                    }
-                });
-                currentActionBar.classList.toggle('open', !isOpen);
-                syncConversationTrayTrigger(currentActionBar);
-            }
             return;
         }
 
@@ -703,11 +675,9 @@ export function bindConversationChromeControls(sheld) {
                 await regenerateConversationMessage(target.dataset.messageId);
                 break;
             case 'delete-message': {
-                const confirmed = typeof globalThis.confirm === 'function'
-                    ? globalThis.confirm('Delete this Conversation message?')
-                    : true;
-                if (confirmed) {
-                    deleteConversationMessage(target.dataset.messageId);
+                const messageId = target.dataset.messageId;
+                if (await confirmMessageDeletion({ text: 'Delete this Conversation message?' })) {
+                    deleteConversationMessage(messageId);
                 }
                 break;
             }

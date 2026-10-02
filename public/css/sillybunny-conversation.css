@@ -1167,6 +1167,47 @@
     display: none;
 }
 
+/* DESIGN.md "Message Actions": reactions | Reply, Edit, Copy, menu at rest; Shift (data-sb-actions-expanded)
+   or Expand Message Actions shows every action in section order. */
+.sb-conversation-message-divider {
+    flex: none;
+    inline-size: 1px;
+    block-size: 16px;
+    margin-inline: 2px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
+}
+
+body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-expanded]) .sb-conversation-message-actions > [data-sb-secondary] {
+    display: none;
+}
+
+.sb-conversation-message.has-open-menu .sb-conversation-message-actions,
+.sb-conversation-message[data-sb-actions-expanded] .sb-conversation-message-actions {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.sb-conversation-message-action.sb-conversation-message-menu[aria-expanded='true'] {
+    background: var(--sb-flat-selected-bg);
+    color: var(--SmartThemeBodyColor);
+}
+
+@media (min-width: 769px) {
+    :root[data-sb-compact-mode='true'] .sb-conversation-message-action,
+    :root[data-sb-compact-mode='true'] .sb-conversation-reaction-button {
+        min-block-size: 24px;
+        min-inline-size: 24px;
+    }
+
+    :root[data-sb-compact-mode='true'] .sb-conversation-message-action {
+        font-size: 11px;
+    }
+
+    :root[data-sb-compact-mode='true'] .sb-conversation-message-divider {
+        block-size: 14px;
+    }
+}
+
 .sb-conversation-message-action.fa-trash-can {
     color: var(--sb-color-danger);
 }
@@ -2874,7 +2915,7 @@
         padding-inline-end: 34px !important;
     }
 
-    /* Mobile Triggers and Action Trays */
+    /* Mobile message menu trigger */
     .sb-conversation-mobile-menu-trigger {
         display: inline-flex;
         position: absolute;
@@ -2909,7 +2950,7 @@
         background: var(--sb-flat-active-bg);
     }
 
-    .sb-conversation-message-actions.open ~ .sb-conversation-mobile-menu-trigger {
+    .sb-conversation-mobile-menu-trigger[aria-expanded='true'] {
         color: var(--SmartThemeBodyColor);
         background: var(--sb-flat-selected-bg);
     }
@@ -2924,48 +2965,13 @@
         padding-inline-end: 0;
     }
 
-    /* Inactive (closed) action tray on mobile */
+    /* The pill is desktop-only; the trigger opens the message menu as a bottom sheet. */
     .sb-conversation-message-actions {
-        display: none !important; /* completely hidden when not open */
-        position: static;
-        width: 100%;
-        margin-block-start: 8px;
-        box-shadow: none;
-        -webkit-backdrop-filter: none;
-        backdrop-filter: none;
-        border: 1px solid color-mix(in srgb, var(--sb-shell-border) 42%, transparent);
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
-        padding: 4px;
-        border-radius: var(--sb-radius-md, 14px);
-        flex-wrap: wrap;
-        gap: 2px;
-        transform: none;
-        opacity: 1;
-        pointer-events: auto;
+        display: none !important;
     }
 
-    /* Active (open) action tray on mobile */
-    .sb-conversation-message-actions.open {
-        display: flex !important; /* flex display when open */
-    }
-
-    /* Make action/reaction buttons bigger and touch-friendly on mobile tray */
-    .sb-conversation-message-action,
-    .sb-conversation-reaction-button {
-        min-block-size: 44px;
-        min-inline-size: 44px;
-        font-size: 14px;
-        border-radius: 999px;
-    }
-
-    .sb-conversation-reaction-button {
-        padding-inline: 12px;
-    }
-
-    :root[data-sb-compact-mode='true'] .sb-conversation-message-action,
-    :root[data-sb-compact-mode='true'] .sb-conversation-reaction-button {
-        min-block-size: 40px;
-        min-inline-size: 40px;
+    :root[data-sb-compact-mode='true'] .sb-conversation-mobile-menu-trigger::after {
+        inset: -6px;
     }
 
     .sb-conversation-message-avatar {
