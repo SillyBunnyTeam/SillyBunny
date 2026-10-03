@@ -5742,7 +5742,9 @@ describe('in-chat agent post-processing runner', () => {
 
         delete document.body.dataset.generating;
         await eventSource.emit(eventTypes.GENERATION_ENDED, chat.length);
-        await new Promise(resolve => setTimeout(resolve, 5));
+        await waitForDeferredFlush(() => chat[0].mes === 'First speaker\n[post processed]'
+            && chat[1].mes === 'Second speaker\n[post processed]'
+            && saveChatDebounced.mock.calls.length >= 2);
 
         expect(chat[0].mes).toBe('First speaker\n[post processed]');
         expect(chat[1].mes).toBe('Second speaker\n[post processed]');
