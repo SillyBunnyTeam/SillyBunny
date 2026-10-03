@@ -4,14 +4,16 @@ on:
   push:
     branches:
       - staging
-      - main
+      - release
 
 permissions:
   contents: read
   issues: write
+  pull-requests: read
 
 jobs:
-  # This runs commits to staging/main, reading the commit messages. Check `pr-auto-manager.yml`:`update-linked-issues` for PR-linked updates.
+  # Reads closing keywords from the pushed commit messages and, for merged PRs, from the PR body and its
+  # linked issues. Runs on `push` so fork PRs are covered without `pull_request_target`.
   update-linked-issues:
     name: 🔗 Mark Linked Issues Done on Push
     runs-on: ubuntu-latest
@@ -41,29 +43,54 @@ jobs:
           private-key: ${{ secrets.ST_BOT_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
 
-      - name: Checkout Repository
-        # Checkout
-        # https://github.com/marketplace/actions/checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-      - name: Extract Linked Issues from Commit Message
-        id: extract_issues
-        run: |
-          ISSUES=$(git log ${{ github.event.before }}..${{ github.event.after }} --pretty=%B | grep -oiE '(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved) #([0-9]+)' | awk '{print $2}' | tr -d '#' | jq -R -s -c 'split("\n")[:-1]')
-          echo "issues=$ISSUES" >> $GITHUB_ENV
-
-      - name: Label Linked Issues
-        id: label_linked_issues
+      - name: Collect Linked Issues
         env:
           GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
-            for ISSUE in $(echo $issues | jq -r '.[]'); do
-            if [ "${{ github.ref }}" == "refs/heads/staging" ]; then
-              LABEL="✅ Done (staging)"
-              gh issue edit $ISSUE -R ${{ github.repository }} --add-label "$LABEL" --remove-label "🧑‍💻 In Progress"
-            elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
-              LABEL="✅ Done"
-              gh issue edit $ISSUE -R ${{ github.repository }} --add-label "$LABEL" --remove-label "🧑‍💻 In Progress"
+          KEYWORDS='(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved) #[0-9]+'
+          ISSUES_FILE="$RUNNER_TEMP/issues.txt"
+          : > "$ISSUES_FILE"
+
+          jq -r '.commits[]?.message' "$GITHUB_EVENT_PATH" \
+            | grep -oiE "$KEYWORDS" | grep -oE '[0-9]+$' >> "$ISSUES_FILE" || true
+
+          PR_NUMBERS=$(gh api "repos/$REPOSITORY/commits/$HEAD_SHA/pulls" --jq '.[] | select(.merged_at != null) | .number' || true)
+          for PR_NUMBER in $PR_NUMBERS; do
+            echo "Commit $HEAD_SHA belongs to merged PR #$PR_NUMBER."
+            gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.body // ""' \
+              | grep -oiE "$KEYWORDS" | grep -oE '[0-9]+$' >> "$ISSUES_FILE" || true
+            gh api graphql \
+              -f owner="${REPOSITORY%%/*}" -f name="${REPOSITORY#*/}" -F number="$PR_NUMBER" \
+              -f query='query($owner: String!, $name: String!, $number: Int!) {
+                repository(owner: $owner, name: $name) {
+                  pullRequest(number: $number) { closingIssuesReferences(first: 50) { nodes { number } } }
+                }
+              }' \
+              --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[].number' >> "$ISSUES_FILE" || true
+          done
+
+          sort -nu "$ISSUES_FILE" -o "$ISSUES_FILE"
+          echo "Linked issues: $(tr '\n' ' ' < "$ISSUES_FILE")"
+
+      - name: Label Linked Issues
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          REPOSITORY: ${{ github.repository }}
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" = "refs/heads/staging" ]; then
+            LABEL="✅ Done (staging)"
+          else
+            LABEL="✅ Done"
+          fi
+
+          while read -r ISSUE; do
+            [ -n "$ISSUE" ] || continue
+            if gh issue edit "$ISSUE" -R "$REPOSITORY" --add-label "$LABEL" --remove-label "🧑‍💻 In Progress"; then
+              echo "Added label '$LABEL' (and removed '🧑‍💻 In Progress' if present) in issue #$ISSUE"
+            else
+              echo "::warning::Could not label #$ISSUE with '$LABEL'."
             fi
-            echo "Added label '$LABEL' (and removed '🧑‍💻 In Progress' if present) in issue #$ISSUE"
-            done
+          done < "$RUNNER_TEMP/issues.txt"
