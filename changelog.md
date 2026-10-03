@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.8.1: Attribution Hotfix
+
+- Hotfix: corrected the fresh-install welcome screen attribution so SillyBunny issues and bug reports point to the project GitHub page.
+
 ## v1.8.0: Archival Performance Update
 
 This update features a new Chat Archives feature, alongside many performance improvements, QOL, and bug fixes.
