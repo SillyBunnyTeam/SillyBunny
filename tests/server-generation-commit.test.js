@@ -6,9 +6,11 @@ import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
+import express from 'express';
 import { setConfigFilePath } from '../src/util.js';
-import { encodeCommitPlan, getMessageIdentity, hashCommitText } from '../public/scripts/generation-commit-plan.js';
+import { encodeCommitPlan, getMessageIdentity, hashCommitText, normalizeCommitPlan } from '../public/scripts/generation-commit-plan.js';
 import { parseGenerationReply } from '../src/generation-reply-parser.js';
+import * as journal from '../src/generation-journal.js';
 
 setConfigFilePath(fileURLToPath(new URL('../default/config.yaml', import.meta.url)));
 
@@ -59,7 +61,7 @@ function plan(overrides = {}) {
     };
 }
 
-const REPLY = { text: 'The forest stirs.', reasoning: 'Think first.', error: false };
+const REPLY = { text: 'The forest stirs.', reasoning: 'Think first.', error: false, swipes: [] };
 const CONTEXT = { id: 'gen-1', finishedAt: FINISHED };
 
 describe('parseGenerationReply', () => {
@@ -88,6 +90,27 @@ describe('parseGenerationReply', () => {
     test('flags an error reply instead of returning its message as text', () => {
         const body = JSON.stringify({ error: { message: 'Rate limited' } });
         expect(parseGenerationReply(Buffer.from(body), 'application/json')).toMatchObject({ text: '', error: true });
+    });
+
+    test('keeps the extra choices of a streamed multi-swipe reply as swipes, in choice order', () => {
+        const body = [
+            'data: {"choices":[{"index":0,"delta":{"content":"The forest "}}]}',
+            'data: {"choices":[{"index":2,"delta":{"content":"The river "}}]}',
+            'data: {"choices":[{"index":1,"delta":{"content":"The wind "}}]}',
+            'data: {"choices":[{"index":0,"delta":{"content":"stirs."}}]}',
+            'data: {"choices":[{"index":1,"delta":{"content":"howls."}}]}',
+            'data: {"choices":[{"index":2,"delta":{"content":"runs."}}]}',
+            'data: [DONE]',
+            '',
+        ].join('\n\n');
+        expect(parseGenerationReply(Buffer.from(body), 'text/event-stream')).toMatchObject({ text: 'The forest stirs.', swipes: ['The wind howls.', 'The river runs.'] });
+    });
+
+    test('keeps the extra completions of a complete multi-swipe reply as swipes', () => {
+        const chatCompletion = JSON.stringify({ choices: [{ message: { content: 'One.' } }, { message: { content: 'Two.' } }] });
+        expect(parseGenerationReply(Buffer.from(chatCompletion), 'application/json')).toMatchObject({ text: 'One.', swipes: ['Two.'] });
+        const llamaCpp = JSON.stringify([{ content: 'One.' }, { content: 'Two.' }, { content: 'Three.' }]);
+        expect(parseGenerationReply(Buffer.from(llamaCpp), 'application/json')).toMatchObject({ text: 'One.', swipes: ['Two.', 'Three.'] });
     });
 });
 
@@ -173,6 +196,39 @@ describe('applyGenerationReply', () => {
         const continuePlan = plan({ kind: 'continue', index: 2, anchor: null, target: getMessageIdentity(target), prefix: hashCommitText('The forest'), prefix_length: 10 });
         expect(commit.applyGenerationReply(records, continuePlan, REPLY, CONTEXT)).toEqual({ reason: 'text-changed' });
     });
+
+    test('adds the extra completions of a multi-swipe reply after its own swipe', () => {
+        const result = commit.applyGenerationReply(chatRecords(), plan(), { ...REPLY, swipes: ['Second take.', 'Third take.'] }, CONTEXT);
+        const added = result.records[3];
+        expect(added).toMatchObject({ swipe_id: 0, mes: 'The forest stirs.', swipes: ['The forest stirs.', 'Second take.', 'Third take.'] });
+        expect(added.swipe_info).toHaveLength(3);
+        expect(added.swipe_info[1].extra).not.toHaveProperty('server_generation');
+        expect(added.swipe_info[1].extra).not.toHaveProperty('reasoning');
+        expect(added.extra.server_generation.extra_swipes).toBe(2);
+    });
+
+    test('a continue never adds swipes, as in the browser', () => {
+        const target = message('Seraphina', false, 'The forest', '2026-10-03T09:59:30.000Z');
+        const records = [...chatRecords(), target];
+        const continuePlan = plan({ kind: 'continue', index: 2, anchor: null, target: getMessageIdentity(target), prefix: hashCommitText('The forest'), prefix_length: 10 });
+        const result = commit.applyGenerationReply(records, continuePlan, { ...REPLY, text: ' stirs.', swipes: ['Ignored.'] }, CONTEXT);
+        expect(result.records[3].swipes).toEqual(['The forest stirs.']);
+        expect(result.records[3].extra.server_generation.extra_swipes).toBe(0);
+    });
+
+    test('records the members still to speak in the group round on the written reply', () => {
+        const result = commit.applyGenerationReply(chatRecords(), plan({ round: ['Lyra.png', 'Kael.png'] }), REPLY, CONTEXT);
+        expect(result.records[3].extra.server_generation.round).toEqual(['Lyra.png', 'Kael.png']);
+    });
+});
+
+describe('normalizeCommitPlan', () => {
+    test('keeps the remaining group round and rejects a malformed one', () => {
+        expect(normalizeCommitPlan(plan({ round: ['Lyra.png'] }))?.round).toEqual(['Lyra.png']);
+        expect(normalizeCommitPlan(plan())?.round).toEqual([]);
+        expect(normalizeCommitPlan(plan({ round: [42] }))).toBeNull();
+        expect(normalizeCommitPlan(plan({ round: 'Lyra.png' }))).toBeNull();
+    });
 });
 
 describe('server-owned generation lifecycle', () => {
@@ -227,6 +283,7 @@ describe('server-owned generation lifecycle', () => {
         user = {
             profile: { handle: 'tester' },
             directories: {
+                root,
                 chats: path.join(root, 'chats'),
                 groupChats: path.join(root, 'group chats'),
                 backups: path.join(root, 'backups'),
@@ -244,7 +301,150 @@ describe('server-owned generation lifecycle', () => {
         jest.useRealTimers();
         registry.testExports.generations.clear();
         registry.testExports.setTotalBufferedBytes(0);
+        journal.testExports.forgetLoadedJournals();
         fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    /** What a server restart leaves behind: an empty registry, and journals read fresh from disk. */
+    function restartServer() {
+        registry.testExports.generations.clear();
+        journal.testExports.forgetLoadedJournals();
+    }
+
+    /**
+     * Follows the chat's generation events as a page load would.
+     * @param {string} [page] Page load id
+     * @returns {Promise<{ next: () => Promise<any[]>, close: () => Promise<void> }>}
+     */
+    async function followChatEvents(page = 'page-b') {
+        const app = express();
+        app.use((request, _response, next) => {
+            request.user = user;
+            next();
+        });
+        app.use('/api/resumable-generations', registry.router);
+        const server = await new Promise(resolve => {
+            const listening = app.listen(0, '127.0.0.1', () => resolve(listening));
+        });
+        const controller = new AbortController();
+        const query = new URLSearchParams({ avatar: 'Seraphina.png', file: 'Seraphina - chat', page });
+        const response = await fetch(`http://127.0.0.1:${server.address().port}/api/resumable-generations/events?${query}`, { signal: controller.signal });
+        expect(response.headers.get('content-type')).toContain('text/event-stream');
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        return {
+            async next() {
+                while (!buffer.includes('\n\n')) {
+                    const { value, done } = await reader.read();
+                    if (done) {
+                        throw new Error('Event stream ended');
+                    }
+                    buffer += decoder.decode(value, { stream: true });
+                }
+                const end = buffer.indexOf('\n\n');
+                const event = buffer.slice(0, end);
+                buffer = buffer.slice(end + 2);
+                const data = event.split('\n').find(line => line.startsWith('data: '));
+                return data ? JSON.parse(data.slice(6)).pending : this.next();
+            },
+            async close() {
+                controller.abort();
+                server.closeAllConnections?.();
+                await new Promise(resolve => server.close(resolve));
+            },
+        };
+    }
+
+    test('a page following the chat hears about a reply from its start to its commit', async () => {
+        const id = '2'.repeat(32);
+        const { generation, finish } = startGeneration(id);
+        const events = await followChatEvents();
+        try {
+            expect(await events.next()).toEqual([expect.objectContaining({ id, state: 'running', page: 'page-a' })]);
+            generation.detach();
+            finish();
+            let pending;
+            do {
+                pending = await events.next();
+            } while (pending[0]?.state !== 'committed');
+            expect(pending).toEqual([expect.objectContaining({ id, state: 'committed' })]);
+            expect(readChat()).toHaveLength(4);
+        } finally {
+            await events.close();
+        }
+    });
+
+    test('a second tab leaves a finished reply to its page while that page still follows the chat', async () => {
+        const id = '4'.repeat(32);
+        const { finish } = startGeneration(id);
+        const owner = await followChatEvents('page-a');
+        const other = await followChatEvents('page-b');
+        try {
+            await other.next();
+            finish();
+            let pending;
+            do {
+                pending = await other.next();
+            } while (pending[0]?.state !== 'waiting');
+            expect(readChat()).toHaveLength(3);
+            await owner.close();
+            do {
+                pending = await other.next();
+            } while (pending[0]?.state !== 'committed');
+            expect(readChat()).toHaveLength(4);
+        } finally {
+            await owner.close().catch(() => undefined);
+            await other.close();
+        }
+    });
+
+    test('a reply cut off by a server restart is reported lost until acknowledged', async () => {
+        const id = '3'.repeat(32);
+        startGeneration(id);
+        restartServer();
+
+        const events = await followChatEvents();
+        try {
+            expect(await events.next()).toEqual([expect.objectContaining({
+                id,
+                state: 'lost',
+                kind: 'append',
+                index: 2,
+                anchor: plan().anchor,
+                started: STARTED,
+            })]);
+        } finally {
+            await events.close();
+        }
+        // Nothing was written: the reply is regenerated whole, not kept half-written.
+        expect(readChat()).toHaveLength(3);
+
+        // Still lost after another restart, until a page has shown it.
+        restartServer();
+        expect(journal.acknowledgeLostGenerations(user, [id])).toBe(true);
+        restartServer();
+        expect(journal.getLostGenerations(user, 'character:Seraphina.png:Seraphina - chat')).toEqual([]);
+    });
+
+    test.each([
+        ['claimed by its page', async ({ generation, finish }) => {
+            finish();
+            await generation.claim();
+        }],
+        ['committed by the server', async ({ generation, finish }) => {
+            generation.detach();
+            finish();
+            await settled(generation);
+        }],
+        ['cancelled', async ({ generation, response }) => {
+            generation.cancel();
+            response.end();
+        }],
+    ])('a reply that was %s is not reported lost after a restart', async (_name, settle) => {
+        await settle(startGeneration('4'.repeat(32)));
+        restartServer();
+        expect(journal.getLostGenerations(user, 'character:Seraphina.png:Seraphina - chat')).toEqual([]);
     });
 
     test('a detached generation writes its reply into the chat when it finishes', async () => {

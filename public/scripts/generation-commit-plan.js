@@ -13,6 +13,7 @@ export const GENERATION_COMMIT_KINDS = Object.freeze(['append', 'swipe', 'contin
 
 const MAX_PLAN_TEXT_LENGTH = 1024;
 const MAX_HEADER_LENGTH = 8192;
+const MAX_ROUND_SPEAKERS = 32;
 
 /**
  * 32-bit FNV-1a over UTF-16 code units, as hex. Identical in the browser and in Node.
@@ -85,6 +86,11 @@ export function normalizeCommitPlan(plan) {
         return null;
     }
 
+    const round = plan.round ?? [];
+    if (!Array.isArray(round) || round.length > MAX_ROUND_SPEAKERS || !round.every(avatar => optionalText(avatar))) {
+        return null;
+    }
+
     const message = plan.message && typeof plan.message === 'object' ? plan.message : {};
     const extra = message.extra && typeof message.extra === 'object' ? message.extra : {};
     return {
@@ -101,6 +107,7 @@ export function normalizeCommitPlan(plan) {
         prefix_length: kind === 'continue' ? plan.prefix_length : 0,
         started: optionalText(plan.started) ?? '',
         page: optionalText(plan.page) ?? '',
+        round: [...round],
         message: {
             name: optionalText(message.name) ?? '',
             force_avatar: optionalText(message.force_avatar),
@@ -153,5 +160,6 @@ export function decodeCommitPlan(value) {
  * @property {number} prefix_length continue: length of that text
  * @property {string} started Generation start, ISO timestamp; also marks this generation's in-progress message on disk
  * @property {string} page Id of the page load that started the generation
+ * @property {string[]} round Group chats: avatars of the members still to speak after this reply in its round
  * @property {{ name: string, force_avatar: string|null, original_avatar: string|null, extra: { api: string, model: string, reasoning_effort: string|null, gen_id: number|null } }} message Reply fields known up front
  */

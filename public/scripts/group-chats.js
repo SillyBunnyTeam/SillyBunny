@@ -120,6 +120,8 @@ let groups = [];
 /** @type {string|null} */
 let selected_group = null;
 let group_generation_id = null;
+/** Avatars of the members still to speak after the current one in the running round. */
+let groupRoundRemaining = [];
 let fav_grp_checked = false;
 let openGroupId = null;
 let newGroupMembers = [];
@@ -603,6 +605,37 @@ async function regenerateGroup() {
     const abortController = new AbortController();
     setExternalAbortController(abortController);
     return generateGroupWrapper(false, 'normal', { signal: abortController.signal });
+}
+
+/**
+ * @returns {string[]} Avatars of the members still to speak after the current one in the running round
+ */
+export function getGroupRoundRemaining() {
+    return [...groupRoundRemaining];
+}
+
+/**
+ * Lets the members left in a round that was cut short take their turns, in order. Members no longer
+ * in the group, or muted, are skipped.
+ * @param {string[]} avatars Members still to speak
+ * @returns {Promise<unknown>}
+ */
+export async function resumeGroupRound(avatars) {
+    const group = groups.find(x => x.id === selected_group);
+    if (!group || is_group_generating) {
+        return;
+    }
+    const enabledMembers = getGroupEnabledMembers(group);
+    const chids = avatars
+        .filter(avatar => enabledMembers.includes(avatar))
+        .map(avatar => getCharacterIdByAvatar(avatar))
+        .filter(chid => chid !== -1);
+    if (!chids.length) {
+        return;
+    }
+    const abortController = new AbortController();
+    setExternalAbortController(abortController);
+    return generateGroupWrapper(false, 'normal', { signal: abortController.signal, force_chids: chids, suppressUserMessage: true });
 }
 
 /**
@@ -1665,10 +1698,11 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
         }
         await eventSource.emit(event_types.GROUP_WRAPPER_STARTED, { selected_group, type });
         // now the real generation begins: cycle through every activated character
-        for (const chId of activatedMembers) {
+        for (const [turn, chId] of activatedMembers.entries()) {
             throwIfAborted();
             deactivateSendButtons();
             setCharacterId(chId);
+            groupRoundRemaining = activatedMembers.slice(turn + 1).map(id => characters[id]?.avatar).filter(Boolean);
             setCharacterName(characters[chId].name);
             setGroupTypingIndicator(characters[chId].name);
             if (power_user.show_group_chat_queue) {
@@ -1707,6 +1741,7 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
         }
     } finally {
         setGroupTypingIndicator('');
+        groupRoundRemaining = [];
         is_group_generating = false;
         setSendButtonState(false);
         setCharacterId(undefined);

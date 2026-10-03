@@ -49,10 +49,10 @@ function geminiPartsText(parts, thought) {
 
 /**
  * @param {any} data One parsed stream event
- * @returns {{ text: string, reasoning: string, error: boolean }}
+ * @returns {{ text: string, reasoning: string, error: boolean, index: number }} `index` above 0 is an extra swipe
  */
 function parseStreamEvent(data) {
-    const empty = { text: '', reasoning: '', error: false };
+    const empty = { text: '', reasoning: '', error: false, index: 0 };
     if (!data || typeof data !== 'object') {
         return empty;
     }
@@ -62,10 +62,10 @@ function parseStreamEvent(data) {
 
     if (Array.isArray(data.choices)) {
         const choice = data.choices[0];
-        // Extra choices are extra swipes; the committed reply is the first one.
-        if (!choice || Number(choice.index) > 0) {
+        if (!choice) {
             return empty;
         }
+        const index = Math.max(0, Math.trunc(Number(choice.index) || 0));
         const delta = choice.delta ?? {};
         const content = delta.content ?? choice.message?.content ?? choice.text ?? '';
         return {
@@ -73,37 +73,42 @@ function parseStreamEvent(data) {
             reasoning: String(delta.reasoning_content ?? delta.reasoning ?? choice.message?.reasoning ?? choice.reasoning ?? choice.thinking ?? '')
                 + thinkingPartsText(Array.isArray(content) ? content : null),
             error: false,
+            index,
         };
     }
     if (Array.isArray(data.candidates)) {
         const parts = data.candidates[0]?.content?.parts;
-        return { text: geminiPartsText(parts, false), reasoning: geminiPartsText(parts, true), error: false };
+        return { ...empty, text: geminiPartsText(parts, false), reasoning: geminiPartsText(parts, true) };
     }
     if (data.delta && typeof data.delta === 'object') {
         // Anthropic content_block_delta, Cohere content-delta.
-        return {
-            text: String(data.delta.text ?? data.delta.message?.content?.text ?? ''),
-            reasoning: String(data.delta.thinking ?? ''),
-            error: false,
-        };
+        return { ...empty, text: String(data.delta.text ?? data.delta.message?.content?.text ?? ''), reasoning: String(data.delta.thinking ?? '') };
     }
     if (typeof data.token === 'string') {
-        return { text: data.token, reasoning: '', error: false };
+        return { ...empty, text: data.token };
     }
-    if (typeof data.content === 'string' && !(Number(data.index) > 0)) {
-        return { text: data.content, reasoning: String(data.thinking ?? ''), error: false };
+    if (typeof data.content === 'string') {
+        // llama.cpp numbers its parallel completions; the extras are swipes.
+        return { ...empty, text: data.content, reasoning: String(data.thinking ?? ''), index: Math.max(0, Math.trunc(Number(data.index) || 0)) };
     }
     return empty;
 }
 
 /**
+ * @typedef {{ text: string, reasoning: string, error: boolean, swipes: string[] }} ParsedGenerationReply
+ * `swipes` are the extra completions of a multi-swipe request, after the first one.
+ */
+
+/**
  * @param {string} body Server-sent events
- * @returns {{ text: string, reasoning: string, error: boolean }}
+ * @returns {ParsedGenerationReply}
  */
 function parseEventStream(body) {
     let text = '';
     let reasoning = '';
     let error = false;
+    /** @type {string[]} */
+    const swipes = [];
     for (const line of body.split(/\r?\n/)) {
         if (!line.startsWith('data:')) {
             continue;
@@ -119,27 +124,35 @@ function parseEventStream(body) {
             continue;
         }
         const event = parseStreamEvent(data);
+        error ||= event.error;
+        if (event.index > 0) {
+            // As in the browser, an extra swipe keeps its text only, not its reasoning.
+            swipes[event.index - 1] = (swipes[event.index - 1] ?? '') + event.text;
+            continue;
+        }
         text += event.text;
         reasoning += event.reasoning;
-        error ||= event.error;
     }
-    return { text, reasoning, error };
+    return { text, reasoning, error, swipes: Array.from(swipes, swipe => swipe ?? '') };
 }
 
 /**
  * @param {any} data Complete response JSON
- * @returns {{ text: string, reasoning: string, error: boolean }}
+ * @returns {ParsedGenerationReply}
  */
 function parseCompleteResponse(data) {
+    // llama.cpp answers a multi-swipe request with one object per completion.
+    const extras = Array.isArray(data) ? data.slice(1).map(item => partsText(item?.content)) : null;
     if (Array.isArray(data)) {
         data = data[0];
     }
     if (!data || typeof data !== 'object') {
-        return { text: typeof data === 'string' ? data : '', reasoning: '', error: false };
+        return { text: typeof data === 'string' ? data : '', reasoning: '', error: false, swipes: extras ?? [] };
     }
     if (data.error) {
-        return { text: '', reasoning: '', error: true };
+        return { text: '', reasoning: '', error: true, swipes: [] };
     }
+    const swipes = extras ?? (Array.isArray(data.choices) ? data.choices.slice(1).map(choice => partsText(choice?.message?.content) || partsText(choice?.text)) : []);
 
     const message = data.choices?.[0]?.message;
     const geminiParts = data.responseContent?.parts ?? data.candidates?.[0]?.content?.parts;
@@ -159,14 +172,14 @@ function parseCompleteResponse(data) {
         || (contentBlocks ? contentBlocks.filter(part => part?.type === 'thinking').map(part => part.thinking).join('\n\n') : '')
         || thinkingPartsText(message?.content)
         || geminiPartsText(geminiParts, true);
-    return { text, reasoning, error: false };
+    return { text, reasoning, error: false, swipes };
 }
 
 /**
  * Extracts the reply from what a generation endpoint wrote.
  * @param {Buffer} body Every byte the endpoint wrote
  * @param {string|null} contentType Response content type
- * @returns {{ text: string, reasoning: string, error: boolean }}
+ * @returns {ParsedGenerationReply}
  */
 export function parseGenerationReply(body, contentType) {
     const serialized = body.toString('utf8');
@@ -177,6 +190,6 @@ export function parseGenerationReply(body, contentType) {
     try {
         return parseCompleteResponse(JSON.parse(serialized));
     } catch {
-        return { text: '', reasoning: '', error: true };
+        return { text: '', reasoning: '', error: true, swipes: [] };
     }
 }

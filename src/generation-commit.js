@@ -17,7 +17,7 @@ import { updateChatRecords } from './endpoints/chats.js';
 
 /**
  * @typedef {import('../public/scripts/generation-commit-plan.js').GenerationCommitPlan} GenerationCommitPlan
- * @typedef {{ text: string, reasoning: string }} GenerationReply
+ * @typedef {{ text: string, reasoning: string, swipes?: string[] }} GenerationReply
  * @typedef {{ id: string, finishedAt: Date }} GenerationCommitContext
  * @typedef {{ records: object[], integrity: string, committedIntegrity: string }} GenerationCommitUndo
  */
@@ -53,6 +53,28 @@ function syncCurrentSwipe(message) {
         gen_finished: message.gen_finished,
         extra: structuredClone(message.extra),
     };
+}
+
+/**
+ * Adds the extra completions of a multi-swipe request after the reply's own swipe, as saveReply()
+ * does in the browser.
+ * @param {any} message Message that received the reply
+ * @param {string[]} swipes Extra completions
+ */
+function addExtraSwipes(message, swipes) {
+    const swipeExtra = structuredClone(message.extra ?? {});
+    for (const key of ['token_count', 'reasoning', 'reasoning_duration', 'reasoning_tokens', 'server_generation']) {
+        delete swipeExtra[key];
+    }
+    for (const text of swipes) {
+        message.swipes.push(text);
+        message.swipe_info.push({
+            send_date: message.send_date,
+            gen_started: message.gen_started,
+            gen_finished: message.gen_finished,
+            extra: structuredClone(swipeExtra),
+        });
+    }
 }
 
 /**
@@ -95,7 +117,8 @@ function isOwnPlaceholder(message, plan) {
 export function applyGenerationReply(records, plan, reply, context) {
     const [header, ...source] = structuredClone(records);
     const messages = /** @type {any[]} */ (source);
-    const marker = { id: context.id, kind: plan.kind, pending: true, prefix_length: 0 };
+    const extraSwipes = plan.kind === 'continue' ? [] : (reply.swipes ?? []).filter(text => typeof text === 'string');
+    const marker = { id: context.id, kind: plan.kind, pending: true, prefix_length: 0, round: plan.round ?? [], extra_swipes: extraSwipes.length };
 
     if (plan.kind === 'append') {
         const previous = plan.index > 0 ? messages[plan.index - 1] : null;
@@ -126,6 +149,7 @@ export function applyGenerationReply(records, plan, reply, context) {
         }
         stampGeneration(message, plan, context);
         syncCurrentSwipe(message);
+        addExtraSwipes(message, extraSwipes);
         messages[plan.index] = message;
         return { records: [header, ...messages] };
     }
@@ -153,6 +177,7 @@ export function applyGenerationReply(records, plan, reply, context) {
         message.extra.server_generation = marker;
         stampGeneration(message, plan, context);
         syncCurrentSwipe(message);
+        addExtraSwipes(message, extraSwipes);
         return { records: [header, ...messages] };
     }
 
