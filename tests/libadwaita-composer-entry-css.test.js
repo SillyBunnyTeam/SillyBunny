@@ -35,7 +35,11 @@ describe('libadwaita composer entry css', () => {
     });
 
     test('Conversation send button uses the same hover transition contract', () => {
-        expect(conversationCss).toMatch(/#sheld\[data-sb-conversation-mode='on'\] #sb_conversation_send\.menu_button\s*\{[^}]*transition:\s*background-color var\(--sb-transition-fast\), box-shadow var\(--sb-transition-fast\), transform var\(--sb-transition-fast\)/);
+        expect(conversationCss).toMatch(/#sheld\[data-sb-conversation-mode='on'\] #sb_conversation_send\s*\{[^}]*transition:\s*background-color var\(--sb-transition-fast\), box-shadow var\(--sb-transition-fast\), transform var\(--sb-transition-fast\)/);
+    });
+
+    test('Conversation send button is a circular suggested action', () => {
+        expect(conversationCss).toMatch(/#sheld\[data-sb-conversation-mode='on'\] #sb_conversation_send\s*\{[^}]*border-radius:\s*50%;[^}]*background:\s*var\(--sb-accent\);/);
     });
 
     test('uses composer tokens in Conversation textarea', () => {

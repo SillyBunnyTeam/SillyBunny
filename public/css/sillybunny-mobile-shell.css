@@ -1,6 +1,18 @@
 /* SillyBunny mobile shell foundation: final sheet contract for modal drawers.
  * Keep this at the end of the shell sheet so it beats older mobile drawer rules. */
 @media screen and (max-width: 768px) {
+    /* Shared mobile composer button size: Roleplay #nonQRFormItems and the Conversation
+       composer (sillybunny-conversation.css) both read these, so the send buttons cannot drift. */
+    :root {
+        --sb-mobile-composer-action-size: clamp(40px, calc(44px * var(--sb-bottom-bar-scale, 1)), 44px);
+        --sb-mobile-composer-action-icon-size: clamp(13px, calc(16px * var(--sb-bottom-bar-scale, 1)), 18px);
+    }
+
+    :root[data-sb-compact-mode='true'] {
+        --sb-mobile-composer-action-size: clamp(34px, calc(38px * var(--sb-bottom-bar-scale, 1)), 40px);
+        --sb-mobile-composer-action-icon-size: clamp(11px, calc(14px * var(--sb-bottom-bar-scale, 1)), 16px);
+    }
+
     /* SillyBunny: Android Firefox ignores user-scalable=no in the viewport
        meta, allowing pinch-zoom to drift the visual viewport away from the
        layout viewport. pan-y permits vertical touch scrolling but blocks
@@ -67,9 +79,9 @@
 
     #nonQRFormItems {
         --sb-mobile-composer-input-height: clamp(40px, calc(44px * var(--sb-bottom-bar-scale, 1)), 56px);
-        --sb-composer-action-size: clamp(40px, calc(44px * var(--sb-bottom-bar-scale, 1)), 44px);
+        --sb-composer-action-size: var(--sb-mobile-composer-action-size);
         --sb-composer-send-width: var(--sb-composer-action-size);
-        --sb-composer-action-icon-size: clamp(13px, calc(16px * var(--sb-bottom-bar-scale, 1)), 18px);
+        --sb-composer-action-icon-size: var(--sb-mobile-composer-action-icon-size);
         --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 3px);
         --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 3px);
         display: grid !important;
@@ -86,9 +98,9 @@
 
     :root[data-sb-compact-mode='true'] #nonQRFormItems {
         --sb-mobile-composer-input-height: clamp(34px, calc(38px * var(--sb-bottom-bar-scale, 1)), 44px);
-        --sb-composer-action-size: clamp(34px, calc(38px * var(--sb-bottom-bar-scale, 1)), 40px);
+        --sb-composer-action-size: var(--sb-mobile-composer-action-size);
         --sb-composer-send-width: var(--sb-composer-action-size);
-        --sb-composer-action-icon-size: clamp(11px, calc(14px * var(--sb-bottom-bar-scale, 1)), 16px);
+        --sb-composer-action-icon-size: var(--sb-mobile-composer-action-icon-size);
         --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 4px);
         --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 4px);
         gap: 0 clamp(8px, 2vw, 10px) !important;
@@ -2931,8 +2943,8 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         width: 100% !important;
         max-width: none !important;
         border-radius: 0 !important;
-        /* libadwaita bottom toolbar: opaque header-bar layer split from the chat by one shade line. */
-        background: var(--sb-layer-headerbar);
+        /* libadwaita bottom toolbar: opaque view layer, distinct from the header-bar top bar. */
+        background: var(--sb-layer-bottombar);
         border: 0 !important;
         border-top: var(--sb-headerbar-shade) !important;
         box-shadow: none;
@@ -2953,9 +2965,9 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
 
     #nonQRFormItems {
         --sb-mobile-composer-input-height: clamp(40px, calc(44px * var(--sb-bottom-bar-scale, 1)), 52px);
-        --sb-composer-action-size: clamp(40px, calc(44px * var(--sb-bottom-bar-scale, 1)), 44px);
+        --sb-composer-action-size: var(--sb-mobile-composer-action-size);
         --sb-composer-send-width: var(--sb-composer-action-size);
-        --sb-composer-action-icon-size: clamp(13px, calc(16px * var(--sb-bottom-bar-scale, 1)), 18px);
+        --sb-composer-action-icon-size: var(--sb-mobile-composer-action-icon-size);
         --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 4px);
         --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 4px);
         gap: 0 clamp(8px, 2vw, 10px) !important;
@@ -2965,9 +2977,9 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
 
     :root[data-sb-compact-mode='true'] #nonQRFormItems {
         --sb-mobile-composer-input-height: clamp(34px, calc(38px * var(--sb-bottom-bar-scale, 1)), 44px);
-        --sb-composer-action-size: clamp(34px, calc(38px * var(--sb-bottom-bar-scale, 1)), 40px);
+        --sb-composer-action-size: var(--sb-mobile-composer-action-size);
         --sb-composer-send-width: var(--sb-composer-action-size);
-        --sb-composer-action-icon-size: clamp(11px, calc(14px * var(--sb-bottom-bar-scale, 1)), 16px);
+        --sb-composer-action-icon-size: var(--sb-mobile-composer-action-icon-size);
         --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 4px);
     }
 

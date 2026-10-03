@@ -128,6 +128,11 @@ describe('paper texture regression guards', () => {
         expect(paperThemeCss).not.toMatch(/\.mes_reasoning_header\s*\{/);
         expect(paperThemeCss).not.toMatch(/\.mes_reasoning\s*\{/);
     });
+
+    test('fills the reserved top-bar layout offset instead of a shorter 40px bar', () => {
+        expect(paperThemeCss).toMatch(/#top-bar,\s*#topBar\s*\{[^}]*height:\s*var\(--sb-topbar-layout-offset,\s*var\(--topBarBlockSize\)\)\s*!important;/);
+        expect(paperThemeCss).not.toMatch(/#top-bar,\s*#topBar\s*\{[^}]*height:\s*var\(--topBarBlockSize\)\s*!important;/);
+    });
 });
 
 describe('index.html mobile stylesheet gates', () => {

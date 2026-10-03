@@ -29,12 +29,13 @@ body::after {
     background-size: 30px 30px, 25px 25px, 38px 38px, 100% 100%, 100% 100%, 100% 100%;
 }
 
-/* Slimmer top bar with centered icons */
+/* Fill the reserved layout offset. A 40px --topBarBlockSize bar left a page-coloured
+   strip under the painted header because #sheld starts at --sb-topbar-layout-offset. */
 #top-bar,
 #topBar {
-    min-height: var(--topBarBlockSize) !important;
-    height: var(--topBarBlockSize) !important;
-    max-height: var(--topBarBlockSize) !important;
+    min-height: var(--sb-topbar-layout-offset, var(--topBarBlockSize)) !important;
+    height: var(--sb-topbar-layout-offset, var(--topBarBlockSize)) !important;
+    max-height: var(--sb-topbar-layout-offset, var(--topBarBlockSize)) !important;
     padding-top: 2px !important;
     padding-bottom: 2px !important;
     align-items: center !important;

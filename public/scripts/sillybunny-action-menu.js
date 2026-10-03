@@ -285,7 +285,11 @@ function positionPopover(popover, trigger, point, boundsElement) {
     if (point && left + width > bounds.right - POPOVER_MARGIN) {
         left = anchor.left - width;
     }
-    left = Math.min(Math.max(left, bounds.left + POPOVER_MARGIN), bounds.right - POPOVER_MARGIN - width);
+    const minLeft = bounds.left + POPOVER_MARGIN;
+    const maxLeft = bounds.right - POPOVER_MARGIN - width;
+    left = maxLeft < minLeft
+        ? Math.max(bounds.left, Math.min(left, bounds.right - width))
+        : Math.min(Math.max(left, minLeft), maxLeft);
     const top = placeAbove ? anchor.top - POPOVER_GAP - height : anchor.bottom + POPOVER_GAP;
     popover.style.left = `${Math.round(left)}px`;
     popover.style.top = `${Math.round(Math.max(top, POPOVER_MARGIN))}px`;

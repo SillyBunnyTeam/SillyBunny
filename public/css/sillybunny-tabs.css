@@ -4760,10 +4760,10 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     box-sizing: border-box;
     margin-block-end: 4px;
     padding: calc(3px * var(--sb-bottom-bar-scale)) calc(8px * var(--sb-bottom-bar-scale));
-    /* Same toolbar surface and border as #send_form (sillybunny-theme.css) so the two read as one stack. */
+    /* Same view-layer surface as #send_form so the two read as one stack, distinct from the top bar. */
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent);
     border-radius: var(--sb-radius-overlay);
-    background: var(--sb-layer-headerbar);
+    background: var(--sb-layer-bottombar);
     /* libadwaita toolbars separate with a 1px shade, not a blurred drop shadow. */
     box-shadow: none;
     min-height: max(var(--sb-bottom-chat-min-touch), calc(26px * var(--sb-bottom-bar-scale)));

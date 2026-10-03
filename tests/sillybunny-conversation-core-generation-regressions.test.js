@@ -35,6 +35,8 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/partne
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/partners-utils.js', () => ({
     getSpeakerPrefixMatch: () => null,
 }));
+const confirmConversationAction = jest.fn(async () => true);
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/dialogs.js', () => ({ confirmConversationAction }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/personas.js', () => ({ getConnectionProfiles: () => [] }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/prompt.js', () => ({
     buildConversationPromptMessages: jest.fn(),
@@ -84,7 +86,8 @@ describe('Conversation core generated reply regressions', () => {
         updateConversationThreadMessage.mockClear();
         runtimeStatusOverrides.clear();
         delete globalThis.document;
-        delete globalThis.confirm;
+        confirmConversationAction.mockReset();
+        confirmConversationAction.mockImplementation(async () => true);
     });
 
     test('keeps native selfie command metadata when image generation is disabled', async () => {
@@ -151,7 +154,7 @@ describe('Conversation core generated reply regressions', () => {
         });
     });
 
-    test('saves only changed content and closes the editor in all cases', () => {
+    test('saves only changed content and closes the editor in all cases', async () => {
         const originalTextElement = {};
         const textElement = {
             append: jest.fn(),
@@ -191,7 +194,7 @@ describe('Conversation core generated reply regressions', () => {
         };
         threadMessages.splice(0, threadMessages.length, { id: 42, role: 'user', name: 'User', mes: 'hello', extra: {} });
 
-        editConversationMessage('42');
+        await editConversationMessage('42');
 
         const [textarea, buttonContainer] = createdElements;
         const [saveButton, cancelButton] = buttonContainer.children;
@@ -210,7 +213,7 @@ describe('Conversation core generated reply regressions', () => {
         });
     });
 
-    test('cancels an existing editor before opening another', () => {
+    test('cancels an existing editor before opening another', async () => {
         const restoredText = {};
         const originalText = {
             append: jest.fn(),
@@ -254,16 +257,16 @@ describe('Conversation core generated reply regressions', () => {
             { id: 43, role: 'user', name: 'User', mes: 'hello', extra: {} },
         );
 
-        editConversationMessage('42');
+        await editConversationMessage('42');
         globalThis.document.querySelectorAll.mockReturnValue([nextMessageElement]);
-        editConversationMessage('43');
+        await editConversationMessage('43');
 
         expect(previousMessageElement.classList.remove).toHaveBeenCalledWith('is-editing');
         expect(originalText.replaceWith).toHaveBeenCalledWith(restoredText);
         expect(originalActions.classList.remove).toHaveBeenCalledWith('open');
     });
 
-    test('does not persist a blanked message so deletion stays explicit', () => {
+    test('does not persist a blanked message so deletion stays explicit', async () => {
         const textElement = {
             append: jest.fn(),
             cloneNode: jest.fn(() => ({})),
@@ -298,7 +301,7 @@ describe('Conversation core generated reply regressions', () => {
         };
         threadMessages.splice(0, threadMessages.length, { id: 42, role: 'user', name: 'User', mes: 'hello', extra: {} });
 
-        editConversationMessage('42');
+        await editConversationMessage('42');
 
         const [textarea, buttonContainer] = createdElements;
         const [saveButton] = buttonContainer.children;
@@ -309,7 +312,7 @@ describe('Conversation core generated reply regressions', () => {
         expect(messageElement.classList.remove).toHaveBeenCalledWith('is-editing');
     });
 
-    test('keeps the open editor when discarding unsaved changes is declined', () => {
+    test('keeps the open editor when discarding unsaved changes is declined', async () => {
         const originalText = {
             append: jest.fn(),
             cloneNode: jest.fn(() => ({})),
@@ -354,19 +357,19 @@ describe('Conversation core generated reply regressions', () => {
             }),
             querySelectorAll: jest.fn(() => [previousMessageElement]),
         };
-        globalThis.confirm = jest.fn(() => false);
+        confirmConversationAction.mockImplementation(async () => false);
         threadMessages.splice(0, threadMessages.length,
             { id: 42, role: 'user', name: 'User', mes: 'first', extra: {} },
             { id: 43, role: 'user', name: 'User', mes: 'hello', extra: {} },
         );
 
-        editConversationMessage('42');
+        await editConversationMessage('42');
         const [textarea] = createdElements;
         textarea.value = 'edited but unsaved';
         globalThis.document.querySelectorAll.mockReturnValue([nextMessageElement]);
-        editConversationMessage('43');
+        await editConversationMessage('43');
 
-        expect(globalThis.confirm).toHaveBeenCalled();
+        expect(confirmConversationAction).toHaveBeenCalled();
         expect(originalText.replaceWith).not.toHaveBeenCalled();
         expect(nextMessageElement.classList.add).not.toHaveBeenCalled();
     });

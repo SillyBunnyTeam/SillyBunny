@@ -15,7 +15,9 @@ import {
     parsePositiveInt,
     saveGroupConversationSettings,
 } from './context.js';
-import { animateIn, animateOut, MOTION_FAST, SPRING_SHEET } from '../sillybunny-motion.js';
+import { confirmConversationAction, promptConversationText } from './dialogs.js';
+import { POPUP_RESULT, POPUP_TYPE, Popup } from '../popup.js';
+import { animateIn, animateOut, MOTION_FAST, SPRING_NAVIGATION, SPRING_SHEET } from '../sillybunny-motion.js';
 import { applySettingsToPanel, saveCurrentPanelSettings, updateConversationChrome } from './interface.js';
 import { isConversationActiveThread } from './notifications.js';
 import { getScheduleEditorTargets } from './pals-rail.js';
@@ -40,38 +42,138 @@ import {
     ensureConversationChrome,
 } from './timeline-render.js';
 
-export function setConversationBackdropVisible() {
+const MOBILE_LAYOUT_QUERY = '(max-width: 768px)';
+
+function isMobileConversationLayout() {
+    return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(MOBILE_LAYOUT_QUERY).matches;
+}
+
+/**
+ * Derives the mobile navigation page (`#sheld[data-sb-conversation-page]`) from the rail and
+ * settings state. Every rail and settings open/close path calls this. The legacy settings
+ * backdrop stays in the DOM for compatibility but never shows: the settings pane is non-modal.
+ */
+export function syncConversationPage() {
     const backdrop = document.getElementById(CHROME_IDS.settingsBackdrop);
     const drawer = document.getElementById(CHROME_IDS.settingsDrawer);
     const palsRail = document.getElementById(CHROME_IDS.palsRail);
-    if (!(backdrop instanceof HTMLElement)) {
+    if (backdrop instanceof HTMLElement) {
+        backdrop.hidden = true;
+    }
+
+    const sheld = document.getElementById('sheld');
+    if (!(sheld instanceof HTMLElement) || typeof sheld.setAttribute !== 'function') {
         return;
     }
 
-    const settingsOpen = drawer instanceof HTMLElement && !drawer.hidden;
+    const settingsOpen = drawer instanceof HTMLElement
+        && !drawer.hidden
+        && drawer.dataset.closing !== 'true'
+        && drawer.dataset.opening !== 'true';
     const palsOpen = palsRail instanceof HTMLElement && palsRail.dataset.open === 'true';
-    const shouldShow = settingsOpen || palsOpen;
-    if (shouldShow === !backdrop.hidden) {
+    const page = settingsOpen ? 'settings' : (palsOpen || !getCurrentCharAvatar()) ? 'pals' : 'chat';
+    sheld.setAttribute('data-sb-conversation-page', page);
+}
+
+export const setConversationBackdropVisible = syncConversationPage;
+
+// Settings docks as a third column only when the sidebar, a usable timeline and the pane all fit.
+const SPLIT_LAYOUT_MIN_WIDTH = 1200;
+let layoutObserver = null;
+let settingsPaneMotionToken = 0;
+
+function getConversationLayout() {
+    const sheld = document.getElementById('sheld');
+    if (sheld instanceof HTMLElement && sheld.dataset.sbConversationLayout) {
+        return sheld.dataset.sbConversationLayout;
+    }
+    if (isMobileConversationLayout()) {
+        return 'pages';
+    }
+    return typeof window !== 'undefined' && window.innerWidth >= SPLIT_LAYOUT_MIN_WIDTH ? 'split' : 'overlay';
+}
+
+function waitForSplitSettingsTuck(onDone) {
+    const sheld = document.getElementById('sheld');
+    const reduced = typeof document !== 'undefined' && document.body?.classList.contains('reduced-motion') === true
+        || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true);
+    if (reduced || !(sheld instanceof HTMLElement) || typeof sheld.addEventListener !== 'function') {
+        onDone();
         return;
     }
-    if (shouldShow) {
-        backdrop.hidden = false;
-        animateIn(backdrop, [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_FAST });
-    } else {
-        animateOut(backdrop, [{ opacity: 1 }, { opacity: 0 }], () => { backdrop.hidden = true; });
+
+    let finished = false;
+    const finish = () => {
+        if (finished) {
+            return;
+        }
+        finished = true;
+        sheld.removeEventListener('transitionend', onTransitionEnd);
+        onDone();
+    };
+    const onTransitionEnd = (event) => {
+        if (event.target === sheld && event.propertyName === 'grid-template-columns') {
+            finish();
+        }
+    };
+    sheld.addEventListener('transitionend', onTransitionEnd);
+    if (typeof window?.setTimeout === 'function') {
+        window.setTimeout(finish, 520);
+        return;
+    }
+    finish();
+}
+
+/** Sets `#sheld[data-sb-conversation-layout]` to pages (mobile), split or overlay from the #sheld width. */
+export function syncConversationLayout() {
+    const sheld = document.getElementById('sheld');
+    if (!(sheld instanceof HTMLElement)) {
+        return;
+    }
+    const layout = isMobileConversationLayout()
+        ? 'pages'
+        : (typeof window !== 'undefined' && window.innerWidth >= SPLIT_LAYOUT_MIN_WIDTH) ? 'split' : 'overlay';
+    if (sheld.dataset.sbConversationLayout !== layout) {
+        sheld.dataset.sbConversationLayout = layout;
     }
 }
 
-// libadwaita bottom/side sheet: slides in from the inline-end edge on the sheet spring.
+export function observeConversationLayout(active) {
+    const sheld = document.getElementById('sheld');
+    if (!active) {
+        layoutObserver?.disconnect();
+        layoutObserver = null;
+        sheld?.removeAttribute?.('data-sb-conversation-layout');
+        return;
+    }
+    syncConversationLayout();
+    if (!layoutObserver && sheld instanceof HTMLElement && typeof ResizeObserver === 'function') {
+        layoutObserver = new ResizeObserver(() => syncConversationLayout());
+        layoutObserver.observe(sheld);
+    }
+}
+
+// Desktop: the overlay pane slides in from the inline-end edge on the sheet spring.
 const SETTINGS_SHEET_ENTER = [{ opacity: 0, transform: 'translateX(24px)' }, { opacity: 1, transform: 'none' }];
 const SETTINGS_SHEET_EXIT = [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(24px)' }];
+// Mobile: settings is a pushed navigation page.
+const SETTINGS_PAGE_ENTER = [{ transform: 'translateX(100%)' }, { transform: 'none' }];
+const SETTINGS_PAGE_EXIT = [{ transform: 'none' }, { transform: 'translateX(100%)' }];
 
 export function closePalsRail() {
     const palsRail = document.getElementById(CHROME_IDS.palsRail);
     if (palsRail instanceof HTMLElement) {
         palsRail.dataset.open = 'false';
     }
-    setConversationBackdropVisible();
+    syncConversationPage();
+}
+
+export function openPalsRail() {
+    const palsRail = document.getElementById(CHROME_IDS.palsRail);
+    if (palsRail instanceof HTMLElement) {
+        palsRail.dataset.open = 'true';
+    }
+    syncConversationPage();
 }
 
 export function togglePalsRail() {
@@ -81,7 +183,7 @@ export function togglePalsRail() {
     }
 
     palsRail.dataset.open = palsRail.dataset.open === 'true' ? 'false' : 'true';
-    setConversationBackdropVisible();
+    syncConversationPage();
 }
 
 export function formatScheduleTimestamp(timestamp) {
@@ -97,7 +199,7 @@ export function formatScheduleTimestamp(timestamp) {
     }
 }
 
-export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) {
+export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) {
     const personaId = getConversationPersonaId();
     const targets = getScheduleEditorTargets(initialAvatar);
     let editAvatar = targets.some(target => target.avatar === initialAvatar) ? initialAvatar : targets[0]?.avatar;
@@ -105,31 +207,6 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
         toastr.warning('No character available for schedule editing.');
         return;
     }
-
-    const previouslyFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const overlay = document.createElement('div');
-    overlay.id = 'sb_conversation_schedule_modal';
-    overlay.className = 'sb-conversation-schedule-modal-overlay';
-    overlay.style.cssText = `
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.7);
-        backdrop-filter: blur(8px);
-        z-index: 9999;
-        display: grid;
-        align-items: center;
-        justify-items: center;
-        place-items: center;
-        min-height: 100vh;
-        height: 100vh;
-        min-height: 100dvh;
-        height: 100dvh;
-        padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));
-        box-sizing: border-box;
-        overflow: hidden;
-        overscroll-behavior: contain;
-        -webkit-overflow-scrolling: touch;
-    `;
 
     function createEditableSchedule(schedule) {
         const editable = JSON.parse(JSON.stringify(schedule || {
@@ -172,25 +249,8 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
     let currentTabDay = new Date().getDay();
 
     const modal = document.createElement('div');
-    modal.className = 'sb-conversation-schedule-modal sb-shell-root';
-    modal.setAttribute('role', 'dialog');
-    modal.setAttribute('aria-modal', 'true');
-    modal.setAttribute('aria-labelledby', 'sb_schedule_modal_title');
-    modal.tabIndex = -1;
-    modal.style.cssText = `
-        display: flex;
-        flex-direction: column;
-        width: min(650px, calc(100vw - 20px));
-        max-height: calc(100vh - 20px);
-        max-height: calc(100dvh - 20px);
-        margin: 0;
-        background: var(--SmartThemeBlurTintColor);
-        border: 1px solid var(--sb-shell-border);
-        border-radius: var(--sb-radius-md, 14px);
-        box-shadow: 0 10px 30px color-mix(in srgb, var(--SmartThemeShadowColor) 40%, transparent);
-        color: var(--SmartThemeBodyColor);
-        overflow: hidden;
-    `;
+    modal.id = 'sb_conversation_schedule_modal';
+    modal.className = 'sb-conversation-schedule-editor';
 
     function updateModalBody() {
         const listContainer = modal.querySelector('.sb-schedule-modal-blocks-list');
@@ -200,27 +260,18 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
         listContainer.innerHTML = '';
 
         if (!dayBlocks.length) {
-            listContainer.innerHTML = '<div class="sb-conversation-empty" style="text-align: center; padding: 20px; opacity: 0.7;">No blocks scheduled for this day. Click "Add Time Block" below to create one!</div>';
+            listContainer.innerHTML = '<div class="sb-conversation-empty sb-schedule-modal-empty">No time blocks for this day.</div>';
         } else {
             dayBlocks.forEach((block, idx) => {
                 const row = document.createElement('div');
                 row.className = 'sb-schedule-modal-row';
-                row.style.cssText = `
-                    display: grid;
-                    grid-template-columns: 130px 1fr 100px auto;
-                    gap: 10px;
-                    align-items: center;
-                    margin-bottom: 8px;
-                    padding-bottom: 8px;
-                    border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 40%, transparent);
-                `;
 
                 const timeInput = document.createElement('input');
                 timeInput.type = 'text';
                 timeInput.className = 'text_pole textarea_compact sb-schedule-modal-time';
                 timeInput.placeholder = '08:00-12:00';
+                timeInput.setAttribute('aria-label', 'Time range');
                 timeInput.value = block.time || '';
-                timeInput.style.fontFamily = 'monospace';
                 timeInput.addEventListener('input', () => {
                     block.time = timeInput.value;
                 });
@@ -229,6 +280,7 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
                 activityInput.type = 'text';
                 activityInput.className = 'text_pole textarea_compact sb-schedule-modal-activity';
                 activityInput.placeholder = 'e.g. working, sleeping';
+                activityInput.setAttribute('aria-label', 'Activity');
                 activityInput.value = block.activity || '';
                 activityInput.addEventListener('input', () => {
                     block.activity = activityInput.value;
@@ -236,7 +288,7 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
 
                 const statusSelect = document.createElement('select');
                 statusSelect.className = 'text_pole sb-schedule-modal-status';
-                statusSelect.style.height = '32px';
+                statusSelect.setAttribute('aria-label', 'Status');
                 ['online', 'idle', 'dnd', 'offline'].forEach(st => {
                     const opt = document.createElement('option');
                     opt.value = st;
@@ -250,9 +302,10 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
 
                 const delBtn = document.createElement('button');
                 delBtn.type = 'button';
-                delBtn.className = 'menu_button menu_button_icon';
-                delBtn.style.padding = '4px 8px';
-                delBtn.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
+                delBtn.className = 'menu_button menu_button_icon sb-schedule-modal-delete';
+                delBtn.title = 'Remove time block';
+                delBtn.setAttribute('aria-label', 'Remove time block');
+                delBtn.innerHTML = '<i class="fa-solid fa-trash-can" aria-hidden="true"></i>';
                 delBtn.addEventListener('click', () => {
                     editedSchedule.days[String(currentTabDay)].splice(idx, 1);
                     updateModalBody();
@@ -273,48 +326,36 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
     }).join('');
 
     modal.innerHTML = `
-        <div class="sb-conversation-schedule-modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--sb-shell-border);">
-            <span id="sb_schedule_modal_title" style="font-weight: var(--sb-weight-title); font-size: 1.1em;"><i class="fa-solid fa-calendar-days" style="color: var(--sb-accent); margin-right: 8px;"></i>Edit Weekly Routine</span>
-            <button type="button" class="menu_button menu_button_icon sb-schedule-modal-close" style="padding: 4px 8px;"><i class="fa-solid fa-xmark"></i></button>
-        </div>
-        <div class="sb-schedule-modal-target" style="display: grid; gap: 6px; padding: 12px 20px; border-bottom: 1px solid var(--sb-shell-border);">
-            <label for="sb_schedule_modal_target" style="font-size: var(--sb-type-meta); font-weight: var(--sb-weight-control); opacity: 0.82;">Editing schedule for</label>
+        <h3 id="sb_schedule_modal_title" class="sb-schedule-modal-title">Weekly routine</h3>
+        <div class="sb-schedule-modal-target">
+            <label for="sb_schedule_modal_target">Editing schedule for</label>
             <select id="sb_schedule_modal_target" class="text_pole textarea_compact wide100p"${targets.length <= 1 ? ' disabled' : ''}>
                 ${targetOptionsHtml}
             </select>
-            <p class="sb-conversation-field-hint" style="margin: 0;">Conversation members and current group-chat members use their own character-card schedules.</p>
+            <p class="sb-conversation-field-hint">Conversation members and current group-chat members use their own character-card schedules.</p>
         </div>
-        <div class="sb-conversation-schedule-modal-tabs" style="display: flex; gap: 4px; padding: 10px 20px; border-bottom: 1px solid var(--sb-shell-border); overflow-x: auto;">
+        <div class="sb-conversation-schedule-modal-tabs" role="toolbar" aria-label="Day of the week">
             ${WEEKDAY_LABELS.map((day, idx) => `
-                <button type="button" class="menu_button sb-schedule-modal-tab" data-day="${idx}" style="flex: 1; padding: 6px 4px; font-size: var(--sb-type-meta); min-width: 50px;">${day}</button>
+                <button type="button" class="menu_button sb-schedule-modal-tab" data-day="${idx}">${day}</button>
             `).join('')}
         </div>
-        <div style="flex: 1; overflow-y: auto; padding: 20px;" class="sb-schedule-modal-body">
-            <div class="sb-schedule-modal-blocks-list" style="min-height: 120px;"></div>
-            <button type="button" class="menu_button sb-schedule-modal-add" style="margin-top: 12px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                <i class="fa-solid fa-plus"></i><span>Add Time Block</span>
+        <div class="sb-schedule-modal-body">
+            <div class="sb-schedule-modal-blocks-list"></div>
+            <button type="button" class="menu_button sb-schedule-modal-add">
+                <i class="fa-solid fa-plus" aria-hidden="true"></i><span>Add time block</span>
             </button>
         </div>
-        <div class="sb-conversation-schedule-modal-footer" style="padding: 16px 20px; border-top: 1px solid var(--sb-shell-border); display: flex; flex-direction: column; gap: 12px;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                <div class="sb-conversation-field-stack">
-                    <label style="font-size: var(--sb-type-meta); opacity: 0.8; margin-bottom: 4px;">Talkativeness (0-100)</label>
-                    <input type="number" class="text_pole sb-schedule-modal-talkativeness" min="0" max="100" step="5" value="${editedSchedule.talkativeness}" />
-                </div>
-                <div class="sb-conversation-field-stack">
-                    <label style="font-size: var(--sb-type-meta); opacity: 0.8; margin-bottom: 4px;">Inactivity Threshold (mins)</label>
-                    <input type="number" class="text_pole sb-schedule-modal-patience" min="15" max="360" step="5" value="${editedSchedule.inactivityThresholdMinutes}" />
-                </div>
-            </div>
-            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px;">
-                <button type="button" class="menu_button sb-schedule-modal-save" style="padding: 6px 14px; font-weight: var(--sb-weight-control);">Save Changes</button>
-                <button type="button" class="menu_button sb-schedule-modal-cancel" style="padding: 6px 14px;">Cancel</button>
-            </div>
+        <div class="sb-schedule-modal-meta">
+            <label class="sb-conversation-field-stack">
+                <span>Talkativeness (0-100)</span>
+                <input type="number" class="text_pole sb-schedule-modal-talkativeness" min="0" max="100" step="5" value="${editedSchedule.talkativeness}" />
+            </label>
+            <label class="sb-conversation-field-stack">
+                <span>Inactivity threshold (minutes)</span>
+                <input type="number" class="text_pole sb-schedule-modal-patience" min="15" max="360" step="5" value="${editedSchedule.inactivityThresholdMinutes}" />
+            </label>
         </div>
     `;
-
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
 
     function selectDayTab(dayIdx) {
         currentTabDay = dayIdx;
@@ -383,107 +424,68 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
         editedSchedule.inactivityThresholdMinutes = clamp(parseInt(patienceInput.value, 10) || 120, MIN_INACTIVITY_THRESHOLD, MAX_INACTIVITY_THRESHOLD);
     });
 
-    const closeBtn = modal.querySelector('.sb-schedule-modal-close');
-    const cancelBtn = modal.querySelector('.sb-schedule-modal-cancel');
-    const saveBtn = modal.querySelector('.sb-schedule-modal-save');
-
-    function closeModal() {
-        overlay.remove();
-        previouslyFocusedElement?.focus?.({ preventScroll: true });
+    const popup = new Popup(modal, POPUP_TYPE.TEXT, null, {
+        okButton: 'Save',
+        cancelButton: 'Cancel',
+        wider: true,
+        leftAlign: true,
+        allowVerticalScrolling: true,
+    });
+    popup.dlg.classList.add('sb-conversation-dialog', 'sb-conversation-schedule-dialog');
+    popup.dlg.setAttribute('aria-labelledby', 'sb_schedule_modal_title');
+    const result = await popup.show();
+    if (result !== POPUP_RESULT.AFFIRMATIVE || !editAvatar) {
+        return;
     }
 
-    closeBtn?.addEventListener('click', closeModal);
-    cancelBtn?.addEventListener('click', closeModal);
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) closeModal();
-    });
-    overlay.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            closeModal();
-            return;
-        }
+    const normalized = {
+        days: {},
+        talkativeness: editedSchedule.talkativeness,
+        inactivityThresholdMinutes: editedSchedule.inactivityThresholdMinutes,
+        generatedAt: Date.now(),
+    };
 
-        if (event.key !== 'Tab') {
-            return;
-        }
-
-        const focusable = Array.from(modal.querySelectorAll('button, input, select, textarea, [tabindex]:not([tabindex="-1"])'))
-            .filter(element => element instanceof HTMLElement && !element.hasAttribute('disabled') && element.offsetParent !== null);
-        if (!focusable.length) {
-            return;
-        }
-
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-            event.preventDefault();
-            last.focus({ preventScroll: true });
-        } else if (!event.shiftKey && document.activeElement === last) {
-            event.preventDefault();
-            first.focus({ preventScroll: true });
-        }
-    });
-    setTimeout(() => {
-        modal.focus({ preventScroll: true });
-    }, 0);
-
-    saveBtn?.addEventListener('click', () => {
-        if (!editAvatar) {
-            closeModal();
-            return;
-        }
-
-        const normalized = {
-            days: {},
-            talkativeness: editedSchedule.talkativeness,
-            inactivityThresholdMinutes: editedSchedule.inactivityThresholdMinutes,
-            generatedAt: Date.now(),
-        };
-
-        for (let d = 0; d <= 6; d++) {
-            const rawBlocks = editedSchedule.days[String(d)] || [];
-            const normalizedBlocks = [];
-            for (const b of rawBlocks) {
-                const norm = normalizeScheduleBlock(b);
-                if (norm) {
-                    normalizedBlocks.push(norm);
-                }
+    for (let d = 0; d <= 6; d++) {
+        const rawBlocks = editedSchedule.days[String(d)] || [];
+        const normalizedBlocks = [];
+        for (const b of rawBlocks) {
+            const norm = normalizeScheduleBlock(b);
+            if (norm) {
+                normalizedBlocks.push(norm);
             }
-            normalizedBlocks.sort((x, y) => {
-                const xr = parseScheduleTimeRange(x.time);
-                const yr = parseScheduleTimeRange(y.time);
-                return (xr?.startMinutes ?? Number.MAX_SAFE_INTEGER) - (yr?.startMinutes ?? Number.MAX_SAFE_INTEGER);
-            });
-            normalized.days[String(d)] = normalizedBlocks;
         }
+        normalizedBlocks.sort((x, y) => {
+            const xr = parseScheduleTimeRange(x.time);
+            const yr = parseScheduleTimeRange(y.time);
+            return (xr?.startMinutes ?? Number.MAX_SAFE_INTEGER) - (yr?.startMinutes ?? Number.MAX_SAFE_INTEGER);
+        });
+        normalized.days[String(d)] = normalizedBlocks;
+    }
 
-        saveStoredSchedule(editAvatar, normalized, { personaId });
-        const editTarget = targets.find(target => target.avatar === editAvatar);
-        const editGroupId = editTarget?.groupId || '';
-        const editSettings = getSettings(editAvatar, { groupId: editGroupId, personaId });
-        editSettings.auto_schedule = JSON.stringify(normalized);
-        editSettings.talkativeness = normalized.talkativeness;
-        editSettings.inactivity_threshold = normalized.inactivityThresholdMinutes;
-        editSettings.schedule_generated_at = normalized.generatedAt;
-        if (editGroupId) {
-            saveGroupConversationSettings(editGroupId, editSettings, { personaId });
-        }
-        saveSettings(editAvatar, editSettings, { groupId: editGroupId, personaId });
-        if (isConversationActiveThread(editAvatar, editGroupId, { personaId })) {
-            applySettingsToPanel(editSettings);
-            renderScheduleDisplay();
-            updateConversationChrome(editSettings);
-        } else {
-            const currentAvatar = getCurrentCharAvatar();
-            const currentGroupId = getConversationGroupIdForAvatar(currentAvatar);
-            const currentPersonaId = getConversationPersonaId();
-            updateConversationChrome(getSettings(currentAvatar, { groupId: currentGroupId, personaId: currentPersonaId }));
-        }
-        const targetName = targets.find(target => target.avatar === editAvatar)?.name || 'character';
-        toastr.success(`Schedule saved for ${targetName}.`);
-        closeModal();
-    });
+    saveStoredSchedule(editAvatar, normalized, { personaId });
+    const editTarget = targets.find(target => target.avatar === editAvatar);
+    const editGroupId = editTarget?.groupId || '';
+    const editSettings = getSettings(editAvatar, { groupId: editGroupId, personaId });
+    editSettings.auto_schedule = JSON.stringify(normalized);
+    editSettings.talkativeness = normalized.talkativeness;
+    editSettings.inactivity_threshold = normalized.inactivityThresholdMinutes;
+    editSettings.schedule_generated_at = normalized.generatedAt;
+    if (editGroupId) {
+        saveGroupConversationSettings(editGroupId, editSettings, { personaId });
+    }
+    saveSettings(editAvatar, editSettings, { groupId: editGroupId, personaId });
+    if (isConversationActiveThread(editAvatar, editGroupId, { personaId })) {
+        applySettingsToPanel(editSettings);
+        renderScheduleDisplay();
+        updateConversationChrome(editSettings);
+    } else {
+        const currentAvatar = getCurrentCharAvatar();
+        const currentGroupId = getConversationGroupIdForAvatar(currentAvatar);
+        const currentPersonaId = getConversationPersonaId();
+        updateConversationChrome(getSettings(currentAvatar, { groupId: currentGroupId, personaId: currentPersonaId }));
+    }
+    const targetName = targets.find(target => target.avatar === editAvatar)?.name || 'character';
+    toastr.success(`Schedule saved for ${targetName}.`);
 }
 
 export function renderScheduleDisplay() {
@@ -577,7 +579,12 @@ export async function forceCreateMemoryFromPanel() {
 
     const groupId = getConversationGroupIdForAvatar(avatar);
     const currentMemory = getConversationMemorySummary(avatar, { groupId }) || '';
-    const newMemory = globalThis.prompt?.('Enter or override the memory summary for this Conversation:', currentMemory);
+    const newMemory = await promptConversationText({
+        title: 'Memory summary',
+        text: 'Enter or override the memory summary for this Conversation.',
+        defaultValue: currentMemory,
+        rows: 6,
+    });
     if (typeof newMemory !== 'string') {
         return;
     }
@@ -603,16 +610,18 @@ export async function refreshConversationMemoryFromPanel() {
     }
 }
 
-export function clearConversationMemoryFromPanel() {
+export async function clearConversationMemoryFromPanel() {
     const avatar = getCurrentCharAvatar();
     if (!avatar) {
         toastr.warning('Pick a DM first.');
         return;
     }
 
-    const confirmed = typeof globalThis.confirm === 'function'
-        ? globalThis.confirm('Clear the memory summary for this Conversation? This does not delete chat messages.')
-        : true;
+    const confirmed = await confirmConversationAction({
+        title: 'Clear the memory summary?',
+        text: 'This does not delete chat messages.',
+        confirmLabel: 'Clear',
+    });
     if (!confirmed) {
         return;
     }
@@ -661,11 +670,29 @@ export function openConversationSettings() {
     updateUserFooter();
     const wasHidden = chrome.drawer.hidden;
     chrome.drawer.hidden = false;
+    delete chrome.drawer.dataset.closing;
+    settingsPaneMotionToken += 1;
+    const focusSettings = () => chrome.drawer.querySelector('input, select, textarea, button')?.focus?.({ preventScroll: true });
     if (wasHidden) {
-        animateIn(chrome.drawer, SETTINGS_SHEET_ENTER, SPRING_SHEET);
+        const layout = getConversationLayout();
+        if (layout === 'split') {
+            // Paint the closed 0-width column first so the grid can interpolate to the pane width.
+            chrome.drawer.dataset.opening = 'true';
+            syncConversationPage();
+            void chrome.sheld.offsetWidth;
+            delete chrome.drawer.dataset.opening;
+            syncConversationPage();
+            focusSettings();
+            return;
+        }
+        if (layout === 'pages') {
+            animateIn(chrome.drawer, SETTINGS_PAGE_ENTER, SPRING_NAVIGATION);
+        } else {
+            animateIn(chrome.drawer, SETTINGS_SHEET_ENTER, SPRING_SHEET);
+        }
     }
-    setConversationBackdropVisible();
-    chrome.drawer.querySelector('input, select, textarea, button')?.focus?.({ preventScroll: true });
+    syncConversationPage();
+    focusSettings();
 }
 
 export function closeConversationSettings(identity = null) {
@@ -680,16 +707,36 @@ export function closeConversationSettings(identity = null) {
             personaId: identity?.personaId || drawer.dataset.conversationPersonaId || getConversationPersonaId(),
         };
         if (shouldSave) {
-            animateOut(drawer, SETTINGS_SHEET_EXIT, () => { drawer.hidden = true; });
+            const layout = getConversationLayout();
+            if (layout === 'split') {
+                // Keep the pane in the grid until the third column has tucked away.
+                drawer.dataset.closing = 'true';
+                const motionToken = ++settingsPaneMotionToken;
+                syncConversationPage();
+                waitForSplitSettingsTuck(() => {
+                    if (motionToken !== settingsPaneMotionToken) {
+                        return;
+                    }
+                    drawer.hidden = true;
+                    delete drawer.dataset.closing;
+                    syncConversationPage();
+                });
+            } else {
+                const mobile = layout === 'pages';
+                animateOut(drawer, mobile ? SETTINGS_PAGE_EXIT : SETTINGS_SHEET_EXIT, () => { drawer.hidden = true; }, mobile ? { duration: MOTION_FAST * 1.25 } : {});
+                syncConversationPage();
+            }
+            saveCurrentPanelSettings(capturedIdentity);
         } else {
             drawer.hidden = true;
-        }
-        if (shouldSave) {
-            saveCurrentPanelSettings(capturedIdentity);
+            delete drawer.dataset.closing;
+            delete drawer.dataset.opening;
+            syncConversationPage();
         }
         delete drawer.dataset.conversationAvatar;
         delete drawer.dataset.conversationGroupId;
         delete drawer.dataset.conversationPersonaId;
+        return;
     }
-    setConversationBackdropVisible();
+    syncConversationPage();
 }

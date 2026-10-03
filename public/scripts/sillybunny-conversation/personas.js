@@ -21,6 +21,7 @@ import {
     isAvatarInConversationGroup,
     persistConversationStore,
 } from './context.js';
+import { promptConversationText } from './dialogs.js';
 import { updateUserFooter } from './pickers.js';
 
 export function getAvailabilityCopy(status) {
@@ -52,8 +53,12 @@ export function setUserPersonaStatus(statusText) {
     persistConversationStore();
 }
 
-export function editUserPersonaStatus() {
-    const nextStatus = globalThis.prompt?.('Set your Conversation persona status. Leave blank to clear it.', getUserPersonaStatus());
+export async function editUserPersonaStatus() {
+    const nextStatus = await promptConversationText({
+        title: 'Status message',
+        text: 'Leave blank to clear it.',
+        defaultValue: getUserPersonaStatus(),
+    });
     if (typeof nextStatus !== 'string') {
         return;
     }

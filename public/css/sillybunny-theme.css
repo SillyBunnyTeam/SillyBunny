@@ -183,8 +183,14 @@
     --sb-layer-popover-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeBodyColor) 10%);
     --sb-layer-dialog-source: var(--sb-layer-popover-source);
     --sb-layer-toast-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 80%, var(--SmartThemeBodyColor) 20%);
+    /* Bottom toolbar (Roleplay composer stack, Conversation composer). Dark keeps it on View. */
+    --sb-layer-bottombar-source: var(--sb-layer-view-source);
     --sb-layer-view: var(--sb-layer-view-source);
+    --sb-layer-bottombar: var(--sb-layer-bottombar-source);
     --sb-layer-window: var(--sb-layer-window-source);
+    /* Page behind #sheld: a step away from Window/View so the main column does not melt into the canvas. */
+    --sb-page-bg-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, var(--SmartThemeBodyColor) 12%);
+    --sb-page-bg: var(--sb-page-bg-source);
     --sb-layer-canvas: var(--sb-layer-canvas-source);
     --sb-layer-headerbar: var(--sb-layer-headerbar-source);
     --sb-layer-drawer: var(--sb-layer-drawer-source);
@@ -343,7 +349,10 @@ input[type="submit"] {
         --sb-chat-surface-base: rgb(from var(--sb-chat-surface-source) r g b / calc(var(--sb-page-overlay-opacity) * 0.96));
         --sb-fixed-surface-base: rgb(from var(--sb-chat-surface-source) r g b / 0.98);
         --sb-composer-surface-base: rgb(from var(--sb-chat-surface-source) r g b / calc(var(--sb-composer-surface-opacity) * 0.96));
+        --sb-layer-view: rgb(from var(--sb-layer-view-source) r g b / 1);
+        --sb-layer-bottombar: rgb(from var(--sb-layer-bottombar-source) r g b / 1);
         --sb-layer-window: rgb(from var(--sb-layer-window-source) r g b / 1);
+        --sb-page-bg: rgb(from var(--sb-page-bg-source) r g b / 1);
         --sb-layer-canvas: rgb(from var(--sb-layer-canvas-source) r g b / 1);
         --sb-layer-headerbar: rgb(from var(--sb-layer-headerbar-source) r g b / 1);
         --sb-layer-drawer: rgb(from var(--sb-layer-drawer-source) r g b / 1);
@@ -387,9 +396,14 @@ input[type="submit"] {
     --color-success: #007c3d;
     --color-danger: #c30000;
     --color-warning: #905400;
-    /* libadwaita light: white header bar and popovers over a grey window; toasts stay dark. */
+    /* libadwaita light: white View and popovers; toasts stay dark. The header bar mirrors dark mode
+       and sits on Canvas, one tonal step away from View, so the top bar, chat column, and composer
+       do not collapse into one white band. */
     --sb-layer-canvas-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeBodyColor) 10%);
-    --sb-layer-headerbar-source: var(--SmartThemeChatTintColor);
+    --sb-layer-headerbar-source: var(--sb-layer-canvas-source);
+    /* White-on-white View and composer read as one band; step the bottom toolbar halfway to Canvas. */
+    --sb-layer-bottombar-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, var(--SmartThemeBodyColor) 5%);
+    --sb-page-bg-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 86%, var(--SmartThemeBodyColor) 14%);
     --sb-layer-drawer-source: var(--SmartThemeBlurTintColor);
     --sb-layer-popover-source: var(--SmartThemeChatTintColor);
     --sb-layer-dialog-source: var(--SmartThemeBlurTintColor);
@@ -417,17 +431,7 @@ input[type="submit"] {
 
 body {
     text-rendering: optimizeLegibility;
-}
-
-/* SillyBunny: body's background propagates to the canvas, under #bg1. The theme
-   tint is translucent, so without an opaque base the browser's white canvas
-   bleeds through. Mixing toward the body colour (not black) keeps the canvas a
-   tone away from the chat column in both light and dark themes, like libadwaita's
-   window behind its view. */
-@supports (color: rgb(from red r g b / 1)) {
-    body {
-        background-color: rgb(from color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, var(--SmartThemeBodyColor) 6%) r g b / 1);
-    }
+    background-color: var(--sb-page-bg);
 }
 
 .mes_text .pura-choice,
@@ -492,6 +496,13 @@ body::before {
         margin-block-start: var(--sb-drawer-top-gap, 6px);
         border-radius: var(--sb-radius-overlay);
         background-color: var(--sb-layer-view);
+    }
+}
+
+@media screen and (max-width: 768px) {
+    #chat {
+        margin-block-start: 0;
+        border-radius: 0;
     }
 }
 
@@ -2253,7 +2264,7 @@ body.bubblechat .mes[is_user='true'] .mes_block {
 
     :root:not([data-sb-theme]) #send_form,
     :root[data-sb-theme='clean-minimal'] #send_form {
-        background: var(--sb-layer-headerbar) !important;
+        background: var(--sb-layer-bottombar) !important;
         border-color: color-mix(in srgb, var(--SmartThemeBorderColor) 86%, transparent) !important;
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
@@ -6978,6 +6989,135 @@ body.reduced-motion .popup[closing] {
     opacity: 0;
 }
 
+/* GNOME response order: Cancel at the start, the affirmative at the end. The template keeps
+   [custom..., OK, Cancel] in the DOM because upstream code queries that order. */
+.popup-controls > .popup-button-cancel {
+    order: -1;
+}
+
+/* Narrow widths (MOBILE_QUERY in sillybunny-action-menu.js): AdwDialog bottom sheet. Full-screen
+   and special popups keep their own frames: large/wide, transparent, image zoom, crop (the only
+   type that shows .popup-crop-wrap) and the swipe picker. */
+@keyframes sb-popup-sheet-in {
+    from {
+        transform: translateY(100%);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+@keyframes sb-popup-sheet-out {
+    from {
+        transform: translateY(0);
+    }
+    to {
+        transform: translateY(100%);
+    }
+}
+
+@media (max-width: 768px) {
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) {
+        position: fixed;
+        inset: auto 0 0 0;
+        box-sizing: border-box;
+        width: auto;
+        min-width: 0;
+        max-width: none;
+        /* popup.css sets min-height: fit-content, which would beat max-height. */
+        min-height: 0;
+        max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 24px);
+        margin: 0;
+        padding: 22px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+        border-width: 1px 0 0;
+        /* sillybunny-paper-theme.css forces an important 14px radius on .popup. */
+        border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0 !important;
+        background: var(--sb-layer-dialog);
+        box-shadow: var(--sb-shadow-dialog);
+    }
+
+    /* Grab handle, same geometry as the mobile shell drawers. Visual only. */
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block']))::before {
+        content: '';
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        width: 42px;
+        height: 4px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 36%, transparent);
+        opacity: 0.82;
+        pointer-events: none;
+        transform: translateX(-50%);
+    }
+
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-body {
+        flex: 1 1 auto;
+        height: auto;
+        min-height: 0;
+        max-height: none;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-body > * {
+        flex-shrink: 0;
+    }
+
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-body > .popup-content {
+        flex: 1 1 auto;
+        min-height: 0;
+        max-height: none;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    /* Display popups have no responses; reserve a header band so content clears the close button. */
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])):has(> .popup-button-close[style*='block']) .popup-body {
+        padding-top: 30px;
+    }
+
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-button-close {
+        top: 8px;
+        right: max(8px, env(safe-area-inset-right, 0px));
+        width: 44px;
+        height: 44px;
+        padding: 0;
+        border-radius: 999px;
+        font-size: 20px;
+        line-height: 44px;
+        text-align: center;
+    }
+
+    /* AdwAlertDialog narrow layout: stacked full-width responses, affirmative on top and Cancel at
+       the bottom. column-reverse mirrors the desktop row, so custom responses stay in between. */
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-controls {
+        flex-direction: column-reverse;
+        flex-wrap: nowrap;
+        align-self: stretch;
+        align-items: stretch;
+        gap: 8px;
+        margin-top: 12px;
+    }
+
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-controls > .menu_button {
+        flex: 0 0 auto;
+        width: 100%;
+        min-height: 44px;
+        box-sizing: border-box;
+    }
+}
+
+@media (max-width: 768px) and (prefers-reduced-motion: no-preference) {
+    body:not(.reduced-motion) .popup[opening]:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) {
+        animation: sb-popup-sheet-in var(--sb-spring-sheet-duration) var(--sb-spring-sheet);
+    }
+
+    body:not(.reduced-motion) .popup[closing]:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) {
+        animation: sb-popup-sheet-out 200ms var(--sb-ease-out-cubic) forwards;
+    }
+}
+
 /* Select2 Dropdowns */
 .select2-container--default .select2-dropdown {
     background: var(--sb-layer-popover);
@@ -7155,13 +7295,14 @@ body.reduced-motion #toast-container > div.sb-toast-leaving {
     border-right-color: rgba(0, 0, 0, 0.8);
 }
 
-/* Composer Frame - header-bar layer, single border, no gradient, no accent wash on focus.
-   The body.no-blur selector beats upstream toggle-dependent.css, which paints the translucent blur tint with !important. */
+/* Composer Frame - view layer, single border, no gradient, no accent wash on focus.
+   Distinct from the header-bar top bar. The body.no-blur selector beats upstream
+   toggle-dependent.css, which paints the translucent blur tint as an important declaration. */
 #send_form,
 body.no-blur #send_form {
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent) !important;
     border-radius: var(--sb-radius-overlay) !important;
-    background: var(--sb-layer-headerbar) !important;
+    background: var(--sb-layer-bottombar) !important;
 }
 
 /* Phone: a full-bleed bottom bar with no rounded corners to expose the background behind it. */

@@ -517,10 +517,6 @@
 
 /* ---------- Delete confirmation (sillybunny-delete-confirm.js) ---------- */
 
-.sb-popup-destructive-confirm .popup-controls > .popup-button-cancel {
-    order: -1;
-}
-
 .sb-popup-destructive-confirm .menu_button.sb-popup-destructive:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
     border-color: transparent;
     background: color-mix(in srgb, var(--sb-color-danger) 18%, transparent);
