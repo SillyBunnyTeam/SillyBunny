@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
 
 // Mobile shell smoke pack: pins the current open/close contracts of the
-// SillyBunny mobile shell (drawers, hamburger nav, chat tools, character
+// SillyBunny mobile shell (drawers, section navigation, chat tools, character
 // panel) so the Phase 1 decomposition of sillybunny-tabs.js has a net.
 // Run with: SILLYBUNNY_TEST_BASE_URL=http://127.0.0.1:<port> npx playwright test mobile-shell-smoke.e2e.js
 
@@ -27,7 +27,6 @@ const VIEWPORT_SURFACE_SELECTOR = [
     '.ctx-menu',
 ].join(', ');
 const IPAD_USER_AGENT = 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
-const MOBILE_SHELL_NAV_OPEN_GRACE_MS = 450;
 
 function getOverlayStateSnapshot(page) {
     return page.evaluate(() => {
@@ -149,20 +148,8 @@ async function expectNoDocumentOverflow(page) {
     }).toBe('[]');
 }
 
-async function waitForNavOpenGrace(page) {
-    // eslint-disable-next-line playwright/no-wait-for-timeout -- The mobile nav contract has a 450 ms open grace before cross-opening.
-    await page.waitForTimeout(MOBILE_SHELL_NAV_OPEN_GRACE_MS);
-}
-
 function openLeftShell(page) {
-    return page.evaluate(() => window.SillyBunnyShell.openTab('left', 'presets'));
-}
-
-// While any drawer or overlay is open, the mobile modal policy marks the page
-// chrome (topbar included) inert, so a trusted pointer click cannot reach the
-// hamburger. Synthetic .click() still runs the toggle cascade under test.
-function clickHamburgerProgrammatically(page) {
-    return page.evaluate(() => document.getElementById('sb-hamburger').click());
+    return page.evaluate(() => window.SillyBunnyShell.openTab('left'));
 }
 
 async function closeLeftShellThroughUi(page) {
@@ -253,67 +240,52 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         await expectNoDocumentOverflow(page);
     });
 
-    test('hamburger nav keeps hidden, aria-hidden, and inert in agreement', async ({ page }, testInfo) => {
-        const getNavAgreementSnapshot = () => page.evaluate(() => {
-            const overlay = document.getElementById('sb-mobile-nav');
-            const button = document.getElementById('sb-hamburger');
+    test('section navigation replaces the hamburger overlay', async ({ page }, testInfo) => {
+        await expect(page.locator('html')).toHaveAttribute('data-sb-mobile-ui-mode', 'mobile');
+        await expect(page.locator('#sb-hamburger')).toBeHidden();
+        await expect(page.locator('#sb-mobile-nav')).toBeHidden();
 
-            return {
-                hidden: overlay?.hidden ?? null,
-                ariaHidden: overlay?.getAttribute('aria-hidden') ?? null,
-                inert: overlay?.inert === true,
-                openClass: overlay?.classList.contains('sb-nav-open') === true,
-                buttonExpanded: button?.getAttribute('aria-expanded') ?? null,
-                buttonOpenClass: button?.classList.contains('is-open') === true,
-            };
-        });
+        await openLeftShell(page);
+        const shell = page.locator('#left-nav-panel');
+        await expect(shell).toHaveClass(/openDrawer/);
+        await expect(shell).toHaveAttribute('data-sb-section-view', 'hub');
+        await expect(shell.locator('.sb-shell-nav-wrapper')).toBeHidden();
+        await expect(shell.locator('.sb-section-nav-row')).toBeVisible();
 
-        await page.locator('#sb-hamburger').click();
-
-        await expect.poll(getNavAgreementSnapshot).toEqual({
-            hidden: false,
-            ariaHidden: 'false',
-            inert: false,
-            openClass: true,
-            buttonExpanded: 'true',
-            buttonOpenClass: true,
-        });
-
-        await captureCheckpoint(page, testInfo, 'nav-open');
-
-        await waitForNavOpenGrace(page);
-
-        await page.locator('#sb-hamburger').click();
-
-        await expect.poll(getNavAgreementSnapshot).toEqual({
-            hidden: true,
-            ariaHidden: 'true',
-            inert: true,
-            openClass: false,
-            buttonExpanded: 'false',
-            buttonOpenClass: false,
-        });
-
+        await shell.locator('.sb-section-nav-hub-item').first().click();
+        await expect(shell).toHaveAttribute('data-sb-section-view', 'section');
+        const trigger = shell.locator('.sb-section-nav-menu-trigger');
+        await trigger.click();
+        await expect(shell.locator('.sb-section-nav-menu')).toBeVisible();
+        await captureCheckpoint(page, testInfo, 'section-menu-open');
         await expectNoDocumentOverflow(page);
+        await page.keyboard.press('Escape');
+        await expect(shell.locator('.sb-section-nav-menu')).toBeHidden();
+
+        await closeLeftShellThroughUi(page);
+        await expectNoDocumentOverflow(page);
+    });
+
+    test('chat chip sheet opens, closes on Escape, and stays inside the viewport', async ({ page }, testInfo) => {
+        const chip = page.locator('#sb-bottom-chat-bar .sb-bottom-chat-chip');
+        await expect(chip).toBeVisible();
+        await chip.click();
+        const sheet = page.locator('#sb-bottom-chat-sheet');
+        await expect(sheet).toBeVisible();
+        await expect(chip).toHaveAttribute('aria-expanded', 'true');
+        await expect(sheet.locator('#sb-bottom-chat-select')).toBeAttached();
+        await captureCheckpoint(page, testInfo, 'chat-sheet-open');
+        await expectNoDocumentOverflow(page);
+        await page.keyboard.press('Escape');
+        await expect(sheet).toBeHidden();
+        await expect(chip).toHaveAttribute('aria-expanded', 'false');
+        await expect(chip).toBeFocused();
     });
 
     test('opening each overlay closes competing mobile surfaces', async ({ page }, testInfo) => {
         await openLeftShell(page);
 
         await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({ leftShellOpen: true });
-
-        // toggleMobileNav closes shells, the character panel, and chat tools.
-        await clickHamburgerProgrammatically(page);
-
-        await expect.poll(() => getOverlayStateSnapshot(page)).toEqual({
-            navOpen: true,
-            chatToolsOpen: false,
-            leftShellOpen: false,
-            rightShellOpen: false,
-            characterPanelOpen: false,
-        });
-
-        await waitForNavOpenGrace(page);
 
         // openMobileChatTools closes the nav, both shells, and the character panel.
         await page.evaluate(() => window.SillyBunnyShell.openChatTools());
@@ -358,7 +330,6 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         const closeOpenShell = () => page.evaluate(() => {
             document.querySelector('.sb-shell-root.openDrawer .sb-shell-close')?.click();
         });
-
         for (const tabId of ['presets', 'api', 'sampling', 'advanced-formatting', 'agents']) {
             await page.evaluate(tab => window.SillyBunnyShell.openTab('left', tab), tabId);
             await checkpoint(`Workspace · ${tabId}`);
@@ -397,11 +368,6 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
             await new Promise(resolve => setTimeout(resolve, 30));
         });
         expect(detachedAutocompleteErrors).toEqual([]);
-
-        await clickHamburgerProgrammatically(page);
-        await checkpoint('Mobile nav · open');
-        await page.evaluate(() => document.querySelector('#sb-mobile-nav .sb-mobile-panel-close')?.click());
-        await checkpoint('Mobile nav · closed');
 
         await page.evaluate(() => window.SillyBunnyShell.openChatTools());
         await checkpoint('Chat tools · open');
@@ -820,10 +786,10 @@ test.describe('mobile shell smoke at tablet 768x1024', () => {
             isViewportBound: true,
         });
 
-        await clickHamburgerProgrammatically(page);
+        await page.evaluate(() => window.SillyBunnyShell.openChatTools());
 
         await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({
-            navOpen: true,
+            chatToolsOpen: true,
             leftShellOpen: false,
         });
 

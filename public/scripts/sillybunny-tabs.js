@@ -10,6 +10,21 @@ import {
     normalizeMobileShellText as normalizeText,
 } from './mobile-shell-lifecycle/index.js';
 import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
+import { initializeMobileSectionNav, requestMobileSectionView } from './sillybunny-mobile-section-nav.js';
+import { initializeMessageActions } from './sillybunny-message-actions.js';
+import { initializeToastMotion } from './sillybunny-toast-motion.js';
+import {
+    animateIn,
+    animateOut,
+    MOTION_EASE_OUT_CUBIC,
+    MOTION_FAST,
+    MOTION_SLOW,
+    originFrom,
+    play as playMotion,
+    prefersReducedMotion as prefersShellReducedMotion,
+    SPRING_SHEET,
+    stopMotion,
+} from './sillybunny-motion.js';
 import { createPresetApiSyncLifecycle } from './preset-api-sync-lifecycle/index.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
 import {
@@ -92,7 +107,6 @@ const SB_STORAGE_KEYS = Object.freeze({
     rightShellSize: 'sb-right-shell-size',
     desktopShellSnapToChatWidth: 'sb-desktop-shell-snap-to-chat-width',
     characterDrawerRightLocked: 'sb-character-drawer-right-locked',
-    theme: 'sb-theme',
     surfaceTransparency: 'sb-surface-transparency',
     topbarScaleDesktop: 'sb-topbar-scale-desktop',
     topbarScaleMobile: 'sb-topbar-scale-mobile',
@@ -501,32 +515,8 @@ const SB_SHELL_TOGGLE_GUARD_MS = 260;
 const SB_INIT_RETRY_DELAY_MS = 150;
 const SB_INIT_MAX_RETRIES = 30;
 
-const SB_THEMES = Object.freeze([
-    {
-        id: 'windows-aero',
-        label: 'Windows Aero',
-    },
-    {
-        id: 'clean-minimal',
-        label: 'Clean Minimal',
-    },
-    {
-        id: 'macos-minimal',
-        label: 'macOS Minimal',
-    },
-    {
-        id: 'cozy-warm',
-        label: 'Cozy Warm',
-    },
-    {
-        id: 'hypr-glow',
-        label: 'Hypr Glow',
-    },
-    {
-        id: 'slate-flat',
-        label: 'Slate Flat',
-    },
-]);
+// Shell Style picker removed for the libadwaita shell; legacy sb-theme values are ignored.
+const SB_SHELL_THEME = 'clean-minimal';
 
 const SB_MESSAGE_STYLES = Object.freeze([
     { id: '0', label: 'Flat', icon: 'fa-grip-lines' },
@@ -868,7 +858,7 @@ const sbState = {
     landingPageObserver: null,
     landingPageSyncFrame: 0,
     inlineDrawerAutoClose: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.settingsDrawerAutoClose), false),
-    theme: normalizeTheme(safeGetItem(SB_STORAGE_KEYS.theme)),
+    theme: SB_SHELL_THEME,
     frontendIcon: normalizeFrontendIcon(safeGetItem(SB_STORAGE_KEYS.frontendIcon)),
     surfaceTransparency: normalizeSurfaceTransparency(safeGetItem(SB_STORAGE_KEYS.surfaceTransparency)),
     paperTextureEnabled: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.paperTextureEnabled), false),
@@ -941,6 +931,7 @@ const sbState = {
         stateObserver: null,
         observedOpen: null,
         lastTab: 'characters',
+        closing: false,
     },
     mobileModal: {
         syncFrame: 0,
@@ -1031,10 +1022,6 @@ const sbState = {
         report: null,
     },
 };
-
-function normalizeTheme(themeId) {
-    return SB_THEMES.some(theme => theme.id === themeId) ? themeId : 'clean-minimal';
-}
 
 function normalizeFrontendIcon(iconId) {
     const normalizedIconId = normalizeText(iconId);
@@ -2453,7 +2440,7 @@ function isMobileViewport() {
 }
 
 function prefersReducedMotion() {
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    return prefersShellReducedMotion();
 }
 
 function getShellProxyButton(shellKey) {
@@ -3889,10 +3876,6 @@ function ensureMobileNavReady() {
     return overlay;
 }
 
-function getThemeOption(themeId) {
-    return SB_THEMES.find(theme => theme.id === themeId) ?? SB_THEMES[0];
-}
-
 function normalizeMessageStyle(styleId) {
     const select = getMessageStyleSelect();
     const fallbackValue = select?.options?.[0]?.value ?? SB_MESSAGE_STYLES[0].id;
@@ -4067,18 +4050,9 @@ function initChatAvatarVariables() {
     document.addEventListener('sb:chat-style-updated', () => scheduleChatAvatarVariableUpdate(0));
 }
 
-function setShellTheme(themeId, { persist = true } = {}) {
-    const nextTheme = normalizeTheme(themeId);
-
-    sbState.theme = nextTheme;
-    document.documentElement.dataset.sbTheme = nextTheme;
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.theme, nextTheme);
-    }
-
-    updateThemePickerUi();
-    updateThemeBadge();
+function applyShellTheme() {
+    sbState.theme = SB_SHELL_THEME;
+    document.documentElement.dataset.sbTheme = SB_SHELL_THEME;
 }
 
 function applyFrontendIcon(iconId = sbState.frontendIcon) {
@@ -4246,15 +4220,6 @@ function setTopbarLabelClickCycle(enabled) {
     flushSbStorageWrites();
     updateThemePickerUi();
     updateTopBarBrand();
-}
-
-function updateThemeBadge() {
-    const badge = document.getElementById('sb-theme-current-label');
-    if (!badge) {
-        return;
-    }
-
-    badge.textContent = getThemeOption(sbState.theme).label;
 }
 
 function getSillyTavernContext() {
@@ -5063,13 +5028,16 @@ function getTopbarGroupOrder({ iconsOnly, mobile }) {
     const right = [TOPBAR_EXTENSION_SLOT_ID];
 
     if (iconsOnly) {
-        right.push(...quickAccessIds);
+        // Quick Access gathers on the right here, so the left quick divider parks at the end of
+        // the left group, where CSS hides it.
+        left.push('sb-topbar-divider-quick-left');
+        right.push(...quickAccessIds, 'sb-topbar-divider-quick-right');
     } else {
-        left.push('sb-shortcut-left', 'sb-shortcut-slot3', 'sb-shortcut-slot4');
-        right.push('sb-shortcut-slot6', 'sb-shortcut-slot5', 'sb-shortcut-right');
+        left.push('sb-topbar-divider-quick-left', 'sb-shortcut-left', 'sb-shortcut-slot3', 'sb-shortcut-slot4');
+        right.push('sb-shortcut-slot6', 'sb-shortcut-slot5', 'sb-shortcut-right', 'sb-topbar-divider-quick-right');
     }
 
-    // The home divider marks the Home|Characters boundary; phones keep it in every mode.
+    // The home divider marks the Home|Characters boundary while icons-only mode is on.
     right.push('sb-home-toggle', 'sb-topbar-divider-home');
 
     if (iconsOnly && mobile) {
@@ -6571,8 +6539,11 @@ function setMobileChatToolsOpenState(shouldOpen) {
         return;
     }
 
+    const wasOpen = getChatbarState().mobileToolsOpen;
     getChatbarState().mobileToolsOpen = isOpen;
-    refs.overlay.hidden = !isOpen;
+    if (isOpen || !wasOpen) {
+        refs.overlay.hidden = !isOpen;
+    }
     refs.overlay.classList.toggle('sb-chat-tools-open', isOpen);
     refs.overlay.setAttribute('aria-hidden', String(!isOpen));
 
@@ -6583,7 +6554,22 @@ function setMobileChatToolsOpenState(shouldOpen) {
     queueMobileModalStateSync();
 
     if (isOpen) {
+        if (!wasOpen) {
+            stopMotion(refs.panel);
+            animateIn(refs.panel, [
+                { opacity: 0, transform: 'translateY(12px) scale(0.98)' },
+                { opacity: 1, transform: 'none' },
+            ], SPRING_SHEET);
+        }
         scheduleChatbarRefresh(0);
+    } else if (wasOpen) {
+        refs.overlay.hidden = false;
+        animateOut(refs.panel, [
+            { opacity: 1, transform: 'none' },
+            { opacity: 0, transform: 'translateY(12px) scale(0.98)' },
+        ], () => {
+            refs.overlay.hidden = true;
+        }, { enabled: isMobileViewport(), duration: MOTION_FAST });
     }
 }
 
@@ -6695,10 +6681,31 @@ function setConnectionStripOpenState(shouldOpen) {
         }));
     }
 
+    const wasOpen = getChatbarState().connectionStripOpen;
     getChatbarState().connectionStripOpen = nextState;
     desktopRefs.connectionStrip.classList.toggle('is-open', nextState);
-    desktopRefs.connectionStrip.hidden = !nextState;
+    if (nextState) {
+        desktopRefs.connectionStrip.hidden = false;
+    }
     setButtonPressed(desktopRefs.toggleConnectionButton, nextState);
+
+    if (wasOpen === nextState) {
+        return;
+    }
+
+    if (nextState) {
+        animateIn(desktopRefs.connectionStrip, [
+            { opacity: 0, transform: 'translateY(-6px)' },
+            { opacity: 1, transform: 'none' },
+        ], { duration: MOTION_SLOW });
+    } else {
+        animateOut(desktopRefs.connectionStrip, [
+            { opacity: 1, transform: 'none' },
+            { opacity: 0, transform: 'translateY(-6px)' },
+        ], () => {
+            desktopRefs.connectionStrip.hidden = true;
+        }, { enabled: !isMobileViewport(), duration: MOTION_SLOW });
+    }
 }
 
 function getCurrentMainApiValue() {
@@ -7453,7 +7460,11 @@ async function refreshChatbarState() {
 
     if (desktopRefs) {
         desktopRefs.toggleConnectionButton.hidden = !connectionMirrorState.shouldShowToggle;
-        desktopRefs.connectionStrip.hidden = !connectionMirrorState.shouldShowDesktopStrip;
+        if (!connectionMirrorState.shouldShowDesktopStrip && isConnectionStripOpen()) {
+            setConnectionStripOpenState(false);
+        } else {
+            desktopRefs.connectionStrip.hidden = !connectionMirrorState.shouldShowDesktopStrip;
+        }
     }
 
     if (connectionMirrorState.shouldCloseDesktopStrip) {
@@ -7900,6 +7911,111 @@ function forceDrawerState(drawerRootOrId, shouldOpen, drawerIconOrSelector = nul
     queueTopbarPageStateSync();
 }
 
+function getShellMotionTrigger(shellKey) {
+    const buttonId = shellKey === 'characters'
+        ? 'sb-character-toggle'
+        : getShellConfig(shellKey)?.proxyButtonId;
+    return buttonId ? document.getElementById(buttonId) : null;
+}
+
+function animateShellOpen(shellRoot, shellKey) {
+    if (!(shellRoot instanceof HTMLElement)) {
+        return;
+    }
+
+    const trigger = getShellMotionTrigger(shellKey);
+    stopMotion(shellRoot);
+    // Mobile: scale only. A full-viewport fade hides the zoom from the trigger; the Characters
+    // drawer's opacity is pinned by mobile CSS, so this keeps all three shells identical.
+    const keyframes = isMobileViewport()
+        ? [
+            { scale: '0.96' },
+            { scale: '1' },
+        ]
+        : [
+            { opacity: 0, transform: 'scale(0.96)' },
+            { opacity: 1, transform: 'scale(1)' },
+        ];
+    animateIn(shellRoot, keyframes, {
+        ...SPRING_SHEET,
+        styles: { 'transform-origin': originFrom(trigger, shellRoot) },
+    });
+}
+
+function closeShellDrawer(shellRoot, shellKey, close) {
+    if (isMobileViewport() || prefersReducedMotion() || typeof shellRoot.animate !== 'function') {
+        close();
+        return;
+    }
+
+    // The character drawer's layout hangs off `#right-nav-panel.openDrawer` selectors (header,
+    // hidden description, list sizing). animateOut() commits the closed state first, so the panel
+    // reflowed mid-fade; fade with the open layout and commit the close when the fade ends.
+    if (shellKey === 'characters') {
+        playShellDrawerExit(shellRoot, shellKey, close);
+        return;
+    }
+
+    animateOut(shellRoot, SHELL_DRAWER_EXIT_KEYFRAMES, close, {
+        enabled: !isMobileViewport(),
+        duration: MOTION_FAST,
+        easing: MOTION_EASE_OUT_CUBIC,
+        styles: getShellDrawerExitStyles(shellRoot, shellKey),
+    });
+}
+
+const SHELL_DRAWER_EXIT_KEYFRAMES = Object.freeze([
+    { opacity: 1, transform: 'scale(1)' },
+    { opacity: 0, transform: 'scale(0.98)' },
+]);
+
+function playShellDrawerExit(shellRoot, shellKey, close) {
+    let closed = false;
+    const commit = () => {
+        if (closed) {
+            return;
+        }
+        closed = true;
+        close();
+    };
+    sbState.characterDrawer.closing = true;
+    playMotion(shellRoot, SHELL_DRAWER_EXIT_KEYFRAMES, {
+        duration: MOTION_FAST,
+        easing: MOTION_EASE_OUT_CUBIC,
+        fill: 'forwards',
+        inert: true,
+        styles: { ...getShellDrawerExitStyles(shellRoot, shellKey), 'pointer-events': 'none' },
+        // onEnd also runs when a reopen cancels the exit, so the close is always committed once.
+        onEnd: () => {
+            sbState.characterDrawer.closing = false;
+            commit();
+        },
+    });
+}
+
+function getShellDrawerExitStyles(shellRoot, shellKey) {
+    const trigger = getShellMotionTrigger(shellKey);
+    const rect = shellRoot.getBoundingClientRect();
+    return {
+        display: 'flex',
+        position: 'fixed',
+        left: `${rect.left}px`,
+        top: `${rect.top}px`,
+        right: 'auto',
+        bottom: 'auto',
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+        'min-width': '0',
+        'min-height': '0',
+        'max-width': `${rect.width}px`,
+        'max-height': `${rect.height}px`,
+        margin: '0',
+        visibility: 'visible',
+        'z-index': 'var(--sb-z-shell-panel)',
+        'transform-origin': originFrom(trigger, shellRoot),
+    };
+}
+
 function isShellOpen(shellKey) {
     return isDrawerActuallyOpen(getShellConfig(shellKey).rootPanelId);
 }
@@ -7910,7 +8026,8 @@ function isShellTabOpen(shellKey, tabId) {
 }
 
 function isCharacterPanelOpen() {
-    return isDrawerActuallyOpen('right-nav-panel');
+    // A drawer fading out still carries .openDrawer; it already counts as closed.
+    return !sbState.characterDrawer.closing && isDrawerActuallyOpen('right-nav-panel');
 }
 
 function getActiveCharacterPanelTab() {
@@ -8377,11 +8494,68 @@ function bindCharacterEditorFullscreenToggle() {
 
             setCharacterEditorFullscreenState(false, { focusButton: true });
             event.preventDefault();
-            event.stopPropagation();
+            event.stopImmediatePropagation();
         });
     }
 
     syncCharacterEditorFullscreenAvailability();
+}
+
+function isVisibleCharacterDrawerEscapeControl(element) {
+    return element instanceof HTMLElement
+        && isActuallyVisible(element)
+        && !element.closest('[hidden], [aria-hidden="true"], [inert]');
+}
+
+function shouldDeferCharacterDrawerEscape(event, panel) {
+    if (event.defaultPrevented || event.isComposing) {
+        return true;
+    }
+
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('dialog[open], [role="dialog"], .popup, .popover, .sb-conversation-picker, .sb-conversation-status-picker')) {
+        return true;
+    }
+
+    if (target?.closest('input, textarea, select, [contenteditable="true"]')
+        && target !== panel
+        && !target.closest('.sb-shell-close')) {
+        return true;
+    }
+
+    return [
+        '#curEditTextarea',
+        '.reasoning_edit_textarea',
+        '#mes_stop',
+        '#dialogue_popup',
+        '#select_chat_popup',
+        '#dialogue_del_mes',
+        '#floatingPrompt',
+        '#cfgConfig',
+        '#logprobsViewer',
+    ].some(selector => isVisibleCharacterDrawerEscapeControl(document.querySelector(selector)));
+}
+
+function bindCharacterDrawerEscapeHandler() {
+    const panel = getCharacterPanel();
+    if (!(panel instanceof HTMLElement) || panel.dataset.sbCharacterEscapeBound === 'true') {
+        return;
+    }
+
+    panel.dataset.sbCharacterEscapeBound = 'true';
+    panel.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || !panel.classList.contains('openDrawer')) {
+            return;
+        }
+
+        if (shouldDeferCharacterDrawerEscape(event, panel)) {
+            return;
+        }
+
+        closeCharacterPanel();
+        event.preventDefault();
+        event.stopPropagation();
+    });
 }
 
 async function openCreatorNotesFullscreen() {
@@ -8658,6 +8832,10 @@ function setCharacterShellMode(mode) {
 function openCharacterPanelTab(tabId) {
     const normalizedTabId = normalizeCharacterPanelTab(tabId);
     sbState.characterDrawer.lastTab = normalizedTabId;
+
+    if (isMobileViewport()) {
+        requestMobileSectionView('characters', 'section');
+    }
 
     if (normalizedTabId !== 'editor') {
         setCharacterEditorFullscreenState(false);
@@ -8981,9 +9159,27 @@ function closeCharacterPanel() {
 
     setCharacterEditorFullscreenState(false);
 
+    if (sbState.characterDrawer.closing) {
+        return;
+    }
+
     if (panel instanceof HTMLElement && panel.classList.contains('openDrawer')) {
-        forceDrawerState(panel, false, '#rightNavDrawerIcon');
-    } else if (panel instanceof HTMLElement && document.activeElement instanceof HTMLElement && panel.contains(document.activeElement)) {
+        closeShellDrawer(panel, 'characters', () => {
+            forceDrawerState(panel, false, '#rightNavDrawerIcon');
+            syncDrawerIconState('#WIDrawerIcon', false);
+            setCharacterDrawerHostOverflow(false);
+            syncChatbarVisibilityState();
+            syncMobileShellDrawerBounds();
+            queueMobileShellDrawerBoundsSync();
+            queueMobileModalStateSync();
+            if (shouldResetViewport) {
+                requestMobileViewportReset();
+            }
+        });
+        return;
+    }
+
+    if (panel instanceof HTMLElement && document.activeElement instanceof HTMLElement && panel.contains(document.activeElement)) {
         document.activeElement.blur();
     }
 
@@ -9090,6 +9286,9 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
         return;
     }
 
+    // Reopening during the exit fade: cancelling commits the pending close, then the open runs.
+    stopMotion(getCharacterPanel());
+
     const normalizedPreferredTab = preferredTab ? normalizeCharacterPanelTab(preferredTab) : '';
     if (normalizedPreferredTab) {
         sbState.characterDrawer.lastTab = normalizedPreferredTab;
@@ -9133,12 +9332,14 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
     // anchored to the hidden toggle's zero-size bounding rect, breaking extensions that
     // anchor dropdowns/popups to native toggle positions (e.g. CharacterLibrary).
     forceDrawerState('right-nav-panel', true, '#rightNavDrawerIcon');
+    animateShellOpen(document.getElementById('right-nav-panel'), 'characters');
     syncMobileShellDrawerBounds();
     queueMobileShellDrawerBoundsSync();
 
     window.requestAnimationFrame(() => {
         if (!isCharacterPanelOpen()) {
             forceDrawerState('right-nav-panel', true, '#rightNavDrawerIcon');
+            animateShellOpen(document.getElementById('right-nav-panel'), 'characters');
         }
 
         restoreLastCharacterPanelView();
@@ -9662,11 +9863,13 @@ function buildTopBar() {
     const customizeRail = buildTopbarPageRail(customizeCluster.railId, customizeCluster.pages);
     const charactersRail = buildTopbarPageRail(charactersCluster.railId, charactersCluster.pages);
     const customizeDivider = createTopbarClusterDivider('sb-topbar-divider-customize');
+    const quickActionsLeftDivider = createTopbarClusterDivider('sb-topbar-divider-quick-left');
+    const quickActionsRightDivider = createTopbarClusterDivider('sb-topbar-divider-quick-right');
     const homeDivider = createTopbarClusterDivider('sb-topbar-divider-home');
     const charactersDivider = createTopbarClusterDivider('sb-topbar-divider-characters');
 
-    leftGroup.append(mobileButton, leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
-    rightGroup.append(extensionSlot, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
+    leftGroup.append(mobileButton, leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, quickActionsLeftDivider, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
+    rightGroup.append(extensionSlot, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, quickActionsRightDivider, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 
@@ -12352,8 +12555,6 @@ function injectThemePicker() {
     }
 
     const card = createElement('div', { id: 'sb-theme-card', className: 'sb-theme-card' });
-    const description = createElement('p', { text: 'Switch the navigation shell between built-in visual directions.' });
-    const optionRow = createElement('div', { className: 'sb-theme-option-row' });
     const surfaceSliderGroup = createThemeSliderGroup({
         title: 'Background Visibility',
         valueId: 'sb-surface-transparency-value',
@@ -12425,28 +12626,6 @@ function injectThemePicker() {
     const mobileQuickActionSettingsGroup = createMobileQuickActionSettingsGroup();
     const desktopSettingsOutlet = document.getElementById('sb-desktop-settings-outlet');
     const mobileSettingsOutlet = document.getElementById('sb-mobile-settings-outlet');
-    for (const theme of SB_THEMES) {
-        const button = createElement('button', {
-            className: 'sb-theme-option',
-            attrs: {
-                type: 'button',
-                'data-sb-theme-option': theme.id,
-            },
-        });
-
-        button.innerHTML = `
-            <span class="sb-theme-option-label">${theme.label}</span>
-        `;
-
-        button.addEventListener('click', () => setShellTheme(theme.id));
-        optionRow.appendChild(button);
-    }
-
-    const shellStyleSettingsGroup = createThemeSettingsDrawer({
-        id: 'sb-shell-style-drawer',
-        title: 'Shell Style',
-        content: [description, optionRow],
-    });
     const interfaceSettingsGroup = createThemeSettingsDrawer({
         id: 'sb-interface-drawer',
         title: 'Interface',
@@ -12482,7 +12661,7 @@ function injectThemePicker() {
         );
     }
 
-    card.append(shellStyleSettingsGroup, interfaceSettingsGroup, topbarLabelSettingsGroup, shortcutSettingsGroup);
+    card.append(interfaceSettingsGroup, topbarLabelSettingsGroup, shortcutSettingsGroup);
     if (!(desktopSettingsOutlet instanceof HTMLElement)) {
         card.append(
             desktopNavLayoutSettingsGroup,
@@ -12539,13 +12718,6 @@ function updateThemePickerUi() {
     const paperTextureEnabledInput = document.getElementById('sb-paper-texture-enabled-input');
     const paperTextureOpacityInput = document.getElementById('sb-paper-texture-opacity-input');
     const paperTextureOpacityValue = document.getElementById('sb-paper-texture-opacity-value');
-
-    for (const button of document.querySelectorAll('[data-sb-theme-option]')) {
-        const themeId = button.getAttribute('data-sb-theme-option');
-        const isActive = themeId === sbState.theme;
-        button.classList.toggle('is-selected', isActive);
-        button.setAttribute('aria-pressed', String(isActive));
-    }
 
     for (const button of document.querySelectorAll('[data-sb-frontend-icon-option]')) {
         const iconId = button.getAttribute('data-sb-frontend-icon-option');
@@ -13486,6 +13658,9 @@ function openShell(shellKey, tabId = null) {
     rememberShellFocusOrigin(shellKey);
 
     if (tabId) {
+        if (isMobileViewport()) {
+            requestMobileSectionView(shellKey, 'section');
+        }
         setActiveTab(shellKey, tabId);
     }
 
@@ -13501,6 +13676,7 @@ function openShell(shellKey, tabId = null) {
 
     if (shellRoot.classList.contains('openDrawer')) {
         forceDrawerState(shellRoot, true, shellConfig.hostIconSelector);
+        animateShellOpen(shellRoot, shellKey);
         syncMobileShellDrawerBounds();
         queueMobileShellDrawerBoundsSync();
         syncDesktopShellSizing();
@@ -13510,11 +13686,13 @@ function openShell(shellKey, tabId = null) {
 
     if (!shellRoot.classList.contains('openDrawer')) {
         forceDrawerState(shellRoot, true, shellConfig.hostIconSelector);
+        animateShellOpen(shellRoot, shellKey);
         syncMobileShellDrawerBounds();
         queueMobileShellDrawerBoundsSync();
         window.requestAnimationFrame(() => {
             if (!isDrawerActuallyOpen(shellRoot)) {
                 forceDrawerState(shellRoot, true, shellConfig.hostIconSelector);
+                animateShellOpen(shellRoot, shellKey);
             }
             syncMobileShellDrawerBounds();
             queueMobileShellDrawerBoundsSync();
@@ -13548,16 +13726,17 @@ function closeShell(shellKey) {
         document.activeElement.blur();
     }
 
-    // Managed shells do not need the legacy drawer toggle close animation.
-    forceDrawerState(shellRoot, false, shellConfig.hostIconSelector);
-    syncMobileShellDrawerBounds();
-    queueMobileShellDrawerBoundsSync();
-    requestMobileViewportReset();
-    if (shouldRestoreFocus) {
-        window.requestAnimationFrame(() => restoreShellFocus(shellKey));
-    } else {
-        delete shellState?.restoreFocusTarget;
-    }
+    closeShellDrawer(shellRoot, shellKey, () => {
+        forceDrawerState(shellRoot, false, shellConfig.hostIconSelector);
+        syncMobileShellDrawerBounds();
+        queueMobileShellDrawerBoundsSync();
+        requestMobileViewportReset();
+        if (shouldRestoreFocus) {
+            window.requestAnimationFrame(() => restoreShellFocus(shellKey));
+        } else {
+            delete shellState?.restoreFocusTarget;
+        }
+    });
 }
 
 function buildShell(shellKey) {
@@ -14637,12 +14816,29 @@ function setMobileNavOpenState(isOpen) {
         sbState.mobileNav.lastOpenedAt = performance.now();
     }
 
-    overlay.hidden = navState.overlayHidden;
+    if (navState.shouldOpen || !wasOpen) {
+        overlay.hidden = navState.overlayHidden;
+    }
     overlay.classList.toggle('sb-nav-open', navState.shouldOpen);
     overlay.setAttribute('aria-hidden', navState.overlayAriaHidden);
 
     if ('inert' in overlay) {
         overlay.inert = navState.overlayInert;
+    }
+
+    if (navState.shouldOpen && !wasOpen) {
+        animateIn(overlay.querySelector('#sb-mobile-nav-content'), [
+            { opacity: 0, transform: 'translateY(12px) scale(0.98)' },
+            { opacity: 1, transform: 'none' },
+        ], SPRING_SHEET);
+    } else if (!navState.shouldOpen && wasOpen) {
+        overlay.hidden = false;
+        animateOut(overlay.querySelector('#sb-mobile-nav-content'), [
+            { opacity: 1, transform: 'none' },
+            { opacity: 0, transform: 'translateY(12px) scale(0.98)' },
+        ], () => {
+            overlay.hidden = true;
+        }, { enabled: isMobileViewport(), duration: MOTION_FAST });
     }
 
     button.classList.toggle('is-open', navState.shouldOpen);
@@ -14708,6 +14904,7 @@ function injectCharacterDrawerControls() {
     getCharacterPanel()?.classList.add('sb-character-drawer-root');
     ensureCharacterListToolbarLayout();
     bindCharacterEditorFullscreenToggle();
+    bindCharacterDrawerEscapeHandler();
     bindCreatorNotesFullscreen();
 
     const shellCloseButton = document.getElementById('sb_character_shell_close');
@@ -16076,7 +16273,7 @@ function initAll() {
     injectCharacterDrawerControls();
     bindCharacterEditorExitButton();
     bindCharacterDrawerStateObserver();
-    setShellTheme(sbState.theme, { persist: false });
+    applyShellTheme();
     setFrontendIconPreference(sbState.frontendIcon, { persist: false });
     setSurfaceTransparency(sbState.surfaceTransparency, { persist: false });
     setPaperTextureEnabled(sbState.paperTextureEnabled, { persist: false });
@@ -16169,6 +16366,10 @@ function initAll() {
     // Group Advanced Formatting sections into collapsible drawers
     groupAdvancedFormattingIntoDrawers();
 
+    initializeMobileSectionNav();
+    initializeMessageActions();
+    initializeToastMotion();
+
     const sillyBunnyShell = /** @type {any} */ (globalThis.SillyBunnyShell || {});
     globalThis.SillyBunnyShell = Object.assign(sillyBunnyShell, {
         openTab(shellKey, tabId) {
@@ -16198,8 +16399,8 @@ function initAll() {
             closeAllDropdowns({ except: 'search' });
             setUniversalSearchOpenState(true, { focusInput });
         },
-        applyTheme(themeId) {
-            setShellTheme(themeId);
+        applyTheme() {
+            applyShellTheme();
         },
         setFrontendIcon(iconId) {
             setFrontendIconPreference(iconId);

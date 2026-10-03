@@ -24,7 +24,6 @@ import {
     parsePositiveInt,
 } from './context.js';
 import { getCharacterForAvatar, getCharacterIndexForAvatar, getConversationParticipants } from './media.js';
-import { getActiveConversationThreadKey } from './notifications.js';
 import { formatPromptText } from './shared-helpers.js';
 import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
@@ -49,7 +48,6 @@ export function getConversationRailItems({ personaId = getConversationPersonaId(
     const items = [];
     const seen = new Set();
     const seenGroupIds = new Set();
-    const activeKey = personaId === getConversationPersonaId() ? getActiveConversationThreadKey() : '';
     const addItem = ({ character, index, settings, groupId = '', group = null, threadStore = null }) => {
         const avatar = character?.avatar;
         if (!avatar || (!groupId && !settings?.enabled)) {
@@ -127,13 +125,30 @@ export function getConversationRailItems({ personaId = getConversationPersonaId(
         });
     });
 
-    return items.sort((first, second) => {
-        if (first.key === activeKey) return -1;
-        if (second.key === activeKey) return 1;
-        const firstBranch = getActiveConversationBranch(first.character.avatar, { create: false, groupId: first.groupId, personaId });
-        const secondBranch = getActiveConversationBranch(second.character.avatar, { create: false, groupId: second.groupId, personaId });
-        return Number(secondBranch?.updatedAt || 0) - Number(firstBranch?.updatedAt || 0);
-    });
+    // Messaging-app order: newest message first. Selecting a thread must not move it.
+    const activityTimes = new Map(items.map(item => [item.key, getRailItemActivityTime(item, personaId)]));
+    return items.sort((first, second) => activityTimes.get(second.key) - activityTimes.get(first.key));
+}
+
+function getMessageTimeMs(message) {
+    const createdAt = Number(message?.created_at);
+    if (Number.isFinite(createdAt) && createdAt > 0) {
+        return createdAt;
+    }
+    const sendDate = Date.parse(String(message?.send_date || ''));
+    return Number.isFinite(sendDate) ? sendDate : 0;
+}
+
+function getRailItemActivityTime(item, personaId) {
+    const branch = getActiveConversationBranch(item.character.avatar, { create: false, groupId: item.groupId, personaId });
+    const messages = Array.isArray(branch?.messages) ? branch.messages : [];
+    for (let index = messages.length - 1; index >= 0; index--) {
+        const time = getMessageTimeMs(messages[index]);
+        if (time) {
+            return time;
+        }
+    }
+    return Number((messages.length ? branch?.updatedAt : branch?.createdAt) || branch?.updatedAt || 0);
 }
 
 export function getSelectedConversationGroup() {

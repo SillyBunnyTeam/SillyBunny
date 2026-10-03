@@ -338,6 +338,7 @@ import { onboardingExperimentalMacroEngine } from './scripts/macros/engine/Macro
 import { compressRequest, setRequestCompressionConfig } from './scripts/request-compression.js';
 import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker } from './scripts/swipe-picker.js';
 import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-send-button.js';
+import { DELETE_CHOICE, confirmMessageDeletion } from './scripts/sillybunny-delete-confirm.js';
 import { formatMobileStreamingPreview, getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval, isAndroidStreamingPlatform, shouldReduceStreamingDomWork, shouldUsePlainTextStreamingPreview } from './scripts/mobile-streaming.js';
 import { fetchResumable } from './scripts/resumable-generation.js';
 import { applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse } from './scripts/generation-request-controls.js';
@@ -3603,15 +3604,12 @@ export async function deleteMessage(id, swipeDeletionIndex = undefined, askConfi
 
     let deleteOnlySwipe = canDeleteSwipe;
     if (askConfirmation) {
-        const result = await callGenericPopup(t`Are you sure you want to delete this message?`, POPUP_TYPE.CONFIRM, null, {
-            okButton: canDeleteSwipe ? t`Delete Swipe` : t`Delete Message`,
-            cancelButton: 'Cancel',
-            customButtons: canDeleteSwipe ? [t`Delete Message`] : null,
-        });
-        if (!result) {
+        // SillyBunny: destructive alert with Cancel focused (sillybunny-delete-confirm.js).
+        const choice = await confirmMessageDeletion({ canDeleteSwipe });
+        if (!choice) {
             return;
         }
-        deleteOnlySwipe = canDeleteSwipe && result === POPUP_RESULT.AFFIRMATIVE; // Default button, not the custom one
+        deleteOnlySwipe = canDeleteSwipe && choice === DELETE_CHOICE.SWIPE;
     }
 
     if (deleteOnlySwipe) {
@@ -13432,6 +13430,7 @@ export async function messageEdit(editMessageId) {
     const messageBlock = messageElement.find('.mes_block');
     const messageText = messageBlock.find('.mes_text');
 
+    messageElement.addClass('sb-message-editing');
     messageText.empty();
     messageBlock.find('.mes_buttons').css('display', 'none');
     messageBlock.find('.mes_edit_buttons').css('display', 'inline-flex');
@@ -13460,6 +13459,13 @@ export async function messageEdit(editMessageId) {
 
     if (shouldGuardMobileChatScroll()) {
         markMobileChatManualScroll();
+    }
+
+    // SillyBunny: empty() briefly collapses the message, and near the chat bottom the browser clamps
+    // scrollTop to the shorter scrollHeight; the refilled editor never scrolls back. Undo only that clamp.
+    const chatScrollElement = chatElement[0];
+    if (!shouldGuardMobileChatScroll() && chatScrollElement && chatScrollElement.scrollTop < chatScrollPosition) {
+        chatScrollElement.scrollTop = chatScrollPosition;
     }
 
     // SillyBunny: on desktop the message resize observer owns the edit-open layout change and focus already has preventScroll; restoring here reverts it.
@@ -13500,6 +13506,7 @@ async function messageEditCancel(messageId = this_edit_mes_id) {
     }
 
     const thisMesBlock = thisMesDiv.find('.mes_block');
+    thisMesDiv.addClass('sb-message-edit-restored');
     thisMesBlock.find('.mes_text').empty();
     thisMesDiv.find('.mes_edit_buttons').css('display', 'none');
     thisMesBlock.find('.mes_buttons').css('display', '');
@@ -13589,13 +13596,15 @@ async function messageEditDone(div) {
     }
 
     let { mesBlock, text, mes, bias } = updateMessage(div);
+    const editedMessage = div.closest('.mes');
 
     await eventSource.emit(event_types.MESSAGE_EDITED, this_edit_mes_id);
     text = chat[this_edit_mes_id]?.mes ?? text;
     if (chat[this_edit_mes_id] && !chat[this_edit_mes_id].is_system) {
         await updateMessageTokenAccounting(chat[this_edit_mes_id]);
     }
-    updateMessageMetaBadges(div.closest('.mes'), chat[this_edit_mes_id]);
+    updateMessageMetaBadges(editedMessage, chat[this_edit_mes_id]);
+    editedMessage.addClass('sb-message-edit-restored');
     mesBlock.find('.mes_text').empty();
     mesBlock.find('.mes_edit_buttons').css('display', 'none');
     mesBlock.find('.mes_buttons').css('display', '');
@@ -13610,11 +13619,11 @@ async function messageEditDone(div) {
             false,
         ),
     );
-    notifyCardScriptStripped(div.closest('.mes'), this_edit_mes_id);
+    notifyCardScriptStripped(editedMessage, this_edit_mes_id);
     mesBlock.find('.mes_bias').empty();
     mesBlock.find('.mes_bias').append(messageFormatting(bias, '', false, false, -1, {}, false));
-    appendMediaToMessage(mes, div.closest('.mes'));
-    addCopyToCodeBlocks(div.closest('.mes'));
+    appendMediaToMessage(mes, editedMessage);
+    addCopyToCodeBlocks(editedMessage);
 
     const reasoningEditDone = mesBlock.find('.mes_reasoning_edit_done:visible');
     if (reasoningEditDone.length > 0) {
@@ -18247,8 +18256,9 @@ jQuery(async function () {
         const message = chat[this_edit_mes_id];
         const selectedSwipe = message.swipe_id ?? undefined;
         const swipesArray = Array.isArray(message.swipes) ? message.swipes : [];
-        const canDeleteSwipe = power_user.confirm_message_delete && !fromSlashCommand && !message.is_user && swipesArray.length > 1 && this_edit_mes_id === chat.length - 1 && selectedSwipe !== undefined;
-        await deleteMessage(Number(this_edit_mes_id), canDeleteSwipe ? selectedSwipe : undefined, power_user.confirm_message_delete && fromSlashCommand !== true);
+        // SillyBunny: deleting from the edit row always confirms, like the row Delete; /del stays silent.
+        const canDeleteSwipe = !fromSlashCommand && !message.is_user && swipesArray.length > 1 && this_edit_mes_id === chat.length - 1 && selectedSwipe !== undefined;
+        await deleteMessage(Number(this_edit_mes_id), canDeleteSwipe ? selectedSwipe : undefined, fromSlashCommand !== true);
     });
 
     $(document).on('click', '.mes_edit_done', async function () {

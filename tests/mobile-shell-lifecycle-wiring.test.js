@@ -411,7 +411,6 @@ describe('mobile shell lifecycle wiring', () => {
             ['#user-settings-block', '.sb-settings-tabs-nav'],
             ['#top-bar', '.sb-topbar-group-left'],
             ['#sheld', '.sb-conversation-channel-tabs'],
-            ['#sheld', '.sb-conversation-quick-actions'],
             ['#right-nav-panel', '.sb-character-create-bar'],
             ['#right-nav-panel', '#HotSwapWrapper .hotswap'],
             ['#right-nav-panel', '#right-nav-panel .rm_tag_controls'],
@@ -594,6 +593,23 @@ describe('mobile shell lifecycle wiring', () => {
         expect(closeShellSource).toContain('requestMobileViewportReset();');
         expect(closeCharacterPanelSource).toContain('requestMobileViewportReset();');
         expect(setMobileNavOpenStateSource).toContain('requestMobileViewportReset();');
+    });
+
+    test('character drawer Escape closes locally while deferring nested controls', () => {
+        const injectCharacterDrawerControlsSource = getFunctionSource('injectCharacterDrawerControls');
+        const escapeSource = getFunctionSource('bindCharacterDrawerEscapeHandler');
+        const deferSource = getFunctionSource('shouldDeferCharacterDrawerEscape');
+
+        expect(injectCharacterDrawerControlsSource).toContain('bindCharacterDrawerEscapeHandler();');
+        expect(escapeSource).toContain('event.key !== \'Escape\'');
+        expect(escapeSource).toContain('panel.classList.contains(\'openDrawer\')');
+        expect(escapeSource).toContain('shouldDeferCharacterDrawerEscape(event, panel)');
+        expect(escapeSource).toContain('closeCharacterPanel();');
+        expect(deferSource).toContain('event.defaultPrevented || event.isComposing');
+        expect(deferSource).toContain('\'#curEditTextarea\'');
+        expect(deferSource).toContain('\'#mes_stop\'');
+        expect(deferSource).toContain('dialog[open]');
+        expect(deferSource).toContain('[role="dialog"]');
     });
 
     test('settles mobile viewport reset without reapplying the fixed-position workaround', () => {
@@ -816,8 +832,8 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('bindSearchShortcutPreFocus(rightShortcut, () => getShortcutTarget(\'right\'));');
         expect(setUniversalSearchOpenStateSource).toContain('focusUniversalSearchInput(input);');
         expect(buildUniversalSearchRowSource).toContain('setUniversalSearchOpenState(true, { focusInput: true });');
-        expect(tabsCssSource).toMatch(/\.sb-search-results\s*\{[\s\S]*position:\s*relative;[\s\S]*isolation:\s*isolate;[\s\S]*background-color:\s*var\(--SmartThemeBlurTintColor\)/);
-        expect(tabsCssSource).toMatch(/\.sb-search-result,\s*\n\.sb-search-empty\s*\{[\s\S]*position:\s*relative;[\s\S]*isolation:\s*isolate;[\s\S]*background-color:\s*var\(--SmartThemeBlurTintColor\)/);
+        expect(tabsCssSource).toMatch(/\.sb-search-results\s*\{[\s\S]*position:\s*relative;[\s\S]*isolation:\s*isolate;[\s\S]*background:\s*var\(--sb-layer-popover\)/);
+        expect(tabsCssSource).toMatch(/\.sb-search-result,\s*\n\.sb-search-empty\s*\{[\s\S]*position:\s*relative;[\s\S]*border:\s*0;\s*background:\s*transparent;/);
     });
 
     test('routes character top-bar shortcuts through toggle-close behavior', () => {

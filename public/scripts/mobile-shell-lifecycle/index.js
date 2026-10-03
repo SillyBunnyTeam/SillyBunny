@@ -798,7 +798,6 @@ const MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR = [
     // allowlisted here.
     '.sb-topbar-group-left',
     '.sb-conversation-channel-tabs',
-    '.sb-conversation-quick-actions',
     '.sb-character-create-bar',
     '#HotSwapWrapper .hotswap',
     '#right-nav-panel .rm_tag_controls',

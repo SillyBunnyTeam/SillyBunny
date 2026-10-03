@@ -3,15 +3,34 @@
    ============================================================================= */
 
 :root {
+    /* Radii: libadwaita 1.7+ values */
+    --sb-radius-control: 9px;
+    --sb-radius-card: 12px;
+    --sb-radius-overlay: 15px;
+    --sb-radius-alert: 18px;
+    /* Legacy content radii until pages are migrated */
     --sb-radius-sm: 10px;
-    --sb-radius-md: 16px;
-    --sb-radius-lg: 22px;
-    --sb-radius-xl: 28px;
+    --sb-radius-md: 14px;
+    --sb-radius-lg: 16px;
+    --sb-radius-xl: 20px;
     --sb-radius-button: 14px;
-    --sb-transition-fast: 180ms cubic-bezier(0.22, 1, 0.36, 1);
-    --sb-transition: 240ms cubic-bezier(0.22, 1, 0.36, 1);
-    --sb-transition-slow: 360ms cubic-bezier(0.22, 1, 0.36, 1);
-    --sb-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --sb-shell-control-radius: 999px;
+    /* Motion: libadwaita-aligned timing and easing */
+    --sb-transition-fast: 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    --sb-transition: 250ms cubic-bezier(0.25, 0.1, 0.25, 1);
+    --sb-transition-slow: 300ms cubic-bezier(0.25, 0.1, 0.25, 1);
+    --sb-ease-out-quad: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    --sb-ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+    --sb-ease-out-cubic: cubic-bezier(0.33, 1, 0.68, 1);
+    /* Kept for existing rules and user CSS */
+    --sb-ease-out: var(--sb-ease-out-cubic);
+    /* libadwaita springs; linear() samples are swapped in below where supported. */
+    --sb-spring-dialog-duration: 511ms;
+    --sb-spring-dialog: cubic-bezier(0.34, 1.36, 0.64, 1);
+    --sb-spring-sheet-duration: 472ms;
+    --sb-spring-sheet: cubic-bezier(0.22, 1, 0.36, 1);
+    --sb-spring-navigation-duration: 334ms;
+    --sb-spring-navigation: cubic-bezier(0.16, 1, 0.3, 1);
     --sb-z-base: 0;
     --sb-z-raised: 10;
     --sb-z-dropdown: 100;
@@ -28,11 +47,11 @@
     --sb-z-context-menu: 8000;
     --sb-z-loader: 9000;
     --sb-z-critical: 10000;
-    --sb-color-warning: #facc15;
-    --sb-color-danger: #fb7185;
-    --sb-color-error: #ff6b6b;
-    --sb-color-success: #22c55e;
-    --sb-color-info: #5BC0DE;
+    --sb-color-warning: var(--color-warning, #ffc252);
+    --sb-color-danger: var(--color-danger, #ff938c);
+    --sb-color-error: var(--color-danger, #ff938c);
+    --sb-color-success: var(--color-success, #78e9ab);
+    --sb-color-info: var(--color-primary, var(--SmartThemeQuoteColor));
     --sb-icon-control-size: 2rem;
     --sb-icon-control-radius: 10px;
     --sb-inline-drawer-icon-size: 2rem;
@@ -46,6 +65,8 @@
     --sb-section-gap: 14px;
     --sb-settings-card-padding: var(--spacing-md) 14px;
     --sb-message-icon-size: clamp(24px, calc(var(--bottomFormBlockSize, 36px) * 0.78), 30px);
+    --sb-message-hit-size: var(--sb-message-icon-size);
+    --sb-message-glyph-size: calc(var(--sb-message-hit-size) * 0.52);
     --sb-composer-action-size: clamp(34px, calc(var(--bottomFormBlockSize, 36px) * 0.94), 38px);
     --sb-composer-send-width: var(--sb-composer-action-size);
     --sb-composer-action-icon-size: clamp(14px, calc(var(--bottomFormIconSize, 20px) * 0.72), 17px);
@@ -75,6 +96,9 @@
     --sb-surface-elevated: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeChatTintColor) 10%);
     --sb-surface-elevated-soft: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, var(--SmartThemeBodyColor) 6%);
     --sb-surface-highlight: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
+    --sb-surface-raised: var(--color-surface-strong);
+    --sb-surface-hover: var(--color-surface-hover);
+    --sb-color-muted: var(--sb-muted-fg);
     --sb-panel-strong: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, transparent);
     --sb-panel-soft: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
 
@@ -85,7 +109,9 @@
     --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
     --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, var(--SmartThemeBlurTintColor) 93%);
     --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 96%, transparent);
-    --sb-shell-shadow: 0 32px 90px color-mix(in srgb, var(--SmartThemeShadowColor) 34%, transparent);
+    --sb-shell-shadow: 0 8px 24px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent);
+    --sb-shadow-panel: var(--sb-shell-shadow);
+    --sb-shadow-control: 0 1px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent);
     --sb-chat-surface-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, var(--SmartThemeChatTintColor) 8%);
     --sb-chat-surface-base: var(--sb-chat-surface-source);
     --sb-fixed-surface-base: var(--sb-chat-surface-source);
@@ -93,7 +119,7 @@
     --sb-chat-surface-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor) 4%, var(--sb-chat-surface-base)), var(--sb-chat-surface-base));
     --sb-fixed-surface-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor) 4%, var(--sb-fixed-surface-base)), var(--sb-fixed-surface-base));
     --sb-composer-surface-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor) 4%, var(--sb-composer-surface-base)), var(--sb-composer-surface-base));
-    --sb-composer-input-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, var(--sb-composer-surface-base));
+    --sb-composer-input-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
     --sb-card-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor) 6%, var(--SmartThemeBlurTintColor)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, transparent));
     --sb-button-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 84%, transparent);
     --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, var(--SmartThemeBodyColor) 4%);
@@ -131,7 +157,60 @@
     --sb-warning-border: color-mix(in srgb, var(--color-danger, var(--sb-color-error)) 42%, var(--SmartThemeBorderColor) 58%);
     --sb-input-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, transparent);
     --sb-input-border: color-mix(in srgb, var(--SmartThemeBorderColor) 92%, transparent);
+    --sb-input-placeholder: color-mix(in srgb, var(--SmartThemeBodyColor) 78%, var(--SmartThemeBlurTintColor) 22%);
     --sb-focus-ring: color-mix(in srgb, var(--SmartThemeQuoteColor) 70%, transparent);
+    --sb-focus-ring-inset: inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 78%, transparent);
+    /* Neutral text-entry focus (trial): body-colour border and ring instead of accent. */
+    --sb-entry-focus-border: color-mix(in srgb, var(--SmartThemeBodyColor) 42%, transparent);
+    --sb-entry-focus-ring: inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 22%, transparent);
+    /* libadwaita composer entry: body-colour tint at rest, accent outline on focus. */
+    --sb-composer-focus-border: var(--color-primary, var(--sb-accent));
+    --sb-composer-focus-ring: 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 50%, transparent);
+    /* libadwaita flat-button fills, mixed from the body colour so they follow light and dark themes. */
+    --sb-flat-hover-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
+    --sb-flat-active-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
+    --sb-flat-selected-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    --sb-flat-selected-hover-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 13%, transparent);
+    --sb-raised-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    --sb-raised-hover-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
+    --sb-raised-active-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 22%, transparent);
+    /* Shell layer ladder (DESIGN.md "Layer Ladder"); forced opaque below where rgb(from) is supported. */
+    --sb-layer-view-source: var(--SmartThemeChatTintColor);
+    --sb-layer-window-source: var(--SmartThemeBlurTintColor);
+    --sb-layer-canvas-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeBodyColor) 10%);
+    --sb-layer-headerbar-source: var(--sb-layer-canvas-source);
+    --sb-layer-drawer-source: var(--sb-layer-headerbar-source);
+    --sb-layer-popover-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeBodyColor) 10%);
+    --sb-layer-dialog-source: var(--sb-layer-popover-source);
+    --sb-layer-toast-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 80%, var(--SmartThemeBodyColor) 20%);
+    /* Bottom toolbar (Roleplay composer stack, Conversation composer). Dark keeps it on View. */
+    --sb-layer-bottombar-source: var(--sb-layer-view-source);
+    --sb-layer-view: var(--sb-layer-view-source);
+    --sb-layer-bottombar: var(--sb-layer-bottombar-source);
+    --sb-layer-window: var(--sb-layer-window-source);
+    /* Page behind #sheld: a step away from Window/View so the main column does not melt into the canvas. */
+    --sb-page-bg-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, var(--SmartThemeBodyColor) 12%);
+    --sb-page-bg: var(--sb-page-bg-source);
+    --sb-layer-canvas: var(--sb-layer-canvas-source);
+    --sb-layer-headerbar: var(--sb-layer-headerbar-source);
+    --sb-layer-drawer: var(--sb-layer-drawer-source);
+    --sb-layer-popover: var(--sb-layer-popover-source);
+    --sb-layer-dialog: var(--sb-layer-dialog-source);
+    --sb-layer-toast: var(--sb-layer-toast-source);
+    --sb-layer-toast-fg: var(--SmartThemeBodyColor);
+    --sb-headerbar-shade: 1px solid var(--sb-shell-border);
+    --sb-shadow-popover:
+        0 1px 5px 1px color-mix(in srgb, var(--SmartThemeShadowColor) 50%, transparent),
+        0 2px 14px 3px color-mix(in srgb, var(--SmartThemeShadowColor) 30%, transparent);
+    --sb-shadow-dialog:
+        0 0 14px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 30%, transparent),
+        0 0 5px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 60%, transparent);
+    --sb-shadow-dialog-highlight: inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
+    --sb-shadow-toast:
+        0 1px 3px 1px color-mix(in srgb, var(--SmartThemeShadowColor) 60%, transparent),
+        0 2px 6px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 30%, transparent);
+    --sb-dialog-backdrop-alpha: 0.5;
+    --sb-dialog-backdrop: rgba(0, 0, 6, var(--sb-dialog-backdrop-alpha));
     --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
     --sb-ambient-b: color-mix(in srgb, var(--SmartThemeUnderlineColor) 9%, transparent);
     --sb-shell-surface-opacity: 1;
@@ -227,7 +306,6 @@ input[type="submit"] {
 .zoomed_avatar > .panelControlBar .dragClose:hover,
 .zoomed_avatar > .panelControlBar .dragClose:focus-visible {
     opacity: 1;
-    transform: translateY(-1px);
 }
 
 @media (pointer: coarse), (hover: none) {
@@ -262,6 +340,7 @@ input[type="submit"] {
         --sb-control-icon-physical-size: var(--sb-mobile-touch-target);
         --sb-icon-control-size: var(--sb-mobile-touch-target);
         --sb-inline-drawer-icon-size: var(--sb-mobile-touch-target);
+        --sb-field-min-height: var(--sb-mobile-touch-target);
     }
 }
 
@@ -270,171 +349,102 @@ input[type="submit"] {
         --sb-chat-surface-base: rgb(from var(--sb-chat-surface-source) r g b / calc(var(--sb-page-overlay-opacity) * 0.96));
         --sb-fixed-surface-base: rgb(from var(--sb-chat-surface-source) r g b / 0.98);
         --sb-composer-surface-base: rgb(from var(--sb-chat-surface-source) r g b / calc(var(--sb-composer-surface-opacity) * 0.96));
+        --sb-layer-view: rgb(from var(--sb-layer-view-source) r g b / 1);
+        --sb-layer-bottombar: rgb(from var(--sb-layer-bottombar-source) r g b / 1);
+        --sb-layer-window: rgb(from var(--sb-layer-window-source) r g b / 1);
+        --sb-page-bg: rgb(from var(--sb-page-bg-source) r g b / 1);
+        --sb-layer-canvas: rgb(from var(--sb-layer-canvas-source) r g b / 1);
+        --sb-layer-headerbar: rgb(from var(--sb-layer-headerbar-source) r g b / 1);
+        --sb-layer-drawer: rgb(from var(--sb-layer-drawer-source) r g b / 1);
+        --sb-layer-popover: rgb(from var(--sb-layer-popover-source) r g b / 1);
+        --sb-layer-dialog: rgb(from var(--sb-layer-dialog-source) r g b / 1);
+        --sb-layer-toast: rgb(from var(--sb-layer-toast-source) r g b / 1);
+        --sb-dialog-backdrop: rgb(from var(--SmartThemeShadowColor) r g b / var(--sb-dialog-backdrop-alpha));
     }
 }
 
-:root[data-sb-theme='windows-aero'] {
-    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 72%, var(--SmartThemeQuoteColor));
-    --sb-shell-main-bg: linear-gradient(135deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 78%, var(--SmartThemeQuoteColor)) 0%, color-mix(in srgb, var(--SmartThemeBlurTintColor) 72%, var(--SmartThemeQuoteColor)) 100%);
-    --sb-shell-nav-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 82%, var(--SmartThemeQuoteColor)) 0%, color-mix(in srgb, var(--SmartThemeBlurTintColor) 74%, var(--SmartThemeQuoteColor)) 100%);
-    --sb-shell-header-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, color-mix(in srgb, var(--SmartThemeBlurTintColor) 75%, var(--SmartThemeQuoteColor)) 40%, color-mix(in srgb, var(--SmartThemeBlurTintColor) 68%, var(--SmartThemeQuoteColor)) 100%);
-    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 60%, transparent);
-    --sb-shell-tab-active-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.26), color-mix(in srgb, var(--SmartThemeQuoteColor) 35%, transparent));
-    --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 45%, rgba(255, 255, 255, 0.35));
-    --sb-shell-shadow: 0 16px 40px color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent), 0 2px 10px rgba(255, 255, 255, 0.25);
-    --sb-card-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.12), color-mix(in srgb, var(--SmartThemeBlurTintColor) 74%, color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent)));
-    --sb-button-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.05));
-    --sb-button-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.28), color-mix(in srgb, var(--SmartThemeQuoteColor) 40%, transparent));
-    --sb-focus-ring: var(--SmartThemeQuoteColor);
-    --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, transparent);
-    --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
-    --sb-topbar-surface-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.12), color-mix(in srgb, var(--SmartThemeBlurTintColor) 74%, color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent)));
-    --sb-chatbar-surface-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.14), color-mix(in srgb, var(--SmartThemeBlurTintColor) 52%, color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent)));
-    --sb-mobile-overlay-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 76%, transparent);
-    --sb-mobile-panel-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 72%, transparent);
+@supports (transition-timing-function: linear(0, 1)) {
+    :root {
+        --sb-spring-dialog: linear(0, 0.096, 0.299, 0.533, 0.737, 0.897, 1, 1.059, 1.081, 1.079, 1.065, 1.046, 1.028, 1.013, 1.003, 0.997, 0.994, 0.993, 0.994, 0.996, 0.997, 0.998, 0.999, 1, 1);
+        --sb-spring-sheet: linear(0, 0.063, 0.207, 0.371, 0.529, 0.669, 0.779, 0.863, 0.924, 0.964, 0.989, 1.005, 1.012, 1.014, 1.014, 1.012, 1.01, 1.008, 1.005, 1.004, 1.002, 1.001, 1.001, 1, 1);
+        --sb-spring-navigation: linear(0, 0.076, 0.227, 0.382, 0.528, 0.648, 0.742, 0.814, 0.867, 0.905, 0.933, 0.953, 0.967, 0.977, 0.984, 0.989, 0.993, 0.995, 0.996, 0.998, 0.998, 0.999, 0.999, 0.999, 1);
+    }
 }
 
-:root[data-sb-theme='windows-aero'][data-sb-surface-tone='light'] {
-    --sb-shell-surface: color-mix(in srgb, #ffffff 84%, var(--SmartThemeBlurTintColor));
-    --sb-shell-main-bg: linear-gradient(180deg, color-mix(in srgb, #ffffff 78%, var(--SmartThemeBlurTintColor)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 84%, var(--SmartThemeBodyColor) 16%));
-    --sb-shell-nav-bg: linear-gradient(180deg, color-mix(in srgb, #ffffff 84%, var(--SmartThemeBlurTintColor)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 80%, var(--SmartThemeBodyColor) 20%));
-    --sb-shell-header-bg: linear-gradient(180deg, color-mix(in srgb, #ffffff 88%, var(--SmartThemeBlurTintColor)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 84%, var(--SmartThemeBodyColor) 16%));
-    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent));
-    --sb-card-bg: linear-gradient(180deg, color-mix(in srgb, #ffffff 80%, var(--SmartThemeBlurTintColor)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 86%, var(--SmartThemeBodyColor) 14%));
-    --sb-button-bg: color-mix(in srgb, #ffffff 62%, var(--SmartThemeBlurTintColor));
-    --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent));
-    --sb-ambient-a: color-mix(in srgb, var(--sb-accent) 15%, transparent);
-    --sb-ambient-b: color-mix(in srgb, var(--sb-accent-soft) 10%, transparent);
-}
-
+/* The shell always runs as clean-minimal; legacy shell tokens map onto the layer ladder. */
 :root[data-sb-theme='clean-minimal'] {
-    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 99%, transparent);
-    --sb-shell-main-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, transparent);
-    --sb-shell-nav-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 98%, transparent);
-    --sb-shell-header-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 98%, transparent);
-    --sb-shell-header-glow: rgba(255, 255, 255, 0.02);
-    --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    --sb-shell-surface: var(--sb-layer-drawer);
+    --sb-shell-main-bg: var(--sb-layer-canvas);
+    --sb-shell-nav-bg: var(--sb-layer-headerbar);
+    --sb-shell-header-bg: var(--sb-layer-headerbar);
+    --sb-shell-header-glow: transparent;
+    --sb-shell-tab-active-bg: var(--sb-flat-selected-bg);
     --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 70%, transparent);
-    --sb-shell-shadow: 0 24px 60px color-mix(in srgb, var(--SmartThemeShadowColor) 20%, transparent);
+    --sb-shell-shadow: var(--sb-shadow-dialog);
+    --sb-topbar-surface-bg: var(--sb-layer-headerbar);
+    --sb-chatbar-surface-bg: var(--sb-layer-headerbar);
     --sb-card-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 98%, transparent);
     --sb-button-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
     --sb-button-hover: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
     --sb-input-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, transparent);
-    --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 4%, transparent);
-    --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 2.5%, transparent);
-}
-
-:root[data-sb-theme='macos-minimal'] {
-    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 86%, rgba(255, 255, 255, 0.04));
-    --sb-shell-main-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, rgba(255, 255, 255, 0.03));
-    --sb-shell-nav-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 82%, rgba(0, 0, 0, 0.05));
-    --sb-shell-header-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 84%, rgba(255, 255, 255, 0.05));
-    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
-    --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, rgba(255, 255, 255, 0.15));
-    --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 45%, rgba(255, 255, 255, 0.18));
-    --sb-shell-shadow: 0 16px 48px rgba(0, 0, 0, 0.22), 0 2px 8px rgba(255, 255, 255, 0.1);
-    --sb-card-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 85%, rgba(255, 255, 255, 0.04));
-    --sb-button-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, rgba(255, 255, 255, 0.06));
-    --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, rgba(255, 255, 255, 0.14));
-    --sb-focus-ring: var(--SmartThemeQuoteColor);
-    --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
-    --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 4%, transparent);
-    --sb-topbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 85%, rgba(255, 255, 255, 0.04));
-    --sb-chatbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, rgba(255, 255, 255, 0.03));
-    --sb-mobile-overlay-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 85%, transparent);
-    --sb-mobile-panel-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 82%, transparent);
-}
-
-:root[data-sb-theme='macos-minimal'][data-sb-surface-tone='light'] {
-    --sb-shell-surface: color-mix(in srgb, #ffffff 92%, var(--SmartThemeBlurTintColor));
-    --sb-shell-main-bg: color-mix(in srgb, #ffffff 95%, var(--SmartThemeBlurTintColor));
-    --sb-shell-nav-bg: color-mix(in srgb, #f5f5f7 90%, var(--SmartThemeBlurTintColor));
-    --sb-shell-header-bg: color-mix(in srgb, #ffffff 94%, var(--SmartThemeBlurTintColor));
-    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
-    --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 35%, rgba(0, 0, 0, 0.06));
-    --sb-shell-shadow: 0 16px 48px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
-    --sb-card-bg: color-mix(in srgb, #ffffff 90%, var(--SmartThemeBlurTintColor));
-    --sb-button-bg: color-mix(in srgb, #ffffff 60%, var(--SmartThemeBlurTintColor));
-    --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, rgba(0, 0, 0, 0.05));
-}
-
-:root[data-sb-theme='cozy-warm'] {
-    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #3c2f25 5%);
-    --sb-shell-main-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, #3c2f25 4%), color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, #3c2f25 6%));
-    --sb-shell-nav-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #3c2f25 5%), color-mix(in srgb, var(--SmartThemeBlurTintColor) 91%, #3c2f25 9%));
-    --sb-shell-header-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, #3c2f25 8%);
-    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, rgba(217, 119, 6, 0.15));
-    --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, rgba(217, 119, 6, 0.1));
-    --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 75%, #5c4533 25%);
-    --sb-shell-shadow: 0 20px 48px color-mix(in srgb, var(--SmartThemeShadowColor) 15%, transparent);
-    --sb-card-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor) 4%, var(--SmartThemeBlurTintColor)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent));
-    --sb-button-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 5%, rgba(217, 119, 6, 0.05));
-    --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, rgba(217, 119, 6, 0.15));
-    --sb-focus-ring: color-mix(in srgb, var(--SmartThemeQuoteColor) 80%, #d97706 20%);
-    --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 6%, transparent);
-    --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 3%, transparent);
-    --sb-topbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #3c2f25 5%);
-    --sb-chatbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, #3c2f25 4%);
-    --sb-mobile-overlay-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #3c2f25 5%);
-    --sb-mobile-panel-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #3c2f25 5%);
-}
-
-:root[data-sb-theme='hypr-glow'] {
-    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, transparent);
-    --sb-shell-main-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent);
-    --sb-shell-nav-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, transparent);
-    --sb-shell-header-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, transparent);
-    --sb-shell-border: color-mix(in srgb, var(--SmartThemeQuoteColor) 45%, var(--SmartThemeBorderColor) 55%);
-    --sb-shell-shadow: 0 0 16px color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
-    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 35%, transparent);
-    --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
-    --sb-card-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, transparent);
-    --sb-button-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
-    --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
-    --sb-focus-ring: var(--SmartThemeQuoteColor);
-    --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
-    --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 6%, transparent);
-    --sb-topbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent);
-    --sb-chatbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent);
-    --sb-mobile-overlay-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, transparent);
-    --sb-mobile-panel-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, transparent);
-}
-
-:root[data-sb-theme='slate-flat'] {
-    --sb-shell-surface: #1e222b;
-    --sb-shell-main-bg: #1a1d24;
-    --sb-shell-nav-bg: #15181e;
-    --sb-shell-header-bg: #1a1d24;
-    --sb-shell-header-glow: rgba(0, 0, 0, 0.15);
-    --sb-shell-tab-active-bg: #282d3a;
-    --sb-shell-border: #2f3442;
-    --sb-shell-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
-    --sb-card-bg: #202431;
-    --sb-button-bg: #252a37;
-    --sb-button-hover: #313848;
     --sb-ambient-a: transparent;
     --sb-ambient-b: transparent;
 }
 
+/* libadwaita light-style standalone status colours; the dark defaults live in style.css. */
+:root[data-sb-surface-tone='light'] {
+    --color-success: #007c3d;
+    --color-danger: #c30000;
+    --color-warning: #905400;
+    /* libadwaita light: white View and popovers; toasts stay dark. The header bar mirrors dark mode
+       and sits on Canvas, one tonal step away from View, so the top bar, chat column, and composer
+       do not collapse into one white band. */
+    --sb-layer-canvas-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeBodyColor) 10%);
+    --sb-layer-headerbar-source: var(--sb-layer-canvas-source);
+    /* White-on-white View and composer read as one band; step the bottom toolbar halfway to Canvas. */
+    --sb-layer-bottombar-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, var(--SmartThemeBodyColor) 5%);
+    --sb-page-bg-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 86%, var(--SmartThemeBodyColor) 14%);
+    --sb-layer-drawer-source: var(--SmartThemeBlurTintColor);
+    --sb-layer-popover-source: var(--SmartThemeChatTintColor);
+    --sb-layer-dialog-source: var(--SmartThemeBlurTintColor);
+    --sb-layer-toast-source: color-mix(in srgb, var(--SmartThemeBodyColor) 90%, black 10%);
+    --sb-layer-toast-fg: #ffffff;
+    --sb-dialog-backdrop-alpha: 0.14;
+    --sb-shadow-dialog-highlight: 0 0 #0000;
+}
+
+/* Base message actions use low-opacity white glyphs with a black shadow for dark themes. */
+:root[data-sb-surface-tone='light'] #chat .mes .mes_button,
+:root[data-sb-surface-tone='light'] #chat .mes .extraMesButtons > div {
+    opacity: 0.8;
+    filter: none;
+}
+
+:root[data-sb-surface-tone='light'] #chat .mes .mes_button:hover,
+:root[data-sb-surface-tone='light'] #chat .mes .extraMesButtons > div:hover,
+:root[data-sb-surface-tone='light'] #chat .mes .mes_button:active,
+:root[data-sb-surface-tone='light'] #chat .mes .extraMesButtons > div:active,
+:root[data-sb-surface-tone='light'] #chat .mes .mes_button:focus-visible,
+:root[data-sb-surface-tone='light'] #chat .mes .extraMesButtons > div:focus-visible {
+    opacity: 1;
+}
+
 body {
     text-rendering: optimizeLegibility;
+    background-color: var(--sb-page-bg);
 }
 
 .mes_text .pura-choice,
 .mes_text .pura-direction {
     cursor: pointer;
     transition:
-        transform var(--sb-transition-fast),
         background-color var(--sb-transition-fast),
-        box-shadow var(--sb-transition-fast),
         border-color var(--sb-transition-fast);
 }
 
 .mes_text .pura-choice:hover,
 .mes_text .pura-direction:hover {
-    transform: translateY(-1px);
     background: color-mix(in srgb, var(--sb-button-hover) 54%, rgba(255, 255, 255, 0.06)) !important;
-    box-shadow: 0 10px 20px color-mix(in srgb, var(--SmartThemeShadowColor) 18%, transparent);
 }
 
 .mes_text .pura-choice:active,
@@ -464,10 +474,6 @@ body::before {
     }
 }
 
-:root[data-sb-theme='windows-aero'][data-sb-surface-tone='light'] body::before {
-    opacity: 0.46;
-}
-
 .popup,
 #sb-mobile-nav {
     position: relative;
@@ -481,41 +487,39 @@ body::before {
     scroll-padding-bottom: 8px;
 }
 
+/* Desktop: the chat column is the libadwaita view, an opaque card with overlay radii so its
+   square edge no longer sits behind the rounded bottom-bar stack and shell drawers.
+   Upstream style.css paints it with the translucent ChatTint and square corners. */
+@media screen and (min-width: 769px) {
+    #chat {
+        /* Same top gap and radii as open shell drawers, so a drawer covers the card exactly. */
+        margin-block-start: var(--sb-drawer-top-gap, 6px);
+        border-radius: var(--sb-radius-overlay);
+        background-color: var(--sb-layer-view);
+    }
+}
+
+@media screen and (max-width: 768px) {
+    #chat {
+        margin-block-start: 0;
+        border-radius: 0;
+    }
+}
+
+/* libadwaita header bar: one opaque layer with a 1px bottom shade; no glow, blur, or pseudo-element surface. */
 #top-bar {
     position: relative;
     isolation: isolate;
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 80%, transparent), transparent 110%),
-        var(--sb-topbar-surface-bg);
-    border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
-    box-shadow: 0 12px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
-    backdrop-filter: var(--SmartThemeBackdropFilter);
-    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
+    background: var(--sb-layer-headerbar);
+    border-bottom: var(--sb-headerbar-shade);
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
 }
 
-#top-bar::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 80%, transparent), transparent 110%),
-        var(--sb-topbar-surface-bg);
-    opacity: var(--sb-shell-surface-opacity);
-}
-
-/* Firefox and Chrome on macOS can mispaint the fixed header surface pseudo-element. */
-body:is(.firefox-macos, .chrome-macos) #top-bar {
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 80%, transparent), transparent 110%),
-        var(--sb-topbar-surface-bg) !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-}
-
-body:is(.firefox-macos, .chrome-macos) #top-bar::before {
-    display: none !important;
+/* Upstream toggle-dependent.css paints body.no-blur #top-bar with the translucent blur tint !important. */
+body.no-blur #top-bar {
+    background-color: var(--sb-layer-headerbar) !important;
 }
 
 /*
@@ -530,14 +534,6 @@ body:is(.firefox-macos, .chrome-macos, .safari-macos) #sb-chatbar-layer {
 
 body:is(.firefox-macos, .chrome-macos) #sb-chatbar-layer {
     will-change: auto !important;
-}
-
-/* Safari on macOS can show a sub-pixel border artifact with backdrop-filter. */
-body.safari-macos #top-bar {
-    border-bottom-color: transparent;
-    box-shadow:
-        0 1px 0 color-mix(in srgb, var(--sb-shell-border) 90%, transparent),
-        0 12px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
 }
 
 hr {
@@ -614,6 +610,17 @@ h3:not(.popup h3):not(#chat h3) {
     letter-spacing: 0;
 }
 
+.menu_button:not(.menu_button_icon),
+.right_menu_button:not(.menu_button_icon) {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    white-space: normal;
+    /* break-word, not anywhere: `anywhere` shrinks min-content, and upstream's
+       `width: min-content` then stacks the label one letter per line. */
+    overflow-wrap: break-word;
+    text-align: center;
+}
+
 .menu_button > :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img),
 .menu_button_icon > :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img),
 .right_menu_button > :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img),
@@ -653,8 +660,8 @@ h3:not(.popup h3):not(#chat h3) {
     flex: 0 0 auto;
 }
 
-.menu_button:not(.disabled):not([disabled]),
-.menu_button_icon:not(.disabled):not([disabled]) {
+.menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']),
+.menu_button_icon:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
     background: var(--sb-button-bg);
     border-radius: var(--sb-radius-button);
 }
@@ -714,6 +721,65 @@ h3:not(.popup h3):not(#chat h3) {
 
 .checkbox_label > input[type="checkbox"]:hover {
     transform: none;
+}
+
+/* libadwaita radio: outlined circle, solid accent fill with a contrast-aware dot when checked.
+   :where() keeps specificity low so segmented/overlay radios and extension styles still win. */
+:where(input[type='radio']:not(.sb-boolean-radio-option > input)) {
+    --sb-radio-size: clamp(0.92rem, calc(0.78rem + 0.38vw), calc(var(--mainFontSize) + 0.12rem));
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    display: inline-grid;
+    place-content: center;
+    flex: 0 0 auto;
+    inline-size: var(--sb-radio-size);
+    block-size: var(--sb-radio-size);
+    min-inline-size: var(--sb-radio-size);
+    min-block-size: var(--sb-radio-size);
+    margin: 0;
+    border: 2px solid color-mix(in srgb, var(--SmartThemeBodyColor) 28%, transparent);
+    border-radius: 999px;
+    background: transparent;
+    cursor: pointer;
+    box-sizing: border-box;
+    transition: border-color var(--sb-transition-fast), background-color var(--sb-transition-fast);
+}
+
+:where(input[type='radio']:not(.sb-boolean-radio-option > input))::before {
+    content: '';
+    inline-size: calc(var(--sb-radio-size) * 0.4);
+    block-size: calc(var(--sb-radio-size) * 0.4);
+    border-radius: 999px;
+    background: var(--sb-on-solid-accent, var(--SmartThemeCheckboxTickColor));
+    transform: scale(0);
+    transition: transform var(--sb-transition-fast);
+}
+
+:where(input[type='radio']:not(.sb-boolean-radio-option > input)):checked {
+    border-color: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
+    background: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
+}
+
+:where(input[type='radio']:not(.sb-boolean-radio-option > input)):checked::before {
+    transform: scale(1);
+}
+
+@media (hover: hover) {
+    :where(input[type='radio']:not(.sb-boolean-radio-option > input)):not(:checked):not(:disabled):hover {
+        border-color: color-mix(in srgb, var(--SmartThemeBodyColor) 44%, transparent);
+    }
+}
+
+:where(input[type='radio']:not(.sb-boolean-radio-option > input)):focus-visible {
+    outline: 2px solid var(--sb-focus-ring);
+    outline-offset: 2px;
+    box-shadow: none;
+}
+
+:where(input[type='radio']:not(.sb-boolean-radio-option > input)):disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
 }
 
 .sb-boolean-radio-group {
@@ -830,18 +896,44 @@ h3:not(.popup h3):not(#chat h3) {
 }
 
 @media screen and (max-width: 768px) {
+    :is(.menu_button, .menu_button_icon, .right_menu_button, .drawer-icon.closedIcon) {
+        min-inline-size: var(--sb-mobile-touch-target);
+    }
+
+    :is(.text_pole, select:where(:not([multiple]):not([size]):not(.select2-hidden-accessible))) {
+        min-height: var(--sb-mobile-touch-target);
+        min-inline-size: var(--sb-mobile-touch-target);
+        max-inline-size: 100%;
+    }
+
+    select:where(:not([multiple]):not([size]):not(.select2-hidden-accessible)) {
+        height: var(--sb-mobile-touch-target);
+    }
+
     .checkbox_label {
+        min-height: var(--sb-mobile-touch-target);
+        min-inline-size: var(--sb-mobile-touch-target);
         gap: 8px;
+    }
+
+    .sb-boolean-radio-option,
+    .sb-boolean-radio-option > span,
+    .floating_prompt_radio_group label {
+        min-height: var(--sb-mobile-touch-target);
+        min-inline-size: var(--sb-mobile-touch-target);
     }
 }
 
-.menu_button:not(.disabled):not([disabled]):hover,
-.menu_button_icon:not(.disabled):not([disabled]):hover,
-.right_menu_button:hover,
-.drawer-icon.closedIcon:hover {
-    transform: none;
-    background: var(--sb-button-hover);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 18%, transparent);
+/* libadwaita button hover: a deeper neutral fill only, no accent ring or lift. */
+@media (hover: hover) {
+    .menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
+    .menu_button_icon:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
+    .right_menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
+    .drawer-icon.closedIcon:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
+        transform: none;
+        background: var(--sb-button-hover);
+        box-shadow: none;
+    }
 }
 
 :root[data-sb-compact-mode='true'] .sb-shell-panel-scroller .menu_button,
@@ -855,22 +947,20 @@ h3:not(.popup h3):not(#chat h3) {
     line-height: 1.2;
 }
 
-.menu_button:not(.disabled):not([disabled]):active,
-.menu_button_icon:not(.disabled):not([disabled]):active,
-.right_menu_button:active {
+.menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active,
+.menu_button_icon:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active,
+.right_menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active {
     transform: scale(0.97);
     transition: transform 100ms var(--sb-ease-out);
 }
 
-:is(.menu_button, .menu_button_icon, .right_menu_button):is(.is-active, .active, .selected, .is-selected, .is-current, [aria-pressed='true'], [aria-selected='true'], [aria-current]):not(.disabled):not(.is-disabled):not([disabled]) {
+:is(.menu_button, .menu_button_icon, .right_menu_button):is(.is-active, .active, .selected, .is-selected, .is-current, [aria-pressed='true'], [aria-selected='true'], [aria-current]):not([aria-current='false']):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
     position: relative;
     background: var(--sb-state-active-bg);
     border-color: var(--sb-state-active-border);
     color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 82%, var(--SmartThemeBodyColor));
-    box-shadow:
-        inset 0 0 0 1px var(--sb-state-active-shadow),
-        inset 0 -2px 0 color-mix(in srgb, var(--color-primary, var(--sb-accent)) 44%, transparent),
-        0 8px 16px color-mix(in srgb, var(--SmartThemeShadowColor) 12%, transparent);
+    /* Flat selected state: the ::after dot below is the non-colour cue, so no bottom stripe or drop shadow. */
+    box-shadow: inset 0 0 0 1px var(--sb-state-active-shadow);
 }
 
 .menu_button_icon:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-pressed='true'], [aria-selected='true'], [aria-current]):not(.disabled):not(.is-disabled):not([disabled])::after,
@@ -892,11 +982,17 @@ h3:not(.popup h3):not(#chat h3) {
 :is(.menu_button, .menu_button_icon, .right_menu_button):is(.is-busy, [aria-busy='true']) {
     position: relative;
     opacity: 0.82;
+    cursor: progress;
     background: var(--sb-state-busy-bg);
     border-color: var(--sb-state-busy-border);
-    box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--sb-color-warning) 28%, transparent),
-        inset 0 -2px 0 color-mix(in srgb, var(--sb-color-warning) 42%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-color-warning) 28%, transparent);
+}
+
+:is(.menu_button, .menu_button_icon, .right_menu_button):is(.disabled, .is-disabled, [disabled], [aria-disabled='true']):not(.is-busy):not([aria-busy='true']) {
+    opacity: 0.58;
+    cursor: not-allowed;
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 :is(.menu_button, .menu_button_icon, .right_menu_button):is(.is-busy, [aria-busy='true'])::after {
@@ -911,13 +1007,10 @@ h3:not(.popup h3):not(#chat h3) {
     pointer-events: none;
 }
 
+/* One inset ring, same geometry as the global :focus-visible rule. */
 :is(.menu_button, .menu_button_icon, .right_menu_button):focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--sb-focus-ring) 88%, transparent);
-    outline-offset: 2px;
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 52%, var(--sb-shell-border));
-    box-shadow:
-        inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 60%, transparent),
-        0 0 0 1px color-mix(in srgb, var(--SmartThemeShadowColor) 20%, transparent);
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 :is(.menu_button, .menu_button_icon, .right_menu_button):is(.disabled, .is-disabled, [disabled]):not(.is-busy):not([aria-busy='true'])::after {
@@ -988,8 +1081,9 @@ h3:not(.popup h3):not(#chat h3) {
     line-height: 1;
 }
 
-.menu_button.menu_button_primary:not(.disabled):not([disabled]),
-.menu_button.popup-button-ok:not(.disabled):not([disabled]) {
+/* Mirrors the base .menu_button enabled-state :not() chain so the accent fill keeps winning on specificity. */
+.menu_button.menu_button_primary:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']),
+.menu_button.popup-button-ok:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 88%, white 12%);
     color: var(--sb-on-accent);
     border-color: transparent;
@@ -997,15 +1091,13 @@ h3:not(.popup h3):not(#chat h3) {
     text-shadow: none;
 }
 
-.menu_button.menu_button_primary:not(.disabled):not([disabled]):hover,
-.menu_button.popup-button-ok:not(.disabled):not([disabled]):hover,
-.menu_button.menu_button_primary:not(.disabled):not([disabled]).active,
-.menu_button.popup-button-ok:not(.disabled):not([disabled]).active {
+.menu_button.menu_button_primary:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
+.menu_button.popup-button-ok:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
+.menu_button.menu_button_primary:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']).active,
+.menu_button.popup-button-ok:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']).active {
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 82%, white 18%);
     border-color: transparent;
-    box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent),
-        inset 0 -2px 0 color-mix(in srgb, black 12%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent);
 }
 
 .inline-drawer-header > b,
@@ -1066,19 +1158,19 @@ input.text_pole {
 .text_pole::placeholder,
 textarea.text_pole::placeholder,
 input.text_pole::placeholder {
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
+    color: var(--sb-input-placeholder);
     opacity: 1;
 }
 
+/* Neutral entry focus: the border and fill deepen in body-colour; no accent tint or ring.
+   Keyboard focus keeps a visible 2px neutral inset ring. */
 .text_pole:focus,
 textarea.text_pole:focus,
 select.text_pole:focus,
 input.text_pole:focus {
-    border-color: color-mix(in srgb, var(--sb-focus-ring) 85%, transparent);
-    background-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 7%, var(--sb-input-bg));
-    box-shadow:
-        inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 35%, transparent),
-        0 0 0 1px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
+    border-color: var(--sb-entry-focus-border);
+    background-color: var(--sb-input-bg);
+    box-shadow: var(--sb-entry-focus-ring);
     outline: none;
 }
 
@@ -1117,19 +1209,27 @@ select:where(:not([multiple]):not([size]):not(.select2-hidden-accessible)) {
 }
 
 select:where(:not([multiple]):not([size]):not(.select2-hidden-accessible)):focus {
-    border-color: color-mix(in srgb, var(--sb-focus-ring) 85%, transparent);
-    background-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 7%, var(--sb-input-bg));
-    box-shadow:
-        inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 35%, transparent),
-        0 0 0 1px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
+    border-color: var(--sb-entry-focus-border);
+    background-color: var(--sb-input-bg);
+    box-shadow: var(--sb-entry-focus-ring);
     outline: none;
 }
 
 :is(textarea, input:not([type]), input:is([type='text'], [type='search'], [type='number'], [type='password'], [type='email'], [type='url'], [type='tel']), select):focus:not([disabled]):not([readonly]) {
-    border-color: color-mix(in srgb, var(--sb-focus-ring) 88%, transparent);
+    border-color: var(--sb-entry-focus-border);
+    box-shadow: var(--sb-entry-focus-ring);
+}
+
+:is(.text_pole, select)[aria-invalid='true'] {
+    border-color: color-mix(in srgb, var(--sb-color-danger) 72%, var(--sb-input-border));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-color-danger) 28%, transparent);
+}
+
+:is(.text_pole, select)[aria-invalid='true']:focus {
+    border-color: var(--sb-color-danger);
     box-shadow:
-        inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 34%, transparent),
-        0 0 0 1px color-mix(in srgb, var(--SmartThemeShadowColor) 14%, transparent);
+        inset 0 0 0 2px color-mix(in srgb, var(--sb-color-danger) 36%, transparent),
+        0 0 0 1px color-mix(in srgb, var(--sb-color-danger) 28%, transparent);
 }
 
 .select2-container--default.select2-container--focus .select2-selection--single,
@@ -1162,7 +1262,8 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     padding: 6px;
     border-radius: 16px;
     border-color: color-mix(in srgb, var(--sb-shell-border) 92%, transparent);
-    box-shadow: 0 -8px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 12%, transparent);
+    /* libadwaita bottom toolbar: the 1px border separates it; no blurred drop shadow. */
+    box-shadow: none;
     background: var(--sb-composer-surface-bg);
     overflow: hidden;
 }
@@ -1174,16 +1275,13 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     font-size: calc(var(--bottomFormIconSize) * 0.76);
     min-width: 0;
     overflow: visible;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 88%, var(--SmartThemeBodyColor) 12%);
-    border-radius: 999px;
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--SmartThemeBodyColor) 8%, var(--sb-composer-surface-base, transparent)),
-        color-mix(in srgb, var(--SmartThemeBodyColor) 3%, var(--sb-composer-surface-base, transparent))
-    );
-    box-shadow:
-        inset 0 1px 0 color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent),
-        0 6px 14px color-mix(in srgb, var(--SmartThemeShadowColor) 14%, transparent);
+    /* libadwaita toolbar row, as in the Conversation composer: flat buttons either side of
+       one filled entry. A hairline above separates it from the quick-action row. */
+    border: 0;
+    border-block-start: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
 }
 
 #leftSendForm,
@@ -1224,9 +1322,10 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     margin: 0;
     padding: 0;
     border-radius: var(--sb-radius-button);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
-    box-shadow: 0 10px 18px color-mix(in srgb, var(--SmartThemeShadowColor) 10%, transparent);
+    /* libadwaita flat toolbar buttons: transparent at rest, neutral fill on hover/press. */
+    background: transparent;
+    border: 1px solid transparent;
+    box-shadow: none;
     font-size: var(--sb-composer-action-icon-size);
 }
 
@@ -1235,11 +1334,20 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     align-self: center;
 }
 
-#rightSendForm > div:hover,
-#leftSendForm > div:hover,
-#send_form .mes_stop:hover,
-#options_button:hover {
-    background: color-mix(in srgb, var(--sb-button-hover) 76%, transparent);
+@media (hover: hover) {
+    #rightSendForm > div:hover,
+    #leftSendForm > div:hover,
+    #send_form .mes_stop:hover,
+    #options_button:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+#rightSendForm > div:active,
+#leftSendForm > div:active,
+#send_form .mes_stop:active,
+#options_button:active {
+    background: var(--sb-flat-active-bg);
 }
 
 #options_button {
@@ -1255,24 +1363,58 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     field-sizing: content;
     max-height: min(50vh, 28rem);
     overflow-y: auto;
-    padding: 6px 8px;
+    padding: 6px 12px;
     line-height: 1.28;
-    border-radius: 10px;
+    /* libadwaita entry, shared with the Conversation composer: body-colour tint, no rest border. */
+    border: 1px solid transparent;
+    border-radius: var(--sb-radius-card);
     background: var(--sb-composer-input-bg);
     color: var(--SmartThemeBodyColor);
     caret-color: var(--color-primary, var(--sb-accent));
     font-size: calc(var(--mainFontSize) * 0.9);
     transition: border-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast), background-color var(--sb-transition-fast);
 
-    /* style.css paints a permanent 3px border-top as the STscript progress bar and hides
-       it behind a 5px-deep rectangular clip-path. The 10px radius above bows that border
-       down the left/right edges past the clip, leaking blue arcs at the corners. Keep the
-       track transparent at rest; the rule below restores it while commands run. */
+    /* style.css paints a 3px border-top as the STscript progress bar and hides its top
+       5px behind a rectangular clip-path. That clip squares off the rounded top corners,
+       which left a flat "back layer" edge. Clip to the rounded box instead and paint
+       progress as an inset bar while commands run (rule below). */
     --progColor: transparent;
+    border-top-width: 1px;
+    border-top-color: transparent;
+    clip-path: none;
+}
+
+/* STscript progress: a 3px bar inside the entry's rounded box, filled to --prog.
+   Replaces the upstream clipped border-top, which needed a square clip-path. */
+#form_sheld:is(.isExecutingCommandsFromChatInput, .script_success, .script_error, .script_aborted) #send_textarea {
+    background:
+        linear-gradient(var(--progColor), var(--progColor)) top left / var(--prog, 0%) 3px no-repeat,
+        var(--sb-composer-input-bg);
+    transition: background-size var(--sb-transition-fast), border-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
 #form_sheld.isExecutingCommandsFromChatInput #send_textarea {
     --progColor: rgb(146, 190, 252);
+}
+
+#form_sheld.script_success #send_textarea {
+    --progColor: var(--progSuccessColor);
+    --prog: 100%;
+}
+
+#form_sheld.script_error #send_textarea {
+    --progColor: var(--progErrorColor);
+    --prog: 100%;
+}
+
+#form_sheld.script_aborted #send_textarea {
+    --progColor: var(--progAbortedColor);
+    --prog: 100%;
+}
+
+/* Upstream's status rules recolour border-top; keep the entry's transparent border instead. */
+#form_sheld:is(.script_success, .script_error, .script_aborted) #send_textarea {
+    border-top-color: transparent;
 }
 
 :root[data-sb-compact-mode='true'] #send_form {
@@ -1302,41 +1444,22 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 54%, transparent);
 }
 
+/* Focus marks only the entry; the toolbar frame stays put (libadwaita toolbars do not react). */
 #send_form:focus-within {
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 56%, var(--sb-shell-border));
-    box-shadow:
-        0 -8px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 12%, transparent),
-        0 0 0 2px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, transparent);
+    box-shadow: none;
     outline: none;
 }
 
-#send_form:focus-within #nonQRFormItems {
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 42%, var(--sb-shell-border));
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--color-primary, var(--sb-accent)) 8%, transparent), transparent 82%),
-        color-mix(in srgb, var(--SmartThemeBodyColor) 5%, var(--sb-composer-surface-base, transparent));
-}
-
 #send_form:focus-within #send_textarea {
-    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 8%, var(--sb-composer-input-bg));
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-focus-ring) 32%, transparent);
+    border-color: var(--sb-composer-focus-border);
+    box-shadow: var(--sb-composer-focus-ring);
 }
 
 #send_form.sb-generating-controls {
     --sb-generating-glow-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 90%, var(--color-primary, var(--sb-accent)) 10%);
     border-color: color-mix(in srgb, var(--sb-generating-glow-color) 86%, var(--sb-shell-border));
-    box-shadow:
-        0 -10px 40px color-mix(in srgb, var(--SmartThemeShadowColor) 14%, transparent),
-        0 -8px 34px color-mix(in srgb, var(--sb-generating-glow-color) 26%, transparent),
-        0 0 0 1px color-mix(in srgb, var(--sb-generating-glow-color) 68%, transparent),
-        inset 0 0 0 1px color-mix(in srgb, var(--sb-generating-glow-color) 54%, transparent);
-}
-
-#send_form.sb-generating-controls #nonQRFormItems {
-    border-color: color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 76%, var(--sb-shell-border));
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 22%, transparent), transparent 82%),
-        color-mix(in srgb, var(--SmartThemeBodyColor) 5%, var(--sb-composer-surface-base, transparent));
+    /* Busy state reads from the accent border and top progress bar; no outer glow. */
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-generating-glow-color) 54%, transparent);
 }
 
 #send_form.sb-generating-controls::after {
@@ -1349,7 +1472,6 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     block-size: 3px;
     border-radius: 999px;
     background: color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 96%, var(--SmartThemeBodyColor));
-    box-shadow: 0 0 18px color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 42%, transparent);
     transform: translateX(-50%);
     pointer-events: none;
 }
@@ -1380,12 +1502,12 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     min-height: var(--sb-composer-action-size) !important;
     max-height: var(--sb-composer-action-size) !important;
     flex: 0 0 var(--sb-composer-send-width) !important;
-    border-radius: var(--sb-radius-button) !important;
+    /* libadwaita .circular.suggested-action, shared with the Conversation send button. */
+    border-radius: 50% !important;
     background: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) !important;
     border: 1px solid transparent !important;
-    box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 30%, transparent),
-        0 10px 18px color-mix(in srgb, var(--SmartThemeShadowColor) 10%, transparent);
+    /* libadwaita suggested-action: solid accent fill, no drop shadow. */
+    box-shadow: none;
     color: var(--sb-on-solid-accent, var(--sb-on-accent, var(--color-background, var(--SmartThemeBlurTintColor)))) !important;
     font-size: var(--sb-composer-action-icon-size) !important;
     opacity: 1;
@@ -1400,12 +1522,12 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     min-height: var(--sb-composer-action-size) !important;
     max-height: var(--sb-composer-action-size) !important;
     flex: 0 0 var(--sb-composer-send-width) !important;
-    border-radius: var(--sb-radius-button) !important;
+    /* libadwaita .circular.suggested-action, shared with the Conversation send button. */
+    border-radius: 50% !important;
     background: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) !important;
     border: 1px solid transparent !important;
-    box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 30%, transparent),
-        0 10px 18px color-mix(in srgb, var(--SmartThemeShadowColor) 10%, transparent);
+    /* libadwaita suggested-action: solid accent fill, no drop shadow. */
+    box-shadow: none;
     color: var(--sb-on-solid-accent, var(--sb-on-accent, var(--color-background, var(--SmartThemeBlurTintColor)))) !important;
     font-size: var(--sb-composer-action-icon-size) !important;
     opacity: 1;
@@ -1535,6 +1657,17 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     box-sizing: border-box;
 }
 
+/* libadwaita avatar button, matching #sb-persona-bubble: no scale, a neutral ring marks hover. */
+#chat .mes .mesAvatarWrapper .avatar {
+    transition: box-shadow var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    #chat .mes .mesAvatarWrapper .avatar:hover {
+        box-shadow: 0 0 0 2px var(--sb-flat-active-bg);
+    }
+}
+
 #chat .mes:not(.smallSysMes) .mesAvatarWrapper .avatar > img {
     display: block;
     inline-size: 100%;
@@ -1576,35 +1709,35 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
 #chat .mes .extraMesButtons {
     align-items: center;
     gap: 3px;
-    min-block-size: var(--sb-message-icon-size);
+    min-block-size: var(--sb-message-hit-size);
     padding: 0;
 }
 
 #chat .mes .mes_button,
 #chat .mes .extraMesButtons > div {
-    inline-size: var(--sb-message-icon-size);
-    block-size: var(--sb-message-icon-size);
-    min-inline-size: var(--sb-message-icon-size);
-    min-block-size: var(--sb-message-icon-size);
-    max-inline-size: var(--sb-message-icon-size);
-    max-block-size: var(--sb-message-icon-size);
+    inline-size: var(--sb-message-hit-size);
+    block-size: var(--sb-message-hit-size);
+    min-inline-size: var(--sb-message-hit-size);
+    min-block-size: var(--sb-message-hit-size);
+    max-inline-size: var(--sb-message-hit-size);
+    max-block-size: var(--sb-message-hit-size);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 var(--sb-message-icon-size);
+    flex: 0 0 var(--sb-message-hit-size);
     padding: 0;
-    border-radius: 7px;
+    border-radius: var(--sb-icon-control-radius);
     box-sizing: border-box;
-    line-height: var(--sb-message-icon-size);
+    line-height: var(--sb-message-hit-size);
     text-align: center;
-    font-size: calc(var(--sb-message-icon-size) * 0.52);
+    font-size: var(--sb-message-glyph-size);
 }
 
 #chat .mes .mes_button:is(.fa, .fa-solid, .fa-regular, .fa-brands),
 #chat .mes .extraMesButtons > div:is(.fa, .fa-solid, .fa-regular, .fa-brands),
 #chat .mes .mes_button > :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg),
 #chat .mes .extraMesButtons > div > :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg) {
-    font-size: calc(var(--sb-message-icon-size) * 0.52);
+    font-size: var(--sb-message-glyph-size);
     line-height: 1;
 }
 
@@ -1617,34 +1750,42 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     color: var(--sb-color-danger);
 }
 
-#chat .mes .mes_delete:hover {
+/* Touch browsers keep :hover after a tap, so the fill is limited to real pointers plus :active. */
+@media (hover: hover) {
+    #chat .mes .mes_delete:hover {
+        color: color-mix(in srgb, var(--sb-color-danger) 80%, white);
+        background: color-mix(in srgb, var(--sb-color-danger) 12%, transparent);
+    }
+}
+
+#chat .mes .mes_delete:active {
     color: color-mix(in srgb, var(--sb-color-danger) 80%, white);
-    background: color-mix(in srgb, var(--sb-color-danger) 12%, transparent);
+    background: color-mix(in srgb, var(--sb-color-danger) 16%, transparent);
 }
 
 #chat .mes .mes_view_agent_changes {
-    width: var(--sb-message-icon-size) !important;
-    inline-size: var(--sb-message-icon-size) !important;
-    height: var(--sb-message-icon-size) !important;
-    block-size: var(--sb-message-icon-size) !important;
-    min-width: var(--sb-message-icon-size) !important;
-    min-inline-size: var(--sb-message-icon-size) !important;
-    min-height: var(--sb-message-icon-size) !important;
-    min-block-size: var(--sb-message-icon-size) !important;
-    max-width: var(--sb-message-icon-size) !important;
-    max-inline-size: var(--sb-message-icon-size) !important;
-    max-height: var(--sb-message-icon-size) !important;
-    max-block-size: var(--sb-message-icon-size) !important;
+    width: var(--sb-message-hit-size) !important;
+    inline-size: var(--sb-message-hit-size) !important;
+    height: var(--sb-message-hit-size) !important;
+    block-size: var(--sb-message-hit-size) !important;
+    min-width: var(--sb-message-hit-size) !important;
+    min-inline-size: var(--sb-message-hit-size) !important;
+    min-height: var(--sb-message-hit-size) !important;
+    min-block-size: var(--sb-message-hit-size) !important;
+    max-width: var(--sb-message-hit-size) !important;
+    max-inline-size: var(--sb-message-hit-size) !important;
+    max-height: var(--sb-message-hit-size) !important;
+    max-block-size: var(--sb-message-hit-size) !important;
     display: inline-flex !important;
     align-items: center;
     justify-content: center;
-    flex: 0 0 var(--sb-message-icon-size) !important;
+    flex: 0 0 var(--sb-message-hit-size) !important;
     padding: 0 !important;
     border-radius: var(--sb-icon-control-radius);
     aspect-ratio: 1 / 1;
     line-height: 1 !important;
     overflow: hidden;
-    font-size: calc(var(--sb-message-icon-size) * 0.52) !important;
+    font-size: var(--sb-message-glyph-size) !important;
 }
 
 #chat .mes .mes_view_agent_changes[style*="display: none"],
@@ -1706,12 +1847,15 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
 #chat .mes_reasoning_actions .edit_button {
     --sb-edit-action-color: var(--color-primary, var(--sb-accent));
     position: relative;
-    opacity: 0.92;
-    color: color-mix(in srgb, var(--sb-edit-action-color) 80%, var(--SmartThemeBodyColor));
-    border: 1px solid color-mix(in srgb, var(--sb-edit-action-color) 36%, transparent);
-    background: color-mix(in srgb, var(--sb-edit-action-color) 12%, var(--sb-button-bg));
-    box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--sb-edit-action-color) 28%, transparent);
+    /* libadwaita flat buttons: transparent at rest, colored text, neutral fill on hover/press. */
+    opacity: 1;
+    color: var(--sb-edit-action-color);
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    box-shadow: none;
     filter: none;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
 }
 
 #chat :is(.mes_edit_done, .mes_reasoning_edit_done).menu_button {
@@ -1739,27 +1883,79 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     --sb-edit-action-color: color-mix(in srgb, var(--SmartThemeBodyColor) 70%, var(--color-primary, var(--sb-accent)));
 }
 
-#chat .mes_edit_buttons .menu_button:not(.disabled):not([disabled]):hover,
-#chat .mes_reasoning_actions .edit_button:not(.disabled):not([disabled]):hover {
+@media (hover: hover) {
+    #chat .mes_edit_buttons .menu_button:not(.disabled):not([disabled]):hover,
+    #chat .mes_reasoning_actions .edit_button:not(.disabled):not([disabled]):hover {
+        opacity: 1;
+        background: color-mix(in srgb, var(--sb-edit-action-color) 12%, transparent);
+        border-color: transparent;
+        box-shadow: none;
+    }
+}
+
+#chat .mes_edit_buttons .menu_button:not(.disabled):not([disabled]):active,
+#chat .mes_reasoning_actions .edit_button:not(.disabled):not([disabled]):active {
     opacity: 1;
-    background: color-mix(in srgb, var(--sb-edit-action-color) 18%, var(--sb-button-bg));
-    border-color: color-mix(in srgb, var(--sb-edit-action-color) 48%, transparent);
-    box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--sb-edit-action-color) 24%, transparent),
-        inset 0 -2px 0 color-mix(in srgb, var(--sb-edit-action-color) 36%, transparent);
+    background: color-mix(in srgb, var(--sb-edit-action-color) 20%, transparent);
+    border-color: transparent;
+    box-shadow: none;
+}
+
+#chat .mes_edit_buttons .menu_button:focus-visible,
+#chat .mes_reasoning_actions .edit_button:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 #chat .mes_edit_buttons .menu_button:is(.disabled, .is-disabled, [disabled]),
 #chat .mes_reasoning_actions .edit_button:is(.disabled, .is-disabled, [disabled]) {
     opacity: 0.42;
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 52%, transparent);
-    border-color: color-mix(in srgb, var(--sb-shell-border) 62%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    border-color: transparent;
+    background: transparent;
     box-shadow: none;
 }
 
 #chat .mes_edit_buttons :is(.mes_edit_up, .mes_edit_down).menu_button:is(.disabled, .is-disabled, [disabled]) {
     display: none;
+}
+
+/* Guided Generations and input-history composer buttons: libadwaita flat toolbar buttons, circular. */
+#send_form :is(.gg-action-button, .stih--button).menu_button {
+    border-color: transparent;
+    border-radius: 999px;
+    background: transparent;
+    box-shadow: none;
+    transform: none;
+    transition: background-color var(--sb-transition-fast), opacity var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    #send_form :is(.gg-action-button, .stih--button).menu_button:not(:disabled):hover {
+        background: var(--sb-flat-hover-bg);
+        box-shadow: none;
+    }
+}
+
+#send_form :is(.gg-action-button, .stih--button).menu_button:not(:disabled):active {
+    background: var(--sb-flat-active-bg);
+    transform: none;
+}
+
+#send_form :is(.gg-action-button, .stih--button).menu_button:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+/* GG flush button keeps its active state ring. */
+#send_form .gg-action-button.menu_button.gg-flush-guides-active {
+    box-shadow: inset 0 0 0 1px var(--SmartThemeQuoteColor);
+}
+
+#send_form .gg-action-button.menu_button.gg-flush-guides-active:focus-visible {
+    box-shadow:
+        inset 0 0 0 1px var(--SmartThemeQuoteColor),
+        var(--sb-focus-ring-inset);
 }
 
 #chat .mes .swipeRightBlock {
@@ -1773,6 +1969,15 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     border-radius: 8px;
     line-height: var(--sb-message-icon-size);
     text-align: center;
+}
+
+/* libadwaita flat-button hover. Opacity keeps upstream's fade transition; hidden arrows stay
+   hidden because the upstream hide rule forces its opacity. */
+@media (hover: hover) {
+    #chat .mes :is(.swipe_left, .swipe_right):hover {
+        opacity: 1;
+        background-color: var(--sb-flat-hover-bg);
+    }
 }
 
 #chat .mes .swipes-counter {
@@ -1801,6 +2006,110 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     }
 }
 
+/* libadwaita swipe picker: borderless rows, flat hover, neutral selection like the shell tabs. */
+.swipe_picker_block {
+    gap: 6px;
+    margin-top: 2px;
+    padding: 10px 12px;
+    border-color: transparent;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast), transform var(--sb-transition-fast);
+}
+
+/* Cancels upstream's sticky white hover on touch; hover-capable devices get the flat fill below. */
+.swipe_picker_block:hover {
+    background: transparent;
+}
+
+.swipe_picker_block[highlight]:hover {
+    background: var(--sb-flat-selected-bg);
+}
+
+@media (hover: hover) {
+    .swipe_picker_block:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+
+    .swipe_picker_block[highlight]:hover {
+        background: var(--sb-flat-selected-hover-bg);
+    }
+}
+
+.swipe_picker_block[highlight] {
+    background: var(--sb-flat-selected-bg);
+}
+
+.swipe_picker_block .select_chat_block_mes {
+    font-size: calc(var(--mainFontSize) * 0.86);
+    line-height: var(--sb-line-body);
+    color: var(--sb-muted-fg);
+}
+
+/* Swipe picker close: a libadwaita circular flat button with a plain cross. swipe-picker.js sets
+   inline display:block, width/height:auto and padding:0, so the glyph is centred with text-align
+   and a line-height equal to the min-size box instead of flex. */
+.swipe_picker_popup .popup-button-close.right_menu_button.fa-solid {
+    flex: 0 0 auto;
+    min-inline-size: 34px;
+    max-inline-size: 34px;
+    min-block-size: 34px;
+    max-block-size: 34px;
+    border-radius: 999px;
+    line-height: 34px;
+    text-align: center;
+}
+
+.swipe_picker_popup .popup-button-close::before {
+    content: '\f00d';
+}
+
+/* The Swipe ID entry matches the shell entries: tinted fill, no rest border, accent focus. */
+.swipe_picker_popup .popup-controls input {
+    border-color: transparent;
+    background-color: var(--sb-composer-input-bg);
+}
+
+.swipe_picker_popup .popup-controls input.text_pole:is(:focus, :focus-visible) {
+    border-color: var(--sb-composer-focus-border);
+    box-shadow: var(--sb-composer-focus-ring);
+}
+
+/* libadwaita circular icon buttons for the row actions. */
+.swipe_picker_block :is(.swipe_picker_expand_label, .swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 32px;
+    block-size: 32px;
+    padding: 0;
+    border-radius: 999px;
+    transition: opacity var(--sb-transition-fast), background-color var(--sb-transition-fast), transform var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    .swipe_picker_block :is(.swipe_picker_expand_label, .swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete:not(.disabled)):hover {
+        opacity: 1;
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+/* Swipe picker header: more breathing room. */
+.swipe_picker_header {
+    padding: 10px 12px;
+}
+
+.swipe_picker_block .select_chat_block_filename {
+    font-size: calc(var(--mainFontSize) * 0.88);
+    font-weight: 600;
+}
+
+.swipe_picker_block .chat_messages_date,
+.swipe_picker_block .chat_file_size,
+.swipe_picker_block .chat_messages_num {
+    font-size: calc(var(--mainFontSize) * 0.84);
+}
+
 body.bubblechat .mes {
     position: relative;
     isolation: isolate;
@@ -1814,20 +2123,37 @@ body.bubblechat .mes::before {
     z-index: -1;
     border-radius: inherit;
     pointer-events: none;
-    background: var(--SmartThemeBotMesBlurTintColor);
+    /* The theme message tints often equal the chat view colour, so a neutral lift keeps each card
+       visible; user turns take a stronger lift to tell the speakers apart. */
+    background:
+        linear-gradient(var(--sb-bubble-lift), var(--sb-bubble-lift)),
+        var(--SmartThemeBotMesBlurTintColor);
     opacity: var(--sb-page-card-opacity);
+    --sb-bubble-lift: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
 }
 
 body.bubblechat .mes[is_user='true']::before {
-    background: var(--SmartThemeUserMesBlurTintColor);
+    background:
+        linear-gradient(var(--sb-bubble-lift), var(--sb-bubble-lift)),
+        var(--SmartThemeUserMesBlurTintColor);
+    --sb-bubble-lift: color-mix(in srgb, var(--SmartThemeBodyColor) 11%, transparent);
 }
 
-.mes[is_user='true'] .mes_block {
+/* libadwaita card: toggle-dependent.css outlines Bubbles cards; they separate by tone instead. */
+body.bubblechat #chat .mes {
+    border: 0;
+    border-radius: var(--sb-radius-card);
+    box-shadow: none;
+}
+
+/* Documents has no avatars or cards, so user turns sit on a tonal card. Scoped to Documents:
+   unscoped, it boxed user turns a second time inside the Moonlit Echoes cards. */
+body.documentstyle .mes[is_user='true'] .mes_block {
     box-sizing: border-box;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
-    border-radius: var(--sb-radius-md);
+    border: 0;
+    border-radius: var(--sb-radius-card);
     padding: 10px 12px;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
+    background: var(--sb-raised-bg);
 }
 
 body.flatchat .mes[is_user='true'] .mes_block,
@@ -1835,6 +2161,28 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     border: 0;
     padding: 0 0 0 10px;
     background: transparent;
+}
+
+/* libadwaita expander row: neutral raised fill, button radius, no border. */
+#chat .mes_reasoning_header {
+    border: 0;
+    border-radius: var(--sb-radius-button, 10px);
+    background: var(--sb-raised-bg);
+    transition: background-color var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    #chat .mes_reasoning_details[data-has-content='true'] .mes_reasoning_header:hover {
+        background: var(--sb-raised-hover-bg);
+    }
+}
+
+#chat .mes_reasoning_summary:focus-visible {
+    outline: none;
+}
+
+#chat .mes_reasoning_summary:focus-visible .mes_reasoning_header {
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 /* A bare <pre> keeps the UA `white-space: pre`, so a message wrapped in one
@@ -1867,12 +2215,16 @@ body.bubblechat .mes[is_user='true'] .mes_block {
         --sb-control-min-height: var(--sb-mobile-touch-target);
         --sb-control-icon-physical-size: max(var(--sb-icon-control-size), var(--sb-control-min-height));
         --sb-message-icon-size: clamp(28px, calc(var(--bottomFormBlockSize, 44px) * 0.62), 34px);
+        --sb-message-hit-size: var(--sb-mobile-touch-target);
+        --sb-message-glyph-size: 18px;
     }
 
     :root[data-sb-compact-mode='true'] {
         --sb-control-min-height: var(--sb-mobile-touch-target);
         --sb-control-icon-physical-size: max(var(--sb-icon-control-size), var(--sb-control-min-height));
         --sb-message-icon-size: clamp(24px, calc(var(--bottomFormBlockSize, 36px) * 0.62), 30px);
+        --sb-message-hit-size: 40px;
+        --sb-message-glyph-size: 17px;
     }
 
     #form_sheld {
@@ -1881,60 +2233,51 @@ body.bubblechat .mes[is_user='true'] .mes_block {
 
     :root:not([data-sb-theme]),
     :root[data-sb-theme='clean-minimal'] {
-        --sb-mobile-default-surface-solid: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, black 8%);
+        --sb-mobile-default-surface-solid: var(--sb-layer-headerbar);
         --sb-mobile-default-card-solid: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, var(--SmartThemeBodyColor) 12%);
         --sb-mobile-default-input-solid: color-mix(in srgb, var(--SmartThemeChatTintColor) 94%, var(--SmartThemeBodyColor) 6%);
         --sb-chat-surface-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 98%, var(--SmartThemeChatTintColor) 2%);
-        --sb-shell-surface: var(--sb-mobile-default-surface-solid);
-        --sb-shell-main-bg: var(--sb-mobile-default-surface-solid);
-        --sb-shell-nav-bg: var(--sb-mobile-default-surface-solid);
-        --sb-shell-header-bg: var(--sb-mobile-default-surface-solid);
+        --sb-shell-surface: var(--sb-layer-drawer);
+        --sb-shell-main-bg: var(--sb-layer-canvas);
+        --sb-shell-nav-bg: var(--sb-layer-headerbar);
+        --sb-shell-header-bg: var(--sb-layer-headerbar);
         --sb-card-bg: var(--sb-mobile-default-card-solid);
-        --sb-topbar-surface-bg: var(--sb-mobile-default-surface-solid);
-        --sb-chatbar-surface-bg: var(--sb-mobile-default-surface-solid);
-        --sb-mobile-overlay-bg: var(--sb-mobile-default-surface-solid);
-        --sb-mobile-panel-bg: var(--sb-mobile-default-surface-solid);
+        --sb-topbar-surface-bg: var(--sb-layer-headerbar);
+        --sb-chatbar-surface-bg: var(--sb-layer-headerbar);
+        --sb-mobile-overlay-bg: var(--sb-layer-drawer);
+        --sb-mobile-panel-bg: var(--sb-layer-drawer);
         --sb-input-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, var(--SmartThemeBodyColor) 4%);
     }
 
     @supports (color: rgb(from black r g b / 1)) {
         :root:not([data-sb-theme]),
         :root[data-sb-theme='clean-minimal'] {
-            --sb-mobile-default-surface-solid: rgb(from var(--SmartThemeBlurTintColor) r g b / 0.98);
+            --sb-mobile-default-surface-solid: var(--sb-layer-headerbar);
             --sb-mobile-default-card-solid: rgb(from var(--SmartThemeBlurTintColor) r g b / 0.96);
             --sb-mobile-default-input-solid: rgb(from var(--SmartThemeChatTintColor) r g b / 0.96);
             --sb-chat-surface-source: rgb(from var(--SmartThemeBlurTintColor) r g b / 0.98);
-            --sb-chatbar-surface-bg: rgb(from var(--SmartThemeBlurTintColor) r g b / 0.98);
-            --sb-mobile-overlay-bg: rgb(from var(--SmartThemeBlurTintColor) r g b / 0.98);
-            --sb-mobile-panel-bg: rgb(from var(--SmartThemeBlurTintColor) r g b / 0.98);
+            --sb-chatbar-surface-bg: var(--sb-layer-headerbar);
+            --sb-mobile-overlay-bg: var(--sb-layer-drawer);
+            --sb-mobile-panel-bg: var(--sb-layer-drawer);
         }
-    }
-
-    :root:not([data-sb-theme]) #top-bar,
-    :root[data-sb-theme='clean-minimal'] #top-bar {
-        background: var(--sb-topbar-surface-bg) !important;
-        backdrop-filter: var(--SmartThemeBackdropFilterSaturated);
-        -webkit-backdrop-filter: var(--SmartThemeBackdropFilterSaturated);
     }
 
     :root:not([data-sb-theme]) #send_form,
     :root[data-sb-theme='clean-minimal'] #send_form {
-        background: var(--sb-composer-surface-bg) !important;
+        background: var(--sb-layer-bottombar) !important;
         border-color: color-mix(in srgb, var(--SmartThemeBorderColor) 86%, transparent) !important;
-        backdrop-filter: var(--SmartThemeBackdropFilterSaturated);
-        -webkit-backdrop-filter: var(--SmartThemeBackdropFilterSaturated);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
     }
 
     :root:not([data-sb-theme]) #send_textarea,
     :root[data-sb-theme='clean-minimal'] #send_textarea {
-        background: var(--sb-mobile-default-input-solid);
+        background: var(--sb-composer-input-bg);
     }
 
-    :root:not([data-sb-theme]) #top-bar::before,
     :root:not([data-sb-theme]) #send_form::before,
     :root:not([data-sb-theme]) #sb-chatbar::before,
     :root:not([data-sb-theme]) #sb-mobile-chat-tools-panel::before,
-    :root[data-sb-theme='clean-minimal'] #top-bar::before,
     :root[data-sb-theme='clean-minimal'] #send_form::before,
     :root[data-sb-theme='clean-minimal'] #sb-chatbar::before,
     :root[data-sb-theme='clean-minimal'] #sb-mobile-chat-tools-panel::before {
@@ -1953,7 +2296,7 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     #chat .mes .mes_button,
     #chat .mes .extraMesButtons > div,
     #chat .mes :is(.swipe_left, .swipe_right) {
-        border-radius: 8px;
+        border-radius: var(--sb-icon-control-radius);
     }
 
     #completion_prompt_manager_popup {
@@ -2135,20 +2478,20 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     }
 
     #chat .mes_edit_buttons .menu_button {
-        width: var(--sb-message-icon-size);
-        inline-size: var(--sb-message-icon-size);
-        height: var(--sb-message-icon-size);
-        block-size: var(--sb-message-icon-size);
-        min-width: var(--sb-message-icon-size);
-        min-inline-size: var(--sb-message-icon-size);
-        min-height: var(--sb-message-icon-size);
-        min-block-size: var(--sb-message-icon-size);
-        max-width: var(--sb-message-icon-size);
-        max-inline-size: var(--sb-message-icon-size);
-        max-height: var(--sb-message-icon-size);
-        max-block-size: var(--sb-message-icon-size);
-        flex: 0 0 var(--sb-message-icon-size);
-        font-size: calc(var(--sb-message-icon-size) * 0.52);
+        width: var(--sb-message-hit-size);
+        inline-size: var(--sb-message-hit-size);
+        height: var(--sb-message-hit-size);
+        block-size: var(--sb-message-hit-size);
+        min-width: var(--sb-message-hit-size);
+        min-inline-size: var(--sb-message-hit-size);
+        min-height: var(--sb-message-hit-size);
+        min-block-size: var(--sb-message-hit-size);
+        max-width: var(--sb-message-hit-size);
+        max-inline-size: var(--sb-message-hit-size);
+        max-height: var(--sb-message-hit-size);
+        max-block-size: var(--sb-message-hit-size);
+        flex: 0 0 var(--sb-message-hit-size);
+        font-size: var(--sb-message-glyph-size);
         line-height: 1;
     }
 }
@@ -2156,8 +2499,7 @@ body.bubblechat .mes[is_user='true'] .mes_block {
 .character_select:hover,
 .bogus_folder_select:hover,
 .group_select:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 16px 26px color-mix(in srgb, var(--SmartThemeShadowColor) 14%, transparent);
+    background-color: var(--sb-flat-hover-bg);
 }
 
 #rm_print_characters_block:not(.group_overlay_mode_select):not(.bulk_select) {
@@ -2305,25 +2647,96 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     border-radius: 999px;
 }
 
-input[type='range'] {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
+/* libadwaita-style scale: thin flat trough, plain thumb, no brightness filter or inset shadow. */
+input[type='range'],
+input[type='range'].neo-range-slider {
+    height: 4px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
     border-radius: 999px;
+    box-shadow: none;
+    filter: none;
+    transition: none;
+}
+
+/* style.css pins the .neo-range-slider track with important declarations, so these must match that weight. */
+input[type='range'].neo-range-slider {
+    height: 4px !important;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent) !important;
+    border-radius: 999px !important;
+    box-shadow: none !important;
+}
+
+input[type='range']:hover,
+input[type='range'].neo-range-slider:hover {
+    filter: none;
 }
 
 input[type='range']::-webkit-slider-thumb {
-    width: 16px;
-    height: 16px;
-    border: 2px solid color-mix(in srgb, var(--SmartThemeBlurTintColor) 85%, transparent);
+    width: 18px;
+    height: 18px;
+    border: 0;
+    border-radius: 999px;
     background: var(--color-primary, var(--sb-accent));
-    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 18%, transparent);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 30%, transparent);
+    transition: transform var(--sb-transition-fast);
 }
 
 input[type='range']::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
-    border: 2px solid color-mix(in srgb, var(--SmartThemeBlurTintColor) 85%, transparent);
+    width: 18px;
+    height: 18px;
+    border: 0;
+    border-radius: 999px;
     background: var(--color-primary, var(--sb-accent));
-    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 18%, transparent);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 30%, transparent);
+    transition: transform var(--sb-transition-fast);
+}
+
+/* Firefox paints the filled part of the trough; WebKit/Blink have no CSS-only equivalent without a value variable. */
+input[type='range']::-moz-range-progress {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-primary, var(--sb-accent));
+}
+
+@media (hover: hover) {
+    input[type='range']:not(:disabled):hover::-webkit-slider-thumb {
+        transform: scale(1.1);
+    }
+
+    input[type='range']:not(:disabled):hover::-moz-range-thumb {
+        transform: scale(1.1);
+    }
+}
+
+input[type='range']:focus-visible,
+input[type='range'].neo-range-slider:focus-visible {
+    outline: 2px solid var(--sb-focus-ring);
+    outline-offset: 4px;
+}
+
+input[type='range']:disabled,
+input[type='range'].neo-range-slider:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Vendor thumb pseudo-elements are split: one unknown selector would drop the whole rule. */
+@media (prefers-reduced-motion: reduce) {
+    input[type='range']::-webkit-slider-thumb {
+        transition: none;
+    }
+
+    input[type='range']::-moz-range-thumb {
+        transition: none;
+    }
+}
+
+body.reduced-motion input[type='range']::-webkit-slider-thumb {
+    transition: none;
+}
+
+body.reduced-motion input[type='range']::-moz-range-thumb {
+    transition: none;
 }
 
 .select2-container--default .select2-dropdown {
@@ -4793,7 +5206,7 @@ input[type='range']::-moz-range-thumb {
 }
 
 .sb-accent-preset[data-accent='blue'] {
-    --sb-accent-swatch: #3b82f6;
+    --sb-accent-swatch: #3584e4;
 }
 
 .sb-accent-preset[data-accent='cyan'] {
@@ -5669,11 +6082,30 @@ input[type='range']::-moz-range-thumb {
     line-height: 1.25;
 }
 
+body #toast-container {
+    --sb-toast-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, var(--SmartThemeBodyColor) 8%);
+    --toast-success-bg: var(--sb-toast-surface);
+    --toast-error-bg: var(--sb-toast-surface);
+    --toast-info-bg: var(--sb-toast-surface);
+    --toast-warning-bg: var(--sb-toast-surface);
+}
+
+@supports (color: rgb(from red r g b / 1)) {
+    body #toast-container {
+        --sb-toast-surface: rgb(from color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, var(--SmartThemeBodyColor) 8%) r g b / 1);
+    }
+}
+
 .toast {
     border-radius: var(--sb-radius-md) !important;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
     animation: sb-toast-in 240ms var(--sb-ease-out) both;
+}
+
+/* Toastr's type icons are white PNGs; difference-blending keeps them legible on light surfaces too. */
+body #toast-container > .toast,
+body #toast-container > .toast:hover {
+    background-blend-mode: difference;
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--color-shadow, var(--SmartThemeShadowColor)) 30%, transparent);
 }
 
 @keyframes sb-toast-in {
@@ -5713,7 +6145,59 @@ input[type='range']::-moz-range-thumb {
 
 :focus-visible {
     outline: none;
-    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 78%, transparent);
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+/* Text entries match :focus-visible on every focus, including mouse clicks, so they take the
+   neutral entry ring instead of the accent keyboard ring that buttons and controls keep. */
+:is(textarea, input:not([type]), input:is([type='text'], [type='search'], [type='number'], [type='password'], [type='email'], [type='url'], [type='tel']), select):focus-visible {
+    box-shadow: var(--sb-entry-focus-ring);
+}
+
+/* libadwaita shell entries: transparent border at rest, accent focus ring.
+   Scoped to shell roots (character drawer, left-nav settings) and settings subdrawers. */
+:is(.sb-shell-root, .sb-character-drawer-root, .sb-settings-subdrawer) :is(.text_pole, textarea.text_pole, select.text_pole, input.text_pole) {
+    border-color: transparent;
+    background-color: var(--sb-composer-input-bg);
+}
+
+:is(.sb-shell-root, .sb-character-drawer-root, .sb-settings-subdrawer) :is(.text_pole:focus, textarea.text_pole:focus, select.text_pole:focus, input.text_pole:focus) {
+    border-color: var(--sb-composer-focus-border);
+    background-color: var(--sb-composer-input-bg);
+    box-shadow: var(--sb-composer-focus-ring);
+}
+
+:is(.sb-shell-root, .sb-character-drawer-root, .sb-settings-subdrawer) select:where(:not([multiple]):not([size]):not(.select2-hidden-accessible)) {
+    border-color: transparent;
+    background-color: var(--sb-composer-input-bg);
+}
+
+:is(.sb-shell-root, .sb-character-drawer-root, .sb-settings-subdrawer) select:where(:not([multiple]):not([size]):not(.select2-hidden-accessible)):focus {
+    border-color: var(--sb-composer-focus-border);
+    background-color: var(--sb-composer-input-bg);
+    box-shadow: var(--sb-composer-focus-ring);
+}
+
+:is(.sb-shell-root, .sb-character-drawer-root, .sb-settings-subdrawer) :is(textarea, input:not([type]), input:is([type='text'], [type='search'], [type='number'], [type='password'], [type='email'], [type='url'], [type='tel']), select):focus:not([disabled]):not([readonly]) {
+    border-color: var(--sb-composer-focus-border);
+    box-shadow: var(--sb-composer-focus-ring);
+}
+
+:is(.sb-shell-root, .sb-character-drawer-root, .sb-settings-subdrawer) :is(textarea, input:not([type]), input:is([type='text'], [type='search'], [type='number'], [type='password'], [type='email'], [type='url'], [type='tel']), select):focus-visible {
+    box-shadow: var(--sb-composer-focus-ring);
+}
+
+/* libadwaita shell section headers and controls: remove boxed treatment, use typography. */
+:is(.sb-shell-root, .sb-character-drawer-root) #bg-header-fixed {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+}
+
+/* libadwaita character/group hover: unified token instead of upstream's high-contrast fill. */
+:is(.sb-shell-root, .sb-character-drawer-root) :is(.character_select:hover, .group_select:hover, .bogus_folder_select:hover, .avatar-container:hover) {
+    background-color: var(--sb-flat-hover-bg);
+    border-color: transparent;
 }
 
 :focus:not(:focus-visible) {
@@ -5724,19 +6208,18 @@ input[type='range']::-moz-range-thumb {
     *,
     *::before,
     *::after {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
+        animation: none !important;
+        transition: none !important;
         scroll-behavior: auto !important;
     }
+}
 
-    body::before {
-        animation: none !important;
-    }
-
-    #rm_print_characters_block > :is(.character_select, .group_select).sb-just-selected {
-        animation: none !important;
-    }
+body.reduced-motion *,
+body.reduced-motion *::before,
+body.reduced-motion *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
 }
 
 @media screen and (max-width: 768px) {
@@ -6291,4 +6774,622 @@ input[type='range']::-moz-range-thumb {
         padding-inline: 4px;
         text-align: center;
     }
+}
+
+/* ========================================================================
+   Overlay Overrides (libadwaita shell pass - Agent B)
+   ======================================================================== */
+
+/* Options Menu (#options) - popover surface */
+#options {
+    background: var(--sb-layer-popover) !important;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent) !important;
+    border-radius: var(--sb-radius-overlay) !important;
+    padding: 6px !important;
+    box-shadow: var(--sb-shadow-popover) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#options .options-content {
+    border: none !important;
+    padding: 0 !important;
+}
+
+#options .options-content a {
+    height: 34px;
+    padding: 0 12px !important;
+    border-radius: var(--sb-radius-control) !important;
+    opacity: 1 !important;
+    color: var(--SmartThemeBodyColor) !important;
+    background: transparent !important;
+    border: none !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+
+#options .options-content a i,
+#options .options-content a .fa-fw {
+    opacity: 0.7 !important;
+}
+
+#options .options-content a:hover {
+    background: var(--sb-flat-hover-bg) !important;
+}
+
+#options .options-content a:active {
+    background: var(--sb-flat-active-bg) !important;
+}
+
+#options .options-content a:focus-visible {
+    outline: none !important;
+    box-shadow: var(--sb-focus-ring-inset) !important;
+}
+
+@media (pointer: coarse) {
+    #options .options-content a {
+        height: 44px !important;
+    }
+}
+
+/* Extensions Menu (#extensionsMenu) - popover surface */
+#extensionsMenu {
+    background: var(--sb-layer-popover) !important;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent) !important;
+    border-radius: var(--sb-radius-overlay) !important;
+    padding: 6px !important;
+    box-shadow: var(--sb-shadow-popover) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#extensionsMenu > .extension_container > div {
+    height: 34px;
+    padding: 0 12px !important;
+    border-radius: var(--sb-radius-control) !important;
+    opacity: 1 !important;
+    color: var(--SmartThemeBodyColor) !important;
+    background: transparent !important;
+    border: none !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+
+#extensionsMenu i,
+#extensionsMenu .fa-fw {
+    opacity: 0.7 !important;
+}
+
+#extensionsMenu > .extension_container > div:hover {
+    background: var(--sb-flat-hover-bg) !important;
+}
+
+#extensionsMenu > .extension_container > div:active {
+    background: var(--sb-flat-active-bg) !important;
+}
+
+#extensionsMenu > .extension_container > div:focus-visible {
+    outline: none !important;
+    box-shadow: var(--sb-focus-ring-inset) !important;
+}
+
+@media (pointer: coarse) {
+    #extensionsMenu > .extension_container > div {
+        height: 44px !important;
+    }
+}
+
+/* Menu enter animations. Popper positions these menus with `transform: translate(...)`, so the
+   keyframes use the independent `translate` property. Animating `transform` replaced Popper's
+   translate (menu flashed at the left edge), and `scale` composes around the untransformed box
+   at the viewport origin, so it drifted sideways. */
+@keyframes sb-menu-enter {
+    from {
+        opacity: 0;
+        translate: 0 6px;
+    }
+    to {
+        opacity: 1;
+        translate: 0 0;
+    }
+}
+
+#options,
+#extensionsMenu {
+    animation: sb-menu-enter 200ms var(--sb-ease-out-cubic);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #options,
+    #extensionsMenu {
+        animation: none;
+    }
+}
+
+body.reduced-motion #options,
+body.reduced-motion #extensionsMenu {
+    animation: none;
+}
+
+/* Dialogs and Popups */
+.popup {
+    background: var(--sb-layer-dialog);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent);
+    border-radius: var(--sb-radius-overlay);
+    box-shadow: var(--sb-shadow-dialog), var(--sb-shadow-dialog-highlight);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.popup::backdrop {
+    background: var(--sb-dialog-backdrop) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Confirm-type dialogs use alert radius */
+.popup[data-type="confirm"],
+.popup.confirm-dialog {
+    border-radius: var(--sb-radius-alert);
+}
+
+/* Dialog enter animation - override popup.css pop-in */
+@keyframes pop-in {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.popup[opening] {
+    animation: pop-in var(--sb-spring-dialog-duration) var(--sb-spring-dialog);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .popup[opening] {
+        animation: none;
+    }
+}
+
+body.reduced-motion .popup[opening] {
+    animation: none;
+}
+
+/* Dialog exit animation - override popup.css pop-out */
+@keyframes pop-out {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+}
+
+.popup[closing] {
+    animation: pop-out 200ms var(--sb-ease-out-cubic);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .popup[closing] {
+        animation: none;
+        opacity: 0;
+    }
+}
+
+body.reduced-motion .popup[closing] {
+    animation: none;
+    opacity: 0;
+}
+
+/* GNOME response order: Cancel at the start, the affirmative at the end. The template keeps
+   [custom..., OK, Cancel] in the DOM because upstream code queries that order. */
+.popup-controls > .popup-button-cancel {
+    order: -1;
+}
+
+/* Narrow widths (MOBILE_QUERY in sillybunny-action-menu.js): AdwDialog bottom sheet. Full-screen
+   and special popups keep their own frames: large/wide, transparent, image zoom, crop (the only
+   type that shows .popup-crop-wrap) and the swipe picker. */
+@keyframes sb-popup-sheet-in {
+    from {
+        transform: translateY(100%);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+@keyframes sb-popup-sheet-out {
+    from {
+        transform: translateY(0);
+    }
+    to {
+        transform: translateY(100%);
+    }
+}
+
+@media (max-width: 768px) {
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) {
+        position: fixed;
+        inset: auto 0 0 0;
+        box-sizing: border-box;
+        width: auto;
+        min-width: 0;
+        max-width: none;
+        /* popup.css sets min-height: fit-content, which would beat max-height. */
+        min-height: 0;
+        max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 24px);
+        margin: 0;
+        padding: 22px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+        border-width: 1px 0 0;
+        /* sillybunny-paper-theme.css forces an important 14px radius on .popup. */
+        border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0 !important;
+        background: var(--sb-layer-dialog);
+        box-shadow: var(--sb-shadow-dialog);
+    }
+
+    /* Grab handle, same geometry as the mobile shell drawers. Visual only. */
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block']))::before {
+        content: '';
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        width: 42px;
+        height: 4px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 36%, transparent);
+        opacity: 0.82;
+        pointer-events: none;
+        transform: translateX(-50%);
+    }
+
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-body {
+        flex: 1 1 auto;
+        height: auto;
+        min-height: 0;
+        max-height: none;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-body > * {
+        flex-shrink: 0;
+    }
+
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-body > .popup-content {
+        flex: 1 1 auto;
+        min-height: 0;
+        max-height: none;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    /* Display popups have no responses; reserve a header band so content clears the close button. */
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])):has(> .popup-button-close[style*='block']) .popup-body {
+        padding-top: 30px;
+    }
+
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-button-close {
+        top: 8px;
+        right: max(8px, env(safe-area-inset-right, 0px));
+        width: 44px;
+        height: 44px;
+        padding: 0;
+        border-radius: 999px;
+        font-size: 20px;
+        line-height: 44px;
+        text-align: center;
+    }
+
+    /* AdwAlertDialog narrow layout: stacked full-width responses, affirmative on top and Cancel at
+       the bottom. column-reverse mirrors the desktop row, so custom responses stay in between. */
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-controls {
+        flex-direction: column-reverse;
+        flex-wrap: nowrap;
+        align-self: stretch;
+        align-items: stretch;
+        gap: 8px;
+        margin-top: 12px;
+    }
+
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-controls > .menu_button {
+        flex: 0 0 auto;
+        width: 100%;
+        min-height: 44px;
+        box-sizing: border-box;
+    }
+}
+
+@media (max-width: 768px) and (prefers-reduced-motion: no-preference) {
+    body:not(.reduced-motion) .popup[opening]:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) {
+        animation: sb-popup-sheet-in var(--sb-spring-sheet-duration) var(--sb-spring-sheet);
+    }
+
+    body:not(.reduced-motion) .popup[closing]:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) {
+        animation: sb-popup-sheet-out 200ms var(--sb-ease-out-cubic) forwards;
+    }
+}
+
+/* Select2 Dropdowns */
+.select2-container--default .select2-dropdown {
+    background: var(--sb-layer-popover);
+    /* select2-overrides.css sets the dropdown border with !important. */
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent) !important;
+    border-radius: var(--sb-radius-overlay);
+    padding: 6px;
+    box-shadow: var(--sb-shadow-popover);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.select2-container--default .select2-results__option {
+    padding: 0 12px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    border-radius: var(--sb-radius-control);
+    color: var(--SmartThemeBodyColor);
+    opacity: 1;
+}
+
+.select2-container--default .select2-results__option[aria-selected="true"] {
+    background: var(--sb-flat-selected-bg);
+}
+
+.select2-container--default .select2-results__option--highlighted[aria-selected] {
+    background: var(--sb-flat-hover-bg);
+}
+
+.select2-container--default .select2-results__option--highlighted[aria-selected="true"] {
+    background: var(--sb-flat-selected-hover-bg);
+}
+
+@media (pointer: coarse) {
+    .select2-container--default .select2-results__option {
+        height: 44px;
+    }
+}
+
+/* Quick Reply context menus (list-group.ctx-menu) */
+.list-group.ctx-menu {
+    background: var(--sb-layer-popover);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent);
+    border-radius: var(--sb-radius-overlay);
+    padding: 6px;
+    box-shadow: var(--sb-shadow-popover);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.list-group.ctx-menu .list-group-item {
+    height: 34px;
+    padding: 0 12px;
+    border-radius: var(--sb-radius-control);
+    opacity: 1;
+    color: var(--SmartThemeBodyColor);
+    background: transparent;
+    border: none;
+    display: flex;
+    align-items: center;
+}
+
+.list-group.ctx-menu .list-group-item:hover {
+    background: var(--sb-flat-hover-bg);
+}
+
+.list-group.ctx-menu .list-group-item:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.list-group.ctx-menu .list-group-item:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (pointer: coarse) {
+    .list-group.ctx-menu .list-group-item {
+        height: 44px;
+    }
+}
+
+/* Toasts - toast layer with no border */
+#toast-container > div {
+    background-color: var(--sb-layer-toast) !important;
+    color: var(--sb-layer-toast-fg) !important;
+    border: none !important;
+    border-radius: var(--sb-radius-overlay) !important;
+    box-shadow: var(--sb-shadow-toast) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Toast enter animation - slide down from own height */
+@keyframes sb-toast-in {
+    from {
+        opacity: 0;
+        transform: translateY(-100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.toast {
+    animation: sb-toast-in 300ms var(--sb-ease-out-cubic) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .toast {
+        animation: none;
+    }
+}
+
+body.reduced-motion .toast {
+    animation: none;
+}
+
+/* Toast exit animation (JS-driven via .sb-toast-leaving) */
+@keyframes sb-toast-exit {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-100%);
+    }
+}
+
+#toast-container > div.sb-toast-leaving {
+    animation: sb-toast-exit 300ms var(--sb-ease-out-cubic);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #toast-container > div.sb-toast-leaving {
+        animation: none;
+        opacity: 0;
+    }
+}
+
+body.reduced-motion #toast-container > div.sb-toast-leaving {
+    animation: none;
+    opacity: 0;
+}
+
+/* Tooltips - libadwaita OSD (shadow ink, white text, subtle border) */
+.tooltip-inner {
+    background: rgba(0, 0, 0, 0.8);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--sb-radius-control);
+    padding: 6px 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.tooltip.bs-tooltip-top .arrow::before,
+.tooltip.bs-tooltip-auto[data-popper-placement^="top"] .arrow::before {
+    border-top-color: rgba(0, 0, 0, 0.8);
+}
+
+.tooltip.bs-tooltip-bottom .arrow::before,
+.tooltip.bs-tooltip-auto[data-popper-placement^="bottom"] .arrow::before {
+    border-bottom-color: rgba(0, 0, 0, 0.8);
+}
+
+.tooltip.bs-tooltip-start .arrow::before,
+.tooltip.bs-tooltip-auto[data-popper-placement^="left"] .arrow::before {
+    border-left-color: rgba(0, 0, 0, 0.8);
+}
+
+.tooltip.bs-tooltip-end .arrow::before,
+.tooltip.bs-tooltip-auto[data-popper-placement^="right"] .arrow::before {
+    border-right-color: rgba(0, 0, 0, 0.8);
+}
+
+/* Composer Frame - view layer, single border, no gradient, no accent wash on focus.
+   Distinct from the header-bar top bar. The body.no-blur selector beats upstream
+   toggle-dependent.css, which paints the translucent blur tint as an important declaration. */
+#send_form,
+body.no-blur #send_form {
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent) !important;
+    border-radius: var(--sb-radius-overlay) !important;
+    background: var(--sb-layer-bottombar) !important;
+}
+
+/* Phone: a full-bleed bottom bar with no rounded corners to expose the background behind it. */
+@media screen and (max-width: 768px) {
+    #send_form,
+    body.no-blur #send_form {
+        border-width: 1px 0 0 !important;
+        border-radius: 0 !important;
+    }
+}
+
+#send_form:focus-within {
+    border-color: color-mix(in srgb, var(--SmartThemeBorderColor) 90%, transparent) !important;
+}
+
+/* Send button - libadwaita suggested-action: solid accent fill, neutral raised disabled.
+   Shape and size come from the #send_but sizing rules in sillybunny-tabs.css. */
+#send_but {
+    background: var(--sb-accent) !important;
+    color: var(--sb-on-solid-accent) !important;
+    border: none !important;
+    /* style.css dims every #rightSendForm child to 0.7; the suggested action stays solid. */
+    opacity: 1 !important;
+}
+
+/* #rightSendForm > div:not(.mes_stop) in style.css outranks a bare #send_but and replaces the
+   transition with opacity-only, and its :hover adds an instant brightness filter; both made the
+   hover fill snap instead of fading like #sb_conversation_send. */
+#rightSendForm > #send_but {
+    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast), transform var(--sb-transition-fast);
+}
+
+#rightSendForm > #send_but:hover {
+    filter: none;
+}
+
+#send_but:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--sb-accent) 90%, white) !important;
+}
+
+#send_but:active:not(:disabled) {
+    background: color-mix(in srgb, var(--sb-accent) 80%, black) !important;
+}
+
+#send_but:disabled {
+    background: var(--sb-raised-bg) !important;
+    color: var(--sb-muted-fg) !important;
+    cursor: not-allowed !important;
+}
+
+/* Composer icon buttons - flat circles. #send_but and .mes_stop are excluded so the suggested/destructive fills win. */
+#send_form .menu_button:not(#send_but),
+#leftSendForm > div:not(.stscript_btn),
+#rightSendForm > div:not(.stscript_btn, #send_but, .mes_stop) {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 50% !important;
+    color: var(--SmartThemeBodyColor) !important;
+}
+
+#send_form .menu_button:not(#send_but):hover,
+#leftSendForm > div:not(.stscript_btn):hover,
+#rightSendForm > div:not(.stscript_btn, #send_but, .mes_stop):hover {
+    background: var(--sb-flat-hover-bg) !important;
+}
+
+#send_form .menu_button:not(#send_but):active,
+#leftSendForm > div:not(.stscript_btn):active,
+#rightSendForm > div:not(.stscript_btn, #send_but, .mes_stop):active {
+    background: var(--sb-flat-active-bg) !important;
+}
+
+#send_form .menu_button:not(#send_but):focus-visible,
+#leftSendForm > div:not(.stscript_btn):focus-visible,
+#rightSendForm > div:not(.stscript_btn, #send_but, .mes_stop):focus-visible {
+    outline: none !important;
+    box-shadow: var(--sb-focus-ring-inset) !important;
+}
+
+/* Placeholder contrast >= 4.5:1 */
+#send_textarea::placeholder {
+    color: var(--sb-input-placeholder) !important;
+    opacity: 1 !important;
+}
+
+textarea::placeholder,
+input::placeholder {
+    color: var(--sb-input-placeholder) !important;
+    opacity: 1 !important;
 }

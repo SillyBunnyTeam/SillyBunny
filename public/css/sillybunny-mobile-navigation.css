@@ -1,0 +1,1222 @@
+/*
+ * Mobile section navigation, compact bottom chat bar and composer pill.
+ * Driven by public/scripts/sillybunny-mobile-section-nav.js and sillybunny-mobile-bottom-bar.js,
+ * which set html[data-sb-mobile-ui] and [data-sb-mobile-ui-mode]. Selectors carry both attributes so
+ * they outrank the matching sillybunny-mobile-shell.css rules; :not(#sb-specificity) adds ID weight
+ * where those rules are ID-scoped.
+ */
+
+html[data-sb-mobile-ui] .sb-section-nav-row,
+html[data-sb-mobile-ui] .sb-section-nav-menu,
+html[data-sb-mobile-ui] .sb-section-nav-hub {
+    display: none;
+}
+
+html[data-sb-mobile-ui] .sb-visually-hidden {
+    position: absolute !important;
+    inline-size: 1px !important;
+    block-size: 1px !important;
+    margin: -1px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    overflow: hidden !important;
+    clip: rect(0 0 0 0) !important;
+    clip-path: inset(50%) !important;
+    white-space: nowrap !important;
+}
+
+/* Mobile-only replacements for the scrolling tab strip and navigation overlay. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-hamburger,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-mobile-nav,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-shell-nav-wrapper {
+    display: none !important;
+}
+
+/* Keep the original title focusable for the shell focus/restore logic, but visually hidden. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #left-nav-panel .sb-shell-header .sb-shell-title.sb-section-nav-original-title,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #user-settings-block .sb-shell-header .sb-shell-title.sb-section-nav-original-title,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-title.sb-section-nav-original-title,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel .sb-shell-header .sb-shell-title.sb-section-nav-original-title {
+    position: absolute !important;
+    inline-size: 1px !important;
+    block-size: 1px !important;
+    min-inline-size: 0 !important;
+    margin: -1px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    overflow: hidden !important;
+    clip: rect(0 0 0 0) !important;
+    clip-path: inset(50%) !important;
+    white-space: nowrap !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-shell-header {
+    position: relative;
+    z-index: 1200;
+}
+
+/* Production pins the Characters header at z-index 3; the section dropdown must clear the create bar. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer > .sb-character-shell-header:not(#sb-specificity) {
+    z-index: 1200 !important;
+}
+
+/* One row: back + centered section control + close. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-row {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    grid-template-rows: 44px;
+    align-items: center;
+    align-self: stretch;
+    gap: 8px;
+    inline-size: 100%;
+    block-size: 44px;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+}
+
+/*
+ * Header geometry: a compact kicker line under the sheet grab handle, then one
+ * 44px row. Both views keep the same height so swapping views never moves content.
+ */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #left-nav-panel .sb-shell-header,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #user-settings-block .sb-shell-header,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer > .sb-character-shell-header,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer > .sb-character-shell-header.sb-shell-header-collapsed:not(#sb-specificity) {
+    gap: 2px !important;
+    block-size: 84px !important;
+    min-block-size: 84px !important;
+    max-block-size: 84px !important;
+    box-sizing: border-box;
+    padding-block: 14px 8px !important;
+    padding-inline: 16px !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #left-nav-panel .sb-shell-header .sb-shell-kicker,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #user-settings-block .sb-shell-header .sb-shell-kicker,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-kicker {
+    position: relative;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    align-self: stretch;
+    flex: 0 0 16px;
+    inline-size: 100%;
+    block-size: 16px;
+    min-block-size: 0 !important;
+    margin: 0 !important;
+    overflow: hidden;
+    line-height: 1 !important;
+    text-align: center !important;
+    white-space: nowrap;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-kicker-label {
+    display: block;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    overflow: hidden;
+    font-size: calc(var(--mainFontSize) * 0.6);
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 16px;
+    text-align: center;
+    text-overflow: ellipsis;
+    text-transform: none;
+    color: var(--sb-muted-fg);
+    transition: opacity var(--sb-transition-fast, 180ms cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-kicker-label[aria-hidden='true'] {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* View swaps: a plain opacity fade, matching the Character editor sub-tabs. */
+@keyframes sbSectionNavFadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-row > .sb-section-nav-back,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-row > .sb-section-nav-menu-trigger,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-row > .sb-section-nav-hub-title,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] [data-sb-section-view='hub'] .sb-section-nav-hub,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #left-nav-panel.openDrawer[data-sb-section-view='section'] .sb-shell-panel-active,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #user-settings-block.openDrawer[data-sb-section-view='section'] .sb-shell-panel-active,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer[data-sb-section-view='section'] > :not(.sb-shell-header):not(.sb-character-shell-header):not(.sb-section-nav-hub):not(#sb-specificity) {
+    animation: sbSectionNavFadeIn var(--sb-transition-fast, 180ms cubic-bezier(0.22, 1, 0.36, 1)) !important;
+}
+
+/* Mode bar: the favorites band hosts the Roleplay/Conversation switch on mobile. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #HotSwapWrapper {
+    display: none !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer > #CharListButtonAndHotSwaps:not(#sb-specificity) {
+    display: flex !important;
+    align-items: center;
+    min-block-size: 0 !important;
+    max-block-size: none !important;
+    block-size: auto !important;
+    margin: 0 !important;
+    padding: 2px 12px 6px !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer[data-menu-type='character_edit'] > #CharListButtonAndHotSwaps:not(#sb-specificity),
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer[data-menu-type='create'] > #CharListButtonAndHotSwaps:not(#sb-specificity),
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer[data-menu-type='editor_empty'] > #CharListButtonAndHotSwaps:not(#sb-specificity) {
+    display: none !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #CharListButtonAndHotSwaps > #sb_character_mode_toggle {
+    position: static !important;
+    inset: auto !important;
+    display: flex !important;
+    flex: 1 1 auto;
+    gap: 2px !important;
+    inline-size: 100% !important;
+    min-inline-size: 0;
+    max-inline-size: none !important;
+    min-block-size: 48px !important;
+    block-size: 48px !important;
+    margin: 0 !important;
+    padding: 1px !important;
+    overflow-x: auto;
+    scrollbar-width: none;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor, #cfcfc5) 24%, transparent) !important;
+    border-radius: var(--sb-shell-control-radius) !important;
+    background: var(--sb-raised-bg) !important;
+    box-shadow: var(--sb-shadow-control) !important;
+    transform: none !important;
+    box-sizing: border-box;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #CharListButtonAndHotSwaps > #sb_character_mode_toggle::-webkit-scrollbar {
+    display: none;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #CharListButtonAndHotSwaps .sb-character-shell-mode-button {
+    display: inline-flex !important;
+    flex: 1 0 auto;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-inline-size: 44px !important;
+    min-block-size: 44px !important;
+    block-size: 44px !important;
+    padding: 0 14px !important;
+    border-radius: var(--sb-shell-control-radius) !important;
+    white-space: nowrap;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #CharListButtonAndHotSwaps .sb-character-shell-mode-button span {
+    display: inline !important;
+}
+
+/* The real close control is moved into this grid on mobile. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-row > .sb-shell-close {
+    position: static !important;
+    inset: auto !important;
+    grid-column: 3;
+    grid-row: 1;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    inline-size: 44px !important;
+    block-size: 44px !important;
+    min-inline-size: 44px !important;
+    min-block-size: 44px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 999px !important;
+    background: var(--sb-raised-bg) !important;
+    box-shadow: none !important;
+    color: var(--SmartThemeBodyColor, #cfcfc5) !important;
+    transform: none !important;
+}
+
+/* The production Character close rule uses an ID and !important dimensions. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer > .sb-character-shell-header .sb-section-nav-row > #sb_character_shell_close {
+    position: static !important;
+    inset: auto !important;
+    inline-size: 44px !important;
+    block-size: 44px !important;
+    min-inline-size: 44px !important;
+    min-block-size: 44px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 999px !important;
+    background: var(--sb-raised-bg) !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-row > .sb-shell-close::before {
+    display: none !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer > .sb-character-shell-header .sb-section-nav-row > #sb_character_shell_close::before {
+    display: none !important;
+}
+
+@media (hover: hover) {
+    html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-row > .sb-shell-close:hover {
+        background: var(--sb-raised-hover-bg) !important;
+    }
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-row > .sb-shell-close:active {
+    background: var(--sb-raised-active-bg) !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-row > .sb-shell-close:focus-visible {
+    box-shadow: var(--sb-focus-ring-inset) !important;
+}
+
+/* Reserve equal end columns so the trigger stays centered in both views. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-back {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu-trigger,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-hub-title {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: center;
+}
+
+/* Hub view: the sole title stays centered between the reserved controls. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] [data-sb-section-view='hub'] .sb-section-nav-row {
+    justify-content: center;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-row > [hidden],
+html[data-sb-mobile-ui] .sb-section-nav-menu[hidden] {
+    display: none !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-back,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu-trigger {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: 44px;
+    border: 0;
+    /* App button rules set a 14px radius with higher specificity. */
+    border-radius: var(--sb-shell-control-radius) !important;
+    background: var(--sb-raised-bg);
+    box-shadow: none;
+    color: var(--SmartThemeBodyColor);
+    font: inherit;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-back {
+    flex: 0 0 44px;
+    justify-content: center;
+    inline-size: 44px;
+    padding: 0;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu-trigger {
+    flex: 0 1 auto;
+    gap: 8px;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    padding: 0 14px 0 16px;
+    font-size: 1.15rem;
+    font-weight: 700;
+    text-align: start;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-trigger-label {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-trigger-chevron {
+    flex: 0 0 auto;
+    color: var(--sb-color-muted);
+    font-size: 0.75em;
+    transition: transform var(--sb-transition-slow, 240ms cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu-trigger[aria-expanded='true'] > .sb-section-nav-trigger-chevron {
+    transform: rotate(180deg);
+}
+
+@media (hover: hover) {
+    html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-back:hover,
+    html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu-trigger:hover {
+        background: var(--sb-raised-hover-bg);
+    }
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-back:active,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu-trigger:active,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu-trigger[aria-expanded='true'] {
+    background: var(--sb-raised-active-bg);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-back:focus-visible,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu-trigger:focus-visible,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu-item:focus-visible,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-hub-item:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-hub-title {
+    display: block;
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    padding-inline: 4px;
+    text-align: center;
+    overflow: hidden;
+    color: var(--SmartThemeBodyColor, #cfcfc5);
+    font-size: 1.15rem;
+    font-weight: 700;
+    line-height: 44px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-hub-title:focus {
+    outline: none;
+}
+
+/* Section menu: dropdown under the header. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu {
+    position: absolute;
+    inset: calc(100% + 4px) 12px auto 12px;
+    z-index: 1100;
+    display: grid;
+    gap: 4px;
+    padding: 6px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--sb-shell-border, var(--SmartThemeBorderColor));
+    background: var(--sb-layer-popover);
+    color: var(--SmartThemeBodyColor, #cfcfc5);
+    box-shadow: var(--sb-shadow-popover);
+    max-block-size: min(60vh, 28rem);
+    border-radius: var(--sb-radius-overlay);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu-item,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-hub-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    inline-size: 100%;
+    min-block-size: 44px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu-item > i:first-child,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-hub-item > i:first-child {
+    flex: 0 0 1.25em;
+    color: var(--sb-accent, #c9c6a8);
+    text-align: center;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-item-label {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-item-check {
+    visibility: hidden;
+    color: var(--sb-accent, #c9c6a8);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu-item.is-current .sb-section-nav-item-check {
+    visibility: visible;
+}
+
+@media (hover: hover) {
+    html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu-item:hover,
+    html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-hub-item:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu-item:active,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-hub-item:active {
+    background: var(--sb-flat-active-bg);
+}
+
+/* libadwaita list selection: neutral fill; the check glyph carries the state, not an accent border. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-menu-item.is-current,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-hub-item.is-current {
+    border-color: transparent;
+    background: var(--sb-flat-selected-bg);
+}
+
+/* Hub view: list of sections replaces the active section. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] [data-sb-section-view='hub'] .sb-section-nav-hub {
+    display: block;
+    padding: 12px 16px 24px;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #left-nav-panel.openDrawer[data-sb-section-view='hub'] .sb-shell-panel,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #user-settings-block.openDrawer[data-sb-section-view='hub'] .sb-shell-panel,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #left-nav-panel.openDrawer[data-sb-section-view='hub'] .sb-shell-panel-active,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #user-settings-block.openDrawer[data-sb-section-view='hub'] .sb-shell-panel-active,
+/* The trailing :not(#id) only raises specificity above the app's ID-level Characters rules. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer[data-sb-section-view='hub'] > :not(.sb-shell-header):not(.sb-character-shell-header):not(.sb-section-nav-hub):not(.sb-shell-nav-wrapper):not(#sb-specificity) {
+    display: none !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer[data-sb-section-view='hub'] > .sb-section-nav-hub {
+    display: block !important;
+    flex: 1 1 auto;
+    min-block-size: 0;
+    overflow-y: auto;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-hub-list {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* Hub rows: flat libadwaita list rows; fills come from the shared hover/active/selected rules above. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-hub-item {
+    min-block-size: 52px;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-hub-chevron {
+    color: var(--sb-color-muted);
+    font-size: 0.8em;
+}
+
+/* Characters sheet: same inset, radius and top edge as the Workspace/Customize sheets. */
+/* Production sets full-bleed geometry on #top-settings-holder #right-nav-panel (two IDs). */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #top-settings-holder #right-nav-panel.openDrawer,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-character-drawer-lock='right'] #top-settings-holder #right-nav-panel.openDrawer {
+    inset-inline: 8px !important;
+    --sb-mobile-shell-gap: 0px;
+    left: 8px !important;
+    right: 8px !important;
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+    top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap)) !important;
+    height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) - var(--sb-mobile-shell-gap) - env(safe-area-inset-bottom, 0px)) !important;
+    max-height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) - var(--sb-mobile-shell-gap) - env(safe-area-inset-bottom, 0px)) !important;
+    margin: 0 !important;
+    border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0 !important;
+}
+
+/* List views: one even 12px gutter instead of the asymmetric 20px/8px scroller padding. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer:is([data-menu-type='characters'], [data-menu-type='groups']) > .scrollableInner:not(#sb-specificity) {
+    padding-inline: 12px !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #charListFixedTop:not(#sb-specificity) {
+    padding-inline: 0 !important;
+}
+
+/* Create bar: one non-scrolling row of create, sort, search, bulk edit and More. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #charListFixedTop > .sb-character-create-bar:not(#sb-specificity) {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 6px !important;
+    margin: 0 0 8px !important;
+    padding: 6px !important;
+    overflow: visible !important;
+    touch-action: auto !important;
+    position: relative;
+    z-index: 5;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer .sb-character-create-bar > :not(#sb-specificity) {
+    flex: 0 0 auto !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer .sb-character-create-bar > #rm_button_bar:not(#sb-specificity) {
+    display: flex !important;
+    flex: 1 1 auto !important;
+    gap: 6px !important;
+    width: auto !important;
+    min-width: 0 !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer .sb-character-create-bar #rm_button_bar > #character_sort_order:not(#sb-specificity) {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    text-overflow: ellipsis;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer .sb-character-create-bar :is(#rm_button_create, #rm_button_group_chats, #rm_button_search, .sb-character-list-bulk > .menu_button, .sb-character-list-more-trigger):not(#sb-specificity) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 44px !important;
+    width: 44px !important;
+    min-width: 44px !important;
+    max-width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    max-height: 44px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: var(--sb-radius-button, 14px) !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer .sb-character-create-bar :is(#rm_button_create, #rm_button_group_chats)[hidden] {
+    display: none !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer .sb-character-list-bulk {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer .sb-character-list-bulk > .bulkEditOptionElement:not(#sb-specificity) {
+    display: none !important;
+}
+
+/* Bulk mode: the row becomes count, select all, delete, exit. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer .sb-character-create-bar:has(#bulkEditButton.bulk_edit_overlay_active) > :not(.sb-character-list-bulk):not(#sb-specificity):not(#sb-specificity-2) {
+    display: none !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer .sb-character-create-bar:has(#bulkEditButton.bulk_edit_overlay_active) > .sb-character-list-bulk {
+    flex: 1 1 auto !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer .sb-character-list-bulk:has(#bulkEditButton.bulk_edit_overlay_active) > .bulkEditOptionElement:not(#sb-specificity) {
+    display: inline-flex !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer .sb-character-list-bulk > #bulkSelectedCount {
+    order: -1;
+    flex: 1 1 auto;
+    align-items: center;
+    min-width: 0;
+    min-height: 44px;
+    padding-inline: 8px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer .sb-character-list-bulk > #bulkSelectedCount::after {
+    content: ' ' attr(data-sb-selected-label);
+    white-space: pre;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer .sb-character-list-bulk > #bulkEditButton.bulk_edit_overlay_active::before {
+    content: '\f00d';
+}
+
+/* More popover: grid view, Chat Archive and extension buttons as full-width rows. */
+html[data-sb-mobile-ui] .sb-character-list-more {
+    display: none;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer .sb-character-list-more {
+    display: block;
+    position: relative;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-character-list-more-trigger[aria-expanded='true'] {
+    border-color: var(--sb-focus-ring) !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-character-list-more-popover {
+    position: absolute;
+    inset: calc(100% + 6px) 0 auto auto;
+    z-index: 1100;
+    display: grid;
+    gap: 4px;
+    min-inline-size: 13rem;
+    max-inline-size: calc(100vw - 48px);
+    padding: 6px;
+    border: 1px solid var(--sb-shell-border, var(--SmartThemeBorderColor));
+    border-radius: var(--sb-radius-overlay);
+    background: var(--sb-layer-popover);
+    box-shadow: var(--sb-shadow-popover);
+    color: var(--SmartThemeBodyColor);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-character-list-more-popover[hidden] {
+    display: none !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-character-list-more-popover > #rm_buttons_container {
+    display: grid !important;
+    gap: 4px;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-character-list-more-popover > #rm_buttons_container:empty {
+    display: none !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer .sb-character-list-more-popover :is(#charListGridToggle, #rm_buttons_container > *):not(#sb-specificity) {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 12px !important;
+    box-sizing: border-box;
+    width: 100% !important;
+    inline-size: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    max-inline-size: none !important;
+    height: auto !important;
+    min-height: 44px !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 12px !important;
+    aspect-ratio: auto !important;
+    border-radius: 10px !important;
+    text-align: start;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-character-list-more-popover > #charListGridToggle::after {
+    content: attr(data-sb-list-label);
+    font-family: var(--mainFontFamily);
+    font-size: var(--sb-type-caption, 0.875rem);
+    font-weight: var(--sb-weight-title, 600);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] body.charListGrid .sb-character-list-more-popover > #charListGridToggle {
+    color: var(--sb-accent, #c9c6a8);
+}
+
+/* Pager: sits under the list instead of inside the create bar. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #rm_characters_block > #rm_print_characters_pagination {
+    display: flex;
+    flex: 0 0 auto;
+    justify-content: center;
+    padding: 6px 0 0;
+    border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, rgba(0, 0, 0, 0.4)) 70%, transparent);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #rm_characters_block > #rm_print_characters_pagination .paginationjs {
+    display: flex;
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #rm_characters_block > #rm_print_characters_pagination .paginationjs-nav {
+    flex: 1 1 auto;
+    justify-content: flex-start;
+    min-width: 0;
+    padding-inline: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Range text, prev/next and page size only; first/last add width without much value here. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #rm_characters_block > #rm_print_characters_pagination :is(.paginationjs-first, .paginationjs-last) {
+    display: none !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #rm_characters_block > #rm_print_characters_pagination .paginationjs-pages ul {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+}
+
+/* List density: shorter cards, and the pager only appears when there is more than one page. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #rm_characters_block > #rm_print_characters_block:not(#sb-specificity) {
+    gap: 6px;
+    padding-bottom: 8px;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] body:not(.charListGrid) #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar):not(#sb-specificity) {
+    min-height: calc(var(--sb-character-list-avatar-size, 56px) + 18px);
+    margin: 0;
+    padding: 8px;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #rm_characters_block > #rm_print_characters_pagination:not(:has(.paginationjs-prev:not(.disabled), .paginationjs-next:not(.disabled))) {
+    display: none;
+}
+
+/*
+ * Editor sub-tabs: four equal segments with the icon over a short label, so every
+ * section is visible without a hidden horizontal scroll or icon-only guessing.
+ */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer > .sb-character-editor-subtabs-wrapper:not(#sb-specificity) {
+    margin: 4px 12px 8px !important;
+    padding: 4px !important;
+    border-radius: 16px !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #sb_character_editor_subtabs:not(#sb-specificity) {
+    display: grid !important;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    gap: 4px !important;
+    width: 100%;
+    overflow: hidden !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #sb_character_editor_subtabs > .sb-character-editor-subtab:not(#sb-specificity) {
+    display: flex !important;
+    flex-direction: column;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    min-height: 52px !important;
+    margin: 0 !important;
+    padding: 6px 4px !important;
+    border-radius: 12px !important;
+    scroll-snap-align: none;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #sb_character_editor_subtabs > .sb-character-editor-subtab > i:not(#sb-specificity) {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    margin: 0 !important;
+    font-size: 1rem;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #sb_character_editor_subtabs .sb-shell-tab-copy:not(#sb-specificity) {
+    display: flex !important;
+    justify-content: center;
+    min-width: 0;
+    max-width: 100%;
+    text-align: center;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #sb_character_editor_subtabs .sb-shell-tab-copy strong:not(#sb-specificity) {
+    overflow: hidden;
+    font-size: calc(var(--mainFontSize) * 0.72) !important;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html[data-sb-mobile-ui] .sb-section-nav-back,
+    html[data-sb-mobile-ui] .sb-section-nav-menu-trigger,
+    html[data-sb-mobile-ui] .sb-section-nav-menu-item,
+    html[data-sb-mobile-ui] .sb-section-nav-hub-item,
+    html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-kicker-label,
+    html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-trigger-chevron {
+        transition: none;
+    }
+
+    /* Mirrors the fade-in selectors so the override matches their specificity. */
+    html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-row > .sb-section-nav-back,
+    html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-row > .sb-section-nav-menu-trigger,
+    html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-section-nav-row > .sb-section-nav-hub-title,
+    html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] [data-sb-section-view='hub'] .sb-section-nav-hub,
+    html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #left-nav-panel.openDrawer[data-sb-section-view='section'] .sb-shell-panel-active,
+    html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #user-settings-block.openDrawer[data-sb-section-view='section'] .sb-shell-panel-active,
+    html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer[data-sb-section-view='section'] > :not(.sb-shell-header):not(.sb-character-shell-header):not(.sb-section-nav-hub):not(#sb-specificity) {
+        animation: none !important;
+    }
+}
+
+/* Compact bottom chat bar. See public/scripts/sillybunny-mobile-bottom-bar.js. */
+
+/* Chip row: persona, current chat chip, extension tray toggle. Search adds a second row. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar:not(#sb-specificity) {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    max-width: none;
+    min-height: 0;
+    margin: 0;
+    padding: 4px 8px 2px;
+    border-width: 1px 0 0;
+    border-radius: 0;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > :is(.sb-bottom-chat-collapse-toggle, .sb-bottom-chat-secondary-row) {
+    display: none !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > #sb-persona-bubble:not(#sb-specificity) {
+    grid-column: 1;
+    grid-row: 1;
+    flex: none;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    max-width: 44px;
+    max-height: 44px;
+    padding: 0;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-chip {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    height: 44px;
+    margin: 0;
+    padding: 0 12px;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: var(--sb-raised-bg);
+    color: var(--SmartThemeBodyColor);
+    font: inherit;
+    font-size: calc(var(--mainFontSize) * 0.86);
+    text-align: start;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar:has(> .sb-bottom-chat-tray-toggle[hidden]) > .sb-bottom-chat-chip {
+    grid-column: 2 / -1;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-chip > i {
+    flex: none;
+    opacity: 0.7;
+    font-size: 0.9em;
+    transition: transform var(--sb-transition-slow, 240ms cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > :is(.sb-bottom-chat-chip, .sb-bottom-chat-tray-toggle) {
+    transition: border-color var(--sb-transition-fast, 180ms ease-out), background-color var(--sb-transition-fast, 180ms ease-out), color var(--sb-transition-fast, 180ms ease-out);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-tray-toggle > i {
+    transition: transform var(--sb-transition-slow, 240ms cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-tray-toggle[aria-expanded='true'] > i {
+    transform: rotate(-90deg);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-chip[aria-expanded='true'] > i:last-child {
+    transform: rotate(180deg);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-chip-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (hover: hover) {
+    html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-chip:hover {
+        background: var(--sb-raised-hover-bg);
+    }
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-chip:active,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-chip[aria-expanded='true'] {
+    background: var(--sb-raised-active-bg);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-chip:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > :is(.sb-bottom-chat-tray-toggle, .sb-bottom-chat-search-close):not(#sb-specificity) {
+    grid-column: 3;
+    flex: none;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    max-width: 44px;
+    max-height: 44px;
+    border-radius: 999px;
+    font-size: calc(var(--mainFontSize) * 0.95);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-tray-toggle {
+    grid-row: 1;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-tray-toggle[aria-expanded='true'] {
+    opacity: 1;
+    color: var(--color-primary, var(--sb-accent));
+    background: var(--sb-flat-selected-bg);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > :is(.sb-bottom-chat-tray-toggle, .sb-bottom-chat-search-close)[hidden],
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar:not(.sb-bottom-chat-search-open) > .sb-bottom-chat-search-close {
+    display: none !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-search-field:not(#sb-specificity) {
+    grid-column: 1 / 3;
+    grid-row: 2;
+    min-width: 0;
+    height: 44px;
+    min-height: 44px;
+    max-height: 44px;
+    padding-inline: 12px;
+    border-radius: 999px;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-search-field input:not(#sb-specificity) {
+    height: 32px !important;
+    font-size: calc(var(--mainFontSize) * 0.86);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-search-close {
+    grid-row: 2;
+}
+
+/* Composer sits flush under the chip row. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-mobile-chat-bar-shown] #send_form:not(#sb-specificity) {
+    padding-top: 2px !important;
+    border-top: 0 !important;
+}
+
+/*
+ * Composer toolbar: a flat row with the theme's hairline above it, as on desktop. The old pill
+ * radius curved that hairline into a capsule outline that desktop no longer has.
+ */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #nonQRFormItems:not(#sb-specificity) {
+    --sb-composer-inset: 4px;
+    min-height: calc(var(--sb-mobile-composer-input-height) + var(--sb-composer-inset) * 2 + 2px) !important;
+    padding: var(--sb-composer-inset) !important;
+    border-radius: 0 !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #nonQRFormItems > :is(#leftSendForm, #rightSendForm):not(#sb-specificity) {
+    padding: 0 !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #form_sheld :is(#options_button, #leftSendForm > div, #rightSendForm > div, #send_but, .mes_stop):not(#sb-specificity) {
+    border-radius: 999px !important;
+    box-shadow: none !important;
+}
+
+/* Same card-radius entry as the desktop and Conversation composers. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #form_sheld #send_textarea:not(#sb-specificity) {
+    border-radius: var(--sb-radius-card) !important;
+}
+
+/* Extension tray: hidden until the toggle opens it; shown as before when the bar itself is hidden. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-mobile-chat-bar-shown]:not([data-sb-mobile-tray-open]) #send_form > :is(#gg-action-button-container, .stih--buttons.stih--standalone) {
+    display: none !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-mobile-tray-open] #send_form > #gg-action-button-container:not([hidden]),
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-mobile-tray-open] #send_form > .stih--buttons.stih--standalone {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px 6px;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-mobile-tray-open] #gg-action-button-container .gg-regular-buttons-container {
+    flex: 1 1 auto;
+    width: auto;
+    justify-content: flex-start;
+    gap: 6px;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-mobile-tray-open] #gg-action-button-container .stih--buttons,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-mobile-tray-open] #send_form .stih--buttons .stih--arrows {
+    gap: 6px;
+    margin: 0;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-mobile-tray-open] #send_form :is(.gg-action-button, .stih--buttons .stih--button):not(#sb-specificity) {
+    flex: 0 0 44px !important;
+    width: 44px !important;
+    min-width: 44px !important;
+    max-width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    max-height: 44px !important;
+    border-radius: 999px !important;
+    font-size: calc(var(--mainFontSize) * 0.95) !important;
+}
+
+/* Chat sheet: chat picker plus every chat action as a labelled row. */
+html[data-sb-mobile-ui] .sb-bottom-chat-sheet-backdrop[hidden],
+html[data-sb-mobile-ui] .sb-bottom-chat-sheet[hidden] {
+    display: none !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-sheet-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 2990;
+    padding: 0;
+    border: 0;
+    background: var(--sb-dialog-backdrop, rgba(0, 0, 6, 0.5));
+    cursor: default;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-sheet {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 3000;
+    display: grid;
+    gap: 10px;
+    max-block-size: min(80dvh, 40rem);
+    padding: 8px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+    box-sizing: border-box;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--sb-shell-border, var(--SmartThemeBorderColor));
+    border-width: 1px 0 0;
+    border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
+    background: var(--sb-layer-drawer);
+    color: var(--SmartThemeBodyColor);
+    box-shadow: var(--sb-shadow-dialog);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-sheet-title {
+    margin: 0;
+    padding-inline-start: 4px;
+    font-size: calc(var(--mainFontSize) * 1);
+    font-weight: 600;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-sheet-title:focus {
+    outline: none;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-sheet .sb-bottom-chat-sheet-close:not(#sb-specificity) {
+    flex: none;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    max-width: 44px;
+    max-height: 44px;
+    border-radius: var(--sb-shell-control-radius);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-sheet #sb-bottom-chat-select:not(#sb-specificity) {
+    width: 100%;
+    height: 44px;
+    min-height: 44px;
+    max-height: 44px;
+    padding: 0 12px;
+    border-radius: 12px;
+    font-size: calc(var(--mainFontSize) * 0.9);
+    line-height: 44px;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-sheet-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-sheet-actions > :is(.sb-bottom-chat-nav-actions, .sb-bottom-chat-management-actions) {
+    display: contents;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-sheet-actions .sb-bottom-chat-btn:not(#sb-specificity) {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    height: auto;
+    min-height: 44px;
+    max-height: none;
+    padding: 6px 10px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    opacity: 1;
+    font-size: calc(var(--mainFontSize) * 0.86);
+    line-height: 1.2;
+    text-align: start;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-sheet-actions .sb-bottom-chat-btn > i {
+    flex: none;
+    width: 1.25em;
+    text-align: center;
+    opacity: 0.75;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-sheet-actions .sb-bottom-chat-btn:not(#sb-specificity)::after {
+    content: attr(aria-label);
+    position: static;
+    inline-size: auto;
+    block-size: auto;
+    min-width: 0;
+    border-radius: 0;
+    background: none;
+    overflow-wrap: anywhere;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-sheet-actions .sb-bottom-chat-btn:is(:disabled, .is-disabled):not(#sb-specificity) {
+    opacity: 0.42;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-sheet-actions .sb-bottom-chat-btn:has(> .fa-trash):not(#sb-specificity) {
+    grid-column: 1 / -1;
+    color: var(--sb-color-danger, #fb7185);
+    border-color: color-mix(in srgb, var(--sb-color-danger, #fb7185) 32%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html[data-sb-mobile-ui] #sb-bottom-chat-bar > :is(.sb-bottom-chat-chip, .sb-bottom-chat-tray-toggle),
+    html[data-sb-mobile-ui] #sb-bottom-chat-bar > :is(.sb-bottom-chat-chip, .sb-bottom-chat-tray-toggle) > i {
+        transition: none !important;
+    }
+}

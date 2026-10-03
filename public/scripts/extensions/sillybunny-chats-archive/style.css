@@ -89,14 +89,6 @@
     padding-inline: var(--sbca-space-lg);
 }
 
-.sbca-dialog .popup-button-close {
-    top: var(--sbca-space-xs);
-    right: var(--sbca-space-xs);
-    width: var(--sb-mobile-touch-target, 44px);
-    height: var(--sb-mobile-touch-target, 44px);
-    padding: 0;
-}
-
 .sbca-root {
     --sbca-border: var(--color-border, var(--SmartThemeBorderColor, currentColor));
     --sbca-text: var(--color-text, var(--SmartThemeBodyColor, inherit));
@@ -161,7 +153,7 @@
 }
 
 .sbca-heading {
-    padding-inline: 0 calc(var(--sb-mobile-touch-target, 44px) + var(--sbca-space-sm));
+    padding-inline: 0;
     border: 0;
     font-size: calc(var(--mainFontSize) * 1.45);
     line-height: 1.16;
@@ -1621,6 +1613,9 @@
         max-height: 100dvh !important;
         margin: 0 !important;
         border-radius: 0;
+        /* Full-screen sheet: drop the tint alpha so the chat underneath doesn't bleed through. */
+        background-color: var(--color-background, var(--SmartThemeBlurTintColor));
+        background-color: rgb(from var(--SmartThemeBlurTintColor) r g b / 1);
     }
 
     .sbca-dialog .popup-body {
@@ -1645,11 +1640,6 @@
 
     .sbca-dialog .popup-controls .menu_button {
         flex: 1 1 auto;
-    }
-
-    .sbca-dialog .popup-button-close {
-        top: max(var(--sbca-space-xs), env(safe-area-inset-top));
-        right: max(var(--sbca-space-xs), env(safe-area-inset-right));
     }
 
     .sbca-root {

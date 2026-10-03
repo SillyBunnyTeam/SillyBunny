@@ -42,16 +42,39 @@ function getMediaQueryPxValues(cssSource) {
 // chrome adjustment sheet is budgeted from introduction.
 // sillybunny-theme.css raised 158 -> 161: the mobile character list needs to
 // override upstream !important avatar alignment rules for missing avatars.
+// sillybunny-theme.css raised 161 -> 165: the sheet was already at 163. The
+// libadwaita range slider adds four track declarations that must beat the
+// style.css .neo-range-slider !important rules; two redundant reduced-motion
+// overrides already covered by the universal selector were removed.
 // sillybunny-tabs.css raised 386 -> 389: the favourites bar fix re-shows the
 // bar on the character tabs with display:flex !important and
 // visibility:visible !important to beat the JS inline hide, and pins
 // #HotSwapWrapper padding:0 !important against the base flex-container rules.
+// sillybunny-tabs.css raised 389 -> 390: one grouped placeholder color for the
+// three search fields must beat style.css's !important SmartThemeEmColor rule.
+// sillybunny-tabs.css raised 390 -> 398: v1.9.0 libadwaita shell overhaul adds
+// shell navigation, desktop/mobile header surfaces, drawers, and mobile nav.
+// sillybunny-tabs.css lowered 398 -> 394: the #top-bar glow/no-blur overrides
+// moved to the source rule in sillybunny-theme.css.
+// sillybunny-theme.css raised 165 -> 245: v1.9.0 overlay surfaces (options and
+// extensions menus, toasts, composer, send button, placeholders) must beat
+// upstream !important and inline rules. Flags on menus, popups, select2,
+// ctx-menus, and tooltips were removed after computed-style probes showed no diff.
+// sillybunny-paper-theme.css lowered 55 -> 51: hard-coded colour overrides removed.
+// sillybunny-theme.css raised 245 -> 248: the phone composer goes full-bleed against the
+// !important frame rule, and the send button beats style.css's 0.7 composer-button dimming.
+// sillybunny-tabs.css raised 394 -> 398: the joined desktop bottom-bar stack must square the
+// composer's top corners against the !important #send_form frame radius in sillybunny-theme.css.
+// sillybunny-mobile-shell.css raised 684 -> 685: the circular send/stop button beats the
+// !important 10px/9px radius in upstream mobile-styles.css.
+// sillybunny-mobile-shell.css raised 685 -> 688: the libadwaita composer entry's rest border
+// and focus border-color/box-shadow must beat upstream mobile-styles.css !important rules.
 const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
-    'sillybunny-mobile-shell.css': 685,
-    'sillybunny-paper-theme.css': 55,
-    'sillybunny-tabs.css': 389,
+    'sillybunny-mobile-shell.css': 688,
+    'sillybunny-paper-theme.css': 51,
+    'sillybunny-tabs.css': 398,
     'sillybunny-chat-styles.css': 225,
-    'sillybunny-theme.css': 161,
+    'sillybunny-theme.css': 248,
 });
 
 const FORK_DISTINCT_BREAKPOINT_BUDGET = 18;
@@ -100,12 +123,15 @@ describe('paper texture regression guards', () => {
         expect(messageAfterRule).toContain('--sb-paper-texture-opacity');
     });
 
-    test('derives thought box colors from active SmartTheme tokens', () => {
-        const thoughtBoxTokenBlock = paperThemeCss.match(/--thought-box-bg:[\s\S]*?--thought-box-accent:[^;]+;/)?.[0] ?? '';
+    test('leaves reasoning boxes on the shared desktop treatment', () => {
+        expect(paperThemeCss).not.toContain('--thought-box-');
+        expect(paperThemeCss).not.toMatch(/\.mes_reasoning_header\s*\{/);
+        expect(paperThemeCss).not.toMatch(/\.mes_reasoning\s*\{/);
+    });
 
-        expect(thoughtBoxTokenBlock).toContain('--SmartThemeBlurTintColor');
-        expect(thoughtBoxTokenBlock).toContain('--SmartThemeBodyColor');
-        expect(thoughtBoxTokenBlock).toContain('--SmartThemeQuoteColor');
+    test('fills the reserved top-bar layout offset instead of a shorter 40px bar', () => {
+        expect(paperThemeCss).toMatch(/#top-bar,\s*#topBar\s*\{[^}]*height:\s*var\(--sb-topbar-layout-offset,\s*var\(--topBarBlockSize\)\)\s*!important;/);
+        expect(paperThemeCss).not.toMatch(/#top-bar,\s*#topBar\s*\{[^}]*height:\s*var\(--topBarBlockSize\)\s*!important;/);
     });
 });
 

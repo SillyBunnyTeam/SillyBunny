@@ -17,6 +17,11 @@ describe('mobile shell button scale', () => {
         expect(cssSource).toContain('--sb-mobile-rail-label-size:');
     });
 
+    test('keeps shared mobile navigation controls at the documented touch target floor', () => {
+        expect(cssSource).toContain('--sb-mobile-toggle-min-size: var(--sb-mobile-touch-target, 44px);');
+        expect(cssSource).toContain('--sb-mobile-rail-tab-height: clamp(var(--sb-mobile-touch-target, 44px),');
+    });
+
     test('mobile vertical rail wrapper uses scale variable instead of hard-coded 78px', () => {
         // Match the mobile vertical rail media query block
         const mobileVerticalMatch = cssSource.match(

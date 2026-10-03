@@ -17,14 +17,15 @@
             background-color: #1d2128;
         }
     </style>
-    <link rel="preload" as="style" href="style.css?v=20260803a">
+    <link rel="preload" as="style" href="style.css?v=20261001e">
     <link rel="modulepreload" href="script.js">
     <link rel="modulepreload" href="scripts/sillybunny-tabs.js">
     <link rel="modulepreload" href="scripts/sillybunny-conversation.js">
-    <link rel="preload" as="font" type="font/woff2" href="webfonts/Figtree/Figtree-Regular.woff2?v=20260422b" crossorigin>
+    <link rel="preload" as="font" type="font/woff2" href="webfonts/AdwaitaSans/AdwaitaSans-Regular-Latin.woff2?v=20261001a" crossorigin>
     <link rel="manifest" crossorigin="use-credentials" href="manifest.json">
-    <link href="webfonts/Figtree/stylesheet.css?v=20260422b" rel="stylesheet">
+    <link href="webfonts/AdwaitaSans/stylesheet.css?v=20261001a" rel="stylesheet">
     <link href="webfonts/NotoSans/stylesheet.css" rel="preload" as="style" data-sb-deferred-style data-sb-media="all">
+    <link href="webfonts/AdwaitaMono/stylesheet.css?v=20261001a" rel="preload" as="style" data-sb-deferred-style data-sb-media="all">
     <link href="webfonts/NotoSansMono/stylesheet.css" rel="preload" as="style" data-sb-deferred-style data-sb-media="all">
     <link href="css/fontawesome.min.css" rel="stylesheet">
     <link href="css/solid.min.css" rel="stylesheet">
@@ -41,15 +42,17 @@
     <link rel="apple-touch-icon" sizes="114x114" href="img/apple-icon-114x114.png" />
     <link rel="apple-touch-icon" sizes="144x144" href="img/apple-icon-144x144.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="img/apple-icon-180x180.png" />
-    <link rel="stylesheet" type="text/css" href="style.css?v=20260803a">
+    <link rel="stylesheet" type="text/css" href="style.css?v=20261001e">
     <link rel="stylesheet" type="text/css" href="css/st-tailwind.css">
     <link rel="stylesheet" type="text/css" href="css/toggle-dependent.css">
     <link rel="stylesheet" type="text/css" href="css/select2-overrides.css?v=20260609a">
     <link rel="stylesheet" type="text/css" href="css/mobile-styles.css?v=20260814a" media="(max-width: 768px)">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20260727c">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-paper-theme.css?v=20260622g" media="(max-width: 768px)">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20260725g">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20260821a" media="(max-width: 768px)">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20261003f">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-paper-theme.css?v=20261003a" media="(max-width: 768px)">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20261003b">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20261003e" media="(max-width: 768px)">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-navigation.css?v=20261001e">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261003a">
     <link rel="stylesheet" type="text/css" href="css/user.css">
     <!-- Scripts are loaded at the end of the body to improve page load speed -->
 </head>
@@ -5180,7 +5183,7 @@
                             <div class="sb-theme-presets">
                                 <small class="sb-theme-presets-label">SillyBunny palettes</small>
                                 <div class="sb-theme-preset-buttons">
-                                    <button type="button" class="menu_button menu_button_icon sb-theme-preset-reset" title="Reset colors to Dark V 1.0">
+                                    <button type="button" class="menu_button menu_button_icon sb-theme-preset-reset" title="Reset colors to Libadwaita">
                                         <i class="fa-solid fa-rotate-left"></i>
                                         <span>Reset</span>
                                     </button>
@@ -6048,7 +6051,6 @@
                                             <label for="google_font_preset"><small>Preset</small></label>
                                             <select id="google_font_preset" class="flex1 margin0 text_pole">
                                                 <option value="">Default (none)</option>
-                                                <option value="Figtree">Figtree</option>
                                                 <option value="Inter">Inter</option>
                                                 <option value="JetBrains Mono">JetBrains Mono</option>
                                                 <option value="Roboto">Roboto</option>
@@ -8232,41 +8234,45 @@
                             </div>
                         </div>
                         <div class="mes_buttons">
-                            <div title="Message Actions" class="mes_button extraMesButtonsHint fa-solid fa-ellipsis" data-i18n="[title]Message Actions"></div>
+                            <!-- SillyBunny: extras follow the message menu sections (DESIGN.md "Message Actions"); Copy, Edit, and the menu button sit in the row, menu button last. -->
                             <div class="extraMesButtons">
+                                <div title="Delete + Add Swipe" class="mes_button mes_delete_add_swipe fa-solid fa-rotate-right" data-i18n="[title]Delete + Add Swipe" style="display: none;"></div>
+                                <div title="Jump to swipe history" class="mes_button mes_swipe_picker fa-solid fa-bookmark" data-i18n="[title]Jump to swipe history" style="display: none;"></div>
+                                <div title="Narrate" class="mes_button mes_narrate fa-solid fa-bullhorn" data-i18n="[title]Narrate" data-requires-extension="tts"></div>
                                 <div title="Translate message" class="mes_button mes_translate fa-solid fa-language" data-i18n="[title]Translate message" data-requires-extension="translate"></div>
                                 <div title="Generate Image" class="mes_button sd_message_gen fa-solid fa-paintbrush" data-i18n="[title]Generate Image" data-requires-extension="stable-diffusion"></div>
-                                <div title="Narrate" class="mes_button mes_narrate fa-solid fa-bullhorn" data-i18n="[title]Narrate" data-requires-extension="tts"></div>
+                                <div title="Screenshot messages to clipboard" class="mes_button mes_screenshot fa-solid fa-camera" data-i18n="[title]Screenshot messages to clipboard"></div>
+                                <div title="Create branch" class="mes_button mes_create_branch fa-regular fa-code-branch" data-i18n="[title]Create Branch"></div>
+                                <div title="Create checkpoint" class="mes_button mes_create_bookmark fa-regular fa-solid fa-flag-checkered" data-i18n="[title]Create checkpoint"></div>
+                                <div data-tooltip="Click to open checkpoint chat&#10;Shift+Click to replace the existing checkpoint with a new one" class="mes_button mes_bookmark fa-solid fa-flag" data-i18n="[data-tooltip]Open checkpoint chat&#10;Shift+Click to replace the existing checkpoint with a new one"></div>
+                                <div title="Exclude message from prompts" class="mes_button mes_hide fa-solid fa-eye" data-i18n="[title]Exclude message from prompts"></div>
+                                <div title="Include message in prompts" class="mes_button mes_unhide fa-solid fa-eye-slash" data-i18n="[title]Include message in prompts"></div>
                                 <div title="Prompt" class="mes_button mes_prompt fa-solid fa-square-poll-horizontal " data-i18n="[title]Prompt" style="display: none;"></div>
                                 <div title="View agent changes" class="mes_button mes_view_agent_changes fa-solid fa-file-lines" data-i18n="[title]View agent changes" style="display: none;"></div>
                                 <div title="Fix trackers" class="mes_button mes_fix_trackers fa-solid fa-wrench" data-i18n="[title]Fix trackers" style="display: none;"></div>
                                 <div title="Run companions" class="mes_button mes_run_companions fa-solid fa-user-astronaut" data-i18n="[title]Run companions" style="display: none;"></div>
                                 <div title="Run card scripts" class="mes_button mes_run_card_scripts fa-solid fa-play" data-i18n="[title]Run card scripts" style="display: none;"></div>
-                                <div title="Exclude message from prompts" class="mes_button mes_hide fa-solid fa-eye" data-i18n="[title]Exclude message from prompts"></div>
-                                <div title="Include message in prompts" class="mes_button mes_unhide fa-solid fa-eye-slash" data-i18n="[title]Include message in prompts"></div>
+                                <div title="Embed file or image" class="mes_button mes_embed fa-solid fa-paperclip" data-i18n="[title]Embed file or image"></div>
                                 <div title="Toggle media display style" class="mes_button mes_media_gallery fa-solid fa-photo-film" data-i18n="[title]Toggle media display style"></div>
                                 <div title="Toggle media display style" class="mes_button mes_media_list fa-solid fa-table-cells-large" data-i18n="[title]Toggle media display style"></div>
-                                <div title="Embed file or image" class="mes_button mes_embed fa-solid fa-paperclip" data-i18n="[title]Embed file or image"></div>
-                                <div title="Jump to swipe history" class="mes_button mes_swipe_picker fa-solid fa-bookmark" data-i18n="[title]Jump to swipe history" style="display: none;"></div>
-                                <div title="Create checkpoint" class="mes_button mes_create_bookmark fa-regular fa-solid fa-flag-checkered" data-i18n="[title]Create checkpoint"></div>
-                                <div title="Create branch" class="mes_button mes_create_branch fa-regular fa-code-branch" data-i18n="[title]Create Branch"></div>
-                                <div title="Copy" class="mes_button mes_copy fa-solid fa-copy " data-i18n="[title]Copy"></div>
-                                <div title="Screenshot messages to clipboard" class="mes_button mes_screenshot fa-solid fa-camera" data-i18n="[title]Screenshot messages to clipboard"></div>
                             </div>
-                            <div data-tooltip="Click to open checkpoint chat&#10;Shift+Click to replace the existing checkpoint with a new one" class="mes_button mes_bookmark fa-solid fa-flag" data-i18n="[data-tooltip]Open checkpoint chat&#10;Shift+Click to replace the existing checkpoint with a new one"></div>
-                            <div title="Edit" class="mes_button mes_edit fa-solid fa-pencil " data-i18n="[title]Edit"></div>
-                            <!-- SillyBunny: one-click replacement for failed swipes. -->
-                            <div title="Delete + Add Swipe" class="mes_button mes_delete_add_swipe fa-solid fa-rotate-right" data-i18n="[title]Delete + Add Swipe" style="display: none;"></div>
                             <div title="Delete" class="mes_button mes_delete fa-solid fa-trash-can" data-i18n="[title]Delete"></div>
+                            <div title="Copy" class="mes_button mes_copy fa-solid fa-copy " data-i18n="[title]Copy"></div>
+                            <div title="Edit" class="mes_button mes_edit fa-solid fa-pencil " data-i18n="[title]Edit"></div>
+                            <div title="Message Actions" class="mes_button extraMesButtonsHint fa-solid fa-ellipsis-vertical" data-i18n="[title]Message Actions"></div>
                         </div>
                         <div class="mes_edit_buttons">
-                            <div class="mes_edit_done menu_button  fa-solid fa-check" title="Confirm" data-i18n="[title]Confirm"></div>
-                            <div class="mes_edit_copy menu_button  fa-solid fa-copy" title="Copy this message" data-i18n="[title]Copy this message"></div>
-                            <div class="mes_edit_add_reasoning menu_button fa-solid fa-lightbulb" title="Add a reasoning block" data-i18n="[title]Add a reasoning block"></div>
-                            <div class="mes_edit_delete menu_button  fa-solid fa-trash-can" title="Delete this message" data-i18n="[title]Delete this message"></div>
-                            <div class="mes_edit_up menu_button  fa-solid fa-chevron-up " title="Move message up" data-i18n="[title]Move message up"></div>
-                            <div class="mes_edit_down menu_button  fa-solid fa-chevron-down" title="Move message down" data-i18n="[title]Move message down"></div>
+                            <!-- SillyBunny: Cancel and Confirm lead; mobile shows the menu button, desktop shows the extras inline after a divider. -->
                             <div class="mes_edit_cancel menu_button  fa-solid fa-xmark" title="Cancel" data-i18n="[title]Cancel"></div>
+                            <div class="mes_edit_done menu_button  fa-solid fa-check" title="Confirm" data-i18n="[title]Confirm"></div>
+                            <div class="sb-mes-edit-more menu_button fa-solid fa-ellipsis-vertical" title="Message Actions" data-i18n="[title]Message Actions"></div>
+                            <div class="sb-mes-edit-extra">
+                                <div class="mes_edit_copy menu_button  fa-solid fa-copy" title="Copy this message" data-i18n="[title]Copy this message"></div>
+                                <div class="mes_edit_add_reasoning menu_button fa-solid fa-lightbulb" title="Add a reasoning block" data-i18n="[title]Add a reasoning block"></div>
+                                <div class="mes_edit_up menu_button  fa-solid fa-chevron-up " title="Move message up" data-i18n="[title]Move message up"></div>
+                                <div class="mes_edit_down menu_button  fa-solid fa-chevron-down" title="Move message down" data-i18n="[title]Move message down"></div>
+                                <div class="mes_edit_delete menu_button  fa-solid fa-trash-can" title="Delete this message" data-i18n="[title]Delete this message"></div>
+                            </div>
                         </div>
                     </div>
                     <details class="mes_reasoning_details">

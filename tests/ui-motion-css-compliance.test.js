@@ -81,7 +81,7 @@ describe('audited UI motion CSS', () => {
     test('caps the audited mobile sheet radius at the design-system maximum', () => {
         const mobileShellSource = stylesheets.find(stylesheet => stylesheet.name === 'mobile shell').source;
 
-        expect(mobileShellSource).toContain('border-radius: 20px 20px 0 0 !important;');
+        expect(mobileShellSource).toContain('border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0 !important;');
         expect(mobileShellSource).not.toContain('border-radius: 22px 22px 0 0 !important;');
     });
 
@@ -92,7 +92,7 @@ describe('audited UI motion CSS', () => {
         expect(inChatAgentsSource).toContain('transition: -webkit-clip-path 0.25s ease, clip-path 0.25s ease;');
         expect(inChatAgentsSource).toContain('-webkit-clip-path: inset(0 0 0 100%);');
         expect(inChatAgentsSource).toContain('clip-path: inset(0 0 0 100%);');
-        expect(mobileShellSource).toContain('-webkit-backdrop-filter: blur(22px);');
-        expect(mobileShellSource).toContain('backdrop-filter: blur(22px);');
+        // DESIGN.md Opaque Shell Rule: mobile shell layers no longer blur what sits behind them.
+        expect(mobileShellSource).not.toMatch(/backdrop-filter:\s*blur\(/);
     });
 });

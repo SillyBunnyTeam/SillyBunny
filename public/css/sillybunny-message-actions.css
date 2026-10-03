@@ -1,0 +1,557 @@
+/*
+ * SillyBunny message actions (DESIGN.md "Message Actions"): name-row layout, the expanded row,
+ * the labelled message menu (popover and bottom sheet), and press-and-hold labels.
+ * Loaded after the other SillyBunny sheets so it wins the cascade; user.css still loads last.
+ * Behaviour lives in scripts/sillybunny-message-actions.js and scripts/sillybunny-action-menu.js.
+ *
+ * Layout hiding is scoped to :not([data-sb-actions-probe]); the script sets that attribute while it
+ * reads which actions are available, so only real conditions (inline styles, extension gates) count.
+ */
+
+/* The theme's inline-flex sizing rule outranks the base checkpoint visibility rules. */
+#chat .mes:is([bookmark_link=''], :not([bookmark_link])) .mes_bookmark {
+    display: none !important;
+}
+
+#chat .mes[bookmark_link]:not([bookmark_link='']) .mes_create_bookmark {
+    display: none !important;
+}
+
+/* Name row: the name truncates first, then the actions drop below it. */
+#chat .mes .mes_block > .ch_name {
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 2px;
+    min-inline-size: 0;
+}
+
+#chat .mes .mes_block > .ch_name > .flex-container.flex1 {
+    flex: 1 1 14ch;
+    min-inline-size: 0;
+}
+
+#chat .mes .mes_block > .ch_name > .flex-container.flex1 > .flex-container {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+}
+
+#chat .mes .mes_block > .ch_name .name_text {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#chat .mes .mes_block > .ch_name > :is(.mes_buttons, .mes_edit_buttons) {
+    margin-inline-start: auto;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+}
+
+#chat .mes .mes_block > .ch_name > .mes_buttons {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+/* ---------- Row at rest ---------- */
+
+/* Replaces upstream's inline expansion; the menu button is always shown and always last. */
+#chat .mes .mes_buttons > .extraMesButtonsHint:not(#sb-specificity) {
+    display: inline-flex !important;
+}
+
+#chat .mes .mes_buttons > .sb-actions-divider {
+    display: none;
+}
+
+/* Rows that are not expanded: mobile always, desktop unless Shift or the setting expands them. */
+@media screen and (max-width: 768px) {
+    #chat .mes:not([data-sb-actions-probe]) .mes_buttons > .extraMesButtons:not(#sb-specificity),
+    #chat .mes:not([data-sb-actions-probe]) .mes_buttons > :not(.extraMesButtons, .mes_edit, .extraMesButtonsHint) {
+        display: none !important;
+    }
+}
+
+@media screen and (min-width: 769px) {
+    body:not(.expandMessageActions) #chat .mes:not([data-sb-actions-probe], [data-sb-actions-expanded]) .mes_buttons > .extraMesButtons:not(#sb-specificity),
+    body:not(.expandMessageActions) #chat .mes:not([data-sb-actions-probe], [data-sb-actions-expanded]) .mes_buttons > :not(.extraMesButtons, .mes_copy, .mes_edit, .extraMesButtonsHint) {
+        display: none !important;
+    }
+
+    /* Expanded: the extras join the row; each button keeps its own visibility rules. */
+    #chat .mes[data-sb-actions-expanded] .mes_buttons > .extraMesButtons:not(#sb-specificity),
+    body.expandMessageActions #chat .mes .mes_buttons > .extraMesButtons:not(#sb-specificity) {
+        display: contents !important;
+    }
+
+    #chat .mes[data-sb-actions-expanded] .mes_buttons .sb-actions-divider,
+    body.expandMessageActions #chat .mes .mes_buttons .sb-actions-divider {
+        display: block;
+        flex: none;
+        inline-size: 1px;
+        block-size: calc(var(--sb-message-hit-size) * 0.6);
+        margin-inline: 3px;
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
+    }
+
+    #chat .mes .mes_buttons[data-sb-wrapped] .sb-actions-divider:not(#sb-specificity) {
+        display: none;
+    }
+}
+
+/* ---------- Mobile row: Edit, then the menu button ---------- */
+
+@media screen and (max-width: 768px) {
+    #chat .mes .mes_block > .ch_name {
+        flex-wrap: nowrap;
+        row-gap: 0;
+    }
+
+    #chat .mes .mes_block > .ch_name > .flex-container.flex1 {
+        flex: 1 1 0;
+    }
+
+    #chat .mes .mes_block > .ch_name > :is(.mes_buttons, .mes_edit_buttons) {
+        flex: 0 0 auto;
+        inline-size: auto;
+        width: auto;
+        max-inline-size: none;
+        flex-wrap: nowrap;
+        justify-content: flex-end;
+        gap: 2px;
+        overflow: visible;
+        filter: none;
+    }
+
+    /* Ripple's full-width divider is a flex item; in the nowrap row it would push the actions left. */
+    body.ripplestyle #chat .mes:not(.smallSysMes) .mes_block > .ch_name {
+        position: relative;
+        padding-bottom: 9px;
+    }
+
+    body.ripplestyle #chat .mes:not(.smallSysMes) .mes_block > .ch_name::after {
+        position: absolute;
+        inset: auto 0 0;
+        width: auto;
+        margin: 0;
+        padding: 0;
+    }
+}
+
+/* ---------- Edit row: Cancel, Confirm, then the edit actions ---------- */
+
+#chat .mes .mes_edit_buttons > .sb-mes-edit-extra {
+    display: contents;
+}
+
+#chat .mes .mes_edit_buttons > .sb-mes-edit-more {
+    display: none !important;
+}
+
+@media screen and (min-width: 769px) {
+    /* The wrapper's ::before is a flex item of the row: the divider between Confirm and Copy. */
+    #chat .mes .mes_edit_buttons > .sb-mes-edit-extra::before {
+        content: '';
+        flex: none;
+        inline-size: 1px;
+        block-size: calc(var(--sb-message-hit-size) * 0.6);
+        margin-inline: 3px;
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
+    }
+}
+
+@media screen and (max-width: 768px) {
+    #chat .mes .mes_edit_buttons > .sb-mes-edit-more {
+        display: inline-flex !important;
+    }
+
+    #chat .mes .mes_edit_buttons > .sb-mes-edit-extra {
+        display: none;
+    }
+
+    #chat .mes .mes_edit_buttons > .sb-mes-edit-more {
+        --sb-edit-action-color: var(--SmartThemeBodyColor);
+    }
+
+    #chat .mes .mes_edit_buttons > .sb-mes-edit-more[aria-expanded='true'] {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
+    }
+}
+
+/* Mirrored user rows (echo, tide) sit at the start edge, so the menu button stays on the outer edge. */
+:is(body.echostyle, body.tidestyle) #chat .mes[is_user='true'] .mes_block > .ch_name > :is(.mes_buttons, .mes_edit_buttons) {
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+}
+
+/* ---------- Row buttons ---------- */
+
+#chat .mes :is(.mes_buttons .mes_button, .extraMesButtons > div) {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+    transition:
+        opacity var(--sb-transition-fast),
+        background-color var(--sb-transition-fast),
+        color var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    #chat .mes :is(.mes_buttons .mes_button, .extraMesButtons > div):not(.mes_delete):hover {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    }
+}
+
+#chat .mes :is(.mes_buttons .mes_button, .extraMesButtons > div):not(.mes_delete):active,
+#chat .mes .mes_buttons > .extraMesButtonsHint[aria-expanded='true'] {
+    opacity: 1;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
+}
+
+#chat .mes :is(.mes_buttons .mes_button, .extraMesButtons > div):focus-visible {
+    opacity: 1;
+    outline: 2px solid var(--sb-focus-ring);
+    outline-offset: -2px;
+}
+
+#chat .mes .mes_edit_buttons .menu_button {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+}
+
+/* Keeps the row visible while its menu is open, for themes that fade actions until hover. */
+#chat .mes.sb-message-actions-open .mes_buttons,
+#chat .mes[data-sb-actions-expanded] .mes_buttons {
+    opacity: 1;
+}
+
+/* ---------- Message menu (popover and sheet share the rows) ---------- */
+
+.sb-action-menu {
+    --sb-action-row: 34px;
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    color: var(--SmartThemeBodyColor);
+    font-family: var(--mainFontFamily, inherit);
+}
+
+@media (pointer: coarse) {
+    .sb-action-menu {
+        --sb-action-row: 44px;
+    }
+}
+
+.sb-action-sheet .sb-action-menu {
+    --sb-action-row: 44px;
+}
+
+:root[data-sb-compact-mode='true'] .sb-action-sheet .sb-action-menu {
+    --sb-action-row: 40px;
+}
+
+.sb-action-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    inline-size: 100%;
+    min-block-size: var(--sb-action-row);
+    margin: 0;
+    padding: 6px 12px;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: var(--sb-radius-control, 9px);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: calc(var(--mainFontSize) * 0.95);
+    line-height: 1.25;
+    text-align: start;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.sb-action-menu-item > :is(i, svg, img):first-child {
+    flex: none;
+    inline-size: 1.25em;
+    max-block-size: 1.25em;
+    text-align: center;
+    opacity: 0.7;
+}
+
+.sb-action-menu-label {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+}
+
+.sb-action-menu-detail {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    max-inline-size: 45%;
+    overflow: hidden;
+    opacity: 0.6;
+    font-size: 0.9em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (hover: hover) {
+    .sb-action-menu-item:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.sb-action-menu-item:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-action-menu-item:focus-visible,
+.sb-action-menu-reaction:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-action-menu-item[aria-disabled='true'] {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.sb-action-menu-item.is-danger {
+    color: var(--sb-color-danger);
+}
+
+.sb-action-menu-item.is-danger > :first-child {
+    opacity: 1;
+}
+
+@media (hover: hover) {
+    .sb-action-menu-item.is-danger:hover {
+        background: color-mix(in srgb, var(--sb-color-danger) 12%, transparent);
+    }
+}
+
+.sb-action-menu-item.is-danger:active {
+    background: color-mix(in srgb, var(--sb-color-danger) 20%, transparent);
+}
+
+.sb-action-menu-separator {
+    flex: none;
+    block-size: 1px;
+    margin: 6px 0;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
+}
+
+.sb-action-menu-reactions {
+    display: flex;
+    gap: 4px;
+    padding: 2px 4px;
+}
+
+.sb-action-menu-reaction {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--sb-action-row);
+    block-size: var(--sb-action-row);
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+@media (hover: hover) {
+    .sb-action-menu-reaction:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.sb-action-menu-reaction:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-action-menu-reaction[aria-checked='true'] {
+    background: var(--sb-flat-selected-bg);
+}
+
+/* Popover (desktop): anchored to the trigger, trailing-aligned, flips above when needed. */
+.sb-action-popover {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: var(--sb-z-context-menu);
+    min-inline-size: 200px;
+    max-inline-size: min(300px, calc(100vw - 16px));
+    padding: 6px;
+    box-sizing: border-box;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--sb-shell-border);
+    border-radius: var(--sb-radius-overlay);
+    background: var(--sb-layer-popover);
+    color: var(--SmartThemeBodyColor);
+    box-shadow: var(--sb-shadow-popover);
+}
+
+.sb-action-popover:focus {
+    outline: none;
+}
+
+.sb-action-popover[hidden],
+.sb-action-sheet[hidden],
+.sb-action-sheet-backdrop[hidden] {
+    display: none !important;
+}
+
+/* Bottom sheet (mobile): same frame as #sb-bottom-chat-sheet. */
+.sb-action-sheet-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 2990;
+    padding: 0;
+    border: 0;
+    background: var(--sb-dialog-backdrop, rgba(0, 0, 6, 0.5));
+    cursor: default;
+}
+
+.sb-action-sheet {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: var(--sb-z-modal, 3000);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-block-size: min(80dvh, 40rem);
+    padding: 8px 8px calc(12px + env(safe-area-inset-bottom, 0px));
+    box-sizing: border-box;
+    border: 1px solid var(--sb-shell-border, var(--SmartThemeBorderColor));
+    border-width: 1px 0 0;
+    border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
+    background: var(--sb-layer-drawer);
+    color: var(--SmartThemeBodyColor);
+    box-shadow: var(--sb-shadow-dialog);
+}
+
+.sb-action-sheet-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-inline-start: 8px;
+}
+
+.sb-action-sheet-heading {
+    flex: 1;
+    min-inline-size: 0;
+}
+
+.sb-action-sheet-title {
+    margin: 0;
+    font-size: var(--mainFontSize);
+    font-weight: 600;
+}
+
+.sb-action-sheet-title:focus {
+    outline: none;
+}
+
+.sb-action-sheet-subtitle {
+    overflow: hidden;
+    font-size: 13px;
+    opacity: 0.65;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-action-sheet-close {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    inline-size: 44px;
+    block-size: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    font-size: 18px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+:root[data-sb-compact-mode='true'] .sb-action-sheet-close {
+    inline-size: 40px;
+    block-size: 40px;
+}
+
+.sb-action-sheet-close:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-action-sheet-close:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-action-sheet-body {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+/* ---------- Delete confirmation (sillybunny-delete-confirm.js) ---------- */
+
+.sb-popup-destructive-confirm .menu_button.sb-popup-destructive:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--sb-color-danger) 18%, transparent);
+    box-shadow: none;
+    color: var(--sb-color-danger);
+}
+
+@media (hover: hover) {
+    .sb-popup-destructive-confirm .menu_button.sb-popup-destructive:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
+        background: color-mix(in srgb, var(--sb-color-danger) 26%, transparent);
+    }
+}
+
+/* ---------- Press-and-hold labels ---------- */
+
+.sb-press-tooltip {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: var(--sb-z-context-menu);
+    max-inline-size: min(240px, calc(100vw - 16px));
+    padding: 6px 10px;
+    box-sizing: border-box;
+    border-radius: var(--sb-icon-control-radius);
+    background: rgb(0 0 6 / 0.86);
+    color: #fff;
+    font-family: var(--mainFontFamily, inherit);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+    pointer-events: none;
+    box-shadow: 0 6px 18px rgb(0 0 0 / 0.32);
+}
+
+.sb-press-tooltip[hidden] {
+    display: none;
+}
