@@ -1638,6 +1638,15 @@ export function removeReasoningFromString(str) {
 }
 
 /**
+ * Splits a reasoning block off a reply the way live streaming does, if auto-parsing is enabled.
+ * @param {string} str Reply text
+ * @returns {ParsedReasoning|null} Reasoning and remaining content, or null when nothing was parsed
+ */
+export function parseAutoReasoningFromString(str) {
+    return isReasoningAutoParseEnabled() ? parseReasoningFromStringWithFallbacks(str) : null;
+}
+
+/**
  * Returns the reasoning template object from its name
  * @param {string} name of the template
  * @returns {ReasoningTemplate} the reasoning template object

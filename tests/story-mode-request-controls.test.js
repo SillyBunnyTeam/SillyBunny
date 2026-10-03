@@ -140,6 +140,7 @@ function makeRuntime({ api = 'openai', model = 'gpt-4o', stream = false, buffer 
         getMessageTimeStamp: () => '2026-09-05',
         updateMessageTokenAccounting: async message => ({ outputTokens: 0, reasoningTokens: message.extra?.reasoning_tokens ?? 0 }),
         saveChatConditional: jest.fn(async () => true),
+        createGenerationCommitPlan: () => null, registerGenerationCommitPlan: () => undefined, getMessageIdentity: () => null,
         getPositiveTokenCount: value => Number(value) || 0,
         formatGenerationTimer: () => ({}), messageFormatting: value => value,
         balanceStreamingMarkdown: value => value,
