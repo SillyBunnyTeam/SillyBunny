@@ -33,11 +33,15 @@ jobs:
             exit 0
           fi
 
-          if [ "$BASE_REF" = "main" ] && [ "$HEAD_REF" = "staging" ] && [ "$HEAD_REPOSITORY" = "$REPOSITORY" ]; then
-            exit 0
+          if [ "$BASE_REF" = "release" ] && [ "$HEAD_REPOSITORY" = "$REPOSITORY" ]; then
+            case "$HEAD_REF" in
+              staging | release/v* | hotfix/* | chore/pull_request_target_fix)
+                exit 0
+                ;;
+            esac
           fi
 
-          if [ "$BASE_REF" = "main" ] && [ "$HEAD_REPOSITORY" = "$REPOSITORY" ]; then
+          if [ "$BASE_REF" = "release" ] && [ "$HEAD_REPOSITORY" = "$REPOSITORY" ]; then
             gh api --paginate --slurp "repos/$REPOSITORY/pulls/$PR_NUMBER/files" > "$RUNNER_TEMP/pr-files.json"
             current_head=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')
             if [ "$current_head" != "$PR_HEAD_SHA" ]; then
@@ -58,8 +62,8 @@ jobs:
             fi
           fi
 
-          if [ "$BASE_REF" = "main" ]; then
-            echo "Only the staging release branch may target main. Current source: $HEAD_REF"
+          if [ "$BASE_REF" = "release" ]; then
+            echo "Only staging, release/v*, or hotfix/* branches from this repository may target release. Current source: $HEAD_REF"
             echo "Exception: CODEOWNERS additions or edits may also update pr-metadata.yml, with no other file changes."
           else
             echo "Pull requests must target staging. Current target: $BASE_REF"

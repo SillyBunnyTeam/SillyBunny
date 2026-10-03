@@ -3,9 +3,11 @@ name: ⚔️ Check Merge Conflicts
 on:
   # So that PRs touching the same files as the push are updated
   push:
-  # So that the `dirtyLabel` is removed if conflicts are resolved
-  pull_request_target:
-    types: [synchronize]
+  # Non-push events scan every open PR, so this clears `dirtyLabel` once conflicts are resolved,
+  # including on fork PRs. Replaces `pull_request_target`, which GitHub blocks by default on public repos from 2026-11-02.
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -13,7 +15,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: pr-merge-conflicts-${{ github.event.pull_request.head.ref || github.ref_name }}
+  group: pr-merge-conflicts-${{ github.event_name }}-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:
