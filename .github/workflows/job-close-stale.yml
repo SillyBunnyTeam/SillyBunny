@@ -39,6 +39,7 @@ jobs:
         with:
           client-id: ${{ vars.ST_BOT_CLIENT_ID }}
           private-key: ${{ secrets.ST_BOT_PRIVATE_KEY }}
+          permission-actions: write
           permission-issues: write
           permission-pull-requests: write
 
@@ -98,6 +99,7 @@ jobs:
         with:
           client-id: ${{ vars.ST_BOT_CLIENT_ID }}
           private-key: ${{ secrets.ST_BOT_PRIVATE_KEY }}
+          permission-actions: write
           permission-issues: write
           permission-pull-requests: write
 
@@ -150,6 +152,7 @@ jobs:
         with:
           client-id: ${{ vars.ST_BOT_CLIENT_ID }}
           private-key: ${{ secrets.ST_BOT_PRIVATE_KEY }}
+          permission-actions: write
           permission-issues: write
           permission-pull-requests: write
 

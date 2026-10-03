@@ -128,7 +128,7 @@ Termux, macOS und ARM-Hosts verwenden aufgrund von Kompatibilitätsproblemen mit
 
 ### Staging-Branch
 
-Der `staging`-Branch wird häufiger aktualisiert als der `main`-Branch und enthält Arbeiten, die möglicherweise noch nicht produktionsreif sind. Er kann weniger stabil sein und inkompatible Änderungen enthalten. Die Nutzung erfolgt daher auf eigene Gefahr.
+Der `staging`-Branch wird häufiger aktualisiert als der `release`-Branch und enthält Arbeiten, die möglicherweise noch nicht produktionsreif sind. Er kann weniger stabil sein und inkompatible Änderungen enthalten. Die Nutzung erfolgt daher auf eigene Gefahr.
 
 Führe in einem bestehenden Git-Checkout Folgendes aus:
 
