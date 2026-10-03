@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
   pull_request:
     branches:
-      - main
+      - release
     paths-ignore:
       - '**/*.md'
       - '.github/**'
   push:
     branches:
-      - main
+      - release
     paths-ignore:
       - '**/*.md'
       - '.github/**'
