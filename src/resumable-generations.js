@@ -1,6 +1,13 @@
 import { Buffer } from 'node:buffer';
 import express from 'express';
 
+import { GENERATION_COMMIT_HEADER, decodeCommitPlan, getCommitChatKey } from '../public/scripts/generation-commit-plan.js';
+import { acknowledgeLostGenerations, forgetGeneration, getLostGenerations, recordGeneration } from './generation-journal.js';
+import { parseGenerationReply } from './generation-reply-parser.js';
+
+// Loaded on first commit: generation-commit.js reaches chats.js, which imports util.js, which imports this module.
+const loadGenerationCommit = () => import('./generation-commit.js');
+
 /**
  * SillyBunny: generation replies that outlive the client connection.
  *
@@ -9,6 +16,12 @@ import express from 'express';
  * util.js / request-cancellation.js stops treating a vanished client as a reason to abort the
  * upstream request. The page can pick the reply back up from any byte offset (POST /resume) or
  * cancel it for real (POST /cancel). Phones that freeze background tabs are why this exists.
+ *
+ * A request may also carry a commit plan (X-Generation-Commit). Then the reply does not need the
+ * page at all: if the page goes away (POST /detach) or never claims the finished reply (POST
+ * /claim), the server writes it into the chat itself (generation-commit.js). Pages with a chat open
+ * follow its generations over GET /events, and generation-journal.js remembers which replies are
+ * in flight so a restart can report the ones it lost.
  */
 
 export const RESUMABLE_GENERATION_HEADER = 'x-generation-id';
@@ -28,6 +41,19 @@ const MAX_RESUME_CLIENTS = 8;
 /** A resume reader that falls behind by more than this gets dropped instead of buffered into. */
 const MAX_RESUME_BACKLOG_BYTES = 8 * 1024 * 1024;
 const SWEEP_INTERVAL_MS = 60 * 1000;
+/** A finished reply nobody claimed is written into its chat after this long, before retention drops it. */
+const COMMIT_GRACE_MS = 10 * 60 * 1000;
+/** Only main chat replies can be committed; anything else ignores a commit plan. */
+const COMMITTABLE_PATHS = new Set([
+    '/api/backends/chat-completions/generate',
+    '/api/backends/text-completions/generate',
+    '/api/backends/kobold/generate',
+    '/api/novelai/generate',
+]);
+/** Commit states in which the reply can still be lost to a restart. */
+const IN_FLIGHT_COMMIT_STATES = new Set(['running', 'waiting', 'committing']);
+/** An idle event stream sends a comment this often, so proxies do not close it. */
+const EVENTS_KEEPALIVE_MS = 25 * 1000;
 
 /** @type {Map<string, ResumableGeneration>} */
 const generations = new Map();
@@ -78,12 +104,36 @@ function runCancelHook(hook) {
  * @property {() => void} [onFail] Called if the reply can no longer be served
  */
 
+/**
+ * @typedef {'running'|'waiting'|'committing'|'committed'|'claimed'|'failed'|'cancelled'} CommitState
+ * running: generating; waiting: finished, commit scheduled; claimed: the page saved it itself.
+ */
+
+/**
+ * @typedef {object} GenerationCommit
+ * @property {import('../public/scripts/generation-commit-plan.js').GenerationCommitPlan} plan Where the reply goes
+ * @property {Parameters<typeof import('./generation-commit.js').commitGenerationReply>[0]} user Owner
+ * @property {string} handle Owner's profile handle
+ * @property {string} chatKey Chat the reply belongs to
+ * @property {CommitState} state Lifecycle state
+ * @property {boolean} detached The page that started it is gone
+ * @property {boolean} commitPartial A stop request asked to keep what was generated
+ * @property {boolean} acknowledged A page has shown the outcome
+ * @property {string} reason Why it failed
+ * @property {ReturnType<typeof setTimeout>|null} timer Grace timer
+ * @property {Promise<void>|null} work The commit, once started
+ * @property {import('./generation-commit.js').GenerationCommitUndo|null} undo How to take the commit back
+ * @property {boolean} journaled Listed in the owner's generation journal
+ */
+
 export class ResumableGeneration {
     /**
      * @param {string} key Registry key
+     * @param {string} [id] Client-chosen generation id
      */
-    constructor(key) {
+    constructor(key, id = '') {
         this.key = key;
+        this.id = id;
         this.createdAt = Date.now();
         /** @type {number|null} */
         this.finishedAt = null;
@@ -103,10 +153,19 @@ export class ResumableGeneration {
         this.subscribers = new Set();
         /** @type {{ resolve: () => void }[]} */
         this.headerWaiters = [];
+        /** @type {GenerationCommit|null} */
+        this.commit = null;
     }
 
     get done() {
         return this.finishedAt !== null;
+    }
+
+    /**
+     * Whether the registry may drop this generation without losing anything.
+     */
+    get evictable() {
+        return this.done && !(this.commit && (this.commit.state === 'waiting' || this.commit.state === 'committing'));
     }
 
     get headersReady() {
@@ -209,9 +268,197 @@ export class ResumableGeneration {
             subscriber.onEnd();
         }
         this.subscribers.clear();
+        this.settleCommit();
+    }
+
+    /**
+     * @param {GenerationCommit['plan']} plan Where the reply goes
+     * @param {GenerationCommit['user']} user Owner
+     */
+    attachCommitPlan(plan, user) {
+        this.commit = {
+            plan,
+            user,
+            handle: String(user?.profile?.handle ?? ''),
+            chatKey: getCommitChatKey(plan.chat, plan.file),
+            state: 'running',
+            detached: false,
+            commitPartial: false,
+            acknowledged: false,
+            reason: '',
+            timer: null,
+            work: null,
+            undo: null,
+            journaled: true,
+        };
+        recordGeneration(user, this.id, plan);
+        notifyChatWatchers(this.commit.handle, this.commit.chatKey);
+    }
+
+    /**
+     * @param {CommitState} state New lifecycle state
+     * @param {string} [reason] Why it failed
+     */
+    setCommitState(state, reason = '') {
+        const commit = this.commit;
+        if (!commit) {
+            return;
+        }
+        commit.state = state;
+        if (reason) {
+            commit.reason = reason;
+        }
+        if (commit.journaled && !IN_FLIGHT_COMMIT_STATES.has(state)) {
+            commit.journaled = false;
+            forgetGeneration(commit.user, this.id);
+        }
+        notifyChatWatchers(commit.handle, commit.chatKey);
+    }
+
+    /**
+     * Decides what happens to the reply once the handler is done writing it.
+     */
+    settleCommit() {
+        const commit = this.commit;
+        if (!commit || commit.state !== 'running') {
+            return;
+        }
+        if (this.cancelled && !commit.commitPartial) {
+            this.setCommitState('cancelled');
+            return;
+        }
+        if (!(Number(this.statusCode) >= 200 && Number(this.statusCode) < 300)) {
+            this.setCommitState('failed', this.statusCode === null ? 'no-reply' : `status-${this.statusCode}`);
+            return;
+        }
+        this.setCommitState('waiting');
+        if (commit.detached || commit.commitPartial) {
+            setImmediate(() => this.runCommit());
+            return;
+        }
+        commit.timer = setTimeout(() => this.runCommit(), COMMIT_GRACE_MS);
+        commit.timer.unref?.();
+    }
+
+    /**
+     * Writes the reply into its chat.
+     * @returns {Promise<void>}
+     */
+    runCommit() {
+        const commit = this.commit;
+        if (!commit || commit.state !== 'waiting') {
+            return commit?.work ?? Promise.resolve();
+        }
+        clearTimeout(commit.timer ?? undefined);
+        commit.timer = null;
+        this.setCommitState('committing');
+        commit.work = (async () => {
+            try {
+                const reply = parseGenerationReply(Buffer.concat(this.chunks), this.contentType);
+                if (!reply.text.trim() && !reply.reasoning.trim()) {
+                    this.setCommitState('failed', reply.error ? 'error-reply' : 'empty-reply');
+                    return;
+                }
+                const { commitGenerationReply } = await loadGenerationCommit();
+                const result = await commitGenerationReply(commit.user, commit.plan, reply, {
+                    id: this.id,
+                    finishedAt: new Date(this.finishedAt ?? Date.now()),
+                });
+                if (result.committed) {
+                    commit.undo = result.undo;
+                    this.setCommitState('committed');
+                } else {
+                    this.setCommitState('failed', result.reason);
+                }
+            } catch (error) {
+                console.warn('Could not commit a server-owned generation:', error);
+                this.setCommitState('failed', 'error');
+            } finally {
+                if (commit.state === 'committed') {
+                    console.info(`Committed generation ${this.id} into its chat (${commit.plan.kind})`);
+                } else {
+                    console.warn(`Did not commit generation ${this.id}: ${commit.reason}`);
+                }
+            }
+        })();
+        return commit.work;
+    }
+
+    /**
+     * The page that started the generation is going away; commit as soon as the reply is done.
+     */
+    detach() {
+        if (!this.commit) {
+            return;
+        }
+        this.commit.detached = true;
+        if (this.commit.state === 'waiting') {
+            void this.runCommit();
+        }
+    }
+
+    /**
+     * The page received the whole reply and saves it itself. A commit that already happened is
+     * taken back, unless something saved over it since.
+     * @returns {Promise<CommitState|null>} State after the claim; `committed` means the page must not save its copy
+     */
+    async claim() {
+        const commit = this.commit;
+        if (!commit) {
+            return null;
+        }
+        if (commit.state === 'running' || commit.state === 'waiting') {
+            clearTimeout(commit.timer ?? undefined);
+            commit.timer = null;
+            this.setCommitState('claimed');
+            return commit.state;
+        }
+        if (commit.work) {
+            await commit.work;
+        }
+        if (commit.state === 'committed' && commit.undo) {
+            const undo = commit.undo;
+            commit.undo = null;
+            const reverted = await loadGenerationCommit()
+                .then(({ revertGenerationCommit }) => revertGenerationCommit(commit.user, commit.plan, undo))
+                .catch((error) => {
+                    console.warn('Could not take back a server-owned generation commit:', error);
+                    return false;
+                });
+            if (reverted) {
+                console.info(`Took back the commit of generation ${this.id}; its page saves the reply itself`);
+                this.setCommitState('claimed');
+            }
+        }
+        return commit.state;
+    }
+
+    /**
+     * Stops the upstream work and commits whatever was generated so far.
+     */
+    stopAndCommit() {
+        if (!this.commit) {
+            this.cancel();
+            return;
+        }
+        this.commit.commitPartial = true;
+        if (this.done) {
+            if (this.commit.state === 'waiting') {
+                void this.runCommit();
+            }
+            return;
+        }
+        this.cancel();
     }
 
     forceDiscard() {
+        if (this.commit) {
+            if (this.commit.state === 'running' || this.commit.state === 'waiting') {
+                clearTimeout(this.commit.timer ?? undefined);
+                this.setCommitState('cancelled');
+            }
+            this.commit.undo = null;
+        }
         if (generations.get(this.key) === this) {
             generations.delete(this.key);
         }
@@ -303,7 +550,7 @@ function fitGlobalByteBudget(needed) {
         if (totalBufferedBytes + needed <= MAX_TOTAL_BUFFER_BYTES) {
             return true;
         }
-        if (generation.done) {
+        if (generation.evictable) {
             generation.forceDiscard();
         }
     }
@@ -339,12 +586,12 @@ function trimRegistry(handle) {
     const prefix = `${handle}:`;
     let owned = [...generations.entries()].filter(([key]) => key.startsWith(prefix));
     while (owned.length >= MAX_GENERATIONS_PER_PROFILE) {
-        const victim = (owned.find(([, generation]) => generation.done) ?? owned[0])[1];
+        const victim = (owned.find(([, generation]) => generation.evictable) ?? owned.find(([, generation]) => !generation.done) ?? owned[0])[1];
         victim.forceDiscard();
         owned = owned.filter(([, generation]) => generation !== victim);
     }
     while (generations.size >= MAX_GENERATIONS) {
-        const oldestFinished = [...generations.values()].find(generation => generation.done);
+        const oldestFinished = [...generations.values()].find(generation => generation.evictable);
         if (!oldestFinished) {
             return false;
         }
@@ -358,8 +605,10 @@ function trimRegistry(handle) {
  */
 function sweepGenerations(now = Date.now()) {
     for (const generation of generations.values()) {
+        // A reply still waiting for its commit outlives retention; the grace timer is shorter, so
+        // this only holds it through a slow commit.
         const expired = generation.done
-            ? now - generation.finishedAt > FINISHED_RETENTION_MS
+            ? generation.evictable && now - generation.finishedAt > FINISHED_RETENTION_MS
             : now - generation.createdAt > MAX_LIFETIME_MS;
         if (expired) {
             generation.forceDiscard();
@@ -384,11 +633,11 @@ function registerGeneration(handle, key) {
     const superseded = generations.get(key);
     if (superseded && !superseded.done) {
         console.info('Superseding an earlier resumable generation for the same id');
-        superseded.cancel();
-        superseded.end();
-    }
-    if (superseded) {
-        superseded.freeBuffers();
+        superseded.forceDiscard();
+    } else if (superseded?.evictable) {
+        superseded.forceDiscard();
+    } else if (superseded) {
+        // A commit is in flight under this id; let it finish, unregistered.
         generations.delete(key);
     }
 
@@ -397,7 +646,7 @@ function registerGeneration(handle, key) {
         return null;
     }
 
-    const generation = new ResumableGeneration(key);
+    const generation = new ResumableGeneration(key, key.slice(handle.length + 1));
     generations.set(key, generation);
     if (!sweepTimer) {
         sweepTimer = setInterval(sweepGenerations, SWEEP_INTERVAL_MS);
@@ -488,6 +737,12 @@ export function resumableGenerationMiddleware(request, response, next) {
         return next();
     }
     request.resumableGeneration = generation;
+    const plan = request.method === 'POST' && COMMITTABLE_PATHS.has(request.path)
+        ? decodeCommitPlan(request.get?.(GENERATION_COMMIT_HEADER))
+        : null;
+    if (plan && request.user?.directories) {
+        generation.attachCommitPlan(plan, request.user);
+    }
     attachResponse(response, generation);
     return next();
 }
@@ -581,11 +836,158 @@ router.post('/cancel', (request, response) => {
     if (!generation) {
         return response.sendStatus(404);
     }
-    generation.cancel();
+    if (request.body?.commitPartial === true) {
+        generation.stopAndCommit();
+    } else {
+        generation.cancel();
+    }
+    return response.sendStatus(204);
+});
+
+router.post('/detach', (request, response) => {
+    const generation = findGeneration(request);
+    if (!generation) {
+        return response.sendStatus(404);
+    }
+    generation.detach();
+    return response.sendStatus(204);
+});
+
+router.post('/claim', async (request, response) => {
+    const generation = findGeneration(request);
+    if (!generation) {
+        return response.sendStatus(404);
+    }
+    return response.send({ state: await generation.claim() });
+});
+
+/**
+ * Generations a page with this chat open should know about: still running, finished but not yet
+ * shown, or lost to a server restart. A finished reply whose page no longer follows the chat is
+ * committed now: that page is gone, or is a second tab that will learn it was too late when it claims.
+ * @param {ChatWatcher} watcher Page following the chat
+ * @returns {object[]}
+ */
+function collectPending({ handle, user, chatKey, page }) {
+    const prefix = `${handle}:`;
+    const pending = [];
+    for (const [key, generation] of generations) {
+        const commit = generation.commit;
+        if (!key.startsWith(prefix) || !commit || commit.chatKey !== chatKey
+            || commit.state === 'claimed' || commit.state === 'cancelled'
+            || (commit.acknowledged && !IN_FLIGHT_COMMIT_STATES.has(commit.state))) {
+            continue;
+        }
+        if (commit.state === 'waiting' && commit.plan.page !== page && !isPageWatching(handle, chatKey, commit.plan.page)) {
+            void generation.runCommit();
+        }
+        pending.push({ id: generation.id, state: commit.state, kind: commit.plan.kind, reason: commit.reason, page: commit.plan.page });
+    }
+    for (const entry of getLostGenerations(user, chatKey)) {
+        pending.push({ ...entry, state: 'lost', reason: 'server-restart' });
+    }
+    return pending;
+}
+
+/**
+ * @typedef {object} ChatWatcher
+ * @property {string} handle Profile handle
+ * @property {any} user Profile
+ * @property {string} chatKey Chat followed
+ * @property {string} page Page load following it
+ * @property {() => void} push Sends the current pending list
+ * @property {boolean} scheduled A push is queued
+ */
+
+/** @type {Set<ChatWatcher>} */
+const chatWatchers = new Set();
+
+/**
+ * Whether a page load still follows a chat; its reply is then left for it to claim.
+ * @param {string} handle Profile handle
+ * @param {string} chatKey Chat
+ * @param {string} page Page load
+ * @returns {boolean}
+ */
+function isPageWatching(handle, chatKey, page) {
+    for (const watcher of chatWatchers) {
+        if (watcher.handle === handle && watcher.chatKey === chatKey && watcher.page === page) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Tells every page following a chat that its generations changed. Changes in one tick share a push.
+ * @param {string} handle Profile handle
+ * @param {string} chatKey Chat
+ */
+function notifyChatWatchers(handle, chatKey) {
+    for (const watcher of chatWatchers) {
+        if (watcher.handle === handle && watcher.chatKey === chatKey && !watcher.scheduled) {
+            watcher.scheduled = true;
+            setImmediate(() => {
+                watcher.scheduled = false;
+                watcher.push();
+            });
+        }
+    }
+}
+
+/**
+ * Server-sent events with the chat's pending generations: once on connect, then on every change.
+ * EventSource reconnects on its own, so a page also hears about replies lost to a restart.
+ */
+router.get('/events', (request, response) => {
+    const avatar = typeof request.query.avatar === 'string' ? request.query.avatar : '';
+    const group = typeof request.query.group === 'string' ? request.query.group : '';
+    const file = typeof request.query.file === 'string' ? request.query.file : '';
+    if (!file || (!avatar && !group)) {
+        return response.sendStatus(400);
+    }
+    /** @type {ChatWatcher} */
+    const watcher = {
+        handle: getProfileHandle(request),
+        user: request.user,
+        chatKey: getCommitChatKey(group ? { group } : { avatar }, file),
+        page: typeof request.query.page === 'string' ? request.query.page : '',
+        push: () => response.write(`data: ${JSON.stringify({ pending: collectPending(watcher) })}\n\n`),
+        scheduled: false,
+    };
+    response.status(200).set({
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'X-Accel-Buffering': 'no',
+    });
+    response.flushHeaders();
+    chatWatchers.add(watcher);
+    watcher.push();
+    const keepAlive = setInterval(() => response.write(': keep-alive\n\n'), EVENTS_KEEPALIVE_MS);
+    keepAlive.unref?.();
+    response.on('close', () => {
+        clearInterval(keepAlive);
+        chatWatchers.delete(watcher);
+        // Replies this page left unclaimed can now be committed by the pages still watching.
+        notifyChatWatchers(watcher.handle, watcher.chatKey);
+    });
+});
+
+router.post('/acknowledge', (request, response) => {
+    const ids = Array.isArray(request.body?.ids) ? request.body.ids.slice(0, MAX_GENERATIONS) : [];
+    const valid = ids.filter(id => typeof id === 'string' && GENERATION_ID_PATTERN.test(id));
+    for (const id of valid) {
+        const generation = generations.get(getGenerationKey(request, id));
+        if (generation?.commit) {
+            generation.commit.acknowledged = true;
+        }
+    }
+    acknowledgeLostGenerations(request.user, valid);
     return response.sendStatus(204);
 });
 
 export const testExports = {
+    COMMIT_GRACE_MS,
     FINISHED_RETENTION_MS,
     MAX_LIFETIME_MS,
     MAX_GENERATIONS,
