@@ -485,7 +485,8 @@ async function preSetupTasks() {
         }
     }
     if (getInstallType() === INSTALL_TYPE.UNSUPPORTED) {
-        console.warn(color.yellow('WARNING: lorum ipsum'));
+        console.warn(color.yellow('WARNING: This copy of SillyBunny is not a Git checkout or Docker container, so it cannot update.'));
+        console.warn(color.yellow('         Reinstall with the installer to keep getting updates: https://github.com/SillyBunnyTeam/SillyBunny/releases/latest'));
     }
     console.log();
 

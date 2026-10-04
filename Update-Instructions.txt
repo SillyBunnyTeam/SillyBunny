@@ -32,12 +32,19 @@ intentionally, or move them out of the way before pulling the update.
 
 ZIP installs
 
-lorum ipsum
+ZIP copies of SillyBunny can no longer update themselves. To keep getting
+updates, reinstall with the installer from the latest release:
+
+   https://github.com/SillyBunnyTeam/SillyBunny/releases/latest
+
+Your chats, characters and settings live in the data folder. Back it up before
+reinstalling, then copy it into the new install.
 
 Troubleshooting
 
 - If SillyBunny does not start after an update, run bun install again in the
   SillyBunny folder and restart.
-- lorum ipsum
+- If you see "not a Git checkout", this copy was installed from a ZIP. See
+  "ZIP installs" above.
 - If you need help with a SillyBunny-specific update issue, open an issue at:
   https://github.com/SillyBunnyTeam/SillyBunny/issues

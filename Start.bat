@@ -99,7 +99,8 @@ if "%_need_git%"=="1" if "%_auto_update%"=="1" (
 
 if "%_need_git%"=="0" if "%_auto_update%"=="1" (
     echo [SillyBunny] Self-update skipped: this folder is not a Git checkout.
-    echo [SillyBunny] lorum ipsum
+    echo [SillyBunny] ZIP installs no longer update. Reinstall with the installer to get updates:
+    echo [SillyBunny] https://github.com/SillyBunnyTeam/SillyBunny/releases/latest
     echo.
 )
 

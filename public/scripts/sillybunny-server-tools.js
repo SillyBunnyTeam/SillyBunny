@@ -713,7 +713,11 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         refs.refreshButton.textContent = isGitInstall ? 'Check for updates' : 'Refresh status';
 
         // SillyBunny: Docker and non-Git copies have no in-app updater; the note explains how they update instead.
-        const installNote = isDockerInstall ? 'lorum ipsum' : !isGitInstall ? 'lorum ipsum' : '';
+        const installNote = isDockerInstall
+            ? 'Running in Docker. Update by pulling the new image and recreating the container.'
+            : !isGitInstall
+                ? 'This copy was not installed with Git, so it cannot update in the app.'
+                : '';
         const noteParts = [String((isGitInstall ? repository?.message : installNote) ?? '').trim()].filter(Boolean);
 
         if ((repository?.changedFilesCount ?? 0) > 0) {
@@ -1336,7 +1340,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         const callout = createElement('div', { className: 'sb-shell-callout' });
         callout.innerHTML = `
             <strong>Server Tools</strong>
-            <p>lorum ipsum</p>
+            <p>Edit <code>config.yaml</code>, check for updates, and restart the app from inside Customize. Updates use Git and only run when the repository can fast-forward cleanly.</p>
         `;
 
         const statusCard = createElement('section', { className: 'sb-admin-card sb-server-card' });
@@ -1351,7 +1355,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         const installLink = createElement('div', { className: 'sb-server-note' });
         installLink.dataset.tone = 'warn';
         installLink.appendChild(createElement('a', {
-            text: 'lorum ipsum',
+            text: 'Reinstall with the installer to get updates',
             attrs: { href: SB_INSTALLER_URL, target: '_blank', rel: 'noopener noreferrer' },
         }));
         installLink.hidden = true;
@@ -1368,7 +1372,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         const refreshButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Check for updates', attrs: { type: 'button' } });
         const updateButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action menu_button_primary', text: 'Update & Restart', attrs: { type: 'button' } });
         const restartButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Restart server', attrs: { type: 'button' } });
-        const updateNote = createElement('div', { className: 'sb-server-note', text: 'lorum ipsum' });
+        const updateNote = createElement('div', { className: 'sb-server-note', text: 'Git fast-forward updates restart automatically once they finish.' });
         const autoStashLabel = createElement('label', { className: 'checkbox_label' });
         const autoStashCheckbox = createElement('input', { attrs: { type: 'checkbox', id: 'auto_stash_before_pull' } });
         const autoStashText = createElement('small', { text: 'Auto-stash local changes before pulling' });

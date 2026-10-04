@@ -2,7 +2,7 @@ const ORIGIN_REMOTE_PREFIX = 'origin/';
 const RUNTIME_BRANCH_PREFIX = 'runtime/';
 const GENERATED_INSTALL_FILES = Object.freeze(['bun.lock', 'package-lock.json', 'package.json']);
 
-export const NON_GIT_REPOSITORY_MESSAGE = 'lorum ipsum';
+export const NON_GIT_REPOSITORY_MESSAGE = 'This folder is not a Git checkout, so it cannot update in the app. Reinstall with the installer from https://github.com/SillyBunnyTeam/SillyBunny/releases/latest to get updates.';
 
 function uniqueSorted(values) {
     return [...new Set(values)].sort((a, b) => a.localeCompare(b));

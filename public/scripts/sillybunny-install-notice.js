@@ -49,7 +49,7 @@ export async function doInstallNoticeCheck({
         return false;
     }
 
-    notify('lorum ipsum', 'lorum ipsum');
+    notify('This copy of SillyBunny was not installed with Git, so it cannot update. Reinstall with the installer from the latest release to keep getting updates.', 'Updates unavailable');
     return true;
 }
 
