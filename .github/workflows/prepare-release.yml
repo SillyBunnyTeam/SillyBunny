@@ -47,8 +47,6 @@ jobs:
           private-key: ${{ secrets.ST_BOT_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
-          # Pushed branches can carry workflow-file changes that are not on the target yet.
-          permission-workflows: write
 
       - name: Checkout staging
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

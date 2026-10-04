@@ -26,7 +26,6 @@ describe('release pipeline workflows', () => {
         expect(source).toContain('echo "branch=release/v$version"');
         expect(source).toContain('--base release');
         expect(source).toContain('--title "chore: release v$VERSION"');
-        expect(source).toContain('permission-workflows: write');
         expect(prMetadata).toContain('staging | release/v* | hotfix/*');
     });
 
@@ -35,7 +34,6 @@ describe('release pipeline workflows', () => {
         expect(source).toContain('if: ${{ !github.event.release.prerelease }}');
         expect(source).toContain('gh pr create --base staging --head release');
         expect(source).toContain('sort -V');
-        expect(source).toContain('permission-workflows: write');
     });
 
     test('docker publishing gates release images behind the release environment', () => {
