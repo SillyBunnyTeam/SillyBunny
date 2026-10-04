@@ -1,0 +1,149 @@
+name: Bootstrap Installer Smoke
+
+on:
+  pull_request:
+    branches:
+      - staging
+      - release
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  posix:
+    name: Bootstrap smoke (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A shallow source makes the installer's clone and update spam "shallow roots" errors.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Run install.sh against this checkout
+        run: |
+          set -euo pipefail
+          git branch --force bootstrap-smoke HEAD
+          bash scripts/bootstrap/install.sh \
+            --repo "$GITHUB_WORKSPACE" \
+            --ref bootstrap-smoke \
+            --dir "$RUNNER_TEMP/SillyBunny" \
+            --no-start
+          test -f "$RUNNER_TEMP/SillyBunny/server.js"
+          test "$(git -C "$RUNNER_TEMP/SillyBunny" rev-parse HEAD)" = "$(git rev-parse HEAD)"
+
+      - name: Boot the installed copy
+        working-directory: ${{ runner.temp }}/SillyBunny
+        env:
+          SILLYBUNNY_LAUNCHER: '1'
+          SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1'
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npm run init
+          log="$RUNNER_TEMP/bootstrap-smoke.log"
+          node server.js --browserLaunchEnabled=false > "$log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
+          deadline=$((SECONDS + 120))
+          until curl --fail --silent --max-time 2 http://127.0.0.1:4444/ > /dev/null; do
+            if ! kill -0 "$pid" 2>/dev/null; then
+              echo "Server exited before it answered on port 4444." >&2
+              cat "$log" >&2
+              exit 1
+            fi
+            if (( SECONDS >= deadline )); then
+              echo "Server did not answer on port 4444 within 120 seconds." >&2
+              cat "$log" >&2
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "Installed copy answered on port 4444."
+
+  windows:
+    name: Bootstrap smoke (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Run Install-SillyBunny.ps1 against this checkout
+        # Windows PowerShell 5.1 is what a fresh Windows install ships with.
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git branch --force bootstrap-smoke HEAD
+          if ($LASTEXITCODE -ne 0) { throw "git branch failed with exit code $LASTEXITCODE" }
+          $installDir = Join-Path $env:RUNNER_TEMP 'SillyBunny'
+          & .\scripts\bootstrap\Install-SillyBunny.ps1 -Repo $env:GITHUB_WORKSPACE -Ref bootstrap-smoke -Dir $installDir -NoStart
+          if (-not (Test-Path (Join-Path $installDir 'server.js'))) { throw 'server.js is missing from the installed copy.' }
+          $installedHead = git -C $installDir rev-parse HEAD
+          $sourceHead = git rev-parse HEAD
+          if ($installedHead -ne $sourceHead) { throw "Installed HEAD $installedHead does not match $sourceHead." }
+
+      - name: Boot the installed copy
+        shell: powershell
+        working-directory: ${{ runner.temp }}/SillyBunny
+        env:
+          SILLYBUNNY_LAUNCHER: '1'
+          SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm ci --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { throw "npm ci failed with exit code $LASTEXITCODE" }
+          npm run init
+          if ($LASTEXITCODE -ne 0) { throw "npm run init failed with exit code $LASTEXITCODE" }
+          $log = Join-Path $env:RUNNER_TEMP 'bootstrap-smoke.log'
+          $errLog = Join-Path $env:RUNNER_TEMP 'bootstrap-smoke.err.log'
+          $server = Start-Process -FilePath node -ArgumentList 'server.js', '--browserLaunchEnabled=false' -RedirectStandardOutput $log -RedirectStandardError $errLog -NoNewWindow -PassThru
+          try {
+              $deadline = (Get-Date).AddSeconds(120)
+              $ready = $false
+              while ((Get-Date) -lt $deadline -and -not $server.HasExited) {
+                  try {
+                      $response = Invoke-WebRequest -Uri 'http://127.0.0.1:4444/' -UseBasicParsing -TimeoutSec 2
+                      if ($response.StatusCode -eq 200) { $ready = $true; break }
+                  } catch {
+                      Start-Sleep -Seconds 2
+                  }
+              }
+              if (-not $ready) {
+                  Get-Content -Path $log, $errLog -ErrorAction SilentlyContinue | Write-Host
+                  throw 'Installed copy did not answer on port 4444 within 120 seconds.'
+              }
+              Write-Host 'Installed copy answered on port 4444.'
+          } finally {
+              if (-not $server.HasExited) { taskkill /PID $server.Id /T /F | Out-Null }
+          }
