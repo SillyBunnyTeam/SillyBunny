@@ -13,7 +13,7 @@ describe('release pipeline workflows', () => {
         expect(source).toContain('- \'v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+\'');
         expect(source).toContain('node scripts/bump-version.js --check');
         expect(source).toContain('--draft --verify-tag --generate-notes');
-        expect(source).toContain('git merge-base --is-ancestor "$GITHUB_SHA" origin/staging');
+        expect(source).toContain('Release candidate $TAG must be tagged on staging or release.');
         expect(source).toContain('git merge-base --is-ancestor "$GITHUB_SHA" origin/release');
         // The approval gate sits on publishing (docker-publish.yml), not on drafting.
         expect(source).not.toContain('environment:');
@@ -29,9 +29,13 @@ describe('release pipeline workflows', () => {
         expect(prMetadata).toContain('staging | release/v* | hotfix/*');
     });
 
-    test('post-release opens the back-merge without pushing and skips prereleases', () => {
+    test('post-release stacks the -dev bump on the back-merge and skips prereleases', () => {
         const source = readWorkflow('post-release.yml');
         expect(source).toContain('if: ${{ !github.event.release.prerelease }}');
+        const merge = source.indexOf('git merge --no-ff');
+        const bump = source.indexOf('node scripts/bump-version.js');
+        expect(merge).toBeGreaterThan(-1);
+        expect(bump).toBeGreaterThan(merge);
         expect(source).toContain('gh pr create --base staging --head release');
         expect(source).toContain('sort -V');
     });

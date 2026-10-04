@@ -46,6 +46,13 @@ jobs:
               fi
               ;;
             hotfix/*)
+              # Hotfixes must ship under a new patch version, never the one already on release.
+              git fetch --quiet --depth=1 origin "refs/heads/$BASE_REF"
+              base_version=$(git show FETCH_HEAD:package.json | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
+              if [ "$version" = "$base_version" ] || [ "$(printf '%s\n%s\n' "$base_version" "$version" | sort -V | tail -n1)" != "$version" ]; then
+                echo "Hotfix version $version must be higher than $BASE_REF ($base_version); run scripts/bump-version.js." >&2
+                exit 1
+              fi
               ;;
             *)
               # Actions-only and CODEOWNERS PRs into release do not change the version.
