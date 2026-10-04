@@ -85,8 +85,9 @@ describe('server admin git helpers', () => {
         expect(getGeneratedInstallChangePaths([{ path: 'package-lock.json', index: '?', working_dir: '?' }])).toEqual([]);
     });
 
-    test('explains how non-Git installs update', () => {
-        expect(NON_GIT_REPOSITORY_MESSAGE).toContain('Git repository');
-        expect(NON_GIT_REPOSITORY_MESSAGE).toContain('release ZIP');
+    test('no longer points non-Git installs at the removed ZIP updater', () => {
+        expect(NON_GIT_REPOSITORY_MESSAGE).toEqual(expect.any(String));
+        expect(NON_GIT_REPOSITORY_MESSAGE.length).toBeGreaterThan(0);
+        expect(NON_GIT_REPOSITORY_MESSAGE).not.toMatch(/zip/i);
     });
 });
