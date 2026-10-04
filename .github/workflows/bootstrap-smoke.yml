@@ -163,7 +163,6 @@ jobs:
           done
           echo "Installed copy answered on port 4444."
 
-          expected_profile="$EXPECTED_RUNTIME-production"
           # shellcheck disable=SC2016 # single quotes are intentional; only $EXPECTED_RUNTIME should expand in node.
           node -e '
             const fs = require("node:fs");
@@ -175,22 +174,24 @@ jobs:
             console.log(`dependency profile ${profile} recorded for ${marker.profiles[profile].runtimeVersion || "unknown version"}`);
           '
 
-          server_pid="$(pgrep -f 'server\.js' | head -n 1 || true)"
-          if [[ -z "$server_pid" ]]; then
-            echo "Could not find the running server process." >&2
-            cat "$log" >&2
-            exit 1
-          fi
-          runtime_name="$(basename "$(ps -o comm= -p "$server_pid")")"
-          echo "Server process '$runtime_name' (pid $server_pid) is using the $expected_profile profile."
-          case "$runtime_name" in
-            "$EXPECTED_RUNTIME"*) ;;
+          # The server names its own runtime in the startup banner, which beats
+          # probing ps: a process name is a thread name (Node reports things like
+          # "MainThread") and changes between runtime versions.
+          case "$EXPECTED_RUNTIME" in
+            bun) runtime_label='Bun' ;;
+            node) runtime_label='Node.js' ;;
             *)
-              echo "Expected the server to run under $EXPECTED_RUNTIME but it is running under $runtime_name." >&2
-              cat "$log" >&2
+              echo "Unknown expected runtime: $EXPECTED_RUNTIME" >&2
               exit 1
               ;;
           esac
+          banner="$(grep -F "SillyBunny startup on $runtime_label " "$log" | head -n 1)"
+          if [[ -z "$banner" ]]; then
+            echo "The server never announced a $runtime_label runtime." >&2
+            cat "$log" >&2
+            exit 1
+          fi
+          echo "$banner"
 
       - name: Assert the download path installed Bun
         if: matrix.fresh_bun
@@ -316,15 +317,24 @@ jobs:
               }
               Write-Host "Dependency profile $expectedProfile recorded for $($profileEntry.runtimeVersion)."
 
-              $server = Get-CimInstance Win32_Process -Filter "Name='bun.exe' OR Name='node.exe'" |
-                  Where-Object { $_.CommandLine -match 'server\.js' } |
-                  Select-Object -First 1
-              if (-not $server) { throw 'Could not find the running server process.' }
-              $runtimeName = $server.Name -replace '\.exe$', ''
-              Write-Host "Server process '$runtimeName' (pid $($server.ProcessId)) is using the $expectedProfile profile."
-              if ($runtimeName -ne $env:EXPECTED_RUNTIME) {
-                  throw "Expected the server to run under $env:EXPECTED_RUNTIME but it is running under $runtimeName."
+              # The server names its own runtime in the startup banner, which beats
+              # probing process names: those are thread names, not runtime identity.
+              $runtimeLabel = switch ($env:EXPECTED_RUNTIME) {
+                  'bun' { 'Bun' }
+                  'node' { 'Node.js' }
+                  default { throw "Unknown expected runtime: $env:EXPECTED_RUNTIME" }
               }
+              $banner = $null
+              if (Test-Path -Path $log) {
+                  $banner = Get-Content -Path $log |
+                      Where-Object { $_ -like "*SillyBunny startup on $runtimeLabel *" } |
+                      Select-Object -First 1
+              }
+              if (-not $banner) {
+                  Get-Content -Path $log, $errLog -ErrorAction SilentlyContinue | Write-Host
+                  throw "The server never announced a $runtimeLabel runtime."
+              }
+              Write-Host $banner
           } finally {
               if (-not $launcher.HasExited) { taskkill /PID $launcher.Id /T /F | Out-Null }
           }
@@ -335,7 +345,9 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $installDir = Join-Path $env:RUNNER_TEMP 'SillyBunny'
           $headBefore = git -C $installDir rev-parse HEAD
-          $output = & .\scripts\bootstrap\Install-SillyBunny.ps1 -Repo $env:GITHUB_WORKSPACE -Ref bootstrap-smoke -Dir $installDir -NoStart 2>&1 | Out-String
+          # The installer reports through Write-Host, which is the information
+          # stream; 2>&1 would drop it and the match below would never fire.
+          $output = & .\scripts\bootstrap\Install-SillyBunny.ps1 -Repo $env:GITHUB_WORKSPACE -Ref bootstrap-smoke -Dir $installDir -NoStart *>&1 | Out-String
           Write-Host $output
           if ($output -notmatch 'already installed') { throw 'Rerunning the installer did not report an existing install.' }
           $headAfter = git -C $installDir rev-parse HEAD
