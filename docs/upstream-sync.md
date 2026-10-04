@@ -25,9 +25,11 @@ the merge base becomes the tag itself.
 ## Sync Target
 
 SillyBunny syncs from the latest upstream SillyTavern release tag, not upstream
-`staging`. The current base is ST `1.19.0`
-(`7e8663cd9c184a550b37238218bdd32c6efc68e9`). When a new ST release is tagged,
-sync to that tag in a separate `sync:` PR and update `ST_TAG` below.
+`staging`. `staging` currently sits on the #843 parity base above (between ST
+`1.18.0` and `1.19.0`); the next sync target is ST `1.19.0`
+(`7e8663cd9c184a550b37238218bdd32c6efc68e9`). After each tag sync, record the
+new base here. When a new ST release is tagged, sync to that tag in a separate
+`sync:` PR and update `ST_TAG` below.
 
 Each tagged SillyBunny release records the ST release it is based on in
 `changelog.md`, and `public/scripts/sillybunny-version-map.js` maps the SB
@@ -51,7 +53,6 @@ diff.
 ```sh
 ST_TAG=1.19.0
 git fetch --no-tags https://github.com/SillyTavern/SillyTavern.git \
-  refs/heads/release:refs/remotes/upstream/release \
   "refs/tags/$ST_TAG:refs/remotes/upstream/st-$ST_TAG"
 ```
 
@@ -68,7 +69,6 @@ When reviewing an ancestry-anchor PR before it merges, substitute `HEAD` for
 ST_TAG=1.19.0
 git fetch origin
 git fetch --no-tags https://github.com/SillyTavern/SillyTavern.git \
-  refs/heads/release:refs/remotes/upstream/release \
   "refs/tags/$ST_TAG:refs/remotes/upstream/st-$ST_TAG"
 
 git merge-base --is-ancestor 51ad27fb86d39a3daca3adaa970375c9670c12df origin/staging
