@@ -13,7 +13,8 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: pr-auto-manager-${{ github.event.pull_request.number || github.ref_name }}
+  # Label events must not cancel a size-label update before its cleanup finishes.
+  group: pr-auto-manager-${{ github.event.pull_request.number || github.ref_name }}-${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') && 'labels' || 'updates' }}
   cancel-in-progress: true
 
 jobs:
@@ -57,24 +58,47 @@ jobs:
           permission-pull-requests: write
 
       - name: Label PR Size
-        # Pull Request Size Labeler
-        # https://github.com/marketplace/actions/pull-request-size-labeler
-        uses: codelytv/pr-size-labeler@095a41fca88b8764fd9e008ad269bcdb82bb38b9 # v1.10.4
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
-          GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
-          xs_label: '🟩 ⬤○○○○'
-          xs_max_size: '20'
-          s_label: '🟩 ⬤⬤○○○'
-          s_max_size: '100'
-          m_label: '🟨 ⬤⬤⬤○○'
-          m_max_size: '500'
-          l_label: '🟧 ⬤⬤⬤⬤○'
-          l_max_size: '1000'
-          xl_label: '🟥 ⬤⬤⬤⬤⬤'
-          fail_if_xl: 'false'
-          files_to_ignore: |
-            "package-lock.json"
-            "public/lib/*"
+          github-token: ${{ steps.app.outputs.token || github.token }}
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number: issue_number, per_page: 100,
+            });
+            const changes = files.reduce((total, file) => {
+              if (file.filename === 'package-lock.json' || file.filename.startsWith('public/lib/')) {
+                return total;
+              }
+              return total + file.additions + file.deletions;
+            }, 0);
+            const sizes = [
+              { label: '🟩 ⬤○○○○', max: 20 },
+              { label: '🟩 ⬤⬤○○○', max: 100 },
+              { label: '🟨 ⬤⬤⬤○○', max: 500 },
+              { label: '🟧 ⬤⬤⬤⬤○', max: 1000 },
+              { label: '🟥 ⬤⬤⬤⬤⬤', max: Infinity },
+            ];
+            const selected = sizes.find(size => changes < size.max).label;
+            const labels = await github.paginate(github.rest.issues.listLabelsOnIssue, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            if (!labels.some(label => label.name === selected)) {
+              await github.rest.issues.addLabels({ owner, repo, issue_number, labels: [selected] });
+            }
+            // Never replace the full label set: other workflows and maintainers own unrelated labels.
+            for (const { name } of labels) {
+              if (name !== selected && sizes.some(size => size.label === name)) {
+                try {
+                  await github.rest.issues.removeLabel({ owner, repo, issue_number, name });
+                } catch (error) {
+                  if (error.status !== 404) {
+                    throw error;
+                  }
+                }
+              }
+            }
 
   label-by-branches:
     name: 🏷️ Label PR by Branches
