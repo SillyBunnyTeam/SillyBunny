@@ -25,6 +25,17 @@ describe('nightly workflow', () => {
         expect(source).toContain('repos/$GH_REPO/releases/latest');
     });
 
+    test('keeps launcher flags off the unit-test step', () => {
+        // tests/server-supervisor.test.js asserts these are unset, so job-level env would fail every nightly.
+        const checksJob = source.slice(source.indexOf('  checks:'), source.indexOf('  report:'));
+        const jobEnv = checksJob.slice(0, checksJob.indexOf('    steps:'));
+        const unitStep = checksJob.slice(checksJob.indexOf('- name: Unit tests'), checksJob.indexOf('- name: Frontend budgets'));
+        for (const block of [jobEnv, unitStep]) {
+            expect(block).not.toContain('SILLYBUNNY_LAUNCHER');
+            expect(block).not.toContain('SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH');
+        }
+    });
+
     test('pins every action to a full commit SHA', () => {
         const uses = [...source.matchAll(/^\s*(?:- )?uses:\s*([^\s#]+)/gm)].map(match => match[1]);
         expect(uses.length).toBeGreaterThan(0);

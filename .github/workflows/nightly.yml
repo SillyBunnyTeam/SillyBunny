@@ -65,8 +65,6 @@ jobs:
       CI: 'true'
       PLAYWRIGHT_HTML_OPEN: never
       SILLYBUNNY_TEST_BASE_URL: http://127.0.0.1:4444
-      SILLYBUNNY_LAUNCHER: '1'
-      SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1'
 
     steps:
       - name: Checkout staging
@@ -114,6 +112,10 @@ jobs:
         run: npm run init
 
       - name: Node boot smoke
+        # Scoped to the boot steps: unit tests assert these launcher flags are unset.
+        env:
+          SILLYBUNNY_LAUNCHER: '1'
+          SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1'
         run: |
           set -euo pipefail
           log="$RUNNER_TEMP/node-boot.log"
@@ -136,6 +138,9 @@ jobs:
         run: npx --no-install playwright install --with-deps chromium
 
       - name: Bun boot smoke and e2e
+        env:
+          SILLYBUNNY_LAUNCHER: '1'
+          SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1'
         run: |
           set -euo pipefail
           log="$RUNNER_TEMP/sillybunny-server.log"
