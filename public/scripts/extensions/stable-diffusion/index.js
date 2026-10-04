@@ -65,6 +65,7 @@ import { MacrosParser } from '/scripts/macros.js';
 import { ActionLoaderHandle, loader } from '/scripts/action-loader.js';
 // SillyBunny: expose the configured provider without borrowing the active roleplay chat.
 import { registerExtensionCapability } from '../../sillybunny-conversation/extension-capabilities.js';
+import { isNovelAIV5Model, normalizeNovelAIImageParameters, NOVELAI_IMAGE_MODELS } from '../../novelai-image-models.js';
 
 export { MODULE_NAME };
 
@@ -102,6 +103,8 @@ const comfyTypes = {
     standard: 'standard',
     runpod_serverless: 'runpod_serverless',
 };
+
+let modelLoadRequest = 0;
 
 const initiators = {
     command: 'command',
@@ -473,6 +476,7 @@ async function loadSettings() {
             extension_settings.sd[key] = value;
         }
     }
+    $('#sd_model_custom').val(extension_settings.sd.model || '');
 
     if (extension_settings.sd.prompts === undefined) {
         extension_settings.sd.prompts = promptTemplates;
@@ -608,13 +612,14 @@ function getClosestKnownResolution() {
 }
 
 async function loadSettingOptions() {
-    return Promise.all([
+    await Promise.all([
         loadSamplers(),
         loadModels(),
         loadSchedulers(),
         loadVaes(),
         loadComfyWorkflows(),
     ]);
+    switchModelSpecificControls(extension_settings.sd.model);
 }
 
 function addPromptTemplates() {
@@ -1137,6 +1142,8 @@ function onSwapDimensionsClick() {
 async function onSourceChange() {
     extension_settings.sd.source = $('#sd_source').find(':selected').val();
     extension_settings.sd.model = null;
+    $('#sd_model').empty();
+    $('#sd_model_custom').val('');
     extension_settings.sd.sampler = null;
     extension_settings.sd.scheduler = null;
     extension_settings.sd.vae = null;
@@ -1180,6 +1187,10 @@ async function onViewAnlasClick() {
     }
 
     const anlas = getNovelAnlas();
+    if (isNovelAIV5Model(extension_settings.sd.model)) {
+        toastr.info(`Anlas: ${anlas}`);
+        return;
+    }
     const unlimitedGeneration = getNovelUnlimitedImageGeneration();
 
     toastr.info(`Free image generation: ${unlimitedGeneration ? 'Yes' : 'No'}`, `Anlas: ${anlas}`);
@@ -1490,6 +1501,7 @@ async function onModelChange() {
     const selectedModel = $('#sd_model').find(':selected');
     extension_settings.sd.model = selectedModel.val();
     saveSettingsDebounced();
+    $('#sd_model_custom').val(extension_settings.sd.model || '');
 
     if (extension_settings.sd.model && extension_settings.sd.source === sources.electronhub) {
         const cachedModel = selectedModel.data('model');
@@ -1517,6 +1529,20 @@ async function onModelChange() {
         await updateAutoRemoteModel();
     }
     toastr.success('Model successfully loaded!', 'Image Generation');
+}
+
+async function onCustomModelChange() {
+    const model = String($('#sd_model_custom').val() || '').trim();
+    if (!model) {
+        $('#sd_model_custom').val(extension_settings.sd.model || '');
+        return;
+    }
+    const select = document.querySelector('#sd_model');
+    if (![...select.options].some(option => option.value === model)) {
+        select.add(new Option(model, model));
+    }
+    select.value = model;
+    await onModelChange();
 }
 
 async function getAutoRemoteModel() {
@@ -1894,6 +1920,7 @@ async function loadNovelSamplers() {
         'k_dpmpp_2m',
         'k_dpmpp_sde',
         'k_dpmpp_2s_ancestral',
+        'k_dpmpp_2m_sde',
         'k_dpm_fast',
         'ddim',
     ];
@@ -1925,103 +1952,110 @@ async function loadComfySamplers() {
 }
 
 async function loadModels() {
-    $('#sd_model').empty();
-    let models = [];
+    const source = extension_settings.sd.source;
+    const request = ++modelLoadRequest;
+    const isCurrent = () => request === modelLoadRequest && source === extension_settings.sd.source;
+    const select = document.querySelector('#sd_model');
+    const refresh = $('#sd_models_refresh');
+    const initialModel = String(extension_settings.sd.model || '');
+    const initialDraft = String($('#sd_model_custom').val() || '');
+    const syncCustomInput = value => {
+        if (initialDraft === initialModel && String($('#sd_model_custom').val() || '') === initialDraft) {
+            $('#sd_model_custom').val(value);
+        }
+    };
+    refresh.prop('disabled', true);
+    select.setAttribute('aria-busy', 'true');
 
-    switch (extension_settings.sd.source) {
-        case sources.extras:
-            models = await loadExtrasModels();
-            break;
-        case sources.horde:
-            models = await loadHordeModels();
-            break;
-        case sources.auto:
-            models = await loadAutoModels();
-            break;
-        case sources.sdcpp:
-            models = await loadSdcppModels();
-            break;
-        case sources.drawthings:
-            models = await loadDrawthingsModels();
-            break;
-        case sources.novel:
-            models = await loadNovelModels();
-            break;
-        case sources.vlad:
-            models = await loadVladModels();
-            break;
-        case sources.openai:
-            models = await loadOpenAiModels();
-            break;
-        case sources.aimlapi:
-            models = await loadAimlapiModels();
-            break;
-        case sources.comfy:
-            models = await loadComfyModels();
-            break;
-        case sources.togetherai:
-            models = await loadTogetherAIModels();
-            break;
-        case sources.pollinations:
-            models = await loadPollinationsModels();
-            break;
-        case sources.stability:
-            models = await loadStabilityModels();
-            break;
-        case sources.huggingface:
-            models = [{ value: '', text: t`<Enter Model ID above>` }];
-            break;
-        case sources.chutes:
-            models = await loadChutesModels();
-            break;
-        case sources.electronhub:
-            models = await loadElectronHubModels();
-            break;
-        case sources.nanogpt:
-            models = await loadNanoGPTModels();
-            break;
-        case sources.bfl:
-            models = await loadBflModels();
-            break;
-        case sources.falai:
-            models = await loadFalaiModels();
-            break;
-        case sources.xai:
-            models = await loadXAIModels();
-            break;
-        case sources.google:
-            models = await loadGoogleModels();
-            break;
-        case sources.zai:
-            models = await loadZaiModels();
-            break;
-        case sources.openrouter:
-            models = await loadOpenRouterModels();
-            break;
-        case sources.workersai:
-            models = await loadWorkersAIImageModels();
-            break;
+    try {
+        const models = await getModelsForSource(source, isCurrent);
+        if (!isCurrent()) return;
+
+        // Keep a saved/custom ID even when the provider omits it or its catalog is unavailable.
+        const selected = String(extension_settings.sd.model || '');
+        if (models.length || !select.options.length) {
+            select.replaceChildren();
+            const seen = new Set();
+            for (const model of models) {
+                if (seen.has(model.value)) continue;
+                seen.add(model.value);
+                const option = new Option(model.text, model.value);
+                $(option).data('model', model);
+                select.add(option);
+            }
+        }
+        if (selected && ![...select.options].some(option => option.value === selected)) {
+            select.add(new Option(selected, selected));
+        }
+        select.value = selected || select.options[0]?.value || '';
+        if (!selected && select.value) {
+            extension_settings.sd.model = select.value;
+            saveSettingsDebounced();
+        }
+        syncCustomInput(extension_settings.sd.model || '');
+        if (source === sources.electronhub) ensureElectronHubQualitySelect(models);
+        switchModelSpecificControls(extension_settings.sd.model);
+    } catch (error) {
+        if (!isCurrent()) return;
+        console.warn('Could not refresh image models:', error);
+        const selected = String(extension_settings.sd.model || '');
+        if (selected && ![...select.options].some(option => option.value === selected)) {
+            select.add(new Option(selected, selected));
+        }
+        select.value = selected;
+        syncCustomInput(selected);
+        toastr.warning(error.message || t`Could not load models`, t`Image Generation`, { escapeHtml: true });
+    } finally {
+        if (isCurrent()) {
+            refresh.prop('disabled', false);
+            select.removeAttribute('aria-busy');
+        }
     }
+}
 
-    if (extension_settings.sd.source === sources.electronhub) {
-        ensureElectronHubQualitySelect(models);
+async function getModelsForSource(source, isCurrent) {
+    switch (source) {
+        case sources.extras: return loadExtrasModels(isCurrent);
+        case sources.horde: return loadHordeModels();
+        case sources.auto: return loadAutoModels(isCurrent);
+        case sources.sdcpp: return loadSdcppModels();
+        case sources.drawthings: return loadDrawthingsModels(isCurrent);
+        case sources.novel: return NOVELAI_IMAGE_MODELS;
+        case sources.vlad: return loadVladModels(isCurrent);
+        case sources.openai: return loadOpenAiModels();
+        case sources.aimlapi: return loadAimlapiModels();
+        case sources.comfy: return loadComfyModels();
+        case sources.togetherai: return loadTogetherAIModels();
+        case sources.pollinations: return loadPollinationsModels();
+        case sources.stability: return loadStabilityModels();
+        case sources.huggingface: return [{ value: '', text: t`<Enter Model ID above>` }];
+        case sources.chutes: return loadChutesModels();
+        case sources.electronhub: return loadElectronHubModels();
+        case sources.nanogpt: return loadNanoGPTModels();
+        case sources.bfl: return loadBflModels();
+        case sources.falai: return loadFalaiModels();
+        case sources.xai: return loadXAIModels();
+        case sources.google: return loadGoogleModels();
+        case sources.zai: return loadZaiModels();
+        case sources.openrouter: return loadOpenRouterModels();
+        case sources.workersai: return loadWorkersAIImageModels();
+        default: return [];
     }
+}
 
-    switchModelSpecificControls(extension_settings.sd.model);
-
-    for (const model of models) {
-        const option = document.createElement('option');
-        option.innerText = model.text;
-        option.value = model.value;
-        option.selected = model.value === extension_settings.sd.model;
-        $(option).data('model', model);
-        $('#sd_model').append(option);
+async function fetchImageModels(provider, body = {}) {
+    const result = await fetch(`/api/sd/${provider}/models`, {
+        method: 'POST',
+        headers: getRequestHeaders(),
+        body: JSON.stringify(body),
+    });
+    if (!result.ok) {
+        const data = await result.json().catch(() => null);
+        const error = new Error(data?.error || `Image model discovery failed (${result.status})`);
+        error.status = result.status;
+        throw error;
     }
-
-    if (!extension_settings.sd.model && models.length > 0) {
-        extension_settings.sd.model = models[0].value;
-        $('#sd_model').val(extension_settings.sd.model).trigger('change');
-    }
+    return result.json();
 }
 
 /**
@@ -2031,6 +2065,23 @@ async function loadModels() {
 function switchModelSpecificControls(modelId) {
     const modelControls = $('.sd_settings [data-sd-model]');
     modelControls.hide();
+    const isNovel = extension_settings.sd.source === sources.novel;
+    const isV5 = isNovel && isNovelAIV5Model(modelId);
+    $('#sd_novel_sm, #sd_novel_decrisper, #sd_novel_variety_boost').prop('disabled', isV5);
+    $('#sd_novel_sm_dyn').prop('disabled', isV5 || !extension_settings.sd.novel_sm);
+    $('#sd_scheduler').prop('disabled', isV5);
+    $('#sd_sampler option').each(function () {
+        const supported = normalizeNovelAIImageParameters(modelId, { sampler: this.value }).sampler;
+        this.disabled = isV5 && supported !== this.value;
+    });
+    if (isNovel) {
+        const params = normalizeNovelAIImageParameters(modelId, {
+            sampler: extension_settings.sd.sampler,
+            noise_schedule: extension_settings.sd.scheduler,
+        });
+        $('#sd_sampler').val(params.sampler);
+        $('#sd_scheduler').val(params.noise_schedule);
+    }
 
     if (!modelId) {
         return;
@@ -2091,7 +2142,9 @@ async function loadStabilityModels() {
     return [
         { value: 'stable-image-ultra', text: 'Stable Image Ultra' },
         { value: 'stable-image-core', text: 'Stable Image Core' },
-        { value: 'stable-diffusion-3', text: 'Stable Diffusion 3' },
+        { value: 'sd3.5-large', text: 'Stable Diffusion 3.5 Large' },
+        { value: 'sd3.5-large-turbo', text: 'Stable Diffusion 3.5 Large Turbo' },
+        { value: 'sd3.5-medium', text: 'Stable Diffusion 3.5 Medium' },
     ];
 }
 
@@ -2122,10 +2175,7 @@ async function loadFalaiModels() {
 }
 
 async function loadXAIModels() {
-    return [
-        { value: 'grok-imagine-image', text: 'grok-imagine-image' },
-        { value: 'grok-imagine-image-pro', text: 'grok-imagine-image-pro' },
-    ];
+    return fetchImageModels('xai');
 }
 
 async function loadWorkersAIImageModels() {
@@ -2279,7 +2329,7 @@ async function loadHordeModels() {
     return [];
 }
 
-async function loadExtrasModels() {
+async function loadExtrasModels(isCurrent) {
     if (!modules.includes('sd')) {
         return [];
     }
@@ -2287,10 +2337,11 @@ async function loadExtrasModels() {
     const url = new URL(getApiUrl());
     url.pathname = '/api/image/model';
     const getCurrentModelResult = await doExtrasFetch(url);
+    if (!isCurrent()) return [];
 
     if (getCurrentModelResult.ok) {
         const data = await getCurrentModelResult.json();
-        extension_settings.sd.model = data.model;
+        if (isCurrent()) extension_settings.sd.model = data.model;
     }
 
     url.pathname = '/api/image/models';
@@ -2304,15 +2355,16 @@ async function loadExtrasModels() {
     return [];
 }
 
-async function loadAutoModels() {
+async function loadAutoModels(isCurrent) {
     if (!extension_settings.sd.auto_url) {
         return [];
     }
 
     try {
         const currentModel = await getAutoRemoteModel();
+        if (!isCurrent()) return [];
 
-        if (currentModel) {
+        if (currentModel && !extension_settings.sd.model) {
             extension_settings.sd.model = currentModel;
         }
 
@@ -2327,6 +2379,7 @@ async function loadAutoModels() {
         }
 
         const upscalers = await getAutoRemoteUpscalers();
+        if (!isCurrent()) return [];
 
         if (Array.isArray(upscalers) && upscalers.length > 0) {
             $('#sd_hr_upscaler').empty();
@@ -2346,13 +2399,14 @@ async function loadAutoModels() {
     }
 }
 
-async function loadDrawthingsModels() {
+async function loadDrawthingsModels(isCurrent) {
     if (!extension_settings.sd.drawthings_url) {
         return [];
     }
 
     try {
         const currentModel = await getDrawthingsRemoteModel();
+        if (!isCurrent()) return [];
 
         if (currentModel) {
             extension_settings.sd.model = currentModel;
@@ -2362,6 +2416,7 @@ async function loadDrawthingsModels() {
 
 
         const upscalers = await getDrawthingsRemoteUpscalers();
+        if (!isCurrent()) return [];
 
         if (Array.isArray(upscalers) && upscalers.length > 0) {
             $('#sd_hr_upscaler').empty();
@@ -2383,17 +2438,7 @@ async function loadDrawthingsModels() {
 }
 
 async function loadOpenAiModels() {
-    // SillyBunny: omit DALL-E 2 and 3 after their OpenAI API retirement.
-    return [
-        { value: 'gpt-image-2', text: 'gpt-image-2' },
-        { value: 'gpt-image-2-2026-04-21', text: 'gpt-image-2-2026-04-21' },
-        { value: 'gpt-image-1.5', text: 'gpt-image-1.5' },
-        { value: 'gpt-image-1-mini', text: 'gpt-image-1-mini' },
-        { value: 'gpt-image-1', text: 'gpt-image-1' },
-        { value: 'chatgpt-image-latest', text: 'chatgpt-image-latest' },
-        { value: 'sora-2', text: 'sora-2' },
-        { value: 'sora-2-pro', text: 'sora-2-pro' },
-    ];
+    return fetchImageModels('openai');
 }
 
 async function loadAimlapiModels() {
@@ -2413,15 +2458,16 @@ async function loadAimlapiModels() {
     return (json.data || []);
 }
 
-async function loadVladModels() {
+async function loadVladModels(isCurrent) {
     if (!extension_settings.sd.vlad_url) {
         return [];
     }
 
     try {
         const currentModel = await getAutoRemoteModel();
+        if (!isCurrent()) return [];
 
-        if (currentModel) {
+        if (currentModel && !extension_settings.sd.model) {
             extension_settings.sd.model = currentModel;
         }
 
@@ -2436,6 +2482,7 @@ async function loadVladModels() {
         }
 
         const upscalers = await getVladRemoteUpscalers();
+        if (!isCurrent()) return [];
 
         if (Array.isArray(upscalers) && upscalers.length > 0) {
             $('#sd_hr_upscaler').empty();
@@ -2455,62 +2502,25 @@ async function loadVladModels() {
     }
 }
 
-async function loadNovelModels() {
-    return [
-        {
-            value: 'nai-diffusion-4-5-full',
-            text: 'NAI Diffusion Anime V4.5 (Full)',
-        },
-        {
-            value: 'nai-diffusion-4-5-curated',
-            text: 'NAI Diffusion Anime V4.5 (Curated)',
-        },
-        {
-            value: 'nai-diffusion-4-full',
-            text: 'NAI Diffusion Anime V4 (Full)',
-        },
-        {
-            value: 'nai-diffusion-4-curated-preview',
-            text: 'NAI Diffusion Anime V4 (Curated)',
-        },
-        {
-            value: 'nai-diffusion-3',
-            text: 'NAI Diffusion Anime V3',
-        },
-        {
-            value: 'nai-diffusion-2',
-            text: 'NAI Diffusion Anime V2',
-        },
-        {
-            value: 'nai-diffusion-furry-3',
-            text: 'NAI Diffusion Furry V3',
-        },
-    ];
-}
 
 async function loadGoogleModels() {
-    return [
-        'imagen-4.0-generate-001',
-        'imagen-4.0-ultra-generate-001',
-        'imagen-4.0-fast-generate-001',
-        'imagen-4.0-generate-preview-06-06',
-        'imagen-4.0-fast-generate-preview-06-06',
-        'imagen-4.0-ultra-generate-preview-06-06',
-        'imagen-3.0-generate-002',
-        'imagen-3.0-generate-001',
-        'imagen-3.0-fast-generate-001',
-        'imagen-3.0-capability-001',
-        'imagegeneration@006',
-        'imagegeneration@005',
-        'imagegeneration@002',
-        'veo-3.1-generate-preview',
-        'veo-3.1-fast-generate-preview',
-        'veo-3.0-generate-001',
-        'veo-3.0-fast-generate-001',
-        'veo-2.0-generate-001',
-        'veo-2.0-generate-exp',
-        'veo-2.0-generate-preview',
-    ].map(name => ({ value: name, text: name }));
+    try {
+        return await fetchImageModels('google', {
+            api: extension_settings.sd.google_api || 'makersuite',
+            vertexai_auth_mode: oai_settings.vertexai_auth_mode,
+            vertexai_region: oai_settings.vertexai_region,
+            vertexai_express_project_id: oai_settings.vertexai_express_project_id,
+        });
+    } catch (error) {
+        if (error.status !== 501) throw error;
+        // Vertex Express has no catalog API; use maintained compatible suggestions.
+        return [
+            'gemini-3.1-flash-lite-image',
+            'gemini-3-pro-image',
+            'gemini-3.1-flash-image',
+            'gemini-2.5-flash-image',
+        ].map(value => ({ value, text: value }));
+    }
 }
 
 async function loadZaiModels() {
@@ -3000,7 +3010,6 @@ async function generatePicture(initiator, args, trigger, message, callback) {
     }
 
     ensureSelectionExists('sampler', '#sd_sampler');
-    ensureSelectionExists('model', '#sd_model');
 
     trigger = trigger.trim();
     const generationType = getGenerationType(trigger);
@@ -3838,6 +3847,7 @@ async function generateAutoImage(prompt, negativePrompt, signal) {
         hr_second_pass_steps: extension_settings.sd.hr_second_pass_steps,
         seed: extension_settings.sd.seed >= 0 ? extension_settings.sd.seed : undefined,
         override_settings: {
+            sd_model_checkpoint: extension_settings.sd.model || undefined,
             CLIP_stop_at_last_layers: extension_settings.sd.clip_skip,
             sd_vae: isValidVae ? extension_settings.sd.vae : undefined,
             forge_additional_modules: isValidVae ? [extension_settings.sd.vae] : undefined, // For SD Forge
@@ -3993,6 +4003,7 @@ async function generateNovelImage(prompt, negativePrompt, signal) {
         body: JSON.stringify({
             prompt: prompt,
             model: extension_settings.sd.model,
+            novel_anlas_guard: extension_settings.sd.novel_anlas_guard,
             sampler: extension_settings.sd.sampler,
             scheduler: extension_settings.sd.scheduler,
             steps: steps,
@@ -4014,7 +4025,9 @@ async function generateNovelImage(prompt, negativePrompt, signal) {
         return { format: 'png', data: data };
     } else {
         const text = await result.text();
-        throw new Error(text);
+        let message = text;
+        try { message = JSON.parse(text).error || text; } catch { /* Non-JSON provider errors remain readable. */ }
+        throw new Error(message);
     }
 }
 
@@ -4100,7 +4113,7 @@ async function generateOpenAiImage(prompt, signal) {
 
     const isDalle2 = /dall-e-2/.test(extension_settings.sd.model);
     const isDalle3 = /dall-e-3/.test(extension_settings.sd.model);
-    const isGptImg = /gpt-image-(1|2|latest)/.test(extension_settings.sd.model);
+    const isGptImg = /^(?:gpt-image-\d|chatgpt-image-latest$)/.test(extension_settings.sd.model);
     const isSora2 = /sora-2/.test(extension_settings.sd.model);
 
     if (isDalle2 && prompt.length > dalle2PromptLimit) {
@@ -4646,7 +4659,7 @@ async function generateGoogleImage(prompt, negativePrompt, signal) {
 
     if (result.ok) {
         const data = await result.json();
-        return { format: 'jpg', data: data.image };
+        return { format: data.format || 'jpg', data: data.image };
     } else {
         const text = await result.text();
         throw new Error(text);
@@ -5655,7 +5668,7 @@ export async function init() {
                 isRequired: false,
                 typeList: [ARGUMENT_TYPE.STRING],
                 acceptsMultiple: false,
-                forceEnum: true,
+                forceEnum: false,
                 enumProvider: getSelectEnumProvider('sd_model', true),
             }),
             SlashCommandNamedArgument.fromProps({
@@ -5832,6 +5845,13 @@ export async function init() {
     $('#sd_scale').on('input', onScaleInput);
     $('#sd_steps').on('input', onStepsInput);
     $('#sd_model').on('change', onModelChange);
+    $('#sd_model_custom').on('change', onCustomModelChange);
+    $('#sd_model_custom').on('keydown', function (event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            $(this).trigger('change');
+        }
+    });
     $('#sd_vae').on('change', onVaeChange);
     $('#sd_sampler').on('change', onSamplerChange);
     $('#sd_resolution').on('change', onResolutionChange);
@@ -5907,9 +5927,10 @@ export async function init() {
     $('#sd_function_tool').on('input', onFunctionToolInput);
     $('#sd_bfl_upsampling').on('input', onBflUpsamplingInput);
 
-    $('#sd_google_api').on('input', function () {
+    $('#sd_google_api').on('input', async function () {
         extension_settings.sd.google_api = String($(this).val());
         saveSettingsDebounced();
+        await loadModels();
     });
     $('#sd_google_enhance').on('input', function () {
         extension_settings.sd.google_enhance = $(this).prop('checked');
@@ -5960,6 +5981,11 @@ export async function init() {
         eventSource.on(event, async (/** @type {string} */ key) => {
             const keySourceMap = {
                 [sources.bfl]: SECRET_KEYS.BFL,
+                [sources.openai]: SECRET_KEYS.OPENAI,
+                [sources.xai]: SECRET_KEYS.XAI,
+                [sources.google]: extension_settings.sd.google_api === 'vertexai'
+                    ? (oai_settings.vertexai_auth_mode === 'full' ? SECRET_KEYS.VERTEXAI_SERVICE_ACCOUNT : SECRET_KEYS.VERTEXAI)
+                    : SECRET_KEYS.MAKERSUITE,
                 [sources.falai]: SECRET_KEYS.FALAI,
                 [sources.stability]: SECRET_KEYS.STABILITY,
                 [sources.aimlapi]: SECRET_KEYS.AIMLAPI,

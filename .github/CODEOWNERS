@@ -24,6 +24,5 @@
 /docker/** @TheLonelyDevil9 @Geechan
 
 # Release artifacts and release automation
-/releases/** @TheLonelyDevil9 @Geechan
 /.github/workflows/release*.yml @TheLonelyDevil9 @Geechan
 /.github/workflows/release*.yaml @TheLonelyDevil9 @Geechan

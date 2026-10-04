@@ -10,6 +10,7 @@ import lodash from 'lodash';
 import { readSecret, SECRET_KEYS } from './secrets.js';
 import { GEMINI_SAFETY, VERTEX_SAFETY } from '../constants.js';
 import { abortOnRequestClose, delay, getConfigValue, trimTrailingSlash } from '../util.js';
+import { isGoogleImageGenerationModel } from '../../public/scripts/image-model-catalogs.js';
 
 const API_MAKERSUITE = 'https://generativelanguage.googleapis.com';
 const API_VERTEX_AI = 'https://us-central1-aiplatform.googleapis.com';
@@ -470,8 +471,9 @@ router.post('/generate-native-tts', async (request, response) => {
 
 router.post('/generate-image', async (request, response) => {
     try {
-        const model = request.body.model || 'imagen-3.0-generate-002';
-        const { url, headers, apiName } = await getGoogleApiConfig(request, model, 'predict');
+        const model = request.body.model || 'gemini-2.5-flash-image';
+        const isGemini = isGoogleImageGenerationModel(model);
+        const { url, headers, apiName, safetySettings } = await getGoogleApiConfig(request, model, isGemini ? 'generateContent' : 'predict');
 
         // AI Studio is stricter than Vertex AI.
         const isVertex = request.body.api === 'vertexai';
@@ -480,7 +482,15 @@ router.post('/generate-image', async (request, response) => {
         // Get person generation setting from config
         const personGeneration = getConfigValue('gemini.image.personGeneration', 'allow_adult');
 
-        const requestBody = {
+        // SillyBunny: native Gemini image models use generateContent, not Imagen's predict schema.
+        const requestBody = isGemini ? {
+            contents: [{ role: 'user', parts: [{ text: request.body.prompt || '' }] }],
+            generationConfig: {
+                responseModalities: ['TEXT', 'IMAGE'],
+                imageConfig: { aspectRatio: String(request.body.aspect_ratio || '1:1') },
+            },
+            safetySettings,
+        } : {
             instances: [{
                 prompt: request.body.prompt || '',
             }],
@@ -517,6 +527,15 @@ router.post('/generate-image', async (request, response) => {
 
         /** @type {any} */
         const data = await result.json();
+        if (isGemini) {
+            const candidate = data?.candidates?.find(candidate => !candidate.finishReason || candidate.finishReason === 'STOP');
+            const image = candidate?.content?.parts?.find(part => !part.thought && /^image\/(png|jpeg|webp)$/.test(part.inlineData?.mimeType) && part.inlineData?.data)?.inlineData;
+            if (!image) {
+                return response.status(502).send('No image data found in response');
+            }
+            const format = image.mimeType === 'image/jpeg' ? 'jpg' : image.mimeType.split('/')[1];
+            return response.send({ image: image.data, format });
+        }
         const imagePart = data?.predictions?.[0]?.bytesBase64Encoded;
 
         if (!imagePart) {

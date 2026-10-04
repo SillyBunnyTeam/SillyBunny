@@ -88,3 +88,18 @@
     top: 0;
     transform: translateX(-50%);
 }
+
+#sd_model_custom_settings summary {
+    cursor: pointer;
+    padding-block: 8px;
+}
+
+#sd_models_refresh {
+    min-width: 44px;
+    min-height: 44px;
+}
+
+#sd_model_custom_settings input {
+    width: 100%;
+    box-sizing: border-box;
+}
