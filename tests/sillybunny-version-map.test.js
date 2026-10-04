@@ -21,8 +21,13 @@ describe('mapSillyBunnyVersionToStEquivalent', () => {
         // (the highest synced ST minor) instead of passing through as 1.7.0.
         expect(mapSillyBunnyVersionToStEquivalent('1.7.0')).toBe('1.18.0');
         expect(mapSillyBunnyVersionToStEquivalent('1.99.5')).toBe('1.18.5');
-        expect(mapSillyBunnyVersionToStEquivalent('1.8.1')).toBe('1.18.1');
         expect(mapSillyBunnyVersionToStEquivalent('1.7.3-beta')).toBe('1.18.3-beta');
+    });
+
+    test('keeps SB 1.8.x on ST 1.18 because it tracked ST staging, not the 1.19 release', () => {
+        expect(mapSillyBunnyVersionToStEquivalent('1.8.0')).toBe('1.18.0');
+        expect(mapSillyBunnyVersionToStEquivalent('1.8.1')).toBe('1.18.1');
+        expect(mapSillyBunnyVersionToStEquivalent('1.9.0-dev')).toBe('1.18.0-dev');
     });
 
     test('passes through SB minors lower than the minimum mapped entry', () => {

@@ -7,6 +7,8 @@
 export const SILLYBUNNY_TO_ST_MINOR_BY_MAJOR = {
     1: {
         6: 18,
+        // SB 1.7-1.8 tracked ST staging after the 1.18 release rather than a tagged ST release,
+        // so they intentionally clamp to 18 instead of claiming 1.19 compatibility.
     },
     2: {
         0: 19,
