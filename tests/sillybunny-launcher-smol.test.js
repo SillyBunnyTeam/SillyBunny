@@ -236,7 +236,10 @@ describe('launcher parity', () => {
     test('PR metadata keeps ordinary work on staging and permits release branches to release', () => {
         expect(prMetadataSource).toContain('[ "$BASE_REF" = "staging" ]');
         expect(prMetadataSource).toContain('[ "$BASE_REF" = "release" ] && [ "$HEAD_REPOSITORY" = "$REPOSITORY" ]');
-        expect(prMetadataSource).toContain('staging | release/v* | hotfix/* | chore/pull_request_target_fix)');
+        expect(prMetadataSource).toContain('staging | release/v* | hotfix/*)');
+        expect(prMetadataSource).not.toContain('chore/pull_request_target_fix');
+        expect(prMetadataSource).toContain('[[ "$HEAD_REF" == actions/* ]]');
+        expect(prMetadataSource).toContain('or . == "scripts/bump-version.js"');
         expect(prMetadataSource).toContain('HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}');
         expect(prMetadataSource).toContain('Only staging, release/v*, or hotfix/* branches from this repository may target release.');
         expect(prMetadataSource).toContain('Pull requests must target staging.');
