@@ -500,7 +500,12 @@ describe('in-chat agent post-processing runner', () => {
         }));
     });
 
-    afterEach(() => {
+    afterEach(async () => {
+        // Cancel the runner's pending timers while their fake/real clock is still active, so none
+        // fire after the globals below are deleted. jest.resetModules() in beforeEach keeps this
+        // import on the same module instance the test used.
+        const { resetAgentRunnerTimersForTests } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        resetAgentRunnerTimersForTests();
         jest.useRealTimers();
         delete globalThis.document;
         delete globalThis.addEventListener;
