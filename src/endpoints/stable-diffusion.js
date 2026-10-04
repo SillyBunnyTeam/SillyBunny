@@ -13,8 +13,6 @@ import { abortOnRequestClose, delay, getBasicAuthHeader, isValidUrl, tryParse } 
 import { readSecret, SECRET_KEYS } from './secrets.js';
 import { getFileNameValidationFunction } from '../middleware/validateFileName.js';
 import { AIMLAPI_HEADERS } from '../constants.js';
-import { router as imageModelsRouter } from './image-models.js';
-import { getPollinationsImageModels } from '../../public/scripts/image-model-catalogs.js';
 
 /**
  * Gets the comfy workflows.
@@ -29,9 +27,6 @@ function getComfyWorkflows(directories) {
 }
 
 export const router = express.Router();
-
-// SillyBunny: image catalogs stay separate from Conversations provider routing.
-router.use(imageModelsRouter);
 
 router.post('/ping', async (request, response) => {
     try {
@@ -1038,8 +1033,7 @@ pollinations.post('/models', async (_request, response) => {
             throw new Error('Pollinations request failed.');
         }
 
-        const models = getPollinationsImageModels(data);
-        if (!models.length) throw new Error('Pollinations returned no compatible image models.');
+        const models = data.map(x => ({ value: x.name, text: x.name }));
         return response.send(models);
     } catch (error) {
         console.error(error);
@@ -1126,10 +1120,7 @@ stability.post('/generate', async (request, response) => {
                 apiUrl = 'https://api.stability.ai/v2beta/stable-image/generate/sd3';
                 break;
             default:
-                if (typeof model !== 'string' || !model.trim()) throw new Error('Invalid Stability AI model selected');
-                apiUrl = 'https://api.stability.ai/v2beta/stable-image/generate/sd3';
-                formData.set('model', model.trim());
-                break;
+                throw new Error('Invalid Stability AI model selected');
         }
 
         const result = await fetch(apiUrl, {

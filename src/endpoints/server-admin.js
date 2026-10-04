@@ -20,7 +20,7 @@ import {
     resolveRemoteBranchName,
 } from '../server-admin-git.js';
 import { getServerLogSnapshot } from '../server-log-buffer.js';
-import { getInstallType, hasOwnGitCheckout } from '../install-type.js';
+import { getLatestZipReleaseStatus, stageZipReleaseUpdate } from '../server-admin-zip-update.js';
 import {
     discardStagedServerPluginRelease,
     getServerPluginUpdateCapabilities,
@@ -369,6 +369,29 @@ function applyChatCompletionConfigState(document, settings) {
     document.setIn(['gemini', 'enableSystemPromptCache'], settings.gemini.enableSystemPromptCache);
 }
 
+function getZipUpdatePayload(stagedUpdate) {
+    const payload = {
+        parentPid: process.pid,
+        supervisorPid: process.env[RESTART_SUPERVISED_ENV] === '1' ? process.ppid : null,
+        installDir: serverDirectory,
+        stagingRoot: stagedUpdate.stagingRoot,
+        releaseRoot: stagedUpdate.releaseRoot,
+        version: stagedUpdate.version,
+        assetName: stagedUpdate.assetName,
+        command: [process.argv[0], ...process.argv.slice(1)],
+        // Clear inherited supervision markers so the helper's replacement
+        // process starts a fresh supervisor after the old process tree exits.
+        envPatch: {
+            SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1',
+            [RESTART_SUPERVISED_ENV]: '',
+            [RESTART_LAUNCHER_ENV]: '',
+        },
+        visibleRelaunch: process.platform === 'win32',
+    };
+
+    return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
+}
+
 function getServerPluginUpdatePayload(stagedUpdate) {
     return {
         transactionId: stagedUpdate.transactionId,
@@ -410,6 +433,29 @@ function scheduleRestart(response, { reloadSupervisor = false } = {}) {
             }
             console.info(`Restart requested; exiting with code ${exitCode} for relaunch.`);
             requestGracefulExit(exitCode);
+        }, RESTART_RESPONSE_DELAY_MS);
+    });
+}
+
+function scheduleZipUpdate(response, stagedUpdate) {
+    const helperScriptPath = path.join(serverDirectory, 'src', 'zip-update-helper.js');
+    const helper = spawn(process.argv[0], [helperScriptPath, getZipUpdatePayload(stagedUpdate)], {
+        cwd: serverDirectory,
+        detached: true,
+        stdio: process.platform === 'win32' ? ['ignore', 'inherit', 'inherit'] : 'ignore',
+        env: process.env,
+        windowsHide: false,
+    });
+
+    helper.once('error', (error) => {
+        console.error('Failed to start ZIP update helper.', error);
+    });
+    helper.unref();
+
+    response.once('finish', () => {
+        setTimeout(() => {
+            console.info('ZIP update staged; initiating graceful shutdown so the helper can replace files safely.');
+            requestGracefulExit(0);
         }, RESTART_RESPONSE_DELAY_MS);
     });
 }
@@ -596,7 +642,7 @@ async function getRepositoryStatus() {
     status.supported = true;
 
     const git = simpleGit({ baseDir: serverDirectory, ...GIT_OPTIONS });
-    const isRepo = await isGitRepository(git, hasOwnGitCheckout(serverDirectory));
+    const isRepo = await isGitRepository(git);
 
     if (!isRepo) {
         status.message = NON_GIT_REPOSITORY_MESSAGE;
@@ -655,21 +701,17 @@ async function getRepositoryStatus() {
     return status;
 }
 
-// SillyBunny: cheap install classification for the client-side non-Git notice; no Git or network calls.
-router.post('/install-type', requireAdminMiddleware, (_request, response) => {
-    response.json({ installType: getInstallType() });
-});
-
 router.post('/status', requireAdminMiddleware, async (_request, response) => {
     try {
         const version = await getVersion();
         const repository = await getRepositoryStatus();
+        const release = repository.isRepo ? null : await getLatestZipReleaseStatus(version.pkgVersion);
         response.json({
             runtime: formatRuntimeLabel(),
             configPath: getConfigFilePath(),
-            installType: getInstallType(),
             version,
             repository,
+            release,
         });
     } catch (error) {
         console.error('Failed to get server admin status.', error);
@@ -981,6 +1023,59 @@ router.post('/restart', requireAdminMiddleware, async (_request, response) => {
     }
 });
 
+router.post('/zip-update', requireAdminMiddleware, async (_request, response) => {
+    let stagedUpdate = null;
+
+    try {
+        const version = await getVersion();
+        const repository = await getRepositoryStatus();
+
+        if (repository.isRepo) {
+            return response.status(400).json({ error: 'This install is a Git checkout. Use the Git update path instead.', repository });
+        }
+
+        const release = await getLatestZipReleaseStatus(version.pkgVersion);
+
+        if (!release.checked) {
+            return response.status(502).json({ error: release.message || 'Failed to check GitHub releases.', release });
+        }
+
+        if (!release.canUpdate) {
+            return response.json({
+                updated: false,
+                restarting: false,
+                message: release.message || 'Already up to date.',
+                version,
+                repository,
+                release,
+            });
+        }
+
+        stagedUpdate = await stageZipReleaseUpdate(release);
+        scheduleZipUpdate(response, stagedUpdate);
+
+        response.status(202).json({
+            updated: true,
+            restarting: true,
+            message: `ZIP release v${release.latestVersion} downloaded. Restarting SillyBunny to replace app files safely.`,
+            version,
+            repository,
+            release: {
+                ...release,
+                staged: true,
+            },
+        });
+
+        stagedUpdate = null;
+    } catch (error) {
+        if (stagedUpdate?.stagingRoot) {
+            fs.rmSync(stagedUpdate.stagingRoot, { recursive: true, force: true });
+        }
+        console.error('Failed to start ZIP update.', error);
+        response.status(500).json({ error: error.message || 'Failed to start ZIP update.' });
+    }
+});
+
 router.post('/update', requireAdminMiddleware, async (_request, response) => {
     let git = null;
     let stashed = false;
@@ -1101,7 +1196,7 @@ router.post('/branches', requireAdminMiddleware, async (_request, response) => {
         }
 
         const git = simpleGit({ baseDir: serverDirectory, ...GIT_OPTIONS });
-        const isRepo = await isGitRepository(git, hasOwnGitCheckout(serverDirectory));
+        const isRepo = await isGitRepository(git);
 
         if (!isRepo) {
             return response.status(400).json({ error: NON_GIT_REPOSITORY_MESSAGE });
@@ -1142,7 +1237,7 @@ router.post('/switch-branch', requireAdminMiddleware, async (request, response) 
         }
 
         const git = simpleGit({ baseDir: serverDirectory, ...GIT_OPTIONS });
-        const isRepo = await isGitRepository(git, hasOwnGitCheckout(serverDirectory));
+        const isRepo = await isGitRepository(git);
 
         if (!isRepo) {
             return response.status(400).json({ error: NON_GIT_REPOSITORY_MESSAGE });

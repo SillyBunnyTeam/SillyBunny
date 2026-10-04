@@ -6,8 +6,6 @@ import express from 'express';
 
 import { readSecret, SECRET_KEYS } from './secrets.js';
 import { abortOnRequestClose, readAllChunks, extractFileFromZipBuffer, forwardFetchResponse } from '../util.js';
-// Share model compatibility with the browser's direct NovelAI image client.
-import { isNovelAIV5Model, normalizeNovelAIImageParameters } from '../../public/scripts/novelai-image-models.js';
 
 const API_NOVELAI = 'https://api.novelai.net';
 const TEXT_NOVELAI = 'https://text.novelai.net';
@@ -301,11 +299,6 @@ router.post('/generate-image', async (request, response) => {
         return response.sendStatus(400);
     }
 
-    // V5 can charge Anlas after its free allowance runs out; the API has no atomic no-spend option.
-    if (request.body.novel_anlas_guard === true && isNovelAIV5Model(request.body.model)) {
-        return response.status(400).json({ error: 'NovelAI V5 cannot guarantee free generations. Disable "Avoid spending Anlas" to allow spending Anlas, or choose an earlier model.' });
-    }
-
     const key = readSecret(request.user.directories, SECRET_KEYS.NOVEL);
 
     if (!key) {
@@ -326,7 +319,7 @@ router.post('/generate-image', async (request, response) => {
                 action: 'generate',
                 input: request.body.prompt ?? '',
                 model: request.body.model ?? 'nai-diffusion',
-                parameters: normalizeNovelAIImageParameters(request.body.model, {
+                parameters: {
                     params_version: 3,
                     prefer_brownian: true,
                     negative_prompt: request.body.negative_prompt ?? '',
@@ -376,7 +369,7 @@ router.post('/generate-image', async (request, response) => {
                         use_coords: false,
                         use_order: true,
                     },
-                }),
+                },
             }),
         });
 
