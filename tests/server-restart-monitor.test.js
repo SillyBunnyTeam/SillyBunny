@@ -14,14 +14,14 @@ describe('server restart monitor', () => {
         expect(hasServerReturnedAfterRestart({ serverBootId: 'same' }, { previousServerBootId: 'same' })).toBe(false);
     });
 
-    test('keeps existing revision, version, and offline fallback checks', () => {
+    test('keeps existing revision and offline fallback checks', () => {
         expect(hasServerReturnedAfterRestart({ gitRevision: 'abc' }, { expectedRevision: 'abc' })).toBe(true);
-        expect(hasServerReturnedAfterRestart({ pkgVersion: '1.2.3' }, { expectedVersion: '1.2.3' })).toBe(true);
         expect(hasServerReturnedAfterRestart({}, { sawOffline: true })).toBe(true);
-        expect(hasServerReturnedAfterRestart({ gitRevision: 'old', pkgVersion: '1.2.2' }, {
-            expectedRevision: 'new',
-            expectedVersion: '1.2.3',
-        })).toBe(false);
+        expect(hasServerReturnedAfterRestart({ gitRevision: 'old' }, { expectedRevision: 'new' })).toBe(false);
+    });
+
+    test('no longer treats a matching package version as a completed restart', () => {
+        expect(hasServerReturnedAfterRestart({ pkgVersion: '1.2.3' }, { expectedVersion: '1.2.3' })).toBe(false);
     });
 
     test('exposes a stable non-empty boot marker for the current process', () => {

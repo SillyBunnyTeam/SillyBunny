@@ -17,8 +17,17 @@ describe('server admin git helpers', () => {
             checkIsRepo: jest.fn(async () => true),
         };
 
-        await expect(isGitRepository(git)).resolves.toBe(true);
+        await expect(isGitRepository(git, true)).resolves.toBe(true);
         expect(git.checkIsRepo).toHaveBeenCalledWith();
+    });
+
+    test('rejects a folder without its own .git even when a parent repository answers', async () => {
+        const git = {
+            checkIsRepo: jest.fn(async () => true),
+        };
+
+        await expect(isGitRepository(git, false)).resolves.toBe(false);
+        expect(git.checkIsRepo).not.toHaveBeenCalled();
     });
 
     test('uses the tracked remote as the display branch for runtime worktrees', () => {
@@ -85,8 +94,9 @@ describe('server admin git helpers', () => {
         expect(getGeneratedInstallChangePaths([{ path: 'package-lock.json', index: '?', working_dir: '?' }])).toEqual([]);
     });
 
-    test('explains how non-Git installs update', () => {
-        expect(NON_GIT_REPOSITORY_MESSAGE).toContain('Git repository');
-        expect(NON_GIT_REPOSITORY_MESSAGE).toContain('release ZIP');
+    test('no longer points non-Git installs at the removed ZIP updater', () => {
+        expect(NON_GIT_REPOSITORY_MESSAGE).toEqual(expect.any(String));
+        expect(NON_GIT_REPOSITORY_MESSAGE.length).toBeGreaterThan(0);
+        expect(NON_GIT_REPOSITORY_MESSAGE).not.toMatch(/zip/i);
     });
 });
