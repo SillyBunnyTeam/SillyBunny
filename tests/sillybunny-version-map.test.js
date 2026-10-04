@@ -2,6 +2,7 @@ import { describe, test, expect } from '@jest/globals';
 import {
     mapSillyBunnyVersionToStEquivalent,
     SILLYBUNNY_TO_ST_MINOR,
+    SILLYBUNNY_TO_ST_MINOR_BY_MAJOR,
 } from '../public/scripts/sillybunny-version-map.js';
 
 describe('mapSillyBunnyVersionToStEquivalent', () => {
@@ -30,8 +31,29 @@ describe('mapSillyBunnyVersionToStEquivalent', () => {
         expect(mapSillyBunnyVersionToStEquivalent('1.0.1')).toBe('1.0.1');
     });
 
-    test('passes through non-1.x major versions', () => {
-        expect(mapSillyBunnyVersionToStEquivalent('2.0.0')).toBe('2.0.0');
+    test('maps SB 2.0.x to ST 1.19.x', () => {
+        expect(mapSillyBunnyVersionToStEquivalent('2.0.0')).toBe('1.19.0');
+        expect(mapSillyBunnyVersionToStEquivalent('2.0.4')).toBe('1.19.4');
+        expect(mapSillyBunnyVersionToStEquivalent('2.0.0-rc.1')).toBe('1.19.0-rc.1');
+    });
+
+    test('clamps future unmapped SB 2.x minors to the highest ST version synced in 2.x', () => {
+        expect(mapSillyBunnyVersionToStEquivalent('2.1.0')).toBe('1.19.0');
+        expect(mapSillyBunnyVersionToStEquivalent('2.9.2-dev')).toBe('1.19.2-dev');
+    });
+
+    test('clamps unmapped future SB majors to the newest synced ST version', () => {
+        expect(mapSillyBunnyVersionToStEquivalent('3.0.0')).toBe('1.19.0');
+        expect(mapSillyBunnyVersionToStEquivalent('10.2.7')).toBe('1.19.7');
+    });
+
+    test('SB 2.x never compares below ST versions that SB 1.x already satisfied', () => {
+        expect(mapSillyBunnyVersionToStEquivalent('2.0.0')
+            .localeCompare(mapSillyBunnyVersionToStEquivalent('1.8.1'), undefined, { numeric: true }))
+            .toBeGreaterThan(0);
+    });
+
+    test('passes through SB majors below the lowest mapped major', () => {
         expect(mapSillyBunnyVersionToStEquivalent('0.9.1')).toBe('0.9.1');
     });
 
@@ -53,10 +75,33 @@ describe('SILLYBUNNY_TO_ST_MINOR table', () => {
         expect(SILLYBUNNY_TO_ST_MINOR[6]).toBe(18);
     });
 
+    test('documents current SB 2.x mapping', () => {
+        // SB 2.0.x tracks ST 1.19.x
+        expect(SILLYBUNNY_TO_ST_MINOR_BY_MAJOR[2][0]).toBe(19);
+        expect(SILLYBUNNY_TO_ST_MINOR).toBe(SILLYBUNNY_TO_ST_MINOR_BY_MAJOR[1]);
+    });
+
     test('contains only integer keys and values', () => {
-        for (const [sbMinor, stMinor] of Object.entries(SILLYBUNNY_TO_ST_MINOR)) {
-            expect(Number.isInteger(Number(sbMinor))).toBe(true);
-            expect(Number.isInteger(stMinor)).toBe(true);
+        for (const [sbMajor, table] of Object.entries(SILLYBUNNY_TO_ST_MINOR_BY_MAJOR)) {
+            expect(Number.isInteger(Number(sbMajor))).toBe(true);
+            for (const [sbMinor, stMinor] of Object.entries(table)) {
+                expect(Number.isInteger(Number(sbMinor))).toBe(true);
+                expect(Number.isInteger(stMinor)).toBe(true);
+            }
+        }
+    });
+
+    test('tracked ST minors never go backwards across SB versions', () => {
+        const stMinorsInOrder = Object.keys(SILLYBUNNY_TO_ST_MINOR_BY_MAJOR)
+            .map(Number)
+            .sort((a, b) => a - b)
+            .flatMap(sbMajor => {
+                const table = SILLYBUNNY_TO_ST_MINOR_BY_MAJOR[sbMajor];
+                return Object.keys(table).map(Number).sort((a, b) => a - b).map(sbMinor => table[sbMinor]);
+            });
+
+        for (let i = 1; i < stMinorsInOrder.length; i++) {
+            expect(stMinorsInOrder[i]).toBeGreaterThanOrEqual(stMinorsInOrder[i - 1]);
         }
     });
 });
