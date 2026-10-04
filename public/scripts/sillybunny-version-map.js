@@ -1,52 +1,41 @@
 /**
- * Maps SillyBunny minor versions to their corresponding SillyTavern minor versions, per SillyBunny major.
- * When SB syncs to a new ST minor release, add a new entry under the SB major that ships it.
- * Key: SB major, then SB minor (e.g., 1 → 6 for SB 1.6.x)
- * Value: ST 1.x minor version it tracks (e.g., 18 for ST 1.18.x)
+ * Maps SillyBunny minor versions to their corresponding SillyTavern minor versions.
+ * When SB syncs to a new ST minor release, add a new entry to this table.
+ * Key: SB minor version (e.g., 6 for SB 1.6.x)
+ * Value: ST minor version it tracks (e.g., 18 for ST 1.18.x)
  */
-export const SILLYBUNNY_TO_ST_MINOR_BY_MAJOR = {
-    1: {
-        6: 18,
-        // SB 1.7-1.8 tracked ST staging after the 1.18 release rather than a tagged ST release,
-        // so they intentionally clamp to 18 instead of claiming 1.19 compatibility.
-    },
-    2: {
-        0: 19,
-    },
+export const SILLYBUNNY_TO_ST_MINOR = {
+    6: 18,
 };
 
 /**
- * SB 1.x mapping, kept as its own export for existing callers.
+ * Returns the highest SillyBunny minor version currently mapped in
+ * SILLYBUNNY_TO_ST_MINOR, or null if the table is empty.
+ * Used as a fallback anchor when a future SillyBunny minor has not yet been
+ * explicitly added to the mapping table.
  */
-export const SILLYBUNNY_TO_ST_MINOR = SILLYBUNNY_TO_ST_MINOR_BY_MAJOR[1];
-
-const ST_MAJOR = 1;
-
-function getMaxKey(table) {
-    const keys = Object.keys(table ?? {}).map(Number);
-    if (keys.length === 0) {
+function getMaxMappedSillyBunnyMinor() {
+    const mappedMinors = Object.keys(SILLYBUNNY_TO_ST_MINOR).map(Number);
+    if (mappedMinors.length === 0) {
         return null;
     }
 
-    return Math.max(...keys);
+    return Math.max(...mappedMinors);
 }
 
 /**
  * Converts a SillyBunny version string to its SillyTavern equivalent.
  * Used by versionCompare() to check if the current SB version meets extension requirements.
  *
- * When the input minor version is explicitly mapped for its SB major,
+ * When the input minor version is explicitly present in SILLYBUNNY_TO_ST_MINOR,
  * the corresponding SillyTavern minor is used directly.
  *
  * When the input minor version is GREATER than the highest explicitly mapped
- * minor for its SB major (i.e., a future SillyBunny version that has not yet been added
- * to the mapping table after a version bump), we clamp to that major's highest synced
+ * SillyBunny minor (i.e., a future SillyBunny version that has not yet been added
+ * to the mapping table after a version bump), we clamp to the highest synced
  * SillyTavern minor. This preserves extension compatibility for version bumps
  * that do not sync to a new SillyTavern upstream release, avoiding the
  * regression where SB 1.7.0 erroneously compared as smaller than ST 1.18.x.
- *
- * SB majors above the highest mapped major clamp to the newest mapping overall, so an
- * unmapped future major never passes through and satisfies every ST 1.x requirement.
  *
  * @param {string} version - A semver-like version string (e.g., "1.6.4")
  * @returns {string} The mapped ST version (e.g., "1.18.4"), or the original if no mapping exists
@@ -61,31 +50,20 @@ export function mapSillyBunnyVersionToStEquivalent(version) {
     const numericMajor = Number(major);
     const numericMinor = Number(minor);
 
-    const maxMappedMajor = getMaxKey(SILLYBUNNY_TO_ST_MINOR_BY_MAJOR);
-    if (maxMappedMajor === null) {
+    if (numericMajor !== 1 || !Number.isInteger(numericMinor)) {
         return version;
     }
 
-    if (numericMajor > maxMappedMajor) {
-        const newestTable = SILLYBUNNY_TO_ST_MINOR_BY_MAJOR[maxMappedMajor];
-        const newestStMinor = newestTable[getMaxKey(newestTable)];
-        return `${ST_MAJOR}.${newestStMinor}.${patch}${suffix}`;
-    }
-
-    const table = SILLYBUNNY_TO_ST_MINOR_BY_MAJOR[numericMajor];
-    const maxSbMinor = getMaxKey(table);
-    if (maxSbMinor === null) {
-        return version;
-    }
-
-    const explicitMappedMinor = table[numericMinor];
+    const explicitMappedMinor = SILLYBUNNY_TO_ST_MINOR[numericMinor];
     if (explicitMappedMinor !== undefined) {
-        return `${ST_MAJOR}.${explicitMappedMinor}.${patch}${suffix}`;
+        return `${numericMajor}.${explicitMappedMinor}.${patch}${suffix}`;
     }
 
-    if (numericMinor <= maxSbMinor) {
+    const maxSbMinor = getMaxMappedSillyBunnyMinor();
+    if (maxSbMinor === null || numericMinor <= maxSbMinor) {
         return version;
     }
 
-    return `${ST_MAJOR}.${table[maxSbMinor]}.${patch}${suffix}`;
+    const maxStMinor = SILLYBUNNY_TO_ST_MINOR[maxSbMinor];
+    return `${numericMajor}.${maxStMinor}.${patch}${suffix}`;
 }

@@ -3671,17 +3671,6 @@ function scheduleMessageRefresh(messageIndex, expectedMessage, { deferBackup = f
     pendingRefreshTimeouts.set(messageIndex, { timeoutId, skipReloadFallback: mergedSkipReloadFallback });
 }
 
-export function resetAgentRunnerTimersForTests() {
-    for (const { timeoutId } of pendingRefreshTimeouts.values()) {
-        clearTimeout(timeoutId);
-    }
-    pendingRefreshTimeouts.clear();
-    clearDeferredPostProcessing();
-    clearLatestAssistantPostProcessingFallback();
-    clearPostGenerationRecoveryCheck();
-    clearMissedGenerationEndRecoveryCheck();
-}
-
 function clearInChatAgentExtensionPrompts() {
     for (const key of Object.keys(extension_prompts)) {
         if (key.startsWith(PROMPT_KEY_PREFIX)) {

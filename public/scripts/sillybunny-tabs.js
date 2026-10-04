@@ -2,7 +2,6 @@ import { DEFAULT_SCROLL_EDGE_SETTLE_DELAYS, jumpScrollElementToEdge } from './ch
 import { createDeferredPanel } from './deferred-panel.js';
 import { createDeferredModule } from './deferred-module.js';
 import { hasServerReturnedAfterRestart } from './server-restart-monitor.js';
-import { initInstallNotice } from './sillybunny-install-notice.js';
 import {
     clampMobileShellText as clampText,
     createMobileShellLifecycle,
@@ -16270,8 +16269,6 @@ function initAll() {
         },
     });
 }
-
-initInstallNotice();
 
 // Init shell UI as soon as DOM is ready.
 // Also re-trigger on APP_READY as a safety net for slow-loading environments.

@@ -500,12 +500,7 @@ describe('in-chat agent post-processing runner', () => {
         }));
     });
 
-    afterEach(async () => {
-        // Cancel the runner's pending timers while their fake/real clock is still active, so none
-        // fire after the globals below are deleted. jest.resetModules() in beforeEach keeps this
-        // import on the same module instance the test used.
-        const { resetAgentRunnerTimersForTests } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
-        resetAgentRunnerTimersForTests();
+    afterEach(() => {
         jest.useRealTimers();
         delete globalThis.document;
         delete globalThis.addEventListener;
@@ -5747,9 +5742,7 @@ describe('in-chat agent post-processing runner', () => {
 
         delete document.body.dataset.generating;
         await eventSource.emit(eventTypes.GENERATION_ENDED, chat.length);
-        await waitForDeferredFlush(() => chat[0].mes === 'First speaker\n[post processed]'
-            && chat[1].mes === 'Second speaker\n[post processed]'
-            && saveChatDebounced.mock.calls.length >= 2);
+        await new Promise(resolve => setTimeout(resolve, 5));
 
         expect(chat[0].mes).toBe('First speaker\n[post processed]');
         expect(chat[1].mes).toBe('Second speaker\n[post processed]');
