@@ -1,0 +1,86 @@
+name: 🚀 Release PR Checks
+
+on:
+  pull_request:
+    branches:
+      - release
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check-release-version:
+    name: ✅ Check Release Version
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Check version copies agree
+        run: node scripts/bump-version.js --check
+
+      - name: Check version is releasable
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          case "$HEAD_REF" in
+            release/v*)
+              if [ "$HEAD_REF" != "release/v$version" ]; then
+                echo "Branch $HEAD_REF does not match package.json version $version." >&2
+                exit 1
+              fi
+              ;;
+            hotfix/*)
+              # Hotfixes must ship under a new patch version, never the one already on release.
+              git fetch --quiet --depth=1 origin "refs/heads/$BASE_REF"
+              base_version=$(git show FETCH_HEAD:package.json | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
+              if [ "$version" = "$base_version" ] || [ "$(printf '%s\n%s\n' "$base_version" "$version" | sort -V | tail -n1)" != "$version" ]; then
+                echo "Hotfix version $version must be higher than $BASE_REF ($base_version); run scripts/bump-version.js." >&2
+                exit 1
+              fi
+              ;;
+            *)
+              # Actions-only and CODEOWNERS PRs into release do not change the version.
+              git fetch --quiet --depth=1 origin "refs/heads/$BASE_REF"
+              base_version=$(git show FETCH_HEAD:package.json | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
+              if [ -n "$base_version" ] && [ "$version" = "$base_version" ]; then
+                echo "Version unchanged ($version); nothing to check."
+                exit 0
+              fi
+              ;;
+          esac
+
+          if ! grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' <<< "$version"; then
+            echo "Version $version is not a stable X.Y.Z release version." >&2
+            exit 1
+          fi
+
+          echo "Release version $version looks good."
+
+  check-readme-mirror:
+    name: ✅ Check README Mirror
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Verify README mirror is in sync
+        run: bash scripts/sync-readme-mirror.sh --check

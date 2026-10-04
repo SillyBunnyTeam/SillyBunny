@@ -35,10 +35,39 @@ jobs:
 
           if [ "$BASE_REF" = "release" ] && [ "$HEAD_REPOSITORY" = "$REPOSITORY" ]; then
             case "$HEAD_REF" in
-              staging | release/v* | hotfix/* | chore/pull_request_target_fix)
+              staging | release/v* | hotfix/*)
                 exit 0
                 ;;
             esac
+          fi
+
+          # Actions-only PRs: workflow_dispatch and schedule workflows only run from release (the default branch),
+          # so workflow changes reach it through actions/* branches limited to CI files, their scripts and tests.
+          if [ "$BASE_REF" = "release" ] && [ "$HEAD_REPOSITORY" = "$REPOSITORY" ] && [[ "$HEAD_REF" == actions/* ]]; then
+            gh api --paginate --slurp "repos/$REPOSITORY/pulls/$PR_NUMBER/files" > "$RUNNER_TEMP/pr-files.json"
+            current_head=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')
+            if [ "$current_head" != "$PR_HEAD_SHA" ]; then
+              echo "The PR changed while its files were being checked."
+              exit 1
+            fi
+
+            if jq -e --argjson expected_count "$PR_CHANGED_FILES" '
+              def allowed:
+                startswith(".github/")
+                or startswith("tests/")
+                or . == "scripts/bump-version.js"
+                or . == "scripts/update-changelog-merged-prs.js";
+              add
+              | length == $expected_count
+                and all(.[];
+                  (.filename | allowed)
+                  and ((.previous_filename // .filename) | allowed))
+            ' "$RUNNER_TEMP/pr-files.json" > /dev/null; then
+              exit 0
+            fi
+
+            echo "actions/* branches may only change .github/, tests/, scripts/bump-version.js and scripts/update-changelog-merged-prs.js."
+            exit 1
           fi
 
           if [ "$BASE_REF" = "release" ] && [ "$HEAD_REPOSITORY" = "$REPOSITORY" ]; then
@@ -64,6 +93,7 @@ jobs:
 
           if [ "$BASE_REF" = "release" ]; then
             echo "Only staging, release/v*, or hotfix/* branches from this repository may target release. Current source: $HEAD_REF"
+            echo "Actions-only changes may use an actions/* branch."
             echo "Exception: CODEOWNERS additions or edits may also update pr-metadata.yml, with no other file changes."
           else
             echo "Pull requests must target staging. Current target: $BASE_REF"
