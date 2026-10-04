@@ -14,7 +14,7 @@ Before updating
 
 Git installs
 
-Git is the recommended update method.
+Git is the primary recommended update method.
 
 1. Open a terminal in your SillyBunny folder.
 2. Run:
@@ -32,13 +32,10 @@ intentionally, or move them out of the way before pulling the update.
 
 ZIP installs
 
-ZIP copies of SillyBunny can no longer update themselves. To keep getting
+ZIP copies of SillyBunny are **deprecated** and can no longer update themselves. To keep getting
 updates, reinstall with the installer from the latest release:
 
    https://github.com/SillyBunnyTeam/SillyBunny/releases/latest
-
-Your chats, characters and settings live in the data folder. Back it up before
-reinstalling, then copy it into the new install.
 
 Troubleshooting
 

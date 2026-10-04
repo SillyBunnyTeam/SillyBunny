@@ -49,7 +49,7 @@ export async function doInstallNoticeCheck({
         return false;
     }
 
-    notify('This copy of SillyBunny was not installed with Git, so it cannot update. Reinstall with the installer from the latest release to keep getting updates.', 'Updates unavailable');
+    notify('This copy of SillyBunny was not installed with Git, so it cannot update. Reinstall with the installer from the latest release to keep getting updates: https://github.com/SillyBunnyTeam/SillyBunny/releases/latest', 'Updates unavailable');
     return true;
 }
 
