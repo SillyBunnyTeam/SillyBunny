@@ -28,10 +28,10 @@ jobs:
       - name: Check GitHub App Configuration
         id: app-config
         env:
-          ST_BOT_APP_ID: ${{ vars.ST_BOT_APP_ID }}
+          ST_BOT_CLIENT_ID: ${{ vars.ST_BOT_CLIENT_ID }}
           ST_BOT_PRIVATE_KEY: ${{ secrets.ST_BOT_PRIVATE_KEY }}
         run: |
-          if [ -n "$ST_BOT_APP_ID" ] && [ -n "$ST_BOT_PRIVATE_KEY" ]; then
+          if [ -n "$ST_BOT_CLIENT_ID" ] && [ -n "$ST_BOT_PRIVATE_KEY" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
@@ -42,11 +42,12 @@ jobs:
         id: app
         # Create a GitHub App token
         # https://github.com/marketplace/actions/create-github-app-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ vars.ST_BOT_APP_ID }}
+          client-id: ${{ vars.ST_BOT_CLIENT_ID }}
           private-key: ${{ secrets.ST_BOT_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
+          permission-issues: write
+          permission-pull-requests: write
 
       - name: Use Built-in GitHub Token
         if: steps.app-config.outputs.enabled != 'true'
@@ -55,7 +56,7 @@ jobs:
       - name: Check Merge Conflicts
         # Label Conflicting Pull Requests
         # https://github.com/marketplace/actions/label-conflicting-pull-requests
-        uses: eps1lon/actions-label-merge-conflict@1df065ebe6e3310545d4f4c4e862e43bdca146f0 # v3.0.3
+        uses: eps1lon/actions-label-merge-conflict@0273be72a0bbd58fcd71d0d6c02c209b50d1e5e1 # v3.1.0
         with:
           dirtyLabel: '🚫 Merge Conflicts'
           repoToken: ${{ steps.app.outputs.token || github.token }}

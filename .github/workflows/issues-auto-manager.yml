@@ -18,10 +18,10 @@ jobs:
       - name: Check GitHub App Configuration
         id: app-config
         env:
-          ST_BOT_APP_ID: ${{ vars.ST_BOT_APP_ID }}
+          ST_BOT_CLIENT_ID: ${{ vars.ST_BOT_CLIENT_ID }}
           ST_BOT_PRIVATE_KEY: ${{ secrets.ST_BOT_PRIVATE_KEY }}
         run: |
-          if [ -n "$ST_BOT_APP_ID" ] && [ -n "$ST_BOT_PRIVATE_KEY" ]; then
+          if [ -n "$ST_BOT_CLIENT_ID" ] && [ -n "$ST_BOT_PRIVATE_KEY" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
@@ -32,16 +32,17 @@ jobs:
         id: app
         # Create a GitHub App token
         # https://github.com/marketplace/actions/create-github-app-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ vars.ST_BOT_APP_ID }}
+          client-id: ${{ vars.ST_BOT_CLIENT_ID }}
           private-key: ${{ secrets.ST_BOT_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
+          permission-contents: read
+          permission-issues: write
 
       - name: Checkout Repository
         # Checkout
         # https://github.com/marketplace/actions/checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Auto-Label Issues (Based on Issue Content)
         # only auto label based on issue content once, on open (to prevent re-labeling removed labels)
@@ -49,7 +50,7 @@ jobs:
 
         # Issue Labeler
         # https://github.com/marketplace/actions/regex-issue-labeler
-        uses: github/issue-labeler@c1b0f9f52a63158c4adc09425e858e87b32e9685 # v3.4
+        uses: github/issue-labeler@ccca1e16fcb66762200e616fc29b57b940c1cb67 # v3.5
         with:
           configuration-path: .github/issues-auto-labels.yml
           enable-versioned-regex: 0
@@ -65,10 +66,10 @@ jobs:
       - name: Check GitHub App Configuration
         id: app-config
         env:
-          ST_BOT_APP_ID: ${{ vars.ST_BOT_APP_ID }}
+          ST_BOT_CLIENT_ID: ${{ vars.ST_BOT_CLIENT_ID }}
           ST_BOT_PRIVATE_KEY: ${{ secrets.ST_BOT_PRIVATE_KEY }}
         run: |
-          if [ -n "$ST_BOT_APP_ID" ] && [ -n "$ST_BOT_PRIVATE_KEY" ]; then
+          if [ -n "$ST_BOT_CLIENT_ID" ] && [ -n "$ST_BOT_PRIVATE_KEY" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
@@ -79,16 +80,17 @@ jobs:
         id: app
         # Create a GitHub App token
         # https://github.com/marketplace/actions/create-github-app-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ vars.ST_BOT_APP_ID }}
+          client-id: ${{ vars.ST_BOT_CLIENT_ID }}
           private-key: ${{ secrets.ST_BOT_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
+          permission-contents: read
+          permission-issues: write
 
       - name: Checkout Repository
         # Checkout
         # https://github.com/marketplace/actions/checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Post Issue Comments Based on Labels
         # Label Commenter
