@@ -41,8 +41,9 @@ const tutorialStatusKey = 'WelcomePage_TutorialStatus';
 const tutorialIndexKey = 'WelcomePage_TutorialIndex';
 const welcomeDeckViewKey = 'WelcomePage_DeckView';
 const welcomePanelModeKey = 'WelcomePage_PanelMode';
-const DEFAULT_BUNDLED_ASSISTANT_ID = 'guide';
+const DEFAULT_BUNDLED_ASSISTANT_ID = 'reisen';
 const bundledAssistantNahidaAvatarKey = 'bundledAssistantNahidaAvatar';
+const bundledAssistantReisenAvatarKey = 'bundledAssistantReisenAvatar';
 const DEFAULT_NEUTRAL_ASSISTANT_NAME = 'Assistant';
 
 const AGENT_MESSAGE_EXTRA_KEY = 'inChatAgents';
@@ -164,7 +165,7 @@ const WELCOME_TUTORIAL_STEPS = Object.freeze([
         actions: Object.freeze([
             Object.freeze({ label: 'Open UI Handbook', type: 'open-deck-view', value: 'basics' }),
             Object.freeze({ label: 'Open Extensions', type: 'open-tab', value: 'right:extensions' }),
-            Object.freeze({ label: 'Open Assistant', type: 'open-assistant', assistantId: 'guide' }),
+            Object.freeze({ label: 'Open Assistant', type: 'open-assistant', assistantId: 'reisen' }),
             Object.freeze({ label: 'Open Assistant Nahida', type: 'open-assistant', assistantId: 'nahida' }),
         ]),
     },
@@ -216,7 +217,7 @@ const WELCOME_GUIDE_CARDS = Object.freeze([
         icon: 'fa-hand-pointer',
         actions: Object.freeze([
             Object.freeze({ label: 'Temporary Chat', type: 'open-temporary-chat' }),
-            Object.freeze({ label: 'Open Assistant', type: 'open-assistant', assistantId: 'guide' }),
+            Object.freeze({ label: 'Open Assistant', type: 'open-assistant', assistantId: 'reisen' }),
             Object.freeze({ label: 'Import Characters', type: 'open-import-characters' }),
         ]),
     },
@@ -233,34 +234,39 @@ const WELCOME_GUIDE_CARDS = Object.freeze([
 
 const WELCOME_BUNDLED_ASSISTANTS = Object.freeze([
     Object.freeze({
-        id: 'guide',
-        avatarStorageKey: assistantAvatarKey,
-        identityStorageKey: 'bundledAssistantGuideAvatar',
-        deletedStorageKey: 'bundledAssistantGuideDeleted',
-        defaultAvatar: 'default_SillyBunnyGuide.png',
-        fileName: 'default_SillyBunnyGuide',
-        portrait: 'img/sillybunny-guide-assistant-portrait.png',
-        portraitAlt: 'Pixel-art bunny guide portrait',
-        characterName: DEFAULT_NEUTRAL_ASSISTANT_NAME,
-        title: 'Bunny Guide',
-        body: 'Our bundled bunny assistant. It can explain what an LLM is, what providers and models mean, how SillyBunny differs from stock SillyTavern, and where presets, personas, and world info reside in the context of your RP or story.',
-        credit: 'Created by purachina.',
-        creator: 'purachina',
-        creatorNotes: 'Automatically created bundled Bunny Guide character. Feel free to edit.',
-        description: 'A calm built-in bunny assistant for explaining SillyBunny, SillyTavern, model providers, presets, personas, and related basics in plain English.',
-        personality: 'Patient, beginner-friendly, calm, and practical.',
-        scenario: 'You are the built-in Bunny Guide for SillyBunny. Help the user understand the interface, APIs, presets, prompt settings, personas, and world info in plain, approachable language.',
-        firstMessage: 'Hi. I\'m the Bunny Guide. If anything in SillyBunny feels confusing, ask in plain English and I\'ll walk through it with you step by step.',
+        id: 'reisen',
+        avatarStorageKey: bundledAssistantReisenAvatarKey,
+        identityStorageKey: 'bundledAssistantReisenIdentityAvatar',
+        deletedStorageKey: 'bundledAssistantReisenDeleted',
+        defaultAvatar: 'default_ReisenUdongeinInaba.png',
+        fileName: 'default_ReisenUdongeinInaba',
+        cardAsset: 'img/reisen-character-card.png',
+        portrait: 'img/reisen-character-card.png',
+        portraitAlt: 'lorum ipsum',
+        characterName: 'Reisen Udongein Inaba',
+        title: 'Reisen',
+        body: 'lorum ipsum',
+        credit: 'lorum ipsum',
+        creator: 'SillyBunny Team',
+        creatorNotes: 'lorum ipsum',
+        description: 'lorum ipsum',
+        personality: 'lorum ipsum',
+        scenario: 'lorum ipsum',
+        firstMessage: 'lorum ipsum',
         questions: Object.freeze([
-            'What is an LLM, in plain English?',
-            'What is a character card?',
-            'What does a preset actually change?',
-            'How is SillyBunny different from base SillyTavern?',
+            'lorum ipsum',
+            'lorum ipsum',
+            'lorum ipsum',
+            'lorum ipsum',
         ]),
-        actionLabel: 'Open Bunny Guide',
-        actionIcon: 'fa-user-graduate',
-        cardIcon: 'fa-user-graduate',
+        actionLabel: 'lorum ipsum',
+        actionIcon: 'fa-moon',
+        cardIcon: 'fa-moon',
     }),
+]);
+
+const WELCOME_BUNDLED_ASSISTANTS_WITH_NAHIDA = Object.freeze([
+    ...WELCOME_BUNDLED_ASSISTANTS,
     Object.freeze({
         id: 'nahida',
         avatarStorageKey: bundledAssistantNahidaAvatarKey,
@@ -290,6 +296,41 @@ const WELCOME_BUNDLED_ASSISTANTS = Object.freeze([
         actionLabel: 'Open Assistant Nahida',
         actionIcon: 'fa-leaf',
         cardIcon: 'fa-book-open',
+    }),
+]);
+
+// Archived assistants stay addressable so existing user cards and their storage
+// keys continue to work, but they are never created automatically or shown in the
+// new-install welcome deck.
+const ARCHIVED_BUNDLED_ASSISTANTS = Object.freeze([
+    Object.freeze({
+        id: 'guide',
+        avatarStorageKey: assistantAvatarKey,
+        identityStorageKey: 'bundledAssistantGuideAvatar',
+        deletedStorageKey: 'bundledAssistantGuideDeleted',
+        defaultAvatar: 'default_SillyBunnyGuide.png',
+        fileName: 'default_SillyBunnyGuide',
+        portrait: 'img/sillybunny-guide-assistant-portrait.png',
+        portraitAlt: 'Pixel-art bunny guide portrait',
+        characterName: DEFAULT_NEUTRAL_ASSISTANT_NAME,
+        title: 'Bunny Guide',
+        body: 'Our bundled bunny assistant. It can explain what an LLM is, what providers and models mean, how SillyBunny differs from stock SillyTavern, and where presets, personas, and world info reside in the context of your RP or story.',
+        credit: 'Created by purachina.',
+        creator: 'purachina',
+        creatorNotes: 'Automatically created bundled Bunny Guide character. Feel free to edit.',
+        description: 'A calm built-in bunny assistant for explaining SillyBunny, SillyTavern, model providers, presets, personas, and related basics in plain English.',
+        personality: 'Patient, beginner-friendly, calm, and practical.',
+        scenario: 'You are the built-in Bunny Guide for SillyBunny. Help the user understand the interface, APIs, presets, prompt settings, personas, and world info in plain, approachable language.',
+        firstMessage: 'Hi. I\'m the Bunny Guide. If anything in SillyBunny feels confusing, ask in plain English and I\'ll walk through it with you step by step.',
+        questions: Object.freeze([
+            'What is an LLM, in plain English?',
+            'What is a character card?',
+            'What does a preset actually change?',
+            'How is SillyBunny different from base SillyTavern?',
+        ]),
+        actionLabel: 'Open Bunny Guide',
+        actionIcon: 'fa-user-graduate',
+        cardIcon: 'fa-user-graduate',
     }),
 ]);
 
@@ -539,7 +580,12 @@ class PinnedChatsManager {
 }
 
 function getBundledAssistantConfig(assistantId = DEFAULT_BUNDLED_ASSISTANT_ID) {
-    return WELCOME_BUNDLED_ASSISTANTS.find(item => item.id === assistantId) ?? WELCOME_BUNDLED_ASSISTANTS[0];
+    return [...WELCOME_BUNDLED_ASSISTANTS_WITH_NAHIDA, ...ARCHIVED_BUNDLED_ASSISTANTS]
+        .find(item => item.id === assistantId) ?? WELCOME_BUNDLED_ASSISTANTS[0];
+}
+
+function getAllBundledAssistantConfigs() {
+    return [...WELCOME_BUNDLED_ASSISTANTS_WITH_NAHIDA, ...ARCHIVED_BUNDLED_ASSISTANTS];
 }
 
 function isBundledAssistantMarkedDeleted(config) {
@@ -564,6 +610,27 @@ function markBundledAssistantDeleted(config, deletedAvatar) {
 
 function getBundledAssistantIdentityAvatar(config) {
     return accountStorage.getItem(config.identityStorageKey) || config.defaultAvatar;
+}
+
+function hasExistingArchivedGuide() {
+    const guideConfig = getBundledAssistantConfig('guide');
+    const storedAvatar = accountStorage.getItem(guideConfig.avatarStorageKey);
+    const identityAvatar = getBundledAssistantIdentityAvatar(guideConfig);
+
+    return characters.some(character => character.avatar === guideConfig.defaultAvatar
+        || character.avatar === identityAvatar
+        || (character.avatar === storedAvatar && hasBundledAssistantFingerprint(guideConfig, character)));
+}
+
+function getPermanentAssistantConfig() {
+    const selectedAvatar = accountStorage.getItem(assistantAvatarKey);
+    const config = hasExistingArchivedGuide()
+        ? getBundledAssistantConfig('guide')
+        : getBundledAssistantConfig(DEFAULT_BUNDLED_ASSISTANT_ID);
+
+    return selectedAvatar && characters.some(character => character.avatar === selectedAvatar)
+        ? { ...config, avatarStorageKey: assistantAvatarKey }
+        : config;
 }
 
 function setBundledAssistantIdentityAvatar(config, avatar) {
@@ -627,6 +694,15 @@ function getBundledAssistantAvatar(config = getBundledAssistantConfig()) {
 }
 
 export function getPermanentAssistantAvatar() {
+    const assignedAssistantAvatar = accountStorage.getItem(assistantAvatarKey);
+    if (assignedAssistantAvatar && characters.some(character => character.avatar === assignedAssistantAvatar)) {
+        return assignedAssistantAvatar;
+    }
+
+    if (hasExistingArchivedGuide()) {
+        return getBundledAssistantConfig('guide').defaultAvatar;
+    }
+
     return getBundledAssistantAvatar(getBundledAssistantConfig(DEFAULT_BUNDLED_ASSISTANT_ID));
 }
 
@@ -762,7 +838,7 @@ function buildGuideCards() {
 }
 
 function buildBundledAssistantCards() {
-    return WELCOME_BUNDLED_ASSISTANTS.map((assistant) => ({
+    return WELCOME_BUNDLED_ASSISTANTS_WITH_NAHIDA.map((assistant) => ({
         id: assistant.id,
         title: assistant.title,
         body: assistant.body,
@@ -2535,7 +2611,7 @@ async function getRecentChats() {
 
 export async function openPermanentAssistantChat({ tryCreate = true, created = false } = {}) {
     try {
-        const assistantConfig = getBundledAssistantConfig(DEFAULT_BUNDLED_ASSISTANT_ID);
+        const assistantConfig = getPermanentAssistantConfig();
         const assistant = await ensureBundledAssistantCharacter(assistantConfig, { tryCreate, created, forceCreate: tryCreate });
         if (!assistant) {
             return;
@@ -2659,7 +2735,14 @@ async function openBundledAssistantCard(assistantId = DEFAULT_BUNDLED_ASSISTANT_
 }
 
 export async function openPermanentAssistantCard() {
-    await openBundledAssistantCard(DEFAULT_BUNDLED_ASSISTANT_ID);
+    const assistantConfig = getPermanentAssistantConfig();
+    const assistant = await ensureBundledAssistantCharacter(assistantConfig, { forceCreate: true });
+    if (!assistant) {
+        return;
+    }
+
+    await refreshCharacterAvatarCache(assistant.avatar);
+    await selectCharacterById(assistant.characterId);
 }
 
 /**
@@ -2678,7 +2761,8 @@ export function assignCharacterAsAssistant(characterId) {
 
     const currentAssistantAvatar = getPermanentAssistantAvatar();
     if (currentAssistantAvatar === character.avatar) {
-        if (character.avatar === getBundledAssistantConfig(DEFAULT_BUNDLED_ASSISTANT_ID).defaultAvatar) {
+        if (character.avatar === getBundledAssistantConfig(DEFAULT_BUNDLED_ASSISTANT_ID).defaultAvatar
+            || character.avatar === getBundledAssistantConfig('guide').defaultAvatar) {
             toastr.info(t`${character.name} is a system assistant. Choose another character.`);
             return;
         }
@@ -2698,7 +2782,7 @@ export function initWelcomeScreen() {
 
     // Ensure all bundled assistants exist in the character list on startup
     eventSource.on(event_types.APP_READY, async () => {
-        for (const assistant of WELCOME_BUNDLED_ASSISTANTS) {
+        for (const assistant of WELCOME_BUNDLED_ASSISTANTS_WITH_NAHIDA) {
             await ensureBundledAssistantCharacter(assistant, { tryCreate: true });
         }
 
@@ -2717,7 +2801,7 @@ export function initWelcomeScreen() {
     });
 
     eventSource.on(event_types.CHARACTER_RENAMED, (oldAvatar, newAvatar) => {
-        for (const assistant of WELCOME_BUNDLED_ASSISTANTS) {
+        for (const assistant of getAllBundledAssistantConfigs()) {
             const storedAvatar = accountStorage.getItem(assistant.avatarStorageKey);
             const identityAvatar = getBundledAssistantIdentityAvatar(assistant);
             if (identityAvatar === oldAvatar || assistant.defaultAvatar === oldAvatar) {
@@ -2732,7 +2816,7 @@ export function initWelcomeScreen() {
 
     eventSource.on(event_types.CHARACTER_DELETED, (event) => {
         const deletedCharacter = event?.character;
-        for (const assistant of WELCOME_BUNDLED_ASSISTANTS) {
+        for (const assistant of getAllBundledAssistantConfigs()) {
             if (isBundledAssistantCharacter(assistant, deletedCharacter)) {
                 markBundledAssistantDeleted(assistant, deletedCharacter?.avatar || '');
             }
