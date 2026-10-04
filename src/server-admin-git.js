@@ -8,7 +8,14 @@ function uniqueSorted(values) {
     return [...new Set(values)].sort((a, b) => a.localeCompare(b));
 }
 
-export async function isGitRepository(git) {
+/**
+ * @param {import('simple-git').SimpleGit} git
+ * @param {boolean} hasOwnCheckout Whether the server folder itself holds `.git`; see `hasOwnGitCheckout`.
+ */
+export async function isGitRepository(git, hasOwnCheckout) {
+    if (!hasOwnCheckout) {
+        return false;
+    }
     return Boolean(await git.checkIsRepo().catch(() => false));
 }
 

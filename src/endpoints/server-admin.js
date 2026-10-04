@@ -20,7 +20,7 @@ import {
     resolveRemoteBranchName,
 } from '../server-admin-git.js';
 import { getServerLogSnapshot } from '../server-log-buffer.js';
-import { getInstallType } from '../install-type.js';
+import { getInstallType, hasOwnGitCheckout } from '../install-type.js';
 import {
     discardStagedServerPluginRelease,
     getServerPluginUpdateCapabilities,
@@ -596,7 +596,7 @@ async function getRepositoryStatus() {
     status.supported = true;
 
     const git = simpleGit({ baseDir: serverDirectory, ...GIT_OPTIONS });
-    const isRepo = await isGitRepository(git);
+    const isRepo = await isGitRepository(git, hasOwnGitCheckout(serverDirectory));
 
     if (!isRepo) {
         status.message = NON_GIT_REPOSITORY_MESSAGE;
@@ -667,7 +667,7 @@ router.post('/status', requireAdminMiddleware, async (_request, response) => {
         response.json({
             runtime: formatRuntimeLabel(),
             configPath: getConfigFilePath(),
-            installType: getInstallType({ isRepo: repository.isRepo }),
+            installType: getInstallType(),
             version,
             repository,
         });
@@ -1101,7 +1101,7 @@ router.post('/branches', requireAdminMiddleware, async (_request, response) => {
         }
 
         const git = simpleGit({ baseDir: serverDirectory, ...GIT_OPTIONS });
-        const isRepo = await isGitRepository(git);
+        const isRepo = await isGitRepository(git, hasOwnGitCheckout(serverDirectory));
 
         if (!isRepo) {
             return response.status(400).json({ error: NON_GIT_REPOSITORY_MESSAGE });
@@ -1142,7 +1142,7 @@ router.post('/switch-branch', requireAdminMiddleware, async (request, response) 
         }
 
         const git = simpleGit({ baseDir: serverDirectory, ...GIT_OPTIONS });
-        const isRepo = await isGitRepository(git);
+        const isRepo = await isGitRepository(git, hasOwnGitCheckout(serverDirectory));
 
         if (!isRepo) {
             return response.status(400).json({ error: NON_GIT_REPOSITORY_MESSAGE });

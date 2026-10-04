@@ -31,10 +31,11 @@ describe('install type detection', () => {
         expect(getInstallType({ directory, env: {}, detectDocker: notDocker })).toBe(INSTALL_TYPE.GIT);
     });
 
-    test('prefers an explicit isRepo answer over the filesystem probe', () => {
-        expect(getInstallType({ isRepo: true, directory, env: {}, detectDocker: notDocker })).toBe(INSTALL_TYPE.GIT);
+    test('ignores a parent Git repository around a non-Git copy', () => {
+        const nested = path.join(directory, 'SillyBunny');
         fs.mkdirSync(path.join(directory, '.git'));
-        expect(getInstallType({ isRepo: false, directory, env: {}, detectDocker: notDocker })).toBe(INSTALL_TYPE.UNSUPPORTED);
+        fs.mkdirSync(nested);
+        expect(getInstallType({ directory: nested, env: {}, detectDocker: notDocker })).toBe(INSTALL_TYPE.UNSUPPORTED);
     });
 
     test('reports Docker from the image env marker or runtime detection, even with .git present', () => {

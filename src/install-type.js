@@ -20,17 +20,25 @@ export function isDockerInstall({ env = process.env, detectDocker = isDocker } =
 }
 
 /**
+ * Whether this folder is itself a Git checkout. Git walks up to parent repositories, so a non-Git copy unpacked
+ * inside another repository would otherwise look like a checkout.
+ * `.git` is a directory in a normal clone and a file in a worktree; both count.
+ * @param {string} [directory]
+ */
+export function hasOwnGitCheckout(directory = serverDirectory) {
+    return fs.existsSync(path.join(directory, '.git'));
+}
+
+/**
  * Classifies how this copy of SillyBunny was installed.
  * Docker wins over Git because the image is built without `.git`, and a bind-mounted checkout is still managed by the container.
- * @param {{ isRepo?: boolean, directory?: string, env?: NodeJS.ProcessEnv, detectDocker?: () => boolean }} [options]
+ * @param {{ directory?: string, env?: NodeJS.ProcessEnv, detectDocker?: () => boolean }} [options]
  * @returns {'git' | 'docker' | 'unsupported'}
  */
-export function getInstallType({ isRepo, directory = serverDirectory, env = process.env, detectDocker = isDocker } = {}) {
+export function getInstallType({ directory = serverDirectory, env = process.env, detectDocker = isDocker } = {}) {
     if (isDockerInstall({ env, detectDocker })) {
         return INSTALL_TYPE.DOCKER;
     }
 
-    // `.git` is a directory in a normal clone and a file in a worktree; both count.
-    const hasGit = typeof isRepo === 'boolean' ? isRepo : fs.existsSync(path.join(directory, '.git'));
-    return hasGit ? INSTALL_TYPE.GIT : INSTALL_TYPE.UNSUPPORTED;
+    return hasOwnGitCheckout(directory) ? INSTALL_TYPE.GIT : INSTALL_TYPE.UNSUPPORTED;
 }

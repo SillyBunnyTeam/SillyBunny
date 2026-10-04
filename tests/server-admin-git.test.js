@@ -17,8 +17,17 @@ describe('server admin git helpers', () => {
             checkIsRepo: jest.fn(async () => true),
         };
 
-        await expect(isGitRepository(git)).resolves.toBe(true);
+        await expect(isGitRepository(git, true)).resolves.toBe(true);
         expect(git.checkIsRepo).toHaveBeenCalledWith();
+    });
+
+    test('rejects a folder without its own .git even when a parent repository answers', async () => {
+        const git = {
+            checkIsRepo: jest.fn(async () => true),
+        };
+
+        await expect(isGitRepository(git, false)).resolves.toBe(false);
+        expect(git.checkIsRepo).not.toHaveBeenCalled();
     });
 
     test('uses the tracked remote as the display branch for runtime worktrees', () => {
