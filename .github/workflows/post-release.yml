@@ -1,0 +1,92 @@
+name: 🔁 Post-Release
+
+# After a stable release is published, open the back-merge PR and bump staging to the next -dev.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: post-release
+  cancel-in-progress: false
+
+jobs:
+  follow-up:
+    name: 🔁 Open follow-up PRs
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Generate GitHub App Token
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.ST_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.ST_BOT_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Open back-merge PR
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          if gh pr list --base staging --head release --state open --json number --jq 'length' | grep -qx 0; then
+            gh pr create --base staging --head release --title "sync: merge $TAG back into staging" --body "Merge commit only. Carries $TAG from \`release\` into \`staging\`."
+          else
+            echo "A release-to-staging PR is already open."
+          fi
+
+      - name: Open next-dev bump PR
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          if ! grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' <<< "$version"; then
+            echo "Skipping -dev bump for non-stable version $version."
+            exit 0
+          fi
+          IFS=. read -r major minor _ <<< "$version"
+          next_core="${major}.$((minor + 1)).0"
+          next="${next_core}-dev"
+          branch="chore/bump-staging-to-${next}"
+
+          git fetch --quiet origin staging
+          git switch --detach origin/staging
+          staging_core=$(node -p "require('./package.json').version.split('-')[0]")
+          # Hotfixes on an older line must never move staging backwards.
+          if [ "$(printf '%s\n%s\n' "$staging_core" "$next_core" | sort -V | tail -n1)" = "$staging_core" ]; then
+            echo "staging ($staging_core) is already at or past $next_core."
+            exit 0
+          fi
+          if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
+            echo "Branch $branch already exists."
+            exit 0
+          fi
+
+          git switch -c "$branch"
+          node scripts/bump-version.js "$next"
+          git config user.name 'reisen-bot[bot]'
+          git config user.email '337429064+reisen-bot[bot]@users.noreply.github.com'
+          git add package.json package-lock.json public/script.js src/endpoints/horde.js
+          git commit -m "chore: bump staging version to $next"
+          git push origin "HEAD:refs/heads/$branch"
+          gh pr create --base staging --head "$branch" --title "chore: bump staging to $next" --body "Sets \`staging\` to \`$next\` after $TAG."
