@@ -1,0 +1,32 @@
+# Categories for `gh release create --generate-notes` (see .github/workflows/release.yml).
+# The generated list is a starting point; maintainers write the release notes by hand.
+changelog:
+  exclude:
+    labels:
+      - duplicate
+      - invalid
+      - 📥 Dependencies
+    authors:
+      - dependabot
+      - dependabot[bot]
+      - reisen-bot[bot]
+      - github-actions[bot]
+  categories:
+    - title: Breaking Changes
+      labels:
+        - breaking
+    - title: Features
+      labels:
+        - ✨ New Feature
+        - ✨ Feature Changes
+        - enhancement
+    - title: Fixes
+      labels:
+        - 🦋 Bug Fix
+        - bug
+    - title: Upstream Sync
+      labels:
+        - sync
+    - title: Other Changes
+      labels:
+        - '*'

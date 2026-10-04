@@ -1,0 +1,99 @@
+name: 🔁 Post-Release
+
+# After a stable release is published, open one back-merge PR into staging that also bumps it to the next -dev.
+# The bump sits on top of the merge commit, so the two changes cannot conflict with each other.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: post-release
+  cancel-in-progress: false
+
+jobs:
+  follow-up:
+    name: 🔁 Open follow-up PRs
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Generate GitHub App Token
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.ST_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.ST_BOT_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          # The back-merge commit carries any Actions-only hotfixes made directly on release.
+          permission-workflows: write
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Open back-merge PR
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          branch="sync/release-${TAG}-to-staging"
+
+          if [ "$(gh pr list --base staging --state open --json headRefName --jq "[.[] | select(.headRefName == \"release\" or .headRefName == \"$branch\")] | length")" != 0 ]; then
+            echo "A release-to-staging PR is already open."
+            exit 0
+          fi
+          if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
+            echo "Branch $branch already exists."
+            exit 0
+          fi
+
+          open_plain_back_merge() {
+            gh pr create --base staging --head release --title "sync: merge $TAG back into staging" \
+              --body "Merge commit only. Carries $TAG from \`release\` into \`staging\`. $1"
+          }
+
+          git config user.name 'reisen-bot[bot]'
+          git config user.email '337429064+reisen-bot[bot]@users.noreply.github.com'
+          git fetch --quiet origin staging release
+          git switch -c "$branch" origin/staging
+          if ! git merge --no-ff --no-edit -m "sync: merge $TAG back into staging" origin/release; then
+            git merge --abort
+            open_plain_back_merge "The automatic merge conflicted, so the next -dev bump was not applied; resolve the conflicts here and bump staging by hand."
+            exit 0
+          fi
+
+          bump_note="Staging was already at or past the next minor, so no -dev bump was added."
+          if grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' <<< "$version"; then
+            IFS=. read -r major minor _ <<< "$version"
+            next_core="${major}.$((minor + 1)).0"
+            next="${next_core}-dev"
+            staging_core=$(git show origin/staging:package.json | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version.split('-')[0]")
+            # Hotfixes on an older line must never move staging backwards.
+            if [ "$(printf '%s\n%s\n' "$staging_core" "$next_core" | sort -V | tail -n1)" != "$staging_core" ]; then
+              node scripts/bump-version.js "$next"
+              git add package.json package-lock.json public/script.js src/endpoints/horde.js
+              git commit -m "chore: bump staging version to $next"
+              bump_note="Also bumps \`staging\` to \`$next\`."
+            else
+              echo "staging ($staging_core) is already at or past $next_core."
+            fi
+          fi
+
+          git push origin "HEAD:refs/heads/$branch"
+          gh pr create --base staging --head "$branch" --title "sync: merge $TAG back into staging" \
+            --body "Merge commit only; squashing drops the \`release\` parent. Carries $TAG from \`release\` into \`staging\`. $bump_note"

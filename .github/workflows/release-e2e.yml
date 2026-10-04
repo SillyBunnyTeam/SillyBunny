@@ -2,12 +2,10 @@ name: Release E2E Validation
 
 on:
   workflow_dispatch:
+  # No paths filter on PRs: this is a required check on release, and a skipped required check blocks the merge.
   pull_request:
     branches:
       - release
-    paths-ignore:
-      - '**/*.md'
-      - '.github/**'
   push:
     branches:
       - release
