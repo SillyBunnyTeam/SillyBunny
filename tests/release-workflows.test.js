@@ -56,7 +56,7 @@ describe('release pipeline workflows', () => {
 
     test('every third-party action in the new workflows is pinned to a full commit SHA', () => {
         for (const name of ['release.yml', 'prepare-release.yml', 'post-release.yml', 'docker-publish.yml', 'release-checks.yml']) {
-            const uses = [...readWorkflow(name).matchAll(/uses:\s*([^\s#]+)/g)].map(match => match[1]);
+            const uses = [...readWorkflow(name).matchAll(/^\s*(?:- )?uses:\s*([^\s#]+)/gm)].map(match => match[1]);
             expect(uses.length).toBeGreaterThan(0);
             for (const reference of uses) {
                 expect(reference).toMatch(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/);
