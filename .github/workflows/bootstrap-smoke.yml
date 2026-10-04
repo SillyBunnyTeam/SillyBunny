@@ -16,15 +16,45 @@ concurrency:
 
 jobs:
   posix:
-    name: Bootstrap smoke (${{ matrix.os }})
+    name: Bootstrap smoke (${{ matrix.os }}, ${{ matrix.runtime }}${{ matrix.fresh_bun && ', fresh bun' || '' }})
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
+        include:
+          # Linux x86_64 defaults to Bun.
+          - os: ubuntu-latest
+            runtime: default
+            expect: bun
+            fresh_bun: false
+          # The genuine first-run path: hide any preinstalled Bun so
+          # install-prerequisites.sh has to download it from https://bun.sh/install.
+          - os: ubuntu-latest
+            runtime: default
+            expect: bun
+            fresh_bun: true
+          - os: ubuntu-latest
+            runtime: node
+            expect: node
+            fresh_bun: false
+          # macOS arm64 auto-switches to Node to dodge the Bun idle CPU bug,
+          # so the default leg is a Node assertion and Bun needs an override.
+          - os: macos-latest
+            runtime: default
+            expect: node
+            fresh_bun: false
+          - os: macos-latest
+            runtime: bun
+            expect: bun
+            fresh_bun: false
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 30
+    env:
+      SILLYBUNNY_LAUNCHER: '1'
+      SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1'
+      SILLYBUNNY_AUTO_UPDATE: '0'
+      SILLYBUNNY_USE_NODE: ${{ matrix.runtime == 'node' && '1' || '' }}
+      SILLYBUNNY_USE_BUN: ${{ matrix.runtime == 'bun' && '1' || '' }}
+      EXPECTED_RUNTIME: ${{ matrix.expect }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -40,6 +70,40 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
+      - name: Report preinstalled runtimes
+        run: |
+          set -euo pipefail
+          for command in bun node npm; do
+            if resolved="$(command -v "$command" 2>/dev/null)"; then
+              echo "$command -> $resolved ($("$command" --version 2>&1 | head -n 1))"
+            else
+              echo "$command -> not installed"
+            fi
+          done
+
+      - name: Hide preinstalled Bun so the launcher must install it
+        if: matrix.fresh_bun
+        run: |
+          set -euo pipefail
+          bun_path="$(command -v bun 2>/dev/null || true)"
+          bun_dir=""
+          if [[ -n "$bun_path" ]]; then
+            bun_dir="$(dirname "$bun_path")"
+          fi
+          echo "Preinstalled Bun: ${bun_path:-none}"
+          trimmed_path="$(tr ':' '\n' <<< "$PATH" | grep -v -x -F "$bun_dir" | grep -v -x -F "$HOME/.bun/bin" | paste -sd: -)"
+          export PATH="$trimmed_path"
+          export BUN_INSTALL="$RUNNER_TEMP/bun-fresh"
+          {
+            echo "PATH=$PATH"
+            echo "BUN_INSTALL=$BUN_INSTALL"
+          } >> "$GITHUB_ENV"
+          if command -v bun >/dev/null 2>&1; then
+            echo "Bun is still resolvable at $(command -v bun); this leg would not exercise the download." >&2
+            exit 1
+          fi
+          test ! -x "$BUN_INSTALL/bin/bun"
+
       - name: Run install.sh against this checkout
         run: |
           set -euo pipefail
@@ -52,28 +116,46 @@ jobs:
           test -f "$RUNNER_TEMP/SillyBunny/server.js"
           test "$(git -C "$RUNNER_TEMP/SillyBunny" rev-parse HEAD)" = "$(git rev-parse HEAD)"
 
-      - name: Boot the installed copy
-        working-directory: ${{ runner.temp }}/SillyBunny
-        env:
-          SILLYBUNNY_LAUNCHER: '1'
-          SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1'
+      - name: Boot the installed copy through start.sh
         run: |
           set -euo pipefail
-          npm ci --ignore-scripts
-          npm run init
+          # Fail loudly if anything already holds the port, so a readiness probe
+          # cannot be satisfied by a process other than the one we launched.
+          if curl --fail --silent --max-time 2 http://127.0.0.1:4444/ > /dev/null 2>&1; then
+            echo "Something is already listening on port 4444 before the launcher starts." >&2
+            exit 1
+          fi
+
           log="$RUNNER_TEMP/bootstrap-smoke.log"
-          node server.js --browserLaunchEnabled=false > "$log" 2>&1 &
+          cd "$RUNNER_TEMP/SillyBunny"
+          bash ./start.sh > "$log" 2>&1 &
           pid=$!
           trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
-          deadline=$((SECONDS + 120))
-          until curl --fail --silent --max-time 2 http://127.0.0.1:4444/ > /dev/null; do
+
+          # Wait for the launcher to reach its handoff before trusting the port.
+          deadline=$((SECONDS + 300))
+          until grep -qF "Entering SillyBunny" "$log" 2>/dev/null; do
             if ! kill -0 "$pid" 2>/dev/null; then
-              echo "Server exited before it answered on port 4444." >&2
+              echo "Launcher exited before reaching the server handoff." >&2
               cat "$log" >&2
               exit 1
             fi
             if (( SECONDS >= deadline )); then
-              echo "Server did not answer on port 4444 within 120 seconds." >&2
+              echo "Launcher did not reach the server handoff within 300 seconds." >&2
+              cat "$log" >&2
+              exit 1
+            fi
+            sleep 2
+          done
+
+          while ! curl --fail --silent --max-time 2 http://127.0.0.1:4444/ > /dev/null; do
+            if ! kill -0 "$pid" 2>/dev/null; then
+              echo "Launcher exited before the server answered on port 4444." >&2
+              cat "$log" >&2
+              exit 1
+            fi
+            if (( SECONDS >= deadline )); then
+              echo "Server did not answer on port 4444 within 300 seconds." >&2
               cat "$log" >&2
               exit 1
             fi
@@ -81,10 +163,70 @@ jobs:
           done
           echo "Installed copy answered on port 4444."
 
+          expected_profile="$EXPECTED_RUNTIME-production"
+          # shellcheck disable=SC2016 # single quotes are intentional; only $EXPECTED_RUNTIME should expand in node.
+          node -e '
+            const fs = require("node:fs");
+            const marker = JSON.parse(fs.readFileSync("node_modules/.sillybunny-dependencies.json", "utf8"));
+            const profile = process.env.EXPECTED_RUNTIME + "-production";
+            if (!marker.profiles || !marker.profiles[profile]) {
+              throw new Error(`dependency marker has no ${profile} entry: ${JSON.stringify(marker.profiles)}`);
+            }
+            console.log(`dependency profile ${profile} recorded for ${marker.profiles[profile].runtimeVersion || "unknown version"}`);
+          '
+
+          server_pid="$(pgrep -f 'server\.js' | head -n 1 || true)"
+          if [[ -z "$server_pid" ]]; then
+            echo "Could not find the running server process." >&2
+            cat "$log" >&2
+            exit 1
+          fi
+          runtime_name="$(basename "$(ps -o comm= -p "$server_pid")")"
+          echo "Server process '$runtime_name' (pid $server_pid) is using the $expected_profile profile."
+          case "$runtime_name" in
+            "$EXPECTED_RUNTIME"*) ;;
+            *)
+              echo "Expected the server to run under $EXPECTED_RUNTIME but it is running under $runtime_name." >&2
+              cat "$log" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Assert the download path installed Bun
+        if: matrix.fresh_bun
+        run: |
+          set -euo pipefail
+          test -x "$BUN_INSTALL/bin/bun"
+          "$BUN_INSTALL/bin/bun" --version
+
+      - name: Rerunning install.sh updates instead of reinstalling
+        run: |
+          set -euo pipefail
+          head_before="$(git -C "$RUNNER_TEMP/SillyBunny" rev-parse HEAD)"
+          output="$(bash scripts/bootstrap/install.sh \
+            --repo "$GITHUB_WORKSPACE" \
+            --ref bootstrap-smoke \
+            --dir "$RUNNER_TEMP/SillyBunny" \
+            --no-start 2>&1)"
+          printf '%s\n' "$output"
+          grep -F "already installed" <<< "$output"
+          test "$(git -C "$RUNNER_TEMP/SillyBunny" rev-parse HEAD)" = "$head_before"
+
   windows:
-    name: Bootstrap smoke (windows-latest)
+    name: Bootstrap smoke (${{ matrix.runtime }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows x64 defaults to Bun.
+          - runtime: default
+            expect: bun
+          - runtime: node
+            expect: node
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
+    env:
+      EXPECTED_RUNTIME: ${{ matrix.expect }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -113,25 +255,39 @@ jobs:
           $sourceHead = git rev-parse HEAD
           if ($installedHead -ne $sourceHead) { throw "Installed HEAD $installedHead does not match $sourceHead." }
 
-      - name: Boot the installed copy
+      - name: Boot the installed copy through Start.bat
         shell: powershell
-        working-directory: ${{ runner.temp }}/SillyBunny
         env:
           SILLYBUNNY_LAUNCHER: '1'
           SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1'
+          SILLYBUNNY_AUTO_UPDATE: '0'
+          SILLYBUNNY_USE_NODE: ${{ matrix.runtime == 'node' && '1' || '' }}
+          SILLYBUNNY_USE_BUN: ${{ matrix.runtime == 'bun' && '1' || '' }}
         run: |
           $ErrorActionPreference = 'Stop'
-          npm ci --ignore-scripts
-          if ($LASTEXITCODE -ne 0) { throw "npm ci failed with exit code $LASTEXITCODE" }
-          npm run init
-          if ($LASTEXITCODE -ne 0) { throw "npm run init failed with exit code $LASTEXITCODE" }
+          $installDir = Join-Path $env:RUNNER_TEMP 'SillyBunny'
           $log = Join-Path $env:RUNNER_TEMP 'bootstrap-smoke.log'
           $errLog = Join-Path $env:RUNNER_TEMP 'bootstrap-smoke.err.log'
-          $server = Start-Process -FilePath node -ArgumentList 'server.js', '--browserLaunchEnabled=false' -RedirectStandardOutput $log -RedirectStandardError $errLog -NoNewWindow -PassThru
+
+          # Start.bat ends in `pause`; a wrapper and a redirected stdin keep it
+          # from blocking forever if the launcher gives up before the server starts.
+          $wrapper = Join-Path $installDir 'run-start-bat.cmd'
+          @(
+            '@echo off',
+            "cd /d `"$installDir`"",
+            "call `"$installDir\Start.bat`" < NUL",
+            'exit /b %errorlevel%'
+          ) | Set-Content -Path $wrapper -Encoding OEM
+
+          $launcher = Start-Process -FilePath cmd.exe -ArgumentList '/d', '/c', "`"$wrapper`"" -RedirectStandardOutput $log -RedirectStandardError $errLog -NoNewWindow -PassThru
           try {
-              $deadline = (Get-Date).AddSeconds(120)
+              $deadline = (Get-Date).AddSeconds(300)
               $ready = $false
-              while ((Get-Date) -lt $deadline -and -not $server.HasExited) {
+              while ((Get-Date) -lt $deadline) {
+                  if ($launcher.HasExited) {
+                      Get-Content -Path $log, $errLog -ErrorAction SilentlyContinue | Write-Host
+                      throw "The launcher exited with code $($launcher.ExitCode) before the server answered on port 4444."
+                  }
                   try {
                       $response = Invoke-WebRequest -Uri 'http://127.0.0.1:4444/' -UseBasicParsing -TimeoutSec 2
                       if ($response.StatusCode -eq 200) { $ready = $true; break }
@@ -141,9 +297,46 @@ jobs:
               }
               if (-not $ready) {
                   Get-Content -Path $log, $errLog -ErrorAction SilentlyContinue | Write-Host
-                  throw 'Installed copy did not answer on port 4444 within 120 seconds.'
+                  throw 'Installed copy did not answer on port 4444 within 300 seconds.'
               }
               Write-Host 'Installed copy answered on port 4444.'
+
+              $expectedProfile = "$env:EXPECTED_RUNTIME-production"
+              $markerPath = Join-Path $installDir 'node_modules\.sillybunny-dependencies.json'
+              if (-not (Test-Path $markerPath)) { throw "Dependency marker $markerPath is missing." }
+              $marker = Get-Content -Raw -Path $markerPath | ConvertFrom-Json
+              # Profiles are keyed by a hyphenated name, so index the properties
+              # rather than relying on dotted access.
+              $profileEntry = $null
+              if ($marker.profiles) {
+                  $profileEntry = $marker.profiles.PSObject.Properties[$expectedProfile].Value
+              }
+              if (-not $profileEntry) {
+                  throw "Dependency marker has no $expectedProfile entry: $($marker.profiles | ConvertTo-Json -Compress)"
+              }
+              Write-Host "Dependency profile $expectedProfile recorded for $($profileEntry.runtimeVersion)."
+
+              $server = Get-CimInstance Win32_Process -Filter "Name='bun.exe' OR Name='node.exe'" |
+                  Where-Object { $_.CommandLine -match 'server\.js' } |
+                  Select-Object -First 1
+              if (-not $server) { throw 'Could not find the running server process.' }
+              $runtimeName = $server.Name -replace '\.exe$', ''
+              Write-Host "Server process '$runtimeName' (pid $($server.ProcessId)) is using the $expectedProfile profile."
+              if ($runtimeName -ne $env:EXPECTED_RUNTIME) {
+                  throw "Expected the server to run under $env:EXPECTED_RUNTIME but it is running under $runtimeName."
+              }
           } finally {
-              if (-not $server.HasExited) { taskkill /PID $server.Id /T /F | Out-Null }
+              if (-not $launcher.HasExited) { taskkill /PID $launcher.Id /T /F | Out-Null }
           }
+
+      - name: Rerunning the installer updates instead of reinstalling
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installDir = Join-Path $env:RUNNER_TEMP 'SillyBunny'
+          $headBefore = git -C $installDir rev-parse HEAD
+          $output = & .\scripts\bootstrap\Install-SillyBunny.ps1 -Repo $env:GITHUB_WORKSPACE -Ref bootstrap-smoke -Dir $installDir -NoStart 2>&1 | Out-String
+          Write-Host $output
+          if ($output -notmatch 'already installed') { throw 'Rerunning the installer did not report an existing install.' }
+          $headAfter = git -C $installDir rev-parse HEAD
+          if ($headAfter -ne $headBefore) { throw "Rerunning the installer moved HEAD from $headBefore to $headAfter." }
