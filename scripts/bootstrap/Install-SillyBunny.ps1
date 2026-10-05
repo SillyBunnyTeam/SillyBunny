@@ -25,7 +25,8 @@ function Install-SillyBunny {
         [bool]$NoStart,
         [bool]$RefOverridden,
         [bool]$RunWizard,
-        [string]$Runtime
+        [string]$Runtime,
+        [string]$InstallerName
     )
 
     Set-StrictMode -Version Latest
@@ -160,6 +161,13 @@ function Install-SillyBunny {
         if ([string]::IsNullOrWhiteSpace($Parent)) { return $false }
         $parentFull = $Parent.TrimEnd('\') + '\'
         return ($Path + '\').StartsWith($parentFull, [StringComparison]::OrdinalIgnoreCase)
+    }
+
+    # git clones only into an empty folder, and people often save the installer into
+    # the folder they want to install to. Checking for the file itself sidesteps
+    # short (8.3) names, junctions and casing that would defeat a path comparison.
+    function Test-HoldsInstaller([string]$Path) {
+        return $InstallerName -and (Test-Path -LiteralPath (Join-Path $Path $InstallerName) -PathType Leaf)
     }
 
     # Git writes progress to stderr. Under Windows PowerShell 5.1 that output becomes
@@ -324,9 +332,16 @@ function Install-SillyBunny {
         Write-Host 'Install directory'
         Write-Host '  Where should SillyBunny be installed?'
         Write-Host "  Leave blank for the default: $defaultDir"
-        $answer = Read-Host '  >'
-        if ($answer.Trim()) {
-            $wizDir = $answer.Trim()
+        while ($true) {
+            $answer = Read-Host '  >'
+            $candidate = if ($answer.Trim()) { $answer.Trim() } else { $defaultDir }
+            if (Test-HoldsInstaller (Resolve-FullPath $candidate)) {
+                Write-Host "  That folder holds this installer ($InstallerName), and the install needs an empty folder."
+                Write-Host "  Pick another folder, for example: $(Join-Path (Resolve-FullPath $candidate) 'SillyBunny')"
+                continue
+            }
+            if ($answer.Trim()) { $wizDir = $answer.Trim() }
+            break
         }
 
         # Step 2 — migration
@@ -377,7 +392,8 @@ function Install-SillyBunny {
         Write-Host "  Start after install: $startLabel"
         if ($wizRuntime) { Write-Host "  Runtime:             $wizRuntime" }
         Write-Host ('=' * 42)
-        Read-Host 'Press Enter to begin, or Ctrl+C to cancel'
+        # Discard the reply; uncaptured, it would become part of the return value.
+        $null = Read-Host 'Press Enter to begin, or Ctrl+C to cancel'
         Write-Host ''
 
         return @{ Dir = $wizDir; MigrateFrom = $wizMigrateFrom; NoStart = $wizNoStart; Runtime = $wizRuntime }
@@ -420,6 +436,9 @@ function Install-SillyBunny {
         if (Test-SillyBunnyDir $Dir) {
             throw "$Dir is an old ZIP install. Install into a new folder and copy your data across with: -Dir `"$env:USERPROFILE\SillyBunny-new`" -MigrateFrom `"$Dir`""
         }
+        if (Test-HoldsInstaller $Dir) {
+            throw "$Dir holds this installer ($InstallerName), and the install needs an empty folder. Install into a subfolder instead: -Dir `"$(Join-Path $Dir 'SillyBunny')`""
+        }
         throw "$Dir exists and isn't empty. Pick another folder with -Dir."
     }
 
@@ -450,4 +469,7 @@ $runWizard = (
     [Environment]::UserInteractive
 )
 
-Install-SillyBunny -Dir $Dir -Ref $Ref -Repo $Repo -MigrateFrom $MigrateFrom -NoStart $NoStart.IsPresent -RefOverridden ($PSBoundParameters.ContainsKey('Ref')) -RunWizard $runWizard -Runtime $Runtime
+# Empty under `irm | iex`, where no installer file exists on disk.
+$installerName = if ($PSCommandPath) { Split-Path -Leaf $PSCommandPath } else { '' }
+
+Install-SillyBunny -Dir $Dir -Ref $Ref -Repo $Repo -MigrateFrom $MigrateFrom -NoStart $NoStart.IsPresent -RefOverridden ($PSBoundParameters.ContainsKey('Ref')) -RunWizard $runWizard -Runtime $Runtime -InstallerName $installerName

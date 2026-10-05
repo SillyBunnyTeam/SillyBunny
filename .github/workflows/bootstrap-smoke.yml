@@ -259,6 +259,23 @@ jobs:
           $sourceHead = git rev-parse HEAD
           if ($installedHead -ne $sourceHead) { throw "Installed HEAD $installedHead does not match $sourceHead." }
 
+      - name: Installing into the installer's own folder is refused
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $downloads = Join-Path $env:RUNNER_TEMP 'installer-folder'
+          New-Item -ItemType Directory -Force -Path $downloads | Out-Null
+          Copy-Item .\scripts\bootstrap\Install-SillyBunny.ps1 $downloads
+          $failed = $false
+          try {
+            & (Join-Path $downloads 'Install-SillyBunny.ps1') -Repo $env:GITHUB_WORKSPACE -Ref bootstrap-smoke -Dir $downloads -NoStart *>&1 | Out-Null
+          } catch {
+            $failed = $true
+            if ("$_" -notmatch 'holds this installer \(Install-SillyBunny\.ps1\)') { throw "Unexpected error: $_" }
+          }
+          if (-not $failed) { throw 'The installer accepted its own folder as the install target.' }
+          if (Test-Path (Join-Path $downloads '.git')) { throw 'The installer cloned into its own folder.' }
+
       - name: Boot the installed copy through Start.bat
         shell: powershell
         env:

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from '@jest/globals';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -250,6 +250,21 @@ describePosix('install.sh against a fixture repository', () => {
         const { status, output } = runInstaller(['--dir', target, '--no-start']);
         expect(status).not.toBe(0);
         expect(output).toContain('exists and isn\'t empty');
+    });
+
+    test('the folder holding the installer is refused with a subfolder suggestion', () => {
+        const target = path.join(workDir, 'downloads');
+        const copiedInstaller = path.join(target, 'install.sh');
+        writeFile(copiedInstaller, installerSource);
+        const result = spawnSync('bash', [copiedInstaller, '--repo', fixtureRepo, '--dir', target, '--no-start'], {
+            cwd: workDir,
+            env: { ...process.env, ...gitEnv, HOME: homeDir },
+            encoding: 'utf8',
+        });
+        expect(result.status).not.toBe(0);
+        const resolved = realpathSync(target);
+        expect(`${result.stdout}${result.stderr}`).toContain(`${resolved} holds this installer (install.sh), and the install needs an empty folder. Install into a subfolder instead: --dir "${resolved}/SillyBunny"`);
+        expect(existsSync(path.join(target, '.git'))).toBe(false);
     });
 
     test('Termux refuses Android shared storage', () => {

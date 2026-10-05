@@ -20,6 +20,8 @@ migrate_from=''
 start_after=1
 runtime_override=''
 migrated_items=()
+# File name of this script; stays empty under `curl | bash`, where no file exists.
+installer_name=''
 
 # Track whether any arguments were passed so main() can decide whether to show
 # the interactive wizard.
@@ -171,6 +173,12 @@ is_sillybunny_dir() {
 
 is_empty_dir() {
     [[ -d "$1" ]] && [[ -z "$(ls -A "$1")" ]]
+}
+
+# git clones only into an empty folder, and people often save the installer into
+# the folder they want to install to.
+holds_installer() {
+    [[ -n "$installer_name" && -f "$1/$installer_name" ]]
 }
 
 run_with_privilege() {
@@ -403,11 +411,21 @@ run_wizard() {
     printf 'Install directory\n'
     printf '  Where should SillyBunny be installed?\n'
     printf '  Leave blank for the default: %s\n' "$default_dir"
-    printf '  > '
-    read -r answer
-    if [[ -n "$answer" ]]; then
-        install_dir="$(expand_path "$answer")"
-    fi
+    while true; do
+        printf '  > '
+        read -r answer
+        local candidate
+        candidate="$(resolve_path "$(expand_path "${answer:-$default_dir}")")"
+        if holds_installer "$candidate"; then
+            printf '  That folder holds this installer (%s), and the install needs an empty folder.\n' "$installer_name"
+            printf '  Pick another folder, for example: %s/SillyBunny\n' "$candidate"
+            continue
+        fi
+        if [[ -n "$answer" ]]; then
+            install_dir="$(expand_path "$answer")"
+        fi
+        break
+    done
 
     # Step 2 — migration
     printf '\n'
@@ -478,6 +496,10 @@ run_wizard() {
 main() {
     parse_args "$@"
 
+    if [[ -f "${BASH_SOURCE[0]:-}" ]]; then
+        installer_name="$(basename "${BASH_SOURCE[0]}")"
+    fi
+
     # Show the interactive wizard when the script is run directly with no
     # arguments in a terminal. Piped or scripted invocations skip it.
     if [[ -t 0 && $_argc -eq 0 ]]; then
@@ -510,6 +532,9 @@ main() {
     if [[ -e "$install_dir" ]] && ! is_empty_dir "$install_dir"; then
         if is_sillybunny_dir "$install_dir"; then
             die "$install_dir is an old ZIP install. Install into a new folder and copy your data across with: --dir \"$HOME/SillyBunny-new\" --migrate-from \"$install_dir\""
+        fi
+        if holds_installer "$install_dir"; then
+            die "$install_dir holds this installer ($installer_name), and the install needs an empty folder. Install into a subfolder instead: --dir \"$install_dir/SillyBunny\""
         fi
         die "$install_dir exists and isn't empty. Pick another folder with --dir."
     fi
