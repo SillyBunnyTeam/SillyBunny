@@ -11,7 +11,9 @@ param(
     [string]$Ref = 'release',
     [string]$Repo = 'https://github.com/SillyBunnyTeam/SillyBunny.git',
     [string]$MigrateFrom = '',
-    [switch]$NoStart
+    [switch]$NoStart,
+    [ValidateSet('', 'bun', 'node')]
+    [string]$Runtime = ''
 )
 
 function Install-SillyBunny {
@@ -21,7 +23,9 @@ function Install-SillyBunny {
         [string]$Repo,
         [string]$MigrateFrom,
         [bool]$NoStart,
-        [bool]$RefOverridden
+        [bool]$RefOverridden,
+        [bool]$RunWizard,
+        [string]$Runtime
     )
 
     Set-StrictMode -Version Latest
@@ -202,9 +206,17 @@ function Install-SillyBunny {
     function Assert-MigrationSource([string]$Source, [string]$Target) {
         if (-not (Test-Path -LiteralPath $Source -PathType Container)) { throw "The folder to migrate from does not exist: $Source" }
         if (-not (Test-SillyBunnyDir $Source)) { throw "This doesn't look like a SillyBunny folder: $Source" }
+
         if (Test-Path -LiteralPath (Join-Path $Source '.git')) {
-            throw "$Source is already a Git install and updates itself. Run its launcher instead of migrating."
+            # A proper bootstrap-managed Git install has scripts\Self-Update.ps1 alongside
+            # .git. Old ZIP releases that were packaged from a git clone also contain .git
+            # but do not have the self-update script, so migration from them is allowed.
+            if (Test-Path -LiteralPath (Join-Path $Source 'scripts\Self-Update.ps1')) {
+                throw "$Source is already a Git install and updates itself. Run its Start.bat instead of migrating."
+            }
+            Write-Step "Note: $Source contains a .git folder but no Self-Update.ps1; treating it as a ZIP release."
         }
+
         if ($Source -ieq $Target) {
             throw "The old install is at the target folder. Pick a new folder with -Dir, for example: -Dir `"$env:USERPROFILE\SillyBunny-new`""
         }
@@ -274,7 +286,7 @@ function Install-SillyBunny {
         }
     }
 
-    function Start-Install([string]$Target) {
+    function Start-SillyBunny([string]$Target) {
         if ($NoStart) {
             Write-Step "Done. Start SillyBunny by running Start.bat in $Target"
             return
@@ -282,13 +294,104 @@ function Install-SillyBunny {
         Write-Step 'Starting SillyBunny...'
         Push-Location -LiteralPath $Target
         try {
+            $env:SILLYBUNNY_USE_BUN  = if ($Runtime -eq 'bun')  { '1' } else { $null }
+            $env:SILLYBUNNY_USE_NODE = if ($Runtime -eq 'node') { '1' } else { $null }
             & cmd.exe /c Start.bat
         } finally {
+            Remove-Item Env:\SILLYBUNNY_USE_BUN  -ErrorAction SilentlyContinue
+            Remove-Item Env:\SILLYBUNNY_USE_NODE -ErrorAction SilentlyContinue
             Pop-Location
         }
     }
 
+    # Interactive setup wizard. Shown when no user-facing parameters were passed
+    # and the session is interactive (i.e. the user double-clicked Install-SillyBunny.cmd
+    # or ran the script directly in a console with no arguments).
+    # Returns a hashtable with Dir, MigrateFrom, and NoStart keys.
+    function Invoke-Wizard {
+        $defaultDir = Join-Path $env:USERPROFILE 'SillyBunny'
+        $wizDir = ''
+        $wizMigrateFrom = ''
+        $wizNoStart = $false
+        $wizRuntime = ''
+
+        Write-Host ''
+        Write-Host '[SillyBunny] Setup'
+        Write-Host ('=' * 42)
+        Write-Host ''
+
+        # Step 1 — install directory
+        Write-Host 'Install directory'
+        Write-Host '  Where should SillyBunny be installed?'
+        Write-Host "  Leave blank for the default: $defaultDir"
+        $answer = Read-Host '  >'
+        if ($answer.Trim()) {
+            $wizDir = $answer.Trim()
+        }
+
+        # Step 2 — migration
+        Write-Host ''
+        Write-Host 'Migrate from an older installation? (optional)'
+        Write-Host '  If you have a previous SillyBunny ZIP release, enter its folder path'
+        Write-Host '  to copy your chats, settings, and plugins to the new install.'
+        Write-Host '  Leave blank to skip.'
+        while ($true) {
+            $answer = Read-Host '  >'
+            if (-not $answer.Trim()) { break }
+            $expanded = $answer.Trim()
+            if ($expanded.StartsWith('~\') -or $expanded.StartsWith('~/')) {
+                $expanded = Join-Path $env:USERPROFILE $expanded.Substring(2)
+            }
+            if (-not (Test-Path -LiteralPath $expanded -PathType Container)) {
+                Write-Host '  That folder does not exist. Try again, or leave blank to skip.'
+                continue
+            }
+            $wizMigrateFrom = $expanded
+            break
+        }
+
+        # Step 3 — runtime (Windows always supports Bun; this step is always shown)
+        Write-Host ''
+        Write-Host 'Runtime'
+        Write-Host '  Which JavaScript runtime should SillyBunny use?'
+        Write-Host '  Bun is faster; Node.js is the fallback for systems where Bun has issues.'
+        $answer = Read-Host '  [B]un / [n]ode (default: Bun)'
+        if ($answer.Trim() -imatch '^n(ode)?$') {
+            $wizRuntime = 'node'
+        } else {
+            $wizRuntime = 'bun'
+        }
+
+        # Step 4 — start after install
+        Write-Host ''
+        $answer = Read-Host 'Start SillyBunny when setup finishes? [Y/n]'
+        if ($answer.Trim() -imatch '^n(o)?$') { $wizNoStart = $true }
+
+        # Summary
+        $displayDir = if ($wizDir) { $wizDir } else { $defaultDir }
+        $startLabel = if ($wizNoStart) { 'No' } else { 'Yes' }
+        Write-Host ''
+        Write-Host ('=' * 42)
+        Write-Host "  Install to:          $displayDir"
+        if ($wizMigrateFrom) { Write-Host "  Migrate from:        $wizMigrateFrom" }
+        Write-Host "  Start after install: $startLabel"
+        if ($wizRuntime) { Write-Host "  Runtime:             $wizRuntime" }
+        Write-Host ('=' * 42)
+        Read-Host 'Press Enter to begin, or Ctrl+C to cancel'
+        Write-Host ''
+
+        return @{ Dir = $wizDir; MigrateFrom = $wizMigrateFrom; NoStart = $wizNoStart; Runtime = $wizRuntime }
+    }
+
     if ($Ref.StartsWith('-') -or $Repo.StartsWith('-')) { throw 'Invalid -Ref or -Repo value.' }
+
+    if ($RunWizard) {
+        $wizResult = Invoke-Wizard
+        if ($wizResult.Dir)          { $Dir         = $wizResult.Dir }
+        if ($wizResult.MigrateFrom)  { $MigrateFrom = $wizResult.MigrateFrom }
+        if ($wizResult.NoStart)      { $NoStart      = $true }
+        if ($wizResult.Runtime)      { $Runtime      = $wizResult.Runtime }
+    }
 
     if (-not $Dir) { $Dir = Join-Path $env:USERPROFILE 'SillyBunny' }
     $Dir = Resolve-FullPath $Dir
@@ -309,7 +412,7 @@ function Install-SillyBunny {
         Write-Step "SillyBunny is already installed in $Dir. Updating it instead of reinstalling."
         if ($RefOverridden) { Write-Step '-Ref is ignored for an existing install.' }
         & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Dir 'scripts\Self-Update.ps1') -Optional
-        Start-Install $Dir
+        Start-SillyBunny $Dir
         return
     }
 
@@ -335,7 +438,16 @@ function Install-SillyBunny {
 
     if ($MigrateFrom) { Copy-OldInstall $MigrateFrom $Dir }
 
-    Start-Install $Dir
+    Start-SillyBunny $Dir
 }
 
-Install-SillyBunny -Dir $Dir -Ref $Ref -Repo $Repo -MigrateFrom $MigrateFrom -NoStart $NoStart.IsPresent -RefOverridden ($Ref -ne 'release')
+# Show the wizard when no user-facing parameters were explicitly passed and the
+# session is interactive (double-clicked .cmd or run directly in a console).
+$runWizard = (
+    -not $PSBoundParameters.ContainsKey('Dir') -and
+    -not $PSBoundParameters.ContainsKey('MigrateFrom') -and
+    -not $PSBoundParameters.ContainsKey('NoStart') -and
+    [Environment]::UserInteractive
+)
+
+Install-SillyBunny -Dir $Dir -Ref $Ref -Repo $Repo -MigrateFrom $MigrateFrom -NoStart $NoStart.IsPresent -RefOverridden ($PSBoundParameters.ContainsKey('Ref')) -RunWizard $runWizard -Runtime $Runtime

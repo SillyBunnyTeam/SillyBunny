@@ -18,7 +18,12 @@ ref_overridden=0
 repo="$DEFAULT_REPO"
 migrate_from=''
 start_after=1
+runtime_override=''
 migrated_items=()
+
+# Track whether any arguments were passed so main() can decide whether to show
+# the interactive wizard.
+_argc=$#
 
 log() {
     printf '[SillyBunny] %s\n' "$*"
@@ -36,12 +41,16 @@ Usage: install.sh [options]
 Installs SillyBunny as a Git checkout so it can update itself.
 Re-running it on an existing install updates that install instead.
 
+Run with no options for an interactive setup wizard.
+
 Options:
   --dir <path>            Install directory (default: ~/SillyBunny)
   --ref <branch-or-tag>   Branch or tag to install (default: release)
   --repo <url-or-path>    Repository to clone (default: the official repository)
   --migrate-from <path>   Copy data, settings, plugins and extensions from an
                           old non-Git (ZIP) install. The old folder is not changed.
+  --use-bun               Force Bun as the runtime (default on Linux/Windows)
+  --use-node              Force Node.js as the runtime (default on macOS)
   --no-start              Install only; do not start SillyBunny afterwards
   -h, --help              Show this help
 EOF
@@ -87,6 +96,12 @@ parse_args() {
                 require_value "$1" "${2-}"
                 migrate_from="$2"
                 shift
+                ;;
+            --use-bun)
+                runtime_override='bun'
+                ;;
+            --use-node)
+                runtime_override='node'
                 ;;
             --no-start)
                 start_after=0
@@ -236,7 +251,13 @@ validate_migration_source() {
     is_sillybunny_dir "$migrate_from" || die "This doesn't look like a SillyBunny folder: $migrate_from"
 
     if [[ -d "$migrate_from/.git" ]]; then
-        die "$migrate_from is already a Git install and updates itself. Run its launcher instead of migrating."
+        # A proper bootstrap-managed Git install has scripts/self-update.sh alongside
+        # .git. Old ZIP releases that were packaged from a git clone also contain .git
+        # but do not have the self-update script, so migration from them is allowed.
+        if [[ -f "$migrate_from/scripts/self-update.sh" ]]; then
+            die "$migrate_from is already a Git install and updates itself. Run its start.sh instead of migrating."
+        fi
+        log "Note: $migrate_from contains a .git folder but no self-update script; treating it as a ZIP release."
     fi
 
     if [[ "$migrate_from" == "$install_dir" ]]; then
@@ -349,11 +370,119 @@ start_install() {
 
     log 'Starting SillyBunny...'
     cd "$install_dir"
-    exec bash ./start.sh
+    case "$runtime_override" in
+        bun)  SILLYBUNNY_USE_BUN=1  exec bash ./start.sh ;;
+        node) SILLYBUNNY_USE_NODE=1 exec bash ./start.sh ;;
+        *)                          exec bash ./start.sh ;;
+    esac
+}
+
+# Expand a user-typed path: handle literal ~ from read without word-splitting.
+expand_path() {
+    local p="$1"
+    # shellcheck disable=SC2088
+    case "$p" in
+        '~') printf '%s\n' "$HOME" ;;
+        '~/'*) printf '%s\n' "$HOME/${p#\~/}" ;;
+        *) printf '%s\n' "$p" ;;
+    esac
+}
+
+# Interactive setup wizard. Called by main() when no arguments were passed and
+# stdin is a terminal. Sets install_dir, migrate_from, and start_after.
+run_wizard() {
+    local answer=''
+
+    printf '\n'
+    printf '[SillyBunny] Setup\n'
+    printf '══════════════════════════════════════════\n'
+    printf '\n'
+
+    # Step 1 — install directory
+    local default_dir="$HOME/SillyBunny"
+    printf 'Install directory\n'
+    printf '  Where should SillyBunny be installed?\n'
+    printf '  Leave blank for the default: %s\n' "$default_dir"
+    printf '  > '
+    read -r answer
+    if [[ -n "$answer" ]]; then
+        install_dir="$(expand_path "$answer")"
+    fi
+
+    # Step 2 — migration
+    printf '\n'
+    printf 'Migrate from an older installation? (optional)\n'
+    printf '  If you have a previous SillyBunny ZIP release, enter its folder path\n'
+    printf '  to copy your chats, settings, and plugins to the new install.\n'
+    printf '  Leave blank to skip.\n'
+    while true; do
+        printf '  > '
+        read -r answer
+        if [[ -z "$answer" ]]; then
+            migrate_from=''
+            break
+        fi
+        local expanded
+        expanded="$(expand_path "$answer")"
+        if [[ ! -d "$expanded" ]]; then
+            printf '  That folder does not exist. Try again, or leave blank to skip.\n'
+            continue
+        fi
+        migrate_from="$expanded"
+        break
+    done
+
+    # Step 3 — runtime (Linux/Termux only; macOS auto-selects Node)
+    if [[ "$(uname -s 2>/dev/null)" != Darwin ]]; then
+        printf '\n'
+        printf 'Runtime\n'
+        printf '  Which JavaScript runtime should SillyBunny use?\n'
+        printf '  Bun is faster; Node.js is the fallback for systems where Bun has issues.\n'
+        printf '  [B]un / [n]ode (default: Bun) '
+        read -r answer
+        case "${answer,,}" in
+            n|node) runtime_override='node' ;;
+            *)      runtime_override='bun'  ;;
+        esac
+    fi
+
+    # Step 4 — start after install
+    printf '\n'
+    printf 'Start SillyBunny when setup finishes? [Y/n] '
+    read -r answer
+    case "${answer,,}" in
+        n|no) start_after=0 ;;
+    esac
+
+    local start_label='Yes'
+    (( start_after == 0 )) && start_label='No'
+    local runtime_label='default'
+    [[ "$runtime_override" == 'bun'  ]] && runtime_label='Bun'
+    [[ "$runtime_override" == 'node' ]] && runtime_label='Node.js'
+    printf '\n'
+    printf '══════════════════════════════════════════\n'
+    printf '  Install to:          %s\n' "${install_dir:-$default_dir}"
+    if [[ -n "$migrate_from" ]]; then
+        printf '  Migrate from:        %s\n' "$migrate_from"
+    fi
+    if [[ "$(uname -s 2>/dev/null)" != Darwin ]]; then
+        printf '  Runtime:             %s\n' "$runtime_label"
+    fi
+    printf '  Start after install: %s\n' "$start_label"
+    printf '══════════════════════════════════════════\n'
+    printf 'Press Enter to begin, or Ctrl+C to cancel. '
+    read -r _
+    printf '\n'
 }
 
 main() {
     parse_args "$@"
+
+    # Show the interactive wizard when the script is run directly with no
+    # arguments in a terminal. Piped or scripted invocations skip it.
+    if [[ -t 0 && $_argc -eq 0 ]]; then
+        run_wizard
+    fi
 
     [[ "$ref" != -* && "$repo" != -* ]] || die 'Invalid --ref or --repo value.'
 
