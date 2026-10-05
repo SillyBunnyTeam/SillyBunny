@@ -14,7 +14,7 @@ Before updating
 
 Git installs
 
-Git is the recommended update method.
+Git is the primary recommended update method.
 
 1. Open a terminal in your SillyBunny folder.
 2. Run:
@@ -32,49 +32,16 @@ intentionally, or move them out of the way before pulling the update.
 
 ZIP installs
 
-The preferred ZIP update method is the in-app updater.
+ZIP copies of SillyBunny are **deprecated** and can no longer update themselves. To keep getting
+updates, reinstall with the installer from the latest release:
 
-1. Start SillyBunny normally.
-2. Open Customize > Server.
-3. Click Check for updates.
-4. If a release ZIP update is available, click Update & Restart.
-
-The updater downloads the latest GitHub release ZIP, replaces app files in place,
-backs up replaced files under backups/zip-update-*, keeps your data folder, and
-restarts SillyBunny automatically.
-
-If the in-app updater is unavailable, use the manual fallback. Manual ZIP updates
-require copying your user data into a fresh download.
-
-1. Download the new SillyBunny release ZIP.
-2. Extract it into a new folder, outside your current SillyBunny install.
-3. Install or refresh the required packages for the new folder:
-
-   bun install
-
-4. Copy your user data from the old install into the new install.
-
-   For current installs, copy:
-
-   data/default-user
-
-   If you use multiple accounts, copy the full data directory instead.
-
-5. Current installs keep secrets with the user data you copied above. If your
-   old install still has a legacy root-level secrets.json file, copy that file
-   into the matching location in the new install too.
-6. Start SillyBunny from the new folder and confirm your characters, chats,
-   presets, and settings appear correctly.
-7. After the new install is working, you can archive or delete the old folder.
-
-Do not copy the entire public folder from an old ZIP install into a new one.
-That can overwrite updated app files and hide new fixes.
+   https://github.com/SillyBunnyTeam/SillyBunny/releases/latest
 
 Troubleshooting
 
 - If SillyBunny does not start after an update, run bun install again in the
   SillyBunny folder and restart.
-- If your data is missing after a ZIP update, confirm it was copied into the
-  new data folder, not into public.
+- If you see "not a Git checkout", this copy was installed from a ZIP. See
+  "ZIP installs" above.
 - If you need help with a SillyBunny-specific update issue, open an issue at:
   https://github.com/SillyBunnyTeam/SillyBunny/issues

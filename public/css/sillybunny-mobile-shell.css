@@ -2487,7 +2487,7 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     }
 
     #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) {
-        min-height: calc(var(--sb-character-list-avatar-size) + 46px);
+        min-height: calc(var(--sb-character-list-avatar-height) + 46px);
     }
 
     #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
@@ -2498,11 +2498,10 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         width: var(--sb-character-list-avatar-size) !important;
         min-width: var(--sb-character-list-avatar-size) !important;
         max-width: var(--sb-character-list-avatar-size) !important;
-        height: var(--sb-character-list-avatar-size) !important;
-        min-height: var(--sb-character-list-avatar-size) !important;
-        max-height: var(--sb-character-list-avatar-size) !important;
+        height: var(--sb-character-list-avatar-height) !important;
+        min-height: var(--sb-character-list-avatar-height) !important;
+        max-height: var(--sb-character-list-avatar-height) !important;
         flex: 0 0 var(--sb-character-list-avatar-size) !important;
-        aspect-ratio: 1 / 1 !important;
         margin: 0 !important;
         overflow: hidden;
     }
@@ -2701,6 +2700,7 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     }
 
     body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block {
+        --sb-character-list-avatar-size: 64px;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
     }
@@ -2715,13 +2715,7 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     }
 
     body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
-        width: 64px !important;
-        min-width: 64px !important;
-        max-width: 64px !important;
-        height: 64px !important;
-        min-height: 64px !important;
-        max-height: 64px !important;
-        flex-basis: 64px !important;
+        flex-basis: var(--sb-character-list-avatar-height) !important;
     }
 
     .sb-model-id-picker-menu {

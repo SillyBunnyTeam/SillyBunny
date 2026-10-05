@@ -19,3 +19,9 @@
 *.mp3 binary
 *.wav binary
 *.zip binary
+
+# SillyBunny: keep GitHub's auto-generated "Source code" archives to runtime files.
+/tests/ export-ignore
+/.github/ export-ignore
+/docs/ export-ignore
+/AGENTS.md export-ignore

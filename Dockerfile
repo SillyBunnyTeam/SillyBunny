@@ -13,6 +13,8 @@ RUN chown bun:bun ${APP_HOME}
 
 # Set NODE_ENV to production
 ENV NODE_ENV=production
+# SillyBunny: lets the Server panel show the Docker install state even when /.dockerenv is absent (e.g. Podman).
+ENV SILLYBUNNY_DOCKER=1
 
 # Bundle app source and set ownership
 COPY --chown=bun:bun . ./
