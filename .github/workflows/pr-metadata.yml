@@ -35,7 +35,7 @@ jobs:
 
           if [ "$BASE_REF" = "release" ] && [ "$HEAD_REPOSITORY" = "$REPOSITORY" ]; then
             case "$HEAD_REF" in
-              staging | release/v* | hotfix/*)
+              release/v* | hotfix/* | rollback/v*)
                 exit 0
                 ;;
             esac
@@ -92,7 +92,7 @@ jobs:
           fi
 
           if [ "$BASE_REF" = "release" ]; then
-            echo "Only staging, release/v*, or hotfix/* branches from this repository may target release. Current source: $HEAD_REF"
+            echo "Only release/v*, hotfix/*, or rollback/v* branches from this repository may target release. Current source: $HEAD_REF"
             echo "Actions-only changes may use an actions/* branch."
             echo "Exception: CODEOWNERS additions or edits may also update pr-metadata.yml, with no other file changes."
           else

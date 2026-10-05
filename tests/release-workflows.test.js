@@ -26,7 +26,7 @@ describe('release pipeline workflows', () => {
         expect(source).toContain('echo "branch=release/v$version"');
         expect(source).toContain('--base release');
         expect(source).toContain('--title "chore: release v$VERSION"');
-        expect(prMetadata).toContain('staging | release/v* | hotfix/*');
+        expect(prMetadata).toContain('release/v* | hotfix/* | rollback/v*');
     });
 
     test('post-release stacks the -dev bump on the back-merge and skips prereleases', () => {

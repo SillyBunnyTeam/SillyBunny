@@ -45,6 +45,14 @@ jobs:
                 exit 1
               fi
               ;;
+            rollback/v*)
+              if [ "$HEAD_REF" != "rollback/v$version" ]; then
+                echo "Rollback branch $HEAD_REF must match the restored package.json version $version." >&2
+                exit 1
+              fi
+              echo "Controlled rollback to $version requested."
+              exit 0
+              ;;
             hotfix/*)
               # Hotfixes must ship under a new patch version, never the one already on release.
               git fetch --quiet --depth=1 origin "refs/heads/$BASE_REF"
