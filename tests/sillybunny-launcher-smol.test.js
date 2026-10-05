@@ -233,12 +233,17 @@ describe('launcher parity', () => {
         expect(packageJson.scripts['start:no-csrf:node']).toBe('node --no-warnings server.js --disableCsrf');
     });
 
-    test('PR metadata keeps ordinary work on staging and permits staging releases to main', () => {
+    test('PR metadata keeps ordinary work on staging and permits release branches to release', () => {
         expect(prMetadataSource).toContain('[ "$BASE_REF" = "staging" ]');
-        expect(prMetadataSource).toContain('[ "$BASE_REF" = "main" ] && [ "$HEAD_REF" = "staging" ] && [ "$HEAD_REPOSITORY" = "$REPOSITORY" ]');
+        expect(prMetadataSource).toContain('[ "$BASE_REF" = "release" ] && [ "$HEAD_REPOSITORY" = "$REPOSITORY" ]');
+        expect(prMetadataSource).toContain('release/v* | hotfix/* | rollback/v*)');
+        expect(prMetadataSource).not.toContain('chore/pull_request_target_fix');
+        expect(prMetadataSource).toContain('[[ "$HEAD_REF" == actions/* ]]');
+        expect(prMetadataSource).toContain('or . == "scripts/bump-version.js"');
         expect(prMetadataSource).toContain('HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}');
-        expect(prMetadataSource).toContain('Only the staging release branch may target main.');
+        expect(prMetadataSource).toContain('Only release/v*, hotfix/*, or rollback/v* branches from this repository may target release.');
         expect(prMetadataSource).toContain('Pull requests must target staging.');
+        expect(prMetadataSource).not.toContain('"$BASE_REF" = "main"');
         expect(prMetadataSource).not.toContain('TLD/mobile-refactor');
     });
 });

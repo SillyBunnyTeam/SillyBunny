@@ -1,0 +1,256 @@
+name: 🌙 Nightly CI
+
+# Scheduled workflows only run from the default branch (release), but every run tests staging.
+# A passing run sets the `nightly` commit status on the staging SHA, so unchanged nights are skipped.
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Run even if this staging SHA already passed
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+env:
+  NIGHTLY_STATUS_CONTEXT: nightly
+  FAILURE_LABEL: nightly-failure
+  REMINDER_LABEL: release-reminder
+
+jobs:
+  gate:
+    name: 🌙 Resolve staging SHA
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: read
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+      run: ${{ steps.resolve.outputs.run }}
+
+    steps:
+      - name: Check for an earlier passing run
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          FORCE: ${{ inputs.force || false }}
+        run: |
+          set -euo pipefail
+          sha=$(gh api "repos/$REPOSITORY/commits/staging" --jq .sha)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          state=$(gh api "repos/$REPOSITORY/commits/$sha/statuses" --jq "[.[] | select(.context == \"$NIGHTLY_STATUS_CONTEXT\")][0].state // \"\"")
+          if [ "$FORCE" != "true" ] && [ "$state" = "success" ]; then
+            echo "staging $sha already passed nightly; skipping."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  checks:
+    name: 🌙 Lint, tests, budgets, boot smoke and e2e
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CI: 'true'
+      PLAYWRIGHT_HTML_OPEN: never
+      SILLYBUNNY_TEST_BASE_URL: http://127.0.0.1:4444
+
+    steps:
+      - name: Checkout staging
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tests/package-lock.json
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install root dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install test dependencies
+        env:
+          NPM_CONFIG_USERCONFIG: ${{ github.workspace }}/.npmrc
+        run: npm ci --ignore-scripts --prefix tests
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test:unit --prefix tests
+
+      - name: Frontend budgets and build
+        run: |
+          npm run check:frontend-budgets
+          npm run build:frontend
+
+      - name: Version copies agree
+        run: node scripts/bump-version.js --check
+
+      - name: Initialize server state
+        run: npm run init
+
+      - name: Node boot smoke
+        # Scoped to the boot steps: unit tests assert these launcher flags are unset.
+        env:
+          SILLYBUNNY_LAUNCHER: '1'
+          SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1'
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/node-boot.log"
+          node server.js --browserLaunchEnabled=false > "$log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
+          deadline=$((SECONDS + 120))
+          until curl --fail --silent --max-time 2 "$SILLYBUNNY_TEST_BASE_URL/" > /dev/null; do
+            if ! kill -0 "$pid" 2>/dev/null || (( SECONDS >= deadline )); then
+              echo 'Node server did not become ready.' >&2
+              cat "$log" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          echo 'Node server is up.'
+
+      - name: Install Chromium
+        working-directory: tests
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Bun boot smoke and e2e
+        env:
+          SILLYBUNNY_LAUNCHER: '1'
+          SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1'
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/sillybunny-server.log"
+          bun server.js --browserLaunchEnabled=false > "$log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
+          deadline=$((SECONDS + 120))
+          until curl --fail --silent --max-time 2 "$SILLYBUNNY_TEST_BASE_URL/" > /dev/null; do
+            if ! kill -0 "$pid" 2>/dev/null || (( SECONDS >= deadline )); then
+              echo 'Bun server did not become ready.' >&2
+              cat "$log" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          npm run test:e2e --prefix tests -- --workers=1 --reporter=line,html
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/node-boot.log
+            ${{ runner.temp }}/sillybunny-server.log
+            tests/playwright-report/
+            tests/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  report:
+    name: 🌙 Report result
+    needs: [gate, checks]
+    if: always() && needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      statuses: write
+
+    steps:
+      - name: Record status and update the failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ needs.gate.outputs.sha }}
+          RESULT: ${{ needs.checks.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          case "$RESULT" in
+            success) state=success ;;
+            cancelled) state=error ;;
+            *) state=failure ;;
+          esac
+          gh api "repos/$GH_REPO/statuses/$SHA" -f state="$state" -f context="$NIGHTLY_STATUS_CONTEXT" -f target_url="$RUN_URL" > /dev/null
+
+          gh label create "$FAILURE_LABEL" --color B60205 > /dev/null 2>&1 || true
+          issue=$(gh issue list --label "$FAILURE_LABEL" --state open --limit 1 --json number --jq '.[0].number // ""')
+          short="${SHA:0:9}"
+
+          if [ "$state" = "success" ]; then
+            if [ -n "$issue" ]; then
+              gh issue close "$issue" --comment "Passing again on \`staging\` @ $short: $RUN_URL"
+            fi
+          elif [ "$state" = "failure" ]; then
+            if [ -n "$issue" ]; then
+              gh issue comment "$issue" --body "Still failing on \`staging\` @ $short: $RUN_URL"
+            else
+              gh issue create --label "$FAILURE_LABEL" --title "Nightly CI failing on staging" --body "Failing on \`staging\` @ $short: $RUN_URL"
+            fi
+          fi
+
+  staleness:
+    name: 🌙 Release staleness reminder
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout staging
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: staging
+          fetch-depth: 0
+
+      - name: Open, update or close the reminder issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          MAX_AGE_DAYS: '42'
+        run: |
+          set -euo pipefail
+          # `releases/latest` excludes drafts and prereleases.
+          tag=$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name)
+          published=$(gh api "repos/$GH_REPO/releases/latest" --jq .published_at)
+          age_days=$(( ( $(date -u +%s) - $(date -u -d "$published" +%s) ) / 86400 ))
+          unreleased=$(git rev-list --count --no-merges "$tag..HEAD")
+          echo "Latest stable $tag is $age_days days old; staging has $unreleased unreleased commits."
+
+          gh label create "$REMINDER_LABEL" --color FBCA04 > /dev/null 2>&1 || true
+          issue=$(gh issue list --label "$REMINDER_LABEL" --state open --limit 1 --json number --jq '.[0].number // ""')
+
+          if [ "$age_days" -gt "$MAX_AGE_DAYS" ] && [ "$unreleased" -gt 0 ]; then
+            body="Latest stable release $tag is $age_days days old and \`staging\` has $unreleased unreleased commits."
+            if [ -n "$issue" ]; then
+              gh issue edit "$issue" --body "$body"
+            else
+              gh issue create --label "$REMINDER_LABEL" --title "Release reminder: staging is ahead of $tag" --body "$body"
+            fi
+          elif [ -n "$issue" ]; then
+            gh issue close "$issue" --comment "No longer stale (latest stable: $tag)."
+          fi
