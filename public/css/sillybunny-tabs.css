@@ -116,8 +116,6 @@
     --sb-home-toggle-min-width: max(var(--sb-mobile-toggle-min-size), calc(var(--sb-home-toggle-min-width-base) * var(--sb-mobile-button-scale)));
     --sb-mobile-rail-action-size: clamp(var(--sb-mobile-toggle-min-size), calc(44px * var(--sb-mobile-button-scale)), 56px);
     --sb-mobile-rail-tab-height: clamp(var(--sb-mobile-touch-target, 44px), calc(50px * var(--sb-mobile-button-scale)), 62px);
-    --sb-mobile-rail-wrapper-width: clamp(56px, calc(78px * var(--sb-mobile-button-scale)), 96px);
-    --sb-mobile-rail-icon-wrapper-width: clamp(48px, calc(58px * var(--sb-mobile-button-scale)), 72px);
     --sb-mobile-rail-label-size: calc(var(--mainFontSize) * 0.62 * var(--sb-mobile-button-scale));
     --sb-topbar-compact-icon-size: calc(var(--mainFontSize) * var(--sb-topbar-compact-icon-scale-base));
     --sb-topbar-primary-min-height: max(var(--sb-proxy-button-height), var(--sb-mobile-toggle-size));
@@ -1586,7 +1584,6 @@ body:not(.movingUI) .drawer-content.maximized {
 .sb-shell-nav,
 .sb-shell-main,
 .sb-shell-header,
-.sb-shell-close,
 .sb-shell-search,
 .sb-search-results,
 .sb-search-result,
@@ -1690,13 +1687,6 @@ body:not(.movingUI) .drawer-content.maximized {
     overflow: hidden;
 }
 
-.sb-shell-nav-wrapper {
-    position: relative;
-    width: 100%;
-    min-width: 0;
-    flex-shrink: 0;
-}
-
 .sb-shell-nav-scroll {
     position: absolute;
     top: 50%;
@@ -1746,43 +1736,6 @@ body:not(.movingUI) .drawer-content.maximized {
 
 .sb-shell-nav-scroll-right {
     right: 6px;
-}
-
-.sb-shell-nav-wrapper.sb-can-scroll-left .sb-shell-nav-scroll-left,
-.sb-shell-nav-wrapper.sb-can-scroll-right .sb-shell-nav-scroll-right {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-.sb-shell-nav-wrapper::before,
-.sb-shell-nav-wrapper::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 32px;
-    pointer-events: none;
-    z-index: 2;
-    opacity: 0;
-    transition: opacity var(--sb-transition);
-}
-
-.sb-shell-nav-wrapper::before {
-    left: 0;
-    background: linear-gradient(to right, color-mix(in srgb, var(--SmartThemeShadowColor, #000) 40%, transparent), transparent);
-}
-
-.sb-shell-nav-wrapper::after {
-    right: 0;
-    background: linear-gradient(to left, color-mix(in srgb, var(--SmartThemeShadowColor, #000) 40%, transparent), transparent);
-}
-
-.sb-shell-nav-wrapper.sb-can-scroll-left::before {
-    opacity: 1;
-}
-
-.sb-shell-nav-wrapper.sb-can-scroll-right::after {
-    opacity: 1;
 }
 
 .sb-shell-nav {
@@ -1988,35 +1941,6 @@ body:not(.movingUI) .drawer-content.maximized {
     background: var(--sb-layer-headerbar);
 }
 
-.sb-character-shell-header {
-    position: relative;
-    flex: 0 0 auto;
-}
-
-#right-nav-panel.openDrawer > .sb-character-shell-header {
-    gap: 4px;
-    padding: 8px calc(var(--sb-shell-panel-padding-inline) + 52px) 10px var(--sb-shell-panel-padding-inline);
-}
-
-#right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-kicker {
-    font-size: var(--sb-type-caption);
-    letter-spacing: 0;
-}
-
-#right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-title {
-    font-size: calc(var(--mainFontSize) * 1.12);
-    line-height: 1.15;
-}
-
-#right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-subtitle {
-    font-size: var(--sb-type-control);
-    line-height: 1.36;
-}
-
-#right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-description {
-    display: none;
-}
-
 .sb-shell-root-left .sb-shell-main > .sb-shell-header,
 .sb-shell-root-right .sb-shell-main > .sb-shell-header {
     gap: 4px;
@@ -2059,10 +1983,6 @@ body:not(.movingUI) .drawer-content.maximized {
    of using margin: reserve the toggle footprint (~215px + 66px right offset) so
    long text ellipsizes instead of running under the pill. */
 @media screen and (min-width: 769px) {
-    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-title,
-    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-subtitle {
-        max-width: calc(100% - 276px);
-    }
 }
 
 .sb-character-shell-mode-toggle {
@@ -2137,9 +2057,6 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 @media (max-width: 900px) {
-    #right-nav-panel.openDrawer > .sb-character-shell-header {
-        padding-right: calc(var(--sb-shell-panel-padding-inline) + 118px);
-    }
 
     .sb-character-shell-mode-toggle {
         top: 17px;
@@ -2172,12 +2089,6 @@ body:not(.movingUI) .drawer-content.maximized {
     justify-content: center;
 }
 
-.sb-shell-header.sb-shell-header-collapsed .sb-shell-close {
-    top: 50%;
-    transform: translateY(-50%);
-}
-
-
 .sb-shell-header.sb-shell-header-collapsed .sb-shell-kicker,
 .sb-shell-header.sb-shell-header-collapsed .sb-shell-subtitle,
 .sb-shell-header.sb-shell-header-collapsed .sb-shell-description {
@@ -2190,10 +2101,6 @@ body:not(.movingUI) .drawer-content.maximized {
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: var(--sb-type-control);
-}
-
-.sb-character-shell-nav-wrapper {
-    flex: 0 0 auto;
 }
 
 .sb-character-shell-nav .sb-shell-tab {
@@ -2690,41 +2597,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     line-height: var(--sb-line-body);
 }
 
-.sb-shell-close {
-    position: absolute;
-    top: 18px;
-    right: 18px;
-    display: inline-flex;
-    width: 40px;
-    height: 40px;
-    /* libadwaita window control: circular raised fill, no border or drop shadow. */
-    border: 0;
-    border-radius: 999px;
-    background: var(--sb-raised-bg);
-    box-shadow: none;
-    color: var(--SmartThemeBodyColor);
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    overflow: hidden;
-    transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast), color var(--sb-transition-fast);
-}
-
-
-
 @media (hover: hover) {
-    .sb-shell-close:hover {
-        background: var(--sb-raised-hover-bg);
-    }
-}
-
-.sb-shell-close:active {
-    background: var(--sb-raised-active-bg);
-}
-
-.sb-shell-close:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
 }
 
 #sb_character_editor_exit {
@@ -2749,10 +2622,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 @media (pointer: coarse) {
-    .sb-shell-close {
-        width: 44px;
-        height: 44px;
-    }
 }
 
 .sb-shell-kicker {
@@ -3072,7 +2941,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     flex: 1;
     min-height: 0;
     position: relative;
-    padding-bottom: var(--sb-shell-panel-bottom-padding);
 }
 
 .sb-shell-panel {
@@ -3092,11 +2960,18 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     overflow-x: hidden;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    padding: var(--sb-shell-panel-padding-block) var(--sb-shell-panel-padding-inline) var(--sb-shell-panel-bottom-padding);
+    padding: var(--sb-shell-panel-padding-block) var(--sb-shell-panel-padding-inline) 0;
+}
+
+/* The trailing gap belongs to the scroll content, not to the box, so the last card can
+   always be scrolled clear of the bottom edge. Applies to every direct child so panels that
+   wrap their content in a legacy .drawer still get the space. */
+.sb-shell-panel-scroller > * {
+    padding-bottom: var(--sb-shell-panel-bottom-padding);
 }
 
 :root[data-sb-compact-mode='true'] .sb-shell-panel-scroller {
-    padding: var(--sb-shell-space-sm) var(--sb-shell-space-md) var(--sb-shell-panel-bottom-padding);
+    padding: var(--sb-shell-space-sm) var(--sb-shell-space-md) 0;
 }
 
 .sb-shell-column {
@@ -5898,8 +5773,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     min-height: 0 !important;
 }
 
-#right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) > .sb-character-shell-nav-wrapper,
-#right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) > .sb-character-shell-header,
 #right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) > #CharListButtonAndHotSwaps {
     display: none !important;
 }
@@ -6236,20 +6109,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 
 #right-nav-panel[data-menu-type="character_edit"] #rm_button_selected_ch h2:hover {
     color: var(--color-primary, var(--sb-accent));
-}
-
-#right-nav-panel .sb-character-shell-header .sb-shell-title {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-}
-
-#right-nav-panel .sb-character-shell-header .sb-character-title-help {
-    width: 28px;
-    height: 28px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
 }
 
 #character_popup.sb-character-popup-compat-stub {
@@ -7031,28 +6890,9 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
         --sb-character-shell-rail-width: calc((46px * var(--sb-desktop-button-scale)) + 16px);
     }
 
-    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer > :not(#right-nav-panelheader):not(.sb-character-shell-nav-wrapper) {
-        grid-column: 2;
-        min-width: 0;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer > .sb-character-shell-nav-wrapper {
-        grid-column: 1;
-        grid-row: 1 / -1;
-        align-self: stretch;
-        width: var(--sb-character-shell-rail-width);
-        height: 100%;
-        min-height: 0;
-    }
-
     :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer > .scrollableInner,
     :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer > .scrollableInnerFull {
         min-height: 0;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav-wrapper::before,
-    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav-wrapper::after {
-        display: none !important;
     }
 
     :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav {
@@ -7127,17 +6967,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
         display: none;
     }
 
-    :root[data-sb-desktop-nav-layout='vertical'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-nav-wrapper {
-        flex: 0 0 86px;
-        width: 86px;
-        height: 100%;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'][data-sb-desktop-nav-mode='icon-only'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-nav-wrapper {
-        flex-basis: calc((46px * var(--sb-desktop-button-scale)) + 16px);
-        width: calc((46px * var(--sb-desktop-button-scale)) + 16px);
-    }
-
     :root[data-sb-desktop-nav-layout='vertical'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-nav {
         height: 100%;
         flex-direction: column;
@@ -7168,11 +6997,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     }
 
     :root[data-sb-desktop-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-nav-scroll,
-    :root[data-sb-desktop-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-nav-wrapper::before,
-    :root[data-sb-desktop-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-nav-wrapper::after,
-    :root[data-sb-desktop-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-nav-scroll,
-    :root[data-sb-desktop-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-nav-wrapper::before,
-    :root[data-sb-desktop-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-nav-wrapper::after {
+:root[data-sb-desktop-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-nav-scroll {
         display: none !important;
     }
 
@@ -7441,10 +7266,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     font-size: calc(var(--mainFontSize) * 0.95);
 }
 
-#sb-mobile-nav {
-    display: none;
-}
-
 #rm_print_characters_block {
     --sb-character-list-avatar-height: var(--sb-character-list-avatar-size);
 }
@@ -7637,19 +7458,16 @@ body.big-avatars #rm_print_characters_block {
     }
 }
 
-
-
 @media screen and (max-width: 450px) {
     .sb-mobile-section-list {
         grid-template-columns: 1fr;
     }
 
-    #sb-hamburger,
     #sb-api-toggle,
-    #sb-home-toggle,
-    #sb-left-shell-toggle,
-    #sb-right-shell-toggle,
-    #sb-character-toggle {
+#sb-home-toggle,
+#sb-left-shell-toggle,
+#sb-right-shell-toggle,
+#sb-character-toggle {
         min-width: var(--sb-mobile-toggle-size);
         width: var(--sb-mobile-toggle-size);
         height: var(--sb-mobile-toggle-size);
@@ -7660,14 +7478,6 @@ body.big-avatars #rm_print_characters_block {
         justify-content: flex-start;
         gap: 4px;
         padding: 18px 12px 6px;
-    }
-
-    .sb-shell-nav-wrapper.sb-can-scroll-left .sb-shell-nav {
-        padding-left: 54px;
-    }
-
-    .sb-shell-nav-wrapper.sb-can-scroll-right .sb-shell-nav {
-        padding-right: 54px;
     }
 
     .sb-shell-tab {
@@ -7692,11 +7502,6 @@ body.big-avatars #rm_print_characters_block {
 
     .sb-shell-title {
         font-size: calc(var(--mainFontSize) * 0.96);
-    }
-
-    #sb-mobile-nav-content {
-        padding: 10px;
-        gap: 8px;
     }
 
     .sb-nav-item {
@@ -7816,19 +7621,6 @@ body.big-avatars #rm_print_characters_block {
         flex-direction: row;
     }
 
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-nav-wrapper,
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-nav-wrapper {
-        flex: 0 0 var(--sb-mobile-rail-wrapper-width);
-        width: var(--sb-mobile-rail-wrapper-width);
-        height: 100%;
-    }
-
-    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] .sb-shell-root-left.openDrawer .sb-shell-nav-wrapper,
-    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] .sb-shell-root-right.openDrawer .sb-shell-nav-wrapper {
-        flex-basis: var(--sb-mobile-rail-icon-wrapper-width);
-        width: var(--sb-mobile-rail-icon-wrapper-width);
-    }
-
     :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-nav,
     :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-nav {
         height: 100%;
@@ -7862,11 +7654,7 @@ body.big-avatars #rm_print_characters_block {
     }
 
     :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-nav-scroll,
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-nav-wrapper::before,
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-nav-wrapper::after,
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-nav-scroll,
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-nav-wrapper::before,
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-nav-wrapper::after {
+:root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-nav-scroll {
         display: none !important;
     }
 
@@ -8022,7 +7810,6 @@ body.big-avatars #rm_print_characters_block {
  * iOS Safari clips position:fixed descendants inside overflow:hidden ancestors.
  * Use JS-toggled class instead of :has() which can cause Safari rendering issues. */
 
-
 @media (pointer: coarse), screen and (max-width: 1000px) {
     .sb-shell-nav-scroll {
         display: inline-flex;
@@ -8037,9 +7824,6 @@ body.big-avatars #rm_print_characters_block {
 }
 
 @media screen and (min-width: 1001px) {
-    :root:not([data-sb-desktop-nav-layout='vertical']) #right-nav-panel.openDrawer .sb-character-shell-nav-wrapper {
-        width: 100%;
-    }
 
     :root:not([data-sb-desktop-nav-layout='vertical']) #right-nav-panel.openDrawer .sb-character-shell-nav {
         justify-content: center !important;
@@ -8064,12 +7848,11 @@ body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.gr
 
 @media (prefers-reduced-motion: reduce) {
     .sb-proxy-button,
-    .sb-shell-header,
-    .sb-shell-close,
-    .sb-shell-tab,
-    .sb-search-result,
-    .sb-theme-option,
-    .sb-nav-item {
+.sb-shell-header,
+.sb-shell-tab,
+.sb-search-result,
+.sb-theme-option,
+.sb-nav-item {
         transition-duration: 0.01ms !important;
     }
 
@@ -8497,11 +8280,6 @@ body.reduced-motion .sb-shell-main {
     inset: 0 !important;
 }
 
-#sb-settings-shell-host > #right-nav-panel.sb-settings-mounted-shell > .sb-character-shell-header,
-#sb-settings-shell-host > #right-nav-panel.sb-settings-mounted-shell > .sb-character-shell-nav-wrapper {
-    display: none !important;
-}
-
 #sb-settings-shell-host > .sb-settings-mounted-shell {
     display: flex !important;
     position: static !important;
@@ -8527,7 +8305,6 @@ body.reduced-motion .sb-shell-main {
     height: 100%;
 }
 
-#sb-settings-shell-host > .sb-settings-mounted-shell .sb-shell-nav-wrapper,
 #sb-settings-shell-host > .sb-settings-mounted-shell .sb-shell-header {
     display: none !important;
 }
@@ -8667,7 +8444,6 @@ body.reduced-motion .sb-shell-main {
     border-top: 1px solid var(--sb-shell-border);
 }
 
-
 @media (prefers-reduced-motion: reduce) {
     .ds-expander-row > .inline-drawer-toggle .inline-drawer-icon,
     .ds-expander-row > .inline-drawer-header .inline-drawer-icon {
@@ -8793,21 +8569,10 @@ body.reduced-motion .sb-shell-main {
     border-top: 0;
 }
 
-#right-nav-panel.openDrawer > .sb-character-shell-header {
-    padding-right: var(--sb-shell-panel-padding-inline);
-}
-
 @media screen and (min-width: 769px) {
-    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-title,
-    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-subtitle {
-        max-width: 100%;
-    }
 }
 
 @media screen and (max-width: 900px) {
-    #right-nav-panel.openDrawer > .sb-character-shell-header {
-        padding-right: var(--sb-shell-panel-padding-inline);
-    }
 }
 
 /* ── Phase 3: mobile settings layout (feat/v1.9.0-ui-overhaul) ─────────── */
@@ -8902,6 +8667,13 @@ body.reduced-motion .sb-shell-main {
 
     /* Safe-area insets for notched phones. */
     #sb-settings-page {
+        /* Follow the visual viewport when iOS pans it (Safari can scroll the visual viewport
+           independently of the layout viewport while the keyboard is open). The height is
+           clamped to the shell viewport so the page shrinks when the keyboard rises. */
+        top: calc(var(--sb-topbar-layout-offset) + var(--sb-shell-viewport-top, 0px)) !important;
+        height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-topbar-layout-offset)) !important;
+        max-height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-topbar-layout-offset)) !important;
+        bottom: auto !important;
         padding-left: env(safe-area-inset-left, 0px);
         padding-right: env(safe-area-inset-right, 0px);
     }

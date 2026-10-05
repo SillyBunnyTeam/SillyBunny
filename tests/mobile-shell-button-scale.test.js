@@ -12,27 +12,12 @@ describe('mobile shell button scale', () => {
         expect(cssSource).toContain('--sb-mobile-toggle-min-size:');
         expect(cssSource).toContain('--sb-mobile-rail-action-size:');
         expect(cssSource).toContain('--sb-mobile-rail-tab-height:');
-        expect(cssSource).toContain('--sb-mobile-rail-wrapper-width:');
-        expect(cssSource).toContain('--sb-mobile-rail-icon-wrapper-width:');
         expect(cssSource).toContain('--sb-mobile-rail-label-size:');
     });
 
     test('keeps shared mobile navigation controls at the documented touch target floor', () => {
         expect(cssSource).toContain('--sb-mobile-toggle-min-size: var(--sb-mobile-touch-target, 44px);');
         expect(cssSource).toContain('--sb-mobile-rail-tab-height: clamp(var(--sb-mobile-touch-target, 44px),');
-    });
-
-    test('mobile vertical rail wrapper uses scale variable instead of hard-coded 78px', () => {
-        // Match the mobile vertical rail media query block
-        const mobileVerticalMatch = cssSource.match(
-            /@media[^{]*max-width:\s*768px[^{]*\{[\s\S]*?data-sb-mobile-nav-layout='vertical'[\s\S]*?\.sb-shell-nav-wrapper[\s\S]*?\}/
-        );
-        expect(mobileVerticalMatch).not.toBeNull();
-
-        const block = mobileVerticalMatch[0];
-        expect(block).toContain('var(--sb-mobile-rail-wrapper-width)');
-        expect(block).not.toMatch(/flex:\s*0\s+0\s+78px/);
-        expect(block).not.toMatch(/width:\s*78px/);
     });
 
     test('mobile vertical rail action uses scale variable instead of hard-coded 44px', () => {

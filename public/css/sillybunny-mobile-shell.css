@@ -257,31 +257,8 @@
             'content nav' !important;
     }
 
-    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > .sb-character-shell-nav-wrapper {
-        display: flex !important;
-        flex-direction: column !important;
-        grid-area: nav !important;
-        width: 84px !important;
-        min-width: 84px !important;
-        height: 100% !important;
-        max-height: 100% !important;
-        min-height: 0 !important;
-        overflow: hidden !important;
-        border-left: 1px solid color-mix(in srgb, var(--sb-shell-border) 80%, transparent) !important;
-        border-bottom: 0 !important;
-    }
-
     :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer {
         grid-template-columns: minmax(0, 1fr) 58px !important;
-    }
-
-    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer > .sb-character-shell-nav-wrapper {
-        width: 58px !important;
-        min-width: 58px !important;
-    }
-
-    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > .sb-character-shell-header {
-        grid-area: header !important;
     }
 
     :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > .sb-character-editor-subtabs-wrapper {
@@ -423,93 +400,6 @@
     :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-action .sb-shell-tab-copy,
     :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-empty {
         display: none !important;
-    }
-
-    #right-nav-panel.openDrawer > .sb-character-shell-header {
-        min-height: 0 !important;
-        padding: 0 !important;
-    }
-
-    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-title {
-        position: absolute !important;
-        width: 1px !important;
-        height: 1px !important;
-        margin: -1px !important;
-        padding: 0 !important;
-        overflow: hidden !important;
-        clip: rect(0 0 0 0) !important;
-        clip-path: inset(50%) !important;
-        white-space: nowrap !important;
-        border: 0 !important;
-    }
-
-    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-subtitle {
-        display: none !important;
-    }
-
-    /* SillyBunny: was top: -42px, floating above the panel and invisible to the user;
-       changed to 8px to keep the close button inside the header and reachable on mobile */
-    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-close {
-        top: 8px !important;
-        right: 8px !important;
-        width: 36px !important;
-        min-width: 36px !important;
-        height: 36px !important;
-        min-height: 36px !important;
-        border-radius: 999px !important;
-    }
-
-    :root[data-sb-shell-header-mode='show'] #right-nav-panel.openDrawer > .sb-character-shell-header,
-    :root[data-sb-shell-header-mode='auto'] #right-nav-panel.openDrawer > .sb-character-shell-header:not(.sb-shell-header-collapsed) {
-        min-height: 0 !important;
-        padding: 14px 56px 10px 16px !important;
-    }
-
-    :root[data-sb-shell-header-mode='show'] #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-title,
-    :root[data-sb-shell-header-mode='auto'] #right-nav-panel.openDrawer > .sb-character-shell-header:not(.sb-shell-header-collapsed) .sb-shell-title,
-    #right-nav-panel.openDrawer > .sb-character-shell-header.sb-shell-header-collapsed .sb-shell-title {
-        position: static !important;
-        width: auto !important;
-        height: auto !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        overflow: visible !important;
-        clip: auto !important;
-        clip-path: none !important;
-        white-space: normal !important;
-        border: 0 !important;
-    }
-
-    :root[data-sb-shell-header-mode='show'] #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-subtitle,
-    :root[data-sb-shell-header-mode='auto'] #right-nav-panel.openDrawer > .sb-character-shell-header:not(.sb-shell-header-collapsed) .sb-shell-subtitle {
-        display: block !important;
-    }
-
-    :root[data-sb-shell-header-mode='show'] #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-close,
-    :root[data-sb-shell-header-mode='auto'] #right-nav-panel.openDrawer > .sb-character-shell-header:not(.sb-shell-header-collapsed) .sb-shell-close {
-        top: 14px !important;
-        right: 14px !important;
-        width: 42px !important;
-        min-width: 42px !important;
-        height: 42px !important;
-        min-height: 42px !important;
-    }
-
-    #right-nav-panel.openDrawer > .sb-character-shell-header.sb-shell-header-collapsed {
-        min-height: 52px !important;
-        padding: 8px 56px 8px 14px !important;
-    }
-
-    #right-nav-panel.openDrawer > .sb-character-shell-header.sb-shell-header-collapsed .sb-shell-title {
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        white-space: nowrap !important;
-    }
-
-    #right-nav-panel.openDrawer > .sb-character-shell-header.sb-shell-header-collapsed .sb-shell-close {
-        top: 50% !important;
-        right: 14px !important;
-        transform: translateY(-50%) !important;
     }
 
     #right-nav-panel.openDrawer > #CharListButtonAndHotSwaps {
@@ -901,7 +791,8 @@ html.sb-ios-keyboard-inset-active .sb-shell-root.openDrawer .sb-shell-panel-scro
 html.sb-ios-keyboard-inset-active .sb-shell-root.fillLeft.openDrawer .sb-shell-panel-scroller,
 html.sb-ios-keyboard-inset-active .sb-shell-root.fillRight.openDrawer .sb-shell-panel-scroller,
 html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner,
-html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInnerFull {
+html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInnerFull,
+html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     padding-bottom: max(24px, calc(var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + var(--sb-ios-keyboard-bottom-inset, 0px)));
 }
 
@@ -1121,19 +1012,17 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     }
 
     #top-bar,
-    #sb-mobile-nav,
-    #sb-mobile-chat-tools,
-    #sb-mobile-chat-tools-panel,
-    #sb-mobile-nav-content,
-    .sb-shell-root,
-    .sb-shell-main,
-    .sb-shell-header,
-    .sb-shell-panel-scroller,
-    .sb-shell-root button,
-    .sb-shell-root input,
-    .sb-shell-root select,
-    .sb-shell-root textarea,
-    .sb-shell-root label {
+#sb-mobile-chat-tools,
+#sb-mobile-chat-tools-panel,
+.sb-shell-root,
+.sb-shell-main,
+.sb-shell-header,
+.sb-shell-panel-scroller,
+.sb-shell-root button,
+.sb-shell-root input,
+.sb-shell-root select,
+.sb-shell-root textarea,
+.sb-shell-root label {
         touch-action: manipulation;
     }
 
@@ -1355,14 +1244,13 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         padding: 8px;
     }
 
-    #sb-hamburger,
     #sb-api-toggle,
-    #sb-home-toggle,
-    #sb-left-shell-toggle,
-    #sb-right-shell-toggle,
-    #sb-character-toggle,
-    .sb-topbar-page-button,
-    #sb-chatbar-visibility-toggle {
+#sb-home-toggle,
+#sb-left-shell-toggle,
+#sb-right-shell-toggle,
+#sb-character-toggle,
+.sb-topbar-page-button,
+#sb-chatbar-visibility-toggle {
         min-width: var(--sb-mobile-toggle-size);
         width: var(--sb-mobile-toggle-size);
         height: var(--sb-mobile-toggle-size);
@@ -1371,38 +1259,35 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         gap: 0;
     }
 
-    #sb-hamburger span,
     #sb-api-toggle span,
-    #sb-home-toggle span,
-    #sb-left-shell-toggle span,
-    #sb-right-shell-toggle span,
-    #sb-character-toggle span,
-    .sb-topbar-page-button span,
-    #sb-chatbar-visibility-toggle span {
+#sb-home-toggle span,
+#sb-left-shell-toggle span,
+#sb-right-shell-toggle span,
+#sb-character-toggle span,
+.sb-topbar-page-button span,
+#sb-chatbar-visibility-toggle span {
         display: none;
     }
 
-    #sb-hamburger::after,
     #sb-api-toggle::after,
-    #sb-home-toggle::after,
-    #sb-left-shell-toggle::after,
-    #sb-right-shell-toggle::after,
-    #sb-character-toggle::after,
-    .sb-topbar-page-button::after,
-    #sb-chatbar-visibility-toggle::after {
+#sb-home-toggle::after,
+#sb-left-shell-toggle::after,
+#sb-right-shell-toggle::after,
+#sb-character-toggle::after,
+.sb-topbar-page-button::after,
+#sb-chatbar-visibility-toggle::after {
         left: var(--sb-proxy-underline-inset);
         right: var(--sb-proxy-underline-inset);
         bottom: var(--sb-proxy-underline-bottom);
     }
 
-    #sb-hamburger i,
     #sb-api-toggle i,
-    #sb-home-toggle i,
-    #sb-left-shell-toggle i,
-    #sb-right-shell-toggle i,
-    #sb-character-toggle i,
-    .sb-topbar-page-button i,
-    #sb-chatbar-visibility-toggle i {
+#sb-home-toggle i,
+#sb-left-shell-toggle i,
+#sb-right-shell-toggle i,
+#sb-character-toggle i,
+.sb-topbar-page-button i,
+#sb-chatbar-visibility-toggle i {
         font-size: var(--sb-topbar-compact-icon-size);
     }
 
@@ -1463,14 +1348,6 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         padding: 18px 14px 6px;
         border-right: 0;
         border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 80%, transparent);
-    }
-
-    .sb-shell-nav-wrapper.sb-can-scroll-left .sb-shell-nav {
-        padding-left: 54px;
-    }
-
-    .sb-shell-nav-wrapper.sb-can-scroll-right .sb-shell-nav {
-        padding-right: 54px;
     }
 
     .sb-shell-nav-scroll {
@@ -1566,19 +1443,6 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
 
     .sb-shell-description {
         display: none;
-    }
-
-    .sb-shell-close {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .sb-shell-close {
-        top: 14px;
-        right: 14px;
-        width: 42px;
-        height: 42px;
     }
 
     .sb-shell-panel-scroller {
@@ -1682,55 +1546,6 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         display: none !important;
     }
 
-    #sb-mobile-nav {
-        display: none;
-        position: fixed;
-        inset: var(--sb-topbar-layout-offset) 0 0;
-        box-sizing: border-box;
-        height: calc(100dvh - var(--sb-topbar-layout-offset));
-        min-height: calc(100dvh - var(--sb-topbar-layout-offset));
-        z-index: -1;
-        padding: 8px;
-        isolation: isolate;
-        background: transparent;
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
-        visibility: hidden;
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity var(--sb-transition-fast);
-    }
-
-    #sb-mobile-nav::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        z-index: -1;
-        pointer-events: none;
-        background: transparent;
-        opacity: 0;
-    }
-
-    #sb-mobile-nav.sb-nav-open[aria-hidden='false'] {
-        opacity: 1;
-        display: block;
-        visibility: visible;
-        pointer-events: auto;
-        z-index: var(--sb-z-modal);
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
-    }
-
-    #sb-mobile-nav[hidden],
-    #sb-mobile-nav[aria-hidden='true'] {
-        display: none !important;
-        visibility: hidden !important;
-        pointer-events: none !important;
-        z-index: -1 !important;
-        backdrop-filter: none !important;
-        -webkit-backdrop-filter: none !important;
-    }
-
     #sb-mobile-chat-tools {
         position: fixed;
         inset: var(--sb-topbar-layout-offset) 0 0;
@@ -1767,34 +1582,6 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     #sb-mobile-chat-tools-panel {
         max-height: calc(100dvh - var(--sb-topbar-layout-offset) - 32px);
         overflow-y: auto;
-    }
-
-    #sb-mobile-nav-content {
-        position: relative;
-        isolation: isolate;
-        width: min(100%, 620px);
-        max-height: calc(100dvh - var(--sb-topbar-layout-offset) - 32px);
-        margin: 0 auto;
-        padding: 14px;
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        overflow-y: auto;
-        border-radius: var(--sb-radius-overlay);
-        border: 1px solid color-mix(in srgb, var(--sb-shell-border) 88%, transparent);
-        background: var(--sb-layer-drawer);
-        box-shadow: var(--sb-shadow-dialog);
-    }
-
-    #sb-mobile-nav-content::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        z-index: -1;
-        border-radius: inherit;
-        pointer-events: none;
-        background: transparent;
-        opacity: 0;
     }
 
     .sb-mobile-panel-header {
@@ -1961,17 +1748,12 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         pointer-events: auto !important;
     }
 
-    #right-nav-panel.openDrawer > :is(.sb-character-shell-nav-wrapper, .sb-character-editor-subtabs-wrapper, .sb-character-shell-header, #CharListButtonAndHotSwaps, #rm_PinAndTabs, .scrollableInner, .scrollableInnerFull),
     #right-nav-panel.openDrawer :is(button, input, select, textarea, label, a, .menu_button, .right_menu_button, .character_select, .group_select, .bogus_folder_select, .inline-drawer-toggle) {
         pointer-events: auto;
     }
 
     #right-nav-panel.openDrawer > #right-nav-panelheader {
         display: none !important;
-    }
-
-    #right-nav-panel.openDrawer > .sb-character-shell-nav-wrapper {
-        flex: 0 0 auto;
     }
 
     #right-nav-panel.openDrawer .sb-character-shell-nav {
@@ -1984,52 +1766,6 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         min-height: var(--sb-mobile-touch-target, 44px);
         padding: 7px 10px;
         border-radius: 10px;
-    }
-
-    #right-nav-panel.openDrawer > .sb-character-shell-header {
-        flex: 0 0 auto;
-        gap: 3px;
-        padding: 10px 104px 8px 12px;
-        min-height: 60px;
-        z-index: 3;
-    }
-
-    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-close {
-        top: 8px;
-        right: 8px;
-        width: var(--sb-mobile-touch-target, 44px);
-        min-width: var(--sb-mobile-touch-target, 44px);
-        height: var(--sb-mobile-touch-target, 44px);
-        min-height: var(--sb-mobile-touch-target, 44px);
-    }
-
-    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-character-shell-mode-toggle {
-        top: 8px;
-        right: 56px;
-        min-height: var(--sb-mobile-touch-target, 44px);
-        padding: 3px;
-        gap: 2px;
-        z-index: 2;
-        pointer-events: auto;
-    }
-
-    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-character-shell-mode-button {
-        min-width: 36px;
-        min-height: 36px;
-        padding: 8px;
-        pointer-events: auto;
-    }
-
-    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-character-shell-mode-button .fa-solid {
-        width: 14px;
-    }
-
-    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-kicker {
-        display: none;
-    }
-
-    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-description {
-        display: none;
     }
 
     #right-nav-panel.openDrawer > #CharListButtonAndHotSwaps {
@@ -2843,14 +2579,13 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     }
 
     #sb-topbar-primary .sb-proxy-button i,
-    #sb-topbar-primary .sb-chatbar-button > i,
-    #sb-hamburger i,
-    #sb-api-toggle i,
-    #sb-home-toggle i,
-    #sb-left-shell-toggle i,
-    #sb-right-shell-toggle i,
-    #sb-character-toggle i,
-    #sb-chatbar-visibility-toggle i {
+#sb-topbar-primary .sb-chatbar-button > i,
+#sb-api-toggle i,
+#sb-home-toggle i,
+#sb-left-shell-toggle i,
+#sb-right-shell-toggle i,
+#sb-character-toggle i,
+#sb-chatbar-visibility-toggle i {
         font-size: calc(var(--sb-mobile-toggle-size) * 0.44) !important;
     }
 
@@ -3117,9 +2852,8 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
 }
 
 @media screen and (max-width: 768px) and (prefers-reduced-motion: reduce) {
-    #sb-mobile-nav,
     #sb-mobile-chat-tools,
-    .sb-nav-item {
+.sb-nav-item {
         transition: none;
     }
 }

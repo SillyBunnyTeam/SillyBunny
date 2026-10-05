@@ -6629,7 +6629,10 @@
             <nav id="right-nav-panel" class="drawer-content closedDrawer fillRight sb-shell-root" tabindex="-1">
                 <div id="right-nav-panelheader" class="fa-solid fa-grip drag-grabber">
                 </div>
-                <div class="sb-shell-nav-wrapper sb-character-shell-nav-wrapper">
+                <!-- The settings page sidebar renders the character sections; these hidden
+                     buttons stay as the state markers that syncCharacterShellTabs, the
+                     universal search index, and helper targets address by data attribute. -->
+                <div class="sb-character-shell-nav-markers" hidden aria-hidden="true">
                     <div class="sb-shell-nav sb-character-shell-nav" role="tablist" aria-label="Character sections" aria-orientation="horizontal">
                         <button id="sb_character_tab_characters" class="sb-shell-tab is-active" type="button" role="tab" aria-selected="true" data-sb-character-tab="characters">
                             <i class="fa-solid fa-address-book" aria-hidden="true"></i>
@@ -6656,16 +6659,6 @@
                             <span class="sb-shell-tab-copy"><strong data-i18n="Import">Import</strong></span>
                         </button>
                     </div>
-                </div>
-                <div class="sb-shell-header sb-character-shell-header">
-                    <button id="sb_character_shell_close" class="sb-shell-close" type="button" title="Close Characters" aria-label="Close Characters">
-                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
-                    </button>
-                    <!-- SillyBunny: mode toggle removed from Characters panel; replaced by top-bar direct toggle + Ctrl+M (feat/v1.9.0-ui-overhaul) -->
-                    <div class="sb-shell-kicker" data-i18n="Characters">Characters</div>
-                    <h2 class="sb-shell-title" tabindex="-1" data-i18n="Character Menu">Character Menu</h2>
-                    <p class="sb-shell-subtitle" data-i18n="View or create character cards here for your roleplays and chats!">View or create character cards here for your roleplays and chats!</p>
-                    <p class="sb-shell-description" data-i18n="Move between characters, groups, personas, lore, and imports without leaving the writing workspace.">Move between characters, groups, personas, lore, and imports without leaving the writing workspace.</p>
                 </div>
                 <div id="CharListButtonAndHotSwaps" class="flex-container flexnowrap">
                     <div class="flexFlowColumn flex-container">

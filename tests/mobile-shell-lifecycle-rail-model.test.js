@@ -12,7 +12,6 @@ import {
     normalizeMobileShellRailIcon,
     normalizeMobileShellText,
     resolveMobileShellQuickActionRoute,
-    resolveMobileShellRailActionVisibility,
 } from '../public/scripts/mobile-shell-lifecycle/index.js';
 
 const workspaceShell = {
@@ -151,82 +150,6 @@ describe('mobile shell rail model lifecycle', () => {
         expect(getMobileShellQuickActionKey(null)).toBe('');
     });
 
-    test('resolves built-in and quick-action rail groups without DOM types', () => {
-        const builtInAction = {
-            type: 'tab',
-            shellKey: 'left',
-            tabId: 'api',
-            icon: 'fa-plug',
-            label: 'API',
-        };
-        const customAction = {
-            type: 'custom',
-            shellKey: 'left',
-            tabId: 'api',
-            icon: 'fa-bolt',
-            label: 'API Settings',
-            dedupeKey: 'api-settings',
-        };
-        const plan = resolveMobileShellRailActionVisibility({
-            hasVerticalRail: true,
-            showCustomize: true,
-            showQuickActions: true,
-            builtInActions: [builtInAction],
-            builtInActionKeys: [getMobileShellQuickActionKey(builtInAction)],
-            quickActions: [builtInAction, customAction],
-            builtInGroupLabel: 'Workspace',
-        });
-
-        expect(plan).toEqual({
-            shouldHideCustomizeTabs: true,
-            beforeGroups: [{
-                type: 'built-in',
-                label: 'Workspace',
-                actions: [builtInAction],
-            }],
-            afterGroups: [{
-                type: 'quick-actions',
-                label: 'Quick Actions',
-                actions: [customAction],
-            }],
-            quickActions: [customAction],
-        });
-    });
-
-    test('keeps replacement actions and non-vertical rails explicit', () => {
-        const replacementAction = {
-            type: 'tab',
-            shellKey: 'right',
-            tabId: 'settings',
-            icon: 'fa-screwdriver-wrench',
-            label: 'Settings',
-        };
-
-        expect(resolveMobileShellRailActionVisibility({
-            hasVerticalRail: true,
-            showQuickActions: true,
-            quickActions: [],
-            replacementAction,
-        }).afterGroups).toEqual([{
-            type: 'quick-actions',
-            label: 'Quick Actions',
-            actions: [replacementAction],
-        }]);
-
-        expect(resolveMobileShellRailActionVisibility({
-            hasVerticalRail: false,
-            showCustomize: true,
-            showQuickActions: true,
-            builtInActions: [replacementAction],
-            quickActions: [replacementAction],
-        })).toEqual({
-            shouldHideCustomizeTabs: false,
-            beforeGroups: [],
-            afterGroups: [],
-            quickActions: [replacementAction],
-        });
-    });
-
     test('exposes rail model decisions through the lifecycle seam', () => {
         const lifecycle = createMobileShellLifecycle();
 
@@ -238,6 +161,5 @@ describe('mobile shell rail model lifecycle', () => {
         expect(lifecycle.railModel.resolveQuickActionRoute).toBe(resolveMobileShellQuickActionRoute);
         expect(lifecycle.railModel.normalizeQuickAction).toBe(normalizeMobileShellQuickAction);
         expect(lifecycle.railModel.getQuickActionKey).toBe(getMobileShellQuickActionKey);
-        expect(lifecycle.railModel.resolveActionVisibility).toBe(resolveMobileShellRailActionVisibility);
     });
 });

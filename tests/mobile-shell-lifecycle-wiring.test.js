@@ -523,20 +523,6 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('const sbMobileShellLifecycle = createMobileShellLifecycle();');
     });
 
-    test('routes shell rail drag and scroll decisions through the lifecycle seam', () => {
-        const buildShellSource = getFunctionSource('buildShell');
-
-        expect(buildShellSource).toContain('sbMobileShellLifecycle.nav.resolvePageScroll({');
-        expect(buildShellSource).toContain('nav.scrollBy(scrollRequest);');
-        expect(buildShellSource).toContain('sbMobileShellLifecycle.nav.createDragState({');
-        expect(buildShellSource).toContain('sbMobileShellLifecycle.nav.resolveDragMove({');
-        expect(buildShellSource).toContain('sbMobileShellLifecycle.nav.resolveDragEnd({');
-        expect(buildShellSource).toContain('sbMobileShellLifecycle.nav.shouldSuppressClick({');
-        expect(buildShellSource).toContain('sbMobileShellLifecycle.nav.resolveScrollIndicators({');
-        expect(buildShellSource).not.toContain('SB_SHELL_NAV_TOUCH_DRAG_THRESHOLD_PX');
-        expect(buildShellSource).not.toContain('Date.now() + 350');
-    });
-
     test('routes mobile modal inert decisions through the lifecycle seam', () => {
         const syncMobileModalStateSource = getFunctionSource('syncMobileModalState');
 
@@ -649,35 +635,6 @@ describe('mobile shell lifecycle wiring', () => {
         expect(browserFixesSource).toContain('if ((window.innerHeight || 0) - viewport.height <= 80 && viewport.offsetTop <= 2) {');
         expect(browserFixesSource).toContain('const scrollTop = Math.max(window.scrollY || 0, document.scrollingElement?.scrollTop || 0);');
         expect(browserFixesSource).toContain('return activeElement.getBoundingClientRect().bottom + scrollTop > viewport.height - 8;');
-    });
-
-    test('dedupes rail quick actions against all built-in rail actions', () => {
-        const syncMobileShellRailActionsSource = getFunctionSource('syncMobileShellRailActions');
-
-        expect(tabsSource).toContain('function getAllBuiltInRailActionKeys(');
-        expect(syncMobileShellRailActionsSource).toContain('getAllBuiltInRailActionKeys()');
-        expect(syncMobileShellRailActionsSource).not.toContain('builtInRailActions.map(getMobileQuickActionKey)');
-    });
-
-    test('routes mobile rail model decisions through the lifecycle seam', () => {
-        const getMobileQuickActionContextSource = getFunctionSource('getMobileQuickActionContext');
-        const normalizeMobileQuickActionSource = getFunctionSource('normalizeMobileQuickAction');
-        const getMobileQuickActionKeySource = getFunctionSource('getMobileQuickActionKey');
-        const syncMobileShellRailActionsSource = getFunctionSource('syncMobileShellRailActions');
-
-        expect(tabsSource).toContain('const SB_MOBILE_QUICK_ACTION_LIMIT = sbMobileShellLifecycle.railModel.limits.quickActionLimit;');
-        expect(tabsSource).toContain('const SB_MOBILE_QUICK_ACTION_ICON_FALLBACK = sbMobileShellLifecycle.railModel.limits.iconFallback;');
-        expect(getMobileQuickActionContextSource).toContain('sbMobileShellLifecycle.railModel.resolveQuickActionRoute(value);');
-        expect(normalizeMobileQuickActionSource).toContain('sbMobileShellLifecycle.railModel.normalizeQuickAction({');
-        expect(normalizeMobileQuickActionSource).toContain('limits: sbMobileShellLifecycle.railModel.limits,');
-        expect(getMobileQuickActionKeySource).toContain('sbMobileShellLifecycle.railModel.getQuickActionKey(normalizedAction);');
-        expect(syncMobileShellRailActionsSource).toContain('sbMobileShellLifecycle.railModel.resolveActionVisibility({');
-        expect(syncMobileShellRailActionsSource).toContain('builtInActionKeys: Array.from(getAllBuiltInRailActionKeys()),');
-        expect(syncMobileShellRailActionsSource).toContain('shouldHideCustomizeTabs = railActionPlan.shouldHideCustomizeTabs;');
-        expect(syncMobileShellRailActionsSource).toContain('for (const group of railActionPlan.beforeGroups)');
-        expect(syncMobileShellRailActionsSource).toContain('if (railActionPlan.afterGroups.length > 0)');
-        expect(syncMobileShellRailActionsSource).not.toContain('const shouldHideCustomizeTabs = showCustomize;');
-        expect(syncMobileShellRailActionsSource).not.toContain('railQuickActionState.filter(action => !builtInRailActionKeys.has(getMobileQuickActionKey(action)))');
     });
 
     test('routes inline drawer decisions through the lifecycle seam', () => {

@@ -498,65 +498,6 @@ export function getMobileShellQuickActionKey(action = null) {
     ].filter(Boolean).join('::');
 }
 
-/**
- * Resolves side-rail action groups without constructing DOM.
- * @param {object} options Options.
- * @param {boolean} [options.hasVerticalRail=false] Whether rail shortcuts render.
- * @param {boolean} [options.showCustomize=false] Whether built-in customize/workspace actions render.
- * @param {boolean} [options.showQuickActions=false] Whether custom quick actions render.
- * @param {object[]} [options.builtInActions=[]] Built-in actions for the current shell.
- * @param {string[]} [options.builtInActionKeys=[]] Built-in action keys to hide from custom actions.
- * @param {object[]} [options.quickActions=[]] Persisted quick actions for the active rail mode.
- * @param {object|null} [options.replacementAction=null] Optional single replacement quick action.
- * @param {string} [options.builtInGroupLabel=''] Label for the built-in action group.
- * @returns {{shouldHideCustomizeTabs: boolean, beforeGroups: object[], afterGroups: object[], quickActions: object[]}}
- */
-export function resolveMobileShellRailActionVisibility({
-    hasVerticalRail = false,
-    showCustomize = false,
-    showQuickActions = false,
-    builtInActions = [],
-    builtInActionKeys = [],
-    quickActions = [],
-    replacementAction = null,
-    builtInGroupLabel = '',
-} = {}) {
-    const shouldRenderRail = Boolean(hasVerticalRail);
-    const shouldShowCustomize = shouldRenderRail && Boolean(showCustomize);
-    const builtInItems = shouldShowCustomize && Array.isArray(builtInActions)
-        ? builtInActions.filter(Boolean)
-        : [];
-    const builtInKeys = new Set(shouldShowCustomize && Array.isArray(builtInActionKeys) ? builtInActionKeys : []);
-    const visibleQuickActions = replacementAction
-        ? [replacementAction].filter(Boolean)
-        : (Array.isArray(quickActions) ? quickActions : [])
-            .filter(action => !builtInKeys.has(getMobileShellQuickActionKey(action)));
-    const beforeGroups = [];
-    const afterGroups = [];
-
-    if (builtInItems.length > 0) {
-        beforeGroups.push({
-            type: 'built-in',
-            label: String(builtInGroupLabel || 'Built In'),
-            actions: builtInItems,
-        });
-    }
-
-    if (shouldRenderRail && Boolean(showQuickActions) && visibleQuickActions.length > 0) {
-        afterGroups.push({
-            type: 'quick-actions',
-            label: 'Quick Actions',
-            actions: visibleQuickActions,
-        });
-    }
-
-    return {
-        shouldHideCustomizeTabs: shouldShowCustomize,
-        beforeGroups,
-        afterGroups,
-        quickActions: visibleQuickActions,
-    };
-}
 
 /**
  * Resolves which open inline drawer siblings should close when a drawer opens.
@@ -717,7 +658,6 @@ export const MOBILE_SHELL_VIEWPORT_SYNC_STEP = Object.freeze({
     SYNC_SHELL_VIEWPORT_BOUNDS: 'sync-shell-viewport-bounds',
     CLOSE_MOBILE_NAV: 'close-mobile-nav',
     CLOSE_MOBILE_CHAT_TOOLS: 'close-mobile-chat-tools',
-    SYNC_MOBILE_SHELL_RAIL_ACTIONS: 'sync-mobile-shell-rail-actions',
     APPLY_TOPBAR_OFFSET: 'apply-topbar-offset',
     SYNC_CHATBAR_VISIBILITY_STATE: 'sync-chatbar-visibility-state',
     UPDATE_TOP_BAR_BRAND: 'update-top-bar-brand',
@@ -1057,7 +997,6 @@ export function resolveMobileViewportSyncPlan({
     }
 
     steps.push(
-        MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_MOBILE_SHELL_RAIL_ACTIONS,
         MOBILE_SHELL_VIEWPORT_SYNC_STEP.APPLY_TOPBAR_OFFSET,
         MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_CHATBAR_VISIBILITY_STATE,
         MOBILE_SHELL_VIEWPORT_SYNC_STEP.UPDATE_TOP_BAR_BRAND,
@@ -1105,7 +1044,6 @@ export function createMobileShellLifecycle() {
             resolveQuickActionRoute: resolveMobileShellQuickActionRoute,
             normalizeQuickAction: normalizeMobileShellQuickAction,
             getQuickActionKey: getMobileShellQuickActionKey,
-            resolveActionVisibility: resolveMobileShellRailActionVisibility,
         },
         inlineDrawers: {
             resolveAutoCloseSiblings: resolveInlineDrawerAutoCloseSiblings,

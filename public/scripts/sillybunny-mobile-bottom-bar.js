@@ -2,7 +2,7 @@
  * Compact mobile bottom chat bar.
  * One chip row (persona, current chat, extension tray toggle) sits above the composer. The chat
  * chip opens a sheet with the chat picker and every chat action; the tray toggle reveals the
- * extension action buttons in place. Driven by sillybunny-mobile-section-nav.js.
+ * extension action buttons in place. Driven by initializeMobileShellUi() in sillybunny-tabs.js.
  */
 
 import { translate } from './i18n.js';

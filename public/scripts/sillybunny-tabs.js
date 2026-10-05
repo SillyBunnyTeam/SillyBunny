@@ -11,7 +11,7 @@ import {
     normalizeMobileShellText as normalizeText,
 } from './mobile-shell-lifecycle/index.js';
 import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
-import { initializeMobileSectionNav } from './sillybunny-mobile-section-nav.js';
+import { initializeMobileBottomBar, syncMobileBottomBar } from './sillybunny-mobile-bottom-bar.js';
 import { initializeMessageActions } from './sillybunny-message-actions.js';
 import { initializeToastMotion } from './sillybunny-toast-motion.js';
 import {
@@ -19,7 +19,6 @@ import {
     animateOut,
     MOTION_FAST,
     MOTION_SLOW,
-    prefersReducedMotion as prefersShellReducedMotion,
     SPRING_SHEET,
     stopMotion,
 } from './sillybunny-motion.js';
@@ -96,7 +95,6 @@ async function prepareShellSearch() {
         Array.from(shell.tabs.values(), tab => tab.ensureReady?.()),
     ));
 }
-const SB_SHELL_SUBTITLE_PLACEHOLDER = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.';
 
 const SB_STORAGE_KEYS = Object.freeze({
     leftTab: 'sb-left-tab',
@@ -471,47 +469,7 @@ const SB_MESSAGE_STYLES = Object.freeze([
     { id: '2', label: 'Document', icon: 'fa-file-lines' },
 ]);
 
-const SB_WORLD_INFO_SUBTITLE_HTML = 'Advanced: Modify lorebooks for character cards here. For more information, read the guide found <a class="notes-link" href="https://docs.sillytavern.app/usage/core-concepts/worldinfo/" target="_blank" rel="noopener noreferrer">here</a>.';
 const SB_SAMPLING_SUBTITLE_HTML = 'Modify model text parameters here - useful for dialing in responses! If you\'re unsure what these all mean, check out <a class="notes-link" href="https://rentry.org/samplersettings" target="_blank" rel="noopener noreferrer">Geechan\'s guide on sampling.</a>';
-
-const SB_CHARACTER_TAB_COPY = Object.freeze({
-    characters: {
-        title: 'Character Menu',
-        subtitle: 'View or create character cards here for your roleplays and chats!',
-        description: 'Move between characters, groups, personas, lore, and imports without leaving the writing workspace.',
-    },
-    groups: {
-        title: 'Group Menu',
-        subtitle: 'View or create group chats here for your roleplays and chats!',
-        description: 'Sort group chats, check members, and return to character cards without losing your place.',
-    },
-    conversation: {
-        title: 'Conversation Mode',
-        subtitle: SB_SHELL_SUBTITLE_PLACEHOLDER,
-        description: 'Tune schedules, cooldowns, format prompts, and DM helpers without opening a group chat.',
-    },
-    editor: {
-        title: 'Card Editor',
-        subtitle: 'Edit your character cards or group chats in great detail here!',
-        description: 'Use the subtabs to keep core identity, definitions, greetings, and metadata separated.',
-    },
-    'world-info': {
-        title: 'World Info',
-        subtitle: SB_WORLD_INFO_SUBTITLE_HTML,
-        subtitleIsHtml: true,
-        description: 'Create, edit, import, and activate World Info entries without leaving the Characters menu.',
-    },
-    persona: {
-        title: 'Persona',
-        subtitle: 'Edit your own persona here for roleplay and chats!',
-        description: 'Edit persona details, locks, and defaults in the same flow as your character work.',
-    },
-    import: {
-        title: 'Import',
-        subtitle: 'Directly import character cards here from various sources.',
-        description: 'PNG, JSON, YAML, CHARX, BYAF, and supported URL imports stay one tab away.',
-    },
-});
 
 const SB_CHARACTER_EDITOR_SUB_TABS = Object.freeze([
     'char-info',
@@ -532,7 +490,6 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
 ]);
 const SB_CHARACTER_PANEL_DEFAULT_TAB = 'characters';
 
-const SB_PERSONA_HELP_LINK_HTML = '<a class="notes-link sb-character-title-help" href="https://docs.sillytavern.app/usage/core-concepts/personas/" target="_blank"><span class="fa-solid fa-circle-question note-link-span"></span></a>';
 
 const SB_SHELLS = Object.freeze({
     left: {
@@ -651,24 +608,6 @@ const SB_SHELLS = Object.freeze({
     },
 });
 
-function renderShellSubtitle(target, subtitle, { isHtml = false } = {}) {
-    if (!(target instanceof HTMLElement)) {
-        return;
-    }
-
-    target.textContent = '';
-    if (isHtml) {
-        target.insertAdjacentHTML('beforeend', subtitle || '');
-        // Subtitles render single-line with text-overflow: ellipsis; expose the
-        // full text as a tooltip so truncated copy stays readable.
-        target.title = target.textContent.trim();
-        return;
-    }
-
-    target.textContent = subtitle || '';
-    target.title = (subtitle || '').trim();
-}
-
 const SB_DRAWER_ROUTES = Object.freeze({
     'user-settings-button': { shell: 'right', tab: 'settings' },
     'sys-settings-button': { shell: 'left', tab: 'api' },
@@ -704,7 +643,6 @@ const SB_UNIVERSAL_SEARCH_EMPTY_HINT = 'Could not find query. Try a broader term
 const SB_UNIVERSAL_SEARCH_RESULT_LIMIT = 10;
 const SB_MOBILE_QUICK_ACTION_LIMIT = sbMobileShellLifecycle.railModel.limits.quickActionLimit;
 const SB_MOBILE_QUICK_ACTION_ICON_FALLBACK = sbMobileShellLifecycle.railModel.limits.iconFallback;
-let sbIsSyncingRailActions = false;
 const SB_MOBILE_NAV_CLOSED_ICON = 'fa-compass';
 const SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS = 350;
 const SB_MOBILE_NAV_LAYOUTS = Object.freeze(['horizontal', 'vertical']);
@@ -1064,10 +1002,6 @@ function getQuickActionState(mode) {
     return mode === 'desktop' ? sbState.desktopQuickActions : sbState.mobileQuickActions;
 }
 
-function getActiveShellRailMode() {
-    return isMobileViewport() ? 'mobile' : 'desktop';
-}
-
 function getMobileNavCustomizeLocationLabel(mode = 'mobile') {
     return getNavState(mode).layout === 'horizontal'
         ? 'Show Workspace and Customize buttons in top bar'
@@ -1085,17 +1019,6 @@ function getMobileNavReplacementTargetConfig(target = sbState.mobileNav.replacem
     const normalizedTarget = normalizeMobileNavReplacementTarget(target);
     return SB_MOBILE_NAV_PAGE_TARGETS.find(item => item.value === normalizedTarget)
         ?? SB_MOBILE_NAV_PAGE_TARGETS[0];
-}
-
-function createNavReplacementQuickAction(target) {
-    const config = getMobileNavReplacementTargetConfig(target);
-    return normalizeMobileQuickAction({
-        type: 'tab',
-        shellKey: config.shellKey,
-        tabId: config.tabId,
-        icon: config.icon,
-        label: config.label,
-    });
 }
 
 function normalizeSurfaceTransparency(value) {
@@ -1329,7 +1252,6 @@ function setQuickActionsForMode(mode, actions, { persist = true } = {}) {
 
         renderMobileQuickActionSettingsList('desktop');
         refreshMobileQuickActionSearchResults('desktop');
-        syncMobileShellRailActions();
         return;
     }
 
@@ -1342,7 +1264,6 @@ function setQuickActionsForMode(mode, actions, { persist = true } = {}) {
     renderMobileQuickActionSettingsList('mobile');
     refreshMobileQuickActionSearchResults('mobile');
     refreshMobileNavQuickActions();
-    syncMobileShellRailActions();
 }
 
 function setMobileQuickActions(actions, options = {}) {
@@ -1631,8 +1552,6 @@ function setMobileNavLayout(layout, { persist = true } = {}) {
     if (persist) {
         safeSetItem(SB_STORAGE_KEYS.mobileNavLayout, nextLayout);
     }
-
-    syncMobileShellRailActions();
     updateThemePickerUi();
 }
 
@@ -1656,8 +1575,6 @@ function setMobileNavShowCustomize(enabled, { persist = true } = {}) {
     if (persist) {
         safeSetItem(SB_STORAGE_KEYS.mobileNavShowCustomize, String(nextEnabled));
     }
-
-    syncMobileShellRailActions();
     updateThemePickerUi();
 }
 
@@ -1671,7 +1588,6 @@ function setMobileNavShowQuickActions(enabled, { persist = true } = {}) {
     }
 
     refreshMobileNavQuickActions();
-    syncMobileShellRailActions();
     updateThemePickerUi();
 }
 
@@ -1685,7 +1601,6 @@ function setMobileNavReplaceQuickActions(enabled, { persist = true } = {}) {
     }
 
     refreshMobileNavQuickActions();
-    syncMobileShellRailActions();
     updateMobileNavButtonLabel();
     updateThemePickerUi();
 }
@@ -1710,8 +1625,6 @@ function setDesktopNavLayout(layout, { persist = true } = {}) {
     if (persist) {
         safeSetItem(SB_STORAGE_KEYS.desktopNavLayout, nextLayout);
     }
-
-    syncMobileShellRailActions();
     updateThemePickerUi();
 }
 
@@ -1735,8 +1648,6 @@ function setDesktopNavShowCustomize(enabled, { persist = true } = {}) {
     if (persist) {
         safeSetItem(SB_STORAGE_KEYS.desktopNavShowCustomize, String(nextEnabled));
     }
-
-    syncMobileShellRailActions();
     updateThemePickerUi();
 }
 
@@ -1748,8 +1659,6 @@ function setDesktopNavShowQuickActions(enabled, { persist = true } = {}) {
     if (persist) {
         safeSetItem(SB_STORAGE_KEYS.desktopNavShowQuickActions, String(nextEnabled));
     }
-
-    syncMobileShellRailActions();
     updateThemePickerUi();
 }
 
@@ -1761,8 +1670,6 @@ function setDesktopNavReplaceQuickActions(enabled, { persist = true } = {}) {
     if (persist) {
         safeSetItem(SB_STORAGE_KEYS.desktopNavReplaceQuickActions, String(nextEnabled));
     }
-
-    syncMobileShellRailActions();
     updateThemePickerUi();
 }
 
@@ -1773,8 +1680,6 @@ function setDesktopNavReplacementTarget(target, { persist = true } = {}) {
     if (persist) {
         safeSetItem(SB_STORAGE_KEYS.desktopNavReplacementTarget, nextTarget);
     }
-
-    syncMobileShellRailActions();
     updateThemePickerUi();
 }
 
@@ -2268,10 +2173,6 @@ function isMobileViewport() {
     return window.matchMedia(SB_MOBILE_MEDIA_QUERY).matches;
 }
 
-function prefersReducedMotion() {
-    return prefersShellReducedMotion();
-}
-
 function getLayoutViewportScrollAnchor() {
     const scrollingElement = document.scrollingElement;
 
@@ -2353,30 +2254,6 @@ function scrollElementIntoManagedView(target, { block = 'nearest', behavior = 'a
 
     queueLayoutViewportScrollRestore(anchor);
     return true;
-}
-
-function scrollShellTabButtonIntoView(nav, button, { smooth = false } = {}) {
-    if (!(nav instanceof HTMLElement) || !(button instanceof HTMLElement)) {
-        return;
-    }
-
-    if (!isActuallyVisible(button)) {
-        return;
-    }
-
-    const navRect = nav.getBoundingClientRect();
-    const buttonRect = button.getBoundingClientRect();
-    const leftOverflow = buttonRect.left - navRect.left;
-    const rightOverflow = buttonRect.right - navRect.right;
-
-    if (leftOverflow >= 0 && rightOverflow <= 0) {
-        return;
-    }
-
-    nav.scrollBy({
-        left: leftOverflow < 0 ? leftOverflow : rightOverflow,
-        behavior: smooth && !prefersReducedMotion() ? 'smooth' : 'auto',
-    });
 }
 
 function isTouchOnlyDesktopViewport() {
@@ -2582,10 +2459,6 @@ function getShellViewportSize() {
 }
 
 function syncShellViewportBounds() {
-    if (sbIsSyncingRailActions) {
-        return;
-    }
-
     const root = document.documentElement;
     const viewportSize = getShellViewportSize();
     const topOffset = Math.max(0, Math.round(getResolvedShellTopbarOffset()));
@@ -7839,7 +7712,6 @@ function syncCharacterShellTabs(activeTab = null) {
         syncCharacterListControls(menuType);
     }
 
-    syncCharacterHeaderCopy(normalizedTab);
     syncCharacterModeToggle();
 
     panel?.querySelectorAll('[data-sb-character-tab]').forEach(tab => {
@@ -7878,30 +7750,6 @@ function syncCharacterShellTabs(activeTab = null) {
                 label: tabConfig?.label || normalizedTab,
             },
         }));
-    }
-}
-
-function syncCharacterHeaderCopy(activeTab = 'characters') {
-    const copy = SB_CHARACTER_TAB_COPY[activeTab] ?? SB_CHARACTER_TAB_COPY.characters;
-    const panel = getCharacterPanel();
-    const title = panel?.querySelector('.sb-character-shell-header .sb-shell-title');
-    const subtitle = panel?.querySelector('.sb-character-shell-header .sb-shell-subtitle');
-    const description = panel?.querySelector('.sb-character-shell-header .sb-shell-description');
-
-    if (title instanceof HTMLElement) {
-        title.textContent = '';
-        title.append(document.createTextNode(copy.title));
-        if (activeTab === 'persona') {
-            title.insertAdjacentHTML('beforeend', SB_PERSONA_HELP_LINK_HTML);
-        }
-    }
-
-    if (subtitle instanceof HTMLElement) {
-        renderShellSubtitle(subtitle, copy.subtitle, { isHtml: copy.subtitleIsHtml === true });
-    }
-
-    if (description instanceof HTMLElement) {
-        description.textContent = copy.description;
     }
 }
 
@@ -12022,36 +11870,6 @@ async function activateMobileQuickAction(action) {
     revealSearchMatch(action.shellKey, match);
 }
 
-function activateMobileNavAction(action) {
-    const normalizedAction = normalizeMobileQuickAction(action);
-    if (!normalizedAction) {
-        return;
-    }
-
-    if (isMobileViewport()) {
-        closeMobileNav();
-    }
-
-    if (normalizedAction.type === 'custom') {
-        activateMobileQuickAction(normalizedAction);
-        return;
-    }
-
-    if (normalizedAction.type === 'shell') {
-        closeAllDropdowns({ except: normalizedAction.shellKey });
-        openShell(normalizedAction.shellKey);
-        return;
-    }
-
-    if (normalizedAction.shellKey === 'characters') {
-        openCharacterPanelTab(normalizedAction.tabId);
-        return;
-    }
-
-    closeAllDropdowns({ except: normalizedAction.shellKey });
-    openShell(normalizedAction.shellKey, normalizedAction.tabId);
-}
-
 async function renderUniversalSearchResults(query) {
     const searchState = getUniversalSearchState();
     const results = searchState.results;
@@ -12299,7 +12117,7 @@ function revealSearchMatch(shellKey, match) {
     }, 40);
 }
 
-function setActiveTab(shellKey, tabId, { focusButton = false } = {}) {
+function setActiveTab(shellKey, tabId) {
     const shellState = getShellState(shellKey);
     const shellConfig = getShellConfig(shellKey);
 
@@ -12322,28 +12140,15 @@ function setActiveTab(shellKey, tabId, { focusButton = false } = {}) {
 
     for (const [currentTabId, tabState] of shellState.tabs.entries()) {
         const isActive = currentTabId === tabId;
-        const isHiddenRailDuplicate = tabState.button?.classList.contains('sb-shell-tab-mobile-rail-hidden') ?? false;
-        tabState.button?.classList.toggle('is-active', isActive);
-        tabState.button?.setAttribute('aria-selected', String(isActive));
-        tabState.button?.setAttribute('tabindex', isActive && !isHiddenRailDuplicate ? '0' : '-1');
         tabState.panel.classList.toggle('sb-shell-panel-active', isActive);
         tabState.panel.setAttribute('aria-hidden', String(!isActive));
         // Invalidate search index when switching to a tab so stale DOM isn't searched
         if (isActive) tabState.searchIndex = null;
     }
 
-    syncMobileShellRailActionState(shellKey, tabId);
     queueTopbarPageStateSync();
 
     const activeTab = shellState.tabs.get(tabId);
-    shellState.headerTitle.textContent = activeTab.label;
-    renderShellSubtitle(shellState.headerSubtitle, activeTab.description ?? '', { isHtml: activeTab.descriptionIsHtml === true });
-    scrollShellTabButtonIntoView(shellState.nav, activeTab.button, { smooth: focusButton });
-    shellState.updateNavScrollIndicators?.();
-
-    if (focusButton && isActuallyVisible(activeTab.button)) {
-        activeTab.button?.focus({ preventScroll: true });
-    }
 
     if (previousTab && previousTab.id !== activeTab.id) {
         previousTab.onDeactivate?.();
@@ -12400,177 +12205,20 @@ function buildShell(shellKey) {
     moveChildrenIntoContainer(shellRoot, originalContent);
     originalContent.querySelector('#settingsSearch')?.classList.add('sb-legacy-search-hidden');
 
+    // The settings page supplies its own sidebar, title header, and close button, so the
+    // in-shell header and horizontal tab rail are no longer built.
     const frame = createElement('div', { className: 'sb-shell-frame' });
-    const navWrapper = createElement('div', { className: 'sb-shell-nav-wrapper' });
-    const navScrollLeft = createElement('button', {
-        className: 'sb-shell-nav-scroll sb-shell-nav-scroll-left',
-        attrs: {
-            type: 'button',
-            'aria-label': `Scroll ${shellConfig.title} sections left`,
-        },
-    });
-    const nav = createElement('nav', {
-        className: 'sb-shell-nav',
-        attrs: {
-            role: 'tablist',
-            'aria-label': `${shellConfig.title} sections`,
-            'aria-orientation': 'horizontal',
-        },
-    });
-    const navScrollRight = createElement('button', {
-        className: 'sb-shell-nav-scroll sb-shell-nav-scroll-right',
-        attrs: {
-            type: 'button',
-            'aria-label': `Scroll ${shellConfig.title} sections right`,
-        },
-    });
-    navScrollLeft.innerHTML = '<i class="fa-solid fa-chevron-left" aria-hidden="true"></i>';
-    navScrollRight.innerHTML = '<i class="fa-solid fa-chevron-right" aria-hidden="true"></i>';
-    navWrapper.append(navScrollLeft, nav, navScrollRight);
-
-    const scrollNavByPage = direction => {
-        const scrollRequest = sbMobileShellLifecycle.nav.resolvePageScroll({
-            direction,
-            clientWidth: nav.clientWidth,
-            prefersReducedMotion: prefersReducedMotion(),
-        });
-
-        nav.scrollBy(scrollRequest);
-    };
-
-    let navTouchDrag = null;
-    let suppressNavClickUntil = 0;
-
-    const clearNavTouchDrag = () => {
-        navTouchDrag = null;
-    };
-
-    const finishNavTouchDrag = event => {
-        const dragEnd = sbMobileShellLifecycle.nav.resolveDragEnd({
-            dragState: navTouchDrag,
-            nowMs: Date.now(),
-        });
-
-        if (dragEnd.suppressClickUntil) {
-            suppressNavClickUntil = dragEnd.suppressClickUntil;
-        }
-
-        if (dragEnd.shouldStopPropagation) {
-            event.stopPropagation();
-        }
-
-        navTouchDrag = dragEnd.dragState;
-    };
-
-    const beginNavTouchDrag = event => {
-        const touch = event.touches?.[0];
-
-        navTouchDrag = sbMobileShellLifecycle.nav.createDragState({
-            isMobileViewport: isMobileViewport(),
-            touch,
-            scrollLeft: nav.scrollLeft,
-        });
-    };
-
-    const updateNavTouchDrag = event => {
-        if (!navTouchDrag) {
-            return;
-        }
-
-        const dragMove = sbMobileShellLifecycle.nav.resolveDragMove({
-            dragState: navTouchDrag,
-            touch: event.touches?.[0],
-        });
-        navTouchDrag = dragMove.dragState;
-
-        if (!navTouchDrag) {
-            return;
-        }
-
-        if (dragMove.shouldPreventDefault && event.cancelable) {
-            event.preventDefault();
-        }
-
-        if (dragMove.shouldStopPropagation) {
-            event.stopPropagation();
-        }
-
-        if (dragMove.nextScrollLeft !== null) {
-            nav.scrollLeft = dragMove.nextScrollLeft;
-            updateNavScrollIndicators();
-        }
-    };
-
-    const suppressClickAfterNavDrag = event => {
-        if (!sbMobileShellLifecycle.nav.shouldSuppressClick({
-            nowMs: Date.now(),
-            suppressClickUntil: suppressNavClickUntil,
-        })) {
-            return;
-        }
-
-        event.preventDefault();
-        event.stopPropagation();
-    };
-
-    const updateNavScrollIndicators = () => {
-        const { canScrollLeft, canScrollRight } = sbMobileShellLifecycle.nav.resolveScrollIndicators({
-            scrollLeft: nav.scrollLeft,
-            clientWidth: nav.clientWidth,
-            scrollWidth: nav.scrollWidth,
-        });
-
-        navWrapper.classList.toggle('sb-can-scroll-left', canScrollLeft);
-        navWrapper.classList.toggle('sb-can-scroll-right', canScrollRight);
-        navScrollLeft.disabled = !canScrollLeft;
-        navScrollRight.disabled = !canScrollRight;
-    };
-
-    nav.addEventListener('scroll', updateNavScrollIndicators, { passive: true });
-    nav.addEventListener('click', suppressClickAfterNavDrag, true);
-    nav.addEventListener('touchstart', beginNavTouchDrag, { passive: true });
-    nav.addEventListener('touchmove', updateNavTouchDrag, { passive: false });
-    nav.addEventListener('touchend', finishNavTouchDrag, { passive: true });
-    nav.addEventListener('touchcancel', clearNavTouchDrag, { passive: true });
-    window.addEventListener('resize', updateNavScrollIndicators, { passive: true });
-    navScrollLeft.addEventListener('click', () => scrollNavByPage(-1));
-    navScrollRight.addEventListener('click', () => scrollNavByPage(1));
-
-    setTimeout(updateNavScrollIndicators, 100);
-
     const main = createElement('div', { className: 'sb-shell-main' });
-    const header = createElement('div', { className: 'sb-shell-header' });
-    const closeButton = createElement('button', {
-        className: 'sb-shell-close',
-        attrs: {
-            type: 'button',
-            title: `Close ${shellConfig.title}`,
-            'aria-label': `Close ${shellConfig.title}`,
-        },
-    });
-    const eyebrow = createElement('div', { className: 'sb-shell-kicker', text: shellConfig.title });
-    const title = createElement('h2', { className: 'sb-shell-title', text: shellConfig.baseTab.label, attrs: { tabindex: '-1' } });
-    const subtitle = createElement('p', { className: 'sb-shell-subtitle' });
-    const shellDescription = createElement('p', { className: 'sb-shell-description', text: shellConfig.subtitle });
     const panelBody = createElement('div', { className: 'sb-shell-body' });
 
-    closeButton.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
-    renderShellSubtitle(subtitle, shellConfig.baseTab.description ?? '', { isHtml: shellConfig.baseTab.descriptionIsHtml === true });
-    closeButton.addEventListener('click', () => closeShell(shellKey));
-
-    header.append(closeButton, eyebrow, title, subtitle, shellDescription);
-    main.append(header, panelBody);
-    frame.append(navWrapper, main);
+    main.append(panelBody);
+    frame.append(main);
     shellRoot.appendChild(frame);
 
     const shellState = {
         activeTabId: shellConfig.defaultTabId,
         tabs: new Map(),
-        nav,
-        headerTitle: title,
-        headerSubtitle: subtitle,
         root: shellRoot,
-        updateNavScrollIndicators,
     };
 
     sbState.shells[shellKey] = shellState;
@@ -12654,68 +12302,9 @@ function registerShellTab(shellKey, tabConfig, panelBundle, explicitSearchRoot =
         return;
     }
 
-    const button = createElement('button', {
-        className: 'sb-shell-tab',
-        attrs: {
-            type: 'button',
-            role: 'tab',
-            tabindex: '-1',
-            'aria-selected': 'false',
-            'aria-label': tabConfig.label,
-            title: tabConfig.label,
-            'data-sb-tab': tabConfig.id,
-        },
-    });
-
-    button.innerHTML = `
-        <i class="fa-solid ${tabConfig.icon}" aria-hidden="true"></i>
-        <span class="sb-shell-tab-copy">
-            <strong>${tabConfig.label}</strong>
-        </span>
-    `;
-
-    button.addEventListener('click', () => {
-        setActiveTab(shellKey, tabConfig.id, { focusButton: false });
-        openShell(shellKey);
-    });
-
-    button.addEventListener('keydown', event => {
-        const buttons = Array.from(shellState.nav.querySelectorAll('.sb-shell-tab[data-sb-tab]')).filter(
-            item => item instanceof HTMLElement && !item.classList.contains('sb-shell-tab-mobile-rail-hidden'),
-        );
-        const currentIndex = buttons.indexOf(button);
-
-        if (currentIndex === -1) {
-            return;
-        }
-
-        const lastIndex = buttons.length - 1;
-        let nextIndex = currentIndex;
-
-        if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
-            nextIndex = currentIndex === lastIndex ? 0 : currentIndex + 1;
-        } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
-            nextIndex = currentIndex === 0 ? lastIndex : currentIndex - 1;
-        } else if (event.key === 'Home') {
-            nextIndex = 0;
-        } else if (event.key === 'End') {
-            nextIndex = lastIndex;
-        } else {
-            return;
-        }
-
-        event.preventDefault();
-        const nextButton = buttons[nextIndex];
-        const nextTabId = nextButton?.getAttribute('data-sb-tab');
-
-        if (nextTabId) {
-            setActiveTab(shellKey, nextTabId, { focusButton: true });
-        }
-    });
-
+    // Tab buttons live in the settings page sidebar; the shell only tracks panel state.
     shellState.tabs.set(tabConfig.id, {
         ...tabConfig,
-        button,
         panel: panelBundle.panel,
         searchRoot: explicitSearchRoot ?? panelBundle.searchRoot ?? panelBundle.scroller,
         searchIndex: null,
@@ -12723,293 +12312,6 @@ function registerShellTab(shellKey, tabConfig, panelBundle, explicitSearchRoot =
         onActivate: panelBundle.onActivate ?? tabConfig.onActivate ?? null,
         onDeactivate: panelBundle.onDeactivate ?? tabConfig.onDeactivate ?? null,
     });
-    shellState.nav.appendChild(button);
-    shellState.updateNavScrollIndicators?.();
-    syncMobileShellRailActions(shellKey);
-}
-
-function createMobileShellRailDivider(label) {
-    return createElement('div', {
-        className: 'sb-shell-rail-divider',
-        attrs: {
-            role: 'separator',
-            'aria-label': label,
-        },
-    });
-}
-
-function createMobileShellRailButton(item, actionHandler, className = '') {
-    const action = normalizeMobileQuickAction({
-        type: item.type || 'tab',
-        shellKey: item.shellKey,
-        tabId: item.tabId,
-        icon: item.icon,
-        label: item.label,
-        sectionLabel: item.sectionLabel,
-        displayText: item.displayText,
-        dedupeKey: item.dedupeKey,
-    });
-
-    if (!action) {
-        return null;
-    }
-
-    const buttonAttrs = {
-        type: 'button',
-        title: action.label,
-        'aria-label': action.label,
-        'data-sb-rail-action': getMobileQuickActionKey(action),
-        'data-sb-rail-type': action.type,
-        'data-sb-rail-shell-key': action.shellKey,
-    };
-
-    if (action.tabId) {
-        buttonAttrs['data-sb-rail-tab-id'] = action.tabId;
-    }
-
-    const button = createElement('button', {
-        className: ['sb-shell-tab', 'sb-shell-rail-action', className].filter(Boolean).join(' '),
-        attrs: buttonAttrs,
-    });
-    const icon = createElement('i', {
-        className: `fa-solid ${action.icon || SB_MOBILE_QUICK_ACTION_ICON_FALLBACK}`,
-        attrs: {
-            'aria-hidden': 'true',
-        },
-    });
-    const copy = createElement('span', { className: 'sb-shell-tab-copy' });
-    const label = createElement('strong', { text: action.label });
-
-    copy.appendChild(label);
-    button.append(icon, copy);
-    button.addEventListener('click', () => actionHandler(action));
-    return button;
-}
-
-function createRailActionGroup(actions, groupLabel, className = '') {
-    const railGroup = createElement('div', {
-        className: ['sb-shell-rail-group', className].filter(Boolean).join(' '),
-        attrs: {
-            'aria-label': groupLabel,
-        },
-    });
-
-    for (const action of actions) {
-        const button = createMobileShellRailButton(action, activateMobileNavAction, 'sb-shell-rail-customize-action');
-        if (button) {
-            railGroup.appendChild(button);
-        }
-    }
-
-    return railGroup;
-}
-
-function getBuiltInRailActionsForShell(shellKey) {
-    const shellState = getShellState(shellKey);
-    if (!shellState?.tabs) {
-        return [];
-    }
-
-    const actions = [];
-    for (const tabState of shellState.tabs.values()) {
-        actions.push({
-            type: 'tab',
-            shellKey,
-            tabId: tabState.id,
-            icon: tabState.icon,
-            label: tabState.label,
-        });
-    }
-    return actions;
-}
-
-function getAllBuiltInRailActionKeys() {
-    const actionKeys = new Set();
-
-    for (const [shellKey, shellConfig] of Object.entries(SB_SHELLS)) {
-        const tabConfigs = [
-            shellConfig.baseTab,
-            ...(Array.isArray(shellConfig.embeddedTabs) ? shellConfig.embeddedTabs : []),
-            ...(Array.isArray(shellConfig.customTabs) ? shellConfig.customTabs : []),
-        ];
-
-        for (const tabConfig of tabConfigs) {
-            if (!tabConfig?.id) {
-                continue;
-            }
-
-            actionKeys.add(getMobileQuickActionKey({
-                type: 'tab',
-                shellKey,
-                tabId: tabConfig.id,
-                icon: tabConfig.icon,
-                label: tabConfig.label,
-            }));
-        }
-    }
-
-    return actionKeys;
-}
-
-function getBuiltInRailLabelForShell(shellKey) {
-    return shellKey === 'right' ? 'Customize' : 'Workspace';
-}
-
-function syncMobileShellRailActionState(activeShellKey = '', activeTabId = '') {
-    document.querySelectorAll('.sb-shell-rail-action[data-sb-rail-shell-key]').forEach(button => {
-        if (!(button instanceof HTMLElement)) {
-            return;
-        }
-
-        const isActive = button.dataset.sbRailShellKey === activeShellKey && button.dataset.sbRailTabId === activeTabId;
-        button.classList.toggle('is-active', isActive);
-        button.setAttribute('aria-selected', String(isActive));
-        if (isActive) {
-            button.setAttribute('aria-current', 'page');
-        } else {
-            button.removeAttribute('aria-current');
-        }
-    });
-}
-
-function syncMobileShellRailTabVisibility(shellState, currentShellKey, hideCustomizeTabs) {
-    for (const tabState of shellState.tabs.values()) {
-        if (!(tabState.button instanceof HTMLElement)) {
-            continue;
-        }
-
-        const shouldHide = hideCustomizeTabs;
-        const isActive = tabState.id === shellState.activeTabId;
-        tabState.button.classList.toggle('sb-shell-tab-mobile-rail-hidden', shouldHide);
-        tabState.button.setAttribute('aria-hidden', String(shouldHide));
-        tabState.button.setAttribute('tabindex', isActive && !shouldHide ? '0' : '-1');
-        tabState.button.toggleAttribute('inert', shouldHide);
-    }
-}
-
-function syncMobileShellRailActions(shellKey = null) {
-    const shellKeys = shellKey ? [shellKey] : ['left', 'right'];
-    const railMode = getActiveShellRailMode();
-    const navState = getNavState(railMode);
-    const hasVerticalRail = navState.layout === 'vertical';
-    const railQuickActionState = getQuickActionState(railMode);
-
-    const prevSyncingRail = sbIsSyncingRailActions;
-    sbIsSyncingRailActions = true;
-
-    try {
-        for (const currentShellKey of shellKeys) {
-            const shellState = getShellState(currentShellKey);
-            if (!(shellState?.nav instanceof HTMLElement)) {
-                continue;
-            }
-
-            let shouldHideCustomizeTabs = false;
-
-            const createRailBlock = (position) => createElement('div', {
-                className: `sb-shell-rail-shortcuts sb-shell-rail-shortcuts-${position}`,
-                attrs: {
-                    'aria-hidden': 'false',
-                },
-            });
-
-            let beforeBlock = null;
-            let afterBlock = null;
-
-            if (hasVerticalRail) {
-                const builtInRailLabel = getBuiltInRailLabelForShell(currentShellKey);
-                const replacementAction = railMode === 'desktop' && navState.replaceQuickActions
-                    ? createNavReplacementQuickAction(navState.replacementTarget)
-                    : null;
-                const railActionPlan = sbMobileShellLifecycle.railModel.resolveActionVisibility({
-                    hasVerticalRail,
-                    showCustomize: hasVerticalRail || navState.showCustomize,
-                    showQuickActions: navState.showQuickActions,
-                    builtInActions: getBuiltInRailActionsForShell(currentShellKey),
-                    builtInActionKeys: Array.from(getAllBuiltInRailActionKeys()),
-                    quickActions: railQuickActionState,
-                    replacementAction,
-                    builtInGroupLabel: builtInRailLabel,
-                });
-                shouldHideCustomizeTabs = railActionPlan.shouldHideCustomizeTabs;
-
-                const createQuickActionsGroup = (actions) => {
-                    const quickActionsGroup = createElement('div', {
-                        className: 'sb-shell-rail-group sb-shell-rail-group-quick-actions',
-                        attrs: {
-                            'aria-label': 'Quick Actions',
-                        },
-                    });
-
-                    if (actions.length) {
-                        for (const action of actions) {
-                            const button = createMobileShellRailButton(action, activateMobileNavAction, 'sb-shell-rail-quick-action');
-                            if (button) {
-                                quickActionsGroup.appendChild(button);
-                            }
-                        }
-                    } else {
-                        quickActionsGroup.appendChild(createElement('div', {
-                            className: 'sb-shell-rail-empty',
-                            text: 'No Quick Actions',
-                        }));
-                    }
-
-                    return quickActionsGroup;
-                };
-
-                const pendingBefore = createRailBlock('before');
-
-                for (const group of railActionPlan.beforeGroups) {
-                    pendingBefore.appendChild(createMobileShellRailDivider(group.label));
-                    pendingBefore.appendChild(createRailActionGroup(
-                        group.actions,
-                        group.label,
-                        `sb-shell-rail-group-${group.label.toLowerCase()}`,
-                    ));
-                }
-
-                if (pendingBefore.children.length > 0) {
-                    beforeBlock = pendingBefore;
-                }
-
-                if (railActionPlan.afterGroups.length > 0) {
-                    const pendingAfter = createRailBlock('after');
-                    for (const group of railActionPlan.afterGroups) {
-                        pendingAfter.append(
-                            createMobileShellRailDivider(group.label),
-                            createQuickActionsGroup(group.actions),
-                        );
-                    }
-                    afterBlock = pendingAfter;
-                }
-            }
-
-            shellState.nav.querySelectorAll('.sb-shell-rail-shortcuts').forEach(element => element.remove());
-            syncMobileShellRailTabVisibility(shellState, currentShellKey, shouldHideCustomizeTabs);
-
-            if (beforeBlock) {
-                shellState.nav.prepend(beforeBlock);
-            }
-            if (afterBlock) {
-                shellState.nav.appendChild(afterBlock);
-            }
-
-            shellState.updateNavScrollIndicators?.();
-        }
-
-        const activeShellKey = ['left', 'right'].find(currentShellKey => isShellOpen(currentShellKey)) ?? (shellKeys.length === 1 ? shellKeys[0] : '');
-        const activeShellState = activeShellKey ? getShellState(activeShellKey) : null;
-        syncMobileShellRailActionState(activeShellKey, activeShellState?.activeTabId ?? '');
-    } finally {
-        if (!prevSyncingRail) {
-            requestAnimationFrame(() => {
-                sbIsSyncingRailActions = false;
-            });
-        } else {
-            sbIsSyncingRailActions = prevSyncingRail;
-        }
-    }
 }
 
 function routeDrawerTarget(targetId) {
@@ -13498,12 +12800,6 @@ function injectCharacterDrawerControls() {
     bindCharacterDrawerEscapeHandler();
     bindCreatorNotesFullscreen();
 
-    const shellCloseButton = document.getElementById('sb_character_shell_close');
-    if (shellCloseButton instanceof HTMLButtonElement && shellCloseButton.dataset.sbBound !== 'true') {
-        shellCloseButton.dataset.sbBound = 'true';
-        shellCloseButton.addEventListener('click', () => closeCharacterPanel());
-    }
-
     const modeToggle = document.getElementById('sb_character_mode_toggle');
     if (modeToggle instanceof HTMLElement && modeToggle.dataset.sbBound !== 'true') {
         // SillyBunny: mode toggle removed from Characters panel (feat/v1.9.0-ui-overhaul).
@@ -13872,7 +13168,6 @@ function syncMobileViewportState() {
         [viewportSyncStep.SYNC_SHELL_VIEWPORT_BOUNDS]: () => syncShellViewportBounds(),
         [viewportSyncStep.CLOSE_MOBILE_NAV]: () => closeMobileNav(),
         [viewportSyncStep.CLOSE_MOBILE_CHAT_TOOLS]: () => closeMobileChatTools(),
-        [viewportSyncStep.SYNC_MOBILE_SHELL_RAIL_ACTIONS]: () => syncMobileShellRailActions(),
         [viewportSyncStep.APPLY_TOPBAR_OFFSET]: () => applyTopbarOffset(),
         [viewportSyncStep.SYNC_CHATBAR_VISIBILITY_STATE]: () => syncChatbarVisibilityState(),
         [viewportSyncStep.UPDATE_TOP_BAR_BRAND]: () => updateTopBarBrand(),
@@ -13911,6 +13206,27 @@ function queueMobileViewportStateSync() {
         sbMobileViewportStateFrameId = 0;
         syncMobileViewportState();
     });
+}
+
+const sbMobileShellUiState = { initialized: false };
+
+function initializeMobileShellUi() {
+    if (sbMobileShellUiState.initialized) {
+        return;
+    }
+    sbMobileShellUiState.initialized = true;
+
+    document.documentElement.dataset.sbMobileUi = 'chat-bar';
+    initializeMobileBottomBar();
+    applyMobileShellUiState();
+
+    window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener('change', applyMobileShellUiState);
+}
+
+function applyMobileShellUiState() {
+    const isMobile = isMobileViewport();
+    document.documentElement.dataset.sbMobileUiMode = isMobile ? 'mobile' : 'desktop';
+    syncMobileBottomBar(isMobile);
 }
 
 function reinitSelect2AfterShell() {
@@ -14942,7 +14258,7 @@ function initAll() {
     // Group Advanced Formatting sections into collapsible drawers
     groupAdvancedFormattingIntoDrawers();
 
-    initializeMobileSectionNav();
+    initializeMobileShellUi();
     initializeMessageActions();
     initializeToastMotion();
 
