@@ -8232,3 +8232,603 @@ body.reduced-motion .sb-shell-main {
         content: none;
     }
 }
+
+/* ── Phase 1: settings page (feat/v1.9.0-ui-overhaul) ──────────────────── */
+
+#sb-settings-page {
+    position: fixed;
+    inset: var(--sb-topbar-layout-offset) 0 0;
+    z-index: var(--sb-z-overlay);
+    display: flex;
+    align-items: stretch;
+    background: var(--sb-layer-canvas);
+    transform-origin: center 40%;
+    will-change: transform, opacity;
+}
+
+#sb-settings-page[hidden] {
+    display: none;
+}
+
+@keyframes sb-settings-in {
+    from { opacity: 0; transform: scale(0.96); }
+    to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes sb-settings-out {
+    from { opacity: 1; transform: scale(1); }
+    to   { opacity: 0; transform: scale(0.97); }
+}
+
+#sb-settings-page.is-opening {
+    animation: sb-settings-in 250ms var(--sb-ease-out-cubic) forwards;
+}
+
+#sb-settings-page.is-closing {
+    animation: sb-settings-out 200ms var(--sb-ease-out-cubic) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #sb-settings-page.is-opening {
+        animation: sb-settings-in 200ms linear forwards;
+    }
+
+    #sb-settings-page.is-closing {
+        animation: sb-settings-out 150ms linear forwards;
+    }
+
+    @keyframes sb-settings-in {
+        from { opacity: 0; transform: none; }
+        to   { opacity: 1; transform: none; }
+    }
+
+    @keyframes sb-settings-out {
+        from { opacity: 1; transform: none; }
+        to   { opacity: 0; transform: none; }
+    }
+}
+
+#sb-settings-inner {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+#sb-settings-sidebar {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    background: var(--sb-layer-canvas);
+    border-right: 1px solid var(--sb-shell-border);
+    flex-shrink: 0;
+}
+
+#sb-settings-sidebar-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 8px 0 16px;
+    height: 52px;
+    border-bottom: 1px solid var(--sb-shell-border);
+    gap: 4px;
+}
+
+#sb-settings-sidebar-title {
+    flex: 1;
+    font-size: calc(var(--mainFontSize) * 1.05);
+    font-weight: 700;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: var(--sb-shell-text);
+}
+
+.sb-settings-search-toggle-btn {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-shell-text-secondary);
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    .sb-settings-search-toggle-btn:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--sb-shell-text);
+    }
+}
+
+.sb-settings-search-toggle-btn:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-settings-search-toggle-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-settings-search-toggle-btn[aria-expanded='true'] {
+    color: var(--sb-accent);
+    background: color-mix(in srgb, var(--sb-accent) 12%, transparent);
+}
+
+#sb-settings-search-row {
+    flex-shrink: 0;
+    overflow: hidden;
+    max-height: 0;
+    padding: 0 10px;
+    transition: max-height var(--sb-transition), padding var(--sb-transition);
+}
+
+#sb-settings-search-row.is-expanded {
+    max-height: 72px;
+    padding: 12px 10px 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #sb-settings-search-row {
+        transition: none;
+    }
+}
+
+.sb-settings-search-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    height: 36px;
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-flat-hover-bg);
+    border: 1px solid var(--sb-shell-border);
+    cursor: text;
+    transition: border-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+.sb-settings-search-field:focus-within {
+    border-color: var(--color-primary, var(--sb-accent));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 40%, transparent);
+}
+
+.sb-settings-search-field .fa-magnifying-glass {
+    font-size: 12px;
+    color: var(--sb-shell-text-secondary);
+    flex-shrink: 0;
+}
+
+#sb-settings-search-input {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    font-size: var(--sb-type-control);
+    color: var(--sb-shell-text);
+    outline: none;
+    min-width: 0;
+}
+
+/* Suppress the upstream text_pole:focus ring — the parent label provides focus feedback via focus-within. */
+#sb-settings-search-input.text_pole:focus {
+    box-shadow: none;
+    border-color: transparent;
+    background-color: transparent;
+}
+
+#sb-settings-search-input::placeholder {
+    color: var(--sb-shell-text-secondary);
+}
+
+#sb-settings-tab-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sb-settings-tab {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    min-height: 40px;
+    padding: 8px 12px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-shell-text-secondary);
+    font-size: var(--sb-type-control);
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+@media (pointer: coarse) {
+    .sb-settings-tab {
+        min-height: 44px;
+    }
+}
+
+.sb-settings-tab .fa-solid {
+    font-size: 13px;
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+@media (hover: hover) {
+    .sb-settings-tab:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--sb-shell-text);
+    }
+}
+
+.sb-settings-tab:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-settings-tab:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-settings-tab[aria-selected="true"] {
+    background: var(--sb-flat-selected-bg);
+    color: var(--sb-shell-text);
+}
+
+@media (hover: hover) {
+    .sb-settings-tab[aria-selected="true"]:hover {
+        background: var(--sb-flat-selected-hover-bg);
+    }
+}
+
+#sb-settings-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    background: var(--sb-layer-view);
+}
+
+#sb-settings-content-header {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    padding: 0 16px;
+    height: 52px;
+    border-bottom: 1px solid var(--sb-shell-border);
+    gap: 12px;
+}
+
+/* Spacer balances the close button so the title stays centered */
+.sb-settings-header-spacer {
+    width: 36px;
+    flex-shrink: 0;
+}
+
+.sb-settings-title {
+    flex: 1;
+    font-size: calc(var(--mainFontSize) * 1.05);
+    font-weight: 700;
+    margin: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    text-align: center;
+}
+
+.sb-settings-close-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-shell-text-secondary);
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    .sb-settings-close-button:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--sb-shell-text);
+    }
+}
+
+.sb-settings-close-button:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-settings-close-button:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-settings-body {
+    flex: 1;
+    overflow-y: auto;
+    position: relative;
+}
+
+/* Tab panel content transition */
+.sb-settings-body > .sb-settings-panel {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--sb-transition);
+}
+
+.sb-settings-body > .sb-settings-panel.is-active {
+    opacity: 1;
+    pointer-events: auto;
+    position: static;
+    overflow-y: auto;
+    min-height: 100%;
+}
+
+/* The settings page hosts the already-built shell root directly. This avoids
+   rebuilding or reparenting every tab whenever Workspace and Customize switch. */
+#sb-settings-shell-host {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+}
+
+#sb-settings-shell-host > .sb-settings-mounted-shell {
+    display: flex !important;
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    overflow: hidden !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    transform: none !important;
+    pointer-events: auto !important;
+}
+
+#sb-settings-shell-host > .sb-settings-mounted-shell > .sb-shell-frame {
+    width: 100%;
+    height: 100%;
+}
+
+#sb-settings-shell-host > .sb-settings-mounted-shell .sb-shell-nav-wrapper,
+#sb-settings-shell-host > .sb-settings-mounted-shell .sb-shell-header,
+#sb-settings-shell-host > .sb-settings-mounted-shell .sb-shell-resize-handle {
+    display: none !important;
+}
+
+#sb-settings-shell-host > .sb-settings-mounted-shell .sb-shell-main {
+    width: 100%;
+    height: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-settings-body > .sb-settings-panel {
+        transition: none;
+    }
+}
+
+/* Reparented shell panels sit flush inside their settings panel host */
+.sb-settings-panel > .sb-shell-root {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    transform: none !important;
+}
+
+.sb-settings-panel > .sb-shell-root.closedDrawer:not(.openDrawer) {
+    display: flex !important;
+}
+
+/* ── Phase 1: composer mode pill (feat/v1.9.0-ui-overhaul) ─────────────── */
+
+#leftSendForm {
+    position: relative;
+}
+
+.sb-mode-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px 5px 9px;
+    height: 34px;
+    border: 1px solid var(--sb-shell-border);
+    border-radius: var(--sb-shell-control-radius);
+    background: transparent;
+    color: var(--sb-shell-text-secondary);
+    font-size: var(--sb-type-meta);
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), border-color var(--sb-transition-fast);
+    flex-shrink: 0;
+}
+
+.sb-mode-pill .fa-solid:first-child {
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.sb-mode-pill-chevron {
+    font-size: 9px;
+    flex-shrink: 0;
+    transition: transform var(--sb-transition-fast);
+}
+
+.sb-mode-pill[aria-expanded="true"] .sb-mode-pill-chevron {
+    transform: rotate(180deg);
+}
+
+@media (hover: hover) {
+    .sb-mode-pill:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--sb-shell-text);
+        border-color: color-mix(in srgb, var(--sb-shell-border) 150%, transparent);
+    }
+}
+
+.sb-mode-pill:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-mode-pill:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-mode-popover {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    z-index: var(--sb-z-dropdown);
+    min-width: 180px;
+    padding: 4px;
+    background: var(--sb-layer-popover);
+    border: 1px solid var(--sb-shell-border);
+    border-radius: var(--sb-radius-overlay);
+    box-shadow: var(--sb-shadow-popover);
+    transform-origin: bottom left;
+}
+
+.sb-mode-popover[hidden] {
+    display: none;
+}
+
+@keyframes sb-mode-popover-in {
+    from { opacity: 0; transform: scale(0.94); }
+    to   { opacity: 1; transform: scale(1); }
+}
+
+.sb-mode-popover.is-opening {
+    animation: sb-mode-popover-in 200ms var(--sb-ease-out-cubic) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-mode-popover.is-opening {
+        animation: none;
+    }
+}
+
+.sb-mode-popover-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 40px;
+    padding: 8px 12px;
+    border: 0;
+    border-radius: calc(var(--sb-radius-overlay) - 4px);
+    background: transparent;
+    color: var(--sb-shell-text-secondary);
+    font-size: var(--sb-type-control);
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+.sb-mode-popover-row .fa-solid:first-child {
+    font-size: 13px;
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.sb-mode-popover-row-label {
+    flex: 1;
+}
+
+.sb-mode-popover-row-check {
+    font-size: 11px;
+    opacity: 0;
+    transition: opacity var(--sb-transition-fast);
+}
+
+.sb-mode-popover-row[aria-selected="true"] {
+    color: var(--sb-shell-text);
+}
+
+.sb-mode-popover-row[aria-selected="true"] .sb-mode-popover-row-check {
+    opacity: 1;
+    color: var(--color-primary, var(--sb-accent));
+}
+
+@media (hover: hover) {
+    .sb-mode-popover-row:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--sb-shell-text);
+    }
+}
+
+.sb-mode-popover-row:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-mode-popover-row:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+/* ── Phase 1: topbar search and mode buttons ────────────────────────────── */
+
+#sb-topbar-search-toggle,
+#sb-mode-toggle {
+    flex-shrink: 0;
+}
+
+/* ── Phase 1: accent fill on active section button ──────────────────────── */
+/* Approved exception to Signal Scarcity Rule: section button doubles as a
+   persistent state indicator, not just an action trigger. */
+
+.sb-proxy-button.openDrawer:not(.sb-proxy-button-icon-only),
+.sb-proxy-button.sb-settings-active:not(.sb-proxy-button-icon-only) {
+    color: var(--color-primary, var(--sb-accent));
+}
+
+/* ── Phase 1: character shell header without mode toggle ────────────────── */
+
+#right-nav-panel.openDrawer > .sb-character-shell-header {
+    padding-right: var(--sb-shell-panel-padding-inline);
+}
+
+@media screen and (min-width: 769px) {
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-title,
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-subtitle {
+        max-width: 100%;
+    }
+}
+
+@media screen and (max-width: 900px) {
+    #right-nav-panel.openDrawer > .sb-character-shell-header {
+        padding-right: var(--sb-shell-panel-padding-inline);
+    }
+}

@@ -176,7 +176,7 @@ const SB_SHORTCUT_TARGETS = Object.freeze([
 
 const SB_SHORTCUT_DEFAULTS = Object.freeze({
     left: 'left:agents',
-    right: 'action:search',
+    right: 'right:extensions',
     slot3: 'none',
     slot4: 'none',
     slot5: 'none',
@@ -5021,6 +5021,8 @@ function getTopbarGroupOrder({ iconsOnly, mobile }) {
         'sb-topbar-divider-customize',
         customize.leadId,
         customize.railId,
+        // SillyBunny: permanent search lives left of the quick-access divider — feat/v1.9.0-ui-overhaul
+        'sb-topbar-search-toggle',
     ];
     // The extension slot leads the right group in every mode: syncTopbarGroupOrder() re-appends
     // every listed id, so an unlisted element would be pushed to the front of the group as a side
@@ -5038,8 +5040,9 @@ function getTopbarGroupOrder({ iconsOnly, mobile }) {
         right.push('sb-shortcut-slot6', 'sb-shortcut-slot5', 'sb-shortcut-right', 'sb-topbar-divider-quick-right');
     }
 
-    // The home divider marks the Home|Characters boundary while icons-only mode is on.
-    right.push('sb-home-toggle', 'sb-topbar-divider-home');
+    // SillyBunny: search and mode toggles move to right group, after quick-right divider,
+    // before Home — feat/v1.9.0-ui-overhaul
+    right.push('sb-mode-toggle', 'sb-home-toggle', 'sb-topbar-divider-home');
 
     if (iconsOnly && mobile) {
         // The characters pages ride the strip, so the divider marks where they start there;
@@ -9765,6 +9768,7 @@ function buildTopBar() {
     stopProxyPointerPropagation(mobileButton);
     mobileButton.addEventListener('click', toggleMobileNav);
 
+    // SillyBunny: left/right shell toggles now open the full-screen settings page (feat/v1.9.0-ui-overhaul)
     const leftButton = createProxyButton(
         {
             id: 'sb-left-shell-toggle',
@@ -9772,7 +9776,7 @@ function buildTopBar() {
             label: getShellConfig('left').proxyLabel,
             title: 'Open workspace tools',
         },
-        () => toggleShellPanel('left'),
+        () => toggleSettingsPage('left'),
     );
 
     const homeButton = createProxyButton(
@@ -9795,7 +9799,7 @@ function buildTopBar() {
             label: getShellConfig('right').proxyLabel,
             title: 'Open customization tools',
         },
-        () => toggleShellPanel('right'),
+        () => toggleSettingsPage('right'),
     );
 
     const charactersButton = createProxyButton(
@@ -9869,8 +9873,31 @@ function buildTopBar() {
     const homeDivider = createTopbarClusterDivider('sb-topbar-divider-home');
     const charactersDivider = createTopbarClusterDivider('sb-topbar-divider-characters');
 
-    leftGroup.append(mobileButton, leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, quickActionsLeftDivider, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
-    rightGroup.append(extensionSlot, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, quickActionsRightDivider, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
+    // SillyBunny: search toggle (left group, after Customize) + mode toggle (right group, before Home) — feat/v1.9.0-ui-overhaul
+    const searchToggle = createProxyButton(
+        {
+            id: 'sb-topbar-search-toggle',
+            icon: 'fa-magnifying-glass',
+            label: 'Search',
+            title: 'Search settings (Ctrl+F)',
+            className: 'sb-proxy-button-icon-only',
+        },
+        () => setUniversalSearchOpenState(true, { focusInput: true }),
+    );
+
+    const modeToggle = createProxyButton(
+        {
+            id: 'sb-mode-toggle',
+            icon: 'fa-masks-theater',
+            label: 'Mode',
+            title: 'Switch chat mode (Ctrl+M)',
+            className: 'sb-proxy-button-icon-only',
+        },
+        () => toggleModePillPopover({ fromKeyboard: false }),
+    );
+
+    leftGroup.append(mobileButton, leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, searchToggle, quickActionsLeftDivider, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
+    rightGroup.append(extensionSlot, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, quickActionsRightDivider, modeToggle, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 
@@ -14916,14 +14943,10 @@ function injectCharacterDrawerControls() {
 
     const modeToggle = document.getElementById('sb_character_mode_toggle');
     if (modeToggle instanceof HTMLElement && modeToggle.dataset.sbBound !== 'true') {
+        // SillyBunny: mode toggle removed from Characters panel (feat/v1.9.0-ui-overhaul).
+        // Binding retained as a no-op guard so upstream code paths that call
+        // injectCharacterDrawerControls don't error when the element is absent.
         modeToggle.dataset.sbBound = 'true';
-        modeToggle.querySelectorAll('[data-sb-character-mode]').forEach((button) => {
-            if (!(button instanceof HTMLButtonElement)) {
-                return;
-            }
-
-            button.addEventListener('click', () => setCharacterShellMode(button.dataset.sbCharacterMode));
-        });
     }
 
     if (document.documentElement.dataset.sbCharacterModeStateBound !== 'true') {
@@ -16314,6 +16337,10 @@ function initAll() {
     bindWorldInfoRoute();
     bindCharacterEditorSubTabs();
     applyDefaultDrawerStates();
+    // SillyBunny: Phase 1 — settings page + mode pill + keyboard shortcuts (feat/v1.9.0-ui-overhaul)
+    initSettingsPageClose();
+    initModePill();
+    initSettingsKeyboardShortcuts();
     bindInlineDrawerAutoCloseToggle();
     syncMobileViewportState();
 
@@ -16469,6 +16496,496 @@ function initAll() {
         getCompactMode() {
             return sbState.compactMode;
         },
+    });
+}
+
+// ── Phase 1: settings page + mode pill + keyboard shortcuts ──────────────
+// SillyBunny feat/v1.9.0-ui-overhaul
+
+const sbSettingsState = {
+    open: false,
+    activeShell: null, // 'left' | 'right'
+    activeTabId: null,
+    // Incremented each time a transition starts; guards stale callbacks after a
+    // fast reopen or close.
+    closeGen: 0,
+    pageAnimation: null,
+    closeTimer: 0,
+};
+
+function getSettingsPage() {
+    return document.getElementById('sb-settings-page');
+}
+
+function clearSettingsAnimationState() {
+    if (sbSettingsState.pageAnimation) {
+        sbSettingsState.pageAnimation.onfinish = null;
+        sbSettingsState.pageAnimation.cancel();
+        sbSettingsState.pageAnimation = null;
+    }
+
+    if (sbSettingsState.closeTimer) {
+        clearTimeout(sbSettingsState.closeTimer);
+        sbSettingsState.closeTimer = 0;
+    }
+}
+
+function animateSettingsPage(page, direction, onFinish) {
+    if (typeof page.animate !== 'function') {
+        onFinish();
+        return;
+    }
+
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const isOpening = direction === 'in';
+    const animation = page.animate(
+        reducedMotion
+            ? [{ opacity: isOpening ? 0 : 1 }, { opacity: isOpening ? 1 : 0 }]
+            : [
+                {
+                    opacity: isOpening ? 0 : 1,
+                    transform: isOpening ? 'scale(0.96)' : 'scale(1)',
+                },
+                {
+                    opacity: isOpening ? 1 : 0,
+                    transform: isOpening ? 'scale(1)' : 'scale(0.97)',
+                },
+            ],
+        {
+            duration: reducedMotion ? (isOpening ? 200 : 150) : (isOpening ? 250 : 200),
+            easing: 'cubic-bezier(0.22, 0.61, 0.36, 1)',
+            fill: 'forwards',
+        },
+    );
+
+    sbSettingsState.pageAnimation = animation;
+    animation.onfinish = () => {
+        if (sbSettingsState.pageAnimation !== animation) {
+            return;
+        }
+        sbSettingsState.pageAnimation = null;
+        animation.cancel();
+        onFinish();
+    };
+}
+
+function openSettingsPage(shellKey, tabId = null) {
+    const page = getSettingsPage();
+    if (!(page instanceof HTMLElement)) {
+        return;
+    }
+
+    const resolvedTab = tabId ?? getShellConfig(shellKey)?.defaultTabId ?? null;
+    const previousShell = sbSettingsState.activeShell;
+
+    sbSettingsState.open = true;
+    sbSettingsState.activeShell = shellKey;
+    // Bump the generation so a stale transition callback cannot affect a
+    // subsequent open or close.
+    sbSettingsState.closeGen++;
+    clearSettingsAnimationState();
+
+    if (previousShell && previousShell !== shellKey) {
+        unmountShellRootFromSettingsPage(previousShell);
+    }
+
+    // The shell trees are built once during app initialization. Mount the
+    // requested persistent root before revealing the page, so opening never
+    // shows the previous section or waits for a second renderer to rebuild it.
+    page.hidden = true;
+    page.classList.remove('is-closing', 'is-opening');
+    buildSettingsPageFor(shellKey, resolvedTab);
+    mountShellRootInSettingsPage(shellKey, resolvedTab);
+    syncSettingsPageActiveButton();
+    document.getElementById('sb-persona-picker')?.remove();
+
+    page.hidden = false;
+    page.classList.remove('is-closing', 'is-opening');
+
+    animateSettingsPage(page, 'in', () => {});
+    document.getElementById('sb-settings-close')?.focus({ preventScroll: true });
+}
+
+function closeSettingsPage() {
+    const page = getSettingsPage();
+    if (!(page instanceof HTMLElement) || !sbSettingsState.open) {
+        return;
+    }
+
+    sbSettingsState.open = false;
+    const closingShell = sbSettingsState.activeShell;
+    sbSettingsState.activeTabId = null;
+
+    const closeGen = ++sbSettingsState.closeGen;
+    clearSettingsAnimationState();
+    const finishClose = () => {
+        if (sbSettingsState.closeGen !== closeGen) {
+            return;
+        }
+        page.classList.remove('is-closing');
+        page.hidden = true;
+        unmountShellRootFromSettingsPage(closingShell);
+        if (sbSettingsState.closeTimer) {
+            clearTimeout(sbSettingsState.closeTimer);
+            sbSettingsState.closeTimer = 0;
+        }
+        sbSettingsState.activeShell = null;
+    };
+
+    animateSettingsPage(page, 'out', finishClose);
+    // Fallback for browsers that do not deliver a Web Animations finish event.
+    sbSettingsState.closeTimer = setTimeout(finishClose, 300);
+
+    syncSettingsPageActiveButton();
+}
+
+function toggleSettingsPage(shellKey, tabId = null) {
+    if (sbSettingsState.open && sbSettingsState.activeShell === shellKey) {
+        closeSettingsPage();
+        return;
+    }
+
+    openSettingsPage(shellKey, tabId);
+}
+
+function buildSettingsPageFor(shellKey, tabId) {
+    const tabList = document.getElementById('sb-settings-tab-list');
+    const body = document.getElementById('sb-settings-body');
+    const titleEl = document.getElementById('sb-settings-content-title');
+    if (!tabList || !body || !titleEl) {
+        return;
+    }
+
+    const shellConfig = getShellConfig(shellKey);
+    if (!shellConfig) {
+        return;
+    }
+
+    const allTabs = [
+        shellConfig.baseTab,
+        ...(shellConfig.embeddedTabs ?? []),
+        ...(shellConfig.customTabs ?? []),
+    ].filter(Boolean);
+    const resolvedTabId = allTabs.find(t => t.id === tabId)?.id ?? allTabs[0]?.id ?? null;
+    sbSettingsState.activeTabId = resolvedTabId;
+
+    tabList.replaceChildren();
+    body.replaceChildren(document.getElementById('sb-settings-shell-host'));
+
+    for (const tab of allTabs) {
+        const button = createElement('button', {
+            className: 'sb-settings-tab',
+            attrs: {
+                type: 'button',
+                role: 'tab',
+                'aria-selected': String(tab.id === resolvedTabId),
+                'data-sb-settings-tab': tab.id,
+            },
+        });
+        button.innerHTML = `<i class="fa-solid ${tab.icon}" aria-hidden="true"></i>${tab.label}`;
+        button.addEventListener('click', () => activateSettingsTab(shellKey, tab.id));
+        tabList.appendChild(button);
+    }
+
+    const sidebarTitleEl = document.getElementById('sb-settings-sidebar-title');
+    if (sidebarTitleEl) {
+        sidebarTitleEl.textContent = shellConfig.title;
+    }
+    // Content title tracks the active tab (GNOME pattern: section name in sidebar, page name in header).
+    const activeTab = allTabs.find(t => t.id === resolvedTabId);
+    titleEl.textContent = activeTab?.label ?? shellConfig.title;
+}
+
+function mountShellRootInSettingsPage(shellKey, tabId = null) {
+    const host = document.getElementById('sb-settings-shell-host');
+    const shellConfig = getShellConfig(shellKey);
+    const shellState = getShellState(shellKey);
+    const shellRoot = shellConfig ? document.getElementById(shellConfig.rootPanelId) : null;
+    if (!(host instanceof HTMLElement) || !(shellRoot instanceof HTMLElement) || !shellState) {
+        return;
+    }
+
+    const targetTab = tabId ?? shellState.activeTabId ?? shellConfig.defaultTabId;
+    if (targetTab && shellState.tabs.has(targetTab)) {
+        setActiveTab(shellKey, targetTab);
+    }
+
+    const activeTab = shellState.tabs.get(shellState.activeTabId);
+    activeTab?.onActivate?.();
+    dispatchShellTabActivated(shellKey, activeTab);
+    queueMobileShellActivationRefresh();
+
+    host.replaceChildren(shellRoot);
+    shellRoot.classList.add('sb-settings-mounted-shell');
+    shellRoot.classList.remove('openDrawer', 'closedDrawer');
+    shellRoot.setAttribute('aria-hidden', 'false');
+}
+
+function unmountShellRootFromSettingsPage(shellKey) {
+    const shellConfig = getShellConfig(shellKey);
+    const shellRoot = shellConfig ? document.getElementById(shellConfig.rootPanelId) : null;
+    const holder = document.getElementById('top-settings-holder');
+    if (!(shellRoot instanceof HTMLElement) || !(holder instanceof HTMLElement)) {
+        return;
+    }
+
+    const shellState = getShellState(shellKey);
+    shellState?.tabs.get(shellState.activeTabId)?.onDeactivate?.();
+
+    shellRoot.classList.remove('sb-settings-mounted-shell', 'openDrawer');
+    shellRoot.classList.add('closedDrawer');
+    shellRoot.setAttribute('aria-hidden', 'true');
+    holder.querySelector(`#${CSS.escape(shellConfig.hostDrawerId)}`)?.appendChild(shellRoot);
+}
+
+function activateSettingsTab(shellKey, tabId) {
+    const body = document.getElementById('sb-settings-body');
+    const tabList = document.getElementById('sb-settings-tab-list');
+    const titleEl = document.getElementById('sb-settings-content-title');
+    if (!body || !tabList) {
+        return;
+    }
+
+    sbSettingsState.activeTabId = tabId;
+
+    const shellConfig = getShellConfig(shellKey);
+    const allTabs = [
+        shellConfig?.baseTab,
+        ...(shellConfig?.embeddedTabs ?? []),
+        ...(shellConfig?.customTabs ?? []),
+    ].filter(Boolean);
+    const selectedTab = allTabs.find(tab => tab.id === tabId);
+    if (!selectedTab) {
+        return;
+    }
+
+    setActiveTab(shellKey, tabId);
+
+    tabList.querySelectorAll('.sb-settings-tab').forEach(button => {
+        const isActive = button.dataset.sbSettingsTab === tabId;
+        button.setAttribute('aria-selected', String(isActive));
+    });
+
+    // Keep content title in sync with the active tab (GNOME pattern).
+    if (titleEl) {
+        const activeTab = allTabs.find(t => t.id === tabId);
+        if (activeTab) {
+            titleEl.textContent = activeTab.label;
+        }
+    }
+}
+
+function syncSettingsPageActiveButton() {
+    for (const cluster of SB_TOPBAR_CLUSTERS) {
+        const leadButton = document.getElementById(cluster.leadId);
+        if (!(leadButton instanceof HTMLElement)) {
+            continue;
+        }
+
+        const isActive = sbSettingsState.open && (
+            (cluster.key === 'workspace' && sbSettingsState.activeShell === 'left') ||
+            (cluster.key === 'customize' && sbSettingsState.activeShell === 'right')
+        );
+        leadButton.classList.toggle('sb-settings-active', isActive);
+    }
+}
+
+function setSettingsSidebarSearchOpen(isOpen, { focusInput = false } = {}) {
+    const toggleBtn = document.getElementById('sb-settings-search-toggle');
+    const searchRow = document.getElementById('sb-settings-search-row');
+    const searchInput = document.getElementById('sb-settings-search-input');
+    if (!(toggleBtn instanceof HTMLElement) || !(searchRow instanceof HTMLElement)) {
+        return;
+    }
+
+    toggleBtn.setAttribute('aria-expanded', String(isOpen));
+    searchRow.classList.toggle('is-expanded', isOpen);
+    searchRow.setAttribute('aria-hidden', String(!isOpen));
+
+    if (isOpen && focusInput && searchInput instanceof HTMLElement) {
+        // Defer slightly so the max-height transition has started before focus shifts.
+        setTimeout(() => searchInput.focus(), 50);
+    } else if (!isOpen && searchInput instanceof HTMLElement) {
+        searchInput.value = '';
+    }
+}
+
+function initSettingsPageClose() {
+    const closeButton = document.getElementById('sb-settings-close');
+    if (closeButton instanceof HTMLButtonElement && closeButton.dataset.sbBound !== 'true') {
+        closeButton.dataset.sbBound = 'true';
+        closeButton.addEventListener('click', closeSettingsPage);
+    }
+
+    const page = getSettingsPage();
+    if (page instanceof HTMLElement && page.dataset.sbBound !== 'true') {
+        page.dataset.sbBound = 'true';
+        page.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                closeSettingsPage();
+            }
+        });
+    }
+
+    // Sidebar search toggle: icon button expands/collapses the search row.
+    const searchToggleBtn = document.getElementById('sb-settings-search-toggle');
+    const searchRow = document.getElementById('sb-settings-search-row');
+    const searchInput = document.getElementById('sb-settings-search-input');
+    if (searchToggleBtn instanceof HTMLButtonElement && searchRow instanceof HTMLElement && searchInput instanceof HTMLElement) {
+        if (searchToggleBtn.dataset.sbBound !== 'true') {
+            searchToggleBtn.dataset.sbBound = 'true';
+            searchToggleBtn.addEventListener('click', () => {
+                const isExpanded = searchToggleBtn.getAttribute('aria-expanded') === 'true';
+                setSettingsSidebarSearchOpen(!isExpanded, { focusInput: !isExpanded });
+            });
+        }
+    }
+}
+
+// ── Mode pill ────────────────────────────────────────────────────────────
+
+function getModePillState() {
+    const pill = document.getElementById('sb-mode-pill');
+    const popover = document.getElementById('sb-mode-popover-popup') ?? document.getElementById('sb-mode-pill-popover');
+    return { pill, popover };
+}
+
+function syncModePill() {
+    const { pill, popover } = getModePillState();
+
+    const activeMode = conversationState.conversationWorkspaceOpen ? 'conversation' : 'roleplay';
+    const label = activeMode === 'conversation' ? 'Conversation' : 'Roleplay';
+    const icon = activeMode === 'conversation' ? 'fa-comments' : 'fa-masks-theater';
+
+    // Sync pill if it exists in the DOM (kept as optional composer-bar element).
+    if (pill) {
+        const pillIcon = pill.querySelector('i.fa-solid:first-child');
+        const pillLabel = document.getElementById('sb-mode-pill-label');
+        if (pillIcon) {
+            pillIcon.className = `fa-solid ${icon}`;
+        }
+        if (pillLabel) {
+            pillLabel.textContent = label;
+        }
+    }
+
+    // Sync mode toggle button icon too.
+    const modeToggleBtn = document.getElementById('sb-mode-toggle');
+    if (modeToggleBtn instanceof HTMLElement) {
+        const btnIcon = modeToggleBtn.querySelector('i.sb-proxy-icon');
+        if (btnIcon) {
+            btnIcon.className = `fa-solid ${icon} sb-proxy-icon`;
+        }
+    }
+
+    if (popover) {
+        popover.querySelectorAll('[data-sb-mode]').forEach(row => {
+            const isActive = row.dataset.sbMode === activeMode;
+            row.classList.toggle('is-active', isActive);
+            row.setAttribute('aria-selected', String(isActive));
+        });
+    }
+}
+
+function setModePillPopoverOpen(isOpen) {
+    const { pill, popover } = getModePillState();
+    if (!pill || !popover) {
+        return;
+    }
+
+    if (isOpen) {
+        popover.hidden = false;
+        popover.classList.add('is-opening');
+        popover.addEventListener('animationend', () => popover.classList.remove('is-opening'), { once: true });
+        pill.setAttribute('aria-expanded', 'true');
+    } else {
+        popover.hidden = true;
+        popover.classList.remove('is-opening');
+        pill.setAttribute('aria-expanded', 'false');
+    }
+}
+
+function toggleModePillPopover({ fromKeyboard = false } = {}) {
+    const { popover } = getModePillState();
+    if (!popover) {
+        return;
+    }
+
+    const isOpen = !popover.hidden;
+    setModePillPopoverOpen(!isOpen);
+}
+
+function initModePill() {
+    const { pill, popover } = getModePillState();
+    if (!pill || !popover) {
+        return;
+    }
+
+    if (pill.dataset.sbBound === 'true') {
+        return;
+    }
+
+    pill.dataset.sbBound = 'true';
+
+    pill.addEventListener('click', () => toggleModePillPopover());
+
+    popover.querySelectorAll('[data-sb-mode]').forEach(row => {
+        row.addEventListener('click', () => {
+            setCharacterShellMode(row.dataset.sbMode);
+            setModePillPopoverOpen(false);
+        });
+    });
+
+    // Close on outside click.
+    document.addEventListener('click', event => {
+        if (!popover.hidden && !pill.contains(event.target) && !popover.contains(event.target)) {
+            setModePillPopoverOpen(false);
+        }
+    });
+
+    // Keep pill synced to mode changes.
+    if (document.documentElement.dataset.sbModePillStateBound !== 'true') {
+        document.documentElement.dataset.sbModePillStateBound = 'true';
+        window.addEventListener('sb:conversation-workspace-state-changed', syncModePill);
+    }
+
+    syncModePill();
+}
+
+// ── Global keyboard shortcuts ────────────────────────────────────────────
+
+function initSettingsKeyboardShortcuts() {
+    if (document.documentElement.dataset.sbSettingsShortcutsBound === 'true') {
+        return;
+    }
+
+    document.documentElement.dataset.sbSettingsShortcutsBound = 'true';
+
+    document.addEventListener('keydown', event => {
+        const isMac = navigator.platform?.toUpperCase().includes('MAC');
+        const ctrl = isMac ? event.metaKey : event.ctrlKey;
+        if (!ctrl) {
+            return;
+        }
+
+        if (event.key === 'f' || event.key === 'F') {
+            const active = document.activeElement;
+            const isEditable = active instanceof HTMLInputElement ||
+                active instanceof HTMLTextAreaElement ||
+                active?.isContentEditable;
+            if (isEditable) {
+                return;
+            }
+
+            event.preventDefault();
+            setUniversalSearchOpenState(true, { focusInput: true });
+            return;
+        }
+
+        if (event.key === 'm' || event.key === 'M') {
+            event.preventDefault();
+            toggleModePillPopover({ fromKeyboard: true });
+        }
     });
 }
 

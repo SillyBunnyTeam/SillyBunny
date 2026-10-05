@@ -72,6 +72,38 @@
     <!-- top bar central settings buttons -->
     <div id="top-bar">
     </div>
+    <!-- SillyBunny: full-screen settings page — replaces drawer overlays (feat/v1.9.0-ui-overhaul) -->
+    <div id="sb-settings-page" hidden aria-modal="true" role="dialog" aria-label="Settings">
+        <div id="sb-settings-inner">
+            <aside id="sb-settings-sidebar" aria-label="Settings navigation">
+                <div id="sb-settings-sidebar-header">
+                    <span id="sb-settings-sidebar-title"></span>
+                    <button id="sb-settings-search-toggle" type="button" class="sb-settings-search-toggle-btn" aria-label="Search settings" aria-expanded="false">
+                        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                    </button>
+                </div>
+                <div id="sb-settings-search-row" aria-hidden="true">
+                    <label class="sb-settings-search-field">
+                        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                        <input id="sb-settings-search-input" type="search" class="text_pole" placeholder="Search..." aria-label="Search settings" autocomplete="off" spellcheck="false">
+                    </label>
+                </div>
+                <nav id="sb-settings-tab-list" role="tablist" aria-orientation="vertical"></nav>
+            </aside>
+            <div id="sb-settings-content">
+                <header id="sb-settings-content-header">
+                    <div class="sb-settings-header-spacer" aria-hidden="true"></div>
+                    <h2 id="sb-settings-content-title" class="sb-settings-title"></h2>
+                    <button id="sb-settings-close" type="button" class="sb-settings-close-button" aria-label="Close settings">
+                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                    </button>
+                </header>
+                <div id="sb-settings-body" class="sb-settings-body">
+                    <div id="sb-settings-shell-host"></div>
+                </div>
+            </div>
+        </div>
+    </div>
     <div id="top-settings-holder">
         <!-- background selection menu -->
         <div id="ai-config-button" class="drawer">
@@ -6626,16 +6658,7 @@
                     <button id="sb_character_shell_close" class="sb-shell-close" type="button" title="Close Characters" aria-label="Close Characters">
                         <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                     </button>
-                    <div id="sb_character_mode_toggle" class="sb-character-shell-mode-toggle" role="radiogroup" aria-label="Chat mode">
-                        <button type="button" class="sb-character-shell-mode-button is-active" data-sb-character-mode="roleplay" role="radio" aria-checked="true">
-                            <i class="fa-solid fa-masks-theater" aria-hidden="true"></i>
-                            <span>Roleplay</span>
-                        </button>
-                        <button type="button" class="sb-character-shell-mode-button" data-sb-character-mode="conversation" role="radio" aria-checked="false">
-                            <i class="fa-solid fa-comments" aria-hidden="true"></i>
-                            <span>Conversation</span>
-                        </button>
-                    </div>
+                    <!-- SillyBunny: mode toggle removed from Characters panel; replaced by composer pill + top-bar button + Ctrl+M (feat/v1.9.0-ui-overhaul) -->
                     <div class="sb-shell-kicker" data-i18n="Characters">Characters</div>
                     <h2 class="sb-shell-title" tabindex="-1" data-i18n="Character Menu">Character Menu</h2>
                     <p class="sb-shell-subtitle" data-i18n="View or create character cards here for your roleplays and chats!">View or create character cards here for your roleplays and chats!</p>
