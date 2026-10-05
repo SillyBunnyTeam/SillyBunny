@@ -11966,7 +11966,18 @@ async function renderUniversalSearchResults(query) {
         );
     }
 
+    const wasVisible = results.classList.contains('is-visible');
     results.classList.add('is-visible');
+
+    // Animate the results panel on first appearance
+    if (!wasVisible) {
+        stopMotion(results);
+        animateIn(results, [
+            { opacity: 0, transform: 'translateY(-4px)' },
+            { opacity: 1, transform: 'translateY(0)' },
+        ], { duration: MOTION_FAST });
+    }
+
     setUniversalSearchActiveIndex(results.querySelector('.sb-search-result') ? 0 : -1);
 }
 
@@ -12135,6 +12146,7 @@ function setActiveTab(shellKey, tabId) {
     preloadPanelStylesheets(shellKey, tabId);
 
     const previousTab = shellState.tabs.get(shellState.activeTabId);
+    const previousPanel = previousTab?.panel;
     shellState.activeTabId = tabId;
     safeSetItem(shellConfig.storageKey, tabId);
 
@@ -12149,6 +12161,21 @@ function setActiveTab(shellKey, tabId) {
     queueTopbarPageStateSync();
 
     const activeTab = shellState.tabs.get(tabId);
+    const activePanel = activeTab?.panel;
+
+    // Cross-fade animation when switching tabs in the settings page
+    if (isSettingsPageHosting(shellKey) && previousPanel && activePanel && previousPanel !== activePanel) {
+        stopMotion(previousPanel);
+        stopMotion(activePanel);
+        animateOut(previousPanel, [
+            { opacity: 1 },
+            { opacity: 0 },
+        ], () => {}, { duration: MOTION_FAST });
+        animateIn(activePanel, [
+            { opacity: 0 },
+            { opacity: 1 },
+        ], { duration: MOTION_FAST, delay: 50 });
+    }
 
     if (previousTab && previousTab.id !== activeTab.id) {
         previousTab.onDeactivate?.();
@@ -15025,11 +15052,16 @@ function closeModeDropdown({ restoreFocus = false } = {}) {
         return;
     }
 
-    menu.remove();
     setModeMenuOpenState(false);
-    if (restoreFocus) {
-        document.getElementById('sb-mode-toggle')?.focus({ preventScroll: true });
-    }
+    animateOut(menu, [
+        { opacity: 1, transform: 'translateY(0) scale(1)' },
+        { opacity: 0, transform: 'translateY(-4px) scale(0.97)' },
+    ], () => {
+        menu.remove();
+        if (restoreFocus) {
+            document.getElementById('sb-mode-toggle')?.focus({ preventScroll: true });
+        }
+    }, { duration: MOTION_FAST });
 }
 
 function toggleChatMode() {
@@ -15113,6 +15145,12 @@ function openModeDropdown() {
         menu.style.setProperty('--sb-mode-menu-top', `${rect.bottom + 6}px`);
         menu.style.setProperty('--sb-mode-menu-left', `${Math.max(8, left)}px`);
     }
+
+    animateIn(menu, [
+        { opacity: 0, transform: 'translateY(-4px) scale(0.97)' },
+        { opacity: 1, transform: 'translateY(0) scale(1)' },
+    ], { duration: MOTION_FAST });
+    menu.querySelector('.sb-mode-menu-item')?.focus();
 
     window.requestAnimationFrame(() => {
         (menu.querySelector('.sb-mode-menu-item.is-active') ?? menu.querySelector('.sb-mode-menu-item'))?.focus();
