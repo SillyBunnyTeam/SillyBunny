@@ -1,6 +1,7 @@
 const SB_CONSOLE_LOG_LIMIT = 260;
 const SB_CONSOLE_LOG_REFRESH_MS = 2500;
 const SB_CONSOLE_LOG_STICKY_THRESHOLD = 28;
+const SB_INSTALLER_URL = 'https://github.com/SillyBunnyTeam/SillyBunny/releases/latest';
 
 // SillyBunny: server administration is loaded only when its panels or settings search are used.
 export function createServerTools({ createElement, createShellPanel, hasServerReturnedAfterRestart, isShellOpen, isShellTabOpen, setButtonDisabled, setServerAdminMessage, setServerAdminPill, wait, waitForAuthorizedRequestHeaders }) {
@@ -620,9 +621,10 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         }
 
         const repository = data?.repository ?? {};
-        const release = data?.release ?? null;
         const version = data?.version ?? {};
-        const isGitInstall = Boolean(repository?.supported && repository?.isRepo);
+        const installType = data?.installType || (repository?.isRepo ? 'git' : 'unsupported');
+        const isDockerInstall = installType === 'docker';
+        const isGitInstall = !isDockerInstall && Boolean(repository?.supported && repository?.isRepo);
         const statusGrid = refs.statusGrid;
         statusGrid.replaceChildren();
 
@@ -640,7 +642,9 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             attrs: { style: 'width: 100%; max-width: 200px;' },
         });
         branchSelect.disabled = !isGitInstall;
-        const currentBranch = isGitInstall ? (repository?.displayBranch || repository?.branch || version?.gitBranch || '') : 'Release ZIP';
+        const currentBranch = isGitInstall
+            ? (repository?.displayBranch || repository?.branch || version?.gitBranch || '')
+            : isDockerInstall ? 'Docker' : 'Unsupported';
         const currentOptionAttributes = { value: currentBranch, selected: 'selected' };
         if (!currentBranch || !isGitInstall) {
             currentOptionAttributes.disabled = 'disabled';
@@ -657,21 +661,20 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             loadServerAdminBranches(branchSelect, currentBranch);
         }
 
-        appendServerAdminStat(statusGrid, 'Commit', repository?.currentCommit || version?.gitRevision || 'Unknown');
-        appendServerAdminStat(statusGrid, 'Tracking', repository?.trackingBranch || 'Not set');
-        appendServerAdminStat(statusGrid, 'Ahead', String(repository?.ahead ?? 0));
-        appendServerAdminStat(statusGrid, 'Behind', String(repository?.behind ?? 0));
-        if (release) {
-            appendServerAdminStat(statusGrid, 'Latest ZIP', release?.latestVersion ? `v${release.latestVersion}` : 'Unknown');
+        if (isGitInstall) {
+            appendServerAdminStat(statusGrid, 'Commit', repository?.currentCommit || version?.gitRevision || 'Unknown');
+            appendServerAdminStat(statusGrid, 'Tracking', repository?.trackingBranch || 'Not set');
+            appendServerAdminStat(statusGrid, 'Ahead', String(repository?.ahead ?? 0));
+            appendServerAdminStat(statusGrid, 'Behind', String(repository?.behind ?? 0));
         }
         appendServerAdminStat(statusGrid, 'Config', data?.configPath || 'Unknown');
 
         state.lastStatusData = {
             runtime: data?.runtime || '',
             configPath: data?.configPath || '',
+            installType,
             version,
             repository,
-            release,
         };
 
         let pillLabel = 'Unavailable';
@@ -694,29 +697,28 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
                 pillLabel = 'Up To Date';
                 pillTone = 'good';
             }
-        } else if (release?.canUpdate) {
-            pillLabel = release?.latestVersion ? `Update Available (v${release.latestVersion})` : 'Update Available';
-            pillTone = 'warn';
-        } else if (release?.checked && release?.assetAvailable && release?.latestVersion === release?.currentVersion) {
-            pillLabel = 'Up To Date';
-            pillTone = 'good';
-        } else if (release?.checked && release?.assetAvailable) {
-            pillLabel = 'ZIP Install';
+        } else if (isDockerInstall) {
+            pillLabel = 'Docker';
             pillTone = 'neutral';
-        } else if (release?.checked && !release?.assetAvailable) {
-            pillLabel = 'ZIP Unavailable';
-            pillTone = 'warn';
-        } else if (release?.supported && !release?.checked) {
-            pillLabel = 'Check Failed';
+        } else {
+            pillLabel = 'Unsupported Install';
             pillTone = 'warn';
         }
 
         setServerAdminPill(refs.statusPill, pillLabel, pillTone);
-        const updateMode = repository?.canUpdate ? 'git' : release?.canUpdate ? 'zip' : '';
+        const updateMode = isGitInstall && repository?.canUpdate ? 'git' : '';
         refs.updateButton.dataset.sbCanUpdate = String(Boolean(updateMode));
         refs.updateButton.dataset.sbUpdateMode = updateMode;
+        refs.updateButton.hidden = !isGitInstall;
+        refs.refreshButton.textContent = isGitInstall ? 'Check for updates' : 'Refresh status';
 
-        const noteParts = [String((isGitInstall ? repository?.message : release?.message || repository?.message) ?? '').trim()].filter(Boolean);
+        // SillyBunny: Docker and non-Git copies have no in-app updater; the note explains how they update instead.
+        const installNote = isDockerInstall
+            ? 'Running in Docker. Update by pulling the new image and recreating the container.'
+            : !isGitInstall
+                ? 'This copy was not installed with Git, so it cannot update in the app.'
+                : '';
+        const noteParts = [String((isGitInstall ? repository?.message : installNote) ?? '').trim()].filter(Boolean);
 
         if ((repository?.changedFilesCount ?? 0) > 0) {
             const changedPreview = Array.isArray(repository?.changedFiles)
@@ -726,6 +728,10 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         }
 
         setServerAdminMessage(refs.statusNote, noteParts.join('\n'), pillTone);
+
+        if (refs.installLink instanceof HTMLElement) {
+            refs.installLink.hidden = isGitInstall || isDockerInstall;
+        }
 
         if (refs.autoStashCheckbox) {
             refs.autoStashCheckbox.checked = Boolean(repository?.autoStash);
@@ -769,7 +775,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         setServerAdminMessage(refs.thumbnailNote, 'Thumbnail settings loaded. Saving applies to new thumbnails immediately.', 'neutral');
     }
 
-    async function waitForServerReturn(expectedRevision = '', { clearCacheBeforeReload = false, expectedVersion = '', previousServerBootId = '' } = {}) {
+    async function waitForServerReturn(expectedRevision = '', { clearCacheBeforeReload = false, previousServerBootId = '' } = {}) {
         let sawOffline = false;
 
         async function reloadAfterOptionalCacheClear() {
@@ -789,7 +795,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
                 }
 
                 const version = await response.json().catch(() => ({}));
-                if (hasServerReturnedAfterRestart(version, { expectedRevision, expectedVersion, previousServerBootId, sawOffline })) {
+                if (hasServerReturnedAfterRestart(version, { expectedRevision, previousServerBootId, sawOffline })) {
                     await reloadAfterOptionalCacheClear();
                     return true;
                 }
@@ -1132,8 +1138,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             return;
         }
 
-        if (refs.updateButton?.dataset.sbUpdateMode === 'zip') {
-            await handleServerAdminZipUpdate();
+        if (refs.updateButton?.dataset.sbUpdateMode !== 'git') {
             return;
         }
 
@@ -1204,69 +1209,6 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             }
             setServerAdminMessage(refs.updateNote, [error.message || 'Failed to update SillyBunny.', stashMessage].filter(Boolean).join('\n'), 'danger');
             toastr.error(error.message || 'Failed to update SillyBunny.', 'Server update');
-        } finally {
-            setServerAdminButtonLabel(refs.updateButton, false, 'Updating…');
-
-            if (!state.restarting) {
-                state.busy = false;
-                updateServerAdminInteractivity();
-            }
-        }
-    }
-
-    async function handleServerAdminZipUpdate() {
-        const state = getServerAdminState();
-        const refs = getServerAdminRefs();
-
-        if (!refs || state.busy || state.restarting) {
-            return;
-        }
-
-        state.busy = true;
-        updateServerAdminInteractivity();
-        setServerAdminButtonLabel(refs.updateButton, true, 'Updating…');
-        setServerAdminMessage(refs.updateNote, 'Downloading the latest GitHub release ZIP and preparing a safe restart…');
-        refs.updateOutput.hidden = true;
-        refs.updateOutput.textContent = '';
-
-        try {
-            const result = await requestServerAdmin('/api/server-admin/zip-update');
-            const nextStatus = {
-                ...(state.lastStatusData ?? {}),
-                configPath: refs.configPath?.textContent || state.lastStatusData?.configPath || '',
-                version: result?.version ?? state.lastStatusData?.version ?? {},
-                repository: result?.repository ?? state.lastStatusData?.repository ?? {},
-                release: result?.release ?? state.lastStatusData?.release ?? null,
-            };
-
-            if (!result?.updated) {
-                renderServerAdminStatus(nextStatus);
-                setServerAdminMessage(refs.updateNote, result?.message || 'Already up to date.', 'good');
-                toastr.success(result?.message || 'Already up to date.', 'Server update');
-                return;
-            }
-
-            renderServerAdminStatus(nextStatus);
-            state.busy = false;
-            state.restarting = true;
-            updateServerAdminInteractivity();
-            setServerAdminMessage(refs.updateNote, result?.message || 'ZIP update downloaded. Restarting SillyBunny…', 'warn');
-            toastr.info(result?.message || 'ZIP update downloaded. Restarting SillyBunny…', 'Server update');
-
-            const expectedVersion = String(result?.release?.latestVersion ?? '').trim();
-            const autoClearCacheEnabled = Boolean(document.getElementById('auto_clear_cache_on_update')?.checked);
-            const restarted = await waitForServerReturn('', { clearCacheBeforeReload: autoClearCacheEnabled, expectedVersion });
-
-            if (!restarted) {
-                state.restarting = false;
-                setServerAdminMessage(refs.updateNote, 'ZIP update started, but restart is taking longer than expected. Refresh manually once the server is back.', 'warn');
-                toastr.warning('ZIP update started, but restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
-            }
-        } catch (error) {
-            console.error('Failed to update SillyBunny from release ZIP.', error);
-            state.busy = false;
-            setServerAdminMessage(refs.updateNote, error.message || 'Failed to update SillyBunny from release ZIP.', 'danger');
-            toastr.error(error.message || 'Failed to update SillyBunny from release ZIP.', 'Server update');
         } finally {
             setServerAdminButtonLabel(refs.updateButton, false, 'Updating…');
 
@@ -1398,7 +1340,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         const callout = createElement('div', { className: 'sb-shell-callout' });
         callout.innerHTML = `
             <strong>Server Tools</strong>
-            <p>Edit <code>config.yaml</code>, check for Git or release ZIP updates, and restart the app from inside Customize. Git auto-update only runs when the repository can fast-forward cleanly.</p>
+            <p>Edit <code>config.yaml</code>, check for updates, and restart the app from inside Customize. Updates use Git and only run when the repository can fast-forward cleanly.</p>
         `;
 
         const statusCard = createElement('section', { className: 'sb-admin-card sb-server-card' });
@@ -1409,9 +1351,17 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         const statusPill = createElement('span', { className: 'sb-server-pill', text: 'Checking…' });
         const statusGrid = createElement('div', { className: 'sb-server-grid' });
         const statusNote = createElement('div', { className: 'sb-server-note' });
+        // SillyBunny: migration link for non-Git copies; the target is a placeholder until the bootstrap installer ships.
+        const installLink = createElement('div', { className: 'sb-server-note' });
+        installLink.dataset.tone = 'warn';
+        installLink.appendChild(createElement('a', {
+            text: 'Reinstall with the installer to get updates',
+            attrs: { href: SB_INSTALLER_URL, target: '_blank', rel: 'noopener noreferrer' },
+        }));
+        installLink.hidden = true;
         statusCopy.append(statusTitle, statusDescription);
         statusHeader.append(statusCopy, statusPill);
-        statusCard.append(statusHeader, statusGrid, statusNote);
+        statusCard.append(statusHeader, statusGrid, statusNote, installLink);
 
         const updateCard = createElement('section', { className: 'sb-admin-card sb-server-card' });
         const updateHeader = createElement('div', { className: 'sb-admin-card-header' });
@@ -1422,7 +1372,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         const refreshButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Check for updates', attrs: { type: 'button' } });
         const updateButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action menu_button_primary', text: 'Update & Restart', attrs: { type: 'button' } });
         const restartButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Restart server', attrs: { type: 'button' } });
-        const updateNote = createElement('div', { className: 'sb-server-note', text: 'Git fast-forward updates and release ZIP updates restart automatically after preparation finishes.' });
+        const updateNote = createElement('div', { className: 'sb-server-note', text: 'Git fast-forward updates restart automatically once they finish.' });
         const autoStashLabel = createElement('label', { className: 'checkbox_label' });
         const autoStashCheckbox = createElement('input', { attrs: { type: 'checkbox', id: 'auto_stash_before_pull' } });
         const autoStashText = createElement('small', { text: 'Auto-stash local changes before pulling' });
@@ -1561,6 +1511,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             statusPill,
             statusGrid,
             statusNote,
+            installLink,
             refreshButton,
             updateButton,
             restartButton,

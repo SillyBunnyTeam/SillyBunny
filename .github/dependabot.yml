@@ -1,0 +1,19 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: staging
+    schedule:
+      interval: weekly
+    # Matches the 7-day min-release-age in .npmrc.
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore
+      include: scope
+    labels:
+      - 📥 Dependencies
+    groups:
+      github-actions:
+        patterns:
+          - '*'

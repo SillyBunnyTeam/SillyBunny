@@ -22,6 +22,7 @@ import './fetch-patch.js';
 import { APP_NAME, isBunRuntime } from './runtime.js';
 import { serverDirectory } from './server-directory.js';
 import { getServerBootId } from './server-boot-marker.js';
+import { getInstallType, INSTALL_TYPE } from './install-type.js';
 
 import { serverEvents, EVENT_NAMES } from './server-events.js';
 import { getLoadedServerPlugins, loadPlugins } from './plugin-loader.js';
@@ -482,6 +483,10 @@ async function preSetupTasks() {
             console.log('INFO: Currently not on the latest commit.');
             console.log(`      Run 'git pull --ff-only' to update from the tracked upstream for '${version.gitBranch}'. If you have merge conflicts, resolve them before updating.`);
         }
+    }
+    if (getInstallType() === INSTALL_TYPE.UNSUPPORTED) {
+        console.warn(color.yellow('WARNING: This copy of SillyBunny is not a Git checkout or Docker container, so it cannot update.'));
+        console.warn(color.yellow('         Reinstall with the installer to keep getting updates: https://github.com/SillyBunnyTeam/SillyBunny/releases/latest'));
     }
     console.log();
 

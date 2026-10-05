@@ -138,6 +138,8 @@
         "check:frontend-budgets": "node scripts/check-frontend-budgets.js",
         "agents:bump-template-versions": "node scripts/bump-agent-template-versions.js",
         "changelog:merged-prs": "node scripts/update-changelog-merged-prs.js",
+        "version:bump": "node scripts/bump-version.js",
+        "version:check": "node scripts/bump-version.js --check",
         "plugins:update": "bun plugins.js update",
         "plugins:install": "bun plugins.js install"
     },
