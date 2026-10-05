@@ -183,8 +183,9 @@
     --sb-layer-popover-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeBodyColor) 10%);
     --sb-layer-dialog-source: var(--sb-layer-popover-source);
     --sb-layer-toast-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 80%, var(--SmartThemeBodyColor) 20%);
-    /* Bottom toolbar (Roleplay composer stack, Conversation composer). Dark keeps it on View. */
-    --sb-layer-bottombar-source: var(--sb-layer-view-source);
+    /* Bottom toolbar (Roleplay composer stack, Conversation composer). Anchored to Canvas so a
+       light SmartThemeChatTintColor does not produce a white bar in dark mode. */
+    --sb-layer-bottombar-source: var(--sb-layer-canvas-source);
     --sb-layer-view: var(--sb-layer-view-source);
     --sb-layer-bottombar: var(--sb-layer-bottombar-source);
     --sb-layer-window: var(--sb-layer-window-source);
