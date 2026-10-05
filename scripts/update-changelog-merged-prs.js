@@ -15,13 +15,14 @@ const mergedPrHeading = '### Merged Staging PRs';
 const stagingBranch = 'staging';
 
 function printHelp() {
-    console.log(`Usage: node scripts/update-changelog-merged-prs.js [--pr <number>] [--pr <number>] [--version <version>] [--dry-run]
+    console.log(`Usage: node scripts/update-changelog-merged-prs.js [--pr <number>] [--pr <number>] [--range <from>..<to>] [--version <version>] [--dry-run]
 
 Adds merged staging pull requests to the current changelog version section.
 
 Options:
   --pr <number>       Pull request number to record. Can be repeated or comma-separated.
                       Defaults to merged PRs found in the GitHub event payload.
+  --range <revs>      Also record PRs merged in a git revision range, e.g. v1.8.1..origin/staging.
   --version <version> Changelog version heading to update. Defaults to package.json version.
   --dry-run           Report whether changelog.md would change without writing it.
   --help              Show this help text.
@@ -33,6 +34,7 @@ function parseArgs(argv) {
         dryRun: false,
         help: false,
         prNumbers: [],
+        range: undefined,
         version: undefined,
     };
 
@@ -52,6 +54,11 @@ function parseArgs(argv) {
         if (arg === '--pr') {
             const value = readArgValue(argv, ++index, arg);
             options.prNumbers.push(...value.split(','));
+            continue;
+        }
+
+        if (arg === '--range') {
+            options.range = readArgValue(argv, ++index, arg);
             continue;
         }
 
@@ -124,6 +131,26 @@ export function extractMergedPrNumbers(message) {
     }
 
     return [...numbers];
+}
+
+function readRangePrNumbers(range) {
+    if (!/^[\w./@^~-]+\.\.[\w./@^~-]+$/.test(range)) {
+        throw new Error(`Invalid revision range: ${range}`);
+    }
+
+    let log;
+    try {
+        log = execFileSync('git', ['log', '--first-parent', '--format=%B%x00', range], {
+            cwd: repoRoot,
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+    } catch (error) {
+        const stderr = error.stderr?.toString().trim();
+        throw new Error(`Failed to read git log for ${range}${stderr ? `: ${stderr}` : ''}`);
+    }
+
+    return log.split('\0').flatMap(message => extractMergedPrNumbers(message.trim()));
 }
 
 function normalizePrNumbers(values) {
@@ -306,7 +333,8 @@ function main() {
             return;
         }
 
-        const prNumbers = normalizePrNumbers(options.prNumbers);
+        const rangePrNumbers = options.range ? readRangePrNumbers(options.range) : [];
+        const prNumbers = normalizePrNumbers([...options.prNumbers, ...rangePrNumbers]);
         if (!prNumbers.length && process.env.GITHUB_EVENT_NAME === 'push') {
             console.log('No merged staging pull requests found in this push.');
             return;

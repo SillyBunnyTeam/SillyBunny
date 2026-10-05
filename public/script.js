@@ -536,6 +536,7 @@ export let isChatSaving = false;
 export let firstRun = false;
 export let settingsReady = false;
 let currentVersion = '0.0.0';
+// SillyBunny: version literals here and in CLIENT_VERSION are rewritten by scripts/bump-version.js.
 const SILLYBUNNY_UI_VERSION = 'SillyBunny v1.9.0-dev';
 
 export let displayVersion = SILLYBUNNY_UI_VERSION;
