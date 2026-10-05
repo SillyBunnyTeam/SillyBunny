@@ -198,11 +198,10 @@ describe('icons only top bar', () => {
         expect(cssSource).not.toContain('#sb-topbar-parked');
     });
 
-    test('uses the Characters anchor as a page only in icons-only mode', () => {
+    test('opens the Characters anchor as a settings page in every mode', () => {
         const activationSource = getFunctionSource('activateCharacterTopbarButton');
-        expect(activationSource).toContain('if (isTopbarIconsOnlyActive())');
-        expect(activationSource).toContain('openCharacterPanelTab(SB_CHARACTER_PANEL_DEFAULT_TAB);');
-        expect(activationSource).toContain('toggleCharacterPanel();');
+        expect(activationSource).toContain('toggleSettingsPage(\'characters\', SB_CHARACTER_PANEL_DEFAULT_TAB);');
+        expect(activationSource).not.toContain('if (isTopbarIconsOnlyActive())');
 
         const buildSource = getFunctionSource('buildTopBar');
         expect(buildSource).toContain('activateCharacterTopbarButton,');
@@ -276,7 +275,7 @@ describe('icons only top bar', () => {
         expect(normalizedTabsSource).toContain('function createTopbarClusterDivider(');
         const orderSource = getFunctionSource('getTopbarGroupOrder');
         expect(orderSource).toContain('\'sb-topbar-divider-customize\',');
-        expect(orderSource).toContain('right.push(\'sb-home-toggle\', \'sb-topbar-divider-home\');');
+        expect(orderSource).toContain('right.push(\'sb-mode-toggle\', \'sb-home-toggle\', \'sb-topbar-divider-home\');');
 
         const baseRule = cssSource.match(/\.sb-topbar-cluster-divider \{[^}]*\}/);
         expect(baseRule).not.toBeNull();
@@ -338,14 +337,15 @@ describe('icons only top bar', () => {
         expect(mobileCss).toContain('.sb-topbar-page-button i,');
     });
 
-    test('reaches search through a quick access slot, exactly as with the option off', () => {
-        // A dedicated Search button silently suppressed the user's own slot, which is the
-        // inconsistent-patterns-across-contexts anti-pattern.
+    test('keeps search as a permanent top bar button in every mode', () => {
+        // Search left the Quick Access slots for a fixed top bar button, so the default right
+        // slot is free for Extensions while users can still assign Search to any slot.
         expect(normalizedTabsSource).not.toContain('SB_TOPBAR_SEARCH_TARGET');
-        expect(normalizedTabsSource).not.toContain('sb-topbar-search-toggle');
-        expect(cssSource).not.toContain('#sb-topbar-search-toggle');
+        expect(getFunctionSource('getTopbarGroupOrder')).toContain('\'sb-topbar-search-toggle\',');
+        expect(cssSource).toContain('#sb-topbar-search-toggle');
         expect(getClustersSource()).not.toContain('action:search');
-        expect(normalizedTabsSource).toContain('right: \'action:search\',');
+        expect(normalizedTabsSource).toContain('right: \'right:extensions\',');
+        expect(normalizedTabsSource).toContain('{ value: \'action:search\', label: \'Search\', icon: \'fa-magnifying-glass\' },');
         expect(getFunctionSource('syncTopbarPageButtonStates')).toContain('for (const page of SB_TOPBAR_PAGE_TARGETS) {');
     });
 
@@ -430,14 +430,6 @@ describe('icons only top bar', () => {
         expect(setterSource).toContain('updateThemePickerUi();');
         expect(normalizedTabsSource).toContain('sbState.topbarIconsOnly.desktop = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopTopbarIconsOnly), sbState.topbarIconsOnly.desktop);');
         expect(normalizedTabsSource).toContain('sbState.topbarIconsOnly.mobile = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileTopbarIconsOnly), sbState.topbarIconsOnly.mobile);');
-    });
-
-    test('keeps shell focus on a visible control', () => {
-        // Workspace and Customize are hidden in icons-only mode, so shell-close focus falls back
-        // to the active page icon instead of silently dropping to <body>.
-        const proxySource = getFunctionSource('getShellProxyButton');
-        expect(proxySource).toContain('isActuallyVisible(proxyButton)');
-        expect(proxySource).toContain('data-sb-topbar-page');
     });
 
     test('keeps the character toggle measurable for anchored extension dropdowns', () => {

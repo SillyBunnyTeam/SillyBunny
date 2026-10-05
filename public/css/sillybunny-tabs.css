@@ -949,14 +949,6 @@ body:not(.movingUI) .drawer-content.maximized {
     max-height: calc(100dvh - var(--sb-topbar-layout-offset));
 }
 
-.fillLeft.openDrawer,
-.fillRight.openDrawer,
-#right-nav-panel.openDrawer {
-    top: calc(var(--sb-topbar-layout-offset) + var(--sb-drawer-top-gap)) !important;
-    height: calc(100dvh - var(--sb-topbar-layout-offset) - var(--sb-drawer-top-gap)) !important;
-    max-height: calc(100dvh - var(--sb-topbar-layout-offset) - var(--sb-drawer-top-gap)) !important;
-}
-
 #sb-chat-sidebar {
     width: min(360px, calc(100vw - 32px));
     height: min(70vh, calc(100dvh - var(--sb-topbar-layout-offset) - 24px));
@@ -1663,67 +1655,9 @@ body:not(.movingUI) .drawer-content.maximized {
     transition: opacity var(--sb-transition-fast);
 }
 
-#left-nav-panel.openDrawer,
-#user-settings-block.openDrawer,
-.sb-shell-root.fillLeft.openDrawer,
-.sb-shell-root.fillRight.openDrawer {
-    display: flex;
-    width: 100vw !important;
-    width: 100dvw !important;
-    max-width: 100dvw !important;
-    min-width: 0 !important;
-    /* A small gap under the header bar so the rounded top corners float instead of
-       showing the header's square shade line behind them. */
-    top: calc(var(--sb-topbar-layout-offset) + var(--sb-drawer-top-gap)) !important;
-    height: calc(100dvh - var(--sb-topbar-layout-offset) - var(--sb-drawer-top-gap) - 16px) !important;
-    max-height: calc(100dvh - var(--sb-topbar-layout-offset) - var(--sb-drawer-top-gap) - 16px) !important;
-    min-height: 0 !important;
-    /* libadwaita: keep the overlay radii on open drawers. */
-    border-radius: var(--sb-radius-overlay) !important;
-    left: 0 !important;
-    right: 0 !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
-}
-
-.sb-shell-root.fillLeft.openDrawer,
-.sb-shell-root.fillRight.openDrawer {
-    transform-origin: center;
-}
-
 #right-nav-panel.openDrawer {
     --sb-character-scroll-gutter: 8px;
     display: flex;
-    width: min(100vw, clamp(600px, 55vw, 760px)) !important;
-    max-width: calc(100vw - 28px) !important;
-    min-width: min(420px, calc(100vw - 28px)) !important;
-    overflow: hidden !important;
-    left: 0 !important;
-    right: 0 !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
-    transform-origin: center;
-}
-
-body.movingUI #right-nav-panel.openDrawer {
-    max-width: none !important;
-    max-height: none !important;
-}
-
-body.movingUI #right-nav-panel.openDrawer > .sb-shell-resize-handle {
-    display: none !important;
-}
-
-:root[data-sb-character-drawer-lock="right"] #right-nav-panel.openDrawer {
-    left: auto !important;
-    right: 0 !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    transform-origin: right center;
-}
-
-.sb-shell-root.openDrawer .sb-shell-nav-wrapper {
-    animation: none;
 }
 
 #right-nav-panel.openDrawer > .scrollableInner,
@@ -1754,73 +1688,6 @@ body.movingUI #right-nav-panel.openDrawer > .sb-shell-resize-handle {
     flex-direction: column;
     align-items: stretch;
     overflow: hidden;
-}
-
-.sb-shell-resize-handle {
-    position: absolute;
-    right: 8px;
-    bottom: 8px;
-    z-index: var(--sb-z-raised);
-    display: none;
-    width: 32px;
-    height: 32px;
-    box-sizing: border-box;
-    /* libadwaita flat grip: transparent at rest, neutral fills, dimmed body-ink grip lines. */
-    --sb-shell-resize-accent: var(--sb-muted-fg);
-    border-radius: var(--sb-radius-control) 0 calc(var(--sb-radius-overlay) - 1px) 0;
-    border: 0;
-    background: transparent;
-    box-shadow: none;
-    pointer-events: auto;
-    cursor: nwse-resize;
-    touch-action: none;
-    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
-}
-
-.sb-shell-resize-handle::before {
-    content: '';
-    position: absolute;
-    inset: 8px;
-    border-radius: 0;
-    /* Grip glyph drawn as diagonal hairlines; a pattern, not a surface fill. */
-    background:
-        linear-gradient(135deg, transparent 0 46%, var(--sb-shell-resize-accent) 46% 52%, transparent 52% 64%, var(--sb-shell-resize-accent) 64% 70%, transparent 70% 82%, var(--sb-shell-resize-accent) 82% 88%, transparent 88% 100%);
-}
-
-.sb-shell-resize-handle::after {
-    content: '';
-    position: absolute;
-    inset: -20px;
-    border-radius: inherit;
-}
-
-.sb-shell-root.sb-shell-can-resize.openDrawer .sb-shell-resize-handle,
-#right-nav-panel.sb-shell-can-resize.openDrawer > .sb-shell-resize-handle {
-    display: block;
-}
-
-@media (hover: hover) {
-    .sb-shell-resize-handle:hover {
-        background: var(--sb-flat-hover-bg);
-    }
-}
-
-.sb-shell-root.sb-shell-resize-active .sb-shell-resize-handle,
-#right-nav-panel.sb-shell-resize-active > .sb-shell-resize-handle,
-.sb-shell-resize-handle:active {
-    background: var(--sb-flat-active-bg);
-}
-
-.sb-shell-resize-handle:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
-body.sb-shell-resizing,
-body.sb-shell-resizing * {
-    cursor: nwse-resize !important;
-    -webkit-user-select: none !important;
-    user-select: none !important;
 }
 
 .sb-shell-nav-wrapper {
@@ -6052,10 +5919,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     padding-top: 0;
 }
 
-#right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) > .sb-shell-resize-handle {
-    display: none !important;
-}
-
 #right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) #rm_ch_create_block {
     flex: 1 1 auto;
     min-height: 0;
@@ -7690,8 +7553,6 @@ body.big-avatars #rm_print_characters_block {
 }
 
 @media screen and (max-width: 1100px) {
-    #left-nav-panel.openDrawer,
-    #user-settings-block.openDrawer,
     .sb-shell-root.fillLeft.openDrawer,
     .sb-shell-root.fillRight.openDrawer,
     #right-nav-panel.sb-character-drawer-root.openDrawer {
@@ -7750,8 +7611,6 @@ body.big-avatars #rm_print_characters_block {
 }
 
 @media screen and (max-width: 1180px), screen and (max-height: 860px) {
-    #left-nav-panel.openDrawer,
-    #user-settings-block.openDrawer,
     .sb-shell-root.fillLeft.openDrawer,
     .sb-shell-root.fillRight.openDrawer,
     #right-nav-panel.sb-character-drawer-root.openDrawer {
@@ -7762,8 +7621,6 @@ body.big-avatars #rm_print_characters_block {
 }
 
 @media screen and (max-height: 860px) {
-    #left-nav-panel.openDrawer,
-    #user-settings-block.openDrawer,
     .sb-shell-root.fillLeft.openDrawer,
     .sb-shell-root.fillRight.openDrawer {
         width: 100vw !important;
@@ -7777,33 +7634,6 @@ body.big-avatars #rm_print_characters_block {
     #right-nav-panel.openDrawer {
         min-width: min(420px, 100vw) !important;
         border-radius: 0 !important;
-    }
-
-    :root[data-sb-character-drawer-lock="right"] #right-nav-panel.openDrawer {
-        left: auto !important;
-        right: 0 !important;
-        margin-left: 0 !important;
-        margin-right: 0 !important;
-        transform-origin: right center;
-    }
-}
-
-@media screen and (min-width: 1001px) and (max-width: 1440px) {
-    #left-nav-panel.openDrawer,
-    #user-settings-block.openDrawer {
-        width: min(100vw, clamp(680px, 60vw, 920px)) !important;
-        max-width: calc(100vw - 28px) !important;
-        min-width: min(580px, calc(100vw - 28px)) !important;
-    }
-}
-
-/* Expansion of PR #145: Add compact mode scaling for laptop viewport panels */
-@media screen and (min-width: 1001px) and (max-width: 1440px) {
-    :root[data-sb-compact-mode='true'] #left-nav-panel.openDrawer,
-    :root[data-sb-compact-mode='true'] #user-settings-block.openDrawer {
-        width: min(100vw, clamp(600px, 58vw, 810px)) !important;
-        max-width: calc(100vw - 24px) !important;
-        min-width: min(510px, calc(100vw - 24px)) !important;
     }
 }
 
@@ -8155,7 +7985,6 @@ body.big-avatars #rm_print_characters_block {
     }
 
     @media screen and (max-width: 768px) {
-        #left-nav-panel.openDrawer,
         .sb-shell-root.openDrawer,
         .sb-shell-root.fillLeft.openDrawer,
         .sb-shell-root.fillRight.openDrawer {
@@ -8170,11 +7999,6 @@ body.big-avatars #rm_print_characters_block {
             -webkit-backdrop-filter: none !important;
             pointer-events: auto !important;
             transform: translateZ(0);
-        }
-
-        #left-nav-panel.openDrawer {
-            transform: none !important;
-            -webkit-overflow-scrolling: auto !important;
         }
 
         #left-nav-panel > .scrollableInner,
@@ -8257,8 +8081,7 @@ body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.gr
     #sb-bottom-chat-select,
     #sb-persona-bubble,
     #sb-persona-picker,
-    .sb-persona-option,
-    .sb-shell-resize-handle {
+    .sb-persona-option {
         animation: none !important;
         transition-duration: 0.01ms !important;
     }
@@ -8272,8 +8095,7 @@ body.reduced-motion .sb-bottom-chat-btn,
 body.reduced-motion #sb-bottom-chat-select,
 body.reduced-motion #sb-persona-bubble,
 body.reduced-motion #sb-persona-picker,
-body.reduced-motion .sb-persona-option,
-body.reduced-motion .sb-shell-resize-handle {
+body.reduced-motion .sb-persona-option {
     animation: none !important;
     transition: none !important;
 }
@@ -8633,24 +8455,6 @@ body.reduced-motion .sb-shell-main {
     padding: 0;
 }
 
-/* Tab panel content transition */
-.sb-settings-body > .sb-settings-panel {
-    position: absolute;
-    inset: 0;
-    overflow-y: auto;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity var(--sb-transition);
-}
-
-.sb-settings-body > .sb-settings-panel.is-active {
-    opacity: 1;
-    pointer-events: auto;
-    position: static;
-    overflow-y: auto;
-    min-height: 100%;
-}
-
 /* The settings page hosts the already-built shell root directly. This avoids
    rebuilding or reparenting every tab whenever Workspace and Customize switch. */
 #sb-settings-shell-host {
@@ -8694,8 +8498,7 @@ body.reduced-motion .sb-shell-main {
 }
 
 #sb-settings-shell-host > #right-nav-panel.sb-settings-mounted-shell > .sb-character-shell-header,
-#sb-settings-shell-host > #right-nav-panel.sb-settings-mounted-shell > .sb-character-shell-nav-wrapper,
-#sb-settings-shell-host > #right-nav-panel.sb-settings-mounted-shell > .sb-shell-resize-handle {
+#sb-settings-shell-host > #right-nav-panel.sb-settings-mounted-shell > .sb-character-shell-nav-wrapper {
     display: none !important;
 }
 
@@ -8725,35 +8528,13 @@ body.reduced-motion .sb-shell-main {
 }
 
 #sb-settings-shell-host > .sb-settings-mounted-shell .sb-shell-nav-wrapper,
-#sb-settings-shell-host > .sb-settings-mounted-shell .sb-shell-header,
-#sb-settings-shell-host > .sb-settings-mounted-shell .sb-shell-resize-handle {
+#sb-settings-shell-host > .sb-settings-mounted-shell .sb-shell-header {
     display: none !important;
 }
 
 #sb-settings-shell-host > .sb-settings-mounted-shell .sb-shell-main {
     width: 100%;
     height: 100%;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .sb-settings-body > .sb-settings-panel {
-        transition: none;
-    }
-}
-
-/* Reparented shell panels sit flush inside their settings panel host */
-.sb-settings-panel > .sb-shell-root {
-    position: static !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    height: auto !important;
-    max-height: none !important;
-    overflow: visible !important;
-    transform: none !important;
-}
-
-.sb-settings-panel > .sb-shell-root.closedDrawer:not(.openDrawer) {
-    display: flex !important;
 }
 
 /* ── Phase 1: topbar search and mode buttons ────────────────────────────── */

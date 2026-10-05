@@ -20,19 +20,17 @@ function getRuleBody(cssSource, selector) {
 }
 
 describe('mobile character drawer top row css', () => {
-    test('keeps the favorites strip wide before lock and close controls', () => {
+    test('keeps the favorites strip wide before the close control', () => {
         const rowRule = getRuleBody(mobileStylesCss, '#right-nav-panel #CharListButtonAndHotSwaps');
         const wrapperRule = getRuleBody(mobileStylesCss, '#right-nav-panel:not(:is([data-menu-type="character_edit"], [data-menu-type="create"])) #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container');
         const hotswapRule = getRuleBody(mobileStylesCss, '#right-nav-panel #HotSwapWrapper');
-        const lockRule = getRuleBody(mobileStylesCss, '#right-nav-panel #sb-character-right-lock');
         const closeRule = getRuleBody(mobileStylesCss, '#right-nav-panel #sb-character-mobile-close');
 
-        expect(rowRule).toContain('grid-template-columns: minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);');
+        expect(rowRule).toContain('grid-template-columns: minmax(0, 1fr) var(--sb-mobile-touch-target, 44px);');
         expect(rowRule).toContain('padding: 6px var(--sb-character-mobile-edge, var(--sb-shell-panel-padding-inline, 12px));');
         expect(wrapperRule).toContain('display: none;');
         expect(hotswapRule).toContain('grid-column: 1;');
-        expect(lockRule).toContain('grid-column: 2;');
-        expect(closeRule).toContain('grid-column: 3;');
+        expect(closeRule).toContain('grid-column: 2;');
     });
 
     test('uses full touch target controls in editor mode', () => {
@@ -42,11 +40,11 @@ describe('mobile character drawer top row css', () => {
         const backRule = getRuleBody(mobileStylesCss, '#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-back-to-list');
         const closeRule = getRuleBody(mobileStylesCss, '#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-mobile-close');
 
-        expect(editorRowRule).toContain('grid-template-columns: var(--sb-mobile-touch-target, 44px) minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);');
+        expect(editorRowRule).toContain('grid-template-columns: var(--sb-mobile-touch-target, 44px) minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);');
         expect(editorWrapperRule).toContain('grid-column: 1;');
         expect(editorHotswapRule).toContain('display: none !important;');
-        expect(backRule).toContain('grid-column: 4;');
-        expect(closeRule).toContain('grid-column: 5;');
+        expect(backRule).toContain('grid-column: 3;');
+        expect(closeRule).toContain('grid-column: 4;');
     });
 });
 

@@ -11,17 +11,14 @@ import {
     normalizeMobileShellText as normalizeText,
 } from './mobile-shell-lifecycle/index.js';
 import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
-import { initializeMobileSectionNav, requestMobileSectionView } from './sillybunny-mobile-section-nav.js';
+import { initializeMobileSectionNav } from './sillybunny-mobile-section-nav.js';
 import { initializeMessageActions } from './sillybunny-message-actions.js';
 import { initializeToastMotion } from './sillybunny-toast-motion.js';
 import {
     animateIn,
     animateOut,
-    MOTION_EASE_OUT_CUBIC,
     MOTION_FAST,
     MOTION_SLOW,
-    originFrom,
-    play as playMotion,
     prefersReducedMotion as prefersShellReducedMotion,
     SPRING_SHEET,
     stopMotion,
@@ -104,10 +101,6 @@ const SB_SHELL_SUBTITLE_PLACEHOLDER = 'Lorem ipsum dolor sit amet, consectetur a
 const SB_STORAGE_KEYS = Object.freeze({
     leftTab: 'sb-left-tab',
     rightTab: 'sb-right-tab',
-    leftShellSize: 'sb-left-shell-size',
-    rightShellSize: 'sb-right-shell-size',
-    desktopShellSnapToChatWidth: 'sb-desktop-shell-snap-to-chat-width',
-    characterDrawerRightLocked: 'sb-character-drawer-right-locked',
     surfaceTransparency: 'sb-surface-transparency',
     topbarScaleDesktop: 'sb-topbar-scale-desktop',
     topbarScaleMobile: 'sb-topbar-scale-mobile',
@@ -234,14 +227,6 @@ const SB_INLINE_DRAWER_CUSTOM_PERSISTENCE_SELECTOR = '.sb-openai-settings-drawer
 const SB_STORAGE_PREFIX = 'sb-';
 const SB_STORAGE_WRITE_DEBOUNCE_MS = 120;
 const SB_MOBILE_ACTION_DEBOUNCE_MS = 140;
-const SB_SHELL_FOCUSABLE_SELECTOR = [
-    'a[href]',
-    'button:not([disabled])',
-    'input:not([disabled]):not([type="hidden"])',
-    'select:not([disabled])',
-    'textarea:not([disabled])',
-    '[tabindex]:not([tabindex="-1"])',
-].join(',');
 
 let sbInlineDrawerPersistenceObserver = null;
 let sbInlineDrawerPersistenceQueued = false;
@@ -426,19 +411,6 @@ function safeSetItem(key, value) {
     scheduleSbStorageFlush();
 }
 
-function safeRemoveItem(key) {
-    if (!isSillyBunnyStorageKey(key)) {
-        try { localStorage.removeItem(key); } catch {
-            // Ignore storage removal failures.
-        }
-        return;
-    }
-
-    sbStorageCache.set(key, null);
-    sbStoragePendingWrites.set(key, { remove: true });
-    scheduleSbStorageFlush();
-}
-
 bindSbStorageFlushEvents();
 
 const SB_IDLE_BRAND_LABEL = 'SillyBunny';
@@ -487,30 +459,6 @@ const SB_TOPBAR_DRAG_Y_RATIO = 0.24;
 const SB_TOPBAR_CONTEXT_REFRESH_DEBOUNCE = 220;
 const SB_CHATBAR_SEARCH_DEBOUNCE = 220;
 const SB_CHAT_SEARCH_MARK_SELECTOR = 'mark[data-sb-chat-search="true"]';
-const SB_DESKTOP_SHELL_LAYOUT = Object.freeze({
-    minWidth: 600,
-    maxWidth: 900,
-    ratio: 0.55,
-    laptopViewportMin: 1001,
-    laptopViewportMax: 1440,
-    laptopMinWidth: 680,
-    laptopMaxWidth: 920,
-    laptopRatio: 0.6,
-    laptopGutter: 28,
-    compactMaxWidth: 900,
-    compactViewportWidth: 1100,
-    compactGap: 20,
-    gutterMin: 20,
-    gutterRatio: 0.04,
-    gutterMax: 80,
-    fullWidthMaxHeight: 860,
-});
-const SB_DESKTOP_SHELL_RESIZE = Object.freeze({
-    minWidth: 420,
-    minHeight: 320,
-    bottomGap: 16,
-});
-const SB_SHELL_TOGGLE_GUARD_MS = 260;
 const SB_INIT_RETRY_DELAY_MS = 150;
 const SB_INIT_MAX_RETRIES = 30;
 
@@ -917,16 +865,7 @@ const sbState = {
         dismissBound: false,
         activeIndex: -1,
     },
-    shellSizing: {
-        overrides: {
-            left: normalizeShellSize(safeGetItem(SB_STORAGE_KEYS.leftShellSize)),
-            right: normalizeShellSize(safeGetItem(SB_STORAGE_KEYS.rightShellSize)),
-        },
-        snapToChatWidth: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth), true),
-        activeResize: null,
-    },
     characterDrawer: {
-        rightLocked: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.characterDrawerRightLocked), false),
         stateObserver: null,
         observedOpen: null,
         lastTab: 'characters',
@@ -1157,36 +1096,6 @@ function createNavReplacementQuickAction(target) {
         icon: config.icon,
         label: config.label,
     });
-}
-
-function normalizeShellSize(value) {
-    let source = value;
-
-    if (typeof source === 'string') {
-        const trimmedValue = source.trim();
-
-        if (!trimmedValue) {
-            return null;
-        }
-
-        try {
-            source = JSON.parse(trimmedValue);
-        } catch {
-            return null;
-        }
-    }
-
-    const width = Number(source?.width);
-    const height = Number(source?.height);
-
-    if (!Number.isFinite(width) || !Number.isFinite(height)) {
-        return null;
-    }
-
-    return {
-        width: Math.max(0, Math.round(width)),
-        height: Math.max(0, Math.round(height)),
-    };
 }
 
 function normalizeSurfaceTransparency(value) {
@@ -1568,10 +1477,6 @@ function restorePersistedTopbarState() {
     sbState.topbarIconsOnly.desktop = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopTopbarIconsOnly), sbState.topbarIconsOnly.desktop);
     sbState.topbarIconsOnly.mobile = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileTopbarIconsOnly), sbState.topbarIconsOnly.mobile);
     sbState.bottomChatBar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatBarVisible), sbState.bottomChatBar.visible);
-    sbState.shellSizing.snapToChatWidth = normalizeStoredBoolean(
-        safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth),
-        sbState.shellSizing.snapToChatWidth,
-    );
     sbState.mobileNav.layout = normalizeMobileNavLayout(safeGetItem(SB_STORAGE_KEYS.mobileNavLayout));
     sbState.mobileNav.iconOnly = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavIconOnly), sbState.mobileNav.iconOnly);
     sbState.mobileNav.showCustomize = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavShowCustomize), sbState.mobileNav.showCustomize);
@@ -1586,10 +1491,6 @@ function restorePersistedTopbarState() {
     sbState.desktopNav.replacementTarget = normalizeMobileNavReplacementTarget(safeGetItem(SB_STORAGE_KEYS.desktopNavReplacementTarget));
     sbState.desktopQuickActions = loadDesktopQuickActions();
     sbState.mobileQuickActions = loadMobileQuickActions();
-    sbState.characterDrawer.rightLocked = normalizeStoredBoolean(
-        getPersistentStorageItem(SB_STORAGE_KEYS.characterDrawerRightLocked),
-        sbState.characterDrawer.rightLocked,
-    );
 }
 
 function clampTopbarOffset(offset) {
@@ -2074,98 +1975,6 @@ function setTopbarIconsOnly(mode, enabled, { persist = true } = {}) {
     updateThemePickerUi();
 }
 
-function setDesktopShellSnapToChatWidth(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.shellSizing.snapToChatWidth = nextEnabled;
-    document.documentElement.dataset.sbDesktopShellSnapToChatWidth = String(nextEnabled);
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth, String(nextEnabled));
-    }
-
-    syncDesktopShellSizing();
-    updateThemePickerUi();
-}
-
-function syncCharacterDrawerLockButton() {
-    const button = document.getElementById('sb-character-right-lock');
-    if (!(button instanceof HTMLButtonElement)) {
-        return;
-    }
-
-    const isRightLocked = Boolean(sbState.characterDrawer.rightLocked);
-    setButtonPressed(button, isRightLocked);
-    button.title = isRightLocked ? 'Keep Characters centered' : 'Lock Characters to right';
-    button.setAttribute('aria-label', button.title);
-}
-
-function clearCharacterDrawerInlinePosition(panel) {
-    if (!(panel instanceof HTMLElement) || panel.dataset.sbCharacterLockInline !== 'right') {
-        return;
-    }
-
-    for (const property of ['left', 'right', 'margin-left', 'margin-right']) {
-        panel.style.removeProperty(property);
-    }
-
-    delete panel.dataset.sbCharacterLockInline;
-}
-
-function syncCharacterDrawerLockPosition() {
-    const panel = getCharacterPanel();
-    if (!(panel instanceof HTMLElement)) {
-        return;
-    }
-
-    // The settings page hosts the panel full-size; the right-lock only applies to the drawer.
-    if (panel.classList.contains('sb-settings-mounted-shell')) {
-        clearCharacterDrawerInlinePosition(panel);
-        return;
-    }
-
-    if (isMovingUIActive()) {
-        if (panel.dataset.sbCharacterLockInline === 'right') {
-            for (const property of ['left', 'right', 'margin-left', 'margin-right']) {
-                panel.style.removeProperty(property);
-            }
-
-            delete panel.dataset.sbCharacterLockInline;
-        }
-
-        return;
-    }
-
-    if (!sbState.characterDrawer.rightLocked || isMobileViewport()) {
-        if (panel.dataset.sbCharacterLockInline === 'right') {
-            for (const property of ['left', 'right', 'margin-left', 'margin-right']) {
-                panel.style.removeProperty(property);
-            }
-
-            delete panel.dataset.sbCharacterLockInline;
-        }
-        return;
-    }
-
-    panel.style.setProperty('left', 'auto', 'important');
-    panel.style.setProperty('right', '0px', 'important');
-    panel.style.setProperty('margin-left', '0px', 'important');
-    panel.style.setProperty('margin-right', '0px', 'important');
-    panel.dataset.sbCharacterLockInline = 'right';
-}
-
-function setCharacterDrawerRightLock(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.characterDrawer.rightLocked = nextEnabled;
-    document.documentElement.dataset.sbCharacterDrawerLock = nextEnabled ? 'right' : 'center';
-
-    if (persist) {
-        setPersistentStorageItem(SB_STORAGE_KEYS.characterDrawerRightLocked, String(nextEnabled));
-    }
-
-    syncCharacterDrawerLockPosition();
-    syncCharacterDrawerLockButton();
-}
-
 /*
  * Identity-based ownership for the top-bar adoption pass. An id prefix is spoofable and absent
  * on id-less nodes, so registering what our own factory built is the only reliable test. Any
@@ -2392,7 +2201,6 @@ function setUniversalSearchOpenState(isOpen, { focusInput = false } = {}) {
     searchToggle?.classList.toggle('is-open', nextOpenState);
     searchToggle?.setAttribute('aria-expanded', String(nextOpenState));
 
-    queueMobileShellDrawerBoundsSync();
     syncShortcutButtonActiveStates();
 }
 
@@ -2462,102 +2270,6 @@ function isMobileViewport() {
 
 function prefersReducedMotion() {
     return prefersShellReducedMotion();
-}
-
-function getShellProxyButton(shellKey) {
-    const shellConfig = getShellConfig(shellKey);
-    const proxyButton = shellConfig?.proxyButtonId ? document.getElementById(shellConfig.proxyButtonId) : null;
-
-    if (proxyButton instanceof HTMLElement && isActuallyVisible(proxyButton)) {
-        return proxyButton;
-    }
-
-    // SillyBunny: Workspace and Customize are hidden in icons-only mode, and Workspace is also
-    // hidden on phones. Fall back to the cluster icon so focus does not silently drop to <body>.
-    const activeTabId = getShellState(shellKey)?.activeTabId;
-    const pageButton = activeTabId
-        ? document.querySelector(`[data-sb-topbar-page="${CSS.escape(`${shellKey}:${activeTabId}`)}"]`)
-        : null;
-
-    if (pageButton instanceof HTMLElement && isActuallyVisible(pageButton)) {
-        return pageButton;
-    }
-
-    return proxyButton instanceof HTMLElement ? proxyButton : null;
-}
-
-function getShellActivePanel(shellState) {
-    return shellState?.tabs.get(shellState.activeTabId)?.panel ?? null;
-}
-
-function getShellFocusTarget(shellState) {
-    if (shellState?.headerTitle instanceof HTMLElement) {
-        return shellState.headerTitle;
-    }
-
-    const panel = getShellActivePanel(shellState);
-    const focusable = Array.from(panel?.querySelectorAll(SB_SHELL_FOCUSABLE_SELECTOR) ?? [])
-        .find(element => element instanceof HTMLElement
-            && isActuallyVisible(element)
-            && !element.closest('[hidden], [aria-hidden="true"], [inert]'));
-
-    if (focusable instanceof HTMLElement) {
-        return focusable;
-    }
-
-    return shellState?.nav instanceof HTMLElement ? shellState.nav : null;
-}
-
-function focusShellPanel(shellKey, { force = false } = {}) {
-    const shellState = getShellState(shellKey);
-    const shellRoot = shellState?.root;
-
-    if (!(shellRoot instanceof HTMLElement) || !shellRoot.classList.contains('openDrawer')) {
-        return;
-    }
-
-    const activeElement = document.activeElement;
-    if (!force && activeElement instanceof HTMLElement && shellRoot.contains(activeElement)) {
-        return;
-    }
-
-    const target = getShellFocusTarget(shellState);
-    if (target instanceof HTMLElement) {
-        target.focus({ preventScroll: true });
-    }
-}
-
-function rememberShellFocusOrigin(shellKey) {
-    const shellState = getShellState(shellKey);
-    const shellRoot = shellState?.root;
-    const activeElement = document.activeElement;
-
-    if (!shellState || !(activeElement instanceof HTMLElement)) {
-        return;
-    }
-
-    if (shellRoot instanceof HTMLElement && shellRoot.contains(activeElement)) {
-        return;
-    }
-
-    shellState.restoreFocusTarget = activeElement;
-}
-
-function restoreShellFocus(shellKey) {
-    const shellState = getShellState(shellKey);
-    const restoreTarget = shellState?.restoreFocusTarget;
-    const proxyButton = getShellProxyButton(shellKey);
-    const target = restoreTarget instanceof HTMLElement && document.contains(restoreTarget)
-        ? restoreTarget
-        : proxyButton;
-
-    if (shellState) {
-        delete shellState.restoreFocusTarget;
-    }
-
-    if (target instanceof HTMLElement && !target.hasAttribute('disabled')) {
-        target.focus({ preventScroll: true });
-    }
 }
 
 function getLayoutViewportScrollAnchor() {
@@ -2675,10 +2387,6 @@ function isTouchOnlyDesktopViewport() {
     return isTouchMac || (navigator.maxTouchPoints > 0 && !hasHover && !hasFinePointer);
 }
 
-function canResizeDesktopShells() {
-    return !isMobileViewport() && !isTouchOnlyDesktopViewport();
-}
-
 function readFiniteViewportNumber(value, fallback = 0) {
     const number = Number(value);
     return Number.isFinite(number) ? number : fallback;
@@ -2735,7 +2443,7 @@ function isChatComposerEditableElement(element) {
 }
 
 function hasOpenMobileShellDrawer() {
-    return getMobileShellBoundDrawers().some(drawer => drawer.classList.contains('openDrawer'));
+    return sbSettingsState.open;
 }
 
 function shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize) {
@@ -3087,117 +2795,6 @@ function scheduleMobilePopupKeyboardSync() {
     sbMobilePopupKeyboardSyncTimer = window.setTimeout(syncMobilePopupKeyboardShift, 400);
 }
 
-function getMobileShellBoundDrawers() {
-    return Array.from(new Set([
-        ...document.querySelectorAll('#left-nav-panel, #user-settings-block, .sb-shell-root, #right-nav-panel'),
-        ...document.querySelectorAll('#top-settings-holder #right-nav-panel'),
-    ])).filter(drawer => drawer instanceof HTMLElement);
-}
-
-function applyMobileDrawerBoundsDecision(drawer, decision) {
-    if (!(drawer instanceof HTMLElement) || !decision) {
-        return;
-    }
-
-    if (decision.action === sbMobileShellLifecycle.drawerBounds.action.BIND) {
-        drawer.dataset.sbMobileViewportBound = 'true';
-    } else if (decision.action === sbMobileShellLifecycle.drawerBounds.action.CLEAR) {
-        delete drawer.dataset.sbMobileViewportBound;
-    }
-
-    for (const property of decision.styleRemovals) {
-        if (drawer.style.getPropertyValue(property) || drawer.style.getPropertyPriority(property)) {
-            drawer.style.removeProperty(property);
-        }
-    }
-
-    for (const { property, value, priority } of decision.styleWrites) {
-        if (drawer.style.getPropertyValue(property) !== value || drawer.style.getPropertyPriority(property) !== priority) {
-            drawer.style.setProperty(property, value, priority);
-        }
-    }
-}
-
-function syncMobileShellDrawerBounds() {
-    const drawers = getMobileShellBoundDrawers();
-
-    if (!drawers.length) {
-        return;
-    }
-
-    const mobileViewport = isMobileViewport();
-    const viewportSize = mobileViewport ? getShellViewportSize() : null;
-    const baseTopOffset = mobileViewport ? getResolvedShellTopbarOffset() : 0;
-
-    for (const drawer of drawers) {
-        const isOpen = drawer.classList.contains('openDrawer');
-        const drawerStyles = mobileViewport && isOpen ? window.getComputedStyle(drawer) : null;
-
-        applyMobileDrawerBoundsDecision(drawer, sbMobileShellLifecycle.drawerBounds.resolveBounds({
-            isMobileViewport: mobileViewport,
-            isOpen,
-            isViewportBound: drawer.dataset.sbMobileViewportBound === 'true',
-            viewportHeight: viewportSize?.height ?? 0,
-            viewportTop: viewportSize?.top ?? 0,
-            baseTopOffset,
-            shellGap: drawerStyles ? Number.parseFloat(drawerStyles.getPropertyValue('--sb-mobile-shell-gap')) || 0 : 0,
-        }));
-    }
-}
-
-let sbMobileShellDrawerBoundsFrameId = 0;
-let sbMobileShellDrawerBoundsFollowupId = 0;
-
-function queueMobileShellDrawerBoundsSync() {
-    const schedule = sbMobileShellLifecycle.viewportSync.resolveDrawerBoundsSchedule({
-        isMobileViewport: isMobileViewport(),
-        hasAnimationFrame: typeof window.requestAnimationFrame === 'function',
-        followupDelayMs: SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS,
-    });
-
-    if (!schedule.shouldSchedule) {
-        return;
-    }
-
-    if (sbMobileShellDrawerBoundsFrameId && typeof window.cancelAnimationFrame === 'function') {
-        window.cancelAnimationFrame(sbMobileShellDrawerBoundsFrameId);
-        sbMobileShellDrawerBoundsFrameId = 0;
-    }
-    if (sbMobileShellDrawerBoundsFollowupId) {
-        window.clearTimeout(sbMobileShellDrawerBoundsFollowupId);
-        sbMobileShellDrawerBoundsFollowupId = 0;
-    }
-
-    const sync = () => {
-        sbMobileShellDrawerBoundsFrameId = 0;
-        syncShellViewportBounds();
-        syncMobileShellDrawerBounds();
-    };
-
-    if (schedule.useAnimationFrame) {
-        sbMobileShellDrawerBoundsFrameId = window.requestAnimationFrame(sync);
-    } else {
-        sync();
-    }
-
-    sbMobileShellDrawerBoundsFollowupId = window.setTimeout(() => {
-        sbMobileShellDrawerBoundsFollowupId = 0;
-        sync();
-    }, schedule.followupDelayMs);
-}
-
-function isMovingUIActive() {
-    return document.body?.classList.contains('movingUI') ?? false;
-}
-
-function isDesktopResizableShell(shellKey) {
-    return shellKey === 'left' || shellKey === 'right' || shellKey === 'characters';
-}
-
-function getShellSizingKey(shellKey) {
-    return ['left', 'right', 'characters'].includes(shellKey) ? 'right' : shellKey;
-}
-
 function getShellAccountStorage() {
     const storage = getSillyTavernContext()?.accountStorage;
 
@@ -3246,41 +2843,6 @@ function setPersistentStorageItem(key, value) {
     getShellAccountStorage()?.setItem(key, value);
 }
 
-function getPersistedShellSize(shellKey) {
-    const storageKey = getShellSizeStorageKey(shellKey);
-
-    if (!storageKey) {
-        return null;
-    }
-
-    const localSize = normalizeShellSize(safeGetItem(storageKey));
-    const accountStorage = getShellAccountStorage();
-    const accountSize = accountStorage ? normalizeShellSize(accountStorage.getItem(storageKey)) : null;
-
-    if (accountSize) {
-        if (!areShellSizesEqual(localSize, accountSize)) {
-            safeSetItem(storageKey, JSON.stringify(accountSize));
-        }
-
-        return accountSize;
-    }
-
-    if (localSize && accountStorage) {
-        accountStorage.setItem(storageKey, JSON.stringify(localSize));
-    }
-
-    return localSize;
-}
-
-function hydratePersistedShellSizes() {
-    const persistedSize = getPersistedShellSize('right') ?? getPersistedShellSize('left');
-
-    if (persistedSize) {
-        sbState.shellSizing.overrides.left = persistedSize;
-        sbState.shellSizing.overrides.right = persistedSize;
-    }
-}
-
 function getResolvedShellTopbarOffset() {
     const docEl = document.documentElement;
     const docTop = (docEl instanceof HTMLElement && docEl.getClientRects().length > 0)
@@ -3326,552 +2888,6 @@ function getResolvedShellTopbarOffset() {
     }
 
     return fallbackTopOffset;
-}
-
-function getShellViewportTop(root, viewportSize = getShellViewportSize()) {
-    let top = getResolvedShellTopbarOffset();
-
-    if (root instanceof HTMLElement && root.classList.contains('openDrawer') && root.getClientRects().length > 0) {
-        const rect = root.getBoundingClientRect();
-        if (Number.isFinite(rect.top)) {
-            top = rect.top;
-        }
-    }
-
-    return clampNumber(Math.round(top), viewportSize.top, viewportSize.bottom);
-}
-
-function getChatViewportWidth(viewportSize = getShellViewportSize()) {
-    const chatShell = document.getElementById('sheld');
-
-    if (chatShell instanceof HTMLElement && chatShell.getClientRects().length > 0) {
-        const rect = chatShell.getBoundingClientRect();
-        const visibleWidth = Math.min(rect.right, viewportSize.right) - Math.max(rect.left, viewportSize.left);
-
-        if (Number.isFinite(visibleWidth) && visibleWidth > 0) {
-            return Math.round(visibleWidth);
-        }
-    }
-
-    const sheldWidthStr = window.getComputedStyle(document.documentElement).getPropertyValue('--sheldWidth').trim();
-    const sheldWidthValue = Number.parseFloat(sheldWidthStr);
-
-    if (!Number.isFinite(sheldWidthValue)) {
-        return viewportSize.width;
-    }
-
-    if (sheldWidthStr.endsWith('px')) {
-        return Math.round(sheldWidthValue);
-    }
-
-    return Math.round((sheldWidthValue / 100) * viewportSize.width);
-}
-
-function isShellSnapToChatWidthEnabled(shellKey) {
-    return Boolean(sbState.shellSizing.snapToChatWidth)
-        && isDesktopResizableShell(shellKey)
-        && !isMobileViewport();
-}
-
-function getShellSizeStorageKey(shellKey) {
-    const sizingKey = getShellSizingKey(shellKey);
-
-    if (sizingKey === 'left') {
-        return SB_STORAGE_KEYS.leftShellSize;
-    }
-
-    if (sizingKey === 'right') {
-        return SB_STORAGE_KEYS.rightShellSize;
-    }
-
-    return '';
-}
-
-function getDesktopShellDimensions(shellKey = '') {
-    const viewportSize = getShellViewportSize();
-    const viewportWidth = viewportSize.width;
-    const viewportHeight = viewportSize.height;
-    const maxShellWidth = shellKey === 'right' ? Math.min(SB_DESKTOP_SHELL_LAYOUT.maxWidth, 760) : SB_DESKTOP_SHELL_LAYOUT.maxWidth;
-
-    if (isShellSnapToChatWidthEnabled(shellKey)) {
-        const snappedWidth = clampNumber(
-            getChatViewportWidth(viewportSize),
-            Math.min(SB_DESKTOP_SHELL_LAYOUT.minWidth, viewportWidth),
-            viewportWidth,
-        );
-
-        return {
-            width: snappedWidth,
-            maxWidth: snappedWidth,
-        };
-    }
-
-    if (
-        ['left', 'right'].includes(shellKey)
-        && viewportWidth >= SB_DESKTOP_SHELL_LAYOUT.laptopViewportMin
-        && viewportWidth <= SB_DESKTOP_SHELL_LAYOUT.laptopViewportMax
-    ) {
-        const laptopWidth = clampNumber(
-            viewportWidth * SB_DESKTOP_SHELL_LAYOUT.laptopRatio,
-            SB_DESKTOP_SHELL_LAYOUT.laptopMinWidth,
-            SB_DESKTOP_SHELL_LAYOUT.laptopMaxWidth,
-        );
-        const maxWidth = Math.max(0, viewportWidth - SB_DESKTOP_SHELL_LAYOUT.laptopGutter);
-        const resolvedWidth = Math.min(laptopWidth, maxWidth);
-
-        return {
-            width: resolvedWidth,
-            maxWidth: resolvedWidth,
-        };
-    }
-
-    if (isMobileViewport() || (viewportHeight <= SB_DESKTOP_SHELL_LAYOUT.fullWidthMaxHeight && shellKey !== 'characters')) {
-        return {
-            width: viewportWidth,
-            maxWidth: viewportWidth,
-        };
-    }
-
-    if (viewportWidth <= SB_DESKTOP_SHELL_LAYOUT.compactViewportWidth) {
-        const compactWidth = Math.max(0, Math.min(SB_DESKTOP_SHELL_LAYOUT.compactMaxWidth, viewportWidth - SB_DESKTOP_SHELL_LAYOUT.compactGap));
-        return {
-            width: compactWidth,
-            maxWidth: compactWidth,
-        };
-    }
-
-    // SillyBunny: cap shell width to the active chat width (--sheldWidth) so settings
-    // panels narrow when the user reduces the chat width, matching standard ST behaviour.
-    const sheldWidthStr = window.getComputedStyle(document.documentElement).getPropertyValue('--sheldWidth').trim();
-    const sheldWidthVw = parseFloat(sheldWidthStr);
-    const chatWidthPx = Number.isFinite(sheldWidthVw) ? Math.round((sheldWidthVw / 100) * viewportWidth) : viewportWidth;
-    const desiredWidth = clampNumber(
-        Math.min(viewportWidth * SB_DESKTOP_SHELL_LAYOUT.ratio, chatWidthPx),
-        SB_DESKTOP_SHELL_LAYOUT.minWidth,
-        maxShellWidth,
-    );
-    const gutter = clampNumber(
-        viewportWidth * SB_DESKTOP_SHELL_LAYOUT.gutterRatio,
-        SB_DESKTOP_SHELL_LAYOUT.gutterMin,
-        SB_DESKTOP_SHELL_LAYOUT.gutterMax,
-    );
-    const maxWidth = Math.max(0, viewportWidth - gutter);
-    const resolvedWidth = Math.min(desiredWidth, maxWidth);
-
-    return {
-        width: resolvedWidth,
-        maxWidth: resolvedWidth,
-    };
-}
-
-function getDesktopShellResizeBounds(shellKey = '') {
-    const viewportSize = getShellViewportSize();
-    const viewportWidth = Math.max(0, Math.round(viewportSize.width));
-    const viewportHeight = Math.max(0, Math.round(viewportSize.height));
-    const root = isDesktopResizableShell(shellKey) ? getResizableShellRoot(shellKey) : null;
-    const shellTop = getShellViewportTop(root, viewportSize);
-    const defaultDimensions = getDesktopShellDimensions(shellKey);
-    const defaultWidth = Math.max(0, Math.min(Math.round(defaultDimensions.width), viewportWidth));
-    const snapWidth = isShellSnapToChatWidthEnabled(shellKey) ? defaultWidth : null;
-    const maxHeight = Math.max(0, Math.round(viewportHeight - shellTop - SB_DESKTOP_SHELL_RESIZE.bottomGap));
-
-    return {
-        defaultWidth,
-        defaultHeight: maxHeight,
-        minWidth: snapWidth ?? Math.min(SB_DESKTOP_SHELL_RESIZE.minWidth, viewportWidth),
-        maxWidth: snapWidth ?? viewportWidth,
-        minHeight: Math.min(SB_DESKTOP_SHELL_RESIZE.minHeight, maxHeight),
-        maxHeight,
-    };
-}
-
-function clampShellSize(size, bounds = getDesktopShellResizeBounds()) {
-    const normalizedSize = normalizeShellSize(size);
-
-    if (!normalizedSize) {
-        return null;
-    }
-
-    return {
-        width: clampNumber(normalizedSize.width, bounds.minWidth, bounds.maxWidth),
-        height: clampNumber(normalizedSize.height, bounds.minHeight, bounds.maxHeight),
-    };
-}
-
-function areShellSizesEqual(left, right) {
-    return Boolean(left) && Boolean(right)
-        && left.width === right.width
-        && left.height === right.height;
-}
-
-function getShellSizeOverride(shellKey) {
-    return isDesktopResizableShell(shellKey) ? sbState.shellSizing.overrides.right ?? sbState.shellSizing.overrides.left ?? null : null;
-}
-
-function setShellSizeOverride(shellKey, size, { persist = true } = {}) {
-    if (!isDesktopResizableShell(shellKey)) {
-        return null;
-    }
-
-    const nextSize = clampShellSize(size, getDesktopShellResizeBounds(shellKey));
-
-    sbState.shellSizing.overrides.left = nextSize;
-    sbState.shellSizing.overrides.right = nextSize;
-
-    if (!persist) {
-        return nextSize;
-    }
-
-    const accountStorage = getShellAccountStorage();
-    const storageKeys = [SB_STORAGE_KEYS.leftShellSize, SB_STORAGE_KEYS.rightShellSize];
-
-    if (nextSize) {
-        const serializedSize = JSON.stringify(nextSize);
-        for (const storageKey of storageKeys) {
-            safeSetItem(storageKey, serializedSize);
-            accountStorage?.setItem(storageKey, serializedSize);
-        }
-    } else {
-        for (const storageKey of storageKeys) {
-            safeRemoveItem(storageKey);
-            accountStorage?.removeItem(storageKey);
-        }
-    }
-
-    return nextSize;
-}
-
-function applyDesktopShellSize(root, size) {
-    root.style.setProperty('width', `${size.width}px`, 'important');
-    root.style.setProperty('max-width', `${size.width}px`, 'important');
-    root.style.setProperty('height', `${size.height}px`, 'important');
-    root.style.setProperty('max-height', `${size.height}px`, 'important');
-    root.dataset.sbShellInlineSize = 'true';
-}
-
-function clearDesktopShellSize(root) {
-    root.style.removeProperty('width');
-    root.style.removeProperty('max-width');
-    root.style.removeProperty('height');
-    root.style.removeProperty('max-height');
-    delete root.dataset.sbShellInlineSize;
-}
-
-function syncDesktopShellSizing() {
-    if (sbIsSyncingRailActions) {
-        return;
-    }
-
-    hydratePersistedShellSizes();
-
-    const resizingEnabled = canResizeDesktopShells();
-
-    for (const shellKey of ['left', 'right', 'characters']) {
-        const root = shellKey === 'characters'
-            ? getCharacterPanel()
-            : document.getElementById(getShellConfig(shellKey).rootPanelId);
-        if (!(root instanceof HTMLElement)) {
-            continue;
-        }
-
-        // Roots hosted by the settings page fill it; drawer sizing must not cap them.
-        if (root.classList.contains('sb-settings-mounted-shell')) {
-            clearDesktopShellSize(root);
-            root.classList.remove('sb-shell-can-resize');
-            continue;
-        }
-
-        const dimensions = getDesktopShellDimensions(shellKey);
-        const bounds = getDesktopShellResizeBounds(shellKey);
-
-        if (isMobileViewport()) {
-            clearDesktopShellSize(root);
-            root.classList.remove('sb-shell-can-resize');
-            syncShellResizeHandleValue(shellKey, null);
-            continue;
-        }
-
-        if (shellKey === 'characters' && isMovingUIActive()) {
-            if (root.dataset.sbShellInlineSize === 'true') {
-                clearDesktopShellSize(root);
-            }
-
-            root.classList.remove('sb-shell-can-resize');
-            syncShellResizeHandleValue(shellKey, null);
-            continue;
-        }
-
-        const { width } = dimensions;
-        let sizeToApply = {
-            width,
-            height: bounds.defaultHeight,
-        };
-
-        const storedOverride = getShellSizeOverride(shellKey);
-        if (resizingEnabled && storedOverride) {
-            const clampedOverride = clampShellSize(storedOverride, bounds);
-            if (clampedOverride) {
-                sizeToApply = clampedOverride;
-
-                if (!areShellSizesEqual(storedOverride, clampedOverride)) {
-                    setShellSizeOverride(shellKey, clampedOverride);
-                } else {
-                    sbState.shellSizing.overrides[getShellSizingKey(shellKey)] = clampedOverride;
-                }
-            }
-        }
-
-        applyDesktopShellSize(root, sizeToApply);
-        root.classList.toggle('sb-shell-can-resize', resizingEnabled);
-        syncShellResizeHandleValue(shellKey, sizeToApply);
-    }
-
-    syncCharacterDrawerLockPosition();
-}
-
-function getResizableShellRoot(shellKey) {
-    if (shellKey === 'characters') {
-        return getCharacterPanel();
-    }
-
-    return document.getElementById(getShellConfig(shellKey).rootPanelId);
-}
-
-function isPrimaryShellResizeStart(event) {
-    if (event && 'isPrimary' in event && event.isPrimary === false) {
-        return false;
-    }
-
-    return event?.button === undefined || event.button === 0 || event.pointerType === 'touch';
-}
-
-function bindShellResizeHandle(handle, shellKey) {
-    stopProxyPointerPropagation(handle);
-    configureShellResizeHandle(handle, shellKey);
-    handle.addEventListener('pointerdown', event => beginShellResize(shellKey, event));
-    handle.addEventListener('mousedown', event => {
-        if (event.defaultPrevented || sbState.shellSizing.activeResize) {
-            return;
-        }
-
-        beginShellResize(shellKey, event);
-    });
-    handle.addEventListener('keydown', event => handleShellResizeKeydown(shellKey, event));
-}
-
-function configureShellResizeHandle(handle, shellKey) {
-    const bounds = getDesktopShellResizeBounds(shellKey);
-    const currentSize = getShellSizeOverride(shellKey) ?? {
-        width: bounds.defaultWidth,
-        height: bounds.defaultHeight,
-    };
-    const label = shellKey === 'characters' ? 'Characters' : getShellConfig(shellKey)?.title || 'panel';
-
-    handle.setAttribute('role', 'separator');
-    handle.setAttribute('aria-orientation', 'horizontal');
-    handle.setAttribute('aria-label', `Resize ${label} panel`);
-    handle.setAttribute('aria-valuemin', String(bounds.minWidth));
-    handle.setAttribute('aria-valuemax', String(bounds.maxWidth));
-    handle.setAttribute('aria-valuenow', String(Math.round(currentSize.width)));
-    handle.setAttribute('aria-valuetext', `${Math.round(currentSize.width)} pixels wide, ${Math.round(currentSize.height)} pixels tall`);
-    handle.tabIndex = canResizeDesktopShells() ? 0 : -1;
-}
-
-function syncShellResizeHandleValue(shellKey, size) {
-    const root = getResizableShellRoot(shellKey);
-    const shellState = getShellState(shellKey);
-    const handle = shellState?.resizeHandle ?? root?.querySelector(':scope > .sb-shell-resize-handle, .sb-shell-resize-handle');
-    if (!(handle instanceof HTMLElement)) {
-        return;
-    }
-
-    if (!size) {
-        configureShellResizeHandle(handle, shellKey);
-        return;
-    }
-
-    configureShellResizeHandle(handle, shellKey);
-    handle.setAttribute('aria-valuenow', String(Math.round(size.width)));
-    handle.setAttribute('aria-valuetext', `${Math.round(size.width)} pixels wide, ${Math.round(size.height)} pixels tall`);
-}
-
-function handleShellResizeKeydown(shellKey, event) {
-    if (!canResizeDesktopShells() || !isDesktopResizableShell(shellKey)) {
-        return;
-    }
-
-    const root = getResizableShellRoot(shellKey);
-    if (!(root instanceof HTMLElement) || !root.classList.contains('openDrawer')) {
-        return;
-    }
-
-    const bounds = getDesktopShellResizeBounds(shellKey);
-    const currentRect = root.getBoundingClientRect();
-    const currentSize = clampShellSize({
-        width: currentRect.width || bounds.defaultWidth,
-        height: currentRect.height || bounds.defaultHeight,
-    }, bounds);
-
-    if (!currentSize) {
-        return;
-    }
-
-    const step = event.shiftKey ? 72 : 24;
-    let nextSize = currentSize;
-
-    if (event.key === 'ArrowLeft') {
-        nextSize = { ...currentSize, width: currentSize.width - step };
-    } else if (event.key === 'ArrowRight') {
-        nextSize = { ...currentSize, width: currentSize.width + step };
-    } else if (event.key === 'ArrowUp') {
-        nextSize = { ...currentSize, height: currentSize.height - step };
-    } else if (event.key === 'ArrowDown') {
-        nextSize = { ...currentSize, height: currentSize.height + step };
-    } else if (event.key === 'Home') {
-        nextSize = { ...currentSize, width: bounds.minWidth };
-    } else if (event.key === 'End') {
-        nextSize = { ...currentSize, width: bounds.maxWidth };
-    } else {
-        return;
-    }
-
-    const clampedSize = clampShellSize(nextSize, bounds);
-    if (!clampedSize) {
-        return;
-    }
-
-    event.preventDefault();
-    setShellSizeOverride(shellKey, clampedSize);
-    applyDesktopShellSize(root, clampedSize);
-    syncShellResizeHandleValue(shellKey, clampedSize);
-}
-
-function beginShellResize(shellKey, event) {
-    if (!canResizeDesktopShells() || !isDesktopResizableShell(shellKey) || !isPrimaryShellResizeStart(event)) {
-        return;
-    }
-
-    if (shellKey === 'characters' && isMovingUIActive()) {
-        return;
-    }
-
-    const root = getResizableShellRoot(shellKey);
-    if (!(root instanceof HTMLElement) || !root.classList.contains('openDrawer')) {
-        return;
-    }
-
-    if (typeof sbState.shellSizing.activeResize?.cleanup === 'function') {
-        sbState.shellSizing.activeResize.cleanup();
-    }
-
-    const handle = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-    const bounds = getDesktopShellResizeBounds(shellKey);
-    const startRect = root.getBoundingClientRect();
-    const startSize = clampShellSize({
-        width: startRect.width || bounds.defaultWidth,
-        height: startRect.height || bounds.defaultHeight,
-    }, bounds);
-
-    if (!startSize) {
-        return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    document.body.classList.add('sb-shell-resizing');
-    root.classList.add('sb-shell-resize-active');
-    setShellSizeOverride(shellKey, startSize, { persist: false });
-
-    const pointerId = typeof event.pointerId === 'number' ? event.pointerId : null;
-    const moveEventName = pointerId === null ? 'mousemove' : 'pointermove';
-    const upEventName = pointerId === null ? 'mouseup' : 'pointerup';
-    const cancelEventName = pointerId === null ? 'mouseleave' : 'pointercancel';
-
-    const cleanup = () => {
-        if (pointerId !== null && handle && typeof handle.releasePointerCapture === 'function') {
-            try {
-                handle.releasePointerCapture(pointerId);
-            } catch {
-                // Ignore pointer capture cleanup failures.
-            }
-        }
-
-        window.removeEventListener(moveEventName, onPointerMove);
-        window.removeEventListener(upEventName, onPointerUp);
-        window.removeEventListener(cancelEventName, onPointerUp);
-        document.body.classList.remove('sb-shell-resizing');
-        root.classList.remove('sb-shell-resize-active');
-
-        if (sbState.shellSizing.activeResize?.pointerId === pointerId) {
-            sbState.shellSizing.activeResize = null;
-        }
-    };
-
-    const onPointerMove = moveEvent => {
-        if (pointerId !== null && moveEvent.pointerId !== pointerId) {
-            return;
-        }
-
-        moveEvent.preventDefault();
-        const widthDelta = shellKey === 'characters' && sbState.characterDrawer.rightLocked
-            ? event.clientX - moveEvent.clientX
-            : moveEvent.clientX - event.clientX;
-        const nextSize = clampShellSize({
-            width: startSize.width + widthDelta,
-            height: startSize.height + (moveEvent.clientY - event.clientY),
-        }, bounds);
-
-        if (!nextSize) {
-            return;
-        }
-
-        sbState.shellSizing.overrides[getShellSizingKey(shellKey)] = nextSize;
-        applyDesktopShellSize(root, nextSize);
-        syncShellResizeHandleValue(shellKey, nextSize);
-    };
-
-    const onPointerUp = endEvent => {
-        if (pointerId !== null && endEvent.pointerId !== pointerId) {
-            return;
-        }
-
-        const activeSize = getShellSizeOverride(shellKey) ?? startSize;
-        cleanup();
-        setShellSizeOverride(shellKey, activeSize);
-        syncShellResizeHandleValue(shellKey, activeSize);
-        syncDesktopShellSizing();
-    };
-
-    sbState.shellSizing.activeResize = {
-        shellKey,
-        pointerId,
-        cleanup,
-    };
-
-    if (pointerId !== null && handle && typeof handle.setPointerCapture === 'function') {
-        try {
-            handle.setPointerCapture(pointerId);
-        } catch {
-            // Ignore pointer capture failures.
-        }
-    }
-
-    window.addEventListener(moveEventName, onPointerMove);
-    window.addEventListener(upEventName, onPointerUp);
-    window.addEventListener(cancelEventName, onPointerUp);
-}
-
-function ensureShellReady(shellKey) {
-    if (!getShellConfig(shellKey)) {
-        return false;
-    }
-
-    if (getShellState(shellKey)) {
-        return true;
-    }
-
-    buildShell(shellKey);
-    return Boolean(getShellState(shellKey));
 }
 
 function syncExistingMobileNavQuickActions(overlay) {
@@ -7930,129 +6946,8 @@ function queueTopbarPageStateSync() {
     });
 }
 
-function forceDrawerState(drawerRootOrId, shouldOpen, drawerIconOrSelector = null) {
-    const el = typeof drawerRootOrId === 'string'
-        ? document.getElementById(drawerRootOrId)
-        : drawerRootOrId;
-    if (!(el instanceof HTMLElement)) return;
-    el.classList.toggle('openDrawer', Boolean(shouldOpen));
-    el.classList.toggle('closedDrawer', !shouldOpen);
-    syncDrawerIconState(drawerIconOrSelector, shouldOpen);
-    queueMobileModalStateSync();
-    queueTopbarPageStateSync();
-}
-
-function getShellMotionTrigger(shellKey) {
-    const buttonId = shellKey === 'characters'
-        ? 'sb-character-toggle'
-        : getShellConfig(shellKey)?.proxyButtonId;
-    return buttonId ? document.getElementById(buttonId) : null;
-}
-
-function animateShellOpen(shellRoot, shellKey) {
-    if (!(shellRoot instanceof HTMLElement)) {
-        return;
-    }
-
-    const trigger = getShellMotionTrigger(shellKey);
-    stopMotion(shellRoot);
-    // Mobile: scale only. A full-viewport fade hides the zoom from the trigger; the Characters
-    // drawer's opacity is pinned by mobile CSS, so this keeps all three shells identical.
-    const keyframes = isMobileViewport()
-        ? [
-            { scale: '0.96' },
-            { scale: '1' },
-        ]
-        : [
-            { opacity: 0, transform: 'scale(0.96)' },
-            { opacity: 1, transform: 'scale(1)' },
-        ];
-    animateIn(shellRoot, keyframes, {
-        ...SPRING_SHEET,
-        styles: { 'transform-origin': originFrom(trigger, shellRoot) },
-    });
-}
-
-function closeShellDrawer(shellRoot, shellKey, close) {
-    if (isMobileViewport() || prefersReducedMotion() || typeof shellRoot.animate !== 'function') {
-        close();
-        return;
-    }
-
-    // The character drawer's layout hangs off `#right-nav-panel.openDrawer` selectors (header,
-    // hidden description, list sizing). animateOut() commits the closed state first, so the panel
-    // reflowed mid-fade; fade with the open layout and commit the close when the fade ends.
-    if (shellKey === 'characters') {
-        playShellDrawerExit(shellRoot, shellKey, close);
-        return;
-    }
-
-    animateOut(shellRoot, SHELL_DRAWER_EXIT_KEYFRAMES, close, {
-        enabled: !isMobileViewport(),
-        duration: MOTION_FAST,
-        easing: MOTION_EASE_OUT_CUBIC,
-        styles: getShellDrawerExitStyles(shellRoot, shellKey),
-    });
-}
-
-const SHELL_DRAWER_EXIT_KEYFRAMES = Object.freeze([
-    { opacity: 1, transform: 'scale(1)' },
-    { opacity: 0, transform: 'scale(0.98)' },
-]);
-
-function playShellDrawerExit(shellRoot, shellKey, close) {
-    let closed = false;
-    const commit = () => {
-        if (closed) {
-            return;
-        }
-        closed = true;
-        close();
-    };
-    sbState.characterDrawer.closing = true;
-    playMotion(shellRoot, SHELL_DRAWER_EXIT_KEYFRAMES, {
-        duration: MOTION_FAST,
-        easing: MOTION_EASE_OUT_CUBIC,
-        fill: 'forwards',
-        inert: true,
-        styles: { ...getShellDrawerExitStyles(shellRoot, shellKey), 'pointer-events': 'none' },
-        // onEnd also runs when a reopen cancels the exit, so the close is always committed once.
-        onEnd: () => {
-            sbState.characterDrawer.closing = false;
-            commit();
-        },
-    });
-}
-
-function getShellDrawerExitStyles(shellRoot, shellKey) {
-    const trigger = getShellMotionTrigger(shellKey);
-    const rect = shellRoot.getBoundingClientRect();
-    return {
-        display: 'flex',
-        position: 'fixed',
-        left: `${rect.left}px`,
-        top: `${rect.top}px`,
-        right: 'auto',
-        bottom: 'auto',
-        width: `${rect.width}px`,
-        height: `${rect.height}px`,
-        'min-width': '0',
-        'min-height': '0',
-        'max-width': `${rect.width}px`,
-        'max-height': `${rect.height}px`,
-        margin: '0',
-        visibility: 'visible',
-        'z-index': 'var(--sb-z-shell-panel)',
-        'transform-origin': originFrom(trigger, shellRoot),
-    };
-}
-
 function isShellOpen(shellKey) {
-    if (isSettingsPageHosting(shellKey)) {
-        return true;
-    }
-
-    return isDrawerActuallyOpen(getShellConfig(shellKey).rootPanelId);
+    return isSettingsPageHosting(shellKey);
 }
 
 function isShellTabOpen(shellKey, tabId) {
@@ -8061,12 +6956,7 @@ function isShellTabOpen(shellKey, tabId) {
 }
 
 function isCharacterPanelOpen() {
-    if (getCharacterPanel()?.classList.contains('sb-settings-mounted-shell')) {
-        return isSettingsPageHosting('characters');
-    }
-
-    // A drawer fading out still carries .openDrawer; it already counts as closed.
-    return !sbState.characterDrawer.closing && isDrawerActuallyOpen('right-nav-panel');
+    return isSettingsPageHosting('characters');
 }
 
 function getActiveCharacterPanelTab() {
@@ -9102,14 +7992,6 @@ function resetCharacterPanelView() {
     syncCharacterShellTabs('characters');
 }
 
-function setCharacterDrawerHostOverflow(shouldOpen) {
-    const host = getCharacterDrawerHost();
-
-    if (host instanceof HTMLElement) {
-        host.style.overflow = shouldOpen ? 'visible' : '';
-    }
-}
-
 function syncCharacterDrawerStateFromDom({ force = false } = {}) {
     const panel = getCharacterPanel();
 
@@ -9123,7 +8005,6 @@ function syncCharacterDrawerStateFromDom({ force = false } = {}) {
     }
 
     sbState.characterDrawer.observedOpen = isOpen;
-    setCharacterDrawerHostOverflow(isOpen);
     syncDrawerIconState('#rightNavDrawerIcon', isOpen);
     syncDrawerIconState('#WIDrawerIcon', isOpen && panel.dataset.menuType === 'world-info');
     syncCharacterEditorFullscreenAvailability();
@@ -9166,51 +8047,9 @@ function bindCharacterDrawerStateObserver() {
 }
 
 function closeCharacterPanel() {
-    // SillyBunny: Characters is hosted by the settings page (feat/v1.9.0-ui-overhaul).
+    setCharacterEditorFullscreenState(false);
     if (isSettingsPageHosting('characters')) {
         closeSettingsPage();
-        return;
-    }
-
-    const panel = getCharacterPanel();
-    const shouldResetViewport = panel instanceof HTMLElement
-        && (panel.classList.contains('openDrawer') || (document.activeElement instanceof HTMLElement && panel.contains(document.activeElement)));
-
-    setCharacterEditorFullscreenState(false);
-
-    if (sbState.characterDrawer.closing) {
-        return;
-    }
-
-    if (panel instanceof HTMLElement && panel.classList.contains('openDrawer')) {
-        closeShellDrawer(panel, 'characters', () => {
-            forceDrawerState(panel, false, '#rightNavDrawerIcon');
-            syncDrawerIconState('#WIDrawerIcon', false);
-            setCharacterDrawerHostOverflow(false);
-            syncChatbarVisibilityState();
-            syncMobileShellDrawerBounds();
-            queueMobileShellDrawerBoundsSync();
-            queueMobileModalStateSync();
-            if (shouldResetViewport) {
-                requestMobileViewportReset();
-            }
-        });
-        return;
-    }
-
-    if (panel instanceof HTMLElement && document.activeElement instanceof HTMLElement && panel.contains(document.activeElement)) {
-        document.activeElement.blur();
-    }
-
-    syncDrawerIconState('#WIDrawerIcon', false);
-    setCharacterDrawerHostOverflow(false);
-    syncChatbarVisibilityState();
-    syncMobileShellDrawerBounds();
-    queueMobileShellDrawerBoundsSync();
-    queueMobileModalStateSync();
-
-    if (shouldResetViewport) {
-        requestMobileViewportReset();
     }
 }
 
@@ -9327,51 +8166,21 @@ function closeAllDropdowns({ except = '', closeSurfaces = true } = {}) {
 }
 
 function toggleShellPanel(shellKey, tabId = null) {
+    if (shellKey === 'left' && tabId === 'world-info') {
+        shellKey = 'characters';
+    }
+
     if (shellKey === 'characters') {
         toggleSettingsPage('characters', tabId ? normalizeCharacterPanelTab(tabId) : null);
         return;
     }
 
-    // SillyBunny: Workspace/Customize open in the settings page (feat/v1.9.0-ui-overhaul).
-    if ((shellKey === 'left' || shellKey === 'right') && !(shellKey === 'left' && tabId === 'world-info')) {
-        toggleSettingsPage(shellKey, tabId);
-        return;
-    }
-
-    if (shellKey === 'left' && tabId === 'world-info') {
-        // SillyBunny: final guard for old code paths that still ask for the
-        // removed left-shell World Info route.
-        openCharacterPanelTab('world-info');
-        return;
-    }
-
-    if (!ensureShellReady(shellKey)) {
+    if (!getShellConfig(shellKey)) {
         return;
     }
 
     preloadPanelStylesheets(shellKey, tabId);
-
-    if (tabId ? isShellTabOpen(shellKey, tabId) : isShellOpen(shellKey)) {
-        if (wasShellJustOpened(shellKey)) {
-            return;
-        }
-
-        closeShell(shellKey);
-        return;
-    }
-
-    rememberShellFocusOrigin(shellKey);
-    const shellSurface = getMobileShellSurfaceForShell(shellKey);
-    if (shellSurface) {
-        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
-            surface: shellSurface,
-            isMobileViewport: isMobileViewport(),
-        }));
-        closeAllDropdowns({ except: shellKey, closeSurfaces: false });
-    } else {
-        closeAllDropdowns({ except: shellKey });
-    }
-    window.requestAnimationFrame(() => openShell(shellKey, tabId));
+    toggleSettingsPage(shellKey, tabId);
 }
 
 function preloadPanelStylesheets(shellKey, tabId = null) {
@@ -9542,15 +8351,6 @@ function observeProxyButton(buttonId, iconSelector) {
 function activateCharacterTopbarButton() {
     // SillyBunny: route through the full-screen settings page for consistency (feat/v1.9.0-ui-overhaul)
     toggleSettingsPage('characters', SB_CHARACTER_PANEL_DEFAULT_TAB);
-}
-
-function wasShellJustOpened(shellKey) {
-    const shellState = getShellState(shellKey);
-    if (!shellState) {
-        return false;
-    }
-
-    return (performance.now() - Number(shellState.lastOpenedAt || 0)) < SB_SHELL_TOGGLE_GUARD_MS;
 }
 
 function buildUniversalSearchRow() {
@@ -10152,27 +8952,6 @@ function createOnDemandShellPanel(shellKey, tabConfig, build) {
         onActivate: () => void lifecycle.activate().catch(showError),
         onDeactivate: lifecycle.deactivate,
     };
-}
-
-function closeFocusedShell() {
-    const activeElement = document.activeElement;
-
-    if (!(activeElement instanceof HTMLElement)) {
-        return false;
-    }
-
-    const shellRoot = activeElement.closest('.sb-shell-root.openDrawer');
-    if (!(shellRoot instanceof HTMLElement)) {
-        return false;
-    }
-
-    const shellKey = shellRoot.dataset.sbShellKey;
-    if (!shellKey || !getShellState(shellKey)) {
-        return false;
-    }
-
-    closeShell(shellKey);
-    return true;
 }
 
 function moveChildrenIntoContainer(sourceElement, targetElement) {
@@ -12287,30 +11066,6 @@ function createDesktopNavLayoutSettingsGroup() {
     return createNavigationSettingsGroup('desktop');
 }
 
-function createDesktopShellSizingSettingsGroup() {
-    const group = createElement('section', {
-        className: 'sb-theme-slider-group sb-desktop-shell-sizing-group sb-desktop-setting',
-    });
-    const header = createElement('div', { className: 'sb-mobile-nav-settings-header' });
-    const title = createElement('strong', { text: 'Panel Sizing' });
-    const description = createElement('p', {
-        className: 'sb-theme-slider-caption',
-        text: 'Keep Workspace, Customize, and Characters aligned with the active chat width.',
-    });
-    const snapChoice = createMobileNavChoice({
-        id: 'sb-desktop-shell-snap-to-chat-input',
-        type: 'checkbox',
-        value: 'snap-to-chat-width',
-        label: 'Snap to chat width',
-        icon: 'fa-arrows-left-right-to-line',
-        onChange: input => setDesktopShellSnapToChatWidth(input.checked),
-    });
-
-    header.append(title, description);
-    group.append(header, snapChoice);
-    return group;
-}
-
 function createPaperTextureSettingsGroup() {
     const group = createElement('section', {
         className: 'sb-theme-slider-group sb-paper-texture-group',
@@ -12593,7 +11348,6 @@ function injectThemePicker() {
     });
     const topbarLabelSettingsGroup = createTopbarLabelSettingsGroup();
     const desktopNavLayoutSettingsGroup = createDesktopNavLayoutSettingsGroup();
-    const desktopShellSizingSettingsGroup = createDesktopShellSizingSettingsGroup();
     const mobileNavLayoutSettingsGroup = createMobileNavLayoutSettingsGroup();
     const desktopSettingsDivider = createMobileNavDivider();
     const mobileSettingsDivider = createMobileNavDivider();
@@ -12623,7 +11377,6 @@ function injectThemePicker() {
         desktopSettingsOutlet.replaceChildren(
             desktopNavLayoutSettingsGroup,
             desktopSettingsDivider,
-            desktopShellSizingSettingsGroup,
             desktopButtonSliderGroup,
             desktopCompactModeSettingsGroup,
             desktopBottomChatBarSettingsGroup,
@@ -12650,7 +11403,6 @@ function injectThemePicker() {
         card.append(
             desktopNavLayoutSettingsGroup,
             desktopSettingsDivider,
-            desktopShellSizingSettingsGroup,
             desktopButtonSliderGroup,
             desktopCompactModeSettingsGroup,
             desktopBottomChatBarSettingsGroup,
@@ -12693,7 +11445,6 @@ function updateThemePickerUi() {
     const desktopNavShowQuickActionsInput = document.getElementById('sb-desktop-nav-show-quick-actions-input');
     const desktopNavReplaceQuickActionsInput = document.getElementById('sb-desktop-nav-replace-quick-actions-input');
     const desktopNavReplacementSelect = document.getElementById('sb-desktop-nav-replacement-select');
-    const desktopShellSnapToChatInput = document.getElementById('sb-desktop-shell-snap-to-chat-input');
     const mobileNavIconOnlyInput = document.getElementById('sb-mobile-nav-icon-only-input');
     const mobileNavShowCustomizeInput = document.getElementById('sb-mobile-nav-show-customize-input');
     const mobileNavShowQuickActionsInput = document.getElementById('sb-mobile-nav-show-quick-actions-input');
@@ -12884,12 +11635,6 @@ function updateThemePickerUi() {
         desktopNavReplacementSelect.value = normalizeMobileNavReplacementTarget(sbState.desktopNav.replacementTarget);
         desktopNavReplacementSelect.disabled = !sbState.desktopNav.replaceQuickActions;
         desktopNavReplacementSelect.closest('.sb-mobile-nav-replacement-field')?.classList.toggle('is-disabled', !sbState.desktopNav.replaceQuickActions);
-    }
-
-    if (desktopShellSnapToChatInput instanceof HTMLInputElement) {
-        desktopShellSnapToChatInput.checked = sbState.shellSizing.snapToChatWidth;
-        const choice = desktopShellSnapToChatInput.closest('.sb-mobile-nav-choice');
-        choice?.classList.toggle('is-selected', sbState.shellSizing.snapToChatWidth);
     }
 
     if (mobileNavIconOnlyInput instanceof HTMLInputElement) {
@@ -13598,141 +12343,41 @@ function setActiveTab(shellKey, tabId, { focusButton = false } = {}) {
 
     if (focusButton && isActuallyVisible(activeTab.button)) {
         activeTab.button?.focus({ preventScroll: true });
-    } else if (isShellOpen(shellKey)) {
-        window.requestAnimationFrame(() => focusShellPanel(shellKey, { force: true }));
     }
 
     if (previousTab && previousTab.id !== activeTab.id) {
         previousTab.onDeactivate?.();
     }
 
-    const shellRoot = document.getElementById(shellConfig.rootPanelId);
-    // Fire onActivate when the shell is open in the drawer OR shown in the settings page.
-    if (shellRoot instanceof HTMLElement && (shellRoot.classList.contains('openDrawer') || isSettingsPageHosting(shellKey))) {
+    if (isSettingsPageHosting(shellKey)) {
         activeTab.onActivate?.();
         dispatchShellTabActivated(shellKey, activeTab);
         queueMobileShellActivationRefresh();
     }
 }
 
+// SillyBunny: every shell lives in the full-screen settings page (feat/v1.9.0-ui-overhaul).
 function openShell(shellKey, tabId = null) {
     if (shellKey === 'left' && tabId === 'world-info') {
-        // SillyBunny: final guard for old code paths that still ask for the
-        // removed left-shell World Info route.
+        // World Info moved from the Workspace shell into Characters.
         openCharacterPanelTab('world-info');
         return;
     }
 
-    // SillyBunny: Workspace/Customize open in the settings page (feat/v1.9.0-ui-overhaul).
-    if (shellKey === 'left' || shellKey === 'right') {
+    if (shellKey === 'characters') {
+        openCharacterPanelTab(tabId ?? SB_CHARACTER_PANEL_DEFAULT_TAB);
+        return;
+    }
+
+    if (getShellConfig(shellKey)) {
         openSettingsPage(shellKey, tabId);
-        return;
-    }
-
-    const shellConfig = getShellConfig(shellKey);
-    const shellState = getShellState(shellKey);
-    const shellRoot = document.getElementById(shellConfig.rootPanelId);
-
-    if (!shellState || !(shellRoot instanceof HTMLElement)) {
-        return;
-    }
-
-    const shellSurface = getMobileShellSurfaceForShell(shellKey);
-    if (shellSurface) {
-        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
-            surface: shellSurface,
-            isMobileViewport: isMobileViewport(),
-        }));
-    } else {
-        closeMobileNav();
-    }
-    rememberShellFocusOrigin(shellKey);
-
-    if (tabId) {
-        if (isMobileViewport()) {
-            requestMobileSectionView(shellKey, 'section');
-        }
-        setActiveTab(shellKey, tabId);
-    }
-
-    shellState.lastOpenedAt = performance.now();
-
-    if (isDrawerActuallyOpen(shellRoot)) {
-        syncMobileShellDrawerBounds();
-        queueMobileShellDrawerBoundsSync();
-        syncDesktopShellSizing();
-        window.requestAnimationFrame(() => focusShellPanel(shellKey));
-        return;
-    }
-
-    if (shellRoot.classList.contains('openDrawer')) {
-        forceDrawerState(shellRoot, true, shellConfig.hostIconSelector);
-        animateShellOpen(shellRoot, shellKey);
-        syncMobileShellDrawerBounds();
-        queueMobileShellDrawerBoundsSync();
-        syncDesktopShellSizing();
-        window.requestAnimationFrame(() => focusShellPanel(shellKey));
-        return;
-    }
-
-    if (!shellRoot.classList.contains('openDrawer')) {
-        forceDrawerState(shellRoot, true, shellConfig.hostIconSelector);
-        animateShellOpen(shellRoot, shellKey);
-        syncMobileShellDrawerBounds();
-        queueMobileShellDrawerBoundsSync();
-        window.requestAnimationFrame(() => {
-            if (!isDrawerActuallyOpen(shellRoot)) {
-                forceDrawerState(shellRoot, true, shellConfig.hostIconSelector);
-                animateShellOpen(shellRoot, shellKey);
-            }
-            syncMobileShellDrawerBounds();
-            queueMobileShellDrawerBoundsSync();
-            syncDesktopShellSizing();
-            focusShellPanel(shellKey);
-        });
     }
 }
 
 function closeShell(shellKey) {
     if (isSettingsPageHosting(shellKey)) {
         closeSettingsPage();
-        return;
     }
-
-    const shellConfig = getShellConfig(shellKey);
-    const shellState = getShellState(shellKey);
-    const shellRoot = document.getElementById(shellConfig.rootPanelId);
-
-    if (!(shellRoot instanceof HTMLElement) || !shellRoot.classList.contains('openDrawer')) {
-        return;
-    }
-
-    shellState?.tabs.get(shellState.activeTabId)?.onDeactivate?.();
-
-    if (!isDrawerActuallyOpen(shellRoot)) {
-        forceDrawerState(shellRoot, false, shellConfig.hostIconSelector);
-        syncMobileShellDrawerBounds();
-        queueMobileShellDrawerBoundsSync();
-        requestMobileViewportReset();
-        return;
-    }
-
-    const shouldRestoreFocus = document.activeElement instanceof HTMLElement && shellRoot.contains(document.activeElement);
-    if (shouldRestoreFocus) {
-        document.activeElement.blur();
-    }
-
-    closeShellDrawer(shellRoot, shellKey, () => {
-        forceDrawerState(shellRoot, false, shellConfig.hostIconSelector);
-        syncMobileShellDrawerBounds();
-        queueMobileShellDrawerBoundsSync();
-        requestMobileViewportReset();
-        if (shouldRestoreFocus) {
-            window.requestAnimationFrame(() => restoreShellFocus(shellKey));
-        } else {
-            delete shellState?.restoreFocusTarget;
-        }
-    });
 }
 
 function buildShell(shellKey) {
@@ -13908,76 +12553,27 @@ function buildShell(shellKey) {
     const subtitle = createElement('p', { className: 'sb-shell-subtitle' });
     const shellDescription = createElement('p', { className: 'sb-shell-description', text: shellConfig.subtitle });
     const panelBody = createElement('div', { className: 'sb-shell-body' });
-    const resizeHandle = createElement('div', {
-        className: 'sb-shell-resize-handle',
-        attrs: {
-            title: `Resize ${shellConfig.title}`,
-        },
-    });
 
     closeButton.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
     renderShellSubtitle(subtitle, shellConfig.baseTab.description ?? '', { isHtml: shellConfig.baseTab.descriptionIsHtml === true });
     closeButton.addEventListener('click', () => closeShell(shellKey));
-    shellRoot.addEventListener('keydown', event => {
-        if (event.key !== 'Escape') {
-            return;
-        }
-
-        if (closeFocusedShell()) {
-            event.preventDefault();
-            event.stopPropagation();
-        }
-    });
-    bindShellResizeHandle(resizeHandle, shellKey);
 
     header.append(closeButton, eyebrow, title, subtitle, shellDescription);
     main.append(header, panelBody);
-    frame.append(navWrapper, main, resizeHandle);
+    frame.append(navWrapper, main);
     shellRoot.appendChild(frame);
 
     const shellState = {
         activeTabId: shellConfig.defaultTabId,
-        lastOpenedAt: 0,
         tabs: new Map(),
         nav,
         headerTitle: title,
         headerSubtitle: subtitle,
         root: shellRoot,
-        resizeHandle,
         updateNavScrollIndicators,
     };
 
     sbState.shells[shellKey] = shellState;
-
-    let wasOpen = shellRoot.classList.contains('openDrawer');
-    new MutationObserver(() => {
-        const isOpen = shellRoot.classList.contains('openDrawer');
-
-        if (isOpen === wasOpen) {
-            return;
-        }
-
-        wasOpen = isOpen;
-
-        if (isOpen) {
-            shellState.lastOpenedAt = performance.now();
-            if (isMobileViewport()) {
-                closeMobileNav();
-            }
-            syncDesktopShellSizing();
-            const activeTab = shellState.tabs.get(shellState.activeTabId);
-            activeTab?.onActivate?.();
-            dispatchShellTabActivated(shellKey, activeTab);
-            queueMobileShellActivationRefresh();
-            updateNavScrollIndicators();
-            window.requestAnimationFrame(() => focusShellPanel(shellKey));
-            queueMobileModalStateSync();
-            return;
-        }
-
-        shellState.tabs.get(shellState.activeTabId)?.onDeactivate?.();
-        queueMobileModalStateSync();
-    }).observe(shellRoot, { attributes: true, attributeFilter: ['class'] });
 
     const basePanel = createShellPanel(shellConfig.baseTab);
     basePanel.scroller.appendChild(originalContent);
@@ -14451,7 +13047,6 @@ function queueMobileShellActivationRefresh() {
         return;
     }
 
-    queueMobileShellDrawerBoundsSync();
     queueMobileViewportStateSync();
 }
 
@@ -15275,13 +13870,9 @@ function syncMobileViewportState() {
     });
     const stepHandlers = {
         [viewportSyncStep.SYNC_SHELL_VIEWPORT_BOUNDS]: () => syncShellViewportBounds(),
-        [viewportSyncStep.SYNC_MOBILE_SHELL_DRAWER_BOUNDS]: () => {
-            syncMobileShellDrawerBounds();
-        },
         [viewportSyncStep.CLOSE_MOBILE_NAV]: () => closeMobileNav(),
         [viewportSyncStep.CLOSE_MOBILE_CHAT_TOOLS]: () => closeMobileChatTools(),
         [viewportSyncStep.SYNC_MOBILE_SHELL_RAIL_ACTIONS]: () => syncMobileShellRailActions(),
-        [viewportSyncStep.SYNC_DESKTOP_SHELL_SIZING]: () => syncDesktopShellSizing(),
         [viewportSyncStep.APPLY_TOPBAR_OFFSET]: () => applyTopbarOffset(),
         [viewportSyncStep.SYNC_CHATBAR_VISIBILITY_STATE]: () => syncChatbarVisibilityState(),
         [viewportSyncStep.UPDATE_TOP_BAR_BRAND]: () => updateTopBarBrand(),
@@ -16256,8 +14847,6 @@ function initAll() {
     restorePersistedTopbarState();
     seedTopbarScaleDefaults();
     hideHostToggles();
-    forceDrawerState(leftShellRoot, false, getShellConfig('left').hostIconSelector);
-    forceDrawerState(rightShellRoot, false, getShellConfig('right').hostIconSelector);
     buildShell('left');
     buildShell('right');
     buildMobileNav();
@@ -16265,14 +14854,13 @@ function initAll() {
     injectCharacterDrawerControls();
     bindCharacterEditorExitButton();
     bindCharacterDrawerStateObserver();
+    prewarmSettingsPageRoots();
     applyShellTheme();
     setFrontendIconPreference(sbState.frontendIcon, { persist: false });
     setSurfaceTransparency(sbState.surfaceTransparency, { persist: false });
     setPaperTextureEnabled(sbState.paperTextureEnabled, { persist: false });
     setPaperTextureOpacity(sbState.paperTextureOpacity, { persist: false });
     setCompactMode(sbState.compactMode, { persist: false });
-    setDesktopShellSnapToChatWidth(sbState.shellSizing.snapToChatWidth, { persist: false });
-    setCharacterDrawerRightLock(sbState.characterDrawer.rightLocked, { persist: false });
     setTopbarScale('desktop', sbState.topbarScale.desktop, { persist: false });
     setTopbarScale('mobile', sbState.topbarScale.mobile, { persist: false });
     setBottomBarScale(sbState.bottomBarScale, { persist: false });
@@ -16282,7 +14870,6 @@ function initAll() {
     applyMobileNavPreferences();
     bindComposerControlPlacement();
     initChatAvatarVariables();
-    syncDesktopShellSizing();
     buildTopBar();
     // Must follow buildTopBar(): it rearranges the buttons that call creates.
     applyTopbarIconsOnlyPreference();
@@ -16317,7 +14904,6 @@ function initAll() {
     window.visualViewport?.addEventListener('resize', queueMobileViewportStateSync, { passive: true });
     // SillyBunny: iOS can move visualViewport.offsetTop without resizing while the keyboard is open.
     window.visualViewport?.addEventListener('scroll', queueMobileViewportStateSync, { passive: true });
-    window.visualViewport?.addEventListener('resize', syncDesktopShellSizing, { passive: true });
 
     // SillyBunny: keep focused inputs in mobile settings drawers above the
     // virtual keyboard. The fixed/clipped body blocks native scrolling, so the
@@ -16348,12 +14934,6 @@ function initAll() {
         document.addEventListener('focusin', handleComposerKeyboardFocusIn);
         document.addEventListener('focusout', handleMobileKeyboardFocusOut);
     }
-
-    // SillyBunny: re-sync shell width when the chat width slider changes so settings
-    // panels narrow alongside the chat container (matches standard ST behaviour).
-    $(document).on('input change mouseup touchend', '#chat_width_slider', () => {
-        syncDesktopShellSizing();
-    });
 
     // Reinitialize Select2 widgets after shell reparents DOM elements.
     // Select2 bindings break when elements are moved in the DOM.
@@ -16419,9 +14999,8 @@ function initAll() {
         setTopbarIconsOnly(mode, value) {
             setTopbarIconsOnly(mode, value);
         },
-        setDesktopShellSnapToChatWidth(value) {
-            setDesktopShellSnapToChatWidth(value);
-        },
+        // Kept as a no-op for extensions; panels are no longer resizable drawers.
+        setDesktopShellSnapToChatWidth() {},
         setMessageStyle,
         openChatTools() {
             if (isMobileViewport()) {
@@ -16566,6 +15145,21 @@ function isSettingsPageHosting(shellKey) {
     return sbSettingsState.open && sbSettingsState.activeShell === shellKey;
 }
 
+// The page swaps shell sections itself, so only the floating mobile surfaces (nav, chat
+// tools, connection strip) are closed here; closing a shell surface would close the page.
+function closeMobileSurfacesForSettingsPage(shellKey) {
+    const surface = sbMobileShellLifecycle.overlays.surface;
+    const shellSurfaces = new Set([surface.LEFT_SHELL, surface.RIGHT_SHELL, surface.CHARACTER_PANEL]);
+    const decision = sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+        surface: getMobileShellSurfaceForShell(shellKey),
+        isMobileViewport: isMobileViewport(),
+    });
+
+    applyMobileSurfaceExclusivity({
+        closeSurfaces: decision.closeSurfaces.filter(closeSurfaceKey => !shellSurfaces.has(closeSurfaceKey)),
+    });
+}
+
 function openSettingsPage(shellKey, tabId = null) {
     const page = getSettingsPage();
     if (!(page instanceof HTMLElement)) {
@@ -16587,6 +15181,8 @@ function openSettingsPage(shellKey, tabId = null) {
         return;
     }
 
+    closeMobileSurfacesForSettingsPage(shellKey);
+
     const wasOpen = sbSettingsState.open;
     const previousShell = sbSettingsState.activeShell;
 
@@ -16600,7 +15196,6 @@ function openSettingsPage(shellKey, tabId = null) {
     }
 
     closeAllDropdowns({ except: shellKey, closeSurfaces: false });
-    closeLegacyShellDrawers();
     document.getElementById('sb-persona-picker')?.remove();
     document.getElementById('sb-mode-menu')?.remove();
 
@@ -16655,6 +15250,7 @@ function closeSettingsPage() {
         }
         sbSettingsState.activeShell = null;
         syncChatbarVisibilityState();
+        requestMobileViewportReset();
     };
 
     animateSettingsPage(page, 'out', finishClose);
@@ -16676,18 +15272,6 @@ function toggleSettingsPage(shellKey, tabId = null) {
     }
 
     openSettingsPage(shellKey, tabId);
-}
-
-// SillyBunny: the floating drawers are retired in favour of the settings page. Any
-// drawer still open from an extension or stale state is closed so the two never stack.
-function closeLegacyShellDrawers() {
-    for (const shellKey of ['left', 'right']) {
-        const root = getSettingsPageRoot(shellKey);
-        if (root instanceof HTMLElement && root.classList.contains('openDrawer') && !root.classList.contains('sb-settings-mounted-shell')) {
-            root.classList.remove('openDrawer');
-            root.classList.add('closedDrawer');
-        }
-    }
 }
 
 function buildSettingsPageFor(shellKey, tabId) {
@@ -16782,11 +15366,6 @@ function mountShellRootInSettingsPage(shellKey, tabId = null) {
         }
     }
 
-    if (root.dataset.sbShellInlineSize === 'true') {
-        clearDesktopShellSize(root);
-    }
-    clearCharacterDrawerInlinePosition(root);
-
     const isCharacters = shellKey === 'characters';
     // The character panel's layout hangs off `#right-nav-panel.openDrawer`; pinnedOpen keeps
     // SillyTavern's outside-click auto-close from collapsing it while it lives in the page.
@@ -16822,6 +15401,32 @@ function mountShellRootInSettingsPage(shellKey, tabId = null) {
     activeTab?.onActivate?.();
     dispatchShellTabActivated(shellKey, activeTab);
     queueMobileShellActivationRefresh();
+}
+
+// Roots move into the settings host at startup so SillyTavern's native drawer toggles can
+// never reopen them as floating drawers in their original holders.
+function prewarmSettingsPageRoots() {
+    const host = document.getElementById('sb-settings-shell-host');
+    if (!(host instanceof HTMLElement)) {
+        return;
+    }
+
+    for (const shellKey of ['left', 'right', 'characters']) {
+        const root = getSettingsPageRoot(shellKey);
+        if (!(root instanceof HTMLElement) || root.parentElement === host) {
+            continue;
+        }
+
+        host.appendChild(root);
+        setRootClassState(root, {
+            'sb-settings-mounted-shell': true,
+            'sb-settings-active-root': false,
+            openDrawer: false,
+            closedDrawer: false,
+            pinnedOpen: false,
+        });
+        setRootAttribute(root, 'aria-hidden', 'true');
+    }
 }
 
 function deactivateSettingsPageRoot(shellKey) {

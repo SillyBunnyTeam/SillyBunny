@@ -210,13 +210,10 @@
         overflow: hidden !important;
     }
 
-    #left-nav-panel.openDrawer,
-    #user-settings-block.openDrawer,
     .sb-shell-root.openDrawer,
     .sb-shell-root.fillLeft.openDrawer,
     .sb-shell-root.fillRight.openDrawer,
     #right-nav-panel.openDrawer,
-    :root[data-sb-character-drawer-lock='right'] #right-nav-panel.openDrawer,
     #top-settings-holder #right-nav-panel.openDrawer {
         position: fixed !important;
         inset-inline: 0 !important;
@@ -236,8 +233,6 @@
         box-sizing: border-box !important;
     }
 
-    #left-nav-panel.openDrawer,
-    #user-settings-block.openDrawer,
     .sb-shell-root.openDrawer,
     .sb-shell-root.fillLeft.openDrawer,
     .sb-shell-root.fillRight.openDrawer {
@@ -713,8 +708,6 @@
         display: none !important;
     }
 
-    #left-nav-panel.openDrawer .sb-shell-frame,
-    #user-settings-block.openDrawer .sb-shell-frame,
     .sb-shell-root.openDrawer .sb-shell-frame,
     .sb-shell-root.fillLeft.openDrawer .sb-shell-frame,
     .sb-shell-root.fillRight.openDrawer .sb-shell-frame {
@@ -724,8 +717,6 @@
         overflow: hidden !important;
     }
 
-    #left-nav-panel.openDrawer .sb-shell-main,
-    #user-settings-block.openDrawer .sb-shell-main,
     .sb-shell-root.openDrawer .sb-shell-main,
     .sb-shell-root.fillLeft.openDrawer .sb-shell-main,
     .sb-shell-root.fillRight.openDrawer .sb-shell-main {
@@ -734,8 +725,6 @@
         overflow: hidden !important;
     }
 
-    #left-nav-panel.openDrawer .sb-shell-body,
-    #user-settings-block.openDrawer .sb-shell-body,
     .sb-shell-root.openDrawer .sb-shell-body,
     .sb-shell-root.fillLeft.openDrawer .sb-shell-body,
     .sb-shell-root.fillRight.openDrawer .sb-shell-body {
@@ -746,8 +735,6 @@
         padding-bottom: 0 !important;
     }
 
-    #left-nav-panel.openDrawer .sb-shell-panel,
-    #user-settings-block.openDrawer .sb-shell-panel,
     .sb-shell-root.openDrawer .sb-shell-panel,
     .sb-shell-root.fillLeft.openDrawer .sb-shell-panel,
     .sb-shell-root.fillRight.openDrawer .sb-shell-panel {
@@ -756,8 +743,6 @@
         overflow: hidden !important;
     }
 
-    #left-nav-panel.openDrawer .sb-shell-panel-active,
-    #user-settings-block.openDrawer .sb-shell-panel-active,
     .sb-shell-root.openDrawer .sb-shell-panel-active,
     .sb-shell-root.fillLeft.openDrawer .sb-shell-panel-active,
     .sb-shell-root.fillRight.openDrawer .sb-shell-panel-active {
@@ -765,8 +750,6 @@
         flex-direction: column !important;
     }
 
-    #left-nav-panel.openDrawer .sb-shell-panel-scroller,
-    #user-settings-block.openDrawer .sb-shell-panel-scroller,
     .sb-shell-root.openDrawer .sb-shell-panel-scroller,
     .sb-shell-root.fillLeft.openDrawer .sb-shell-panel-scroller,
     .sb-shell-root.fillRight.openDrawer .sb-shell-panel-scroller {
@@ -779,13 +762,6 @@
         overscroll-behavior: contain !important;
         -webkit-overflow-scrolling: touch !important;
         padding-bottom: max(24px, calc(var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + var(--sb-ios-keyboard-bottom-inset, 0px))) !important;
-    }
-
-    #left-nav-panel.openDrawer .sb-shell-panel-scroller > :is(.scrollableInner, .scrollableInnerFull) {
-        min-height: 0;
-        max-height: none;
-        overflow: visible;
-        -webkit-overflow-scrolling: auto;
     }
 
     #right-nav-panel.openDrawer > .scrollableInner,
@@ -841,8 +817,6 @@
         overflow-wrap: break-word !important;
     }
 
-    #left-nav-panel.openDrawer,
-    #user-settings-block.openDrawer,
     .sb-shell-root.openDrawer,
     #right-nav-panel.openDrawer {
         padding-bottom: env(keyboard-inset-height, 0px) !important;
@@ -907,13 +881,10 @@
             min-height: 0 !important;
         }
 
-        #left-nav-panel.openDrawer,
-        #user-settings-block.openDrawer,
         .sb-shell-root.openDrawer,
         .sb-shell-root.fillLeft.openDrawer,
         .sb-shell-root.fillRight.openDrawer,
         #right-nav-panel.openDrawer,
-        :root[data-sb-character-drawer-lock='right'] #right-nav-panel.openDrawer,
         #top-settings-holder #right-nav-panel.openDrawer {
             overflow: hidden !important;
             padding-bottom: 0 !important;
@@ -926,8 +897,6 @@
    (iPadOS desktop-mode Safari reports a desktop UA and exceeds 768px).
    .sb-ios-keyboard-inset-active is only toggled while the iOS software
    keyboard is open, so non-iOS and keyboard-closed layouts never match. */
-html.sb-ios-keyboard-inset-active #left-nav-panel.openDrawer .sb-shell-panel-scroller,
-html.sb-ios-keyboard-inset-active #user-settings-block.openDrawer .sb-shell-panel-scroller,
 html.sb-ios-keyboard-inset-active .sb-shell-root.openDrawer .sb-shell-panel-scroller,
 html.sb-ios-keyboard-inset-active .sb-shell-root.fillLeft.openDrawer .sb-shell-panel-scroller,
 html.sb-ios-keyboard-inset-active .sb-shell-root.fillRight.openDrawer .sb-shell-panel-scroller,
@@ -1437,8 +1406,6 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         font-size: var(--sb-topbar-compact-icon-size);
     }
 
-    #left-nav-panel.openDrawer,
-    #user-settings-block.openDrawer,
     .sb-shell-root.openDrawer,
     .sb-shell-root.fillLeft.openDrawer,
     .sb-shell-root.fillRight.openDrawer,
@@ -1455,16 +1422,6 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         min-width: 0 !important;
         margin-top: 0 !important;
         border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0 !important;
-        transform-origin: center bottom;
-    }
-
-    :root[data-sb-character-drawer-lock="right"] #right-nav-panel.openDrawer {
-        left: max(8px, env(safe-area-inset-left, 0px)) !important;
-        right: 0 !important;
-        width: auto !important;
-        max-width: none !important;
-        margin-left: 0 !important;
-        margin-right: 0 !important;
         transform-origin: center bottom;
     }
 
@@ -1488,10 +1445,6 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
 
     .sb-shell-frame {
         flex-direction: column;
-    }
-
-    .sb-shell-resize-handle {
-        display: none !important;
     }
 
     .sb-shell-nav {
@@ -2836,14 +2789,11 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
 }
 
 @media screen and (max-width: 768px) {
-    #left-nav-panel.openDrawer,
-    #user-settings-block.openDrawer,
     .sb-shell-root.openDrawer,
     .sb-shell-root.fillLeft.openDrawer,
     .sb-shell-root.fillRight.openDrawer,
     #right-nav-panel.openDrawer,
-    #top-settings-holder #right-nav-panel.openDrawer,
-    :root[data-sb-character-drawer-lock='right'] #right-nav-panel.openDrawer {
+    #top-settings-holder #right-nav-panel.openDrawer {
         top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px) + var(--sb-shell-viewport-top, 0px)) !important;
         bottom: auto !important;
         box-sizing: border-box !important;

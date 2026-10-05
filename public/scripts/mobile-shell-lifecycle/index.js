@@ -713,27 +713,11 @@ export function resolveMobileModalA11yState({
     };
 }
 
-export const MOBILE_SHELL_DRAWER_BOUND_ACTION = Object.freeze({
-    BIND: 'bind',
-    CLEAR: 'clear',
-    SKIP: 'skip',
-});
-
-export const MOBILE_SHELL_DRAWER_BOUND_STYLE_PROPERTIES = Object.freeze([
-    'top',
-    'bottom',
-    'height',
-    'max-height',
-    'box-sizing',
-]);
-
 export const MOBILE_SHELL_VIEWPORT_SYNC_STEP = Object.freeze({
     SYNC_SHELL_VIEWPORT_BOUNDS: 'sync-shell-viewport-bounds',
-    SYNC_MOBILE_SHELL_DRAWER_BOUNDS: 'sync-mobile-shell-drawer-bounds',
     CLOSE_MOBILE_NAV: 'close-mobile-nav',
     CLOSE_MOBILE_CHAT_TOOLS: 'close-mobile-chat-tools',
     SYNC_MOBILE_SHELL_RAIL_ACTIONS: 'sync-mobile-shell-rail-actions',
-    SYNC_DESKTOP_SHELL_SIZING: 'sync-desktop-shell-sizing',
     APPLY_TOPBAR_OFFSET: 'apply-topbar-offset',
     SYNC_CHATBAR_VISIBILITY_STATE: 'sync-chatbar-visibility-state',
     UPDATE_TOP_BAR_BRAND: 'update-top-bar-brand',
@@ -1052,61 +1036,6 @@ export function shouldBlockMobileDocumentPan(event, { touchStart = null } = {}) 
     return true;
 }
 
-function clampBoundNumber(value, min, max) {
-    return Math.min(Math.max(normalizeNumber(value, min), min), max);
-}
-
-/**
- * Resolves the viewport bound decision for a single mobile shell drawer.
- * Pure decision: callers read DOM state in, apply style writes/removals out.
- * @param {object} options Options.
- * @param {boolean} [options.isMobileViewport=false] Whether mobile shell policy is active.
- * @param {boolean} [options.isOpen=false] Whether the drawer has the openDrawer class.
- * @param {boolean} [options.isViewportBound=false] Whether the drawer carries the bound dataset marker.
- * @param {number} [options.viewportHeight=0] Current shell viewport height in px.
- * @param {number} [options.viewportTop=0] Visible viewport offset in px.
- * @param {number} [options.baseTopOffset=0] Resolved shell topbar offset in px.
- * @param {number} [options.shellGap=0] Drawer --sb-mobile-shell-gap value in px.
- * @returns {{action: string, styleWrites: Array<{property: string, value: string, priority: string}>, styleRemovals: string[]}}
- */
-export function resolveMobileDrawerBounds({
-    isMobileViewport = false,
-    isOpen = false,
-    isViewportBound = false,
-    viewportHeight = 0,
-    viewportTop = 0,
-    baseTopOffset = 0,
-    shellGap = 0,
-} = {}) {
-    const shouldBind = Boolean(isMobileViewport) && Boolean(isOpen);
-
-    if (!shouldBind) {
-        return {
-            action: isViewportBound ? MOBILE_SHELL_DRAWER_BOUND_ACTION.CLEAR : MOBILE_SHELL_DRAWER_BOUND_ACTION.SKIP,
-            styleWrites: [],
-            styleRemovals: isViewportBound ? [...MOBILE_SHELL_DRAWER_BOUND_STYLE_PROPERTIES] : [],
-        };
-    }
-
-    const safeViewportHeight = Math.max(0, normalizeNumber(viewportHeight));
-    const safeViewportTop = Math.max(0, Math.round(normalizeNumber(viewportTop)));
-    const safeBaseTopOffset = Math.max(0, Math.round(normalizeNumber(baseTopOffset)));
-    const topOffset = clampBoundNumber(Math.round(safeBaseTopOffset + normalizeNumber(shellGap)), 0, safeViewportHeight);
-    const availableHeight = Math.max(0, safeViewportHeight - topOffset);
-
-    return {
-        action: MOBILE_SHELL_DRAWER_BOUND_ACTION.BIND,
-        styleWrites: [
-            { property: 'top', value: `${safeViewportTop + topOffset}px`, priority: 'important' },
-            { property: 'bottom', value: 'auto', priority: 'important' },
-            { property: 'box-sizing', value: 'border-box', priority: 'important' },
-            { property: 'height', value: `${availableHeight}px`, priority: 'important' },
-            { property: 'max-height', value: `${availableHeight}px`, priority: 'important' },
-        ],
-        styleRemovals: [],
-    };
-}
-
 /**
  * Resolves the ordered viewport sync work without touching shell DOM.
  * @param {object} options Options.
@@ -1118,20 +1047,17 @@ export function resolveMobileViewportSyncPlan({
 } = {}) {
     const steps = [
         MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_SHELL_VIEWPORT_BOUNDS,
-        MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_MOBILE_SHELL_DRAWER_BOUNDS,
     ];
 
     if (!isMobileViewport) {
         steps.push(
             MOBILE_SHELL_VIEWPORT_SYNC_STEP.CLOSE_MOBILE_NAV,
             MOBILE_SHELL_VIEWPORT_SYNC_STEP.CLOSE_MOBILE_CHAT_TOOLS,
-            MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_MOBILE_SHELL_DRAWER_BOUNDS,
         );
     }
 
     steps.push(
         MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_MOBILE_SHELL_RAIL_ACTIONS,
-        MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_DESKTOP_SHELL_SIZING,
         MOBILE_SHELL_VIEWPORT_SYNC_STEP.APPLY_TOPBAR_OFFSET,
         MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_CHATBAR_VISIBILITY_STATE,
         MOBILE_SHELL_VIEWPORT_SYNC_STEP.UPDATE_TOP_BAR_BRAND,
@@ -1140,28 +1066,6 @@ export function resolveMobileViewportSyncPlan({
     );
 
     return { steps };
-}
-
-/**
- * Resolves how drawer bounds should be queued after mobile viewport movement.
- * @param {object} options Options.
- * @param {boolean} [options.isMobileViewport=false] Whether mobile shell policy is active.
- * @param {boolean} [options.hasAnimationFrame=false] Whether requestAnimationFrame is available.
- * @param {number} [options.followupDelayMs=350] Follow-up sync delay.
- * @returns {{shouldSchedule: boolean, useAnimationFrame: boolean, followupDelayMs: number}}
- */
-export function resolveDrawerBoundsSyncSchedule({
-    isMobileViewport = false,
-    hasAnimationFrame = false,
-    followupDelayMs = 350,
-} = {}) {
-    const shouldSchedule = Boolean(isMobileViewport);
-
-    return {
-        shouldSchedule,
-        useAnimationFrame: shouldSchedule && Boolean(hasAnimationFrame),
-        followupDelayMs: normalizeNumber(followupDelayMs, 350),
-    };
 }
 
 /**
@@ -1207,15 +1111,9 @@ export function createMobileShellLifecycle() {
             resolveAutoCloseSiblings: resolveInlineDrawerAutoCloseSiblings,
             derivePersistenceKey: deriveInlineDrawerPersistenceKey,
         },
-        drawerBounds: {
-            action: MOBILE_SHELL_DRAWER_BOUND_ACTION,
-            boundStyleProperties: MOBILE_SHELL_DRAWER_BOUND_STYLE_PROPERTIES,
-            resolveBounds: resolveMobileDrawerBounds,
-        },
         viewportSync: {
             step: MOBILE_SHELL_VIEWPORT_SYNC_STEP,
             resolveSyncPlan: resolveMobileViewportSyncPlan,
-            resolveDrawerBoundsSchedule: resolveDrawerBoundsSyncSchedule,
         },
         timings: {
             navOpenGraceMs: MOBILE_SHELL_LIFECYCLE_NAV_OPEN_GRACE_MS,
