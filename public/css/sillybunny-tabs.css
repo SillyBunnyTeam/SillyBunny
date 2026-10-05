@@ -288,6 +288,11 @@
     }
 }
 
+/* The settings page sits under the top bar; lift the bar so its search row drops over it. */
+:root[data-sb-settings-open='true'] #top-bar {
+    z-index: calc(var(--sb-z-overlay) + 1);
+}
+
 @media screen and (min-width: 1001px) {
     #top-bar {
         padding-top: 0 !important;
@@ -5416,6 +5421,90 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     }
 }
 
+/* ── Mode dropdown (GNOME-style, feat/v1.9.0-ui-overhaul) ── */
+#sb-mode-menu {
+    position: fixed;
+    left: var(--sb-mode-menu-left, 8px);
+    top: var(--sb-mode-menu-top, 48px);
+    min-width: 220px;
+    max-width: min(280px, calc(100vw - 16px));
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px;
+    background: var(--sb-layer-popover);
+    border: 1px solid var(--sb-shell-border);
+    border-radius: var(--sb-radius-overlay);
+    box-shadow: var(--sb-shadow-popover);
+    z-index: calc(var(--sb-z-modal-content, 3100) + 1);
+    animation: sbShellContentReveal 200ms var(--sb-ease-out);
+}
+
+.sb-mode-menu-item {
+    -webkit-appearance: none;
+    appearance: none;
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) 16px;
+    grid-template-rows: auto auto;
+    grid-template-areas: 'icon label check' 'icon desc check';
+    align-items: center;
+    gap: 0 8px;
+    width: 100%;
+    border: 0;
+    padding: 8px 10px;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-shell-text);
+    cursor: pointer;
+    text-align: left;
+    transition: background-color var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    .sb-mode-menu-item:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.sb-mode-menu-item:focus-visible {
+    outline: 2px solid var(--color-primary, var(--sb-accent));
+    outline-offset: -2px;
+}
+
+.sb-mode-menu-item.is-active {
+    color: var(--color-primary, var(--sb-accent));
+}
+
+.sb-mode-menu-check {
+    grid-area: check;
+    font-size: 0.8rem;
+    visibility: hidden;
+}
+
+.sb-mode-menu-item.is-active .sb-mode-menu-check {
+    visibility: visible;
+}
+
+.sb-mode-menu-icon {
+    grid-area: icon;
+    font-size: 1rem;
+    text-align: center;
+}
+
+.sb-mode-menu-label {
+    grid-area: label;
+    font-size: calc(var(--mainFontSize) * 0.9);
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.sb-mode-menu-desc {
+    grid-area: desc;
+    font-size: calc(var(--mainFontSize) * 0.75);
+    color: var(--sb-shell-text-secondary);
+    line-height: 1.3;
+}
+
 #sb-persona-picker {
     position: fixed;
     left: 0;
@@ -8246,46 +8335,13 @@ body.reduced-motion .sb-shell-main {
     will-change: transform, opacity;
 }
 
+/* Closed state keeps the page in the render tree so reopening reuses the cached layout of
+   the hosted panels instead of laying out every panel again on the first animation frame. */
 #sb-settings-page[hidden] {
-    display: none;
-}
-
-@keyframes sb-settings-in {
-    from { opacity: 0; transform: scale(0.96); }
-    to   { opacity: 1; transform: scale(1); }
-}
-
-@keyframes sb-settings-out {
-    from { opacity: 1; transform: scale(1); }
-    to   { opacity: 0; transform: scale(0.97); }
-}
-
-#sb-settings-page.is-opening {
-    animation: sb-settings-in 250ms var(--sb-ease-out-cubic) forwards;
-}
-
-#sb-settings-page.is-closing {
-    animation: sb-settings-out 200ms var(--sb-ease-out-cubic) forwards;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    #sb-settings-page.is-opening {
-        animation: sb-settings-in 200ms linear forwards;
-    }
-
-    #sb-settings-page.is-closing {
-        animation: sb-settings-out 150ms linear forwards;
-    }
-
-    @keyframes sb-settings-in {
-        from { opacity: 0; transform: none; }
-        to   { opacity: 1; transform: none; }
-    }
-
-    @keyframes sb-settings-out {
-        from { opacity: 1; transform: none; }
-        to   { opacity: 0; transform: none; }
-    }
+    display: flex;
+    visibility: hidden;
+    pointer-events: none;
+    content-visibility: hidden;
 }
 
 #sb-settings-inner {
@@ -8460,6 +8516,16 @@ body.reduced-motion .sb-shell-main {
     }
 }
 
+.sb-settings-tab.sb-settings-tab--filtered {
+    display: none;
+}
+
+.sb-settings-tab-empty {
+    margin: 8px 12px;
+    color: var(--sb-shell-text-secondary);
+    font-size: var(--sb-type-meta);
+}
+
 .sb-settings-tab .fa-solid {
     font-size: 13px;
     width: 16px;
@@ -8564,6 +8630,7 @@ body.reduced-motion .sb-shell-main {
     flex: 1;
     overflow-y: auto;
     position: relative;
+    padding: 0;
 }
 
 /* Tab panel content transition */
@@ -8587,9 +8654,49 @@ body.reduced-motion .sb-shell-main {
 /* The settings page hosts the already-built shell root directly. This avoids
    rebuilding or reparenting every tab whenever Workspace and Customize switch. */
 #sb-settings-shell-host {
+    position: relative;
     width: 100%;
     height: 100%;
     min-height: 0;
+    overflow: hidden;
+}
+
+/* Inactive hosted roots stay in place but skip rendering, so switching sections is cheap. */
+#sb-settings-shell-host > .sb-settings-mounted-shell:not(.sb-settings-active-root) {
+    position: absolute !important;
+    inset: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    content-visibility: hidden;
+}
+
+/* The Characters panel keeps .openDrawer for its internal layout; these ID-level rules beat
+   the floating drawer's width/height/position so it fills the page like the other sections. */
+#sb-settings-shell-host > #right-nav-panel.sb-settings-mounted-shell {
+    position: static !important;
+    inset: auto !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    margin: 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 100% !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+    transform: none !important;
+}
+
+#sb-settings-shell-host > #right-nav-panel.sb-settings-mounted-shell:not(.sb-settings-active-root) {
+    position: absolute !important;
+    inset: 0 !important;
+}
+
+#sb-settings-shell-host > #right-nav-panel.sb-settings-mounted-shell > .sb-character-shell-header,
+#sb-settings-shell-host > #right-nav-panel.sb-settings-mounted-shell > .sb-character-shell-nav-wrapper,
+#sb-settings-shell-host > #right-nav-panel.sb-settings-mounted-shell > .sb-shell-resize-handle {
+    display: none !important;
 }
 
 #sb-settings-shell-host > .sb-settings-mounted-shell {
@@ -8649,155 +8756,6 @@ body.reduced-motion .sb-shell-main {
     display: flex !important;
 }
 
-/* ── Phase 1: composer mode pill (feat/v1.9.0-ui-overhaul) ─────────────── */
-
-#leftSendForm {
-    position: relative;
-}
-
-.sb-mode-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 5px 10px 5px 9px;
-    height: 34px;
-    border: 1px solid var(--sb-shell-border);
-    border-radius: var(--sb-shell-control-radius);
-    background: transparent;
-    color: var(--sb-shell-text-secondary);
-    font-size: var(--sb-type-meta);
-    font-weight: 700;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), border-color var(--sb-transition-fast);
-    flex-shrink: 0;
-}
-
-.sb-mode-pill .fa-solid:first-child {
-    font-size: 12px;
-    flex-shrink: 0;
-}
-
-.sb-mode-pill-chevron {
-    font-size: 9px;
-    flex-shrink: 0;
-    transition: transform var(--sb-transition-fast);
-}
-
-.sb-mode-pill[aria-expanded="true"] .sb-mode-pill-chevron {
-    transform: rotate(180deg);
-}
-
-@media (hover: hover) {
-    .sb-mode-pill:hover {
-        background: var(--sb-flat-hover-bg);
-        color: var(--sb-shell-text);
-        border-color: color-mix(in srgb, var(--sb-shell-border) 150%, transparent);
-    }
-}
-
-.sb-mode-pill:active {
-    background: var(--sb-flat-active-bg);
-}
-
-.sb-mode-pill:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
-.sb-mode-popover {
-    position: absolute;
-    bottom: calc(100% + 8px);
-    left: 0;
-    z-index: var(--sb-z-dropdown);
-    min-width: 180px;
-    padding: 4px;
-    background: var(--sb-layer-popover);
-    border: 1px solid var(--sb-shell-border);
-    border-radius: var(--sb-radius-overlay);
-    box-shadow: var(--sb-shadow-popover);
-    transform-origin: bottom left;
-}
-
-.sb-mode-popover[hidden] {
-    display: none;
-}
-
-@keyframes sb-mode-popover-in {
-    from { opacity: 0; transform: scale(0.94); }
-    to   { opacity: 1; transform: scale(1); }
-}
-
-.sb-mode-popover.is-opening {
-    animation: sb-mode-popover-in 200ms var(--sb-ease-out-cubic) forwards;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .sb-mode-popover.is-opening {
-        animation: none;
-    }
-}
-
-.sb-mode-popover-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    min-height: 40px;
-    padding: 8px 12px;
-    border: 0;
-    border-radius: calc(var(--sb-radius-overlay) - 4px);
-    background: transparent;
-    color: var(--sb-shell-text-secondary);
-    font-size: var(--sb-type-control);
-    font-weight: 600;
-    text-align: left;
-    cursor: pointer;
-    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
-}
-
-.sb-mode-popover-row .fa-solid:first-child {
-    font-size: 13px;
-    width: 16px;
-    text-align: center;
-    flex-shrink: 0;
-}
-
-.sb-mode-popover-row-label {
-    flex: 1;
-}
-
-.sb-mode-popover-row-check {
-    font-size: 11px;
-    opacity: 0;
-    transition: opacity var(--sb-transition-fast);
-}
-
-.sb-mode-popover-row[aria-selected="true"] {
-    color: var(--sb-shell-text);
-}
-
-.sb-mode-popover-row[aria-selected="true"] .sb-mode-popover-row-check {
-    opacity: 1;
-    color: var(--color-primary, var(--sb-accent));
-}
-
-@media (hover: hover) {
-    .sb-mode-popover-row:hover {
-        background: var(--sb-flat-hover-bg);
-        color: var(--sb-shell-text);
-    }
-}
-
-.sb-mode-popover-row:active {
-    background: var(--sb-flat-active-bg);
-}
-
-.sb-mode-popover-row:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
 /* ── Phase 1: topbar search and mode buttons ────────────────────────────── */
 
 #sb-topbar-search-toggle,
@@ -8814,7 +8772,245 @@ body.reduced-motion .sb-shell-main {
     color: var(--color-primary, var(--sb-accent));
 }
 
-/* ── Phase 1: character shell header without mode toggle ────────────────── */
+/* ── Phase 2: preference group primitives (feat/v1.9.0-ui-overhaul) ─────── */
+
+.ds-pref-group {
+    display: flex;
+    flex-direction: column;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--sb-layer-canvas) 4%, var(--sb-layer-view));
+    border: 1px solid var(--sb-shell-border);
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+.ds-pref-group-heading {
+    font-size: var(--sb-type-meta);
+    font-weight: 700;
+    color: var(--sb-shell-text-secondary);
+    text-transform: none;
+    letter-spacing: 0;
+    padding: 10px 16px 4px;
+}
+
+.ds-action-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    min-height: 52px;
+    border-top: 1px solid var(--sb-shell-border);
+}
+
+.ds-action-row:first-of-type {
+    border-top: 0;
+}
+
+.ds-action-row-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.ds-action-row-title {
+    font-size: var(--sb-type-control);
+    font-weight: 500;
+    color: var(--sb-shell-text);
+    line-height: 1.3;
+}
+
+.ds-action-row-desc {
+    font-size: var(--sb-type-meta);
+    color: var(--sb-shell-text-secondary);
+    line-height: 1.4;
+}
+
+.ds-action-row-control {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Expander rows: new visual layer on top of existing .inline-drawer machinery */
+.ds-expander-row {
+    border-top: 1px solid var(--sb-shell-border);
+}
+
+.ds-expander-row:first-of-type {
+    border-top: 0;
+}
+
+.ds-expander-row > .inline-drawer-toggle,
+.ds-expander-row > .inline-drawer-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    min-height: 52px;
+    cursor: pointer;
+    background: transparent;
+    transition: background-color var(--sb-transition-fast);
+    border-radius: 0;
+    margin: 0;
+}
+
+@media (hover: hover) {
+    .ds-expander-row > .inline-drawer-toggle:hover,
+    .ds-expander-row > .inline-drawer-header:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.ds-expander-row > .inline-drawer-toggle > b,
+.ds-expander-row > .inline-drawer-header > b {
+    flex: 1;
+    font-size: var(--sb-type-control);
+    font-weight: 600;
+    color: var(--sb-shell-text);
+}
+
+.ds-expander-row > .inline-drawer-toggle .inline-drawer-icon,
+.ds-expander-row > .inline-drawer-header .inline-drawer-icon {
+    flex-shrink: 0;
+    font-size: 13px;
+    color: var(--sb-shell-text-secondary);
+    transition: transform var(--sb-transition-fast);
+    margin-left: auto;
+}
+
+.ds-expander-row > .inline-drawer-content {
+    padding: 0 16px 12px;
+    border-top: 1px solid var(--sb-shell-border);
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+    .ds-expander-row > .inline-drawer-toggle .inline-drawer-icon,
+    .ds-expander-row > .inline-drawer-header .inline-drawer-icon {
+        transition: none;
+    }
+}
+
+/* ── Phase 2: settings page contextual overrides (feat/v1.9.0-ui-overhaul) ─ */
+
+/* Legacy header rows and settings search bar are hidden — sidebar handles section navigation */
+.sb-settings-mounted-shell #user-settings-block [name="userSettingsRowOne"],
+.sb-settings-mounted-shell #user-settings-block [name="UserSettingsRowTwo"],
+.sb-settings-mounted-shell #user-settings-block #user-settings-utility-actions {
+    display: none !important;
+}
+
+/* Two-column layout stacks to a single column inside the settings content area */
+.sb-settings-mounted-shell #user-settings-block #user-settings-block-content {
+    flex-direction: column !important;
+}
+
+/* Top-level subdrawer toggle headers are suppressed — sidebar tab already names the section */
+.sb-settings-mounted-shell .sb-settings-subdrawer > .inline-drawer-toggle.settings-section-header,
+.sb-settings-mounted-shell .sb-settings-subdrawer > .inline-drawer-header.settings-section-header {
+    display: none !important;
+}
+
+/* Top-level subdrawer body is always expanded inside the settings page */
+.sb-settings-mounted-shell .sb-settings-subdrawer > .sb-settings-subdrawer-body {
+    display: flex !important;
+}
+
+/* Legacy raw h3/h4 standout headers get normalised to pref-group heading weight */
+.sb-settings-mounted-shell .settings-section-header b,
+.sb-settings-mounted-shell .sb-settings-subdrawer-body h3,
+.sb-settings-mounted-shell .sb-settings-subdrawer-body h4 {
+    font-size: var(--sb-type-meta);
+    font-weight: 700;
+    color: var(--sb-shell-text-secondary);
+    margin: 10px 0 4px;
+}
+
+/* Inner inline-drawer expanders gain the ds-expander-row visual treatment */
+.sb-settings-mounted-shell .sb-settings-subdrawer-body .inline-drawer:not(.sb-settings-subdrawer) {
+    border-top: 1px solid var(--sb-shell-border);
+    margin: 0;
+}
+
+.sb-settings-mounted-shell .sb-settings-subdrawer-body .inline-drawer:not(.sb-settings-subdrawer):first-child {
+    border-top: 0;
+}
+
+.sb-settings-mounted-shell .sb-settings-subdrawer-body .inline-drawer:not(.sb-settings-subdrawer) > .inline-drawer-toggle,
+.sb-settings-mounted-shell .sb-settings-subdrawer-body .inline-drawer:not(.sb-settings-subdrawer) > .inline-drawer-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    min-height: 48px;
+    cursor: pointer;
+    background: transparent;
+    transition: color var(--sb-transition-fast);
+    border-radius: 0;
+    margin: 0;
+    font-size: var(--sb-type-control);
+    font-weight: 600;
+    color: var(--sb-shell-text);
+}
+
+.sb-settings-mounted-shell .sb-settings-subdrawer-body .inline-drawer:not(.sb-settings-subdrawer) > .inline-drawer-toggle .inline-drawer-icon,
+.sb-settings-mounted-shell .sb-settings-subdrawer-body .inline-drawer:not(.sb-settings-subdrawer) > .inline-drawer-header .inline-drawer-icon {
+    margin-left: auto;
+    flex-shrink: 0;
+    color: var(--sb-shell-text-secondary);
+}
+
+/* Checkbox label rows get action-row spacing when inside a mounted settings pref group */
+.sb-settings-mounted-shell .ds-pref-group .checkbox_label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    min-height: 44px;
+    margin: 0;
+    border-top: 1px solid var(--sb-shell-border);
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.sb-settings-mounted-shell .ds-pref-group .checkbox_label:first-of-type {
+    border-top: 0;
+}
+
+@media (hover: hover) {
+    .sb-settings-mounted-shell .ds-pref-group .checkbox_label:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.sb-settings-mounted-shell .ds-pref-group .checkbox_label small {
+    flex: 1;
+    font-size: var(--sb-type-control);
+    color: var(--sb-shell-text);
+}
+
+.sb-settings-mounted-shell .ds-pref-group .checkbox_label input[type="checkbox"] {
+    order: 1;
+    flex-shrink: 0;
+    margin: 0;
+}
+
+/* Flex-container select rows get action-row spacing */
+.sb-settings-mounted-shell .ds-pref-group .flex-container.alignitemscenter,
+.sb-settings-mounted-shell .ds-pref-group .flex-container.alignItemsBaseline {
+    padding: 10px 16px;
+    min-height: 48px;
+    gap: 12px;
+    border-top: 1px solid var(--sb-shell-border);
+}
+
+.sb-settings-mounted-shell .ds-pref-group .flex-container.alignitemscenter:first-child,
+.sb-settings-mounted-shell .ds-pref-group .flex-container.alignItemsBaseline:first-child {
+    border-top: 0;
+}
 
 #right-nav-panel.openDrawer > .sb-character-shell-header {
     padding-right: var(--sb-shell-panel-padding-inline);
@@ -8830,5 +9026,121 @@ body.reduced-motion .sb-shell-main {
 @media screen and (max-width: 900px) {
     #right-nav-panel.openDrawer > .sb-character-shell-header {
         padding-right: var(--sb-shell-panel-padding-inline);
+    }
+}
+
+/* ── Phase 3: mobile settings layout (feat/v1.9.0-ui-overhaul) ─────────── */
+
+.sb-settings-back-button {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-shell-text-secondary);
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    .sb-settings-back-button:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--sb-shell-text);
+    }
+}
+
+.sb-settings-back-button:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-settings-back-button:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media screen and (max-width: 768px) {
+    /* Single-column stack; sidebar and content each fill the full pane.
+       Only one is visible at a time — sidebar by default, content after tab selection. */
+    #sb-settings-inner {
+        grid-template-columns: 1fr;
+        position: relative;
+        overflow: hidden;
+    }
+
+    #sb-settings-sidebar {
+        width: 100%;
+        border-right: 0;
+        position: absolute;
+        inset: 0;
+        transform: translateX(0);
+        transition: transform var(--sb-transition);
+    }
+
+    #sb-settings-content {
+        position: absolute;
+        inset: 0;
+        transform: translateX(100%);
+        transition: transform var(--sb-transition);
+    }
+
+    /* When a tab is selected the sidebar slides left and the content slides in. */
+    #sb-settings-page.sb-settings-page--content #sb-settings-sidebar {
+        transform: translateX(-100%);
+        pointer-events: none;
+    }
+
+    #sb-settings-page.sb-settings-page--content #sb-settings-content {
+        transform: translateX(0);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        #sb-settings-sidebar,
+        #sb-settings-content {
+            transition: none;
+        }
+    }
+
+    /* Back button shown on mobile only. */
+    .sb-settings-back-button {
+        display: inline-flex;
+    }
+
+    /* Spacer is replaced by the back button on mobile. */
+    .sb-settings-header-spacer {
+        display: none;
+    }
+
+    /* Title aligns left when the close button is on the right. */
+    .sb-settings-title {
+        text-align: left;
+    }
+
+    /* Safe-area insets for notched phones. */
+    #sb-settings-page {
+        padding-left: env(safe-area-inset-left, 0px);
+        padding-right: env(safe-area-inset-right, 0px);
+    }
+
+    #sb-settings-tab-list {
+        padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    }
+
+    .sb-settings-body {
+        padding: 12px max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+    }
+
+    /* Coarse pointer: bump sidebar tab touch targets to 48px minimum. */
+    .sb-settings-tab {
+        min-height: 48px;
+    }
+}
+
+@media screen and (max-width: 420px) {
+    .sb-settings-body {
+        padding: 8px max(8px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
     }
 }

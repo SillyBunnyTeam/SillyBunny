@@ -1341,7 +1341,10 @@ function clearAnimatedBackgroundLayer() {
 
     backgroundLayerElement.innerHTML = '';
     backgroundLayerElement.removeAttribute('data-active-key');
-    document.body.classList.remove('bpt-animated-bg-active');
+    // A redundant class write on <body> makes SillyTavern's keyboard.js observer rescan the whole document.
+    if (document.body.classList.contains('bpt-animated-bg-active')) {
+        document.body.classList.remove('bpt-animated-bg-active');
+    }
     renderAnimatedSourceList();
 }
 

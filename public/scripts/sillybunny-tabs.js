@@ -329,12 +329,10 @@ function activateShortcutTarget(target) {
 
     const [shell, tab] = String(target).split(':');
 
+    // SillyBunny: toggleShellPanel routes every shell through the settings page (feat/v1.9.0-ui-overhaul)
     if (shell === 'characters') {
-        if (!tab || tab === 'characters') {
-            void setCharacterListEntityView('characters');
-        }
         preloadPanelStylesheets('characters', tab);
-        toggleShellPanel(shell, tab);
+        toggleShellPanel(shell, tab || null);
         return;
     }
 
@@ -2101,9 +2099,27 @@ function syncCharacterDrawerLockButton() {
     button.setAttribute('aria-label', button.title);
 }
 
+function clearCharacterDrawerInlinePosition(panel) {
+    if (!(panel instanceof HTMLElement) || panel.dataset.sbCharacterLockInline !== 'right') {
+        return;
+    }
+
+    for (const property of ['left', 'right', 'margin-left', 'margin-right']) {
+        panel.style.removeProperty(property);
+    }
+
+    delete panel.dataset.sbCharacterLockInline;
+}
+
 function syncCharacterDrawerLockPosition() {
     const panel = getCharacterPanel();
     if (!(panel instanceof HTMLElement)) {
+        return;
+    }
+
+    // The settings page hosts the panel full-size; the right-lock only applies to the drawer.
+    if (panel.classList.contains('sb-settings-mounted-shell')) {
+        clearCharacterDrawerInlinePosition(panel);
         return;
     }
 
@@ -2371,6 +2387,10 @@ function setUniversalSearchOpenState(isOpen, { focusInput = false } = {}) {
     if (focusInput && input instanceof HTMLInputElement) {
         focusUniversalSearchInput(input);
     }
+
+    const searchToggle = document.getElementById('sb-topbar-search-toggle');
+    searchToggle?.classList.toggle('is-open', nextOpenState);
+    searchToggle?.setAttribute('aria-expanded', String(nextOpenState));
 
     queueMobileShellDrawerBoundsSync();
     syncShortcutButtonActiveStates();
@@ -3551,6 +3571,13 @@ function syncDesktopShellSizing() {
             ? getCharacterPanel()
             : document.getElementById(getShellConfig(shellKey).rootPanelId);
         if (!(root instanceof HTMLElement)) {
+            continue;
+        }
+
+        // Roots hosted by the settings page fill it; drawer sizing must not cap them.
+        if (root.classList.contains('sb-settings-mounted-shell')) {
+            clearDesktopShellSize(root);
+            root.classList.remove('sb-shell-can-resize');
             continue;
         }
 
@@ -8021,6 +8048,10 @@ function getShellDrawerExitStyles(shellRoot, shellKey) {
 }
 
 function isShellOpen(shellKey) {
+    if (isSettingsPageHosting(shellKey)) {
+        return true;
+    }
+
     return isDrawerActuallyOpen(getShellConfig(shellKey).rootPanelId);
 }
 
@@ -8030,6 +8061,10 @@ function isShellTabOpen(shellKey, tabId) {
 }
 
 function isCharacterPanelOpen() {
+    if (getCharacterPanel()?.classList.contains('sb-settings-mounted-shell')) {
+        return isSettingsPageHosting('characters');
+    }
+
     // A drawer fading out still carries .openDrawer; it already counts as closed.
     return !sbState.characterDrawer.closing && isDrawerActuallyOpen('right-nav-panel');
 }
@@ -8834,12 +8869,19 @@ function setCharacterShellMode(mode) {
 }
 
 function openCharacterPanelTab(tabId) {
+    // SillyBunny: Characters lives in the full-screen settings page (feat/v1.9.0-ui-overhaul).
+    const normalizedTabId = normalizeCharacterPanelTab(tabId);
+    if (isSettingsPageHosting('characters')) {
+        activateSettingsTab('characters', normalizedTabId);
+        return;
+    }
+
+    openSettingsPage('characters', normalizedTabId);
+}
+
+function activateCharacterPanelTabInPlace(tabId) {
     const normalizedTabId = normalizeCharacterPanelTab(tabId);
     sbState.characterDrawer.lastTab = normalizedTabId;
-
-    if (isMobileViewport()) {
-        requestMobileSectionView('characters', 'section');
-    }
 
     if (normalizedTabId !== 'editor') {
         setCharacterEditorFullscreenState(false);
@@ -8849,58 +8891,25 @@ function openCharacterPanelTab(tabId) {
         preloadPanelStylesheets('characters', normalizedTabId);
     }
 
-    if (!isCharacterPanelOpen()) {
-        toggleCharacterPanel({ preferredTab: normalizedTabId });
-    } else {
-        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
-            surface: sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL,
-            isMobileViewport: isMobileViewport(),
-        }));
-    }
-
-    const activateRequestedTab = () => {
-        const panel = getCharacterPanel();
-        if (normalizedTabId === 'persona') {
-            setCharacterPanelMenuType(panel, 'persona');
-            openCharacterPersonaTab();
-        } else if (normalizedTabId === 'import') {
-            setCharacterPanelMenuType(panel, 'import');
-            openCharacterImportTab();
-        } else if (normalizedTabId === 'groups') {
-            setCharacterPanelMenuType(panel, 'groups');
-            void showCharacterListView('groups');
-        } else if (normalizedTabId === 'editor') {
-            setCharacterPanelMenuType(panel, 'character_edit');
-            void openCharacterEditorTab();
-        } else if (normalizedTabId === 'world-info') {
-            setCharacterPanelMenuType(panel, 'world-info');
-            openCharacterWorldInfoTab();
-        } else {
-            setCharacterPanelMenuType(panel, 'characters');
-            void showCharacterListView();
-        }
-    };
-
-    window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(activateRequestedTab);
-    });
-}
-
-function restoreLastCharacterPanelView() {
-    const lastTab = sbState.characterDrawer.lastTab || 'characters';
-
-    if (lastTab === 'persona') {
+    const panel = getCharacterPanel();
+    if (normalizedTabId === 'persona') {
+        setCharacterPanelMenuType(panel, 'persona');
         openCharacterPersonaTab();
-    } else if (lastTab === 'import') {
+    } else if (normalizedTabId === 'import') {
+        setCharacterPanelMenuType(panel, 'import');
         openCharacterImportTab();
-    } else if (lastTab === 'world-info') {
-        openCharacterWorldInfoTab();
-    } else if (lastTab === 'groups') {
+    } else if (normalizedTabId === 'groups') {
+        setCharacterPanelMenuType(panel, 'groups');
         void showCharacterListView('groups');
-    } else if (lastTab === 'editor') {
+    } else if (normalizedTabId === 'editor') {
+        setCharacterPanelMenuType(panel, 'character_edit');
         void openCharacterEditorTab();
+    } else if (normalizedTabId === 'world-info') {
+        setCharacterPanelMenuType(panel, 'world-info');
+        openCharacterWorldInfoTab();
     } else {
-        void showCharacterListView('characters');
+        setCharacterPanelMenuType(panel, 'characters');
+        void showCharacterListView();
     }
 }
 
@@ -9157,6 +9166,12 @@ function bindCharacterDrawerStateObserver() {
 }
 
 function closeCharacterPanel() {
+    // SillyBunny: Characters is hosted by the settings page (feat/v1.9.0-ui-overhaul).
+    if (isSettingsPageHosting('characters')) {
+        closeSettingsPage();
+        return;
+    }
+
     const panel = getCharacterPanel();
     const shouldResetViewport = panel instanceof HTMLElement
         && (panel.classList.contains('openDrawer') || (document.activeElement instanceof HTMLElement && panel.contains(document.activeElement)));
@@ -9197,29 +9212,6 @@ function closeCharacterPanel() {
     if (shouldResetViewport) {
         requestMobileViewportReset();
     }
-}
-
-function ensureCharacterResizeHandle() {
-    const panel = getCharacterPanel();
-    if (!(panel instanceof HTMLElement)) {
-        return null;
-    }
-
-    let handle = panel.querySelector(':scope > .sb-shell-resize-handle');
-    if (handle instanceof HTMLElement) {
-        return handle;
-    }
-
-    handle = createElement('div', {
-        className: 'sb-shell-resize-handle',
-        attrs: {
-            title: 'Resize Characters panel',
-        },
-    });
-
-    bindShellResizeHandle(handle, 'characters');
-    panel.appendChild(handle);
-    return handle;
 }
 
 let characterToggleDispatchGuard = false;
@@ -9282,37 +9274,16 @@ document.addEventListener('click', (e) => {
 }, true);
 
 function toggleCharacterPanel({ preferredTab = null } = {}) {
-    injectCharacterDrawerControls();
-    ensureCharacterResizeHandle();
-
     if (isCharacterPanelOpen()) {
         closeCharacterPanel();
         return;
     }
 
-    // Reopening during the exit fade: cancelling commits the pending close, then the open runs.
-    stopMotion(getCharacterPanel());
-
     const normalizedPreferredTab = preferredTab ? normalizeCharacterPanelTab(preferredTab) : '';
-    if (normalizedPreferredTab) {
-        sbState.characterDrawer.lastTab = normalizedPreferredTab;
-    }
-
-    applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
-        surface: sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL,
-        isMobileViewport: isMobileViewport(),
-    }));
-    closeAllDropdowns({ except: 'characters', closeSurfaces: false });
-    restoreLastCharacterPanelView();
-
-    // iOS Safari clips position:fixed inside overflow:hidden ancestors.
-    // Temporarily allow overflow on the parent so the panel renders.
-    setCharacterDrawerHostOverflow(true);
 
     // SillyBunny: dispatch a cancelable click on the native Characters toggle to give
     // extensions like CharacterLibrary a chance to intercept. If they preventDefault(),
-    // they handle the UI themselves and we yield. Otherwise, we proceed with shell's
-    // normal open flow (Sillyanonymous/SillyTavern-CharacterLibrary#28).
+    // they handle the UI themselves and we yield (Sillyanonymous/SillyTavern-CharacterLibrary#28).
     if (characterToggleSkipExtensionIntercept) {
         characterToggleSkipExtensionIntercept = false;
     } else {
@@ -9324,36 +9295,13 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
             nativeToggle.dispatchEvent(clickEvent);
             characterToggleDispatchGuard = false;
             if (clickEvent.defaultPrevented) {
-                setCharacterDrawerHostOverflow(false);
                 return;
             }
         }
     }
 
-    // No extension intercepted — proceed with shell's normal open flow.
-    // SillyBunny: open the character drawer directly via forceDrawerState instead of
-    // synthetic-clicking the hidden native toggle. The old approach triggered handlers
-    // anchored to the hidden toggle's zero-size bounding rect, breaking extensions that
-    // anchor dropdowns/popups to native toggle positions (e.g. CharacterLibrary).
-    forceDrawerState('right-nav-panel', true, '#rightNavDrawerIcon');
-    animateShellOpen(document.getElementById('right-nav-panel'), 'characters');
-    syncMobileShellDrawerBounds();
-    queueMobileShellDrawerBoundsSync();
-
-    window.requestAnimationFrame(() => {
-        if (!isCharacterPanelOpen()) {
-            forceDrawerState('right-nav-panel', true, '#rightNavDrawerIcon');
-            animateShellOpen(document.getElementById('right-nav-panel'), 'characters');
-        }
-
-        restoreLastCharacterPanelView();
-
-        syncChatbarVisibilityState();
-        syncMobileShellDrawerBounds();
-        queueMobileShellDrawerBoundsSync();
-        syncDesktopShellSizing();
-        queueMobileModalStateSync();
-    });
+    // SillyBunny: the floating drawer is retired; Characters opens in the settings page.
+    openSettingsPage('characters', normalizedPreferredTab || sbState.characterDrawer.lastTab || SB_CHARACTER_PANEL_DEFAULT_TAB);
 }
 
 function closeAllDropdowns({ except = '', closeSurfaces = true } = {}) {
@@ -9380,12 +9328,13 @@ function closeAllDropdowns({ except = '', closeSurfaces = true } = {}) {
 
 function toggleShellPanel(shellKey, tabId = null) {
     if (shellKey === 'characters') {
-        if (isCharacterPanelTabOpen(tabId)) {
-            closeCharacterPanel();
-            return;
-        }
+        toggleSettingsPage('characters', tabId ? normalizeCharacterPanelTab(tabId) : null);
+        return;
+    }
 
-        openCharacterPanelTab(tabId);
+    // SillyBunny: Workspace/Customize open in the settings page (feat/v1.9.0-ui-overhaul).
+    if ((shellKey === 'left' || shellKey === 'right') && !(shellKey === 'left' && tabId === 'world-info')) {
+        toggleSettingsPage(shellKey, tabId);
         return;
     }
 
@@ -9591,12 +9540,8 @@ function observeProxyButton(buttonId, iconSelector) {
 }
 
 function activateCharacterTopbarButton() {
-    if (isTopbarIconsOnlyActive()) {
-        openCharacterPanelTab(SB_CHARACTER_PANEL_DEFAULT_TAB);
-        return;
-    }
-
-    toggleCharacterPanel();
+    // SillyBunny: route through the full-screen settings page for consistency (feat/v1.9.0-ui-overhaul)
+    toggleSettingsPage('characters', SB_CHARACTER_PANEL_DEFAULT_TAB);
 }
 
 function wasShellJustOpened(shellKey) {
@@ -9882,8 +9827,18 @@ function buildTopBar() {
             title: 'Search settings (Ctrl+F)',
             className: 'sb-proxy-button-icon-only',
         },
-        () => setUniversalSearchOpenState(true, { focusInput: true }),
+        () => {
+            const searchState = getUniversalSearchState();
+            const nextOpen = !searchState.expanded;
+            if (nextOpen) {
+                closeAllDropdowns({ except: 'search', closeSurfaces: false });
+            }
+            setUniversalSearchOpenState(nextOpen, { focusInput: nextOpen });
+        },
     );
+    // The document-level dismiss handler ignores clicks on marked triggers; without this
+    // the same click that opens the search row immediately closes it again.
+    searchToggle.dataset.sbUniversalSearchTrigger = 'true';
 
     const modeToggle = createProxyButton(
         {
@@ -9893,8 +9848,9 @@ function buildTopBar() {
             title: 'Switch chat mode (Ctrl+M)',
             className: 'sb-proxy-button-icon-only',
         },
-        () => toggleModePillPopover({ fromKeyboard: false }),
+        () => openModeDropdown(),
     );
+    modeToggle.setAttribute('aria-haspopup', 'menu');
 
     leftGroup.append(mobileButton, leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, searchToggle, quickActionsLeftDivider, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
     rightGroup.append(extensionSlot, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, quickActionsRightDivider, modeToggle, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
@@ -13133,7 +13089,7 @@ function getSearchSectionLabel(element, fallback) {
     return text || fallback;
 }
 
-function collectGlobalSearchMatches(query) {
+function collectGlobalSearchMatches(query, { limit = SB_UNIVERSAL_SEARCH_RESULT_LIMIT } = {}) {
     const normalizedQuery = normalizeText(query);
 
     if (!normalizedQuery) {
@@ -13194,7 +13150,7 @@ function collectGlobalSearchMatches(query) {
 
     return Array.from(matches.values())
         .sort((left, right) => right.score - left.score)
-        .slice(0, SB_UNIVERSAL_SEARCH_RESULT_LIMIT);
+        .slice(0, limit);
 }
 
 function getTabSearchEntries(tabState, { includeThemeCard = false } = {}) {
@@ -13651,7 +13607,8 @@ function setActiveTab(shellKey, tabId, { focusButton = false } = {}) {
     }
 
     const shellRoot = document.getElementById(shellConfig.rootPanelId);
-    if (shellRoot instanceof HTMLElement && shellRoot.classList.contains('openDrawer')) {
+    // Fire onActivate when the shell is open in the drawer OR shown in the settings page.
+    if (shellRoot instanceof HTMLElement && (shellRoot.classList.contains('openDrawer') || isSettingsPageHosting(shellKey))) {
         activeTab.onActivate?.();
         dispatchShellTabActivated(shellKey, activeTab);
         queueMobileShellActivationRefresh();
@@ -13663,6 +13620,12 @@ function openShell(shellKey, tabId = null) {
         // SillyBunny: final guard for old code paths that still ask for the
         // removed left-shell World Info route.
         openCharacterPanelTab('world-info');
+        return;
+    }
+
+    // SillyBunny: Workspace/Customize open in the settings page (feat/v1.9.0-ui-overhaul).
+    if (shellKey === 'left' || shellKey === 'right') {
+        openSettingsPage(shellKey, tabId);
         return;
     }
 
@@ -13731,6 +13694,11 @@ function openShell(shellKey, tabId = null) {
 }
 
 function closeShell(shellKey) {
+    if (isSettingsPageHosting(shellKey)) {
+        closeSettingsPage();
+        return;
+    }
+
     const shellConfig = getShellConfig(shellKey);
     const shellState = getShellState(shellKey);
     const shellRoot = document.getElementById(shellConfig.rootPanelId);
@@ -16337,9 +16305,9 @@ function initAll() {
     bindWorldInfoRoute();
     bindCharacterEditorSubTabs();
     applyDefaultDrawerStates();
-    // SillyBunny: Phase 1 — settings page + mode pill + keyboard shortcuts (feat/v1.9.0-ui-overhaul)
+    // SillyBunny: Phase 1 — settings page + mode toggle + keyboard shortcuts (feat/v1.9.0-ui-overhaul)
     initSettingsPageClose();
-    initModePill();
+    initModeToggle();
     initSettingsKeyboardShortcuts();
     bindInlineDrawerAutoCloseToggle();
     syncMobileViewportState();
@@ -16511,6 +16479,9 @@ const sbSettingsState = {
     closeGen: 0,
     pageAnimation: null,
     closeTimer: 0,
+    // Mobile only: tracks whether the content pane is visible (true) or the
+    // sidebar is visible (false). Always false on desktop.
+    mobileContentView: false,
 };
 
 function getSettingsPage() {
@@ -16569,41 +16540,92 @@ function animateSettingsPage(page, direction, onFinish) {
     };
 }
 
+function getSettingsPageTabs(shellKey) {
+    if (shellKey === 'characters') {
+        return [...SB_CHARACTER_PANEL_TABS];
+    }
+
+    const shellConfig = getShellConfig(shellKey);
+    return [
+        shellConfig?.baseTab,
+        ...(shellConfig?.embeddedTabs ?? []),
+        ...(shellConfig?.customTabs ?? []),
+    ].filter(Boolean);
+}
+
+function getSettingsPageRoot(shellKey) {
+    if (shellKey === 'characters') {
+        return getCharacterPanel();
+    }
+
+    const shellConfig = getShellConfig(shellKey);
+    return shellConfig ? document.getElementById(shellConfig.rootPanelId) : null;
+}
+
+function isSettingsPageHosting(shellKey) {
+    return sbSettingsState.open && sbSettingsState.activeShell === shellKey;
+}
+
 function openSettingsPage(shellKey, tabId = null) {
     const page = getSettingsPage();
     if (!(page instanceof HTMLElement)) {
         return;
     }
 
-    const resolvedTab = tabId ?? getShellConfig(shellKey)?.defaultTabId ?? null;
+    const tabs = getSettingsPageTabs(shellKey);
+    const resolvedTab = tabs.find(tab => tab.id === tabId)?.id
+        ?? (shellKey === 'characters' ? SB_CHARACTER_PANEL_DEFAULT_TAB : getShellState(shellKey)?.activeTabId)
+        ?? getShellConfig(shellKey)?.defaultTabId
+        ?? tabs[0]?.id
+        ?? null;
+
+    // Already showing this section: switch tabs in place instead of replaying the open.
+    if (isSettingsPageHosting(shellKey)) {
+        if (resolvedTab && resolvedTab !== sbSettingsState.activeTabId) {
+            activateSettingsTab(shellKey, resolvedTab);
+        }
+        return;
+    }
+
+    const wasOpen = sbSettingsState.open;
     const previousShell = sbSettingsState.activeShell;
 
     sbSettingsState.open = true;
     sbSettingsState.activeShell = shellKey;
-    // Bump the generation so a stale transition callback cannot affect a
-    // subsequent open or close.
     sbSettingsState.closeGen++;
     clearSettingsAnimationState();
 
     if (previousShell && previousShell !== shellKey) {
-        unmountShellRootFromSettingsPage(previousShell);
+        deactivateSettingsPageRoot(previousShell);
     }
 
-    // The shell trees are built once during app initialization. Mount the
-    // requested persistent root before revealing the page, so opening never
-    // shows the previous section or waits for a second renderer to rebuild it.
-    page.hidden = true;
-    page.classList.remove('is-closing', 'is-opening');
+    closeAllDropdowns({ except: shellKey, closeSurfaces: false });
+    closeLegacyShellDrawers();
+    document.getElementById('sb-persona-picker')?.remove();
+    document.getElementById('sb-mode-menu')?.remove();
+
     buildSettingsPageFor(shellKey, resolvedTab);
     mountShellRootInSettingsPage(shellKey, resolvedTab);
     syncSettingsPageActiveButton();
-    document.getElementById('sb-persona-picker')?.remove();
+
+    page.classList.remove('sb-settings-page--content');
+    sbSettingsState.mobileContentView = false;
+    document.documentElement.dataset.sbSettingsOpen = 'true';
+
+    if (wasOpen) {
+        // Switching sections while open: no page-level animation, just swap content.
+        page.hidden = false;
+        return;
+    }
 
     page.hidden = false;
-    page.classList.remove('is-closing', 'is-opening');
-
     animateSettingsPage(page, 'in', () => {});
-    document.getElementById('sb-settings-close')?.focus({ preventScroll: true });
+
+    if (isMobileViewport()) {
+        document.querySelector('.sb-settings-tab')?.focus({ preventScroll: true });
+    } else {
+        document.getElementById('sb-settings-close')?.focus({ preventScroll: true });
+    }
 }
 
 function closeSettingsPage() {
@@ -16613,23 +16635,26 @@ function closeSettingsPage() {
     }
 
     sbSettingsState.open = false;
+    sbSettingsState.mobileContentView = false;
     const closingShell = sbSettingsState.activeShell;
     sbSettingsState.activeTabId = null;
+    delete document.documentElement.dataset.sbSettingsOpen;
 
     const closeGen = ++sbSettingsState.closeGen;
     clearSettingsAnimationState();
+    deactivateSettingsPageRoot(closingShell);
+
     const finishClose = () => {
         if (sbSettingsState.closeGen !== closeGen) {
             return;
         }
-        page.classList.remove('is-closing');
         page.hidden = true;
-        unmountShellRootFromSettingsPage(closingShell);
         if (sbSettingsState.closeTimer) {
             clearTimeout(sbSettingsState.closeTimer);
             sbSettingsState.closeTimer = 0;
         }
         sbSettingsState.activeShell = null;
+        syncChatbarVisibilityState();
     };
 
     animateSettingsPage(page, 'out', finishClose);
@@ -16640,7 +16665,12 @@ function closeSettingsPage() {
 }
 
 function toggleSettingsPage(shellKey, tabId = null) {
-    if (sbSettingsState.open && sbSettingsState.activeShell === shellKey) {
+    if (isSettingsPageHosting(shellKey)) {
+        // A different tab of the open section switches in place; the same section closes.
+        if (tabId && tabId !== sbSettingsState.activeTabId) {
+            activateSettingsTab(shellKey, tabId);
+            return;
+        }
         closeSettingsPage();
         return;
     }
@@ -16648,29 +16678,35 @@ function toggleSettingsPage(shellKey, tabId = null) {
     openSettingsPage(shellKey, tabId);
 }
 
+// SillyBunny: the floating drawers are retired in favour of the settings page. Any
+// drawer still open from an extension or stale state is closed so the two never stack.
+function closeLegacyShellDrawers() {
+    for (const shellKey of ['left', 'right']) {
+        const root = getSettingsPageRoot(shellKey);
+        if (root instanceof HTMLElement && root.classList.contains('openDrawer') && !root.classList.contains('sb-settings-mounted-shell')) {
+            root.classList.remove('openDrawer');
+            root.classList.add('closedDrawer');
+        }
+    }
+}
+
 function buildSettingsPageFor(shellKey, tabId) {
     const tabList = document.getElementById('sb-settings-tab-list');
-    const body = document.getElementById('sb-settings-body');
     const titleEl = document.getElementById('sb-settings-content-title');
-    if (!tabList || !body || !titleEl) {
+    if (!tabList || !titleEl) {
         return;
     }
 
-    const shellConfig = getShellConfig(shellKey);
-    if (!shellConfig) {
+    const allTabs = getSettingsPageTabs(shellKey);
+    if (!allTabs.length) {
         return;
     }
+    const sectionTitle = shellKey === 'characters' ? 'Characters' : getShellConfig(shellKey).title;
 
-    const allTabs = [
-        shellConfig.baseTab,
-        ...(shellConfig.embeddedTabs ?? []),
-        ...(shellConfig.customTabs ?? []),
-    ].filter(Boolean);
     const resolvedTabId = allTabs.find(t => t.id === tabId)?.id ?? allTabs[0]?.id ?? null;
     sbSettingsState.activeTabId = resolvedTabId;
 
     tabList.replaceChildren();
-    body.replaceChildren(document.getElementById('sb-settings-shell-host'));
 
     for (const tab of allTabs) {
         const button = createElement('button', {
@@ -16682,96 +16718,185 @@ function buildSettingsPageFor(shellKey, tabId) {
                 'data-sb-settings-tab': tab.id,
             },
         });
-        button.innerHTML = `<i class="fa-solid ${tab.icon}" aria-hidden="true"></i>${tab.label}`;
+        button.innerHTML = `<i class="fa-solid ${tab.icon}" aria-hidden="true"></i><span>${tab.label}</span>`;
         button.addEventListener('click', () => activateSettingsTab(shellKey, tab.id));
         tabList.appendChild(button);
     }
 
     const sidebarTitleEl = document.getElementById('sb-settings-sidebar-title');
     if (sidebarTitleEl) {
-        sidebarTitleEl.textContent = shellConfig.title;
+        sidebarTitleEl.textContent = sectionTitle;
     }
-    // Content title tracks the active tab (GNOME pattern: section name in sidebar, page name in header).
     const activeTab = allTabs.find(t => t.id === resolvedTabId);
-    titleEl.textContent = activeTab?.label ?? shellConfig.title;
+    titleEl.textContent = activeTab?.label ?? sectionTitle;
+
+    // Re-apply an active sidebar filter to the freshly built tab list.
+    const searchInput = document.getElementById('sb-settings-search-input');
+    if (searchInput instanceof HTMLInputElement && searchInput.value.trim()) {
+        void filterSettingsSidebarTabs(searchInput.value);
+    }
 }
 
+// SillyTavern's keyboard.js MutationObserver rescans a node's whole subtree on every class
+// write, even a redundant one. These roots are huge, so batch the change and skip no-ops.
+function setRootClassState(element, classStates) {
+    const next = new Set(element.classList);
+    for (const [className, enabled] of Object.entries(classStates)) {
+        if (enabled) {
+            next.add(className);
+        } else {
+            next.delete(className);
+        }
+    }
+
+    const nextClassName = Array.from(next).join(' ');
+    if (nextClassName !== element.className) {
+        element.className = nextClassName;
+    }
+}
+
+function setRootAttribute(element, name, value) {
+    if (element.getAttribute(name) !== value) {
+        element.setAttribute(name, value);
+    }
+}
+
+// Shell roots are moved into the page once and stay there; switching sections only
+// toggles which one is active. Reparenting on every open forced a full style and layout
+// pass over each panel, which stalled the first frames of the open animation.
 function mountShellRootInSettingsPage(shellKey, tabId = null) {
     const host = document.getElementById('sb-settings-shell-host');
-    const shellConfig = getShellConfig(shellKey);
-    const shellState = getShellState(shellKey);
-    const shellRoot = shellConfig ? document.getElementById(shellConfig.rootPanelId) : null;
-    if (!(host instanceof HTMLElement) || !(shellRoot instanceof HTMLElement) || !shellState) {
+    const root = getSettingsPageRoot(shellKey);
+    if (!(host instanceof HTMLElement) || !(root instanceof HTMLElement)) {
         return;
     }
 
-    const targetTab = tabId ?? shellState.activeTabId ?? shellConfig.defaultTabId;
-    if (targetTab && shellState.tabs.has(targetTab)) {
+    if (root.parentElement !== host) {
+        stopMotion(root);
+        host.appendChild(root);
+    }
+
+    for (const child of host.children) {
+        if (child !== root && child.classList.contains('sb-settings-active-root')) {
+            child.classList.remove('sb-settings-active-root');
+        }
+    }
+
+    if (root.dataset.sbShellInlineSize === 'true') {
+        clearDesktopShellSize(root);
+    }
+    clearCharacterDrawerInlinePosition(root);
+
+    const isCharacters = shellKey === 'characters';
+    // The character panel's layout hangs off `#right-nav-panel.openDrawer`; pinnedOpen keeps
+    // SillyTavern's outside-click auto-close from collapsing it while it lives in the page.
+    setRootClassState(root, {
+        'sb-settings-mounted-shell': true,
+        'sb-settings-active-root': true,
+        closedDrawer: false,
+        openDrawer: isCharacters,
+        pinnedOpen: isCharacters,
+    });
+    setRootAttribute(root, 'aria-hidden', 'false');
+
+    if (isCharacters) {
+        injectCharacterDrawerControls();
+        activateCharacterPanelTabInPlace(tabId ?? SB_CHARACTER_PANEL_DEFAULT_TAB);
+        syncChatbarVisibilityState();
+        return;
+    }
+
+    const shellState = getShellState(shellKey);
+    if (!shellState) {
+        return;
+    }
+
+    const targetTab = tabId ?? shellState.activeTabId ?? getShellConfig(shellKey).defaultTabId;
+    if (targetTab && targetTab !== shellState.activeTabId && shellState.tabs.has(targetTab)) {
+        // setActiveTab runs the activation hooks itself while the page hosts this shell.
         setActiveTab(shellKey, targetTab);
+        return;
     }
 
     const activeTab = shellState.tabs.get(shellState.activeTabId);
     activeTab?.onActivate?.();
     dispatchShellTabActivated(shellKey, activeTab);
     queueMobileShellActivationRefresh();
-
-    host.replaceChildren(shellRoot);
-    shellRoot.classList.add('sb-settings-mounted-shell');
-    shellRoot.classList.remove('openDrawer', 'closedDrawer');
-    shellRoot.setAttribute('aria-hidden', 'false');
 }
 
-function unmountShellRootFromSettingsPage(shellKey) {
-    const shellConfig = getShellConfig(shellKey);
-    const shellRoot = shellConfig ? document.getElementById(shellConfig.rootPanelId) : null;
-    const holder = document.getElementById('top-settings-holder');
-    if (!(shellRoot instanceof HTMLElement) || !(holder instanceof HTMLElement)) {
+function deactivateSettingsPageRoot(shellKey) {
+    const root = getSettingsPageRoot(shellKey);
+    if (!(root instanceof HTMLElement)) {
         return;
     }
 
-    const shellState = getShellState(shellKey);
-    shellState?.tabs.get(shellState.activeTabId)?.onDeactivate?.();
+    if (document.activeElement instanceof HTMLElement && root.contains(document.activeElement)) {
+        document.activeElement.blur();
+    }
 
-    shellRoot.classList.remove('sb-settings-mounted-shell', 'openDrawer');
-    shellRoot.classList.add('closedDrawer');
-    shellRoot.setAttribute('aria-hidden', 'true');
-    holder.querySelector(`#${CSS.escape(shellConfig.hostDrawerId)}`)?.appendChild(shellRoot);
+    if (shellKey === 'characters') {
+        setCharacterEditorFullscreenState(false);
+    } else {
+        const shellState = getShellState(shellKey);
+        shellState?.tabs.get(shellState.activeTabId)?.onDeactivate?.();
+    }
+
+    setRootClassState(root, {
+        'sb-settings-active-root': false,
+        openDrawer: false,
+        pinnedOpen: false,
+    });
+    setRootAttribute(root, 'aria-hidden', 'true');
+}
+
+function setSettingsMobileContentView(showContent) {
+    const page = getSettingsPage();
+    if (!(page instanceof HTMLElement)) {
+        return;
+    }
+    sbSettingsState.mobileContentView = showContent;
+    page.classList.toggle('sb-settings-page--content', showContent);
+
+    if (showContent) {
+        document.getElementById('sb-settings-close')?.focus({ preventScroll: true });
+    } else {
+        // Return focus to the active sidebar tab when going back.
+        const activeTab = document.querySelector('.sb-settings-tab[aria-selected="true"]');
+        activeTab?.focus({ preventScroll: true });
+    }
 }
 
 function activateSettingsTab(shellKey, tabId) {
-    const body = document.getElementById('sb-settings-body');
     const tabList = document.getElementById('sb-settings-tab-list');
     const titleEl = document.getElementById('sb-settings-content-title');
-    if (!body || !tabList) {
+    if (!tabList) {
         return;
     }
 
-    sbSettingsState.activeTabId = tabId;
-
-    const shellConfig = getShellConfig(shellKey);
-    const allTabs = [
-        shellConfig?.baseTab,
-        ...(shellConfig?.embeddedTabs ?? []),
-        ...(shellConfig?.customTabs ?? []),
-    ].filter(Boolean);
+    const allTabs = getSettingsPageTabs(shellKey);
     const selectedTab = allTabs.find(tab => tab.id === tabId);
     if (!selectedTab) {
         return;
     }
 
-    setActiveTab(shellKey, tabId);
+    sbSettingsState.activeTabId = tabId;
+
+    if (shellKey === 'characters') {
+        activateCharacterPanelTabInPlace(tabId);
+    } else {
+        setActiveTab(shellKey, tabId);
+    }
 
     tabList.querySelectorAll('.sb-settings-tab').forEach(button => {
-        const isActive = button.dataset.sbSettingsTab === tabId;
-        button.setAttribute('aria-selected', String(isActive));
+        button.setAttribute('aria-selected', String(button.dataset.sbSettingsTab === tabId));
     });
 
-    // Keep content title in sync with the active tab (GNOME pattern).
     if (titleEl) {
-        const activeTab = allTabs.find(t => t.id === tabId);
-        if (activeTab) {
-            titleEl.textContent = activeTab.label;
-        }
+        titleEl.textContent = selectedTab.label;
+    }
+
+    if (isMobileViewport()) {
+        setSettingsMobileContentView(true);
     }
 }
 
@@ -16784,7 +16909,8 @@ function syncSettingsPageActiveButton() {
 
         const isActive = sbSettingsState.open && (
             (cluster.key === 'workspace' && sbSettingsState.activeShell === 'left') ||
-            (cluster.key === 'customize' && sbSettingsState.activeShell === 'right')
+            (cluster.key === 'customize' && sbSettingsState.activeShell === 'right') ||
+            (cluster.key === 'characters' && sbSettingsState.activeShell === 'characters')
         );
         leadButton.classList.toggle('sb-settings-active', isActive);
     }
@@ -16805,8 +16931,9 @@ function setSettingsSidebarSearchOpen(isOpen, { focusInput = false } = {}) {
     if (isOpen && focusInput && searchInput instanceof HTMLElement) {
         // Defer slightly so the max-height transition has started before focus shifts.
         setTimeout(() => searchInput.focus(), 50);
-    } else if (!isOpen && searchInput instanceof HTMLElement) {
+    } else if (!isOpen && searchInput instanceof HTMLInputElement) {
         searchInput.value = '';
+        void filterSettingsSidebarTabs('');
     }
 }
 
@@ -16815,6 +16942,15 @@ function initSettingsPageClose() {
     if (closeButton instanceof HTMLButtonElement && closeButton.dataset.sbBound !== 'true') {
         closeButton.dataset.sbBound = 'true';
         closeButton.addEventListener('click', closeSettingsPage);
+    }
+
+    // Back button: mobile only — returns from content view to sidebar view.
+    const backButton = document.getElementById('sb-settings-back');
+    if (backButton instanceof HTMLButtonElement && backButton.dataset.sbBound !== 'true') {
+        backButton.dataset.sbBound = 'true';
+        backButton.addEventListener('click', () => {
+            setSettingsMobileContentView(false);
+        });
     }
 
     const page = getSettingsPage();
@@ -16827,129 +16963,248 @@ function initSettingsPageClose() {
         });
     }
 
-    // Sidebar search toggle: icon button expands/collapses the search row.
+    // Sidebar search toggle button expands/collapses the search row.
     const searchToggleBtn = document.getElementById('sb-settings-search-toggle');
-    const searchRow = document.getElementById('sb-settings-search-row');
+    if (searchToggleBtn instanceof HTMLButtonElement && searchToggleBtn.dataset.sbBound !== 'true') {
+        searchToggleBtn.dataset.sbBound = 'true';
+        searchToggleBtn.addEventListener('click', () => {
+            const isExpanded = searchToggleBtn.getAttribute('aria-expanded') === 'true';
+            setSettingsSidebarSearchOpen(!isExpanded, { focusInput: !isExpanded });
+        });
+    }
+
+    // Sidebar search: narrow the tab list to pages whose name or contents match.
     const searchInput = document.getElementById('sb-settings-search-input');
-    if (searchToggleBtn instanceof HTMLButtonElement && searchRow instanceof HTMLElement && searchInput instanceof HTMLElement) {
-        if (searchToggleBtn.dataset.sbBound !== 'true') {
-            searchToggleBtn.dataset.sbBound = 'true';
-            searchToggleBtn.addEventListener('click', () => {
-                const isExpanded = searchToggleBtn.getAttribute('aria-expanded') === 'true';
-                setSettingsSidebarSearchOpen(!isExpanded, { focusInput: !isExpanded });
-            });
-        }
+    if (searchInput instanceof HTMLInputElement && searchInput.dataset.sbBound !== 'true') {
+        searchInput.dataset.sbBound = 'true';
+        searchInput.addEventListener('input', () => void filterSettingsSidebarTabs(searchInput.value));
+        searchInput.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && searchInput.value) {
+                event.preventDefault();
+                event.stopPropagation();
+                searchInput.value = '';
+                void filterSettingsSidebarTabs('');
+            } else if (event.key === 'Enter') {
+                event.preventDefault();
+                const firstMatch = document.querySelector('.sb-settings-tab:not(.sb-settings-tab--filtered)');
+                firstMatch?.click();
+            }
+        });
     }
 }
 
-// ── Mode pill ────────────────────────────────────────────────────────────
+let sbSettingsSidebarFilterRequest = 0;
 
-function getModePillState() {
-    const pill = document.getElementById('sb-mode-pill');
-    const popover = document.getElementById('sb-mode-popover-popup') ?? document.getElementById('sb-mode-pill-popover');
-    return { pill, popover };
-}
-
-function syncModePill() {
-    const { pill, popover } = getModePillState();
-
-    const activeMode = conversationState.conversationWorkspaceOpen ? 'conversation' : 'roleplay';
-    const label = activeMode === 'conversation' ? 'Conversation' : 'Roleplay';
-    const icon = activeMode === 'conversation' ? 'fa-comments' : 'fa-masks-theater';
-
-    // Sync pill if it exists in the DOM (kept as optional composer-bar element).
-    if (pill) {
-        const pillIcon = pill.querySelector('i.fa-solid:first-child');
-        const pillLabel = document.getElementById('sb-mode-pill-label');
-        if (pillIcon) {
-            pillIcon.className = `fa-solid ${icon}`;
-        }
-        if (pillLabel) {
-            pillLabel.textContent = label;
-        }
+function settingsTabLabelMatches(label, query) {
+    const normalizedLabel = normalizeText(label);
+    if (normalizedLabel.includes(query)) {
+        return true;
     }
 
-    // Sync mode toggle button icon too.
+    // Word-initial matching, e.g. "cl" for Console Logs.
+    const initials = normalizedLabel.split(/[\s-]+/).filter(Boolean).map(word => word[0]).join('');
+    return query.length > 1 && initials.startsWith(query.replace(/\s+/g, ''));
+}
+
+async function filterSettingsSidebarTabs(rawQuery) {
+    const request = ++sbSettingsSidebarFilterRequest;
+    const query = normalizeText(rawQuery);
+    const shellKey = sbSettingsState.activeShell;
+    const tabList = document.getElementById('sb-settings-tab-list');
+    if (!(tabList instanceof HTMLElement)) {
+        return;
+    }
+
+    const applyFilter = contentMatches => {
+        let visibleCount = 0;
+        for (const button of tabList.querySelectorAll('.sb-settings-tab')) {
+            const label = button.textContent ?? '';
+            const tabId = button.dataset.sbSettingsTab;
+            const isMatch = !query || settingsTabLabelMatches(label, query) || contentMatches.has(tabId);
+            button.classList.toggle('sb-settings-tab--filtered', !isMatch);
+            button.setAttribute('aria-hidden', String(!isMatch));
+            button.tabIndex = isMatch ? 0 : -1;
+            visibleCount += Number(isMatch);
+        }
+
+        let empty = tabList.querySelector('.sb-settings-tab-empty');
+        if (query && visibleCount === 0) {
+            if (!empty) {
+                empty = createElement('p', { className: 'sb-settings-tab-empty', text: 'No matching pages' });
+                tabList.appendChild(empty);
+            }
+        } else {
+            empty?.remove();
+        }
+    };
+
+    // Label matches apply immediately; content matches refine once the search index is ready.
+    applyFilter(new Set());
+    if (!query || !shellKey) {
+        return;
+    }
+
+    await prepareShellSearch();
+    if (request !== sbSettingsSidebarFilterRequest || sbSettingsState.activeShell !== shellKey) {
+        return;
+    }
+
+    const contentMatches = new Set();
+    for (const match of collectGlobalSearchMatches(query, { limit: Infinity })) {
+        const matchShell = match.shellKey === 'left' && match.tabId === 'world-info' ? 'characters' : match.shellKey;
+        if (matchShell === shellKey && match.tabId) {
+            contentMatches.add(match.tabId);
+        }
+    }
+    applyFilter(contentMatches);
+}
+
+// ── Mode toggle (top-bar direct toggle) ─────────────────────────────────
+
+const SB_CHAT_MODES = Object.freeze([
+    { id: 'roleplay', label: 'Roleplay', icon: 'fa-masks-theater', description: 'Classic character-driven chat mode' },
+    { id: 'conversation', label: 'Conversation', icon: 'fa-comments', description: 'Direct conversational AI mode' },
+]);
+
+function getActiveChatMode() {
+    return conversationState.conversationWorkspaceOpen ? 'conversation' : 'roleplay';
+}
+
+function syncModeToggleButton() {
+    const mode = SB_CHAT_MODES.find(entry => entry.id === getActiveChatMode()) ?? SB_CHAT_MODES[0];
     const modeToggleBtn = document.getElementById('sb-mode-toggle');
-    if (modeToggleBtn instanceof HTMLElement) {
-        const btnIcon = modeToggleBtn.querySelector('i.sb-proxy-icon');
-        if (btnIcon) {
-            btnIcon.className = `fa-solid ${icon} sb-proxy-icon`;
-        }
+    if (!(modeToggleBtn instanceof HTMLElement)) {
+        return;
     }
 
-    if (popover) {
-        popover.querySelectorAll('[data-sb-mode]').forEach(row => {
-            const isActive = row.dataset.sbMode === activeMode;
-            row.classList.toggle('is-active', isActive);
-            row.setAttribute('aria-selected', String(isActive));
-        });
+    const btnIcon = modeToggleBtn.querySelector(':scope > i');
+    if (btnIcon) {
+        btnIcon.className = `fa-solid ${mode.icon}`;
+    }
+    const label = modeToggleBtn.querySelector(':scope > span');
+    if (label) {
+        label.textContent = mode.label;
+    }
+    const title = `Chat mode: ${mode.label} (Ctrl+M)`;
+    modeToggleBtn.title = title;
+    modeToggleBtn.setAttribute('aria-label', title);
+}
+
+function setModeMenuOpenState(isOpen) {
+    const btn = document.getElementById('sb-mode-toggle');
+    if (btn instanceof HTMLElement) {
+        btn.classList.toggle('is-open', isOpen);
+        btn.setAttribute('aria-expanded', String(isOpen));
     }
 }
 
-function setModePillPopoverOpen(isOpen) {
-    const { pill, popover } = getModePillState();
-    if (!pill || !popover) {
+function closeModeDropdown({ restoreFocus = false } = {}) {
+    const menu = document.getElementById('sb-mode-menu');
+    if (!menu) {
         return;
     }
 
-    if (isOpen) {
-        popover.hidden = false;
-        popover.classList.add('is-opening');
-        popover.addEventListener('animationend', () => popover.classList.remove('is-opening'), { once: true });
-        pill.setAttribute('aria-expanded', 'true');
-    } else {
-        popover.hidden = true;
-        popover.classList.remove('is-opening');
-        pill.setAttribute('aria-expanded', 'false');
+    menu.remove();
+    setModeMenuOpenState(false);
+    if (restoreFocus) {
+        document.getElementById('sb-mode-toggle')?.focus({ preventScroll: true });
     }
 }
 
-function toggleModePillPopover({ fromKeyboard = false } = {}) {
-    const { popover } = getModePillState();
-    if (!popover) {
-        return;
-    }
-
-    const isOpen = !popover.hidden;
-    setModePillPopoverOpen(!isOpen);
+function toggleChatMode() {
+    const activeMode = conversationState.conversationWorkspaceOpen ? 'conversation' : 'roleplay';
+    const next = activeMode === 'roleplay' ? 'conversation' : 'roleplay';
+    setCharacterShellMode(next);
 }
 
-function initModePill() {
-    const { pill, popover } = getModePillState();
-    if (!pill || !popover) {
+function openModeDropdown() {
+    if (document.getElementById('sb-mode-menu')) {
+        closeModeDropdown({ restoreFocus: true });
         return;
     }
 
-    if (pill.dataset.sbBound === 'true') {
-        return;
-    }
-
-    pill.dataset.sbBound = 'true';
-
-    pill.addEventListener('click', () => toggleModePillPopover());
-
-    popover.querySelectorAll('[data-sb-mode]').forEach(row => {
-        row.addEventListener('click', () => {
-            setCharacterShellMode(row.dataset.sbMode);
-            setModePillPopoverOpen(false);
-        });
+    const activeMode = getActiveChatMode();
+    const menu = createElement('div', {
+        id: 'sb-mode-menu',
+        attrs: {
+            role: 'menu',
+            'aria-label': 'Switch chat mode',
+        },
     });
 
-    // Close on outside click.
-    document.addEventListener('click', event => {
-        if (!popover.hidden && !pill.contains(event.target) && !popover.contains(event.target)) {
-            setModePillPopoverOpen(false);
+    for (const mode of SB_CHAT_MODES) {
+        const isActive = mode.id === activeMode;
+        const item = createElement('button', {
+            className: `sb-mode-menu-item${isActive ? ' is-active' : ''}`,
+            attrs: {
+                type: 'button',
+                role: 'menuitemradio',
+                'aria-checked': String(isActive),
+            },
+        });
+        item.innerHTML = `<i class="fa-solid ${mode.icon} sb-mode-menu-icon" aria-hidden="true"></i><span class="sb-mode-menu-label">${mode.label}</span><span class="sb-mode-menu-desc">${mode.description}</span><i class="fa-solid fa-check sb-mode-menu-check" aria-hidden="true"></i>`;
+        item.addEventListener('click', () => {
+            closeModeDropdown({ restoreFocus: true });
+            if (mode.id !== getActiveChatMode()) {
+                setCharacterShellMode(mode.id);
+            }
+        });
+        menu.appendChild(item);
+    }
+
+    menu.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeModeDropdown({ restoreFocus: true });
+        } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            const items = Array.from(menu.querySelectorAll('.sb-mode-menu-item'));
+            const current = items.indexOf(document.activeElement);
+            const next = event.key === 'ArrowDown'
+                ? (current + 1) % items.length
+                : (current - 1 + items.length) % items.length;
+            items[next]?.focus();
         }
     });
 
-    // Keep pill synced to mode changes.
-    if (document.documentElement.dataset.sbModePillStateBound !== 'true') {
-        document.documentElement.dataset.sbModePillStateBound = 'true';
-        window.addEventListener('sb:conversation-workspace-state-changed', syncModePill);
+    const dismiss = event => {
+        if (!document.body.contains(menu)) {
+            document.removeEventListener('pointerdown', dismiss, true);
+            return;
+        }
+        const btn = document.getElementById('sb-mode-toggle');
+        if (menu.contains(event.target) || btn?.contains(event.target)) {
+            return;
+        }
+        document.removeEventListener('pointerdown', dismiss, true);
+        closeModeDropdown();
+    };
+    document.addEventListener('pointerdown', dismiss, true);
+
+    document.body.appendChild(menu);
+    setModeMenuOpenState(true);
+
+    const btn = document.getElementById('sb-mode-toggle');
+    if (btn instanceof HTMLElement) {
+        const rect = btn.getBoundingClientRect();
+        const menuWidth = menu.offsetWidth || 240;
+        const left = Math.min(rect.left + rect.width / 2 - menuWidth / 2, window.innerWidth - menuWidth - 8);
+        menu.style.setProperty('--sb-mode-menu-top', `${rect.bottom + 6}px`);
+        menu.style.setProperty('--sb-mode-menu-left', `${Math.max(8, left)}px`);
     }
 
-    syncModePill();
+    window.requestAnimationFrame(() => {
+        (menu.querySelector('.sb-mode-menu-item.is-active') ?? menu.querySelector('.sb-mode-menu-item'))?.focus();
+    });
+}
+
+function initModeToggle() {
+    if (document.documentElement.dataset.sbModeToggleBound === 'true') {
+        return;
+    }
+    document.documentElement.dataset.sbModeToggleBound = 'true';
+    window.addEventListener('sb:conversation-workspace-state-changed', syncModeToggleButton);
+    syncModeToggleButton();
 }
 
 // ── Global keyboard shortcuts ────────────────────────────────────────────
@@ -16984,7 +17239,7 @@ function initSettingsKeyboardShortcuts() {
 
         if (event.key === 'm' || event.key === 'M') {
             event.preventDefault();
-            toggleModePillPopover({ fromKeyboard: true });
+            toggleChatMode();
         }
     });
 }
