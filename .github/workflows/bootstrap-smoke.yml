@@ -250,7 +250,10 @@ jobs:
           git branch --force bootstrap-smoke HEAD
           if ($LASTEXITCODE -ne 0) { throw "git branch failed with exit code $LASTEXITCODE" }
           $installDir = Join-Path $env:RUNNER_TEMP 'SillyBunny'
-          & .\scripts\bootstrap\Install-SillyBunny.ps1 -Repo $env:GITHUB_WORKSPACE -Ref bootstrap-smoke -Dir $installDir -NoStart
+          # Capture every stream: git's clone progress on stderr must not abort a redirected run.
+          $output = & .\scripts\bootstrap\Install-SillyBunny.ps1 -Repo $env:GITHUB_WORKSPACE -Ref bootstrap-smoke -Dir $installDir -NoStart *>&1 | Out-String
+          Write-Host $output
+          if ($output -notmatch 'Done\. Start SillyBunny') { throw 'The installer did not finish a redirected fresh install.' }
           if (-not (Test-Path (Join-Path $installDir 'server.js'))) { throw 'server.js is missing from the installed copy.' }
           $installedHead = git -C $installDir rev-parse HEAD
           $sourceHead = git rev-parse HEAD

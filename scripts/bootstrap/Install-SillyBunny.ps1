@@ -158,8 +158,17 @@ function Install-SillyBunny {
         return ($Path + '\').StartsWith($parentFull, [StringComparison]::OrdinalIgnoreCase)
     }
 
+    # Git writes progress to stderr. Under Windows PowerShell 5.1 that output becomes
+    # an error record once a caller redirects it (`*>&1`, a log file), and Stop would
+    # abort a clone that is working; trust the exit code instead.
     function Invoke-Git {
-        & git @args
+        $previousPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            & git @args
+        } finally {
+            $ErrorActionPreference = $previousPreference
+        }
         if ($LASTEXITCODE -ne 0) { throw "git $($args -join ' ') failed." }
     }
 
