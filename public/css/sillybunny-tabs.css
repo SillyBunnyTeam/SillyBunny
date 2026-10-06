@@ -8529,6 +8529,14 @@ body.reduced-motion .sb-shell-main {
     display: none !important;
 }
 
+/* Search results pulse their own drawer after navigation. The class is applied by
+   pulseSearchTarget(), and matches can land in any of the Customize tab containers or in the
+   Data & Security panel, so it is intentionally unscoped. */
+.highlighted-drawer {
+    border-color: var(--color-primary, var(--sb-accent, #c9c6a8)) !important;
+    box-shadow: 0 0 10px color-mix(in srgb, var(--color-primary, var(--sb-accent, #c9c6a8)) 30%, transparent) !important;
+}
+
 /* Two-column layout stacks to a single column inside the settings content area */
 .sb-settings-mounted-shell #user-settings-block #user-settings-block-content {
     flex-direction: column !important;

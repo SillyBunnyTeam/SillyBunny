@@ -55,6 +55,7 @@ import {
 } from './textgen-settings.js';
 import {
     SB_USER_SETTINGS_CONTAINER_IDS,
+    SB_DATA_SECURITY_CONTAINER_ID,
     splitUserSettingsContent,
 } from './sillybunny-settings-content.js';
 
@@ -114,6 +115,11 @@ function invalidateUserSettingsTabSearchIndexes() {
  * The legacy block is kept on the list last because it stays in the document and third-party
  * drawers still append into it; it has no settings left, so it contributes nothing in practice.
  *
+ * The Data & Security container is here too. Its content is authored inside the settings block, so
+ * before the split moved it the drawer expansion, search reveal and drawer persistence below all
+ * reached it; listing it keeps that behaviour instead of leaving the moved drawer inert. It is
+ * absent from the document until its panel is built, and the `instanceof` guard covers that.
+ *
  * @returns {HTMLElement[]}
  */
 function getUserSettingsContentRoots() {
@@ -126,6 +132,11 @@ function getUserSettingsContentRoots() {
         }
     }
 
+    const dataSecurity = document.getElementById(SB_DATA_SECURITY_CONTAINER_ID);
+    if (dataSecurity instanceof HTMLElement) {
+        roots.push(dataSecurity);
+    }
+
     const legacyBlock = document.getElementById('user-settings-block-content');
     if (legacyBlock instanceof HTMLElement) {
         roots.push(legacyBlock);
@@ -134,10 +145,11 @@ function getUserSettingsContentRoots() {
     return roots;
 }
 
-function openAllInlineDrawers() {
+function openAllInlineDrawers(root = null) {
     // Open every inline-drawer section so its content is visible.
-    for (const root of getUserSettingsContentRoots()) {
-        root.querySelectorAll('.inline-drawer').forEach(drawer => {
+    const roots = root instanceof HTMLElement ? [root] : getUserSettingsContentRoots();
+    for (const current of roots) {
+        current.querySelectorAll('.inline-drawer').forEach(drawer => {
             const toggle = drawer.querySelector(':scope > .inline-drawer-toggle');
             const drawerContent = drawer.querySelector(':scope > .inline-drawer-content');
             if (toggle && drawerContent) {
@@ -10131,8 +10143,15 @@ async function handleSillyTavernZipImport(file) {
     }
 }
 
-function injectSillyTavernImportCard() {
-    const importOutlet = document.getElementById('sb-import-tools-outlet');
+function injectSillyTavernImportCard(host = null) {
+    // Import & Restore lives on the Data & Security tab, so the card belongs in the outlet the
+    // import drawer carries there. The caller passes that outlet once the panel is built, because
+    // the drawer is detached while the settings panel initializes and its outlet cannot be looked
+    // up by id at that point. The theme block fallback keeps the card reachable if the drawer is
+    // ever missing from the markup.
+    const importOutlet = host instanceof HTMLElement
+        ? host
+        : document.getElementById('sb-import-tools-outlet');
     const themeBlock = document.getElementById('UI-presets-block');
     const cardHost = importOutlet instanceof HTMLElement
         ? importOutlet
@@ -12446,7 +12465,25 @@ function buildShell(shellKey) {
         }
 
         if (customTab.id === 'data-security') {
-            const serverPanel = createOnDemandShellPanel(shellKey, customTab, async () => (await loadServerTools()).buildServerAdminPanel());
+            const serverPanel = createOnDemandShellPanel(shellKey, customTab, async () => {
+                const loaded = await (await loadServerTools()).buildServerAdminPanel();
+
+                // The split lifts Import & Restore out of the settings block because it manages saved
+                // data rather than appearance. It leads the panel, ahead of the server cards, because
+                // bringing an existing setup over is the first thing a user comes here to do.
+                const dataSecurityContent = userSettingsSplit?.dataSecurity;
+                if (dataSecurityContent instanceof HTMLElement) {
+                    loaded.searchRoot?.prepend(dataSecurityContent);
+                    // The container was detached while the settings panel initialized, so the work
+                    // that normally runs there — opening the drawers and restoring their stored open
+                    // state — could not reach it. It is done now that the tree is attached.
+                    openAllInlineDrawers(dataSecurityContent);
+                    bindInlineDrawerPersistence(dataSecurityContent);
+                    injectSillyTavernImportCard(dataSecurityContent.querySelector('#sb-import-tools-outlet'));
+                }
+
+                return loaded;
+            });
             registerShellTab(shellKey, customTab, serverPanel, serverPanel.searchRoot);
             continue;
         }

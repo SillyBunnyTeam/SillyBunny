@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import path from 'node:path';
 
-const deferredScripts = ['sillybunny-server-tools.js', 'sillybunny-settings-tabs.js', 'data-maid-dialog.js'];
+const deferredScripts = ['sillybunny-server-tools.js', 'data-maid-dialog.js'];
 test.use({ serviceWorkers: 'block' });
 
 async function openApp(page) {
@@ -51,11 +51,9 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
                 }
             });
             await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'settings'));
-            await expect(page.locator('#sb-settings-tabs')).toBeVisible();
+            await expect(page.locator('.sb-settings-tab-content')).not.toHaveCount(0);
             await expect(page.locator('#sb-theme-card')).toHaveCount(1);
-            for (const drawerId of ['sb-theme-colors-drawer', 'sb-auto-swipe-drawer', 'sb-auto-continue-drawer']) {
-                await expect(page.locator(`#${drawerId}`)).toHaveCount(1);
-            }
+            await expect(page.locator('#sb-appearance-content #AppearanceSection')).toHaveCount(1);
             await saveFirstUseScreenshot(page, viewport);
             await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'sampling'));
             await expect(page.locator('[data-sb-panel="sampling"] [data-sb-sampling-control]')).not.toHaveCount(0);
@@ -67,7 +65,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
             expect(after).toEqual(before);
             await expect(page.locator('#temp_openai')).toHaveCount(1);
             await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'settings'));
-            await expect(page.locator('#sb-settings-tabs')).toHaveCount(1);
+            await expect(page.locator('.sb-settings-tab-content')).not.toHaveCount(0);
             expect(requestedScripts).not.toContain('/scripts/sillybunny-server-tools.js');
         });
 
@@ -107,21 +105,13 @@ test('failed optional import can be retried without reloading the app', async ({
     expect(attempts).toBe(2);
 });
 
-test('failed settings import can be retried by reopening the panel', async ({ page }) => {
-    let attempts = 0;
-    await page.route('**/sillybunny-settings-tabs.js*', async route => {
-        attempts += 1;
-        if (attempts === 1) await route.abort('failed');
-        else await route.continue();
-    });
+test('Data & Security hosts the Import & Restore drawer', async ({ page }) => {
     await openApp(page);
-    await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'settings'));
-    await expect(page.locator('.toast-error')).toBeVisible();
-    await expect(page.locator('#sb-settings-tabs')).toHaveCount(0);
-    await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'extensions'));
-    await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'settings'));
-    await expect(page.locator('#sb-settings-tabs')).toBeVisible();
-    expect(attempts).toBe(2);
+    await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'data-security'));
+    const panel = page.locator('[data-sb-panel="data-security"]');
+    await expect(panel.locator('#SillyTavernImportSection')).toHaveCount(1);
+    await expect(panel.locator('#sb-import-card')).toHaveCount(1);
+    await expect(page.locator('#sb-appearance-content #SillyTavernImportSection')).toHaveCount(0);
 });
 
 test('failed cleanup import can be retried by opening the tool again', async ({ page }) => {

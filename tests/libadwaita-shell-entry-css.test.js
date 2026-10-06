@@ -5,7 +5,6 @@ import path from 'node:path';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const themeCss = readFileSync(path.join(repoRoot, 'public/css/sillybunny-theme.css'), 'utf8');
-const settingsTabsJs = readFileSync(path.join(repoRoot, 'public/scripts/sillybunny-settings-tabs.js'), 'utf8');
 
 describe('libadwaita shell entry css', () => {
     test('shell and settings entries use transparent border at rest', () => {
@@ -34,11 +33,5 @@ describe('libadwaita shell entry css', () => {
     test('shell character and group hover use flat hover token', () => {
         expect(themeCss).toMatch(/:is\(\.sb-shell-root, \.sb-character-drawer-root\)[^}]*:hover[^}]+background-color:\s*var\(--sb-flat-hover-bg\)/);
         expect(themeCss).toMatch(/:is\(\.sb-shell-root, \.sb-character-drawer-root\) :is\(\.character_select:hover[^}]+border-color:\s*transparent/);
-    });
-
-    test('settings tab buttons use flat libadwaita states', () => {
-        expect(settingsTabsJs).toMatch(/\.sb-settings-tab-btn:hover\s*\{[^}]*var\(--sb-flat-hover-bg\)/);
-        expect(settingsTabsJs).toMatch(/\.sb-settings-tab-btn\.active\s*\{[^}]*var\(--sb-flat-selected-bg\)/);
-        expect(settingsTabsJs).not.toMatch(/\.sb-settings-tab-btn\.active\s*\{[^}]*--sb-on-accent/);
     });
 });

@@ -21,7 +21,7 @@ function collectStaticModules(entrypoints) {
 }
 
 describe('startup module graph', () => {
-    test('keeps optional administration, settings layout and cleanup out of eager imports', () => {
+    test('keeps optional administration and cleanup out of eager imports', () => {
         const html = readFileSync(path.join(publicRoot, 'index.html'), 'utf8');
         const entrypoints = [
             ...Array.from(html.matchAll(/<script\b[^>]*\bsrc="([^"?]+)(?:\?[^" ]*)?"[^>]*>/g), match => match[1]),
@@ -29,7 +29,7 @@ describe('startup module graph', () => {
         ];
         expect(entrypoints).toContain('script.js');
         const eager = collectStaticModules(entrypoints);
-        for (const deferred of ['sillybunny-server-tools.js', 'sillybunny-settings-tabs.js', 'data-maid-dialog.js']) {
+        for (const deferred of ['sillybunny-server-tools.js', 'data-maid-dialog.js']) {
             expect(eager.has(path.join(publicRoot, 'scripts', deferred))).toBe(false);
         }
         // Live provider exports remain available to third-party extensions at startup.

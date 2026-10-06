@@ -18,6 +18,17 @@ export const SB_USER_SETTINGS_CONTAINER_IDS = Object.freeze({
 });
 
 /**
+ * Container for content that is lifted out of the settings block but belongs to the Data &
+ * Security tab rather than to one of the three Customize tabs.
+ *
+ * It is owned by the same split so the move happens in one place with the rest of the relocation,
+ * but its panel is built on demand by `sillybunny-server-tools.js`, which adopts the container
+ * instead of being handed it. Import and restore write to the account's data paths and replace
+ * saved files, so it belongs with the other data-management controls, not with Appearance.
+ */
+export const SB_DATA_SECURITY_CONTAINER_ID = 'sb-data-security-content';
+
+/**
  * Streaming and sound controls lifted out of `[name="MiscellaneousToggles"]`.
  *
  * They are listed individually rather than as one group because the group also holds Interface
@@ -35,10 +46,11 @@ const SB_STREAMING_CONTROL_IDS = Object.freeze([
 /**
  * Sections owned by each tab, applied in the order listed.
  *
- * 6A populated Appearance: the first column is taken whole, which carries
- * `#SillyTavernImportSection` and `#AppearanceSection` with it, and the two code editors are pulled
- * out of the power-user column separately because they are authored far from the rest of the
- * appearance stack.
+ * 6A populated Appearance: the first column is taken whole, which carries `#AppearanceSection`
+ * with it, and the two code editors are pulled out of the power-user column separately because
+ * they are authored far from the rest of the appearance stack. `#SillyTavernImportSection` is
+ * authored in that same first column and is moved out to Data & Security first, so it is not
+ * carried into Appearance by the column move.
  *
  * 6B populates Messages. `[name="CharacterHandlingToggles"]` and `#ChatMessageHandlingSection` move
  * whole, but `[name="MiscellaneousToggles"]` cannot: it interleaves message and stream controls
@@ -157,8 +169,12 @@ function resolveSectionTarget(scope, selector) {
  * new container is placed. Once every tab has run the block holds no settings; the caller is
  * responsible for leaving it in the document but unpainted.
  *
+ * One section does not belong to any Customize tab: Import & Restore is authored inside the
+ * Appearance column but manages saved data, so it is detached first and handed to the Data &
+ * Security panel in its own container.
+ *
  * @param {HTMLElement} originalContent wrapper holding the original settings markup
- * @returns {{appearance: HTMLElement, interface: HTMLElement, messages: HTMLElement, missing: string[]}|null}
+ * @returns {{appearance: HTMLElement, interface: HTMLElement, messages: HTMLElement, dataSecurity: HTMLElement, missing: string[]}|null}
  */
 export function splitUserSettingsContent(originalContent) {
     const contentBlock = originalContent?.querySelector?.('#user-settings-block-content');
@@ -173,6 +189,19 @@ export function splitUserSettingsContent(originalContent) {
         container.className = 'sb-settings-tab-content';
         container.dataset.sbSettingsTab = tabId;
         containers[tabId] = container;
+    }
+
+    // Import & Restore is authored inside the Appearance column but writes to the account's data
+    // paths, so it belongs with the other data-management controls on the Data & Security tab. It
+    // is moved out of the column before the column itself moves, which keeps the relocation in one
+    // place instead of giving the split a fourth destination in SB_USER_SETTINGS_CONTAINER_IDS.
+    // The Data & Security panel adopts this container when it is built on demand.
+    const dataSecurity = document.createElement('div');
+    dataSecurity.id = SB_DATA_SECURITY_CONTAINER_ID;
+    dataSecurity.className = 'sb-settings-tab-content sb-data-security-content';
+    const importSection = detach(resolveSectionTarget(originalContent, '#SillyTavernImportSection'));
+    if (importSection) {
+        dataSecurity.appendChild(importSection);
     }
 
     for (const [tabId, selectors] of Object.entries(SB_SETTINGS_TAB_SECTIONS)) {
@@ -196,6 +225,10 @@ export function splitUserSettingsContent(originalContent) {
         }
     }
 
+    if (!importSection) {
+        missing.push('data-security:SillyTavernImportSection');
+    }
+
     if (missing.length > 0) {
         console.error('[SillyBunny] Settings split did not place every section:', missing.join(', '));
     }
@@ -204,6 +237,7 @@ export function splitUserSettingsContent(originalContent) {
         appearance: containers.appearance,
         interface: containers.interface,
         messages: containers.messages,
+        dataSecurity,
         missing,
     };
 }
