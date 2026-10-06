@@ -8198,22 +8198,33 @@ body.reduced-motion .sb-shell-main {
     display: flex;
     align-items: center;
     flex-shrink: 0;
-    padding: 0 16px;
-    height: 52px;
+    padding: 8px 16px;
+    min-height: 52px;
     border-bottom: 1px solid var(--sb-shell-border);
     gap: 12px;
     /* Window tone, so the content header sits a step away from both the rail and the top bar. */
     background-color: var(--sb-layer-window);
 }
 
-/* Spacer balances the close button so the title stays centered */
+/* Spacer balances the close button so the heading stays centered */
 .sb-settings-header-spacer {
     width: 36px;
     flex-shrink: 0;
 }
 
-.sb-settings-title {
+/* Title over sub-title. The header grows to fit rather than fixing a height, so a one-line
+   sub-title costs slightly more than the 52px baseline and a two-line one still fits. */
+.sb-settings-heading {
     flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+}
+
+.sb-settings-title {
+    max-width: 100%;
     font-size: calc(var(--mainFontSize) * 1.05);
     font-weight: 700;
     margin: 0;
@@ -8221,6 +8232,20 @@ body.reduced-motion .sb-shell-main {
     white-space: nowrap;
     text-overflow: ellipsis;
     text-align: center;
+}
+
+.sb-settings-subtitle {
+    max-width: 100%;
+    margin: 0;
+    font-size: var(--sb-type-meta);
+    line-height: 1.4;
+    color: var(--sb-muted-fg);
+    text-align: center;
+}
+
+/* An empty sub-title must not reserve a line, or every page gets a blank gap. */
+.sb-settings-subtitle:empty {
+    display: none;
 }
 
 .sb-settings-close-button {
@@ -8741,8 +8766,16 @@ body.reduced-motion .sb-shell-main {
         display: none;
     }
 
-    /* Title aligns left when the close button is on the right. */
+    /* Title and sub-title align left when the close button is on the right. */
+    .sb-settings-heading {
+        align-items: flex-start;
+    }
+
     .sb-settings-title {
+        text-align: left;
+    }
+
+    .sb-settings-subtitle {
         text-align: left;
     }
 

@@ -569,6 +569,8 @@ const SB_MESSAGE_STYLES = Object.freeze([
 
 const SB_SAMPLING_SUBTITLE_HTML = 'Modify model text parameters here - useful for dialing in responses! If you\'re unsure what these all mean, check out <a class="notes-link" href="https://rentry.org/samplersettings" target="_blank" rel="noopener noreferrer">Geechan\'s guide on sampling.</a>';
 
+const SB_WORLD_INFO_SUBTITLE_HTML = 'Advanced: Modify lorebooks for character cards here. For more information, read the guide found <a class="notes-link" href="https://docs.sillytavern.app/usage/core-concepts/worldinfo/" target="_blank" rel="noopener noreferrer">here</a>.';
+
 const SB_CHARACTER_EDITOR_SUB_TABS = Object.freeze([
     'char-info',
     'definitions',
@@ -579,12 +581,49 @@ const SB_CHARACTER_EDITOR_DEFAULT_SUB_TAB = 'char-info';
 const SB_CHARACTER_EDITOR_SPOILER_FREE_VISIBLE_TABS = Object.freeze(['char-info', 'metadata']);
 
 const SB_CHARACTER_PANEL_TABS = Object.freeze([
-    { id: 'characters', label: 'Characters', icon: 'fa-address-book', tooltip: 'Open and manage character cards' },
-    { id: 'groups', label: 'Groups', icon: 'fa-users', tooltip: 'Open and manage group conversations' },
-    { id: 'editor', label: 'Editor', icon: 'fa-pen-to-square', tooltip: 'Edit character cards and groups' },
-    { id: 'world-info', label: 'World Info', icon: 'fa-book-atlas', tooltip: 'Manage lorebooks and world information' },
-    { id: 'persona', label: 'Persona', icon: 'fa-face-smile', tooltip: 'Manage user persona/personality' },
-    { id: 'import', label: 'Import', icon: 'fa-file-import', tooltip: 'Add or import new character cards' },
+    {
+        id: 'characters',
+        label: 'Characters',
+        icon: 'fa-address-book',
+        tooltip: 'Open and manage character cards',
+        description: 'View or create character cards here for your roleplays and chats!',
+    },
+    {
+        id: 'groups',
+        label: 'Groups',
+        icon: 'fa-users',
+        tooltip: 'Open and manage group conversations',
+        description: 'View or create group chats here for your roleplays and chats!',
+    },
+    {
+        id: 'editor',
+        label: 'Editor',
+        icon: 'fa-pen-to-square',
+        tooltip: 'Edit character cards and groups',
+        description: 'Edit your character cards or group chats in great detail here!',
+    },
+    {
+        id: 'world-info',
+        label: 'World Info',
+        icon: 'fa-book-atlas',
+        tooltip: 'Manage lorebooks and world information',
+        description: SB_WORLD_INFO_SUBTITLE_HTML,
+        descriptionIsHtml: true,
+    },
+    {
+        id: 'persona',
+        label: 'Persona',
+        icon: 'fa-face-smile',
+        tooltip: 'Manage user persona/personality',
+        description: 'Edit your own persona here for roleplay and chats!',
+    },
+    {
+        id: 'import',
+        label: 'Import',
+        icon: 'fa-file-import',
+        tooltip: 'Add or import new character cards',
+        description: 'Directly import character cards here from various sources.',
+    },
 ]);
 const SB_CHARACTER_PANEL_DEFAULT_TAB = 'characters';
 
@@ -14776,6 +14815,33 @@ function toggleSettingsPage(shellKey, tabId = null) {
     openSettingsPage(shellKey, tabId);
 }
 
+/**
+ * Writes the page heading for a tab: the label as the title, the tab's long-form description as
+ * the sub-title beneath it.
+ *
+ * The description may be authored as HTML (the sampling sub-title links to an external guide), so
+ * it is written with `innerHTML` when flagged. Everything else goes through `textContent`, and a
+ * tab with no description clears the sub-title rather than leaving the previous one behind.
+ *
+ * @param {{label?: string, description?: string, descriptionIsHtml?: boolean}|null|undefined} tab
+ */
+function renderSettingsPageHeading(tab) {
+    const titleEl = document.getElementById('sb-settings-content-title');
+    const subtitleEl = document.getElementById('sb-settings-content-subtitle');
+    if (titleEl) {
+        titleEl.textContent = tab?.label ?? '';
+    }
+    if (!subtitleEl) {
+        return;
+    }
+    const description = tab?.description ?? '';
+    if (tab?.descriptionIsHtml === true) {
+        subtitleEl.innerHTML = description;
+    } else {
+        subtitleEl.textContent = description;
+    }
+}
+
 function buildSettingsPageFor(shellKey, tabId) {
     const tabList = document.getElementById('sb-settings-tab-list');
     const titleEl = document.getElementById('sb-settings-content-title');
@@ -14816,7 +14882,7 @@ function buildSettingsPageFor(shellKey, tabId) {
         sidebarTitleEl.textContent = sectionTitle;
     }
     const activeTab = allTabs.find(t => t.id === resolvedTabId);
-    titleEl.textContent = activeTab?.label ?? sectionTitle;
+    renderSettingsPageHeading(activeTab ?? { label: sectionTitle });
 
     // Re-apply an active sidebar filter to the freshly built tab list.
     const searchInput = document.getElementById('sb-settings-search-input');
@@ -14977,7 +15043,6 @@ function setSettingsMobileContentView(showContent) {
 
 function activateSettingsTab(shellKey, tabId) {
     const tabList = document.getElementById('sb-settings-tab-list');
-    const titleEl = document.getElementById('sb-settings-content-title');
     if (!tabList) {
         return;
     }
@@ -15000,9 +15065,7 @@ function activateSettingsTab(shellKey, tabId) {
         button.setAttribute('aria-selected', String(button.dataset.sbSettingsTab === tabId));
     });
 
-    if (titleEl) {
-        titleEl.textContent = selectedTab.label;
-    }
+    renderSettingsPageHeading(selectedTab);
 
     if (isMobileViewport()) {
         setSettingsMobileContentView(true);
