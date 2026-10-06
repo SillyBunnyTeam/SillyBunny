@@ -2997,6 +2997,29 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     gap: var(--sb-shell-section-gap);
 }
 
+/* Customize tab content. Phase 6A splits the settings across per-tab containers, so the layout
+   rules that used to hang off `#user-settings-block-content` follow the content into
+   `.sb-settings-tab-content`. The legacy block keeps its own rules below for the shared
+   remainder and for the emptied shell. */
+.sb-shell-root-right .sb-settings-tab-content {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sb-shell-section-gap);
+}
+
+:root[data-sb-compact-mode='true'] .sb-shell-root-right .sb-settings-tab-content {
+    gap: var(--sb-shell-section-gap);
+}
+
+.sb-shell-root-right .sb-settings-tab-content > * {
+    min-width: 0;
+}
+
+.sb-shell-root-right .sb-settings-tab-content .flex-container,
+.sb-shell-root-right .sb-settings-tab-content .inline-drawer-content {
+    min-width: 0;
+}
+
 .sb-shell-root-right #user-settings-block-content {
     display: grid;
     grid-template-columns: minmax(0, 1fr);

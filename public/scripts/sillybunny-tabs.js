@@ -53,12 +53,15 @@ import {
     setTextSamplingParameterTransmissionState,
     getTextSamplingParameterViewModel,
 } from './textgen-settings.js';
+import {
+    SB_USER_SETTINGS_CONTAINER_IDS,
+    splitUserSettingsContent,
+} from './sillybunny-settings-content.js';
 
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
 const sbSearchRenderRequests = new WeakMap();
 const loadServerToolsModule = createDeferredModule(new URL('./sillybunny-server-tools.js', import.meta.url));
-const loadSettingsTabsModule = createDeferredModule(new URL('./sillybunny-settings-tabs.js', import.meta.url));
 let serverToolsPromise;
 let settingsPanelPromise;
 
@@ -74,15 +77,14 @@ function loadServerTools() {
 }
 
 function initializeSettingsPanel() {
-    settingsPanelPromise ??= loadSettingsTabsModule().then(module => {
+    settingsPanelPromise ??= Promise.resolve().then(() => {
         injectThemePicker();
         injectSillyTavernImportCard();
-        // Don't call module.initializeSettingsTabs() - it creates conflicting tab UI
-        // Instead, just open all inline-drawers so content is visible
+        // SillyTavern's own settings tab UI is not used here: the settings page sidebar owns
+        // navigation, so the inline drawers are opened directly instead.
         openAllInlineDrawers();
         applyDefaultDrawerStates();
-        const tab = getShellState('right')?.tabs.get('settings');
-        if (tab) tab.searchIndex = null;
+        invalidateUserSettingsTabSearchIndexes();
     }).catch(error => {
         settingsPanelPromise = undefined;
         throw error;
@@ -90,20 +92,69 @@ function initializeSettingsPanel() {
     return settingsPanelPromise;
 }
 
-function openAllInlineDrawers() {
-    const content = document.getElementById('user-settings-block-content');
-    if (!content) return;
+/**
+ * Drops the cached search index for every Customize tab. The split moves nodes between tabs, so
+ * a cached index would keep pointing at detached content.
+ */
+function invalidateUserSettingsTabSearchIndexes() {
+    const shellState = getShellState('right');
+    if (!shellState) {
+        return;
+    }
 
-    // Open all inline-drawer sections so their content is visible
-    content.querySelectorAll('.inline-drawer').forEach(drawer => {
-        const toggle = drawer.querySelector(':scope > .inline-drawer-toggle');
-        const drawerContent = drawer.querySelector(':scope > .inline-drawer-content');
-        if (toggle && drawerContent) {
-            toggle.setAttribute('aria-expanded', 'true');
-            toggle.classList.add('openDrawer');
-            drawerContent.style.display = '';
+    for (const tabState of shellState.tabs.values()) {
+        tabState.searchIndex = null;
+    }
+}
+
+/**
+ * Every root that holds Customize settings content, in the order a user sees them.
+ *
+ * Phase 6A moves the Appearance sections into `#sb-appearance-content` while the rest of the
+ * settings stay in `#user-settings-block-content`, so both are live roots at once. Callers that
+ * scope work to settings content must therefore cover the union; covering only the containers
+ * would silently skip everything Interface and Messages still mount.
+ *
+ * @returns {HTMLElement[]}
+ */
+function getUserSettingsContentRoots() {
+    const roots = [];
+
+    const appearanceContainer = document.getElementById(SB_USER_SETTINGS_CONTAINER_IDS.appearance);
+    if (appearanceContainer instanceof HTMLElement) {
+        roots.push(appearanceContainer);
+    }
+
+    // The shared remainder: still the whole settings block after 6A, and the emptied shell once
+    // later phases finish moving its sections into the Interface and Messages containers.
+    const legacyBlock = document.getElementById('user-settings-block-content');
+    if (legacyBlock instanceof HTMLElement) {
+        roots.push(legacyBlock);
+    }
+
+    for (const tabId of ['interface', 'messages']) {
+        const container = document.getElementById(SB_USER_SETTINGS_CONTAINER_IDS[tabId]);
+        if (container instanceof HTMLElement) {
+            roots.push(container);
         }
-    });
+    }
+
+    return roots;
+}
+
+function openAllInlineDrawers() {
+    // Open every inline-drawer section so its content is visible.
+    for (const root of getUserSettingsContentRoots()) {
+        root.querySelectorAll('.inline-drawer').forEach(drawer => {
+            const toggle = drawer.querySelector(':scope > .inline-drawer-toggle');
+            const drawerContent = drawer.querySelector(':scope > .inline-drawer-content');
+            if (toggle && drawerContent) {
+                toggle.setAttribute('aria-expanded', 'true');
+                toggle.classList.add('openDrawer');
+                drawerContent.style.display = '';
+            }
+        });
+    }
 }
 
 async function prepareShellSearch() {
@@ -12106,8 +12157,11 @@ function revealSettingsCategoryFor(target) {
         return;
     }
 
-    const settingsContent = document.getElementById('user-settings-block-content');
-    if (!settingsContent || !settingsContent.contains(target)) {
+    // Phase 6A: content is split across three permanent containers, so a match can live in any
+    // of them rather than all settings living in one block.
+    const roots = getUserSettingsContentRoots();
+    const settingsContent = roots.find(root => root.contains(target));
+    if (!settingsContent) {
         return;
     }
 
@@ -12287,7 +12341,8 @@ function buildShell(shellKey) {
 
     // For left shell, base tab is 'connections' (sys-settings-button content)
     // For right shell, base tab is 'appearance' (user-settings-button content)
-    // Phase 5: Interface and Messages tabs share the same content for now
+    // Phase 6A: Appearance is extracted into its own container. Interface and Messages still
+    // share the remaining settings block until phases 6B/6C split them.
     let sharedUserSettings = null;
     if (shellKey === 'left') {
         const apiDrawerPrep = prepareEmbeddedDrawer('sys-settings-button');
@@ -12295,11 +12350,19 @@ function buildShell(shellKey) {
             basePanel.scroller.appendChild(apiDrawerPrep.drawer);
         }
     } else if (shellKey === 'right') {
-        // All three tabs (appearance, interface, messages) share user-settings-block for now
+        const userSettingsSplit = splitUserSettingsContent(originalContent);
+
+        if (userSettingsSplit) {
+            basePanel.scroller.appendChild(userSettingsSplit.appearance);
+        }
+
+        // The remainder is what Interface and Messages mount, so it is kept reachable whether or
+        // not the split ran; the split only removes the nodes Appearance now owns.
         sharedUserSettings = originalContent;
         basePanel.scroller.appendChild(sharedUserSettings);
 
-        // Also add backgrounds drawer to Appearance tab
+        // Backgrounds is its own top-level drawer outside the settings block, so it is appended
+        // separately rather than being part of the split.
         const backgroundsPrep = prepareEmbeddedDrawer('backgrounds-button');
         if (backgroundsPrep) {
             basePanel.scroller.appendChild(backgroundsPrep.drawer);
@@ -12309,7 +12372,7 @@ function buildShell(shellKey) {
         basePanel.onActivate = () => {
             // Move shared content back to Appearance if it's not already there
             if (sharedUserSettings && !basePanel.scroller.contains(sharedUserSettings)) {
-                basePanel.scroller.insertBefore(sharedUserSettings, basePanel.scroller.firstChild);
+                basePanel.scroller.appendChild(sharedUserSettings);
             }
             return initializeSettingsPanel().catch(error => {
                 console.error('[SillyBunny] Could not initialize settings:', error);
@@ -12371,39 +12434,21 @@ function buildShell(shellKey) {
             continue;
         }
 
-        if (customTab.id === 'interface') {
-            // Interface tab - shares user-settings-block content with Appearance/Messages
-            // Content is moved into this panel when the tab activates
-            const interfacePanel = createShellPanel(customTab);
-            interfacePanel.ensureReady = initializeSettingsPanel;
-            interfacePanel.onActivate = () => {
-                if (sharedUserSettings && !interfacePanel.scroller.contains(sharedUserSettings)) {
-                    interfacePanel.scroller.appendChild(sharedUserSettings);
+        if (customTab.id === 'interface' || customTab.id === 'messages') {
+            // Interface and Messages share the remaining settings block. It is moved into the
+            // panel that activates, so only one of them holds it at a time.
+            const panel = createShellPanel(customTab);
+            panel.ensureReady = initializeSettingsPanel;
+            panel.onActivate = () => {
+                if (sharedUserSettings && !panel.scroller.contains(sharedUserSettings)) {
+                    panel.scroller.appendChild(sharedUserSettings);
                 }
                 return initializeSettingsPanel().catch(error => {
                     console.error('[SillyBunny] Could not initialize settings:', error);
                     toastr.error(String(error.message || error));
                 });
             };
-            registerShellTab(shellKey, customTab, interfacePanel);
-            continue;
-        }
-
-        if (customTab.id === 'messages') {
-            // Messages tab - shares user-settings-block content with Appearance/Interface
-            // Content is moved into this panel when the tab activates
-            const messagesPanel = createShellPanel(customTab);
-            messagesPanel.ensureReady = initializeSettingsPanel;
-            messagesPanel.onActivate = () => {
-                if (sharedUserSettings && !messagesPanel.scroller.contains(sharedUserSettings)) {
-                    messagesPanel.scroller.appendChild(sharedUserSettings);
-                }
-                return initializeSettingsPanel().catch(error => {
-                    console.error('[SillyBunny] Could not initialize settings:', error);
-                    toastr.error(String(error.message || error));
-                });
-            };
-            registerShellTab(shellKey, customTab, messagesPanel);
+            registerShellTab(shellKey, customTab, panel);
             continue;
         }
 
@@ -13023,8 +13068,12 @@ function setInlineDrawerExpanded(drawer, expand) {
 }
 
 function getLegacySettingsDrawerStorageKey(drawer) {
-    const root = document.getElementById('user-settings-block-content');
-    if (!(root instanceof HTMLElement) || !(drawer instanceof HTMLElement) || !root.contains(drawer)) {
+    if (!(drawer instanceof HTMLElement)) {
+        return null;
+    }
+
+    const root = getUserSettingsContentRoots().find(candidate => candidate.contains(drawer));
+    if (!root) {
         return null;
     }
 
@@ -13211,7 +13260,7 @@ function queueInlineDrawerPersistenceBind() {
 function getInlineDrawerPersistenceRoots() {
     return [
         document.getElementById('left-nav-panel'),
-        document.getElementById('user-settings-block-content'),
+        ...getUserSettingsContentRoots(),
         document.getElementById('WorldInfo'),
         getCharacterPanel(),
     ].filter(element => element instanceof HTMLElement);
