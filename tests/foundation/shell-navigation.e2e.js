@@ -122,6 +122,46 @@ test('desktop Characters drawer opens from its top-bar trigger', async ({ page, 
     await expect(drawer).not.toHaveClass(/openDrawer/);
 });
 
+test('mobile Characters pager stays below the toolbar after Home navigation', async ({ page, isMobile }) => {
+    test.skip(!isMobile, 'The mobile character toolbar layout is mobile-only.');
+    await page.route('**/api/settings/save', route => route.fulfill({ json: {} }));
+    await page.goto('/');
+    await page.waitForFunction(() => typeof window.SillyBunnyShell?.openTab === 'function' && !document.querySelector('#preloader'));
+    await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close()));
+
+    await page.locator('#sb-home-toggle').click();
+    await expect(page.locator('.welcomePanel')).toBeVisible();
+    await page.locator('#sb-character-toggle').click();
+    await expect(page.locator('#right-nav-panel')).toHaveClass(/openDrawer/);
+    await page.locator('#rm_print_characters_pagination').evaluate((element) => {
+        element.style.setProperty('display', 'flex', 'important');
+    });
+
+    const layout = await page.evaluate(() => {
+        const toolbar = document.querySelector('.sb-character-create-bar');
+        const pager = document.getElementById('rm_print_characters_pagination');
+        const toolbarRect = toolbar.getBoundingClientRect();
+        const pagerRect = pager.getBoundingClientRect();
+        const overlapsToolbar = pagerRect.width > 0 && pagerRect.height > 0 && Array.from(toolbar.children).some((element) => {
+            const rect = element.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0
+                && Math.min(rect.right, pagerRect.right) - Math.max(rect.left, pagerRect.left) > 1
+                && Math.min(rect.bottom, pagerRect.bottom) - Math.max(rect.top, pagerRect.top) > 1;
+        });
+
+        return {
+            pagerParent: pager.parentElement?.id,
+            toolbarBottom: toolbarRect.bottom,
+            pagerTop: pagerRect.top,
+            overlapsToolbar,
+        };
+    });
+
+    expect(layout.pagerParent).toBe('rm_characters_block');
+    expect(layout.pagerTop).toBeGreaterThanOrEqual(layout.toolbarBottom);
+    expect(layout.overlapsToolbar).toBe(false);
+});
+
 test('Characters drawer Escape preserves fullscreen editor precedence', async ({ page }) => {
     await page.goto('/');
     await page.waitForFunction(() => typeof window.SillyBunnyShell?.openTab === 'function' && !document.querySelector('#preloader'));

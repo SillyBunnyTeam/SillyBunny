@@ -6998,8 +6998,14 @@ function ensureCharacterListToolbarLayout() {
         actionBar.insertBefore(buttonBar, afterAction);
     }
 
-    if (pagination instanceof HTMLElement && pagination.parentElement !== actionBar) {
-        actionBar.insertBefore(pagination, buttonBar.nextSibling);
+    if (pagination instanceof HTMLElement) {
+        if (isMobileViewport()) {
+            if (pagination.parentElement !== fixedTop.parentElement) {
+                fixedTop.after(pagination);
+            }
+        } else if (pagination.parentElement !== actionBar) {
+            actionBar.insertBefore(pagination, buttonBar.nextSibling);
+        }
     }
 
     if (searchButton instanceof HTMLElement && searchButton.parentElement !== buttonBar) {
