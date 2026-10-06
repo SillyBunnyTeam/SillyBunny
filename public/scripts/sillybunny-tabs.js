@@ -12341,23 +12341,24 @@ function buildShell(shellKey) {
 
     // For left shell, base tab is 'connections' (sys-settings-button content)
     // For right shell, base tab is 'appearance' (user-settings-button content)
-    // Phase 6A: Appearance is extracted into its own container. Interface and Messages still
-    // share the remaining settings block until phases 6B/6C split them.
+    // Phase 6A/6B: Appearance and Messages are extracted into their own containers. Interface
+    // still mounts the remaining settings block until 6C splits it.
     let sharedUserSettings = null;
+    let userSettingsSplit = null;
     if (shellKey === 'left') {
         const apiDrawerPrep = prepareEmbeddedDrawer('sys-settings-button');
         if (apiDrawerPrep) {
             basePanel.scroller.appendChild(apiDrawerPrep.drawer);
         }
     } else if (shellKey === 'right') {
-        const userSettingsSplit = splitUserSettingsContent(originalContent);
+        userSettingsSplit = splitUserSettingsContent(originalContent);
 
         if (userSettingsSplit) {
             basePanel.scroller.appendChild(userSettingsSplit.appearance);
         }
 
-        // The remainder is what Interface and Messages mount, so it is kept reachable whether or
-        // not the split ran; the split only removes the nodes Appearance now owns.
+        // The remainder is what Interface mounts, so it is kept reachable whether or not the split
+        // ran; the split only removes the nodes Appearance and Messages now own.
         sharedUserSettings = originalContent;
         basePanel.scroller.appendChild(sharedUserSettings);
 
@@ -12434,9 +12435,19 @@ function buildShell(shellKey) {
             continue;
         }
 
-        if (customTab.id === 'interface' || customTab.id === 'messages') {
-            // Interface and Messages share the remaining settings block. It is moved into the
-            // panel that activates, so only one of them holds it at a time.
+        if (customTab.id === 'messages') {
+            // Phase 6B: Messages owns a permanent container built once by splitUserSettingsContent().
+            const panel = createShellPanel(customTab);
+            if (userSettingsSplit) {
+                panel.scroller.appendChild(userSettingsSplit.messages);
+            }
+            panel.ensureReady = initializeSettingsPanel;
+            registerShellTab(shellKey, customTab, panel);
+            continue;
+        }
+
+        if (customTab.id === 'interface') {
+            // Interface still mounts the shared remainder, which it keeps until 6C splits it.
             const panel = createShellPanel(customTab);
             panel.ensureReady = initializeSettingsPanel;
             panel.onActivate = () => {
