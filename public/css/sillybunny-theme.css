@@ -6413,8 +6413,11 @@ body.reduced-motion *::after {
         align-items: stretch;
     }
 
+    /* Stacked rows: the note takes its own row ahead of the buttons. `auto` lets the note size to
+       its text instead of the row, which pushes its last word past the container's edge. */
     #user-settings-utility-actions .sb-settings-utility-note {
-        flex: 0 0 auto;
+        flex: 1 1 100%;
+        width: 100%;
     }
 
     #user-settings-utility-actions .sb-settings-utility-action {
