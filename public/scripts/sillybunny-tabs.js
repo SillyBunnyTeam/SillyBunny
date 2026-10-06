@@ -3970,10 +3970,8 @@ function getTopbarGroupOrder({ iconsOnly, mobile }) {
         'sb-topbar-divider-customize',
         customize.leadId,
         customize.railId,
-        // SillyBunny: permanent search and mode toggle live left of the quick-access divider — feat/v1.9.0-ui-overhaul
-        'sb-topbar-divider-search-mode',
+        // SillyBunny: permanent search lives left of the quick-access divider — feat/v1.9.0-ui-overhaul
         'sb-topbar-search-toggle',
-        'sb-mode-toggle',
     ];
     // The extension slot leads the right group in every mode: syncTopbarGroupOrder() re-appends
     // every listed id, so an unlisted element would be pushed to the front of the group as a side
@@ -3991,8 +3989,8 @@ function getTopbarGroupOrder({ iconsOnly, mobile }) {
         right.push('sb-shortcut-slot6', 'sb-shortcut-slot5', 'sb-shortcut-right', 'sb-topbar-divider-quick-right');
     }
 
-    // SillyBunny: mode toggle moved to left group after search — feat/v1.9.0-ui-overhaul
-    right.push('sb-home-toggle', 'sb-topbar-divider-home');
+    // SillyBunny: mode toggle stays in right group — feat/v1.9.0-ui-overhaul
+    right.push('sb-mode-toggle', 'sb-home-toggle', 'sb-topbar-divider-home');
 
     if (iconsOnly && mobile) {
         // The characters pages ride the strip, so the divider marks where they start there;
@@ -8487,8 +8485,6 @@ function buildTopBar() {
     quickActionsRightDivider.classList.add('sb-desktop-setting');
     const homeDivider = createTopbarClusterDivider('sb-topbar-divider-home');
     const charactersDivider = createTopbarClusterDivider('sb-topbar-divider-characters');
-    const searchModeDivider = createTopbarClusterDivider('sb-topbar-divider-search-mode');
-    searchModeDivider.classList.add('sb-mobile-setting');
 
     // SillyBunny: search toggle (left group, after Customize) + mode toggle (right group, before Home) — feat/v1.9.0-ui-overhaul
     const searchToggle = createProxyButton(
@@ -8524,8 +8520,8 @@ function buildTopBar() {
     );
     modeToggle.setAttribute('aria-haspopup', 'menu');
 
-    leftGroup.append(leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, searchModeDivider, searchToggle, modeToggle, quickActionsLeftDivider, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
-    rightGroup.append(extensionSlot, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, quickActionsRightDivider, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
+    leftGroup.append(leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, searchToggle, quickActionsLeftDivider, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
+    rightGroup.append(extensionSlot, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, quickActionsRightDivider, modeToggle, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 
