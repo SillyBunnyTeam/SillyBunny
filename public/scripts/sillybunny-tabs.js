@@ -12289,14 +12289,17 @@ function buildShell(shellKey) {
 
     // For left shell, base tab is 'connections' (sys-settings-button content)
     // For right shell, base tab is 'appearance' (user-settings-button content)
+    // Phase 5: Interface and Messages tabs share the same content for now
+    let sharedUserSettings = null;
     if (shellKey === 'left') {
         const apiDrawer = document.getElementById('sys-settings-button');
         if (apiDrawer) {
             basePanel.scroller.appendChild(apiDrawer);
         }
     } else if (shellKey === 'right') {
-        // Appearance tab gets the UI settings content
-        basePanel.scroller.appendChild(originalContent);
+        // All three tabs (appearance, interface, messages) share user-settings-block for now
+        sharedUserSettings = originalContent;
+        basePanel.scroller.appendChild(sharedUserSettings);
         basePanel.ensureReady = initializeSettingsPanel;
         basePanel.onActivate = () => void initializeSettingsPanel().catch(error => {
             console.error('[SillyBunny] Could not initialize settings:', error);
@@ -12358,15 +12361,37 @@ function buildShell(shellKey) {
         }
 
         if (customTab.id === 'interface') {
-            // Interface tab - placeholder, will be populated in Part B
+            // Interface tab - shares user-settings-block content with Appearance/Messages
+            // Content is moved into this panel when the tab activates
             const interfacePanel = createShellPanel(customTab);
+            interfacePanel.ensureReady = initializeSettingsPanel;
+            interfacePanel.onActivate = () => {
+                if (sharedUserSettings && !interfacePanel.scroller.contains(sharedUserSettings)) {
+                    interfacePanel.scroller.appendChild(sharedUserSettings);
+                }
+                return initializeSettingsPanel().catch(error => {
+                    console.error('[SillyBunny] Could not initialize settings:', error);
+                    toastr.error(String(error.message || error));
+                });
+            };
             registerShellTab(shellKey, customTab, interfacePanel);
             continue;
         }
 
         if (customTab.id === 'messages') {
-            // Messages tab - placeholder, will be populated in Part B
+            // Messages tab - shares user-settings-block content with Appearance/Interface
+            // Content is moved into this panel when the tab activates
             const messagesPanel = createShellPanel(customTab);
+            messagesPanel.ensureReady = initializeSettingsPanel;
+            messagesPanel.onActivate = () => {
+                if (sharedUserSettings && !messagesPanel.scroller.contains(sharedUserSettings)) {
+                    messagesPanel.scroller.appendChild(sharedUserSettings);
+                }
+                return initializeSettingsPanel().catch(error => {
+                    console.error('[SillyBunny] Could not initialize settings:', error);
+                    toastr.error(String(error.message || error));
+                });
+            };
             registerShellTab(shellKey, customTab, messagesPanel);
             continue;
         }
