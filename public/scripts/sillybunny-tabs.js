@@ -12292,19 +12292,32 @@ function buildShell(shellKey) {
     // Phase 5: Interface and Messages tabs share the same content for now
     let sharedUserSettings = null;
     if (shellKey === 'left') {
-        const apiDrawer = document.getElementById('sys-settings-button');
-        if (apiDrawer) {
-            basePanel.scroller.appendChild(apiDrawer);
+        const apiDrawerPrep = prepareEmbeddedDrawer('sys-settings-button');
+        if (apiDrawerPrep) {
+            basePanel.scroller.appendChild(apiDrawerPrep.drawer);
         }
     } else if (shellKey === 'right') {
         // All three tabs (appearance, interface, messages) share user-settings-block for now
         sharedUserSettings = originalContent;
         basePanel.scroller.appendChild(sharedUserSettings);
+
+        // Also add backgrounds drawer to Appearance tab
+        const backgroundsPrep = prepareEmbeddedDrawer('backgrounds-button');
+        if (backgroundsPrep) {
+            basePanel.scroller.appendChild(backgroundsPrep.drawer);
+        }
+
         basePanel.ensureReady = initializeSettingsPanel;
-        basePanel.onActivate = () => void initializeSettingsPanel().catch(error => {
-            console.error('[SillyBunny] Could not initialize settings:', error);
-            toastr.error(String(error.message || error));
-        });
+        basePanel.onActivate = () => {
+            // Move shared content back to Appearance if it's not already there
+            if (sharedUserSettings && !basePanel.scroller.contains(sharedUserSettings)) {
+                basePanel.scroller.insertBefore(sharedUserSettings, basePanel.scroller.firstChild);
+            }
+            return initializeSettingsPanel().catch(error => {
+                console.error('[SillyBunny] Could not initialize settings:', error);
+                toastr.error(String(error.message || error));
+            });
+        };
     }
 
     registerShellTab(shellKey, shellConfig.baseTab, basePanel);
@@ -12345,11 +12358,11 @@ function buildShell(shellKey) {
 
         if (customTab.id === 'context') {
             // Context tab gets advanced formatting drawer content
-            const formattingDrawer = document.getElementById('advanced-formatting-button');
-            if (formattingDrawer) {
+            const formattingPrep = prepareEmbeddedDrawer('advanced-formatting-button');
+            if (formattingPrep) {
                 const contextPanel = createShellPanel(customTab);
-                contextPanel.scroller.appendChild(formattingDrawer);
-                registerShellTab(shellKey, customTab, contextPanel, formattingDrawer);
+                contextPanel.scroller.appendChild(formattingPrep.drawer);
+                registerShellTab(shellKey, customTab, contextPanel, formattingPrep.drawerContent);
             }
             continue;
         }
