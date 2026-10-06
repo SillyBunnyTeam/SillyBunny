@@ -2961,6 +2961,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
     padding: var(--sb-shell-panel-padding-block) var(--sb-shell-panel-padding-inline) 0;
+    background: var(--sb-layer-view);
 }
 
 /* The trailing gap belongs to the scroll content, not to the box, so the last card can

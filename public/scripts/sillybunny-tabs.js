@@ -6,7 +6,6 @@ import { initInstallNotice } from './sillybunny-install-notice.js';
 import {
     clampMobileShellText as clampText,
     createMobileShellLifecycle,
-    MOBILE_SHELL_NAV_TOGGLE_ACTION,
     normalizeMobileShellRailIcon as normalizeFontAwesomeIcon,
     normalizeMobileShellText as normalizeText,
 } from './mobile-shell-lifecycle/index.js';
@@ -3966,14 +3965,15 @@ function getTopbarGroupOrder({ iconsOnly, mobile }) {
     const quickAccessIds = SB_SHORTCUT_SLOTS.map(side => getShortcutButtonId(side));
     // The divider spans ride the order too; CSS decides when they are visible.
     const left = [
-        'sb-hamburger',
         workspace.leadId,
         workspace.railId,
         'sb-topbar-divider-customize',
         customize.leadId,
         customize.railId,
-        // SillyBunny: permanent search lives left of the quick-access divider — feat/v1.9.0-ui-overhaul
+        // SillyBunny: permanent search and mode toggle live left of the quick-access divider — feat/v1.9.0-ui-overhaul
+        'sb-topbar-divider-search-mode',
         'sb-topbar-search-toggle',
+        'sb-mode-toggle',
     ];
     // The extension slot leads the right group in every mode: syncTopbarGroupOrder() re-appends
     // every listed id, so an unlisted element would be pushed to the front of the group as a side
@@ -3991,9 +3991,8 @@ function getTopbarGroupOrder({ iconsOnly, mobile }) {
         right.push('sb-shortcut-slot6', 'sb-shortcut-slot5', 'sb-shortcut-right', 'sb-topbar-divider-quick-right');
     }
 
-    // SillyBunny: search and mode toggles move to right group, after quick-right divider,
-    // before Home — feat/v1.9.0-ui-overhaul
-    right.push('sb-mode-toggle', 'sb-home-toggle', 'sb-topbar-divider-home');
+    // SillyBunny: mode toggle moved to left group after search — feat/v1.9.0-ui-overhaul
+    right.push('sb-home-toggle', 'sb-topbar-divider-home');
 
     if (iconsOnly && mobile) {
         // The characters pages ride the strip, so the divider marks where they start there;
@@ -8382,27 +8381,13 @@ function buildTopBar() {
         attrs: { 'data-sb-topbar-slot-empty': 'true' },
     });
 
-    const mobileButton = createElement('button', {
-        id: 'sb-hamburger',
-        className: 'sb-proxy-button sb-mobile-toggle',
-        attrs: {
-            type: 'button',
-            title: 'Open navigation',
-            'aria-label': 'Open navigation',
-            'aria-expanded': 'false',
-        },
-    });
-    mobileButton.innerHTML = `<i class="fa-solid ${SB_MOBILE_NAV_CLOSED_ICON}" aria-hidden="true"></i>`;
-    stopProxyPointerPropagation(mobileButton);
-    mobileButton.addEventListener('click', toggleMobileNav);
-
     // SillyBunny: left/right shell toggles now open the full-screen settings page (feat/v1.9.0-ui-overhaul)
     const leftButton = createProxyButton(
         {
             id: 'sb-left-shell-toggle',
             icon: getShellConfig('left').proxyIcon,
             label: getShellConfig('left').proxyLabel,
-            title: 'Open workspace tools',
+            title: 'Open backend tools',
         },
         () => toggleSettingsPage('left'),
     );
@@ -8447,7 +8432,7 @@ function buildTopBar() {
             icon: leftShortcutConfig.icon,
             label: leftShortcutConfig.label,
             title: `Quick access: ${leftShortcutConfig.label}`,
-            className: 'sb-proxy-button-icon-only',
+            className: 'sb-proxy-button-icon-only sb-desktop-setting',
         },
         () => activateShortcutTarget(getShortcutTarget('left')),
     );
@@ -8460,7 +8445,7 @@ function buildTopBar() {
             icon: rightShortcutConfig.icon,
             label: rightShortcutConfig.label,
             title: `Quick access: ${rightShortcutConfig.label}`,
-            className: 'sb-proxy-button-icon-only',
+            className: 'sb-proxy-button-icon-only sb-desktop-setting',
         },
         () => activateShortcutTarget(getShortcutTarget('right')),
     );
@@ -8497,9 +8482,13 @@ function buildTopBar() {
     const charactersRail = buildTopbarPageRail(charactersCluster.railId, charactersCluster.pages);
     const customizeDivider = createTopbarClusterDivider('sb-topbar-divider-customize');
     const quickActionsLeftDivider = createTopbarClusterDivider('sb-topbar-divider-quick-left');
+    quickActionsLeftDivider.classList.add('sb-desktop-setting');
     const quickActionsRightDivider = createTopbarClusterDivider('sb-topbar-divider-quick-right');
+    quickActionsRightDivider.classList.add('sb-desktop-setting');
     const homeDivider = createTopbarClusterDivider('sb-topbar-divider-home');
     const charactersDivider = createTopbarClusterDivider('sb-topbar-divider-characters');
+    const searchModeDivider = createTopbarClusterDivider('sb-topbar-divider-search-mode');
+    searchModeDivider.classList.add('sb-mobile-setting');
 
     // SillyBunny: search toggle (left group, after Customize) + mode toggle (right group, before Home) — feat/v1.9.0-ui-overhaul
     const searchToggle = createProxyButton(
@@ -8535,8 +8524,8 @@ function buildTopBar() {
     );
     modeToggle.setAttribute('aria-haspopup', 'menu');
 
-    leftGroup.append(mobileButton, leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, searchToggle, quickActionsLeftDivider, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
-    rightGroup.append(extensionSlot, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, quickActionsRightDivider, modeToggle, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
+    leftGroup.append(leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, searchModeDivider, searchToggle, modeToggle, quickActionsLeftDivider, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
+    rightGroup.append(extensionSlot, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, quickActionsRightDivider, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 
@@ -12278,7 +12267,7 @@ function buildShell(shellKey) {
     shellRoot.appendChild(frame);
 
     const shellState = {
-        activeTabId: shellConfig.defaultTabId,
+        activeTabId: migrateTabId(shellKey, shellConfig.storageKey ? safeGetItem(shellConfig.storageKey) : null) || shellConfig.defaultTabId,
         tabs: new Map(),
         root: shellRoot,
     };
@@ -12611,21 +12600,6 @@ function bindWorldInfoRoute() {
         });
 }
 
-function activateMobileNavPageTarget(target) {
-    const config = getMobileNavReplacementTargetConfig(target);
-
-    closeMobileNav();
-
-    if (config.shellKey === 'characters') {
-        openCharacterPanelTab(config.tabId);
-        return;
-    }
-
-    if (config.shellKey && config.tabId) {
-        openShell(config.shellKey, config.tabId);
-    }
-}
-
 function updateMobileNavButtonLabel() {
     const button = document.getElementById('sb-hamburger');
     if (!(button instanceof HTMLElement)) {
@@ -12891,35 +12865,6 @@ function setMobileNavOpenState(isOpen) {
     } else if (navState.shouldRestoreButtonFocus) {
         button.focus({ preventScroll: true });
     }
-}
-
-function toggleMobileNav() {
-    const overlay = ensureMobileNavReady();
-
-    if (!(overlay instanceof HTMLElement)) {
-        return;
-    }
-
-    const isOpen = !overlay.hidden && overlay.getAttribute('aria-hidden') === 'false';
-    const toggleIntent = sbMobileShellLifecycle.nav.resolveToggleIntent({
-        isMobileViewport: isMobileViewport(),
-        isReplacementEnabled: sbState.mobileNav.replaceQuickActions,
-        isOpen,
-    });
-
-    if (toggleIntent.action === MOBILE_SHELL_NAV_TOGGLE_ACTION.ACTIVATE_PAGE_TARGET) {
-        activateMobileNavPageTarget(sbState.mobileNav.replacementTarget);
-        return;
-    }
-
-    if (toggleIntent.shouldCloseCompetingPanels) {
-        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
-            surface: sbMobileShellLifecycle.overlays.surface.NAV,
-            isMobileViewport: isMobileViewport(),
-        }));
-    }
-
-    setMobileNavOpenState(toggleIntent.action === MOBILE_SHELL_NAV_TOGGLE_ACTION.OPEN_NAV);
 }
 
 function closeMobileNav() {
