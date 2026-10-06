@@ -12171,7 +12171,6 @@ function setActiveTab(shellKey, tabId) {
     preloadPanelStylesheets(shellKey, tabId);
 
     const previousTab = shellState.tabs.get(shellState.activeTabId);
-    const previousPanel = previousTab?.panel;
     shellState.activeTabId = tabId;
     safeSetItem(shellConfig.storageKey, tabId);
 
@@ -12186,21 +12185,6 @@ function setActiveTab(shellKey, tabId) {
     queueTopbarPageStateSync();
 
     const activeTab = shellState.tabs.get(tabId);
-    const activePanel = activeTab?.panel;
-
-    // Cross-fade animation when switching tabs in the settings page
-    if (isSettingsPageHosting(shellKey) && previousPanel && activePanel && previousPanel !== activePanel) {
-        stopMotion(previousPanel);
-        stopMotion(activePanel);
-        animateOut(previousPanel, [
-            { opacity: 1 },
-            { opacity: 0 },
-        ], () => {}, { duration: MOTION_FAST });
-        animateIn(activePanel, [
-            { opacity: 0 },
-            { opacity: 1 },
-        ], { duration: MOTION_FAST, delay: 50 });
-    }
 
     if (previousTab && previousTab.id !== activeTab.id) {
         previousTab.onDeactivate?.();
