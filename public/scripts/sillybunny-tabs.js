@@ -8535,7 +8535,7 @@ function buildTopBar() {
             id: 'sb-left-shell-toggle',
             icon: getShellConfig('left').proxyIcon,
             label: getShellConfig('left').proxyLabel,
-            title: 'Open backend tools',
+            title: 'Open backend tools (Ctrl+U)',
         },
         () => toggleSettingsPage('left'),
     );
@@ -8545,7 +8545,7 @@ function buildTopBar() {
             id: 'sb-home-toggle',
             icon: 'fa-house',
             label: 'Home',
-            title: 'Return to the landing page',
+            title: 'Return to the landing page (Ctrl+O)',
         },
         () => {
             closeMobileNav();
@@ -8558,7 +8558,7 @@ function buildTopBar() {
             id: 'sb-right-shell-toggle',
             icon: getShellConfig('right').proxyIcon,
             label: getShellConfig('right').proxyLabel,
-            title: 'Open customization tools',
+            title: 'Open customization tools (Ctrl+I)',
         },
         () => toggleSettingsPage('right'),
     );
@@ -8568,7 +8568,7 @@ function buildTopBar() {
             id: 'sb-character-toggle',
             icon: 'fa-address-card',
             label: 'Characters',
-            title: 'Open character management',
+            title: 'Open character management (Ctrl+P)',
         },
         activateCharacterTopbarButton,
     );
@@ -15425,6 +15425,25 @@ function initModeToggle() {
 
 // ── Global keyboard shortcuts ────────────────────────────────────────────
 
+/**
+ * Keyboard routes for the top-bar destinations.
+ *
+ * Keys track the top bar left-to-right so the row reads as one memorised sequence. Bare `Ctrl`
+ * bindings are safe here because none of them are text-editing keys; `Ctrl+U` (view source) and
+ * `Ctrl+P` (print) can still be claimed by the browser first, and no page can prevent that, so the
+ * binding is best-effort rather than exclusive.
+ *
+ * The runs go through `openShell()` rather than the top bar's own `toggleSettingsPage()`, so they
+ * land on the remembered tab inside a section that is already open instead of closing it. There is
+ * no separate key for closing; Escape and the close button already cover that.
+ */
+const SB_SETTINGS_SHORTCUTS = Object.freeze([
+    { key: 'u', run: () => openShell('left') },
+    { key: 'i', run: () => openShell('right') },
+    { key: 'o', run: () => { closeMobileNav(); void returnToLandingPage(); } },
+    { key: 'p', run: () => openShell('characters') },
+]);
+
 function initSettingsKeyboardShortcuts() {
     if (document.documentElement.dataset.sbSettingsShortcutsBound === 'true') {
         return;
@@ -15435,15 +15454,24 @@ function initSettingsKeyboardShortcuts() {
     document.addEventListener('keydown', event => {
         const isMac = navigator.platform?.toUpperCase().includes('MAC');
         const ctrl = isMac ? event.metaKey : event.ctrlKey;
-        if (!ctrl) {
+        if (!ctrl || event.altKey) {
             return;
         }
 
-        if (event.key === 'f' || event.key === 'F') {
-            const active = document.activeElement;
-            const isEditable = active instanceof HTMLInputElement ||
-                active instanceof HTMLTextAreaElement ||
-                active?.isContentEditable;
+        const key = typeof event.key === 'string' ? event.key.toLowerCase() : '';
+        if (!key) {
+            return;
+        }
+
+        // `Ctrl+F` works inside a field on purpose: it opens search rather than the browser's own
+        // find, which cannot reach into the settings page. The destination shortcuts are the
+        // opposite -- while the user is typing, a stray `Ctrl+P` must not navigate away.
+        const active = document.activeElement;
+        const isEditable = active instanceof HTMLInputElement ||
+            active instanceof HTMLTextAreaElement ||
+            active?.isContentEditable === true;
+
+        if (key === 'f') {
             if (isEditable) {
                 return;
             }
@@ -15453,10 +15481,21 @@ function initSettingsKeyboardShortcuts() {
             return;
         }
 
-        if (event.key === 'm' || event.key === 'M') {
+        if (key === 'm') {
             event.preventDefault();
             toggleChatMode();
+            return;
         }
+
+        const shortcut = SB_SETTINGS_SHORTCUTS.find(entry => entry.key === key);
+        // Shift-qualified browser chords stay the browser's: `Ctrl+Shift+I` is DevTools inspect and
+        // `Ctrl+Shift+P` is Firefox private browsing, so the destination keys fire unshifted only.
+        if (!shortcut || isEditable || event.shiftKey) {
+            return;
+        }
+
+        event.preventDefault();
+        shortcut.run();
     });
 }
 
