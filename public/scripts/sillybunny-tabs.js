@@ -3970,7 +3970,8 @@ function getTopbarGroupOrder({ iconsOnly, mobile }) {
         'sb-topbar-divider-customize',
         customize.leadId,
         customize.railId,
-        // SillyBunny: permanent search lives left of the quick-access divider — feat/v1.9.0-ui-overhaul
+        // SillyBunny: permanent search lives left of the quick-access divider, mobile divider before it — feat/v1.9.0-ui-overhaul
+        'sb-topbar-divider-search-mobile',
         'sb-topbar-search-toggle',
     ];
     // The extension slot leads the right group in every mode: syncTopbarGroupOrder() re-appends
@@ -3990,7 +3991,7 @@ function getTopbarGroupOrder({ iconsOnly, mobile }) {
     }
 
     // SillyBunny: mode toggle stays in right group — feat/v1.9.0-ui-overhaul
-    right.push('sb-mode-toggle', 'sb-home-toggle', 'sb-topbar-divider-home');
+    right.push('sb-mode-toggle', 'sb-topbar-divider-mode-mobile', 'sb-home-toggle', 'sb-topbar-divider-home');
 
     if (iconsOnly && mobile) {
         // The characters pages ride the strip, so the divider marks where they start there;
@@ -8485,6 +8486,10 @@ function buildTopBar() {
     quickActionsRightDivider.classList.add('sb-desktop-setting');
     const homeDivider = createTopbarClusterDivider('sb-topbar-divider-home');
     const charactersDivider = createTopbarClusterDivider('sb-topbar-divider-characters');
+    const searchMobileDivider = createTopbarClusterDivider('sb-topbar-divider-search-mobile');
+    searchMobileDivider.classList.add('sb-mobile-setting');
+    const modeMobileDivider = createTopbarClusterDivider('sb-topbar-divider-mode-mobile');
+    modeMobileDivider.classList.add('sb-mobile-setting');
 
     // SillyBunny: search toggle (left group, after Customize) + mode toggle (right group, before Home) — feat/v1.9.0-ui-overhaul
     const searchToggle = createProxyButton(
@@ -8520,8 +8525,8 @@ function buildTopBar() {
     );
     modeToggle.setAttribute('aria-haspopup', 'menu');
 
-    leftGroup.append(leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, searchToggle, quickActionsLeftDivider, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
-    rightGroup.append(extensionSlot, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, quickActionsRightDivider, modeToggle, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
+    leftGroup.append(leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, searchMobileDivider, searchToggle, quickActionsLeftDivider, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
+    rightGroup.append(extensionSlot, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, quickActionsRightDivider, modeToggle, modeMobileDivider, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 
@@ -14595,6 +14600,14 @@ function openSettingsPage(shellKey, tabId = null) {
 
     page.classList.remove('sb-settings-page--content');
     sbSettingsState.mobileContentView = false;
+
+    // On mobile, if opening with a saved tab (not explicitly requested), show content immediately
+    // to avoid animating back to the sidebar after restoring the tab
+    if (isMobileViewport() && !tabId && resolvedTab && resolvedTab !== tabs[0]?.id) {
+        page.classList.add('sb-settings-page--content');
+        sbSettingsState.mobileContentView = true;
+    }
+
     document.documentElement.dataset.sbSettingsOpen = 'true';
 
     if (wasOpen) {

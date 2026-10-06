@@ -8182,6 +8182,7 @@ body.reduced-motion .sb-shell-main {
     height: 52px;
     border-bottom: 1px solid var(--sb-shell-border);
     gap: 12px;
+    background-color: #2e2e32;
 }
 
 /* Spacer balances the close button so the title stays centered */
