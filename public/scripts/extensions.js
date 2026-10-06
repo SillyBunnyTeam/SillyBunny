@@ -82,9 +82,6 @@ const extensionLoadErrors = new Set();
 const extensionSettingsHostIds = ['extensions_settings', 'extensions_settings2'];
 const ignoredExtensionSettingsSelectors = [];
 const ignoredExtensionSettingsSelector = ignoredExtensionSettingsSelectors.join(', ');
-const LEGACY_MOONLIT_ECHOES_SETTINGS_KEY = 'SillyTavernMoonlitEchoesTheme';
-const SILLYBUNNY_MOONLIT_ECHOES_EXTENSION_NAME = 'third-party/SillyBunny-MoonlitEchoesTheme';
-const MOONLIT_ECHOES_NOTICE_STORAGE_KEY = 'moonlit_echoes_moved_notice_v1';
 const LEGACY_BUNDLED_OPT_IN_EXTENSION_IDS = [
     'sillytavern-character-colors',
     'sillytavern-image-gen',
@@ -492,43 +489,6 @@ function applyBundledOptInDefaults({ migrateLegacy = false, initializeProcessedI
     }
 
     return changed;
-}
-
-function maybeShowMoonlitEchoesMovedNotice() {
-    const moonlitSettings = extension_settings[LEGACY_MOONLIT_ECHOES_SETTINGS_KEY];
-    if (!moonlitSettings || typeof moonlitSettings !== 'object' || moonlitSettings.enabled !== true) {
-        return;
-    }
-
-    const forkExtension = findExtension(SILLYBUNNY_MOONLIT_ECHOES_EXTENSION_NAME);
-    if (forkExtension?.enabled || accountStorage.getItem(MOONLIT_ECHOES_NOTICE_STORAGE_KEY) === 'true') {
-        return;
-    }
-
-    const message = forkExtension
-        ? t`Moonlit Echoes moved out of SillyBunny core. Your settings were left unchanged; enable the SillyBunny Moonlit Echoes Theme extension to keep Moonlit styles active.`
-        : t`Moonlit Echoes moved out of SillyBunny core. Your settings were left unchanged; install the SillyBunny Moonlit Echoes Theme from Launchpad optional installs to keep Moonlit styles active.`;
-
-    const buttonClass = 'moonlit-echoes-launchpad-button';
-    const content = `${message}<br><button type="button" class="menu_button ${buttonClass}">${t`Show in Launchpad`}</button>`;
-    toastr.warning(content, t`Moonlit Echoes moved`, {
-        timeOut: 0,
-        extendedTimeOut: 0,
-        tapToDismiss: false,
-        closeButton: true,
-        escapeHtml: false,
-        onShown() {
-            const toast = this instanceof HTMLElement ? this : this?.[0];
-            const button = toast?.querySelector?.(`.${buttonClass}`);
-            button?.addEventListener('click', async () => {
-                accountStorage.setItem(MOONLIT_ECHOES_NOTICE_STORAGE_KEY, 'true');
-                await globalThis.SillyBunnyShell?.highlightLaunchpadItem?.(SILLYBUNNY_MOONLIT_ECHOES_EXTENSION_NAME);
-            });
-        },
-        onCloseClick() {
-            accountStorage.setItem(MOONLIT_ECHOES_NOTICE_STORAGE_KEY, 'true');
-        },
-    });
 }
 
 function showHideExtensionsMenu() {
@@ -2335,7 +2295,6 @@ export async function loadExtensionSettings(settings, versionChanged, enableAuto
 
     scheduleExtensionAssetPrefetch();
 
-    maybeShowMoonlitEchoesMovedNotice();
     if (versionChanged && enableAutoUpdate) {
         await autoUpdateExtensions(false);
     }

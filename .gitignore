@@ -17,8 +17,6 @@ public/instruct/
 public/context/
 public/scripts/extensions/third-party/*
 !public/scripts/extensions/third-party/.gitkeep
-!public/scripts/extensions/third-party/SillyTavern-MoonlitEchoesTheme/
-!public/scripts/extensions/third-party/SillyTavern-MoonlitEchoesTheme/**
 public/stats.json
 /uploads/
 *.jsonl

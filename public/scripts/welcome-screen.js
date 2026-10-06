@@ -68,10 +68,6 @@ const STARTER_PACK_EXTENSIONS = Object.freeze({
         id: 'third-party/SillyBunny-CssSnippets',
         repoUrl: 'https://github.com/SillyBunnyTeam/SillyBunny-CssSnippets',
     }),
-    moonlitEchoes: Object.freeze({
-        id: 'third-party/SillyBunny-MoonlitEchoesTheme',
-        repoUrl: 'https://github.com/platberlitz/SillyBunny-MoonlitEchoesTheme',
-    }),
     terminalUi: Object.freeze({
         id: 'third-party/SillyBunny-Terminal-UI',
         repoUrl: 'https://github.com/SillyBunnyTeam/SillyBunny-Terminal-UI',
@@ -83,10 +79,6 @@ const STARTER_PACK_EXTENSIONS = Object.freeze({
     laLib: Object.freeze({
         id: 'third-party/SillyTavern-LALib',
         repoUrl: 'https://github.com/LenAnderson/SillyTavern-LALib',
-    }),
-    adhdBunnyUi: Object.freeze({
-        id: 'third-party/ADHDBunny-UI',
-        repoUrl: 'https://github.com/OnlyJimmy/ADHDBunny-UI',
     }),
     promptingLab: Object.freeze({
         id: 'third-party/SillyBunny-Prompting-Lab',
@@ -987,12 +979,6 @@ function buildStarterPackItems() {
                 extensionName: STARTER_PACK_EXTENSIONS.cssSnippets.id,
             }),
             buildExtensionStarterPackItem({
-                title: 'Moonlit Echoes Theme',
-                body: 'A popular CSS theme originally designed for SillyTavern with a clean and modern design, adapted for use in SillyBunny.',
-                icon: 'fa-moon',
-                extensionName: STARTER_PACK_EXTENSIONS.moonlitEchoes.id,
-            }),
-            buildExtensionStarterPackItem({
                 title: 'SillyBunny Terminal UI',
                 body: 'A CSS theme that mimics a traditional terminal emulator interface. This keeps the native chat window and implements a forward-facing slash-command system, reducing the surrounding UI to a tmux-style statusline.',
                 icon: 'fa-terminal',
@@ -1059,12 +1045,6 @@ function buildStarterPackItems() {
                 body: 'A library of STScript commands - a common dependency for many popular SillyTavern extensions.',
                 icon: 'fa-toolbox',
                 extensionName: STARTER_PACK_EXTENSIONS.laLib.id,
-            }),
-            buildExtensionStarterPackItem({
-                title: 'ADHDBunny UI',
-                body: 'An optional CSS theme for SillyBunny which further simplifies the graphical shell and user interface. Developed by Jimmy.',
-                icon: 'fa-rabbit',
-                extensionName: STARTER_PACK_EXTENSIONS.adhdBunnyUi.id,
             }),
         ],
     };
