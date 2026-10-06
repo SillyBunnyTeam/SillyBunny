@@ -8329,6 +8329,11 @@ body.reduced-motion .sb-shell-main {
 #sb-settings-shell-host > .sb-settings-mounted-shell .sb-shell-main {
     width: 100%;
     height: 100%;
+    background: var(--sb-layer-view);
+}
+
+#sb-settings-shell-host > .sb-settings-mounted-shell .sb-shell-main::before {
+    display: none;
 }
 
 /* ── Phase 1: topbar search and mode buttons ────────────────────────────── */
