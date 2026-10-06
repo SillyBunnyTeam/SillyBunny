@@ -62,6 +62,7 @@ import multerMonkeyPatch from './middleware/multerMonkeyPatch.js';
 import initRequestProxy from './request-proxy.js';
 import initPrivateRequestFilter from './private-request-filter.js';
 import cacheBuster from './middleware/cacheBuster.js';
+import restartCacheClear from './middleware/restartCacheClear.js';
 import corsProxyMiddleware from './middleware/corsProxy.js';
 import hostWhitelistMiddleware from './middleware/hostWhitelist.js';
 import userCssMiddleware from './middleware/userCss.js';
@@ -377,7 +378,7 @@ if (!cliArgs.disableCsrf) {
 
 // Static files
 // Host index page
-app.get('/', cacheBuster.middleware, (request, response) => {
+app.get('/', restartCacheClear, cacheBuster.middleware, (request, response) => {
     if (shouldRedirectToLogin(request)) {
         const query = request.url.split('?')[1];
         const redirectUrl = query ? `/login?${query}` : '/login';

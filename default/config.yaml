@@ -311,6 +311,13 @@ cacheBuster:
   # Example: 'firefox|safari' (case-insensitive)
   userAgentPattern: ''
 
+# RESTART CACHE CLEAR CONFIGURATION
+# Clears each browser's cache twice after every server start (restart, update, crash or manual relaunch),
+# so stale scripts and styles are never served after an update. Saved settings, chats and cookies are kept.
+# Requires localhost or HTTPS, like the cache buster above.
+restartCacheClear:
+  enabled: true
+
 # Allow secret keys exposure via API
 allowKeysExposure: false
 # Skip new default content checks
