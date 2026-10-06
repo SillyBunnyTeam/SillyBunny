@@ -1388,6 +1388,16 @@ body:not(.movingUI) .drawer-content.maximized {
     display: none;
 }
 
+/* Mobile-only dividers: search (left of search button) and mode (right of mode button).
+   These appear on mobile regardless of icons-only mode to visually separate utility buttons
+   from the main menu tabs. Hidden on desktop via sb-mobile-setting class. */
+@media screen and (max-width: 768px) {
+    #sb-topbar-divider-search-mobile,
+    #sb-topbar-divider-mode-mobile {
+        display: inline-block;
+    }
+}
+
 :root[data-sb-topbar-icons-only='true'] .sb-topbar-cluster-divider + .sb-topbar-cluster-lead {
     margin-inline-start: 0;
 }
@@ -1667,6 +1677,7 @@ body:not(.movingUI) .drawer-content.maximized {
     scrollbar-gutter: stable;
     padding-inline-end: var(--sb-character-scroll-gutter, 8px);
     -webkit-overflow-scrolling: touch;
+    background: var(--sb-layer-view);
 }
 
 #right-nav-panel.openDrawer #rm_print_characters_block,
@@ -8248,6 +8259,7 @@ body.reduced-motion .sb-shell-main {
     height: 100%;
     min-height: 0;
     overflow: hidden;
+    background: var(--sb-layer-view);
 }
 
 /* Inactive hosted roots stay in place but skip rendering, so switching sections is cheap. */

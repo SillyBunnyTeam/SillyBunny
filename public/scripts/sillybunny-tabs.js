@@ -8231,7 +8231,7 @@ function observeProxyButton(buttonId, iconSelector) {
 
 function activateCharacterTopbarButton() {
     // SillyBunny: route through the full-screen settings page for consistency (feat/v1.9.0-ui-overhaul)
-    toggleSettingsPage('characters', SB_CHARACTER_PANEL_DEFAULT_TAB);
+    toggleSettingsPage('characters');
 }
 
 function buildUniversalSearchRow() {
@@ -14563,7 +14563,7 @@ function openSettingsPage(shellKey, tabId = null) {
 
     const tabs = getSettingsPageTabs(shellKey);
     const resolvedTab = tabs.find(tab => tab.id === tabId)?.id
-        ?? (shellKey === 'characters' ? SB_CHARACTER_PANEL_DEFAULT_TAB : getShellState(shellKey)?.activeTabId)
+        ?? (shellKey === 'characters' ? sbState.characterDrawer.lastTab : getShellState(shellKey)?.activeTabId)
         ?? getShellConfig(shellKey)?.defaultTabId
         ?? tabs[0]?.id
         ?? null;
@@ -14601,8 +14601,10 @@ function openSettingsPage(shellKey, tabId = null) {
     page.classList.remove('sb-settings-page--content');
     sbSettingsState.mobileContentView = false;
 
-    // On mobile, if opening with a saved tab (not explicitly requested), show content immediately
-    // to avoid animating back to the sidebar after restoring the tab
+    // On mobile, if opening with a saved tab (not explicitly requested and not the default),
+    // show content immediately to avoid animating back to the sidebar after restoring the tab.
+    // But don't activate content view if explicitly opening the section (tabId provided) - let
+    // the user see the sidebar first.
     if (isMobileViewport() && !tabId && resolvedTab && resolvedTab !== tabs[0]?.id) {
         page.classList.add('sb-settings-page--content');
         sbSettingsState.mobileContentView = true;
