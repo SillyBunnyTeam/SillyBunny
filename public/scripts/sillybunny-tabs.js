@@ -12247,6 +12247,123 @@ function closeShell(shellKey) {
     }
 }
 
+/**
+ * Split user-settings-block content into Appearance, Interface, and Messages tabs.
+ * Phase 5 Part B: reorganize the mega-settings panel into logical groups.
+ */
+function splitUserSettingsContent() {
+    const userSettingsBlock = document.getElementById('user-settings-block');
+    if (!userSettingsBlock) {
+        return { appearance: null, interface: null, messages: null };
+    }
+
+    // Appearance tab: themes, backgrounds, visual preferences
+    const appearanceSections = [
+        'SillyTavernImportSection',
+        'AppearanceSection',
+        'AppearanceLayoutSection',
+        'ThemeTogglesSection',
+    ];
+
+    // Interface tab: UI behavior, power user, desktop/mobile settings
+    const interfaceSections = [
+        'DesktopSection',
+        'MobileSection',
+    ];
+
+    // Messages tab: message handling, character interactions, streaming
+    const messagesSections = [
+        'ChatCharactersSection',
+        'ChatMessageHandlingSection',
+    ];
+
+    // Create containers for each new tab
+    const appearanceContent = document.createElement('div');
+    appearanceContent.className = 'flex-container flexFlowColumn';
+    appearanceContent.id = 'sb-appearance-content';
+
+    const interfaceContent = document.createElement('div');
+    interfaceContent.className = 'flex-container flexFlowColumn';
+    interfaceContent.id = 'sb-interface-content';
+
+    const messagesContent = document.createElement('div');
+    messagesContent.className = 'flex-container flexFlowColumn';
+    messagesContent.id = 'sb-messages-content';
+
+    // Move sections to appropriate containers
+    for (const sectionId of appearanceSections) {
+        const section = document.getElementById(sectionId);
+        if (section) {
+            appearanceContent.appendChild(section);
+        }
+    }
+
+    // Also add backgrounds drawer to appearance
+    const backgroundsDrawer = document.getElementById('backgrounds-button');
+    if (backgroundsDrawer) {
+        appearanceContent.appendChild(backgroundsDrawer);
+    }
+
+    for (const sectionId of interfaceSections) {
+        const section = document.getElementById(sectionId);
+        if (section) {
+            interfaceContent.appendChild(section);
+        }
+    }
+
+    for (const sectionId of messagesSections) {
+        const section = document.getElementById(sectionId);
+        if (section) {
+            messagesContent.appendChild(section);
+        }
+    }
+
+    // Find and move other settings (custom CSS, fonts, autocomplete, STscript, etc.)
+    // These are inline-drawers without section IDs, so we look for them by content
+    const allInlineDrawers = userSettingsBlock.querySelectorAll('.inline-drawer');
+    for (const drawer of allInlineDrawers) {
+        // Skip if already moved
+        if (appearanceContent.contains(drawer) || interfaceContent.contains(drawer) || messagesContent.contains(drawer)) {
+            continue;
+        }
+
+        const header = drawer.querySelector('.inline-drawer-toggle');
+        if (!header) continue;
+
+        const headerText = header.textContent.toLowerCase();
+
+        // Appearance-related: custom CSS, fonts, backgrounds
+        if (headerText.includes('custom css') || headerText.includes('font') || headerText.includes('background')) {
+            appearanceContent.appendChild(drawer);
+        } else if (headerText.includes('autocomplete') || headerText.includes('stscript') || headerText.includes('power user')) {
+            // Interface-related: autocomplete, STscript, power user
+            interfaceContent.appendChild(drawer);
+        } else if (headerText.includes('auto-reject') || headerText.includes('continue') || headerText.includes('message')) {
+            // Messages-related: auto-reject, continue, message handling
+            messagesContent.appendChild(drawer);
+        }
+    }
+
+    // Move utility sections (account controls, cache management, language selector)
+    const utilityElements = [
+        userSettingsBlock.querySelector('[name="userSettingsRowOne"]'),
+        userSettingsBlock.querySelector('[name="UserSettingsRowTwo"]'),
+        userSettingsBlock.querySelector('#user-settings-utility-actions'),
+    ];
+
+    for (const el of utilityElements) {
+        if (el) {
+            interfaceContent.insertBefore(el, interfaceContent.firstChild);
+        }
+    }
+
+    return {
+        appearance: appearanceContent,
+        interface: interfaceContent,
+        messages: messagesContent,
+    };
+}
+
 function buildShell(shellKey) {
     const shellConfig = getShellConfig(shellKey);
     const shellRoot = document.getElementById(shellConfig.rootPanelId);
@@ -12288,15 +12405,19 @@ function buildShell(shellKey) {
     const basePanel = createShellPanel(shellConfig.baseTab);
 
     // For left shell, base tab is 'connections' (sys-settings-button content)
-    // For right shell, base tab is 'appearance' (user-settings-button content)
+    // For right shell, base tab is 'appearance' (split user-settings-button content)
+    let splitContent = null;
     if (shellKey === 'left') {
         const apiDrawer = document.getElementById('sys-settings-button');
         if (apiDrawer) {
             basePanel.scroller.appendChild(apiDrawer);
         }
     } else if (shellKey === 'right') {
-        // Appearance tab gets the UI settings content
-        basePanel.scroller.appendChild(originalContent);
+        // Split the user-settings-block content into three logical tabs
+        splitContent = splitUserSettingsContent();
+        if (splitContent.appearance) {
+            basePanel.scroller.appendChild(splitContent.appearance);
+        }
         basePanel.ensureReady = initializeSettingsPanel;
         basePanel.onActivate = () => void initializeSettingsPanel().catch(error => {
             console.error('[SillyBunny] Could not initialize settings:', error);
@@ -12358,16 +12479,24 @@ function buildShell(shellKey) {
         }
 
         if (customTab.id === 'interface') {
-            // Interface tab - placeholder, will be populated in Part B
+            // Interface tab gets UI behavior and power user settings
             const interfacePanel = createShellPanel(customTab);
-            registerShellTab(shellKey, customTab, interfacePanel);
+            if (splitContent?.interface) {
+                interfacePanel.scroller.appendChild(splitContent.interface);
+            }
+            interfacePanel.ensureReady = initializeSettingsPanel;
+            registerShellTab(shellKey, customTab, interfacePanel, splitContent?.interface);
             continue;
         }
 
         if (customTab.id === 'messages') {
-            // Messages tab - placeholder, will be populated in Part B
+            // Messages tab gets message handling and character interaction settings
             const messagesPanel = createShellPanel(customTab);
-            registerShellTab(shellKey, customTab, messagesPanel);
+            if (splitContent?.messages) {
+                messagesPanel.scroller.appendChild(splitContent.messages);
+            }
+            messagesPanel.ensureReady = initializeSettingsPanel;
+            registerShellTab(shellKey, customTab, messagesPanel, splitContent?.messages);
             continue;
         }
 
