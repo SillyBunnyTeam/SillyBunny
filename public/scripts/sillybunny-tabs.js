@@ -77,7 +77,9 @@ function initializeSettingsPanel() {
     settingsPanelPromise ??= loadSettingsTabsModule().then(module => {
         injectThemePicker();
         injectSillyTavernImportCard();
-        module.initializeSettingsTabs();
+        // Don't call module.initializeSettingsTabs() - it creates conflicting tab UI
+        // Instead, just open all inline-drawers so content is visible
+        openAllInlineDrawers();
         applyDefaultDrawerStates();
         const tab = getShellState('right')?.tabs.get('settings');
         if (tab) tab.searchIndex = null;
@@ -86,6 +88,22 @@ function initializeSettingsPanel() {
         throw error;
     });
     return settingsPanelPromise;
+}
+
+function openAllInlineDrawers() {
+    const content = document.getElementById('user-settings-block-content');
+    if (!content) return;
+
+    // Open all inline-drawer sections so their content is visible
+    content.querySelectorAll('.inline-drawer').forEach(drawer => {
+        const toggle = drawer.querySelector(':scope > .inline-drawer-toggle');
+        const drawerContent = drawer.querySelector(':scope > .inline-drawer-content');
+        if (toggle && drawerContent) {
+            toggle.setAttribute('aria-expanded', 'true');
+            toggle.classList.add('openDrawer');
+            drawerContent.style.display = '';
+        }
+    });
 }
 
 async function prepareShellSearch() {
