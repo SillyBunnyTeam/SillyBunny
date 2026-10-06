@@ -7988,6 +7988,7 @@ body.reduced-motion .sb-shell-main {
     height: 52px;
     border-bottom: 1px solid var(--sb-shell-border);
     gap: 4px;
+    background-color: #2e2e32;
 }
 
 #sb-settings-sidebar-title {
@@ -8108,6 +8109,7 @@ body.reduced-motion .sb-shell-main {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    background-color: #2e2e32;
 }
 
 .sb-settings-tab {
