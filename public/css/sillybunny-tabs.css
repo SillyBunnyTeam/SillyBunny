@@ -8146,6 +8146,25 @@ body.reduced-motion .sb-shell-main {
     display: none;
 }
 
+/* A tab revealed by a section hit rather than by its own name. Muted so it reads as secondary to
+   a label hit, and preceded by a rule so the two groups stay legible when both are present. */
+.sb-settings-tab.sb-settings-tab--by-content {
+    color: var(--sb-shell-text-secondary);
+    opacity: 0.72;
+}
+
+.sb-settings-tab.sb-settings-tab--by-content:first-of-type {
+    border-top: 1px solid color-mix(in srgb, var(--sb-shell-border) 60%, transparent);
+    margin-top: 4px;
+    padding-top: 12px;
+}
+
+@media (hover: hover) {
+    .sb-settings-tab.sb-settings-tab--by-content:hover {
+        opacity: 1;
+    }
+}
+
 .sb-settings-tab-empty {
     margin: 8px 12px;
     color: var(--sb-shell-text-secondary);

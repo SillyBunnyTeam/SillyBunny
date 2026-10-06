@@ -792,6 +792,26 @@ const SB_SEARCH_TARGET_SELECTOR = [
     '.ch_name',
 ].join(', ');
 
+/**
+ * Subset of `SB_SEARCH_TARGET_SELECTOR` that reads as a section name rather than a control.
+ *
+ * The sidebar treats a hit here as specific enough to reveal a tab, because the tab's name is
+ * unlikely to be on screen while the section it holds is discoverable. Everything else the index
+ * collects — individual checkboxes, selects, buttons — is a leaf control whose match says very
+ * little about the tab, so it is left to the universal search panel, which is built for browsing.
+ */
+const SB_SIDEBAR_SECTION_MATCH_SELECTOR = [
+    'h3',
+    'h4',
+    'h5',
+    '.standoutHeader',
+    '.range-block-title',
+    '.range-block-header',
+    '.extension_name',
+    '.inline-drawer-toggle',
+    '.ch_name',
+].join(', ');
+
 const SB_UNIVERSAL_SEARCH_PLACEHOLDER = 'Type to search...';
 const SB_UNIVERSAL_SEARCH_IDLE_TITLE = 'Search all settings';
 const SB_UNIVERSAL_SEARCH_IDLE_HINT = 'Jump to any workspace or customization control from one place.';
@@ -11878,6 +11898,10 @@ function collectGlobalSearchMatches(query, { limit = SB_UNIVERSAL_SEARCH_RESULT_
                     ...entry,
                     shellKey,
                     shellLabel,
+                    // Whether the hit sits on a section-name element. The universal search panel
+                    // ignores this; the sidebar needs it to tell a page-level hit from a control.
+                    headingMatch: entry.element instanceof HTMLElement
+                        && entry.element.matches(SB_SIDEBAR_SECTION_MATCH_SELECTOR),
                     score: Number(exactMatch) * 100 + Number(startsWithQuery) * 10 - entry.displayText.length / 1000,
                 };
                 const matchKey = [
@@ -15192,10 +15216,19 @@ async function filterSettingsSidebarTabs(rawQuery) {
         for (const button of tabList.querySelectorAll('.sb-settings-tab')) {
             const label = button.textContent ?? '';
             const tabId = button.dataset.sbSettingsTab;
-            const isMatch = !query || settingsTabLabelMatches(label, query) || contentMatches.has(tabId);
+            const labelMatch = Boolean(query) && settingsTabLabelMatches(label, query);
+            // Label hits always keep their tab. A content hit only reveals a tab when the label
+            // itself did not match, so typing "Logs" opens Logs rather than every tab that happens
+            // to mention logs somewhere in its body.
+            const isMatch = !query || labelMatch || contentMatches.has(tabId);
+            const byContent = Boolean(query) && isMatch && !labelMatch;
             button.classList.toggle('sb-settings-tab--filtered', !isMatch);
+            button.classList.toggle('sb-settings-tab--by-content', byContent);
             button.setAttribute('aria-hidden', String(!isMatch));
             button.tabIndex = isMatch ? 0 : -1;
+            // Label hits render above content hits; `order` does it without touching DOM order,
+            // which keeps keyboard traversal stable while a filter is active.
+            button.style.order = !query || labelMatch ? '0' : '1';
             visibleCount += Number(isMatch);
         }
 
@@ -15224,7 +15257,7 @@ async function filterSettingsSidebarTabs(rawQuery) {
     const contentMatches = new Set();
     for (const match of collectGlobalSearchMatches(query, { limit: Infinity })) {
         const matchShell = match.shellKey === 'left' && match.tabId === 'world-info' ? 'characters' : match.shellKey;
-        if (matchShell === shellKey && match.tabId) {
+        if (matchShell === shellKey && match.tabId && match.headingMatch === true) {
             contentMatches.add(match.tabId);
         }
     }
