@@ -2997,10 +2997,9 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     gap: var(--sb-shell-section-gap);
 }
 
-/* Customize tab content. Phase 6A splits the settings across per-tab containers, so the layout
-   rules that used to hang off `#user-settings-block-content` follow the content into
-   `.sb-settings-tab-content`. The legacy block keeps its own rules below for the shared
-   remainder and for the emptied shell. */
+/* Customize tab content. The Phase 6 split gives each Customize tab its own container, so the
+   layout that used to hang off `#user-settings-block-content` follows the content into
+   `.sb-settings-tab-content`. The legacy block is no longer painted. */
 .sb-shell-root-right .sb-settings-tab-content {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -3017,25 +3016,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 .sb-shell-root-right .sb-settings-tab-content .flex-container,
 .sb-shell-root-right .sb-settings-tab-content .inline-drawer-content {
-    min-width: 0;
-}
-
-.sb-shell-root-right #user-settings-block-content {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--sb-shell-section-gap);
-}
-
-:root[data-sb-compact-mode='true'] .sb-shell-root-right #user-settings-block-content {
-    gap: var(--sb-shell-section-gap);
-}
-
-.sb-shell-root-right #user-settings-block-content > * {
-    min-width: 0;
-}
-
-.sb-shell-root-right #user-settings-block-content .flex-container,
-.sb-shell-root-right #user-settings-block-content .inline-drawer-content {
     min-width: 0;
 }
 
@@ -8543,10 +8523,9 @@ body.reduced-motion .sb-shell-main {
 
 /* ── Phase 2: settings page contextual overrides (feat/v1.9.0-ui-overhaul) ─ */
 
-/* Legacy header rows and settings search bar are hidden — sidebar handles section navigation */
-.sb-settings-mounted-shell #user-settings-block [name="userSettingsRowOne"],
-.sb-settings-mounted-shell #user-settings-block [name="UserSettingsRowTwo"],
-.sb-settings-mounted-shell #user-settings-block #user-settings-utility-actions {
+/* The legacy settings column holds no settings after the Phase 6 split — it is left in the
+   document so ids like #user-settings-block-content stay resolvable, but nothing paints it. */
+.sb-settings-mounted-shell .sb-legacy-settings-remainder {
     display: none !important;
 }
 

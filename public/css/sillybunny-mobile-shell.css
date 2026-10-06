@@ -1498,7 +1498,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         gap: 14px;
     }
 
-    .sb-shell-root-right #user-settings-block-content {
+    .sb-shell-root-right .sb-settings-tab-content {
         gap: 16px;
     }
 

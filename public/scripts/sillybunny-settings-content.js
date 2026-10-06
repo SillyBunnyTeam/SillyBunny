@@ -1,10 +1,10 @@
 /**
- * SillyBunny settings content split (feat/v1.9.0-ui-overhaul, Phases 6A and 6B).
+ * SillyBunny settings content split (feat/v1.9.0-ui-overhaul, Phases 6A, 6B and 6C).
  *
  * The Customize section hosts three sidebar tabs — Appearance, Interface, and Messages — that
  * previously shared the single `#user-settings-block` markup, moved between panels on every tab
- * switch. Each phase extracts one tab's content into its own permanent container, leaving what
- * remains in a shared block that the not-yet-split tabs still route.
+ * switch. Each phase extracts one tab's content into its own permanent container; 6C moves the
+ * last share, so after the split the legacy block holds no settings and is left unpainted.
  *
  * Sections are relocated with `appendChild`, which preserves node identity, so event handlers,
  * jQuery data, and SillyTavern's own settings bindings survive the move. Nothing is cloned and no
@@ -44,6 +44,10 @@ const SB_STREAMING_CONTROL_IDS = Object.freeze([
  * whole, but `[name="MiscellaneousToggles"]` cannot: it interleaves message and stream controls
  * with Interface-only toggles in one group, so it is dismantled and only the message-related
  * children are taken. What is left behind stays for 6C to claim.
+ *
+ * 6C populates Interface with everything remaining, so the order of the keys matters: Appearance and
+ * Messages both reach inside subtrees that Interface takes whole (`#CustomCSS-block` and
+ * `#GoogleFont-block` live under `#power-user-options-block`), so they have to run first.
  */
 const SB_SETTINGS_TAB_SECTIONS = Object.freeze({
     appearance: Object.freeze([
@@ -60,6 +64,14 @@ const SB_SETTINGS_TAB_SECTIONS = Object.freeze({
         '[name="AggressiveDomUnloadToggles"]',
         '#play_message_sound',
         '#play_sound_unfocused',
+    ]),
+    interface: Object.freeze([
+        '#UI-language-block',
+        '#version_display',
+        '#account_controls',
+        '#user-settings-utility-actions',
+        '[name="MiscellaneousToggles"]',
+        '#power-user-options-block',
     ]),
 });
 
@@ -85,6 +97,14 @@ const SB_REQUIRED_SECTIONS = Object.freeze({
         'play_message_sound',
         'play_sound_unfocused',
     ]),
+    interface: Object.freeze([
+        'UI-language-block',
+        'version_display',
+        'account_controls',
+        'user-settings-utility-actions',
+        'MiscellaneousToggles',
+        'power-user-options-block',
+    ]),
 });
 
 /**
@@ -108,12 +128,12 @@ function detach(element) {
  * inside a `<label class="checkbox_label">`, and it is the label that reads as a settings row, so
  * the closest one is returned instead -- moving the bare input would strand its label text.
  *
- * @param {HTMLElement} contentBlock
+ * @param {HTMLElement} scope element searched for the selector
  * @param {string} selector
  * @returns {HTMLElement|null}
  */
-function resolveSectionTarget(contentBlock, selector) {
-    const found = contentBlock.querySelector(selector);
+function resolveSectionTarget(scope, selector) {
+    const found = scope.querySelector(selector);
     if (!found) {
         return null;
     }
@@ -128,10 +148,14 @@ function resolveSectionTarget(contentBlock, selector) {
 /**
  * Creates the tab containers and moves each tab's sections into its own.
  *
- * Resolution happens against the original content block before anything is appended, so a section
- * is detached before its container moves and the two stay independent. The remaining sections are
- * left exactly where they were authored; the caller keeps mounting that shared block for the tabs
- * that still rely on it.
+ * Resolution happens against the whole original column, not just `#user-settings-block-content`:
+ * the language, version and account controls live in the header rows and the cache controls are a
+ * sibling of the block, so the narrower scope cannot see them. The block is still required to be
+ * present, which keeps the wider scope honest when the markup it expects is missing.
+ *
+ * Everything is detached before it is appended, so a section is out of its old parent before its
+ * new container is placed. Once every tab has run the block holds no settings; the caller is
+ * responsible for leaving it in the document but unpainted.
  *
  * @param {HTMLElement} originalContent wrapper holding the original settings markup
  * @returns {{appearance: HTMLElement, interface: HTMLElement, messages: HTMLElement, missing: string[]}|null}
@@ -153,7 +177,7 @@ export function splitUserSettingsContent(originalContent) {
 
     for (const [tabId, selectors] of Object.entries(SB_SETTINGS_TAB_SECTIONS)) {
         for (const selector of selectors) {
-            const section = detach(resolveSectionTarget(contentBlock, selector));
+            const section = detach(resolveSectionTarget(originalContent, selector));
             if (section) {
                 containers[tabId].appendChild(section);
             }

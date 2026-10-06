@@ -110,33 +110,25 @@ function invalidateUserSettingsTabSearchIndexes() {
 /**
  * Every root that holds Customize settings content, in the order a user sees them.
  *
- * Phase 6A moves the Appearance sections into `#sb-appearance-content` while the rest of the
- * settings stay in `#user-settings-block-content`, so both are live roots at once. Callers that
- * scope work to settings content must therefore cover the union; covering only the containers
- * would silently skip everything Interface and Messages still mount.
+ * Phase 6C gives each Customize tab its own container, so the three containers are the live roots.
+ * The legacy block is kept on the list last because it stays in the document and third-party
+ * drawers still append into it; it has no settings left, so it contributes nothing in practice.
  *
  * @returns {HTMLElement[]}
  */
 function getUserSettingsContentRoots() {
     const roots = [];
 
-    const appearanceContainer = document.getElementById(SB_USER_SETTINGS_CONTAINER_IDS.appearance);
-    if (appearanceContainer instanceof HTMLElement) {
-        roots.push(appearanceContainer);
-    }
-
-    // The shared remainder: still the whole settings block after 6A, and the emptied shell once
-    // later phases finish moving its sections into the Interface and Messages containers.
-    const legacyBlock = document.getElementById('user-settings-block-content');
-    if (legacyBlock instanceof HTMLElement) {
-        roots.push(legacyBlock);
-    }
-
-    for (const tabId of ['interface', 'messages']) {
+    for (const tabId of ['appearance', 'interface', 'messages']) {
         const container = document.getElementById(SB_USER_SETTINGS_CONTAINER_IDS[tabId]);
         if (container instanceof HTMLElement) {
             roots.push(container);
         }
+    }
+
+    const legacyBlock = document.getElementById('user-settings-block-content');
+    if (legacyBlock instanceof HTMLElement) {
+        roots.push(legacyBlock);
     }
 
     return roots;
@@ -12341,9 +12333,9 @@ function buildShell(shellKey) {
 
     // For left shell, base tab is 'connections' (sys-settings-button content)
     // For right shell, base tab is 'appearance' (user-settings-button content)
-    // Phase 6A/6B: Appearance and Messages are extracted into their own containers. Interface
-    // still mounts the remaining settings block until 6C splits it.
-    let sharedUserSettings = null;
+    // Phase 6A/6B/6C: each Customize tab owns a permanent container built once by
+    // splitUserSettingsContent(). The block the settings were authored in is left in the document
+    // for the sake of ids that are looked up globally, but nothing paints it any more.
     let userSettingsSplit = null;
     if (shellKey === 'left') {
         const apiDrawerPrep = prepareEmbeddedDrawer('sys-settings-button');
@@ -12357,10 +12349,12 @@ function buildShell(shellKey) {
             basePanel.scroller.appendChild(userSettingsSplit.appearance);
         }
 
-        // The remainder is what Interface mounts, so it is kept reachable whether or not the split
-        // ran; the split only removes the nodes Appearance and Messages now own.
-        sharedUserSettings = originalContent;
-        basePanel.scroller.appendChild(sharedUserSettings);
+        // The split empties the block, so what is left -- the legacy header rows, the search input,
+        // and the emptied columns -- is parked on the shell root and hidden. Keeping it attached
+        // rather than detaching it leaves `#user-settings-block-content` resolvable by id for
+        // third-party drawers and for the drawer-state code that looks the emptied section up.
+        originalContent.classList.add('sb-legacy-settings-remainder');
+        shellRoot.appendChild(originalContent);
 
         // Backgrounds is its own top-level drawer outside the settings block, so it is appended
         // separately rather than being part of the split.
@@ -12370,16 +12364,10 @@ function buildShell(shellKey) {
         }
 
         basePanel.ensureReady = initializeSettingsPanel;
-        basePanel.onActivate = () => {
-            // Move shared content back to Appearance if it's not already there
-            if (sharedUserSettings && !basePanel.scroller.contains(sharedUserSettings)) {
-                basePanel.scroller.appendChild(sharedUserSettings);
-            }
-            return initializeSettingsPanel().catch(error => {
-                console.error('[SillyBunny] Could not initialize settings:', error);
-                toastr.error(String(error.message || error));
-            });
-        };
+        basePanel.onActivate = () => initializeSettingsPanel().catch(error => {
+            console.error('[SillyBunny] Could not initialize settings:', error);
+            toastr.error(String(error.message || error));
+        });
     }
 
     registerShellTab(shellKey, shellConfig.baseTab, basePanel);
@@ -12447,18 +12435,12 @@ function buildShell(shellKey) {
         }
 
         if (customTab.id === 'interface') {
-            // Interface still mounts the shared remainder, which it keeps until 6C splits it.
+            // Phase 6C: Interface owns a permanent container built once by splitUserSettingsContent().
             const panel = createShellPanel(customTab);
+            if (userSettingsSplit) {
+                panel.scroller.appendChild(userSettingsSplit.interface);
+            }
             panel.ensureReady = initializeSettingsPanel;
-            panel.onActivate = () => {
-                if (sharedUserSettings && !panel.scroller.contains(sharedUserSettings)) {
-                    panel.scroller.appendChild(sharedUserSettings);
-                }
-                return initializeSettingsPanel().catch(error => {
-                    console.error('[SillyBunny] Could not initialize settings:', error);
-                    toastr.error(String(error.message || error));
-                });
-            };
             registerShellTab(shellKey, customTab, panel);
             continue;
         }
