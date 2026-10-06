@@ -7988,7 +7988,7 @@ body.reduced-motion .sb-shell-main {
     height: 52px;
     border-bottom: 1px solid var(--sb-shell-border);
     gap: 4px;
-    background-color: #2e2e32;
+    background-color: var(--sb-layer-headerbar);
 }
 
 #sb-settings-sidebar-title {
@@ -8109,7 +8109,7 @@ body.reduced-motion .sb-shell-main {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    background-color: #2e2e32;
+    background-color: var(--sb-layer-canvas);
 }
 
 .sb-settings-tab {
@@ -8196,7 +8196,7 @@ body.reduced-motion .sb-shell-main {
     height: 52px;
     border-bottom: 1px solid var(--sb-shell-border);
     gap: 12px;
-    background-color: #2e2e32;
+    background-color: var(--sb-layer-headerbar);
 }
 
 /* Spacer balances the close button so the title stays centered */
@@ -8334,6 +8334,51 @@ body.reduced-motion .sb-shell-main {
 
 #sb-settings-shell-host > .sb-settings-mounted-shell .sb-shell-main::before {
     display: none;
+}
+
+/* ── Settings page: compact mode ────────────────────────────────────────── */
+
+:root[data-sb-compact-mode='true'] #sb-settings-sidebar-header,
+:root[data-sb-compact-mode='true'] #sb-settings-content-header {
+    height: 44px;
+    padding: 0 12px;
+}
+
+:root[data-sb-compact-mode='true'] #sb-settings-sidebar-title,
+:root[data-sb-compact-mode='true'] .sb-settings-title {
+    font-size: var(--mainFontSize);
+}
+
+:root[data-sb-compact-mode='true'] .sb-settings-search-toggle-btn,
+:root[data-sb-compact-mode='true'] .sb-settings-close-button {
+    width: 28px;
+    height: 28px;
+}
+
+:root[data-sb-compact-mode='true'] #sb-settings-tab-list {
+    padding: 3px 6px 8px;
+    gap: 1px;
+}
+
+:root[data-sb-compact-mode='true'] .sb-settings-tab {
+    min-height: 34px;
+    padding: 6px 10px;
+    gap: 7px;
+}
+
+:root[data-sb-compact-mode='true'] .sb-settings-tab .fa-solid {
+    font-size: 12px;
+    width: 14px;
+}
+
+:root[data-sb-compact-mode='true'] #sb-settings-search-row.is-expanded {
+    max-height: 60px;
+    padding: 8px 8px 6px;
+}
+
+:root[data-sb-compact-mode='true'] .sb-settings-search-field {
+    height: 30px;
+    padding: 0 8px;
 }
 
 /* ── Phase 1: topbar search and mode buttons ────────────────────────────── */
