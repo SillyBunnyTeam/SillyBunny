@@ -30,7 +30,10 @@ const IPAD_USER_AGENT = 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebK
 
 function getOverlayStateSnapshot(page) {
     return page.evaluate(() => {
-        const isDrawerOpen = id => document.getElementById(id)?.classList.contains('openDrawer') === true;
+        const isSettingsPageOpen = () => {
+            const page = document.getElementById('sb-settings-page');
+            return Boolean(page && !page.hidden);
+        };
         const isOverlayOpen = (id, openClass) => {
             const overlay = document.getElementById(id);
 
@@ -46,9 +49,9 @@ function getOverlayStateSnapshot(page) {
         return {
             navOpen: isOverlayOpen('sb-mobile-nav', 'sb-nav-open'),
             chatToolsOpen: isOverlayOpen('sb-mobile-chat-tools', 'sb-chat-tools-open'),
-            leftShellOpen: isDrawerOpen('left-nav-panel'),
-            rightShellOpen: isDrawerOpen('user-settings-block'),
-            characterPanelOpen: isDrawerOpen('right-nav-panel'),
+            leftShellOpen: isSettingsPageOpen(),
+            rightShellOpen: isSettingsPageOpen(),
+            characterPanelOpen: isSettingsPageOpen(),
         };
     });
 }
@@ -153,6 +156,13 @@ function openLeftShell(page) {
 }
 
 async function closeLeftShellThroughUi(page) {
+    const settingsClose = page.locator('#sb-settings-close');
+
+    if (await settingsClose.isVisible().catch(() => false)) {
+        await settingsClose.click();
+        return;
+    }
+
     const closeButton = page.locator('#left-nav-panel .sb-shell-close');
 
     await closeButton.waitFor({ state: 'visible', timeout: 1000 }).catch(() => {});
@@ -192,77 +202,48 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         expect(overflow.vertical).toBeLessThanOrEqual(1);
     });
 
-    test('left drawer open and close honor the mobile viewport bound contract', async ({ page }, testInfo) => {
+    test('settings page opens without off-canvas document overflow', async ({ page }, testInfo) => {
         await openLeftShell(page);
 
-        // syncMobileShellDrawerBounds binds open drawers to the visual viewport
-        // with inline !important top/height and a dataset marker.
-        await expect.poll(() => getDrawerBoundsSnapshot(page, 'left-nav-panel')).toMatchObject({
-            isOpen: true,
-            isViewportBound: true,
-            bottom: 'auto',
-            boxSizing: 'border-box',
-        });
+        const settingsPage = page.locator('#sb-settings-page');
+        await expect(settingsPage).not.toHaveAttribute('hidden');
 
-        await expect.poll(async () => {
-            const openBounds = await getDrawerBoundsSnapshot(page, 'left-nav-panel');
-            const height = Number.parseFloat(openBounds?.height ?? '');
+        await captureCheckpoint(page, testInfo, 'settings-page');
 
-            return {
-                topIsPixels: /^\d+px$/.test(openBounds?.top ?? ''),
-                heightPositive: height > 0,
-                heightWithinViewport: height <= 844,
-                maxHeightMatchesHeight: openBounds?.maxHeight === openBounds?.height,
-            };
-        }).toEqual({
-            topIsPixels: true,
-            heightPositive: true,
-            heightWithinViewport: true,
-            maxHeightMatchesHeight: true,
-        });
-
-        await captureCheckpoint(page, testInfo, 'left-drawer');
+        const overflow = await getDocumentOverflow(page);
+        expect(overflow.horizontal).toBeLessThanOrEqual(1);
+        expect(overflow.vertical).toBeLessThanOrEqual(1);
 
         await closeLeftShellThroughUi(page);
-
-        // applyMobileDrawerBoundsDecision removes every bound property and
-        // the dataset marker once the drawer is no longer open.
-        await expect.poll(() => getDrawerBoundsSnapshot(page, 'left-nav-panel')).toEqual({
-            isOpen: false,
-            isViewportBound: false,
-            top: '',
-            bottom: '',
-            height: '',
-            maxHeight: '',
-            boxSizing: '',
-        });
+        await page.waitForTimeout(400); // Wait for close animation
+        await expect(settingsPage).toHaveAttribute('hidden', '');
 
         await expectNoDocumentOverflow(page);
     });
 
-    test('section navigation replaces the hamburger overlay', async ({ page }, testInfo) => {
+    test('settings page opens in mobile sidebar view', async ({ page }, testInfo) => {
         await expect(page.locator('html')).toHaveAttribute('data-sb-mobile-ui-mode', 'mobile');
-        await expect(page.locator('#sb-hamburger')).toBeHidden();
-        await expect(page.locator('#sb-mobile-nav')).toBeHidden();
 
         await openLeftShell(page);
-        const shell = page.locator('#left-nav-panel');
-        await expect(shell).toHaveClass(/openDrawer/);
-        await expect(shell).toHaveAttribute('data-sb-section-view', 'hub');
-        await expect(shell.locator('.sb-shell-nav-wrapper')).toBeHidden();
-        await expect(shell.locator('.sb-section-nav-row')).toBeVisible();
+        const settingsPage = page.locator('#sb-settings-page');
+        await expect(settingsPage).not.toHaveAttribute('hidden');
+        
+        // Mobile starts in sidebar view
+        const sidebar = settingsPage.locator('#sb-settings-sidebar');
+        await expect(sidebar).toBeVisible();
+        await expect(settingsPage).not.toHaveClass(/sb-settings-page--content/);
 
-        await shell.locator('.sb-section-nav-hub-item').first().click();
-        await expect(shell).toHaveAttribute('data-sb-section-view', 'section');
-        const trigger = shell.locator('.sb-section-nav-menu-trigger');
-        await trigger.click();
-        await expect(shell.locator('.sb-section-nav-menu')).toBeVisible();
-        await captureCheckpoint(page, testInfo, 'section-menu-open');
+        // Click a tab to enter content view
+        await sidebar.locator('.sb-settings-tab').first().click();
+        await expect(settingsPage).toHaveClass(/sb-settings-page--content/);
+        
+        await captureCheckpoint(page, testInfo, 'settings-content-view');
         await expectNoDocumentOverflow(page);
-        await page.keyboard.press('Escape');
-        await expect(shell.locator('.sb-section-nav-menu')).toBeHidden();
+        
+        // Close button closes the settings page (wait for animation to complete)
+        await page.locator('#sb-settings-close').click();
+        await expect(settingsPage).toHaveAttribute('hidden', '');
 
-        await closeLeftShellThroughUi(page);
         await expectNoDocumentOverflow(page);
     });
 
