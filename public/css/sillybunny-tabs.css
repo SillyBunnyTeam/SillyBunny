@@ -2958,6 +2958,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     display: none;
     width: 100%;
     height: 100%;
+    background: var(--sb-layer-view);
 }
 
 .sb-shell-panel-active {

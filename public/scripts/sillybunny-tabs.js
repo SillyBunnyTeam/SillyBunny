@@ -14601,11 +14601,10 @@ function openSettingsPage(shellKey, tabId = null) {
     page.classList.remove('sb-settings-page--content');
     sbSettingsState.mobileContentView = false;
 
-    // On mobile, if opening with a saved tab (not explicitly requested and not the default),
-    // show content immediately to avoid animating back to the sidebar after restoring the tab.
-    // But don't activate content view if explicitly opening the section (tabId provided) - let
-    // the user see the sidebar first.
-    if (isMobileViewport() && !tabId && resolvedTab && resolvedTab !== tabs[0]?.id) {
+    // On mobile, if opening with a saved tab (not explicitly requested), show content
+    // immediately to restore the exact state the user left. If the section was explicitly
+    // opened (tabId provided), show the sidebar first to let the user choose.
+    if (isMobileViewport() && !tabId && resolvedTab) {
         page.classList.add('sb-settings-page--content');
         sbSettingsState.mobileContentView = true;
     }
