@@ -281,6 +281,32 @@ function migrateLegacyWorldInfoRoute(target) {
     return target === 'left:world-info' ? 'characters:world-info' : target;
 }
 
+function migrateTabId(shellKey, tabId) {
+    // Phase 5: migrate old tab IDs to new reorganized structure
+    const migrations = {
+        left: {
+            'presets': 'prompting',
+            'api': 'connections',
+            'advanced-formatting': 'context',
+            // sampling and agents stay the same
+        },
+        right: {
+            'settings': 'appearance',
+            'background': 'appearance',
+            'server': 'data-security',
+            'console-logs': 'logs',
+            // extensions stays the same
+        },
+    };
+
+    const shellMigrations = migrations[shellKey];
+    if (shellMigrations && shellMigrations[tabId]) {
+        return shellMigrations[tabId];
+    }
+
+    return tabId;
+}
+
 function isSearchShortcutTarget(target) {
     return target === 'action:search';
 }
@@ -499,34 +525,19 @@ const SB_SHELLS = Object.freeze({
         hostIconSelector: '#leftNavDrawerIcon',
         proxyButtonId: 'sb-left-shell-toggle',
         proxyIcon: 'fa-bars',
-        proxyLabel: 'Workspace',
-        title: 'Workspace',
+        proxyLabel: 'Backend',
+        title: 'Backend',
         subtitle: '', // Removed redundant workspace subtext (PR #145 expansion)
-        searchPlaceholder: 'Find presets, samplers, lore, or tools...',
+        searchPlaceholder: 'Find connections, prompts, samplers, or agents...',
         storageKey: SB_STORAGE_KEYS.leftTab,
-        defaultTabId: 'presets',
+        defaultTabId: 'connections',
         baseTab: {
-            id: 'presets',
-            label: 'Presets',
-            icon: 'fa-sliders',
-            description: 'Change or modify your Chat Completion presets, settings, and/or prompts here. We recommend our included Geechan and Pura presets if you\'re unsure.',
+            id: 'connections',
+            label: 'Connections',
+            icon: 'fa-plug',
+            description: 'Configure the model backend for all AI character responses. We recommend OpenRouter if you\'re unsure.',
         },
-        embeddedTabs: [
-            {
-                id: 'api',
-                drawerId: 'sys-settings-button',
-                label: 'API',
-                icon: 'fa-plug',
-                description: 'Configure the model backend for all AI character responses. We recommend OpenRouter if you\'re unsure.',
-            },
-            {
-                id: 'advanced-formatting',
-                drawerId: 'advanced-formatting-button',
-                label: 'Formatting',
-                icon: 'fa-text-height',
-                description: 'Change Text Completion templates and system prompts here!',
-            },
-        ],
+        embeddedTabs: [],
         customTabs: [
             {
                 id: 'sampling',
@@ -538,10 +549,26 @@ const SB_SHELLS = Object.freeze({
                 searchExamples: ['temperature', 'top p', 'repetition penalty'],
             },
             {
+                id: 'prompting',
+                label: 'Prompting',
+                icon: 'fa-sliders',
+                description: 'Configure Chat Completion presets, prompt templates, and text formatting.',
+                searchPlaceholder: 'Search presets, instruct mode, markdown, or decorators',
+                searchExamples: ['presets', 'instruct', 'markdown', 'decorators'],
+            },
+            {
                 id: 'agents',
                 label: 'Agents',
                 icon: 'fa-robot',
                 description: 'Enable, disable, or modify in-chat agents here. Can be configured as pre-gen, sidecar, or post-gen.',
+            },
+            {
+                id: 'context',
+                label: 'Context',
+                icon: 'fa-text-height',
+                description: 'Configure context templates and regex text transformations.',
+                searchPlaceholder: 'Search context templates, regex, or text replacements',
+                searchExamples: ['context', 'regex', 'replacement'],
             },
         ],
     },
@@ -555,17 +582,17 @@ const SB_SHELLS = Object.freeze({
         proxyLabel: 'Customize',
         title: 'Customize',
         subtitle: 'Personalize your workspace, add/remove extensions, modify server settings, or check logs here.',
-        searchPlaceholder: 'Search themes, top bar, backgrounds, or extensions',
-        searchExamples: ['theme', 'top bar', 'Appearance', 'notify extension updates'],
+        searchPlaceholder: 'Search themes, interface, messages, or extensions',
+        searchExamples: ['theme', 'top bar', 'messages', 'extensions'],
         storageKey: SB_STORAGE_KEYS.rightTab,
-        defaultTabId: 'settings',
+        defaultTabId: 'appearance',
         baseTab: {
-            id: 'settings',
-            label: 'Settings',
-            icon: 'fa-screwdriver-wrench',
-            description: 'Modify and customise SillyBunny\'s general appearance and configuration here.',
-            searchPlaceholder: 'Search Appearance, top bar, chat style, blur, or update notices',
-            searchExamples: ['theme', 'top bar', 'Appearance', 'notify extension updates'],
+            id: 'appearance',
+            label: 'Appearance',
+            icon: 'fa-palette',
+            description: 'Customize SillyBunny\'s visual appearance, themes, backgrounds, and UI scale.',
+            searchPlaceholder: 'Search themes, backgrounds, blur, or UI scale',
+            searchExamples: ['theme', 'background', 'blur', 'scale'],
         },
         embeddedTabs: [
             {
@@ -577,28 +604,35 @@ const SB_SHELLS = Object.freeze({
                 searchPlaceholder: 'Search themes, Quick Reply, Dialogue Colors, or Image Gen',
                 searchExamples: ['themes', 'Quick Reply', 'Dialogue Colors', 'Image Gen'],
             },
-            {
-                id: 'background',
-                drawerId: 'backgrounds-button',
-                label: 'Background',
-                icon: 'fa-panorama',
-                description: 'Change the appearance of the background surrounding your chats here!',
-                searchPlaceholder: 'Search background names, blur, fit, or vibe words',
-                searchExamples: ['cozy', 'landscape', 'blur', 'fit'],
-            },
         ],
         customTabs: [
             {
-                id: 'server',
-                label: 'Server',
-                icon: 'fa-server',
-                description: 'Edit SillyBunny backend settings and configuration here.',
-                searchPlaceholder: 'Search update, restart, config.yaml, or branch',
-                searchExamples: ['update', 'restart', 'config.yaml', 'branch'],
+                id: 'interface',
+                label: 'Interface',
+                icon: 'fa-screwdriver-wrench',
+                description: 'Configure interface behavior, power user features, and UI preferences.',
+                searchPlaceholder: 'Search top bar, auto-scroll, power user, or chat features',
+                searchExamples: ['top bar', 'auto-scroll', 'power user'],
             },
             {
-                id: 'console-logs',
-                label: 'Console Logs',
+                id: 'messages',
+                label: 'Messages',
+                icon: 'fa-message',
+                description: 'Configure message display, actions, swipes, and interaction preferences.',
+                searchPlaceholder: 'Search message actions, swipes, auto-scroll, or display',
+                searchExamples: ['swipes', 'message actions', 'auto-scroll'],
+            },
+            {
+                id: 'data-security',
+                label: 'Data & Security',
+                icon: 'fa-server',
+                description: 'Manage data paths, backups, security settings, and server configuration.',
+                searchPlaceholder: 'Search backup, data path, security, or config.yaml',
+                searchExamples: ['backup', 'data path', 'security'],
+            },
+            {
+                id: 'logs',
+                label: 'Logs',
                 icon: 'fa-terminal',
                 description: 'View all SillyBunny logs for easy troubleshooting here.',
                 searchPlaceholder: 'Search error, warning, npm, bun, or extension logs',
@@ -609,13 +643,13 @@ const SB_SHELLS = Object.freeze({
 });
 
 const SB_DRAWER_ROUTES = Object.freeze({
-    'user-settings-button': { shell: 'right', tab: 'settings' },
-    'sys-settings-button': { shell: 'left', tab: 'api' },
-    'advanced-formatting-button': { shell: 'left', tab: 'advanced-formatting' },
+    'user-settings-button': { shell: 'right', tab: 'appearance' },
+    'sys-settings-button': { shell: 'left', tab: 'connections' },
+    'advanced-formatting-button': { shell: 'left', tab: 'context' },
     'WI-SP-button': { shell: 'characters', tab: 'world-info' },
     'extensions-settings-button': { shell: 'right', tab: 'extensions' },
     'persona-management-button': { shell: 'characters', tab: 'persona' },
-    'backgrounds-button': { shell: 'right', tab: 'background' },
+    'backgrounds-button': { shell: 'right', tab: 'appearance' },
 });
 
 const SB_SEARCH_TARGET_SELECTOR = [
@@ -684,11 +718,11 @@ const SB_TOPBAR_CLUSTERS = Object.freeze([
         leadId: 'sb-left-shell-toggle',
         railId: 'sb-topbar-cluster-workspace',
         pages: Object.freeze([
-            { value: 'left:presets', shellKey: 'left', tabId: 'presets' },
-            { value: 'left:api', shellKey: 'left', tabId: 'api' },
+            { value: 'left:connections', shellKey: 'left', tabId: 'connections' },
             { value: 'left:sampling', shellKey: 'left', tabId: 'sampling' },
-            { value: 'left:advanced-formatting', shellKey: 'left', tabId: 'advanced-formatting' },
+            { value: 'left:prompting', shellKey: 'left', tabId: 'prompting' },
             { value: 'left:agents', shellKey: 'left', tabId: 'agents' },
+            { value: 'left:context', shellKey: 'left', tabId: 'context' },
         ]),
     },
     {
@@ -696,11 +730,12 @@ const SB_TOPBAR_CLUSTERS = Object.freeze([
         leadId: 'sb-right-shell-toggle',
         railId: 'sb-topbar-cluster-customize',
         pages: Object.freeze([
-            { value: 'right:settings', shellKey: 'right', tabId: 'settings' },
+            { value: 'right:appearance', shellKey: 'right', tabId: 'appearance' },
+            { value: 'right:interface', shellKey: 'right', tabId: 'interface' },
+            { value: 'right:messages', shellKey: 'right', tabId: 'messages' },
             { value: 'right:extensions', shellKey: 'right', tabId: 'extensions' },
-            { value: 'right:background', shellKey: 'right', tabId: 'background' },
-            { value: 'right:server', shellKey: 'right', tabId: 'server' },
-            { value: 'right:console-logs', shellKey: 'right', tabId: 'console-logs' },
+            { value: 'right:data-security', shellKey: 'right', tabId: 'data-security' },
+            { value: 'right:logs', shellKey: 'right', tabId: 'logs' },
         ]),
     },
     {
@@ -718,7 +753,7 @@ const SB_TOPBAR_CLUSTERS = Object.freeze([
 ]);
 const SB_TOPBAR_PAGE_TARGETS = Object.freeze(SB_TOPBAR_CLUSTERS.flatMap(cluster => cluster.pages));
 
-// SillyBunny: Home and Characters remain as Layer 2 anchors. Workspace and Customize are redundant
+// SillyBunny: Home and Characters remain as Layer 2 anchors. Backend and Customize are redundant
 // once all of their pages are shown, so CSS hides those two only while icons-only mode is active.
 const SB_TOPBAR_ANCHOR_IDS = Object.freeze([
     'sb-home-toggle',
@@ -1004,8 +1039,8 @@ function getQuickActionState(mode) {
 
 function getMobileNavCustomizeLocationLabel(mode = 'mobile') {
     return getNavState(mode).layout === 'horizontal'
-        ? 'Show Workspace and Customize buttons in top bar'
-        : 'Show Workspace and Customize shortcuts in each side rail';
+        ? 'Show Backend and Customize buttons in top bar'
+        : 'Show Backend and Customize shortcuts in each side rail';
 }
 
 function normalizeMobileNavReplacementTarget(value) {
@@ -9399,7 +9434,7 @@ function syncSamplingPanelControls(root) {
         if (!Object.values(priorityRows).some(row => row.children.length) && !grid.children.length && !multiGrid.children.length) {
             grid.appendChild(createElement('p', {
                 className: 'sb-sampling-note',
-                text: 'Sampler controls are not ready yet. Reopen the Workspace menu after settings finish loading.',
+                text: 'Sampler controls are not ready yet. Reopen the Backend menu after settings finish loading.',
             }));
         }
 
@@ -12191,7 +12226,7 @@ function setActiveTab(shellKey, tabId) {
 // SillyBunny: every shell lives in the full-screen settings page (feat/v1.9.0-ui-overhaul).
 function openShell(shellKey, tabId = null) {
     if (shellKey === 'left' && tabId === 'world-info') {
-        // World Info moved from the Workspace shell into Characters.
+        // World Info moved from the Backend shell into Characters.
         openCharacterPanelTab('world-info');
         return;
     }
@@ -12251,14 +12286,24 @@ function buildShell(shellKey) {
     sbState.shells[shellKey] = shellState;
 
     const basePanel = createShellPanel(shellConfig.baseTab);
-    basePanel.scroller.appendChild(originalContent);
-    if (shellKey === 'right') {
+
+    // For left shell, base tab is 'connections' (sys-settings-button content)
+    // For right shell, base tab is 'appearance' (user-settings-button content)
+    if (shellKey === 'left') {
+        const apiDrawer = document.getElementById('sys-settings-button');
+        if (apiDrawer) {
+            basePanel.scroller.appendChild(apiDrawer);
+        }
+    } else if (shellKey === 'right') {
+        // Appearance tab gets the UI settings content
+        basePanel.scroller.appendChild(originalContent);
         basePanel.ensureReady = initializeSettingsPanel;
         basePanel.onActivate = () => void initializeSettingsPanel().catch(error => {
             console.error('[SillyBunny] Could not initialize settings:', error);
             toastr.error(String(error.message || error));
         });
     }
+
     registerShellTab(shellKey, shellConfig.baseTab, basePanel);
 
     const registerEmbeddedTab = (embeddedTab) => {
@@ -12272,28 +12317,37 @@ function buildShell(shellKey) {
         registerShellTab(shellKey, embeddedTab, embeddedPanel, prepared.drawerContent);
     };
 
-    const leadingEmbeddedTabId = shellKey === 'left' ? 'api' : null;
-    const leadingEmbeddedTab = shellConfig.embeddedTabs.find(tab => tab.id === leadingEmbeddedTabId);
-    if (leadingEmbeddedTab) {
-        registerEmbeddedTab(leadingEmbeddedTab);
-    }
-
-    const samplingTab = shellConfig.customTabs.find(tab => tab.id === 'sampling');
-    if (samplingTab) {
-        const samplingPanel = createOnDemandShellPanel(shellKey, samplingTab, buildSamplingPanel);
-        registerShellTab(shellKey, samplingTab, samplingPanel, samplingPanel.searchRoot);
-    }
-
+    // Register embedded tabs
     for (const embeddedTab of shellConfig.embeddedTabs) {
-        if (embeddedTab.id === leadingEmbeddedTabId) {
-            continue;
-        }
-
         registerEmbeddedTab(embeddedTab);
     }
 
+    // Handle custom tabs
     for (const customTab of shellConfig.customTabs) {
         if (customTab.id === 'sampling') {
+            const samplingPanel = createOnDemandShellPanel(shellKey, customTab, buildSamplingPanel);
+            registerShellTab(shellKey, customTab, samplingPanel, samplingPanel.searchRoot);
+            continue;
+        }
+
+        if (customTab.id === 'prompting') {
+            // Prompting tab gets presets drawer content (the original left shell content)
+            const promptingPanel = createShellPanel(customTab);
+            if (shellKey === 'left') {
+                promptingPanel.scroller.appendChild(originalContent);
+            }
+            registerShellTab(shellKey, customTab, promptingPanel, originalContent);
+            continue;
+        }
+
+        if (customTab.id === 'context') {
+            // Context tab gets advanced formatting drawer content
+            const formattingDrawer = document.getElementById('advanced-formatting-button');
+            if (formattingDrawer) {
+                const contextPanel = createShellPanel(customTab);
+                contextPanel.scroller.appendChild(formattingDrawer);
+                registerShellTab(shellKey, customTab, contextPanel, formattingDrawer);
+            }
             continue;
         }
 
@@ -12303,21 +12357,35 @@ function buildShell(shellKey) {
             continue;
         }
 
-        if (customTab.id === 'server') {
+        if (customTab.id === 'interface') {
+            // Interface tab - placeholder, will be populated in Part B
+            const interfacePanel = createShellPanel(customTab);
+            registerShellTab(shellKey, customTab, interfacePanel);
+            continue;
+        }
+
+        if (customTab.id === 'messages') {
+            // Messages tab - placeholder, will be populated in Part B
+            const messagesPanel = createShellPanel(customTab);
+            registerShellTab(shellKey, customTab, messagesPanel);
+            continue;
+        }
+
+        if (customTab.id === 'data-security') {
             const serverPanel = createOnDemandShellPanel(shellKey, customTab, async () => (await loadServerTools()).buildServerAdminPanel());
             registerShellTab(shellKey, customTab, serverPanel, serverPanel.searchRoot);
             continue;
         }
 
-        if (customTab.id === 'console-logs') {
-            const consoleLogsPanel = createOnDemandShellPanel(shellKey, customTab, async () => (await loadServerTools()).buildConsoleLogsPanel());
-            registerShellTab(shellKey, customTab, consoleLogsPanel, consoleLogsPanel.searchRoot);
+        if (customTab.id === 'logs') {
+            const logsPanel = createOnDemandShellPanel(shellKey, customTab, async () => (await loadServerTools()).buildConsoleLogsPanel());
+            registerShellTab(shellKey, customTab, logsPanel, logsPanel.searchRoot);
         }
     }
 
     panelBody.append(...Array.from(shellState.tabs.values()).map(tabState => tabState.panel));
 
-    const storedTabId = migrateLegacyWorldInfoRoute(safeGetItem(shellConfig.storageKey));
+    const storedTabId = migrateTabId(shellKey, migrateLegacyWorldInfoRoute(safeGetItem(shellConfig.storageKey)));
     const nextActiveTab = shellState.tabs.has(storedTabId) ? storedTabId : shellConfig.defaultTabId;
     setActiveTab(shellKey, nextActiveTab);
 }
