@@ -78,14 +78,25 @@ const SB_SETTINGS_TAB_SECTIONS = Object.freeze({
         '#play_sound_unfocused',
     ]),
     interface: Object.freeze([
-        '#UI-language-block',
-        '#version_display',
-        '#account_controls',
-        '#user-settings-utility-actions',
         '[name="MiscellaneousToggles"]',
         '#power-user-options-block',
     ]),
 });
+
+/**
+ * Header-adjacent controls that describe the server or the account rather than the UI shell.
+ *
+ * They are authored in `#user-settings-block`'s header rows because that is where the markup
+ * happened to sit, but Language, Account, Version, and the cache controls all act on saved data or
+ * the backend, so they read as Data & Security content. They move in this order, ahead of Import &
+ * Restore, so that tab opens on Language -> Account -> Version -> Clear cache -> Import.
+ */
+const SB_DATA_SECURITY_SECTIONS = Object.freeze([
+    '#UI-language-block',
+    '#account_controls',
+    '#version_display',
+    '#user-settings-utility-actions',
+]);
 
 /** Selectors that resolve to a checkbox but whose row is the element worth moving. */
 const SB_CONTROL_ROW_SELECTORS = Object.freeze([
@@ -110,14 +121,18 @@ const SB_REQUIRED_SECTIONS = Object.freeze({
         'play_sound_unfocused',
     ]),
     interface: Object.freeze([
-        'UI-language-block',
-        'version_display',
-        'account_controls',
-        'user-settings-utility-actions',
         'MiscellaneousToggles',
         'power-user-options-block',
     ]),
 });
+
+/** Sections that must end up on Data & Security; see `SB_DATA_SECURITY_SECTIONS`. */
+const SB_DATA_SECURITY_REQUIRED_SECTIONS = Object.freeze([
+    'UI-language-block',
+    'account_controls',
+    'version_display',
+    'user-settings-utility-actions',
+]);
 
 /**
  * Detaches an element from its current parent so it can be placed without being duplicated and
@@ -200,6 +215,12 @@ export function splitUserSettingsContent(originalContent) {
     dataSecurity.id = SB_DATA_SECURITY_CONTAINER_ID;
     dataSecurity.className = 'sb-settings-tab-content sb-data-security-content';
     const importSection = detach(resolveSectionTarget(originalContent, '#SillyTavernImportSection'));
+    for (const selector of SB_DATA_SECURITY_SECTIONS) {
+        const section = detach(resolveSectionTarget(originalContent, selector));
+        if (section) {
+            dataSecurity.appendChild(section);
+        }
+    }
     if (importSection) {
         dataSecurity.appendChild(importSection);
     }
@@ -222,6 +243,13 @@ export function splitUserSettingsContent(originalContent) {
             if (!found) {
                 missing.push(`${tabId}:${sectionId}`);
             }
+        }
+    }
+
+    for (const sectionId of SB_DATA_SECURITY_REQUIRED_SECTIONS) {
+        const found = dataSecurity.querySelector(`#${CSS.escape(sectionId)}`);
+        if (!found) {
+            missing.push(`data-security:${sectionId}`);
         }
     }
 

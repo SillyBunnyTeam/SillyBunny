@@ -5550,7 +5550,8 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     min-width: 0;
 }
 
-#user-settings-block #UI-language-block {
+#user-settings-block #UI-language-block,
+#sb-data-security-content #UI-language-block {
     flex: 1 1 240px;
     min-width: min(100%, 220px);
     flex-wrap: wrap;
@@ -5559,22 +5560,26 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     gap: 8px;
 }
 
-#user-settings-block #UI-language-block > span {
+#user-settings-block #UI-language-block > span,
+#sb-data-security-content #UI-language-block > span {
     flex: 0 0 auto;
 }
 
-#user-settings-block #ui_language_select {
+#user-settings-block #ui_language_select,
+#sb-data-security-content #ui_language_select {
     flex: 1 1 180px;
     min-width: 0;
 }
 
-#user-settings-block #version_display {
+#user-settings-block #version_display,
+#sb-data-security-content #version_display {
     flex: 0 1 auto;
     min-width: 0;
     margin-left: auto;
     overflow-wrap: anywhere;
     text-align: right;
 }
+
 
 #user-settings-block [name='UserSettingsRowTwo'] {
     flex-wrap: wrap;
@@ -5610,7 +5615,8 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     gap: 8px;
 }
 
-#user-settings-block #account_controls {
+#user-settings-block #account_controls,
+#sb-data-security-content #account_controls {
     flex-wrap: wrap;
     gap: 8px;
 }
@@ -5619,6 +5625,34 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     flex: 1 1 120px;
     min-width: 0;
     justify-content: center;
+}
+
+/* Data & Security header controls. Moved out of `#user-settings-block` they become plain grid
+   children in a full-width column, so without a cap they stretch to the panel edge: the language
+   select and the account buttons size to their content instead, wrapping when narrow. These tie on
+   specificity with the shared rules above, so they come after them. */
+#sb-data-security-content #UI-language-block {
+    width: 100%;
+    flex: 0 1 auto;
+}
+
+#sb-data-security-content #ui_language_select {
+    flex: 0 1 320px;
+}
+
+#sb-data-security-content #account_controls {
+    justify-content: flex-start;
+}
+
+#sb-data-security-content #account_controls > .menu_button {
+    flex: 0 1 200px;
+    min-width: 0;
+    justify-content: center;
+}
+
+#sb-data-security-content #version_display {
+    margin-left: 0;
+    text-align: left;
 }
 
 #user-settings-block #settingsSearch {
