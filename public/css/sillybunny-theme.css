@@ -189,6 +189,10 @@
     --sb-layer-view: var(--sb-layer-view-source);
     --sb-layer-bottombar: var(--sb-layer-bottombar-source);
     --sb-layer-window: var(--sb-layer-window-source);
+    /* Complementary rail (Conversation pals rail, Settings sidebar and its header).
+       libadwaita sidebar-bg: #2e2e32 in Libadwaita dark, #ebebed in light. */
+    --sb-sidebar-bg-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, var(--SmartThemeBodyColor) 5%);
+    --sb-sidebar-bg: var(--sb-sidebar-bg-source);
     /* Page behind #sheld: a step away from Window/View so the main column does not melt into the canvas. */
     --sb-page-bg-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, var(--SmartThemeBodyColor) 12%);
     --sb-page-bg: var(--sb-page-bg-source);
@@ -353,6 +357,7 @@ input[type="submit"] {
         --sb-layer-view: rgb(from var(--sb-layer-view-source) r g b / 1);
         --sb-layer-bottombar: rgb(from var(--sb-layer-bottombar-source) r g b / 1);
         --sb-layer-window: rgb(from var(--sb-layer-window-source) r g b / 1);
+        --sb-sidebar-bg: rgb(from var(--sb-sidebar-bg-source) r g b / 1);
         --sb-page-bg: rgb(from var(--sb-page-bg-source) r g b / 1);
         --sb-layer-canvas: rgb(from var(--sb-layer-canvas-source) r g b / 1);
         --sb-layer-headerbar: rgb(from var(--sb-layer-headerbar-source) r g b / 1);
@@ -410,6 +415,9 @@ input[type="submit"] {
     --sb-layer-dialog-source: var(--SmartThemeBlurTintColor);
     --sb-layer-toast-source: color-mix(in srgb, var(--SmartThemeBodyColor) 90%, black 10%);
     --sb-layer-toast-fg: #ffffff;
+    /* The rail leans a touch further toward the body colour in light mode so it separates from a
+       white View; mirrors the Conversation rail's light value. */
+    --sb-sidebar-bg-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 93%, var(--SmartThemeBodyColor) 7%);
     --sb-dialog-backdrop-alpha: 0.14;
     --sb-shadow-dialog-highlight: 0 0 #0000;
 }

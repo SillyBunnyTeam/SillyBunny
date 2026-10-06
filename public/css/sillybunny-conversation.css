@@ -56,7 +56,7 @@
     --sb-conv-button-size: 40px;
     --sb-conv-column-gutter: 20px;
     /* libadwaita sidebar/headerbar: #2e2e32 in Libadwaita dark, #ebebed in light. */
-    --sb-conv-sidebar-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, var(--SmartThemeBodyColor) 5%);
+    --sb-conv-sidebar-bg: var(--sb-sidebar-bg);
     display: grid;
     grid-template-columns: var(--sb-conv-sidebar-width) minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
@@ -77,7 +77,7 @@
 }
 
 :root[data-sb-surface-tone='light'] #sheld[data-sb-conversation-mode='on'] {
-    --sb-conv-sidebar-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 93%, var(--SmartThemeBodyColor) 7%);
+    --sb-conv-sidebar-bg: var(--sb-sidebar-bg);
 }
 
 #sheld[data-sb-conversation-mode='on'] button:not(.fa):not(.fa-solid):not(.fa-regular):not(.fa-brands),

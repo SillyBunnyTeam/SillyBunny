@@ -7991,7 +7991,9 @@ body.reduced-motion .sb-shell-main {
     height: 52px;
     border-bottom: 1px solid var(--sb-shell-border);
     gap: 4px;
-    background-color: var(--sb-layer-headerbar);
+    /* Sidebar rail tone, not the shell header bar: the settings page must read as its own
+       surface rather than continuing the top bar. */
+    background-color: var(--sb-sidebar-bg);
 }
 
 #sb-settings-sidebar-title {
@@ -8112,7 +8114,8 @@ body.reduced-motion .sb-shell-main {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    background-color: var(--sb-layer-canvas);
+    /* Same tone as the sidebar header so the rail reads as one surface, matching GNOME Settings. */
+    background-color: var(--sb-sidebar-bg);
 }
 
 .sb-settings-tab {
@@ -8199,7 +8202,8 @@ body.reduced-motion .sb-shell-main {
     height: 52px;
     border-bottom: 1px solid var(--sb-shell-border);
     gap: 12px;
-    background-color: var(--sb-layer-headerbar);
+    /* Window tone, so the content header sits a step away from both the rail and the top bar. */
+    background-color: var(--sb-layer-window);
 }
 
 /* Spacer balances the close button so the title stays centered */
