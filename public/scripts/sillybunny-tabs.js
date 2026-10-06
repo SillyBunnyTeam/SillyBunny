@@ -56,6 +56,9 @@ import {
 import {
     SB_USER_SETTINGS_CONTAINER_IDS,
     SB_DATA_SECURITY_CONTAINER_ID,
+    SB_FLAT_SECTION_CLASS,
+    SB_FLAT_SECTION_HEADER_CLASS,
+    flattenNestedSettingsDrawers,
     splitUserSettingsContent,
 } from './sillybunny-settings-content.js';
 
@@ -85,12 +88,31 @@ function initializeSettingsPanel() {
         // navigation, so the inline drawers are opened directly instead.
         openAllInlineDrawers();
         applyDefaultDrawerStates();
+        // Injection above can author drawers inside another drawer -- the Appearance theme card
+        // creates `#sb-interface-drawer`, `#sb-topbar-label-drawer` and
+        // `#sb-quick-access-shortcuts-drawer` inside `#AppearanceSection`, all after the split has
+        // already run its flatten pass -- so it is repeated once the panel is fully built.
+        flattenRightShellSettingsDrawers();
         invalidateUserSettingsTabSearchIndexes();
     }).catch(error => {
         settingsPanelPromise = undefined;
         throw error;
     });
     return settingsPanelPromise;
+}
+
+/** Flattens nested drawers in every Customize panel, covering drawers authored after the split. */
+function flattenRightShellSettingsDrawers() {
+    const shellState = getShellState('right');
+    if (!shellState) {
+        return;
+    }
+
+    for (const tabState of shellState.tabs.values()) {
+        if (tabState.panel instanceof HTMLElement) {
+            flattenNestedSettingsDrawers(tabState.panel);
+        }
+    }
 }
 
 /**
@@ -158,6 +180,23 @@ function openAllInlineDrawers(root = null) {
                 drawerContent.style.display = '';
             }
         });
+    }
+}
+
+/**
+ * Re-runs the nested-drawer flatten for a panel that may have been built after the split.
+ *
+ * The split flattens the markup it relocates, but some sections author their drawers at runtime --
+ * `#sb-openai-output` builds four of them in `openai.js` once its panel is created -- so the pass
+ * is repeated on activation. It is idempotent, so re-running it costs a query and no DOM churn.
+ *
+ * @param {string} shellKey
+ * @param {string} tabId
+ */
+function flattenSettingsPanelDrawers(shellKey, tabId) {
+    const panel = getShellState(shellKey)?.tabs.get(tabId)?.panel;
+    if (panel instanceof HTMLElement) {
+        flattenNestedSettingsDrawers(panel);
     }
 }
 
@@ -779,6 +818,7 @@ const SB_SEARCH_TARGET_SELECTOR = [
     '.checkbox_label',
     '.menu_button',
     '.inline-drawer-toggle',
+    `.${SB_FLAT_SECTION_HEADER_CLASS}`,
     '.standoutHeader',
     '.range-block-title',
     '.range-block-header',
@@ -809,6 +849,7 @@ const SB_SIDEBAR_SECTION_MATCH_SELECTOR = [
     '.range-block-header',
     '.extension_name',
     '.inline-drawer-toggle',
+    `.${SB_FLAT_SECTION_HEADER_CLASS}`,
     '.ch_name',
 ].join(', ');
 
@@ -8953,6 +8994,9 @@ function createOnDemandShellPanel(shellKey, tabConfig, build) {
         try {
             const loaded = await build();
             panel.replaceChildren(...loaded.panel.childNodes);
+            // Sections built here may author their own nested drawers, so the flatten runs again on
+            // the finished panel rather than relying on the one the split did.
+            flattenNestedSettingsDrawers(panel);
             const tab = getShellState(shellKey)?.tabs.get(tabConfig.id);
             if (tab) {
                 tab.searchRoot = loaded.searchRoot;
@@ -11854,6 +11898,15 @@ function getSearchSectionLabel(element, fallback) {
         }
     }
 
+    // Flattened subsections are no longer drawers, so they are checked separately: without this a
+    // control lifted out of, say, Auto-swipe would report the enclosing drawer's name instead.
+    const flatSection = element.closest(`.${SB_FLAT_SECTION_CLASS}`);
+    if (flatSection instanceof HTMLElement) {
+        const heading = flatSection.querySelector(`:scope > .${SB_FLAT_SECTION_HEADER_CLASS}`);
+        const text = String(heading?.textContent ?? '').replace(/\s+/g, ' ').trim();
+        if (text && text !== fallback) return text;
+    }
+
     const preferred = element.closest('.persona_management_global_settings')
         ?? element.closest('.bg-header-row-1')
         ?? element.closest('.bg-header-row-2')
@@ -12226,7 +12279,10 @@ function pulseSearchTarget(target) {
     }
 
     const drawer = target.closest('.inline-drawer');
-    const highlightTarget = drawer instanceof HTMLElement ? drawer : target;
+    const flatSection = target.closest(`.${SB_FLAT_SECTION_CLASS}`);
+    const highlightTarget = flatSection instanceof HTMLElement
+        ? flatSection
+        : drawer instanceof HTMLElement ? drawer : target;
 
     document.querySelectorAll('.' + SB_SEARCH_HIGHLIGHT_CLASS)
         .forEach(el => el.classList.remove(SB_SEARCH_HIGHLIGHT_CLASS));
@@ -12355,6 +12411,7 @@ function setActiveTab(shellKey, tabId) {
 
     if (isSettingsPageHosting(shellKey)) {
         activeTab.onActivate?.();
+        flattenSettingsPanelDrawers(shellKey, tabId);
         dispatchShellTabActivated(shellKey, activeTab);
         queueMobileShellActivationRefresh();
     }

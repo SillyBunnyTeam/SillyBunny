@@ -135,6 +135,107 @@ const SB_DATA_SECURITY_REQUIRED_SECTIONS = Object.freeze([
 ]);
 
 /**
+ * Class given to a drawer that has been unwrapped into a static subsection.
+ *
+ * It keeps the heading element, so search labels and reveal targeting still resolve a name for
+ * controls inside it, but it is no longer a `.inline-drawer` and so is skipped by
+ * `openAllInlineDrawers`, `getInlineDrawers`, and the drawer persistence scan.
+ */
+export const SB_FLAT_SECTION_CLASS = 'sb-settings-flat-section';
+
+/** Heading element of a flattened subsection; carries the label the drawer header used to show. */
+export const SB_FLAT_SECTION_HEADER_CLASS = 'sb-settings-flat-header';
+
+/** Classes removed from a nested drawer's header when it stops being a toggle. */
+const SB_FLAT_SECTION_HEADER_CLASSES = Object.freeze([
+    'inline-drawer-toggle',
+    'inline-drawer-header',
+    'settings-section-header',
+    'userSettingsInnerExpandable',
+]);
+
+/**
+ * Unwraps every drawer that sits inside another drawer into an always-visible subsection.
+ *
+ * Layer 4 allows a sub-category at most one collapsible section (PRODUCT.md, DESIGN.md), so a
+ * drawer inside a drawer is the concrete violation this removes. The outermost drawer of each
+ * nest keeps its toggle; only the drawers below it are flattened, which is why the work is driven
+ * by ancestry rather than by depth from the root.
+ *
+ * The transform moves nodes with `insertBefore`/`appendChild` -- never `cloneNode` and never
+ * `innerHTML` -- so input bindings, jQuery data, and SillyTavern's own listeners stay attached.
+ * The content wrapper is dropped after its children have been lifted out, because the base
+ * `.inline-drawer-content` rule is `display: none` and a wrapper that no longer has a toggle to
+ * reveal it would hide the settings it holds.
+ *
+ * Flattening is idempotent: a flattened drawer has no content wrapper, so it is skipped on any
+ * later run. That matters because some drawers are authored at runtime (`#sb-openai-output` builds
+ * its own subsections after load), so this runs again on each tab activation.
+ *
+ * @param {HTMLElement|null|undefined} root subtree to flatten
+ * @returns {number} how many drawers were flattened
+ */
+export function flattenNestedSettingsDrawers(root) {
+    if (!(root instanceof HTMLElement)) {
+        return 0;
+    }
+
+    // Snapshot before mutating: the ancestry test needs to know which elements were drawers when
+    // the walk started, and flattening removes that class from the ones already handled.
+    const drawers = Array.from(root.querySelectorAll('.inline-drawer'));
+    const drawerSet = new Set(drawers);
+    let flattened = 0;
+
+    for (const drawer of drawers) {
+        let nested = false;
+        for (let ancestor = drawer.parentElement; ancestor; ancestor = ancestor.parentElement) {
+            if (drawerSet.has(ancestor)) {
+                nested = true;
+                break;
+            }
+        }
+
+        if (nested && flattenSettingsDrawer(drawer)) {
+            flattened++;
+        }
+    }
+
+    return flattened;
+}
+
+/**
+ * Converts one nested drawer into `[heading, ...children]` in place.
+ *
+ * @param {HTMLElement} drawer
+ * @returns {boolean} whether the drawer was flattened
+ */
+function flattenSettingsDrawer(drawer) {
+    const header = drawer.querySelector(':scope > .inline-drawer-toggle, :scope > .inline-drawer-header');
+    const content = drawer.querySelector(':scope > .inline-drawer-content');
+
+    if (!(header instanceof HTMLElement) || !(content instanceof HTMLElement)) {
+        return false;
+    }
+
+    // The chevron is an affordance for a control this element no longer is.
+    header.querySelector(':scope > .inline-drawer-icon')?.remove();
+    header.classList.remove(...SB_FLAT_SECTION_HEADER_CLASSES);
+    header.classList.add(SB_FLAT_SECTION_HEADER_CLASS);
+
+    // Lifted out unchanged, in order, so the heading is followed by exactly what the drawer held.
+    while (content.firstChild) {
+        drawer.insertBefore(content.firstChild, content);
+    }
+    content.remove();
+
+    drawer.classList.remove('inline-drawer');
+    drawer.classList.add(SB_FLAT_SECTION_CLASS);
+    drawer.dataset.sbDrawerPersistence = 'off';
+
+    return true;
+}
+
+/**
  * Detaches an element from its current parent so it can be placed without being duplicated and
  * without disturbing the order of what it was nested in.
  * @param {Element|null|undefined} element
@@ -214,6 +315,7 @@ export function splitUserSettingsContent(originalContent) {
     const dataSecurity = document.createElement('div');
     dataSecurity.id = SB_DATA_SECURITY_CONTAINER_ID;
     dataSecurity.className = 'sb-settings-tab-content sb-data-security-content';
+
     const importSection = detach(resolveSectionTarget(originalContent, '#SillyTavernImportSection'));
     for (const selector of SB_DATA_SECURITY_SECTIONS) {
         const section = detach(resolveSectionTarget(originalContent, selector));
@@ -233,6 +335,14 @@ export function splitUserSettingsContent(originalContent) {
             }
         }
     }
+
+    // Layer 4 allows one collapsible section per sub-category, so any drawer that ended up inside
+    // another drawer is unwrapped here. Flattening happens after placement because the nesting is
+    // a property of the finished container, not of the columns the sections came from.
+    for (const container of Object.values(containers)) {
+        flattenNestedSettingsDrawers(container);
+    }
+    flattenNestedSettingsDrawers(dataSecurity);
 
     const missing = [];
     for (const [tabId, sectionIds] of Object.entries(SB_REQUIRED_SECTIONS)) {

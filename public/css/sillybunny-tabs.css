@@ -8645,6 +8645,123 @@ body.reduced-motion .sb-shell-main {
     color: var(--sb-shell-text-secondary);
 }
 
+/* Flattened subdrawers: a nested drawer that was unwrapped into an always-visible subsection
+   (see flattenNestedSettingsDrawers). It keeps a heading so search still names it, but it is no
+   longer a control: no chevron, no pointer cursor, no hover fill. */
+.sb-settings-mounted-shell .sb-settings-flat-section {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    border-top: 1px solid var(--sb-shell-border);
+    margin: 0;
+    padding: 0 0 8px;
+}
+
+/* The heading reproduces `.ds-pref-group-heading` so a flattened subsection reads as the same
+   kind of label as the grouped card above it, and its text lands on the same 16px inset. */
+.sb-settings-mounted-shell .sb-settings-flat-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px 4px;
+    margin: 0;
+    min-height: 0;
+    background: transparent;
+    border: 0;
+    font-size: var(--sb-type-meta);
+    font-weight: 700;
+    color: var(--sb-shell-text-secondary);
+}
+
+/* The heading copy is wrapped in `<b>`, whose default weight (bolder-than-parent) renders at 900
+   against the 700 above. Pin it so the subsection header matches the grouped card heading. */
+.sb-settings-mounted-shell .sb-settings-flat-header > b {
+    font-weight: inherit;
+    color: inherit;
+}
+
+/* Rows lifted out of a flattened drawer lose the spacing the enclosing expander used to draw, so
+   they get the grouped row metric back: 44px tall, 16px inset, separator between rows. */
+.sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label,
+.sb-settings-mounted-shell .sb-settings-flat-section > .flex-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    min-height: 44px;
+    margin: 0;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label + .checkbox_label,
+.sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label + .flex-container {
+    border-top: 1px solid var(--sb-shell-border);
+}
+
+.sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label small,
+.sb-settings-mounted-shell .sb-settings-flat-section > .flex-container small {
+    flex: 1;
+    font-size: var(--sb-type-control);
+    color: var(--sb-shell-text);
+}
+
+/* Loose label-and-field pairs (a bare `small` above its input) are the one shape the flatten
+   cannot turn into a row, so they are inset to the same 16px and separated from what precedes. */
+.sb-settings-mounted-shell .sb-settings-flat-section > small {
+    padding: 8px 16px 4px;
+    font-size: var(--sb-type-control);
+    color: var(--SmartThemeBodyColor);
+}
+
+.sb-settings-mounted-shell .sb-settings-flat-section > input.text_pole,
+.sb-settings-mounted-shell .sb-settings-flat-section > select {
+    margin: 0 16px;
+    width: auto;
+    flex: 0 0 auto;
+}
+
+.sb-settings-mounted-shell .sb-settings-flat-section > .auto_swipe,
+.sb-settings-mounted-shell .sb-settings-flat-section > .auto_continue_settings_block {
+    padding: 0 16px;
+    margin: 0;
+}
+
+@media (hover: hover) {
+    .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label:hover,
+    .sb-settings-mounted-shell .sb-settings-flat-section > .flex-container:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+/* Loose rows inside a drawer body are brought up to the grouped row metric, so a checkbox reads
+   the same whether it sits in a `.ds-pref-group` card or directly under a section heading. */
+.sb-settings-mounted-shell .sb-settings-subdrawer-body > .checkbox_label,
+.sb-settings-mounted-shell .sb-settings-subdrawer-body > .flex-container > .checkbox_label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    min-height: 44px;
+    margin: 0;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.sb-settings-mounted-shell .sb-settings-subdrawer-body > .checkbox_label small,
+.sb-settings-mounted-shell .sb-settings-subdrawer-body > .flex-container > .checkbox_label small {
+    flex: 1;
+    font-size: var(--sb-type-control);
+    color: var(--SmartThemeBodyColor);
+}
+
+@media (hover: hover) {
+    .sb-settings-mounted-shell .sb-settings-subdrawer-body > .checkbox_label:hover,
+    .sb-settings-mounted-shell .sb-settings-subdrawer-body > .flex-container > .checkbox_label:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
 /* Checkbox label rows get action-row spacing when inside a mounted settings pref group */
 .sb-settings-mounted-shell .ds-pref-group .checkbox_label {
     display: flex;
