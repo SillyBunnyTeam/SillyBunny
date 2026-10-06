@@ -109,6 +109,11 @@
     --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
     --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, var(--SmartThemeBlurTintColor) 93%);
     --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 96%, transparent);
+    /* Shell text scale (DESIGN.md "Foreground" and "Dim Foreground"). Every `--sb-shell-text*`
+       consumer resolves here; without these the declarations were dropped and the text inherited
+       whatever colour its ancestor happened to carry. */
+    --sb-shell-text: var(--SmartThemeBodyColor);
+    --sb-shell-text-secondary: var(--sb-muted-fg);
     --sb-shell-shadow: 0 8px 24px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent);
     --sb-shadow-panel: var(--sb-shell-shadow);
     --sb-shadow-control: 0 1px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent);
