@@ -8682,7 +8682,12 @@ body.reduced-motion .sb-shell-main {
 .sb-settings-mounted-shell .sb-settings-flat-section.sb-openai-settings-drawer {
     margin: 0;
     background: transparent;
-    border: 0;
+    /* Sides and bottom only: the 1px top separator is the flat section's own rule, and every
+       flattened subsection draws it, so zeroing the shorthand here left these six alone in
+       carrying no divider. */
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
     border-radius: 0;
     overflow: visible;
 }
