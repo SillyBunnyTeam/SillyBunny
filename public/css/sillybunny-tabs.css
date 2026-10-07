@@ -8977,6 +8977,31 @@ body.reduced-motion .sb-shell-main {
     text-align: start;
 }
 
+/* A group is one boxed list, so the rows inside it are not boxes of their own. `#ThemeTogglesSection
+   [name="themeToggles"]` grid tiles each carried their own 4% tint, 1px border, and 14px radius
+   inside the group's identical tint, which read as a card grid inside a card (DESIGN.md Cards:
+   preference groups are borderless boxed lists, and no repeated card grids). The tiles stay as a
+   multi-column inline section, minus their chrome, and the group's row separators stay out of a
+   grid, where a per-tile hairline would read as a floating line above every checkbox. */
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group .checkbox_label {
+    background: transparent;
+    border-radius: 0;
+}
+
+#sb-settings-page #ThemeTogglesSection [name="themeToggles"] > .checkbox_label {
+    border: 0;
+}
+
+/* Sentence case, like every other group label on the page (DESIGN.md Sentence Case Rule). The
+   tracked uppercase kicker here was the last one left in settings. */
+#sb-settings-page .sb-settings-mounted-shell .sb-theme-presets-label {
+    font-size: var(--sb-type-control);
+    font-weight: var(--sb-weight-title);
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--sb-shell-text);
+}
+
 /* The MovingUI preset picker stacks its label above its controls, so the whole group wraps to two
    lines inside a full-width row and leaves most of that row empty. Lay the label, picker, and save
    button along one axis, matching the theme picker row in Appearance. */
