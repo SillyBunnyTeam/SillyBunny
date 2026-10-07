@@ -8455,12 +8455,13 @@ body.reduced-motion .sb-shell-main {
 
 /* ── Phase 2: preference group primitives (feat/v1.9.0-ui-overhaul) ─────── */
 
+/* libadwaita boxed list: borderless, 4% body-colour tint (DESIGN.md, Cards / Containers). */
 .ds-pref-group {
     display: flex;
     flex-direction: column;
     border-radius: 14px;
-    background: color-mix(in srgb, var(--sb-layer-canvas) 4%, var(--sb-layer-view));
-    border: 1px solid var(--sb-shell-border);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+    border: 0;
     overflow: hidden;
     margin-bottom: 12px;
 }
@@ -8796,6 +8797,16 @@ body.reduced-motion .sb-shell-main {
     transition: background-color var(--sb-transition-fast);
 }
 
+/* The row metric above centers a row's contents, which is right for a control beside its label.
+   A column-direction container is instead a stack of settings, and centering it shrink-wraps every
+   child to its own text: Context Template's 1156px section held a 219px column at x=721, and the
+   same shape hit System Prompt, the Appearance color picker, and Interface. The container spans the
+   section, so its children do too. */
+.sb-settings-mounted-shell .sb-settings-flat-section > .flex-container.flexFlowColumn,
+.sb-settings-mounted-shell .sb-settings-flat-section > .flex-container.flexFlowColumn > .flex-container.flexFlowColumn {
+    align-items: stretch;
+}
+
 .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label + .checkbox_label,
 .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label + .flex-container {
     border-top: 1px solid var(--sb-shell-border);
@@ -8931,6 +8942,39 @@ body.reduced-motion .sb-shell-main {
     flex: 1 1 auto;
     align-self: stretch;
     margin: 0;
+}
+
+/* One heading treatment for the settings page, modelled on the Logs card titles: bold sentence
+   case on the control scale, no box, no tracked uppercase kicker, no accent ink (DESIGN.md Sentence
+   Case and Signal Scarcity rules). Upstream `#user-settings-block h4` / `#left-nav-panel h4` paint
+   accent uppercase kickers and `.standoutHeader` / `h3` paint tinted chips, so one view mixed three
+   heading styles. Collapsible headers keep their own row treatment. `h3` keeps its colour so the
+   user's custom CSS (`h1, h2, h3 { color }`) still applies. */
+#sb-settings-page .sb-settings-mounted-shell :is(h3, h4, .standoutHeader):not(.inline-drawer-header, .inline-drawer-toggle) {
+    min-height: 0;
+    margin-inline: 0;
+    padding: 12px 0 4px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    font-size: var(--sb-type-control);
+    font-weight: var(--sb-weight-title);
+    line-height: var(--sb-line-title);
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+#sb-settings-page .sb-settings-mounted-shell :is(h4, .standoutHeader):not(.inline-drawer-header, .inline-drawer-toggle) {
+    color: var(--sb-shell-text);
+}
+
+/* Inside a boxed group the title is the group's first row: same 16px inset as the rows under it. */
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > :is(h3, h4) {
+    justify-content: flex-start;
+    margin: 0;
+    padding: 12px 16px 4px;
+    text-align: start;
 }
 
 /* The MovingUI preset picker stacks its label above its controls, so the whole group wraps to two
