@@ -450,7 +450,8 @@ describe('group sends with a routing owner', () => {
         ['forced speakers', sandbox => sandbox.runtime.generateGroupWrapper(false, 'normal', { force_chids: [1, 0] })],
         ['a swipe', sandbox => sandbox.runtime.generateGroupWrapper(false, 'swipe', {})],
         ['Continue', sandbox => sandbox.runtime.generateGroupWrapper(false, 'continue', {})],
-        ['Regenerate', sandbox => sandbox.runtime.generateGroupWrapper(false, 'regenerate', {})],
+        ['a regenerate generation', sandbox => sandbox.runtime.generateGroupWrapper(false, 'regenerate', {})],
+        ['Regenerate with a draft in the composer', sandbox => sandbox.runtime.regenerateGroup()],
         ['a quiet generation', sandbox => sandbox.runtime.generateGroupWrapper(false, 'quiet', { quiet_prompt: 'Summarize.' })],
         ['Impersonate', sandbox => sandbox.runtime.generateGroupWrapper(false, 'impersonate', {})],
         ['auto mode', sandbox => sandbox.runtime.generateGroupWrapper(true, 'normal', {})],
@@ -479,10 +480,40 @@ describe('group sends with a routing owner', () => {
 
         await send(sandbox, 'Alice, are you there?');
 
-        expect(sandbox.plans).toEqual([]);
         expect(sandbox.generations).toEqual([{ type: 'normal', avatar: 'alice.png' }]);
         expect(sandbox.events.map(event => event.type)).toEqual(['turn-started', 'finished']);
         expect(sandbox.events[1]).toMatchObject({ status: 'declined', reason: expect.stringMatching(/tool/i) });
+    });
+
+    test.each([
+        ['a planned member\'s model can call tools though the chat model cannot', 'plain-model', { 'bob.png': 'tool-model' }, 'declined',
+            [{ type: 'normal', avatar: 'alice.png' }]],
+        ['no planned member\'s model can call tools though the chat model can', 'tool-model', { 'alice.png': 'plain-model', 'bob.png': 'plain-model' }, 'success',
+            [{ type: 'normal', avatar: 'bob.png' }, { type: 'normal', avatar: 'alice.png' }]],
+    ])('tool calling is checked under each planned member\'s model override: %s', async (_, chatModel, memberModels, status, generations) => {
+        const sandbox = createRoutedGroupChat({ plan: () => ({ avatars: ['bob.png', 'alice.png'], isCurrent: () => true }) });
+        const { runtime } = sandbox;
+        Object.assign(runtime, { oai_settings: { model: chatModel }, getCurrentChatCompletionModelSettingKey: () => 'model' });
+        runtime.groups[0].member_models = memberModels;
+        runtime.ToolManager.canPerformToolCalls = () => runtime.oai_settings.model === 'tool-model';
+
+        await send(sandbox, 'Alice, are you there?');
+
+        expect(sandbox.events.at(-1)).toMatchObject({ type: 'finished', status });
+        expect(sandbox.generations).toEqual(generations);
+        expect(runtime.oai_settings.model).toBe(chatModel);
+    });
+
+    test('a routed turn whose message was not saved writes no replies', async () => {
+        const sandbox = createRoutedGroupChat();
+        sandbox.runtime.saveChatConditional = async () => false;
+
+        await send(sandbox, 'Hello');
+
+        expect(sandbox.generations).toEqual([]);
+        expect(sandbox.runtime.chat.at(-1)).toMatchObject({ is_user: true, mes: 'Hello' });
+        expect(sandbox.events.map(event => event.type)).toEqual(['turn-started', 'finished']);
+        expect(sandbox.events[1]).toMatchObject({ status: 'failed', reason: expect.stringMatching(/not saved/i) });
     });
 
     test('Stop ends the routed turn with the reply it interrupted', async () => {

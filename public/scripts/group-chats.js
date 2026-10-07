@@ -54,6 +54,7 @@ import {
     cancelTtsPlay,
     displayPastChats,
     sendMessageAsUser,
+    saveChatConditional,
     getBiasStrings,
     flushPendingChatSavesForNavigation,
     deactivateSendButtons,
@@ -662,7 +663,8 @@ async function regenerateGroup() {
 
     const abortController = new AbortController();
     setExternalAbortController(abortController);
-    return generateGroupWrapper(false, 'normal', { signal: abortController.signal });
+    // SillyBunny: marks the send as Regenerate, which a turn routing owner never plans.
+    return generateGroupWrapper(false, 'normal', { signal: abortController.signal, isRegenerate: true });
 }
 
 /**
@@ -1662,7 +1664,7 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
         const isWholeGroupAddress = isAddressedToEntireGroup(activationText);
         // SillyBunny: an extension holding the turn routing lease plans who answers an ordinary user message.
         // Forced speakers and the speaker bar pick still come first, and native routing answers when it declines.
-        const isRoutableSend = isUserInput && (!type || type === 'normal') && !Array.isArray(params?.force_chids)
+        const isRoutableSend = isUserInput && (!type || type === 'normal') && !params?.isRegenerate && !Array.isArray(params?.force_chids)
             && typeof params?.force_chid != 'number' && selectedSpeakerChid === -1;
         routed = isRoutableSend ? await planRoutedGroupTurn(group, userInput, enabledMembers) : null;
         if (params && Array.isArray(params.force_chids)) {
@@ -1722,7 +1724,13 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
                 await sendMessageAsUser(userInput, bias.messageBias);
             }
             didRenderUserMessage = true;
-            routed?.turn.acknowledge();
+            // SillyBunny: sendMessageAsUser does not report whether its save went through, so a routed turn saves
+            // again before telling its owner the message was saved, and writes no replies when it was not.
+            if (routed && await saveChatConditional()) {
+                routed.turn.acknowledge();
+            } else if (routed) {
+                routed.turn.finish('failed', 'Your message was not saved.');
+            }
             $('#send_textarea').val('')[0].dispatchEvent(new Event('input', { bubbles: true }));
             await new Promise(resolve => requestAnimationFrame(resolve));
         }
@@ -1834,12 +1842,6 @@ async function planRoutedGroupTurn(group, text, enabledMembers) {
         return null;
     }
 
-    // Tool calls add messages and generations that a routed turn cannot account for.
-    if (ToolManager.canPerformToolCalls('normal')) {
-        turn.finish('declined', 'Routed replies need tool calling turned off.');
-        return null;
-    }
-
     // The owner plans against the loaded cards, so load them in full now rather than swap them in mid-turn.
     try {
         await unshallowGroupMembers(group.id);
@@ -1848,7 +1850,20 @@ async function planRoutedGroupTurn(group, text, enabledMembers) {
         throw error;
     }
     const members = turn.plan(avatar => enabledMembers.includes(avatar) ? getCharacterIdByAvatar(avatar) : -1);
-    return members ? { turn, members } : null;
+    if (!members) {
+        return null;
+    }
+
+    // Tool calls add messages and generations that a routed turn cannot account for. Each reply runs under its
+    // member's model override, which decides whether that member can make them.
+    for (const chId of members) {
+        if (await runWithGroupMemberModelOverride(group, characters[chId].avatar, () => ToolManager.canPerformToolCalls('normal'))) {
+            turn.finish('declined', 'Routed replies need tool calling turned off.');
+            return null;
+        }
+    }
+
+    return { turn, members };
 }
 
 /**

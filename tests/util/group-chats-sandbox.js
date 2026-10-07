@@ -150,6 +150,10 @@ export function createGroupChatsRuntime({ exclude = [] } = {}) {
             runtime.chat.push({ name: 'User', mes: text, is_user: true });
             log.push(`user message: ${text}`);
         },
+        saveChatConditional: async () => true,
+        deleteLastMessage: async () => { runtime.chat.pop(); },
+        setExternalAbortController: noop,
+        AbortController,
         getBiasStrings: () => ({ messageBias: '' }),
         requestAnimationFrame: callback => callback(),
         ToolManager: { canPerformToolCalls: () => false },
