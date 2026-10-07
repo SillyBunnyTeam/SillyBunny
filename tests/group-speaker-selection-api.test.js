@@ -14,6 +14,13 @@ const speakerStateNames = [
     'activeGroupTypingName',
     'groupSpeakerAvatarRenderKey',
 ];
+const generationStateNames = [
+    'is_group_generating',
+    'group_generation_id',
+    'groupChatQueueOrder',
+    'group_activation_strategy',
+    'GROUP_MEMBER_MODELS_KEY',
+];
 
 function getTopLevelDeclarations() {
     return groupChatsAst.body.map(node => node.declaration ?? node);
@@ -32,6 +39,7 @@ function getExportedNames(ast) {
 /**
  * Loads group-chats.js's real functions and speaker state into a sandbox with an open group.
  * The bar container reports no DOM, so rendering is skipped and only the pick and its events are observed.
+ * Bob wrote the last message; Generate records which member each group reply was asked of.
  */
 function createSpeakerRuntime() {
     const handlers = {};
@@ -42,11 +50,13 @@ function createSpeakerRuntime() {
         if (target && typeof target === 'object' && 'avatar' in target) {
             return { data: key => key === 'avatar' ? target.avatar : undefined };
         }
-        return { length: 0, on() { return this; }, removeClass() { return this; } };
+        return { length: 0, on() { return this; }, removeClass() { return this; }, val: () => '' };
     };
     const eventSource = new EventEmitter();
     const changes = [];
+    const generations = [];
     eventSource.on(event_types.GROUP_SPEAKER_SELECTION_CHANGED, avatar => changes.push(avatar));
+    const noop = () => {};
     const runtime = vm.createContext({
         $,
         document: {},
@@ -60,13 +70,29 @@ function createSpeakerRuntime() {
             { name: 'Carol', avatar: 'carol.png' },
             { name: 'Dave', avatar: 'dave.png' },
         ],
+        chat: [{ name: 'Bob', original_avatar: 'bob.png', mes: 'Hello there.', is_user: false }],
+        online_status: 'connected',
+        menu_type: 'group_edit',
+        power_user: {},
+        system_message_types: { NARRATOR: 'narrator' },
+        AbortSignal,
+        Generate: async type => { generations.push({ type, avatar: runtime.characters[runtime.this_chid]?.avatar }); },
+        setCharacterId: chid => { runtime.this_chid = chid; },
+        setCharacterName: noop,
+        setSendButtonState: noop,
+        hideSwipeButtons: noop,
+        showSwipeButtons: noop,
+        activateSendButtons: noop,
+        deactivateSendButtons: noop,
+        unshallowCharacter: async () => {},
     });
     const declarations = getTopLevelDeclarations();
+    const stateNames = [...speakerStateNames, ...generationStateNames];
     const state = declarations.filter(node => node.type === 'VariableDeclaration'
-        && node.declarations.some(declaration => speakerStateNames.includes(declaration.id.name)));
+        && node.declarations.some(declaration => stateNames.includes(declaration.id.name)));
     const functions = declarations.filter(node => node.type === 'FunctionDeclaration');
     vm.runInContext([...state, ...functions].map(node => groupChatsSource.slice(node.start, node.end)).join('\n'), runtime);
-    return { runtime, changes, handlers };
+    return { runtime, changes, handlers, generations };
 }
 
 describe('group speaker bar selection API', () => {
@@ -139,5 +165,29 @@ describe('group speaker bar selection API', () => {
             expect(importedNames).toContain(name);
             expect(contextKeys).toContain(name);
         }
+    });
+});
+
+describe('group replies and the speaker bar pick', () => {
+    test('the picked member answers the next reply, which uses up the pick', async () => {
+        const { runtime, changes, generations } = createSpeakerRuntime();
+        runtime.setSelectedGroupSpeakerAvatar('alice.png');
+
+        await runtime.generateGroupWrapper(false, 'normal', {});
+
+        expect(generations).toEqual([{ type: 'normal', avatar: 'alice.png' }]);
+        expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('');
+        expect(changes).toEqual(['alice.png', '']);
+    });
+
+    test('a background quiet generation leaves the pick for the next reply', async () => {
+        const { runtime, changes, generations } = createSpeakerRuntime();
+        runtime.setSelectedGroupSpeakerAvatar('alice.png');
+
+        await runtime.generateGroupWrapper(false, 'quiet', { quiet_prompt: 'Summarize the chat so far.' });
+
+        expect(generations).toEqual([{ type: 'quiet', avatar: 'bob.png' }]);
+        expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('alice.png');
+        expect(changes).toEqual(['alice.png']);
     });
 });

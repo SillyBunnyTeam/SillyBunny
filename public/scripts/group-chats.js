@@ -1735,7 +1735,8 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
             setGroupTypingIndicator('');
         }
 
-        if (selectedSpeakerChid !== -1 && !(params && typeof params.force_chid == 'number')) {
+        // Quiet generations (summaries, helper prompts) never answer as the pick, so they leave it for the next reply.
+        if (selectedSpeakerChid !== -1 && type !== 'quiet' && !(params && typeof params.force_chid == 'number')) {
             clearSelectedGroupSpeaker();
         }
     } finally {
