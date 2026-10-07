@@ -8716,6 +8716,39 @@ body.reduced-motion .sb-shell-main {
     color: inherit;
 }
 
+/* A drawer header carrying a description is still a header, so it reads at the row metric rather
+   than at body leading: title on the body scale, description on the meta scale, 2px apart. The
+   Prompting and Advanced Formatting drawers build their own header markup and so miss the
+   `height: 52px; line-height: 1.25` that `.sb-settings-subdrawer` headers inherit, which left them
+   at 73-78px against 52px elsewhere for the same two-line shape. Scoped through `#sb-settings-page`
+   because the enclosing `#openai_settings .flex-container` gap is ID-weighted. */
+#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) {
+    min-height: 52px;
+    padding: 10px 16px;
+    gap: 12px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) > .flex-container {
+    gap: 2px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) > .flex-container b {
+    /* Body scale, not the row scale: a drawer header's title matches the 15px title of every
+       single-line header beside it, and the height comes out of tight leading instead. Descendant
+       rather than child because the sampling header wraps its title in a help-link row. */
+    font-size: var(--sb-type-body);
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) > .flex-container > small {
+    /* The 2px gap above is the whole separation; the group-meta rule adds its own top margin. */
+    margin: 0;
+    font-size: var(--sb-type-meta);
+    line-height: 1.4;
+    color: var(--sb-shell-text-secondary);
+}
+
 /* Rows lifted out of a flattened drawer lose the spacing the enclosing expander used to draw, so
    they get the grouped row metric back: 44px tall, 16px inset, separator between rows. */
 .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label,
