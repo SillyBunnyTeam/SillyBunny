@@ -110,6 +110,7 @@ export {
     select_group_chats,
     getGroupChatNames,
     getSelectedGroupSpeakerAvatar,
+    setSelectedGroupSpeakerAvatar,
     updateGroupSpeakerControls,
 };
 
@@ -268,13 +269,45 @@ function getGroupEnabledMembers(group) {
     return group.members.filter(member => !group.disabled_members?.includes(member));
 }
 
+function changeSelectedGroupSpeaker(avatarId) {
+    if (selectedGroupSpeakerAvatar === avatarId) {
+        return;
+    }
+
+    selectedGroupSpeakerAvatar = avatarId;
+    eventSource.emit(event_types.GROUP_SPEAKER_SELECTION_CHANGED, avatarId);
+}
+
+/**
+ * Picks who answers the next group message, the same way clicking the speaker bar does.
+ * SillyBunny: exposed through getContext() so extensions such as Group Chat Overhaul can drive the bar.
+ * @param {string} avatarId Avatar of an enabled member of the open group, or an empty string to clear the pick
+ * @returns {boolean} True if the pick was applied
+ */
+function setSelectedGroupSpeakerAvatar(avatarId) {
+    if (typeof avatarId !== 'string') {
+        return false;
+    }
+
+    if (avatarId) {
+        const group = selected_group ? groups.find(x => x.id === selected_group) : null;
+        if (!getGroupEnabledMembers(group).includes(avatarId) || getCharacterIdByAvatar(avatarId) === -1) {
+            return false;
+        }
+    }
+
+    changeSelectedGroupSpeaker(avatarId);
+    updateGroupSpeakerControls();
+    return true;
+}
+
 function getSelectedGroupSpeakerChid(group) {
     if (!selectedGroupSpeakerAvatar) {
         return -1;
     }
 
     if (!getGroupEnabledMembers(group).includes(selectedGroupSpeakerAvatar)) {
-        selectedGroupSpeakerAvatar = '';
+        changeSelectedGroupSpeaker('');
         return -1;
     }
 
@@ -361,7 +394,7 @@ async function addSelectedGroupGreeting() {
 
     const group = groups.find(x => x.id === selected_group);
     if (!getGroupEnabledMembers(group).includes(selectedGroupSpeakerAvatar)) {
-        selectedGroupSpeakerAvatar = '';
+        changeSelectedGroupSpeaker('');
         updateGroupSpeakerControls();
         toastr.warning(t`Pick a group member first.`);
         return;
@@ -416,7 +449,7 @@ function getMessageSpeakerName(message) {
 }
 
 function clearSelectedGroupSpeaker() {
-    selectedGroupSpeakerAvatar = '';
+    changeSelectedGroupSpeaker('');
     $('#group_speaker_controls .group_speaker_avatar').removeClass('selected');
 }
 
@@ -514,7 +547,7 @@ function initGroupSpeakerControls() {
     container.on('click', '.group_speaker_avatar', async function (event) {
         const avatarId = String($(this).data('avatar') || '');
         const alreadySelected = selectedGroupSpeakerAvatar === avatarId;
-        selectedGroupSpeakerAvatar = alreadySelected ? '' : avatarId;
+        changeSelectedGroupSpeaker(alreadySelected ? '' : avatarId);
         updateGroupSpeakerControls();
 
         if (event.shiftKey && selected_group) {
