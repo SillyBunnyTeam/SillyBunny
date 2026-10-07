@@ -449,8 +449,9 @@ function getMessageSpeakerName(message) {
 }
 
 function clearSelectedGroupSpeaker() {
-    changeSelectedGroupSpeaker('');
+    // Unhighlight first: a listener of the change event may already pick the next speaker.
     $('#group_speaker_controls .group_speaker_avatar').removeClass('selected');
+    changeSelectedGroupSpeaker('');
 }
 
 function limitGroupSpeakersForControl(activatedMembers, forceSingleSpeaker) {
@@ -502,6 +503,11 @@ function updateGroupSpeakerControls() {
         setGroupTypingIndicator('');
         groupSpeakerAvatarRenderKey = '';
         return;
+    }
+
+    // A pick from another group, or of a member muted since, can no longer answer here.
+    if (selectedGroupSpeakerAvatar && !members.includes(selectedGroupSpeakerAvatar)) {
+        changeSelectedGroupSpeaker('');
     }
 
     const avatarRenderKey = JSON.stringify({
@@ -1625,6 +1631,7 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
         let activatedMembers = [];
 
         const selectedSpeakerChid = getSelectedGroupSpeakerChid(group);
+        const selectedSpeakerAvatar = selectedSpeakerChid !== -1 ? selectedGroupSpeakerAvatar : '';
         const addressedMemberChid = findDirectlyAddressedMember(group, activationText);
         const isWholeGroupAddress = isAddressedToEntireGroup(activationText);
         if (params && Array.isArray(params.force_chids)) {
@@ -1736,7 +1743,9 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
         }
 
         // Quiet generations (summaries, helper prompts) never answer as the pick, so they leave it for the next reply.
-        if (selectedSpeakerChid !== -1 && type !== 'quiet' && !(params && typeof params.force_chid == 'number')) {
+        // A pick made while this reply was being written is meant for the reply after it.
+        if (selectedSpeakerChid !== -1 && type !== 'quiet' && !(params && typeof params.force_chid == 'number')
+            && selectedGroupSpeakerAvatar === selectedSpeakerAvatar) {
             clearSelectedGroupSpeaker();
         }
     } finally {

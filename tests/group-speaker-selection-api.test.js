@@ -37,29 +37,70 @@ function getExportedNames(ast) {
 }
 
 /**
- * Loads group-chats.js's real functions and speaker state into a sandbox with an open group.
- * The bar container reports no DOM, so rendering is skipped and only the pick and its events are observed.
+ * A minimal jQuery stand-in for the speaker bar: it keeps the rendered avatar buttons and which of them is highlighted.
+ */
+function createSpeakerBar(handlers) {
+    let items = [];
+    const wrap = item => ({
+        length: 1,
+        data: key => key === 'avatar' ? item.avatar : undefined,
+        attr(name, value) {
+            if (name === 'data-avatar') item.avatar = value;
+            return this;
+        },
+        toggleClass(name, enabled) {
+            if (name === 'selected') item.selected = Boolean(enabled);
+            return this;
+        },
+        append() { return this; },
+    });
+    const container = {
+        length: 1,
+        on: (event, selector, handler) => { handlers[`${event} ${selector}`] = handler; },
+        toggleClass() { return this; },
+        find: selector => selector === '.group_speaker_list'
+            ? { empty: () => { items = []; return { append: button => items.push(button.item) }; } }
+            : { each: callback => items.forEach(item => callback.call(item)) },
+    };
+    const $ = target => {
+        if (target === '#group_speaker_controls') {
+            return container;
+        }
+        if (target === '#group_speaker_controls .group_speaker_avatar') {
+            return { removeClass: () => items.forEach(item => { item.selected = false; }) };
+        }
+        if (target === '<button type="button" class="group_speaker_avatar"></button>') {
+            const item = { avatar: '', selected: false };
+            return { ...wrap(item), item };
+        }
+        if (typeof target === 'string' && target.startsWith('<')) {
+            return { attr() { return this; }, text() { return this; } };
+        }
+        if (target && typeof target === 'object' && 'avatar' in target) {
+            return wrap(target);
+        }
+        return { length: 0, on() { return this; }, val: () => '' };
+    };
+    return { $, highlighted: () => items.filter(item => item.selected).map(item => item.avatar) };
+}
+
+/**
+ * Loads group-chats.js's real functions and speaker state into a sandbox with an open group and its speaker bar.
  * Bob wrote the last message; Generate records which member each group reply was asked of.
  */
 function createSpeakerRuntime() {
     const handlers = {};
-    const $ = target => {
-        if (target === '#group_speaker_controls') {
-            return { length: 0, on: (event, selector, handler) => { handlers[`${event} ${selector}`] = handler; } };
-        }
-        if (target && typeof target === 'object' && 'avatar' in target) {
-            return { data: key => key === 'avatar' ? target.avatar : undefined };
-        }
-        return { length: 0, on() { return this; }, removeClass() { return this; }, val: () => '' };
-    };
+    const bar = createSpeakerBar(handlers);
     const eventSource = new EventEmitter();
     const changes = [];
     const generations = [];
     eventSource.on(event_types.GROUP_SPEAKER_SELECTION_CHANGED, avatar => changes.push(avatar));
     const noop = () => {};
     const runtime = vm.createContext({
-        $,
-        document: {},
+        $: bar.$,
+        document: { body: { classList: { toggle: noop } } },
+        accountStorage: { getItem: () => null },
+        getThumbnailUrl: (type, file) => file,
         eventSource,
         event_types,
         selected_group: 'group-1',
@@ -92,16 +133,17 @@ function createSpeakerRuntime() {
         && node.declarations.some(declaration => stateNames.includes(declaration.id.name)));
     const functions = declarations.filter(node => node.type === 'FunctionDeclaration');
     vm.runInContext([...state, ...functions].map(node => groupChatsSource.slice(node.start, node.end)).join('\n'), runtime);
-    return { runtime, changes, handlers, generations };
+    return { runtime, changes, handlers, generations, eventSource, bar };
 }
 
 describe('group speaker bar selection API', () => {
     test('picks an enabled member of the open group and announces the change', () => {
-        const { runtime, changes } = createSpeakerRuntime();
+        const { runtime, changes, bar } = createSpeakerRuntime();
 
         expect(typeof runtime.setSelectedGroupSpeakerAvatar).toBe('function');
         expect(runtime.setSelectedGroupSpeakerAvatar('bob.png')).toBe(true);
         expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('bob.png');
+        expect(bar.highlighted()).toEqual(['bob.png']);
         expect(changes).toEqual(['bob.png']);
     });
 
@@ -127,11 +169,12 @@ describe('group speaker bar selection API', () => {
     });
 
     test('clears the pick with an empty string', () => {
-        const { runtime, changes } = createSpeakerRuntime();
+        const { runtime, changes, bar } = createSpeakerRuntime();
         runtime.setSelectedGroupSpeakerAvatar('alice.png');
 
         expect(runtime.setSelectedGroupSpeakerAvatar('')).toBe(true);
         expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('');
+        expect(bar.highlighted()).toEqual([]);
         expect(changes).toEqual(['alice.png', '']);
     });
 
@@ -189,5 +232,59 @@ describe('group replies and the speaker bar pick', () => {
         expect(generations).toEqual([{ type: 'quiet', avatar: 'bob.png' }]);
         expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('alice.png');
         expect(changes).toEqual(['alice.png']);
+    });
+});
+
+describe('keeping the speaker bar pick valid', () => {
+    test('drops a pick that is not a member of the newly opened group', () => {
+        const { runtime, changes } = createSpeakerRuntime();
+        runtime.setSelectedGroupSpeakerAvatar('alice.png');
+        runtime.groups.push({ id: 'group-2', members: ['bob.png'], disabled_members: [] });
+        runtime.selected_group = 'group-2';
+
+        runtime.updateGroupSpeakerControls();
+
+        expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('');
+        expect(changes).toEqual(['alice.png', '']);
+    });
+
+    test('drops a pick of a member who was muted after being picked', () => {
+        const { runtime, changes } = createSpeakerRuntime();
+        runtime.setSelectedGroupSpeakerAvatar('bob.png');
+        runtime.groups[0].disabled_members.push('bob.png');
+
+        runtime.updateGroupSpeakerControls();
+
+        expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('');
+        expect(changes).toEqual(['bob.png', '']);
+    });
+
+    test('keeps a pick made while the previous reply was still being written', async () => {
+        const { runtime, changes, generations } = createSpeakerRuntime();
+        runtime.setSelectedGroupSpeakerAvatar('alice.png');
+        const generate = runtime.Generate;
+        runtime.Generate = async (...args) => {
+            await generate(...args);
+            runtime.setSelectedGroupSpeakerAvatar('bob.png');
+        };
+
+        await runtime.generateGroupWrapper(false, 'normal', {});
+
+        expect(generations).toEqual([{ type: 'normal', avatar: 'alice.png' }]);
+        expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('bob.png');
+        expect(changes).toEqual(['alice.png', 'bob.png']);
+    });
+
+    test('keeps the bar in step with a pick made by the first listener as the old pick clears', () => {
+        const { runtime, eventSource, bar } = createSpeakerRuntime();
+        runtime.setSelectedGroupSpeakerAvatar('alice.png');
+        eventSource.makeFirst(event_types.GROUP_SPEAKER_SELECTION_CHANGED, avatar => {
+            if (avatar === '') runtime.setSelectedGroupSpeakerAvatar('bob.png');
+        });
+
+        runtime.clearSelectedGroupSpeaker();
+
+        expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('bob.png');
+        expect(bar.highlighted()).toEqual(['bob.png']);
     });
 });
