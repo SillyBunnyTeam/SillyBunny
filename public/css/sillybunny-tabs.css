@@ -8677,6 +8677,22 @@ body.reduced-motion .sb-shell-main {
     color: var(--sb-shell-text-secondary);
 }
 
+/* A flattened drawer that was a section in its own right keeps the header it had while it was
+   still collapsible: 52px floor, 10px/16px inset, title on the body scale. The base rule above is
+   the *subsection* label -- the small dim caption that sits over rows lifted out of someone else's
+   card -- and applying it to a top-level section demotes every section title in Backend and
+   Customize to a 33px caption. The `:has()` rule further down raises the headers that carry a
+   description line; this one covers the single-line ones, and comes first so that a header with a
+   description still wins on the shared metric. */
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-section-top > .sb-settings-flat-header {
+    min-height: 52px;
+    padding: 10px 16px;
+    gap: 12px;
+    font-size: var(--sb-type-body);
+    line-height: 1.3;
+    color: var(--sb-shell-text);
+}
+
 /* A flattened section is a heading in the enclosing body's flow, not a card of its own: it must
    not sit inside the box it used to be. Several wrappers parent their own card around a nested
    drawer, and those treatments would otherwise stack a tinted box inside a tinted box. */
@@ -8720,23 +8736,30 @@ body.reduced-motion .sb-shell-main {
     color: inherit;
 }
 
-/* A drawer header carrying a description is still a header, so it reads at the row metric rather
-   than at body leading: title on the body scale, description on the meta scale, 2px apart. The
-   Prompting and Advanced Formatting drawers build their own header markup and so miss the
-   `height: 52px; line-height: 1.25` that `.sb-settings-subdrawer` headers inherit, which left them
-   at 73-78px against 52px elsewhere for the same two-line shape. Scoped through `#sb-settings-page`
-   because the enclosing `#openai_settings .flex-container` gap is ID-weighted. */
-#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) {
+/* A header carrying a description reads at the row metric rather than at body leading: title on
+   the body scale, description on the meta scale, 2px apart, 52px floor. The Prompting and Advanced
+   Formatting drawers build their own header markup and so miss the `height: 52px; line-height: 1.25`
+   that `.sb-settings-subdrawer` headers inherit, which left them at 73-78px against 52px elsewhere
+   for the same two-line shape. Scoped through `#sb-settings-page` because the enclosing
+   `#openai_settings .flex-container` gap is ID-weighted.
+ *
+ * The flat-header selector covers the same shape after flattening. A flattened section keeps the
+ * markup and the two-line content but loses `.inline-drawer-header`, so without it the header drops
+ * to the 33px label metric and the section it titles changes height the moment it is flattened. */
+#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small),
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-header:has(> .flex-container > small) {
     min-height: 52px;
     padding: 10px 16px;
     gap: 12px;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) > .flex-container {
+#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) > .flex-container,
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-header:has(> .flex-container > small) > .flex-container {
     gap: 2px;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) > .flex-container b {
+#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) > .flex-container b,
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-header:has(> .flex-container > small) > .flex-container b {
     /* Body scale, not the row scale: a drawer header's title matches the 15px title of every
        single-line header beside it, and the height comes out of tight leading instead. Descendant
        rather than child because the sampling header wraps its title in a help-link row. */
@@ -8745,7 +8768,8 @@ body.reduced-motion .sb-shell-main {
     line-height: 1.3;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) > .flex-container > small {
+#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) > .flex-container > small,
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-header:has(> .flex-container > small) > .flex-container > small {
     /* The 2px gap above is the whole separation; the group-meta rule adds its own top margin. */
     margin: 0;
     font-size: var(--sb-type-meta);

@@ -146,6 +146,16 @@ export const SB_FLAT_SECTION_CLASS = 'sb-settings-flat-section';
 /** Heading element of a flattened subsection; carries the label the drawer header used to show. */
 export const SB_FLAT_SECTION_HEADER_CLASS = 'sb-settings-flat-header';
 
+/**
+ * A flattened drawer that was a section in its own right rather than a subsection of one.
+ *
+ * The two shapes need different metrics: a subsection sits under the card that held it and gets a
+ * compact 33px label, while a section is the top of its own hierarchy and keeps the two-line
+ * 52-60px header with its description line. The class is what lets the stylesheet tell them apart,
+ * since after flattening both are `.sb-settings-flat-section` with a `.sb-settings-flat-header`.
+ */
+export const SB_FLAT_SECTION_TOP_CLASS = 'sb-settings-flat-section-top';
+
 /** Classes removed from a nested drawer's header when it stops being a toggle. */
 const SB_FLAT_SECTION_HEADER_CLASSES = Object.freeze([
     'inline-drawer-toggle',
@@ -155,12 +165,18 @@ const SB_FLAT_SECTION_HEADER_CLASSES = Object.freeze([
 ]);
 
 /**
- * Unwraps every drawer that sits inside another drawer into an always-visible subsection.
+ * Unwraps collapsible drawers into always-visible sections and subsections.
  *
- * Layer 4 allows a sub-category at most one collapsible section (PRODUCT.md, DESIGN.md), so a
- * drawer inside a drawer is the concrete violation this removes. The outermost drawer of each
- * nest keeps its toggle; only the drawers below it are flattened, which is why the work is driven
- * by ancestry rather than by depth from the root.
+ * Two modes, both keeping the header element so search still resolves a name for the controls
+ * inside:
+ *
+ * - `nested` (default) flattens only a drawer that sits inside another drawer. Layer 4 allows a
+ *   sub-category at most one collapsible section (PRODUCT.md, DESIGN.md), so a drawer inside a
+ *   drawer is the concrete violation this removes. The outermost drawer of each nest keeps its
+ *   toggle, which is why the work is driven by ancestry rather than by depth from the root.
+ * - `all` also flattens the outermost drawer. 6F uses this for Backend and Customize, where no
+ *   setting may hide behind a click; Extensions opts out because each of its drawers is an
+ *   independently-authored block that is a purposeful selection rather than a stray accordion.
  *
  * The transform moves nodes with `insertBefore`/`appendChild` -- never `cloneNode` and never
  * `innerHTML` -- so input bindings, jQuery data, and SillyTavern's own listeners stay attached.
@@ -173,12 +189,15 @@ const SB_FLAT_SECTION_HEADER_CLASSES = Object.freeze([
  * its own subsections after load), so this runs again on each tab activation.
  *
  * @param {HTMLElement|null|undefined} root subtree to flatten
+ * @param {{includeTopLevel?: boolean}} [options] flatten outermost drawers as well as nested ones
  * @returns {number} how many drawers were flattened
  */
-export function flattenNestedSettingsDrawers(root) {
+export function flattenNestedSettingsDrawers(root, options = {}) {
     if (!(root instanceof HTMLElement)) {
         return 0;
     }
+
+    const includeTopLevel = options.includeTopLevel === true;
 
     // Snapshot before mutating: the ancestry test needs to know which elements were drawers when
     // the walk started, and flattening removes that class from the ones already handled.
@@ -195,7 +214,11 @@ export function flattenNestedSettingsDrawers(root) {
             }
         }
 
-        if (nested && flattenSettingsDrawer(drawer)) {
+        if (!nested && !includeTopLevel) {
+            continue;
+        }
+
+        if (flattenSettingsDrawer(drawer, !nested)) {
             flattened++;
         }
     }
@@ -204,12 +227,13 @@ export function flattenNestedSettingsDrawers(root) {
 }
 
 /**
- * Converts one nested drawer into `[heading, ...children]` in place.
+ * Converts one drawer into `[heading, ...children]` in place.
  *
  * @param {HTMLElement} drawer
+ * @param {boolean} isTopLevel whether this drawer was a section rather than a subsection
  * @returns {boolean} whether the drawer was flattened
  */
-function flattenSettingsDrawer(drawer) {
+function flattenSettingsDrawer(drawer, isTopLevel) {
     const header = drawer.querySelector(':scope > .inline-drawer-toggle, :scope > .inline-drawer-header');
     const content = drawer.querySelector(':scope > .inline-drawer-content');
 
@@ -230,6 +254,9 @@ function flattenSettingsDrawer(drawer) {
 
     drawer.classList.remove('inline-drawer');
     drawer.classList.add(SB_FLAT_SECTION_CLASS);
+    if (isTopLevel) {
+        drawer.classList.add(SB_FLAT_SECTION_TOP_CLASS);
+    }
     drawer.dataset.sbDrawerPersistence = 'off';
 
     return true;
@@ -336,13 +363,17 @@ export function splitUserSettingsContent(originalContent) {
         }
     }
 
-    // Layer 4 allows one collapsible section per sub-category, so any drawer that ended up inside
-    // another drawer is unwrapped here. Flattening happens after placement because the nesting is
-    // a property of the finished container, not of the columns the sections came from.
+    // 6E allowed one collapsible section per sub-category, so any drawer that ended up inside
+    // another drawer is unwrapped here. 6F goes further and removes the remaining accordions, so
+    // the outermost drawers go too -- all four containers are Backend or Customize content, and
+    // Extensions, the one tab that keeps its drawers, is built from `#rm_extensions_block` and is
+    // not among them. Flattening happens after placement because the nesting is a property of the
+    // finished container, not of the columns the sections came from.
+    const flattenOptions = { includeTopLevel: true };
     for (const container of Object.values(containers)) {
-        flattenNestedSettingsDrawers(container);
+        flattenNestedSettingsDrawers(container, flattenOptions);
     }
-    flattenNestedSettingsDrawers(dataSecurity);
+    flattenNestedSettingsDrawers(dataSecurity, flattenOptions);
 
     const missing = [];
     for (const [tabId, sectionIds] of Object.entries(SB_REQUIRED_SECTIONS)) {

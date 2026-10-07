@@ -101,16 +101,29 @@ function initializeSettingsPanel() {
     return settingsPanelPromise;
 }
 
-/** Flattens nested drawers in every Customize panel, covering drawers authored after the split. */
+/**
+ * Tabs whose collapsible drawers are left alone.
+ *
+ * Extensions is the one the 6F decision names: each of its 17 drawers is a self-contained,
+ * independently-authored block rather than a stray accordion. Agents is the same case for the same
+ * reason -- its panel is built by the bundled in-chat-agents extension, which drives its own
+ * drawer's toggle programmatically (`in-chat-agents/index.js` reaches for the toggle and dispatches
+ * a click), so flattening it would take away a control the extension owns.
+ */
+const SB_COLLAPSIBLE_DRAWER_TAB_IDS = Object.freeze(new Set(['extensions', 'agents']));
+
+/**
+ * Flattens drawers in every Backend and Customize panel, covering drawers authored after the split.
+ */
 function flattenRightShellSettingsDrawers() {
     const shellState = getShellState('right');
     if (!shellState) {
         return;
     }
 
-    for (const tabState of shellState.tabs.values()) {
-        if (tabState.panel instanceof HTMLElement) {
-            flattenNestedSettingsDrawers(tabState.panel);
+    for (const [tabId, tabState] of shellState.tabs.entries()) {
+        if (!SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) && tabState.panel instanceof HTMLElement) {
+            flattenNestedSettingsDrawers(tabState.panel, { includeTopLevel: true });
         }
     }
 }
@@ -184,19 +197,25 @@ function openAllInlineDrawers(root = null) {
 }
 
 /**
- * Re-runs the nested-drawer flatten for a panel that may have been built after the split.
+ * Re-runs the drawer flatten for a panel that may have been built after the split.
  *
  * The split flattens the markup it relocates, but some sections author their drawers at runtime --
  * `#sb-openai-output` builds four of them in `openai.js` once its panel is created -- so the pass
  * is repeated on activation. It is idempotent, so re-running it costs a query and no DOM churn.
  *
+ * Extensions and Agents are skipped for the same reason as in `flattenRightShellSettingsDrawers`.
+ *
  * @param {string} shellKey
  * @param {string} tabId
  */
 function flattenSettingsPanelDrawers(shellKey, tabId) {
+    if (SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId)) {
+        return;
+    }
+
     const panel = getShellState(shellKey)?.tabs.get(tabId)?.panel;
     if (panel instanceof HTMLElement) {
-        flattenNestedSettingsDrawers(panel);
+        flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
     }
 }
 
@@ -332,7 +351,15 @@ const SB_FRONTEND_ICONS = Object.freeze([
     },
 ]);
 const SB_ACCOUNT_STORAGE_READY_MARKER = '__migrated';
-const SB_INLINE_DRAWER_CUSTOM_PERSISTENCE_SELECTOR = '.sb-openai-settings-drawer, .sb-openai-settings-subdrawer, [id$="prompt_manager_drawer"]';
+/**
+ * Drawers whose open state is written by their own code rather than by the generic persistence
+ * scan, so the scan must not also write a key for them.
+ *
+ * 6F removed `sb-openai-budget`, `sb-openai-output` and `sb-openai-advanced` from this list: they
+ * are flattened now, and a flattened section is not a drawer -- it has no toggle and no content
+ * wrapper -- so there is no open state left for either writer to persist.
+ */
+const SB_INLINE_DRAWER_CUSTOM_PERSISTENCE_SELECTOR = '[id$="prompt_manager_drawer"]';
 const SB_STORAGE_PREFIX = 'sb-';
 const SB_STORAGE_WRITE_DEBOUNCE_MS = 120;
 const SB_MOBILE_ACTION_DEBOUNCE_MS = 140;
@@ -8994,9 +9021,11 @@ function createOnDemandShellPanel(shellKey, tabConfig, build) {
         try {
             const loaded = await build();
             panel.replaceChildren(...loaded.panel.childNodes);
-            // Sections built here may author their own nested drawers, so the flatten runs again on
-            // the finished panel rather than relying on the one the split did.
-            flattenNestedSettingsDrawers(panel);
+            // Sections built here may author their own drawers, so the flatten runs again on the
+            // finished panel rather than relying on the one the split did.
+            if (!SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabConfig.id)) {
+                flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
+            }
             const tab = getShellState(shellKey)?.tabs.get(tabConfig.id);
             if (tab) {
                 tab.searchRoot = loaded.searchRoot;
@@ -9533,8 +9562,10 @@ function drawerHasControls(drawer) {
 }
 
 function hideEmptyGroupedSettingsDrawers() {
+    // Flattened sections are skipped: they have no `.inline-drawer-content` left, so the control
+    // test below would report them empty and hide a section that only exists while expanded.
     document.querySelectorAll('#range_block_openai .sb-openai-settings-drawer, #textgenerationwebui_api-settings .sb-textgen-drawers > .inline-drawer').forEach(drawer => {
-        if (!(drawer instanceof HTMLElement)) {
+        if (!(drawer instanceof HTMLElement) || !drawer.classList.contains('inline-drawer')) {
             return;
         }
 
@@ -15050,6 +15081,10 @@ function mountShellRootInSettingsPage(shellKey, tabId = null) {
 
     const activeTab = shellState.tabs.get(shellState.activeTabId);
     activeTab?.onActivate?.();
+    // The flatten is part of activation, so the already-active tab has to run it too -- otherwise
+    // the base tab, which is active before the page is ever mounted, is the one panel that never
+    // gets flattened.
+    flattenSettingsPanelDrawers(shellKey, shellState.activeTabId);
     dispatchShellTabActivated(shellKey, activeTab);
     queueMobileShellActivationRefresh();
 }
