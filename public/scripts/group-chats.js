@@ -110,6 +110,7 @@ export {
     select_group_chats,
     getGroupChatNames,
     getSelectedGroupSpeakerAvatar,
+    setSelectedGroupSpeakerAvatar,
     updateGroupSpeakerControls,
 };
 
@@ -268,13 +269,45 @@ function getGroupEnabledMembers(group) {
     return group.members.filter(member => !group.disabled_members?.includes(member));
 }
 
+function changeSelectedGroupSpeaker(avatarId) {
+    if (selectedGroupSpeakerAvatar === avatarId) {
+        return;
+    }
+
+    selectedGroupSpeakerAvatar = avatarId;
+    eventSource.emit(event_types.GROUP_SPEAKER_SELECTION_CHANGED, avatarId);
+}
+
+/**
+ * Picks who answers the next group message, the same way clicking the speaker bar does.
+ * SillyBunny: exposed through getContext() so extensions such as Group Chat Overhaul can drive the bar.
+ * @param {string} avatarId Avatar of an enabled member of the open group, or an empty string to clear the pick
+ * @returns {boolean} True if the pick was applied
+ */
+function setSelectedGroupSpeakerAvatar(avatarId) {
+    if (typeof avatarId !== 'string') {
+        return false;
+    }
+
+    if (avatarId) {
+        const group = selected_group ? groups.find(x => x.id === selected_group) : null;
+        if (!getGroupEnabledMembers(group).includes(avatarId) || getCharacterIdByAvatar(avatarId) === -1) {
+            return false;
+        }
+    }
+
+    changeSelectedGroupSpeaker(avatarId);
+    updateGroupSpeakerControls();
+    return true;
+}
+
 function getSelectedGroupSpeakerChid(group) {
     if (!selectedGroupSpeakerAvatar) {
         return -1;
     }
 
     if (!getGroupEnabledMembers(group).includes(selectedGroupSpeakerAvatar)) {
-        selectedGroupSpeakerAvatar = '';
+        changeSelectedGroupSpeaker('');
         return -1;
     }
 
@@ -361,7 +394,7 @@ async function addSelectedGroupGreeting() {
 
     const group = groups.find(x => x.id === selected_group);
     if (!getGroupEnabledMembers(group).includes(selectedGroupSpeakerAvatar)) {
-        selectedGroupSpeakerAvatar = '';
+        changeSelectedGroupSpeaker('');
         updateGroupSpeakerControls();
         toastr.warning(t`Pick a group member first.`);
         return;
@@ -416,8 +449,9 @@ function getMessageSpeakerName(message) {
 }
 
 function clearSelectedGroupSpeaker() {
-    selectedGroupSpeakerAvatar = '';
+    // Unhighlight first: a listener of the change event may already pick the next speaker.
     $('#group_speaker_controls .group_speaker_avatar').removeClass('selected');
+    changeSelectedGroupSpeaker('');
 }
 
 function limitGroupSpeakersForControl(activatedMembers, forceSingleSpeaker) {
@@ -471,6 +505,11 @@ function updateGroupSpeakerControls() {
         return;
     }
 
+    // A pick from another group, or of a member muted since, can no longer answer here.
+    if (selectedGroupSpeakerAvatar && !members.includes(selectedGroupSpeakerAvatar)) {
+        changeSelectedGroupSpeaker('');
+    }
+
     const avatarRenderKey = JSON.stringify({
         groupId: group.id,
         members,
@@ -514,7 +553,7 @@ function initGroupSpeakerControls() {
     container.on('click', '.group_speaker_avatar', async function (event) {
         const avatarId = String($(this).data('avatar') || '');
         const alreadySelected = selectedGroupSpeakerAvatar === avatarId;
-        selectedGroupSpeakerAvatar = alreadySelected ? '' : avatarId;
+        changeSelectedGroupSpeaker(alreadySelected ? '' : avatarId);
         updateGroupSpeakerControls();
 
         if (event.shiftKey && selected_group) {
@@ -1592,6 +1631,10 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
         let activatedMembers = [];
 
         const selectedSpeakerChid = getSelectedGroupSpeakerChid(group);
+        const selectedSpeakerAvatar = selectedSpeakerChid !== -1 ? selectedGroupSpeakerAvatar : '';
+        // Only a new reply answers as the pick and uses it up. Swipes and Continue redo or extend the last message,
+        // and quiet or Impersonate generations never reply as a member, so they all leave the pick for the next reply.
+        const isNewReply = !['quiet', 'swipe', 'continue', 'impersonate'].includes(type);
         const addressedMemberChid = findDirectlyAddressedMember(group, activationText);
         const isWholeGroupAddress = isAddressedToEntireGroup(activationText);
         if (params && Array.isArray(params.force_chids)) {
@@ -1602,7 +1645,7 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
             activatedMembers = enabledMembers.map(avatar => getCharacterIdByAvatar(avatar)).filter(chid => chid !== -1);
         } else if (type !== 'quiet' && addressedMemberChid !== -1) {
             activatedMembers = [addressedMemberChid];
-        } else if (type !== 'quiet' && selectedSpeakerChid !== -1) {
+        } else if (isNewReply && selectedSpeakerChid !== -1) {
             activatedMembers = [selectedSpeakerChid];
         } else if (type === 'quiet') {
             activatedMembers = activateSwipe(enabledMembers, { allowSystem: true }).slice(0, 1);
@@ -1702,7 +1745,9 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
             setGroupTypingIndicator('');
         }
 
-        if (selectedSpeakerChid !== -1 && !(params && typeof params.force_chid == 'number')) {
+        // A pick made while this reply was being written is meant for the reply after it.
+        if (selectedSpeakerChid !== -1 && isNewReply && !(params && typeof params.force_chid == 'number')
+            && selectedGroupSpeakerAvatar === selectedSpeakerAvatar) {
             clearSelectedGroupSpeaker();
         }
     } finally {
