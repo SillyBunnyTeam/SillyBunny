@@ -131,7 +131,7 @@ body.sb-bg-blur #bg_custom {
 }
 
 #bg-filter {
-    font-size: calc(var(--mainFontSize) * 0.95);
+    font-size: var(--sb-type-body); /* SillyBunny: snapped to --sb-type-* tokens */
     flex: 1 1 260px;
     min-width: 0;
 }
@@ -387,7 +387,7 @@ body.sb-bg-blur #bg_custom {
     right: 0;
     background: linear-gradient(transparent, rgba(0, 0, 0, 0.9));
     color: var(--SmartThemeBodyColor);
-    font-size: 0.9em;
+    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     font-weight: 600;
     padding: 4px 8px 6px;
     text-align: center;
@@ -542,7 +542,7 @@ body.sb-bg-blur #bg_custom {
     display: flex;
     align-items: center;
     gap: 5px;
-    font-size: 0.85em;
+    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     font-weight: 600;
     pointer-events: none;
     border-radius: 0 0 8px 8px;
@@ -616,7 +616,7 @@ body.sb-bg-blur #bg_custom {
     color: var(--SmartThemeBodyColor);
     opacity: 0.6;
     gap: 6px;
-    font-size: 0.85em;
+    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     font-weight: 600;
 }
 
@@ -637,7 +637,7 @@ body.sb-bg-blur #bg_custom {
 
 .bg_current_folder_name {
     font-weight: 600;
-    font-size: 1em;
+    font-size: var(--sb-type-body); /* SillyBunny: snapped to --sb-type-* tokens */
     color: var(--SmartThemeBodyColor);
     white-space: normal;
     overflow-wrap: anywhere;

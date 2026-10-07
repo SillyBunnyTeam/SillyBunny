@@ -2426,7 +2426,7 @@ body[data-stscript-style] .hljs.language-stscript {
             >.helpContent {
                 text-overflow: ellipsis;
                 overflow: hidden;
-                font-size: 0.9em;
+                font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
                 white-space: nowrap;
                 line-height: 1.2;
                 max-height: 1.2em;
@@ -2566,7 +2566,7 @@ body[data-stscript-style] .hljs.language-stscript {
                 .argument-description {
                     margin-left: 0.5em;
                     font-family: var(--mainFontFamily);
-                    font-size: 0.9em;
+                    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
                 }
             }
 
@@ -2990,7 +2990,7 @@ input[type="file"] {
     border-radius: 9999px;
     border: 1px solid transparent;
     padding: 8px 16px;
-    font-size: calc(var(--mainFontSize) * 0.9);
+    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     font-weight: 600;
     color: var(--color-text-secondary, var(--SmartThemeEmColor));
     transition: all 200ms ease;
@@ -3263,7 +3263,7 @@ input[type="file"] {
 }
 
 .extension_token_counter {
-    font-size: calc(var(--mainFontSize) * 0.875);
+    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     width: 100%;
     text-align: right;
     margin-bottom: 5px;
@@ -3419,7 +3419,7 @@ select option[disabled]:not(:checked) {
 
 /* Fix font size difference in API Connections dropdowns - Issue #4599 */
 #custom_model_id {
-    font-size: calc(var(--mainFontSize) * 0.95);
+    font-size: var(--sb-type-body); /* SillyBunny: snapped to --sb-type-* tokens */
 }
 
 .menu_button.api_button:hover {
@@ -4075,7 +4075,7 @@ grammarly-extension {
 }
 
 #result_info {
-    font-size: calc(var(--mainFontSize) * 0.9);
+    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     display: flex;
     align-items: center;
     gap: 6px;
@@ -4267,7 +4267,7 @@ grammarly-extension {
     text-align: center;
     gap: 6px;
     font-weight: 500;
-    font-size: calc(var(--mainFontSize) * 0.9);
+    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     min-width: var(--sb-control-min-height, 30px);
     min-height: var(--sb-control-min-height, 30px);
     white-space: nowrap;
@@ -4412,7 +4412,7 @@ grammarly-extension {
     gap: 8px;
     padding: 6px 14px;
     border-radius: 9999px;
-    font-size: calc(var(--mainFontSize) * 0.85);
+    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     font-weight: 600;
     margin-top: 2px;
     margin-bottom: 15px;
@@ -4733,7 +4733,7 @@ input[type='checkbox'].del_checkbox {
     margin-left: 5px;
     /*previously needed to avoid firefox scrollbar overlap, no longer necessary?*/
     /* margin-right: 15px; */
-    font-size: calc(var(--mainFontSize) * 0.95);
+    font-size: var(--sb-type-body); /* SillyBunny: snapped to --sb-type-* tokens */
     color: var(--SmartThemeBodyColor);
     flex: 1;
     gap: 5px;
@@ -4744,7 +4744,7 @@ input[type='checkbox'].del_checkbox {
     width: max-content;
     margin-left: 5px;
     margin-right: 15px;
-    font-size: calc(var(--mainFontSize) * 0.85);
+    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     color: var(--SmartThemeEmColor);
     text-align: center;
 }
@@ -5751,7 +5751,7 @@ body.big-avatars .missing-avatar {
 }
 
 .slider_hint span {
-    font-size: calc(var(--mainFontSize) - .25rem);
+    font-size: var(--sb-type-caption); /* SillyBunny: snapped to --sb-type-* tokens */
 }
 
 .slider_hint span:nth-child(2) {
@@ -6168,7 +6168,7 @@ body:not(.caption) .mes_img_caption {
 }
 
 .menu_button_icon span {
-    font-size: calc(var(--mainFontSize) * 0.9);
+    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
 }
 
 /*------------ TOP SIDE SETTINGS ----------------*/
@@ -6282,7 +6282,7 @@ body:has(.drawer-content.open) #top-settings-holder:has(.drawer-content.openDraw
     border-radius: 1rem;
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, transparent);
     border: 1px solid var(--color-border, var(--SmartThemeBorderColor));
-    font-size: calc(var(--mainFontSize) * 0.85);
+    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     letter-spacing: 0.03em;
     transition: all 0.5s ease;
 }
@@ -6437,7 +6437,7 @@ body:not(.movingUI) .drawer-content.maximized {
 
 .drawer-content select {
     width: 100%;
-    font-size: calc(var(--mainFontSize) * 0.95);
+    font-size: var(--sb-type-body); /* SillyBunny: snapped to --sb-type-* tokens */
 }
 
 .settingsSectionWrap {
@@ -6447,7 +6447,7 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .wi-enter-footer-text {
-    font-size: calc(var(--mainFontSize) * 0.8);
+    font-size: var(--sb-type-meta); /* SillyBunny: snapped to --sb-type-* tokens */
     color: var(--SmartThemeBodyColor);
 }
 
@@ -6545,7 +6545,7 @@ body:not(.movingUI) .drawer-content.maximized {
 
 /* Eyebrow label for section headers */
 .eyebrow-label {
-    font-size: calc(var(--mainFontSize) * 0.7);
+    font-size: var(--sb-type-caption); /* SillyBunny: snapped to --sb-type-* tokens */
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.2em;
@@ -6563,7 +6563,7 @@ body:not(.movingUI) .drawer-content.maximized {
 /* Settings panel h4 headers as eyebrow labels */
 #user-settings-block h4,
 #left-nav-panel h4 {
-    font-size: calc(var(--mainFontSize) * 0.8);
+    font-size: var(--sb-type-meta); /* SillyBunny: snapped to --sb-type-* tokens */
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.1em;
@@ -6771,7 +6771,7 @@ body:not(.movingUI) .drawer-content.maximized {
 .paginationjs-size-changer select {
     width: unset;
     margin: 0;
-    font-size: calc(var(--mainFontSize) * 0.85);
+    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     padding-right: 20px;
 }
 
@@ -6804,7 +6804,7 @@ body:not(.movingUI) .drawer-content.maximized {
 
 .paginationjs-nav {
     padding: 2px;
-    font-size: calc(var(--mainFontSize) * .8);
+    font-size: var(--sb-type-meta); /* SillyBunny: snapped to --sb-type-* tokens */
     font-weight: bold;
     width: auto;
 }
@@ -6956,7 +6956,7 @@ body:not(.movingUI) .drawer-content.maximized {
 
 #SystemPromptColumn summary,
 #InstructSequencesColumn summary {
-    font-size: 0.95em;
+    font-size: var(--sb-type-body); /* SillyBunny: snapped to --sb-type-* tokens */
     cursor: pointer;
 }
 
@@ -7004,7 +7004,7 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .model-title {
-    font-size: calc(var(--mainFontSize) * 0.95);
+    font-size: var(--sb-type-body); /* SillyBunny: snapped to --sb-type-* tokens */
     font-weight: bold;
     overflow: hidden;
 }
@@ -7020,7 +7020,7 @@ body:not(.movingUI) .drawer-content.maximized {
 .model-class,
 .model-context-length,
 .model-date-added {
-    font-size: calc(var(--mainFontSize) * 0.75);
+    font-size: var(--sb-type-meta); /* SillyBunny: snapped to --sb-type-* tokens */
 }
 
 .model-class,
@@ -7204,7 +7204,7 @@ body:not(.movingUI) .drawer-content.maximized {
     padding: 0 10px;
     border-radius: 999px;
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
-    font-size: calc(var(--mainFontSize) * 0.7);
+    font-size: var(--sb-type-caption); /* SillyBunny: snapped to --sb-type-* tokens */
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -7244,7 +7244,7 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .sb-chat-completion-config-title {
-    font-size: calc(var(--mainFontSize) * 0.88);
+    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     overflow-wrap: anywhere;
 }
 

@@ -46,7 +46,7 @@
 
     #AdvancedFormatting > .flex-container.alignItemsBaseline:first-child > h3 {
         min-width: 0;
-        font-size: calc(var(--mainFontSize) * 0.92);
+        font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
         line-height: 1.15;
     }
 
@@ -96,7 +96,7 @@
 
     #InstructSettingsColumn > .margin0.title_restorable.standoutHeader > strong {
         min-width: 0;
-        font-size: calc(var(--mainFontSize) * 0.88);
+        font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
         line-height: 1.15;
     }
 
@@ -1259,7 +1259,7 @@
     }
 
     #result_info {
-        font-size: calc(var(--mainFontSize) - .1rem);
+        font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     }
 
     /*     .avatar_div {

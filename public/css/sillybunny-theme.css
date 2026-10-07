@@ -2980,7 +2980,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     border-radius: 999px;
     background: color-mix(in srgb, var(--sb-accent) 10%, transparent);
     color: var(--sb-contrast-strong, var(--SmartThemeBodyColor));
-    font-size: 0.82rem;
+    font-size: var(--sb-type-control);
     font-weight: 600;
 }
 
@@ -3082,7 +3082,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 .sb-sampling-transmission__label {
-    font-size: 0.75rem;
+    font-size: var(--sb-type-meta);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -3111,7 +3111,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 
 .sb-transmission-btn {
     padding: 3px 10px;
-    font-size: 0.75rem;
+    font-size: var(--sb-type-meta);
     font-weight: 500;
     border-radius: 6px;
     border: 1px solid transparent;
@@ -3158,7 +3158,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 0.72rem;
+    font-size: var(--sb-type-meta);
     font-weight: 600;
     color: var(--SmartThemeBodyColor);
     background: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
@@ -3508,7 +3508,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 
 .sb-sampling-priority-after .toggle-description {
     margin: 4px 0;
-    font-size: 0.86rem;
+    font-size: var(--sb-type-control);
 }
 
 /* Mobile/touch: keep dense controls scroll-friendly during vertical drags. */
@@ -3546,7 +3546,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
         min-width: 0;
         margin: 0;
         text-align: center;
-        font-size: calc(var(--mainFontSize) * 0.82);
+        font-size: var(--sb-type-control);
         font-weight: 700;
         line-height: 1.2;
         overflow-wrap: anywhere;
@@ -3589,7 +3589,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
         min-width: 0;
         margin: 0;
         text-align: left;
-        font-size: calc(var(--mainFontSize) * 0.82);
+        font-size: var(--sb-type-control);
         font-weight: 700;
         line-height: 1.2;
         overflow-wrap: anywhere;
@@ -3625,7 +3625,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
         margin: 0;
         justify-content: flex-start;
         text-align: left;
-        font-size: calc(var(--mainFontSize) * 0.82);
+        font-size: var(--sb-type-control);
         line-height: 1.2;
         overflow-wrap: anywhere;
     }
@@ -3712,7 +3712,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
         min-width: 0;
         margin: 0;
         text-align: left;
-        font-size: calc(var(--mainFontSize) * 0.82);
+        font-size: var(--sb-type-control);
         font-weight: 700;
         line-height: 1.2;
         overflow-wrap: anywhere;
@@ -3775,7 +3775,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
         min-width: 0;
         margin: 0;
         text-align: left;
-        font-size: calc(var(--mainFontSize) * 0.82);
+        font-size: var(--sb-type-control);
         font-weight: 700;
         line-height: 1.2;
         overflow-wrap: anywhere;
@@ -3819,7 +3819,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
         width: auto;
         margin: 0;
         text-align: left;
-        font-size: calc(var(--mainFontSize) * 0.82);
+        font-size: var(--sb-type-control);
         line-height: 1.2;
         overflow-wrap: anywhere;
     }
@@ -3848,7 +3848,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
         width: auto;
         margin: 0;
         text-align: left;
-        font-size: calc(var(--mainFontSize) * 0.82);
+        font-size: var(--sb-type-control);
         line-height: 1.2;
         overflow-wrap: anywhere;
     }
@@ -3877,7 +3877,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 
     .sb-sampling-control-card > #cfg_block_ooba > h4,
     .sb-sampling-control-card > #grammar_block_ooba > h4 {
-        font-size: calc(var(--mainFontSize) * 0.88);
+        font-size: var(--sb-type-control);
     }
 
     .sb-sampling-control-card > #grammar_block_ooba > h4 .flex-container {
@@ -4171,7 +4171,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 .sb-chat-completion-config-inline-copy strong {
-    font-size: calc(var(--mainFontSize) * 0.88);
+    font-size: var(--sb-type-control);
 }
 
 .sb-chat-completion-config-inline-copy small {
@@ -4206,7 +4206,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     min-height: 34px;
     padding: 7px 10px;
     border-radius: 12px;
-    font-size: calc(var(--mainFontSize) * 0.9);
+    font-size: var(--sb-type-control);
     line-height: 1.2;
     white-space: normal;
 }
@@ -4823,7 +4823,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 #AdvancedFormatting .sb-reasoning-max-field span {
-    font-size: calc(var(--mainFontSize) * 0.76);
+    font-size: var(--sb-type-meta);
     font-weight: 700;
     min-width: 0;
 }
@@ -5076,13 +5076,13 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 .quick_context_size span {
-    font-size: calc(var(--mainFontSize) * 0.9);
+    font-size: var(--sb-type-control);
     font-weight: 700;
     line-height: 1;
 }
 
 .quick_context_size small {
-    font-size: calc(var(--mainFontSize) * 0.68);
+    font-size: var(--sb-type-caption);
     font-weight: 700;
     letter-spacing: 0.03em;
     line-height: 1;
@@ -5318,7 +5318,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 .sb-accent-profiles-copy small,
 .sb-accent-profiles-empty {
     color: var(--sb-muted-fg);
-    font-size: calc(var(--mainFontSize) * 0.75);
+    font-size: var(--sb-type-meta);
 }
 
 .sb-accent-profile-save {
@@ -5466,11 +5466,11 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     }
 
     .quick_context_size span {
-        font-size: calc(var(--mainFontSize) * 0.88);
+        font-size: var(--sb-type-control);
     }
 
     .quick_context_size small {
-        font-size: calc(var(--mainFontSize) * 0.66);
+        font-size: var(--sb-type-caption);
     }
 
     #range_block_openai .range-block-range-and-counter {
@@ -5919,7 +5919,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 
 #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label span {
     min-width: 0;
-    font-size: calc(var(--mainFontSize) * 0.84);
+    font-size: var(--sb-type-control);
     line-height: 1.35;
     white-space: normal;
 }
@@ -6045,7 +6045,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 .sb-openai-settings-subdrawer .completion_prompt_manager_header_tokens {
-    font-size: calc(var(--mainFontSize) * 0.85);
+    font-size: var(--sb-type-control);
     color: var(--sb-contrast-muted, var(--SmartThemeBodyColor));
 }
 
@@ -6479,7 +6479,7 @@ body.reduced-motion *::after {
         min-height: 34px;
         padding: 7px 10px;
         border-radius: 11px;
-        font-size: calc(var(--mainFontSize) * 0.84);
+        font-size: var(--sb-type-control);
     }
 
     .sb-shell-panel-scroller .menu_button,
@@ -6489,7 +6489,7 @@ body.reduced-motion *::after {
         min-height: 38px;
         padding: 8px 12px;
         border-radius: 12px;
-        font-size: calc(var(--mainFontSize) * 0.92);
+        font-size: var(--sb-type-control);
         line-height: 1.25;
     }
 
@@ -6744,7 +6744,7 @@ body.reduced-motion *::after {
         min-width: 34px;
         height: 34px;
         min-height: 34px;
-        font-size: calc(var(--mainFontSize) * 0.9);
+        font-size: var(--sb-type-control);
     }
 
     :is(#kobold_api-presets, #novel_api-presets, #textgenerationwebui_api-presets) .sb-non-chat-preset-row {
@@ -6802,7 +6802,7 @@ body.reduced-motion *::after {
         min-width: 0;
         margin: 0;
         text-align: left;
-        font-size: calc(var(--mainFontSize) * 0.82);
+        font-size: var(--sb-type-control);
         font-weight: 700;
         line-height: 1.2;
         overflow-wrap: anywhere;

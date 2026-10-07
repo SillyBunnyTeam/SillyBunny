@@ -957,7 +957,7 @@ body:not(.movingUI) .drawer-content.maximized {
 
 #sb-chat-sidebar .dragTitle {
     padding: 8px 12px 0;
-    font-size: calc(var(--mainFontSize) * 0.92);
+    font-size: var(--sb-type-control);
     font-weight: 700;
 }
 
@@ -1823,7 +1823,7 @@ body:not(.movingUI) .drawer-content.maximized {
     gap: 8px;
     text-align: left;
     font: inherit;
-    font-size: calc(var(--mainFontSize) * 0.85);
+    font-size: var(--sb-type-control);
     color: var(--SmartThemeBodyColor);
     background: transparent;
     cursor: pointer;
@@ -1869,7 +1869,7 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .sb-shell-tab-copy strong {
-    font-size: calc(var(--mainFontSize) * 0.92);
+    font-size: var(--sb-type-control);
     line-height: 1.22;
     white-space: nowrap;
     overflow: hidden;
@@ -1966,7 +1966,7 @@ body:not(.movingUI) .drawer-content.maximized {
 
 .sb-shell-root-left .sb-shell-main > .sb-shell-header .sb-shell-title,
 .sb-shell-root-right .sb-shell-main > .sb-shell-header .sb-shell-title {
-    font-size: calc(var(--mainFontSize) * 1.12);
+    font-size: var(--sb-type-title);
     line-height: 1.15;
 }
 
@@ -2804,7 +2804,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-agent-state-entry-title {
-    font-size: calc(var(--mainFontSize) * 0.9);
+    font-size: var(--sb-type-control);
 }
 
 .sb-agent-state-entry-detail,
@@ -2912,7 +2912,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 .sb-search-result span,
 .sb-search-empty span {
-    font-size: calc(var(--mainFontSize) * 0.76);
+    font-size: var(--sb-type-meta);
     opacity: 0.76;
 }
 
@@ -2934,7 +2934,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-search-result small {
-    font-size: calc(var(--mainFontSize) * 0.7);
+    font-size: var(--sb-type-caption);
     opacity: 0.62;
 }
 
@@ -3231,7 +3231,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     min-width: 0;
     flex-direction: column;
     gap: 6px;
-    font-size: calc(var(--mainFontSize) * 0.76);
+    font-size: var(--sb-type-meta);
 }
 
 .sb-thumbnail-controls > .sb-thumbnail-field:nth-child(2) {
@@ -3326,7 +3326,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     border-radius: var(--sb-radius-md, 16px);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
     background: color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
-    font-size: calc(var(--mainFontSize) * 0.74);
+    font-size: var(--sb-type-caption);
     line-height: 1.5;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -3366,7 +3366,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     border-radius: 999px;
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 76%, transparent);
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 10%, transparent);
-    font-size: calc(var(--mainFontSize) * 0.7);
+    font-size: var(--sb-type-caption);
     line-height: 1.2;
 }
 
@@ -3389,7 +3389,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-import-pane strong {
-    font-size: calc(var(--mainFontSize) * 0.84);
+    font-size: var(--sb-type-control);
 }
 
 .sb-import-pane p,
@@ -3478,7 +3478,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 .sb-import-report-item-meta,
 .sb-import-report-item-checks {
     opacity: 0.76;
-    font-size: calc(var(--mainFontSize) * 0.74);
+    font-size: var(--sb-type-caption);
 }
 
 .sb-import-report-list {
@@ -3611,7 +3611,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     .sb-import-chip {
         min-height: 24px;
         padding: 0 8px;
-        font-size: calc(var(--mainFontSize) * 0.66);
+        font-size: var(--sb-type-caption);
     }
 
     .sb-import-pane,
@@ -3622,7 +3622,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
     .sb-import-pane strong,
     .sb-import-report-header strong {
-        font-size: calc(var(--mainFontSize) * 0.8);
+        font-size: var(--sb-type-meta);
     }
 
     .sb-import-pane p,
@@ -3685,7 +3685,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     min-height: 22px;
     padding: 0 8px;
     border-radius: 999px;
-    font-size: calc(var(--mainFontSize) * 0.68);
+    font-size: var(--sb-type-caption);
     text-transform: uppercase;
     flex-shrink: 0;
     letter-spacing: 0.08em;
@@ -3739,7 +3739,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 .sb-theme-settings-drawer > .inline-drawer-header > strong {
     flex: 1 1 auto;
     min-width: 0;
-    font-size: calc(var(--mainFontSize) * 0.82);
+    font-size: var(--sb-type-control);
 }
 
 .sb-theme-settings-drawer > .inline-drawer-header > .inline-drawer-icon {
@@ -3800,7 +3800,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-theme-slider-header strong {
-    font-size: calc(var(--mainFontSize) * 0.82);
+    font-size: var(--sb-type-control);
 }
 
 .sb-theme-slider-value {
@@ -3920,13 +3920,13 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-theme-option-label {
-    font-size: calc(var(--mainFontSize) * 0.82);
+    font-size: var(--sb-type-control);
     font-weight: 700;
 }
 
 .sb-theme-option-meta,
 .sb-theme-card-detail {
-    font-size: calc(var(--mainFontSize) * 0.74);
+    font-size: var(--sb-type-caption);
     line-height: 1.45;
     opacity: 0.74;
 }
@@ -3988,7 +3988,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-topbar-label-section-heading strong {
-    font-size: calc(var(--mainFontSize) * 0.8);
+    font-size: var(--sb-type-meta);
 }
 
 .sb-topbar-label-section-heading small {
@@ -4175,7 +4175,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 .sb-mobile-nav-choice-copy strong {
     display: block;
     overflow-wrap: anywhere;
-    font-size: calc(var(--mainFontSize) * 0.76);
+    font-size: var(--sb-type-meta);
     line-height: 1.25;
 }
 
@@ -4185,7 +4185,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     gap: 10px;
     min-height: 1px;
     color: var(--sb-muted-fg);
-    font-size: calc(var(--mainFontSize) * 0.68);
+    font-size: var(--sb-type-caption);
     font-weight: 700;
     letter-spacing: 0;
     line-height: 1;
@@ -4245,7 +4245,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     align-items: center;
     min-height: 30px;
     margin: 0;
-    font-size: calc(var(--mainFontSize) * 0.85);
+    font-size: var(--sb-type-control);
     line-height: 1.2;
     opacity: 0.8;
 }
@@ -4259,7 +4259,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     padding: 0 10px;
     box-sizing: border-box;
     font: inherit;
-    font-size: calc(var(--mainFontSize) * 0.85);
+    font-size: var(--sb-type-control);
     color: var(--SmartThemeBodyColor);
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 60%, transparent);
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
@@ -4290,7 +4290,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-mobile-quick-action-heading strong {
-    font-size: calc(var(--mainFontSize) * 0.82);
+    font-size: var(--sb-type-control);
 }
 
 .sb-mobile-quick-action-search {
@@ -4320,7 +4320,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 .sb-mobile-quick-action-empty {
     padding: 10px 12px;
-    font-size: calc(var(--mainFontSize) * 0.74);
+    font-size: var(--sb-type-caption);
     line-height: 1.4;
     opacity: 0.76;
 }
@@ -4359,7 +4359,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-mobile-quick-action-copy small {
-    font-size: calc(var(--mainFontSize) * 0.7);
+    font-size: var(--sb-type-caption);
     line-height: 1.3;
     opacity: 0.72;
 }
@@ -5256,14 +5256,14 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 
 .sb-mode-menu-label {
     grid-area: label;
-    font-size: calc(var(--mainFontSize) * 0.9);
+    font-size: var(--sb-type-control);
     font-weight: 600;
     line-height: 1.2;
 }
 
 .sb-mode-menu-desc {
     grid-area: desc;
-    font-size: calc(var(--mainFontSize) * 0.75);
+    font-size: var(--sb-type-meta);
     color: var(--sb-shell-text-secondary);
     line-height: 1.3;
 }
@@ -5314,7 +5314,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     cursor: pointer;
     text-align: left;
     transition: background-color var(--sb-transition-fast);
-    font-size: calc(var(--mainFontSize) * 0.85);
+    font-size: var(--sb-type-control);
     color: var(--SmartThemeBodyColor);
     min-height: 40px;
 }
@@ -5339,7 +5339,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     align-items: center;
     padding: 5px 8px;
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 64%, transparent);
-    font-size: calc(var(--mainFontSize) * 0.85);
+    font-size: var(--sb-type-control);
 }
 
 .sb-persona-option-avatar {
@@ -5357,7 +5357,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 }
 
 .sb-persona-option-description {
-    font-size: calc(var(--mainFontSize) * 0.7);
+    font-size: var(--sb-type-caption);
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -5392,7 +5392,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     color: var(--SmartThemeBodyColor);
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 16%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, var(--SmartThemeBorderColor) 72%);
-    font-size: calc(var(--mainFontSize) * 0.66);
+    font-size: var(--sb-type-caption);
     font-weight: 700;
     line-height: 1.2;
 }
@@ -5428,13 +5428,13 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 .sb-persona-picker-manage {
     min-height: 32px;
     padding-inline: 8px;
-    font-size: calc(var(--mainFontSize) * 0.76);
+    font-size: var(--sb-type-meta);
 }
 
 .sb-persona-picker-appendices-empty {
     margin: 0;
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 62%, transparent);
-    font-size: calc(var(--mainFontSize) * 0.76);
+    font-size: var(--sb-type-meta);
     line-height: 1.35;
 }
 
@@ -5468,7 +5468,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: calc(var(--mainFontSize) * 0.76);
+    font-size: var(--sb-type-meta);
     font-weight: 700;
 }
 
@@ -6014,7 +6014,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 #right-nav-panel .sb-character-editor-side-actions #favorite_button::after {
     content: attr(data-label);
     font-family: var(--mainFontFamily);
-    font-size: calc(var(--mainFontSize) * 0.68);
+    font-size: var(--sb-type-caption);
     font-weight: 700;
     line-height: 1;
     white-space: nowrap;
@@ -6558,7 +6558,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) .sb-group-editor-side-actions :is(#group_favorite_button, #rm_group_scenario)::after {
     content: attr(data-label);
     font-family: var(--mainFontFamily);
-    font-size: calc(var(--mainFontSize) * 0.68);
+    font-size: var(--sb-type-caption);
     font-weight: 700;
     line-height: 1;
     white-space: nowrap;
@@ -7284,7 +7284,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 
 .sb-managed select {
     width: 100%;
-    font-size: calc(var(--mainFontSize) * 0.95);
+    font-size: var(--sb-type-body);
 }
 
 #rm_print_characters_block {
@@ -7521,7 +7521,7 @@ body.big-avatars #rm_print_characters_block {
     }
 
     .sb-shell-title {
-        font-size: calc(var(--mainFontSize) * 0.96);
+        font-size: var(--sb-type-body);
     }
 
     .sb-nav-item {
@@ -7539,7 +7539,7 @@ body.big-avatars #rm_print_characters_block {
 
     .sb-brand-title,
     .sb-brand-title.is-chat {
-        font-size: calc(var(--mainFontSize) * 0.76);
+        font-size: var(--sb-type-meta);
     }
 
     .sb-shell-search {
@@ -8002,7 +8002,7 @@ body.reduced-motion .sb-shell-main {
 
 #sb-settings-sidebar-title {
     flex: 1;
-    font-size: calc(var(--mainFontSize) * 1.05);
+    font-size: var(--sb-type-title);
     font-weight: 700;
     overflow: hidden;
     white-space: nowrap;
@@ -8248,7 +8248,7 @@ body.reduced-motion .sb-shell-main {
 
 .sb-settings-title {
     max-width: 100%;
-    font-size: calc(var(--mainFontSize) * 1.05);
+    font-size: var(--sb-type-title);
     font-weight: 700;
     margin: 0;
     overflow: hidden;
@@ -8934,6 +8934,14 @@ body.reduced-motion .sb-shell-main {
 .sb-settings-mounted-shell #MovingUI-presets-block select {
     flex: 1 1 auto;
     min-width: 0;
+}
+
+/* `<small>` defaults to the UA's 0.8333em, which lands on 12.5px against a 15px row and drifts
+   again to 10.75px when nested inside a control-sized label. No author picked either value, and
+   they are the two largest clusters of off-token text in the settings page. Give the element its
+   own token; rules below that size a specific `<small>` still win on specificity. */
+.sb-settings-mounted-shell small {
+    font-size: var(--sb-type-meta);
 }
 
 @media screen and (min-width: 769px) {
