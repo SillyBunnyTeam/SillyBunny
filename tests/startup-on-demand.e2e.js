@@ -107,6 +107,10 @@ test('failed optional import can be retried without reloading the app', async ({
 
 test('Data & Security hosts the Import & Restore drawer', async ({ page }) => {
     await openApp(page);
+    // Appearance initializes the settings panel before Data & Security exists; the import card must
+    // wait for its own panel instead of falling back into Appearance's theme block.
+    await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'appearance'));
+    await expect(page.locator('[data-sb-panel="appearance"] #sb-import-card')).toHaveCount(0);
     await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'data-security'));
     const panel = page.locator('[data-sb-panel="data-security"]');
     await expect(panel.locator('#SillyTavernImportSection')).toHaveCount(1);

@@ -83,7 +83,6 @@ function loadServerTools() {
 function initializeSettingsPanel() {
     settingsPanelPromise ??= Promise.resolve().then(() => {
         injectThemePicker();
-        injectSillyTavernImportCard();
         // SillyTavern's own settings tab UI is not used here: the settings page sidebar owns
         // navigation, so the inline drawers are opened directly instead.
         openAllInlineDrawers();
@@ -10294,10 +10293,10 @@ async function handleSillyTavernZipImport(file) {
 
 function injectSillyTavernImportCard(host = null) {
     // Import & Restore lives on the Data & Security tab, so the card belongs in the outlet the
-    // import drawer carries there. The caller passes that outlet once the panel is built, because
-    // the drawer is detached while the settings panel initializes and its outlet cannot be looked
-    // up by id at that point. The theme block fallback keeps the card reachable if the drawer is
-    // ever missing from the markup.
+    // import drawer carries there. It is injected only when that panel is built: before then the
+    // drawer is detached, its outlet cannot be looked up by id, and an earlier call would fall
+    // through to the theme block and paint the card at the top of Appearance. The theme block
+    // fallback keeps the card reachable if the drawer is ever missing from the markup.
     const importOutlet = host instanceof HTMLElement
         ? host
         : document.getElementById('sb-import-tools-outlet');
@@ -12700,6 +12699,10 @@ function buildShell(shellKey) {
                     openAllInlineDrawers(dataSecurityContent);
                     bindInlineDrawerPersistence(dataSecurityContent);
                     injectSillyTavernImportCard(dataSecurityContent.querySelector('#sb-import-tools-outlet'));
+                } else {
+                    // Without the split there is no Data & Security container to adopt, so the card
+                    // takes its theme block fallback rather than going missing.
+                    injectSillyTavernImportCard();
                 }
 
                 return loaded;
