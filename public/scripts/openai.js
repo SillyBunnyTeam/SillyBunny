@@ -3773,10 +3773,12 @@ function groupOpenAISettingsIntoDrawers() {
             description: 'Streaming, prompt templates, names, and continue behavior',
             selectors: [
                 '#range_block_openai > .range-block:has(#stream_toggle)',
-                '#range_block_openai > .inline-drawer:has(#main_prompt_quick_edit_textarea)',
-                '#range_block_openai > .inline-drawer:has(#impersonation_prompt_textarea)',
-                '#openai_settings > div > .inline-drawer:has(#character_names_none)',
-                '#openai_settings > div > .inline-drawer:has(#continue_postfix_none)',
+                // The settings shell can flatten these drawers before this runs, which swaps
+                // `.inline-drawer` for `.sb-settings-flat-section`; a miss here is deleted by `empty()` below.
+                '#range_block_openai > :is(.inline-drawer, .sb-settings-flat-section):has(#main_prompt_quick_edit_textarea)',
+                '#range_block_openai > :is(.inline-drawer, .sb-settings-flat-section):has(#impersonation_prompt_textarea)',
+                '#openai_settings > div > :is(.inline-drawer, .sb-settings-flat-section):has(#character_names_none)',
+                '#openai_settings > div > :is(.inline-drawer, .sb-settings-flat-section):has(#continue_postfix_none)',
                 '#openai_settings > div > .range-block:has(#continue_prefill)',
                 '#openai_settings > div > .range-block:has(#squash_system_messages)',
                 '#openai_settings > div > .range-block:has(#use_sysprompt)',
