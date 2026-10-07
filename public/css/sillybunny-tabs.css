@@ -3030,7 +3030,9 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     border-radius: var(--sb-radius-lg, 22px);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
     background: transparent;
-    box-shadow: 0 10px 22px color-mix(in srgb, var(--SmartThemeShadowColor) 8%, transparent);
+    /* Resting surfaces are tonal: the tint comes from the ::before layer below, and elevation is
+       left to the one overlay that actually sits above the conversation. */
+    box-shadow: none;
 }
 
 .sb-shell-callout::before,
@@ -7321,7 +7323,6 @@ body.big-avatars #rm_print_characters_block {
         border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
         border-radius: 12px;
         background: var(--sb-card-bg);
-        box-shadow: 0 10px 18px color-mix(in srgb, var(--SmartThemeShadowColor) 8%, transparent);
         overflow: hidden;
     }
 
