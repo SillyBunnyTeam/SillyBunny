@@ -2537,10 +2537,13 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-character-import-actions {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    /* One column until there is room for two: minmax(300px, 1fr) fits a single track below ~612px
+       and pairs them above it. Capped at two tracks' worth so the cards do not fan out to a column
+       each across a wide panel. */
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: var(--sb-shell-space-sm);
-    max-width: 720px;
+    max-width: 732px;
 }
 
 .sb-character-import-action {
