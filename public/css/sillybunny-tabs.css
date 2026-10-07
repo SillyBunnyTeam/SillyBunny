@@ -8673,6 +8673,37 @@ body.reduced-motion .sb-shell-main {
     color: var(--sb-shell-text-secondary);
 }
 
+/* A flattened section is a heading in the enclosing body's flow, not a card of its own: it must
+   not sit inside the box it used to be. Several wrappers parent their own card around a nested
+   drawer, and those treatments would otherwise stack a tinted box inside a tinted box. */
+.sb-settings-mounted-shell .sb-settings-flat-section.sb-settings-subdrawer,
+.sb-settings-mounted-shell .sb-settings-flat-section.sb-theme-settings-drawer,
+.sb-settings-mounted-shell .sb-settings-flat-section.sb-accent-profiles-panel,
+.sb-settings-mounted-shell .sb-settings-flat-section.sb-openai-settings-drawer {
+    margin: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+}
+
+/* `#sb-theme-card` is a bordered, shadowed, 24px-padded card holding nothing but flattened
+   subsections, so nested in `#UI-presets-block` it reads as a box inside a box and narrows its
+   children 24px against their siblings. Once flattened it is a plain grouping wrapper: the
+   enclosing block stays the one visible box, and every subsection spans the same width. */
+.sb-settings-mounted-shell .sb-theme-card:has(> .sb-settings-flat-section) {
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    gap: 0;
+}
+
+.sb-settings-mounted-shell .sb-theme-card:has(> .sb-settings-flat-section)::before {
+    content: none;
+}
+
 /* The heading copy is wrapped in `<b>`, whose default weight (bolder-than-parent) renders at 900
    against the 700 above. Pin it so the subsection header matches the grouped card heading. */
 .sb-settings-mounted-shell .sb-settings-flat-header > b {
