@@ -9002,6 +9002,77 @@ body.reduced-motion .sb-shell-main {
     color: var(--sb-shell-text);
 }
 
+/* 6F.3 named sub-categories, as libadwaita preference groups: a title and a description line above
+   one boxed list, groups separated by space rather than a rule (DESIGN.md Cards / Containers). The
+   category reuses the flat-section class for search labels, so the section rule and the ID-weighted
+   two-line header rule above are both overridden here. */
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-category {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0 0 24px;
+    padding: 0;
+    border-top: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-category > .sb-settings-flat-header.sb-settings-category-header {
+    justify-content: flex-start;
+    min-height: 0;
+    padding: 0 4px;
+    gap: 12px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-category-heading {
+    gap: 2px;
+    min-width: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-category-heading > .sb-settings-category-title {
+    margin: 0;
+    padding: 0;
+    justify-content: flex-start;
+    text-align: start;
+    font-size: var(--sb-type-body);
+    font-weight: var(--sb-weight-title);
+    line-height: 1.3;
+    color: var(--sb-shell-text);
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-category-heading > small {
+    margin: 0;
+    font-size: var(--sb-type-meta);
+    line-height: 1.4;
+    color: var(--sb-shell-text-secondary);
+}
+
+/* The group is the one box, so it drops the stray bottom margin `.ds-pref-group` carries for its
+   standalone use; the category gap owns the spacing. */
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-category > .sb-settings-category-body.ds-pref-group {
+    margin: 0;
+}
+
+/* Rows in a boxed list share the 16px inset and a hairline between them. Checkbox and baseline rows
+   already get that metric from the `.ds-pref-group` rules above; every other row shape (a stacked
+   label and field, a slider column, an info block) gets the same inset here, so a list reads as
+   one column of rows whatever the markup under it. */
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-category-body.ds-pref-group > * {
+    margin: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-category-body.ds-pref-group > :not(.checkbox_label, .flex-container.alignitemscenter, .flex-container.alignItemsBaseline, .sb-settings-flat-section) {
+    padding: 10px 16px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-category-body.ds-pref-group > * + * {
+    border-top: 1px solid var(--sb-shell-border);
+}
+
+/* The order pass marks a wrapper it emptied with `hidden`, but `.flex-container` and
+   `.flexFlowColumn` set `display` on most of them and would paint the leftover heading anyway. */
+#sb-settings-page [data-sb-emptied-by-order] {
+    display: none !important;
+}
+
 /* The MovingUI preset picker stacks its label above its controls, so the whole group wraps to two
    lines inside a full-width row and leaves most of that row empty. Lay the label, picker, and save
    button along one axis, matching the theme picker row in Appearance. */

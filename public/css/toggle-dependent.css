@@ -604,6 +604,12 @@ label[for="model_sampling_profiles_enabled"]:has(input:checked)~#model_sampling_
     display: none !important;
 }
 
+/* A section whose every setting is text-completion-only (System Prompt, in chat completion) would
+   show just its heading. */
+#AdvancedFormatting.sb-chat-completion-mode .sb-af-settings-drawer:not(:has(> :not(.sb-settings-flat-header) > :not([data-cc-null]:not([data-cc-chat-completion-visible])))) {
+    display: none !important;
+}
+
 #request_images_block:has(#openai_request_images:not(:checked)) #request_images_settings {
     display: none;
 }

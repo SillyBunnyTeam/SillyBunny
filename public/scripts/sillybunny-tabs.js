@@ -58,6 +58,7 @@ import {
     SB_DATA_SECURITY_CONTAINER_ID,
     SB_FLAT_SECTION_CLASS,
     SB_FLAT_SECTION_HEADER_CLASS,
+    applySettingsSectionOrder,
     flattenNestedSettingsDrawers,
     splitUserSettingsContent,
 } from './sillybunny-settings-content.js';
@@ -127,6 +128,7 @@ function flattenRightShellSettingsDrawers() {
     for (const [tabId, tabState] of shellState.tabs.entries()) {
         if (!SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) && tabState.panel instanceof HTMLElement) {
             flattenNestedSettingsDrawers(tabState.panel, { includeTopLevel: true });
+            applySettingsSectionOrder(tabState.panel, tabId);
         }
     }
 }
@@ -200,12 +202,14 @@ function openAllInlineDrawers(root = null) {
 }
 
 /**
- * Re-runs the drawer flatten for a panel that may have been built after the split.
+ * Re-runs the drawer flatten and the 6F section order for a panel that may have been built after
+ * the split.
  *
- * The split flattens the markup it relocates, but some sections author their drawers at runtime --
- * `#sb-openai-output` builds four of them in `openai.js` once its panel is created -- so the pass
- * is repeated on activation. It is idempotent, so re-running it costs a query and no DOM churn.
- *
+ * The split flattens and orders the markup it relocates, but some sections author their drawers
+ * at runtime -- `#sb-openai-output` builds four of them in `openai.js` once its panel is created,
+ * and Advanced Formatting and the Appearance theme card are assembled after the split -- so both
+ * passes are repeated on activation. Both are idempotent, so re-running them costs queries and no
+ * DOM churn.
  * Extensions and Agents are skipped for the same reason as in `flattenRightShellSettingsDrawers`.
  *
  * @param {string} shellKey
@@ -219,6 +223,7 @@ function flattenSettingsPanelDrawers(shellKey, tabId) {
     const panel = getShellState(shellKey)?.tabs.get(tabId)?.panel;
     if (panel instanceof HTMLElement) {
         flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
+        applySettingsSectionOrder(panel, tabId);
     }
 }
 
@@ -9028,6 +9033,7 @@ function createOnDemandShellPanel(shellKey, tabConfig, build) {
             // finished panel rather than relying on the one the split did.
             if (!SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabConfig.id)) {
                 flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
+                applySettingsSectionOrder(panel, tabConfig.id);
             }
             const tab = getShellState(shellKey)?.tabs.get(tabConfig.id);
             if (tab) {
@@ -9905,7 +9911,7 @@ function groupAdvancedFormattingIntoDrawers() {
         {
             id: 'sb-af-sysprompt',
             title: 'System Prompt',
-            description: 'System prompt, post-history instructions, stopping strings, tokenizer',
+            description: 'System prompt, post-history instructions, and tokenizer',
             selector: '#SystemPromptColumn',
         },
     ];

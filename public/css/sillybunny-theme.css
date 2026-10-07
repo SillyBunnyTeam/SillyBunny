@@ -4847,7 +4847,9 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 
 #AdvancedFormatting #ContextSettings .flex-container[data-cc-null] textarea.autoSetHeight,
 #AdvancedFormatting #InstructSequencesColumn textarea.autoSetHeight,
-#AdvancedFormatting #SystemPromptColumn textarea.autoSetHeight {
+#AdvancedFormatting #SystemPromptColumn textarea.autoSetHeight,
+/* 6F.3 lifts stopping strings and Start Reply With out of the System Prompt column. */
+#AdvancedFormatting .sb-settings-category textarea.autoSetHeight {
     min-height: 6.4rem;
 }
 
