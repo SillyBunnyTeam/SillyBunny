@@ -3843,9 +3843,29 @@ function groupOpenAISettingsIntoDrawers() {
     updateOpenAISettingsGroupVisibility();
 }
 
+/**
+ * Gets the settings blocks a grouped OpenAI section holds.
+ *
+ * A collapsible group keeps them in its `.inline-drawer-content`. The settings page flattens the
+ * group into a static section (`flattenNestedSettingsDrawers` in sillybunny-settings-content.js),
+ * which lifts the blocks out of that wrapper and drops it, so they become the group's own children
+ * after its heading. Reading only the wrapper found no blocks once flattened, and every group was
+ * hidden as empty.
+ * @param {HTMLElement} group
+ * @returns {Element[]}
+ */
+function getOpenAISettingsGroupBlocks(group) {
+    const content = group.querySelector(':scope > .inline-drawer-content');
+    if (content) {
+        return Array.from(content.children);
+    }
+
+    return Array.from(group.children).filter(child => !child.classList.contains('sb-settings-flat-header'));
+}
+
 function updateOpenAISettingsGroupVisibility() {
     $('#range_block_openai .sb-openai-settings-drawer').each(function () {
-        const blocks = $(this).children('.inline-drawer-content').children().toArray();
+        const blocks = getOpenAISettingsGroupBlocks(this);
         const hasVisibleContent = blocks.some(block => {
             if (!(block instanceof HTMLElement) || getComputedStyle(block).display === 'none') {
                 return false;
