@@ -7961,12 +7961,13 @@ body.reduced-motion .sb-shell-main {
 }
 
 /* Closed state keeps the page in the render tree so reopening reuses the cached layout of
-   the hosted panels instead of laying out every panel again on the first animation frame. */
+   the hosted panels instead of laying out every panel again on the first animation frame.
+   No `content-visibility: hidden` here: on this root Chromium kept the closed styles after
+   `hidden` was removed, so the page opened invisible until an unrelated style recalc. */
 #sb-settings-page[hidden] {
     display: flex;
     visibility: hidden;
     pointer-events: none;
-    content-visibility: hidden;
 }
 
 #sb-settings-inner {
