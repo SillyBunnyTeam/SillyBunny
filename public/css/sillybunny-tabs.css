@@ -8880,6 +8880,58 @@ body.reduced-motion .sb-shell-main {
     border-top: 0;
 }
 
+/* Section bars inside embedded extension drawers: the heading is the first child of a baseline row,
+   so it shrink-wraps to its text while the sibling `#title_api` bar stretches the full column. Same
+   tint and same radius, two different widths. Stretch it so the two read as one heading level. */
+.sb-settings-mounted-shell .sb-shell-embedded-content .flex-container.alignItemsBaseline > h3 {
+    flex: 1 1 auto;
+    align-self: stretch;
+    margin: 0;
+}
+
+/* The MovingUI preset picker stacks its label above its controls, so the whole group wraps to two
+   lines inside a full-width row and leaves most of that row empty. Lay the label, picker, and save
+   button along one axis, matching the theme picker row in Appearance. */
+.sb-settings-mounted-shell #MovingUI-presets-block {
+    padding: 10px 16px;
+    min-height: 48px;
+    gap: 12px;
+}
+
+.sb-settings-mounted-shell #MovingUI-presets-block > .flex-container {
+    flex: 1 1 auto;
+    flex-flow: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    min-width: 0;
+    gap: 12px;
+}
+
+.sb-settings-mounted-shell #MovingUI-presets-block label {
+    display: flex;
+    flex-flow: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 12px;
+}
+
+.sb-settings-mounted-shell #MovingUI-presets-block label > small {
+    flex: 0 0 auto;
+    margin: 0;
+}
+
+.sb-settings-mounted-shell #MovingUI-presets-block label > .flex-container {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.sb-settings-mounted-shell #MovingUI-presets-block select {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
 @media screen and (min-width: 769px) {
 }
 
