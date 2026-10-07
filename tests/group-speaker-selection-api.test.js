@@ -233,6 +233,43 @@ describe('group replies and the speaker bar pick', () => {
         expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('alice.png');
         expect(changes).toEqual(['alice.png']);
     });
+
+    for (const type of ['swipe', 'continue']) {
+        test(`a ${type} stays with the author of the last message and keeps the pick`, async () => {
+            const { runtime, changes, generations } = createSpeakerRuntime();
+            runtime.setSelectedGroupSpeakerAvatar('alice.png');
+
+            await runtime.generateGroupWrapper(false, type, {});
+
+            expect(generations).toEqual([{ type, avatar: 'bob.png' }]);
+            expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('alice.png');
+            expect(changes).toEqual(['alice.png']);
+        });
+    }
+
+    test('impersonating the user leaves the pick for the reply after it', async () => {
+        const { runtime, changes, generations } = createSpeakerRuntime();
+        runtime.setSelectedGroupSpeakerAvatar('alice.png');
+        // Impersonation borrows a random member's card; fix it to the first so the generation always runs.
+        vm.runInContext('Math.random = () => 0;', runtime);
+
+        await runtime.generateGroupWrapper(false, 'impersonate', {});
+
+        expect(generations).toEqual([{ type: 'impersonate', avatar: 'alice.png' }]);
+        expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('alice.png');
+        expect(changes).toEqual(['alice.png']);
+    });
+
+    test('a regenerated reply is answered by the picked member', async () => {
+        const { runtime, changes, generations } = createSpeakerRuntime();
+        runtime.setSelectedGroupSpeakerAvatar('alice.png');
+
+        await runtime.generateGroupWrapper(false, 'regenerate', {});
+
+        expect(generations).toEqual([{ type: 'normal', avatar: 'alice.png' }]);
+        expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('');
+        expect(changes).toEqual(['alice.png', '']);
+    });
 });
 
 describe('keeping the speaker bar pick valid', () => {

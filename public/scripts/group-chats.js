@@ -1632,6 +1632,9 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
 
         const selectedSpeakerChid = getSelectedGroupSpeakerChid(group);
         const selectedSpeakerAvatar = selectedSpeakerChid !== -1 ? selectedGroupSpeakerAvatar : '';
+        // Only a new reply answers as the pick and uses it up. Swipes and Continue redo or extend the last message,
+        // and quiet or Impersonate generations never reply as a member, so they all leave the pick for the next reply.
+        const isNewReply = !['quiet', 'swipe', 'continue', 'impersonate'].includes(type);
         const addressedMemberChid = findDirectlyAddressedMember(group, activationText);
         const isWholeGroupAddress = isAddressedToEntireGroup(activationText);
         if (params && Array.isArray(params.force_chids)) {
@@ -1642,7 +1645,7 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
             activatedMembers = enabledMembers.map(avatar => getCharacterIdByAvatar(avatar)).filter(chid => chid !== -1);
         } else if (type !== 'quiet' && addressedMemberChid !== -1) {
             activatedMembers = [addressedMemberChid];
-        } else if (type !== 'quiet' && selectedSpeakerChid !== -1) {
+        } else if (isNewReply && selectedSpeakerChid !== -1) {
             activatedMembers = [selectedSpeakerChid];
         } else if (type === 'quiet') {
             activatedMembers = activateSwipe(enabledMembers, { allowSystem: true }).slice(0, 1);
@@ -1742,9 +1745,8 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
             setGroupTypingIndicator('');
         }
 
-        // Quiet generations (summaries, helper prompts) never answer as the pick, so they leave it for the next reply.
         // A pick made while this reply was being written is meant for the reply after it.
-        if (selectedSpeakerChid !== -1 && type !== 'quiet' && !(params && typeof params.force_chid == 'number')
+        if (selectedSpeakerChid !== -1 && isNewReply && !(params && typeof params.force_chid == 'number')
             && selectedGroupSpeakerAvatar === selectedSpeakerAvatar) {
             clearSelectedGroupSpeaker();
         }
