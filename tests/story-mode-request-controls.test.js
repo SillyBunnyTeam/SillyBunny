@@ -574,6 +574,24 @@ describe('owned host generation flow', () => {
         expect(context.promptManager.serviceSettings.openai_max_tokens).toBe(8192);
     });
 
+    test.each([
+        ['a whole reply', {}],
+        ['a streamed reply', { api: 'textgenerationwebui', stream: true }],
+        ['a buffered streamed reply', { api: 'textgenerationwebui', stream: true, buffer: true }],
+    ])('suppressAutoSwipe keeps %s that auto-swipe would otherwise redo', async (_, options) => {
+        for (const suppressAutoSwipe of [false, true]) {
+            const { context } = makeRuntime(options);
+            Object.assign(context, { SWIPE_DIRECTION, SWIPE_SOURCE, generatedTextFiltered: () => true, swipe: jest.fn(async () => {}) });
+            context.power_user.auto_swipe = true;
+            context.chunks = [{ text: 'New prose. ' }];
+
+            await context.Generate('normal', { suppressUserMessage: true, suppressAutoContinue: true, suppressAutoSwipe });
+
+            expect(context.swipe).toHaveBeenCalledTimes(suppressAutoSwipe ? 0 : 1);
+            expect(context.chat.at(-1).mes).toBe('New prose. ');
+        }
+    });
+
     test('auto-continue forwards owned options through its existing click handler', () => {
         const { context, dom } = makeRuntime();
         const controls = { maxOutputTokens: 160, suppressUserMessage: true };
