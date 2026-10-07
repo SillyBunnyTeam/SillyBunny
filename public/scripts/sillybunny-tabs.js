@@ -112,6 +112,10 @@ function initializeSettingsPanel() {
  */
 const SB_COLLAPSIBLE_DRAWER_TAB_IDS = Object.freeze(new Set(['extensions', 'agents']));
 
+/** Phase 6F: marks the merged Chat Completion presets row and the chrome card it replaces. */
+const SB_PRESET_TOOLBAR_ROW_CLASS = 'sb-preset-toolbar-row';
+const SB_PRESET_TOOLBAR_CARD_CLASS = 'sb-preset-toolbar-card';
+
 /**
  * Flattens drawers in every Backend and Customize panel, covering drawers authored after the split.
  */
@@ -12472,6 +12476,59 @@ function closeShell(shellKey) {
     }
 }
 
+/**
+ * Phase 6F: the Chat Completion presets block opened with a 60px card carrying the
+ * "Chat Completion Presets" label and four icon buttons, directly above a second row holding the
+ * preset select and three more icon buttons. Two stacked rows of unlabeled icons above the first
+ * real setting read as pure chrome, and the label duplicated the tab's own header, so the card and
+ * the select row become one row: label, select, then all seven actions together.
+ *
+ * Nodes are moved rather than rebuilt. Every action binds by id at init or through a delegated
+ * `data-preset-manager-*` handler, so position is irrelevant; the label keeps its `data-i18n`
+ * span and stays in the search index. The emptied card is hidden instead of removed so the
+ * `#openai_api-presets > div` insertion point the ChatCompletionTabs extension anchors its tab bar
+ * to is still the container's first child.
+ */
+function mergeOpenAIPresetToolbarRow(root) {
+    if (!(root instanceof HTMLElement)) {
+        return;
+    }
+
+    const container = root.querySelector('#openai_api-presets > div');
+    const card = container?.querySelector(':scope > .standoutHeader');
+    const row = container?.querySelector(':scope > .flex-container.flexNoGap');
+
+    if (!(card instanceof HTMLElement) || !(row instanceof HTMLElement)) {
+        return;
+    }
+
+    if (row.classList.contains(SB_PRESET_TOOLBAR_ROW_CLASS)) {
+        return;
+    }
+
+    const label = card.querySelector(':scope > strong');
+    const cardActions = card.querySelector(':scope > .flex-container');
+    const rowActions = row.querySelector(':scope > .flex-container.marginLeft5');
+
+    if (!(rowActions instanceof HTMLElement)) {
+        return;
+    }
+
+    if (cardActions instanceof HTMLElement) {
+        while (cardActions.firstChild) {
+            rowActions.appendChild(cardActions.firstChild);
+        }
+        cardActions.remove();
+    }
+
+    if (label instanceof HTMLElement) {
+        row.insertBefore(label, row.firstChild);
+    }
+
+    row.classList.add(SB_PRESET_TOOLBAR_ROW_CLASS);
+    card.classList.add(SB_PRESET_TOOLBAR_CARD_CLASS);
+}
+
 function buildShell(shellKey) {
     const shellConfig = getShellConfig(shellKey);
     const shellRoot = document.getElementById(shellConfig.rootPanelId);
@@ -12581,6 +12638,7 @@ function buildShell(shellKey) {
             // Prompting tab gets presets drawer content (the original left shell content)
             const promptingPanel = createShellPanel(customTab);
             if (shellKey === 'left') {
+                mergeOpenAIPresetToolbarRow(originalContent);
                 promptingPanel.scroller.appendChild(originalContent);
             }
             registerShellTab(shellKey, customTab, promptingPanel, originalContent);
@@ -13437,6 +13495,25 @@ function bindInlineDrawerPersistence(root = document) {
     }
 }
 
+/**
+ * Re-flattens drawers that a panel authored after its own activation pass had already run.
+ *
+ * The Prompt Manager rebuilds its header with `innerHTML` on every render, which brings back the
+ * collapsible `#completion_prompt_manager_drawer` band each time -- one refresh after the tab was
+ * flattened. The persistence observer already watches these subtrees and is the only thing that
+ * reliably fires afterwards, so the flatten rides along with the same debounce. It is idempotent,
+ * and it skips any panel with no drawers left, so the common case is one query per panel.
+ */
+function reflattenRuntimeDrawers() {
+    for (const panel of document.querySelectorAll('section.sb-shell-panel[data-sb-panel]')) {
+        const tabId = panel.dataset.sbPanel;
+        if (SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) || !panel.querySelector('.inline-drawer')) {
+            continue;
+        }
+        flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
+    }
+}
+
 function queueInlineDrawerPersistenceBind() {
     if (sbInlineDrawerPersistenceQueued) {
         return;
@@ -13446,6 +13523,7 @@ function queueInlineDrawerPersistenceBind() {
     window.requestAnimationFrame(() => {
         sbInlineDrawerPersistenceQueued = false;
         bindInlineDrawerPersistence(document.body);
+        reflattenRuntimeDrawers();
     });
 }
 

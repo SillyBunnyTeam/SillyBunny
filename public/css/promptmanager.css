@@ -83,7 +83,7 @@
 
 #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_list_head .prompt_manager_prompt_tokens,
 #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_tokens {
-    font-size: calc(var(--mainFontSize)*0.9);
+    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     text-align: right;
     min-width: 54px;
     justify-self: end;
@@ -97,14 +97,19 @@
 }
 
 #completion_prompt_manager .completion_prompt_manager_list_head {
-    padding: 0.35em 0.5em 0;
+    /* SillyBunny: was `0.35em 0.5em 0`, which resolved to 4.1px/5.9px against the meta size and
+       left the column labels off the 16px inset every row below them uses. */
+    padding: 8px 16px 0;
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 64%, transparent);
-    font-size: calc(var(--mainFontSize) * 0.78);
+    font-size: var(--sb-type-meta); /* SillyBunny: snapped to --sb-type-* tokens */
 }
 
 #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt {
     align-items: center;
-    padding: 12px 14px;
+    /* SillyBunny: the grouped row metric (44px / 10px / 16px) rather than 12px/14px, which made
+       every row 54px tall and put the list on a different inset from the rest of the tab. */
+    padding: 10px 16px;
+    min-height: 44px;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 14px;
     transition:
@@ -468,7 +473,8 @@
 }
 
 #completion_prompt_manager .completion_prompt_manager_drawer_content {
-    padding-top: 0.35em;
+    /* SillyBunny: 0.35em resolved to a fractional 5.25px; the tab's row inset is 16px. */
+    padding: 0 16px;
 }
 
 #completion_prompt_manager .completion_prompt_manager_workspace {
@@ -821,7 +827,8 @@
     }
 
     #completion_prompt_manager .completion_prompt_manager_drawer_content {
-        padding: 0.75em 10px 10px;
+        /* SillyBunny: 0.75em resolved to a fractional 11.25px; match the 16px inset above. */
+        padding: 0 16px;
     }
 
     #completion_prompt_manager .completion_prompt_manager_list_pane {

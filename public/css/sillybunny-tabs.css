@@ -8665,6 +8665,10 @@ body.reduced-motion .sb-shell-main {
    kind of label as the grouped card above it, and its text lands on the same 16px inset. */
 .sb-settings-mounted-shell .sb-settings-flat-header {
     display: flex;
+    /* The drawer header it replaces used `space-between`, and the Prompting and Advanced Formatting
+       headers put their action buttons as a second child next to the copy. Without it those buttons
+       sit against the end of the text instead of the end of the row. */
+    justify-content: space-between;
     align-items: center;
     gap: 12px;
     padding: 10px 16px 4px;
@@ -8794,6 +8798,17 @@ body.reduced-motion .sb-shell-main {
 .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label + .checkbox_label,
 .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label + .flex-container {
     border-top: 1px solid var(--sb-shell-border);
+}
+
+/* A copy block lifted out of a flattened drawer becomes a direct child of the section, and the
+   section is a column. Its `flex: 1 1 320px` was authored for a row parent, where the basis reads
+   as a width -- the one copy block still inside a `.flex-container` measures 57px. In a column the
+   same basis becomes a height floor, so three blocks holding ~80px of text each were rendering at
+   320px and Preset API/Sampler Linking spent 1041px on five controls. In column flow the block
+   takes its content height under the same 10px/16px inset as the rows beside it. */
+.sb-settings-mounted-shell .sb-settings-flat-section > .sb-setting-inline-copy-center {
+    flex: 0 0 auto;
+    padding: 10px 16px;
 }
 
 .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label small,

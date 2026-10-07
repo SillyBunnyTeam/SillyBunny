@@ -4640,6 +4640,28 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     align-items: center;
 }
 
+/* Phase 6F: the presets block opens with one row instead of a title card plus a select row. The
+   label takes the leading column, so the grid needs a third track for it. */
+#openai_api-presets .flex-container.flexNoGap.sb-preset-toolbar-row:has(> select[data-preset-manager-for]) {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    row-gap: 8px;
+    margin-bottom: 0;
+}
+
+#openai_api-presets .flex-container.flexNoGap.sb-preset-toolbar-row > strong {
+    font-size: var(--sb-type-title);
+    line-height: var(--sb-line-title);
+    color: var(--sb-shell-text-secondary);
+    white-space: nowrap;
+}
+
+/* The emptied card only stays in the dom so `#openai_api-presets > div` keeps the same first child
+   for the ChatCompletionTabs tab bar to anchor to. */
+#openai_api-presets .sb-preset-toolbar-card {
+    display: none;
+}
+
 #openai_api-presets .flex-container.flexNoGap > select {
     min-width: 0;
 }
@@ -4709,6 +4731,34 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     max-height: var(--sb-preset-row-control-size, var(--sb-field-min-height)) !important;
 }
 
+/* Phase 6F: the merged row's label and its seven preset actions take a fixed 542px, so between
+   roughly 1024px and the mobile breakpoint the select would be squeezed to a couple of characters.
+   In that band the row keeps two lines instead -- label and select on the first, action group
+   spanning the second. Below 768px the media query below stacks all three; above 1024px the select
+   has room again and the three-column rule further up applies. */
+@media screen and (min-width: 769px) and (max-width: 1024px) {
+    #openai_api-presets .flex-container.flexNoGap.sb-preset-toolbar-row:has(> select[data-preset-manager-for]) {
+        grid-template-columns: auto minmax(0, 1fr);
+        grid-template-areas:
+            'label select'
+            'actions actions';
+    }
+
+    #openai_api-presets .flex-container.flexNoGap.sb-preset-toolbar-row > strong {
+        grid-area: label;
+    }
+
+    #openai_api-presets .flex-container.flexNoGap.sb-preset-toolbar-row > select {
+        grid-area: select;
+    }
+
+    #openai_api-presets .flex-container.flexNoGap.sb-preset-toolbar-row > .flex-container.marginLeft5 {
+        grid-area: actions;
+        height: auto;
+        flex-wrap: wrap;
+    }
+}
+
 @media screen and (max-width: 768px) {
     #openai_api-presets .flex-container.flexNoGap {
         grid-template-columns: 1fr;
@@ -4718,6 +4768,17 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     #AdvancedFormatting .flex-container.flexNoGap:has(> select[data-preset-manager-for]) {
         --sb-preset-row-control-size: max(var(--sb-field-min-height), 44px);
         grid-template-columns: 1fr;
+    }
+
+    /* Phase 6F: seven 44px actions no longer fit beside the select, so the merged row stacks and
+       lets the action group wrap, which it already does at this width. */
+    #openai_api-presets .flex-container.flexNoGap.sb-preset-toolbar-row:has(> select[data-preset-manager-for]) {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #openai_api-presets .flex-container.flexNoGap.sb-preset-toolbar-row > .flex-container.marginLeft5 {
+        height: auto;
+        flex-wrap: wrap;
     }
 
     #openai_api .checkbox_label,
