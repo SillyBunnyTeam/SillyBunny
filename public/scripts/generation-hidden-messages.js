@@ -9,7 +9,7 @@
 /**
  * @typedef {object} GenerationHideRequest
  * @property {string} type Generation type
- * @property {object[]} messages Shallow copies of the prompt lines, in prompt order, frozen
+ * @property {object[]} messages Frozen array of shallow copies of the prompt lines, in prompt order; each copy is a plain object whose `extra` is the stored one
  * @property {(index: number) => boolean} hide Hides the line at `index` of `messages`; true when the index names a line
  * @property {(index: number) => boolean} isHidden Whether the line at `index` was hidden by any handler
  */
