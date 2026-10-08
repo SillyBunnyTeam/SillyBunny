@@ -1,3 +1,5 @@
+/* Startup splash. The head script seeds --sb-boot-bg/--sb-boot-fg from the last session's resolved
+   theme surface, so the splash keeps one opaque color from first paint until it fades out. */
 #preloader {
     position: fixed;
     margin: 0;
@@ -9,12 +11,26 @@
     height: 100vh;
     width: 100dvw;
     height: 100dvh;
-    background-color: var(--SmartThemeBlurTintColor);
-    color: var(--SmartThemeBodyColor);
-    /*for some reason the full screen blur does not work on iOS*/
-    -webkit-backdrop-filter: blur(30px);
-    backdrop-filter: blur(30px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--sb-boot-bg, var(--sb-page-bg, #1d2128));
+    color: var(--sb-boot-fg, var(--SmartThemeBodyColor));
     opacity: 1;
+    transition: opacity var(--sb-transition-slow);
+}
+
+#preloader.sb-boot-exit {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.sb-boot-splash {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4rem;
 }
 
 #load-spinner {
@@ -56,27 +72,11 @@
 }
 
 /* Splash screen styles for branded loading */
-#loader.splash-screen {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 4rem;
-    width: 100%;
-    height: 100%;
-    transition: all var(--sb-transition-slow);
-}
-
-#loader.splash-screen #load-spinner {
-    position: static;
-    top: unset;
-    left: unset;
-}
-
 .splash-logo {
-    /* max original px, or 50% on mobile */
-    width: min(150px, 50%);
+    /* max original px, or 40% of the viewport on mobile */
+    width: min(150px, 40vw);
     height: auto;
+    aspect-ratio: 1;
     image-rendering: pixelated;
     filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
 }

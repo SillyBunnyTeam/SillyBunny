@@ -17,12 +17,25 @@
             background-color: #1d2128;
         }
     </style>
+    <script>
+        // SillyBunny: paint the startup splash with the last resolved theme surface so it doesn't flash a default color.
+        try {
+            var sbBootSurface = JSON.parse(localStorage.getItem('sb-boot-surface') || 'null');
+            if (sbBootSurface && sbBootSurface.bg && sbBootSurface.fg) {
+                document.documentElement.style.setProperty('--sb-boot-bg', sbBootSurface.bg);
+                document.documentElement.style.setProperty('--sb-boot-fg', sbBootSurface.fg);
+            }
+        } catch (_error) {
+            // Storage can be blocked; the splash falls back to theme defaults.
+        }
+    </script>
     <script src="scripts/sillybunny-restart-cache-clear.js?v=20261005a"></script>
     <link rel="preload" as="style" href="style.css?v=20261001e">
     <link rel="modulepreload" href="script.js">
     <link rel="modulepreload" href="scripts/sillybunny-tabs.js">
     <link rel="modulepreload" href="scripts/sillybunny-conversation.js">
     <link rel="preload" as="font" type="font/woff2" href="webfonts/AdwaitaSans/AdwaitaSans-Regular-Latin.woff2?v=20261001a" crossorigin>
+    <link rel="preload" as="font" type="font/woff2" href="webfonts/fa-solid-900.woff2" crossorigin>
     <link rel="manifest" crossorigin="use-credentials" href="manifest.json">
     <link href="webfonts/AdwaitaSans/stylesheet.css?v=20261001a" rel="stylesheet">
     <link href="webfonts/NotoSans/stylesheet.css" rel="preload" as="style" data-sb-deferred-style data-sb-media="all">
@@ -59,7 +72,27 @@
 </head>
 
 <body class="no-blur">
-    <div id="preloader"></div>
+    <div id="preloader">
+        <div class="sb-boot-splash">
+            <img class="splash-logo" alt="SillyBunny" width="256" height="256" data-sb-frontend-icon="true">
+            <div class="sb-boot-spinner fa-solid fa-gear fa-spin fa-3x" aria-hidden="true"></div>
+            <h2 class="splash-message" data-i18n="Initializing…">Initializing…</h2>
+        </div>
+        <script>
+            // SillyBunny: resolve the selected frontend icon before the module bundle loads.
+            (function () {
+                var icons = { pixel: 'img/sillybunny-pixel-logo-og.png', badge: 'img/sillybunny-badge.png' };
+                var iconId = 'pixel';
+                try {
+                    var storedIconId = localStorage.getItem('sb-frontend-icon');
+                    if (Object.prototype.hasOwnProperty.call(icons, storedIconId)) iconId = storedIconId;
+                } catch (_error) {
+                    // Storage can be blocked; use the default icon.
+                }
+                document.querySelector('#preloader .splash-logo').src = '/' + icons[iconId];
+            })();
+        </script>
+    </div>
     <div id="bg1"></div>
     <div id="character_context_menu" class="hidden">
         <ul>

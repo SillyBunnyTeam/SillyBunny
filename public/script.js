@@ -291,7 +291,7 @@ import {
     isPersonaPanelOpen,
 } from './scripts/personas.js';
 import { getBackgrounds, initBackgrounds, loadBackgroundSettings, background_settings } from './scripts/backgrounds.js';
-import { cleanupActionLoaderArtifacts, loader } from './scripts/action-loader.js';
+import { dismissPreloader, loader } from './scripts/action-loader.js';
 import { BulkEditOverlay } from './scripts/BulkEditOverlay.js';
 import { initTextGenModels } from './scripts/textgen-models.js';
 import { appendFileContent, hasPendingFileAttachment, populateFileAttachment, decodeStyleTags, encodeStyleTags, isExternalMediaAllowed, preserveNeutralChat, restoreNeutralChat, formatCreatorNotes, initChatUtilities, addDOMPurifyHooks } from './scripts/chats.js';
@@ -1109,51 +1109,25 @@ function scheduleDeferredStartupStylesheets() {
     window.setTimeout(loadStylesheets, 800);
 }
 
+const BOOT_SURFACE_STORAGE_KEY = 'sb-boot-surface';
+
+/**
+ * Stores the resolved page surface so index.html can paint the next startup splash in the same colors.
+ */
+function rememberBootSurface() {
+    try {
+        const style = getComputedStyle(document.body);
+        localStorage.setItem(BOOT_SURFACE_STORAGE_KEY, JSON.stringify({ bg: style.backgroundColor, fg: style.color }));
+    } catch (error) {
+        console.debug('Could not store the startup splash colors.', error);
+    }
+}
+
 //MARK: firstLoadInit
 async function firstLoadInit() {
-    const scheduleStartupLoaderCleanup = (reason) => {
-        cleanupActionLoaderArtifacts({ removePreloader: true, reason });
-        requestAnimationFrame(() => cleanupActionLoaderArtifacts({ removePreloader: true, reason: `${reason} (raf)` }));
-        window.setTimeout(() => cleanupActionLoaderArtifacts({ removePreloader: true, reason: `${reason} (timeout)` }), 250);
-    };
-
-    const initLoaderOverlay = loader.createOverlay();
-    initLoaderOverlay.classList.add('splash-screen');
-
-    const splashLogo = document.createElement('img');
-    splashLogo.src = getSillyBunnyFrontendIconSrc({ absolute: true });
-    splashLogo.alt = 'SillyBunny';
-    splashLogo.className = 'splash-logo';
-    splashLogo.ariaLabel = t`SillyBunny Badge`;
-    splashLogo.dataset.sbFrontendIcon = 'true';
-
-    const splashMessage = document.createElement('h2');
-    splashMessage.className = 'splash-message';
-    splashMessage.textContent = t`Initializing…`;
-    splashMessage.dataset.i18n = 'Initializing…';
-
-    initLoaderOverlay.prepend(splashLogo);
-    initLoaderOverlay.appendChild(splashMessage);
-
-    const initLoaderHandle = loader.show({
-        slug: 'app-init',
-        toastMode: loader.ToastMode.NONE,
-        overlayContent: initLoaderOverlay,
-    });
-    let startupLoaderReleased = false;
-
-
-    const releaseStartupLoader = async (reason) => {
-        if (startupLoaderReleased) return;
-        startupLoaderReleased = true;
-        if (initLoaderHandle.isActive) {
-            await initLoaderHandle.hide().catch((error) => {
-                console.error('Failed to hide startup loader.', error);
-            });
-        }
-        scheduleStartupLoaderCleanup(reason);
-    };
-
+    // SillyBunny: `.splash-screen` is the boot guard's "the app is booting" marker. It is added here
+    // rather than in index.html so a bundle that never runs still surfaces the 25s boot failure.
+    document.querySelector('#preloader .sb-boot-splash')?.classList.add('splash-screen');
     try {
         await refreshCsrfToken();
 
@@ -1194,14 +1168,14 @@ async function firstLoadInit() {
         ToolManager.initToolSlashCommands();
         await initPresetManager();
         await initSystemMessages();
-        await getSettings(initLoaderHandle);
+        await getSettings();
         await checkOpenRouterAuth();
         initKeyboard();
         initDynamicStyles();
         initTags();
         initBookmarks();
         scheduleDeferredStartupStylesheets();
-        await releaseStartupLoader('startup loader release');
+        await dismissPreloader();
         await getUserAvatars(true, user_avatar);
         await getCharacters();
         await getBackgrounds();
@@ -1235,13 +1209,14 @@ async function firstLoadInit() {
         await eventSource.emit(event_types.APP_INITIALIZED);
         await fixViewport();
         await eventSource.emit(event_types.APP_READY);
-        scheduleStartupLoaderCleanup('app ready');
+        rememberBootSurface();
+        window.addEventListener('pagehide', rememberBootSurface);
     } catch (error) {
         console.error('Application initialization failed.', error);
         toastr.error(t`SillyBunny couldn't finish starting. Please refresh the page.`, t`Startup Error`, { timeOut: 0, extendedTimeOut: 0, preventDuplicates: true });
         throw error;
     } finally {
-        await releaseStartupLoader('startup finally');
+        await dismissPreloader();
     }
 }
 
@@ -12222,7 +12197,7 @@ async function promptSettingsConflictReload() {
 
 //MARK: getSettings()
 ///////////////////////////////////////////
-export async function getSettings(initLoaderHandle = null) {
+export async function getSettings() {
     const response = await fetch('/api/settings/get', {
         method: 'POST',
         headers: getRequestHeaders(),
@@ -12363,7 +12338,7 @@ export async function getSettings(initLoaderHandle = null) {
         firstRun = !!settings.firstRun;
 
         if (firstRun) {
-            await initLoaderHandle?.hide();
+            await dismissPreloader();
             await doOnboarding(user_avatar);
             firstRun = false;
         }
