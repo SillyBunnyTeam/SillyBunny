@@ -146,8 +146,8 @@ describe('icons only top bar', () => {
             .map(match => [...match[1].matchAll(/value: '([^']+)'/g)].map(pageMatch => pageMatch[1]));
 
         expect(pageLists).toEqual([
-            ['left:presets', 'left:api', 'left:sampling', 'left:advanced-formatting', 'left:agents'],
-            ['right:settings', 'right:extensions', 'right:background', 'right:server', 'right:console-logs'],
+            ['left:connections', 'left:sampling', 'left:prompting', 'left:agents', 'left:context'],
+            ['right:appearance', 'right:interface', 'right:messages', 'right:extensions', 'right:data-security', 'right:logs'],
             ['characters:groups', 'characters:editor', 'characters:world-info', 'characters:persona', 'characters:import'],
         ]);
     });
@@ -165,15 +165,15 @@ describe('icons only top bar', () => {
         const buttonSource = getFunctionSource('createTopbarPageButton');
         expect(buttonSource).toContain('icon: config?.icon ?? \'fa-circle-dot\'');
         for (const entry of [
-            'id: \'advanced-formatting\',',
+            'id: \'context\',',
             'id: \'agents\',',
-            'id: \'server\',',
-            'id: \'console-logs\',',
-            '{ id: \'editor\', label: \'Editor\', icon: \'fa-pen-to-square\' }',
-            '{ id: \'import\', label: \'Import\', icon: \'fa-file-import\' }',
+            'id: \'data-security\',',
+            'id: \'logs\',',
         ]) {
             expect(normalizedTabsSource).toContain(entry);
         }
+        expect(normalizedTabsSource).toMatch(/id: 'editor',\s+label: 'Editor',\s+icon: 'fa-pen-to-square'/);
+        expect(normalizedTabsSource).toMatch(/id: 'import',\s+label: 'Import',\s+icon: 'fa-file-import'/);
     });
 
     test('hides only redundant section anchors in icons-only mode and parks nothing', () => {
@@ -201,7 +201,7 @@ describe('icons only top bar', () => {
 
     test('opens the Characters anchor as a settings page in every mode', () => {
         const activationSource = getFunctionSource('activateCharacterTopbarButton');
-        expect(activationSource).toContain('toggleSettingsPage(\'characters\', SB_CHARACTER_PANEL_DEFAULT_TAB);');
+        expect(activationSource).toContain('toggleSettingsPage(\'characters\');');
         expect(activationSource).not.toContain('if (isTopbarIconsOnlyActive())');
 
         const buildSource = getFunctionSource('buildTopBar');
@@ -276,7 +276,7 @@ describe('icons only top bar', () => {
         expect(normalizedTabsSource).toContain('function createTopbarClusterDivider(');
         const orderSource = getFunctionSource('getTopbarGroupOrder');
         expect(orderSource).toContain('\'sb-topbar-divider-customize\',');
-        expect(orderSource).toContain('right.push(\'sb-mode-toggle\', \'sb-home-toggle\', \'sb-topbar-divider-home\');');
+        expect(orderSource).toContain('right.push(\'sb-mode-toggle\', \'sb-topbar-divider-mode-mobile\', \'sb-home-toggle\', \'sb-topbar-divider-home\');');
 
         const baseRule = cssSource.match(/\.sb-topbar-cluster-divider \{[^}]*\}/);
         expect(baseRule).not.toBeNull();
@@ -424,6 +424,31 @@ describe('icons only top bar', () => {
         expect(normalizedTabsSource).not.toContain('Icons only in shell tabs');
         expect(normalizedTabsSource).not.toContain('setMobileNavIconOnly');
         expect(normalizedTabsSource).not.toContain('setDesktopNavIconOnly');
+    });
+
+    test('clears stale retired navigation presentation state before building the top bar', () => {
+        const attributesMatch = normalizedTabsSource.match(/const SB_LEGACY_NAVIGATION_DATA_ATTRIBUTES = Object\.freeze\(\[[\s\S]*?\n\]\);/);
+        expect(attributesMatch).not.toBeNull();
+
+        for (const attribute of [
+            'data-sb-mobile-nav-layout',
+            'data-sb-mobile-nav-mode',
+            'data-sb-mobile-nav-customize',
+            'data-sb-mobile-nav-quick-actions',
+            'data-sb-mobile-nav-replacement',
+            'data-sb-desktop-nav-layout',
+            'data-sb-desktop-nav-mode',
+            'data-sb-desktop-nav-customize',
+            'data-sb-desktop-nav-quick-actions',
+            'data-sb-desktop-nav-replacement',
+        ]) {
+            expect(attributesMatch[0]).toContain(`'${attribute}'`);
+        }
+
+        expect(attributesMatch[0]).not.toContain('data-sb-topbar-icons-only');
+        expect(normalizedTabsSource).toContain('function migrateLegacyNavigationState()');
+        expect(normalizedTabsSource).toContain('root.removeAttribute(attribute);');
+        expect(normalizedTabsSource).toContain('restorePersistedTopbarState();\n    migrateLegacyNavigationState();\n    seedTopbarScaleDefaults();');
     });
 
     test('toggles state without rebuilding the top bar', () => {

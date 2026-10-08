@@ -384,6 +384,22 @@ const SB_STORAGE_KEYS = Object.freeze({
     paperTextureOpacity: 'sb-paper-texture-opacity',
 });
 
+// The pre-overhaul shell-tab rail wrote these transient presentation attributes to <html>. Keep the
+// retired storage keys untouched for older builds and extensions, but never let stale attributes
+// suppress the Layer 2 top bar when a page is upgraded without a full browser restart.
+const SB_LEGACY_NAVIGATION_DATA_ATTRIBUTES = Object.freeze([
+    'data-sb-mobile-nav-layout',
+    'data-sb-mobile-nav-mode',
+    'data-sb-mobile-nav-customize',
+    'data-sb-mobile-nav-quick-actions',
+    'data-sb-mobile-nav-replacement',
+    'data-sb-desktop-nav-layout',
+    'data-sb-desktop-nav-mode',
+    'data-sb-desktop-nav-customize',
+    'data-sb-desktop-nav-quick-actions',
+    'data-sb-desktop-nav-replacement',
+]);
+
 const SB_SHORTCUT_TARGETS = Object.freeze([
     { value: 'left:presets', label: 'Presets', icon: 'fa-sliders' },
     { value: 'left:api', label: 'API', icon: 'fa-plug' },
@@ -1691,6 +1707,13 @@ function restorePersistedTopbarState() {
     sbState.bottomChatBar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatBarVisible), sbState.bottomChatBar.visible);
     sbState.desktopQuickActions = loadDesktopQuickActions();
     sbState.mobileQuickActions = loadMobileQuickActions();
+}
+
+function migrateLegacyNavigationState() {
+    const root = document.documentElement;
+    for (const attribute of SB_LEGACY_NAVIGATION_DATA_ATTRIBUTES) {
+        root.removeAttribute(attribute);
+    }
 }
 
 function clampTopbarOffset(offset) {
@@ -14226,6 +14249,7 @@ function initAll() {
     sbState.initialized = true;
 
     restorePersistedTopbarState();
+    migrateLegacyNavigationState();
     seedTopbarScaleDefaults();
     hideHostToggles();
     buildShell('left');

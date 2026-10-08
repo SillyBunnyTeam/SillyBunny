@@ -36,8 +36,8 @@ describe('mobile shell button scale', () => {
         expect(cssSource).not.toContain('data-sb-mobile-nav-mode=\'icon-only\'');
         expect(cssSource).not.toContain('data-sb-desktop-nav-mode=\'icon-only\'');
         expect(mobileCssSource).not.toContain('data-sb-mobile-nav-layout=\'vertical\'');
-        expect(jsSource).not.toContain('sb-mobile-nav-layout');
-        expect(jsSource).not.toContain('sb-desktop-nav-layout');
+        expect(jsSource).toContain('SB_LEGACY_NAVIGATION_DATA_ATTRIBUTES');
+        expect(jsSource).toContain('migrateLegacyNavigationState');
     });
 
     test('mobile nav mode is fixed to the labelled layout', () => {
