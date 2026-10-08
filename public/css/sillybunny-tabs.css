@@ -114,9 +114,6 @@
     --sb-mobile-toggle-min-size: var(--sb-mobile-touch-target, 44px);
     --sb-mobile-toggle-size: clamp(var(--sb-mobile-toggle-min-size), calc(var(--sb-mobile-toggle-size-base) * var(--sb-mobile-button-scale)), 56px);
     --sb-home-toggle-min-width: max(var(--sb-mobile-toggle-min-size), calc(var(--sb-home-toggle-min-width-base) * var(--sb-mobile-button-scale)));
-    --sb-mobile-rail-action-size: clamp(var(--sb-mobile-toggle-min-size), calc(44px * var(--sb-mobile-button-scale)), 56px);
-    --sb-mobile-rail-tab-height: clamp(var(--sb-mobile-touch-target, 44px), calc(50px * var(--sb-mobile-button-scale)), 62px);
-    --sb-mobile-rail-label-size: calc(var(--mainFontSize) * 0.62 * var(--sb-mobile-button-scale));
     --sb-topbar-compact-icon-size: calc(var(--mainFontSize) * var(--sb-topbar-compact-icon-scale-base));
     --sb-topbar-primary-min-height: max(var(--sb-proxy-button-height), var(--sb-mobile-toggle-size));
     --sb-topbar-primary-height: max(calc(var(--sb-topbar-primary-height-base) * var(--sb-topbar-scale-active)), var(--sb-topbar-primary-min-height));
@@ -1799,18 +1796,6 @@ body:not(.movingUI) .drawer-content.maximized {
     order: 6;
 }
 
-.sb-shell-rail-shortcuts {
-    display: none;
-}
-
-.sb-shell-rail-group {
-    display: contents;
-}
-
-.sb-shell-rail-divider {
-    display: none;
-}
-
 .sb-shell-tab {
     -webkit-appearance: none;
     appearance: none;
@@ -1884,7 +1869,7 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 /* libadwaita view-switcher selection: neutral fill, no border or bottom stripe. */
-.sb-shell-tab:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-selected='true'], [aria-current]):not(.sb-shell-rail-action) {
+.sb-shell-tab:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-selected='true'], [aria-current]) {
     background: var(--sb-flat-selected-bg);
     border-color: transparent;
     box-shadow: none;
@@ -1892,20 +1877,13 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 @media (hover: hover) {
-    .sb-shell-tab:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-selected='true'], [aria-current]):not(.sb-shell-rail-action):hover {
+    .sb-shell-tab:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-selected='true'], [aria-current]):hover {
         background: var(--sb-flat-selected-hover-bg);
     }
 }
 
-.sb-shell-tab:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-selected='true'], [aria-current]):not(.sb-shell-rail-action):focus-visible {
+.sb-shell-tab:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-selected='true'], [aria-current]):focus-visible {
     box-shadow: var(--sb-focus-ring-inset);
-}
-
-.sb-shell-tab:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-selected='true'], [aria-current]).sb-shell-rail-action {
-    background: transparent;
-    border-color: transparent;
-    box-shadow: none;
-    transform: none;
 }
 
 .sb-shell-tab:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-selected='true'], [aria-current]) i {
@@ -4073,7 +4051,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     opacity: 0.76;
 }
 
-.sb-mobile-nav-layout-group,
+.sb-nav-settings-group,
 #sb-desktop-settings-outlet,
 #sb-mobile-settings-outlet {
     gap: 12px;
@@ -6871,85 +6849,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
         display: none !important;
     }
 
-    :root[data-sb-desktop-nav-layout='horizontal'][data-sb-desktop-nav-mode='icon-only'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-nav > .sb-shell-tab,
-    :root[data-sb-desktop-nav-layout='horizontal'][data-sb-desktop-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav > .sb-shell-tab {
-        width: calc(46px * var(--sb-desktop-button-scale));
-        min-width: calc(46px * var(--sb-desktop-button-scale));
-        max-width: calc(46px * var(--sb-desktop-button-scale));
-        min-height: calc(46px * var(--sb-desktop-button-scale));
-        flex: 0 0 calc(46px * var(--sb-desktop-button-scale));
-        justify-content: center;
-        gap: 0;
-        padding: 0;
-    }
-
-    :root[data-sb-desktop-nav-layout='horizontal'][data-sb-desktop-nav-mode='icon-only'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-nav > .sb-shell-tab i,
-    :root[data-sb-desktop-nav-layout='horizontal'][data-sb-desktop-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav > .sb-shell-tab i {
-        width: auto;
-        flex-basis: auto;
-        margin: 0;
-    }
-
-    :root[data-sb-desktop-nav-layout='horizontal'][data-sb-desktop-nav-mode='icon-only'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-nav > .sb-shell-tab .sb-shell-tab-copy,
-    :root[data-sb-desktop-nav-layout='horizontal'][data-sb-desktop-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav > .sb-shell-tab .sb-shell-tab-copy {
-        display: none;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-frame {
-        flex-direction: row;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer {
-        --sb-character-shell-rail-width: 92px;
-        display: grid;
-        grid-template-columns: var(--sb-character-shell-rail-width) minmax(0, 1fr);
-        grid-template-rows: auto auto auto auto minmax(0, 1fr);
-        align-items: stretch;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'][data-sb-desktop-nav-mode='icon-only'] #right-nav-panel.openDrawer {
-        --sb-character-shell-rail-width: calc((46px * var(--sb-desktop-button-scale)) + 16px);
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer > .scrollableInner,
-    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer > .scrollableInnerFull {
-        min-height: 0;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav {
-        height: 100%;
-        flex-direction: column;
-        align-items: stretch;
-        justify-content: flex-start;
-        gap: 6px;
-        padding: 18px 9px;
-        overflow-x: hidden;
-        overflow-y: auto;
-        border-right: 1px solid color-mix(in srgb, var(--sb-shell-border) 80%, transparent);
-        border-bottom: 0;
-        scroll-snap-type: none;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav > .sb-shell-tab {
-        width: 100%;
-        min-width: 0;
-        max-width: 100%;
-        min-height: calc(54px * var(--sb-desktop-button-scale));
-        flex: 0 0 auto;
-        flex-direction: column;
-        justify-content: center;
-        gap: 4px;
-        padding: 8px 6px;
-        border-radius: var(--sb-radius-button, 14px);
-        text-align: center;
-        white-space: normal;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav > .sb-shell-tab:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-selected='true'], [aria-current]) {
-        background: var(--sb-shell-tab-active-bg);
-        border-color: transparent;
-    }
-
     @media (hover: hover) {
         #right-nav-panel.openDrawer .sb-character-shell-nav > .sb-shell-tab:hover {
             background: var(--sb-flat-hover-bg);
@@ -6958,137 +6857,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
         #right-nav-panel.openDrawer .sb-character-shell-nav > .sb-shell-tab:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-selected='true'], [aria-current]):hover {
             background: var(--sb-flat-selected-hover-bg);
         }
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav > .sb-shell-tab i {
-        width: 100%;
-        flex-basis: auto;
-        margin: 0;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab-copy {
-        align-items: center;
-        text-align: center;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab-copy strong {
-        font-size: calc(var(--mainFontSize) * 0.72 * var(--sb-desktop-button-scale));
-        line-height: 1.2;
-        white-space: normal;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'][data-sb-desktop-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav > .sb-shell-tab {
-        width: calc(46px * var(--sb-desktop-button-scale));
-        min-height: calc(46px * var(--sb-desktop-button-scale));
-        align-self: center;
-        padding: 0;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'][data-sb-desktop-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab-copy {
-        display: none;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-nav {
-        height: 100%;
-        flex-direction: column;
-        align-items: stretch;
-        justify-content: flex-start;
-        gap: 6px;
-        padding: 18px 8px;
-        overflow-x: hidden;
-        overflow-y: auto;
-        border-right: 1px solid color-mix(in srgb, var(--sb-shell-border) 80%, transparent);
-        border-bottom: 0;
-        scroll-snap-type: none;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-rail-shortcuts {
-        display: contents;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-rail-divider {
-        display: block;
-        width: calc(100% - 8px);
-        height: 1px;
-        min-height: 1px;
-        align-self: center;
-        margin: 4px 0;
-        border-radius: 999px;
-        background: color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-nav-scroll,
-:root[data-sb-desktop-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-nav-scroll {
-        display: none !important;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-tab {
-        width: 100%;
-        min-width: 0;
-        max-width: 100%;
-        min-height: calc(50px * var(--sb-desktop-button-scale));
-        flex: 0 0 auto;
-        flex-direction: column;
-        justify-content: center;
-        gap: 4px;
-        padding: 7px 4px;
-        text-align: center;
-        white-space: normal;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-tab-mobile-rail-hidden {
-        display: none;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-tab:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-selected='true'], [aria-current]) {
-        background: transparent;
-        border-color: transparent;
-        box-shadow: none;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-rail-action {
-        width: calc(46px * var(--sb-desktop-button-scale));
-        min-width: calc(46px * var(--sb-desktop-button-scale));
-        max-width: calc(46px * var(--sb-desktop-button-scale));
-        min-height: calc(46px * var(--sb-desktop-button-scale));
-        align-self: center;
-        padding: 0;
-        border-color: transparent;
-        background: transparent;
-        box-shadow: none;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-tab i {
-        width: 100%;
-        flex-basis: auto;
-        margin: 0;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-tab-copy {
-        align-items: center;
-        text-align: center;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-tab-copy strong {
-        font-size: calc(var(--mainFontSize) * 0.66 * var(--sb-desktop-button-scale));
-        white-space: normal;
-        line-height: 1.1;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'][data-sb-desktop-nav-mode='icon-only'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-tab {
-        width: calc(46px * var(--sb-desktop-button-scale));
-        min-height: calc(46px * var(--sb-desktop-button-scale));
-        align-self: center;
-        padding: 0;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'][data-sb-desktop-nav-mode='icon-only'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-tab-copy,
-    :root[data-sb-desktop-nav-layout='vertical'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-rail-action .sb-shell-tab-copy {
-        display: none;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] :is(.sb-shell-root-left, .sb-shell-root-right).openDrawer .sb-shell-rail-empty {
-        display: none;
     }
 }
 
@@ -7593,173 +7361,6 @@ body.big-avatars #rm_print_characters_block {
         justify-content: center;
         box-sizing: border-box;
     }
-
-    :root[data-sb-mobile-nav-mode='icon-only'] .sb-shell-root.openDrawer .sb-shell-tab,
-    :root[data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab {
-        width: var(--sb-mobile-touch-target, 44px);
-        min-width: var(--sb-mobile-touch-target, 44px);
-        max-width: var(--sb-mobile-touch-target, 44px);
-        min-height: var(--sb-mobile-touch-target, 44px);
-        padding: 0;
-        justify-content: center;
-        flex-basis: var(--sb-mobile-touch-target, 44px);
-        gap: 0;
-    }
-
-    :root[data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-editor-subtabs .sb-shell-tab {
-        width: auto;
-        min-width: max-content;
-        max-width: none;
-        flex-basis: auto;
-        padding: 7px 10px;
-        gap: 8px;
-    }
-
-    :root[data-sb-mobile-nav-mode='icon-only'] .sb-shell-root.openDrawer .sb-shell-tab i,
-    :root[data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab i {
-        width: auto;
-        margin: 0;
-    }
-
-    :root[data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-editor-subtabs .sb-shell-tab i {
-        width: 18px;
-    }
-
-    :root[data-sb-mobile-nav-mode='icon-only'] .sb-shell-root.openDrawer .sb-shell-tab-copy,
-    :root[data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab-copy {
-        display: none;
-    }
-
-    :root[data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-editor-subtabs .sb-shell-tab-copy {
-        display: flex;
-    }
-}
-
-@media screen and (max-width: 768px) {
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-frame,
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-frame {
-        flex-direction: row;
-    }
-
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-nav,
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-nav {
-        height: 100%;
-        flex-direction: column;
-        align-items: stretch;
-        justify-content: flex-start;
-        gap: 6px;
-        padding: 16px 7px max(16px, var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
-        overflow-x: hidden;
-        overflow-y: auto;
-        border-right: 1px solid color-mix(in srgb, var(--sb-shell-border) 80%, transparent);
-        border-bottom: 0;
-        scroll-snap-type: none;
-    }
-
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-rail-shortcuts,
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-rail-shortcuts {
-        display: contents;
-    }
-
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-rail-divider,
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-rail-divider {
-        display: block;
-        width: calc(100% - 8px);
-        height: 1px;
-        min-height: 1px;
-        align-self: center;
-        margin: 4px 0;
-        border-radius: 999px;
-        background: color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
-    }
-
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-nav-scroll,
-:root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-nav-scroll {
-        display: none !important;
-    }
-
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-tab,
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-tab {
-        width: 100%;
-        min-width: 0;
-        max-width: 100%;
-        min-height: var(--sb-mobile-rail-tab-height);
-        flex: 0 0 auto;
-        flex-direction: column;
-        justify-content: center;
-        gap: 4px;
-        padding: 7px 4px;
-        text-align: center;
-        white-space: normal;
-    }
-
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-tab-mobile-rail-hidden,
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-tab-mobile-rail-hidden {
-        display: none;
-    }
-
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-tab:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-selected='true'], [aria-current]),
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-tab:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-selected='true'], [aria-current]) {
-        background: transparent;
-        border-color: transparent;
-        box-shadow: none;
-    }
-
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-rail-action,
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-rail-action {
-        width: var(--sb-mobile-rail-action-size);
-        min-width: var(--sb-mobile-rail-action-size);
-        max-width: var(--sb-mobile-rail-action-size);
-        min-height: var(--sb-mobile-rail-action-size);
-        align-self: center;
-        padding: 0;
-        border-color: transparent;
-        background: transparent;
-        box-shadow: none;
-    }
-
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-tab i,
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-tab i {
-        width: 100%;
-        flex-basis: auto;
-        margin: 0;
-    }
-
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-tab-copy,
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-tab-copy {
-        align-items: center;
-        text-align: center;
-    }
-
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-tab-copy strong,
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-tab-copy strong {
-        font-size: var(--sb-mobile-rail-label-size);
-        white-space: normal;
-        line-height: 1.1;
-    }
-
-    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] .sb-shell-root-left.openDrawer .sb-shell-tab,
-    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] .sb-shell-root-right.openDrawer .sb-shell-tab {
-        width: var(--sb-mobile-rail-action-size);
-        min-height: var(--sb-mobile-rail-action-size);
-        align-self: center;
-        padding: 0;
-    }
-
-    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] .sb-shell-root-left.openDrawer .sb-shell-tab-copy,
-    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] .sb-shell-root-right.openDrawer .sb-shell-tab-copy {
-        display: none;
-    }
-
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-rail-action .sb-shell-tab-copy,
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-rail-action .sb-shell-tab-copy {
-        display: none;
-    }
-
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-rail-empty,
-    :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-rail-empty {
-        display: none;
-    }
 }
 
 @supports (-webkit-touch-callout: none) {
@@ -7845,14 +7446,9 @@ body.big-avatars #rm_print_characters_block {
 
 @media screen and (min-width: 1001px) {
 
-    :root:not([data-sb-desktop-nav-layout='vertical']) #right-nav-panel.openDrawer .sb-character-shell-nav {
+    #right-nav-panel.openDrawer .sb-character-shell-nav {
         justify-content: center !important;
         padding-inline: var(--sb-shell-panel-padding-inline) !important;
-    }
-
-    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav {
-        justify-content: flex-start !important;
-        padding: 18px 9px !important;
     }
 }
 
@@ -7993,9 +7589,11 @@ body.reduced-motion .sb-shell-main {
     display: flex;
     align-items: center;
     padding: 0 8px 0 16px;
-    height: 52px;
+    min-height: 68px;
+    height: auto;
     border-bottom: 1px solid var(--sb-shell-border);
     gap: 4px;
+    box-sizing: border-box;
     /* Sidebar rail tone, not the shell header bar: the settings page must read as its own
        surface rather than continuing the top bar. */
     background-color: var(--sb-sidebar-bg);
@@ -8223,9 +7821,10 @@ body.reduced-motion .sb-shell-main {
     align-items: center;
     flex-shrink: 0;
     padding: 8px 16px;
-    min-height: 52px;
+    min-height: 68px;
     border-bottom: 1px solid var(--sb-shell-border);
     gap: 12px;
+    box-sizing: border-box;
     /* Window tone, so the content header sits a step away from both the rail and the top bar. */
     background-color: var(--sb-layer-window);
 }
@@ -8396,7 +7995,8 @@ body.reduced-motion .sb-shell-main {
 
 :root[data-sb-compact-mode='true'] #sb-settings-sidebar-header,
 :root[data-sb-compact-mode='true'] #sb-settings-content-header {
-    height: 44px;
+    min-height: 52px;
+    height: 52px;
     padding: 0 12px;
 }
 
@@ -8455,13 +8055,18 @@ body.reduced-motion .sb-shell-main {
 
 /* ── Phase 2: preference group primitives (feat/v1.9.0-ui-overhaul) ─────── */
 
-/* libadwaita boxed list: borderless, 4% body-colour tint (DESIGN.md, Cards / Containers). */
+/* libadwaita boxed list — the preference pill (DESIGN.md, Cards / Containers).
+   This is the one pill primitive: every preference group on the settings page resolves to it,
+   whether the order pass boxed the rows or a normalizer wrapped a loose flex container. It was
+   spelled twice, at 4%/14px/no-border here and 5%/16px/bordered on the category body only, so
+   ordered tabs read as pills and raw upstream markup read as a second, flatter kind of card. */
 .ds-pref-group {
     display: flex;
     flex-direction: column;
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-    border: 0;
+    border-radius: var(--sb-radius-lg, 16px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    box-shadow: none;
     overflow: hidden;
     margin-bottom: 12px;
 }
@@ -8797,6 +8402,16 @@ body.reduced-motion .sb-shell-main {
     transition: background-color var(--sb-transition-fast);
 }
 
+/* A column wrapper is a category, not an interactive row. Keep the row transition on actual
+   control-bearing flex rows so hovering a category cannot animate its entire contents. */
+.sb-settings-mounted-shell .sb-settings-flat-section > .flex-container {
+    transition: none;
+}
+
+.sb-settings-mounted-shell .sb-settings-flat-section > .flex-container:not(.flexFlowColumn):has(> .checkbox_label, > input, > select, > textarea, > .menu_button, > .menu_button_icon) {
+    transition: background-color var(--sb-transition-fast);
+}
+
 /* The row metric above centers a row's contents, which is right for a control beside its label.
    A column-direction container is instead a stack of settings, and centering it shrink-wraps every
    child to its own text: Context Template's 1156px section held a 219px column at x=721, and the
@@ -8852,8 +8467,15 @@ body.reduced-motion .sb-shell-main {
 }
 
 @media (hover: hover) {
+    /* Source panels can author a checkbox row outside the normalized category/flat-section
+       wrappers. Keep hover feedback on the row that owns the control rather than tinting its whole
+       parent card. */
+    #sb-settings-page .sb-settings-mounted-shell .checkbox_label:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+
     .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label:hover,
-    .sb-settings-mounted-shell .sb-settings-flat-section > .flex-container:hover {
+    .sb-settings-mounted-shell .sb-settings-flat-section > .flex-container:not(.flexFlowColumn):has(> .checkbox_label, > input, > select, > textarea, > .menu_button, > .menu_button_icon):hover {
         background: var(--sb-flat-hover-bg);
     }
 }
@@ -8919,6 +8541,21 @@ body.reduced-motion .sb-shell-main {
     order: 1;
     flex-shrink: 0;
     margin: 0;
+}
+
+/* Switches are trailing preference controls throughout the settings page, including rows lifted
+   directly from a legacy drawer rather than from a boxed list. The page id is intentional: source
+   panels such as OpenAI set their own input margin with an ID-qualified selector. */
+#sb-settings-page .sb-settings-mounted-shell .checkbox_label > input[type="checkbox"] {
+    order: 1;
+    flex-shrink: 0;
+    margin-inline-start: auto;
+}
+
+/* Keep the trailing switch rule effective inside boxed rows whose legacy checkbox rule carries an
+   ID of its own. */
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group .checkbox_label > input[type="checkbox"] {
+    margin-inline-start: auto;
 }
 
 /* Flex-container select rows get action-row spacing */
@@ -9045,8 +8682,9 @@ body.reduced-motion .sb-shell-main {
     color: var(--sb-shell-text-secondary);
 }
 
-/* The group is the one box, so it drops the stray bottom margin `.ds-pref-group` carries for its
-   standalone use; the category gap owns the spacing. */
+/* The category body is the same Libadwaita preference pill as every other group; its children are
+   deliberately flat rows, because repeated row chrome makes a category read as a stack of
+   unrelated cards. Only the standalone margin is dropped here — the category gap owns spacing. */
 #sb-settings-page .sb-settings-mounted-shell .sb-settings-category > .sb-settings-category-body.ds-pref-group {
     margin: 0;
 }
@@ -9054,16 +8692,28 @@ body.reduced-motion .sb-shell-main {
 /* Rows in a boxed list share the 16px inset and a hairline between them. Checkbox and baseline rows
    already get that metric from the `.ds-pref-group` rules above; every other row shape (a stacked
    label and field, a slider column, an info block) gets the same inset here, so a list reads as
-   one column of rows whatever the markup under it. */
-#sb-settings-page .sb-settings-mounted-shell .sb-settings-category-body.ds-pref-group > * {
+   one column of rows whatever the markup under it. A group is one boxed list, so the rows inside
+   it are not boxes of their own: `#ThemeTogglesSection [name="themeToggles"]` grid tiles each
+   carried their own 4% tint, 1px border, and 14px radius inside the group's identical tint, which
+   read as a card grid inside a card (DESIGN.md Cards: preference groups are borderless boxed
+   lists, and no repeated card grids). The tiles stay as a multi-column inline section, minus their
+   chrome, and the group's row separators stay out of a grid, where a per-tile hairline would read
+   as a floating line above every checkbox. */
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > :is(.checkbox_label, .flex-container, .sb-settings-flat-section) {
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > * {
     margin: 0;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .sb-settings-category-body.ds-pref-group > :not(.checkbox_label, .flex-container.alignitemscenter, .flex-container.alignItemsBaseline, .sb-settings-flat-section) {
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > :not(.checkbox_label, .flex-container.alignitemscenter, .flex-container.alignItemsBaseline, .sb-settings-flat-section) {
     padding: 10px 16px;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .sb-settings-category-body.ds-pref-group > * + * {
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > * + * {
     border-top: 1px solid var(--sb-shell-border);
 }
 
@@ -9258,5 +8908,497 @@ body.reduced-motion .sb-shell-main {
 @media screen and (max-width: 420px) {
     .sb-settings-body {
         padding: 8px max(8px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
+    }
+}
+
+/* ==========================================================================================
+   Sliding subpage stack (Phase 6H)
+   ------------------------------------------------------------------------------------------
+   GNOME Settings presents a section as a list of rows; picking one slides a detail page in from
+   the right over the list. This is that stack, used by the four panels that were still made of
+   accordions: Extensions, Connections, Prompting, and Agents.
+
+   The two pages are stacked in the same grid cell, so neither reserves space for the other and the
+   panel's height never jumps. Only `transform` and `opacity` animate, which keeps the slide on the
+   compositor. The list recedes by `--sb-subpage-shift` rather than sitting still, which is what
+   reads as the detail page arriving *over* it instead of the list changing in place.
+   ========================================================================================== */
+
+.sb-subpage {
+    --sb-subpage-shift: 26%;
+    --sb-subpage-duration: 260ms;
+
+    display: grid;
+    grid-template-areas: 'page';
+    grid-template-columns: minmax(0, 1fr);
+    /* The stack owns the panel's scroll: each page scrolls on its own, so a slide never leaves the
+       list scrolled to the position the detail page happened to be at. */
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+.sb-subpage-list,
+.sb-subpage-detail {
+    grid-area: page;
+    display: flex;
+    flex-direction: column;
+    /* Both pages sit in one grid cell, where the default `stretch` would make each as tall as the
+       tallest and turn the pair into a scroll box of their own. `min-content` keeps each page its
+       own height and the full width, so each page's own `overflow-y` is what scrolls. */
+    height: min-content;
+    max-height: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: var(--sb-shell-panel-padding-block) var(--sb-shell-panel-padding-inline) var(--sb-shell-panel-bottom-padding);
+    background: var(--sb-layer-view);
+}
+
+/* The trailing gap belongs to the scroll content, so the last row can always clear the bottom. The
+   stack page carries the panel's own bottom padding, and a grid child's `padding-bottom` already
+   shrinks its scrollport, so the gap is not doubled up with a spacer here. */
+
+.sb-subpage-detail {
+    z-index: 1;
+    /* Parked off to the right, out of the scroll box, and transparent so a screen reader does not
+       read the page behind the list. `visibility` keeps it out of the tab order too. */
+    transform: translateX(100%);
+    opacity: 0;
+    visibility: hidden;
+    box-shadow: -1px 0 0 0 color-mix(in srgb, var(--sb-shell-border) 60%, transparent);
+    transition:
+        transform var(--sb-subpage-duration) var(--sb-ease-out-cubic),
+        opacity var(--sb-subpage-duration) var(--sb-ease-out-cubic),
+        visibility 0s linear var(--sb-subpage-duration);
+}
+
+.sb-subpage--open > .sb-subpage-list {
+    transform: translateX(calc(-1 * var(--sb-subpage-shift)));
+    opacity: 0.42;
+    pointer-events: none;
+    transition:
+        transform var(--sb-subpage-duration) var(--sb-ease-out-cubic),
+        opacity var(--sb-subpage-duration) var(--sb-ease-out-cubic);
+}
+
+.sb-subpage--open > .sb-subpage-detail {
+    transform: translateX(0);
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
+}
+
+/* Reduced motion keeps the state change and drops the travel. */
+.sb-subpage-detail--instant,
+.sb-subpage--open > .sb-subpage-list,
+.sb-subpage--open > .sb-subpage-detail {
+    transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-subpage-detail,
+    .sb-subpage--open > .sb-subpage-list {
+        transition: none;
+    }
+}
+
+.sb-subpage-list-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 12px;
+    padding: 0 4px;
+}
+
+.sb-subpage-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.sb-subpage-heading-title {
+    font-size: var(--sb-type-body);
+    font-weight: var(--sb-weight-title);
+    line-height: 1.3;
+    color: var(--sb-shell-text);
+}
+
+.sb-subpage-heading-description {
+    font-size: var(--sb-type-meta);
+    line-height: 1.4;
+    color: var(--sb-shell-text-secondary);
+}
+
+/* The list is the same pill every other settings section wears, so a converted panel reads as the
+   rest of the shell rather than as a page with its own idea of rows. */
+.sb-subpage-list-body {
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--sb-radius-lg, 16px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    overflow: hidden;
+}
+
+.sb-subpage-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 52px;
+    padding: 10px 16px;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+.sb-subpage-row + .sb-subpage-row {
+    border-top: 1px solid var(--sb-shell-border);
+}
+
+.sb-subpage-row[hidden] {
+    display: none;
+}
+
+.sb-subpage-row-icon {
+    flex: 0 0 auto;
+    width: 20px;
+    font-size: 14px;
+    text-align: center;
+    color: var(--sb-shell-text-secondary);
+}
+
+.sb-subpage-row .sb-subpage-heading {
+    flex: 1 1 auto;
+}
+
+.sb-subpage-row-trailing {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+    margin-inline-start: 4px;
+}
+
+.sb-subpage-row-value {
+    font-size: var(--sb-type-meta);
+    color: var(--sb-shell-text-secondary);
+}
+
+.sb-subpage-row-chevron {
+    font-size: 12px;
+    color: var(--sb-shell-text-secondary);
+    opacity: 0.7;
+}
+
+@media (hover: hover) {
+    .sb-subpage-row:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.sb-subpage-row:focus-visible {
+    outline: 2px solid var(--color-primary, var(--sb-accent));
+    outline-offset: -2px;
+}
+
+.sb-subpage-detail-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 0 0 auto;
+    min-height: 52px;
+    margin: 0 0 12px;
+    padding: 0 4px;
+}
+
+.sb-subpage-detail-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.sb-subpage-detail-title {
+    font-size: var(--sb-type-body);
+    font-weight: var(--sb-weight-title);
+    line-height: 1.3;
+    color: var(--sb-shell-text);
+}
+
+.sb-subpage-detail-description {
+    font-size: var(--sb-type-meta);
+    line-height: 1.4;
+    color: var(--sb-shell-text-secondary);
+}
+
+/* A plain icon button: the detail bar is the one control that must never be mistaken for a
+   setting, so it carries no fill and no border until it is hovered or focused. */
+.sb-subpage-back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    margin: 0;
+    border: 1px solid transparent;
+    border-radius: var(--sb-radius-button, 14px);
+    background: transparent;
+    color: var(--sb-shell-text);
+    font-size: 14px;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    .sb-subpage-back:hover {
+        background: var(--sb-flat-hover-bg);
+        border-color: color-mix(in srgb, var(--sb-shell-border) 88%, transparent);
+    }
+}
+
+.sb-subpage-back:focus-visible {
+    outline: 2px solid var(--color-primary, var(--sb-accent));
+    outline-offset: 1px;
+}
+
+.sb-subpage-detail-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+/* The moved section is a settings section like any other; it was authored as a drawer body, so the
+   frame that used to draw it is neutralised and it takes the panel's own width. */
+.sb-subpage-detail-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    min-width: 0;
+}
+
+/* An accordion that had a toggle before now names the page that holds it, so the toggle is gone and
+   only the generic expand behaviour is left behind. */
+.sb-subpage-detail-content > .inline-drawer-toggle,
+.sb-subpage-detail-content > .inline-drawer-header {
+    display: none !important;
+}
+
+.sb-subpage-detail-content > .inline-drawer-content {
+    display: block !important;
+    padding: 0;
+    margin: 0;
+}
+
+/* The card's own drawer, opened by the detail pass: the row that opened the page named it, so the
+   bar above doubles as its toggle and the frame it drew is stripped. The body's own display comes
+   from the pass, which opens it the way a click would. */
+.sb-subpage-detail-content [data-sb-detail-opened='true'] > .inline-drawer-toggle,
+.sb-subpage-detail-content [data-sb-detail-opened='true'] > .inline-drawer-header {
+    display: none !important;
+}
+
+.sb-subpage-detail-content [data-sb-detail-opened='true'] > .inline-drawer-content {
+    padding: 0;
+    margin: 0;
+}
+@media screen and (max-width: 768px) {
+    .sb-subpage {
+        --sb-subpage-shift: 18%;
+    }
+
+    .sb-subpage-detail {
+        box-shadow: none;
+    }
+}
+
+/* ------------------------------------------------------------------------------------------
+   Subpage hosts
+   ------------------------------------------------------------------------------------------
+   A stacked panel is drawn by `.sb-subpage`, so the wrapper the settings page authored for it is
+   taken out of the layout without being removed: the ids inside it stay resolvable for the code
+   that looks them up, and the sections keep their listeners. `display: contents` rather than
+   `display: none` because the sections are moved out of that wrapper into the detail page, and a
+   hidden ancestor would hide them with it after the move.
+   ------------------------------------------------------------------------------------------ */
+
+.sb-subpage-host {
+    display: grid;
+    grid-template-areas: 'page';
+    grid-template-columns: minmax(0, 1fr);
+    /* `100%` rather than `1fr`: the host's own height comes from the panel, and a fractional track
+       with a content-sized item inside it resolves to the item (45px) instead of the panel (778px). */
+    grid-template-rows: 100%;
+    height: 100%;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+.sb-subpage-host > .sb-subpage {
+    grid-area: page;
+}
+
+.sb-subpage-host > .sb-subpage-store {
+    display: contents;
+}
+
+/* The store's own wrapper keeps its content out of the flow while the stack presents it. Compacting
+   it rather than hiding it matters for the sections that measure themselves at build time. */
+.sb-subpage-store > * {
+    display: none;
+}
+
+.sb-subpage-store .sb-shell-embedded-content,
+.sb-subpage-store .drawer-content {
+    display: none;
+}
+
+/* Headings that upstream authored are the pages' titles now, and the detail bar already names the
+   page, so the authored heading steps aside rather than repeating itself. */
+.sb-subpage-detail-content > h3,
+.sb-subpage-detail-content > h4 {
+    display: none !important;
+}
+
+/* Strip the frame an authored block arrives with. Inside a detail page the pill is the only box:
+   the forms, ranges and loose flex rows keep their own spacing and nothing else. */
+.sb-subpage-detail-content .sb-settings-category-body,
+.sb-subpage-detail-content .ds-pref-group {
+    margin: 0;
+}
+
+.sb-subpage-detail-content > .flex-container,
+.sb-subpage-detail-content > form,
+.sb-subpage-detail-content > div > .flex-container,
+.sb-subpage-detail-content > div > form {
+    width: 100%;
+    min-width: 0;
+    gap: 12px;
+    margin: 0;
+}
+
+/* A pill the detail pass drew around a run of rows holds rows that were authored as centred flex
+   containers: they size to their content, so inside the pill they would leave a margin on both
+   sides of every row while the pill spans the page. The pill is the frame now, and its rows take
+   its width the way an authored panel's rows do. */
+.sb-subpage-detail-content .ds-pref-group > * {
+    width: 100%;
+    min-width: 0;
+}
+
+/* The wrapper a provider block arrives in centres its content, which lets a pill drawn inside it
+   shrink to its rows instead of spanning the page. The page is the frame, so the wrapper stretches
+   and the pill with it; the rows inside keep their own centring. */
+.sb-subpage-detail-content .flex-container:has(> .ds-pref-group) {
+    align-items: stretch;
+    justify-content: flex-start;
+    justify-items: stretch;
+    width: 100%;
+}
+
+.sb-subpage-detail-content .flex-container:has(> .ds-pref-group) > .ds-pref-group {
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+/* ------------------------------------------------------------------------------------------
+   Agents panel chrome
+   ------------------------------------------------------------------------------------------
+   The In-Chat Agents dashboard draws itself inside an `extension_container`, and it arrived with
+   its own metrics: 6px button gaps beside the 12px the other panels use, a filter row that read as
+   two loose controls, and an action legend and quick section on a different rhythm from the cards
+   under them. The rules here do not redraw it -- they line its chrome up with the primitives every
+   other settings page uses, so the dashboard reads as part of the same page. */
+
+.sb-shell-panel[data-sb-panel='agents'] .ica--toolbar,
+.sb-shell-panel[data-sb-panel='agents'] .ica--toolbar-actions,
+.sb-shell-panel[data-sb-panel='agents'] .ica--toolbar-secondary {
+    gap: var(--sb-row-gap, 10px);
+    align-items: center;
+}
+
+.sb-shell-panel[data-sb-panel='agents'] .ica--toolbar-actions,
+.sb-shell-panel[data-sb-panel='agents'] .ica--toolbar-secondary {
+    row-gap: 8px;
+}
+
+/* The legend above the list is a caption, not a control: it takes the meta type step so it does
+   not compete with the cards' own titles. */
+.sb-shell-panel[data-sb-panel='agents'] .ica--action-legend {
+    font-size: var(--sb-type-meta);
+    color: var(--sb-shell-text-secondary);
+}
+
+/* Long dash-style hints sit in a box of their own, the same box the other panels' hint rows get. */
+.sb-shell-panel[data-sb-panel='agents'] .ica--templates-callout {
+    border-radius: var(--sb-radius-lg, 16px);
+}
+
+/* One pill holds the list's controls, so the search field and its category filter read as one
+   preference group rather than two loose fields above the cards. */
+.sb-shell-panel[data-sb-panel='agents'] .ica--filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    border-radius: var(--sb-radius-lg, 16px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+}
+
+.sb-shell-panel[data-sb-panel='agents'] .ica--filter #ica--search,
+.sb-shell-panel[data-sb-panel='agents'] .ica--filter #ica--categoryFilter {
+    min-height: var(--sb-control-min-height);
+    margin: 0;
+}
+
+.sb-shell-panel[data-sb-panel='agents'] .ica--filter #ica--categoryFilter {
+    width: auto;
+    min-width: 120px;
+}
+
+/* The tab strip is the list's own segmented control; the cards below it are pills, so the strip
+   sits on the row spacing rather than touching them. */
+.sb-shell-panel[data-sb-panel='agents'] .ica--agent-tabs {
+    gap: 6px;
+    padding-bottom: 0;
+}
+
+.sb-shell-panel[data-sb-panel='agents'] .ica--agent-tab {
+    min-height: 32px;
+    padding: 4px 14px;
+    font-size: var(--sb-type-control);
+}
+
+/* Cards take the shell's own radius, so a card edge matches a pill edge beside it. */
+.sb-shell-panel[data-sb-panel='agents'] .ica--agent-card,
+.sb-shell-panel[data-sb-panel='agents'] .ica--quick-section {
+    border-radius: var(--sb-radius-lg, 16px);
+}
+
+@media screen and (max-width: 768px) {
+    .sb-subpage-host {
+        padding: 0;
     }
 }

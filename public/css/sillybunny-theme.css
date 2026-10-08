@@ -723,18 +723,98 @@ h3:not(.popup h3):not(#chat h3) {
 }
 
 .checkbox_label > input[type="checkbox"],
-.checkbox_label > input[type="radio"] {
+.checkbox_label > input[type="radio"],
+input[type="checkbox"].sb-switch {
     flex: 0 0 auto;
     margin: 0;
     accent-color: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
 }
 
-.checkbox_label > input[type="checkbox"] {
-    transform: none;
+.checkbox_label > input[type="checkbox"],
+input[type="checkbox"].sb-switch {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    position: relative;
+    display: block;
+    inline-size: 42px;
+    block-size: 24px;
+    min-inline-size: 42px;
+    min-block-size: 24px;
+    width: 42px;
+    height: 24px;
+    min-width: 42px;
+    min-height: 24px;
+    aspect-ratio: auto;
+    overflow: visible;
+    place-content: normal;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 28%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
+    cursor: pointer;
+    box-sizing: border-box;
+    transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
-.checkbox_label > input[type="checkbox"]:hover {
-    transform: none;
+.checkbox_label > input[type="checkbox"]::after,
+input[type="checkbox"].sb-switch::after {
+    content: '';
+    position: absolute;
+    inset-block-start: 3px;
+    inset-inline-start: 3px;
+    inline-size: 16px;
+    block-size: 16px;
+    border-radius: 999px;
+    background: var(--SmartThemeBodyColor);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 40%, transparent);
+    transition: transform var(--sb-transition-fast), background-color var(--sb-transition-fast);
+}
+
+.checkbox_label > input[type="checkbox"]::before,
+input[type="checkbox"].sb-switch::before {
+    content: none;
+}
+
+.checkbox_label > input[type="checkbox"]:checked,
+input[type="checkbox"].sb-switch:checked {
+    border-color: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
+    background: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
+}
+
+.checkbox_label > input[type="checkbox"]:checked::after,
+input[type="checkbox"].sb-switch:checked::after {
+    background: var(--sb-on-solid-accent, var(--SmartThemeCheckboxTickColor));
+    transform: translateX(18px);
+}
+
+@media (hover: hover) {
+    .checkbox_label > input[type="checkbox"]:not(:checked):not(:disabled):hover,
+    input[type="checkbox"].sb-switch:not(:checked):not(:disabled):hover {
+        border-color: color-mix(in srgb, var(--SmartThemeBodyColor) 46%, transparent);
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 20%, transparent);
+    }
+}
+
+.checkbox_label > input[type="checkbox"]:focus-visible,
+input[type="checkbox"].sb-switch:focus-visible {
+    outline: 2px solid var(--sb-focus-ring);
+    outline-offset: 2px;
+    box-shadow: none;
+}
+
+.checkbox_label > input[type="checkbox"]:disabled,
+.checkbox_label > input[type="checkbox"].checkbox_disabled,
+input[type="checkbox"].sb-switch:disabled,
+input[type="checkbox"].sb-switch.checkbox_disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .checkbox_label > input[type="checkbox"]::after,
+    input[type="checkbox"].sb-switch::after {
+        transition: none;
+    }
 }
 
 /* libadwaita radio: outlined circle, solid accent fill with a contrast-aware dot when checked.
@@ -900,6 +980,27 @@ h3:not(.popup h3):not(#chat h3) {
 :root[data-sb-compact-mode='true'] .checkbox_label > input[type="checkbox"],
 :root[data-sb-compact-mode='true'] .checkbox_label > input[type="radio"] {
     margin-top: 0;
+}
+
+:root[data-sb-compact-mode='true'] .checkbox_label > input[type="checkbox"],
+:root[data-sb-compact-mode='true'] input[type="checkbox"].sb-switch {
+    inline-size: 36px;
+    block-size: 20px;
+    min-inline-size: 36px;
+    min-block-size: 20px;
+}
+
+:root[data-sb-compact-mode='true'] .checkbox_label > input[type="checkbox"]::after,
+:root[data-sb-compact-mode='true'] input[type="checkbox"].sb-switch::after {
+    inline-size: 14px;
+    block-size: 14px;
+    inset-block-start: 2px;
+    inset-inline-start: 2px;
+}
+
+:root[data-sb-compact-mode='true'] .checkbox_label > input[type="checkbox"]:checked::after,
+:root[data-sb-compact-mode='true'] input[type="checkbox"].sb-switch:checked::after {
+    transform: translateX(16px);
 }
 
 @media screen and (min-width: 769px) and (max-width: 1280px) and (pointer: fine) {
@@ -7130,7 +7231,7 @@ body.reduced-motion .popup[closing] {
 }
 
 @media (max-width: 768px) {
-    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) {
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup, .sb-popup-fullscreen):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) {
         position: fixed;
         inset: auto 0 0 0;
         box-sizing: border-box;
@@ -7150,7 +7251,7 @@ body.reduced-motion .popup[closing] {
     }
 
     /* Grab handle, same geometry as the mobile shell drawers. Visual only. */
-    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block']))::before {
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup, .sb-popup-fullscreen):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block']))::before {
         content: '';
         position: absolute;
         top: 8px;
@@ -7164,7 +7265,7 @@ body.reduced-motion .popup[closing] {
         transform: translateX(-50%);
     }
 
-    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-body {
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup, .sb-popup-fullscreen):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-body {
         flex: 1 1 auto;
         height: auto;
         min-height: 0;
@@ -7173,11 +7274,11 @@ body.reduced-motion .popup[closing] {
         overscroll-behavior: contain;
     }
 
-    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-body > * {
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup, .sb-popup-fullscreen):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-body > * {
         flex-shrink: 0;
     }
 
-    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-body > .popup-content {
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup, .sb-popup-fullscreen):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-body > .popup-content {
         flex: 1 1 auto;
         min-height: 0;
         max-height: none;
@@ -7186,11 +7287,11 @@ body.reduced-motion .popup[closing] {
     }
 
     /* Display popups have no responses; reserve a header band so content clears the close button. */
-    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])):has(> .popup-button-close[style*='block']) .popup-body {
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup, .sb-popup-fullscreen):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])):has(> .popup-button-close[style*='block']) .popup-body {
         padding-top: 30px;
     }
 
-    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-button-close {
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup, .sb-popup-fullscreen):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-button-close {
         top: 8px;
         right: max(8px, env(safe-area-inset-right, 0px));
         width: 44px;
@@ -7204,7 +7305,7 @@ body.reduced-motion .popup[closing] {
 
     /* AdwAlertDialog narrow layout: stacked full-width responses, affirmative on top and Cancel at
        the bottom. column-reverse mirrors the desktop row, so custom responses stay in between. */
-    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-controls {
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup, .sb-popup-fullscreen):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-controls {
         flex-direction: column-reverse;
         flex-wrap: nowrap;
         align-self: stretch;
@@ -7213,7 +7314,7 @@ body.reduced-motion .popup[closing] {
         margin-top: 12px;
     }
 
-    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-controls > .menu_button {
+    .popup:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup, .sb-popup-fullscreen):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) .popup-controls > .menu_button {
         flex: 0 0 auto;
         width: 100%;
         min-height: 44px;
@@ -7222,12 +7323,143 @@ body.reduced-motion .popup[closing] {
 }
 
 @media (max-width: 768px) and (prefers-reduced-motion: no-preference) {
-    body:not(.reduced-motion) .popup[opening]:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) {
+    body:not(.reduced-motion) .popup[opening]:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup, .sb-popup-fullscreen):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) {
         animation: sb-popup-sheet-in var(--sb-spring-sheet-duration) var(--sb-spring-sheet);
     }
 
-    body:not(.reduced-motion) .popup[closing]:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) {
+    body:not(.reduced-motion) .popup[closing]:not(.large_dialogue_popup, .wide_dialogue_popup, .transparent_dialogue_popup, .swipe_picker_popup, .sb-popup-fullscreen):not(:has(.img_enlarged_container, > .popup-body > .popup-crop-wrap[style*='block'])) {
         animation: sb-popup-sheet-out 200ms var(--sb-ease-out-cubic) forwards;
+    }
+}
+
+/* Full-screen Libadwaita dialog surface used by the Extensions manager. It keeps the shared Popup
+   lifecycle and focus handling, while replacing the old centered browser-sized frame with a page
+   surface that can hold the complete extension list on desktop and mobile. */
+.popup.sb-popup-fullscreen {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0;
+    border-radius: 0 !important;
+    background: var(--sb-layer-view);
+    box-shadow: none;
+    overflow: hidden;
+}
+
+.popup.sb-popup-fullscreen::before {
+    content: none;
+}
+
+.popup.sb-popup-fullscreen .popup-body {
+    width: 100%;
+    height: 100%;
+    max-height: none !important;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+.popup.sb-popup-fullscreen .popup-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    margin: 0;
+    padding: max(20px, env(safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-right, 0px)) 28px max(20px, env(safe-area-inset-left, 0px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.popup.sb-popup-fullscreen .sb-popup-dialog-header,
+.popup.sb-popup-fullscreen .extensions_toolbar,
+.popup.sb-popup-fullscreen .extensions_info > .marginBot10,
+.popup.sb-popup-fullscreen .extensions_info > h3,
+.popup.sb-popup-fullscreen .extensions_info > p {
+    width: min(100%, 1120px);
+    margin-inline: auto;
+}
+
+.popup.sb-popup-fullscreen .sb-popup-dialog-header {
+    display: flex;
+    align-items: center;
+    min-height: 52px;
+    padding: 8px 56px 8px 4px;
+    box-sizing: border-box;
+}
+
+.popup.sb-popup-fullscreen .sb-popup-dialog-header h2 {
+    margin: 0;
+    color: var(--sb-shell-text);
+    font-size: var(--sb-type-title);
+    font-weight: 700;
+}
+
+.popup.sb-popup-fullscreen .extensions_info {
+    width: 100%;
+    max-width: 1120px;
+    margin: 0 auto;
+    text-align: left;
+}
+
+.popup.sb-popup-fullscreen .extensions_toolbar {
+    top: 0;
+    margin-bottom: 16px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    border-radius: var(--sb-radius-card);
+    background: color-mix(in srgb, var(--sb-layer-window) 94%, transparent);
+    box-shadow: none;
+}
+
+.popup.sb-popup-fullscreen .popup-controls {
+    flex: 0 0 auto;
+    width: 100%;
+    margin: 0;
+    padding: 12px max(20px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px));
+    border-top: 1px solid var(--sb-shell-border);
+    background: var(--sb-layer-window);
+    box-sizing: border-box;
+}
+
+.popup.sb-popup-fullscreen .popup-controls > .menu_button {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 96px;
+}
+
+.popup.sb-popup-fullscreen .popup-button-close {
+    z-index: 2;
+    top: 16px;
+    right: max(16px, env(safe-area-inset-right, 0px));
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 999px;
+    line-height: 40px;
+    text-align: center;
+    background: var(--sb-flat-hover-bg);
+}
+
+@media (max-width: 768px) {
+    .popup.sb-popup-fullscreen .popup-content {
+        padding-top: max(16px, env(safe-area-inset-top, 0px));
+        padding-inline: max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-left, 0px));
+        padding-bottom: 20px;
+    }
+
+    .popup.sb-popup-fullscreen .sb-popup-dialog-header {
+        min-height: 52px;
+        padding-inline-start: 0;
+    }
+
+    .popup.sb-popup-fullscreen .popup-button-close {
+        top: max(8px, env(safe-area-inset-top, 0px));
+        right: max(8px, env(safe-area-inset-right, 0px));
     }
 }
 

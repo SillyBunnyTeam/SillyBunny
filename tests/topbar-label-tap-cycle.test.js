@@ -188,8 +188,9 @@ describe('icons only top bar', () => {
         }
 
         expect(cssSource).toMatch(/:root\[data-sb-topbar-icons-only='true'\] #sb-left-shell-toggle,\n:root\[data-sb-topbar-icons-only='true'\] #sb-right-shell-toggle \{\n\s*display: none;\n\}/);
-        expect(mobileCss).toContain(':root:not([data-sb-topbar-icons-only=\'true\'])[data-sb-mobile-nav-layout=\'horizontal\'][data-sb-mobile-nav-customize=\'shown\'] #sb-left-shell-toggle');
-        expect(mobileCss).toContain(':root:not([data-sb-topbar-icons-only=\'true\'])[data-sb-mobile-nav-replacement=\'shown\'] #sb-left-shell-toggle');
+        expect(mobileCss).toContain(':root:not([data-sb-topbar-icons-only=\'true\']) #sb-left-shell-toggle');
+        expect(mobileCss).not.toContain('data-sb-mobile-nav-customize');
+        expect(mobileCss).not.toContain('data-sb-mobile-nav-replacement');
 
         // The parking machinery and its bay are gone entirely.
         expect(normalizedTabsSource).not.toContain('SB_TOPBAR_PARKED_IDS');
@@ -377,7 +378,7 @@ describe('icons only top bar', () => {
         expect(navSource).toContain('id: `sb-${modePrefix}-topbar-icons-only-input`');
         expect(navSource).toContain('label: \'Icons only top bar\',');
         expect(navSource).toContain('onChange: input => setTopbarIconsOnly(modePrefix, input.checked),');
-        expect(navSource).toContain('topbarIconsOnlyChoice,');
+        expect(navSource).toContain('group.append(header, topbarIconsOnlyChoice);');
 
         expect(normalizedTabsSource).not.toContain('createTopbarIconsOnlySettingsGroup');
         expect(getFunctionSource('createShortcutSettingsGroup')).toContain('content: [description, rows],');
@@ -416,11 +417,13 @@ describe('icons only top bar', () => {
         expect(normalizedTabsSource).not.toContain('safeSetItem(SB_STORAGE_KEYS.topbarIconsOnly,');
     });
 
-    test('stays distinct from the shell tab icon-only setting', () => {
+    test('no longer ships the removed shell tab icon-only setting', () => {
         expect(normalizedTabsSource).toContain('topbarIconsOnly: \'sb-topbar-icons-only\',');
-        expect(normalizedTabsSource).toContain('desktopNavIconOnly: \'sb-desktop-nav-icon-only\',');
-        expect(normalizedTabsSource).toContain('mobileNavIconOnly: \'sb-mobile-nav-icon-only\',');
-        expect(normalizedTabsSource).toContain('label: \'Icons only in shell tabs\',');
+        expect(normalizedTabsSource).not.toContain('desktopNavIconOnly');
+        expect(normalizedTabsSource).not.toContain('mobileNavIconOnly');
+        expect(normalizedTabsSource).not.toContain('Icons only in shell tabs');
+        expect(normalizedTabsSource).not.toContain('setMobileNavIconOnly');
+        expect(normalizedTabsSource).not.toContain('setDesktopNavIconOnly');
     });
 
     test('toggles state without rebuilding the top bar', () => {

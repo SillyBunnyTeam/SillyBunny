@@ -62,6 +62,9 @@ import {
     flattenNestedSettingsDrawers,
     splitUserSettingsContent,
 } from './sillybunny-settings-content.js';
+import { normalizeSettingsDetail, normalizeSettingsPresentation } from './sillybunny-settings-presentation.js';
+import { createSubpageStack, SB_SUBPAGE_STORE_CLASS } from './sillybunny-settings-subpage.js';
+import { SB_SUBPAGE_BUILDERS } from './sillybunny-settings-subpage-descriptors.js';
 
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
@@ -112,6 +115,108 @@ function initializeSettingsPanel() {
  */
 const SB_COLLAPSIBLE_DRAWER_TAB_IDS = Object.freeze(new Set(['extensions', 'agents']));
 
+/**
+ * Phase 6H: the panels presented as a sliding list-plus-detail stack.
+ *
+ * These three were the last ones still made of accordions, and they are also the three whose
+ * settings arrive from somewhere other than this file -- Extensions is written by whatever extension
+ * is loaded, while Connections and Prompting are upstream's blocks. The stack owns their
+ * presentation entirely, so the flatten, the section order, and the two-line normalizer all stand
+ * down for them: those passes exist to box loose rows and add a description between a heading and
+ * its content, and on these panels there is no heading to work from and no shape they can describe
+ * (Connections alone got 43 boxes out of the normalizer, because thirty-odd hidden per-provider forms
+ * read as thirty-odd sections).
+ *
+ * Extensions and Agents were already left alone by the drawer passes, for the reason given on
+ * `SB_COLLAPSIBLE_DRAWER_TAB_IDS`; the stack is what replaces them there. Agents is not listed here
+ * because it does not need stacking: the in-chat-agents extension already presents its own dashboard
+ * as a list that opens editors, so it gets the shared row and button styling and keeps its layout.
+ */
+const SB_SUBPAGE_TAB_IDS = Object.freeze(new Set(['connections', 'extensions', 'prompting']));
+
+/**
+ * Whether a panel's presentation is owned by the subpage stack rather than by the settings passes.
+ *
+ * @param {string} tabId
+ * @returns {boolean}
+ */
+function isSubpagePanel(tabId) {
+    return SB_SUBPAGE_TAB_IDS.has(tabId);
+}
+
+/** The stacks installed so far, keyed by `${shellKey}:${tabId}` so a rebuild replaces its own. */
+const sbSubpageStacks = new Map();
+
+/**
+ * Presents a panel as a list of sections that slide their detail page in from the right.
+ *
+ * The panel's authored markup is not rewritten. Its children are hidden in place and a section is
+ * moved out of that hidden store into the detail page when its row opens, then moved back, so every
+ * id, listener, and extension lookup on those nodes keeps working exactly as before.
+ *
+ * Idempotent: the second call for a panel refreshes the existing stack's rows rather than building a
+ * second one beside it, which is what lets it run from both the activation path and the deferred
+ * build path.
+ *
+ * @param {string} shellKey
+ * @param {string} tabId
+ */
+function installSettingsSubpage(shellKey, tabId) {
+    const spec = SB_SUBPAGE_BUILDERS[tabId];
+    if (!spec) {
+        return;
+    }
+
+    const panel = getShellState(shellKey)?.tabs.get(tabId)?.panel;
+    const scroller = panel?.querySelector(':scope > .sb-shell-panel-scroller');
+    if (!(scroller instanceof HTMLElement)) {
+        return;
+    }
+
+    const key = `${shellKey}:${tabId}`;
+    const existing = sbSubpageStacks.get(key);
+    if (existing) {
+        // The list is discovered (Extensions gains rows as its containers mount), so a revisit
+        // refreshes it rather than building a second stack beside the first. The read is deferred so
+        // it happens once the rows it would find are back in the panel.
+        existing.rebuild(() => spec(panel));
+        return;
+    }
+
+    const built = spec(panel);
+    if (!built?.rows?.length) {
+        return;
+    }
+
+    // The authored wrapper stays in the document and keeps its ids, but it is out of the layout: the
+    // stack draws the panel now, and the rows move its sections into and out of the detail page.
+    for (const child of Array.from(scroller.children)) {
+        if (child instanceof HTMLElement && !child.classList.contains('sb-subpage')) {
+            child.classList.add(SB_SUBPAGE_STORE_CLASS);
+        }
+    }
+
+    scroller.classList.add('sb-subpage-host');
+
+    const stack = createSubpageStack(scroller, {
+        name: tabId,
+        // The detail page gets the same presentation pass a normal panel gets, but scoped to the
+        // section that was moved: these panels are skipped by the whole-panel pass, and their
+        // sections are only readable as the pass reads them once the section is in its own page.
+        onContent: (content, row) => normalizeSettingsDetail(content, { name: tabId, rowLabel: row.label }),
+    });
+    stack.setRows(built.rows);
+    sbSubpageStacks.set(key, stack);
+
+    if (built.observe instanceof HTMLElement) {
+        // Extension containers mount over the first seconds after the panel is built, so the list is
+        // rebuilt from the DOM rather than captured once.
+        const observer = new MutationObserver(() => stack.rebuild(() => spec(panel)));
+        observer.observe(built.observe, { childList: true, subtree: true });
+        stack.observeWith(() => observer.disconnect());
+    }
+}
+
 /** Phase 6F: marks the merged Chat Completion presets row and the chrome card it replaces. */
 const SB_PRESET_TOOLBAR_ROW_CLASS = 'sb-preset-toolbar-row';
 const SB_PRESET_TOOLBAR_CARD_CLASS = 'sb-preset-toolbar-card';
@@ -126,9 +231,10 @@ function flattenRightShellSettingsDrawers() {
     }
 
     for (const [tabId, tabState] of shellState.tabs.entries()) {
-        if (!SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) && tabState.panel instanceof HTMLElement) {
+        if (!SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) && !isSubpagePanel(tabId) && tabState.panel instanceof HTMLElement) {
             flattenNestedSettingsDrawers(tabState.panel, { includeTopLevel: true });
             applySettingsSectionOrder(tabState.panel, tabId);
+            normalizeSettingsPresentation(tabState.panel, { name: tabId });
         }
     }
 }
@@ -210,13 +316,14 @@ function openAllInlineDrawers(root = null) {
  * and Advanced Formatting and the Appearance theme card are assembled after the split -- so both
  * passes are repeated on activation. Both are idempotent, so re-running them costs queries and no
  * DOM churn.
- * Extensions and Agents are skipped for the same reason as in `flattenRightShellSettingsDrawers`.
+ * Extensions and Agents are skipped for the same reason as in `flattenRightShellSettingsDrawers`, and
+ * the stacked panels are skipped here for the reason given on `SB_SUBPAGE_TAB_IDS`.
  *
  * @param {string} shellKey
  * @param {string} tabId
  */
 function flattenSettingsPanelDrawers(shellKey, tabId) {
-    if (SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId)) {
+    if (SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) || isSubpagePanel(tabId)) {
         return;
     }
 
@@ -224,6 +331,7 @@ function flattenSettingsPanelDrawers(shellKey, tabId) {
     if (panel instanceof HTMLElement) {
         flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
         applySettingsSectionOrder(panel, tabId);
+        normalizeSettingsPresentation(panel, { name: tabId });
     }
 }
 
@@ -259,19 +367,7 @@ const SB_STORAGE_KEYS = Object.freeze({
     bottomChatSecondaryOpen: 'sb-bottom-chat-secondary-open',
     desktopButtonScale: 'sb-desktop-button-scale',
     mobileButtonScale: 'sb-mobile-button-scale',
-    desktopNavLayout: 'sb-desktop-nav-layout',
-    desktopNavIconOnly: 'sb-desktop-nav-icon-only',
-    desktopNavShowCustomize: 'sb-desktop-nav-show-customize',
-    desktopNavShowQuickActions: 'sb-desktop-nav-show-quick-actions',
-    desktopNavReplaceQuickActions: 'sb-desktop-nav-replace-quick-actions',
-    desktopNavReplacementTarget: 'sb-desktop-nav-replacement-target',
     desktopQuickActions: 'sb-desktop-quick-actions-v2',
-    mobileNavLayout: 'sb-mobile-nav-layout',
-    mobileNavIconOnly: 'sb-mobile-nav-icon-only',
-    mobileNavShowCustomize: 'sb-mobile-nav-show-customize',
-    mobileNavShowQuickActions: 'sb-mobile-nav-show-quick-actions',
-    mobileNavReplaceQuickActions: 'sb-mobile-nav-replace-quick-actions',
-    mobileNavReplacementTarget: 'sb-mobile-nav-replacement-target',
     mobileQuickActions: 'sb-mobile-quick-actions-v2',
     mobileQuickActionsLegacy: 'sb-mobile-quick-actions',
     settingsDrawerAutoClose: 'sb-settings-drawer-auto-close',
@@ -897,7 +993,6 @@ const SB_MOBILE_QUICK_ACTION_LIMIT = sbMobileShellLifecycle.railModel.limits.qui
 const SB_MOBILE_QUICK_ACTION_ICON_FALLBACK = sbMobileShellLifecycle.railModel.limits.iconFallback;
 const SB_MOBILE_NAV_CLOSED_ICON = 'fa-compass';
 const SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS = 350;
-const SB_MOBILE_NAV_LAYOUTS = Object.freeze(['horizontal', 'vertical']);
 const SB_MOBILE_DEFAULT_QUICK_ACTIONS = Object.freeze([
     { type: 'tab', shellKey: 'left', tabId: 'presets', icon: 'fa-sliders', label: 'Presets' },
     { type: 'tab', shellKey: 'left', tabId: 'api', icon: 'fa-plug', label: 'API' },
@@ -909,27 +1004,12 @@ const SB_MOBILE_DEFAULT_QUICK_ACTIONS = Object.freeze([
 const SB_DESKTOP_DEFAULT_QUICK_ACTIONS = Object.freeze([
     { type: 'tab', shellKey: 'characters', tabId: 'world-info', icon: 'fa-book-atlas', label: 'World Info' },
 ]);
-const SB_MOBILE_NAV_PAGE_TARGET_DEFAULT = 'left:presets';
-const SB_MOBILE_NAV_PAGE_TARGETS = Object.freeze([
-    { value: 'left:presets', shellKey: 'left', tabId: 'presets', label: 'Presets', icon: 'fa-sliders' },
-    { value: 'left:api', shellKey: 'left', tabId: 'api', label: 'API', icon: 'fa-plug' },
-    { value: 'left:sampling', shellKey: 'left', tabId: 'sampling', label: 'Sampling', icon: 'fa-wave-square' },
-    { value: 'left:advanced-formatting', shellKey: 'left', tabId: 'advanced-formatting', label: 'Formatting', icon: 'fa-text-height' },
-    { value: 'characters:world-info', shellKey: 'characters', tabId: 'world-info', label: 'World Info', icon: 'fa-book-atlas' },
-    { value: 'left:agents', shellKey: 'left', tabId: 'agents', label: 'Agents', icon: 'fa-robot' },
-    { value: 'right:settings', shellKey: 'right', tabId: 'settings', label: 'Settings', icon: 'fa-screwdriver-wrench' },
-    { value: 'right:extensions', shellKey: 'right', tabId: 'extensions', label: 'Extensions', icon: 'fa-cubes' },
-    { value: 'right:background', shellKey: 'right', tabId: 'background', label: 'Background', icon: 'fa-panorama' },
-    { value: 'right:server', shellKey: 'right', tabId: 'server', label: 'Server', icon: 'fa-server' },
-    { value: 'right:console-logs', shellKey: 'right', tabId: 'console-logs', label: 'Console Logs', icon: 'fa-terminal' },
-]);
-
 // SillyBunny: the optional icons-only top bar does not pool every page into one strip. It expands
 // each section in place into that section's own pages, so the bar keeps the skeleton PRODUCT.md
 // prescribes and each cluster stays readable as its own zone. Labels and icons resolve from
 // SB_SHELLS / SB_CHARACTER_PANEL_TABS at build time so a cluster cannot drift when a page is
-// renamed. Kept separate from SB_SHORTCUT_TARGETS and SB_MOBILE_NAV_PAGE_TARGETS because those two
-// are persisted in user settings and carry pseudo-entries these lists must not inherit.
+// renamed. Kept separate from SB_SHORTCUT_TARGETS because that one is persisted in user settings
+// and carries pseudo-entries this list must not inherit.
 const SB_TOPBAR_CLUSTERS = Object.freeze([
     {
         key: 'workspace',
@@ -1070,20 +1150,6 @@ const sbState = {
         quickActionContainer: null,
         quickActionSection: null,
         quickActionDivider: null,
-        layout: normalizeMobileNavLayout(safeGetItem(SB_STORAGE_KEYS.mobileNavLayout)),
-        iconOnly: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavIconOnly), false),
-        showCustomize: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavShowCustomize), true),
-        showQuickActions: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavShowQuickActions), false),
-        replaceQuickActions: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavReplaceQuickActions), false),
-        replacementTarget: normalizeMobileNavReplacementTarget(safeGetItem(SB_STORAGE_KEYS.mobileNavReplacementTarget)),
-    },
-    desktopNav: {
-        layout: normalizeMobileNavLayout(safeGetItem(SB_STORAGE_KEYS.desktopNavLayout)),
-        iconOnly: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavIconOnly), false),
-        showCustomize: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavShowCustomize), true),
-        showQuickActions: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavShowQuickActions), false),
-        replaceQuickActions: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavReplaceQuickActions), false),
-        replacementTarget: normalizeMobileNavReplacementTarget(safeGetItem(SB_STORAGE_KEYS.desktopNavReplacementTarget)),
     },
     desktopQuickActions: [],
     mobileQuickActions: [],
@@ -1242,36 +1308,8 @@ function isTopbarLabelClickCycleEnabled() {
     return isMobileViewport() ? sbState.topbarLabel.clickCycle.mobile : sbState.topbarLabel.clickCycle.desktop;
 }
 
-function normalizeMobileNavLayout(value) {
-    const normalizedValue = normalizeText(value);
-    return SB_MOBILE_NAV_LAYOUTS.includes(normalizedValue) ? normalizedValue : 'horizontal';
-}
-
-function getNavState(mode) {
-    return mode === 'desktop' ? sbState.desktopNav : sbState.mobileNav;
-}
-
 function getQuickActionState(mode) {
     return mode === 'desktop' ? sbState.desktopQuickActions : sbState.mobileQuickActions;
-}
-
-function getMobileNavCustomizeLocationLabel(mode = 'mobile') {
-    return getNavState(mode).layout === 'horizontal'
-        ? 'Show Backend and Customize buttons in top bar'
-        : 'Show Backend and Customize shortcuts in each side rail';
-}
-
-function normalizeMobileNavReplacementTarget(value) {
-    const normalizedValue = String(value ?? '').trim();
-    return SB_MOBILE_NAV_PAGE_TARGETS.some(target => target.value === normalizedValue)
-        ? normalizedValue
-        : SB_MOBILE_NAV_PAGE_TARGET_DEFAULT;
-}
-
-function getMobileNavReplacementTargetConfig(target = sbState.mobileNav.replacementTarget) {
-    const normalizedTarget = normalizeMobileNavReplacementTarget(target);
-    return SB_MOBILE_NAV_PAGE_TARGETS.find(item => item.value === normalizedTarget)
-        ?? SB_MOBILE_NAV_PAGE_TARGETS[0];
 }
 
 function normalizeSurfaceTransparency(value) {
@@ -1651,18 +1689,6 @@ function restorePersistedTopbarState() {
     sbState.topbarIconsOnly.desktop = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopTopbarIconsOnly), sbState.topbarIconsOnly.desktop);
     sbState.topbarIconsOnly.mobile = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileTopbarIconsOnly), sbState.topbarIconsOnly.mobile);
     sbState.bottomChatBar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatBarVisible), sbState.bottomChatBar.visible);
-    sbState.mobileNav.layout = normalizeMobileNavLayout(safeGetItem(SB_STORAGE_KEYS.mobileNavLayout));
-    sbState.mobileNav.iconOnly = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavIconOnly), sbState.mobileNav.iconOnly);
-    sbState.mobileNav.showCustomize = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavShowCustomize), sbState.mobileNav.showCustomize);
-    sbState.mobileNav.showQuickActions = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavShowQuickActions), sbState.mobileNav.showQuickActions);
-    sbState.mobileNav.replaceQuickActions = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavReplaceQuickActions), sbState.mobileNav.replaceQuickActions);
-    sbState.mobileNav.replacementTarget = normalizeMobileNavReplacementTarget(safeGetItem(SB_STORAGE_KEYS.mobileNavReplacementTarget));
-    sbState.desktopNav.layout = normalizeMobileNavLayout(safeGetItem(SB_STORAGE_KEYS.desktopNavLayout));
-    sbState.desktopNav.iconOnly = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavIconOnly), sbState.desktopNav.iconOnly);
-    sbState.desktopNav.showCustomize = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavShowCustomize), sbState.desktopNav.showCustomize);
-    sbState.desktopNav.showQuickActions = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavShowQuickActions), sbState.desktopNav.showQuickActions);
-    sbState.desktopNav.replaceQuickActions = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavReplaceQuickActions), sbState.desktopNav.replaceQuickActions);
-    sbState.desktopNav.replacementTarget = normalizeMobileNavReplacementTarget(safeGetItem(SB_STORAGE_KEYS.desktopNavReplacementTarget));
     sbState.desktopQuickActions = loadDesktopQuickActions();
     sbState.mobileQuickActions = loadMobileQuickActions();
 }
@@ -1774,165 +1800,6 @@ function setMobileButtonScale(value, { persist = true } = {}) {
         safeSetItem(SB_STORAGE_KEYS.mobileButtonScale, String(nextScale));
     }
 
-    updateThemePickerUi();
-}
-
-function applyMobileNavPreferences() {
-    const quickActionsShown = sbState.mobileNav.showQuickActions;
-    const useIconOnly = sbState.mobileNav.iconOnly;
-    document.documentElement.dataset.sbMobileNavLayout = sbState.mobileNav.layout;
-    document.documentElement.dataset.sbMobileNavMode = useIconOnly ? 'icon-only' : 'labeled';
-    document.documentElement.dataset.sbMobileNavCustomize = sbState.mobileNav.showCustomize ? 'shown' : 'hidden';
-    document.documentElement.dataset.sbMobileNavQuickActions = quickActionsShown ? 'shown' : 'hidden';
-    document.documentElement.dataset.sbMobileNavReplacement = sbState.mobileNav.replaceQuickActions ? 'shown' : 'hidden';
-}
-
-function applyDesktopNavPreferences() {
-    const quickActionsShown = sbState.desktopNav.showQuickActions;
-    const useIconOnly = sbState.desktopNav.iconOnly;
-    document.documentElement.dataset.sbDesktopNavLayout = sbState.desktopNav.layout;
-    document.documentElement.dataset.sbDesktopNavMode = useIconOnly ? 'icon-only' : 'labeled';
-    document.documentElement.dataset.sbDesktopNavCustomize = sbState.desktopNav.showCustomize ? 'shown' : 'hidden';
-    document.documentElement.dataset.sbDesktopNavQuickActions = quickActionsShown ? 'shown' : 'hidden';
-    document.documentElement.dataset.sbDesktopNavReplacement = sbState.desktopNav.replaceQuickActions ? 'shown' : 'hidden';
-}
-
-function setMobileNavLayout(layout, { persist = true } = {}) {
-    const nextLayout = normalizeMobileNavLayout(layout);
-    sbState.mobileNav.layout = nextLayout;
-    applyMobileNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.mobileNavLayout, nextLayout);
-    }
-    updateThemePickerUi();
-}
-
-function setMobileNavIconOnly(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.mobileNav.iconOnly = nextEnabled;
-    applyMobileNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.mobileNavIconOnly, String(nextEnabled));
-    }
-
-    updateThemePickerUi();
-}
-
-function setMobileNavShowCustomize(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.mobileNav.showCustomize = nextEnabled;
-    applyMobileNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.mobileNavShowCustomize, String(nextEnabled));
-    }
-    updateThemePickerUi();
-}
-
-function setMobileNavShowQuickActions(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.mobileNav.showQuickActions = nextEnabled;
-    applyMobileNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.mobileNavShowQuickActions, String(nextEnabled));
-    }
-
-    refreshMobileNavQuickActions();
-    updateThemePickerUi();
-}
-
-function setMobileNavReplaceQuickActions(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.mobileNav.replaceQuickActions = nextEnabled;
-    applyMobileNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.mobileNavReplaceQuickActions, String(nextEnabled));
-    }
-
-    refreshMobileNavQuickActions();
-    updateMobileNavButtonLabel();
-    updateThemePickerUi();
-}
-
-function setMobileNavReplacementTarget(target, { persist = true } = {}) {
-    const nextTarget = normalizeMobileNavReplacementTarget(target);
-    sbState.mobileNav.replacementTarget = nextTarget;
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.mobileNavReplacementTarget, nextTarget);
-    }
-
-    updateMobileNavButtonLabel();
-    updateThemePickerUi();
-}
-
-function setDesktopNavLayout(layout, { persist = true } = {}) {
-    const nextLayout = normalizeMobileNavLayout(layout);
-    sbState.desktopNav.layout = nextLayout;
-    applyDesktopNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.desktopNavLayout, nextLayout);
-    }
-    updateThemePickerUi();
-}
-
-function setDesktopNavIconOnly(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.desktopNav.iconOnly = nextEnabled;
-    applyDesktopNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.desktopNavIconOnly, String(nextEnabled));
-    }
-
-    updateThemePickerUi();
-}
-
-function setDesktopNavShowCustomize(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.desktopNav.showCustomize = nextEnabled;
-    applyDesktopNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.desktopNavShowCustomize, String(nextEnabled));
-    }
-    updateThemePickerUi();
-}
-
-function setDesktopNavShowQuickActions(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.desktopNav.showQuickActions = nextEnabled;
-    applyDesktopNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.desktopNavShowQuickActions, String(nextEnabled));
-    }
-    updateThemePickerUi();
-}
-
-function setDesktopNavReplaceQuickActions(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.desktopNav.replaceQuickActions = nextEnabled;
-    applyDesktopNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.desktopNavReplaceQuickActions, String(nextEnabled));
-    }
-    updateThemePickerUi();
-}
-
-function setDesktopNavReplacementTarget(target, { persist = true } = {}) {
-    const nextTarget = normalizeMobileNavReplacementTarget(target);
-    sbState.desktopNav.replacementTarget = nextTarget;
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.desktopNavReplacementTarget, nextTarget);
-    }
     updateThemePickerUi();
 }
 
@@ -9031,10 +8898,12 @@ function createOnDemandShellPanel(shellKey, tabConfig, build) {
             panel.replaceChildren(...loaded.panel.childNodes);
             // Sections built here may author their own drawers, so the flatten runs again on the
             // finished panel rather than relying on the one the split did.
-            if (!SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabConfig.id)) {
+            if (!SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabConfig.id) && !isSubpagePanel(tabConfig.id)) {
                 flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
                 applySettingsSectionOrder(panel, tabConfig.id);
+                normalizeSettingsPresentation(panel, { name: tabConfig.id });
             }
+            installSettingsSubpage(shellKey, tabConfig.id);
             const tab = getShellState(shellKey)?.tabs.get(tabConfig.id);
             if (tab) {
                 tab.searchRoot = loaded.searchRoot;
@@ -9699,7 +9568,10 @@ function updateSamplingPanelVisibility(root) {
 
 function buildSamplingPanel() {
     const { panel, scroller } = createShellPanel({ id: 'sampling' });
-    const column = createElement('div', { className: 'sb-shell-column sb-sampling-panel' });
+    const column = createElement('div', {
+        className: 'sb-shell-column sb-sampling-panel',
+        attrs: { 'data-sb-presentation': 'manual' },
+    });
 
     const sections = createElement('div', { className: 'sb-sampling-sections' });
 
@@ -11048,29 +10920,12 @@ function createNavigationSettingsGroup(mode = 'mobile') {
     const modeTitle = isDesktop ? 'Desktop' : 'Mobile';
     const modePrefix = isDesktop ? 'desktop' : 'mobile';
     const group = createElement('section', {
-        className: `sb-theme-slider-group sb-mobile-nav-layout-group sb-${modePrefix}-nav-layout-group`,
+        className: `sb-theme-slider-group sb-nav-settings-group sb-${modePrefix}-nav-settings-group`,
     });
     const header = createElement('div', { className: 'sb-mobile-nav-settings-header' });
     const title = createElement('strong', { text: `${modeTitle} Navigation` });
-    const layoutGrid = createElement('div', {
-        className: 'sb-mobile-nav-choice-grid',
-        attrs: {
-            role: 'radiogroup',
-            'aria-label': `${modeTitle} navigation layout`,
-        },
-    });
-    const iconOnlyChoice = createMobileNavChoice({
-        id: `sb-${modePrefix}-nav-icon-only-input`,
-        type: 'checkbox',
-        value: 'icon-only',
-        label: 'Icons only in shell tabs',
-        icon: 'fa-icons',
-        onChange: input => isDesktop ? setDesktopNavIconOnly(input.checked) : setMobileNavIconOnly(input.checked),
-    });
-    // SillyBunny: stored per device -- this group's copy governs its own viewport only, exactly
-    // like the shell-tab toggle above it -- and it belongs with navigation rather than nested
-    // inside the Quick Access Shortcuts drawer. Sitting next to the shell-tab toggle also keeps
-    // the two similarly named options readable side by side.
+    // SillyBunny: stored per device -- this group's copy governs its own viewport only, so the two
+    // Navigation groups can disagree without either one lying about the other's viewport.
     const topbarIconsOnlyChoice = createMobileNavChoice({
         id: `sb-${modePrefix}-topbar-icons-only-input`,
         type: 'checkbox',
@@ -11080,94 +10935,9 @@ function createNavigationSettingsGroup(mode = 'mobile') {
         onChange: input => setTopbarIconsOnly(modePrefix, input.checked),
     });
     topbarIconsOnlyChoice.querySelector('input')?.setAttribute('data-sb-topbar-icons-only-input', modePrefix);
-    const showCustomizeChoice = createMobileNavChoice({
-        id: `sb-${modePrefix}-nav-show-customize-input`,
-        type: 'checkbox',
-        value: 'show-customize',
-        label: getMobileNavCustomizeLocationLabel(mode),
-        icon: 'fa-screwdriver-wrench',
-        onChange: input => isDesktop ? setDesktopNavShowCustomize(input.checked) : setMobileNavShowCustomize(input.checked),
-    });
-    const showQuickActionsChoice = createMobileNavChoice({
-        id: `sb-${modePrefix}-nav-show-quick-actions-input`,
-        type: 'checkbox',
-        value: 'show-quick-actions',
-        label: 'Show Custom Quick Actions in the side rail',
-        icon: 'fa-bolt',
-        onChange: input => isDesktop ? setDesktopNavShowQuickActions(input.checked) : setMobileNavShowQuickActions(input.checked),
-    });
-    const replaceQuickActionsChoice = createMobileNavChoice({
-        id: `sb-${modePrefix}-nav-replace-quick-actions-input`,
-        type: 'checkbox',
-        value: 'replace-quick-actions',
-        label: 'Use a chosen page instead of Quick Actions',
-        icon: 'fa-map-location-dot',
-        onChange: input => isDesktop ? setDesktopNavReplaceQuickActions(input.checked) : setMobileNavReplaceQuickActions(input.checked),
-    });
-    const replacementField = createElement('label', {
-        className: 'sb-mobile-nav-replacement-field',
-        attrs: {
-            for: `sb-${modePrefix}-nav-replacement-select`,
-        },
-    });
-    const replacementLabel = createElement('span', { text: 'Replacement page' });
-    const replacementSelect = createElement('select', {
-        id: `sb-${modePrefix}-nav-replacement-select`,
-        className: 'text_pole sb-mobile-nav-replacement-select',
-    });
-
-    for (const target of SB_MOBILE_NAV_PAGE_TARGETS) {
-        const option = createElement('option', {
-            attrs: {
-                value: target.value,
-            },
-        });
-        option.textContent = target.label;
-        replacementSelect.appendChild(option);
-    }
-
-    replacementSelect.addEventListener('change', event => {
-        const select = event.currentTarget;
-        const nextValue = select instanceof HTMLSelectElement ? select.value : '';
-        if (isDesktop) {
-            setDesktopNavReplacementTarget(nextValue);
-        } else {
-            setMobileNavReplacementTarget(nextValue);
-        }
-    });
-
-    layoutGrid.append(
-        createMobileNavChoice({
-            id: `sb-${modePrefix}-nav-layout-horizontal`,
-            name: `sb-${modePrefix}-nav-layout`,
-            value: 'horizontal',
-            label: 'Horizontal top bar',
-            icon: 'fa-grip-lines',
-            onChange: input => isDesktop ? setDesktopNavLayout(input.value) : setMobileNavLayout(input.value),
-        }),
-        createMobileNavChoice({
-            id: `sb-${modePrefix}-nav-layout-vertical`,
-            name: `sb-${modePrefix}-nav-layout`,
-            value: 'vertical',
-            label: 'Vertical side rail',
-            icon: 'fa-table-columns',
-            onChange: input => isDesktop ? setDesktopNavLayout(input.value) : setMobileNavLayout(input.value),
-        }),
-    );
 
     header.appendChild(title);
-    replacementField.append(replacementLabel, replacementSelect);
-    group.append(
-        header,
-        layoutGrid,
-        iconOnlyChoice,
-        topbarIconsOnlyChoice,
-        createMobileNavDivider(),
-        showCustomizeChoice,
-        showQuickActionsChoice,
-        replaceQuickActionsChoice,
-        replacementField,
-    );
+    group.append(header, topbarIconsOnlyChoice);
     return group;
 }
 
@@ -11178,7 +10948,6 @@ function createMobileNavLayoutSettingsGroup() {
 function createDesktopNavLayoutSettingsGroup() {
     return createNavigationSettingsGroup('desktop');
 }
-
 function createPaperTextureSettingsGroup() {
     const group = createElement('section', {
         className: 'sb-theme-slider-group sb-paper-texture-group',
@@ -11553,16 +11322,6 @@ function updateThemePickerUi() {
     const mobileButtonScaleInput = document.getElementById('sb-mobile-button-scale-input');
     const mobileButtonScaleValue = document.getElementById('sb-mobile-button-scale-value');
     const customTextInput = document.getElementById('sb-topbar-custom-text-input');
-    const desktopNavIconOnlyInput = document.getElementById('sb-desktop-nav-icon-only-input');
-    const desktopNavShowCustomizeInput = document.getElementById('sb-desktop-nav-show-customize-input');
-    const desktopNavShowQuickActionsInput = document.getElementById('sb-desktop-nav-show-quick-actions-input');
-    const desktopNavReplaceQuickActionsInput = document.getElementById('sb-desktop-nav-replace-quick-actions-input');
-    const desktopNavReplacementSelect = document.getElementById('sb-desktop-nav-replacement-select');
-    const mobileNavIconOnlyInput = document.getElementById('sb-mobile-nav-icon-only-input');
-    const mobileNavShowCustomizeInput = document.getElementById('sb-mobile-nav-show-customize-input');
-    const mobileNavShowQuickActionsInput = document.getElementById('sb-mobile-nav-show-quick-actions-input');
-    const mobileNavReplaceQuickActionsInput = document.getElementById('sb-mobile-nav-replace-quick-actions-input');
-    const mobileNavReplacementSelect = document.getElementById('sb-mobile-nav-replacement-select');
     const paperTextureEnabledInput = document.getElementById('sb-paper-texture-enabled-input');
     const paperTextureOpacityInput = document.getElementById('sb-paper-texture-opacity-input');
     const paperTextureOpacityValue = document.getElementById('sb-paper-texture-opacity-value');
@@ -11673,26 +11432,6 @@ function updateThemePickerUi() {
         input.closest('.sb-compact-mode-option')?.classList.toggle('is-selected', guidedGenerationsBarVisible);
     }
 
-    for (const input of document.querySelectorAll('input[name="sb-desktop-nav-layout"]')) {
-        if (!(input instanceof HTMLInputElement)) {
-            continue;
-        }
-
-        const isChecked = input.value === sbState.desktopNav.layout;
-        input.checked = isChecked;
-        input.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', isChecked);
-    }
-
-    for (const input of document.querySelectorAll('input[name="sb-mobile-nav-layout"]')) {
-        if (!(input instanceof HTMLInputElement)) {
-            continue;
-        }
-
-        const isChecked = input.value === sbState.mobileNav.layout;
-        input.checked = isChecked;
-        input.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', isChecked);
-    }
-
     // Each Navigation group's checkbox reflects its own device's stored value, not the state in
     // force on this viewport. Quick Access stays fully live in icons-only mode -- the slots are
     // part of the right-hand cluster now, not superseded by it.
@@ -11706,90 +11445,6 @@ function updateThemePickerUi() {
             : sbState.topbarIconsOnly.mobile;
         input.checked = isChecked;
         input.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', isChecked);
-    }
-
-    if (desktopNavIconOnlyInput instanceof HTMLInputElement) {
-        desktopNavIconOnlyInput.checked = sbState.desktopNav.iconOnly;
-        const choice = desktopNavIconOnlyInput.closest('.sb-mobile-nav-choice');
-        choice?.classList.toggle('is-selected', sbState.desktopNav.iconOnly);
-        choice?.classList.toggle('is-disabled', false);
-    }
-
-    if (desktopNavShowCustomizeInput instanceof HTMLInputElement) {
-        desktopNavShowCustomizeInput.checked = sbState.desktopNav.showCustomize;
-        desktopNavShowCustomizeInput.disabled = false;
-        const choice = desktopNavShowCustomizeInput.closest('.sb-mobile-nav-choice');
-        const label = choice?.querySelector('.sb-mobile-nav-choice-copy > strong');
-        if (label instanceof HTMLElement) {
-            label.textContent = getMobileNavCustomizeLocationLabel('desktop');
-        }
-        choice?.classList.toggle('is-selected', sbState.desktopNav.showCustomize);
-        choice?.classList.toggle('is-disabled', false);
-        if (choice instanceof HTMLElement) {
-            choice.style.display = sbState.desktopNav.layout === 'vertical' ? 'none' : '';
-        }
-    }
-
-    if (desktopNavShowQuickActionsInput instanceof HTMLInputElement) {
-        desktopNavShowQuickActionsInput.checked = sbState.desktopNav.showQuickActions;
-        desktopNavShowQuickActionsInput.disabled = false;
-        const choice = desktopNavShowQuickActionsInput.closest('.sb-mobile-nav-choice');
-        choice?.classList.toggle('is-selected', sbState.desktopNav.showQuickActions);
-        choice?.classList.toggle('is-disabled', false);
-    }
-
-    if (desktopNavReplaceQuickActionsInput instanceof HTMLInputElement) {
-        desktopNavReplaceQuickActionsInput.checked = sbState.desktopNav.replaceQuickActions;
-        const choice = desktopNavReplaceQuickActionsInput.closest('.sb-mobile-nav-choice');
-        choice?.classList.toggle('is-selected', sbState.desktopNav.replaceQuickActions);
-    }
-
-    if (desktopNavReplacementSelect instanceof HTMLSelectElement) {
-        desktopNavReplacementSelect.value = normalizeMobileNavReplacementTarget(sbState.desktopNav.replacementTarget);
-        desktopNavReplacementSelect.disabled = !sbState.desktopNav.replaceQuickActions;
-        desktopNavReplacementSelect.closest('.sb-mobile-nav-replacement-field')?.classList.toggle('is-disabled', !sbState.desktopNav.replaceQuickActions);
-    }
-
-    if (mobileNavIconOnlyInput instanceof HTMLInputElement) {
-        mobileNavIconOnlyInput.checked = sbState.mobileNav.iconOnly;
-        const choice = mobileNavIconOnlyInput.closest('.sb-mobile-nav-choice');
-        choice?.classList.toggle('is-selected', sbState.mobileNav.iconOnly);
-        choice?.classList.toggle('is-disabled', false);
-    }
-
-    if (mobileNavShowCustomizeInput instanceof HTMLInputElement) {
-        mobileNavShowCustomizeInput.checked = sbState.mobileNav.showCustomize;
-        mobileNavShowCustomizeInput.disabled = false;
-        const choice = mobileNavShowCustomizeInput.closest('.sb-mobile-nav-choice');
-        const label = choice?.querySelector('.sb-mobile-nav-choice-copy > strong');
-        if (label instanceof HTMLElement) {
-            label.textContent = getMobileNavCustomizeLocationLabel();
-        }
-        choice?.classList.toggle('is-selected', sbState.mobileNav.showCustomize);
-        choice?.classList.toggle('is-disabled', false);
-        if (choice instanceof HTMLElement) {
-            choice.style.display = sbState.mobileNav.layout === 'vertical' ? 'none' : '';
-        }
-    }
-
-    if (mobileNavShowQuickActionsInput instanceof HTMLInputElement) {
-        mobileNavShowQuickActionsInput.checked = sbState.mobileNav.showQuickActions;
-        mobileNavShowQuickActionsInput.disabled = false;
-        const choice = mobileNavShowQuickActionsInput.closest('.sb-mobile-nav-choice');
-        choice?.classList.toggle('is-selected', sbState.mobileNav.showQuickActions);
-        choice?.classList.toggle('is-disabled', false);
-    }
-
-    if (mobileNavReplaceQuickActionsInput instanceof HTMLInputElement) {
-        mobileNavReplaceQuickActionsInput.checked = sbState.mobileNav.replaceQuickActions;
-        const choice = mobileNavReplaceQuickActionsInput.closest('.sb-mobile-nav-choice');
-        choice?.classList.toggle('is-selected', sbState.mobileNav.replaceQuickActions);
-    }
-
-    if (mobileNavReplacementSelect instanceof HTMLSelectElement) {
-        mobileNavReplacementSelect.value = normalizeMobileNavReplacementTarget(sbState.mobileNav.replacementTarget);
-        mobileNavReplacementSelect.disabled = !sbState.mobileNav.replaceQuickActions;
-        mobileNavReplacementSelect.closest('.sb-mobile-nav-replacement-field')?.classList.toggle('is-disabled', !sbState.mobileNav.replaceQuickActions);
     }
 
     if (paperTextureEnabledInput instanceof HTMLInputElement) {
@@ -12451,6 +12106,7 @@ function setActiveTab(shellKey, tabId) {
 
     if (isSettingsPageHosting(shellKey)) {
         activeTab.onActivate?.();
+        installSettingsSubpage(shellKey, tabId);
         flattenSettingsPanelDrawers(shellKey, tabId);
         dispatchShellTabActivated(shellKey, activeTab);
         queueMobileShellActivationRefresh();
@@ -12923,14 +12579,7 @@ function updateMobileNavButtonLabel() {
     const isOpen = overlay instanceof HTMLElement
         && !overlay.hidden
         && overlay.getAttribute('aria-hidden') === 'false';
-    const replacement = getMobileNavReplacementTargetConfig();
-    let title = 'Open navigation';
-
-    if (isOpen) {
-        title = 'Close navigation';
-    } else if (sbState.mobileNav.replaceQuickActions) {
-        title = `Open ${replacement.label}`;
-    }
+    const title = isOpen ? 'Close navigation' : 'Open navigation';
 
     button.title = title;
     button.setAttribute('aria-label', title);
@@ -13516,10 +13165,11 @@ function bindInlineDrawerPersistence(root = document) {
 function reflattenRuntimeDrawers() {
     for (const panel of document.querySelectorAll('section.sb-shell-panel[data-sb-panel]')) {
         const tabId = panel.dataset.sbPanel;
-        if (SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) || !panel.querySelector('.inline-drawer')) {
+        if (SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) || isSubpagePanel(tabId) || !panel.querySelector('.inline-drawer')) {
             continue;
         }
         flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
+        normalizeSettingsPresentation(panel, { name: tabId });
     }
 }
 
@@ -14597,8 +14247,6 @@ function initAll() {
     setBottomBarScale(sbState.bottomBarScale, { persist: false });
     setDesktopButtonScale(sbState.desktopButtonScale, { persist: false });
     setMobileButtonScale(sbState.mobileButtonScale, { persist: false });
-    applyDesktopNavPreferences();
-    applyMobileNavPreferences();
     bindComposerControlPlacement();
     initChatAvatarVariables();
     buildTopBar();
