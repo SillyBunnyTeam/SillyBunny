@@ -71,6 +71,9 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js
+        # setup-node adds its folder through GITHUB_PATH, which the runner puts
+        # back in front of PATH on every later step, so it cannot be hidden.
+        if: '!matrix.fresh_node'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
@@ -129,12 +132,14 @@ jobs:
             [[ -n "$dir" && ! -x "$dir/node" ]] || continue
             trimmed_path="${trimmed_path:+$trimmed_path:}$dir"
           done
-          export PATH="$trimmed_path"
+          # GITHUB_ENV would fold PATH back into the runner's own PATH, so the
+          # trimmed value is stored separately and re-applied in each later step.
           export SILLYBUNNY_NODE_INSTALL="$RUNNER_TEMP/node-fresh"
           {
-            echo "PATH=$PATH"
+            echo "TRIMMED_PATH=$trimmed_path"
             echo "SILLYBUNNY_NODE_INSTALL=$SILLYBUNNY_NODE_INSTALL"
           } >> "$GITHUB_ENV"
+          export PATH="$trimmed_path"
           if command -v node >/dev/null 2>&1; then
             echo "Node.js is still resolvable at $(command -v node); this leg would not exercise the download." >&2
             exit 1
@@ -144,12 +149,20 @@ jobs:
       - name: Run install.sh against this checkout
         run: |
           set -euo pipefail
+          if [[ -n "${TRIMMED_PATH:-}" ]]; then export PATH="$TRIMMED_PATH"; fi
           git branch --force bootstrap-smoke HEAD
+          if [[ "${{ matrix.fresh_node }}" == true ]] && command -v node >/dev/null 2>&1; then
+            echo "Node.js is resolvable at $(command -v node); the fresh-node leg would not exercise the download." >&2
+            exit 1
+          fi
           bash scripts/bootstrap/install.sh \
             --repo "$GITHUB_WORKSPACE" \
             --ref bootstrap-smoke \
             --dir "$RUNNER_TEMP/SillyBunny" \
-            --no-start
+            --no-start 2>&1 | tee "$RUNNER_TEMP/install.log"
+          if [[ "${{ matrix.fresh_node }}" == true ]]; then
+            grep -F "Downloading Node.js" "$RUNNER_TEMP/install.log"
+          fi
           test -f "$RUNNER_TEMP/SillyBunny/server.js"
           test "$(git -C "$RUNNER_TEMP/SillyBunny" rev-parse HEAD)" = "$(git rev-parse HEAD)"
 
@@ -160,11 +173,12 @@ jobs:
           "$SILLYBUNNY_NODE_INSTALL/bin/node" --version
           "$SILLYBUNNY_NODE_INSTALL/bin/npm" --version
           # Later steps read the dependency marker with node.
-          echo "$SILLYBUNNY_NODE_INSTALL/bin" >> "$GITHUB_PATH"
+          echo "TRIMMED_PATH=$SILLYBUNNY_NODE_INSTALL/bin:$TRIMMED_PATH" >> "$GITHUB_ENV"
 
       - name: Boot the installed copy through start.sh
         run: |
           set -euo pipefail
+          if [[ -n "${TRIMMED_PATH:-}" ]]; then export PATH="$TRIMMED_PATH"; fi
           # Fail loudly if anything already holds the port, so a readiness probe
           # cannot be satisfied by a process other than the one we launched.
           if curl --fail --silent --max-time 2 http://127.0.0.1:4444/ > /dev/null 2>&1; then
@@ -249,6 +263,7 @@ jobs:
       - name: Rerunning install.sh updates instead of reinstalling
         run: |
           set -euo pipefail
+          if [[ -n "${TRIMMED_PATH:-}" ]]; then export PATH="$TRIMMED_PATH"; fi
           head_before="$(git -C "$RUNNER_TEMP/SillyBunny" rev-parse HEAD)"
           output="$(bash scripts/bootstrap/install.sh \
             --repo "$GITHUB_WORKSPACE" \
