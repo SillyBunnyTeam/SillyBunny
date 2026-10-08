@@ -67,10 +67,6 @@ const STARTER_PACK_EXTENSIONS = Object.freeze({
         id: 'third-party/SillyBunny-CssSnippets',
         repoUrl: 'https://github.com/SillyBunnyTeam/SillyBunny-CssSnippets',
     }),
-    moonlitEchoes: Object.freeze({
-        id: 'third-party/SillyBunny-MoonlitEchoesTheme',
-        repoUrl: 'https://github.com/platberlitz/SillyBunny-MoonlitEchoesTheme',
-    }),
     terminalUi: Object.freeze({
         id: 'third-party/SillyBunny-Terminal-UI',
         repoUrl: 'https://github.com/SillyBunnyTeam/SillyBunny-Terminal-UI',
@@ -82,10 +78,6 @@ const STARTER_PACK_EXTENSIONS = Object.freeze({
     laLib: Object.freeze({
         id: 'third-party/SillyTavern-LALib',
         repoUrl: 'https://github.com/LenAnderson/SillyTavern-LALib',
-    }),
-    adhdBunnyUi: Object.freeze({
-        id: 'third-party/ADHDBunny-UI',
-        repoUrl: 'https://github.com/OnlyJimmy/ADHDBunny-UI',
     }),
     promptingLab: Object.freeze({
         id: 'third-party/SillyBunny-Prompting-Lab',
@@ -986,12 +978,6 @@ function buildStarterPackItems() {
                 extensionName: STARTER_PACK_EXTENSIONS.cssSnippets.id,
             }),
             buildExtensionStarterPackItem({
-                title: 'Moonlit Echoes Theme',
-                body: 'A popular CSS theme originally designed for SillyTavern with a clean and modern design, adapted for use in SillyBunny.',
-                icon: 'fa-moon',
-                extensionName: STARTER_PACK_EXTENSIONS.moonlitEchoes.id,
-            }),
-            buildExtensionStarterPackItem({
                 title: 'SillyBunny Terminal UI',
                 body: 'A CSS theme that mimics a traditional terminal emulator interface. This keeps the native chat window and implements a forward-facing slash-command system, reducing the surrounding UI to a tmux-style statusline.',
                 icon: 'fa-terminal',
@@ -1059,12 +1045,6 @@ function buildStarterPackItems() {
                 icon: 'fa-toolbox',
                 extensionName: STARTER_PACK_EXTENSIONS.laLib.id,
             }),
-            buildExtensionStarterPackItem({
-                title: 'ADHDBunny UI',
-                body: 'An optional CSS theme for SillyBunny which further simplifies the graphical shell and user interface. Developed by Jimmy.',
-                icon: 'fa-rabbit',
-                extensionName: STARTER_PACK_EXTENSIONS.adhdBunnyUi.id,
-            }),
         ],
     };
 }
@@ -1100,42 +1080,6 @@ function buildWelcomeTemplateData(chats) {
         starterPackItems: buildStarterPackItems(),
     };
 }
-
-async function highlightLaunchpadItem(extensionId) {
-    if (!extensionId) {
-        return false;
-    }
-
-    let welcomePanel = document.querySelector('.welcomePanel');
-    if (!(welcomePanel instanceof HTMLElement)) {
-        await openWelcomeScreen({ force: true });
-        welcomePanel = document.querySelector('.welcomePanel');
-    }
-
-    if (!(welcomePanel instanceof HTMLElement)) {
-        return false;
-    }
-
-    setWelcomeDeckView(welcomePanel, 'starter');
-    const selector = `.welcomeStarterPackCard[data-launchpad-extension="${CSS.escape(extensionId)}"]`;
-    const card = welcomePanel.querySelector(selector);
-    if (!(card instanceof HTMLElement)) {
-        return false;
-    }
-
-    const panelRect = welcomePanel.getBoundingClientRect();
-    const cardRect = card.getBoundingClientRect();
-    const delta = (cardRect.top - panelRect.top) - ((panelRect.height - cardRect.height) / 2);
-    welcomePanel.scrollTo({
-        top: Math.min(Math.max(welcomePanel.scrollTop + delta, 0), Math.max(0, welcomePanel.scrollHeight - welcomePanel.clientHeight)),
-        behavior: 'smooth',
-    });
-    flashHighlight($(card), 1400);
-    return true;
-}
-
-globalThis.SillyBunnyShell = /** @type {any} */ (globalThis.SillyBunnyShell || {});
-globalThis.SillyBunnyShell.highlightLaunchpadItem = highlightLaunchpadItem;
 
 /**
  * Gets the filter bucket used by the Recent Chats tabs.
