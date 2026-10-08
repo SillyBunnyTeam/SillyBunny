@@ -159,6 +159,12 @@ describe('in-chat agents generation UI wiring', () => {
         expect(agentRunnerSource).toContain('await refreshMessageAfterMutation(messageIndex, message, { deferBackup: true });');
         expect(coreScriptSource).toContain("isContinue || type === 'swipe' || type === 'regenerate' ? lastMessage : null");
         expect(coreScriptSource).toContain('message !== companionRewriteTarget');
+        // SillyBunny: the hide request runs after the swipe pop and before Companion notes are selected.
+        expect(coreScriptSource).toContain('await collectHiddenGenerationMessages(coreChat, type, request => eventSource.emit(event_types.GENERATION_HIDE_MESSAGES, request))');
+        expect(coreScriptSource).toContain('const companionCandidateMessages = companionVisibleMessages.filter(message =>');
+        expect(coreScriptSource.indexOf('collectHiddenGenerationMessages(coreChat')).toBeGreaterThan(coreScriptSource.indexOf('coreChat.pop();'));
+        expect(coreScriptSource.indexOf('collectHiddenGenerationMessages(coreChat')).toBeLessThan(coreScriptSource.indexOf('selectCompanionChatHistory(companionCandidateMessages'));
+        expect(coreScriptSource).toContain('const hiddenGenerationMessages = dryRun');
         expect(coreScriptSource).toContain('!message.extra?.[IGNORE_SYMBOL]');
         expect(coreScriptSource).toContain(').filter(message => !message.extra?.[IGNORE_SYMBOL]);');
         expect(coreScriptSource).toContain('consolidateCompanionChatHistory(companionCandidateMessages, companionChatHistory');

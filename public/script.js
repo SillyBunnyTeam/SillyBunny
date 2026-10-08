@@ -265,6 +265,7 @@ import { getRegexedString, regex_placement } from './scripts/extensions/regex/en
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from './scripts/extensions/in-chat-agents/regex-scripts.js';
 import { resolveRegexScriptsForSnapshot } from './scripts/extensions/in-chat-agents/regex-snapshot-store.js';
 import { consolidateCompanionChatHistory, hasCompanionChatHistoryForHiddenHost, selectCompanionChatHistory } from './scripts/extensions/in-chat-agents/companion/companion-shared.js';
+import { collectHiddenGenerationMessages } from './scripts/generation-hidden-messages.js';
 import { IN_CHAT_AGENT_PROMPT_KEY_PREFIX, instrumentInChatAgentPromptValue, trimOldestRetainedContribution } from './scripts/in-chat-agent-inspection.js';
 import { initLogprobs, saveLogprobsForActiveMessage } from './scripts/logprobs.js';
 import { FILTER_STATES, FILTER_TYPES, FilterHelper, isFilterState } from './scripts/filters.js';
@@ -7756,9 +7757,19 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         if (type === 'swipe') {
             coreChat.pop();
         }
+        // SillyBunny: an extension may hide lines from this speaker (GENERATION_HIDE_MESSAGES) before retained
+        // Companion notes are merged below, so a hidden line's notes are never merged and a hidden line never
+        // hosts the merge. Dry runs skip the request, as they skip the generate interceptors.
+        const hiddenGenerationMessages = dryRun
+            ? new Set()
+            : await collectHiddenGenerationMessages(coreChat, type, request => eventSource.emit(event_types.GENERATION_HIDE_MESSAGES, request));
+        if (!isCurrent()) return;
+        const companionVisibleMessages = hiddenGenerationMessages.size > 0
+            ? coreChat.filter(message => !hiddenGenerationMessages.has(message))
+            : coreChat;
         const companionRewriteTarget = companionHistoryTarget
         ?? (isContinue || type === 'swipe' || type === 'regenerate' ? lastMessage : null);
-        const companionCandidateMessages = coreChat.filter(message =>
+        const companionCandidateMessages = companionVisibleMessages.filter(message =>
             message !== companionRewriteTarget
         && !message.extra?.[IGNORE_SYMBOL],
         );

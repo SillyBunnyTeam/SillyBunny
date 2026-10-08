@@ -1369,9 +1369,16 @@ export async function renameGroupMember(oldAvatar, newAvatar, newName) {
                         }
                     }
 
-                    if (hadChanges) {
-                        await eventSource.emit(event_types.CHARACTER_RENAMED_IN_PAST_CHAT, messages, oldAvatar, newAvatar);
+                    // SillyBunny: extensions keep per-chat data about members who never wrote a line (for
+                    // example which messages a member missed), so every chat of the group hears the rename
+                    // and is saved when a listener changed it.
+                    const unchanged = hadChanges ? null : JSON.stringify(messages);
+                    await eventSource.emit(event_types.CHARACTER_RENAMED_IN_PAST_CHAT, messages, oldAvatar, newAvatar);
+                    if (unchanged !== null && JSON.stringify(messages) !== unchanged) {
+                        hadChanges = true;
+                    }
 
+                    if (hadChanges) {
                         const saveChatRequest = await compressRequest({
                             method: 'POST',
                             headers: getRequestHeaders(),
