@@ -57,6 +57,9 @@ export const event_types = {
     CHAT_RENAMED: 'chat_renamed',
     GROUP_CHAT_DELETED: 'group_chat_deleted',
     GROUP_CHAT_CREATED: 'group_chat_created',
+    // SillyBunny: an extension may hide prompt lines from this generation's speaker before retained
+    // Companion notes are merged; the payload is a request answered by index (generation-hidden-messages.js).
+    GENERATION_HIDE_MESSAGES: 'generation_hide_messages',
     GENERATE_BEFORE_COMBINE_PROMPTS: 'generate_before_combine_prompts',
     GENERATE_AFTER_COMBINE_PROMPTS: 'generate_after_combine_prompts',
     GENERATION_OUTPUT_BUFFERING_DECISION: 'generation_output_buffering_decision',

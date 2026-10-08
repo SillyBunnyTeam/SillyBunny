@@ -68,6 +68,7 @@ function createHost() {
         getExtensionPromptRoleByName: role => role,
         ToolManager: { isToolCallingSupported: () => false, canPerformToolCalls: () => false, RECURSE_LIMIT: 5 },
         selectCompanionChatHistory: () => [], consolidateCompanionChatHistory: () => ({ host: null, entries: [] }),
+        collectHiddenGenerationMessages: async () => new Set(),
         PromptReasoning: class { removePrefix(text) { return text; } },
         getMaxPromptTokens: () => 4096, runGenerationInterceptors: jest.fn(async () => false),
         getGuidanceScale: () => null, parseMesExamples: () => [], buildWorldInfoScanChat: () => [],
