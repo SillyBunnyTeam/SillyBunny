@@ -143,6 +143,7 @@ describePosix('install.sh against a fixture repository', () => {
         writeFile(path.join(fixtureRepo, 'plugins', 'package.json'), 'tracked\n');
         writeFile(path.join(fixtureRepo, 'public', 'scripts', 'extensions', 'third-party', 'Bundled', 'index.js'), 'new bundled\n');
         writeFile(path.join(fixtureRepo, 'scripts', 'self-update.sh'), 'echo "SELF-UPDATE $*"\n');
+        writeFile(path.join(fixtureRepo, 'scripts', 'install-prerequisites.sh'), 'echo "PREREQUISITES $*"\n');
         writeFile(path.join(fixtureRepo, 'start.sh'), 'echo "STARTED in $PWD"\n');
         git(workDir, 'init', '--quiet', '--initial-branch=release', fixtureRepo);
         git(fixtureRepo, 'add', '-A');
@@ -273,24 +274,25 @@ describePosix('install.sh against a fixture repository', () => {
         expect(output).toContain('Android shared storage');
     });
 
-    test('macOS without a working Node.js stops before cloning unless Bun is forced', () => {
-        // Pretend to be a Mac whose node is broken, without touching the real PATH entries.
+    test('macOS installs Node.js through the clone\'s prerequisites unless Bun is forced', () => {
+        // Pretend to be a Mac. The fixture clone's prerequisites script records its arguments.
         const fakeBin = path.join(workDir, 'fake-mac-bin');
         writeFile(path.join(fakeBin, 'uname'), '#!/bin/sh\n[ "$1" = "-s" ] && echo Darwin || echo arm64\n');
-        writeFile(path.join(fakeBin, 'node'), '#!/bin/sh\nexit 127\n');
-        spawnSync('chmod', ['+x', path.join(fakeBin, 'uname'), path.join(fakeBin, 'node')]);
+        spawnSync('chmod', ['+x', path.join(fakeBin, 'uname')]);
         const macEnv = { PATH: `${fakeBin}${path.delimiter}${process.env.PATH}` };
 
-        const refused = path.join(workDir, 'mac-no-node');
-        const { status, output } = runInstaller(['--dir', refused, '--no-start'], macEnv);
-        expect(status).not.toBe(0);
-        expect(output).toContain('SillyBunny needs Node.js on macOS');
-        expect(existsSync(refused)).toBe(false);
+        const target = path.join(workDir, 'mac-node');
+        const { status, output } = runInstaller(['--dir', target, '--no-start'], macEnv);
+        expect(status).toBe(0);
+        expect(output).toContain('PREREQUISITES --require-node-runtime --skip-bun');
 
-        const forcedBun = path.join(workDir, 'mac-bun');
-        const bunRun = runInstaller(['--dir', forcedBun, '--use-bun', '--no-start'], macEnv);
-        expect(bunRun.status).toBe(0);
-        expect(existsSync(path.join(forcedBun, '.git'))).toBe(true);
+        const forcedBun = runInstaller(['--dir', path.join(workDir, 'mac-bun'), '--use-bun', '--no-start'], macEnv);
+        expect(forcedBun.status).toBe(0);
+        expect(forcedBun.output).not.toContain('PREREQUISITES');
+
+        const linux = runInstaller(['--dir', path.join(workDir, 'not-mac'), '--no-start']);
+        expect(linux.status).toBe(0);
+        expect(linux.output).not.toContain('PREREQUISITES');
     });
 
     test('unknown options and missing values fail with usage', () => {

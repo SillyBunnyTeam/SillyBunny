@@ -53,7 +53,7 @@ Options:
                           old non-Git (ZIP) install. The old folder is not changed.
   --use-bun               Force Bun as the runtime (default on Linux/Windows)
   --use-node              Force Node.js as the runtime (default on macOS,
-                          where Node.js must be installed first)
+                          where it is installed automatically if missing)
   --no-start              Install only; do not start SillyBunny afterwards
   -h, --help              Show this help
 EOF
@@ -240,9 +240,10 @@ install_git() {
     have_working_git || die "Git was installed, but 'git' is still unavailable in this shell."
 }
 
-# macOS runs SillyBunny on Node.js (Bun idles at high CPU there, oven-sh/bun#26415),
-# and the launcher cannot install Node on macOS, so check before anything is cloned.
-require_macos_node() {
+# macOS runs SillyBunny on Node.js (Bun idles at high CPU there, oven-sh/bun#26415).
+# The clone's own prerequisites script installs Node.js when it is missing, so a
+# --no-start install is ready to run too.
+install_macos_node() {
     [[ "$(uname -s 2>/dev/null)" == Darwin ]] || return 0
     if [[ "$runtime_override" == bun ]]; then
         return 0
@@ -253,10 +254,7 @@ require_macos_node() {
     case "$forced" in
         1|true|yes|on) return 0 ;;
     esac
-    if have_command node && node --version >/dev/null 2>&1 && have_command npm && npm --version >/dev/null 2>&1; then
-        return 0
-    fi
-    die 'SillyBunny needs Node.js on macOS. Install the LTS version from https://nodejs.org (or run: brew install node), then rerun this installer.'
+    bash "$install_dir/scripts/install-prerequisites.sh" --require-node-runtime --skip-bun
 }
 
 # Prints the data root relative to the install folder, or an absolute path.
@@ -523,8 +521,6 @@ main() {
         installer_name="$(basename "${BASH_SOURCE[0]}")"
     fi
 
-    require_macos_node
-
     # Show the interactive wizard when the script is run directly with no
     # arguments in a terminal. Piped or scripted invocations skip it.
     if [[ -t 0 && $_argc -eq 0 ]]; then
@@ -550,6 +546,7 @@ main() {
             die "$install_dir already has an install. Migrate into a new folder with --dir."
         fi
         update_install
+        install_macos_node
         start_install
         return
     fi
@@ -573,6 +570,8 @@ main() {
     if [[ -n "$migrate_from" ]]; then
         migrate_old_install
     fi
+
+    install_macos_node
 
     start_install
 }

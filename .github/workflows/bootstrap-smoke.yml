@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   posix:
-    name: Bootstrap smoke (${{ matrix.os }}, ${{ matrix.runtime }}${{ matrix.fresh_bun && ', fresh bun' || '' }})
+    name: Bootstrap smoke (${{ matrix.os }}, ${{ matrix.runtime }}${{ matrix.fresh_bun && ', fresh bun' || '' }}${{ matrix.fresh_node && ', fresh node' || '' }})
     strategy:
       fail-fast: false
       matrix:
@@ -46,6 +46,13 @@ jobs:
             runtime: bun
             expect: bun
             fresh_bun: false
+          # The genuine first-run Mac: hide every preinstalled Node.js so the
+          # installer has to download the pinned build from nodejs.org.
+          - os: macos-latest
+            runtime: default
+            expect: node
+            fresh_bun: false
+            fresh_node: true
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
@@ -104,6 +111,36 @@ jobs:
           fi
           test ! -x "$BUN_INSTALL/bin/bun"
 
+      - name: Hide preinstalled Node.js so the installer must download it
+        if: matrix.fresh_node
+        run: |
+          set -euo pipefail
+          # install-prerequisites.sh also searches /opt/homebrew/bin and /usr/local/bin.
+          for dir in /opt/homebrew/bin /usr/local/bin; do
+            for tool in node npm npx corepack; do
+              if [[ -e "$dir/$tool" || -L "$dir/$tool" ]]; then
+                sudo mv "$dir/$tool" "$dir/$tool.hidden-by-smoke"
+              fi
+            done
+          done
+          trimmed_path=''
+          IFS=':' read -r -a path_entries <<< "$PATH"
+          for dir in "${path_entries[@]}"; do
+            [[ -n "$dir" && ! -x "$dir/node" ]] || continue
+            trimmed_path="${trimmed_path:+$trimmed_path:}$dir"
+          done
+          export PATH="$trimmed_path"
+          export SILLYBUNNY_NODE_INSTALL="$RUNNER_TEMP/node-fresh"
+          {
+            echo "PATH=$PATH"
+            echo "SILLYBUNNY_NODE_INSTALL=$SILLYBUNNY_NODE_INSTALL"
+          } >> "$GITHUB_ENV"
+          if command -v node >/dev/null 2>&1; then
+            echo "Node.js is still resolvable at $(command -v node); this leg would not exercise the download." >&2
+            exit 1
+          fi
+          test ! -e "$SILLYBUNNY_NODE_INSTALL"
+
       - name: Run install.sh against this checkout
         run: |
           set -euo pipefail
@@ -115,6 +152,15 @@ jobs:
             --no-start
           test -f "$RUNNER_TEMP/SillyBunny/server.js"
           test "$(git -C "$RUNNER_TEMP/SillyBunny" rev-parse HEAD)" = "$(git rev-parse HEAD)"
+
+      - name: Assert the installer downloaded Node.js
+        if: matrix.fresh_node
+        run: |
+          set -euo pipefail
+          "$SILLYBUNNY_NODE_INSTALL/bin/node" --version
+          "$SILLYBUNNY_NODE_INSTALL/bin/npm" --version
+          # Later steps read the dependency marker with node.
+          echo "$SILLYBUNNY_NODE_INSTALL/bin" >> "$GITHUB_PATH"
 
       - name: Boot the installed copy through start.sh
         run: |
@@ -217,7 +263,7 @@ jobs:
       # so the flag-driven steps above never reach it. expect (part of macOS)
       # supplies the terminal; cancelling at the summary keeps it offline.
       - name: Wizard answers parse under the system /bin/bash
-        if: runner.os == 'macOS' && matrix.runtime == 'default'
+        if: runner.os == 'macOS' && matrix.runtime == 'default' && !matrix.fresh_node
         run: |
           set -euo pipefail
           /bin/bash --version | head -n 1
