@@ -294,7 +294,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Protecting tests | `tests/in-chat-agents-runner.test.js`, `tests/in-chat-agents-store.test.js`, `tests/in-chat-agents-generation-ui-wiring.test.js`, `tests/guided-generations-correction-wiring.test.js`, `tests/generation-hidden-messages.test.js`, and retained-contribution cases in `tests/in-chat-agent-inspection.test.js`. |
 | Validation | `npm run test:unit --prefix tests -- in-chat-agents-runner.test.js in-chat-agents-generation-ui-wiring.test.js in-chat-agent-inspection.test.js generation-hidden-messages.test.js`, `npm run lint`, `npm run check:frontend-budgets`, and `git diff --check`. |
 | Rollback path | Remove retained-context projection, provenance transport, trim loops, rewrite-target plumbing, and the hide request (`companionCandidateMessages` goes back to filtering `coreChat`). Stored Companion settings and results remain compatible and can be ignored without migration. |
-| Last reviewed | 2026-10-08 hide request for extension-hidden lines (voldomero/SillyBunny#4). |
+| Last reviewed | 2026-10-08 hide request for extension-hidden lines (voldomero/SillyBunny#3). |
 | Owner | In-Chat Agents maintainer and generation/provider owner. |
 
 ### `public/script.js`, `public/scripts/openai.js`, `public/scripts/PromptManager.js`, and `public/css/promptmanager.css` - runtime In-Chat Agent prompt inspection
