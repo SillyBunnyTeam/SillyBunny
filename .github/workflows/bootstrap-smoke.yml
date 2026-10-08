@@ -170,8 +170,11 @@ jobs:
         if: matrix.fresh_node
         run: |
           set -euo pipefail
-          "$SILLYBUNNY_NODE_INSTALL/bin/node" --version
-          "$SILLYBUNNY_NODE_INSTALL/bin/npm" --version
+          # npm is a `#!/usr/bin/env node` script, so node must be on PATH to run it.
+          export PATH="$SILLYBUNNY_NODE_INSTALL/bin:$TRIMMED_PATH"
+          test "$(command -v node)" = "$SILLYBUNNY_NODE_INSTALL/bin/node"
+          node --version
+          npm --version
           # Later steps read the dependency marker with node.
           echo "TRIMMED_PATH=$SILLYBUNNY_NODE_INSTALL/bin:$TRIMMED_PATH" >> "$GITHUB_ENV"
 
