@@ -52,7 +52,8 @@ Options:
   --migrate-from <path>   Copy data, settings, plugins and extensions from an
                           old non-Git (ZIP) install. The old folder is not changed.
   --use-bun               Force Bun as the runtime (default on Linux/Windows)
-  --use-node              Force Node.js as the runtime (default on macOS)
+  --use-node              Force Node.js as the runtime (default on macOS,
+                          where Node.js must be installed first)
   --no-start              Install only; do not start SillyBunny afterwards
   -h, --help              Show this help
 EOF
@@ -237,6 +238,25 @@ install_git() {
 
     hash -r
     have_working_git || die "Git was installed, but 'git' is still unavailable in this shell."
+}
+
+# macOS runs SillyBunny on Node.js (Bun idles at high CPU there, oven-sh/bun#26415),
+# and the launcher cannot install Node on macOS, so check before anything is cloned.
+require_macos_node() {
+    [[ "$(uname -s 2>/dev/null)" == Darwin ]] || return 0
+    if [[ "$runtime_override" == bun ]]; then
+        return 0
+    fi
+    # start.sh honours the same override, e.g. `curl -fsSL <url> | SILLYBUNNY_USE_BUN=1 bash`.
+    local forced
+    forced="$(printf '%s' "${SILLYBUNNY_USE_BUN:-}" | tr '[:upper:]' '[:lower:]')"
+    case "$forced" in
+        1|true|yes|on) return 0 ;;
+    esac
+    if have_command node && node --version >/dev/null 2>&1 && have_command npm && npm --version >/dev/null 2>&1; then
+        return 0
+    fi
+    die 'SillyBunny needs Node.js on macOS. Install the LTS version from https://nodejs.org (or run: brew install node), then rerun this installer.'
 }
 
 # Prints the data root relative to the install folder, or an absolute path.
@@ -458,7 +478,9 @@ run_wizard() {
         printf '  Bun is faster; Node.js is the fallback for systems where Bun has issues.\n'
         printf '  [B]un / [n]ode (default: Bun) '
         read -r answer
-        case "${answer,,}" in
+        # ${answer,,} needs bash 4; macOS ships bash 3.2 as /bin/bash.
+        answer="$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')"
+        case "$answer" in
             n|node) runtime_override='node' ;;
             *)      runtime_override='bun'  ;;
         esac
@@ -468,7 +490,8 @@ run_wizard() {
     printf '\n'
     printf 'Start SillyBunny when setup finishes? [Y/n] '
     read -r answer
-    case "${answer,,}" in
+    answer="$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')"
+    case "$answer" in
         n|no) start_after=0 ;;
     esac
 
@@ -499,6 +522,8 @@ main() {
     if [[ -f "${BASH_SOURCE[0]:-}" ]]; then
         installer_name="$(basename "${BASH_SOURCE[0]}")"
     fi
+
+    require_macos_node
 
     # Show the interactive wizard when the script is run directly with no
     # arguments in a terminal. Piped or scripted invocations skip it.

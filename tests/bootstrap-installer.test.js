@@ -273,6 +273,26 @@ describePosix('install.sh against a fixture repository', () => {
         expect(output).toContain('Android shared storage');
     });
 
+    test('macOS without a working Node.js stops before cloning unless Bun is forced', () => {
+        // Pretend to be a Mac whose node is broken, without touching the real PATH entries.
+        const fakeBin = path.join(workDir, 'fake-mac-bin');
+        writeFile(path.join(fakeBin, 'uname'), '#!/bin/sh\n[ "$1" = "-s" ] && echo Darwin || echo arm64\n');
+        writeFile(path.join(fakeBin, 'node'), '#!/bin/sh\nexit 127\n');
+        spawnSync('chmod', ['+x', path.join(fakeBin, 'uname'), path.join(fakeBin, 'node')]);
+        const macEnv = { PATH: `${fakeBin}${path.delimiter}${process.env.PATH}` };
+
+        const refused = path.join(workDir, 'mac-no-node');
+        const { status, output } = runInstaller(['--dir', refused, '--no-start'], macEnv);
+        expect(status).not.toBe(0);
+        expect(output).toContain('SillyBunny needs Node.js on macOS');
+        expect(existsSync(refused)).toBe(false);
+
+        const forcedBun = path.join(workDir, 'mac-bun');
+        const bunRun = runInstaller(['--dir', forcedBun, '--use-bun', '--no-start'], macEnv);
+        expect(bunRun.status).toBe(0);
+        expect(existsSync(path.join(forcedBun, '.git'))).toBe(true);
+    });
+
     test('unknown options and missing values fail with usage', () => {
         expect(runInstaller(['--bogus']).output).toContain('Unknown option: --bogus');
         expect(runInstaller(['--ref']).output).toContain('--ref needs a value.');

@@ -213,6 +213,57 @@ jobs:
           grep -F "already installed" <<< "$output"
           test "$(git -C "$RUNNER_TEMP/SillyBunny" rev-parse HEAD)" = "$head_before"
 
+      # macOS ships bash 3.2 as /bin/bash, and the wizard only runs on a terminal,
+      # so the flag-driven steps above never reach it. expect (part of macOS)
+      # supplies the terminal; cancelling at the summary keeps it offline.
+      - name: Wizard answers parse under the system /bin/bash
+        if: runner.os == 'macOS' && matrix.runtime == 'default'
+        run: |
+          set -euo pipefail
+          /bin/bash --version | head -n 1
+          target="$RUNNER_TEMP/wizard-install"
+          cat > "$RUNNER_TEMP/wizard.exp" <<'EXP'
+          set timeout 60
+          proc fail {msg} { puts "\nWizard check failed: $msg"; exit 1 }
+          spawn -noecho /bin/bash scripts/bootstrap/install.sh
+          expect {
+              -ex "Where should SillyBunny be installed?" {}
+              eof { fail "installer exited before the install-directory question" }
+              timeout { fail "no install-directory question" }
+          }
+          expect -ex "> "
+          send -- "$env(WIZARD_TARGET)\r"
+          expect {
+              -ex "Migrate from an older installation?" {}
+              eof { fail "installer exited before the migrate question" }
+              timeout { fail "no migrate question" }
+          }
+          expect -ex "> "
+          send -- "\r"
+          expect {
+              -ex "Which JavaScript runtime" { fail "runtime question shown on macOS" }
+              -ex "Start SillyBunny when setup finishes?" {}
+              eof { fail "installer exited before the start question" }
+              timeout { fail "no start question" }
+          }
+          send -- "N\r"
+          expect {
+              -ex "bad substitution" { fail "answer parsing needs a newer bash" }
+              -ex "Start after install: No" {}
+              eof { fail "installer exited before the summary" }
+              timeout { fail "no summary showing the uppercase N answer" }
+          }
+          expect {
+              -ex "Press Enter to begin" {}
+              eof { fail "installer exited before the begin prompt" }
+              timeout { fail "no begin prompt" }
+          }
+          send -- "\003"
+          expect eof
+          EXP
+          WIZARD_TARGET="$target" expect -f "$RUNNER_TEMP/wizard.exp"
+          test ! -e "$target"
+
   windows:
     name: Bootstrap smoke (${{ matrix.runtime }})
     strategy:
