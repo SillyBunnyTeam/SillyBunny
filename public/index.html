@@ -81,6 +81,7 @@
         <script>
             // SillyBunny: resolve the selected frontend icon before the module bundle loads.
             (function () {
+                var preloader = document.getElementById('preloader');
                 var icons = { pixel: 'img/sillybunny-pixel-logo-og.png', badge: 'img/sillybunny-badge.png' };
                 var iconId = 'pixel';
                 try {
@@ -89,7 +90,14 @@
                 } catch (_error) {
                     // Storage can be blocked; use the default icon.
                 }
-                document.querySelector('#preloader .splash-logo').src = '/' + icons[iconId];
+                preloader.querySelector('.splash-logo').src = '/' + icons[iconId];
+                // Without a stored surface the splash follows the live theme variables, which change
+                // when settings load. Pin the first painted colors so it stays one surface until it fades.
+                if (!document.documentElement.style.getPropertyValue('--sb-boot-bg')) {
+                    var style = getComputedStyle(preloader);
+                    document.documentElement.style.setProperty('--sb-boot-bg', style.backgroundColor);
+                    document.documentElement.style.setProperty('--sb-boot-fg', style.color);
+                }
             })();
         </script>
     </div>
