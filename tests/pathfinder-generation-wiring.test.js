@@ -83,6 +83,7 @@ function createHost() {
         cleanUpMessage: ({ getMessage }) => getMessage, getRegexedString: text => text, regex_placement: { REASONING: 0 },
         applyMainGenerationOutputInterceptors: jest.fn(async ({ text }) => ({ text, cancelled: false })),
         saveReply: jest.fn(async data => data), saveChatConditional: jest.fn(async () => {}),
+        createGenerationCommitPlan: () => null, registerGenerationCommitPlan: () => undefined, getMessageIdentity: () => null,
         TempResponseLength: { isCustomized: () => false }, removeReasoningFromString: text => text,
         t: (strings, ...values) => String.raw({ raw: strings }, ...values),
         toastr: { error: jest.fn(), warning: jest.fn() },
@@ -383,6 +384,7 @@ describe('Pathfinder integration with the real extracted host generation flow', 
         host.context.StreamingProcessor = class {
             constructor() {
                 this.abortController = new AbortController();
+                this.requestAbortController = new AbortController();
                 [this.result, this.toolCalls] = [['tool plan', [{}]], ['final stream', []]][streamIndex++];
                 this.reasoningHandler = { reasoning: '' };
                 this.isFinished = true;

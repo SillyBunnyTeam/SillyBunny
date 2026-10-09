@@ -339,7 +339,9 @@ import { compressRequest, setRequestCompressionConfig } from './scripts/request-
 import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker } from './scripts/swipe-picker.js';
 import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-send-button.js';
 import { formatMobileStreamingPreview, getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval, isAndroidStreamingPlatform, shouldReduceStreamingDomWork, shouldUsePlainTextStreamingPreview } from './scripts/mobile-streaming.js';
-import { fetchResumable } from './scripts/resumable-generation.js';
+import { fetchResumable, registerGenerationCommitPlan } from './scripts/resumable-generation.js';
+import { getMessageIdentity } from './scripts/generation-commit-plan.js';
+import { createGenerationCommitPlan, initServerGenerations } from './scripts/server-generations.js';
 import { applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse } from './scripts/generation-request-controls.js';
 import {
     CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
@@ -1221,6 +1223,7 @@ async function firstLoadInit() {
         initSettingsSearch();
         initBulkEdit();
         initReasoning();
+        initServerGenerations();
         initWelcomeScreen();
         initQuickContextSizeEnhancer();
         await initScrapers();
@@ -7531,6 +7534,8 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         const shouldConsumeUserInput = type !== 'regenerate' && type !== 'swipe' && type !== 'quiet' && !isImpersonate && !dryRun && !depth && !suppressUserMessage;
         let textareaText = '';
         let renderedUserMessage = false;
+        // SillyBunny: a regenerated reply may still be on disk when the server writes its replacement.
+        let replacedMessageIdentity = null;
 
         if (!(dryRun || depth || suppressUserMessage || type == 'regenerate' || type == 'swipe' || type == 'quiet')) {
             const interruptedByCommand = await processCommands(String($('#send_textarea').val()));
@@ -7560,6 +7565,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                         requestMobileChatBottomPin();
                     }
                     const deletedMessageId = chat.length - 1;
+                    replacedMessageIdentity = getMessageIdentity(chat[deletedMessageId]);
                     deleteItemizedPromptForMessage(deletedMessageId);
                     chat.length = deletedMessageId;
                     await removeLastMessage(deletedMessageId);
@@ -8835,6 +8841,9 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
                     const shouldBufferOutput = await shouldBufferMainGenerationOutput({ type, isStreaming: true });
                     if (!isCurrent()) return;
+                    if (!isImpersonate) {
+                        registerGenerationCommitPlan(activeStreamingProcessor.requestAbortController.signal, createGenerationCommitPlan({ type, started: generation_started, replaces: replacedMessageIdentity }));
+                    }
                     activeStreamingProcessor.generator = await sendStreamingRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope, signal, ...requestControls });
                     if (!isCurrent()) return;
 
@@ -8977,6 +8986,9 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                     }
                 }
             } else {
+                if (!isImpersonate && type !== 'quiet' && signal) {
+                    registerGenerationCommitPlan(signal, createGenerationCommitPlan({ type, started: generation_started, replaces: replacedMessageIdentity }));
+                }
                 return await sendGenerationRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope, signal, ...requestControls });
             }
         }
