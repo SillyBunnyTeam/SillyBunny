@@ -242,7 +242,9 @@ install_git() {
 
 # macOS runs SillyBunny on Node.js (Bun idles at high CPU there, oven-sh/bun#26415).
 # The clone's own prerequisites script installs Node.js when it is missing, so a
-# --no-start install is ready to run too.
+# --no-start install is ready to run too. Best effort: the clone and any migration
+# are already done, and clones of older refs (e.g. a pinned tag) whose prerequisites
+# script cannot install Node.js on macOS exit non-zero here.
 install_macos_node() {
     [[ "$(uname -s 2>/dev/null)" == Darwin ]] || return 0
     if [[ "$runtime_override" == bun ]]; then
@@ -254,7 +256,10 @@ install_macos_node() {
     case "$forced" in
         1|true|yes|on) return 0 ;;
     esac
-    bash "$install_dir/scripts/install-prerequisites.sh" --require-node-runtime --skip-bun
+    if ! bash "$install_dir/scripts/install-prerequisites.sh" --require-node-runtime --skip-bun; then
+        log 'Node.js was not installed automatically; the install itself is complete.'
+        log 'Install Node.js from https://nodejs.org so start.sh can run SillyBunny on it.'
+    fi
 }
 
 # Prints the data root relative to the install folder, or an absolute path.

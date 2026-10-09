@@ -143,7 +143,7 @@ describePosix('install.sh against a fixture repository', () => {
         writeFile(path.join(fixtureRepo, 'plugins', 'package.json'), 'tracked\n');
         writeFile(path.join(fixtureRepo, 'public', 'scripts', 'extensions', 'third-party', 'Bundled', 'index.js'), 'new bundled\n');
         writeFile(path.join(fixtureRepo, 'scripts', 'self-update.sh'), 'echo "SELF-UPDATE $*"\n');
-        writeFile(path.join(fixtureRepo, 'scripts', 'install-prerequisites.sh'), 'echo "PREREQUISITES $*"\n');
+        writeFile(path.join(fixtureRepo, 'scripts', 'install-prerequisites.sh'), 'echo "PREREQUISITES $*"\n[ -z "$FAKE_PREREQUISITES_FAIL" ]\n');
         writeFile(path.join(fixtureRepo, 'start.sh'), 'echo "STARTED in $PWD"\n');
         git(workDir, 'init', '--quiet', '--initial-branch=release', fixtureRepo);
         git(fixtureRepo, 'add', '-A');
@@ -293,6 +293,26 @@ describePosix('install.sh against a fixture repository', () => {
         const linux = runInstaller(['--dir', path.join(workDir, 'not-mac'), '--no-start']);
         expect(linux.status).toBe(0);
         expect(linux.output).not.toContain('PREREQUISITES');
+    });
+
+    test('on macOS a clone that cannot install Node.js still completes the install and migration', () => {
+        // An older ref, such as a pinned tag, whose prerequisites script exits 1 on macOS.
+        const fakeBin = path.join(workDir, 'fake-mac-bin-no-node');
+        writeFile(path.join(fakeBin, 'uname'), '#!/bin/sh\n[ "$1" = "-s" ] && echo Darwin || echo arm64\n');
+        spawnSync('chmod', ['+x', path.join(fakeBin, 'uname')]);
+        const macEnv = { PATH: `${fakeBin}${path.delimiter}${process.env.PATH}`, FAKE_PREREQUISITES_FAIL: '1' };
+        const oldDir = makeOldInstall('old-mac-no-node', 'dataRoot: ./data\n');
+        const target = path.join(workDir, 'mac-no-node');
+
+        const { status, output } = runInstaller(['--dir', target, '--migrate-from', oldDir, '--no-start'], macEnv);
+        expect(status).toBe(0);
+        expect(output).toContain('Node.js was not installed automatically');
+        expect(output).toContain(`bash "${target}/start.sh"`);
+        expect(existsSync(path.join(target, 'data', 'default-user', 'chats', 'Seraphina', 'chat.jsonl'))).toBe(true);
+
+        const rerun = runInstaller(['--dir', target, '--no-start'], macEnv);
+        expect(rerun.status).toBe(0);
+        expect(rerun.output).toContain('already installed');
     });
 
     test('unknown options and missing values fail with usage', () => {
