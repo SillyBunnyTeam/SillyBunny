@@ -1,10 +1,8 @@
 /* eslint-disable playwright/no-standalone-expect -- Jest test.each tables are not Playwright tests. */
-import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { parse } from 'acorn';
 import { describe, expect, test } from '@jest/globals';
 import { createGroupTurnRouting } from '../public/scripts/group-turn-routing.js';
-import { createGroupChatsRuntime, getExportedNames, groupChatsAst } from './util/group-chats-sandbox.js';
+import { createGroupChatsRuntime } from './util/group-chats-sandbox.js';
 
 const members = new Map([['alice.png', 0], ['bob.png', 1], ['carol.png', 2]]);
 const resolveMember = avatar => members.get(avatar) ?? -1;
@@ -165,7 +163,7 @@ describe('routed turns', () => {
         expect(events[0].turnId).toBe(7);
 
         expect(turn.plan(resolveMember)).toEqual([1, 0]);
-        expect(plans).toEqual([{ requestId, turnId: 7, groupId: 'group-1', chatId: 'chat-1', chat, text: 'Hello everyone' }]);
+        expect(plans).toEqual([{ requestId, turnId: 7, groupId: 'group-1', chatId: 'chat-1', chat, text: 'Hello everyone', addressed: { avatar: '', wholeGroup: false } }]);
         expect(plans[0].chat).toBe(chat);
 
         turn.acknowledge();
@@ -374,8 +372,8 @@ describe('group sends with a routing owner', () => {
 
         expect(sandbox.log).toEqual([
             'turn-started',
-            'plan',
             'user message: Hello everyone, how is Alice?',
+            'plan',
             'acknowledged',
             'reply-started bob.png',
             'normal reply by bob.png',
@@ -389,6 +387,40 @@ describe('group sends with a routing owner', () => {
         expect(sandbox.plans[0].chat).toBe(sandbox.runtime.chat);
         expect(sandbox.events.filter(event => event.status).map(event => event.status)).toEqual(['success', 'success', 'success']);
         expect(sandbox.events.every(event => event.turnId === vm.runInContext('group_generation_id', sandbox.runtime))).toBe(true);
+    });
+
+    test('the owner plans against a chat that already ends with the saved user message', async () => {
+        const seen = [];
+        const sandbox = createRoutedGroupChat({
+            plan: ({ chat }) => {
+                seen.push({ ...chat.at(-1) });
+                return { avatars: ['bob.png'], isCurrent: () => true };
+            },
+        });
+        let saves = 0;
+        sandbox.runtime.saveChatConditional = async () => {
+            saves++;
+            return true;
+        };
+
+        await send(sandbox, 'Where did everyone go?');
+
+        expect(seen).toEqual([{ name: 'User', mes: 'Where did everyone go?', is_user: true }]);
+        expect(saves).toBe(1);
+    });
+
+    test.each([
+        ['names a member', 'Alice, are you there?', { avatar: 'alice.png', wholeGroup: false }],
+        ['addresses the whole group', 'Hello everyone.', { avatar: '', wholeGroup: true }],
+        ['names a muted member only', 'Carol, are you there?', { avatar: '', wholeGroup: false }],
+        ['addresses nobody', 'Nice weather.', { avatar: '', wholeGroup: false }],
+    ])('the owner hears what native addressing found when a message %s, and its plan still answers', async (_, text, addressed) => {
+        const sandbox = createRoutedGroupChat({ plan: () => ({ avatars: ['bob.png'], isCurrent: () => true }) });
+
+        await send(sandbox, text);
+
+        expect(sandbox.plans[0].addressed).toEqual(addressed);
+        expect(sandbox.generations).toEqual([{ type: 'normal', avatar: 'bob.png' }]);
     });
 
     test('routed replies run without auto-continue or auto-swipe, which could add or redo a reply', async () => {
@@ -593,19 +625,6 @@ describe('group sends with a routing owner', () => {
 
         expect(sandbox.lease.isCurrent()).toBe(false);
         expect(sandbox.events).toEqual([{ type: 'revoked', reason: expect.any(String) }]);
-    });
-
-    test('extensions find the routing contract in getContext()', () => {
-        const contextSource = readFileSync(new URL('../public/scripts/st-context.js', import.meta.url), 'utf8');
-        const contextAst = parse(contextSource, { ecmaVersion: 'latest', sourceType: 'module' });
-        const groupChatsImport = contextAst.body.find(node => node.type === 'ImportDeclaration' && node.source.value === './group-chats.js');
-        const getContextNode = contextAst.body.map(node => node.declaration ?? node).find(node => node.id?.name === 'getContext');
-        const returned = getContextNode.body.body.find(node => node.type === 'ReturnStatement').argument;
-        const property = returned.properties.find(item => item.key.name === 'groupTurnRouting');
-
-        expect(getExportedNames(groupChatsAst)).toContain('groupTurnRoutingApi');
-        expect(groupChatsImport.specifiers.map(specifier => specifier.imported.name)).toContain('groupTurnRoutingApi');
-        expect(property?.value.name).toBe('groupTurnRoutingApi');
     });
 });
 

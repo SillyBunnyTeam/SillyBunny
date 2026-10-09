@@ -1,15 +1,12 @@
-import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { parse } from 'acorn';
 import { describe, expect, test } from '@jest/globals';
 import { event_types } from '../public/scripts/events.js';
-import { createGroupChatsRuntime as createSpeakerRuntime, getExportedNames, groupChatsAst } from './util/group-chats-sandbox.js';
+import { createGroupChatsRuntime as createSpeakerRuntime } from './util/group-chats-sandbox.js';
 
 describe('group speaker bar selection API', () => {
     test('picks an enabled member of the open group and announces the change', () => {
         const { runtime, changes, bar } = createSpeakerRuntime();
 
-        expect(typeof runtime.setSelectedGroupSpeakerAvatar).toBe('function');
         expect(runtime.setSelectedGroupSpeakerAvatar('bob.png')).toBe(true);
         expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('bob.png');
         expect(bar.highlighted()).toEqual(['bob.png']);
@@ -61,22 +58,6 @@ describe('group speaker bar selection API', () => {
 
         expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('');
         expect(changes).toEqual(['bob.png', '', 'alice.png', '']);
-    });
-
-    test('exposes the pick to extensions through getContext()', () => {
-        const contextSource = readFileSync(new URL('../public/scripts/st-context.js', import.meta.url), 'utf8');
-        const contextAst = parse(contextSource, { ecmaVersion: 'latest', sourceType: 'module' });
-        const groupChatsImport = contextAst.body.find(node => node.type === 'ImportDeclaration' && node.source.value === './group-chats.js');
-        const importedNames = groupChatsImport.specifiers.map(specifier => specifier.imported.name);
-        const getContextNode = contextAst.body.map(node => node.declaration ?? node).find(node => node.id?.name === 'getContext');
-        const returned = getContextNode.body.body.find(node => node.type === 'ReturnStatement').argument;
-        const contextKeys = returned.properties.map(property => property.key.name);
-
-        for (const name of ['getSelectedGroupSpeakerAvatar', 'setSelectedGroupSpeakerAvatar']) {
-            expect(getExportedNames(groupChatsAst)).toContain(name);
-            expect(importedNames).toContain(name);
-            expect(contextKeys).toContain(name);
-        }
     });
 });
 

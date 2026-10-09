@@ -3,7 +3,7 @@ import vm from 'node:vm';
 import { parse } from 'acorn';
 import { EventEmitter } from '../../public/lib/eventemitter.js';
 import { event_types } from '../../public/scripts/events.js';
-import { createGroupTurnRouting } from '../../public/scripts/group-turn-routing.js';
+import { createGroupTurnRouting, getRoutedReplyStatus } from '../../public/scripts/group-turn-routing.js';
 
 export const groupChatsSource = readFileSync(new URL('../../public/scripts/group-chats.js', import.meta.url), 'utf8');
 export const groupChatsAst = parse(groupChatsSource, { ecmaVersion: 'latest', sourceType: 'module' });
@@ -24,16 +24,6 @@ const stateNames = [
     'groupTurnRouting',
     'groupTurnRoutingApi',
 ];
-
-export function getExportedNames(ast) {
-    return ast.body
-        .filter(node => node.type === 'ExportNamedDeclaration')
-        .flatMap(node => [
-            ...node.specifiers.map(specifier => specifier.exported.name),
-            ...(node.declaration?.id ? [node.declaration.id.name] : []),
-            ...(node.declaration?.declarations ?? []).map(declaration => declaration.id.name),
-        ]);
-}
 
 /**
  * A minimal jQuery stand-in for the speaker bar and the composer: it keeps the rendered avatar buttons,
@@ -163,6 +153,7 @@ export function createGroupChatsRuntime({ exclude = [] } = {}) {
         onlyUnique: (value, index, array) => array.indexOf(value) === index,
         talkativeness_default: 0.5,
         createGroupTurnRouting,
+        getRoutedReplyStatus,
         setCharacterId: chid => { runtime.this_chid = chid; },
         setCharacterName: noop,
         setSendButtonState: noop,

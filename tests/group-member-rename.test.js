@@ -36,10 +36,11 @@ describe('renaming a group member in past chats', () => {
         };
         const { runtime, eventSource, saves } = createRenameRuntime({ chats });
         const heard = [];
-        eventSource.on(event_types.CHARACTER_RENAMED_IN_PAST_CHAT, (messages, oldAvatar, newAvatar) => {
+        eventSource.on(event_types.CHARACTER_RENAMED_IN_PAST_CHAT, (messages, oldAvatar, newAvatar, rename) => {
             heard.push(messages);
             const roster = messages[0].chat_metadata.roster;
             roster.splice(0, roster.length, ...roster.map(avatar => avatar === oldAvatar ? newAvatar : avatar));
+            rename.markChanged();
         });
 
         await runtime.renameGroupMember('bob.png', 'robert.png', 'Robert');
@@ -65,5 +66,22 @@ describe('renaming a group member in past chats', () => {
 
         expect(heard).toBe(2);
         expect(saves.map(save => save.id)).toEqual(['chat-2']);
+    });
+
+    test('saves a chat a listener changed even when the rename touched no message in it', async () => {
+        const chats = {
+            'chat-1': [header(['alice.png', 'bob.png']), userLine('Hi.'), line('Alice', 'alice.png', 'Hello.')],
+        };
+        const { runtime, eventSource, saves } = createRenameRuntime({ chats });
+        eventSource.on(event_types.CHARACTER_RENAMED_IN_PAST_CHAT, (messages, oldAvatar, newAvatar, rename) => {
+            messages[0].chat_metadata.roster = [newAvatar];
+            rename.markChanged();
+        });
+
+        await runtime.renameGroupMember('bob.png', 'robert.png', 'Robert');
+
+        expect(saves.map(save => save.id)).toEqual(['chat-1']);
+        expect(saves[0].chat[0].chat_metadata.roster).toEqual(['robert.png']);
+        expect(saves[0].chat[2]).toMatchObject({ name: 'Alice', original_avatar: 'alice.png' });
     });
 });

@@ -79,6 +79,10 @@ export const event_types = {
     CHARACTER_DELETED: 'characterDeleted',
     CHARACTER_DUPLICATED: 'character_duplicated',
     CHARACTER_RENAMED: 'character_renamed',
+    // SillyBunny: args (messages, oldAvatar, newAvatar, rename). For a renamed group member it fires for every chat
+    // of each group the member is in, including chats the member never wrote in, so listeners must tolerate chats
+    // with no matching messages. A listener that changes such a chat calls rename.markChanged() to have it saved;
+    // chats the host itself rewrote are saved anyway. Solo character chats pass no `rename` and are always saved.
     CHARACTER_RENAMED_IN_PAST_CHAT: 'character_renamed_in_past_chat',
     /** @deprecated The event is aliased to STREAM_TOKEN_RECEIVED. */
     SMOOTH_STREAM_TOKEN_RECEIVED: 'stream_token_received',
