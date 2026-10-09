@@ -9781,6 +9781,15 @@ body.reduced-motion .sb-shell-main {
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
 }
 
+/* The upstream OpenAI row sometimes carries the redundant `.flex` utility and sometimes does not;
+   the provider class is the stable presentation contract for both forms. */
+.sb-connections-provider .sb-connections-connect {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+    align-items: stretch;
+    gap: 8px;
+}
+
 .sb-connections-provider .sb-connections-connect:not(:has(> .api_button, > #horde_api_key_button)) {
     grid-template-columns: 1fr;
     gap: 0;
@@ -9872,16 +9881,16 @@ body.reduced-motion .sb-shell-main {
     padding: 0;
 }
 
-/* The provider body owns the pill chrome, so child sections must not paint a second full-width
-   surface or add an extra edge. Keep the padding on the body rows so inputs remain inset. */
+/* The Chat Completions connect row is slotted directly in the body, while Text Completions keeps it
+   inside its form; both wrappers take the same body-row inset so the connect card sits identically. */
 .sb-connections-panel .sb-connections-provider-body > .sb-connections-connect-slot {
-    padding: 0;
+    padding: 10px 16px;
 }
 
 .sb-connections-provider-body > .sb-connections-connect-slot > .sb-connections-connect {
-    border: 0;
-    border-radius: 0;
-    background: transparent;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    border-radius: var(--sb-radius-lg, 16px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
 }
 
 /* Inside the pill, text_pole inputs get consistent vertical rhythm with no extra margin. */
@@ -9952,6 +9961,243 @@ body.reduced-motion .sb-shell-main {
     background: var(--sb-layer-popover, var(--sb-layer-drawer));
     box-shadow: var(--sb-shadow-popover, 0 8px 24px rgb(0 0 0 / 28%));
     -webkit-overflow-scrolling: touch;
+}
+
+/* Keep the model, provider, and quantization menus on the same libadwaita-style option vocabulary
+   at every width. The menu option reserves a real checkmark column so long labels never run beneath it. */
+.sb-model-id-picker-group {
+    padding: 8px 10px 4px;
+    color: var(--sb-muted-fg, var(--SmartThemeEmColor));
+    font-size: var(--sb-type-caption);
+    font-weight: var(--sb-weight-label, 700);
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+.sb-model-id-picker-empty,
+.sb-model-id-picker-option {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 34px;
+    margin: 0;
+    border: 1px solid transparent;
+    border-radius: var(--sb-radius-control, 9px);
+    padding: 7px 10px;
+    text-align: start;
+    line-height: 1.3;
+}
+
+.sb-model-id-picker-empty {
+    display: flex;
+    align-items: center;
+    color: var(--sb-muted-fg, var(--SmartThemeEmColor));
+}
+
+.sb-model-id-picker-option {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    background: transparent;
+    color: var(--SmartThemeBodyColor);
+    font: inherit;
+    overflow-wrap: anywhere;
+}
+
+.sb-model-id-picker-option:is(:hover, :focus-visible) {
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, var(--sb-shell-border) 72%);
+    background: var(--sb-flat-hover-bg);
+    outline: none;
+}
+
+.sb-model-id-picker-option[aria-selected='true'] {
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 36%, var(--sb-shell-border) 64%);
+    background: var(--sb-flat-selected-bg);
+    font-weight: var(--sb-weight-title, 700);
+}
+
+.sb-inline-select-picker-menu[data-sb-inline-select-multiple] .sb-inline-select-picker-option {
+    gap: 8px;
+}
+
+.sb-inline-select-picker-menu[data-sb-inline-select-multiple] .sb-inline-select-picker-option::before {
+    content: '';
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 38%, transparent);
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--sb-surface-elevated) 82%, transparent);
+}
+
+.sb-inline-select-picker-menu[data-sb-inline-select-multiple] .sb-inline-select-picker-option[aria-selected='true']::before {
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 74%, var(--sb-shell-border) 26%);
+    background: var(--color-primary, var(--sb-accent));
+    box-shadow: inset 0 0 0 3px var(--sb-surface-elevated);
+}
+
+/* Chat and Text Completions both use Select2 controls, but provider and quantization fields use
+   the multiple-selection variant. Keep its outer field identical to the single-selection model
+   fields: one 46px input surface, one radius, and the same theme-derived border and fill. */
+[data-sb-connections-panel] .select2-container--default :is(.select2-selection--single, .select2-selection--multiple) {
+    box-sizing: border-box;
+    min-height: var(--sb-field-min-height);
+    height: var(--sb-field-min-height);
+    border: 1px solid var(--sb-input-border);
+    border-radius: var(--sb-radius-button);
+    background: var(--sb-input-bg);
+    color: var(--SmartThemeBodyColor);
+}
+
+[data-sb-connections-panel] .select2-container--default .select2-selection--multiple {
+    display: flex;
+    align-items: center;
+    padding: 0 var(--sb-field-padding-x);
+}
+
+[data-sb-connections-panel] .select2-container--default .select2-selection--multiple .select2-selection__rendered {
+    display: flex;
+    align-items: center;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+[data-sb-connections-panel] .select2-container--default .select2-selection--multiple .select2-selection__choice {
+    margin: 0;
+    max-width: 100%;
+    border-color: var(--sb-input-border);
+    border-radius: var(--sb-radius-control, 9px);
+    background: var(--sb-flat-selected-bg);
+    color: var(--SmartThemeBodyColor);
+    line-height: 1.25;
+}
+
+/* Select2 is the desktop implementation of the same model/provider pickers. Its legacy option
+   padding is less specific than the theme's option rule, leaving the selection marker over labels;
+   this scoped layout gives the marker a stable leading column. */
+[data-sb-connections-panel] .select2-container--default .select2-dropdown,
+.sb-legacy-api-drawer .select2-container--default .select2-dropdown {
+    padding: 6px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 80%, transparent) !important;
+    border-radius: var(--sb-radius-overlay, 15px);
+    background: var(--sb-layer-popover, var(--sb-layer-drawer));
+    box-shadow: var(--sb-shadow-popover);
+    color: var(--SmartThemeBodyColor);
+}
+
+[data-sb-connections-panel] .select2-container--default .select2-search--dropdown,
+.sb-legacy-api-drawer .select2-container--default .select2-search--dropdown {
+    padding: 4px;
+}
+
+[data-sb-connections-panel] .select2-container--default .select2-search--dropdown .select2-search__field,
+.sb-legacy-api-drawer .select2-container--default .select2-search--dropdown .select2-search__field {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 38px;
+    margin: 0;
+    padding: 8px 10px;
+    border: 1px solid var(--sb-shell-border);
+    border-radius: var(--sb-radius-control, 9px);
+    background: var(--sb-input-bg, var(--sb-surface-elevated));
+    color: var(--SmartThemeBodyColor);
+    font: inherit;
+}
+
+[data-sb-connections-panel] .select2-container--default .select2-results__options,
+.sb-legacy-api-drawer .select2-container--default .select2-results__options {
+    max-height: min(320px, 60vh);
+    padding: 2px;
+}
+
+[data-sb-connections-panel] .select2-container--default .select2-results__option,
+.sb-legacy-api-drawer .select2-container--default .select2-results__option {
+    position: relative;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    min-height: 34px;
+    height: auto;
+    margin: 1px 0;
+    padding: 7px 10px 7px 36px !important;
+    border: 1px solid transparent;
+    border-radius: var(--sb-radius-control, 9px);
+    background: transparent;
+    color: var(--SmartThemeBodyColor);
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+
+[data-sb-connections-panel] .select2-container--default .select2-results__option::before,
+.sb-legacy-api-drawer .select2-container--default .select2-results__option::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: 10px;
+    inset-block-start: 50%;
+    width: 16px;
+    height: 16px;
+    margin: -8px 0 0;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 38%, transparent);
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--sb-surface-elevated) 82%, transparent);
+}
+
+[data-sb-connections-panel] .select2-container--default .select2-results__option[aria-selected='true'],
+.sb-legacy-api-drawer .select2-container--default .select2-results__option[aria-selected='true'] {
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 36%, var(--sb-shell-border) 64%);
+    background: var(--sb-flat-selected-bg);
+    font-weight: var(--sb-weight-title, 700);
+}
+
+[data-sb-connections-panel] .select2-container--default .select2-results__option[aria-selected='true']::before,
+.sb-legacy-api-drawer .select2-container--default .select2-results__option[aria-selected='true']::before {
+    content: '\2713';
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 74%, var(--sb-shell-border) 26%);
+    background: var(--color-primary, var(--sb-accent));
+    color: var(--sb-on-solid-accent, var(--sb-on-accent));
+    font-size: 11px;
+    font-weight: 700;
+}
+
+[data-sb-connections-panel] .select2-container--default .select2-results__option--highlighted[aria-selected],
+.sb-legacy-api-drawer .select2-container--default .select2-results__option--highlighted[aria-selected] {
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, var(--sb-shell-border) 72%);
+    background: var(--sb-flat-hover-bg);
+}
+
+[data-sb-connections-panel] .select2-container--default .select2-results__option--highlighted[aria-selected='true'],
+.sb-legacy-api-drawer .select2-container--default .select2-results__option--highlighted[aria-selected='true'] {
+    background: var(--sb-flat-selected-hover-bg);
+}
+
+[data-sb-connections-panel] .select2-container--default .select2-results__option--group,
+.sb-legacy-api-drawer .select2-container--default .select2-results__option--group {
+    min-height: 28px;
+    margin: 6px 0 1px;
+    padding: 7px 10px !important;
+    border: 0;
+    background: transparent;
+    color: var(--sb-muted-fg, var(--SmartThemeEmColor));
+    font-size: var(--sb-type-caption);
+    font-weight: var(--sb-weight-label, 700);
+}
+
+[data-sb-connections-panel] .select2-container--default .select2-results__option--group::before,
+.sb-legacy-api-drawer .select2-container--default .select2-results__option--group::before {
+    display: none;
+}
+
+@media (pointer: coarse) {
+    :is([data-sb-connections-panel], .sb-legacy-api-drawer) .select2-container--default .select2-results__option:not(.select2-results__option--group) {
+        min-height: 44px;
+    }
 }
 
 .sb-model-id-picker-menu[hidden],

@@ -740,7 +740,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     #kobold_api_block .flex-container:has(> #api_button),
     #novel_api form .flex-container:has(> #api_button_novel),
     #textgenerationwebui_api form .flex-container:has(> #api_button_textgenerationwebui),
-    #openai_api .flex-container.flex:has(> #api_button_openai) {
+    #openai_api .flex-container:has(> #api_button_openai) {
         flex-wrap: wrap;
         gap: 8px;
         align-items: stretch;
@@ -749,7 +749,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     #kobold_api_block .flex-container:has(> #api_button) > :is(.api_button, .api_loading),
     #novel_api form .flex-container:has(> #api_button_novel) > :is(.api_button, .api_loading),
     #textgenerationwebui_api form .flex-container:has(> #api_button_textgenerationwebui) > :is(.api_button, .api_loading, .openrouter_authorize),
-    #openai_api .flex-container.flex:has(> #api_button_openai) > :is(.api_button, .api_loading, .openrouter_authorize, #customize_additional_parameters, #test_api_button) {
+    #openai_api .flex-container:has(> #api_button_openai) > :is(.api_button, .api_loading, .openrouter_authorize, #customize_additional_parameters, #test_api_button) {
         flex: 1 1 100%;
         width: 100%;
         min-width: 0;
@@ -2306,72 +2306,9 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         overflow-wrap: anywhere;
     }
 
-    .sb-inline-select-picker-menu[data-sb-inline-select-multiple] .sb-inline-select-picker-option {
-        gap: 8px;
-    }
-
-    .sb-inline-select-picker-menu[data-sb-inline-select-multiple] .sb-inline-select-picker-option::before {
-        content: '';
-        flex: 0 0 16px;
-        width: 16px;
-        height: 16px;
-        border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 38%, transparent);
-        border-radius: 5px;
-        background: color-mix(in srgb, var(--sb-surface-elevated) 82%, transparent);
-    }
-
-    .sb-inline-select-picker-menu[data-sb-inline-select-multiple] .sb-inline-select-picker-option[aria-selected='true']::before {
-        border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 74%, var(--sb-shell-border) 26%);
-        background: var(--color-primary, var(--sb-accent));
-        box-shadow: inset 0 0 0 3px var(--sb-surface-elevated);
-    }
-
-    .sb-model-id-picker-group {
-        padding: 8px 10px 4px;
-        color: var(--sb-muted-fg);
-        font-size: var(--sb-type-caption);
-        font-weight: var(--sb-weight-label);
-        letter-spacing: 0;
-        text-transform: none;
-    }
-
     .sb-model-id-picker-empty,
     .sb-model-id-picker-option {
         min-height: 44px;
-        width: 100%;
-        border-radius: var(--sb-radius-button);
-        padding: 9px 10px;
-        text-align: left;
-        line-height: 1.25;
-    }
-
-    .sb-model-id-picker-empty {
-        display: flex;
-        align-items: center;
-        color: var(--sb-muted-fg);
-    }
-
-    .sb-model-id-picker-option {
-        display: flex;
-        align-items: center;
-        justify-content: flex-start;
-        border: 1px solid transparent;
-        background: transparent;
-        color: var(--SmartThemeBodyColor);
-        font: inherit;
-        overflow-wrap: anywhere;
-    }
-
-    .sb-model-id-picker-option:is(:hover, :focus-visible) {
-        border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, var(--sb-shell-border) 72%);
-        background: var(--sb-button-hover);
-        outline: none;
-    }
-
-    .sb-model-id-picker-option[aria-selected='true'] {
-        border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 36%, var(--sb-shell-border) 64%);
-        background: var(--sb-shell-tab-active-bg);
-        font-weight: var(--sb-weight-title);
     }
 }
 
