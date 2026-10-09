@@ -49,7 +49,8 @@
     <link rel="stylesheet" type="text/css" href="css/mobile-styles.css?v=20260814a" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20260727c">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-paper-theme.css?v=20260622g" media="(max-width: 768px)">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20260725g">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20260930a">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-character-creator.css?v=20260930a">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20260821a" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/user.css">
     <!-- Scripts are loaded at the end of the body to improve page load speed -->
@@ -6625,7 +6626,7 @@
                     <button id="sb_character_shell_close" class="sb-shell-close" type="button" title="Close Characters" aria-label="Close Characters">
                         <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                     </button>
-                    <div id="sb_character_mode_toggle" class="sb-character-shell-mode-toggle" role="radiogroup" aria-label="Chat mode">
+                    <div id="sb_character_mode_toggle" class="sb-character-shell-mode-toggle" role="radiogroup" aria-label="Workspace mode">
                         <button type="button" class="sb-character-shell-mode-button is-active" data-sb-character-mode="roleplay" role="radio" aria-checked="true">
                             <i class="fa-solid fa-masks-theater" aria-hidden="true"></i>
                             <span>Roleplay</span>
@@ -6633,6 +6634,10 @@
                         <button type="button" class="sb-character-shell-mode-button" data-sb-character-mode="conversation" role="radio" aria-checked="false">
                             <i class="fa-solid fa-comments" aria-hidden="true"></i>
                             <span>Conversation</span>
+                        </button>
+                        <button type="button" class="sb-character-shell-mode-button" data-sb-character-mode="creator" role="radio" aria-checked="false">
+                            <i class="fa-solid fa-pen-ruler" aria-hidden="true"></i>
+                            <span>Creator</span>
                         </button>
                     </div>
                     <div class="sb-shell-kicker" data-i18n="Characters">Characters</div>
@@ -6704,6 +6709,10 @@
                             <i title="Click for stats!" data-i18n="[title]Click for stats!" class="fa-solid fa-ranking-star right_menu_button rm_stats_button"></i>
                             <div id="spoiler_free_desc_button" class="right_menu_button fa-solid fa-eye fa-fw" title="Toggle character info" data-i18n="[title]Toggle character info"></div>
                         </div>
+                        <button id="sb_character_creator_polish" class="menu_button menu_button_icon" type="button" disabled>
+                            <i class="fa-solid fa-pen-ruler" aria-hidden="true"></i>
+                            <span>Polish in Creator</span>
+                        </button>
                         <button id="sb_character_editor_fullscreen_toggle" class="menu_button menu_button_icon sb-character-editor-fullscreen-toggle" type="button" aria-controls="rm_ch_create_block" aria-pressed="false" aria-expanded="false" title="Enter editor fullscreen" aria-label="Enter editor fullscreen" data-i18n="[title]Enter editor fullscreen;[aria-label]Enter editor fullscreen">
                             <i class="fa-solid fa-maximize" aria-hidden="true"></i>
                         </button>
@@ -9073,6 +9082,7 @@
     <script type="module" src="script.js"></script>
     <script type="module" src="scripts/sillybunny-tabs.js"></script>
     <script type="module" src="scripts/sillybunny-conversation.js"></script>
+    <script type="module" src="scripts/sillybunny-character-creator.js"></script>
     <script>
         window.addEventListener('load', (event) => {
             const documentHeight = () => {
