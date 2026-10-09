@@ -13377,13 +13377,24 @@ function reinitSelect2AfterShell() {
             minimumResultsForSearch: 0,
         };
         const allSelectors = [...modelSelectors, '.openrouter_quantizations', '.openrouter_providers', '#nanogpt_allowed_providers', '#nanogpt_ignored_providers'];
-        for (const selector of allSelectors) {
-            const $el = $(selector);
-            if ($el.length && $el.data('select2')) {
+        // SillyBunny (feat/v1.9.0-ui-overhaul): API pickers are initialised before the Connections
+        // panel exists, so their stored `dropdownParent` is the emptied 1px `#rm_api_block`, which
+        // clips every menu. The panel parent must win over the stored config, and pickers outside
+        // this list (the openai.js model selects) need the same fix.
+        const panelSelects = apiDropdownParent.length
+            ? apiDropdownParent.find('select').filter((_, el) => {
+                const parent = $(el).data('select2')?.options.get('dropdownParent')?.[0];
+                return Boolean(parent) && parent !== apiDropdownParent[0];
+            }).toArray()
+            : [];
+        const targets = new Set([...allSelectors.flatMap(selector => $(selector).toArray()), ...panelSelects]);
+        for (const el of targets) {
+            const $el = $(el);
+            if ($el.data('select2')) {
                 try {
                     const config = $el.data('select2').options.options;
                     $el.select2('destroy');
-                    $el.select2({ ...select2Defaults, ...config });
+                    $el.select2({ ...select2Defaults, ...config, dropdownParent: select2Defaults.dropdownParent });
                 } catch {
                     // Element may not have been initialized yet
                 }

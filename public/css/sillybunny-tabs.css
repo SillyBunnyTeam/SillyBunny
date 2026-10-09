@@ -10057,7 +10057,7 @@ body.reduced-motion .sb-shell-main {
 [data-sb-connections-panel] .select2-container--default .select2-selection--multiple .select2-selection__rendered {
     display: flex;
     align-items: center;
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-width: 0;
     min-height: 0;
     gap: 6px;
@@ -10074,6 +10074,25 @@ body.reduced-motion .sb-shell-main {
     background: var(--sb-flat-selected-bg);
     color: var(--SmartThemeBodyColor);
     line-height: 1.25;
+}
+
+/* The inline search field carries the placeholder, so it fills the space after any chips and its
+   text starts at the field's leading edge instead of trailing after an empty chip list. */
+[data-sb-connections-panel] .select2-container--default .select2-selection--multiple .select2-search--inline {
+    display: flex;
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+[data-sb-connections-panel] .select2-container--default .select2-selection--multiple .select2-search--inline .select2-search__field {
+    width: 100% !important;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    color: var(--SmartThemeBodyColor);
+    line-height: 1.4;
+    text-align: start;
 }
 
 /* Select2 is the desktop implementation of the same model/provider pickers. Its legacy option
