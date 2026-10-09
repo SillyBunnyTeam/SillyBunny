@@ -51,6 +51,17 @@
       {"name": "raised-hover", "token": "--sb-raised-hover-bg", "value": "color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent)", "purpose": "Raised control hover."},
       {"name": "raised-active", "token": "--sb-raised-active-bg", "value": "color-mix(in srgb, var(--SmartThemeBodyColor) 22%, transparent)", "purpose": "Raised control pressed or expanded (libadwaita uses 30%)."}
     ],
+    "rowPrimitives": [
+      {"name": "row", "class": ".ds-row", "value": "min-height 44px (52px with subtitle); padding 6px 16px; 1px bottom separator, none on the last row of a group", "libadwaita": "AdwActionRow", "purpose": "Base settings row: .ds-row-text on the start side, .ds-row-suffix on the end side."},
+      {"name": "row-text", "class": ".ds-row-text", "value": "flex 1 1 0; min-width 0; wraps", "purpose": "Holds .ds-row-label and an optional .ds-row-subtitle."},
+      {"name": "row-subtitle", "class": ".ds-row-subtitle", "value": "--sb-type-meta; colour --sb-input-placeholder", "libadwaita": "AdwActionRow subtitle", "purpose": "Visible description promoted verbatim from title= text; lorum ipsum until final copy."},
+      {"name": "row-suffix", "class": ".ds-row-suffix", "value": "flex 0 0 auto; gap 12px", "purpose": "Trailing control: select, input, switch, button."},
+      {"name": "row-switch", "class": ".ds-row-switch", "value": "whole-row label; input carries role=switch and aria-checked", "libadwaita": "AdwSwitchRow", "purpose": "Boolean settings."},
+      {"name": "row-slider", "class": ".ds-row-slider", "value": "range plus 5.5em number field; stacks at 620px and below", "libadwaita": "AdwSpinRow (approx.)", "purpose": "Numeric settings with a range."},
+      {"name": "row-expander", "class": ".ds-row-expander", "value": "details > summary.ds-row + .ds-row-expander-content; caret rotates on open", "libadwaita": "AdwExpanderRow", "purpose": "Multi-control samplers and other grouped options."},
+      {"name": "control-flex", "class": ".ds-control-flex", "value": "flex 1 1 190px; min-width 0", "purpose": "Stable control width regardless of the label length. widthNatural and widthUnset controls keep their natural width."},
+      {"name": "label-bounded", "class": ".ds-label-bounded", "value": "flex 0 1 180px; min-width min(180px, 100%); wraps", "purpose": "Bounded label column paired with .ds-control-flex."}
+    ],
     "motion": [
       {"name": "state", "token": "--sb-transition-fast", "value": "200ms cubic-bezier(0.25, 0.46, 0.45, 0.94)", "libadwaita": "$button_transition / $focus_transition (ease-out-quad)", "purpose": "Hover, press, focus, selection, colour and fill changes."},
       {"name": "reveal", "token": "--sb-transition", "value": "250ms cubic-bezier(0.25, 0.1, 0.25, 1)", "libadwaita": "GtkRevealer, AdwExpanderRow", "purpose": "Reveals, expanders, height changes, banners, crossfades."},

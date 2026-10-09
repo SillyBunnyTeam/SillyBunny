@@ -8063,12 +8063,14 @@ body.reduced-motion .sb-shell-main {
 .ds-pref-group {
     display: flex;
     flex-direction: column;
+    gap: 0;
+    min-width: 0;
     border-radius: var(--sb-radius-lg, 16px);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
     box-shadow: none;
     overflow: hidden;
-    margin-bottom: 12px;
+    margin-bottom: 0;
 }
 
 .ds-pref-group-heading {
@@ -8086,7 +8088,9 @@ body.reduced-motion .sb-shell-main {
     gap: 12px;
     padding: 10px 16px;
     min-height: 52px;
+    min-width: 0;
     border-top: 1px solid var(--sb-shell-border);
+    box-sizing: border-box;
 }
 
 .ds-action-row:first-of-type {
@@ -8099,6 +8103,8 @@ body.reduced-motion .sb-shell-main {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .ds-action-row-title {
@@ -8110,7 +8116,8 @@ body.reduced-motion .sb-shell-main {
 
 .ds-action-row-desc {
     font-size: var(--sb-type-meta);
-    color: var(--sb-shell-text-secondary);
+    color: var(--sb-input-placeholder);
+    opacity: 1;
     line-height: 1.4;
 }
 
@@ -8119,6 +8126,210 @@ body.reduced-motion .sb-shell-main {
     display: flex;
     align-items: center;
     gap: 6px;
+}
+
+/* SillyBunny: rows own their separator and inset; text wraps without compressing the suffix. */
+.ds-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    min-height: 44px;
+    margin: 0;
+    padding: 6px 16px;
+    border: 0;
+    border-bottom: 1px solid var(--sb-shell-border);
+    background: transparent;
+    color: var(--sb-shell-text);
+    font-family: var(--mainFontFamily);
+    text-align: start;
+    box-sizing: border-box;
+}
+
+:root[data-sb-compact-mode='true'] .ds-row {
+    min-height: 44px;
+    padding-block: 6px;
+}
+
+.ds-row:has(.ds-row-subtitle),
+:root[data-sb-compact-mode='true'] .ds-row:has(.ds-row-subtitle) {
+    min-height: 52px;
+}
+
+.ds-pref-group > :is(.ds-row, .ds-row-expander):last-child {
+    border-bottom: 0;
+}
+
+.ds-row-text {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    gap: 2px;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.ds-row-label {
+    margin: 0;
+    font-size: var(--sb-type-control);
+    font-weight: 500;
+    line-height: 1.3;
+    color: var(--sb-shell-text);
+}
+
+.ds-row-subtitle {
+    margin: 0;
+    font-size: var(--sb-type-meta);
+    line-height: 1.4;
+    color: var(--sb-input-placeholder);
+    opacity: 1;
+}
+
+.ds-row-suffix {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    gap: 12px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.ds-row-suffix > :is(input, select, textarea) {
+    margin: 0;
+}
+
+.sb-settings-mounted-shell .flex-container:not(.flexFlowColumn, .checkbox_label, .ds-row-suffix):is(.alignitemscenter, .alignItemsCenter, .alignItemsBaseline) > :is(select, textarea, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='image'])) {
+    flex: 1 1 190px;
+    min-width: 0;
+}
+
+.sb-settings-mounted-shell .flex-container:not(.flexFlowColumn, .checkbox_label, .ds-row-suffix):is(.alignitemscenter, .alignItemsCenter, .alignItemsBaseline):has(> :is(select, textarea, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='image']))) > :is(label:not(.checkbox_label), small, span:not(.select2)) {
+    flex: 0 1 180px;
+    min-width: min(180px, 100%);
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.ds-row:has(> .ds-row-suffix > .ds-control-flex) > .ds-row-text {
+    flex: 0 1 180px;
+}
+
+.ds-row:has(> .ds-row-suffix > .ds-control-flex) > .ds-row-suffix {
+    flex: 1 1 190px;
+}
+
+.ds-row-switch {
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.ds-row-switch > input[type='checkbox'] {
+    order: 1;
+    flex: 0 0 auto;
+    margin: 0;
+    margin-inline-start: auto;
+}
+
+.ds-row-switch:has(input:disabled) {
+    cursor: not-allowed;
+}
+
+@media (hover: hover) {
+    .ds-row-switch:not(:has(input:disabled)):hover,
+    .ds-row-expander > summary.ds-row:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.ds-row-switch:not(:has(input:disabled)):active,
+.ds-row-expander > summary.ds-row:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.ds-row-slider > .ds-row-text {
+    flex: 1 1 180px;
+}
+
+.ds-row-slider > .ds-row-suffix {
+    flex: 1 1 320px;
+}
+
+.ds-row-slider > .ds-row-suffix > input[type='range'] {
+    flex: 1 1 190px;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+}
+
+.ds-row-slider > .ds-row-suffix > input[type='number'] {
+    flex: 0 0 5.5em;
+    width: 5.5em;
+    min-width: 0;
+    max-width: 100%;
+    margin: 0;
+}
+
+/* Native details owns disclosure and keyboard state; child rows supply the body's insets. */
+.ds-row-expander {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border-bottom: 1px solid var(--sb-shell-border);
+}
+
+.ds-row-expander > summary.ds-row {
+    border-bottom: 0;
+    list-style: none;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.ds-row-expander > summary.ds-row::-webkit-details-marker {
+    display: none;
+}
+
+.ds-row-expander > summary.ds-row::after {
+    content: '';
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    margin-inline: 2px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(45deg);
+    transition: transform var(--sb-transition-fast);
+}
+
+.ds-row-expander[open] > summary.ds-row::after {
+    transform: rotate(225deg);
+}
+
+.ds-row-expander > summary.ds-row:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.ds-row-expander-content {
+    min-width: 0;
+    border-top: 1px solid var(--sb-shell-border);
+}
+
+.ds-row-expander-content > .ds-row:last-child {
+    border-bottom: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ds-row-switch,
+    .ds-row-expander > summary.ds-row,
+    .ds-row-expander > summary.ds-row::after {
+        transition: none;
+    }
+}
+
+body.reduced-motion :is(.ds-row-switch, .ds-row-expander > summary.ds-row),
+body.reduced-motion .ds-row-expander > summary.ds-row::after {
+    transition: none;
 }
 
 /* Expander rows: new visual layer on top of existing .inline-drawer machinery */
@@ -8426,8 +8637,8 @@ body.reduced-motion .sb-shell-main {
 
 /* Rows lifted out of a flattened drawer lose the spacing the enclosing expander used to draw, so
    they get the grouped row metric back: 44px tall, 16px inset, separator between rows. */
-.sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label,
-.sb-settings-mounted-shell .sb-settings-flat-section > .flex-container {
+.sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label:not(.ds-row),
+.sb-settings-mounted-shell .sb-settings-flat-section > .flex-container:not(.ds-row) {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -8506,11 +8717,11 @@ body.reduced-motion .sb-shell-main {
     /* Source panels can author a checkbox row outside the normalized category/flat-section
        wrappers. Keep hover feedback on the row that owns the control rather than tinting its whole
        parent card. */
-    #sb-settings-page .sb-settings-mounted-shell .checkbox_label:hover {
+    #sb-settings-page .sb-settings-mounted-shell .checkbox_label:not(.ds-row-switch):hover {
         background: var(--sb-flat-hover-bg);
     }
 
-    .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label:hover,
+    .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label:not(.ds-row-switch):hover,
     .sb-settings-mounted-shell .sb-settings-flat-section > .flex-container:not(.flexFlowColumn):has(> .checkbox_label, > input, > select, > textarea, > .menu_button, > .menu_button_icon):hover {
         background: var(--sb-flat-hover-bg);
     }
@@ -8518,8 +8729,8 @@ body.reduced-motion .sb-shell-main {
 
 /* Loose rows inside a drawer body are brought up to the grouped row metric, so a checkbox reads
    the same whether it sits in a `.ds-pref-group` card or directly under a section heading. */
-.sb-settings-mounted-shell .sb-settings-subdrawer-body > .checkbox_label,
-.sb-settings-mounted-shell .sb-settings-subdrawer-body > .flex-container > .checkbox_label {
+.sb-settings-mounted-shell .sb-settings-subdrawer-body > .checkbox_label:not(.ds-row),
+.sb-settings-mounted-shell .sb-settings-subdrawer-body > .flex-container > .checkbox_label:not(.ds-row) {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -8538,14 +8749,14 @@ body.reduced-motion .sb-shell-main {
 }
 
 @media (hover: hover) {
-    .sb-settings-mounted-shell .sb-settings-subdrawer-body > .checkbox_label:hover,
-    .sb-settings-mounted-shell .sb-settings-subdrawer-body > .flex-container > .checkbox_label:hover {
+    .sb-settings-mounted-shell .sb-settings-subdrawer-body > .checkbox_label:not(.ds-row-switch):hover,
+    .sb-settings-mounted-shell .sb-settings-subdrawer-body > .flex-container > .checkbox_label:not(.ds-row-switch):hover {
         background: var(--sb-flat-hover-bg);
     }
 }
 
 /* Checkbox label rows get action-row spacing when inside a mounted settings pref group */
-.sb-settings-mounted-shell .ds-pref-group .checkbox_label {
+.sb-settings-mounted-shell .ds-pref-group .checkbox_label:not(.ds-row) {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -8562,12 +8773,12 @@ body.reduced-motion .sb-shell-main {
 }
 
 @media (hover: hover) {
-    .sb-settings-mounted-shell .ds-pref-group .checkbox_label:hover {
+    .sb-settings-mounted-shell .ds-pref-group .checkbox_label:not(.ds-row-switch):hover {
         background: var(--sb-flat-hover-bg);
     }
 }
 
-.sb-settings-mounted-shell .ds-pref-group .checkbox_label small {
+.sb-settings-mounted-shell .ds-pref-group .checkbox_label small:not(.ds-row-subtitle) {
     flex: 1;
     font-size: var(--sb-type-control);
     color: var(--sb-shell-text);
@@ -8656,7 +8867,7 @@ body.reduced-motion .sb-shell-main {
    preference groups are borderless boxed lists, and no repeated card grids). The tiles stay as a
    multi-column inline section, minus their chrome, and the group's row separators stay out of a
    grid, where a per-tile hairline would read as a floating line above every checkbox. */
-#sb-settings-page .sb-settings-mounted-shell .ds-pref-group .checkbox_label {
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group .checkbox_label:not(.ds-row-switch) {
     background: transparent;
     border-radius: 0;
 }
@@ -8735,7 +8946,7 @@ body.reduced-motion .sb-shell-main {
    lists, and no repeated card grids). The tiles stay as a multi-column inline section, minus their
    chrome, and the group's row separators stay out of a grid, where a per-tile hairline would read
    as a floating line above every checkbox. */
-#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > :is(.checkbox_label, .flex-container, .sb-settings-flat-section) {
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > :is(.checkbox_label, .flex-container, .sb-settings-flat-section):not(.ds-row-switch) {
     background: transparent;
     border-radius: 0;
     box-shadow: none;
@@ -8745,12 +8956,82 @@ body.reduced-motion .sb-shell-main {
     margin: 0;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > :not(.checkbox_label, .flex-container.alignitemscenter, .flex-container.alignItemsBaseline, .sb-settings-flat-section) {
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > :not(.checkbox_label, .flex-container.alignitemscenter, .flex-container.alignItemsBaseline, .sb-settings-flat-section, .ds-row, .ds-row-expander) {
     padding: 10px 16px;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group > * + * {
     border-top: 1px solid var(--sb-shell-border);
+}
+
+/* Migrated rows own their geometry and bottom separators. Legacy group rules above otherwise
+   add a second separator and inset the expander body, including its already-inset child rows. */
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > .ds-row {
+    padding: 6px 16px;
+    border-top: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-row:has(.ds-row-subtitle) {
+    min-height: 52px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > .ds-row-expander {
+    padding: 0;
+    border-top: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > :is(.ds-row, .ds-row-expander) + * {
+    border-top: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > :not(.ds-row, .ds-row-expander) + :is(.ds-row, .ds-row-expander) {
+    border-top: 1px solid var(--sb-shell-border);
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-row .ds-row-subtitle {
+    flex: 0 0 auto;
+    font-size: var(--sb-type-meta);
+    color: var(--sb-input-placeholder);
+}
+
+.ds-pref-group > .flex-container.alignitemscenter,
+.sb-settings-mounted-shell .flex-container:not(.flexFlowColumn, .checkbox_label, .ds-row-suffix):is(.alignitemscenter, .alignItemsCenter, .alignItemsBaseline):has(> :is(select, textarea, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='image']))) {
+    flex-wrap: nowrap;
+    gap: 12px;
+    min-width: 0;
+}
+
+/* Upstream widthNatural resets min-width as important. Only settings fields opt into shrinking;
+   its intrinsic sizing still applies in chat, World Info and other non-settings surfaces. */
+.sb-settings-mounted-shell .ds-control-flex.widthNatural,
+.sb-settings-mounted-shell .flex-container:not(.flexFlowColumn, .checkbox_label, .ds-row-suffix):is(.alignitemscenter, .alignItemsCenter, .alignItemsBaseline) > :is(select, textarea, input).widthNatural {
+    min-width: 0 !important;
+}
+
+@media screen and (max-width: 620px) {
+    .ds-row-slider,
+    .ds-row:has(> .ds-row-suffix > .ds-control-flex),
+    .sb-settings-mounted-shell .flex-container:not(.flexFlowColumn, .checkbox_label, .ds-row-suffix):is(.alignitemscenter, .alignItemsCenter, .alignItemsBaseline):has(> :is(label:not(.checkbox_label), small, span:not(.select2))):has(> :is(select, textarea, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='image']))) {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .ds-row-slider > :is(.ds-row-text, .ds-row-suffix),
+    .ds-row:has(> .ds-row-suffix > .ds-control-flex) > :is(.ds-row-text, .ds-row-suffix),
+    .sb-settings-mounted-shell .flex-container:not(.flexFlowColumn, .checkbox_label, .ds-row-suffix):is(.alignitemscenter, .alignItemsCenter, .alignItemsBaseline):has(> :is(label:not(.checkbox_label), small, span:not(.select2))):has(> :is(select, textarea, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='image']))) > :is(label:not(.checkbox_label), small, span:not(.select2), select, textarea, input) {
+        flex-basis: auto;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .ds-row-suffix > .ds-control-flex {
+        width: 100%;
+    }
+
+    .sb-settings-mounted-shell .ds-row-suffix > .ds-control-flex.widthNatural,
+    .sb-settings-mounted-shell .flex-container:not(.flexFlowColumn, .checkbox_label, .ds-row-suffix):is(.alignitemscenter, .alignItemsCenter, .alignItemsBaseline):has(> :is(label:not(.checkbox_label), small, span:not(.select2))) > :is(select, textarea, input).widthNatural {
+        width: 100% !important;
+    }
 }
 
 /* The order pass marks a wrapper it emptied with `hidden`, but `.flex-container` and
@@ -9492,6 +9773,7 @@ body.reduced-motion .sb-shell-main {
    scroll under it: the two controls that decide *what* is being configured never scroll away from
    the settings they configure. It bleeds to the panel's own edges so nothing shows behind it. */
 .sb-connections-switcher {
+    position: -webkit-sticky;
     position: sticky;
     top: 0;
     z-index: var(--sb-z-sticky, 500);

@@ -356,7 +356,7 @@ Springs are sampled from libadwaita's AdwSpringAnimation into CSS `linear()` eas
 - **Corner Style:** Content cards and preference groups keep `14px` until pages are migrated (libadwaita cards are `12px`, `--sb-radius-card`). Popovers, menus, dialogs, shell drawers, toasts, and the composer stack use `--sb-radius-overlay` (`15px`). Alert-style confirmation dialogs use `--sb-radius-alert` (`18px`). The welcome surface may use `20px`. Nothing is larger.
 - **Background:** Preference groups are libadwaita boxed lists: a `4%` body-colour tint. Overlays use their layer token from the Layer Ladder so text never shows through.
 - **Shadow Strategy:** Flat at rest. Only overlays carry a shadow.
-- **Border:** Preference groups are borderless. Overlays keep a one-pixel theme-derived border. Never use a colored side stripe.
+- **Border:** Preference groups carry a `1px` theme-derived border. Overlays keep a one-pixel theme-derived border. Never use a colored side stripe.
 - **Internal Padding:** `12px`, `14px`, `16px`, or `18px` according to density; compact mode reduces padding without changing hierarchy.
 - **Content Rule:** Cards are working surfaces, not a repeated icon-heading-text grid. Prefer an open list, tab row, or inline section when that is clearer.
 
@@ -397,6 +397,17 @@ Springs are sampled from libadwaita's AdwSpringAnimation into CSS `linear()` eas
 - **Range:** `4px` neutral trough and an `18px` Accent thumb with a `1px` shade. Firefox fills the trough up to the value; WebKit and Blink show the trough only. Hover grows the thumb slightly on hover-capable pointers.
 - **Switch:** A `42×24` pill (`38×22` in compact mode) with `appearance: none` and `-webkit-appearance: none`. Off uses a `16%` body-colour trough; on fills solid Accent with a circular thumb in `--sb-on-solid-accent`. The thumb travels with `inset-inline-*` so RTL mirrors. Reduced motion snaps with no travel.
 - **Focus / Disabled:** Small controls use a `2px` focus-ring outline with an offset so the ring stays visible around the control. Disabled controls drop to reduced opacity and a `not-allowed` cursor.
+
+### Settings Rows
+- **Foundation:** Settings panels use a consistent row anatomy borrowed from libadwaita `AdwActionRow` and `AdwExpanderRow`. Each `.ds-row` is a flex container, `44px`–`52px` minimum height, with `6px` vertical and `16px` horizontal padding, and a `1px` bottom separator (except the last row in a `.ds-pref-group`).
+- **Anatomy:** Left side is `.ds-row-text` (flexing, `0` min-width for text wrapping): a title label followed by an optional `.ds-row-subtitle` (small grey text, visible description promoted from `title=` attributes). Right side is `.ds-row-suffix` (flex-shrink: 0): a control (select, input, switch, slider, button) or custom content.
+- **Sizing contract:** Setting controls use `.ds-control-flex` (`flex: 1 1 190px; min-width: 0`) to maintain consistent width across varied label text. Labels in settings rows use `.ds-label-bounded` (`flex: 0 1 180px`) to prevent overflow. Controls with intrinsic width (`widthNatural`, `widthUnset`) are excluded from this contract and keep their natural dimensions.
+- **Toggles (`.ds-row-switch`):** Boolean rows apply `role="switch"` + `aria-checked` to the checkbox input. The entire row is clickable (pointer events target the label). Keyboard focus and spacebar toggle the state.
+- **Sliders (`.ds-row-slider`):** Title and optional subtitle on the left; range input and paired number field on the right. On viewports ≤ 620px, content stacks vertically and spans full width.
+- **Expanders (`.ds-row-expander`):** Collapsible sections follow libadwaita `AdwExpanderRow`: a header row with a leading disclosure caret, a title, optional subtitle, and an optional trailing action. The caret points right (collapsed) or down (expanded). Content nests inside with `0` left margin.
+- **Groups (`.ds-pref-group`):** Boxed lists with a `4%` body-colour tint, `14px` radius, `1px` border, `6px 16px` padding on rows, and `0px` margin between groups (separators show where rows meet).
+- **Density:** Row heights and padding adjust for compact mode (set `--sb-density-scale`) without changing hierarchy.
+- **Contrast:** Row text (including subtitles) maintains ≥ 4.5:1 contrast against background. Placeholders and secondary text use `--sb-input-placeholder` (78% body colour mixed with theme tint).
 
 ### Navigation
 - **Layer 1:** The main chat window is the primary surface with a bottom bar for direct conversation actions.
