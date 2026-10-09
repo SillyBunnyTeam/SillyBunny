@@ -735,19 +735,21 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         display: none !important;
     }
 
-    #kobold_api_block > .flex-container:has(> #api_button),
-    #novel_api > form > .flex-container:has(> #api_button_novel),
-    #textgenerationwebui_api > form > .flex-container:has(> #api_button_textgenerationwebui),
-    #openai_api > .flex-container.flex:has(> #api_button_openai) {
+    /* SillyBunny: descendant combinators, because the Connections panel wraps each provider's
+       content (connect row included) in .sb-connections-provider-body. */
+    #kobold_api_block .flex-container:has(> #api_button),
+    #novel_api form .flex-container:has(> #api_button_novel),
+    #textgenerationwebui_api form .flex-container:has(> #api_button_textgenerationwebui),
+    #openai_api .flex-container.flex:has(> #api_button_openai) {
         flex-wrap: wrap;
         gap: 8px;
         align-items: stretch;
     }
 
-    #kobold_api_block > .flex-container:has(> #api_button) > :is(.api_button, .api_loading),
-    #novel_api > form > .flex-container:has(> #api_button_novel) > :is(.api_button, .api_loading),
-    #textgenerationwebui_api > form > .flex-container:has(> #api_button_textgenerationwebui) > :is(.api_button, .api_loading, .openrouter_authorize),
-    #openai_api > .flex-container.flex:has(> #api_button_openai) > :is(.api_button, .api_loading, .openrouter_authorize, #customize_additional_parameters, #test_api_button) {
+    #kobold_api_block .flex-container:has(> #api_button) > :is(.api_button, .api_loading),
+    #novel_api form .flex-container:has(> #api_button_novel) > :is(.api_button, .api_loading),
+    #textgenerationwebui_api form .flex-container:has(> #api_button_textgenerationwebui) > :is(.api_button, .api_loading, .openrouter_authorize),
+    #openai_api .flex-container.flex:has(> #api_button_openai) > :is(.api_button, .api_loading, .openrouter_authorize, #customize_additional_parameters, #test_api_button) {
         flex: 1 1 100%;
         width: 100%;
         min-width: 0;
@@ -2277,16 +2279,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     }
 
     .sb-model-id-picker-menu {
-        width: 100%;
         max-height: min(320px, 48dvh);
-        margin-top: 8px;
-        padding: 6px;
-        overflow: auto;
-        border: 1px solid var(--sb-shell-border);
-        border-radius: var(--sb-radius-overlay);
-        background: var(--sb-layer-popover);
-        box-shadow: var(--sb-shadow-popover);
-        -webkit-overflow-scrolling: touch;
     }
 
     .sb-model-id-picker-menu[hidden] {

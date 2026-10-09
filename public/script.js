@@ -11997,10 +11997,12 @@ export async function openCharacterChat(file_name) {
 
 ////////// OPTIMZED MAIN API CHANGE FUNCTION ////////////
 
-export function changeMainAPI(api = null) {
-    const selectedVal = api ?? $('#main_api').val();
-    //console.log(selectedVal);
-    const apiElements = {
+// SillyBunny (feat/v1.9.0-ui-overhaul): the element map below is shared by the two halves of the
+// main-API change. It is built once per call rather than hoisted, because several of the ids are
+// authored by extensions after this module is evaluated and a hoisted map would capture nulls. The
+// element set is deliberately unchanged from upstream.
+function collectMainApiElements() {
+    return {
         'koboldhorde': {
             apiStreaming: $('#NULL_SELECTOR'),
             apiSettings: $('#kobold_api-settings'),
@@ -12047,8 +12049,24 @@ export function changeMainAPI(api = null) {
             amountGenElem: $('#amount_gen_block'),
         },
     };
-    //console.log('--- apiElements--- ');
-    //console.log(apiElements);
+}
+
+/**
+ * Reshows the settings groups and backend block the chosen API owns, and hides the rest.
+ *
+ * This is the visibility half of the main-API change, split out so a control that only needs the
+ * right groups on screen can run it without the side effects below. It is pure presentation: the
+ * only writes are `display` on the connector, settings, range, preset, and streaming groups.
+ *
+ * The `apiConnector` ids are the five provider blocks in `#rm_api_block`, which the Connections
+ * panel moves into slots of its own. Those are skipped: the panel hides them with the `hidden`
+ * attribute, and a `display` written here would fight it. Everything else -- the settings, range,
+ * preset, and streaming groups, none of which the panel owns -- is switched as before.
+ *
+ * @param {string} selectedVal the `#main_api` value to show
+ */
+export function changePanelApiVisibility(selectedVal) {
+    const apiElements = collectMainApiElements();
 
     //first, disable everything so the old elements stop showing
     for (const apiName in apiElements) {
@@ -12058,7 +12076,9 @@ export function changeMainAPI(api = null) {
             continue;
         }
         apiObj.apiSettings.css('display', 'none');
-        apiObj.apiConnector.css('display', 'none');
+        if (!apiObj.apiConnector.closest('.sb-connections-provider').length) {
+            apiObj.apiConnector.css('display', 'none');
+        }
         apiObj.apiRanges.css('display', 'none');
         apiObj.apiPresets.css('display', 'none');
         apiObj.apiStreaming.css('display', 'none');
@@ -12066,11 +12086,16 @@ export function changeMainAPI(api = null) {
 
     //then, find and enable the active item.
     //This is split out of the loop so that different apis can share settings divs
-    let activeItem = apiElements[selectedVal];
+    const activeItem = apiElements[selectedVal];
+    if (!activeItem) {
+        return;
+    }
 
     activeItem.apiStreaming.css('display', 'block');
     activeItem.apiSettings.css('display', 'block');
-    activeItem.apiConnector.css('display', 'block');
+    if (!activeItem.apiConnector.closest('.sb-connections-provider').length) {
+        activeItem.apiConnector.css('display', 'block');
+    }
     activeItem.apiRanges.css('display', 'block');
     activeItem.apiPresets.css('display', 'block');
 
@@ -12101,6 +12126,12 @@ export function changeMainAPI(api = null) {
     } else {
         $('#common-gen-settings-block').css('display', 'block');
     }
+}
+
+export function changeMainAPI(api = null) {
+    const selectedVal = api ?? $('#main_api').val();
+
+    changePanelApiVisibility(selectedVal);
 
     main_api = selectedVal;
     setOnlineStatus('no_connection');

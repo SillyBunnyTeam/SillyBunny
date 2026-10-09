@@ -2,9 +2,14 @@
  * SillyBunny subpage descriptors (feat/v1.9.0-ui-overhaul, Phase 6H).
  *
  * `sillybunny-settings-subpage.js` is the stack; this is the part that knows what each panel's rows
- * are. The panels it covers -- Extensions, Connections, and Prompting -- were the last ones still
- * built out of accordions, so each one is described here as a list of rows and the section each row
- * opens. Agents is presented as a dashboard by its own extension and keeps that layout.
+ * are. The panels it covers -- Extensions and Prompting -- were the last ones still built out of
+ * accordions, so each one is described here as a list of rows and the section each row opens. Agents
+ * is presented as a dashboard by its own extension and keeps that layout.
+ *
+ * Connections is not here. Its backend picker is the axis every one of its settings hangs off, so
+ * behind a row it made the only way to change backend an action that wrote global API state, and the
+ * page it needed on screen was the picker itself. It is built by hand instead, in
+ * `sillybunny-connections-panel.js`.
  *
  * The descriptions are the copy of the page. Sections authored upstream have none, so those are
  * `lorum ipsum` placeholders for the wording pass, marked with `data-sb-copy-placeholder` so the
@@ -18,83 +23,6 @@ export const SB_SUBPAGE_PLACEHOLDER_ATTRIBUTE = 'data-sb-copy-placeholder';
 
 /** The same placeholder text the settings normalizer uses, so one pass can find both. */
 const SB_SUBPAGE_PLACEHOLDER = 'lorum ipsum';
-
-const SB_PROVIDER_API_IDS = Object.freeze({
-    openai: 'openai_api',
-    textgenerationwebui: 'textgenerationwebui_api',
-    novel: 'novel_api',
-    koboldhorde: 'kobold_horde',
-    kobold: 'kobold_api',
-});
-
-/**
- * Builds the row list for the Connections panel.
- *
- * `#rm_api_block` is the model backend picker plus one block per API. Five of the six blocks are
- * hidden at any moment, because `#main_api` decides which is shown, and the visible one is taller
- * than the panel -- Chat Completion alone holds thirty-odd per-provider forms. Each block is its own
- * page, and the picker stays on the list as the API row's own control.
- *
- * @param {HTMLElement} panel
- * @returns {object|null}
- */
-export function buildConnectionsSubpage(panel) {
-    const root = panel.querySelector('#rm_api_block');
-    if (!(root instanceof HTMLElement)) {
-        return null;
-    }
-
-    const rows = [];
-    const profile = root.querySelector(':scope > .wide100p');
-    const apiBody = root.querySelector('#title_api')?.nextElementSibling;
-
-    if (profile instanceof HTMLElement) {
-        rows.push({
-            id: 'connection-profile',
-            label: 'Connection Profile',
-            description: SB_SUBPAGE_PLACEHOLDER,
-            placeholder: true,
-            icon: 'fa-id-card',
-            source: () => profile,
-        });
-    }
-
-    if (apiBody instanceof HTMLElement) {
-        // The backend picker needs no row of its own: it is a control for choosing between the
-        // rows below, and each provider row switches the backend as it opens. A page therefore has
-        // no picker on it, and the way back to another provider is the list.
-        const apiSelect = root.querySelector('#main_api');
-
-        // The row for a provider also selects it, so the page a user reads is the page upstream
-        // believes is active.
-        for (const option of apiSelect?.options ?? []) {
-            const blockId = SB_PROVIDER_API_IDS[option.value];
-            if (!blockId) {
-                continue;
-            }
-            const block = root.querySelector(`#${CSS.escape(blockId)}`);
-            if (!(block instanceof HTMLElement)) {
-                continue;
-            }
-            rows.push({
-                id: `api-${option.value}`,
-                label: option.textContent.replace(/\s+/g, ' ').trim(),
-                description: SB_SUBPAGE_PLACEHOLDER,
-                placeholder: true,
-                icon: 'fa-server',
-                source: () => block,
-                onOpen: () => {
-                    if (apiSelect && apiSelect.value !== option.value) {
-                        apiSelect.value = option.value;
-                        apiSelect.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                },
-            });
-        }
-    }
-
-    return { rows };
-}
 
 /**
  * Builds the row list for the Prompting panel.
@@ -340,7 +268,6 @@ function isContainerEmpty(container) {
  * @type {Record<string, (panel: HTMLElement) => (object|null)>}
  */
 export const SB_SUBPAGE_BUILDERS = Object.freeze({
-    connections: buildConnectionsSubpage,
     prompting: buildPromptingSubpage,
     extensions: buildExtensionsSubpage,
 });

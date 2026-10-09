@@ -8188,6 +8188,42 @@ body.reduced-motion .sb-shell-main {
     display: none !important;
 }
 
+/* The Connections tab's upstream drawer, after the panel has moved the profile card and the five
+   provider blocks out of it. It is clipped rather than `display: none`, and deliberately stays in
+   normal flow, because `openai.js`, `horde.js`, and `textgen-models.js` still register it as a
+   select2 dropdown parent and jQuery measures it to place the dropdown; a node with no box -- or one
+   taken out of flow -- makes every model picker compute its position from zero and land in the
+   top-left corner. A 1px clipped box has geometry and cannot be seen. */
+.sb-legacy-api-drawer {
+    display: block !important;
+    width: 1px !important;
+    height: 1px !important;
+    min-height: 0 !important;
+    max-height: 1px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    clip-path: inset(50%) !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* The two source pickers the panel mirrors in its own combo row, and the headings that name them.
+   The selects stay in the document and keep their values, their options, and their listeners,
+   because upstream and extensions read and write them by id -- they are simply not painted, since
+   the row is what the user sees. Upstream's own heading for each is dropped with them: the row
+   carries the same label, and leaving the heading behind would name a control that is not there.
+   Descendant combinators rather than child (>) are intentional: wrapProviderContent() moves these
+   nodes into a .sb-connections-provider-body wrapper, so > would break after the first mount.
+   `display: none` is safe here: neither select is a select2 host or a dropdown parent, and value,
+   option and change handling do not depend on the element having a box. */
+.sb-connections-panel #openai_api select#chat_completion_source,
+.sb-connections-panel #textgenerationwebui_api #textgen_type,
+.sb-connections-panel #openai_api h4:has(+ select#chat_completion_source),
+.sb-connections-panel #textgenerationwebui_api h4:has(+ select#textgen_type) {
+    display: none !important;
+}
+
 /* Search results pulse their own drawer after navigation. The class is applied by
    pulseSearchTarget(), and matches can land in any of the Customize tab containers or in the
    Data & Security panel, so it is intentionally unscoped. */
@@ -9400,5 +9436,552 @@ body.reduced-motion .sb-shell-main {
 @media screen and (max-width: 768px) {
     .sb-subpage-host {
         padding: 0;
+    }
+}
+
+/* ==========================================================================================
+   Connections panel (feat/v1.9.0-ui-overhaul)
+   ------------------------------------------------------------------------------------------
+   The tab is three controls stacked in the order a user answers them -- which saved profile,
+   which backend, which provider -- and then that provider's own settings. It is built by
+   `sillybunny-connections-panel.js` rather than by the subpage stack, because the backend is the
+   axis the settings hang off and a picker behind a row is a picker that cannot be used until the
+   row that stands for it is opened.
+
+   Every provider block, its settings, and its connect row are upstream's own nodes, moved rather
+   than rebuilt, so most of what is here is framing: the heading, the pill switch, the combo row,
+   and the sticky band the switch rides in.
+   ========================================================================================== */
+
+.sb-connections-panel {
+    /* The sticky switch has to sit over the provider settings it scrolls past, so the band and the
+       panel's own surface are opaque; a translucent band would show two layers of text moving
+       through each other. */
+    --sb-connections-band-bg: var(--sb-layer-view, var(--sb-layer-canvas));
+    --sb-connections-band-pad: var(--sb-shell-space-sm);
+}
+
+.sb-connections-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 0 2px;
+}
+
+.sb-connections-title {
+    margin: 0;
+    font-size: var(--sb-type-headline);
+    font-weight: 700;
+    line-height: var(--sb-line-title, 1.18);
+    color: var(--sb-shell-text);
+}
+
+/* libadwaita preference pill, matching `.ds-pref-group` so the profile card reads as the same
+   primitive as every other boxed group on the settings page (DESIGN.md, Cards / Containers). */
+.sb-connections-profile:not(:empty) {
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--sb-radius-lg, 16px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    overflow: hidden;
+    padding: 12px 16px;
+}
+
+/* The band is the panel's answer to a header that stays put while the provider's thirty-odd forms
+   scroll under it: the two controls that decide *what* is being configured never scroll away from
+   the settings they configure. It bleeds to the panel's own edges so nothing shows behind it. */
+.sb-connections-switcher {
+    position: sticky;
+    top: 0;
+    z-index: var(--sb-z-sticky, 500);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: var(--sb-connections-band-pad) var(--sb-connections-band-pad) 10px;
+    margin-inline: calc(var(--sb-connections-band-pad) * -1);
+    background: var(--sb-connections-band-bg);
+    border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 60%, transparent);
+}
+
+/* ── Backend switch ──────────────────────────────────────────────────────────────────────── */
+
+.sb-backend-switch,
+.sb-other-backend-switch {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 4px;
+    border-radius: var(--sb-radius-button, 14px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+}
+
+/* The pill is the control: it says which backend is in use, so the selected one takes the accent
+   fill rather than hovering into it. Both rows wrap, because three backend names do not fit a
+   phone and a wrapped row is better than three clipped labels. */
+.sb-backend-switch-button,
+.sb-other-backend-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 36px;
+    padding: 6px 14px;
+    border: 1px solid transparent;
+    border-radius: calc(var(--sb-radius-button, 14px) - 4px);
+    background: transparent;
+    color: var(--sb-shell-text-secondary);
+    font-size: var(--sb-type-control);
+    font-weight: 600;
+    line-height: 1.25;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.sb-backend-switch-button:hover,
+.sb-other-backend-button:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 9%, transparent);
+    color: var(--sb-shell-text);
+}
+
+.sb-backend-switch-button:focus-visible,
+.sb-other-backend-button:focus-visible,
+.sb-combo-trigger:focus-visible,
+.sb-combo-option:focus-visible {
+    outline: 2px solid var(--color-primary, var(--sb-accent));
+    outline-offset: 2px;
+}
+
+.sb-backend-switch-button.is-selected,
+.sb-other-backend-button.is-selected {
+    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 16%, var(--sb-layer-view, transparent));
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent);
+    color: var(--sb-shell-text);
+}
+
+.sb-backend-switch-button i,
+.sb-other-backend-button i {
+    flex-shrink: 0;
+    font-size: var(--sb-type-meta);
+}
+
+/* A profile that moved the backend highlights the pill it landed on, so the change is visible even
+   when the profile was applied from a control somewhere else on the page. */
+.sb-backend-switch-button.is-flash {
+    animation: sb-connections-pill-flash 720ms var(--sb-ease, ease-out);
+}
+
+@keyframes sb-connections-pill-flash {
+    0% {
+        background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 42%, transparent);
+    }
+
+    100% {
+        background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 16%, var(--sb-layer-view, transparent));
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-backend-switch-button.is-flash {
+        animation: none;
+    }
+}
+
+/* ── Source combo row ───────────────────────────────────────────────────────────────────── */
+
+/* libadwaita action row: a title on the leading edge and the control on the trailing edge, which is
+   the shape the platform uses for a list of choices that is not important enough for a page. */
+.sb-combo-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 46px;
+    padding: 4px 4px 4px 14px;
+    border-radius: var(--sb-radius-control, 9px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+}
+
+.sb-combo-row-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: var(--sb-type-control);
+    font-weight: 600;
+    color: var(--sb-shell-text);
+}
+
+.sb-combo-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex: 0 0 auto;
+    min-width: 0;
+    max-width: min(100%, 340px);
+    min-height: 34px;
+    padding: 6px 12px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 84%, transparent);
+    border-radius: calc(var(--sb-shell-control-radius, 999px));
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
+    color: var(--sb-shell-text);
+    font-size: var(--sb-type-control);
+    font-family: inherit;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast);
+}
+
+.sb-combo-trigger:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 11%, transparent);
+}
+
+.sb-combo-row.is-open .sb-combo-trigger {
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 46%, var(--sb-shell-border) 54%);
+}
+
+.sb-combo-value {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.sb-combo-chevron {
+    flex-shrink: 0;
+    font-size: var(--sb-type-caption);
+    color: var(--sb-shell-text-secondary);
+    transition: transform var(--sb-transition-fast);
+}
+
+.sb-combo-row.is-open .sb-combo-chevron {
+    transform: rotate(180deg);
+}
+
+/* The list overlays the settings below rather than pushing them down: it is a menu, and a menu that
+   reflows the page under it moves the control the user is aiming at. */
+.sb-combo-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 4px;
+    z-index: var(--sb-z-dropdown, 100);
+    display: flex;
+    flex-direction: column;
+    width: min(100%, 420px);
+    max-height: min(60vh, 420px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 6px;
+    border: 1px solid var(--sb-shell-border);
+    border-radius: var(--sb-radius-card, 12px);
+    background: var(--sb-layer-drawer, var(--sb-layer-canvas));
+    box-shadow: var(--sb-shadow-dialog, 0 8px 24px rgb(0 0 0 / 28%));
+    -webkit-overflow-scrolling: touch;
+}
+
+.sb-combo-list[hidden] {
+    display: none;
+}
+
+.sb-combo-group {
+    padding: 8px 10px 4px;
+    font-size: var(--sb-type-caption);
+    font-weight: 700;
+    color: var(--sb-shell-text-secondary);
+}
+
+.sb-combo-group:not(:first-child) {
+    margin-top: 4px;
+    border-top: 1px solid color-mix(in srgb, var(--sb-shell-border) 60%, transparent);
+}
+
+.sb-combo-option {
+    display: block;
+    width: 100%;
+    min-height: 36px;
+    padding: 7px 10px;
+    border: none;
+    border-radius: var(--sb-radius-control, 9px);
+    background: transparent;
+    color: var(--sb-shell-text);
+    font-size: var(--sb-type-control);
+    font-family: inherit;
+    line-height: 1.35;
+    text-align: start;
+    cursor: pointer;
+}
+
+.sb-combo-option:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 9%, transparent);
+}
+
+.sb-combo-option.is-selected {
+    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 16%, transparent);
+    font-weight: 600;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────────────────────── */
+
+/* The controls that apply to every backend rather than to one: auto-connect and the hidden-key
+   viewer. They sit below the provider page as one row, on the same pill surface as the profile
+   card, because they are settings of the tab rather than of the backend. */
+.sb-connections-footer:not(:empty) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: var(--sb-radius-lg, 16px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+}
+
+.sb-connections-footer .checkbox_label {
+    flex: 1 1 220px;
+    min-width: 0;
+}
+
+/* ── Provider page ───────────────────────────────────────────────────────────────────────── */
+
+.sb-connections-provider {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sb-shell-card-gap, 12px);
+}
+
+.sb-connections-provider[hidden] {
+    display: none;
+}
+
+/* Upstream authors a block-level connector that upstream's own change function shows and hides. The
+   panel owns that decision now, so the block is not a box of its own here: its children are the
+   page. */
+.sb-connections-provider > [id$='_api'],
+.sb-connections-provider > #kobold_horde {
+    display: block;
+    width: 100%;
+    min-width: 0;
+}
+
+/* The connect row and the status text are one card at the top of the provider page, which is where
+   the state of the connection is read before anything is configured -- and, when it fails, where
+   the failure is reported rather than mid-form. The row keeps the fact that it is a flex container,
+   because the theme and the mobile sheet both lay its buttons out with `.flex-container:has(> .api_button)`
+   rules that now match again -- so this card adds chrome and no layout. */
+.sb-connections-provider .sb-connections-connect {
+    position: relative;
+    width: 100%;
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    border-radius: var(--sb-radius-lg, 16px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+}
+
+.sb-connections-provider .sb-connections-connect:not(:has(> .api_button, > #horde_api_key_button)) {
+    grid-template-columns: 1fr;
+    gap: 0;
+}
+
+.sb-connections-provider .sb-connections-connect .online_status {
+    /* Grid child: center vertically with the buttons and shrink-wrap the pill text. width: fit-content
+       prevents stretching, but align-self: center is what actually aligns it with the button row.
+       The base .online_status in style.css carries an uneven 2px/15px vertical margin, which
+       offsets a centered grid item by ~6px, so it is zeroed here. */
+    width: fit-content;
+    align-self: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-start;
+    margin: 0;
+}
+
+.sb-connections-provider .sb-connections-connect .online_status_text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+/* The upstream h4 for "Chat Completion Source" / "API Type" is authored above the now-hidden
+   native select. The combo row in the switcher already carries the "Source" label, so the h4
+   is redundant. The rules above (clip-path) already handle the common case; this is a safety net
+   for any path where the clip-path rule doesn't fire. */
+[data-sb-connections-panel] h4:has(+ #chat_completion_source),
+[data-sb-connections-panel] h4:has(+ #textgen_type) {
+    display: none !important;
+}
+
+/* libadwaita suggested-action: the primary connect button gets accent colour treatment so it reads
+   as the main action on the provider card rather than as a neutral tool button. */
+[data-sb-connections-panel] .sb-connections-connect .api_button,
+[data-sb-connections-panel] .sb-connections-connect #horde_api_key_button {
+    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 22%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-primary, var(--sb-accent)) 46%, transparent);
+    color: var(--color-primary, var(--sb-accent));
+    font-weight: 600;
+}
+
+[data-sb-connections-panel] .sb-connections-connect .api_button:hover,
+[data-sb-connections-panel] .sb-connections-connect #horde_api_key_button:hover {
+    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 32%, transparent);
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 62%, transparent);
+}
+
+/* The drawer's remaining top-level nodes -- the `#main_api` picker row and the two connection
+   forms whose blocks the panel has already relocated. They stay in the document so their ids stay
+   resolvable, and are hidden here rather than moved, because `#main_api` in particular must keep
+   its position in the document: half the app reads it by id and `changeMainAPI` writes `display`
+   onto it. */
+.sb-connections-legacy {
+    display: none !important;
+}
+
+/* ── Provider settings pill ─────────────────────────────────────────────────────────────── */
+
+/* Every provider block's settings (everything below its connect card) live in a pill that matches
+   the boxed preference groups the Messages tab uses. The wrapper is built by wrapProviderContent()
+   in sillybunny-connections-panel.js, so normalizeSettingsPresentation never runs over it. */
+.sb-connections-provider-body {
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--sb-radius-lg, 16px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    overflow: hidden;
+}
+
+.sb-connections-provider-body > * {
+    margin: 0;
+    padding: 10px 16px;
+}
+
+.sb-connections-provider-body > * + * {
+    border-top: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+}
+
+/* Inside the pill, text_pole inputs get consistent vertical rhythm with no extra margin. */
+[data-sb-connections-panel] .sb-connections-provider-body .text_pole {
+    margin: 4px 0;
+}
+
+/* Rows that pair a text input with a side icon (API keys, save/delete) use a grid so the input
+   fills the available width and the icon(s) trail at a fixed size. Scoped to the panel, not to
+   the provider body pill, so it applies even when the pill wrapper is not yet present. */
+[data-sb-connections-panel] .flex-container:has(> .text_pole):has(> .menu_button):not(:has(> .api_button)) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Trailing icon buttons beside an input (key manager, model list, favourite) share one 44px square, so
+   they line up with the 44px inputs and with each other. The theme's icon-button rule
+   (sillybunny-theme.css, `.menu_button:not(#bg_selection_mode_button)…:has(> i:only-child)`) carries
+   an id inside :not() and sizes the 38px square through logical properties, so it outranks any
+   selector this panel can reasonably write; !important mirrors what setModelIdPickerTouchTarget()
+   in openai.js already does inline for the picker toggle. */
+.sb-connections-panel .sb-connections-provider-body :is(.manage-api-keys, #openai_proxy_access_key_show, #model_openai_favorite_toggle, .sb-model-id-favorite-toggle) {
+    flex: 0 0 44px !important;
+    inline-size: 44px !important;
+    min-inline-size: 44px !important;
+    max-inline-size: 44px !important;
+    block-size: 44px !important;
+    min-block-size: 44px !important;
+    max-block-size: 44px !important;
+    padding: 0 !important;
+    align-self: center;
+}
+
+/* The model ID row holds the input, the list toggle and the favourite star, so it needs a third
+   column; the generic two-column row rule below would wrap the star onto its own line. */
+[data-sb-connections-panel] .sb-model-id-search-row.sb-model-id-search-row:has(> .text_pole):has(> .sb-model-id-picker-toggle):has(> .sb-model-id-favorite-toggle) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 6px;
+}
+
+/* The proxy/endpoint preset pickers add two trailing icon buttons, so they get a three-column grid. */
+[data-sb-connections-panel] .openai_logit_bias_preset_form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 6px;
+}
+
+/* ── Model ID picker (bug fix: styles were mobile-only) ──────────────────────────────────── */
+
+/* The model ID picker and inline multi-select picker insert a styled menu as a flow sibling of
+   their search row. The styles previously lived only inside the max-width: 768px block in
+   sillybunny-mobile-shell.css, so the menu was unstyled on any desktop viewport. These base rules
+   apply at all widths; the mobile sheet overrides only the dvh-based max-height. */
+.sb-model-id-picker-menu,
+.sb-inline-select-picker-menu {
+    width: 100%;
+    max-height: min(320px, 60vh);
+    margin-top: 8px;
+    padding: 6px;
+    overflow: auto;
+    border: 1px solid var(--sb-shell-border);
+    border-radius: var(--sb-radius-overlay, 12px);
+    background: var(--sb-layer-popover, var(--sb-layer-drawer));
+    box-shadow: var(--sb-shadow-popover, 0 8px 24px rgb(0 0 0 / 28%));
+    -webkit-overflow-scrolling: touch;
+}
+
+.sb-model-id-picker-menu[hidden],
+.sb-inline-select-picker-menu[hidden] {
+    display: none !important;
+}
+
+/* ── Mobile ──────────────────────────────────────────────────────────────────────────────── */
+
+@media screen and (max-width: 768px) {
+    .sb-connections-switcher {
+        gap: 6px;
+    }
+
+    /* Three backend names do not fit a phone, so the pills shed their icons and wrap onto as many
+       rows as they need rather than clipping a label. */
+    .sb-backend-switch-button i,
+    .sb-other-backend-button i {
+        display: none;
+    }
+
+    .sb-backend-switch-button,
+    .sb-other-backend-button {
+        flex: 1 1 30%;
+        min-width: 96px;
+        padding-inline: 10px;
+        white-space: normal;
+    }
+
+    /* A combo row on a phone is the control and nothing else: the "Source" title above it is the
+       same word as the label the trigger already carries. */
+    .sb-combo-row {
+        padding: 4px;
+    }
+
+    .sb-combo-row-title {
+        display: none;
+    }
+
+    .sb-combo-trigger {
+        justify-content: space-between;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .sb-combo-list {
+        width: 100%;
+        max-height: min(50vh, 320px);
+    }
+
+    /* The buttons stack full-width on a phone, so the status pill centers under them. */
+    .sb-connections-provider .sb-connections-connect .online_status {
+        justify-self: center;
+        justify-content: center;
     }
 }

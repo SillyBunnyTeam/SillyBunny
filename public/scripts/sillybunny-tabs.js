@@ -39,7 +39,7 @@ import { setCharacterSpoilerFreeFieldsHidden } from './power-user.js';
 import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
 import { extension_settings } from './extensions.js';
-import { characters, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
+import { changePanelApiVisibility, characters, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
 import {
     SAMPLING_PARAMETER_DESCRIPTORS,
 } from './sampling-parameter-policy.js';
@@ -65,6 +65,7 @@ import {
 import { normalizeSettingsDetail, normalizeSettingsPresentation } from './sillybunny-settings-presentation.js';
 import { createSubpageStack, SB_SUBPAGE_STORE_CLASS } from './sillybunny-settings-subpage.js';
 import { SB_SUBPAGE_BUILDERS } from './sillybunny-settings-subpage-descriptors.js';
+import { createConnectionsPanel } from './sillybunny-connections-panel.js';
 
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
@@ -132,7 +133,7 @@ const SB_COLLAPSIBLE_DRAWER_TAB_IDS = Object.freeze(new Set(['extensions', 'agen
  * because it does not need stacking: the in-chat-agents extension already presents its own dashboard
  * as a list that opens editors, so it gets the shared row and button styling and keeps its layout.
  */
-const SB_SUBPAGE_TAB_IDS = Object.freeze(new Set(['connections', 'extensions', 'prompting']));
+const SB_SUBPAGE_TAB_IDS = Object.freeze(new Set(['extensions', 'prompting']));
 
 /**
  * Whether a panel's presentation is owned by the subpage stack rather than by the settings passes.
@@ -6361,7 +6362,11 @@ async function getConnectionStatusText() {
         // Ignore slash command lookup failures and use the current context values.
     }
 
-    const apiBlock = document.getElementById('rm_api_block');
+    // SillyBunny (feat/v1.9.0-ui-overhaul): the provider selects moved into the Connections panel,
+    // so the block no longer holds the model options this reads -- `#rm_api_block` now only carries
+    // `#main_api`. The panel is searched first and the block is kept as the fallback for the window
+    // before the panel is built.
+    const apiBlock = document.querySelector('.sb-connections-panel') ?? document.getElementById('rm_api_block');
 
     if (apiBlock instanceof HTMLElement) {
         const apiOption = apiBlock.querySelector(`select:not(#main_api) option[value="${escapeSelectorValue(apiValue)}"]`)
@@ -12260,10 +12265,28 @@ function buildShell(shellKey) {
     // for the sake of ids that are looked up globally, but nothing paints it any more.
     let userSettingsSplit = null;
     if (shellKey === 'left') {
+        // SillyBunny (feat/v1.9.0-ui-overhaul): the base tab is the Connections panel, built by hand
+        // rather than by the drawer passes or the subpage stack. The drawer it replaces stays in the
+        // document, detached from the layout, so every id authored inside it -- `#main_api`,
+        // `#rm_api_block`, and the connection-manager extension's own markup -- is still resolvable
+        // by the code that looks it up. The panel moves out only the nodes it presents: the profile
+        // card and the five provider blocks.
         const apiDrawerPrep = prepareEmbeddedDrawer('sys-settings-button');
         if (apiDrawerPrep) {
-            basePanel.scroller.appendChild(apiDrawerPrep.drawer);
+            apiDrawerPrep.drawer.removeAttribute('style');
+            apiDrawerPrep.drawer.classList.add('sb-legacy-api-drawer');
+            shellRoot.appendChild(apiDrawerPrep.drawer);
         }
+
+        const connectionsPanel = createConnectionsPanel({
+            createElement,
+            getActiveApi: getCurrentMainApiValue,
+            applyPanelApiVisibility: changePanelApiVisibility,
+        });
+        basePanel.scroller.appendChild(connectionsPanel.column);
+        basePanel.searchRoot = connectionsPanel.column;
+        basePanel.onActivate = () => connectionsPanel.onActivate();
+        basePanel.connectionsPanel = connectionsPanel;
     } else if (shellKey === 'right') {
         userSettingsSplit = splitUserSettingsContent(originalContent);
 
@@ -13346,7 +13369,9 @@ function reinitSelect2AfterShell() {
         }
     } else {
         // On desktop, reinitialize Select2 after DOM reparenting
-        const apiDropdownParent = $('#rm_api_block');
+        // SillyBunny (feat/v1.9.0-ui-overhaul): the API controls live in the Connections panel now,
+        // which moved them out of `#rm_api_block`; the block is the fallback before it is built.
+        const apiDropdownParent = $('.sb-connections-panel').length ? $('.sb-connections-panel') : $('#rm_api_block');
         const select2Defaults = {
             dropdownParent: apiDropdownParent.length ? apiDropdownParent : $(document.body),
             minimumResultsForSearch: 0,
@@ -14844,6 +14869,12 @@ function mountShellRootInSettingsPage(shellKey, tabId = null) {
     // the base tab, which is active before the page is ever mounted, is the one panel that never
     // gets flattened.
     flattenSettingsPanelDrawers(shellKey, shellState.activeTabId);
+    // SillyBunny: the stacked panels have their store wrapper and their stack built from the same
+    // activation pass, and this path bypasses `setActiveTab` for the tab that is already active --
+    // which is the base tab, every time the page is first mounted. Without this the first paint of
+    // an Extensions or Prompting panel is the raw legacy drawer: the wrapper that hides its children
+    // does not exist yet, so all of its sections render at once.
+    installSettingsSubpage(shellKey, shellState.activeTabId);
     dispatchShellTabActivated(shellKey, activeTab);
     queueMobileShellActivationRefresh();
 }

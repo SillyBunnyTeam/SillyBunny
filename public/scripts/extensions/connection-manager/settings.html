@@ -11,15 +11,42 @@
     <div class="flex-container flexFlowColumn connection-profile-picker">
         <select class="text_pole wide100p" id="connection_profiles" aria-label="Connection Profile" data-i18n="[aria-label]Connection Profile"></select>
         <div class="connection-profile-actions" role="group" aria-label="Connection profile actions">
-            <i id="view_connection_profile" class="menu_button fa-solid fa-info-circle" title="View connection profile details" data-i18n="[title]View connection profile details"></i>
-            <i id="create_connection_profile" class="menu_button fa-solid fa-file-circle-plus" title="Create a new connection profile" data-i18n="[title]Create a new connection profile"></i>
-            <i id="manage_profile_folders" class="menu_button fa-solid fa-folder-tree" title="Manage folders" data-i18n="[title]Manage folders"></i>
-            <i id="delete_all_connection_profiles" class="menu_button fa-solid fa-trash-arrow-up" title="Delete all connection profiles" data-i18n="[title]Delete all connection profiles"></i>
-            <i id="update_connection_profile" class="menu_button fa-solid fa-save" title="Update a connection profile" data-i18n="[title]Update a connection profile"></i>
-            <i id="edit_connection_profile" class="menu_button fa-solid fa-pencil" title="Edit a connection profile" data-i18n="[title]Edit a connection profile"></i>
-            <i id="toggle_profile_favorite" class="menu_button fa-solid fa-star" title="Toggle favorite" data-i18n="[title]Toggle favorite"></i>
-            <i id="reload_connection_profile" class="menu_button fa-solid fa-recycle" title="Reload a connection profile" data-i18n="[title]Reload a connection profile"></i>
-            <i id="delete_connection_profile" class="menu_button fa-solid fa-trash-can" title="Delete a connection profile" data-i18n="[title]Delete a connection profile"></i>
+            <button id="view_connection_profile" class="sb-profile-action-btn" title="View connection profile details" data-i18n="[title]View connection profile details">
+                <i class="fa-solid fa-info-circle" aria-hidden="true"></i>
+                <span data-i18n="View">View</span>
+            </button>
+            <button id="create_connection_profile" class="sb-profile-action-btn" title="Create a new connection profile" data-i18n="[title]Create a new connection profile">
+                <i class="fa-solid fa-file-circle-plus" aria-hidden="true"></i>
+                <span data-i18n="New">New</span>
+            </button>
+            <button id="manage_profile_folders" class="sb-profile-action-btn" title="Manage folders" data-i18n="[title]Manage folders">
+                <i class="fa-solid fa-folder-tree" aria-hidden="true"></i>
+                <span data-i18n="Folders">Folders</span>
+            </button>
+            <button id="update_connection_profile" class="sb-profile-action-btn" title="Update a connection profile" data-i18n="[title]Update a connection profile">
+                <i class="fa-solid fa-save" aria-hidden="true"></i>
+                <span data-i18n="Update">Update</span>
+            </button>
+            <button id="edit_connection_profile" class="sb-profile-action-btn" title="Edit a connection profile" data-i18n="[title]Edit a connection profile">
+                <i class="fa-solid fa-pencil" aria-hidden="true"></i>
+                <span data-i18n="Edit">Edit</span>
+            </button>
+            <button id="toggle_profile_favorite" class="sb-profile-action-btn" title="Toggle favorite" data-i18n="[title]Toggle favorite">
+                <i class="fa-solid fa-star" aria-hidden="true"></i>
+                <span data-i18n="Favorite">Favorite</span>
+            </button>
+            <button id="reload_connection_profile" class="sb-profile-action-btn" title="Reload a connection profile" data-i18n="[title]Reload a connection profile">
+                <i class="fa-solid fa-recycle" aria-hidden="true"></i>
+                <span data-i18n="Reload">Reload</span>
+            </button>
+            <button id="delete_all_connection_profiles" class="sb-profile-action-btn sb-profile-action-btn--danger" title="Delete all connection profiles" data-i18n="[title]Delete all connection profiles">
+                <i class="fa-solid fa-trash-arrow-up" aria-hidden="true"></i>
+                <span data-i18n="Delete All">Delete All</span>
+            </button>
+            <button id="delete_connection_profile" class="sb-profile-action-btn sb-profile-action-btn--danger" title="Delete a connection profile" data-i18n="[title]Delete a connection profile">
+                <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                <span data-i18n="Delete">Delete</span>
+            </button>
         </div>
     </div>
     <div id="connection_profile_details_content" class="hidden"></div>

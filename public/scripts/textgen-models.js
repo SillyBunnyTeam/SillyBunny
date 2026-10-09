@@ -1204,7 +1204,9 @@ export function initTextGenModels() {
     }
 
     // Keep API Select2 dropdowns inside the scrolling API drawer so they move with the control.
-    const apiDropdownParent = $('#rm_api_block');
+    // SillyBunny (feat/v1.9.0-ui-overhaul): that drawer is now the Connections panel, which moved
+    // the provider forms out of the emptied `#rm_api_block`.
+    const apiDropdownParent = $('.sb-connections-panel').length ? $('.sb-connections-panel') : $('#rm_api_block');
     const select2Defaults = {
         dropdownParent: apiDropdownParent.length ? apiDropdownParent : $(document.body),
         minimumResultsForSearch: 0,

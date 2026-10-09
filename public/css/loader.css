@@ -33,6 +33,96 @@
     gap: 4rem;
 }
 
+.sb-boot-throbber {
+    --throbber-size: 2.5rem;
+    --throbber-spoke-length: 0.72rem;
+    --throbber-spoke-width: 0.28rem;
+    position: relative;
+    width: var(--throbber-size);
+    height: var(--throbber-size);
+    color: var(--sb-accent, var(--sb-boot-fg, var(--SmartThemeBodyColor)));
+}
+
+.sb-boot-throbber > span {
+    position: absolute;
+    inset: 0;
+    opacity: 0.18;
+    transform: rotate(var(--throbber-angle));
+    animation: sb-boot-throbber-pulse 960ms var(--sb-ease, ease-out) infinite;
+    animation-delay: var(--throbber-delay);
+}
+
+.sb-boot-throbber > span::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: var(--throbber-spoke-width);
+    height: var(--throbber-spoke-length);
+    transform: translateX(-50%);
+    border-radius: var(--throbber-spoke-width);
+    background: color-mix(in srgb, currentColor 88%, var(--sb-boot-fg, currentColor));
+}
+
+.sb-boot-throbber > span:nth-child(1) {
+    --throbber-angle: 0deg;
+    --throbber-delay: 0ms;
+}
+
+.sb-boot-throbber > span:nth-child(2) {
+    --throbber-angle: 45deg;
+    --throbber-delay: 120ms;
+}
+
+.sb-boot-throbber > span:nth-child(3) {
+    --throbber-angle: 90deg;
+    --throbber-delay: 240ms;
+}
+
+.sb-boot-throbber > span:nth-child(4) {
+    --throbber-angle: 135deg;
+    --throbber-delay: 360ms;
+}
+
+.sb-boot-throbber > span:nth-child(5) {
+    --throbber-angle: 180deg;
+    --throbber-delay: 480ms;
+}
+
+.sb-boot-throbber > span:nth-child(6) {
+    --throbber-angle: 225deg;
+    --throbber-delay: 600ms;
+}
+
+.sb-boot-throbber > span:nth-child(7) {
+    --throbber-angle: 270deg;
+    --throbber-delay: 720ms;
+}
+
+.sb-boot-throbber > span:nth-child(8) {
+    --throbber-angle: 315deg;
+    --throbber-delay: 840ms;
+}
+
+@keyframes sb-boot-throbber-pulse {
+    0%,
+    12% {
+        opacity: 1;
+    }
+
+    38%,
+    100% {
+        opacity: 0.18;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-boot-throbber > span {
+        animation: none;
+        opacity: 0.72;
+    }
+}
+
 #load-spinner {
     --spinner-size: 2em;
     transition: all var(--sb-transition-slow);

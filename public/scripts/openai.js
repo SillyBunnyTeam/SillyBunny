@@ -2501,8 +2501,16 @@ function appendOpenAIModelEntry($container, entry, favoriteValues = new Set()) {
 }
 
 function getApiSelect2DropdownParent() {
-    const apiDropdownParent = $('#rm_api_block');
-    return apiDropdownParent.length ? apiDropdownParent : $(document.body);
+    // SillyBunny (feat/v1.9.0-ui-overhaul): the provider forms live in the Connections panel, which
+    // moved them out of `#rm_api_block`. A dropdown parent that still resolves to that now-empty
+    // block would render every model picker somewhere the user cannot see, so the panel is preferred
+    // and the block is only the fallback for the brief window before the panel is built.
+    const apiDropdownParent = $('.sb-connections-panel');
+    if (apiDropdownParent.length) {
+        return apiDropdownParent;
+    }
+    const apiBlock = $('#rm_api_block');
+    return apiBlock.length ? apiBlock : $(document.body);
 }
 
 function getPromptManagerSelect2DropdownParent() {
