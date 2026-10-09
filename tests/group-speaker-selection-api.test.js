@@ -116,17 +116,28 @@ describe('group replies and the speaker bar pick', () => {
         });
     }
 
-    test('impersonating the user leaves the pick for the reply after it', async () => {
+    test('impersonating the user borrows the picked member\'s card and leaves the pick for the reply after it', async () => {
         const { runtime, changes, generations } = createSpeakerRuntime();
-        runtime.setSelectedGroupSpeakerAvatar('alice.png');
-        // Impersonation borrows a random member's card; fix it to the first so the generation always runs.
+        runtime.setSelectedGroupSpeakerAvatar('bob.png');
+        // Without a pick, impersonation borrows a random member's card; a fixed draw would pick the first member.
+        vm.runInContext('Math.random = () => 0;', runtime);
+
+        await runtime.generateGroupWrapper(false, 'impersonate', {});
+
+        expect(generations).toEqual([{ type: 'impersonate', avatar: 'bob.png' }]);
+        expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('bob.png');
+        expect(changes).toEqual(['bob.png']);
+    });
+
+    test('impersonating the user without a pick borrows a random member\'s card', async () => {
+        const { runtime, changes, generations } = createSpeakerRuntime();
         vm.runInContext('Math.random = () => 0;', runtime);
 
         await runtime.generateGroupWrapper(false, 'impersonate', {});
 
         expect(generations).toEqual([{ type: 'impersonate', avatar: 'alice.png' }]);
-        expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('alice.png');
-        expect(changes).toEqual(['alice.png']);
+        expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('');
+        expect(changes).toEqual([]);
     });
 
     test('a regenerated reply is answered by the picked member', async () => {

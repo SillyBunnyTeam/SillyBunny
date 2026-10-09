@@ -1666,7 +1666,9 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
         const selectedSpeakerAvatar = selectedSpeakerChid !== -1 ? selectedGroupSpeakerAvatar : '';
         // Only a new reply answers as the pick and uses it up. Swipes and Continue redo or extend the last message,
         // and quiet or Impersonate generations never reply as a member, so they all leave the pick for the next reply.
+        // Impersonate still borrows the picked member's card, as it did before the pick could be kept.
         const isNewReply = !['quiet', 'swipe', 'continue', 'impersonate'].includes(type);
+        const usesPick = isNewReply || type === 'impersonate';
         const addressedMemberChid = findDirectlyAddressedMember(group, activationText);
         const isWholeGroupAddress = isAddressedToEntireGroup(activationText);
         // SillyBunny: an extension holding the turn routing lease plans who answers an ordinary user message.
@@ -1693,7 +1695,7 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
             activatedMembers = enabledMembers.map(avatar => getCharacterIdByAvatar(avatar)).filter(chid => chid !== -1);
         } else if (type !== 'quiet' && addressedMemberChid !== -1) {
             activatedMembers = [addressedMemberChid];
-        } else if (isNewReply && selectedSpeakerChid !== -1) {
+        } else if (usesPick && selectedSpeakerChid !== -1) {
             activatedMembers = [selectedSpeakerChid];
         } else if (type === 'quiet') {
             activatedMembers = activateSwipe(enabledMembers, { allowSystem: true }).slice(0, 1);
