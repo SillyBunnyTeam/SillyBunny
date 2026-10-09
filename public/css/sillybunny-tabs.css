@@ -9852,13 +9852,36 @@ body.reduced-motion .sb-shell-main {
     overflow: hidden;
 }
 
-.sb-connections-provider-body > * {
+/* Match the flattened-section rule's specificity so it cannot remove the provider inset. */
+.sb-connections-panel .sb-connections-provider-body > * {
     margin: 0;
     padding: 10px 16px;
 }
 
-.sb-connections-provider-body > * + * {
+.sb-connections-panel .sb-connections-provider-body > * + * {
     border-top: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+}
+
+/* A leading nested drawer shares its enclosing provider row's separator. */
+.sb-connections-provider-body > * > .sb-settings-flat-section:first-child {
+    border-top: 0;
+}
+
+/* These fields are already inset by the provider row; generic flat-section metrics add it twice. */
+.sb-connections-panel .sb-connections-provider-body .sb-settings-flat-section > .flex-container {
+    padding: 0;
+}
+
+/* The provider body owns the pill chrome, so child sections must not paint a second full-width
+   surface or add an extra edge. Keep the padding on the body rows so inputs remain inset. */
+.sb-connections-panel .sb-connections-provider-body > .sb-connections-connect-slot {
+    padding: 0;
+}
+
+.sb-connections-provider-body > .sb-connections-connect-slot > .sb-connections-connect {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
 }
 
 /* Inside the pill, text_pole inputs get consistent vertical rhythm with no extra margin. */
