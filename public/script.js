@@ -265,6 +265,7 @@ import { getRegexedString, regex_placement } from './scripts/extensions/regex/en
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from './scripts/extensions/in-chat-agents/regex-scripts.js';
 import { resolveRegexScriptsForSnapshot } from './scripts/extensions/in-chat-agents/regex-snapshot-store.js';
 import { consolidateCompanionChatHistory, hasCompanionChatHistoryForHiddenHost, selectCompanionChatHistory } from './scripts/extensions/in-chat-agents/companion/companion-shared.js';
+import { collectHiddenGenerationMessages } from './scripts/generation-hidden-messages.js';
 import { IN_CHAT_AGENT_PROMPT_KEY_PREFIX, instrumentInChatAgentPromptValue, trimOldestRetainedContribution } from './scripts/in-chat-agent-inspection.js';
 import { initLogprobs, saveLogprobsForActiveMessage } from './scripts/logprobs.js';
 import { FILTER_STATES, FILTER_TYPES, FilterHelper, isFilterState } from './scripts/filters.js';
@@ -6752,7 +6753,8 @@ class StreamingProcessor {
         if (!this.#isCurrent(messageId)) return;
 
         const isAborted = this.abortController.signal.aborted;
-        if (!isAborted && power_user.auto_swipe && generatedTextFiltered(text)) {
+        // SillyBunny: requests may keep their reply, as routed group replies do.
+        if (!isAborted && power_user.auto_swipe && !this.requestControls.suppressAutoSwipe && generatedTextFiltered(text)) {
             return await swipe(null, SWIPE_DIRECTION.RIGHT, { source: SWIPE_SOURCE.AUTO_SWIPE, repeated: true, forceMesId: chat.length - 1, generationOptions: this.requestControls });
         }
         await saveChatConditional();
@@ -7386,6 +7388,7 @@ function removeLastMessage(messageId = null) {
  * @property {JsonSchema} [jsonSchema] JSON schema to use for the structured generation. Usually requires a special instruction.
  * @property {boolean} [suppressUserMessage] Ignore composer input, including commands and pending attachments.
  * @property {boolean} [suppressAutoContinue=false] Skip automatic continuation for this request
+ * @property {boolean} [suppressAutoSwipe=false] Keep a reply that auto-swipe would redo
  * @property {number} [maxOutputTokens] Limit generated prose without reducing the reasoning allowance
  * @property {number} [responseLength] Request-local response length override
  * @property {boolean} [preserveReasoningBudget=false] Ignore responseLength for reasoning requests
@@ -7443,7 +7446,7 @@ function consumePendingUserMessageExtra(message) {
     pendingUserMessageExtra = null;
 }
 
-export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null, preserveLastMessage = false, companionHistoryTarget = null, suppressAutoContinue = false, maxOutputTokens = 0, responseLength = null, preserveReasoningBudget = false } = {}, dryRun = false) {
+export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null, preserveLastMessage = false, companionHistoryTarget = null, suppressAutoContinue = false, suppressAutoSwipe = false, maxOutputTokens = 0, responseLength = null, preserveReasoningBudget = false } = {}, dryRun = false) {
     if (!dryRun && signal?.aborted) return;
 
     // SillyBunny: keep cancellation and terminal cleanup attached to this invocation,
@@ -7512,7 +7515,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             setGenerationProgress(0);
             generation_started = new Date();
         }
-        const requestControls = { suppressUserMessage, suppressAutoContinue, maxOutputTokens, responseLength, preserveReasoningBudget };
+        const requestControls = { suppressUserMessage, suppressAutoContinue, suppressAutoSwipe, maxOutputTokens, responseLength, preserveReasoningBudget };
 
         // Prevent generation from shallow characters
         await unshallowCharacter(this_chid);
@@ -7754,9 +7757,19 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         if (type === 'swipe') {
             coreChat.pop();
         }
+        // SillyBunny: an extension may hide lines from this speaker (GENERATION_HIDE_MESSAGES) before retained
+        // Companion notes are merged below, so a hidden line's notes are never merged and a hidden line never
+        // hosts the merge. Dry runs skip the request, as they skip the generate interceptors.
+        const hiddenGenerationMessages = dryRun
+            ? new Set()
+            : await collectHiddenGenerationMessages(coreChat, type, request => eventSource.emit(event_types.GENERATION_HIDE_MESSAGES, request));
+        if (!isCurrent()) return;
+        const companionVisibleMessages = hiddenGenerationMessages.size > 0
+            ? coreChat.filter(message => !hiddenGenerationMessages.has(message))
+            : coreChat;
         const companionRewriteTarget = companionHistoryTarget
         ?? (isContinue || type === 'swipe' || type === 'regenerate' ? lastMessage : null);
-        const companionCandidateMessages = coreChat.filter(message =>
+        const companionCandidateMessages = companionVisibleMessages.filter(message =>
             message !== companionRewriteTarget
         && !message.extra?.[IGNORE_SYMBOL],
         );
@@ -8941,7 +8954,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                             clearStreamingProcessorIfCurrent(activeStreamingProcessor);
 
                             const isAborted = activeStreamingProcessor.abortController.signal.aborted;
-                            if (!isAborted && power_user.auto_swipe && generatedTextFiltered(getMessage)) {
+                            if (!isAborted && power_user.auto_swipe && !suppressAutoSwipe && generatedTextFiltered(getMessage)) {
                                 return await swipe(null, SWIPE_DIRECTION.RIGHT, { source: SWIPE_SOURCE.AUTO_SWIPE, repeated: true, forceMesId: chat.length - 1, generationOptions: requestControls });
                             }
 
@@ -9141,7 +9154,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             }
 
             const isAborted = abortController && abortController.signal.aborted;
-            if (!isAborted && power_user.auto_swipe && generatedTextFiltered(getMessage)) {
+            if (!isAborted && power_user.auto_swipe && !suppressAutoSwipe && generatedTextFiltered(getMessage)) {
                 is_send_press = false;
                 return await swipe(null, SWIPE_DIRECTION.RIGHT, { source: SWIPE_SOURCE.AUTO_SWIPE, repeated: true, forceMesId: chat.length - 1, generationOptions: requestControls });
             }
