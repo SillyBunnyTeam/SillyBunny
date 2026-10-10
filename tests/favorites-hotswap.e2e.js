@@ -1,4 +1,3 @@
-/* global document, HTMLElement, WheelEvent */
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 

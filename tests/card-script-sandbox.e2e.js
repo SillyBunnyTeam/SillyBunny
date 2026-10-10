@@ -1,5 +1,6 @@
 /* global document, localStorage */
 import { expect, test } from '@playwright/test';
+import { testSetup } from './frontend/frontent-test-utils.js';
 
 const MESSAGE_ID = 9876;
 
@@ -58,8 +59,11 @@ async function installMarkedCardScriptMessage(page, scriptHtml) {
 
 test.describe('card script sandbox runtime', () => {
     test.beforeEach(async ({ page }) => {
+        // A fresh data root stalls startup on the first-run onboarding prompt; APP_READY means
+        // no startup popup is waiting to intercept clicks on the injected message buttons.
         await page.goto('/');
         await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
+        await testSetup.waitForAppReady({ page });
     });
 
     test('shows the opt-in run button and creates a locked iframe sandbox', async ({ page }) => {
