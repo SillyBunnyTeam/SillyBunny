@@ -146,7 +146,7 @@ html > body .stih--history .stih--hidden {
     height: var(--stih-mobile-action-size) !important;
     min-height: var(--stih-mobile-action-size) !important;
     max-height: var(--stih-mobile-action-size) !important;
-    border-radius: 8px !important;
+    border-radius: 999px !important;
     font-size: var(--stih-mobile-action-icon-size) !important;
     padding: 0 !important;
   }

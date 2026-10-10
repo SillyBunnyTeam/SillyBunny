@@ -1160,6 +1160,26 @@ function renderConnectionProfiles(profiles) {
  * Renders the content of the details element.
  * @param {HTMLElement} detailsContent Content element of the details
  */
+/**
+ * Builds the profile's details as the body of the details modal.
+ *
+ * The same summary the inline card used, without the card: the modal supplies the frame, the
+ * heading, and the scroll region, so the markup here is only the list of settings and the omitted
+ * ones. Nothing is cached -- a profile can be edited while the modal is up, and the summary is
+ * cheap to build.
+ *
+ * @param {object} profile
+ * @returns {Promise<string>} sanitized HTML
+ */
+async function buildProfileDetailsContent(profile) {
+    const profileForDisplay = makeFancyProfile(profile);
+    const templateParams = { profile: profileForDisplay };
+    if (Array.isArray(profile.exclude) && profile.exclude.length > 0) {
+        templateParams.omitted = profile.exclude.map(e => FANCY_NAMES[e]).join(', ');
+    }
+    return renderExtensionTemplateAsync(MODULE_NAME, 'view', templateParams);
+}
+
 async function renderDetailsContent(detailsContent) {
     detailsContent.innerHTML = '';
     if (detailsContent.classList.contains('hidden')) {
@@ -1168,13 +1188,7 @@ async function renderDetailsContent(detailsContent) {
     const selectedProfile = extension_settings.connectionManager.selectedProfile;
     const profile = extension_settings.connectionManager.profiles.find(p => p.id === selectedProfile);
     if (profile) {
-        const profileForDisplay = makeFancyProfile(profile);
-        const templateParams = { profile: profileForDisplay };
-        if (Array.isArray(profile.exclude) && profile.exclude.length > 0) {
-            templateParams.omitted = profile.exclude.map(e => FANCY_NAMES[e]).join(', ');
-        }
-        const template = await renderExtensionTemplateAsync(MODULE_NAME, 'view', templateParams);
-        detailsContent.innerHTML = template;
+        detailsContent.innerHTML = await buildProfileDetailsContent(profile);
     } else {
         detailsContent.textContent = t`No profile selected`;
     }
@@ -1839,6 +1853,31 @@ export async function init() {
         await renderDetailsContent(detailsContent);
     });
 
+    /**
+     * Opens the selected profile's summary as a modal.
+     *
+     * The summary used to expand in place under the picker, which pushed every control below it down
+     * the page and left it there: the panel read as though the detail were one more setting, and the
+     * list it belongs to had moved off screen. A modal keeps the picker where it is and dims the rest
+     * while the summary is read, which is also how every other profile action (create, edit, rename,
+     * delete) already presents itself.
+     */
+    async function showProfileDetails() {
+        const selectedProfile = extension_settings.connectionManager.selectedProfile;
+        const profile = extension_settings.connectionManager.profiles.find(p => p.id === selectedProfile);
+        const content = profile
+            ? await buildProfileDetailsContent(profile)
+            : `<div class="margin5">${DOMPurify.sanitize(t`No profile selected`)}</div>`;
+
+        const popup = new Popup(content, POPUP_TYPE.TEXT, profile?.name ?? '', {
+            okButton: t`Close`,
+            cancelButton: false,
+            wide: true,
+            allowVerticalScrolling: true,
+        });
+        await popup.show();
+    }
+
     /** @type {HTMLElement} */
     const viewDetails = document.getElementById('view_connection_profile');
     viewDetails.addEventListener('click', async () => {
@@ -1846,9 +1885,12 @@ export async function init() {
             return;
         }
 
-        viewDetails.classList.toggle('active');
-        detailsContent.classList.toggle('hidden');
-        await renderDetailsContent(detailsContent);
+        viewDetails.classList.add('active');
+        try {
+            await showProfileDetails();
+        } finally {
+            viewDetails.classList.remove('active');
+        }
     });
 
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({

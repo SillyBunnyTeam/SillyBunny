@@ -23,7 +23,7 @@ describe('frontend asset manifest rewriting', () => {
             assets: {
                 'style.css': { output: 'style-abc123.css' },
                 'css/sillybunny-mobile-shell.css': { output: 'css/sillybunny-mobile-shell-def456.css' },
-                'webfonts/Figtree/Figtree-Regular.woff2': { output: 'webfonts/Figtree/Figtree-Regular-789abc.woff2' },
+                'webfonts/AdwaitaSans/AdwaitaSans-Regular-Latin.woff2': { output: 'webfonts/AdwaitaSans/AdwaitaSans-Regular-Latin-789abc.woff2' },
                 'script.js': { output: 'script-deadbeef.js' },
                 'scripts/performance-loader.js': { output: 'scripts/performance-loader-deadbeef.js' },
                 'scripts/sillybunny-tabs.js': { output: 'scripts/sillybunny-tabs-deadbeef.js' },
@@ -50,7 +50,7 @@ describe('frontend asset manifest rewriting', () => {
         const html = [
             '<link href="style.css?v=old">',
             '<link href="css/sillybunny-mobile-shell.css?v=old">',
-            '<link href="webfonts/Figtree/Figtree-Regular.woff2?v=old">',
+            '<link href="webfonts/AdwaitaSans/AdwaitaSans-Regular-Latin.woff2?v=old">',
             '<script type="module" src="scripts/performance-loader.js"></script>',
             '<script type="module" src="script.js?v=old"></script>',
             '<script type="module" src="scripts/sillybunny-tabs.js?v=old"></script>',
@@ -60,7 +60,7 @@ describe('frontend asset manifest rewriting', () => {
 
         expect(rewritten).toContain('href="/frontend-assets/style-abc123.css"');
         expect(rewritten).toContain('href="/frontend-assets/css/sillybunny-mobile-shell-def456.css"');
-        expect(rewritten).toContain('href="/frontend-assets/webfonts/Figtree/Figtree-Regular-789abc.woff2"');
+        expect(rewritten).toContain('href="/frontend-assets/webfonts/AdwaitaSans/AdwaitaSans-Regular-Latin-789abc.woff2"');
         expect(rewritten).toContain('src="scripts/performance-loader.js"');
         expect(rewritten).toContain('src="script.js?v=old"');
         expect(rewritten).toContain('src="scripts/sillybunny-tabs.js?v=old"');

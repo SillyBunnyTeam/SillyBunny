@@ -1,3 +1,5 @@
+import { normalizeBackendSettingsRows } from './sillybunny-settings-presentation.js';
+
 const SB_CONSOLE_LOG_LIMIT = 260;
 const SB_CONSOLE_LOG_REFRESH_MS = 2500;
 const SB_CONSOLE_LOG_STICKY_THRESHOLD = 28;
@@ -18,6 +20,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             configLoaded: false,
         },
         consoleLogs: {
+            /** @type {{ statusPill: HTMLElement, refreshButton: HTMLButtonElement, pauseButton: HTMLButtonElement, statusNote: HTMLElement, output: HTMLElement, verboseLoggingStatus: HTMLElement, verboseLoggingActionButton: HTMLInputElement } | null} */
             refs: null,
             entries: [],
             latestId: 0,
@@ -111,7 +114,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
 
         refs.pauseButton.textContent = state.paused ? 'Resume Live' : 'Pause Live';
         setButtonDisabled(refs.refreshButton, state.busy);
-        setButtonDisabled(refs.verboseLoggingActionButton, state.busy || state.configBusy || !state.configLoaded);
+        refs.verboseLoggingActionButton.disabled = state.busy || state.configBusy || !state.configLoaded;
     }
 
     function setConsoleLogsVerboseLoggingUI(value) {
@@ -128,10 +131,9 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             refs.verboseLoggingStatus.dataset.state = enabled ? 'warn' : 'neutral';
         }
 
-        if (refs?.verboseLoggingActionButton instanceof HTMLButtonElement) {
-            refs.verboseLoggingActionButton.textContent = enabled
-                ? 'Debug Logging: Enabled'
-                : 'Debug Logging: Disabled';
+        if (refs?.verboseLoggingActionButton instanceof HTMLInputElement) {
+            refs.verboseLoggingActionButton.checked = enabled;
+            refs.verboseLoggingActionButton.setAttribute('aria-checked', String(enabled));
         }
 
         updateConsoleLogsInteractivity();
@@ -227,6 +229,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             }
             globalThis.toastr?.success?.('Logging config saved. Restart SillyBunny to apply it.', 'Console logs');
         } catch (error) {
+            setConsoleLogsVerboseLoggingUI(state.verboseLoggingEnabled ? 0 : 1);
             console.error('Failed to save logging config for Console Logs.', error);
             if (refs?.verboseLoggingStatus instanceof HTMLElement) {
                 refs.verboseLoggingStatus.textContent = error?.message || 'Failed to save logging config.';
@@ -1504,6 +1507,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         configCard.append(configHeader, configMeta, configEditor, configActions, configNote);
 
         column.append(callout, statusCard, updateCard, thumbnailCard, configCard);
+        normalizeBackendSettingsRows(column, { fields: false });
         scroller.appendChild(column);
 
         const state = getServerAdminState();
@@ -1611,36 +1615,39 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             <p>Watch the recent terminal output from the running SillyBunny process here, without keeping a terminal window open on the side.</p>
         `;
 
-        const card = createElement('section', { className: 'sb-admin-card sb-server-card sb-console-log-card' });
-        const header = createElement('div', { className: 'sb-admin-card-header' });
-        const copy = createElement('div', { className: 'sb-admin-card-copy' });
-        const title = createElement('strong', { text: 'Live Server Console' });
-        const description = createElement('p', { text: 'This mirrors the current process output captured from stdout and stderr. Only logs from the current SillyBunny session are available here.' });
+        const card = createElement('section', { className: 'ds-pref-group sb-console-log-card', attrs: { 'data-sb-presentation': 'manual' } });
+        const header = createElement('div', { className: 'ds-row ds-row-actions' });
+        const copy = createElement('div', { className: 'ds-row-text' });
+        const title = createElement('strong', { className: 'ds-row-label', text: 'Live Logs' });
+        const description = createElement('p', { className: 'ds-row-subtitle', text: 'This mirrors the current process output captured from stdout and stderr. Only logs from the current SillyBunny session are available here.' });
         const statusPill = createElement('span', { className: 'sb-server-pill', text: 'Loading…' });
-        const actions = createElement('div', { className: 'sb-server-actions sb-console-log-actions' });
+        const actions = createElement('div', { className: 'ds-row-suffix sb-console-log-actions' });
         const refreshButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Refresh Now', attrs: { type: 'button' } });
         const pauseButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Pause Live', attrs: { type: 'button' } });
         const statusNote = createElement('div', { className: 'sb-server-note' });
-        const output = createElement('pre', { className: 'sb-server-output sb-console-log-output' });
-        const verboseLoggingCard = createElement('section', { className: 'sb-admin-card sb-server-card sb-console-log-verbose-card' });
-        const verboseLoggingHeader = createElement('div', { className: 'sb-admin-card-header' });
-        const verboseLoggingCopy = createElement('div', { className: 'sb-admin-card-copy' });
-        const verboseLoggingTitle = createElement('strong', { text: 'Verbose Debug Logging' });
-        const verboseLoggingDescription = createElement('p', { text: 'Enable full debugging console output for advanced troubleshooting. Changes are saved to config.yaml and apply after a restart.' });
+        const outputFrame = createElement('div', { className: 'sb-console-log-frame' });
+        const output = createElement('pre', { className: 'sb-server-output sb-console-log-output', attrs: { tabindex: '0' } });
+        const verboseLoggingCard = createElement('section', { className: 'ds-pref-group sb-console-log-verbose-card', attrs: { 'data-sb-presentation': 'manual' } });
+        const verboseLoggingHeader = createElement('label', { className: 'ds-row ds-row-switch' });
+        const verboseLoggingCopy = createElement('span', { className: 'ds-row-text' });
+        const verboseLoggingTitle = createElement('strong', { className: 'ds-row-label', text: 'Verbose Debug Logging' });
+        const verboseLoggingDescription = createElement('small', { className: 'ds-row-subtitle', text: 'Enable full debugging console output for advanced troubleshooting. Changes are saved to config.yaml and apply after a restart.' });
         const verboseLoggingStatus = createElement('span', { className: 'sb-server-inline-state', text: 'Loading…' });
-        const verboseLoggingActionButton = createElement('button', {
-            className: 'menu_button menu_button_icon sb-server-action interactable sb-console-log-verbose-action',
-            text: 'Debug Logging: Disabled',
-            attrs: { type: 'button' },
+        const verboseLoggingSuffix = createElement('span', { className: 'ds-row-suffix' });
+        const verboseLoggingActionButton = createElement('input', {
+            className: 'sb-switch sb-console-log-verbose-action',
+            attrs: { type: 'checkbox', role: 'switch', 'aria-checked': 'false', 'aria-label': 'Verbose Debug Logging' },
         });
 
         copy.append(title, description);
-        header.append(copy, statusPill);
-        actions.append(refreshButton, pauseButton);
-        card.append(header, actions, statusNote, output);
+        actions.append(statusPill, refreshButton, pauseButton);
+        header.append(copy, actions);
+        outputFrame.append(output);
+        card.append(header, statusNote, outputFrame);
         verboseLoggingCopy.append(verboseLoggingTitle, verboseLoggingDescription);
-        verboseLoggingHeader.append(verboseLoggingCopy, verboseLoggingStatus);
-        verboseLoggingCard.append(verboseLoggingHeader, verboseLoggingActionButton);
+        verboseLoggingSuffix.append(verboseLoggingActionButton);
+        verboseLoggingHeader.append(verboseLoggingCopy, verboseLoggingSuffix);
+        verboseLoggingCard.append(verboseLoggingHeader, verboseLoggingStatus);
         column.append(callout, card);
         column.append(verboseLoggingCard);
         scroller.appendChild(column);
@@ -1660,8 +1667,14 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             void refreshConsoleLogs({ forceFull: state.latestId === 0 });
         });
         pauseButton.addEventListener('click', toggleConsoleLogsPolling);
-        verboseLoggingActionButton.addEventListener('click', () => {
+        verboseLoggingActionButton.addEventListener('change', () => {
+            verboseLoggingActionButton.setAttribute('aria-checked', String(verboseLoggingActionButton.checked));
             void toggleConsoleLogsVerboseLogging();
+        });
+        verboseLoggingActionButton.addEventListener('keydown', event => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            if (!event.repeat && !verboseLoggingActionButton.disabled) verboseLoggingActionButton.click();
         });
 
         renderConsoleLogsOutput({ preserveScroll: false });

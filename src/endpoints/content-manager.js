@@ -145,6 +145,24 @@ const MANAGED_BUNDLED_QUICK_REPLIES = Object.freeze([
     },
 ]);
 
+// SillyBunny divergence: pre-release builds seeded Libadwaita theme files that still carried the
+// Dark V 1.0 palette, and seeding never overwrites an existing file. Replace only byte-identical
+// copies of those stale seeds; any user-edited theme file keeps its own hash and is left alone.
+const MANAGED_BUNDLED_THEMES = Object.freeze([
+    {
+        bundledPath: 'themes/Libadwaita.json',
+        staleHashes: Object.freeze([
+            'c0e039effbc0c83883b551d4e74b2c29a506079f09f9e2a66b3b6659cd7c536d',
+        ]),
+    },
+    {
+        bundledPath: 'themes/Libadwaita Light.json',
+        staleHashes: Object.freeze([
+            '750603511a68a6823629bf706a095f728fadcc80f11af8321a109d237566bbb1',
+        ]),
+    },
+]);
+
 function isPresetContentType(type) {
     return PRESET_CONTENT_TYPES.includes(type);
 }
@@ -610,6 +628,35 @@ export function reconcileManagedBundledQuickReplies(directories) {
 }
 
 /**
+ * Replaces stale pre-release copies of bundled themes without touching user-modified files.
+ * @param {import('../users.js').UserDirectoryList} directories User directories
+ */
+export function reconcileManagedBundledThemes(directories) {
+    const themesDirectory = getUserTargetByType(CONTENT_TYPES.THEME, directories);
+
+    if (!themesDirectory || !fs.existsSync(themesDirectory)) {
+        return;
+    }
+
+    for (const managedTheme of MANAGED_BUNDLED_THEMES) {
+        const targetPath = path.join(themesDirectory, path.parse(managedTheme.bundledPath).base);
+
+        try {
+            if (!fs.existsSync(targetPath) || !managedTheme.staleHashes.includes(getSha256(fs.readFileSync(targetPath)))) {
+                continue;
+            }
+
+            const bundledContent = fs.readFileSync(path.join(contentDirectory, managedTheme.bundledPath));
+            writeFileAtomicSync(targetPath, bundledContent);
+            setPermissionsSync(targetPath);
+            console.info(`Stale bundled theme replaced at ${targetPath}`);
+        } catch (error) {
+            console.warn(`Failed to reconcile bundled theme ${managedTheme.bundledPath}`, error);
+        }
+    }
+}
+
+/**
  * Seeds content for a user.
  * @param {ContentItem[]} contentIndex Content index
  * @param {import('../users.js').UserDirectoryList} directories User directories
@@ -626,6 +673,7 @@ async function seedContentForUser(contentIndex, directories, forceCategories) {
     removeObsoleteContent(contentLog, directories);
     writeFileAtomicSync(contentLogPath, contentLog.join('\n'));
     reconcileManagedBundledQuickReplies(directories);
+    reconcileManagedBundledThemes(directories);
     const filteredContentIndex = contentIndex.filter(contentItem => {
         if (!isPresetContentType(contentItem.type)) {
             return true;

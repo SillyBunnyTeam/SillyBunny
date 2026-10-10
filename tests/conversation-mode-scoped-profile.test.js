@@ -38,6 +38,7 @@ const generationSource = readConversationSource('generation.js');
 const attachmentsSource = readConversationSource('attachments.js');
 const personasSource = readConversationSource('personas.js');
 const chromeSource = readConversationSource('chrome.js');
+const actionMenuSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-action-menu.js'), 'utf8'));
 const constantsSource = readConversationSource('constants.js');
 const contextSource = readConversationSource('context.js');
 const initSource = readConversationSource('init.js');
@@ -152,6 +153,51 @@ describe('conversation mode scoped connection profile', () => {
         expect(serverEndpointSource).toContain('from \'./conversation-generation.js\'');
         // normalizeConversationSettings is now in conversation-generation.js
         expect(conversationGenerationSource).toContain('normalized.grounded_dialogue_rules_enabled = Boolean(normalized.grounded_dialogue_rules_enabled)');
+    });
+
+    test('settings booleans are switch rows and picker menus pass their trigger', () => {
+        const switchIds = [
+            'sb_conv_idle_followup',
+            'sb_conv_idle_spontaneous',
+            'sb_conv_notifications_muted',
+            'sb_conv_proactive_messaging',
+            'sb_conv_selfie_command_enabled',
+            'sb_conv_schedule_command_enabled',
+            'sb_conv_include_related_memory',
+            'sb_conv_auto_message',
+            'sb_conv_grounded_dialogue_rules_enabled',
+            'sb_conv_multi_char',
+            'sb_conv_auto_character_chat',
+            'sb_conv_roleplay_reactions',
+            'sb_conv_image_gen_enabled',
+            'sb_conv_spontaneous_selfies',
+            'sb_conv_editable_messages',
+            'sb_conv_prose_polisher',
+        ];
+        for (const id of switchIds) {
+            expect(timelineSource).toContain(`id: '${id}'`);
+        }
+        expect(timelineSource).toContain('class="sb-conversation-switch"');
+        expect(timelineSource).toContain('sb-conversation-pref-suffix');
+        expect(timelineSource).toContain('<input id="sb_conv_copy_memory_to_new_branch" type="checkbox" hidden />');
+        expect(chromeSource).toContain('toggleAddDmPicker(target)');
+        expect(chromeSource).toContain('toggleConversationGroupPicker({ anchor: target })');
+        expect(chromeSource).toContain('togglePersonaPicker(target)');
+        expect(pickersSource).toContain('preferBelow: true');
+        expect(pickersSource).toContain('class="sb-conversation-switch sb-conv-weekly-enabled-check"');
+        expect(palsRailSource).toContain('Messaging-app order: newest message first');
+        expect(palsRailSource).not.toContain('first.key === activeKey');
+        expect(chromeSource).toContain('window.matchMedia?.(MOBILE_QUERY)?.matches');
+        expect(timelineSource).toContain('sb-conversation-composer-attach');
+        expect(timelineSource).toContain('sb-conversation-composer-actions');
+        expect(timelineSource).toContain('data-sb-conversation-action="attach-file"');
+        expect(timelineSource).toContain('data-sb-conversation-action="quick-selfie"');
+        expect(timelineSource).toContain('bubble.append(actionBar)');
+        expect(timelineSource).toContain('item.append(avatarWrap, body, mobileTrigger)');
+        expect(timelineSource).not.toContain('bubble.append(actionBar, mobileTrigger)');
+        expect(pickersSource).toContain('maxLeft < minLeft');
+        expect(actionMenuSource).toContain('maxLeft < minLeft');
+        expect(chromeSource).toContain('css/sillybunny-conversation.css?v=20261003o');
     });
 
     test('keeps saved Conversation-owned group DMs visible without messages', () => {

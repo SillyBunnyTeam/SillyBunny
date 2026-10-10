@@ -8,20 +8,8 @@ const readSource = (...parts) => readFileSync(path.join(repoRoot, ...parts), 'ut
 
 describe('SillyBunny settings theme drawers', () => {
     const indexSource = readSource('public', 'index.html');
-    const settingsTabsSource = readSource('public', 'scripts', 'sillybunny-settings-tabs.js');
     const shellTabsSource = readSource('public', 'scripts', 'sillybunny-tabs.js');
     const shellTabsCssSource = readSource('public', 'css', 'sillybunny-tabs.css');
-
-    test('separates full UI themes from palette and accent presets', () => {
-        expect(settingsTabsSource).not.toContain('UI Theme & Presets');
-        expect(settingsTabsSource).toContain('mainHeaderSpan.textContent = \'UI Theme\';');
-        expect(settingsTabsSource).toContain('mainHeaderSpan.setAttribute(\'data-i18n\', \'UI Theme\');');
-        expect(settingsTabsSource).toContain('parentAppearance.querySelector(\'#UI-presets-block > .sb-theme-presets\')');
-        expect(settingsTabsSource).toContain('presetsDrawer.id = \'sb-theme-presets-drawer\';');
-        expect(settingsTabsSource).toContain('<span data-i18n="Presets">Presets</span>');
-        expect(settingsTabsSource).toContain('presetsDrawer.querySelector(\'.inline-drawer-content\').appendChild(themePresets);');
-        expect(settingsTabsSource).toContain('\'sb-theme-presets-drawer\': \'appearance\',');
-    });
 
     test('keeps full theme controls in their original injection target', () => {
         const themeBlockMatch = indexSource.match(/<div id="UI-presets-block"[^>]*>([\s\S]*?)<div class="sb-theme-presets">/);
@@ -36,7 +24,6 @@ describe('SillyBunny settings theme drawers', () => {
 
     test('groups shell theme controls into persisted appearance drawers', () => {
         const drawerIds = [
-            'sb-shell-style-drawer',
             'sb-interface-drawer',
             'sb-topbar-label-drawer',
             'sb-quick-access-shortcuts-drawer',
@@ -50,6 +37,8 @@ describe('SillyBunny settings theme drawers', () => {
             expect(shellTabsSource).toContain(`'${drawerId}'`);
         }
         expect(shellTabsSource).toContain('content: [frontendIconSettingsGroup, surfaceSliderGroup, bottomBarSliderGroup],');
+        expect(shellTabsSource).not.toContain('sb-shell-style-drawer');
+        expect(shellTabsSource).not.toContain('data-sb-theme-option');
         expect(shellTabsSource).not.toContain('sb-frontend-icon-drawer');
         expect(shellTabsSource).not.toContain('sb-background-visibility-drawer');
         expect(shellTabsSource).not.toContain('sb-bottom-bar-size-drawer');

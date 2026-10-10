@@ -2501,8 +2501,16 @@ function appendOpenAIModelEntry($container, entry, favoriteValues = new Set()) {
 }
 
 function getApiSelect2DropdownParent() {
-    const apiDropdownParent = $('#rm_api_block');
-    return apiDropdownParent.length ? apiDropdownParent : $(document.body);
+    // SillyBunny (feat/v1.9.0-ui-overhaul): the provider forms live in the Connections panel, which
+    // moved them out of `#rm_api_block`. A dropdown parent that still resolves to that now-empty
+    // block would render every model picker somewhere the user cannot see, so the panel is preferred
+    // and the block is only the fallback for the brief window before the panel is built.
+    const apiDropdownParent = $('.sb-connections-panel');
+    if (apiDropdownParent.length) {
+        return apiDropdownParent;
+    }
+    const apiBlock = $('#rm_api_block');
+    return apiBlock.length ? apiBlock : $(document.body);
 }
 
 function getPromptManagerSelect2DropdownParent() {
@@ -3773,10 +3781,8 @@ function groupOpenAISettingsIntoDrawers() {
             description: 'Streaming, prompt templates, names, and continue behavior',
             selectors: [
                 '#range_block_openai > .range-block:has(#stream_toggle)',
-                '#range_block_openai > .inline-drawer:has(#main_prompt_quick_edit_textarea)',
-                '#range_block_openai > .inline-drawer:has(#impersonation_prompt_textarea)',
-                '#openai_settings > div > .inline-drawer:has(#character_names_none)',
-                '#openai_settings > div > .inline-drawer:has(#continue_postfix_none)',
+                '#openai_settings > div > :is(.inline-drawer, .sb-settings-flat-section):has(#character_names_none)',
+                '#openai_settings > div > :is(.inline-drawer, .sb-settings-flat-section):has(#continue_postfix_none)',
                 '#openai_settings > div > .range-block:has(#continue_prefill)',
                 '#openai_settings > div > .range-block:has(#squash_system_messages)',
                 '#openai_settings > div > .range-block:has(#use_sysprompt)',
@@ -3799,6 +3805,16 @@ function groupOpenAISettingsIntoDrawers() {
                 '#openai_settings > div > .range-block:has(#openai_reasoning_tag_style)',
                 '#openai_settings > div > .flex-container:has(#openai_verbosity)',
                 '#openai_settings > div > .range-block:has(#claude_assistant_prefill)',
+            ],
+        },
+        // SillyBunny: keep prompt editors and utility prompts in their final Prompting group.
+        {
+            id: 'sb-openai-prompts',
+            title: 'Quick Prompts Edit / Utility Prompts',
+            description: '',
+            selectors: [
+                '#range_block_openai > :is(.inline-drawer, .sb-settings-flat-section):has(#main_prompt_quick_edit_textarea)',
+                '#range_block_openai > :is(.inline-drawer, .sb-settings-flat-section):has(#impersonation_prompt_textarea)',
             ],
         },
         {
@@ -3841,9 +3857,34 @@ function groupOpenAISettingsIntoDrawers() {
     updateOpenAISettingsGroupVisibility();
 }
 
+/**
+ * Gets the settings blocks a grouped OpenAI section holds.
+ *
+ * A collapsible group keeps them in its `.inline-drawer-content`. The settings page flattens the
+ * group into a static section (`flattenNestedSettingsDrawers` in sillybunny-settings-content.js),
+ * which lifts the blocks out of that wrapper and drops it, so they become the group's own children
+ * after its heading. Reading only the wrapper found no blocks once flattened, and every group was
+ * hidden as empty.
+ * @param {HTMLElement} group
+ * @returns {Element[]}
+ */
+function getOpenAISettingsGroupBlocks(group) {
+    // SillyBunny: Prompting boxes the live blocks without changing their provider visibility contract.
+    const body = group.querySelector(':scope > .sb-prompting-group-body');
+    if (body) {
+        return Array.from(body.children);
+    }
+    const content = group.querySelector(':scope > .inline-drawer-content');
+    if (content) {
+        return Array.from(content.children);
+    }
+
+    return Array.from(group.children).filter(child => !child.classList.contains('sb-settings-flat-header'));
+}
+
 function updateOpenAISettingsGroupVisibility() {
     $('#range_block_openai .sb-openai-settings-drawer').each(function () {
-        const blocks = $(this).children('.inline-drawer-content').children().toArray();
+        const blocks = getOpenAISettingsGroupBlocks(this);
         const hasVisibleContent = blocks.some(block => {
             if (!(block instanceof HTMLElement) || getComputedStyle(block).display === 'none') {
                 return false;

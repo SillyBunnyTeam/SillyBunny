@@ -411,7 +411,6 @@ describe('mobile shell lifecycle wiring', () => {
             ['#user-settings-block', '.sb-settings-tabs-nav'],
             ['#top-bar', '.sb-topbar-group-left'],
             ['#sheld', '.sb-conversation-channel-tabs'],
-            ['#sheld', '.sb-conversation-quick-actions'],
             ['#right-nav-panel', '.sb-character-create-bar'],
             ['#right-nav-panel', '#HotSwapWrapper .hotswap'],
             ['#right-nav-panel', '#right-nav-panel .rm_tag_controls'],
@@ -524,20 +523,6 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('const sbMobileShellLifecycle = createMobileShellLifecycle();');
     });
 
-    test('routes shell rail drag and scroll decisions through the lifecycle seam', () => {
-        const buildShellSource = getFunctionSource('buildShell');
-
-        expect(buildShellSource).toContain('sbMobileShellLifecycle.nav.resolvePageScroll({');
-        expect(buildShellSource).toContain('nav.scrollBy(scrollRequest);');
-        expect(buildShellSource).toContain('sbMobileShellLifecycle.nav.createDragState({');
-        expect(buildShellSource).toContain('sbMobileShellLifecycle.nav.resolveDragMove({');
-        expect(buildShellSource).toContain('sbMobileShellLifecycle.nav.resolveDragEnd({');
-        expect(buildShellSource).toContain('sbMobileShellLifecycle.nav.shouldSuppressClick({');
-        expect(buildShellSource).toContain('sbMobileShellLifecycle.nav.resolveScrollIndicators({');
-        expect(buildShellSource).not.toContain('SB_SHELL_NAV_TOUCH_DRAG_THRESHOLD_PX');
-        expect(buildShellSource).not.toContain('Date.now() + 350');
-    });
-
     test('routes mobile modal inert decisions through the lifecycle seam', () => {
         const syncMobileModalStateSource = getFunctionSource('syncMobileModalState');
 
@@ -583,6 +568,7 @@ describe('mobile shell lifecycle wiring', () => {
 
     test('requests a mobile viewport reset when search and mobile panels close', () => {
         const searchOpenStateSource = getFunctionSource('setUniversalSearchOpenState');
+        const closeSettingsPageSource = getFunctionSource('closeSettingsPage');
         const closeShellSource = getFunctionSource('closeShell');
         const closeCharacterPanelSource = getFunctionSource('closeCharacterPanel');
         const setMobileNavOpenStateSource = getFunctionSource('setMobileNavOpenState');
@@ -591,9 +577,27 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('detail: { restoreScroll: Boolean(restoreScroll) },');
         expect(tabsSource).toContain('const SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS = 350;');
         expect(searchOpenStateSource).toContain('requestMobileViewportReset({ restoreScroll: true });');
-        expect(closeShellSource).toContain('requestMobileViewportReset();');
-        expect(closeCharacterPanelSource).toContain('requestMobileViewportReset();');
+        expect(closeSettingsPageSource).toContain('requestMobileViewportReset();');
+        expect(closeShellSource).toContain('closeSettingsPage();');
+        expect(closeCharacterPanelSource).toContain('closeSettingsPage();');
         expect(setMobileNavOpenStateSource).toContain('requestMobileViewportReset();');
+    });
+
+    test('character drawer Escape closes locally while deferring nested controls', () => {
+        const injectCharacterDrawerControlsSource = getFunctionSource('injectCharacterDrawerControls');
+        const escapeSource = getFunctionSource('bindCharacterDrawerEscapeHandler');
+        const deferSource = getFunctionSource('shouldDeferCharacterDrawerEscape');
+
+        expect(injectCharacterDrawerControlsSource).toContain('bindCharacterDrawerEscapeHandler();');
+        expect(escapeSource).toContain('event.key !== \'Escape\'');
+        expect(escapeSource).toContain('panel.classList.contains(\'openDrawer\')');
+        expect(escapeSource).toContain('shouldDeferCharacterDrawerEscape(event, panel)');
+        expect(escapeSource).toContain('closeCharacterPanel();');
+        expect(deferSource).toContain('event.defaultPrevented || event.isComposing');
+        expect(deferSource).toContain('\'#curEditTextarea\'');
+        expect(deferSource).toContain('\'#mes_stop\'');
+        expect(deferSource).toContain('dialog[open]');
+        expect(deferSource).toContain('[role="dialog"]');
     });
 
     test('settles mobile viewport reset without reapplying the fixed-position workaround', () => {
@@ -633,35 +637,6 @@ describe('mobile shell lifecycle wiring', () => {
         expect(browserFixesSource).toContain('return activeElement.getBoundingClientRect().bottom + scrollTop > viewport.height - 8;');
     });
 
-    test('dedupes rail quick actions against all built-in rail actions', () => {
-        const syncMobileShellRailActionsSource = getFunctionSource('syncMobileShellRailActions');
-
-        expect(tabsSource).toContain('function getAllBuiltInRailActionKeys(');
-        expect(syncMobileShellRailActionsSource).toContain('getAllBuiltInRailActionKeys()');
-        expect(syncMobileShellRailActionsSource).not.toContain('builtInRailActions.map(getMobileQuickActionKey)');
-    });
-
-    test('routes mobile rail model decisions through the lifecycle seam', () => {
-        const getMobileQuickActionContextSource = getFunctionSource('getMobileQuickActionContext');
-        const normalizeMobileQuickActionSource = getFunctionSource('normalizeMobileQuickAction');
-        const getMobileQuickActionKeySource = getFunctionSource('getMobileQuickActionKey');
-        const syncMobileShellRailActionsSource = getFunctionSource('syncMobileShellRailActions');
-
-        expect(tabsSource).toContain('const SB_MOBILE_QUICK_ACTION_LIMIT = sbMobileShellLifecycle.railModel.limits.quickActionLimit;');
-        expect(tabsSource).toContain('const SB_MOBILE_QUICK_ACTION_ICON_FALLBACK = sbMobileShellLifecycle.railModel.limits.iconFallback;');
-        expect(getMobileQuickActionContextSource).toContain('sbMobileShellLifecycle.railModel.resolveQuickActionRoute(value);');
-        expect(normalizeMobileQuickActionSource).toContain('sbMobileShellLifecycle.railModel.normalizeQuickAction({');
-        expect(normalizeMobileQuickActionSource).toContain('limits: sbMobileShellLifecycle.railModel.limits,');
-        expect(getMobileQuickActionKeySource).toContain('sbMobileShellLifecycle.railModel.getQuickActionKey(normalizedAction);');
-        expect(syncMobileShellRailActionsSource).toContain('sbMobileShellLifecycle.railModel.resolveActionVisibility({');
-        expect(syncMobileShellRailActionsSource).toContain('builtInActionKeys: Array.from(getAllBuiltInRailActionKeys()),');
-        expect(syncMobileShellRailActionsSource).toContain('shouldHideCustomizeTabs = railActionPlan.shouldHideCustomizeTabs;');
-        expect(syncMobileShellRailActionsSource).toContain('for (const group of railActionPlan.beforeGroups)');
-        expect(syncMobileShellRailActionsSource).toContain('if (railActionPlan.afterGroups.length > 0)');
-        expect(syncMobileShellRailActionsSource).not.toContain('const shouldHideCustomizeTabs = showCustomize;');
-        expect(syncMobileShellRailActionsSource).not.toContain('railQuickActionState.filter(action => !builtInRailActionKeys.has(getMobileQuickActionKey(action)))');
-    });
-
     test('routes inline drawer decisions through the lifecycle seam', () => {
         const interceptDrawerOpenersSource = getFunctionSource('interceptDrawerOpeners');
         const getInlineDrawerStorageKeySource = getFunctionSource('getInlineDrawerStorageKey');
@@ -682,11 +657,7 @@ describe('mobile shell lifecycle wiring', () => {
 
     test('clamps shell panels while letting the iOS composer follow the visible viewport', () => {
         const getResolvedShellTopbarOffsetSource = getFunctionSource('getResolvedShellTopbarOffset');
-        const getDesktopShellResizeBoundsSource = getFunctionSource('getDesktopShellResizeBounds');
-        const setShellSizeOverrideSource = getFunctionSource('setShellSizeOverride');
-        const openShellSource = getFunctionSource('openShell');
-        const closeShellSource = getFunctionSource('closeShell');
-        const syncMobileViewportStateSource = getFunctionSource('syncMobileViewportState');
+        const hasOpenMobileShellDrawerSource = getFunctionSource('hasOpenMobileShellDrawer');
         const shouldUseStableIOSPanelViewportSource = getFunctionSource('shouldUseStableIOSPanelViewport');
 
         expect(tabsSource).toContain('function getShellViewportSize(');
@@ -694,41 +665,25 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('function shouldUseStableIOSPanelViewport(');
         expect(tabsSource).toContain('import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from \'./mobile-send-button.js\';');
         expect(tabsSource).toContain('function isChatComposerEditableElement(');
-        expect(tabsSource).toContain('function hasOpenMobileShellDrawer(');
         expect(tabsSource).toContain('!isIOSWebKitPlatform() || !isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)');
         expect(shouldUseStableIOSPanelViewportSource).toMatch(/if \(isChatComposerEditableElement\(activeElement\)\) \{\s*return false;\s*\}/);
         expect(shouldUseStableIOSPanelViewportSource).toContain('return isMobileShellPanelEditableElement(activeElement) || hasOpenMobileShellDrawer();');
         expect(shouldUseStableIOSPanelViewportSource).not.toContain('|| isChatComposerEditableElement(activeElement) ||');
+        // The settings page replaced the floating drawers, so it is the open panel to keep stable.
+        expect(hasOpenMobileShellDrawerSource).toContain('return sbSettingsState.open;');
         expect(tabsSource).toContain('return layoutViewport;');
         expect(tabsSource).toContain('function syncShellViewportBounds(');
-        expect(tabsSource).toContain('function syncMobileShellDrawerBounds(');
-        expect(tabsSource).toContain('function queueMobileShellDrawerBoundsSync(');
         expect(tabsSource).toContain('setRootViewportProperty(\'--sb-shell-available-height\'');
         expect(tabsSource).toContain('setRootViewportProperty(\'--sb-shell-viewport-top\', `${viewportSize.top}px`);');
-        expect(tabsSource).toContain('function applyMobileDrawerBoundsDecision(');
         expect(tabsSource).toContain('window.visualViewport');
-        expect(tabsSource).toContain('function getShellViewportTop(');
         expect(getResolvedShellTopbarOffsetSource).toContain('document.getElementById(\'sheld\')');
         expect(getResolvedShellTopbarOffsetSource).toContain('document.getElementById(\'top-bar\')');
-        expect(getDesktopShellResizeBoundsSource).toContain('getShellViewportSize()');
-        expect(getDesktopShellResizeBoundsSource).toContain('getShellViewportTop(root, viewportSize)');
-        expect(getDesktopShellResizeBoundsSource).toContain('viewportHeight - shellTop - SB_DESKTOP_SHELL_RESIZE.bottomGap');
-        expect(setShellSizeOverrideSource).toContain('clampShellSize(size, getDesktopShellResizeBounds(shellKey))');
-        expect(openShellSource).toContain('syncDesktopShellSizing();');
-        expect(openShellSource).toContain('syncMobileShellDrawerBounds();');
-        expect(openShellSource).toContain('queueMobileShellDrawerBoundsSync();');
-        expect(closeShellSource).toContain('syncMobileShellDrawerBounds();');
-        expect(closeShellSource).toContain('queueMobileShellDrawerBoundsSync();');
-        expect(syncMobileViewportStateSource).toContain('syncMobileShellDrawerBounds();');
+        expect(tabsSource).not.toContain('function syncMobileShellDrawerBounds(');
+        expect(tabsSource).not.toContain('function syncDesktopShellSizing(');
         expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', queueMobileViewportStateSync, { passive: true });');
         expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', queueMobileViewportStateSync, { passive: true });');
         expect(tabsSource).toContain('window.addEventListener(\'resize\', queueMobileViewportStateSync, { passive: true });');
-        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', syncDesktopShellSizing, { passive: true });');
         expect(tabsSource).toContain('window.addEventListener(\'orientationchange\', queueMobileViewportStateSync);');
-        expect(mobileShellCssSource).toMatch(/#left-nav-panel\.openDrawer,[\s\S]*#right-nav-panel\.openDrawer\s*\{[\s\S]*top:\s*calc\(var\(--sb-shell-measured-top-offset,[\s\S]*bottom:\s*auto\s*!important;[\s\S]*box-sizing:\s*border-box\s*!important;[\s\S]*height:\s*calc\(var\(--sb-shell-available-height/);
-        expect(mobileShellCssSource.lastIndexOf('bottom: auto !important;')).toBeGreaterThan(
-            mobileShellCssSource.lastIndexOf('bottom: env(safe-area-inset-bottom, 0px) !important;'),
-        );
     });
 
     test('uses keyboard inset resizing only for legacy iOS composer edits', () => {
@@ -755,30 +710,22 @@ describe('mobile shell lifecycle wiring', () => {
 
     test('routes mobile viewport sync planning through the lifecycle seam', () => {
         const syncMobileViewportStateSource = getFunctionSource('syncMobileViewportState');
-        const queueMobileShellDrawerBoundsSyncSource = getFunctionSource('queueMobileShellDrawerBoundsSync');
 
         expect(syncMobileViewportStateSource).toContain('sbMobileShellLifecycle.viewportSync.resolveSyncPlan({');
-        expect(syncMobileViewportStateSource).toContain('[viewportSyncStep.SYNC_MOBILE_SHELL_DRAWER_BOUNDS]: () => {');
-        expect(syncMobileViewportStateSource).toContain('syncMobileShellDrawerBounds();');
         expect(syncMobileViewportStateSource).toContain('[viewportSyncStep.SCHEDULE_TOPBAR_CONTEXT_REFRESH]: () => scheduleTopbarContextRefresh(0),');
-        expect(queueMobileShellDrawerBoundsSyncSource).toContain('sbMobileShellLifecycle.viewportSync.resolveDrawerBoundsSchedule({');
-        expect(queueMobileShellDrawerBoundsSyncSource).toContain('followupDelayMs: SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS,');
-        expect(queueMobileShellDrawerBoundsSyncSource).toContain('sbMobileShellDrawerBoundsFollowupId = window.setTimeout(() => {');
+        expect(syncMobileViewportStateSource).not.toContain('SYNC_MOBILE_SHELL_DRAWER_BOUNDS');
         expect(syncMobileViewportStateSource).not.toContain('if (!isMobileViewport()) {');
-        expect(queueMobileShellDrawerBoundsSyncSource).not.toContain('if (!isMobileViewport()) {');
-        expect(queueMobileShellDrawerBoundsSyncSource).not.toContain('if (typeof window.requestAnimationFrame === \'function\') {');
     });
 
     test('refreshes mobile shell layout after tab activation', () => {
         const setActiveTabSource = getFunctionSource('setActiveTab');
-        const buildShellSource = getFunctionSource('buildShell');
+        const mountShellRootSource = getFunctionSource('mountShellRootInSettingsPage');
         const activationRefreshSource = getFunctionSource('queueMobileShellActivationRefresh');
 
         expect(activationRefreshSource).toContain('if (!isMobileViewport()) {');
-        expect(activationRefreshSource).toContain('queueMobileShellDrawerBoundsSync();');
         expect(activationRefreshSource).toContain('queueMobileViewportStateSync();');
         expect(setActiveTabSource).toMatch(/dispatchShellTabActivated\(shellKey, activeTab\);\r?\n\s+queueMobileShellActivationRefresh\(\);/);
-        expect(buildShellSource).toMatch(/dispatchShellTabActivated\(shellKey, activeTab\);\r?\n\s+queueMobileShellActivationRefresh\(\);/);
+        expect(mountShellRootSource).toMatch(/dispatchShellTabActivated\(shellKey, activeTab\);\r?\n\s+queueMobileShellActivationRefresh\(\);/);
     });
 
     test('pins every mobile viewport sync step to a dispatch handler', () => {
@@ -789,20 +736,11 @@ describe('mobile shell lifecycle wiring', () => {
         }
     });
 
-    test('offers snap-to-chat-width as a persistent desktop shell sizing mode', () => {
-        const getDesktopShellDimensionsSource = getFunctionSource('getDesktopShellDimensions');
-        const createDesktopShellSizingSettingsGroupSource = getFunctionSource('createDesktopShellSizingSettingsGroup');
-        const updateThemePickerUiSource = getFunctionSource('updateThemePickerUi');
-
-        expect(tabsSource).toContain('desktopShellSnapToChatWidth: \'sb-desktop-shell-snap-to-chat-width\'');
-        expect(tabsSource).toContain('snapToChatWidth: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth), true)');
-        expect(tabsSource).toContain('function setDesktopShellSnapToChatWidth(');
-        expect(tabsSource).toContain('safeSetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth, String(nextEnabled));');
-        expect(getDesktopShellDimensionsSource).toContain('isShellSnapToChatWidthEnabled(shellKey)');
-        expect(getDesktopShellDimensionsSource).toContain('getChatViewportWidth(viewportSize)');
-        expect(createDesktopShellSizingSettingsGroupSource).toContain('Snap to chat width');
-        expect(createDesktopShellSizingSettingsGroupSource).toContain('setDesktopShellSnapToChatWidth(input.checked)');
-        expect(updateThemePickerUiSource).toContain('sb-desktop-shell-snap-to-chat-input');
+    test('keeps the retired desktop shell sizing API as a no-op for extensions', () => {
+        expect(tabsSource).toContain('setDesktopShellSnapToChatWidth() {},');
+        expect(tabsSource).not.toContain('function setDesktopShellSnapToChatWidth(');
+        expect(tabsSource).not.toContain('function createDesktopShellSizingSettingsGroup(');
+        expect(tabsSource).not.toContain('desktopShellSnapToChatWidth: \'sb-desktop-shell-snap-to-chat-width\'');
     });
 
     test('opens global search as a focused readable command surface', () => {
@@ -816,8 +754,8 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('bindSearchShortcutPreFocus(rightShortcut, () => getShortcutTarget(\'right\'));');
         expect(setUniversalSearchOpenStateSource).toContain('focusUniversalSearchInput(input);');
         expect(buildUniversalSearchRowSource).toContain('setUniversalSearchOpenState(true, { focusInput: true });');
-        expect(tabsCssSource).toMatch(/\.sb-search-results\s*\{[\s\S]*position:\s*relative;[\s\S]*isolation:\s*isolate;[\s\S]*background-color:\s*var\(--SmartThemeBlurTintColor\)/);
-        expect(tabsCssSource).toMatch(/\.sb-search-result,\s*\n\.sb-search-empty\s*\{[\s\S]*position:\s*relative;[\s\S]*isolation:\s*isolate;[\s\S]*background-color:\s*var\(--SmartThemeBlurTintColor\)/);
+        expect(tabsCssSource).toMatch(/\.sb-search-results\s*\{[\s\S]*position:\s*relative;[\s\S]*isolation:\s*isolate;[\s\S]*background:\s*var\(--sb-layer-popover\)/);
+        expect(tabsCssSource).toMatch(/\.sb-search-result,\s*\n\.sb-search-empty\s*\{[\s\S]*position:\s*relative;[\s\S]*border:\s*0;\s*background:\s*transparent;/);
     });
 
     test('routes character top-bar shortcuts through toggle-close behavior', () => {
@@ -825,13 +763,14 @@ describe('mobile shell lifecycle wiring', () => {
         const activateShortcutTargetSource = getFunctionSource('activateShortcutTarget');
         const toggleShellPanelSource = getFunctionSource('toggleShellPanel');
         const isCharacterPanelTabOpenSource = getFunctionSource('isCharacterPanelTabOpen');
+        const toggleSettingsPageSource = getFunctionSource('toggleSettingsPage');
 
         expect(buildTopBarSource).toContain('activateShortcutTarget(getShortcutTarget(\'left\'))');
         expect(buildTopBarSource).toContain('activateShortcutTarget(getShortcutTarget(\'right\'))');
         expect(activateShortcutTargetSource).toContain('toggleShellPanel(shell, tab);');
         expect(activateShortcutTargetSource).not.toContain('openCharacterPanelTab(tab);');
-        expect(toggleShellPanelSource).toContain('isCharacterPanelTabOpen(tabId)');
-        expect(toggleShellPanelSource).toContain('closeCharacterPanel();');
+        expect(toggleShellPanelSource).toContain('toggleSettingsPage(\'characters\', tabId ? normalizeCharacterPanelTab(tabId) : null);');
+        expect(toggleSettingsPageSource).toContain('closeSettingsPage();');
         expect(isCharacterPanelTabOpenSource).toContain('getActiveCharacterPanelTab() === normalizeCharacterPanelTab(tabId)');
     });
 
@@ -850,10 +789,9 @@ describe('mobile shell lifecycle wiring', () => {
         const toggleMobileChatToolsSource = getFunctionSource('toggleMobileChatTools');
         const toggleMobileNavSource = getFunctionSource('toggleMobileNav');
         const toggleCharacterPanelSource = getFunctionSource('toggleCharacterPanel');
-        const toggleShellPanelSource = getFunctionSource('toggleShellPanel');
         const openCharacterWorldInfoTabSource = getFunctionSource('openCharacterWorldInfoTab');
-        const openCharacterPanelTabSource = getFunctionSource('openCharacterPanelTab');
-        const openShellSource = getFunctionSource('openShell');
+        const closeMobileSurfacesForSettingsPageSource = getFunctionSource('closeMobileSurfacesForSettingsPage');
+        const openSettingsPageSource = getFunctionSource('openSettingsPage');
         const closeAllDropdownsSource = getFunctionSource('closeAllDropdowns');
         const setConnectionStripOpenStateSource = getFunctionSource('setConnectionStripOpenState');
 
@@ -869,11 +807,7 @@ describe('mobile shell lifecycle wiring', () => {
             openMobileChatToolsSource,
             toggleMobileChatToolsSource,
             toggleMobileNavSource,
-            toggleCharacterPanelSource,
-            toggleShellPanelSource,
             openCharacterWorldInfoTabSource,
-            openCharacterPanelTabSource,
-            openShellSource,
             closeAllDropdownsSource,
             setConnectionStripOpenStateSource,
         ]) {
@@ -883,11 +817,14 @@ describe('mobile shell lifecycle wiring', () => {
         expect(openMobileChatToolsSource).toContain('surface: sbMobileShellLifecycle.overlays.surface.CHAT_TOOLS,');
         expect(toggleMobileChatToolsSource).toContain('surface: sbMobileShellLifecycle.overlays.surface.CHAT_TOOLS,');
         expect(toggleMobileNavSource).toContain('surface: sbMobileShellLifecycle.overlays.surface.NAV,');
-        expect(toggleCharacterPanelSource).toContain('surface: sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL,');
-        expect(toggleShellPanelSource).toContain('surface: shellSurface,');
         expect(openCharacterWorldInfoTabSource).toContain('surface: sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL,');
-        expect(openCharacterPanelTabSource).toContain('surface: sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL,');
-        expect(openShellSource).toContain('surface: shellSurface,');
+        // Every shell entry point funnels through the settings page, which closes the floating
+        // mobile surfaces but never the shell surfaces it is about to host.
+        expect(toggleCharacterPanelSource).toContain('openSettingsPage(\'characters\'');
+        expect(openSettingsPageSource).toContain('closeMobileSurfacesForSettingsPage(shellKey);');
+        expect(closeMobileSurfacesForSettingsPageSource).toContain('sbMobileShellLifecycle.overlays.resolveExclusiveOpen({');
+        expect(closeMobileSurfacesForSettingsPageSource).toContain('surface: getMobileShellSurfaceForShell(shellKey),');
+        expect(closeMobileSurfacesForSettingsPageSource).toContain('!shellSurfaces.has(closeSurfaceKey)');
         expect(closeAllDropdownsSource).toContain('const exemptSurface = getMobileShellSurfaceForShell(except);');
         expect(closeAllDropdownsSource).toContain('surface: exemptSurface,');
         expect(closeAllDropdownsSource).toContain('closeSurfaces: sbMobileShellLifecycle.overlays.closeAllSurfaces,');
@@ -898,30 +835,6 @@ describe('mobile shell lifecycle wiring', () => {
         expect(toggleMobileNavSource).not.toContain('closeShell(\'left\');\n        closeShell(\'right\');\n        closeCharacterPanel();\n        closeMobileChatTools();');
         expect(toggleCharacterPanelSource).not.toContain('closeShell(\'left\');\n    closeShell(\'right\');');
         expect(openCharacterWorldInfoTabSource).not.toContain('closeMobileNav();\n    closeShell(\'left\');\n    closeShell(\'right\');');
-        expect(openCharacterPanelTabSource).not.toContain('closeMobileNav();\n        closeShell(\'left\');\n        closeShell(\'right\');');
-        expect(openShellSource).not.toContain('closeMobileNav();\n    rememberShellFocusOrigin');
-    });
-
-    test('routes mobile drawer bound decisions through the lifecycle seam', () => {
-        const applyDecisionSource = getFunctionSource('applyMobileDrawerBoundsDecision');
-        const syncBoundsSource = getFunctionSource('syncMobileShellDrawerBounds');
-
-        // The adapter is the single DOM writer for drawer bound styles.
-        expect(applyDecisionSource).toContain('sbMobileShellLifecycle.drawerBounds.action.BIND');
-        expect(applyDecisionSource).toContain('sbMobileShellLifecycle.drawerBounds.action.CLEAR');
-        expect(applyDecisionSource).toContain('decision.styleRemovals');
-        expect(applyDecisionSource).toContain('decision.styleWrites');
-        expect(applyDecisionSource).toContain('drawer.style.setProperty(property, value, priority);');
-        expect(applyDecisionSource).toContain('drawer.style.removeProperty(property);');
-
-        // The call site resolves decisions through the seam and applies via the adapter.
-        expect(syncBoundsSource).toContain('sbMobileShellLifecycle.drawerBounds.resolveBounds({');
-        expect(syncBoundsSource).toContain('applyMobileDrawerBoundsDecision(drawer,');
-
-        // The old inline style writes are gone from the call site.
-        expect(syncBoundsSource).not.toContain('style.setProperty(\'top\'');
-        expect(syncBoundsSource).not.toContain('style.setProperty(\'height\'');
-        expect(syncBoundsSource).not.toContain('style.removeProperty(');
     });
 
     test('reveals spoiler-hidden character fields when a dimmed editor sub-tab is tapped', () => {

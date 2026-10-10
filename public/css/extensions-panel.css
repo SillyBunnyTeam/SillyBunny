@@ -13,14 +13,26 @@
     flex: 0 0 auto;
 }
 
-label[for="extensions_autoconnect"] {
+.extensions_info .extension_toggle {
+    display: flex;
+    align-items: center;
+    flex: 0 0 42px;
+    min-height: 24px;
+}
+
+.extensions_info .extension_toggle input[type="checkbox"] {
+    flex: 0 0 auto;
+    margin: 0;
+}
+
+label[for="extensions_autoconnect"]:not(.ds-row) {
     display: flex;
     align-items: center;
     gap: 8px;
     margin: 0 !important;
 }
 
-label[for="extensions_notify_updates"] {
+label[for="extensions_notify_updates"]:not(.ds-row) {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -95,17 +107,16 @@ label[for="extensions_notify_updates"] input[type="checkbox"] {
 }
 
 .extensions_info .extension_block {
-    display: flex;
-    flex-wrap: nowrap;
-    padding: 12px 14px;
-    margin-bottom: 5px;
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 76%, transparent);
     border-radius: 18px;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-    min-height: 72px;
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+}
+
+@media (hover: hover) {
+    .extensions_info .extension_block:hover {
+        background: var(--sb-flat-hover-bg);
+        border-color: color-mix(in srgb, var(--sb-shell-border) 94%, transparent);
+    }
 }
 
 .extensions_info .extension_name {
@@ -187,7 +198,7 @@ input.extension_missing[type="checkbox"] {
     align-items: center;
 }
 
-#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label[for='extensions_notify_updates'] > span {
+#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label[for='extensions_notify_updates'] > span:not(.ds-row-suffix) {
     flex: 1 1 auto;
     min-width: 0;
     white-space: normal;
@@ -227,19 +238,21 @@ input.extension_missing[type="checkbox"] {
 }
 
 .extensions_info .extension_text_block {
-    flex: 1 1 auto;
     min-width: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .extensions_info .extension_actions {
     display: flex;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 8px;
     align-items: center;
     align-self: center;
+}
+
+.extensions_info .extension_actions:empty {
+    display: none;
 }
 
 .extensions_toolbar {
@@ -284,12 +297,17 @@ input.extension_missing[type="checkbox"] {
         width: 100%;
     }
 
-    .extensions_info .extension_block {
-        flex-wrap: wrap;
-    }
-
     .extensions_info .extension_actions {
         width: 100%;
         justify-content: flex-end;
+    }
+}
+
+@media screen and (max-width: 600px) {
+    .extensions_info .extension_text_block {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        overflow-wrap: anywhere;
     }
 }

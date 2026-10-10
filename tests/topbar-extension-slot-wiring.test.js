@@ -9,7 +9,7 @@ const tabsSource = readRepoFile('public', 'scripts', 'sillybunny-tabs.js');
 const tabsCss = readRepoFile('public', 'css', 'sillybunny-tabs.css');
 const mobileShellCss = readRepoFile('public', 'css', 'sillybunny-mobile-shell.css');
 const paperThemeCss = readRepoFile('public', 'css', 'sillybunny-paper-theme.css');
-const settingsTabsSource = readRepoFile('public', 'scripts', 'sillybunny-settings-tabs.js');
+const settingsContentSource = readRepoFile('public', 'scripts', 'sillybunny-settings-content.js');
 
 describe('top-bar extension slot wiring', () => {
     test('connects the adoption module to the shell lifecycle', () => {
@@ -35,10 +35,8 @@ describe('top-bar extension slot wiring', () => {
         expect(tabsSource).toContain('placeComposerExtensionButtons(leftForm, rightForm);');
     });
 
-    test('assigns late third-party drawers to a visible settings tab', () => {
-        expect(settingsTabsSource).toContain('const DEFAULT_SETTINGS_TAB = \'system-device\';');
-        expect(settingsTabsSource).toContain('.inline-drawer:not([data-settings-tab])');
-        expect(settingsTabsSource).toContain('tagUntaggedDrawers();');
-        expect(settingsTabsSource).toContain('watchForLateDrawers();');
+    test('keeps third-party drawers attached to the settings block that stays in the document', () => {
+        expect(settingsContentSource).toContain('contentBlock instanceof HTMLElement');
+        expect(tabsSource).toContain('sb-legacy-settings-remainder');
     });
 });

@@ -31,6 +31,7 @@
     #UI-Theme-Block,
     #UI-Customization,
     #power-user-options-block,
+    #sb-appearance-content > *,
     #ContextSettings,
     #InstructSettingsColumn,
     #InstructSequencesColumn {
@@ -45,7 +46,7 @@
 
     #AdvancedFormatting > .flex-container.alignItemsBaseline:first-child > h3 {
         min-width: 0;
-        font-size: calc(var(--mainFontSize) * 0.92);
+        font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
         line-height: 1.15;
     }
 
@@ -95,7 +96,7 @@
 
     #InstructSettingsColumn > .margin0.title_restorable.standoutHeader > strong {
         min-width: 0;
-        font-size: calc(var(--mainFontSize) * 0.88);
+        font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
         line-height: 1.15;
     }
 
@@ -163,7 +164,7 @@
 
     #right-nav-panel #CharListButtonAndHotSwaps {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);
+        grid-template-columns: minmax(0, 1fr) var(--sb-mobile-touch-target, 44px);
         align-items: center;
         gap: 8px;
         width: 100%;
@@ -215,7 +216,7 @@
         flex: 0 0 auto;
     }
 
-    #right-nav-panel #CharListButtonAndHotSwaps :is(#rm_button_characters, #sb-character-right-lock, #sb-character-back-to-list, #sb-character-mobile-close) {
+    #right-nav-panel #CharListButtonAndHotSwaps :is(#rm_button_characters, #sb-character-back-to-list, #sb-character-mobile-close) {
         width: var(--sb-mobile-touch-target, 44px);
         min-width: var(--sb-mobile-touch-target, 44px);
         max-width: var(--sb-mobile-touch-target, 44px);
@@ -227,20 +228,16 @@
         box-sizing: border-box;
     }
 
-    #right-nav-panel #sb-character-right-lock {
+    #right-nav-panel #sb-character-back-to-list {
         grid-column: 2;
     }
 
-    #right-nav-panel #sb-character-back-to-list {
-        grid-column: 3;
-    }
-
     #right-nav-panel #sb-character-mobile-close {
-        grid-column: 3;
+        grid-column: 2;
     }
 
     #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #CharListButtonAndHotSwaps {
-        grid-template-columns: var(--sb-mobile-touch-target, 44px) minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);
+        grid-template-columns: var(--sb-mobile-touch-target, 44px) minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);
     }
 
     #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
@@ -252,16 +249,12 @@
         grid-column: 1;
     }
 
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-right-lock {
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-back-to-list {
         grid-column: 3;
     }
 
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-back-to-list {
-        grid-column: 4;
-    }
-
     #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-mobile-close {
-        grid-column: 5;
+        grid-column: 4;
     }
 
     #right-nav-panel.openDrawer,
@@ -272,15 +265,6 @@
         left: max(8px, env(safe-area-inset-left, 0px)) !important;
         right: max(8px, env(safe-area-inset-right, 0px)) !important;
         box-sizing: border-box;
-    }
-
-    :root[data-sb-character-drawer-lock="right"] #right-nav-panel.openDrawer {
-        left: max(8px, env(safe-area-inset-left, 0px)) !important;
-        right: 0 !important;
-        width: auto !important;
-        max-width: none !important;
-        margin-inline: 0 !important;
-        transform-origin: center bottom;
     }
 
     #right-nav-panel.openDrawer > .scrollableInner,
@@ -1275,7 +1259,7 @@
     }
 
     #result_info {
-        font-size: calc(var(--mainFontSize) - .1rem);
+        font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     }
 
     /*     .avatar_div {
@@ -2135,14 +2119,5 @@
         min-width: 0 !important;
         margin-inline: 0 !important;
         box-sizing: border-box;
-    }
-
-    :root[data-sb-character-drawer-lock="right"] #right-nav-panel.openDrawer {
-        left: max(8px, env(safe-area-inset-left, 0px)) !important;
-        right: 0 !important;
-        width: auto !important;
-        max-width: none !important;
-        margin-inline: 0 !important;
-        transform-origin: center bottom;
     }
 }

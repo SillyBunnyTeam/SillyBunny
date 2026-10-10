@@ -321,24 +321,9 @@
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, transparent);
 }
 
-/* SillyBunny: equalize Persona editor tab tracks when labels collapse to icon-only/mobile controls. */
-:root[data-sb-desktop-nav-mode='icon-only'] #PersonaManagement .persona-editor-tabs,
-:root[data-sb-mobile-nav-mode='icon-only'] #PersonaManagement .persona-editor-tabs {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
 @media screen and (max-width: 760px) {
     #PersonaManagement .persona-editor-tabs {
         grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-}
-
-/* SillyBunny: mobile icon-only mode caps every shell tab at the 44px touch target, so the three
-   equal grid tracks leave each icon stranded at the start of its own third. Fall back to the shared
-   .sb-shell-nav flex row, which centres them next to each other. */
-@media screen and (max-width: 768px) {
-    :root[data-sb-mobile-nav-mode='icon-only'] #PersonaManagement .persona-editor-tabs {
-        display: flex;
     }
 }
 

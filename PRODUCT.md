@@ -129,5 +129,5 @@ Accessibility is a baseline expectation, not an afterthought. Any contribution t
 ## Non-goals
 
 - Replacing or fully diverging from SillyTavern's data formats, extension APIs, or character/preset schemas.
-- Enforcing a single visual theme; the shell ships with defaults but customisation is a first-class feature.
-- Reducing option count in the name of simplicity. Simplicity is achieved through organisation and disclosure, not removal.
+- Reducing user customisation; the shell ships with defaults but customisation is a first-class feature.
+- Reducing option count in the name of simplicity. Simplicity is achieved through organisation and disclosure, not removal, unless a direct alternative is provided.
