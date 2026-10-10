@@ -1,6 +1,10 @@
 /* ── In-Chat Agents: Panel ───────────────────────────── */
 
 .ica--settings {
+    --ica-accent: var(--sb-accent, var(--SmartThemeQuoteColor));
+    --ica-border: var(--sb-shell-border, var(--SmartThemeBorderColor));
+    --ica-background: var(--sb-layer-window, var(--SmartThemeBlurTintColor));
+    color: var(--sb-shell-text, var(--SmartThemeBodyColor));
     display: flex;
     flex-direction: column;
     gap: 14px;
@@ -27,12 +31,12 @@
     gap: 12px;
     padding: 14px 16px;
     border-radius: var(--sb-radius-lg, 16px);
-    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 55%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ica-accent) 55%, transparent);
     background:
         linear-gradient(135deg,
-            color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 16%, transparent),
-            color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 72%, transparent));
-    box-shadow: 0 10px 24px color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 14%, transparent);
+            color-mix(in srgb, var(--ica-accent) 16%, transparent),
+            color-mix(in srgb, var(--ica-background) 72%, transparent));
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--ica-accent) 14%, transparent);
 }
 
 .ica--templates-callout-copy {
@@ -55,8 +59,8 @@
 #ica--templatesCallout {
     flex: 0 0 auto;
     white-space: nowrap;
-    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 24%, transparent);
-    border-color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 48%, transparent);
+    background: color-mix(in srgb, var(--ica-accent) 24%, transparent);
+    border-color: color-mix(in srgb, var(--ica-accent) 48%, transparent);
 }
 
 .ica--templates-callout-dismiss {
@@ -80,7 +84,7 @@
 .ica--templates-callout-dismiss:hover,
 .ica--templates-callout-dismiss:focus-visible {
     opacity: 1;
-    background-color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 18%, transparent);
+    background-color: color-mix(in srgb, var(--ica-accent) 18%, transparent);
     outline: none;
 }
 
@@ -130,9 +134,9 @@
     justify-content: space-between;
     gap: 10px;
     padding: 8px 10px;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 35%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ica-accent) 35%, transparent);
     border-radius: var(--sb-radius-md, 10px);
-    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 8%, transparent);
+    background: color-mix(in srgb, var(--ica-accent) 8%, transparent);
 }
 
 .ica--token-counter.is-empty {
@@ -170,12 +174,12 @@
     gap: 10px;
     padding: 14px 16px;
     border-radius: var(--sb-radius-lg, 16px);
-    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 40%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ica-accent) 40%, transparent);
     background:
         linear-gradient(145deg,
-            color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 12%, transparent),
-            color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 70%, transparent));
-    box-shadow: 0 12px 28px color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 10%, transparent);
+            color-mix(in srgb, var(--ica-accent) 12%, transparent),
+            color-mix(in srgb, var(--ica-background) 70%, transparent));
+    box-shadow: 0 12px 28px color-mix(in srgb, var(--ica-accent) 10%, transparent);
 }
 
 .ica--quick-header {
@@ -216,8 +220,8 @@
 .ica--quick-empty {
     padding: 12px 14px;
     border-radius: 12px;
-    border: 1px dashed color-mix(in srgb, var(--SmartThemeBorderColor, #555) 42%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 10%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--ica-border) 42%, transparent);
+    background: color-mix(in srgb, var(--ica-border) 10%, transparent);
     font-size: calc(var(--mainFontSize) * 0.78);
     line-height: 1.4;
     opacity: 0.78;
@@ -229,16 +233,16 @@
     gap: 6px;
     padding: 6px;
     border-radius: 14px;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #555) 42%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 28%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ica-border) 42%, transparent);
+    background: color-mix(in srgb, var(--ica-background) 28%, transparent);
 }
 
 .ica--quick-chip.is-enabled {
-    border-color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 52%, transparent);
+    border-color: color-mix(in srgb, var(--ica-accent) 52%, transparent);
     background:
         linear-gradient(145deg,
-            color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 12%, transparent),
-            color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 26%, transparent));
+            color-mix(in srgb, var(--ica-accent) 12%, transparent),
+            color-mix(in srgb, var(--ica-background) 26%, transparent));
 }
 
 .ica--quick-chip-main,
@@ -269,7 +273,7 @@
 .ica--quick-chip-pin:hover,
 .ica--quick-chip-apply:hover,
 .ica--quick-chip-apply-target:hover {
-    background: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 18%, transparent);
+    background: color-mix(in srgb, var(--ica-border) 18%, transparent);
 }
 
 .ica--quick-chip-status {
@@ -280,13 +284,13 @@
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
-    background: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 24%, transparent);
+    background: color-mix(in srgb, var(--ica-border) 24%, transparent);
     opacity: 0.88;
 }
 
 .ica--quick-chip.is-enabled .ica--quick-chip-status {
-    color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 80%, #fff 20%);
-    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 18%, transparent);
+    color: var(--ica-accent);
+    background: color-mix(in srgb, var(--ica-accent) 18%, transparent);
 }
 
 .ica--quick-chip-copy {
@@ -343,7 +347,7 @@
 }
 
 .ica--quick-chip-pin.is-active {
-    color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 72%, #f7d774 28%);
+    color: var(--ica-accent);
     opacity: 1;
 }
 
@@ -352,7 +356,7 @@
 .ica--quick-chip-apply-target:hover,
 .ica--quick-chip-apply-target:focus-visible {
     opacity: 1;
-    color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 78%, var(--SmartThemeBodyColor, #ddd) 22%);
+    color: var(--sb-shell-text, var(--SmartThemeBodyColor));
 }
 
 /* Category section */
@@ -911,11 +915,14 @@ button.ica--card-pill--version-update {
 
 /* Footer */
 .ica--footer {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
     padding-top: 8px;
     border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
 }
 
-.ica--profile-label {
+.ica--profile-label:not(.ds-row) {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -923,12 +930,12 @@ button.ica--card-pill--version-update {
     font-size: calc(var(--mainFontSize) * 0.85);
 }
 
-.ica--profile-label span {
+.ica--profile-label:not(.ds-row) span {
     white-space: nowrap;
     opacity: 0.7;
 }
 
-.ica--profile-label select {
+.ica--profile-label:not(.ds-row) select {
     flex: 1;
 }
 
@@ -952,6 +959,23 @@ button.ica--card-pill--version-update {
     font-size: calc(var(--mainFontSize) * 0.76);
     line-height: 1.35;
     opacity: 0.6;
+}
+
+.ica--footer .ds-row-text {
+    flex: 1 1 220px;
+}
+
+.ica--footer .ds-row-suffix {
+    flex: 1 1 320px;
+}
+
+.ica--footer .ds-row-subtitle {
+    color: var(--sb-input-placeholder);
+    opacity: 1;
+}
+
+.ica--footer .ds-row-switch .ds-row-suffix {
+    flex: 0 0 auto;
 }
 
 .ica--action-legend {
@@ -1545,8 +1569,7 @@ button.ica--card-pill--version-update {
     min-height: 32px;
     padding: 4px 13px;
     margin: 0;
-    border: 1px solid var(--SmartThemeBorderColor, #555);
-    border-color: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 48%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ica-border) 48%, transparent);
     border-radius: 999px;
     background: transparent;
     box-shadow: none;
@@ -1568,10 +1591,8 @@ button.ica--card-pill--version-update {
 
 .ica--agent-tab.is-active {
     opacity: 1;
-    border-color: var(--SmartThemeQuoteColor, #8b8);
-    border-color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 62%, transparent);
-    background: rgba(128, 168, 128, 0.12);
-    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 14%, transparent);
+    border-color: color-mix(in srgb, var(--ica-accent) 62%, transparent);
+    background: color-mix(in srgb, var(--ica-accent) 14%, transparent);
     font-weight: 600;
 }
 

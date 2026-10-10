@@ -8283,6 +8283,248 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     transition: none;
 }
 
+/* SillyBunny: Backend groups retain their live controls and use the shared preference-row metrics. */
+.sb-sampling-clamp {
+    width: 100%;
+    max-width: 720px;
+    margin-inline: auto;
+}
+
+.sb-sampling-group {
+    min-width: 0;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-group > .ds-pref-group {
+    margin: 0;
+    padding: 0;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-control-card {
+    display: block;
+    min-width: 0;
+    margin: 0;
+    padding: 12px;
+    border: 0;
+    border-bottom: 1px solid var(--sb-shell-border);
+    border-radius: 0;
+    background: transparent;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-control-card:has(> .ds-row),
+#sb-settings-page .sb-sampling-panel .ds-row-expander {
+    padding: 0;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-control-card:last-child {
+    border-bottom: 0;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-control-card > .ds-row {
+    width: 100%;
+    min-height: 52px;
+    margin: 0;
+    padding: 12px;
+    border: 0;
+    border-radius: 0;
+}
+
+#sb-settings-page .sb-sampling-panel .ds-row-slider {
+    display: flex;
+    align-items: center;
+    flex-direction: row;
+    gap: 12px;
+}
+
+#sb-settings-page .sb-sampling-panel .ds-row-switch > .ds-row-suffix {
+    flex: 0 0 auto;
+}
+
+#sb-settings-page .sb-sampling-panel .ds-row-slider .ds-row-label {
+    display: block;
+}
+
+#sb-settings-page .sb-sampling-panel .ds-row-slider > .ds-row-text {
+    flex: 1 1 180px;
+}
+
+#sb-settings-page .sb-sampling-panel .ds-row-slider > .ds-row-suffix {
+    flex: 1 1 320px;
+}
+
+#sb-settings-page .sb-sampling-panel .ds-row-suffix input[type='range'] {
+    flex: 1 1 140px;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+}
+
+#sb-settings-page .sb-sampling-panel .ds-row-suffix .neo-range-input {
+    flex: 0 0 5.5em;
+    width: 5.5em;
+    min-width: 0;
+    margin: 0;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-transmission,
+#sb-settings-page .sb-sampling-panel .sb-chat-neutralize-row {
+    margin: 0;
+    padding: 8px 12px;
+    border-top: 0;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-multi-card > * {
+    min-width: 0;
+    margin: 0;
+    gap: 0;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-multi-card > * > h4:not(:has(input)),
+#sb-settings-page .sb-sampling-panel .sb-sampling-multi-card hr {
+    display: none;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-multi-card > * > .flexFlowRow {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+#sb-settings-page .sb-sampling-panel [hidden] {
+    display: none !important;
+}
+
+.sb-prompting-mode-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+#sb-settings-page .sb-prompting-panel #ai_response_configuration,
+#sb-settings-page .sb-prompting-panel #advanced-ai-config-block,
+#sb-settings-page .sb-prompting-panel #range_block_openai {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sb-shell-section-gap);
+    min-width: 0;
+    width: 100%;
+}
+
+#sb-settings-page .sb-prompting-panel :is(.sb-prompting-group, .sb-prompting-group-body) {
+    min-width: 0;
+    width: 100%;
+}
+
+#sb-settings-page .sb-prompting-panel .sb-prompting-group-body {
+    padding: 0;
+    margin: 0;
+}
+
+#sb-settings-page .sb-prompting-panel .sb-prompting-group > .sb-settings-flat-header {
+    margin-bottom: 8px;
+}
+
+#sb-settings-page .sb-prompting-panel .sb-prompting-group-body .ds-row {
+    margin: 0;
+    border-radius: 0;
+}
+
+#sb-settings-page .sb-prompting-panel .sb-prompting-group-body .range-block:not(.ds-row) {
+    width: 100%;
+    min-height: 0;
+}
+
+#sb-settings-page .sb-prompting-panel #pro-settings-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    width: 100%;
+}
+
+#sb-settings-page .sb-prompting-panel #pro-settings-block > .ds-row {
+    flex: 0 0 auto;
+    width: 100%;
+}
+
+#sb-settings-page .sb-prompting-panel #pro-settings-block .ds-row-suffix > [data-randomization-disabled] {
+    flex: 0 0 5.5em;
+    width: 5.5em;
+}
+
+#sb-settings-page .sb-prompting-panel #pro-settings-block .ds-row-suffix .neo-range-input {
+    width: 100%;
+    min-width: 0;
+}
+
+#sb-settings-page .sb-prompting-panel #common-gen-settings-block hr {
+    display: none;
+}
+
+#sb-settings-page .sb-prompting-panel #pro-settings-block > [id^='streaming_'] {
+    width: 100%;
+    margin: 0;
+}
+
+#sb-settings-page .sb-prompting-panel .sb-setting-inline-copy-center .ds-row-switch > .ds-row-suffix {
+    flex: 0 0 auto;
+    width: auto;
+}
+
+#sb-settings-page .sb-prompting-panel :is(.sb-preset-toolbar-row, .sb-non-chat-preset-row) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    width: 100%;
+    gap: 12px;
+}
+
+#sb-settings-page .sb-prompting-panel :is(.sb-preset-toolbar-row, .sb-non-chat-preset-row) > select {
+    flex: 1 1 240px;
+    width: 100%;
+    min-width: 0;
+}
+
+#sb-settings-page .sb-prompting-panel :is(.sb-preset-toolbar-row, .sb-non-chat-preset-row) > .flex-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 0;
+    width: auto;
+    height: auto;
+}
+
+#sb-settings-page .sb-prompting-panel [hidden] {
+    display: none !important;
+}
+
+@media screen and (max-width: 620px) {
+    #sb-settings-page .sb-sampling-panel .ds-row-slider {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    #sb-settings-page .sb-sampling-panel .ds-row-slider > :is(.ds-row-text, .ds-row-suffix) {
+        flex-basis: auto;
+        width: 100%;
+    }
+
+    #sb-settings-page .sb-settings-mounted-shell [data-sb-agent-global-settings] .ica--profile-label.ds-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    #sb-settings-page .sb-settings-mounted-shell [data-sb-agent-global-settings] .ica--profile-label.ds-row > :is(.ds-row-text, .ds-row-suffix) {
+        flex-basis: auto;
+        width: 100%;
+    }
+}
+
+#sb-settings-page [data-sb-agent-global-settings] .ica--textarea-fullscreen-wrapper {
+    flex: 1 1 0;
+    min-width: 0;
+    width: 100%;
+}
+
 /* Expander rows: new visual layer on top of existing .inline-drawer machinery */
 .ds-expander-row {
     border-top: 1px solid var(--sb-shell-border);

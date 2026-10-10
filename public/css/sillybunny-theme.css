@@ -3085,51 +3085,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     font-weight: 600;
 }
 
-.sb-sampling-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
-    gap: 12px;
-}
-
-.sb-sampling-multi-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
-    gap: 12px;
-}
-
-.sb-sampling-multi-grid:empty {
-    display: none;
-}
-
-.sb-sampling-priority-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.sb-sampling-priority-row {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
-    gap: 12px;
-}
-
-.sb-sampling-priority-row-top {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
-}
-
-.sb-sampling-priority-row-bottom {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
-}
-
-.sb-sampling-after-row {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
-    margin-top: 2px;
-}
-
-.sb-sampling-priority-row:empty {
-    display: none;
-}
-
 .sb-sampling-control-card {
     min-width: 0;
     padding: 12px;
@@ -3273,33 +3228,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 .sb-sampling-control-card.sb-sampling-large-card {
-    padding: 14px;
-}
-
-.sb-sampling-priority-row-top .sb-sampling-control-card.sb-sampling-large-card:not(.sb-sampling-compact-priority-card) {
-    grid-column: span 2;
-}
-
-.sb-sampling-control-card.sb-sampling-compact-priority-card {
-    padding: 10px;
-}
-
-.sb-sampling-control-card.sb-sampling-compact-priority-card > .range-block {
-    min-height: auto;
-}
-
-.sb-sampling-after-row .sb-sampling-wide-priority-card {
-    grid-column: span 2;
-}
-
-@media screen and (max-width: 700px) {
-    .sb-sampling-priority-row {
-        grid-template-columns: 1fr;
-    }
-
-    .sb-sampling-priority-row-top .sb-sampling-control-card.sb-sampling-large-card:not(.sb-sampling-compact-priority-card) {
-        grid-column: auto;
-    }
+    padding: 12px;
 }
 
 .sb-sampling-multi-card > :is(
@@ -3561,7 +3490,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     resize: vertical;
 }
 
-.sb-sampling-priority-after .prompt_order {
+.sb-sampling-group[data-sb-sampling-group='output'] .prompt_order {
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -3573,7 +3502,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     scroll-padding-top: 8px;
 }
 
-.sb-sampling-priority-after .prompt_order > div {
+.sb-sampling-group[data-sb-sampling-group='output'] .prompt_order > div {
     flex: 0 0 auto;
     min-width: 0;
 }
@@ -3602,12 +3531,12 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     margin: 0;
 }
 
-.sb-sampling-priority-after textarea {
+.sb-sampling-group[data-sb-sampling-group='output'] textarea {
     min-height: 64px;
     max-height: 96px;
 }
 
-.sb-sampling-priority-after .toggle-description {
+.sb-sampling-group[data-sb-sampling-group='output'] .toggle-description {
     margin: 4px 0;
     font-size: var(--sb-type-control);
 }
@@ -3624,15 +3553,11 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     select[data-preset-manager-for] {
         touch-action: pan-y;
     }
-
-    .sb-sampling-grid {
-        row-gap: 14px;
-    }
 }
 
 @media screen and (max-width: 1000px) {
     .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers] {
-        display: flex !important;
+        display: flex;
         flex-direction: column;
         gap: 5px;
         align-items: center;
@@ -3805,7 +3730,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
         #contrastiveSearchBlock
     ) > .flex-container.flexFlowRow > div:has(> input[type='range'].neo-range-slider) > :is(small, label),
     .sb-sampling-multi-card > #contrastiveSearchBlock > .alignitemscenter:has(> input[type='range'].neo-range-slider) > :is(small, label) {
-        display: flex !important;
+        display: flex;
         align-items: center;
         justify-content: flex-start;
         gap: 4px;

@@ -1467,10 +1467,11 @@
                                     <div data-tg-type="ooba, mancer, koboldcpp, tabby, llamacpp, aphrodite" data-tg-samplers="dynatemp" id="dynatemp_block_ooba" class="wide100p">
                                         <h4 class="wide100p textAlignCenter">
                                             <div class="flex-container alignitemscenter justifyCenter">
-                                                <div class="checkbox_label" for="dynatemp_textgenerationwebui">
+                                                <!-- SillyBunny: keep the sampler's native toggle labelled when moved into an expander. -->
+                                                <label class="checkbox_label" for="dynatemp_textgenerationwebui">
                                                     <input type="checkbox" id="dynatemp_textgenerationwebui" />
-                                                </div>
-                                                <span class="textAlignCenter" data-i18n="Dynamic Temperature">Dynamic Temperature</span>
+                                                    <span class="textAlignCenter" data-i18n="Dynamic Temperature">Dynamic Temperature</span>
+                                                </label>
                                                 <div class="fa-solid fa-circle-info opacity50p" data-i18n="[title]Scale Temperature dynamically per token, based on the variation of probabilities" title="Scale Temperature dynamically per token, based on the variation of probabilities."></div>
                                             </div>
                                         </h4>

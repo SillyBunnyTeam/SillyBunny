@@ -71,7 +71,10 @@ async function showSamplerSelectPopup() {
 }
 
 function getRelatedDOMElement(samplerName) {
-    let relatedDOMElement = $(`#${samplerName}_${main_api}`).parent();
+    const control = $(`#${samplerName}_${main_api}`);
+    // SillyBunny: shared rows nest controls in a suffix; manual visibility still belongs to the sampler block.
+    let relatedDOMElement = control.closest('[data-tg-samplers]');
+    if (!relatedDOMElement.length) relatedDOMElement = control.parent();
     let targetDisplayType = 'flex';
     let displayname;
 

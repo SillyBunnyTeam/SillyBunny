@@ -47,7 +47,7 @@ const SB_CUSTOMIZE_TABS = new Set(['appearance', 'interface', 'messages', 'data-
 
 /** @param {HTMLElement} row @returns {HTMLElement} */
 function createRowSubtitle(row) {
-    const existing = row.querySelector('.ds-row-subtitle, .sb-topbar-label-option-copy > small, .sb-compact-mode-copy > small, .sb-mobile-nav-choice-copy > small, label small + small');
+    const existing = row.querySelector('.ds-row-subtitle, :scope > .toggle-description, :scope > .ica--profile-help, .sb-topbar-label-option-copy > small, .sb-compact-mode-copy > small, .sb-mobile-nav-choice-copy > small, label small + small');
     if (existing instanceof HTMLElement && existing.textContent.trim()) {
         existing.classList.add('ds-row-subtitle');
         return existing;
@@ -57,7 +57,8 @@ function createRowSubtitle(row) {
     subtitle.className = 'ds-row-subtitle';
     // The tooltip extension relocates title attributes before the settings panel opens.
     const tooltipSelector = ':is([title], [data-sttt--title]):not(input, select, button, a, .menu_button)';
-    const source = row.matches(tooltipSelector) ? row : row.querySelector(tooltipSelector);
+    const source = (row.matches(tooltipSelector) ? row : row.querySelector(tooltipSelector))
+        ?? row.querySelector('select[title], select[data-sttt--title], textarea[title], textarea[data-sttt--title]');
     subtitle.textContent = (source?.getAttribute('title') || source?.getAttribute('data-sttt--title'))?.trim() || SB_PLACEHOLDER_DESCRIPTION;
     if (subtitle.textContent === SB_PLACEHOLDER_DESCRIPTION) {
         subtitle.dataset.sbCopyPlaceholder = 'true';
@@ -88,6 +89,7 @@ function normalizeCustomizeSwitch(label) {
         input.setAttribute('aria-labelledby', title.id);
     }
     const subtitle = createRowSubtitle(label);
+    for (const marker of label.querySelectorAll('.fa-circle-info:not(a .fa-circle-info)')) marker.remove();
     const suffix = document.createElement('span');
     suffix.className = 'ds-row-suffix';
     for (const node of [...label.childNodes]) {
@@ -104,7 +106,7 @@ function normalizeCustomizeSwitch(label) {
 /** @param {HTMLElement} row @param {HTMLElement} control */
 function normalizeCustomizeField(row, control) {
     if (row.classList.contains('ds-row') || row.querySelector('.ds-row, .checkbox_label')) return;
-    const title = row.querySelector(':scope > label, :scope > small, :scope > span');
+    const title = row.querySelector(':scope > label, :scope > small, :scope > span, :scope > .range-block-title, :scope > h4');
     if (!(title instanceof HTMLElement)) return;
 
     const text = document.createElement('div');
@@ -115,6 +117,7 @@ function normalizeCustomizeField(row, control) {
     // Tooltip info markers have become visible copy; actionable help links keep their handlers.
     for (const marker of title.querySelectorAll('.fa-circle-info')) marker.remove();
     title.classList.add('ds-row-label');
+    title.classList.remove('displayNone');
     if (title instanceof HTMLLabelElement && control.id) title.htmlFor = control.id;
     text.append(title, subtitle);
     if (!control.hasAttribute('aria-label') && !control.hasAttribute('aria-labelledby') && !(title instanceof HTMLLabelElement)) {
@@ -124,7 +127,7 @@ function normalizeCustomizeField(row, control) {
     const isSlider = control instanceof HTMLInputElement && control.type === 'range';
     if (!isSlider) control.classList.add('ds-control-flex');
     for (const node of [...row.children]) {
-        if (node === title || node.matches('script, style, [hidden]')) continue;
+        if (node === title || node === subtitle || node.matches('script, style, [hidden]')) continue;
         suffix.appendChild(node);
     }
     row.classList.remove('flex-container', 'flexFlowColumn', 'flexBasis48p', 'flexGrow', 'flexShrink', 'flex1', 'wide100p', 'alignitemscenter', 'alignItemsCenter', 'alignItemsBaseline', 'gap0');
@@ -139,18 +142,55 @@ function normalizeCustomizeField(row, control) {
     }
 }
 
+/** Normalize explicitly owned Backend controls without restructuring provider forms or prompt editors. */
+export function normalizeBackendSettingsRows(scope, { fields = true } = {}) {
+    if (!(scope instanceof HTMLElement)) return;
+    for (const label of scope.querySelectorAll('.checkbox_label')) {
+        if (!(label instanceof HTMLLabelElement) || label.closest('#completion_prompt_manager')) continue;
+        const input = label.querySelector('input[type="checkbox"]');
+        // Icon actions such as Banned Tokens use a hidden checkbox as state, not as a visible switch.
+        if (input instanceof HTMLInputElement && input.style.display === 'none' && label.querySelector('.menu_button')) continue;
+        normalizeCustomizeSwitch(label);
+    }
+    bindSettingsSwitchKeyboard(scope);
+    if (!fields) return;
+    for (const control of scope.querySelectorAll('select, input[type="range"], input[type="number"], input[type="text"], textarea')) {
+        if (!(control instanceof HTMLElement) || control.closest('.ds-row, #completion_prompt_manager, form, .sb-preset-toolbar-row, .sb-non-chat-preset-row')) continue;
+        let row = control.parentElement;
+        for (let depth = 0; depth < 3 && row && !row.querySelector(':scope > label, :scope > small, :scope > span, :scope > .range-block-title, :scope > h4'); depth++) {
+            if (!row.parentElement || row.parentElement.matches('.ds-pref-group, .sb-sampling-control-card')) break;
+            row = row.parentElement;
+        }
+        if (!(row instanceof HTMLElement) || row.querySelectorAll('input[type="range"]').length > 1) continue;
+        normalizeCustomizeField(row, control);
+    }
+    bindCustomizeSliderCounters(scope);
+}
+
+/** @param {HTMLElement} scope */
+function bindSettingsSwitchKeyboard(scope) {
+    if (scope.dataset.sbSwitchKeyboardBound === 'true') return;
+    scope.dataset.sbSwitchKeyboardBound = 'true';
+    scope.addEventListener('keydown', event => {
+        const input = event.target;
+        if (event.defaultPrevented || event.key !== 'Enter' || !(input instanceof HTMLInputElement) || input.getAttribute('role') !== 'switch') return;
+        event.preventDefault();
+        if (!event.repeat && !input.disabled) input.click();
+    });
+}
+
 /** @param {HTMLElement} scope */
 function bindCustomizeSliderCounters(scope) {
     for (const counter of scope.querySelectorAll('.ds-row-slider input[type="number"][data-for]')) {
         if (!(counter instanceof HTMLInputElement)) continue;
         const rangeId = counter.dataset.for;
         if (!rangeId) continue;
-        const range = document.getElementById(rangeId);
+        const range = scope.querySelector(`#${CSS.escape(rangeId)}`) ?? document.getElementById(rangeId);
         if (!(range instanceof HTMLInputElement) || range.type !== 'range') continue;
 
-        counter.value = range.value;
         counter.disabled = range.disabled;
         if (counter.dataset.sbCounterBound === 'true') continue;
+        counter.value = range.value;
         counter.dataset.sbCounterBound = 'true';
         const applyNumber = () => {
             if (range.disabled || !counter.value || !counter.validity.valid) {
@@ -216,14 +256,9 @@ function normalizeCustomizeRows(scope) {
         if (row instanceof HTMLElement) normalizeCustomizeField(row, control);
     }
     bindCustomizeSliderCounters(scope);
+    bindSettingsSwitchKeyboard(scope);
     if (scope.dataset.sbRowEvents === 'true') return;
     scope.dataset.sbRowEvents = 'true';
-    scope.addEventListener('keydown', event => {
-        const input = event.target;
-        if (event.defaultPrevented || event.key !== 'Enter' || !(input instanceof HTMLInputElement) || input.getAttribute('role') !== 'switch') return;
-        event.preventDefault();
-        if (!event.repeat && !input.disabled) input.click();
-    });
     // Upstream changes range availability when Fast UI or No Shadows is toggled.
     const rangeAvailabilityObserver = new MutationObserver(mutations => {
         for (const { target } of mutations) {

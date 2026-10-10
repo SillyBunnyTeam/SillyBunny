@@ -25,31 +25,31 @@ describe('SillyBunny Connections panel', () => {
     const themeCss = readSource('public', 'css', 'sillybunny-theme.css');
 
     test('is not presented as a subpage stack', () => {
-        expect(tabsSource).toContain("new Set(['extensions', 'prompting'])");
-        expect(tabsSource).not.toContain("'connections', 'extensions'");
+        expect(tabsSource).toContain('new Set([\'extensions\'])');
+        expect(tabsSource).not.toContain('\'connections\', \'extensions\'');
         expect(descriptorsSource).not.toContain('buildConnectionsSubpage');
         expect(descriptorsSource).not.toContain('SB_PROVIDER_API_IDS');
     });
 
     test('mounts its own panel into the base tab of the backend shell', () => {
-        expect(tabsSource).toContain("import { createConnectionsPanel } from './sillybunny-connections-panel.js';");
+        expect(tabsSource).toContain('import { createConnectionsPanel } from \'./sillybunny-connections-panel.js\';');
         expect(tabsSource).toContain('createConnectionsPanel({');
         expect(tabsSource).toContain('basePanel.scroller.appendChild(connectionsPanel.column);');
     });
 
     test('keeps the native API selects in the document as the source of truth', () => {
         // The panel draws views over these; removing them would break every reader in the app.
-        expect(panelSource).toContain("document.getElementById('main_api')");
-        expect(panelSource).toContain("'#chat_completion_source'");
-        expect(panelSource).toContain("'#textgen_type'");
+        expect(panelSource).toContain('document.getElementById(\'main_api\')');
+        expect(panelSource).toContain('\'#chat_completion_source\'');
+        expect(panelSource).toContain('\'#textgen_type\'');
         expect(panelSource).not.toContain('main_api\').remove()');
-        expect(panelSource).not.toContain("getElementById('rm_api_block').remove()");
+        expect(panelSource).not.toContain('getElementById(\'rm_api_block\').remove()');
     });
 
     test('never writes the API value behind the change handler that owns it', () => {
         // The write has to go through a dispatched `change`, or the save, the event, and every
         // dependent panel are skipped. Setting the value alone is the bug this guards.
-        expect(panelSource).toContain("select.dispatchEvent(new Event('change', { bubbles: true }))");
+        expect(panelSource).toContain('select.dispatchEvent(new Event(\'change\', { bubbles: true }))');
         expect(panelSource).toMatch(/if \(!\(select instanceof HTMLSelectElement\) \|\| select\.value === value\) \{\s*return false;/);
     });
 
@@ -80,7 +80,7 @@ describe('SillyBunny Connections panel', () => {
     test('empties the upstream drawer without detaching it', () => {
         // `openai.js`, `horde.js`, and `textgen-models.js` look `#rm_api_block` up as a select2
         // dropdown parent, and `script.js` registers it as a layout target.
-        expect(tabsSource).toContain("prepareEmbeddedDrawer('sys-settings-button')");
+        expect(tabsSource).toContain('prepareEmbeddedDrawer(\'sys-settings-button\')');
         expect(tabsSource).toContain('sb-legacy-api-drawer');
         expect(themeCss).not.toContain('#rm_api_block');
         expect(tabsCss).toContain('.sb-legacy-api-drawer');
@@ -92,14 +92,14 @@ describe('SillyBunny Connections panel', () => {
         expect(themeCss).toContain('[data-sb-connections-panel] .online_status');
         // The theme rules key on this attribute, so the panel column has to carry it or every one
         // of them is dead.
-        expect(panelSource).toContain("'data-sb-connections-panel': ''");
+        expect(panelSource).toContain('\'data-sb-connections-panel\': \'\'');
     });
 
     test('boxes every provider, connect card included, in the same pill', () => {
         // Chat Completions authors its connect row on the block itself, Text Completions inside a
         // form; both have to end up inside the body pill.
         expect(panelSource).toContain('const children = Array.from(block.children);');
-        expect(panelSource).toContain("connectSlot.className = 'sb-connections-connect-slot';");
+        expect(panelSource).toContain('connectSlot.className = \'sb-connections-connect-slot\';');
         expect(tabsCss).toContain('.sb-connections-provider-body {');
     });
 
@@ -110,7 +110,7 @@ describe('SillyBunny Connections panel', () => {
     test('leaves the connect row in place so the mobile rules still match it', () => {
         // The mobile sheet targets the row by its exact parent chain, so lifting it out of its
         // block or its form would take the buttons' mobile layout with it.
-        expect(panelSource).toContain("row.parentElement?.prepend(row)");
+        expect(panelSource).toContain('row.parentElement?.prepend(row)');
         expect(panelSource).not.toContain('card.appendChild(row)');
         expect(panelSource).not.toContain('row.cloneNode');
     });
@@ -128,8 +128,8 @@ describe('SillyBunny Connections panel', () => {
     });
 
     test('supports a libadwaita combo row rather than a native select menu', () => {
-        expect(panelSource).toContain("'aria-haspopup': 'listbox'");
-        expect(panelSource).toContain("role: 'combobox'");
+        expect(panelSource).toContain('\'aria-haspopup\': \'listbox\'');
+        expect(panelSource).toContain('role: \'combobox\'');
         expect(tabsCss).toContain('.sb-combo-list');
         expect(tabsCss).toContain('.sb-combo-option');
     });

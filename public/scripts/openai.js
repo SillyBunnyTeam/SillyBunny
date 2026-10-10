@@ -3863,6 +3863,11 @@ function groupOpenAISettingsIntoDrawers() {
  * @returns {Element[]}
  */
 function getOpenAISettingsGroupBlocks(group) {
+    // SillyBunny: Prompting boxes the live blocks without changing their provider visibility contract.
+    const body = group.querySelector(':scope > .sb-prompting-group-body');
+    if (body) {
+        return Array.from(body.children);
+    }
     const content = group.querySelector(':scope > .inline-drawer-content');
     if (content) {
         return Array.from(content.children);

@@ -1371,6 +1371,8 @@ function generateExtensionHtml(name, manifest, isActive, isDisabled, isExternal,
     let toggleElement = isActive || isDisabled ?
         '<input type="checkbox" title="' + t`Click to toggle` + `" data-name="${name}" class="sb-switch ${isActive ? 'toggle_disable' : 'toggle_enable'} ${checkboxClass}" ${isActive ? 'checked' : ''}>` :
         `<input type="checkbox" title="Cannot enable extension" data-name="${name}" class="sb-switch extension_missing ${checkboxClass}" disabled>`;
+    // SillyBunny: retain native checked state and identify each switch by its extension's name.
+    toggleElement = toggleElement.replace('<input ', `<input role="switch" aria-label="${escapeHtml(displayName)}" `);
 
     let deleteButton = isExternal ? `<button class="btn_delete menu_button" data-name="${externalId}" data-i18n="[title]Delete" title="Delete"><i class="fa-fw fa-solid fa-trash-can"></i></button>` : '';
     let cleanButton = isExternal && hasExtensionHook(externalId, 'clean') ? `<button class="btn_clean menu_button" data-name="${externalId}" data-i18n="[title]Clean extension data" title="Clean extension data"><i class="fa-fw fa-solid fa-broom"></i></button>` : '';

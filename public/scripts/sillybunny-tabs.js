@@ -62,7 +62,7 @@ import {
     flattenNestedSettingsDrawers,
     splitUserSettingsContent,
 } from './sillybunny-settings-content.js';
-import { normalizeSettingsDetail, normalizeSettingsPresentation } from './sillybunny-settings-presentation.js';
+import { normalizeBackendSettingsRows, normalizeSettingsDetail, normalizeSettingsPresentation } from './sillybunny-settings-presentation.js';
 import { createSubpageStack, SB_SUBPAGE_STORE_CLASS } from './sillybunny-settings-subpage.js';
 import { SB_SUBPAGE_BUILDERS } from './sillybunny-settings-subpage-descriptors.js';
 import { createConnectionsPanel } from './sillybunny-connections-panel.js';
@@ -117,23 +117,10 @@ function initializeSettingsPanel() {
 const SB_COLLAPSIBLE_DRAWER_TAB_IDS = Object.freeze(new Set(['extensions', 'agents']));
 
 /**
- * Phase 6H: the panels presented as a sliding list-plus-detail stack.
- *
- * These three were the last ones still made of accordions, and they are also the three whose
- * settings arrive from somewhere other than this file -- Extensions is written by whatever extension
- * is loaded, while Connections and Prompting are upstream's blocks. The stack owns their
- * presentation entirely, so the flatten, the section order, and the two-line normalizer all stand
- * down for them: those passes exist to box loose rows and add a description between a heading and
- * its content, and on these panels there is no heading to work from and no shape they can describe
- * (Connections alone got 43 boxes out of the normalizer, because thirty-odd hidden per-provider forms
- * read as thirty-odd sections).
- *
- * Extensions and Agents were already left alone by the drawer passes, for the reason given on
- * `SB_COLLAPSIBLE_DRAWER_TAB_IDS`; the stack is what replaces them there. Agents is not listed here
- * because it does not need stacking: the in-chat-agents extension already presents its own dashboard
- * as a list that opens editors, so it gets the shared row and button styling and keeps its layout.
+ * Extensions owns independently authored sections, so it retains the sliding detail stack.
+ * Prompting uses its live backend groups on one scrolling page instead.
  */
-const SB_SUBPAGE_TAB_IDS = Object.freeze(new Set(['extensions', 'prompting']));
+const SB_SUBPAGE_TAB_IDS = Object.freeze(new Set(['extensions']));
 
 /**
  * Whether a panel's presentation is owned by the subpage stack rather than by the settings passes.
@@ -169,6 +156,10 @@ function installSettingsSubpage(shellKey, tabId) {
     }
 
     const panel = getShellState(shellKey)?.tabs.get(tabId)?.panel;
+    if (tabId === 'extensions') {
+        const header = panel?.querySelector('#extensions_notify_updates')?.closest('.flex-container');
+        normalizeBackendSettingsRows(header, { fields: false });
+    }
     const scroller = panel?.querySelector(':scope > .sb-shell-panel-scroller');
     if (!(scroller instanceof HTMLElement)) {
         return;
@@ -329,6 +320,10 @@ function flattenSettingsPanelDrawers(shellKey, tabId) {
     }
 
     const panel = getShellState(shellKey)?.tabs.get(tabId)?.panel;
+    if (tabId === 'prompting') {
+        updatePromptingPanel(panel);
+        return;
+    }
     if (panel instanceof HTMLElement) {
         flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
         applySettingsSectionOrder(panel, tabId);
@@ -962,6 +957,8 @@ const SB_DRAWER_ROUTES = Object.freeze({
 });
 
 const SB_SEARCH_TARGET_SELECTOR = [
+    '.ds-row-label',
+    '.ds-row-subtitle',
     'label',
     '.checkbox_label',
     '.menu_button',
@@ -9077,7 +9074,7 @@ const SB_SAMPLING_BACKENDS = Object.freeze([
     {
         id: 'kobold',
         apiIds: ['kobold', 'koboldhorde'],
-        title: 'Kobold / Horde',
+        title: 'Kobold/Horde',
         description: 'Kobold Horde reuses Kobold sampler settings; Horde still requires a non-GUI preset.',
         controls: ['#temp', '#top_p', '#rep_pen'],
     },
@@ -9124,32 +9121,44 @@ const SB_LARGE_SAMPLING_CONTROLS = Object.freeze(new Set([
     '#sampler_priority_block_aphrodite',
 ]));
 
-const SB_COMPACT_PRIORITY_SAMPLING_CONTROLS = Object.freeze(new Set([
-    '#samplerResetButton',
-    '#n_textgenerationwebui',
-    '#seed_textgenerationwebui',
-    '#json_schema_block',
-]));
+const SB_SAMPLING_GROUPS = Object.freeze([
+    { id: 'sampling', title: 'Sampling' },
+    { id: 'penalties', title: 'Penalties & Repetition' },
+    { id: 'algorithms', title: 'Advanced Algorithms' },
+    { id: 'tokens', title: 'Token Control' },
+    { id: 'output', title: 'Output & Generation' },
+]);
 
-const SB_WIDE_PRIORITY_SAMPLING_CONTROLS = Object.freeze(new Set([
-    '#sampler_order_block_kcpp',
-    '#sampler_order_block_lcpp',
-    '#sampler_priority_block_ooba',
-    '#sampler_priority_block_aphrodite',
-]));
-
-const SB_AFTER_SAMPLER_CONTROLS = Object.freeze(new Set([
-    '#sampler_order_block_kcpp',
-    '#sampler_order_block_lcpp',
-    '#sampler_priority_block_ooba',
-    '#sampler_priority_block_aphrodite',
-    '#json_schema_block',
-]));
-
-const SB_BOTTOM_PRIORITY_SAMPLING_CONTROLS = Object.freeze(new Set([
-    '#banned_tokens_block_ooba',
-    '#logit_bias_block_ooba',
-]));
+// SillyBunny: use Text Completions' existing taxonomy without changing sampler state or requests.
+const SB_SAMPLING_GROUP_SELECTORS = Object.freeze({
+    penalties: new Set([
+        '#repetition_penalty_openai', '#freq_pen_openai', '#pres_pen_openai',
+        '#rep_pen_textgenerationwebui', '#rep_pen_range_textgenerationwebui',
+        '#rep_pen_slope_textgenerationwebui', '#rep_pen_decay_textgenerationwebui',
+        '#encoder_rep_pen_textgenerationwebui', '#freq_pen_textgenerationwebui',
+        '#presence_pen_textgenerationwebui', '#no_repeat_ngram_size_textgenerationwebui',
+        '#rep_pen', '#rep_pen_novel', '#rep_pen_size_novel', '#rep_pen_slope_novel',
+        '#rep_pen_freq_novel', '#rep_pen_presence_novel',
+    ]),
+    algorithms: new Set([
+        '#adaptive_p_block', '#smoothingBlock', '#xtc_block', '#dryBlock',
+        '#dynatemp_block_ooba', '#mirostat_block_ooba', '#beamSearchBlock', '#contrastiveSearchBlock',
+        '#mirostat_tau_novel', '#mirostat_lr_novel', '#math1_temp_novel',
+        '#math1_quad_novel', '#math1_quad_entropy_scale_novel',
+    ]),
+    tokens: new Set([
+        '#seed_openai', '#openai_logit_bias_preset', '#seed_textgenerationwebui',
+        '#n_textgenerationwebui', '#min_length_textgenerationwebui', '#max_tokens_second_textgenerationwebui',
+        '#banned_tokens_block_ooba', '#logit_bias_block_ooba', '#min_length_novel',
+    ]),
+    output: new Set([
+        '#sampler_order_block_kcpp', '#sampler_order_block_lcpp', '#sampler_priority_block_ooba',
+        '#sampler_priority_block_aphrodite', '#json_schema_block', '#cfg_block_ooba', '#grammar_block_ooba',
+        '#do_sample_textgenerationwebui', '#add_bos_token_textgenerationwebui', '#ignore_eos_token_textgenerationwebui',
+        '#include_reasoning_textgenerationwebui', '#temperature_last_textgenerationwebui',
+        '#speculative_ngram_textgenerationwebui', '#spaces_between_special_tokens_textgenerationwebui',
+    ]),
+});
 
 const SB_MULTI_SAMPLING_CONTROLS = Object.freeze(new Set([
     '#adaptive_p_block',
@@ -9162,20 +9171,8 @@ const SB_MULTI_SAMPLING_CONTROLS = Object.freeze(new Set([
     '#contrastiveSearchBlock',
 ]));
 
-function getSamplingPriorityTier(selector) {
-    if (SB_AFTER_SAMPLER_CONTROLS.has(selector)) {
-        return 'after';
-    }
-
-    if (SB_BOTTOM_PRIORITY_SAMPLING_CONTROLS.has(selector)) {
-        return 'bottom';
-    }
-
-    if (SB_LARGE_SAMPLING_CONTROLS.has(selector)) {
-        return 'top';
-    }
-
-    return '';
+function getSamplingGroupId(selector) {
+    return Object.entries(SB_SAMPLING_GROUP_SELECTORS).find(([, selectors]) => selectors.has(selector))?.[0] ?? 'sampling';
 }
 
 function getSpecialTokenControlBlock() {
@@ -9410,6 +9407,14 @@ function getSamplingControlBlock(selector) {
         return input.closest('.flex-container.justifyCenter') ?? input.parentElement;
     }
 
+    if (SB_MULTI_SAMPLING_CONTROLS.has(selector) || input.matches('#cfg_block_ooba, #grammar_block_ooba, #json_schema_block, #banned_tokens_block_ooba, #logit_bias_block_ooba, [id^="sampler_order_block_"], [id^="sampler_priority_block_"]')) {
+        return input;
+    }
+
+    if (input.matches('input[type="checkbox"]')) {
+        return input.closest('.checkbox_label') ?? input.parentElement;
+    }
+
     return input.closest('.range-block')
         ?? input.closest('[data-tg-samplers]')
         ?? input.parentElement;
@@ -9424,15 +9429,13 @@ function buildSamplingControlCard(selector) {
     }
 
     const isTextGenSampler = controlBlock.hasAttribute('data-tg-samplers') || controlBlock.querySelector('[data-tg-samplers]');
-    const card = createElement('div', {
+    const isExpander = SB_MULTI_SAMPLING_CONTROLS.has(selector);
+    const card = createElement(isExpander ? 'details' : 'div', {
         className: [
             'sb-sampling-control-card',
             isTextGenSampler ? 'sb-sampling-textgen-card' : '',
             SB_LARGE_SAMPLING_CONTROLS.has(selector) ? 'sb-sampling-large-card' : '',
-            SB_COMPACT_PRIORITY_SAMPLING_CONTROLS.has(selector) ? 'sb-sampling-compact-priority-card' : '',
-            SB_WIDE_PRIORITY_SAMPLING_CONTROLS.has(selector) ? 'sb-sampling-wide-priority-card' : '',
-            SB_MULTI_SAMPLING_CONTROLS.has(selector) ? 'sb-sampling-multi-card' : '',
-            getSamplingPriorityTier(selector) ? `sb-sampling-priority-${getSamplingPriorityTier(selector)}` : '',
+            isExpander ? 'ds-row-expander' : 'sb-sampling-row',
         ].filter(Boolean).join(' '),
     });
     card.dataset.sbSamplingControl = selector;
@@ -9442,8 +9445,27 @@ function buildSamplingControlCard(selector) {
         }
     }
 
-    card.appendChild(controlBlock);
+    if (isExpander) {
+        const summary = createElement('summary', { className: 'ds-row' });
+        const text = createElement('div', { className: 'ds-row-text' });
+        const heading = controlBlock.querySelector(':scope > h4');
+        const label = createElement('span', { className: 'ds-row-label', text: heading?.textContent.replace(/\s+/g, ' ').trim() || 'lorum ipsum' });
+        const tooltip = heading?.matches('[title], [data-sttt--title]') ? heading : heading?.querySelector('[title], [data-sttt--title]');
+        const subtitle = createElement('small', {
+            className: 'ds-row-subtitle',
+            text: tooltip?.getAttribute('title') || tooltip?.getAttribute('data-sttt--title') || 'lorum ipsum',
+        });
+        if (subtitle.textContent === 'lorum ipsum') subtitle.dataset.sbCopyPlaceholder = 'true';
+        text.append(label, subtitle);
+        summary.append(text);
+        const content = createElement('div', { className: 'ds-row-expander-content sb-sampling-multi-card' });
+        content.append(controlBlock);
+        card.append(summary, content);
+    } else {
+        card.appendChild(controlBlock);
+    }
     decorateSamplingControlCard(card, selector);
+    normalizeBackendSettingsRows(card);
     return card;
 }
 
@@ -9490,24 +9512,17 @@ function updateSamplingCardVisibility(section) {
             return;
         }
 
-        const hasVisibleContent = Array.from(card.children).some(child => child instanceof HTMLElement && getComputedStyle(child).display !== 'none');
+        const content = card.querySelector(':scope > .ds-row-expander-content') ?? card;
+        const hasVisibleContent = Array.from(content.children).some(child => child instanceof HTMLElement
+            && !child.classList.contains('sb-sampling-transmission')
+            && !child.classList.contains('sb-chat-neutralize-row')
+            && getComputedStyle(child).display !== 'none');
         card.hidden = !hasVisibleContent;
     });
 
-    section.querySelectorAll('.sb-sampling-priority-row').forEach(row => {
-        if (!(row instanceof HTMLElement)) {
-            return;
-        }
-
-        row.hidden = !Array.from(row.children).some(child => child instanceof HTMLElement && !child.hidden);
-    });
-
-    section.querySelectorAll('.sb-sampling-multi-grid').forEach(row => {
-        if (!(row instanceof HTMLElement)) {
-            return;
-        }
-
-        row.hidden = !Array.from(row.children).some(child => child instanceof HTMLElement && !child.hidden);
+    section.querySelectorAll('[data-sb-sampling-group]').forEach(group => {
+        if (!(group instanceof HTMLElement)) return;
+        group.hidden = !Array.from(group.querySelectorAll('[data-sb-sampling-control]')).some(card => card instanceof HTMLElement && !card.hidden);
     });
 }
 
@@ -9518,22 +9533,16 @@ function syncSamplingPanelControls(root) {
 
     for (const backend of SB_SAMPLING_BACKENDS) {
         const section = root.querySelector(`#sb-sampling-${backend.id}`);
-        const priorityRows = {
-            top: section?.querySelector('.sb-sampling-priority-row[data-sb-priority-tier="top"]'),
-            bottom: section?.querySelector('.sb-sampling-priority-row[data-sb-priority-tier="bottom"]'),
-            after: section?.querySelector('.sb-sampling-after-row[data-sb-priority-tier="after"]'),
-        };
-        const grid = section?.querySelector('.sb-sampling-grid');
-        const multiGrid = section?.querySelector('.sb-sampling-multi-grid');
-        if (!Object.values(priorityRows).every(row => row instanceof HTMLElement) || !(grid instanceof HTMLElement) || !(multiGrid instanceof HTMLElement)) {
+        if (!(section instanceof HTMLElement)) {
             continue;
         }
 
         section.querySelector('.sb-sampling-note')?.remove();
 
         for (const selector of backend.controls) {
-            const tier = getSamplingPriorityTier(selector);
-            const target = tier ? priorityRows[tier] : (SB_MULTI_SAMPLING_CONTROLS.has(selector) ? multiGrid : grid);
+            const groupId = getSamplingGroupId(selector);
+            const target = section.querySelector(`[data-sb-sampling-group="${groupId}"] > .ds-pref-group`);
+            if (!(target instanceof HTMLElement)) throw new Error(`Missing Sampling group: ${backend.id}/${groupId}`);
             const existingCard = Array.from(section.querySelectorAll('[data-sb-sampling-control]'))
                 .find(card => card instanceof HTMLElement && card.dataset.sbSamplingControl === selector);
             if (existingCard instanceof HTMLElement && existingCard.children.length > 0) {
@@ -9552,8 +9561,8 @@ function syncSamplingPanelControls(root) {
             }
         }
 
-        if (!Object.values(priorityRows).some(row => row.children.length) && !grid.children.length && !multiGrid.children.length) {
-            grid.appendChild(createElement('p', {
+        if (!section.querySelector('[data-sb-sampling-control]')) {
+            section.appendChild(createElement('p', {
                 className: 'sb-sampling-note',
                 text: 'Sampler controls are not ready yet. Reopen the Backend menu after settings finish loading.',
             }));
@@ -9598,7 +9607,7 @@ function updateSamplingPanelVisibility(root) {
 function buildSamplingPanel() {
     const { panel, scroller } = createShellPanel({ id: 'sampling' });
     const column = createElement('div', {
-        className: 'sb-shell-column sb-sampling-panel',
+        className: 'sb-shell-column sb-sampling-panel sb-sampling-clamp',
         attrs: { 'data-sb-presentation': 'manual' },
     });
 
@@ -9614,21 +9623,23 @@ function buildSamplingPanel() {
         });
         const header = createElement('div', { className: 'sb-sampling-section-header' });
         const titleRow = createElement('div', { className: 'sb-sampling-title-row' });
-        const title = createElement('strong', { text: 'Sampling Backend' });
-        const mode = createElement('span', { className: 'sb-sampling-mode-pill', text: backend.title });
+        const mode = createElement('span', { className: 'sb-sampling-mode-pill', text: `Backend: ${backend.title}` });
         const description = createElement('p', { text: `Active backend samplers are shown here. ${backend.description}` });
-        const priorityStack = createElement('div', { className: 'sb-sampling-priority-stack' });
-        const priorityTop = createElement('div', { className: 'sb-sampling-priority-row sb-sampling-priority-row-top', attrs: { 'data-sb-priority-tier': 'top' } });
-        const priorityBottom = createElement('div', { className: 'sb-sampling-priority-row sb-sampling-priority-row-bottom', attrs: { 'data-sb-priority-tier': 'bottom' } });
-        const grid = createElement('div', { className: 'sb-sampling-grid' });
-        const multiGrid = createElement('div', { className: 'sb-sampling-multi-grid' });
-        const afterRow = createElement('div', { className: 'sb-sampling-priority-row sb-sampling-after-row', attrs: { 'data-sb-priority-tier': 'after' } });
 
-        titleRow.append(title, mode);
+        titleRow.append(mode);
         header.append(titleRow, description);
-
-        priorityStack.append(priorityTop, priorityBottom);
-        section.append(header, priorityStack, grid, multiGrid, afterRow);
+        section.append(header);
+        for (const group of SB_SAMPLING_GROUPS) {
+            const category = createElement('section', {
+                className: 'sb-sampling-group',
+                attrs: { 'data-sb-sampling-group': group.id },
+            });
+            category.append(
+                createElement('h3', { className: 'ds-pref-group-heading', text: group.title }),
+                createElement('div', { className: 'ds-pref-group' }),
+            );
+            section.append(category);
+        }
         sections.appendChild(section);
     }
 
@@ -9640,6 +9651,16 @@ function buildSamplingPanel() {
 
     column.append(sections, empty);
     scroller.appendChild(column);
+    let visibilityQueued = false;
+    const visibilityObserver = new MutationObserver(mutations => {
+        if (visibilityQueued || !mutations.some(({ target }) => target instanceof HTMLElement && target.matches('[data-source], [data-tg-type], [data-tg-samplers]'))) return;
+        visibilityQueued = true;
+        window.requestAnimationFrame(() => {
+            visibilityQueued = false;
+            sections.querySelectorAll('.sb-sampling-section').forEach(updateSamplingCardVisibility);
+        });
+    });
+    visibilityObserver.observe(sections, { subtree: true, attributes: true, attributeFilter: ['style'] });
 
     $('#main_api').on('change.sbSamplingPanel', () => {
         if (isShellTabOpen('left', 'sampling')) updateSamplingPanelVisibility(column);
@@ -9672,6 +9693,13 @@ function buildInChatAgentsPanel() {
     `;
 
     const inChatAgentsContainer = createElement('div', { id: 'in_chat_agents_container' });
+    const normalizeGlobalSettings = () => normalizeBackendSettingsRows(column.querySelector('[data-sb-agent-global-settings]'));
+    const settingsObserver = new MutationObserver(() => {
+        if (!column.querySelector('[data-sb-agent-global-settings]')) return;
+        settingsObserver.disconnect();
+        normalizeGlobalSettings();
+    });
+    settingsObserver.observe(inChatAgentsContainer, { childList: true });
 
     column.append(callout, inChatAgentsContainer);
     scroller.appendChild(column);
@@ -9681,7 +9709,107 @@ function buildInChatAgentsPanel() {
         panel,
         button: null,
         searchRoot: column,
+        onActivate: normalizeGlobalSettings,
     };
+}
+
+function preparePromptingPanel(root) {
+    root.classList.add('sb-prompting-panel');
+    root.dataset.sbPresentation = 'manual';
+    const completionTabs = /** @type {{openAITabManager?: {refreshTabs: () => void}}|undefined} */ (window['ChatCompletionTabs']);
+    completionTabs?.openAITabManager?.refreshTabs();
+    const configuration = root.querySelector('#ai_response_configuration');
+    if (!(configuration instanceof HTMLElement)) return;
+
+    const header = createElement('div', { className: 'sb-prompting-mode-row' });
+    const mode = createElement('span', { className: 'sb-sampling-mode-pill', attrs: { 'data-sb-prompting-mode': '' } });
+    const context = createElement('button', {
+        className: 'menu_button',
+        text: 'Context',
+        attrs: { type: 'button', 'data-sb-prompting-context': '' },
+    });
+    context.addEventListener('click', () => openShell('left', 'context'));
+    header.append(mode, context);
+    configuration.prepend(header);
+
+    for (const [id, title] of [['respective-presets-block', 'Presets'], ['common-gen-settings-block', 'Generation Settings']]) {
+        const block = configuration.querySelector(`#${id}`);
+        if (!(block instanceof HTMLElement)) continue;
+        block.classList.add('sb-prompting-group');
+        block.prepend(createElement('h3', { className: 'ds-pref-group-heading', text: title }));
+        const body = createElement('div', { className: 'ds-pref-group sb-prompting-group-body' });
+        for (const child of [...block.children].slice(1)) body.append(child);
+        block.append(body);
+    }
+    const generation = configuration.querySelector('#pro-settings-block');
+    if (generation instanceof HTMLElement) {
+        for (const id of ['streaming_textgenerationwebui_block', 'streaming_kobold_block', 'streaming_novel_block']) {
+            const streaming = configuration.querySelector(`#${id}`);
+            if (streaming) generation.append(streaming);
+        }
+    }
+
+    // SillyBunny: keep range_block_openai around its groups for provider visibility and preset lookups.
+    const range = configuration.querySelector('#range_block_openai');
+    const advanced = configuration.querySelector('#advanced-ai-config-block');
+    if (range instanceof HTMLElement && advanced instanceof HTMLElement) advanced.prepend(range);
+    mergeOpenAIPresetToolbarRow(root);
+}
+
+function updatePromptingPanel(panel) {
+    if (!(panel instanceof HTMLElement)) return;
+    const root = panel.querySelector('.sb-prompting-panel');
+    if (!(root instanceof HTMLElement)) return;
+    const activeApi = getCurrentMainApiValue();
+    const backend = SB_SAMPLING_BACKENDS.find(entry => entry.apiIds.includes(activeApi));
+    const mode = root.querySelector('[data-sb-prompting-mode]');
+    const modeLabel = `Backend: ${backend?.title ?? activeApi}`;
+    if (mode && mode.textContent !== modeLabel) mode.textContent = modeLabel;
+    const context = root.querySelector('[data-sb-prompting-context]');
+    if (context instanceof HTMLElement) context.hidden = activeApi !== 'textgenerationwebui';
+
+    flattenNestedSettingsDrawers(root, { includeTopLevel: true });
+    const range = root.querySelector('#range_block_openai');
+    const managerGroup = root.querySelector('#sb-openai-prompt-manager');
+    const managerBlock = root.querySelector('#completion_prompt_manager')?.closest('.range-block');
+    // The Prompt Manager can mount after OpenAI's grouping pass; adopt its original live wrapper.
+    if (managerGroup instanceof HTMLElement && managerBlock instanceof HTMLElement && !managerGroup.contains(managerBlock)) {
+        (managerGroup.querySelector(':scope > .sb-prompting-group-body') ?? managerGroup).append(managerBlock);
+        managerGroup.style.display = '';
+    }
+    for (const id of ['sb-openai-budget', 'sb-openai-output', 'sb-openai-advanced', 'sb-openai-prompt-manager']) {
+        const group = root.querySelector(`#${id}`);
+        if (!(group instanceof HTMLElement)) continue;
+        if (range instanceof HTMLElement && group.parentElement !== range) range.append(group);
+        group.classList.add('sb-prompting-group');
+        if (id === 'sb-openai-budget') {
+            const title = group.querySelector('.sb-settings-flat-header b');
+            if (title && title.textContent !== 'Generation Settings') title.textContent = 'Generation Settings';
+        }
+        if (!group.querySelector(':scope > .sb-prompting-group-body')) {
+            const body = createElement('div', { className: 'ds-pref-group sb-prompting-group-body' });
+            for (const child of [...group.children]) {
+                if (!child.classList.contains('sb-settings-flat-header')) body.append(child);
+            }
+            group.append(body);
+        }
+        normalizeBackendSettingsRows(group);
+    }
+    const presets = root.querySelector('#respective-presets-block');
+    if (presets instanceof HTMLElement) normalizeBackendSettingsRows(presets);
+    const common = root.querySelector('#common-gen-settings-block');
+    if (common instanceof HTMLElement) {
+        const contextRow = common.querySelector('#max_context_block');
+        const quickContext = contextRow?.querySelector('.quick_context_size_container');
+        if (quickContext && contextRow) contextRow.after(quickContext);
+        normalizeBackendSettingsRows(common);
+    }
+    hideEmptyGroupedSettingsDrawers();
+    for (const group of root.querySelectorAll('.sb-openai-settings-drawer, .sb-textgen-drawers > .sb-settings-flat-section')) {
+        if (!(group instanceof HTMLElement)) continue;
+        const hasControls = Boolean(group.querySelector('input:not([type="hidden"]), select, textarea, button, .menu_button'));
+        group.hidden = !hasControls;
+    }
 }
 
 function getImporterState() {
@@ -11621,6 +11749,9 @@ function getPersonaSearchEntries(tabState) {
 }
 
 function getSearchSectionLabel(element, fallback) {
+    const sampler = element.closest('details[data-sb-sampling-control]');
+    const samplerTitle = sampler?.querySelector('summary .ds-row-label')?.textContent.trim();
+    if (samplerTitle) return samplerTitle;
     // For extension containers: use the extension's own name/header, not the parent tab label
     const extContainer = element.closest('.extension_container, [id$="-container"]');
     if (extContainer instanceof HTMLElement) {
@@ -11687,6 +11818,7 @@ function collectGlobalSearchMatches(query, { limit = SB_UNIVERSAL_SEARCH_RESULT_
                     : [];
 
             for (const entry of [...tabState.searchIndex, ...extraEntries]) {
+                if (!isBackendSearchEntryAvailable(entry, tabState)) continue;
                 if (!searchTerms.every(term => entry.searchText.includes(term))) {
                     continue;
                 }
@@ -11730,6 +11862,15 @@ function collectGlobalSearchMatches(query, { limit = SB_UNIVERSAL_SEARCH_RESULT_
         .slice(0, limit);
 }
 
+function isBackendSearchEntryAvailable(entry, tabState) {
+    if (!['sampling', 'prompting'].includes(tabState.id)) return true;
+    if (!(entry.element instanceof HTMLElement) || !tabState.searchRoot.contains(entry.element)) return false;
+    for (let element = entry.element; element && element !== tabState.searchRoot; element = element.parentElement) {
+        if (element.hidden || getComputedStyle(element).display === 'none') return false;
+    }
+    return true;
+}
+
 function getTabSearchEntries(tabState, { includeThemeCard = false } = {}) {
     const searchIndex = includeThemeCard ? createSearchIndex(tabState, { includeThemeCard }) : tabState.searchIndex;
 
@@ -11744,7 +11885,7 @@ function getTabSearchEntries(tabState, { includeThemeCard = false } = {}) {
             : tabState.id === 'characters'
                 ? getCharacterPanelSearchEntries()
                 : []),
-    ];
+    ].filter(entry => isBackendSearchEntryAvailable(entry, tabState));
 }
 
 function getMobileQuickActionSearchMatches(query) {
@@ -12001,6 +12142,7 @@ function expandHiddenAccordions(target) {
         if (current.classList.contains('inline-drawer-content') && getComputedStyle(current).display === 'none') {
             hiddenContents.push(current);
         }
+        if (current instanceof HTMLDetailsElement) current.open = true;
 
         current = current.parentElement;
     }
@@ -12165,6 +12307,7 @@ function setActiveTab(shellKey, tabId) {
 }
 
 // SillyBunny: every shell lives in the full-screen settings page (feat/v1.9.0-ui-overhaul).
+/** @param {string} shellKey @param {string|null} [tabId] */
 function openShell(shellKey, tabId = null) {
     if (shellKey === 'left' && tabId === 'world-info') {
         // World Info moved from the Backend shell into Characters.
@@ -12308,7 +12451,10 @@ function buildShell(shellKey) {
         });
         basePanel.scroller.appendChild(connectionsPanel.column);
         basePanel.searchRoot = connectionsPanel.column;
-        basePanel.onActivate = () => connectionsPanel.onActivate();
+        basePanel.onActivate = () => {
+            connectionsPanel.onActivate();
+            normalizeBackendSettingsRows(connectionsPanel.column, { fields: false });
+        };
         basePanel.connectionsPanel = connectionsPanel;
     } else if (shellKey === 'right') {
         userSettingsSplit = splitUserSettingsContent(originalContent);
@@ -12368,9 +12514,16 @@ function buildShell(shellKey) {
             // Prompting tab gets presets drawer content (the original left shell content)
             const promptingPanel = createShellPanel(customTab);
             if (shellKey === 'left') {
-                mergeOpenAIPresetToolbarRow(originalContent);
+                preparePromptingPanel(originalContent);
                 promptingPanel.scroller.appendChild(originalContent);
             }
+            promptingPanel.onActivate = () => {
+                updatePromptingPanel(promptingPanel.panel);
+                void getShellState('left')?.tabs.get('sampling')?.ensureReady?.().then(() => updatePromptingPanel(promptingPanel.panel));
+            };
+            $(document).on('change.sbPromptingPanel', '#main_api, #chat_completion_source, #textgen_type', () => {
+                window.requestAnimationFrame(() => updatePromptingPanel(promptingPanel.panel));
+            });
             registerShellTab(shellKey, customTab, promptingPanel, originalContent);
             continue;
         }
@@ -13236,6 +13389,10 @@ function bindInlineDrawerPersistence(root = document) {
 function reflattenRuntimeDrawers() {
     for (const panel of document.querySelectorAll('section.sb-shell-panel[data-sb-panel]')) {
         const tabId = panel.dataset.sbPanel;
+        if (tabId === 'prompting') {
+            updatePromptingPanel(panel);
+            continue;
+        }
         if (SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) || isSubpagePanel(tabId) || !panel.querySelector('.inline-drawer')) {
             continue;
         }
@@ -14515,7 +14672,7 @@ function initAll() {
 
 const sbSettingsState = {
     open: false,
-    activeShell: null, // 'left' | 'right'
+    activeShell: /** @type {string|null} */ (null),
     activeTabId: null,
     // Incremented each time a transition starts; guards stale callbacks after a
     // fast reopen or close.
@@ -14624,6 +14781,7 @@ function closeMobileSurfacesForSettingsPage(shellKey) {
     });
 }
 
+/** @param {string} shellKey @param {string|null} [tabId] */
 function openSettingsPage(shellKey, tabId = null) {
     const page = getSettingsPage();
     if (!(page instanceof HTMLElement)) {
@@ -14850,6 +15008,7 @@ function setRootAttribute(element, name, value) {
 // Shell roots are moved into the page once and stay there; switching sections only
 // toggles which one is active. Reparenting on every open forced a full style and layout
 // pass over each panel, which stalled the first frames of the open animation.
+/** @param {string} shellKey @param {string|null} [tabId] */
 function mountShellRootInSettingsPage(shellKey, tabId = null) {
     const host = document.getElementById('sb-settings-shell-host');
     const root = getSettingsPageRoot(shellKey);
@@ -14908,7 +15067,7 @@ function mountShellRootInSettingsPage(shellKey, tabId = null) {
     // SillyBunny: the stacked panels have their store wrapper and their stack built from the same
     // activation pass, and this path bypasses `setActiveTab` for the tab that is already active --
     // which is the base tab, every time the page is first mounted. Without this the first paint of
-    // an Extensions or Prompting panel is the raw legacy drawer: the wrapper that hides its children
+    // an Extensions panel is the raw legacy drawer: the wrapper that hides its children
     // does not exist yet, so all of its sections render at once.
     installSettingsSubpage(shellKey, shellState.activeTabId);
     dispatchShellTabActivated(shellKey, activeTab);

@@ -16,121 +16,11 @@
  * list can be produced with a query rather than by reading the panel.
  */
 
-import { SB_SUBPAGE_STORE_CLASS } from './sillybunny-settings-subpage.js';
-
 /** Marks a description that still needs human wording. */
 export const SB_SUBPAGE_PLACEHOLDER_ATTRIBUTE = 'data-sb-copy-placeholder';
 
 /** The same placeholder text the settings normalizer uses, so one pass can find both. */
 const SB_SUBPAGE_PLACEHOLDER = 'lorum ipsum';
-
-/**
- * Builds the row list for the Prompting panel.
- *
- * The panel is three column blocks: the preset manager, the generation settings, and the advanced
- * configuration. Each is one page. Samplers are not one of them, because the Sampling tab presents
- * those controls itself and moves them into its own cards.
- *
- * @param {HTMLElement} panel
- * @returns {object|null}
- */
-export function buildPromptingSubpage(panel) {
-    const root = panel.querySelector('#ai_response_configuration');
-    if (!(root instanceof HTMLElement)) {
-        return null;
-    }
-
-    const specs = [
-        ['presets', '#respective-presets-block', 'Presets', 'Preset prompts, prompt manager, and the chat preset picker.'],
-        ['generation', '#common-gen-settings-block', 'Generation Settings', SB_SUBPAGE_PLACEHOLDER],
-        ['advanced', '#advanced-ai-config-block', 'Advanced Configuration', SB_SUBPAGE_PLACEHOLDER],
-    ];
-
-    const rows = [];
-    for (const [id, selector, label, description] of specs) {
-        const block = root.querySelector(selector);
-        if (!(block instanceof HTMLElement)) {
-            continue;
-        }
-        rows.push({
-            id,
-            label,
-            description,
-            placeholder: description === SB_SUBPAGE_PLACEHOLDER,
-            source: () => block,
-            // A block upstream has hidden for the active API has nothing to show, so its row hides
-            // with it rather than opening an empty page. Measuring the block is not enough on its
-            // own: it is laid out every moment the panel is on screen and reads at its full height
-            // while another tab is shown, so the controls inside are what says whether there is
-            // anything to open.
-            isAvailable: () => hasVisibleContent(block),
-        });
-    }
-
-    return { rows };
-}
-
-/**
- * Whether a block still has anything to show.
- *
- * Two things empty a Prompting block without removing it: upstream hides the whole block for APIs
- * that do not use it, and the Sampling panel moves the sampler controls it presents into cards of
- * its own, leaving the block that used to hold them present but bare. A row pointing at either would
- * open a blank page, so a block counts as available only when something inside it renders.
- *
- * Nothing inside the store can be measured: that wrapper is kept in the document for its ids but is
- * out of the layout, so every rect within it reads zero, and so does its own display. The read
- * therefore walks each control's ancestors for a hidden one and stops at the store, leaving the
- * panel's own visibility -- which only says whether the tab is on screen -- out of the answer.
- *
- * @param {HTMLElement} block
- * @returns {boolean}
- */
-function hasVisibleContent(block) {
-    if (isHiddenWithinPanel(block)) {
-        return false;
-    }
-
-    for (const control of block.querySelectorAll('input, select, textarea, button')) {
-        if (control.closest('[data-sb-sampling-control]')) {
-            continue;
-        }
-
-        if (block.getBoundingClientRect().height > 0 && control.getBoundingClientRect().height > 0) {
-            return true;
-        }
-
-        if (!isHiddenWithinPanel(control)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-/**
- * Whether an element or one of its ancestors within the panel has been hidden.
- *
- * The walk stops at the store's direct children. Those are the elements the wrapper itself hides, and
- * they are not part of the page a user ever sees, so reading them would report every block as hidden.
- * What it looks at is the markup below them, where the display rules are upstream's own.
- *
- * @param {HTMLElement} element
- * @returns {boolean}
- */
-function isHiddenWithinPanel(element) {
-    for (let node = element; node instanceof HTMLElement; node = node.parentElement) {
-        if (node.parentElement?.classList.contains(SB_SUBPAGE_STORE_CLASS)) {
-            return false;
-        }
-
-        if (getComputedStyle(node).display === 'none') {
-            return true;
-        }
-    }
-
-    return false;
-}
 
 /**
  * Builds the row list for the Extensions panel.
@@ -268,7 +158,6 @@ function isContainerEmpty(container) {
  * @type {Record<string, (panel: HTMLElement) => (object|null)>}
  */
 export const SB_SUBPAGE_BUILDERS = Object.freeze({
-    prompting: buildPromptingSubpage,
     extensions: buildExtensionsSubpage,
 });
 

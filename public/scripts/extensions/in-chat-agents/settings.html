@@ -138,63 +138,67 @@
 
         <div id="ica--agentList" class="ica--agentList"></div>
 
-        <div class="ica--footer">
-            <label class="ica--profile-label">
-                <span>Default Connection Profile</span>
-                <select id="ica--connectionProfile" class="text_pole" title="Which connection profile to use when an agent does not have its own editor profile override. Leave this on the selected Connection Manager profile to follow the active profile.">
-                    <option value="">Use selected connection profile</option>
-                </select>
-            </label>
-            <label class="ica--profile-label">
-                <span>Companion Connection Profile</span>
-                <select id="ica--companionConnectionProfile" class="text_pole" title="Which connection profile Companion agents (trackers, notes) use when they do not have their own editor profile override. Leave empty to share the default above.">
-                    <option value="">Use Default Connection Profile</option>
-                </select>
-                <small class="ica--profile-help">Point this at a cheap, fast model — companions run on every reply.</small>
-            </label>
-            <label class="ica--profile-label">
-                <span>Append Agents Execution</span>
-                <select id="ica--appendAgentsExecutionMode" class="text_pole" title="Run append-mode agents in parallel (faster, may hit rate limits) or sequentially (slower, avoids rate limits).">
-                    <option value="parallel">Parallel (faster)</option>
-                    <option value="sequential">Sequential (rate-limit friendly)</option>
-                </select>
-                <small class="ica--profile-help">
-                    Sequential runs append-mode agents one after another in Order ascending.
-                    Order is shown on each agent card.
-                </small>
-            </label>
-            <label class="ica--profile-label">
-                <span>Companion Execution</span>
-                <select id="ica--companionExecutionMode" class="text_pole" title="Run companion agents in parallel (faster) or sequentially (rate-limit friendly), independent of the append agents setting.">
-                    <option value="parallel">Parallel (faster)</option>
-                    <option value="sequential">Sequential (rate-limit friendly)</option>
-                </select>
-            </label>
-            <label class="checkbox_label" title="Run companion agents at the same time as post-generation passes instead of after them. Faster, but companions see the reply before post passes edit it.">
-                <input type="checkbox" id="ica--companionConcurrent" />
-                <span>Run Companions Alongside Post-Gen Passes</span>
-            </label>
-            <label class="ica--profile-label ica--helper-prefill-label">
-                <span>Helper Prefill Messages</span>
-                <textarea id="ica--helperPrefillMessages" class="text_pole ica--helper-prefill-field" rows="4" placeholder="[assistant] Start of helper response&#10;&#10;[system] Extra instruction"></textarea>
-                <small class="ica--profile-help">Use [system], [user], or [assistant] blocks. Text before any header is treated as [assistant].</small>
-            </label>
-            <label class="checkbox_label" title="Keep enabled In-Chat Agents separate between Individual chats and Group chats.">
-                <input type="checkbox" id="ica--separateRecentChats" />
-                <span>Separate Agents Between Individual and Group Chats</span>
-            </label>
-            <label class="checkbox_label" title="Master switch for prompt pass toasts. Per-agent notification checkboxes still decide which agents can show them.">
-                <input type="checkbox" id="ica--promptTransformShowNotifications" />
-                <span>Allow prompt pass toast notifications</span>
-            </label>
-            <label class="checkbox_label" title="View main LLM output before pre-generation intercept">
-                <input type="checkbox" id="ica--postMainInterceptShowMessageFirst" />
-                <span>View main LLM output before pre-generation intercept</span>
-            </label>
-            <label class="checkbox_label" title="Enable or disable the built-in Pathfinder submodule without disabling shared In-Chat Agents.">
-                <input type="checkbox" id="ica--pathfinderSubmoduleEnabled" />
-                <span>Enable Pathfinder submodule</span>
-            </label>
+        <div class="ica--footer" data-sb-agent-global-settings>
+            <div class="ds-pref-group">
+                <label class="ica--profile-label">
+                    <span>Default Connection Profile</span>
+                    <select id="ica--connectionProfile" class="text_pole" title="Which connection profile to use when an agent does not have its own editor profile override. Leave this on the selected Connection Manager profile to follow the active profile.">
+                        <option value="">Use selected connection profile</option>
+                    </select>
+                </label>
+                <label class="ica--profile-label">
+                    <span>Companion Connection Profile</span>
+                    <select id="ica--companionConnectionProfile" class="text_pole" title="Which connection profile Companion agents (trackers, notes) use when they do not have their own editor profile override. Leave empty to share the default above.">
+                        <option value="">Use Default Connection Profile</option>
+                    </select>
+                    <small class="ica--profile-help">Point this at a cheap, fast model — companions run on every reply.</small>
+                </label>
+            </div>
+            <div class="ds-pref-group">
+                <label class="ica--profile-label">
+                    <span>Append Agents Execution</span>
+                    <select id="ica--appendAgentsExecutionMode" class="text_pole" title="Run append-mode agents in parallel (faster, may hit rate limits) or sequentially (slower, avoids rate limits).">
+                        <option value="parallel">Parallel (faster)</option>
+                        <option value="sequential">Sequential (rate-limit friendly)</option>
+                    </select>
+                    <small class="ica--profile-help">
+                        Sequential runs append-mode agents one after another in Order ascending.
+                        Order is shown on each agent card.
+                    </small>
+                </label>
+                <label class="ica--profile-label">
+                    <span>Companion Execution</span>
+                    <select id="ica--companionExecutionMode" class="text_pole" title="Run companion agents in parallel (faster) or sequentially (rate-limit friendly), independent of the append agents setting.">
+                        <option value="parallel">Parallel (faster)</option>
+                        <option value="sequential">Sequential (rate-limit friendly)</option>
+                    </select>
+                </label>
+                <label class="checkbox_label" title="Run companion agents at the same time as post-generation passes instead of after them. Faster, but companions see the reply before post passes edit it.">
+                    <input type="checkbox" id="ica--companionConcurrent" />
+                    <span>Run Companions Alongside Post-Gen Passes</span>
+                </label>
+                <label class="ica--profile-label ica--helper-prefill-label">
+                    <span>Helper Prefill Messages</span>
+                    <textarea id="ica--helperPrefillMessages" class="text_pole ica--helper-prefill-field" rows="4" placeholder="[assistant] Start of helper response&#10;&#10;[system] Extra instruction"></textarea>
+                    <small class="ica--profile-help">Use [system], [user], or [assistant] blocks. Text before any header is treated as [assistant].</small>
+                </label>
+                <label class="checkbox_label" title="Keep enabled In-Chat Agents separate between Individual chats and Group chats.">
+                    <input type="checkbox" id="ica--separateRecentChats" />
+                    <span>Separate Agents Between Individual and Group Chats</span>
+                </label>
+                <label class="checkbox_label" title="Master switch for prompt pass toasts. Per-agent notification checkboxes still decide which agents can show them.">
+                    <input type="checkbox" id="ica--promptTransformShowNotifications" />
+                    <span>Allow prompt pass toast notifications</span>
+                </label>
+                <label class="checkbox_label" title="View main LLM output before pre-generation intercept">
+                    <input type="checkbox" id="ica--postMainInterceptShowMessageFirst" />
+                    <span>View main LLM output before pre-generation intercept</span>
+                </label>
+                <label class="checkbox_label" title="Enable or disable the built-in Pathfinder submodule without disabling shared In-Chat Agents.">
+                    <input type="checkbox" id="ica--pathfinderSubmoduleEnabled" />
+                    <span>Enable Pathfinder submodule</span>
+                </label>
+            </div>
             <div id="ica--resetDefaults" class="menu_button menu_button_icon caution" title="Reset all bundled agents to their original template settings (custom agents are not affected)">
                 <i class="fa-solid fa-rotate-left"></i>
                 <span>Reset Bundled Agents to Defaults</span>
