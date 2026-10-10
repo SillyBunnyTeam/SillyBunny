@@ -1,5 +1,5 @@
 import { describe, expect, test } from '@jest/globals';
-import { getPromptDisplayTokenCounts, getPromptSourceTokenCounts, isCommentOnlyPromptContent, mergePromptTokenCounts } from '../public/scripts/prompt-token-counts.js';
+import { createCommentOnlyContentCheck, getPromptDisplayTokenCounts, getPromptSourceTokenCounts, getRuntimePreparedPromptContent, isCommentOnlyPromptContent, mergePromptTokenCounts } from '../public/scripts/prompt-token-counts.js';
 
 function makeMessage(identifier, tokens) {
     return {
@@ -104,5 +104,29 @@ describe('prompt token display counts', () => {
         expect(isCommentOnlyPromptContent('{{// a note}}{{setvar::mode::on}}')).toBe(false);
         expect(isCommentOnlyPromptContent('plain instruction text')).toBe(false);
         expect(isCommentOnlyPromptContent('{{commentary}}')).toBe(false);
+    });
+
+    test('reuses runtime-prepared content only while the prompt source is unchanged', () => {
+        const runtimePrepared = new Map([
+            ['setter', { source: '{{setvar::mode::on}}', content: '' }],
+            ['injection', { source: 'Hello {{char}}', content: 'Hello Seraphina' }],
+        ]);
+
+        expect(getRuntimePreparedPromptContent(runtimePrepared, { identifier: 'setter', content: '{{setvar::mode::on}}' })).toEqual({ source: '{{setvar::mode::on}}', content: '' });
+        expect(getRuntimePreparedPromptContent(runtimePrepared, { identifier: 'injection', content: 'Hello {{char}}' })?.content).toBe('Hello Seraphina');
+        expect(getRuntimePreparedPromptContent(runtimePrepared, { identifier: 'injection', content: 'Hello {{user}}' })).toBeNull();
+        expect(getRuntimePreparedPromptContent(runtimePrepared, { identifier: 'main', content: 'Main' })).toBeNull();
+        expect(getRuntimePreparedPromptContent(null, { identifier: 'setter', content: '{{setvar::mode::on}}' })).toBeNull();
+        expect(getRuntimePreparedPromptContent(undefined, { identifier: 'setter', content: '{{setvar::mode::on}}' })).toBeNull();
+    });
+
+    test('remembers comment-only results per prompt and rechecks edited content', () => {
+        const isCommentOnly = createCommentOnlyContentCheck();
+
+        expect(isCommentOnly('readme', '{{// notes}}')).toBe(true);
+        expect(isCommentOnly('readme', '{{// notes}}')).toBe(true);
+        expect(isCommentOnly('readme', '{{// notes}}{{setvar::mode::on}}')).toBe(false);
+        expect(isCommentOnly('readme', '{{// notes}}')).toBe(true);
+        expect(isCommentOnly('other', '{{// notes}}{{setvar::mode::on}}')).toBe(false);
     });
 });
