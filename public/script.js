@@ -313,6 +313,7 @@ import { registerExtensionSlashCommands as initExtensionSlashCommands } from './
 import { ToolManager } from './scripts/tool-calling.js';
 import { addShowdownPatch } from './scripts/util/showdown-patch.js';
 import { applyBrowserFixes } from './scripts/browser-fixes.js';
+import { batchSortableHandleClasses } from './scripts/sortable-handle-classes.js';
 import { initServerHistory } from './scripts/server-history.js';
 import { initSettingsSearch } from './scripts/setting-search.js';
 import { initBulkEdit } from './scripts/bulk-edit.js';
@@ -1161,6 +1162,8 @@ async function firstLoadInit() {
         initDomHandlers();
         initStandaloneMode();
         initLibraryShims();
+        // SillyBunny: must run before any list becomes sortable; see sortable-handle-classes.js.
+        batchSortableHandleClasses();
         addShowdownPatch(showdown);
         addDOMPurifyHooks();
         // SillyBunny: card script detection - see #94.
