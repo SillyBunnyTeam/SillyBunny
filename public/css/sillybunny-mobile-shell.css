@@ -2961,8 +2961,8 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         --sb-composer-action-size: clamp(40px, calc(44px * var(--sb-bottom-bar-scale, 1)), 44px);
         --sb-composer-send-width: var(--sb-composer-action-size);
         --sb-composer-action-icon-size: clamp(13px, calc(16px * var(--sb-bottom-bar-scale, 1)), 18px);
-        --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 4px);
-        --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 4px);
+        --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 3px);
+        --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 3px);
         gap: 0 clamp(8px, 2vw, 10px) !important;
         min-height: calc(var(--sb-mobile-composer-input-height) + 3px) !important;
         padding: 1px 4px !important;
@@ -2973,7 +2973,8 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         --sb-composer-action-size: clamp(34px, calc(38px * var(--sb-bottom-bar-scale, 1)), 40px);
         --sb-composer-send-width: var(--sb-composer-action-size);
         --sb-composer-action-icon-size: clamp(11px, calc(14px * var(--sb-bottom-bar-scale, 1)), 16px);
-        --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 4px);
+        --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 3px);
+        --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 3px);
     }
 
     #send_textarea {
@@ -2989,9 +2990,21 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         --sb-composer-input-state-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-focus-ring) 32%, transparent);
     }
 
+    /* Each rail column is button + 2px gap + button + 1px inner inset. The inner
+       inset keeps the rail's scroll clip off the rounded edge of the button beside
+       the text field; the composer's own padding supplies the outer inset, so both
+       rails stay mirrored and a 320px phone keeps a 100px text column. */
     #leftSendForm,
     #rightSendForm {
         gap: 2px !important;
+    }
+
+    #leftSendForm {
+        padding-inline: 0 1px;
+    }
+
+    #rightSendForm {
+        padding-inline: 1px 0;
     }
 
     #chat .mes:not(.smallSysMes) .mesAvatarWrapper {

@@ -1,6 +1,18 @@
 /* global document, HTMLElement, requestAnimationFrame, window, WheelEvent */
+import { testSetup } from './frontend/frontent-test-utils.js';
 
 export const APP_URL = process.env.SILLYBUNNY_TEST_BASE_URL || '/';
+
+/**
+ * Loads the app and waits until startup has finished on any profile, including a fresh one.
+ * The onboarding prompt must be answered (removing it unanswered stalls startup before APP_READY).
+ * @param {import('@playwright/test').Page} page
+ */
+async function loadReadyApp(page) {
+    await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
+    await testSetup.waitForAppReady({ page });
+}
 
 export async function dismissOnboardingIfPresent(page) {
     const openDialog = page.locator('dialog[open]').first();
@@ -173,9 +185,7 @@ export async function openReadyChat(page, { chatSaveDelayMs = 0, selectCharacter
         await route.fulfill({ status: 200, json: {} });
     });
 
-    await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
-    await dismissOnboardingIfPresent(page);
+    await loadReadyApp(page);
     await dismissOpenDialogIfPresent(page);
     if (selectCharacter) {
         await selectSampleCharacter(page);
@@ -217,10 +227,8 @@ export async function openQuietChatForSmoke(page, options = {}) {
         await route.fulfill({ status: 200, json: {} });
     });
 
-    await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
+    await loadReadyApp(page);
     await quietChatForSmoke(page);
-    await dismissOnboardingIfPresent(page);
     await dismissOpenDialogIfPresent(page);
     if (selectCharacter) {
         await selectSampleCharacter(page);
