@@ -1,3 +1,7 @@
+/* eslint-env browser */
+import { expect, test } from '@playwright/test';
+import { testSetup } from './frontend/frontent-test-utils.js';
+
 import { expect, test } from '@playwright/test';
 import { testSetup } from './frontend/frontent-test-utils.js';
 
