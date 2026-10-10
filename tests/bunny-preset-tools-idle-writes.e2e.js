@@ -161,3 +161,10 @@ test.describe('BunnyPresetTools idle sync', () => {
         expect(result.restored).toBe(true);
     });
 });
+
+/* eslint-env browser */
+import { expect, test } from '@playwright/test';
+import { testSetup } from './frontend/frontent-test-utils.js';
+
+test.describe('keyboard interactables', () => {
+    // ... rest of file
