@@ -3536,8 +3536,9 @@ async function handleClearCookiesAndCacheClick(event) {
     }
 }
 
-function bindClearCookiesAndCacheButton() {
-    const button = document.getElementById('clear_cookies_cache_button');
+/** @param {Document|HTMLElement} [root] */
+function bindClearCookiesAndCacheButton(root = document) {
+    const button = root.querySelector('#clear_cookies_cache_button');
     if (!(button instanceof HTMLButtonElement) || button.dataset.sbCookiesCacheBound === 'true') {
         return;
     }
@@ -10223,29 +10224,26 @@ function injectSillyTavernImportCard(host = null) {
         return;
     }
 
-    const card = createElement('section', { id: 'sb-import-card', className: 'sb-admin-card sb-import-card' });
-    const header = createElement('div', { className: 'sb-admin-card-header' });
-    const copy = createElement('div', { className: 'sb-admin-card-copy' });
-    const title = createElement('strong', { text: 'Import Your SillyTavern Setup' });
-    const description = createElement('p', { text: 'Bring over characters, chats, presets, themes, extensions, and account settings from an existing SillyTavern folder or backup ZIP without touching the filesystem manually.' });
+    const card = createElement('section', { id: 'sb-import-card', className: 'ds-pref-group sb-import-card', attrs: { 'data-sb-presentation': 'manual' } });
+    const header = createElement('div', { className: 'ds-row ds-row-actions' });
+    const copy = createElement('div', { className: 'ds-row-text' });
+    const title = createElement('strong', { className: 'ds-row-label', text: 'Import Your SillyTavern Setup' });
+    const description = createElement('p', { className: 'ds-row-subtitle', text: 'Bring over characters, chats, presets, themes, extensions, and account settings from an existing SillyTavern folder or backup ZIP without touching the filesystem manually.' });
+    const headerSuffix = createElement('div', { className: 'ds-row-suffix' });
     const badge = createElement('span', { className: 'sb-server-pill', text: 'Easy Import' });
     copy.append(title, description);
-    header.append(copy, badge);
+    headerSuffix.append(badge);
+    header.append(copy, headerSuffix);
 
-    const hintRow = createElement('div', { className: 'sb-import-hints' });
-    for (const label of ['Characters', 'Chats', 'Presets', 'Themes', 'Extensions']) {
-        hintRow.appendChild(createElement('span', { className: 'sb-import-chip', text: label }));
-    }
-
-    const grid = createElement('div', { className: 'sb-import-grid' });
-    const folderPane = createElement('div', { className: 'sb-import-pane' });
-    const folderTitle = createElement('strong', { text: 'Import From Folder Path' });
-    const folderBody = createElement('p', { text: 'Paste the path to your SillyTavern install, its `data` folder, or the specific user folder you want to import. Use the full import for everything, or sync just your third-party extensions with a detailed report.' });
-    const pathRow = createElement('div', { className: 'sb-import-path-row' });
+    const folderPane = createElement('div', { className: 'ds-row sb-import-pane' });
+    const folderCopy = createElement('div', { className: 'ds-row-text' });
+    const folderTitle = createElement('label', { className: 'ds-row-label', text: 'Import From Folder Path', attrs: { for: 'sb-import-path-input' } });
+    const folderBody = createElement('p', { className: 'ds-row-subtitle', text: 'Paste the path to your SillyTavern install, its `data` folder, or the specific user folder you want to import. Use the full import for everything, or sync just your third-party extensions with a detailed report.' });
+    const pathRow = createElement('div', { className: 'ds-row-suffix sb-import-path-row' });
     const actionRow = createElement('div', { className: 'sb-import-action-row' });
     const pathInput = createElement('input', {
         id: 'sb-import-path-input',
-        className: 'text_pole sb-import-path-input',
+        className: 'text_pole ds-control-flex sb-import-path-input',
         attrs: {
             type: 'text',
             placeholder: '/path/to/SillyTavern',
@@ -10265,13 +10263,16 @@ function injectSillyTavernImportCard(host = null) {
         attrs: { type: 'button' },
         html: '<i class="fa-solid fa-puzzle-piece" aria-hidden="true"></i><span>Sync Extensions</span>',
     });
-    pathRow.append(pathInput);
+    pathRow.append(pathInput, actionRow);
     actionRow.append(folderButton, syncButton);
-    folderPane.append(folderTitle, folderBody, pathRow, actionRow);
+    folderCopy.append(folderTitle, folderBody);
+    folderPane.append(folderCopy, pathRow);
 
-    const zipPane = createElement('div', { className: 'sb-import-pane' });
-    const zipTitle = createElement('strong', { text: 'Import From Backup ZIP' });
-    const zipBody = createElement('p', { text: 'Use the backup ZIP that SillyTavern exports. Pick the file here and SillyBunny will import it into this account.' });
+    const zipPane = createElement('div', { className: 'ds-row sb-import-pane' });
+    const zipCopy = createElement('div', { className: 'ds-row-text' });
+    const zipSuffix = createElement('div', { className: 'ds-row-suffix' });
+    const zipTitle = createElement('strong', { className: 'ds-row-label', text: 'Import From Backup ZIP' });
+    const zipBody = createElement('p', { className: 'ds-row-subtitle', text: 'Use the backup ZIP that SillyTavern exports. Pick the file here and SillyBunny will import it into this account.' });
     const zipButton = createElement('button', {
         className: 'menu_button menu_button_icon sb-server-action menu_button_primary',
         attrs: { type: 'button' },
@@ -10287,7 +10288,9 @@ function injectSillyTavernImportCard(host = null) {
         },
     });
     const zipFileName = createElement('small', { className: 'sb-import-file-name', text: 'No ZIP selected yet.' });
-    zipPane.append(zipTitle, zipBody, zipButton, zipFileInput, zipFileName);
+    zipCopy.append(zipTitle, zipBody, zipFileName);
+    zipSuffix.append(zipButton, zipFileInput);
+    zipPane.append(zipCopy, zipSuffix);
 
     const note = createElement('div', {
         className: 'sb-server-note sb-import-note',
@@ -10307,8 +10310,7 @@ function injectSillyTavernImportCard(host = null) {
     report.append(reportHeader, reportSummary, reportHelp, reportList);
     report.hidden = true;
 
-    grid.append(folderPane, zipPane);
-    card.append(header, hintRow, grid, note, report);
+    card.append(header, folderPane, zipPane, note, report);
     cardHost.prepend(card);
 
     getImporterState().refs = {
@@ -10370,10 +10372,11 @@ function createThemeSettingsDrawer({ id, title, content, className = '' }) {
 }
 
 function createThemeSliderGroup({ title, valueId, inputId, value, min, max, step, ariaLabel, caption, onInput, className = '' }) {
-    const sliderGroup = createElement('div', { className: `sb-theme-slider-group ${className}`.trim() });
-    const sliderHeader = createElement('div', { className: 'sb-theme-slider-header' });
-    const sliderTitle = createElement('strong', { text: title });
+    const sliderGroup = createElement('div', { className: `ds-row ds-row-slider ${className}`.trim() });
+    const sliderHeader = createElement('div', { className: 'ds-row-text' });
+    const sliderTitle = createElement('label', { className: 'ds-row-label', text: title, attrs: { for: inputId } });
     const sliderValue = createElement('span', { id: valueId, className: 'sb-theme-slider-value' });
+    const suffix = createElement('div', { className: 'ds-row-suffix' });
     const sliderInput = createElement('input', {
         id: inputId,
         className: 'sb-theme-slider-input',
@@ -10387,13 +10390,36 @@ function createThemeSliderGroup({ title, valueId, inputId, value, min, max, step
         },
     });
     const sliderCaption = createElement('p', {
-        className: 'sb-theme-slider-caption',
+        className: 'ds-row-subtitle',
         text: caption,
     });
 
-    sliderHeader.append(sliderTitle, sliderValue);
-    sliderGroup.append(sliderHeader, sliderInput, sliderCaption);
-    sliderInput.addEventListener('input', event => onInput(event.currentTarget?.value));
+    const numberInput = createElement('input', {
+        className: 'text_pole',
+        attrs: { type: 'number', min: String(min), max: String(max), step: String(step), value: String(value), 'aria-label': ariaLabel, 'data-sb-theme-slider-counter': inputId },
+    });
+    sliderHeader.append(sliderTitle, sliderCaption);
+    sliderValue.hidden = true;
+    suffix.append(sliderInput, numberInput, sliderValue);
+    sliderGroup.append(sliderHeader, suffix);
+    sliderInput.addEventListener('input', () => {
+        numberInput.value = sliderInput.value;
+        onInput(sliderInput.value);
+    });
+    numberInput.addEventListener('change', () => {
+        if (sliderInput.disabled || !numberInput.value || !numberInput.validity.valid) {
+            numberInput.value = sliderInput.value;
+            return;
+        }
+        sliderInput.value = numberInput.value;
+        numberInput.value = sliderInput.value;
+        onInput(sliderInput.value);
+    });
+    numberInput.addEventListener('keydown', event => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        numberInput.dispatchEvent(new Event('change'));
+    });
 
     return sliderGroup;
 }
@@ -11014,45 +11040,26 @@ function createPaperTextureSettingsGroup() {
 
 function createFrontendIconSettingsGroup() {
     const group = createElement('section', {
-        className: 'sb-interface-settings-group sb-frontend-icon-group',
+        className: 'ds-row sb-interface-settings-group sb-frontend-icon-group',
     });
-    const header = createElement('div', { className: 'sb-frontend-icon-header' });
-    const title = createElement('strong', { text: 'Frontend Icon' });
-    const description = createElement('p', {
-        className: 'sb-theme-slider-caption',
+    const header = createElement('div', { className: 'ds-row-text' });
+    const title = createElement('label', { className: 'ds-row-label', text: 'Frontend Icon', attrs: { for: 'sb-frontend-icon-select' } });
+    const description = createElement('small', {
+        className: 'ds-row-subtitle',
         text: 'Choose which SillyBunny icon appears in the app chrome, splash screen, and Home panel.',
     });
-    const options = createElement('div', { className: 'sb-frontend-icon-options' });
+    const suffix = createElement('div', { className: 'ds-row-suffix' });
+    const select = createElement('select', { id: 'sb-frontend-icon-select', className: 'ds-control-flex text_pole' });
 
     header.append(title, description);
 
     for (const icon of SB_FRONTEND_ICONS) {
-        const button = createElement('button', {
-            className: 'sb-theme-option sb-frontend-icon-option',
-            attrs: {
-                type: 'button',
-                'data-sb-frontend-icon-option': icon.id,
-            },
-        });
-        const preview = createElement('img', {
-            className: 'sb-frontend-icon-preview',
-            attrs: {
-                src: icon.src,
-                alt: '',
-                loading: 'lazy',
-            },
-        });
-        const copy = createElement('span', { className: 'sb-frontend-icon-copy' });
-        const label = createElement('span', { className: 'sb-theme-option-label', text: icon.label });
-        const meta = createElement('span', { className: 'sb-theme-option-meta', text: icon.description });
-
-        copy.append(label, meta);
-        button.append(preview, copy);
-        button.addEventListener('click', () => setFrontendIconPreference(icon.id));
-        options.appendChild(button);
+        select.appendChild(createElement('option', { text: icon.label, attrs: { value: icon.id } }));
     }
-
-    group.append(header, options);
+    select.value = sbState.frontendIcon;
+    select.addEventListener('change', () => setFrontendIconPreference(select.value));
+    suffix.appendChild(select);
+    group.append(header, suffix);
     return group;
 }
 
@@ -11121,17 +11128,18 @@ function createTopbarLabelSettingsGroup() {
     const mobileDescription = createElement('small', { text: 'Pick one option at a time.' });
     const mobileGrid = createElement('div', { className: 'sb-topbar-label-option-grid' });
     const customTextField = createElement('label', {
-        className: 'sb-topbar-custom-text-field',
+        className: 'ds-row sb-topbar-custom-text-field',
         attrs: {
             for: 'sb-topbar-custom-text-input',
         },
     });
-    const customTextHeading = createElement('div', { className: 'sb-topbar-label-section-heading' });
-    const customTextTitle = createElement('strong', { text: 'Custom Text Value' });
-    const customTextDescription = createElement('small', { text: 'This only appears in the top bar when the Custom Text checkbox is enabled above.' });
+    const customTextHeading = createElement('div', { className: 'ds-row-text' });
+    const customTextTitle = createElement('strong', { className: 'ds-row-label', text: 'Custom Text Value' });
+    const customTextDescription = createElement('small', { className: 'ds-row-subtitle', text: 'This only appears in the top bar when the Custom Text checkbox is enabled above.' });
+    const customTextSuffix = createElement('div', { className: 'ds-row-suffix' });
     const customTextInput = createElement('input', {
         id: 'sb-topbar-custom-text-input',
-        className: 'text_pole sb-topbar-custom-text-input',
+        className: 'text_pole ds-control-flex sb-topbar-custom-text-input',
         attrs: {
             type: 'text',
             maxlength: String(SB_TOPBAR_LABEL_CUSTOM_TEXT_MAX_LENGTH),
@@ -11183,7 +11191,8 @@ function createTopbarLabelSettingsGroup() {
 
     desktopSection.append(desktopHeading, desktopGrid);
     mobileSection.append(mobileHeading, mobileGrid);
-    customTextField.append(customTextHeading, customTextInput);
+    customTextSuffix.append(customTextInput);
+    customTextField.append(customTextHeading, customTextSuffix);
 
     return createThemeSettingsDrawer({
         id: 'sb-topbar-label-drawer',
@@ -11333,6 +11342,12 @@ function injectThemePicker() {
         );
     }
     themeBlock.append(card);
+    // SillyBunny: keep the shared injection path, then mount Interface controls in their own tab.
+    const interfaceRoot = document.getElementById(SB_USER_SETTINGS_CONTAINER_IDS.interface);
+    if (interfaceRoot instanceof HTMLElement) {
+        interfaceSettingsGroup.dataset.settingsTab = 'interface';
+        interfaceRoot.prepend(interfaceSettingsGroup);
+    }
     updateThemePickerUi();
 }
 
@@ -11354,11 +11369,9 @@ function updateThemePickerUi() {
     const paperTextureOpacityInput = document.getElementById('sb-paper-texture-opacity-input');
     const paperTextureOpacityValue = document.getElementById('sb-paper-texture-opacity-value');
 
-    for (const button of document.querySelectorAll('[data-sb-frontend-icon-option]')) {
-        const iconId = button.getAttribute('data-sb-frontend-icon-option');
-        const isActive = iconId === sbState.frontendIcon;
-        button.classList.toggle('is-selected', isActive);
-        button.setAttribute('aria-pressed', String(isActive));
+    const frontendIconSelect = document.getElementById('sb-frontend-icon-select');
+    if (frontendIconSelect instanceof HTMLSelectElement) {
+        frontendIconSelect.value = sbState.frontendIcon;
     }
 
     if (sliderInput instanceof HTMLInputElement) {
@@ -11487,13 +11500,23 @@ function updateThemePickerUi() {
         paperTextureOpacityInput.step = String(SB_PAPER_TEXTURE_OPACITY.step);
         paperTextureOpacityInput.value = String(sbState.paperTextureOpacity);
         paperTextureOpacityInput.disabled = !sbState.paperTextureEnabled;
-        paperTextureOpacityInput.closest('.sb-theme-slider-group')?.classList.toggle('is-disabled', !sbState.paperTextureEnabled);
+        paperTextureOpacityInput.closest('.ds-row-slider')?.classList.toggle('is-disabled', !sbState.paperTextureEnabled);
     }
 
     if (paperTextureOpacityValue instanceof HTMLElement) {
         paperTextureOpacityValue.textContent = formatPaperTextureOpacity(sbState.paperTextureOpacity);
     }
 
+    for (const counter of document.querySelectorAll('[data-sb-theme-slider-counter]')) {
+        if (!(counter instanceof HTMLInputElement)) continue;
+        const rangeId = counter.dataset.sbThemeSliderCounter;
+        if (!rangeId) continue;
+        const range = document.getElementById(rangeId);
+        if (range instanceof HTMLInputElement) {
+            counter.value = range.value;
+            counter.disabled = range.disabled;
+        }
+    }
     for (const button of document.querySelectorAll('[data-sb-message-style]')) {
         const isActive = button.getAttribute('data-sb-message-style') === getCurrentMessageStyle();
         button.classList.toggle('is-selected', isActive);
@@ -12406,6 +12429,8 @@ function buildShell(shellKey) {
                     // state — could not reach it. It is done now that the tree is attached.
                     openAllInlineDrawers(dataSecurityContent);
                     bindInlineDrawerPersistence(dataSecurityContent);
+                    // SillyBunny: this action was detached when the initial shell bindings ran.
+                    bindClearCookiesAndCacheButton(dataSecurityContent);
                     injectSillyTavernImportCard(dataSecurityContent.querySelector('#sb-import-tools-outlet'));
                 } else {
                     // Without the split there is no Data & Security container to adopt, so the card

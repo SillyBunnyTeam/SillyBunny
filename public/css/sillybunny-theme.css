@@ -5681,16 +5681,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     }
 }
 
-#color-picker-block > .flex-container {
-    align-items: center;
-    gap: 12px;
-    padding: 12px 14px;
-    margin-bottom: 8px;
-    border-radius: var(--sb-radius-md);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 74%, transparent);
-}
-
 #user-settings-block [name="MiscellaneousToggles"] {
     display: flex;
     flex-direction: column;
@@ -5755,14 +5745,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 #user-settings-utility-actions {
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 12px;
-    padding: 12px 14px;
-    border-radius: var(--sb-radius-md);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 74%, transparent);
+    padding: 0;
 }
 
 #user-settings-utility-actions .sb-settings-utility-note {
@@ -6231,33 +6214,15 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 #AppearanceLayoutSection [name="FontBlurChatWidthBlock"] {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 14px;
-}
-
-#AppearanceLayoutSection [name="FontBlurChatWidthBlock"] > .alignitemscenter.flex-container.flexFlowColumn {
-    min-width: 0;
-    padding: 14px;
-    border-radius: var(--sb-radius-md);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 74%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 0;
 }
 
 #ThemeTogglesSection [name="themeToggles"] {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 10px 12px;
-}
-
-#ThemeTogglesSection [name="themeToggles"] .checkbox_label {
-    margin: 0;
-    padding: var(--sb-settings-card-padding);
-    border-radius: var(--sb-radius-md);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 74%, transparent);
-    align-items: center;
-    gap: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
 }
 
 #ChatMessageHandlingSection > .inline-drawer-content > .flex-container:first-child {

@@ -3318,70 +3318,41 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-console-log-output.is-empty {
-    opacity: 0.74;
     font-style: italic;
+    color: var(--sb-input-placeholder);
 }
 
 .sb-import-card {
-    gap: var(--sb-shell-card-gap);
+    gap: 0;
     width: 100%;
     max-width: 100%;
     margin-bottom: var(--sb-shell-space-lg);
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, var(--sb-shell-border) 72%);
-}
-
-.sb-import-hints {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--sb-shell-space-xs);
-}
-
-.sb-import-chip {
-    display: inline-flex;
-    align-items: center;
-    min-height: 28px;
-    padding: 0 10px;
-    border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 76%, transparent);
-    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 10%, transparent);
-    font-size: var(--sb-type-caption);
-    line-height: 1.2;
-}
-
-.sb-import-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: var(--sb-shell-space-sm);
-    align-items: stretch;
 }
 
 .sb-import-pane {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sb-shell-space-sm);
     min-width: 0;
-    padding: var(--sb-shell-space-md);
-    border-radius: var(--sb-radius-md, 16px);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 76%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
 }
 
 .sb-import-pane strong {
     font-size: var(--sb-type-control);
 }
 
-.sb-import-pane p,
 .sb-import-note {
     margin: 0;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 82%, transparent);
+    color: var(--sb-input-placeholder);
     line-height: 1.45;
 }
 
 .sb-import-path-row {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     align-items: center;
     gap: var(--sb-shell-space-sm);
+    flex: 1 1 0;
+}
+
+#sb-settings-page .sb-import-pane > .ds-row-text {
+    flex: 1 1 0;
 }
 
 .sb-import-action-row {
@@ -3389,6 +3360,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     flex-wrap: wrap;
     align-items: center;
     gap: var(--sb-shell-space-sm);
+    width: 100%;
 }
 
 .sb-import-action-row .sb-server-action {
@@ -3398,13 +3370,13 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-import-action-row .sb-server-action.menu_button_primary,
-.sb-import-pane > .sb-server-action.menu_button_primary {
+.sb-import-pane .ds-row-suffix > .sb-server-action.menu_button_primary {
     color: var(--sb-on-accent, var(--SmartThemeBlurTintColor));
     text-shadow: none;
 }
 
 .sb-import-path-input {
-    flex: 1 1 260px;
+    flex: 0 1 auto;
     min-width: 0;
     width: 100%;
     max-width: 100%;
@@ -3418,7 +3390,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     min-height: 1.4em;
     font-size: calc(var(--mainFontSize) * 0.72);
     line-height: 1.4;
-    opacity: 0.72;
+    color: var(--sb-input-placeholder);
     overflow-wrap: anywhere;
 }
 
@@ -3548,16 +3520,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
         gap: 8px;
     }
 
-    .sb-import-grid {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
-    .sb-import-pane {
-        gap: 8px;
-        padding: 14px;
-        border-radius: var(--sb-radius-md, 16px);
-    }
-
     .sb-import-path-input {
         flex-basis: auto;
     }
@@ -3578,32 +3540,18 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 @media screen and (max-width: 620px) {
     .sb-import-card {
-        gap: 12px;
         margin-bottom: 14px;
     }
 
-    .sb-import-hints {
-        gap: 6px;
-    }
-
-    .sb-import-chip {
-        min-height: 24px;
-        padding: 0 8px;
-        font-size: var(--sb-type-caption);
-    }
-
-    .sb-import-pane,
     .sb-import-report {
         gap: 8px;
         padding: 12px;
     }
 
-    .sb-import-pane strong,
     .sb-import-report-header strong {
         font-size: var(--sb-type-meta);
     }
 
-    .sb-import-pane p,
     .sb-import-note,
     .sb-import-report-summary,
     .sb-import-report-help {
@@ -3612,7 +3560,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     }
 
     .sb-import-action-row .sb-server-action,
-    .sb-import-pane > .sb-server-action {
+    .sb-import-pane .ds-row-suffix > .sb-server-action {
         min-height: 42px;
         padding-block: 9px;
     }
@@ -3806,20 +3754,13 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     opacity: 0.72;
 }
 
-.sb-interface-settings-group {
+.sb-interface-settings-group:not(.ds-row) {
     display: flex;
     flex-direction: column;
     gap: var(--sb-shell-space-sm);
 }
 
-.sb-interface-settings-group.sb-theme-slider-group {
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-}
-
-.sb-interface-settings-group + .sb-interface-settings-group {
+.sb-interface-settings-group + .sb-interface-settings-group:not(.ds-row) {
     padding-top: var(--sb-shell-space-md);
     border-top: 1px solid color-mix(in srgb, var(--sb-shell-border) 62%, transparent);
 }
@@ -8255,6 +8196,16 @@ body.reduced-motion .sb-shell-main {
     flex: 1 1 320px;
 }
 
+@media screen and (min-width: 621px) {
+    #sb-interface-content .sb-frontend-icon-group > .ds-row-text {
+        flex: 1 1 180px;
+    }
+
+    #sb-interface-content .sb-frontend-icon-group > .ds-row-suffix {
+        flex: 1 1 320px;
+    }
+}
+
 .ds-row-slider > .ds-row-suffix > input[type='range'] {
     flex: 1 1 190px;
     width: 100%;
@@ -8872,10 +8823,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     border-radius: 0;
 }
 
-#sb-settings-page #ThemeTogglesSection [name="themeToggles"] > .checkbox_label {
-    border: 0;
-}
-
 /* Sentence case, like every other group label on the page (DESIGN.md Sentence Case Rule). The
    tracked uppercase kicker here was the last one left in settings. */
 #sb-settings-page .sb-settings-mounted-shell .sb-theme-presets-label {
@@ -8927,6 +8874,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     font-size: var(--sb-type-meta);
     line-height: 1.4;
     color: var(--sb-shell-text-secondary);
+    opacity: 1;
 }
 
 /* The category body is the same Libadwaita preference pill as every other group; its children are
@@ -8994,6 +8942,247 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     color: var(--sb-input-placeholder);
 }
 
+/* SillyBunny: Customize preserves upstream nodes while replacing their legacy row geometry. */
+#sb-settings-page .sb-settings-mounted-shell :is(.ds-pref-group, .sb-settings-flat-section) > .ds-row {
+    flex: 0 0 auto;
+    flex-direction: row;
+    width: 100%;
+    gap: 12px;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-row-label > :is(small, span) {
+    font-size: inherit;
+    color: inherit;
+    opacity: 1;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-row-switch {
+    flex-direction: row;
+    gap: 12px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-row-suffix > :is(input, select, textarea) {
+    min-width: 0;
+    max-width: 100%;
+    margin: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-row-suffix > :is(input[type='number'], textarea) {
+    width: min(100%, 280px);
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-row-slider > .ds-row-suffix > input[type='number'] {
+    width: 5.5em;
+}
+
+#sb-settings-page :is(#UI-language-block, #account_controls).ds-row {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    min-width: 0;
+    padding: 6px 16px;
+    gap: 12px;
+}
+
+#sb-settings-page #user-settings-utility-actions {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+#sb-settings-page #user-settings-utility-actions .sb-settings-utility-action {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+#sb-settings-page #color-picker-block {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 0;
+}
+
+#sb-settings-page #color-picker-block > .ds-pref-group {
+    margin: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell :is(.sb-settings-row-stack, .checkbox-container, [name='themeToggles'], .auto_swipe, .auto_continue_settings_block) {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell [data-sb-settings-compound] .ds-row {
+    width: 100%;
+    flex: 0 0 auto;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .auto_continue_settings_block .ds-row-label {
+    flex: 0 0 auto;
+    align-items: flex-start;
+    text-align: start;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-row-suffix > .doubleRangeContainer {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell :is(.sb-topbar-label-option-grid, .sb-compact-mode-group) {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell :is(.sb-topbar-label-option, .sb-compact-mode-option, .sb-mobile-nav-choice, .sb-topbar-custom-text-field).ds-row {
+    flex-direction: row;
+    width: 100%;
+    gap: 12px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    text-align: start;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-row-label :is(.sb-topbar-label-option-copy, .sb-compact-mode-copy, .sb-mobile-nav-choice-copy) > strong {
+    font: inherit;
+}
+
+#sb-settings-page .sb-theme-slider-value[hidden] {
+    display: none;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group .sb-theme-slider-group:not(.ds-row) {
+    gap: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group .sb-theme-slider-group.sb-mobile-quick-actions-group {
+    gap: 12px;
+    padding: 10px 16px;
+}
+
+#sb-settings-page :is(#sb-desktop-settings-outlet, #sb-mobile-settings-outlet) {
+    gap: 0;
+    padding: 0;
+}
+
+#sb-settings-page :is(#sb-desktop-settings-outlet, #sb-mobile-settings-outlet) > .sb-theme-slider-group {
+    border-top: 0;
+    border-bottom: 1px solid var(--sb-shell-border);
+}
+
+#sb-settings-page :is(#sb-desktop-settings-outlet, #sb-mobile-settings-outlet) > .sb-theme-slider-group:last-child {
+    border-bottom: 0;
+}
+
+#sb-settings-page :is(#sb-desktop-settings-outlet, #sb-mobile-settings-outlet) > .ds-row {
+    border-top: 0;
+}
+
+#sb-settings-page .sb-mobile-nav-settings-divider {
+    display: none;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-mobile-nav-settings-header {
+    padding: 12px 16px 6px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-mobile-nav-settings-header > strong {
+    font-size: var(--sb-type-control);
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-row-switch > .ds-row-text > .ds-row-label > .sb-mobile-nav-choice-icon,
+#sb-settings-page .sb-settings-mounted-shell .ds-row-switch.sb-mobile-nav-choice::before,
+#sb-settings-page .sb-settings-mounted-shell .ds-row-switch.sb-topbar-label-option::before,
+#sb-settings-page .sb-settings-mounted-shell .ds-row-switch.sb-compact-mode-option::before {
+    display: none;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group:has(> #sb-import-tools-outlet) {
+    background: transparent;
+    padding: 0;
+}
+
+#sb-settings-page #sb-import-tools-outlet {
+    gap: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    overflow: visible;
+}
+
+#sb-settings-page #sb-import-card {
+    padding: 0;
+}
+
+#sb-settings-page .sb-import-card > .sb-import-note {
+    border-radius: 0;
+    border-inline: 0;
+    border-bottom: 0;
+    background: transparent;
+}
+
+#sb-settings-page .sb-console-log-column > .ds-pref-group {
+    margin: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > .sb-console-log-frame {
+    padding: 0;
+    overflow: hidden;
+}
+
+#sb-settings-page .sb-console-log-output {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    color: var(--sb-shell-text);
+    background: var(--sb-composer-input-bg);
+}
+
+#sb-settings-page .sb-console-log-card > .sb-server-note {
+    border-radius: 0;
+    border-inline: 0;
+    border-bottom: 0;
+    background: transparent;
+}
+
+:root[data-sb-surface-tone='light'] #sb-settings-page .sb-console-log-actions .sb-server-pill[data-tone='good'] {
+    color: color-mix(in srgb, var(--color-success, var(--sb-color-success)) 80%, black);
+}
+
+:root[data-sb-surface-tone='light'] #sb-settings-page .sb-console-log-actions .sb-server-pill[data-tone='warn'] {
+    color: color-mix(in srgb, var(--color-warning, var(--sb-color-warning)) 80%, black);
+}
+
+:root[data-sb-surface-tone='light'] #sb-settings-page .sb-console-log-actions .sb-server-pill[data-tone='danger'] {
+    color: color-mix(in srgb, var(--color-danger, var(--sb-color-danger)) 80%, black);
+}
+
+#sb-settings-page .sb-console-log-actions,
+#sb-settings-page .ds-row-actions > .ds-row-suffix {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+#sb-settings-page .sb-console-log-actions {
+    margin: 0;
+}
+
+#sb-settings-page .sb-console-log-actions > button {
+    width: auto;
+}
+
 .ds-pref-group > .flex-container.alignitemscenter,
 .sb-settings-mounted-shell .flex-container:not(.flexFlowColumn, .checkbox_label, .ds-row-suffix):is(.alignitemscenter, .alignItemsCenter, .alignItemsBaseline):has(> :is(select, textarea, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='image']))) {
     flex-wrap: nowrap;
@@ -9009,6 +9198,30 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 }
 
 @media screen and (max-width: 620px) {
+    #sb-settings-page .sb-settings-mounted-shell .ds-row:is(.ds-row-slider, .ds-row-actions, .sb-import-pane),
+    #sb-settings-page .sb-settings-mounted-shell .ds-row:has(> .ds-row-suffix > input[type='number']),
+    #sb-settings-page .sb-settings-mounted-shell .ds-row:has(> .ds-row-suffix > .ds-control-flex),
+    #sb-settings-page .ds-row:has(> .ds-row-suffix > textarea) {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    #sb-settings-page .ds-row:is(.ds-row-actions, .sb-import-pane) > :is(.ds-row-text, .ds-row-suffix),
+    #sb-settings-page .ds-row:has(> .ds-row-suffix > input[type='number']) > :is(.ds-row-text, .ds-row-suffix),
+    #sb-settings-page .ds-row:has(> .ds-row-suffix > textarea) > :is(.ds-row-text, .ds-row-suffix) {
+        flex-basis: auto;
+        width: 100%;
+    }
+
+    #sb-settings-page .sb-console-log-actions,
+    #sb-settings-page .ds-row-actions > .ds-row-suffix {
+        justify-content: flex-start;
+    }
+
+    #sb-settings-page .sb-console-log-output {
+        min-height: 260px;
+    }
+
     .ds-row-slider,
     .ds-row:has(> .ds-row-suffix > .ds-control-flex),
     .sb-settings-mounted-shell .flex-container:not(.flexFlowColumn, .checkbox_label, .ds-row-suffix):is(.alignitemscenter, .alignItemsCenter, .alignItemsBaseline):has(> :is(label:not(.checkbox_label), small, span:not(.select2))):has(> :is(select, textarea, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='image']))) {
@@ -9089,12 +9302,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
    own token; rules below that size a specific `<small>` still win on specificity. */
 .sb-settings-mounted-shell small {
     font-size: var(--sb-type-meta);
-}
-
-@media screen and (min-width: 769px) {
-}
-
-@media screen and (max-width: 900px) {
 }
 
 /* ── Phase 3: mobile settings layout (feat/v1.9.0-ui-overhaul) ─────────── */

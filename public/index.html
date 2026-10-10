@@ -5179,17 +5179,21 @@
                                 </h3>
                             </div>
                         </div>
-                        <div id="UI-language-block" class="flex-container alignItemsBaseline">
-                            <span data-i18n="UI Language">Language:</span>
-                            <select id="ui_language_select" class="flex1 margin0 text_pole" aria-label="UI Language" data-i18n="[aria-label]UI Language">
+                        <div id="UI-language-block" class="ds-row">
+                            <div class="ds-row-text"><label for="ui_language_select" class="ds-row-label" data-i18n="UI Language">Language:</label><small class="ds-row-subtitle" data-sb-copy-placeholder="true">lorum ipsum</small></div>
+                            <div class="ds-row-suffix">
+                            <select id="ui_language_select" class="ds-control-flex margin0 text_pole" aria-label="UI Language" data-i18n="[aria-label]UI Language">
                                 <option value="" data-i18n="Default">Default</option>
                                 <option value="en">English</option>
                             </select>
+                            </div>
                         </div>
                         <small id="version_display"></small>
                     </div>
                     <div name="UserSettingsRowTwo" class="flex-container flexFlowRow">
-                        <div id="account_controls" class="flex-container">
+                        <div id="account_controls" class="ds-row ds-row-actions">
+                            <div class="ds-row-text"><span class="ds-row-label" data-i18n="Account">Account</span><small class="ds-row-subtitle" data-sb-copy-placeholder="true">lorum ipsum</small></div>
+                            <div class="ds-row-suffix">
                             <div id="account_button" class="margin0 menu_button_icon menu_button">
                                 <i class="fa-fw fa-solid fa-user-shield"></i>
                                 <span data-i18n="Account">Account</span>
@@ -5202,18 +5206,18 @@
                                 <i class="fa-fw fa-solid fa-right-from-bracket"></i>
                                 <span data-i18n="Logout">Logout</span>
                             </div>
+                            </div>
                         </div>
                         <textarea id="settingsSearch" class="textarea_compact flex1" rows="1" placeholder="Search Settings" data-i18n="[placeholder]Search Settings"></textarea>
                     </div>
                 </div>
-                <div id="user-settings-utility-actions" class="flex-container">
-                    <div class="sb-settings-utility-note">
-                        <small>Clear browser cache and temporary UI data without resetting your saved settings.</small>
-                        <label for="auto_clear_cache_on_update" class="checkbox_label widthFreeExpand" title="Automatically clear browser cache and temporary UI data after SillyBunny updates, then reload.">
-                            <input id="auto_clear_cache_on_update" type="checkbox" />
-                            <span>Auto-clear cache after updates</span>
-                        </label>
+                <div id="user-settings-utility-actions">
+                    <div class="ds-row ds-row-actions">
+                    <div class="ds-row-text">
+                        <span class="ds-row-label">Clear all cache</span>
+                        <small class="ds-row-subtitle">Clear browser cache and temporary UI data without resetting your saved settings.</small>
                     </div>
+                    <div class="ds-row-suffix">
                     <button id="clear_all_cache_button" type="button" class="menu_button menu_button_icon sb-settings-utility-action">
                         <i class="fa-solid fa-broom"></i>
                         <span>Clear all cache</span>
@@ -5222,6 +5226,12 @@
                         <i class="fa-solid fa-cookie-bite"></i>
                         <span>Clear cookies &amp; cache</span>
                     </button>
+                    </div>
+                    </div>
+                    <label for="auto_clear_cache_on_update" class="checkbox_label" title="Automatically clear browser cache and temporary UI data after SillyBunny updates, then reload.">
+                        <input id="auto_clear_cache_on_update" type="checkbox" />
+                        <span>Auto-clear cache after updates</span>
+                    </label>
                 </div>
                 <div id="user-settings-block-content" class="flex-container spaceEvenly">
                     <div name="UserSettingsFirstColumn" id="UI-Theme-Block" class="flex-container flexFlowColumn wide100p flex1">
@@ -5259,14 +5269,20 @@
                                 </div>
                                 <input type="file" id="ui_preset_import_file" accept=".json" hidden>
                             </h4>
-                            <div class="flex-container flexnowrap alignitemscenter">
-                                <select id="themes" class="margin0">
+                            <div class="ds-row">
+                                <div class="ds-row-text">
+                                    <label for="themes" class="ds-row-label" data-i18n="UI Theme">UI Theme</label>
+                                    <small class="ds-row-subtitle" data-sb-copy-placeholder="true">lorum ipsum</small>
+                                </div>
+                                <div class="ds-row-suffix">
+                                <select id="themes" class="margin0 ds-control-flex">
                                 </select>
                                 <div id="ui-preset-update-button" title="Update a theme file" data-i18n="[title]Update a theme file" class="menu_button margin0">
                                     <i class="fa-solid fa-save"></i>
                                 </div>
                                 <div id="ui-preset-save-button" title="Save as a new theme" data-i18n="[title]Save as a new theme" class="menu_button margin0">
                                     <i class="fa-solid fa-file-circle-plus"></i>
+                                </div>
                                 </div>
                             </div>
                             <div class="sb-theme-presets">
@@ -5379,46 +5395,21 @@
                                     <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
                                 </div>
                                 <div class="inline-drawer-content" style="display:none">
-                                    <div id="color-picker-block" class="flex-container flexFlowColumn flexNoGap">
-                                        <div class="flex-container">
-                                            <toolcool-color-picker id="main-text-color-picker"></toolcool-color-picker>
-                                            <span data-i18n="Main Text">Main Text</span>
+                                    <!-- SillyBunny: keep upstream picker IDs while presenting two flat preference lists. -->
+                                    <div id="color-picker-block" data-sb-presentation="manual">
+                                        <div class="ds-pref-group" role="group" aria-label="Text colors">
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Main Text">Main Text</span><small class="ds-row-subtitle" data-sb-copy-placeholder="true">lorum ipsum</small></div><div class="ds-row-suffix"><toolcool-color-picker id="main-text-color-picker" aria-label="Main Text"></toolcool-color-picker></div></div>
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Italics Text">Italics Text</span><small class="ds-row-subtitle" data-sb-copy-placeholder="true">lorum ipsum</small></div><div class="ds-row-suffix"><toolcool-color-picker id="italics-color-picker" aria-label="Italics Text"></toolcool-color-picker></div></div>
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Underlined Text">Underlined Text</span><small class="ds-row-subtitle" data-sb-copy-placeholder="true">lorum ipsum</small></div><div class="ds-row-suffix"><toolcool-color-picker id="underline-color-picker" aria-label="Underlined Text"></toolcool-color-picker></div></div>
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Quote Text">Quote Text</span><small class="ds-row-subtitle" data-sb-copy-placeholder="true">lorum ipsum</small></div><div class="ds-row-suffix"><toolcool-color-picker id="quote-color-picker" aria-label="Quote Text"></toolcool-color-picker></div></div>
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Shadow Color">Text Shadow</span><small class="ds-row-subtitle" data-sb-copy-placeholder="true">lorum ipsum</small></div><div class="ds-row-suffix"><toolcool-color-picker id="shadow-color-picker" aria-label="Text Shadow"></toolcool-color-picker></div></div>
                                         </div>
-                                        <div class="flex-container">
-                                            <toolcool-color-picker id="italics-color-picker"></toolcool-color-picker>
-                                            <span data-i18n="Italics Text">Italics Text</span>
-                                        </div>
-                                        <div class="flex-container">
-                                            <toolcool-color-picker id="underline-color-picker"></toolcool-color-picker>
-                                            <span data-i18n="Underlined Text">Underlined Text</span>
-                                        </div>
-                                        <div class="flex-container">
-                                            <toolcool-color-picker id="quote-color-picker"></toolcool-color-picker>
-                                            <span data-i18n="Quote Text">Quote Text</span>
-                                        </div>
-                                        <div class="flex-container">
-                                            <toolcool-color-picker id="shadow-color-picker"></toolcool-color-picker>
-                                            <span data-i18n="Shadow Color">Text Shadow</span>
-                                        </div>
-                                        <div class="flex-container">
-                                            <toolcool-color-picker id="chat-tint-color-picker"></toolcool-color-picker>
-                                            <span data-i18n="Chat Background">Chat Background</span>
-                                        </div>
-                                        <div class="flex-container">
-                                            <toolcool-color-picker id="blur-tint-color-picker"></toolcool-color-picker>
-                                            <span data-i18n="UI Background">UI Background</span>
-                                        </div>
-                                        <div class="flex-container">
-                                            <toolcool-color-picker id="border-color-picker"></toolcool-color-picker>
-                                            <span data-i18n="UI Border">UI Border</span>
-                                        </div>
-                                        <div class="flex-container">
-                                            <toolcool-color-picker id="user-mes-blur-tint-color-picker"></toolcool-color-picker>
-                                            <span data-i18n="User Message Blur Tint">User Message</span>
-                                        </div>
-                                        <div class="flex-container">
-                                            <toolcool-color-picker id="bot-mes-blur-tint-color-picker"></toolcool-color-picker>
-                                            <span data-i18n="AI Message Blur Tint">AI Message</span>
+                                        <div class="ds-pref-group" role="group" aria-label="UI colors">
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Chat Background">Chat Background</span><small class="ds-row-subtitle" data-sb-copy-placeholder="true">lorum ipsum</small></div><div class="ds-row-suffix"><toolcool-color-picker id="chat-tint-color-picker" aria-label="Chat Background"></toolcool-color-picker></div></div>
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="UI Background">UI Background</span><small class="ds-row-subtitle" data-sb-copy-placeholder="true">lorum ipsum</small></div><div class="ds-row-suffix"><toolcool-color-picker id="blur-tint-color-picker" aria-label="UI Background"></toolcool-color-picker></div></div>
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="UI Border">UI Border</span><small class="ds-row-subtitle" data-sb-copy-placeholder="true">lorum ipsum</small></div><div class="ds-row-suffix"><toolcool-color-picker id="border-color-picker" aria-label="UI Border"></toolcool-color-picker></div></div>
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="User Message Blur Tint">User Message</span><small class="ds-row-subtitle" data-sb-copy-placeholder="true">lorum ipsum</small></div><div class="ds-row-suffix"><toolcool-color-picker id="user-mes-blur-tint-color-picker" aria-label="User Message"></toolcool-color-picker></div></div>
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="AI Message Blur Tint">AI Message</span><small class="ds-row-subtitle" data-sb-copy-placeholder="true">lorum ipsum</small></div><div class="ds-row-suffix"><toolcool-color-picker id="bot-mes-blur-tint-color-picker" aria-label="AI Message"></toolcool-color-picker></div></div>
                                         </div>
                                     </div>
                                 </div>
@@ -5433,90 +5424,96 @@
                                     <div class="sb-settings-subdrawer-toolbar">
                                         <small>Adjust page width, global font size, blur, and shadow depth in one place without crowding the rest of the Appearance panel.</small>
                                     </div>
-                                    <div name="FontBlurChatWidthBlock" class="flex-container">
-
-                                        <div class="alignitemscenter flex-container flexFlowColumn flexBasis48p flexGrow flexShrink gap0">
-                                            <small>
-                                                <span>
-                                                    <span data-i18n="Page Width">Page Width</span>
-                                                    <i class="fa-solid fa-desktop"></i>
-                                                </span>
-                                                <div class="fa-solid fa-circle-info opacity50p" data-i18n="[title]Width of the main workspace in % of screen width" title="Width of the main workspace in % of screen width"></div>
-                                            </small>
+                                    <div name="FontBlurChatWidthBlock" class="ds-pref-group">
+                                        <div class="ds-row ds-row-slider">
+                                            <div class="ds-row-text">
+                                                <label for="chat_width_slider" class="ds-row-label" data-i18n="Page Width">Page Width</label>
+                                                <small class="ds-row-subtitle" data-i18n="Width of the main workspace in % of screen width">Width of the main workspace in % of screen width</small>
+                                            </div>
+                                            <div class="ds-row-suffix">
                                             <input class="neo-range-slider" type="range" id="chat_width_slider" name="chat_width_slider" min="25" max="100" step="1">
-                                            <input class="neo-range-input" type="number" min="25" max="100" step="1" data-for="chat_width_slider" id="chat_width_slider_counter">
+                                            <input class="neo-range-input" type="number" min="25" max="100" step="1" data-for="chat_width_slider" id="chat_width_slider_counter" aria-label="Page Width">
+                                            </div>
                                         </div>
-
-                                        <div class="alignitemscenter flex-container flexFlowColumn flexBasis48p flexGrow flexShrink gap0">
-                                            <small>
-                                                <span data-i18n="Global Font Size">Global Font Size</span>
-                                                <div class="fa-solid fa-circle-info opacity50p" data-i18n="[title]Font size across the main interface" title="Font size across the main interface"></div>
-                                            </small>
+                                        <div class="ds-row ds-row-slider">
+                                            <div class="ds-row-text">
+                                                <label for="font_scale" class="ds-row-label" data-i18n="Global Font Size">Global Font Size</label>
+                                                <small class="ds-row-subtitle" data-i18n="Font size across the main interface">Font size across the main interface</small>
+                                            </div>
+                                            <div class="ds-row-suffix">
                                             <input class="neo-range-slider" type="range" id="font_scale" name="font_scale" min="0.5" max="1.5" step="0.01">
-                                            <input class="neo-range-input" type="number" min="0.5" max="1.5" step="0.01" data-for="font_scale" id="font_scale_counter">
+                                            <input class="neo-range-input" type="number" min="0.5" max="1.5" step="0.01" data-for="font_scale" id="font_scale_counter" aria-label="Global Font Size">
+                                            </div>
                                         </div>
-
-                                        <div class="alignitemscenter flex-container flexFlowColumn flexBasis48p flexGrow flexShrink gap0">
-                                            <small>
-                                                <span data-i18n="Line Spacing">Line Spacing</span>
-                                                <div class="fa-solid fa-circle-info opacity50p" data-i18n="[title]Vertical spacing between lines of text in chat messages" title="Vertical spacing between lines of text in chat messages"></div>
-                                            </small>
+                                        <div class="ds-row ds-row-slider">
+                                            <div class="ds-row-text">
+                                                <label for="line_spacing" class="ds-row-label" data-i18n="Line Spacing">Line Spacing</label>
+                                                <small class="ds-row-subtitle" data-i18n="Vertical spacing between lines of text in chat messages">Vertical spacing between lines of text in chat messages</small>
+                                            </div>
+                                            <div class="ds-row-suffix">
                                             <input class="neo-range-slider" type="range" id="line_spacing" name="line_spacing" min="0.8" max="2" step="0.05">
-                                            <input class="neo-range-input" type="number" min="0.8" max="2" step="0.05" data-for="line_spacing" id="line_spacing_counter">
+                                            <input class="neo-range-input" type="number" min="0.8" max="2" step="0.05" data-for="line_spacing" id="line_spacing_counter" aria-label="Line Spacing">
+                                            </div>
                                         </div>
-
-                                        <div class="alignitemscenter flex-container flexFlowColumn flexBasis48p flexGrow flexShrink gap0">
-                                            <small>
-                                                <span data-i18n="Margin Size">Margin Size</span>
-                                                <div class="fa-solid fa-circle-info opacity50p" data-i18n="[title]Horizontal padding around chat messages" title="Horizontal padding around chat messages"></div>
-                                            </small>
+                                        <div class="ds-row ds-row-slider">
+                                            <div class="ds-row-text">
+                                                <label for="message_margin_size" class="ds-row-label" data-i18n="Margin Size">Margin Size</label>
+                                                <small class="ds-row-subtitle" data-i18n="Horizontal padding around chat messages">Horizontal padding around chat messages</small>
+                                            </div>
+                                            <div class="ds-row-suffix">
                                             <input class="neo-range-slider" type="range" id="message_margin_size" name="message_margin_size" min="0.5" max="2" step="0.05">
-                                            <input class="neo-range-input" type="number" min="0.5" max="2" step="0.05" data-for="message_margin_size" id="message_margin_size_counter">
+                                            <input class="neo-range-input" type="number" min="0.5" max="2" step="0.05" data-for="message_margin_size" id="message_margin_size_counter" aria-label="Margin Size">
+                                            </div>
                                         </div>
-
-                                        <div id="blur-strength-block" class="alignitemscenter flex-container flexFlowColumn flexBasis48p flexGrow flexShrink gap0">
-                                            <small>
-                                                <span data-i18n="Blur Strength">Blur Strength</span>
-                                                <div class="fa-solid fa-circle-info opacity50p" data-i18n="[title]Blur strength on UI panels." title="Blur strength on UI panels."></div>
-                                            </small>
+                                        <div id="blur-strength-block" class="ds-row ds-row-slider">
+                                            <div class="ds-row-text">
+                                                <label for="blur_strength" class="ds-row-label" data-i18n="Blur Strength">Blur Strength</label>
+                                                <small class="ds-row-subtitle" data-i18n="Blur strength on UI panels.">Blur strength on UI panels.</small>
+                                            </div>
+                                            <div class="ds-row-suffix">
                                             <input class="neo-range-slider" type="range" id="blur_strength" name="blur_strength" min="0" max="30" step="1">
-                                            <input class="neo-range-input" type="number" min="0" max="30" step="1" data-for="blur_strength" id="blur_strength_counter">
+                                            <input class="neo-range-input" type="number" min="0" max="30" step="1" data-for="blur_strength" id="blur_strength_counter" aria-label="Blur Strength">
+                                            </div>
                                         </div>
-
-                                        <div id="shadow-width-block" class="alignitemscenter flex-container flexFlowColumn flexBasis48p flexGrow flexShrink gap0">
-                                            <small>
-                                                <span data-i18n="Text Shadow Width">Shadow Width</span>
-                                                <div class="fa-solid fa-circle-info opacity50p" data-i18n="[title]Strength of the text shadows" title="Strength of the text shadows"></div>
-                                            </small>
+                                        <div id="shadow-width-block" class="ds-row ds-row-slider">
+                                            <div class="ds-row-text">
+                                                <label for="shadow_width" class="ds-row-label" data-i18n="Text Shadow Width">Shadow Width</label>
+                                                <small class="ds-row-subtitle" data-i18n="Strength of the text shadows">Strength of the text shadows</small>
+                                            </div>
+                                            <div class="ds-row-suffix">
                                             <input class="neo-range-slider" type="range" id="shadow_width" name="shadow_width" min="0" max="5" step="1">
-                                            <input class="neo-range-input" type="number" min="0" max="5" step="1" data-for="shadow_width" id="shadow_width_counter">
+                                            <input class="neo-range-input" type="number" min="0" max="5" step="1" data-for="shadow_width" id="shadow_width_counter" aria-label="Shadow Width">
+                                            </div>
                                         </div>
-
-                                        <div id="background-blur-block" class="alignitemscenter flex-container flexFlowColumn flexBasis48p flexGrow flexShrink gap0">
-                                            <small>
-                                                <span>Background Blur</span>
-                                                <div class="fa-solid fa-circle-info opacity50p" title="Blur strength for the page background image."></div>
-                                            </small>
+                                        <div id="background-blur-block" class="ds-row ds-row-slider">
+                                            <div class="ds-row-text">
+                                                <label for="background_blur" class="ds-row-label">Background Blur</label>
+                                                <small class="ds-row-subtitle">Blur strength for the page background image.</small>
+                                            </div>
+                                            <div class="ds-row-suffix">
                                             <input class="neo-range-slider" type="range" id="background_blur" name="background_blur" min="0" max="10" step="1" aria-label="Background blur">
                                             <input class="neo-range-input" type="number" min="0" max="10" step="1" data-for="background_blur" id="background_blur_counter" aria-label="Background blur value">
+                                            </div>
                                         </div>
-
-                                        <div id="background-opacity-block" class="alignitemscenter flex-container flexFlowColumn flexBasis48p flexGrow flexShrink gap0">
-                                            <small>
-                                                <span>Background Opacity</span>
-                                                <div class="fa-solid fa-circle-info opacity50p" title="Opacity for the page background image."></div>
-                                            </small>
+                                        <div id="background-opacity-block" class="ds-row ds-row-slider">
+                                            <div class="ds-row-text">
+                                                <label for="background_opacity" class="ds-row-label">Background Opacity</label>
+                                                <small class="ds-row-subtitle">Opacity for the page background image.</small>
+                                            </div>
+                                            <div class="ds-row-suffix">
                                             <input class="neo-range-slider" type="range" id="background_opacity" name="background_opacity" min="0" max="1" step="0.05" aria-label="Background opacity">
                                             <input class="neo-range-input" type="number" min="0" max="1" step="0.05" data-for="background_opacity" id="background_opacity_counter" aria-label="Background opacity value">
+                                            </div>
                                         </div>
-
-                                        <div id="sheld-blur-strength-block" class="alignitemscenter flex-container flexFlowColumn flexBasis48p flexGrow flexShrink gap0">
-                                            <small>
-                                                <span>Chat Field Blur</span>
-                                                <div class="fa-solid fa-circle-info opacity50p" title="Blur strength behind the chat field."></div>
-                                            </small>
+                                        <div id="sheld-blur-strength-block" class="ds-row ds-row-slider">
+                                            <div class="ds-row-text">
+                                                <label for="sheld_blur_strength" class="ds-row-label">Chat Field Blur</label>
+                                                <small class="ds-row-subtitle">Blur strength behind the chat field.</small>
+                                            </div>
+                                            <div class="ds-row-suffix">
                                             <input class="neo-range-slider" type="range" id="sheld_blur_strength" name="sheld_blur_strength" min="0" max="10" step="1" aria-label="Chat field blur">
                                             <input class="neo-range-input" type="number" min="0" max="10" step="1" data-for="sheld_blur_strength" id="sheld_blur_strength_counter" aria-label="Chat field blur value">
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -5716,12 +5713,14 @@
                                     Exclude 'Thinking...'
                                 </small>
                             </label>
-                            <div id="smooth_streaming_speed_control" class="wide100p">
-                                <input type="range" id="smooth_streaming_speed" name="smooth_streaming_speed" min="0" max="100" step="10" value="50">
-                                <div class="slider_hint">
-                                    <span data-i18n="Slow">Slow</span>
-                                    <span></span>
-                                    <span data-i18n="Fast">Fast</span>
+                            <div id="smooth_streaming_speed_control" class="ds-row ds-row-slider">
+                                <div class="ds-row-text">
+                                    <label class="ds-row-label" for="smooth_streaming_speed" data-i18n="Smooth Streaming">Smooth Streaming</label>
+                                    <small class="ds-row-subtitle" data-sb-copy-placeholder="true">lorum ipsum</small>
+                                </div>
+                                <div class="ds-row-suffix">
+                                    <input type="range" id="smooth_streaming_speed" name="smooth_streaming_speed" min="0" max="100" step="10" value="50">
+                                    <input class="neo-range-input" type="number" id="smooth_streaming_speed_counter" data-for="smooth_streaming_speed" min="0" max="100" step="10" value="50" aria-label="Smooth Streaming">
                                 </div>
                             </div>
                             <label class="checkbox_label" for="stream_fade_in" title="Fade in streamed text when it appears, instead of it just popping in." data-i18n="[title]Fade in streamed text when it appears, instead of it just popping in">
@@ -6035,7 +6034,7 @@
                                     <input id="pin_styles" type="checkbox" />
                                     <small data-i18n="Pin greeting message styles">Pin greeting message styles</small>
                                 </label>
-                                <div class="inline-drawer wide100p flexFlowColumn">
+                                <div class="inline-drawer wide100p flexFlowColumn" data-sb-settings-compound="auto-swipe">
                                     <div class="inline-drawer-toggle inline-drawer-header userSettingsInnerExpandable" title="Automatically reject and re-generate AI message based on configurable criteria." data-i18n="[title]Automatically reject and re-generate AI message based on configurable criteria">
                                         <b><span data-i18n="Auto-swipe">Auto-swipe</span></b>
                                         <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
@@ -6045,23 +6044,35 @@
                                             <input id="auto_swipe" type="checkbox" />
                                             <small data-i18n="Enabled">Enabled</small>
                                         </label>
-                                        <small data-i18n="Minimum generated message length">Minimum generated message length</small>
+                                        <div class="ds-row">
+                                            <div class="ds-row-text"><label for="auto_swipe_minimum_length" class="ds-row-label" data-i18n="Minimum generated message length">Minimum generated message length</label><small class="ds-row-subtitle" data-i18n="If the generated message is shorter than these many characters, trigger an auto-swipe">If the generated message is shorter than these many characters, trigger an auto-swipe.</small></div>
+                                            <div class="ds-row-suffix">
                                         <input id="auto_swipe_minimum_length" name="auto_swipe_minimum_length" type="number" min="0" step="1" value="0" class="text_pole" title="If the generated message is shorter than these many characters, trigger an auto-swipe." data-i18n="[title]If the generated message is shorter than these many characters, trigger an auto-swipe">
-                                        <small data-i18n="Blacklisted words">Blacklisted words</small>
+                                            </div>
+                                        </div>
                                         <div class="auto_swipe">
+                                            <div class="ds-row">
+                                                <div class="ds-row-text"><label for="auto_swipe_blacklist" class="ds-row-label" data-i18n="Blacklisted words">Blacklisted words</label><small class="ds-row-subtitle" data-sb-copy-placeholder="true">lorum ipsum</small></div>
+                                                <div class="ds-row-suffix">
                                             <textarea id="auto_swipe_blacklist" name="auto_swipe_blacklist" data-i18n="[placeholder]words you dont want generated separated by comma ','" placeholder="words you don't want generated separated by comma ','" class="text_pole textarea_compact" value="" autocomplete="off" rows="3"></textarea>
-                                            <small data-i18n="Blacklisted word count to swipe">Blacklisted word count to swipe</small>
+                                                </div>
+                                            </div>
+                                            <div class="ds-row">
+                                                <div class="ds-row-text"><label for="auto_swipe_blacklist_threshold" class="ds-row-label" data-i18n="Blacklisted word count to swipe">Blacklisted word count to swipe</label><small class="ds-row-subtitle" data-i18n="Minimum number of blacklisted words detected to trigger an auto-swipe">Minimum number of blacklisted words detected to trigger an auto-swipe.</small></div>
+                                                <div class="ds-row-suffix">
                                             <input id="auto_swipe_blacklist_threshold" name="auto_swipe_blacklist_threshold" type="number" min="0" step="1" value="1" class="text_pole" title="Minimum number of blacklisted words detected to trigger an auto-swipe." data-i18n="[title]Minimum number of blacklisted words detected to trigger an auto-swipe">
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                                <div nane="AutoContiueBlock" class="inline-drawer wide100p flexFlowColumn">
+                                <div nane="AutoContiueBlock" class="inline-drawer wide100p flexFlowColumn" data-sb-settings-compound="auto-continue">
                                     <div class="inline-drawer-toggle inline-drawer-header userSettingsInnerExpandable" data-i18n="[title]Automatically 'continue' a response if the model stopped before reaching a certain amount of tokens." title="Automatically 'continue' a response if the model stopped before reaching a certain amount of tokens.">
                                         <b><span data-i18n="Auto-Continue">Auto-Continue</span></b>
                                         <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
                                     </div>
                                     <div class="inline-drawer-content">
-                                        <div class="flex-container">
+                                        <div class="sb-settings-row-stack">
                                             <label class="checkbox_label" for="auto_continue_enabled">
                                                 <input id="auto_continue_enabled" type="checkbox" />
                                                 <small data-i18n="Enabled">
@@ -6076,10 +6087,12 @@
                                             </label>
                                         </div>
                                         <div class="auto_continue_settings_block">
-                                            <label for="auto_continue_target_length">
-                                                <small data-i18n="Target length (tokens)">Target length (tokens)</small>
+                                            <div class="ds-row">
+                                                <div class="ds-row-text"><label for="auto_continue_target_length" class="ds-row-label" data-i18n="Target length (tokens)">Target length (tokens)</label><small class="ds-row-subtitle" data-sb-copy-placeholder="true">lorum ipsum</small></div>
+                                                <div class="ds-row-suffix">
                                                 <input id="auto_continue_target_length" type="number" class="text_pole textarea_compact" min="0" max="1024" />
-                                            </label>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -6121,8 +6134,14 @@
                                             <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="customCSS" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
                                         </div>
                                     </div>
-                                    <div id="CustomCSS-textAreaBlock" class="flex-container flexnowrap alignitemscenter">
-                                        <textarea id="customCSS" class="text_pole margin0 margin-r5 textarea_compact monospace" rows="8"></textarea>
+                                    <div id="CustomCSS-textAreaBlock" class="ds-row">
+                                        <div class="ds-row-text">
+                                            <label for="customCSS" class="ds-row-label" data-i18n="Custom CSS">Custom CSS</label>
+                                            <small class="ds-row-subtitle" data-i18n="Apply a custom CSS style to the whole SillyBunny interface.">Apply a custom CSS style to the whole SillyBunny interface.</small>
+                                        </div>
+                                        <div class="ds-row-suffix">
+                                            <textarea id="customCSS" class="text_pole margin0 margin-r5 textarea_compact monospace ds-control-flex" rows="8"></textarea>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -6284,23 +6303,24 @@
                 <div class="drawer-icon fa-solid fa-panorama fa-fw closedIcon"></div>
             </div>
             <div id="Backgrounds" class="drawer-content closedDrawer bg-drawer-layout">
-                <div id="bg-header-fixed">
-                    <div class="bg-header-row-1">
-                        <h3 class="margin0">
-                            <span data-i18n="Backgrounds">Backgrounds</span>
-                        </h3>
-                        <span class="expander"></span>
-                        <select id="background_fitting" class="text_pole" data-i18n="[title]Background Fitting" title="Background Fitting">
+                <div id="bg-header-fixed" class="ds-pref-group">
+                    <div class="bg-header-row-1 ds-row ds-row-actions">
+                        <div class="ds-row-text">
+                            <label for="background_fitting" class="ds-row-label" data-i18n="Background Fitting">Background Fitting</label>
+                            <small class="ds-row-subtitle" data-sb-copy-placeholder="true">lorum ipsum</small>
+                        </div>
+                        <div class="ds-row-suffix">
+                        <select id="background_fitting" class="text_pole ds-control-flex" data-i18n="[title]Background Fitting" title="Background Fitting">
                             <option value="classic" data-i18n="Classic">Classic</option>
                             <option value="cover" data-i18n="Cover">Cover</option>
                             <option value="contain" data-i18n="Contain">Contain</option>
                             <option value="stretch" data-i18n="Stretch">Stretch</option>
                             <option value="center" data-i18n="Center">Center</option>
                         </select>
-                        <div id="auto_background" class="menu_button menu_button_icon" data-i18n="[title]Automatically select a background based on the chat context" title="Automatically select a background based on the chat context.">
+                        <button id="auto_background" type="button" class="menu_button menu_button_icon" data-i18n="[title]Automatically select a background based on the chat context" title="Automatically select a background based on the chat context.">
                             <i class="fa-solid fa-wand-magic"></i>
                             <span data-i18n="Auto-select">Auto-select</span>
-                        </div>
+                        </button>
                         <button id="bg_add_folder_button" class="menu_button menu_button_icon" data-i18n="[title]New Folder" title="New Folder">
                             <i class="fa-solid fa-folder-plus"></i>
                             <span data-i18n="New Folder">New Folder</span>
@@ -6309,25 +6329,31 @@
                             <i class="fa-solid fa-upload"></i>
                             <span data-i18n="Add Background">Add Background</span>
                         </label>
+                        </div>
                     </div>
-                    <div class="bg-header-row-2">
-                        <input id="bg-filter" class="text_pole" type="search" data-i18n="[placeholder]Search..." placeholder="Search..." />
-                        <select id="bg-sort" class="text_pole margin0" title="Sort backgrounds" data-i18n="[title]Sort backgrounds">
+                    <div class="bg-header-row-2 ds-row">
+                        <div class="ds-row-text">
+                        <input id="bg-filter" class="text_pole" type="search" aria-label="Search backgrounds" data-i18n="[placeholder]Search..." placeholder="Search..." />
+                        </div>
+                        <div class="ds-row-suffix">
+                        <select id="bg-sort" class="text_pole margin0" aria-label="Sort backgrounds" title="Sort backgrounds" data-i18n="[title]Sort backgrounds">
                             <option value="az" data-i18n="A-Z">A-Z</option>
                             <option value="za" data-i18n="Z-A">Z-A</option>
                             <option value="newest" data-i18n="Newest">Newest</option>
                             <option value="oldest" data-i18n="Oldest">Oldest</option>
                         </select>
+                        </div>
                     </div>
                 </div>
                 <div id="bg_tabs" class="heading-container-with-controls">
-                    <ul class="bg_tabs_list">
+                    <ul class="bg_tabs_list sb-segmented-buttons">
                         <li class="bg_tab_button">
                             <a href="#bg_global_tab" data-i18n="Global">Global</a>
                         </li>
                         <li class="bg_tab_button">
                             <a href="#bg_chat_tab" data-i18n="Chat">Chat</a>
                         </li>
+                    </ul>
                         <div class="heading-controls">
                             <button id="bg_group_add_to_folder_button" class="menu_button menu_button_icon" style="display:none;" data-i18n="[title]Add selected backgrounds to folder" title="Add selected backgrounds to folder">
                                 <i class="fa-solid fa-folder-tree"></i>
@@ -6343,8 +6369,10 @@
                             <button id="bg_thumb_zoom_in" class="menu_button menu_button_icon" title="Make thumbnails larger" data-i18n="[title]Make thumbnails larger">
                                 <i class="fa-solid fa-plus"></i>
                             </button>
+                            <button id="bg-scroll-top" type="button" class="menu_button menu_button_icon" aria-label="Scroll backgrounds to top" title="Scroll backgrounds to top" data-i18n="[title]Scroll backgrounds to top">
+                                <i class="fa-solid fa-chevron-up" aria-hidden="true"></i>
+                            </button>
                         </div>
-                    </ul>
                     <div id="bg_global_tab" class="bg_tab_panel">
                         <div id="bg_folder_breadcrumb" class="bg_folder_breadcrumb" style="display:none;">
                             <button id="bg_back_to_folders" class="menu_button menu_button_icon">
@@ -6371,9 +6399,6 @@
                 <form id="form_bg_upload" hidden>
                     <input type="file" id="add_bg_button" name="avatar" accept="image/*,video/*" multiple hidden>
                 </form>
-                <button id="bg-scroll-top" type="button" class="menu_button menu_button_icon" title="Scroll backgrounds to top" data-i18n="[title]Scroll backgrounds to top">
-                    <i class="fa-solid fa-chevron-up" aria-hidden="true"></i>
-                </button>
             </div>
         </div>
         <div id="extensions-settings-button" class="drawer">

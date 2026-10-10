@@ -43,6 +43,198 @@
  */
 const SB_PLACEHOLDER_DESCRIPTION = 'lorum ipsum';
 
+const SB_CUSTOMIZE_TABS = new Set(['appearance', 'interface', 'messages', 'data-security', 'logs', 'console-logs']);
+
+/** @param {HTMLElement} row @returns {HTMLElement} */
+function createRowSubtitle(row) {
+    const existing = row.querySelector('.ds-row-subtitle, .sb-topbar-label-option-copy > small, .sb-compact-mode-copy > small, .sb-mobile-nav-choice-copy > small, label small + small');
+    if (existing instanceof HTMLElement && existing.textContent.trim()) {
+        existing.classList.add('ds-row-subtitle');
+        return existing;
+    }
+
+    const subtitle = document.createElement('small');
+    subtitle.className = 'ds-row-subtitle';
+    // The tooltip extension relocates title attributes before the settings panel opens.
+    const tooltipSelector = ':is([title], [data-sttt--title]):not(input, select, button, a, .menu_button)';
+    const source = row.matches(tooltipSelector) ? row : row.querySelector(tooltipSelector);
+    subtitle.textContent = (source?.getAttribute('title') || source?.getAttribute('data-sttt--title'))?.trim() || SB_PLACEHOLDER_DESCRIPTION;
+    if (subtitle.textContent === SB_PLACEHOLDER_DESCRIPTION) {
+        subtitle.dataset.sbCopyPlaceholder = 'true';
+    } else {
+        const key = source?.getAttribute('data-i18n')?.match(/(?:^|;)\[title\]([^;]+)/)?.[1];
+        if (key) subtitle.dataset.i18n = key;
+    }
+    return subtitle;
+}
+
+/** @param {HTMLLabelElement} label */
+function normalizeCustomizeSwitch(label) {
+    const input = label.querySelector('input[type="checkbox"]');
+    if (!(input instanceof HTMLInputElement)) return;
+
+    input.classList.add('sb-switch');
+    input.setAttribute('role', 'switch');
+    // Native checked state also covers programmatic theme/settings updates without change events.
+    input.removeAttribute('aria-checked');
+    if (label.classList.contains('ds-row')) return;
+
+    const text = document.createElement('span');
+    text.className = 'ds-row-text';
+    const title = document.createElement('span');
+    title.className = 'ds-row-label';
+    if (input.id && !input.hasAttribute('aria-label') && !input.hasAttribute('aria-labelledby')) {
+        title.id = `sb-setting-${input.id}-label`;
+        input.setAttribute('aria-labelledby', title.id);
+    }
+    const subtitle = createRowSubtitle(label);
+    const suffix = document.createElement('span');
+    suffix.className = 'ds-row-suffix';
+    for (const node of [...label.childNodes]) {
+        if (node === input || node instanceof HTMLElement && node.matches('audio, [hidden]')) continue;
+        title.appendChild(node);
+    }
+    text.append(title, subtitle);
+    suffix.appendChild(input);
+    label.append(text, suffix);
+    label.classList.add('ds-row', 'ds-row-switch');
+    if (input.id) label.htmlFor = input.id;
+}
+
+/** @param {HTMLElement} row @param {HTMLElement} control */
+function normalizeCustomizeField(row, control) {
+    if (row.classList.contains('ds-row') || row.querySelector('.ds-row, .checkbox_label')) return;
+    const title = row.querySelector(':scope > label, :scope > small, :scope > span');
+    if (!(title instanceof HTMLElement)) return;
+
+    const text = document.createElement('div');
+    text.className = 'ds-row-text';
+    const suffix = document.createElement('div');
+    suffix.className = 'ds-row-suffix';
+    const subtitle = createRowSubtitle(row);
+    // Tooltip info markers have become visible copy; actionable help links keep their handlers.
+    for (const marker of title.querySelectorAll('.fa-circle-info')) marker.remove();
+    title.classList.add('ds-row-label');
+    if (title instanceof HTMLLabelElement && control.id) title.htmlFor = control.id;
+    text.append(title, subtitle);
+    if (!control.hasAttribute('aria-label') && !control.hasAttribute('aria-labelledby') && !(title instanceof HTMLLabelElement)) {
+        if (!title.id && control.id) title.id = `sb-setting-${control.id}-label`;
+        if (title.id) control.setAttribute('aria-labelledby', title.id);
+    }
+    const isSlider = control instanceof HTMLInputElement && control.type === 'range';
+    if (!isSlider) control.classList.add('ds-control-flex');
+    for (const node of [...row.children]) {
+        if (node === title || node.matches('script, style, [hidden]')) continue;
+        suffix.appendChild(node);
+    }
+    row.classList.remove('flex-container', 'flexFlowColumn', 'flexBasis48p', 'flexGrow', 'flexShrink', 'flex1', 'wide100p', 'alignitemscenter', 'alignItemsCenter', 'alignItemsBaseline', 'gap0');
+    row.classList.add('ds-row');
+    if (isSlider) row.classList.add('ds-row-slider');
+    row.append(text, suffix);
+    for (const input of suffix.querySelectorAll('input, select, textarea')) {
+        if (!(input instanceof HTMLInputElement || input instanceof HTMLSelectElement || input instanceof HTMLTextAreaElement)) continue;
+        if (input.hasAttribute('aria-label') || input.hasAttribute('aria-labelledby') || input.labels?.length) continue;
+        if (!title.id && control.id) title.id = `sb-setting-${control.id}-label`;
+        if (title.id) input.setAttribute('aria-labelledby', title.id);
+    }
+}
+
+/** @param {HTMLElement} scope */
+function bindCustomizeSliderCounters(scope) {
+    for (const counter of scope.querySelectorAll('.ds-row-slider input[type="number"][data-for]')) {
+        if (!(counter instanceof HTMLInputElement)) continue;
+        const rangeId = counter.dataset.for;
+        if (!rangeId) continue;
+        const range = document.getElementById(rangeId);
+        if (!(range instanceof HTMLInputElement) || range.type !== 'range') continue;
+
+        counter.value = range.value;
+        counter.disabled = range.disabled;
+        if (counter.dataset.sbCounterBound === 'true') continue;
+        counter.dataset.sbCounterBound = 'true';
+        const applyNumber = () => {
+            if (range.disabled || !counter.value || !counter.validity.valid) {
+                counter.value = range.value;
+                return;
+            }
+            range.value = counter.value;
+            counter.value = range.value;
+            range.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+        $(range).on('input.sbCustomizeCounter', () => { counter.value = range.value; });
+        counter.addEventListener('change', applyNumber);
+        counter.addEventListener('keydown', event => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            event.stopPropagation();
+            applyNumber();
+        });
+    }
+}
+
+/** @param {HTMLElement} scope */
+function normalizeCustomizeRows(scope) {
+    for (const header of scope.querySelectorAll('[data-sb-settings-compound] > .sb-settings-flat-header')) {
+        if (header instanceof HTMLElement) ensureDescription(header, header, true);
+    }
+    for (const picker of scope.querySelectorAll('#color-picker-block toolcool-color-picker')) {
+        const title = picker.closest('.ds-row')?.querySelector('.ds-row-label');
+        if (!(picker instanceof HTMLElement) || !picker.id || !(title instanceof HTMLElement)) continue;
+        if (!title.id) title.id = `sb-setting-${picker.id}-label`;
+        // The component's shadow button keeps its own name; the group supplies the color's purpose.
+        picker.setAttribute('role', 'group');
+        picker.setAttribute('aria-labelledby', title.id);
+    }
+    const version = scope.querySelector('#version_display');
+    if (version instanceof HTMLElement && !version.closest('.ds-row')) {
+        const row = document.createElement('div');
+        row.className = 'ds-row';
+        const text = document.createElement('div');
+        text.className = 'ds-row-text';
+        const title = document.createElement('span');
+        title.className = 'ds-row-label';
+        title.textContent = 'Version';
+        text.append(title, createRowSubtitle(row));
+        const suffix = document.createElement('div');
+        suffix.className = 'ds-row-suffix';
+        version.before(row);
+        suffix.append(version);
+        row.append(text, suffix);
+    }
+    for (const label of scope.querySelectorAll('.checkbox_label, .sb-topbar-label-option, .sb-compact-mode-option, .sb-mobile-nav-choice')) {
+        if (label instanceof HTMLLabelElement && !label.closest('[data-sb-presentation="manual"]')) normalizeCustomizeSwitch(label);
+    }
+    for (const control of scope.querySelectorAll('select, input[type="range"], input[type="number"], input[type="text"], textarea')) {
+        if (!(control instanceof HTMLElement) || control.closest('.ds-row, [data-sb-presentation="manual"]')) continue;
+        let row = control.parentElement;
+        // Some upstream fields wrap the control one or two levels below its label (autocomplete).
+        for (let depth = 0; depth < 2 && row && !row.querySelector(':scope > label, :scope > small, :scope > span'); depth++) {
+            const parent = row.parentElement;
+            if (!parent || parent.matches('.ds-pref-group, .sb-settings-flat-section, [data-sb-presentation="manual"]')) break;
+            row = parent;
+        }
+        if (row instanceof HTMLElement) normalizeCustomizeField(row, control);
+    }
+    bindCustomizeSliderCounters(scope);
+    if (scope.dataset.sbRowEvents === 'true') return;
+    scope.dataset.sbRowEvents = 'true';
+    scope.addEventListener('keydown', event => {
+        const input = event.target;
+        if (event.defaultPrevented || event.key !== 'Enter' || !(input instanceof HTMLInputElement) || input.getAttribute('role') !== 'switch') return;
+        event.preventDefault();
+        if (!event.repeat && !input.disabled) input.click();
+    });
+    // Upstream changes range availability when Fast UI or No Shadows is toggled.
+    const rangeAvailabilityObserver = new MutationObserver(mutations => {
+        for (const { target } of mutations) {
+            if (!(target instanceof HTMLInputElement) || target.type !== 'range') continue;
+            const counter = target.closest('.ds-row-slider')?.querySelector('input[type="number"][data-for]');
+            if (counter instanceof HTMLInputElement) counter.disabled = target.disabled;
+        }
+    });
+    rangeAvailabilityObserver.observe(scope, { subtree: true, attributes: true, attributeFilter: ['disabled'] });
+}
+
 /** A two-line heading a SillyBunny panel already authored. */
 const SB_MODERN_HEADER_SELECTOR = '.sb-settings-flat-header, .sb-settings-category-header';
 
@@ -423,26 +615,51 @@ function getDescriptionHost(header, title) {
  *
  * @param {HTMLElement} section the element the header belongs to
  * @param {HTMLElement} heading the section's heading
+ * @param {boolean} promoteTooltip
  * @returns {string|null} the title that needs copy, or null when it already has a description
  */
-function ensureDescription(section, heading) {
+function ensureDescription(section, heading, promoteTooltip) {
     const modern = section.matches(SB_MODERN_HEADER_SELECTOR)
         ? section
         : section.querySelector(`:scope > ${SB_MODERN_HEADER_SELECTOR}`);
     const header = modern ?? buildHeadingColumn(section, heading);
-    if (!(header instanceof HTMLElement) || findDescription(header) !== null) {
+    if (!(header instanceof HTMLElement)) {
+        return null;
+    }
+
+    if (promoteTooltip && !header.querySelector(':scope > .sb-settings-category-heading')) {
+        const title = getTitleElement(header);
+        let titleBlock = title;
+        while (titleBlock.parentElement && titleBlock.parentElement !== header) titleBlock = titleBlock.parentElement;
+        if (titleBlock !== header) {
+            const column = document.createElement('div');
+            column.className = 'flex-container flexFlowColumn sb-settings-category-heading';
+            const description = findDescription(header);
+            titleBlock.before(column);
+            column.append(titleBlock);
+            if (description && !column.contains(description)) column.append(description);
+        }
+    }
+    if (findDescription(header) !== null) return null;
+
+    const existingCaption = header.nextElementSibling;
+    if (promoteTooltip && existingCaption instanceof HTMLElement && existingCaption.matches('.sb-theme-slider-caption') && existingCaption.textContent.trim()) {
+        getDescriptionHost(header, getTitleElement(header)).appendChild(existingCaption);
+        existingCaption.className = 'ds-row-subtitle';
         return null;
     }
 
     // The copy is attributed to the header the description lands in, not to the heading that was
     // looked up: a section may be found through a wrapper that has a heading of its own.
     const title = getTitleElement(header);
-    const description = document.createElement('small');
-    description.textContent = SB_PLACEHOLDER_DESCRIPTION;
-    description.dataset.sbCopyPlaceholder = 'true';
+    const description = promoteTooltip ? createRowSubtitle(heading) : document.createElement('small');
+    if (!promoteTooltip) {
+        description.textContent = SB_PLACEHOLDER_DESCRIPTION;
+        description.dataset.sbCopyPlaceholder = 'true';
+    }
     getDescriptionHost(header, title).appendChild(description);
 
-    return getTitleText(title) || null;
+    return description.dataset.sbCopyPlaceholder === 'true' ? getTitleText(title) || null : null;
 }
 
 /**
@@ -504,7 +721,7 @@ function normalizeSection(section, heading, tabName) {
     const anchor = heading.parentElement === owner ? heading : /** @type {HTMLElement} */ (heading.parentElement);
     const rows = collectRows(anchor);
 
-    const missingCopy = ensureDescription(section, heading);
+    const missingCopy = ensureDescription(section, heading, SB_CUSTOMIZE_TABS.has(tabName));
     return {
         pills: boxRows(owner, rows),
         placeholder: missingCopy === null ? null : `${tabName} › ${missingCopy}`,
@@ -566,6 +783,11 @@ export function normalizeSettingsPresentation(scope, options = {}) {
         if (placeholder !== null) {
             report.placeholders.push(placeholder);
         }
+    }
+
+    if (SB_CUSTOMIZE_TABS.has(tabName)) {
+        const rowsRoot = tabName === 'data-security' ? scope.querySelector('#sb-data-security-content') ?? scope : scope;
+        if (rowsRoot instanceof HTMLElement) normalizeCustomizeRows(rowsRoot);
     }
 
     return report;
