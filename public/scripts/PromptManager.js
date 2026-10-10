@@ -386,7 +386,7 @@ class PromptManager {
         // Prompt content as prepared by the last dry run/live generation, keyed by identifier.
         this.runtimePreparedPromptContent = new Map();
 
-        this.isCommentOnlySourceContent = createCommentOnlyContentCheck();
+        this.startCommentOnlySourcePass = createCommentOnlyContentCheck();
 
         // One-shot scroll restore captured before save-time layout changes.
         this.pendingPromptManagerScrollPosition = null;
@@ -2126,6 +2126,8 @@ class PromptManager {
     }
 
     async populateSourcePromptTokenCounts() {
+        // Started before any early return so an empty pass also releases the previous memo.
+        const isCommentOnlySourceContent = this.startCommentOnlySourcePass();
         if (!this.activeCharacter || !this.tokenHandler) {
             this.sourcePromptTokenCounts = {};
             this.sourcePromptTokenUsage = 0;
@@ -2152,7 +2154,7 @@ class PromptManager {
                 if (runtimePrepared) {
                     prepared.content = runtimePrepared.content;
                 }
-                if (!prepared.content && typeof prompt.content === 'string' && prompt.content && !this.isCommentOnlySourceContent(prompt.identifier, prompt.content)) {
+                if (!prepared.content && typeof prompt.content === 'string' && prompt.content && !isCommentOnlySourceContent(prompt.identifier, prompt.content)) {
                     prepared.content = prompt.content;
                     rawContentFallbacks.add(prompt.identifier);
                 }

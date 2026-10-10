@@ -106,22 +106,28 @@ export function isCommentOnlyPromptContent(content) {
 }
 
 /**
- * Creates an isCommentOnlyPromptContent check that remembers the last result per prompt.
+ * Creates a memo for isCommentOnlyPromptContent across render passes.
  * Large presets keep megabytes of unchanged source text that would be rescanned on every render.
- * @returns {(identifier: string, content: string) => boolean}
+ * Each call starts a pass: only entries looked up during that pass survive into the next one,
+ * so deleted prompts and prompts that no longer reach the check do not keep old text alive.
+ * @returns {() => (identifier: string, content: string) => boolean} Starts a pass and returns its check.
  */
 export function createCommentOnlyContentCheck() {
-    const results = new Map();
+    let results = new Map();
 
-    return (identifier, content) => {
-        const cached = results.get(identifier);
-        if (cached && cached.content === content) {
-            return cached.commentOnly;
-        }
+    return () => {
+        const previous = results;
+        const current = new Map();
+        results = current;
 
-        const commentOnly = isCommentOnlyPromptContent(content);
-        results.set(identifier, { content, commentOnly });
-        return commentOnly;
+        return (identifier, content) => {
+            const cached = current.get(identifier) ?? previous.get(identifier);
+            const commentOnly = cached && cached.content === content
+                ? cached.commentOnly
+                : isCommentOnlyPromptContent(content);
+            current.set(identifier, { content, commentOnly });
+            return commentOnly;
+        };
     };
 }
 
