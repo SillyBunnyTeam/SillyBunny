@@ -13,7 +13,7 @@ import { Popup } from './popup.js';
 import { t } from './i18n.js';
 import { isMobile } from './RossAscends-mods.js';
 import { accountStorage } from './util/AccountStorage.js';
-import { getPromptDisplayTokenCounts, getPromptSourceTokenCounts, isCommentOnlyPromptContent, mergePromptTokenCounts } from './prompt-token-counts.js';
+import { createCommentOnlyContentCheck, getPromptDisplayTokenCounts, getPromptSourceTokenCounts, getRuntimePreparedPromptContent, mergePromptTokenCounts } from './prompt-token-counts.js';
 import { getRenderedMarkerPrompt } from './prompt-manager-marker-preview.js';
 import { clearPromptSetVariables } from './prompt-variable-cleanup.js';
 import { RUNTIME_AGENTS_IDENTIFIER, resolveInChatAgentTokenUsage } from './in-chat-agent-inspection.js';
@@ -382,6 +382,11 @@ class PromptManager {
 
         // Prompt row token counts of last dry run/live generation.
         this.promptTokenCounts = {};
+
+        // Prompt content as prepared by the last dry run/live generation, keyed by identifier.
+        this.runtimePreparedPromptContent = new Map();
+
+        this.isCommentOnlySourceContent = createCommentOnlyContentCheck();
 
         // One-shot scroll restore captured before save-time layout changes.
         this.pendingPromptManagerScrollPosition = null;
@@ -2012,6 +2017,7 @@ class PromptManager {
         generationType = String(generationType || 'normal').toLowerCase().trim();
         const promptCollection = new PromptCollection();
         const promptOrder = this.getPromptOrderForCharacter(this.activeCharacter);
+        const runtimePreparedPromptContent = new Map();
 
         promptOrder.forEach(entry => {
             const prompt = this.getPromptById(entry.identifier);
@@ -2022,7 +2028,10 @@ class PromptManager {
             }
 
             if (allowedTrigger) {
-                promptCollection.add(this.preparePrompt(prompt));
+                const preparedPrompt = this.preparePrompt(prompt);
+                // SillyBunny: kept so the source token pass does not evaluate the same macros again.
+                runtimePreparedPromptContent.set(prompt.identifier, { source: prompt.content, content: preparedPrompt.content });
+                promptCollection.add(preparedPrompt);
             } else if (entry.identifier === 'main') {
                 // Some extensions require main prompt to be present for relative inserts.
                 // So we make a GMO-free vegan replacement.
@@ -2032,6 +2041,7 @@ class PromptManager {
             }
         });
 
+        this.runtimePreparedPromptContent = runtimePreparedPromptContent;
         return promptCollection;
     }
 
@@ -2128,14 +2138,21 @@ class PromptManager {
         // zero. Estimate those from their source content; for the latter, count the raw
         // content so the entry's size is visible at all — except pure comments, which
         // send nothing anywhere and keep showing '-'.
-        const runtimeCounts = this.hasRuntimePromptTokenCounts() ? this.promptTokenCounts : {};
+        // Reuse the runtime pass's substitution while its counts are shown: evaluating the
+        // macros again here doubles the work on large presets and re-runs setters on render.
+        const hasRuntimeCounts = this.hasRuntimePromptTokenCounts();
+        const runtimeCounts = hasRuntimeCounts ? this.promptTokenCounts : {};
         const rawContentFallbacks = new Set();
         const prompts = this.getPromptsForCharacter(this.activeCharacter, true)
             .filter(prompt => this.shouldTrigger(prompt))
             .filter(prompt => !(Number(runtimeCounts[prompt.identifier]) > 0))
             .map(prompt => {
-                const prepared = this.preparePrompt(prompt);
-                if (!prepared.content && typeof prompt.content === 'string' && prompt.content && !isCommentOnlyPromptContent(prompt.content)) {
+                const runtimePrepared = hasRuntimeCounts ? getRuntimePreparedPromptContent(this.runtimePreparedPromptContent, prompt) : null;
+                const prepared = runtimePrepared ? new Prompt(prompt) : this.preparePrompt(prompt);
+                if (runtimePrepared) {
+                    prepared.content = runtimePrepared.content;
+                }
+                if (!prepared.content && typeof prompt.content === 'string' && prompt.content && !this.isCommentOnlySourceContent(prompt.identifier, prompt.content)) {
                     prepared.content = prompt.content;
                     rawContentFallbacks.add(prompt.identifier);
                 }

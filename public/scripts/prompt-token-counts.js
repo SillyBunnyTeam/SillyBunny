@@ -105,6 +105,26 @@ export function isCommentOnlyPromptContent(content) {
     return !stripInlineComments(withoutScoped).replace(NO_OUTPUT_MACRO_PATTERN, '').trim();
 }
 
+/**
+ * Creates an isCommentOnlyPromptContent check that remembers the last result per prompt.
+ * Large presets keep megabytes of unchanged source text that would be rescanned on every render.
+ * @returns {(identifier: string, content: string) => boolean}
+ */
+export function createCommentOnlyContentCheck() {
+    const results = new Map();
+
+    return (identifier, content) => {
+        const cached = results.get(identifier);
+        if (cached && cached.content === content) {
+            return cached.commentOnly;
+        }
+
+        const commentOnly = isCommentOnlyPromptContent(content);
+        results.set(identifier, { content, commentOnly });
+        return commentOnly;
+    };
+}
+
 export function mergePromptTokenCounts(sourceCounts, runtimeCounts) {
     const counts = { ...(sourceCounts ?? {}) };
 
@@ -118,6 +138,17 @@ export function mergePromptTokenCounts(sourceCounts, runtimeCounts) {
     }
 
     return counts;
+}
+
+/**
+ * Finds a prompt's content as prepared by the latest runtime pass.
+ * @param {Map<string, {source: string, content: string}>|null|undefined} runtimePreparedContent Prepared content keyed by identifier.
+ * @param {{identifier?: string, content?: string}} prompt Prompt from the active preset.
+ * @returns {{source: string, content: string}|null} The entry, or null when the prompt was not prepared or its source changed since.
+ */
+export function getRuntimePreparedPromptContent(runtimePreparedContent, prompt) {
+    const entry = runtimePreparedContent?.get(prompt?.identifier);
+    return entry && entry.source === prompt.content ? entry : null;
 }
 
 export async function getPromptSourceTokenCounts(prompts, countPromptTokens) {
