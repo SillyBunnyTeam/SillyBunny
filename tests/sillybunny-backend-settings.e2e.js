@@ -10,11 +10,19 @@ async function loadSettings(page, baseURL, settingsStore) {
     await page.route('**/*', async route => {
         const url = new URL(route.request().url());
         if (url.origin !== origin) return route.abort();
-        if (settingsStore && url.pathname === '/api/settings/get') {
+        if (url.pathname === '/api/extensions/discover') {
+            const response = await route.fetch();
+            const extensions = await response.json();
+            return route.fulfill({ json: extensions.filter(extension => !extension.name.startsWith('third-party/')) });
+        }
+        if (url.pathname === '/api/settings/get') {
             const response = await route.fetch();
             const data = await response.json();
             data.request_compression = { ...data.request_compression, enabled: false };
-            if (settingsStore.saved) data.settings = JSON.stringify(settingsStore.saved);
+            const settings = settingsStore?.saved ?? JSON.parse(data.settings);
+            settings.firstRun = false;
+            settings.extension_settings['quick-image-gen'] = { ...settings.extension_settings['quick-image-gen'], setupWizardSeen: true };
+            data.settings = JSON.stringify(settings);
             return route.fulfill({ json: data });
         }
         if (url.pathname === '/api/settings/save') {
@@ -33,7 +41,7 @@ async function loadSettings(page, baseURL, settingsStore) {
 
 async function openPanel(page, tab, shell = 'left') {
     await page.evaluate(({ tab, shell }) => window.SillyBunnyShell.openTab(shell, tab), { tab, shell });
-    const button = page.locator(`[data-sb-settings-tab="${tab}"]`);
+    const button = page.locator(`button[data-sb-settings-tab="${tab}"]`);
     await button.evaluate(button => button.click());
     const panel = page.locator(`[data-sb-panel="${tab}"]`);
     await expect(panel).toHaveAttribute('aria-hidden', 'false');
@@ -50,6 +58,27 @@ async function selectBackend(page, api, source) {
 
 async function expectNoOverflow(panel) {
     await expect.poll(() => panel.locator('.sb-shell-panel-scroller').evaluate(scroller => scroller.scrollWidth - scroller.clientWidth)).toBeLessThanOrEqual(1);
+}
+
+async function expectSwitchGeometry(root) {
+    await expect.poll(() => root.locator('input[type="checkbox"]:visible').evaluateAll(inputs => inputs.flatMap(input => {
+        const row = input.closest('.ds-row-switch');
+        const id = input.id || input.dataset.name || input.getAttribute('aria-label');
+        if (!row) return [`${id}: missing switch row`];
+        const style = getComputedStyle(row);
+        const rowRect = row.getBoundingClientRect();
+        const switchRect = input.getBoundingClientRect();
+        const suffix = input.closest('.ds-row-suffix');
+        const metrics = {
+            padding: style.padding === '6px 16px',
+            gap: style.gap === '12px',
+            minHeight: parseFloat(style.minHeight) === (row.querySelector('.ds-row-subtitle') ? 52 : 44),
+            suffixWidth: suffix && Math.abs(suffix.getBoundingClientRect().width - 42) <= 1,
+            rightInset: Math.abs(rowRect.right - switchRect.right - parseFloat(style.borderRightWidth) - 16) <= 1,
+            centered: Math.abs(switchRect.top + switchRect.height / 2 - rowRect.top - rowRect.height / 2) <= 1,
+        };
+        return Object.entries(metrics).filter(([, pass]) => !pass).map(([metric]) => `${id}: ${metric}`);
+    }))).toEqual([]);
 }
 
 async function expectPromptingFlow(prompting, api) {
@@ -129,18 +158,54 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                 await selectBackend(page, api, source);
                 const prompting = await openPanel(page, 'prompting');
                 await expect(prompting.locator('[data-sb-prompting-mode]')).toHaveText(`Backend: ${label}`);
+                const promptingHeader = prompting.locator('#ai_response_configuration > .sb-backend-section-header');
+                await expect(promptingHeader).toBeVisible();
+                await expect(promptingHeader.locator(':scope > .sb-backend-title-row > [data-sb-prompting-mode]')).toBeVisible();
+                await expect(promptingHeader.locator(':scope > p[data-sb-copy-placeholder]')).toHaveText('lorum ipsum');
+                await expect(promptingHeader.locator('[data-sb-prompting-disclaimer]')).toBeVisible({ visible: api !== 'openai' });
+                await expect(promptingHeader.locator('[data-sb-prompting-context]')).toBeVisible({ visible: api !== 'openai' });
                 await expectPromptingFlow(prompting, api);
                 await expect(prompting.locator('#sb-openai-sampling')).toBeHidden();
                 await expectNoOverflow(prompting);
+                await expectSwitchGeometry(prompting);
                 const sampling = await openPanel(page, 'sampling');
                 await expect(sampling.locator('.sb-sampling-mode-pill:visible')).toHaveText(`Backend: ${label}`);
+                await expect(sampling.locator('.sb-backend-section-header:visible')).toHaveCount(1);
+                await expect(sampling.locator('.sb-backend-section-header:visible > .sb-backend-title-row > .sb-sampling-mode-pill')).toBeVisible();
                 await expectSamplingTaxonomy(sampling, api);
                 await expectNoOverflow(sampling);
+                await sampling.locator('details').evaluateAll(details => details.forEach(detail => { detail.open = true; }));
+                await expectSwitchGeometry(sampling);
                 expect(await sampling.locator('.sb-sampling-clamp').evaluate(column => column.getBoundingClientRect().width)).toBeLessThanOrEqual(720);
             }
+            for (const tab of ['appearance', 'interface', 'messages', 'data-security']) {
+                const panel = await openPanel(page, tab, 'right');
+                await expectSwitchGeometry(panel);
+                await expectNoOverflow(panel);
+            }
+            const logs = await openPanel(page, 'logs', 'right');
+            await expect(logs.locator('.sb-console-log-verbose-action')).toBeVisible();
+            await expectSwitchGeometry(logs);
+            await expectNoOverflow(logs);
         });
     }
 }
+
+test('Text-style Prompting opens Context from the keyboard for every backend', async ({ page, baseURL }) => {
+    await loadSettings(page, baseURL);
+    for (const api of ['textgenerationwebui', 'kobold', 'koboldhorde', 'novel']) {
+        await selectBackend(page, api, api === 'textgenerationwebui' ? 'ooba' : null);
+        for (const key of ['Enter', 'Space']) {
+            const prompting = await openPanel(page, 'prompting');
+            const context = prompting.getByRole('button', { name: 'Context', exact: true });
+            await expect(prompting.locator('[data-sb-prompting-disclaimer] > p[data-sb-copy-placeholder]')).toHaveText('lorum ipsum');
+            await context.focus();
+            await expect(context).toBeFocused();
+            await page.keyboard.press(key);
+            await expect(page.locator('[data-sb-panel="context"]')).toHaveAttribute('aria-hidden', 'false');
+        }
+    }
+});
 
 test('Sampling keeps live nodes, provider visibility, numeric handlers and transmission policy', async ({ page, baseURL }) => {
     await loadSettings(page, baseURL);
@@ -210,12 +275,18 @@ test('Agents globals and Connections switches use the shared row semantics', asy
     await expect.poll(() => prefill.evaluate(row => getComputedStyle(row).flexDirection)).toBe('column');
     await expect.poll(() => prefill.locator('textarea').evaluate(field => field.getBoundingClientRect().width)).toBeGreaterThan(280);
     await expectNoOverflow(agents);
+    await expectSwitchGeometry(agents.locator('[data-sb-agent-global-settings]'));
     const connections = await openPanel(page, 'connections');
     await expect(connections.locator('#auto-connect-checkbox')).toHaveAttribute('role', 'switch');
     await expectNoOverflow(connections);
     const extensions = await openPanel(page, 'extensions', 'right');
     await expect(extensions.locator('#extensions_notify_updates')).toHaveAttribute('role', 'switch');
     await expectNoOverflow(extensions);
+    await expectSwitchGeometry(extensions);
+    await extensions.locator('#extensions_details').click();
+    const list = page.locator('dialog[open] .extensions_info');
+    await expect(list).toBeVisible();
+    await expectSwitchGeometry(list);
 });
 
 test('Mobile Sampling follows provider and manual sampler visibility', async ({ page, baseURL }) => {

@@ -78,6 +78,7 @@ function normalizeCustomizeSwitch(label) {
     input.setAttribute('role', 'switch');
     // Native checked state also covers programmatic theme/settings updates without change events.
     input.removeAttribute('aria-checked');
+    label.classList.remove('alignItemsBaseline', 'alignitemsflexstart', 'alignItemsFlexEnd', 'gap0', 'flexNoGap');
     if (label.classList.contains('ds-row')) return;
 
     const text = document.createElement('span');
@@ -101,6 +102,19 @@ function normalizeCustomizeSwitch(label) {
     label.append(text, suffix);
     label.classList.add('ds-row', 'ds-row-switch');
     if (input.id) label.htmlFor = input.id;
+}
+
+/** @param {HTMLElement} scope */
+function normalizeSwitchRowWrappers(scope) {
+    for (const row of scope.querySelectorAll('.ds-row-switch')) {
+        const group = row.closest('.ds-pref-group, .sb-admin-card, .sb-sampling-control-card');
+        if (!group || !scope.contains(group)) continue;
+        if (group.matches('.sb-sampling-control-card')) group.classList.add('sb-settings-row-wrapper');
+        for (let wrapper = row.parentElement; wrapper && wrapper !== group; wrapper = wrapper.parentElement) {
+            if (wrapper.matches('.ds-row, .ds-row-expander, .ds-row-expander-content')) break;
+            wrapper.classList.add('sb-settings-row-wrapper');
+        }
+    }
 }
 
 /** @param {HTMLElement} row @param {HTMLElement} control */
@@ -152,6 +166,7 @@ export function normalizeBackendSettingsRows(scope, { fields = true } = {}) {
         if (input instanceof HTMLInputElement && input.style.display === 'none' && label.querySelector('.menu_button')) continue;
         normalizeCustomizeSwitch(label);
     }
+    normalizeSwitchRowWrappers(scope);
     bindSettingsSwitchKeyboard(scope);
     if (!fields) return;
     for (const control of scope.querySelectorAll('select, input[type="range"], input[type="number"], input[type="text"], textarea')) {
@@ -257,6 +272,7 @@ function normalizeCustomizeRows(scope) {
     }
     bindCustomizeSliderCounters(scope);
     bindSettingsSwitchKeyboard(scope);
+    normalizeSwitchRowWrappers(scope);
     if (scope.dataset.sbRowEvents === 'true') return;
     scope.dataset.sbRowEvents = 'true';
     // Upstream changes range availability when Fast UI or No Shadows is toggled.

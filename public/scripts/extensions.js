@@ -1402,14 +1402,12 @@ function generateExtensionHtml(name, manifest, isActive, isDisabled, isExternal,
     // if external, wrap the name in a link to the repo
 
     let extensionHtml = `
-        <div class="extension_block" data-name="${externalId}">
-            <div class="extension_toggle">
-                ${toggleElement}
-            </div>
+        <!-- SillyBunny: retain delegated controls while sharing preference-row geometry. -->
+        <div class="extension_block ds-row ds-row-switch" data-name="${externalId}">
             <div class="extension_icon">
                 ${extensionIcon}
             </div>
-            <div class="flexGrow extension_text_block">
+            <div class="extension_text_block ds-row-text">
                 ${originHtml}
                 <span class="${isActive ? 'extension_enabled' : isDisabled ? 'extension_disabled' : 'extension_missing'}">
                     <span class="extension_name">${DOMPurify.sanitize(displayName)}</span>
@@ -1417,16 +1415,10 @@ function generateExtensionHtml(name, manifest, isActive, isDisabled, isExternal,
                     ${modulesInfo}
                 </span>
                 ${isExternal ? '</a>' : ''}
+                <div class="extension_actions flex-container alignItemsCenter">${updateButton}${syncButton}${branchButton}${moveButton}${cleanButton}${reinstallButton}${deleteButton}</div>
             </div>
-
-            <div class="extension_actions flex-container alignItemsCenter">
-                ${updateButton}
-                ${syncButton}
-                ${branchButton}
-                ${moveButton}
-                ${cleanButton}
-                ${reinstallButton}
-                ${deleteButton}
+            <div class="extension_toggle ds-row-suffix">
+                ${toggleElement}
             </div>
         </div>`;
 

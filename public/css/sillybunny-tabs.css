@@ -3192,7 +3192,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
         var(--sb-thumbnail-field-track)
         var(--sb-thumbnail-separator-track)
         var(--sb-thumbnail-field-track);
-    grid-template-areas: "enabled format . quality";
+    grid-template-areas: "enabled enabled enabled enabled" ". format . quality";
     gap: 8px var(--sb-thumbnail-grid-gap);
     align-items: end;
 }
@@ -8303,11 +8303,14 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     display: block;
     min-width: 0;
     margin: 0;
-    padding: 12px;
     border: 0;
     border-bottom: 1px solid var(--sb-shell-border);
     border-radius: 0;
     background: transparent;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-control-card:not(.sb-settings-row-wrapper) {
+    padding: 12px;
 }
 
 #sb-settings-page .sb-sampling-panel .sb-sampling-control-card:has(> .ds-row),
@@ -8321,9 +8324,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 
 #sb-settings-page .sb-sampling-panel .sb-sampling-control-card > .ds-row {
     width: 100%;
-    min-height: 52px;
     margin: 0;
-    padding: 12px;
     border: 0;
     border-radius: 0;
 }
@@ -8333,10 +8334,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     align-items: center;
     flex-direction: row;
     gap: 12px;
-}
-
-#sb-settings-page .sb-sampling-panel .ds-row-switch > .ds-row-suffix {
-    flex: 0 0 auto;
 }
 
 #sb-settings-page .sb-sampling-panel .ds-row-slider .ds-row-label {
@@ -8391,13 +8388,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 
 #sb-settings-page .sb-sampling-panel [hidden] {
     display: none !important;
-}
-
-.sb-prompting-mode-row {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
 }
 
 #sb-settings-page .sb-prompting-panel #ai_response_configuration,
@@ -8463,11 +8453,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 #sb-settings-page .sb-prompting-panel #pro-settings-block > [id^='streaming_'] {
     width: 100%;
     margin: 0;
-}
-
-#sb-settings-page .sb-prompting-panel .sb-setting-inline-copy-center .ds-row-switch > .ds-row-suffix {
-    flex: 0 0 auto;
-    width: auto;
 }
 
 #sb-settings-page .sb-prompting-panel :is(.sb-preset-toolbar-row, .sb-non-chat-preset-row) {
@@ -8831,7 +8816,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 /* Rows lifted out of a flattened drawer lose the spacing the enclosing expander used to draw, so
    they get the grouped row metric back: 44px tall, 16px inset, separator between rows. */
 .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label:not(.ds-row),
-.sb-settings-mounted-shell .sb-settings-flat-section > .flex-container:not(.ds-row) {
+.sb-settings-mounted-shell .sb-settings-flat-section > .flex-container:not(.ds-row, .sb-settings-row-wrapper) {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -8999,8 +8984,8 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 }
 
 /* Flex-container select rows get action-row spacing */
-.sb-settings-mounted-shell .ds-pref-group .flex-container.alignitemscenter,
-.sb-settings-mounted-shell .ds-pref-group .flex-container.alignItemsBaseline {
+.sb-settings-mounted-shell .ds-pref-group .flex-container.alignitemscenter:not(.ds-row, .sb-settings-row-wrapper),
+.sb-settings-mounted-shell .ds-pref-group .flex-container.alignItemsBaseline:not(.ds-row, .sb-settings-row-wrapper) {
     padding: 10px 16px;
     min-height: 48px;
     gap: 12px;
@@ -9146,7 +9131,11 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     margin: 0;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > :not(.checkbox_label, .flex-container.alignitemscenter, .flex-container.alignItemsBaseline, .sb-settings-flat-section, .ds-row, .ds-row-expander) {
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group {
+    gap: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > :not(.checkbox_label, .flex-container.alignitemscenter, .flex-container.alignItemsBaseline, .sb-settings-flat-section, .ds-row, .ds-row-expander, .sb-sampling-control-card, .sb-settings-row-wrapper) {
     padding: 10px 16px;
 }
 
@@ -9200,9 +9189,44 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     opacity: 1;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .ds-row-switch {
+#sb-settings-page .ds-row-switch {
+    display: flex;
+    flex: 0 0 auto;
     flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    width: 100%;
+    min-height: 44px;
+    margin: 0;
+    padding: 6px 16px;
     gap: 12px;
+}
+
+#sb-settings-page .ds-row-switch:has(.ds-row-subtitle) {
+    min-height: 52px;
+}
+
+.ds-row-switch > .ds-row-suffix,
+#sb-settings-page .ds-row-switch > .ds-row-suffix {
+    display: flex;
+    flex: 0 0 42px;
+    align-items: center;
+    justify-content: flex-end;
+    width: 42px;
+    margin-inline-start: auto;
+}
+
+/* Only structural wrappers are marked; panel and card gutters remain outside row geometry. */
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-row-wrapper {
+    width: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-row-wrapper > .ds-row-switch:last-child {
+    border-bottom: 0;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .ds-row-suffix > :is(input, select, textarea) {

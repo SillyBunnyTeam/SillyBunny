@@ -8998,6 +8998,7 @@ const SB_SAMPLING_BACKENDS = Object.freeze([
         id: 'openai',
         apiIds: ['openai'],
         title: 'Chat Completions',
+        usesContextSettings: false,
         description: 'Uses the active Chat Completions provider and its provider-specific sampler support.',
         controls: [
             '#seed_openai',
@@ -9018,6 +9019,7 @@ const SB_SAMPLING_BACKENDS = Object.freeze([
         id: 'textgenerationwebui',
         apiIds: ['textgenerationwebui'],
         title: 'Text Completions',
+        usesContextSettings: true,
         description: 'Uses the selected Text Completions backend and sampler visibility rules.',
         controls: [
             '#seed_textgenerationwebui',
@@ -9075,6 +9077,7 @@ const SB_SAMPLING_BACKENDS = Object.freeze([
         id: 'kobold',
         apiIds: ['kobold', 'koboldhorde'],
         title: 'Kobold/Horde',
+        usesContextSettings: true,
         description: 'Kobold Horde reuses Kobold sampler settings; Horde still requires a non-GUI preset.',
         controls: ['#temp', '#top_p', '#rep_pen'],
     },
@@ -9082,6 +9085,7 @@ const SB_SAMPLING_BACKENDS = Object.freeze([
         id: 'novel',
         apiIds: ['novel'],
         title: 'NovelAI',
+        usesContextSettings: true,
         description: 'Uses NovelAI preset sampling fields without changing the backend request format.',
         controls: [
             '#temp_novel',
@@ -9459,6 +9463,8 @@ function buildSamplingControlCard(selector) {
         text.append(label, subtitle);
         summary.append(text);
         const content = createElement('div', { className: 'ds-row-expander-content sb-sampling-multi-card' });
+        // SillyBunny: move header toggles into the expander body as full-width live preference rows.
+        for (const label of controlBlock.querySelectorAll(':scope > h4 .checkbox_label')) controlBlock.prepend(label);
         content.append(controlBlock);
         card.append(summary, content);
     } else {
@@ -9604,6 +9610,16 @@ function updateSamplingPanelVisibility(root) {
     }
 }
 
+function createBackendSectionHeader({ title = '', description, modeAttrs = {}, descriptionAttrs = {}, disclaimer = null }) {
+    const header = createElement('div', { className: 'sb-backend-section-header' });
+    const titleRow = createElement('div', { className: 'sb-backend-title-row' });
+    const mode = createElement('span', { className: 'sb-sampling-mode-pill', text: title, attrs: modeAttrs });
+    titleRow.append(mode);
+    header.append(titleRow, createElement('p', { text: description, attrs: descriptionAttrs }));
+    if (disclaimer) header.append(disclaimer);
+    return header;
+}
+
 function buildSamplingPanel() {
     const { panel, scroller } = createShellPanel({ id: 'sampling' });
     const column = createElement('div', {
@@ -9621,13 +9637,10 @@ function buildSamplingPanel() {
                 'data-sb-sampling-apis': backend.apiIds.join(','),
             },
         });
-        const header = createElement('div', { className: 'sb-sampling-section-header' });
-        const titleRow = createElement('div', { className: 'sb-sampling-title-row' });
-        const mode = createElement('span', { className: 'sb-sampling-mode-pill', text: `Backend: ${backend.title}` });
-        const description = createElement('p', { text: `Active backend samplers are shown here. ${backend.description}` });
-
-        titleRow.append(mode);
-        header.append(titleRow, description);
+        const header = createBackendSectionHeader({
+            title: `Backend: ${backend.title}`,
+            description: `Active backend samplers are shown here. ${backend.description}`,
+        });
         section.append(header);
         for (const group of SB_SAMPLING_GROUPS) {
             const category = createElement('section', {
@@ -9721,15 +9734,21 @@ function preparePromptingPanel(root) {
     const configuration = root.querySelector('#ai_response_configuration');
     if (!(configuration instanceof HTMLElement)) return;
 
-    const header = createElement('div', { className: 'sb-prompting-mode-row' });
-    const mode = createElement('span', { className: 'sb-sampling-mode-pill', attrs: { 'data-sb-prompting-mode': '' } });
+    const disclaimer = createElement('div', { className: 'sb-backend-disclaimer', attrs: { 'data-sb-prompting-disclaimer': '' } });
+    const disclaimerCopy = createElement('p', { text: 'lorum ipsum', attrs: { 'data-sb-copy-placeholder': 'true' } });
     const context = createElement('button', {
         className: 'menu_button',
         text: 'Context',
         attrs: { type: 'button', 'data-sb-prompting-context': '' },
     });
     context.addEventListener('click', () => openShell('left', 'context'));
-    header.append(mode, context);
+    disclaimer.append(disclaimerCopy, context);
+    const header = createBackendSectionHeader({
+        description: 'lorum ipsum',
+        modeAttrs: { 'data-sb-prompting-mode': '' },
+        descriptionAttrs: { 'data-sb-copy-placeholder': 'true' },
+        disclaimer,
+    });
     configuration.prepend(header);
 
     for (const [id, title] of [['respective-presets-block', 'Presets'], ['common-gen-settings-block', 'Generation Settings']]) {
@@ -9765,8 +9784,8 @@ function updatePromptingPanel(panel) {
     const mode = root.querySelector('[data-sb-prompting-mode]');
     const modeLabel = `Backend: ${backend?.title ?? activeApi}`;
     if (mode && mode.textContent !== modeLabel) mode.textContent = modeLabel;
-    const context = root.querySelector('[data-sb-prompting-context]');
-    if (context instanceof HTMLElement) context.hidden = activeApi !== 'textgenerationwebui';
+    const disclaimer = root.querySelector('[data-sb-prompting-disclaimer]');
+    if (disclaimer instanceof HTMLElement) disclaimer.hidden = !backend?.usesContextSettings;
 
     flattenNestedSettingsDrawers(root, { includeTopLevel: true });
     const range = root.querySelector('#range_block_openai');
@@ -9804,6 +9823,7 @@ function updatePromptingPanel(panel) {
         if (quickContext && contextRow) contextRow.after(quickContext);
         normalizeBackendSettingsRows(common);
     }
+    normalizeBackendSettingsRows(root, { fields: false });
     hideEmptyGroupedSettingsDrawers();
     for (const group of root.querySelectorAll('.sb-openai-settings-drawer, .sb-textgen-drawers > .sb-settings-flat-section')) {
         if (!(group instanceof HTMLElement)) continue;

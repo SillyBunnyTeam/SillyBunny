@@ -1,3 +1,5 @@
+import { normalizeBackendSettingsRows } from './sillybunny-settings-presentation.js';
+
 const SB_CONSOLE_LOG_LIMIT = 260;
 const SB_CONSOLE_LOG_REFRESH_MS = 2500;
 const SB_CONSOLE_LOG_STICKY_THRESHOLD = 28;
@@ -1505,6 +1507,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         configCard.append(configHeader, configMeta, configEditor, configActions, configNote);
 
         column.append(callout, statusCard, updateCard, thumbnailCard, configCard);
+        normalizeBackendSettingsRows(column, { fields: false });
         scroller.appendChild(column);
 
         const state = getServerAdminState();

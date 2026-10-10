@@ -3056,7 +3056,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     display: none !important;
 }
 
-.sb-sampling-section-header {
+.sb-backend-section-header {
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -3066,10 +3066,34 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     background: color-mix(in srgb, var(--sb-shell-surface) 78%, transparent);
 }
 
-.sb-sampling-section-header p,
+.sb-backend-section-header p,
 .sb-sampling-note {
     margin: 0;
     color: var(--sb-contrast-muted, var(--SmartThemeEmColor));
+}
+
+.sb-backend-title-row,
+.sb-backend-disclaimer {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    min-width: 0;
+}
+
+.sb-backend-disclaimer {
+    margin-top: 8px;
+    padding-top: 12px;
+    border-top: 1px solid var(--sb-shell-border);
+}
+
+.sb-backend-disclaimer > p {
+    flex: 1 1 180px;
+}
+
+.sb-backend-disclaimer > button {
+    flex: 0 0 auto;
+    margin: 0;
 }
 
 .sb-sampling-mode-pill {
@@ -4095,7 +4119,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     text-align: left;
 }
 
-.sb-setting-inline-copy-center label {
+.sb-setting-inline-copy-center label:not(.ds-row) {
     display: flex;
     justify-content: flex-start;
     margin-bottom: 6px;
@@ -4114,7 +4138,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     white-space: normal;
 }
 
-#openai_api-presets .sb-setting-inline-copy-center label.checkbox_label {
+#openai_api-presets .sb-setting-inline-copy-center label.checkbox_label:not(.ds-row) {
     align-items: center;
     justify-content: flex-start;
     gap: 10px;
@@ -4130,7 +4154,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     margin: 0;
 }
 
-#openai_api-presets .sb-setting-inline-copy-center label.checkbox_label > span,
+#openai_api-presets .sb-setting-inline-copy-center label.checkbox_label > span:not(.ds-row-text, .ds-row-suffix),
 #openai_api-presets .sb-setting-inline-copy-center .toggle-description,
 #openai_api-presets .sb-setting-inline-copy-center strong.toggle-description {
     width: 100%;
@@ -4141,7 +4165,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     white-space: normal;
 }
 
-#openai_api-presets .sb-setting-inline-copy-center label.checkbox_label > span {
+#openai_api-presets .sb-setting-inline-copy-center label.checkbox_label > span:not(.ds-row-text, .ds-row-suffix) {
     flex: 1 1 auto;
     width: auto;
     line-height: 1.35;
@@ -4413,9 +4437,9 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     justify-content: flex-start;
 }
 
-#openai_api .checkbox_label,
-#openai_settings .checkbox_label,
-#range_block_openai .checkbox_label {
+#openai_api .checkbox_label:not(.ds-row),
+#openai_settings .checkbox_label:not(.ds-row),
+#range_block_openai .checkbox_label:not(.ds-row) {
     width: 100%;
     flex-wrap: nowrap;
     align-items: center;
@@ -4434,11 +4458,11 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     margin: 0;
 }
 
-#openai_api .checkbox_label > span,
+#openai_api .checkbox_label > span:not(.ds-row-text, .ds-row-suffix),
 #openai_api .checkbox_label > small,
-#openai_settings .checkbox_label > span,
+#openai_settings .checkbox_label > span:not(.ds-row-text, .ds-row-suffix),
 #openai_settings .checkbox_label > small,
-#range_block_openai .checkbox_label > span,
+#range_block_openai .checkbox_label > span:not(.ds-row-text, .ds-row-suffix),
 #range_block_openai .checkbox_label > small {
     flex: 1 1 auto;
     min-width: 0;
@@ -5968,6 +5992,9 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 
 #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label {
     grid-area: notify;
+}
+
+#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label:not(.ds-row) {
     display: inline-flex;
     align-items: center;
     justify-content: flex-start;
@@ -5989,18 +6016,18 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     flex: 0 0 auto;
 }
 
-#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label span {
+#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label:not(.ds-row) span {
     min-width: 0;
     font-size: var(--sb-type-control);
     line-height: 1.35;
     white-space: normal;
 }
 
-#rm_extensions_block label.checkbox_label.flexNoGap {
+#rm_extensions_block label.checkbox_label.flexNoGap:not(.ds-row) {
     gap: 8px;
 }
 
-#rm_extensions_block label[for='extensions_notify_updates'] {
+#rm_extensions_block label[for='extensions_notify_updates']:not(.ds-row) {
     gap: 8px !important;
 }
 
@@ -6394,7 +6421,7 @@ body.reduced-motion *::after {
     }
 
     #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > h3,
-    #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label {
+    #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label:not(.ds-row) {
         flex: 0 0 auto;
         min-height: 0;
     }
