@@ -100,14 +100,15 @@ jobs:
           npm run test:e2e --prefix tests -- --workers=1 --reporter=line,html
 
       - name: Print server log on failure
-        if: failure()
+        # A job-level timeout cancels the job, where `failure()` is false; without this the log is lost.
+        if: failure() || cancelled()
         run: |
           if [ -f "$RUNNER_TEMP/sillybunny-server.log" ]; then
             cat "$RUNNER_TEMP/sillybunny-server.log"
           fi
 
       - name: Upload failure diagnostics
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-e2e-diagnostics-${{ github.run_attempt }}

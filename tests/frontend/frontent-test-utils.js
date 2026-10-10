@@ -39,9 +39,20 @@ export const testSetup = {
         await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
         // SB releases the preloader before its async startup listeners finish.
         const appEvents = await page.evaluateHandle(() => import('/scripts/events.js'));
-        await page.waitForFunction(({ eventSource, event_types }) => {
-            return eventSource.autoFireLastArgs.has(event_types.APP_READY);
+        // A fresh data root blocks startup on the first-run onboarding prompt until it is answered.
+        const onboarding = page.locator('dialog[open]:has(.onboarding)');
+        const startupState = await page.waitForFunction(({ eventSource, event_types }) => {
+            if (eventSource.autoFireLastArgs.has(event_types.APP_READY)) return 'ready';
+            return document.querySelector('dialog[open] .onboarding') ? 'onboarding' : false;
         }, appEvents);
+        if (await startupState.jsonValue() === 'onboarding') {
+            await onboarding.locator('.popup-input').fill('Test User');
+            await onboarding.locator('.popup-button-ok').click();
+            await page.waitForFunction(({ eventSource, event_types }) => {
+                return eventSource.autoFireLastArgs.has(event_types.APP_READY);
+            }, appEvents);
+        }
+        await startupState.dispose();
         await appEvents.dispose();
     },
 
