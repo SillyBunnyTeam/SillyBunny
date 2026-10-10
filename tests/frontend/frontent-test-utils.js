@@ -37,12 +37,38 @@ export const testSetup = {
             }
         }
         await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
-        // SB releases the preloader before its async startup listeners finish.
+        await testSetup.waitForAppReady({ page });
+    },
+
+    /**
+     * Waits for APP_READY on any profile, including a fresh one. A fresh data root holds
+     * startup on the first-run onboarding prompt until it is answered, and opens the
+     * Quick Image Gen setup wizard underneath it; both would block later clicks.
+     * SB also releases the preloader before its async startup work finishes.
+     * @param {Object} params
+     * @param {import('@playwright/test').Page} params.page
+     */
+    waitForAppReady: async ({ page }) => {
         const appEvents = await page.evaluateHandle(() => import('/scripts/events.js'));
-        await page.waitForFunction(({ eventSource, event_types }) => {
-            return eventSource.autoFireLastArgs.has(event_types.APP_READY);
+        const onboarding = page.locator('dialog[open]:has(.onboarding)');
+        const startupState = await page.waitForFunction(({ eventSource, event_types }) => {
+            if (eventSource.autoFireLastArgs.has(event_types.APP_READY)) return 'ready';
+            return document.querySelector('dialog[open] .onboarding') ? 'onboarding' : false;
         }, appEvents);
+        if (await startupState.jsonValue() === 'onboarding') {
+            await onboarding.locator('.popup-input').fill('Test User');
+            await onboarding.locator('.popup-button-ok').click();
+            await page.waitForFunction(({ eventSource, event_types }) => {
+                return eventSource.autoFireLastArgs.has(event_types.APP_READY);
+            }, appEvents);
+        }
+        await startupState.dispose();
         await appEvents.dispose();
+        // Registered only now: the wizard can sit under the modal onboarding dialog, where its
+        // Skip button is unclickable and the handler would block answering the prompt.
+        await page.addLocatorHandler(page.locator('#qig-setup-wizard'), async wizard => {
+            await wizard.getByRole('button', { name: 'Skip', exact: true }).click();
+        });
     },
 
     /**
