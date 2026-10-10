@@ -212,6 +212,99 @@ function installSettingsSubpage(shellKey, tabId) {
 /** Phase 6F: marks the merged Chat Completion presets row and the chrome card it replaces. */
 const SB_PRESET_TOOLBAR_ROW_CLASS = 'sb-preset-toolbar-row';
 const SB_PRESET_TOOLBAR_CARD_CLASS = 'sb-preset-toolbar-card';
+const SB_PRESET_ACTION_GROUP_CLASS = 'sb-action-btn-group';
+
+const SB_PRESET_ACTION_LABELS = Object.freeze({
+    import: 'Import',
+    export: 'Export',
+    update: 'Update current preset',
+    rename: 'Rename',
+    new: 'Save preset as',
+    restore: 'Restore',
+    restoreDefaults: 'Restore default presets',
+    delete: 'Delete',
+    deleteAll: 'Delete presets in bulk',
+});
+
+function getPresetActionKind(button) {
+    if (!(button instanceof HTMLElement)) return null;
+    for (const kind of ['import', 'export', 'update', 'rename', 'new', 'restore', 'delete']) {
+        if (button.matches(`[data-preset-manager-${kind}]`)) return kind;
+    }
+    if (button.matches('[data-preset-manager-delete-all]')) {
+        return 'deleteAll';
+    }
+    if (button.matches('[data-preset-manager-restore-defaults]')) return 'restoreDefaults';
+    if (button.id === 'import_oai_preset') return 'import';
+    if (button.id === 'export_oai_preset') return 'export';
+    if (button.id === 'update_oai_preset') return 'update';
+    if (button.id === 'new_oai_preset') return 'new';
+    if (button.id === 'delete_oai_preset') return 'delete';
+    return null;
+}
+
+function groupPresetActions(actionContainer) {
+    const actions = [...actionContainer.querySelectorAll('.menu_button, .menu_button_icon')].filter(child => getPresetActionKind(child));
+    if (actions.length === 0) return;
+
+    const groups = new Map([
+        ['file', ['import', 'export']],
+        ['save', ['update', 'rename', 'new']],
+        ['restore', ['restore', 'restoreDefaults']],
+        ['destructive', ['delete', 'deleteAll']],
+    ]);
+    for (const [groupName, kinds] of groups) {
+        const wrapper = actionContainer.querySelector(`:scope > .${SB_PRESET_ACTION_GROUP_CLASS}--${groupName}`)
+            ?? createElement('span', { className: `${SB_PRESET_ACTION_GROUP_CLASS} ${SB_PRESET_ACTION_GROUP_CLASS}--${groupName}` });
+        for (const kind of kinds) {
+            const action = actions.find(button => getPresetActionKind(button) === kind);
+            if (action && action.parentElement !== wrapper) wrapper.append(action);
+        }
+        if (wrapper.childElementCount > 0 && wrapper.parentElement !== actionContainer) actionContainer.append(wrapper);
+    }
+}
+
+function enhancePresetActionButtons(root) {
+    if (!(root instanceof HTMLElement)) return;
+
+    const actionContainers = [
+        ...root.querySelectorAll('.sb-non-chat-preset-actions'),
+        ...root.querySelectorAll('#openai_api-presets .sb-preset-toolbar-row > .flex-container.marginLeft5'),
+    ];
+    for (const actionContainer of actionContainers) {
+        if (!(actionContainer instanceof HTMLElement)) continue;
+        for (const button of actionContainer.querySelectorAll('.menu_button, .menu_button_icon')) {
+            const kind = getPresetActionKind(button);
+            if (!kind) continue;
+            const label = SB_PRESET_ACTION_LABELS[kind];
+            button.classList.add('sb-action-btn');
+            button.classList.toggle('sb-action-btn--danger', kind === 'delete' || kind === 'deleteAll');
+            if (!button.querySelector(':scope > .sb-action-btn-label')) {
+                const labelId = `sb-preset-action-${actionContainer.closest('[id]')?.id}-${kind}-label`;
+                const attrs = ['restoreDefaults', 'deleteAll'].includes(kind) ? {} : { 'data-i18n': label };
+                const labelNode = createElement('span', { id: labelId, className: 'sb-action-btn-label', text: label, attrs });
+                button.append(labelNode);
+                button.setAttribute('aria-labelledby', labelId);
+            }
+            for (const icon of button.querySelectorAll(':scope > i')) icon.setAttribute('aria-hidden', 'true');
+        }
+        groupPresetActions(actionContainer);
+    }
+}
+
+function groupPromptingRowHelpers(root) {
+    for (const row of root.querySelectorAll('.sb-prompting-group-body .ds-row')) {
+        if (row.parentElement.matches('.sb-prompting-row-with-help') || row.closest('#completion_prompt_manager')) continue;
+        const helpers = [];
+        for (let helper = row.nextElementSibling; helper?.matches('.toggle-description, .notes, p, small'); helper = helper.nextElementSibling) {
+            helpers.push(helper);
+        }
+        if (helpers.length === 0) continue;
+        const wrapper = createElement('div', { className: 'sb-prompting-row-with-help' });
+        row.before(wrapper);
+        wrapper.append(row, ...helpers);
+    }
+}
 
 /**
  * Flattens drawers in every Backend and Customize panel, covering drawers authored after the split.
@@ -9623,7 +9716,7 @@ function createBackendSectionHeader({ title = '', description, modeAttrs = {}, d
 function buildSamplingPanel() {
     const { panel, scroller } = createShellPanel({ id: 'sampling' });
     const column = createElement('div', {
-        className: 'sb-shell-column sb-sampling-panel sb-sampling-clamp',
+        className: 'sb-shell-column sb-sampling-panel',
         attrs: { 'data-sb-presentation': 'manual' },
     });
 
@@ -9750,6 +9843,14 @@ function preparePromptingPanel(root) {
         disclaimer,
     });
     configuration.prepend(header);
+    const presetsContainer = configuration.querySelector('#respective-presets-block');
+    if (presetsContainer instanceof HTMLElement) {
+        // PresetManager injects restore-default actions after the shell's first toolbar pass.
+        const actionsObserver = new MutationObserver(mutations => {
+            if (mutations.some(mutation => [...mutation.addedNodes].some(node => getPresetActionKind(node)))) enhancePresetActionButtons(root);
+        });
+        actionsObserver.observe(presetsContainer, { childList: true, subtree: true });
+    }
 
     for (const [id, title] of [['respective-presets-block', 'Presets'], ['common-gen-settings-block', 'Generation Settings']]) {
         const block = configuration.querySelector(`#${id}`);
@@ -9796,7 +9897,7 @@ function updatePromptingPanel(panel) {
         (managerGroup.querySelector(':scope > .sb-prompting-group-body') ?? managerGroup).append(managerBlock);
         managerGroup.style.display = '';
     }
-    for (const id of ['sb-openai-budget', 'sb-openai-output', 'sb-openai-advanced', 'sb-openai-prompt-manager']) {
+    for (const id of ['sb-openai-budget', 'sb-openai-output', 'sb-openai-advanced', 'sb-openai-prompt-manager', 'sb-openai-prompts']) {
         const group = root.querySelector(`#${id}`);
         if (!(group instanceof HTMLElement)) continue;
         if (range instanceof HTMLElement && group.parentElement !== range) range.append(group);
@@ -9814,6 +9915,16 @@ function updatePromptingPanel(panel) {
         }
         normalizeBackendSettingsRows(group);
     }
+    // SillyBunny: the Prompt Manager may mount late, so restore the complete Chat Completions order on every update.
+    if (range instanceof HTMLElement) {
+        let nextGroup = null;
+        for (const id of ['sb-openai-prompts', 'sb-openai-advanced', 'sb-openai-output', 'sb-openai-budget', 'sb-openai-prompt-manager']) {
+            const group = root.querySelector(`#${id}`);
+            if (!(group instanceof HTMLElement)) continue;
+            if (group.nextElementSibling !== nextGroup) range.insertBefore(group, nextGroup);
+            nextGroup = group;
+        }
+    }
     const presets = root.querySelector('#respective-presets-block');
     if (presets instanceof HTMLElement) normalizeBackendSettingsRows(presets);
     const common = root.querySelector('#common-gen-settings-block');
@@ -9825,6 +9936,9 @@ function updatePromptingPanel(panel) {
     }
     normalizeBackendSettingsRows(root, { fields: false });
     hideEmptyGroupedSettingsDrawers();
+    mergeOpenAIPresetToolbarRow(root);
+    enhancePresetActionButtons(root);
+    groupPromptingRowHelpers(root);
     for (const group of root.querySelectorAll('.sb-openai-settings-drawer, .sb-textgen-drawers > .sb-settings-flat-section')) {
         if (!(group instanceof HTMLElement)) continue;
         const hasControls = Boolean(group.querySelector('input:not([type="hidden"]), select, textarea, button, .menu_button'));

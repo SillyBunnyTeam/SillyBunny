@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
+import { auditPromptingLayout } from './helpers/prompting-layout.js';
 
 test.use({ serviceWorkers: 'block', reducedMotion: 'reduce' });
 
@@ -7,6 +8,10 @@ async function loadSettings(page, baseURL, settingsStore) {
     const origin = new URL(baseURL).origin;
     expect(['127.0.0.1', 'localhost', '[::1]']).toContain(new URL(baseURL).hostname);
     let version = 1_000_000_000_000_000;
+    const readOnlyEndpoints = new Set([
+        '/api/characters/all', '/api/characters/chats', '/api/groups/all', '/api/backgrounds/all',
+        '/api/avatars/get', '/api/stats/get', '/api/secrets/read', '/api/users/me',
+    ]);
     await page.route('**/*', async route => {
         const url = new URL(route.request().url());
         if (url.origin !== origin) return route.abort();
@@ -28,6 +33,13 @@ async function loadSettings(page, baseURL, settingsStore) {
         if (url.pathname === '/api/settings/save') {
             if (settingsStore) settingsStore.saved = { ...route.request().postDataJSON(), _version: version + 1 };
             return route.fulfill({ json: { version: ++version } });
+        }
+        if (url.pathname === '/api/presets/save') {
+            return route.fulfill({ json: { name: route.request().postDataJSON()?.name ?? '' } });
+        }
+        if (readOnlyEndpoints.has(url.pathname) || url.pathname.startsWith('/api/tokenizers/')) return route.continue();
+        if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(route.request().method()) && url.pathname.startsWith('/api/')) {
+            return route.fulfill({ json: {} });
         }
         if (url.pathname.startsWith('/api/backends/')) return route.fulfill({ json: { data: [] } });
         if (/^\/api\/.*\/(save|delete|create|edit|rename|update|import|upload|restore|duplicate|write|set)$/.test(url.pathname)) {
@@ -60,8 +72,8 @@ async function expectNoOverflow(panel) {
     await expect.poll(() => panel.locator('.sb-shell-panel-scroller').evaluate(scroller => scroller.scrollWidth - scroller.clientWidth)).toBeLessThanOrEqual(1);
 }
 
-async function expectSwitchGeometry(root) {
-    await expect.poll(() => root.locator('input[type="checkbox"]:visible').evaluateAll(inputs => inputs.flatMap(input => {
+async function expectSwitchGeometry(root, compactSampling = false) {
+    await expect.poll(() => root.locator('input[type="checkbox"]:visible').evaluateAll((inputs, compactSampling) => inputs.flatMap(input => {
         const row = input.closest('.ds-row-switch');
         const id = input.id || input.dataset.name || input.getAttribute('aria-label');
         if (!row) return [`${id}: missing switch row`];
@@ -70,27 +82,92 @@ async function expectSwitchGeometry(root) {
         const switchRect = input.getBoundingClientRect();
         const suffix = input.closest('.ds-row-suffix');
         const metrics = {
-            padding: style.padding === '6px 16px',
+            padding: style.padding === (compactSampling ? '4px 16px' : '6px 16px'),
             gap: style.gap === '12px',
-            minHeight: parseFloat(style.minHeight) === (row.querySelector('.ds-row-subtitle') ? 52 : 44),
+            minHeight: parseFloat(style.minHeight) === (row.querySelector('.ds-row-subtitle') ? (compactSampling ? 44 : 52) : (compactSampling ? 36 : 44)),
             suffixWidth: suffix && Math.abs(suffix.getBoundingClientRect().width - 42) <= 1,
             rightInset: Math.abs(rowRect.right - switchRect.right - parseFloat(style.borderRightWidth) - 16) <= 1,
             centered: Math.abs(switchRect.top + switchRect.height / 2 - rowRect.top - rowRect.height / 2) <= 1,
         };
         return Object.entries(metrics).filter(([, pass]) => !pass).map(([metric]) => `${id}: ${metric}`);
-    }))).toEqual([]);
+    }), compactSampling)).toEqual([]);
 }
 
 async function expectPromptingFlow(prompting, api) {
     if (api !== 'openai') {
-        await expect(prompting.locator('.sb-prompting-group:visible')).toHaveCount(2);
+        await expect(prompting.locator('.sb-prompting-group:visible > h3')).toHaveText(['Presets', 'Generation Settings']);
         return;
     }
     await expect(prompting.locator('.sb-prompting-group:visible').locator(':scope > h3, :scope > .sb-settings-flat-header b')).toHaveText([
-        'Presets', 'Generation Settings', 'Output', 'Advanced & Reasoning', 'Prompt Manager',
+        'Presets', 'Prompt Manager', 'Generation Settings', 'Output', 'Advanced & Reasoning', 'Quick Prompts Edit / Utility Prompts',
     ]);
     await expect(prompting.locator('#completion_prompt_manager')).toBeVisible();
     await expect(prompting.locator('.openai-tab-buttons, .sb-subpage')).toHaveCount(0);
+}
+
+async function expectPresetActionLabels(prompting, width) {
+    const actions = prompting.locator(':is(.sb-preset-toolbar-row, .sb-non-chat-preset-row):visible .menu_button:visible');
+    for (const action of await actions.all()) {
+        const label = action.locator(':scope > .sb-action-btn-label');
+        await expect(label).toHaveCount(1);
+        const text = (await label.textContent()).trim();
+        expect(text).not.toBe('');
+        await expect(action).toHaveAccessibleName(text);
+        await expect.poll(() => label.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
+    }
+    for (const toolbar of await prompting.locator(':is(.sb-preset-toolbar-row, .sb-non-chat-preset-row):visible').all()) {
+        const destructive = toolbar.locator('.sb-action-btn--danger');
+        if (await destructive.count() === 2) {
+            const deleteLabel = await destructive.nth(0).locator('.sb-action-btn-label').textContent();
+            await expect(destructive.nth(1).locator('.sb-action-btn-label')).not.toHaveText(deleteLabel);
+        }
+        if (width !== 390) {
+            expect(await toolbar.locator('.sb-action-btn-group').evaluateAll(groups => groups.flatMap(group => {
+                const buttons = [...group.querySelectorAll('.sb-action-btn')].filter(button => button.getBoundingClientRect().width > 0);
+                if (buttons.length < 2) return [];
+                const first = buttons[0].getBoundingClientRect().top;
+                return buttons.some(button => Math.abs(button.getBoundingClientRect().top - first) > 1) ? [group.className] : [];
+            }))).toEqual([]);
+        }
+        if (width !== 390) continue;
+        expect(await toolbar.evaluate(element => {
+            const style = getComputedStyle(element);
+            const contentWidth = element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+            const buttons = [...element.querySelectorAll('.sb-action-btn')].filter(button => button.getClientRects().length > 0);
+            const lines = [];
+            for (const button of buttons) {
+                const rect = button.getBoundingClientRect();
+                let offsetTop = button.offsetTop;
+                for (let parent = button.offsetParent; parent && element.contains(parent) && parent !== element; parent = parent.offsetParent) {
+                    offsetTop += parent.offsetTop;
+                }
+                const line = lines.find(candidate => Math.abs(candidate.offsetTop - offsetTop) <= 1);
+                if (line) line.buttons.push(rect.width);
+                else lines.push({ offsetTop, buttons: [rect.width] });
+            }
+            return lines.flatMap(line => line.buttons.length === 1 && line.buttons[0] < contentWidth * 0.9 ? [line] : []);
+        })).toEqual([]);
+    }
+}
+
+async function expectPromptingInsets(prompting) {
+    expect((await prompting.evaluate(auditPromptingLayout)).filter(record => !record.pass)).toEqual([]);
+}
+
+async function readBackendHeaderMetrics(header) {
+    return header.evaluate(element => {
+        const style = getComputedStyle(element);
+        const titleRow = element.querySelector(':scope > .sb-backend-title-row');
+        const description = element.querySelector(':scope > p');
+        const descriptionStyle = description ? getComputedStyle(description) : null;
+        return {
+            padding: style.padding,
+            rowGap: style.rowGap,
+            titleRowHeight: titleRow?.getBoundingClientRect().height ?? 0,
+            descriptionFont: descriptionStyle ? `${descriptionStyle.fontSize}/${descriptionStyle.lineHeight}` : '',
+            descriptionWraps: descriptionStyle?.whiteSpace !== 'nowrap',
+        };
+    });
 }
 
 async function expectSamplingTaxonomy(sampling, api) {
@@ -145,6 +222,7 @@ async function bindPresetSampling(page, api) {
 for (const theme of ['Libadwaita', 'Libadwaita Light']) {
     for (const width of [1920, 390]) {
         test(`${theme} Backend groups retain their flow at ${width}px`, async ({ page, baseURL }) => {
+            test.setTimeout(60000);
             await loadSettings(page, baseURL);
             await page.setViewportSize({ width, height: width === 390 ? 844 : 1080 });
             await page.evaluate(theme => $('#themes').val(theme).trigger('change'), theme);
@@ -165,6 +243,9 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                 await expect(promptingHeader.locator('[data-sb-prompting-disclaimer]')).toBeVisible({ visible: api !== 'openai' });
                 await expect(promptingHeader.locator('[data-sb-prompting-context]')).toBeVisible({ visible: api !== 'openai' });
                 await expectPromptingFlow(prompting, api);
+                await expectPresetActionLabels(prompting, width);
+                await expectPromptingInsets(prompting);
+                const promptingHeaderMetrics = await readBackendHeaderMetrics(promptingHeader);
                 await expect(prompting.locator('#sb-openai-sampling')).toBeHidden();
                 await expectNoOverflow(prompting);
                 await expectSwitchGeometry(prompting);
@@ -172,11 +253,16 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                 await expect(sampling.locator('.sb-sampling-mode-pill:visible')).toHaveText(`Backend: ${label}`);
                 await expect(sampling.locator('.sb-backend-section-header:visible')).toHaveCount(1);
                 await expect(sampling.locator('.sb-backend-section-header:visible > .sb-backend-title-row > .sb-sampling-mode-pill')).toBeVisible();
+                const samplingHeaderMetrics = await readBackendHeaderMetrics(sampling.locator('.sb-backend-section-header:visible'));
+                expect(samplingHeaderMetrics.padding).toBe(promptingHeaderMetrics.padding);
+                expect(samplingHeaderMetrics.rowGap).toBe(promptingHeaderMetrics.rowGap);
+                expect(Math.abs(samplingHeaderMetrics.titleRowHeight - promptingHeaderMetrics.titleRowHeight)).toBeLessThanOrEqual(1);
+                expect(samplingHeaderMetrics.descriptionFont).toBe(promptingHeaderMetrics.descriptionFont);
+                expect(samplingHeaderMetrics.descriptionWraps && promptingHeaderMetrics.descriptionWraps).toBe(true);
                 await expectSamplingTaxonomy(sampling, api);
                 await expectNoOverflow(sampling);
                 await sampling.locator('details').evaluateAll(details => details.forEach(detail => { detail.open = true; }));
-                await expectSwitchGeometry(sampling);
-                expect(await sampling.locator('.sb-sampling-clamp').evaluate(column => column.getBoundingClientRect().width)).toBeLessThanOrEqual(720);
+                await expectSwitchGeometry(sampling, width > 620);
             }
             for (const tab of ['appearance', 'interface', 'messages', 'data-security']) {
                 const panel = await openPanel(page, tab, 'right');
@@ -190,6 +276,92 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
         });
     }
 }
+
+test('Sampling uses compact full-width rows at desktop and mobile widths', async ({ page, baseURL }) => {
+    test.setTimeout(120000);
+    await loadSettings(page, baseURL);
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await selectBackend(page, 'textgenerationwebui', 'ooba');
+    const sampling = await openPanel(page, 'sampling');
+    const samplingColumn = sampling.locator('.sb-sampling-panel');
+    const connections = await openPanel(page, 'connections');
+    const settingsColumnWidth = await connections.locator('.sb-shell-column').first().evaluate(column => parseFloat(getComputedStyle(column).width));
+
+    await openPanel(page, 'sampling');
+    await expect.poll(() => samplingColumn.evaluate((column, width) => Math.abs(parseFloat(getComputedStyle(column).width) - width), settingsColumnWidth)).toBeLessThanOrEqual(1);
+    const preferenceGroups = sampling.locator('.sb-sampling-group:visible > .ds-pref-group');
+    const expectSingleColumn = async () => expect.poll(() => preferenceGroups.evaluateAll(groups => groups.every(group => {
+        const groupRect = group.getBoundingClientRect();
+        const visibleCards = [...group.children].filter(card => card instanceof HTMLElement
+            && !card.hidden && getComputedStyle(card).display !== 'none');
+        return visibleCards.every(card => {
+            const rect = card.getBoundingClientRect();
+            return Math.abs(rect.width - group.clientWidth) <= 1
+                && Math.abs(rect.left - groupRect.left - group.clientLeft) <= 1;
+        });
+    }))).toBe(true);
+    await expectSingleColumn();
+    const rows = sampling.locator('.sb-sampling-group:visible .ds-row:visible');
+    const compactHeights = await rows.evaluateAll(rows => rows.map(row => row.getBoundingClientRect().height));
+    const previousGeometry = await page.addStyleTag({ content: `
+        #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .ds-row {
+            min-height: 44px;
+            padding: 6px 16px;
+        }
+        #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .ds-row:has(.ds-row-subtitle) {
+            min-height: 52px;
+        }
+    ` });
+    const previousHeights = await rows.evaluateAll(rows => rows.map(row => row.getBoundingClientRect().height));
+    await previousGeometry.evaluate(style => style.remove());
+    expect(compactHeights.length).toBeGreaterThan(0);
+    expect(compactHeights.every((height, index) => height >= 32 && height <= previousHeights[index] + 1)).toBe(true);
+    await expect.poll(() => rows.evaluateAll(rows => rows.every(row => {
+        const style = getComputedStyle(row);
+        return style.padding === '4px 16px'
+            && parseFloat(style.minHeight) === (row.querySelector('.ds-row-subtitle') ? 44 : 36);
+    }))).toBe(true);
+    for (const selector of ['#dryBlock', '#xtc_block']) {
+        const expander = sampling.locator(`details[data-sb-sampling-control="${selector}"]`);
+        await expander.locator('summary').click();
+        await expect(expander).toHaveAttribute('open', '');
+        await expect.poll(() => expander.evaluate(expander => Math.abs(expander.getBoundingClientRect().width - expander.parentElement.clientWidth))).toBeLessThanOrEqual(1);
+        await expect.poll(() => expander.locator('.ds-row-expander-content .ds-row:visible').evaluateAll(rows => rows.every(row => {
+            const rect = row.getBoundingClientRect();
+            const text = row.querySelector('.ds-row-text')?.getBoundingClientRect();
+            return text && Math.abs(text.left - rect.left - 16) <= 1 && getComputedStyle(row).display === 'flex';
+        }))).toBe(true);
+    }
+    const expectCleanSeparators = async () => expect.poll(() => preferenceGroups.evaluateAll(groups => groups.flatMap(group => {
+        const visibleCards = [...group.children].filter(card => card instanceof HTMLElement
+            && !card.hidden && getComputedStyle(card).display !== 'none');
+        return visibleCards.flatMap((card, index) => {
+            const style = getComputedStyle(card);
+            const expectedBottom = index === visibleCards.length - 1 ? 0 : 1;
+            return parseFloat(style.borderTopWidth) === 0 && parseFloat(style.borderBottomWidth) === expectedBottom
+                ? [] : [card.dataset.sbSamplingControl];
+        });
+    }))).toEqual([]);
+    await expectCleanSeparators();
+    await expectNoOverflow(sampling);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectSingleColumn();
+    await expectCleanSeparators();
+    await expectNoOverflow(sampling);
+    await selectBackend(page, 'openai', 'openrouter');
+    await expectSingleColumn();
+    await expectCleanSeparators();
+    await expectNoOverflow(sampling);
+    const logitBias = sampling.locator('[data-sb-sampling-control="#openai_logit_bias_preset"]');
+    await expect.poll(() => logitBias.evaluate(card => Array.from(card.querySelectorAll('input, select, textarea, button, .menu_button'))
+        .filter(control => control.getClientRects().length > 0)
+        .flatMap(control => {
+            const rect = control.getBoundingClientRect();
+            const groupRect = card.parentElement.getBoundingClientRect();
+            return rect.left >= groupRect.left && rect.right <= groupRect.right ? [] : [control.id];
+        }))).toEqual([]);
+});
 
 test('Text-style Prompting opens Context from the keyboard for every backend', async ({ page, baseURL }) => {
     await loadSettings(page, baseURL);
@@ -208,6 +380,7 @@ test('Text-style Prompting opens Context from the keyboard for every backend', a
 });
 
 test('Sampling keeps live nodes, provider visibility, numeric handlers and transmission policy', async ({ page, baseURL }) => {
+    test.setTimeout(120000);
     await loadSettings(page, baseURL);
     await page.evaluate(() => {
         window.phase3Nodes = ['temp_openai', 'settings_preset_openai', 'completion_prompt_manager', 'dry_multiplier_textgenerationwebui'].map(id => document.getElementById(id));
@@ -323,10 +496,6 @@ test('Mobile Sampling follows provider and manual sampler visibility', async ({ 
 for (const api of ['openai', 'textgenerationwebui']) {
     test(`${api} presets retain imports, switching, exports and prompt metadata`, async ({ page, baseURL }) => {
         await loadSettings(page, baseURL);
-        await page.route('**/api/presets/save', route => {
-            const { name } = route.request().postDataJSON();
-            return route.fulfill({ json: { name } });
-        });
         await selectBackend(page, api, api === 'openai' ? 'openrouter' : 'ooba');
         const prompting = await openPanel(page, 'prompting');
         const select = prompting.locator(api === 'openai' ? '#settings_preset_openai' : '#settings_preset_textgenerationwebui');

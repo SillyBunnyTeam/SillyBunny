@@ -7289,7 +7289,7 @@ body.big-avatars #rm_print_characters_block {
         #new_oai_preset,
         [data-preset-manager-rename='openai'],
         [data-preset-manager-delete-all='openai']
-    ) {
+    ):not(.sb-action-btn) {
         width: var(--sb-mobile-touch-target, 44px);
         min-width: var(--sb-mobile-touch-target, 44px);
         max-width: var(--sb-mobile-touch-target, 44px);
@@ -8284,12 +8284,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 }
 
 /* SillyBunny: Backend groups retain their live controls and use the shared preference-row metrics. */
-.sb-sampling-clamp {
-    width: 100%;
-    max-width: 720px;
-    margin-inline: auto;
-}
-
 .sb-sampling-group {
     min-width: 0;
 }
@@ -8297,6 +8291,10 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 #sb-settings-page .sb-sampling-panel .sb-sampling-group > .ds-pref-group {
     margin: 0;
     padding: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-group > .ds-pref-group > .sb-sampling-control-card {
+    border-top: 0;
 }
 
 #sb-settings-page .sb-sampling-panel .sb-sampling-control-card {
@@ -8309,6 +8307,10 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     background: transparent;
 }
 
+#sb-settings-page .sb-sampling-panel .sb-sampling-group > .ds-pref-group > .sb-sampling-control-card:not([hidden]):not(:has(~ .sb-sampling-control-card:not([hidden]))) {
+    border-bottom: 0;
+}
+
 #sb-settings-page .sb-sampling-panel .sb-sampling-control-card:not(.sb-settings-row-wrapper) {
     padding: 12px;
 }
@@ -8318,15 +8320,22 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     padding: 0;
 }
 
-#sb-settings-page .sb-sampling-panel .sb-sampling-control-card:last-child {
-    border-bottom: 0;
-}
-
 #sb-settings-page .sb-sampling-panel .sb-sampling-control-card > .ds-row {
     width: 100%;
     margin: 0;
     border: 0;
     border-radius: 0;
+}
+
+#sb-settings-page .sb-sampling-panel [data-sb-sampling-control='#openai_logit_bias_preset'] > .ds-row > .ds-row-suffix {
+    flex-direction: column;
+    align-items: stretch;
+    flex: 1 1 320px;
+}
+
+#sb-settings-page .sb-sampling-panel [data-sb-sampling-control='#openai_logit_bias_preset'] :is(.openai_logit_bias_preset_form, .inline-drawer) {
+    min-width: 0;
+    width: 100%;
 }
 
 #sb-settings-page .sb-sampling-panel .ds-row-slider {
@@ -8369,6 +8378,35 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     border-top: 0;
 }
 
+@media screen and (min-width: 621px) {
+    #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .ds-row {
+        min-height: 36px;
+        padding: 4px 16px;
+    }
+
+    #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .ds-row:has(.ds-row-subtitle) {
+        min-height: 44px;
+    }
+
+    #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-transmission,
+    #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-chat-neutralize-row {
+        padding: 4px 16px;
+    }
+
+    #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel :is(button, select, input:not([type='checkbox'], [type='radio'], [type='hidden'], [type='file']), .menu_button) {
+        min-height: 32px;
+    }
+
+    #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-multi-card .ds-row {
+        align-items: center;
+    }
+
+    /* Keep the thin trough while enlarging its interactive area beyond the legacy 4px height. */
+    #sb-settings-page .sb-sampling-panel input[type='range'] {
+        background: linear-gradient(color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent) 0 0) center / 100% 4px no-repeat !important;
+    }
+}
+
 #sb-settings-page .sb-sampling-panel .sb-sampling-multi-card > * {
     min-width: 0;
     margin: 0;
@@ -8380,14 +8418,52 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     display: none;
 }
 
-#sb-settings-page .sb-sampling-panel .sb-sampling-multi-card > * > .flexFlowRow {
+#sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-multi-card > * > .flexFlowRow {
     display: flex;
     flex-direction: column;
     gap: 0;
 }
 
+/* Legacy sampler grids also match migrated rows; the live rows own their layout and insets. */
+#sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-multi-card .ds-row {
+    display: flex;
+    gap: 12px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-multi-card .ds-row-label {
+    min-height: 0;
+    padding: 0;
+    justify-content: flex-start;
+    text-align: start;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-multi-card :is(.ds-row, .sb-settings-row-wrapper):last-child {
+    border-bottom: 0;
+}
+
 #sb-settings-page .sb-sampling-panel [hidden] {
     display: none !important;
+}
+
+@media screen and (max-width: 620px) {
+    #sb-settings-page .sb-sampling-panel [data-sb-sampling-control='#openai_logit_bias_preset'] > .ds-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    #sb-settings-page .sb-sampling-panel [data-sb-sampling-control='#openai_logit_bias_preset'] > .ds-row > :is(.ds-row-text, .ds-row-suffix) {
+        flex: 0 0 auto;
+        width: 100%;
+    }
+
+    #sb-settings-page .sb-sampling-panel .openai_logit_bias_preset_form {
+        flex-wrap: wrap;
+    }
+
+    #sb-settings-page .sb-sampling-panel .openai_logit_bias_preset_form > select {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
 }
 
 #sb-settings-page .sb-prompting-panel #ai_response_configuration,
@@ -8410,12 +8486,171 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     margin: 0;
 }
 
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .ds-pref-group.sb-prompting-group-body > :not(.ds-row, .ds-row-expander, .sb-settings-flat-header, .sb-preset-toolbar-row, .sb-non-chat-preset-row) {
+    padding-inline: 0;
+    border-top: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body :is(.sb-settings-row-wrapper, .sb-settings-flat-section, div:has(> .ds-row)) {
+    padding-inline: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body :is(.sb-settings-flat-header, .toggle-description:where(:not(.ds-row-subtitle)), .range-block:where(:not(.ds-row, .sb-settings-row-wrapper)):where(:not(:has(.ds-row, .toggle-description)))) {
+    padding-inline: 16px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body .range-block:not(.ds-row):has(.ds-row, .toggle-description) {
+    padding-inline: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body .toggle-description:not(.ds-row-subtitle) {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body .ds-row .toggle-description {
+    padding-inline: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-row-with-help {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-bottom: 1px solid var(--sb-shell-border);
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-row-with-help > .ds-row {
+    border-bottom: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-row-with-help > :is(.toggle-description, .notes, p, small) {
+    margin: 0;
+    padding: 0 16px 8px;
+    border: 0;
+    box-sizing: border-box;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-row-with-help > :last-child {
+    padding-bottom: 10px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body .sb-setting-inline-help .toggle-description {
+    padding-inline: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body .sb-setting-inline-help:where(:not(.ds-row)) {
+    padding-inline: 16px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel :is(#kobold_api-presets, #novel_api-presets, #textgenerationwebui_api-presets, #openai_api-presets) > div:where(:not(.sb-preset-toolbar-row, .sb-non-chat-preset-row)) {
+    padding-inline: 0;
+}
+
+.sb-action-btn-group {
+    display: inline-flex;
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    gap: 6px;
+}
+
+#sb-settings-page .sb-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    min-width: 0;
+    width: auto;
+    max-width: none;
+    min-height: 32px;
+    height: auto;
+    max-height: none;
+    padding: 5px 10px;
+    gap: 6px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 80%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    color: var(--SmartThemeBodyColor);
+    font-family: inherit;
+    font-size: calc(var(--mainFontSize) * 0.82);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 150ms ease, border-color 150ms ease;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+#sb-settings-page .sb-action-btn > .sb-action-btn-label {
+    flex: 0 0 auto;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+#sb-settings-page .sb-action-btn:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
+    border-color: color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 100%, transparent);
+}
+
+#sb-settings-page .sb-action-btn:active {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
+}
+
+#sb-settings-page .sb-action-btn:focus-visible {
+    outline: 2px solid var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
+    outline-offset: 2px;
+}
+
+#sb-settings-page .sb-action-btn--danger {
+    color: var(--color-danger, #fb7185);
+    border-color: color-mix(in srgb, var(--color-danger, #fb7185) 30%, transparent);
+}
+
+#sb-settings-page .sb-action-btn--danger:hover {
+    background: color-mix(in srgb, var(--color-danger, #fb7185) 12%, transparent);
+    border-color: color-mix(in srgb, var(--color-danger, #fb7185) 55%, transparent);
+}
+
+#sb-settings-page #openai_api-presets .sb-preset-toolbar-row > .flex-container.marginLeft5 {
+    width: 100%;
+    height: auto;
+    min-width: 0;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 6px;
+}
+
+#sb-settings-page #openai_api-presets .sb-preset-toolbar-row > .flex-container.marginLeft5 > .sb-action-btn-group {
+    max-width: 100%;
+}
+
+@media screen and (max-width: 450px) {
+    #sb-settings-page .sb-action-btn {
+        flex: 1 1 auto;
+        min-width: 90px;
+        padding: 5px 8px;
+        font-size: calc(var(--mainFontSize) * 0.76);
+    }
+
+    #sb-settings-page :is(.sb-preset-toolbar-row, .sb-non-chat-preset-row) .sb-action-btn-group {
+        display: flex;
+        flex: 1 1 100%;
+        flex-wrap: wrap;
+        width: 100%;
+    }
+}
+
 #sb-settings-page .sb-prompting-panel .sb-prompting-group > .sb-settings-flat-header {
     margin-bottom: 8px;
 }
 
-#sb-settings-page .sb-prompting-panel .sb-prompting-group-body .ds-row {
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body .ds-row {
+    width: 100%;
     margin: 0;
+    padding: 6px 16px;
+    border-top: 0;
     border-radius: 0;
 }
 
@@ -8455,12 +8690,14 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     margin: 0;
 }
 
-#sb-settings-page .sb-prompting-panel :is(.sb-preset-toolbar-row, .sb-non-chat-preset-row) {
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel :is(.sb-preset-toolbar-row, .sb-non-chat-preset-row) {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     width: 100%;
     gap: 12px;
+    padding: 10px 16px;
+    border-top: 0;
 }
 
 #sb-settings-page .sb-prompting-panel :is(.sb-preset-toolbar-row, .sb-non-chat-preset-row) > select {
@@ -8472,10 +8709,11 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 #sb-settings-page .sb-prompting-panel :is(.sb-preset-toolbar-row, .sb-non-chat-preset-row) > .flex-container {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: 6px;
     margin: 0;
     width: auto;
     height: auto;
+    justify-content: flex-start;
 }
 
 #sb-settings-page .sb-prompting-panel [hidden] {

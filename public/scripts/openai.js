@@ -3781,10 +3781,6 @@ function groupOpenAISettingsIntoDrawers() {
             description: 'Streaming, prompt templates, names, and continue behavior',
             selectors: [
                 '#range_block_openai > .range-block:has(#stream_toggle)',
-                // The settings shell can flatten these drawers before this runs, which swaps
-                // `.inline-drawer` for `.sb-settings-flat-section`; a miss here is deleted by `empty()` below.
-                '#range_block_openai > :is(.inline-drawer, .sb-settings-flat-section):has(#main_prompt_quick_edit_textarea)',
-                '#range_block_openai > :is(.inline-drawer, .sb-settings-flat-section):has(#impersonation_prompt_textarea)',
                 '#openai_settings > div > :is(.inline-drawer, .sb-settings-flat-section):has(#character_names_none)',
                 '#openai_settings > div > :is(.inline-drawer, .sb-settings-flat-section):has(#continue_postfix_none)',
                 '#openai_settings > div > .range-block:has(#continue_prefill)',
@@ -3809,6 +3805,16 @@ function groupOpenAISettingsIntoDrawers() {
                 '#openai_settings > div > .range-block:has(#openai_reasoning_tag_style)',
                 '#openai_settings > div > .flex-container:has(#openai_verbosity)',
                 '#openai_settings > div > .range-block:has(#claude_assistant_prefill)',
+            ],
+        },
+        // SillyBunny: keep prompt editors and utility prompts in their final Prompting group.
+        {
+            id: 'sb-openai-prompts',
+            title: 'Quick Prompts Edit / Utility Prompts',
+            description: '',
+            selectors: [
+                '#range_block_openai > :is(.inline-drawer, .sb-settings-flat-section):has(#main_prompt_quick_edit_textarea)',
+                '#range_block_openai > :is(.inline-drawer, .sb-settings-flat-section):has(#impersonation_prompt_textarea)',
             ],
         },
         {
