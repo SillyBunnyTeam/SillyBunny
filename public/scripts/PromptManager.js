@@ -383,8 +383,11 @@ class PromptManager {
         // Prompt row token counts of last dry run/live generation.
         this.promptTokenCounts = {};
 
-        // Prompt content as prepared by the last dry run/live generation, keyed by identifier.
+        // Prompt content as prepared by the last dry run/live generation, keyed by identifier,
+        // and the activeCharacter object it was prepared for. Selection handlers replace that
+        // object, so a character or group switch invalidates the reuse.
         this.runtimePreparedPromptContent = new Map();
+        this.runtimePreparedPromptCharacter = null;
 
         this.startCommentOnlySourcePass = createCommentOnlyContentCheck();
 
@@ -2042,6 +2045,7 @@ class PromptManager {
         });
 
         this.runtimePreparedPromptContent = runtimePreparedPromptContent;
+        this.runtimePreparedPromptCharacter = this.activeCharacter;
         return promptCollection;
     }
 
@@ -2142,14 +2146,18 @@ class PromptManager {
         // send nothing anywhere and keep showing '-'.
         // Reuse the runtime pass's substitution while its counts are shown: evaluating the
         // macros again here doubles the work on large presets and re-runs setters on render.
+        // Only reuse it for the character it was prepared for: {{char}} and group macros differ.
         const hasRuntimeCounts = this.hasRuntimePromptTokenCounts();
         const runtimeCounts = hasRuntimeCounts ? this.promptTokenCounts : {};
+        const runtimePreparedContent = hasRuntimeCounts && this.runtimePreparedPromptCharacter === this.activeCharacter
+            ? this.runtimePreparedPromptContent
+            : null;
         const rawContentFallbacks = new Set();
         const prompts = this.getPromptsForCharacter(this.activeCharacter, true)
             .filter(prompt => this.shouldTrigger(prompt))
             .filter(prompt => !(Number(runtimeCounts[prompt.identifier]) > 0))
             .map(prompt => {
-                const runtimePrepared = hasRuntimeCounts ? getRuntimePreparedPromptContent(this.runtimePreparedPromptContent, prompt) : null;
+                const runtimePrepared = getRuntimePreparedPromptContent(runtimePreparedContent, prompt);
                 const prepared = runtimePrepared ? new Prompt(prompt) : this.preparePrompt(prompt);
                 if (runtimePrepared) {
                     prepared.content = runtimePrepared.content;

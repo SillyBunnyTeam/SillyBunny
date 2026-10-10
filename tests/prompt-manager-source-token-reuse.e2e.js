@@ -19,6 +19,7 @@ test.describe('prompt manager source token counts', () => {
                 tokenHandler: pm.tokenHandler,
                 promptTokenCounts: pm.promptTokenCounts,
                 runtimePreparedPromptContent: pm.runtimePreparedPromptContent,
+                runtimePreparedPromptCharacter: pm.runtimePreparedPromptCharacter,
             };
             const prepared = [];
             const preparePrompt = pm.preparePrompt.bind(pm);
@@ -57,7 +58,11 @@ test.describe('prompt manager source token counts', () => {
                 prompts[0].content = '{{setvar::sbtest_880::off}}';
                 const edited = await pass();
 
-                return { withoutRuntime, reused, evaluated, edited };
+                // Selection handlers replace activeCharacter; the previous character's substitution must not be reused.
+                pm.activeCharacter = { ...pm.activeCharacter };
+                const switched = await pass();
+
+                return { withoutRuntime, reused, evaluated, edited, switched };
             } finally {
                 for (const name of ['getPromptsForCharacter', 'getPromptOrderForCharacter', 'getPromptById', 'shouldTrigger', 'preparePrompt']) {
                     delete pm[name];
@@ -78,5 +83,7 @@ test.describe('prompt manager source token counts', () => {
 
         expect(result.edited.prepared).toEqual(['sbtest_setter']);
         expect(result.edited.counts.sbtest_setter).toBe(27);
+
+        expect(result.switched.prepared).toEqual(['sbtest_setter', 'sbtest_comment', 'sbtest_injection']);
     });
 });

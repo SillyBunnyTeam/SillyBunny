@@ -121,12 +121,30 @@ describe('prompt token display counts', () => {
     });
 
     test('remembers comment-only results per prompt and rechecks edited content', () => {
-        const isCommentOnly = createCommentOnlyContentCheck();
+        const startPass = createCommentOnlyContentCheck();
+        const isCommentOnly = startPass();
 
         expect(isCommentOnly('readme', '{{// notes}}')).toBe(true);
         expect(isCommentOnly('readme', '{{// notes}}')).toBe(true);
         expect(isCommentOnly('readme', '{{// notes}}{{setvar::mode::on}}')).toBe(false);
         expect(isCommentOnly('readme', '{{// notes}}')).toBe(true);
         expect(isCommentOnly('other', '{{// notes}}{{setvar::mode::on}}')).toBe(false);
+    });
+
+    test('drops comment-only entries that a pass did not check', () => {
+        const startPass = createCommentOnlyContentCheck();
+        const first = startPass();
+        const content = '{{// notes}}';
+        expect(first('readme', content)).toBe(true);
+        expect(first('deleted', '{{// gone}}')).toBe(true);
+
+        // Carried over: the second pass checks 'readme' again.
+        const second = startPass();
+        expect(second('readme', content)).toBe(true);
+
+        // 'deleted' was not checked in the second pass, so the third starts without it.
+        const third = startPass();
+        expect(third('deleted', '{{// gone}}{{setvar::x::1}}')).toBe(false);
+        expect(third('readme', content)).toBe(true);
     });
 });
