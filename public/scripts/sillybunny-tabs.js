@@ -10068,7 +10068,10 @@ function updatePromptingPanel(panel) {
         const shouldHideByMode = group.id === 'sb-openai-sampling'
             || (group.id.startsWith('sb-openai-') && !isChatCompletion)
             || ((group.id.startsWith('sb-tc-') || group.id === 'sb-reply-prefill') && isChatCompletion);
-        group.hidden = shouldHideByMode;
+        // The text-generation sampling sections are source containers for the separate Sampling tab,
+        // not Prompting content; only their live controls belong in the sampling cards.
+        const isSamplingSourceGroup = group.matches('.sb-textgen-drawers > .sb-settings-flat-section');
+        group.hidden = shouldHideByMode || isSamplingSourceGroup;
         const hasControls = [...group.querySelectorAll('input:not([type="hidden"]), select, textarea, button, .menu_button, [name="startReplyWithBlock"]')]
             .some(control => control instanceof HTMLElement && (control.checkVisibility?.() ?? control.getClientRects().length > 0));
         if (!group.id.startsWith('sb-openai-') && !group.id.startsWith('sb-tc-') && group.id !== 'sb-reply-prefill') continue;
@@ -10205,35 +10208,14 @@ function groupAdvancedFormattingIntoDrawers() {
     moveToPrompting('#AdvancedFormatting > .flex-container.alignItemsBaseline > .flex-container[data-cc-null]', 'respective-presets-block');
     document.querySelectorAll('.sb-sampling-section').forEach(updateSamplingCardVisibility);
     const systemPromptBlock = systemColumn.querySelector('#SystemPromptBlock');
-    if (systemPromptBlock instanceof HTMLElement && !systemPromptBlock.querySelector(':scope > .sb-prompting-details')) {
-        const editorBlocks = [...systemPromptBlock.children].filter(child => child.querySelector('#sysprompt_content, #sysprompt_post_history'));
-        if (editorBlocks.length) {
-            const details = createElement('details', { className: 'sb-prompting-details', open: true });
-            details.append(createElement('summary', { text: 'System Prompt Content' }));
-            const content = createElement('div', { className: 'sb-prompting-details-content' });
-            editorBlocks.forEach(block => content.append(block));
-            details.append(content);
-            systemPromptBlock.append(details);
-        }
-    }
     movePromptingNode(systemColumn.querySelector(':scope > .title_restorable[data-cc-null]'), 'sb-tc-sysprompt');
     movePromptingNode(systemPromptBlock, 'sb-tc-sysprompt');
     moveToPrompting('#InstructSettingsColumn', 'sb-tc-instruct');
     movePromptingNode(contextColumn.querySelector(':scope > div > .title_restorable'), 'sb-tc-context');
     movePromptingNode(contextColumn.querySelector(':scope > div > .flex-container.flexNoGap'), 'sb-tc-context');
     const storyBlock = formatting.querySelector('[data-cc-null]:has(#context_story_string)');
-    if (storyBlock instanceof HTMLElement && !storyBlock.closest('details')) {
-        const details = createElement('details', { className: 'sb-prompting-details' });
-        details.append(createElement('summary', { text: 'Story String' }));
-        const content = createElement('div', { className: 'sb-prompting-details-content' });
-        details.append(content);
-        storyBlock.parentElement?.insertBefore(details, storyBlock);
-        content.append(storyBlock);
-    }
-    const storyDetails = [...(contextColumn.querySelectorAll('details.sb-prompting-details'))]
-        .find(details => details.querySelector('#context_story_string'));
     const contextBody = promptingGroupBody('sb-tc-context');
-    if (storyDetails instanceof HTMLElement && contextBody instanceof HTMLElement) move(storyDetails, contextBody);
+    if (storyBlock instanceof HTMLElement && contextBody instanceof HTMLElement) move(storyBlock, contextBody);
     movePromptingNode(contextColumn.querySelector(':scope > div > div > .flex-container.flexFlowColumn[data-cc-null]'), 'sb-tc-context');
     movePromptingNode(contextColumn.querySelector(':scope > div > div > .flex-container[data-cc-null]'), 'sb-tc-context');
     movePromptingNode(contextColumn.querySelector('#context_use_stop_strings')?.closest('label'), 'sb-tc-context');

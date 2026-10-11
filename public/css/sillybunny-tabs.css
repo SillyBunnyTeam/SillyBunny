@@ -8486,20 +8486,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     margin: 0;
 }
 
-#sb-settings-page .sb-prompting-panel .sb-prompting-group-body > :is(.sb-prompting-details) {
-    flex: 0 1 auto;
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    box-sizing: border-box;
-}
-
-#sb-settings-page .sb-prompting-panel .sb-prompting-details-content {
-    min-width: 0;
-    max-width: 100%;
-    overflow: hidden;
-}
-
 #sb-settings-page .sb-prompting-panel .sb-prompting-group-body .flex-container {
     min-width: 0;
     max-width: 100%;
