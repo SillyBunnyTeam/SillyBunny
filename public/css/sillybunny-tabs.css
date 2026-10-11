@@ -10559,6 +10559,27 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     }
 }
 
+/* SillyBunny: Extensions — always-visible action pill and pinned download section.
+   The manage/install/notify header and the Download Extensions & Assets section are
+   moved out of the subpage store into the list heading so they are never hidden. */
+.sb-ext-actions-pill {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--sb-shell-space-sm, 8px);
+    padding: var(--sb-shell-space-sm, 8px);
+    margin-bottom: var(--sb-shell-space-sm, 8px);
+}
+
+.sb-ext-pinned-section .inline-drawer-content {
+    display: block !important;
+}
+
+.sb-ext-pinned-section .inline-drawer-icon {
+    display: none;
+}
+
 /* ==========================================================================================
    Connections panel (feat/v1.9.0-ui-overhaul)
    ------------------------------------------------------------------------------------------
