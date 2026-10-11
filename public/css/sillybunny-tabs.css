@@ -9355,7 +9355,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    margin: 0 0 24px;
+    margin: 0;
     padding: 0;
     border-top: 0;
 }
