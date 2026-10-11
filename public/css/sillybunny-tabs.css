@@ -2296,7 +2296,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     align-items: center;
     justify-content: center;
     gap: 8px;
-    padding: 0 var(--sb-shell-space-lg) !important;
     aspect-ratio: auto;
     border-radius: var(--sb-radius-button, 14px);
     border: 1px solid color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, var(--sb-shell-border) 72%);
@@ -4416,7 +4415,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     min-height: var(--sb-composer-action-size, 30px) !important;
     max-height: var(--sb-composer-action-size, 30px) !important;
     flex: 0 0 var(--sb-composer-send-width, calc(var(--sb-composer-action-size, 30px) * 1.45)) !important;
-    border-radius: 50% !important;
+    border-radius: 50%;
 }
 
 #send_form .mes_stop,
@@ -4428,7 +4427,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     min-height: var(--sb-composer-action-size, 30px) !important;
     max-height: var(--sb-composer-action-size, 30px) !important;
     flex: 0 0 var(--sb-composer-send-width, calc(var(--sb-composer-action-size, 30px) * 1.45)) !important;
-    border-radius: 50% !important;
+    border-radius: 50%;
 }
 
 @media screen and (min-width: 1001px) {
@@ -6717,7 +6716,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     grid-row: 1;
     position: static;
     transform: none;
-    margin-left: 0 !important;
 }
 
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > #rm_group_restore_avatar {
@@ -6968,7 +6966,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     overflow: visible !important;
-    display: block !important;
     height: auto !important;
     display: block !important;
 }
@@ -7861,10 +7858,11 @@ body.reduced-motion .sb-shell-main {
     background: var(--sb-layer-view);
 }
 
-/* Inactive hosted roots stay in place but skip rendering, so switching sections is cheap. */
-#sb-settings-shell-host > .sb-settings-mounted-shell:not(.sb-settings-active-root) {
+/* Inactive hosted roots stay in place but skip rendering, so switching sections is cheap. The
+   Characters selector outranks its ID-level layout rule below, so the inactive panel leaves the flow too. */
+#sb-settings-shell-host > .sb-settings-mounted-shell:not(.sb-settings-active-root),
+#sb-settings-shell-host > #right-nav-panel.sb-settings-mounted-shell:not(.sb-settings-active-root) {
     position: absolute !important;
-    inset: 0 !important;
     visibility: hidden !important;
     pointer-events: none !important;
     content-visibility: hidden;
@@ -7875,51 +7873,37 @@ body.reduced-motion .sb-shell-main {
 #sb-settings-shell-host > #right-nav-panel.sb-settings-mounted-shell {
     position: static !important;
     inset: auto !important;
-    top: auto !important;
-    left: auto !important;
-    right: auto !important;
-    margin: 0 !important;
+    margin: 0;
     width: 100% !important;
-    min-width: 0 !important;
     max-width: none !important;
     height: 100% !important;
     max-height: none !important;
-    border-radius: 0 !important;
     transform: none !important;
 }
 
-#sb-settings-shell-host > #right-nav-panel.sb-settings-mounted-shell:not(.sb-settings-active-root) {
-    position: absolute !important;
-    inset: 0 !important;
-}
-
 #sb-settings-shell-host > .sb-settings-mounted-shell {
-    display: flex !important;
-    position: static !important;
+    display: flex;
+    position: static;
     inset: auto !important;
     width: 100% !important;
     height: 100% !important;
     max-width: none !important;
-    max-height: none !important;
+    max-height: none;
     min-width: 0 !important;
     min-height: 0 !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-    overflow: hidden !important;
+    opacity: 1;
+    visibility: visible;
+    overflow: hidden;
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
-    transform: none !important;
+    transform: none;
     pointer-events: auto !important;
 }
 
 #sb-settings-shell-host > .sb-settings-mounted-shell > .sb-shell-frame {
     width: 100%;
     height: 100%;
-}
-
-#sb-settings-shell-host > .sb-settings-mounted-shell .sb-shell-header {
-    display: none !important;
 }
 
 #sb-settings-shell-host > .sb-settings-mounted-shell .sb-shell-main {
@@ -8441,10 +8425,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     border-bottom: 0;
 }
 
-#sb-settings-page .sb-sampling-panel [hidden] {
-    display: none !important;
-}
-
 @media screen and (max-width: 620px) {
     #sb-settings-page .sb-sampling-panel [data-sb-sampling-control='#openai_logit_bias_preset'] > .ds-row {
         flex-direction: column;
@@ -8726,7 +8706,11 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     justify-content: flex-start;
 }
 
-#sb-settings-page .sb-prompting-panel [hidden] {
+/* The order pass also marks a wrapper it emptied with `hidden`, but `.flex-container` and
+   `.flexFlowColumn` set `display` on most of them and would paint the leftover heading anyway. */
+#sb-settings-page .sb-sampling-panel [hidden],
+#sb-settings-page .sb-prompting-panel [hidden],
+#sb-settings-page [data-sb-emptied-by-order] {
     display: none !important;
 }
 
@@ -8820,8 +8804,13 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 /* ── Phase 2: settings page contextual overrides (feat/v1.9.0-ui-overhaul) ─ */
 
 /* The legacy settings column holds no settings after the Phase 6 split — it is left in the
-   document so ids like #user-settings-block-content stay resolvable, but nothing paints it. */
-.sb-settings-mounted-shell .sb-legacy-settings-remainder {
+   document so ids like #user-settings-block-content stay resolvable, but nothing paints it. Hosted
+   shells drop their own header, and top-level subdrawers their toggle header, because the sidebar
+   tab already names the section. */
+.sb-settings-mounted-shell .sb-legacy-settings-remainder,
+#sb-settings-shell-host > .sb-settings-mounted-shell .sb-shell-header,
+.sb-settings-mounted-shell .sb-settings-subdrawer > .inline-drawer-toggle.settings-section-header,
+.sb-settings-mounted-shell .sb-settings-subdrawer > .inline-drawer-header.settings-section-header {
     display: none !important;
 }
 
@@ -8841,8 +8830,8 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     padding: 0 !important;
     overflow: hidden !important;
     clip-path: inset(50%) !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
+    opacity: 0;
+    pointer-events: none;
 }
 
 /* The two source pickers the panel mirrors in its own combo row, and the headings that name them.
@@ -8867,17 +8856,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 .highlighted-drawer {
     border-color: var(--color-primary, var(--sb-accent, #c9c6a8)) !important;
     box-shadow: 0 0 10px color-mix(in srgb, var(--color-primary, var(--sb-accent, #c9c6a8)) 30%, transparent) !important;
-}
-
-/* Two-column layout stacks to a single column inside the settings content area */
-.sb-settings-mounted-shell #user-settings-block #user-settings-block-content {
-    flex-direction: column !important;
-}
-
-/* Top-level subdrawer toggle headers are suppressed — sidebar tab already names the section */
-.sb-settings-mounted-shell .sb-settings-subdrawer > .inline-drawer-toggle.settings-section-header,
-.sb-settings-mounted-shell .sb-settings-subdrawer > .inline-drawer-header.settings-section-header {
-    display: none !important;
 }
 
 /* Top-level subdrawer body is always expanded inside the settings page */
@@ -9912,12 +9890,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     }
 }
 
-/* The order pass marks a wrapper it emptied with `hidden`, but `.flex-container` and
-   `.flexFlowColumn` set `display` on most of them and would paint the leftover heading anyway. */
-#sb-settings-page [data-sb-emptied-by-order] {
-    display: none !important;
-}
-
 /* The MovingUI preset picker stacks its label above its controls, so the whole group wraps to two
    lines inside a full-width row and leaves most of that row empty. Lay the label, picker, and save
    button along one axis, matching the theme picker row in Appearance. */
@@ -10388,9 +10360,14 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 }
 
 /* An accordion that had a toggle before now names the page that holds it, so the toggle is gone and
-   only the generic expand behaviour is left behind. */
+   only the generic expand behaviour is left behind. The detail-opened card drawer below loses its bar
+   the same way, and upstream's authored h3/h4 steps aside because the detail bar already names the page. */
+.sb-subpage-detail-content > h3,
+.sb-subpage-detail-content > h4,
 .sb-subpage-detail-content > .inline-drawer-toggle,
-.sb-subpage-detail-content > .inline-drawer-header {
+.sb-subpage-detail-content > .inline-drawer-header,
+.sb-subpage-detail-content [data-sb-detail-opened='true'] > .inline-drawer-toggle,
+.sb-subpage-detail-content [data-sb-detail-opened='true'] > .inline-drawer-header {
     display: none !important;
 }
 
@@ -10403,11 +10380,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 /* The card's own drawer, opened by the detail pass: the row that opened the page named it, so the
    bar above doubles as its toggle and the frame it drew is stripped. The body's own display comes
    from the pass, which opens it the way a click would. */
-.sb-subpage-detail-content [data-sb-detail-opened='true'] > .inline-drawer-toggle,
-.sb-subpage-detail-content [data-sb-detail-opened='true'] > .inline-drawer-header {
-    display: none !important;
-}
-
 .sb-subpage-detail-content [data-sb-detail-opened='true'] > .inline-drawer-content {
     padding: 0;
     margin: 0;
@@ -10462,13 +10434,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 .sb-subpage-store .sb-shell-embedded-content,
 .sb-subpage-store .drawer-content {
     display: none;
-}
-
-/* Headings that upstream authored are the pages' titles now, and the detail bar already names the
-   page, so the authored heading steps aside rather than repeating itself. */
-.sb-subpage-detail-content > h3,
-.sb-subpage-detail-content > h4 {
-    display: none !important;
 }
 
 /* Strip the frame an authored block arrives with. Inside a detail page the pill is the only box:
@@ -10969,15 +10934,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     overflow-wrap: anywhere;
 }
 
-/* The upstream h4 for "Chat Completion Source" / "API Type" is authored above the now-hidden
-   native select. The combo row in the switcher already carries the "Source" label, so the h4
-   is redundant. The rules above (clip-path) already handle the common case; this is a safety net
-   for any path where the clip-path rule doesn't fire. */
-[data-sb-connections-panel] h4:has(+ #chat_completion_source),
-[data-sb-connections-panel] h4:has(+ #textgen_type) {
-    display: none !important;
-}
-
 /* libadwaita suggested-action: the primary connect button gets accent colour treatment so it reads
    as the main action on the provider card rather than as a neutral tool button. */
 [data-sb-connections-panel] .sb-connections-connect .api_button,
@@ -10992,15 +10948,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 [data-sb-connections-panel] .sb-connections-connect #horde_api_key_button:hover {
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 32%, transparent);
     border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 62%, transparent);
-}
-
-/* The drawer's remaining top-level nodes -- the `#main_api` picker row and the two connection
-   forms whose blocks the panel has already relocated. They stay in the document so their ids stay
-   resolvable, and are hidden here rather than moved, because `#main_api` in particular must keep
-   its position in the document: half the app reads it by id and `changeMainAPI` writes `display`
-   onto it. */
-.sb-connections-legacy {
-    display: none !important;
 }
 
 /* ── Provider settings pill ─────────────────────────────────────────────────────────────── */
@@ -11074,10 +11021,10 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     flex: 0 0 44px !important;
     inline-size: 44px !important;
     min-inline-size: 44px !important;
-    max-inline-size: 44px !important;
+    max-inline-size: 44px;
     block-size: 44px !important;
     min-block-size: 44px !important;
-    max-block-size: 44px !important;
+    max-block-size: 44px;
     padding: 0 !important;
     align-self: center;
 }
@@ -11375,6 +11322,12 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     }
 }
 
+/* The drawer's remaining top-level nodes -- the `#main_api` picker row and the two connection
+   forms whose blocks the panel has already relocated. They stay in the document so their ids stay
+   resolvable, and are hidden here rather than moved, because `#main_api` in particular must keep
+   its position in the document: half the app reads it by id and `changeMainAPI` writes `display`
+   onto it. Closed picker menus share the rule. */
+.sb-connections-legacy,
 .sb-model-id-picker-menu[hidden],
 .sb-inline-select-picker-menu[hidden] {
     display: none !important;

@@ -6773,33 +6773,33 @@ body.reduced-motion *::after {
     background: var(--sb-layer-popover) !important;
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent) !important;
     border-radius: var(--sb-radius-overlay) !important;
-    padding: 6px !important;
-    box-shadow: var(--sb-shadow-popover) !important;
+    padding: 6px;
+    box-shadow: var(--sb-shadow-popover);
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
 }
 
 #options .options-content {
     border: none !important;
-    padding: 0 !important;
+    padding: 0;
 }
 
 #options .options-content a {
     height: 34px;
-    padding: 0 12px !important;
+    padding: 0 12px;
     border-radius: var(--sb-radius-control) !important;
-    opacity: 1 !important;
-    color: var(--SmartThemeBodyColor) !important;
+    opacity: 1;
+    color: var(--SmartThemeBodyColor);
     background: transparent !important;
     border: none !important;
     display: flex !important;
-    align-items: center !important;
-    gap: 8px !important;
+    align-items: center;
+    gap: 8px;
 }
 
 #options .options-content a i,
 #options .options-content a .fa-fw {
-    opacity: 0.7 !important;
+    opacity: 0.7;
 }
 
 #options .options-content a:hover {
@@ -6826,28 +6826,28 @@ body.reduced-motion *::after {
     background: var(--sb-layer-popover) !important;
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent) !important;
     border-radius: var(--sb-radius-overlay) !important;
-    padding: 6px !important;
-    box-shadow: var(--sb-shadow-popover) !important;
+    padding: 6px;
+    box-shadow: var(--sb-shadow-popover);
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
 }
 
 #extensionsMenu > .extension_container > div {
     height: 34px;
-    padding: 0 12px !important;
+    padding: 0 12px;
     border-radius: var(--sb-radius-control) !important;
-    opacity: 1 !important;
-    color: var(--SmartThemeBodyColor) !important;
+    opacity: 1;
+    color: var(--SmartThemeBodyColor);
     background: transparent !important;
     border: none !important;
     display: flex !important;
-    align-items: center !important;
-    gap: 8px !important;
+    align-items: center;
+    gap: 8px;
 }
 
 #extensionsMenu i,
 #extensionsMenu .fa-fw {
-    opacity: 0.7 !important;
+    opacity: 0.7;
 }
 
 #extensionsMenu > .extension_container > div:hover {
