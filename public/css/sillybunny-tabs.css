@@ -1598,7 +1598,6 @@ body:not(.movingUI) .drawer-content.maximized {
 .sb-shell-callout,
 .sb-agent-hero,
 .sb-agent-card,
-.sb-admin-card,
 .sb-theme-card,
 .sb-theme-option,
 .sb-shell-empty-state {
@@ -3002,7 +3001,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 .sb-shell-callout,
 .sb-agent-hero,
 .sb-agent-card,
-.sb-admin-card,
 .sb-theme-card {
     border-radius: var(--sb-radius-lg, 22px);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
@@ -3015,7 +3013,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 .sb-shell-callout::before,
 .sb-agent-hero::before,
 .sb-agent-card::before,
-.sb-admin-card::before,
 .sb-theme-card::before {
     content: '';
     position: absolute;
@@ -3029,48 +3026,21 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 .sb-shell-callout,
 .sb-agent-hero,
-.sb-admin-card,
 .sb-theme-card {
     padding: var(--sb-shell-space-lg);
 }
 
 :root[data-sb-compact-mode='true'] .sb-shell-callout,
 :root[data-sb-compact-mode='true'] .sb-agent-hero,
-:root[data-sb-compact-mode='true'] .sb-admin-card,
 :root[data-sb-compact-mode='true'] .sb-theme-card {
     padding: var(--sb-shell-space-md);
 }
 
 .sb-shell-callout p,
 .sb-agent-hero p,
-.sb-admin-card p,
 .sb-theme-card p {
     margin: 8px 0 0;
     opacity: 0.75;
-}
-
-.sb-admin-card {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sb-shell-card-gap);
-}
-
-.sb-admin-card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-}
-
-.sb-admin-card-copy {
-    min-width: 0;
-}
-
-.sb-admin-card-copy strong {
-    display: block;
-    font-size: var(--sb-type-control);
-    font-weight: var(--sb-weight-title);
-    line-height: var(--sb-line-title);
 }
 
 .sb-server-card {
@@ -3481,7 +3451,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 @media screen and (max-width: 900px) {
-    .sb-admin-card-header,
     .sb-server-config-meta {
         flex-direction: column;
         align-items: stretch;

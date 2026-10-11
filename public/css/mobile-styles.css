@@ -1607,8 +1607,6 @@
         min-height: 42px !important;
     }
 
-    .sb-import-card .sb-admin-card-header,
-    .sb-import-card .sb-admin-card-copy,
     .sb-import-card .sb-import-path-row,
     .sb-import-card .sb-import-action-row {
         gap: 8px !important;

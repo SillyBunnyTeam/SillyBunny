@@ -10101,7 +10101,9 @@ function updatePromptingPanel(panel) {
         prefillTarget.hidden = false;
     }
 
-    const textgenSwipes = document.getElementById('n_textgenerationwebui')?.closest('.range-block');
+    // SillyBunny: the multiple-swipes control is authored as a data-tg-samplers wrapper,
+    // not a range-block. Move only that wrapper into the shared Generation Settings group.
+    const textgenSwipes = document.getElementById('n_textgenerationwebui')?.closest('[data-tg-samplers="n"]');
     const generationBody = root.querySelector('#common-gen-settings-block > .sb-prompting-group-body');
     if (textgenSwipes instanceof HTMLElement && generationBody instanceof HTMLElement && textgenSwipes.parentElement !== generationBody) {
         generationBody.append(textgenSwipes);

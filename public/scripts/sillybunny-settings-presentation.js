@@ -107,7 +107,7 @@ function normalizeCustomizeSwitch(label) {
 /** @param {HTMLElement} scope */
 function normalizeSwitchRowWrappers(scope) {
     for (const row of scope.querySelectorAll('.ds-row-switch')) {
-        const group = row.closest('.ds-pref-group, .sb-admin-card, .sb-sampling-control-card');
+        const group = row.closest('.ds-pref-group, .sb-sampling-control-card');
         if (!group || !scope.contains(group)) continue;
         if (group.matches('.sb-sampling-control-card')) group.classList.add('sb-settings-row-wrapper');
         for (let wrapper = row.parentElement; wrapper && wrapper !== group; wrapper = wrapper.parentElement) {

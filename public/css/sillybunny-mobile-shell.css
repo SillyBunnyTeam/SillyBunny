@@ -1361,13 +1361,8 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 
     .sb-shell-callout,
     .sb-agent-hero,
-    .sb-admin-card,
     .sb-theme-card {
         padding: 16px;
-    }
-
-    .sb-admin-card {
-        gap: 14px;
     }
 
     .sb-search-results {
