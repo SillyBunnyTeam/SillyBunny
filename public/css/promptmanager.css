@@ -819,10 +819,76 @@
     line-height: 1.45;
 }
 
+/* SillyBunny: mobile slide-in detail (Layout C). The workspace clips its overflow so the
+   editor pane translates off-screen to the right by default and slides in when a prompt is
+   selected, replacing the list view. The back button is only visible in detail mode. */
+.sb-workspace-split {
+    overflow: hidden;
+}
+
+.sb-workspace-back-button {
+    display: none;
+}
+
+.sb-workspace-split.sb-workspace-mobile-detail .sb-workspace-list-pane {
+    pointer-events: none;
+}
+
+@media screen and (max-width: 960px) {
+    .sb-workspace-split {
+        position: relative;
+    }
+
+    .sb-workspace-list-pane {
+        transition: transform 220ms ease, opacity 220ms ease;
+    }
+
+    .sb-workspace-editor-pane {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        transform: translateX(100%);
+        transition: transform 220ms ease;
+        background: var(--SmartThemeBlurTintColor, var(--grey1000, #18181b));
+        border-radius: var(--sb-radius-md, 16px);
+        padding: 12px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    .sb-workspace-back-button {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+        padding: 6px 10px;
+        font-size: var(--sb-type-control, 0.875rem);
+        border-radius: var(--sb-radius-sm, 8px);
+    }
+
+    .sb-workspace-split.sb-workspace-mobile-detail .sb-workspace-list-pane {
+        transform: translateX(-30%);
+        opacity: 0;
+    }
+
+    .sb-workspace-split.sb-workspace-mobile-detail .sb-workspace-editor-pane {
+        transform: translateX(0);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .sb-workspace-list-pane,
+        .sb-workspace-editor-pane {
+            transition: none;
+        }
+    }
+}
+
 @media screen and (min-width: 961px) {
     .sb-workspace-split {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        /* SillyBunny: narrow fixed list (280px) + fluid editor — replaces the previous
+           equal 50/50 split to give the editor substantially more space. */
+        grid-template-columns: 280px minmax(0, 1fr);
         align-items: start;
     }
 

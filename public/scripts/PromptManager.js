@@ -610,6 +610,14 @@ class PromptManager {
             && Boolean(this.activePopupArea);
 
         this.containerElement?.classList.toggle(`${this.configuration.prefix}prompt_manager_has_editor`, isEditorVisible);
+
+        // SillyBunny: on mobile, mirror editor visibility onto the workspace so the
+        // CSS slide-in (Layout C) can be driven by a single class toggle rather than
+        // imperative style changes. getWorkspace() is a local helper below.
+        const workspace = this.containerElement?.querySelector(`.${this.configuration.prefix}prompt_manager_workspace`);
+        if (workspace instanceof HTMLElement && !this.isDesktopSplitLayout()) {
+            workspace.classList.toggle('sb-workspace-mobile-detail', this.isPopupVisible() && Boolean(this.activePopupArea));
+        }
     }
 
     isPopupVisible() {
@@ -1150,6 +1158,11 @@ class PromptManager {
         document.getElementById(this.configuration.prefix + 'prompt_manager_popup_close_button').addEventListener('click', closeAndClearPopup);
         // SillyBunny: preview mode has its own close button and field listeners.
         document.getElementById(this.configuration.prefix + 'prompt_manager_popup_preview_close_button').addEventListener('click', closeAndClearPopup);
+        // SillyBunny: mobile slide-in back button — returns to the list view on narrow
+        // viewports by calling the same closeAndClearPopup path, which triggers
+        // syncEditorPaneState() and removes .sb-workspace-mobile-detail from the workspace.
+        this.containerElement?.querySelector(`.${this.configuration.prefix}prompt_manager_back_button`)
+            ?.addEventListener('click', closeAndClearPopup);
         document.querySelectorAll('.' + this.configuration.prefix + 'prompt_manager_tab_button').forEach(button => {
             button.addEventListener('click', this.handlePromptEditorTabClick);
         });
