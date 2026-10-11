@@ -8919,8 +8919,8 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     padding: 0 0 8px;
 }
 
-/* The heading reproduces `.ds-pref-group-heading` so a flattened subsection reads as the same
-   kind of label as the grouped card above it, and its text lands on the same 16px inset. */
+/* SillyBunny: flat-section headers use the same compact two-line anatomy as Messages category
+   headers. The title itself carries the body-scale type; the header owns the small metadata line. */
 .sb-settings-mounted-shell .sb-settings-flat-header {
     display: flex;
     /* The drawer header it replaces used `space-between`, and the Prompting and Advanced Formatting
@@ -8929,7 +8929,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     justify-content: space-between;
     align-items: center;
     gap: 12px;
-    padding: 10px 16px 4px;
+    padding: 0 4px;
     margin: 0;
     min-height: 0;
     background: transparent;
@@ -8939,20 +8939,15 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     color: var(--sb-shell-text-secondary);
 }
 
-/* A flattened drawer that was a section in its own right keeps the header it had while it was
-   still collapsible: 52px floor, 10px/16px inset, title on the body scale. The base rule above is
-   the *subsection* label -- the small dim caption that sits over rows lifted out of someone else's
-   card -- and applying it to a top-level section demotes every section title in Backend and
-   Customize to a 33px caption. The `:has()` rule further down raises the headers that carry a
-   description line; this one covers the single-line ones, and comes first so that a header with a
-   description still wins on the shared metric. */
+/* Top-level flat sections keep the same category-header metric rather than becoming a larger
+   legacy drawer bar. The title column below restores the body-scale title and metadata spacing. */
 #sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-section-top > .sb-settings-flat-header {
-    min-height: 52px;
-    padding: 10px 16px;
+    min-height: 0;
+    padding: 0 4px;
     gap: 12px;
-    font-size: var(--sb-type-body);
-    line-height: 1.3;
-    color: var(--sb-shell-text);
+    font-size: var(--sb-type-meta);
+    line-height: 1.4;
+    color: var(--sb-shell-text-secondary);
 }
 
 /* A flattened section is a heading in the enclosing body's flow, not a card of its own: it must
@@ -8997,41 +8992,66 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     color: inherit;
 }
 
-/* A header carrying a description reads at the row metric rather than at body leading: title on
-   the body scale, description on the meta scale, 2px apart, 52px floor. The Prompting and Advanced
-   Formatting drawers build their own header markup and so miss the `height: 52px; line-height: 1.25`
-   that `.sb-settings-subdrawer` headers inherit, which left them at 73-78px against 52px elsewhere
-   for the same two-line shape. Scoped through `#sb-settings-page` because the enclosing
-   `#openai_settings .flex-container` gap is ID-weighted.
- *
- * The flat-header selector covers the same shape after flattening. A flattened section keeps the
- * markup and the two-line content but loses `.inline-drawer-header`, so without it the header drops
- * to the 33px label metric and the section it titles changes height the moment it is flattened. */
-#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small),
+/* A flat header carrying a description uses the same two-line metric as a Messages category header.
+   Scoped through `#sb-settings-page` because the enclosing `#openai_settings .flex-container` gap is
+   ID-weighted. */
 #sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-header:has(> .flex-container > small) {
+    min-height: 0;
+    padding: 0 4px;
+    gap: 12px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-header > .sb-settings-category-heading {
+    gap: 2px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-header .sb-settings-category-heading :is(b, strong, h3, h4, .sb-settings-category-title) {
+    /* Body scale, not the metadata scale: a flat header title matches the 15px title of every
+       Messages category header. Descendant rather than child because some legacy headers wrap the
+       title in an additional flex column. */
+    font-size: var(--sb-type-body);
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: 0;
+    color: var(--sb-shell-text);
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-header .sb-settings-category-heading :is(small, .ds-row-subtitle) {
+    /* The 2px gap above is the whole separation; the group-meta rule adds its own top margin. */
+    margin: 0;
+    font-size: var(--sb-type-meta);
+    line-height: 1.4;
+    color: var(--sb-shell-text-secondary);
+    opacity: 1;
+}
+
+/* UI Theme and a few upstream headings keep their visible copy in a nested span. Reset the old
+   tracked title treatment so the visible text, not only its parent h4, matches Messages. */
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-category-heading .sb-settings-category-title > span {
+    font: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+}
+
+/* Legacy collapsible expanders are a separate interaction pattern from the flat category headers;
+   keep their row metric and disclosure affordance intact. */
+#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) {
     min-height: 52px;
     padding: 10px 16px;
     gap: 12px;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) > .flex-container,
-#sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-header:has(> .flex-container > small) > .flex-container {
+#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) > .flex-container {
     gap: 2px;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) > .flex-container b,
-#sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-header:has(> .flex-container > small) > .flex-container b {
-    /* Body scale, not the row scale: a drawer header's title matches the 15px title of every
-       single-line header beside it, and the height comes out of tight leading instead. Descendant
-       rather than child because the sampling header wraps its title in a help-link row. */
+#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) > .flex-container > b {
     font-size: var(--sb-type-body);
     font-weight: 700;
     line-height: 1.3;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) > .flex-container > small,
-#sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-header:has(> .flex-container > small) > .flex-container > small {
-    /* The 2px gap above is the whole separation; the group-meta rule adds its own top margin. */
+#sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) > .flex-container > small {
     margin: 0;
     font-size: var(--sb-type-meta);
     line-height: 1.4;

@@ -209,6 +209,43 @@ test.describe('Settings switch-row consistency', () => {
     });
 });
 
+test.describe('Settings header consistency', () => {
+    test.beforeEach(async ({ page, baseURL }) => loadSettings(page, baseURL));
+
+    test('Customize headers use the Messages category-title metric', async ({ page }) => {
+        const messages = await openSettingsTab(page, 'messages', 'right');
+        const reference = await messages.locator('.sb-settings-category-title:visible').first().evaluate(title => {
+            const style = getComputedStyle(title);
+            return {
+                fontSize: style.fontSize,
+                fontWeight: style.fontWeight,
+                lineHeight: style.lineHeight,
+                letterSpacing: style.letterSpacing,
+                color: style.color,
+            };
+        });
+
+        for (const tab of ['appearance', 'interface', 'messages', 'data-security', 'logs']) {
+            const panel = await openSettingsTab(page, tab, 'right');
+            const failures = await panel.locator('.sb-settings-flat-header:visible').evaluateAll((headers, expected) => headers.flatMap(header => {
+                const title = header.querySelector('.sb-settings-category-title');
+                if (!(title instanceof HTMLElement)) return ['missing .sb-settings-category-title'];
+                const style = getComputedStyle(title);
+                const metrics = {
+                    fontSize: style.fontSize === expected.fontSize,
+                    fontWeight: style.fontWeight === expected.fontWeight,
+                    lineHeight: style.lineHeight === expected.lineHeight,
+                    letterSpacing: style.letterSpacing === expected.letterSpacing,
+                    color: style.color === expected.color,
+                };
+                return Object.entries(metrics).filter(([, pass]) => !pass)
+                    .map(([metric]) => `${title.textContent.trim() || 'unnamed'}: ${metric}`);
+            }), reference);
+            expect(failures, `${tab} header metrics`).toEqual([]);
+        }
+    });
+});
+
 test.describe('Prompting and Sampling consistency', () => {
     test.beforeEach(async ({ page, baseURL }) => loadSettings(page, baseURL));
 

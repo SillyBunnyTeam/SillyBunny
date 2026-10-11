@@ -678,8 +678,16 @@ function ensureDescription(section, heading, promoteTooltip) {
         return null;
     }
 
+    // SillyBunny: every settings header uses the Messages category-title typography. Keep the
+    // authored title node live, but mark it so legacy b/strong headings and nested title spans use
+    // the same style as generated category headings.
+    const titleElement = getTitleElement(header);
+    if (titleElement !== header && titleElement instanceof HTMLElement) {
+        titleElement.classList.add('sb-settings-category-title');
+    }
+
     if (promoteTooltip && !header.querySelector(':scope > .sb-settings-category-heading')) {
-        const title = getTitleElement(header);
+        const title = titleElement;
         let titleBlock = title;
         while (titleBlock.parentElement && titleBlock.parentElement !== header) titleBlock = titleBlock.parentElement;
         if (titleBlock !== header) {
