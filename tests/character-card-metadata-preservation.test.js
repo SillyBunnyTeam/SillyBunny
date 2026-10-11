@@ -16,6 +16,14 @@ import { Jimp } from '../src/jimp.js';
 import { setConfigFilePath } from '../src/util.js';
 import encode from '../src/png/encode.js';
 import { escapeCharacterBookRegex, normalizeCharacterBookPosition } from '../public/scripts/world-info-character-book.js';
+import {
+    buildCharacterPatch,
+    createDraft,
+    normalizeCardFields,
+    projectCardFields,
+    reconcileSavedFields,
+    setDraftTarget,
+} from '../public/scripts/sillybunny-character-creator/model.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const originalWorkingDirectory = process.cwd();
@@ -132,6 +140,100 @@ describe('character card metadata preservation', () => {
         expect(cardChunks[0].card.spec).toBe('chara_card_v2');
         expect(cardChunks[1].card.spec).toBe('chara_card_v3');
         expect(cardChunks.every(chunk => chunk.card.creator === 'Somebody')).toBe(true);
+    });
+
+    test('creator deltas preserve CCv3 metadata, PNG chunks and chats without losing an unselected conflict', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(console, 'info').mockImplementation(() => {});
+        await createAlice();
+        const avatar = 'Alice.png';
+        const cardPath = path.join(directories.characters, avatar);
+        const initialDescription = '[Identity: navigator]\n\n{{char}}: <script>reference data</script>';
+        const initialScenario = 'The user is a customer.';
+        const fixture = {
+            avatar,
+            spec: 'chara_card_v3',
+            spec_version: '3.0',
+            description: initialDescription,
+            scenario: initialScenario,
+            data: {
+                description: initialDescription,
+                scenario: initialScenario,
+                alternate_greetings: ['First dock', 'Second dock', 'Third dock'],
+                creator: 'Fixture author',
+                creator_notes: 'Keep these notes.',
+                character_version: '7',
+                tags: ['navigator', 'repair shop'],
+                nickname: 'Captain',
+                source: ['https://example.com/original-card'],
+                group_only_greetings: ['A group arrives.'],
+                assets: [{ type: 'icon', uri: 'ccdefault:', name: 'main', ext: 'png' }],
+                extensions: { creator_test: { nested: { keep: ['a', 'b'] } } },
+                character_book: {
+                    name: 'Harbor',
+                    description: 'An embedded setting.',
+                    extensions: { foreign_book: true },
+                    entries: [{
+                        id: 23, keys: ['dock'], content: 'The dock closes at dusk.',
+                        enabled: true, insertion_order: 1, extensions: { foreign_entry: 'keep' },
+                    }],
+                },
+            },
+        };
+        expect((await postJson('/api/characters/merge-attributes', fixture)).status).toBe(200);
+        addAncillaryChunks(cardPath);
+        const chatPath = path.join(directories.chats, 'Alice', 'existing.jsonl');
+        const chatText = '{"name":"Alice"}\n{"is_user":false,"mes":"Existing greeting."}\n';
+        fs.writeFileSync(chatPath, chatText);
+        const draft = createDraft({ sourceAvatar: avatar, fields: await getCharacter(avatar) });
+        const description = '[Identity: retired navigator; Work: repair shop]\n\n{{char}}: \"Bring {{user}} the chart.\"';
+        setDraftTarget(draft, 'description', description);
+        setDraftTarget(draft, 'scenario', 'The user proposes a voyage.');
+
+        const externalScenario = 'Another editor makes the user a supplier.';
+        expect((await postJson('/api/characters/merge-attributes', {
+            avatar, scenario: externalScenario, data: { scenario: externalScenario },
+        })).status).toBe(200);
+        const imageBefore = fs.readFileSync(cardPath);
+        const cardsBefore = decodeCardChunks(imageBefore);
+        expect(cardsBefore.find(chunk => chunk.keyword === 'ccv3').card).toMatchObject({
+            spec: 'chara_card_v3',
+            data: { ...fixture.data, scenario: externalScenario },
+        });
+
+        const descriptionPatch = buildCharacterPatch(draft, ['description'], await getCharacter(avatar));
+        expect(descriptionPatch.conflicts).toEqual([]);
+        expect((await postJson('/api/characters/merge-attributes', descriptionPatch.patch)).status).toBe(200);
+        const expectedDescriptionCards = structuredClone(cardsBefore);
+        for (const { card } of expectedDescriptionCards) {
+            card.description = description;
+            card.data.description = description;
+        }
+        const imageAfterDescription = fs.readFileSync(cardPath);
+        expect(decodeCardChunks(imageAfterDescription)).toEqual(expectedDescriptionCards);
+        expect(nonCardChunks(imageAfterDescription)).toEqual(nonCardChunks(imageBefore));
+        const saved = normalizeCardFields(await getCharacter(avatar));
+        reconcileSavedFields(draft, { description }, saved);
+        expect(saved.scenario).toBe(externalScenario);
+        expect(draft.baseline.scenario).toBe(initialScenario);
+        expect(projectCardFields(draft).scenario).toBe('The user proposes a voyage.');
+        expect(buildCharacterPatch(draft, ['scenario'], saved).conflicts).toEqual([{
+            field: 'scenario', baseline: initialScenario, current: externalScenario, proposed: 'The user proposes a voyage.',
+        }]);
+
+        const [first, , third] = draft.working.alternate_greetings;
+        draft.working.alternate_greetings = [third, first];
+        const greetingPatch = buildCharacterPatch(draft, ['alternate_greetings'], saved);
+        expect(greetingPatch.conflicts).toEqual([]);
+        expect((await postJson('/api/characters/merge-attributes', greetingPatch.patch)).status).toBe(200);
+        const expectedGreetingCards = structuredClone(expectedDescriptionCards);
+        for (const { card } of expectedGreetingCards) {
+            card.data.alternate_greetings = ['Third dock', 'First dock'];
+        }
+        const imageAfterGreetings = fs.readFileSync(cardPath);
+        expect(decodeCardChunks(imageAfterGreetings)).toEqual(expectedGreetingCards);
+        expect(nonCardChunks(imageAfterGreetings)).toEqual(nonCardChunks(imageBefore));
+        expect(fs.readFileSync(chatPath, 'utf8')).toBe(chatText);
     });
 
     describeWindows('Windows card metadata', () => {
