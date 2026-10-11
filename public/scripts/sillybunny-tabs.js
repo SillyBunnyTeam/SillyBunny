@@ -333,7 +333,9 @@ function enhancePresetActionButtons(root) {
             const kind = getPresetActionKind(button);
             if (!kind) continue;
             const label = SB_PRESET_ACTION_LABELS[kind];
-            button.classList.add('sb-action-btn');
+            // `toggle` with a force argument is a no-op when the state already matches; `add` always queues a
+            // class mutation, which wakes the keyboard-interactable observer on every Prompting activation.
+            button.classList.toggle('sb-action-btn', true);
             button.classList.toggle('sb-action-btn--danger', kind === 'delete' || kind === 'deleteAll');
             if (!button.querySelector(':scope > .sb-action-btn-label')) {
                 const labelId = `sb-preset-action-${actionContainer.closest('[id]')?.id}-${kind}-label`;
@@ -10051,7 +10053,7 @@ function updatePromptingPanel(panel) {
         const group = root.querySelector(`#${id}`);
         if (!(group instanceof HTMLElement)) continue;
         if (id.startsWith('sb-openai-') && range instanceof HTMLElement && group.parentElement !== range) range.append(group);
-        group.classList.add('sb-prompting-group');
+        group.classList.toggle('sb-prompting-group', true);
         if (id === 'sb-openai-budget') {
             const title = group.querySelector('.sb-settings-flat-header b');
             if (title && title.textContent !== 'Generation Settings') title.textContent = 'Generation Settings';
@@ -10069,12 +10071,22 @@ function updatePromptingPanel(panel) {
         group.hidden = id === 'sb-openai-sampling' || (isTcGroup ? isChatCompletion : isCcGroup ? !isChatCompletion : false);
     }
     // SillyBunny: the Prompt Manager may mount late, so restore the complete Chat Completions order on every update.
+    // The check must be "is the tail already in this order", not "is this group last yet": `append` on a
+    // node that is already its parent's last child still performs a remove+insert, which is a childList
+    // mutation. This function runs from the drawer observer, so a per-group append kept re-triggering the
+    // observer every frame and re-flattening the whole Prompting panel in a loop.
     if (range instanceof HTMLElement) {
         const openAIReadingOrder = ['sb-openai-budget', 'sb-openai-prompt-manager', 'sb-openai-names', 'sb-openai-prefill', 'sb-openai-request', 'sb-openai-prompts'];
-        for (const id of openAIReadingOrder) {
-            const group = root.querySelector(`#${id}`);
-            if (!(group instanceof HTMLElement)) continue;
-            if (group.parentElement !== range || group !== range.lastElementChild) range.append(group);
+        const orderedGroups = openAIReadingOrder
+            .map(id => root.querySelector(`#${id}`))
+            .filter(group => group instanceof HTMLElement);
+        const currentTail = Array.from(range.children).slice(-orderedGroups.length);
+        const isOrdered = orderedGroups.length > 0
+            && currentTail.length === orderedGroups.length
+            && currentTail.every((child, index) => child === orderedGroups[index]);
+
+        if (!isOrdered) {
+            for (const group of orderedGroups) range.append(group);
         }
     }
 
@@ -13805,9 +13817,18 @@ function bindInlineDrawerPersistence(root = document) {
  * flattened. The persistence observer already watches these subtrees and is the only thing that
  * reliably fires afterwards, so the flatten rides along with the same debounce. It is idempotent,
  * and it skips any panel with no drawers left, so the common case is one query per panel.
+ *
+ * Only a visible panel is re-flattened: every activation already runs the full pass through
+ * `flattenSettingsPanelDrawers`, so a hidden panel catches up when it is shown. Re-running it on
+ * hidden panels cost a full Prompting rebuild for unrelated mutations (closing search, hotkeys), and
+ * the Prompting pass decides group visibility with `checkVisibility()`, which is false for every
+ * control inside a hidden panel -- it hid each group until the next activation re-showed it. Each
+ * shell keeps its own active panel and the settings page can be closed, so the active class alone
+ * does not mean the panel is on screen.
  */
 function reflattenRuntimeDrawers() {
-    for (const panel of document.querySelectorAll('section.sb-shell-panel[data-sb-panel]')) {
+    for (const panel of document.querySelectorAll('section.sb-shell-panel.sb-shell-panel-active[data-sb-panel]')) {
+        if (!(panel.checkVisibility?.() ?? panel.getClientRects().length > 0)) continue;
         const tabId = panel.dataset.sbPanel;
         if (tabId === 'prompting') {
             updatePromptingPanel(panel);

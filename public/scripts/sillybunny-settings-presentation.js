@@ -69,16 +69,33 @@ function createRowSubtitle(row) {
     return subtitle;
 }
 
+/**
+ * `classList.add`/`remove` queue a `class` mutation record even when nothing changes, and the
+ * keyboard-interactable observer re-scans the subtree for every class record. These normalizers re-run
+ * on every panel activation, so only touch tokens whose state actually differs.
+ * @param {Element} element @param {...string} tokens
+ */
+function addMissingClasses(element, ...tokens) {
+    const missing = tokens.filter(token => !element.classList.contains(token));
+    if (missing.length) element.classList.add(...missing);
+}
+
+/** @param {Element} element @param {...string} tokens */
+function removePresentClasses(element, ...tokens) {
+    const present = tokens.filter(token => element.classList.contains(token));
+    if (present.length) element.classList.remove(...present);
+}
+
 /** @param {HTMLLabelElement} label */
 function normalizeCustomizeSwitch(label) {
     const input = label.querySelector('input[type="checkbox"]');
     if (!(input instanceof HTMLInputElement)) return;
 
-    input.classList.add('sb-switch');
-    input.setAttribute('role', 'switch');
+    addMissingClasses(input, 'sb-switch');
+    if (input.getAttribute('role') !== 'switch') input.setAttribute('role', 'switch');
     // Native checked state also covers programmatic theme/settings updates without change events.
     input.removeAttribute('aria-checked');
-    label.classList.remove('alignItemsBaseline', 'alignitemsflexstart', 'alignItemsFlexEnd', 'gap0', 'flexNoGap');
+    removePresentClasses(label, 'alignItemsBaseline', 'alignitemsflexstart', 'alignItemsFlexEnd', 'gap0', 'flexNoGap');
     if (label.classList.contains('ds-row')) return;
 
     const text = document.createElement('span');
@@ -109,10 +126,10 @@ function normalizeSwitchRowWrappers(scope) {
     for (const row of scope.querySelectorAll('.ds-row-switch')) {
         const group = row.closest('.ds-pref-group, .sb-sampling-control-card');
         if (!group || !scope.contains(group)) continue;
-        if (group.matches('.sb-sampling-control-card')) group.classList.add('sb-settings-row-wrapper');
+        if (group.matches('.sb-sampling-control-card')) addMissingClasses(group, 'sb-settings-row-wrapper');
         for (let wrapper = row.parentElement; wrapper && wrapper !== group; wrapper = wrapper.parentElement) {
             if (wrapper.matches('.ds-row, .ds-row-expander, .ds-row-expander-content')) break;
-            wrapper.classList.add('sb-settings-row-wrapper');
+            addMissingClasses(wrapper, 'sb-settings-row-wrapper');
         }
     }
 }
@@ -130,8 +147,8 @@ function normalizeCustomizeField(row, control) {
     const subtitle = createRowSubtitle(row);
     // Tooltip info markers have become visible copy; actionable help links keep their handlers.
     for (const marker of title.querySelectorAll('.fa-circle-info')) marker.remove();
-    title.classList.add('ds-row-label');
-    title.classList.remove('displayNone');
+    addMissingClasses(title, 'ds-row-label');
+    removePresentClasses(title, 'displayNone');
     if (title instanceof HTMLLabelElement && control.id) title.htmlFor = control.id;
     text.append(title, subtitle);
     if (!control.hasAttribute('aria-label') && !control.hasAttribute('aria-labelledby') && !(title instanceof HTMLLabelElement)) {
