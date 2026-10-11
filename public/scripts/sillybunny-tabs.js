@@ -479,6 +479,7 @@ function flattenSettingsPanelDrawers(shellKey, tabId) {
         flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
         applySettingsSectionOrder(panel, tabId);
         normalizeSettingsPresentation(panel, { name: tabId });
+        if (tabId === 'context') positionAdvancedFormattingHelpLink();
     }
 }
 
@@ -9080,6 +9081,7 @@ function createOnDemandShellPanel(shellKey, tabConfig, build) {
                 flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
                 applySettingsSectionOrder(panel, tabConfig.id);
                 normalizeSettingsPresentation(panel, { name: tabConfig.id });
+                if (tabConfig.id === 'context') positionAdvancedFormattingHelpLink();
             }
             installSettingsSubpage(shellKey, tabConfig.id);
             const tab = getShellState(shellKey)?.tabs.get(tabConfig.id);
@@ -10302,7 +10304,40 @@ function groupAdvancedFormattingIntoDrawers() {
     for (const body of bodies.values()) {
         normalizeBackendSettingsRows(body, { fields: false });
     }
+
+    positionAdvancedFormattingHelpLink();
     updatePromptingPanel(prompting);
+}
+
+function positionAdvancedFormattingHelpLink() {
+    const formatting = document.getElementById('AdvancedFormatting');
+    if (!(formatting instanceof HTMLElement)) return;
+
+    // SillyBunny: the legacy Advanced Formatting help link lived in the old baseline bar. The
+    // presentation pass moves the title into the flat header but leaves that link behind, which
+    // renders the question mark on its own line below the title. Move the live link beside the
+    // title and remove the now-empty legacy wrapper after presentation has built the header.
+    const advancedHeader = formatting.querySelector(':scope > .sb-settings-flat-header');
+    if (advancedHeader instanceof HTMLElement && formatting.firstElementChild !== advancedHeader) {
+        formatting.prepend(advancedHeader);
+    }
+
+    const advancedHeading = advancedHeader?.querySelector(':scope > .sb-settings-category-heading');
+    const notesLink = formatting.querySelector('a.notes-link[href*="advancedformatting"]');
+    const advancedTitle = advancedHeading?.querySelector(':scope > .sb-settings-category-title');
+    const legacyBar = formatting.querySelector(':scope > .flex-container.alignItemsBaseline');
+    if (legacyBar instanceof HTMLElement && legacyBar.childElementCount === 0) legacyBar.remove();
+    if (!(advancedHeader instanceof HTMLElement) || !(advancedHeading instanceof HTMLElement)
+        || !(notesLink instanceof HTMLElement) || !(advancedTitle instanceof HTMLElement)
+        || advancedHeading.querySelector(':scope > .sb-settings-category-title-row')) return;
+
+    const legacyTitle = notesLink.closest('h3');
+    const notesLegacyBar = legacyTitle?.closest('.flex-container.alignItemsBaseline');
+    const titleRow = createElement('div', { className: 'sb-settings-category-title-row' });
+    advancedTitle.before(titleRow);
+    titleRow.append(advancedTitle, notesLink);
+    legacyTitle?.remove();
+    if (notesLegacyBar instanceof HTMLElement && notesLegacyBar.childElementCount === 0) notesLegacyBar.remove();
 }
 
 function updateFormattingGroupVisibility(formatting) {
@@ -13781,6 +13816,7 @@ function reflattenRuntimeDrawers() {
         }
         flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
         normalizeSettingsPresentation(panel, { name: tabId });
+        if (tabId === 'context') positionAdvancedFormattingHelpLink();
     }
 }
 

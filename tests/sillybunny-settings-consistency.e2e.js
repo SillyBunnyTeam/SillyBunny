@@ -244,6 +244,76 @@ test.describe('Settings header consistency', () => {
             expect(failures, `${tab} header metrics`).toEqual([]);
         }
     });
+
+    test('Appearance and Formatting keep migrated groups flat and aligned', async ({ page }) => {
+        const appearance = await openSettingsTab(page, 'appearance', 'right');
+        const appearanceMetrics = await appearance.evaluate(root => {
+            const pageSize = root.querySelector('#AppearanceLayoutSection');
+            const visual = root.querySelector('#ThemeTogglesSection');
+            const borderTop = element => element ? getComputedStyle(element).borderTopWidth : null;
+            return { pageSizeBorderTop: borderTop(pageSize), visualBorderTop: borderTop(visual) };
+        });
+        expect(appearanceMetrics).toEqual({ pageSizeBorderTop: '0px', visualBorderTop: '0px' });
+
+        const topbar = appearance.locator('#sb-topbar-label-drawer:visible');
+        const topbarMetrics = await topbar.evaluate(drawer => {
+            const desktop = drawer.querySelector('.sb-desktop-setting');
+            const mobile = drawer.querySelector('.sb-mobile-setting');
+            const option = desktop?.querySelector('.sb-topbar-label-option');
+            const input = option?.querySelector('input[type="checkbox"]');
+            const title = desktop?.querySelector('.sb-topbar-label-section-heading > strong');
+            const optionRect = option?.getBoundingClientRect();
+            const inputRect = input?.getBoundingClientRect();
+            return {
+                desktopTitleVisible: Boolean(title && title.getBoundingClientRect().height > 0 && title.scrollWidth <= title.clientWidth),
+                mobileTitlePresent: Boolean(mobile?.querySelector('.sb-topbar-label-section-heading > strong')?.textContent.trim()),
+                switchIsTrailing: Boolean(optionRect && inputRect && inputRect.right > optionRect.left + optionRect.width / 2),
+                optionGridFullWidth: Boolean(desktop?.querySelector('.sb-topbar-label-option-grid')?.clientWidth === desktop.clientWidth),
+            };
+        });
+        expect(topbarMetrics).toEqual({
+            desktopTitleVisible: true,
+            mobileTitlePresent: true,
+            switchIsTrailing: true,
+            optionGridFullWidth: true,
+        });
+
+        await page.setViewportSize({ width: 390, height: 844 });
+        const mobileAppearance = await openSettingsTab(page, 'appearance', 'right');
+        const mobileTopbar = mobileAppearance.locator('#sb-topbar-label-drawer:visible');
+        const mobileTitleMetrics = await mobileTopbar.locator('.sb-mobile-setting .sb-topbar-label-section-heading > strong').evaluate(title => ({
+            visible: title.getBoundingClientRect().height > 0,
+            fits: title.scrollWidth <= title.clientWidth,
+        }));
+        expect(mobileTitleMetrics).toEqual({ visible: true, fits: true });
+
+        await page.setViewportSize({ width: 1280, height: 720 });
+        const formatting = await openSettingsTab(page, 'context', 'left');
+        await expect(formatting.locator('#AdvancedFormatting > .sb-settings-flat-header')).toHaveCount(1);
+        const formattingMetrics = await formatting.locator('#AdvancedFormatting:visible').evaluate(root => {
+            const header = root.firstElementChild;
+            const titleRow = header?.querySelector('.sb-settings-category-title-row');
+            const help = titleRow?.querySelector('.notes-link');
+            const group = root.querySelector('.sb-formatting-group:has(.sb-prompting-group-body)');
+            const body = group?.querySelector(':scope > .sb-prompting-group-body');
+            const groupStyle = group ? getComputedStyle(group) : null;
+            const bodyStyle = body ? getComputedStyle(body) : null;
+            const titleRect = titleRow?.getBoundingClientRect();
+            const helpRect = help?.getBoundingClientRect();
+            return {
+                headerIsFirst: header?.matches('.sb-settings-flat-header') ?? false,
+                helpBesideTitle: Boolean(titleRect && helpRect && Math.abs(titleRect.top - helpRect.top) < 2),
+                outerGroupHasNoBox: groupStyle?.borderTopWidth === '0px' && groupStyle.padding === '0px',
+                bodyKeepsPreferenceBox: bodyStyle?.borderTopWidth === '1px' && bodyStyle.borderRadius !== '0px',
+            };
+        });
+        expect(formattingMetrics).toEqual({
+            headerIsFirst: true,
+            helpBesideTitle: true,
+            outerGroupHasNoBox: true,
+            bodyKeepsPreferenceBox: true,
+        });
+    });
 });
 
 test.describe('Prompting and Sampling consistency', () => {

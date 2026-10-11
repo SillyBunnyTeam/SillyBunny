@@ -8649,6 +8649,24 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     min-height: 0;
 }
 
+/* SillyBunny: Formatting groups use the same heading + one preference-pill anatomy as Presets.
+   The legacy Advanced Formatting card wrapped each body in a second tinted box with its own shadow,
+   so fields looked nested and heavier than every other settings group. */
+#sb-settings-page #AdvancedFormatting > .sb-formatting-group {
+    width: 100%;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+}
+
+#sb-settings-page #AdvancedFormatting > .sb-formatting-group::before {
+    content: none;
+}
+
 #sb-settings-page .sb-prompting-panel #pro-settings-block {
     display: flex;
     flex-direction: column;
@@ -8950,6 +8968,13 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     color: var(--sb-shell-text-secondary);
 }
 
+/* Category spacing is owned by the section margin and the preference pill. The legacy drawer
+   separator is not part of the Messages reference anatomy, so do not draw a rule above migrated
+   top-level categories. */
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-section-top {
+    border-top: 0;
+}
+
 /* A flattened section is a heading in the enclosing body's flow, not a card of its own: it must
    not sit inside the box it used to be. Several wrappers parent their own card around a nested
    drawer, and those treatments would otherwise stack a tinted box inside a tinted box. */
@@ -9031,6 +9056,32 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     font: inherit;
     letter-spacing: inherit;
     color: inherit;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-category-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-category-title-row > .notes-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    color: var(--sb-shell-text-secondary);
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-category-title-row .note-link-span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    font-size: var(--sb-type-meta);
 }
 
 /* Legacy collapsible expanders are a separate interaction pattern from the flat category headers;
@@ -9551,10 +9602,39 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     gap: 0;
 }
 
+/* SillyBunny: Top Bar Label options are preference rows in the settings shell, not the old
+   640px choice-card grid. Let their switches use the shared trailing-suffix position. */
+#sb-settings-page .sb-settings-mounted-shell .sb-topbar-label-section {
+    width: 100%;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-topbar-label-section-heading {
+    padding-inline: 16px;
+    gap: 2px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-topbar-label-section-heading > strong {
+    font-size: var(--sb-type-body);
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-topbar-label-section-heading > small {
+    font-size: var(--sb-type-meta);
+    line-height: 1.4;
+    opacity: 1;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-topbar-label-option-grid {
+    width: 100%;
+    max-width: none;
+}
+
 #sb-settings-page .sb-settings-mounted-shell :is(.sb-topbar-label-option, .sb-compact-mode-option, .sb-mobile-nav-choice, .sb-topbar-custom-text-field).ds-row {
     flex-direction: row;
     width: 100%;
     gap: 12px;
+    justify-content: flex-start;
     border: 0;
     border-radius: 0;
     background: transparent;
@@ -9564,6 +9644,11 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 
 #sb-settings-page .sb-settings-mounted-shell .ds-row-label :is(.sb-topbar-label-option-copy, .sb-compact-mode-copy, .sb-mobile-nav-choice-copy) > strong {
     font: inherit;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-topbar-label-option-copy {
+    align-items: flex-start;
+    text-align: start;
 }
 
 #sb-settings-page .sb-theme-slider-value[hidden] {
