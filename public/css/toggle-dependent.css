@@ -585,28 +585,10 @@ label[for="model_sampling_profiles_enabled"]:has(input:checked)~#model_sampling_
 }
 
 #advanced-formatting-cc-notice {
-    display: none;
-    gap: 5px;
-    align-items: baseline;
-    margin: 5px 0;
-    padding: 5px 10px;
-}
-
-#AdvancedFormatting.sb-chat-completion-mode #advanced-formatting-cc-notice {
-    display: flex;
+    display: none !important;
 }
 
 #AdvancedFormatting.sb-chat-completion-mode [data-cc-null]:not([data-cc-chat-completion-visible]) {
-    display: none !important;
-}
-
-#AdvancedFormatting.sb-chat-completion-mode #sb-af-instruct {
-    display: none !important;
-}
-
-/* A section whose every setting is text-completion-only (System Prompt, in chat completion) would
-   show just its heading. */
-#AdvancedFormatting.sb-chat-completion-mode .sb-af-settings-drawer:not(:has(> :not(.sb-settings-flat-header) > :not([data-cc-null]:not([data-cc-chat-completion-visible])))) {
     display: none !important;
 }
 

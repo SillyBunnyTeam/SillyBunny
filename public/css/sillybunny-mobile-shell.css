@@ -728,10 +728,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 }
 
 @media screen and (max-width: 768px) {
-    #AdvancedFormatting .sb-af-settings-drawer .inline-drawer-content :is(
-        #ContextSettings > div > .title_restorable.standoutHeader > strong,
-        #InstructSettingsColumn > .margin0.title_restorable.standoutHeader > strong
-    ) {
+    #AdvancedFormatting .sb-formatting-group > .ds-pref-group > .standoutHeader > strong {
         display: none !important;
     }
 

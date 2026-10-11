@@ -185,7 +185,7 @@ const SB_FLAT_SECTION_HEADER_CLASSES = Object.freeze([
  * reveal it would hide the settings it holds.
  *
  * Flattening is idempotent: a flattened drawer has no content wrapper, so it is skipped on any
- * later run. That matters because some drawers are authored at runtime (`#sb-openai-output` builds
+ * later run. That matters because some drawers are authored at runtime (OpenAI groups build
  * its own subsections after load), so this runs again on each tab activation.
  *
  * @param {HTMLElement|null|undefined} root subtree to flatten
@@ -299,14 +299,13 @@ export const SB_SETTINGS_CATEGORY_CLASS = 'sb-settings-category';
  */
 export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
     context: Object.freeze({
-        root: '.sb-af-drawers',
+        root: '#AdvancedFormatting',
         entries: Object.freeze([
-            { section: '#sb-af-context' },
-            { section: '#sb-af-instruct' },
-            { section: '#sb-af-sysprompt' },
-            { id: 'stopping-strings', adopt: 'div:has(> div > #custom_stopping_strings)' },
-            { id: 'reasoning', adopt: 'div:has(> div > .sb-reasoning-toggle-grid)' },
-            { id: 'reply-formatting', adopt: 'div:has(> [name="startReplyWithBlock"])' },
+            { section: '#sb-af-tokenizer' },
+            { section: '#sb-af-stopping' },
+            { section: '#sb-af-cleanup' },
+            { section: '#sb-af-reasoning' },
+            { section: '#sb-af-rendering' },
         ]),
     }),
     appearance: Object.freeze({

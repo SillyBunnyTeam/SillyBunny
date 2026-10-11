@@ -4910,11 +4910,10 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     line-height: 1.5;
 }
 
-#AdvancedFormatting #ContextSettings .flex-container[data-cc-null] textarea.autoSetHeight,
-#AdvancedFormatting #InstructSequencesColumn textarea.autoSetHeight,
-#AdvancedFormatting #SystemPromptColumn textarea.autoSetHeight,
-/* 6F.3 lifts stopping strings and Start Reply With out of the System Prompt column. */
-#AdvancedFormatting .sb-settings-category textarea.autoSetHeight {
+#AdvancedFormatting .sb-formatting-group textarea.autoSetHeight,
+#sb-tc-instruct #InstructSequencesColumn textarea.autoSetHeight,
+#sb-tc-sysprompt textarea.autoSetHeight,
+#sb-settings-page .sb-prompting-panel .sb-prompting-group-body textarea.autoSetHeight {
     min-height: 6.4rem;
 }
 
@@ -4975,15 +4974,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     gap: 10px;
 }
 
-#AdvancedFormatting > .flex-container.spaceEvenly {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-}
-
-#AdvancedFormatting > .flex-container.spaceEvenly > #ContextSettings,
-#AdvancedFormatting > .flex-container.spaceEvenly > #InstructSettingsColumn,
-#AdvancedFormatting > .flex-container.spaceEvenly > #SystemPromptColumn {
+#AdvancedFormatting > .sb-formatting-group {
     position: relative;
     isolation: isolate;
     width: 100%;
@@ -4995,9 +4986,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     box-shadow: 0 18px 34px color-mix(in srgb, var(--SmartThemeShadowColor) 14%, transparent);
 }
 
-#AdvancedFormatting > .flex-container.spaceEvenly > #ContextSettings::before,
-#AdvancedFormatting > .flex-container.spaceEvenly > #InstructSettingsColumn::before,
-#AdvancedFormatting > .flex-container.spaceEvenly > #SystemPromptColumn::before {
+#AdvancedFormatting > .sb-formatting-group::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -5008,7 +4997,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     opacity: var(--sb-shell-card-opacity);
 }
 
-#AdvancedFormatting #InstructSequencesColumn {
+#sb-tc-instruct #InstructSequencesColumn {
     width: 100%;
     min-width: 0;
     margin-top: 16px;
@@ -5030,9 +5019,9 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     border-radius: var(--sb-radius-md);
 }
 
-#AdvancedFormatting #instructSettingsBlock > div,
-#AdvancedFormatting #SystemPromptBlock > div,
-#AdvancedFormatting #ContextSettings > div > div,
+#sb-tc-instruct #instructSettingsBlock > div,
+#sb-tc-sysprompt #SystemPromptBlock > div,
+#AdvancedFormatting .sb-formatting-group > div > div,
 #AdvancedFormatting [name='tokenizerSettingsBlock'],
 #AdvancedFormatting [name='startReplyWithBlock'],
 #AdvancedFormatting [name='bindModelPresetBlock'] {

@@ -398,7 +398,7 @@ function openAllInlineDrawers(root = null) {
  * the split.
  *
  * The split flattens and orders the markup it relocates, but some sections author their drawers
- * at runtime -- `#sb-openai-output` builds four of them in `openai.js` once its panel is created,
+ * at runtime -- OpenAI groups are built in `openai.js` once its panel is created,
  * and Advanced Formatting and the Appearance theme card are assembled after the split -- so both
  * passes are repeated on activation. Both are idempotent, so re-running them costs queries and no
  * DOM churn.
@@ -566,7 +566,7 @@ const SB_ACCOUNT_STORAGE_READY_MARKER = '__migrated';
  * Drawers whose open state is written by their own code rather than by the generic persistence
  * scan, so the scan must not also write a key for them.
  *
- * 6F removed `sb-openai-budget`, `sb-openai-output` and `sb-openai-advanced` from this list: they
+ * 6F removed OpenAI drawer persistence from this list: the groups
  * are flattened now, and a flattened section is not a drawer -- it has no toggle and no content
  * wrapper -- so there is no open state left for either writer to persist.
  */
@@ -956,12 +956,13 @@ const SB_SHELLS = Object.freeze({
             },
             {
                 id: 'context',
-                label: 'Context',
+                label: 'Formatting',
                 icon: 'fa-text-height',
                 tooltip: 'Set miscellaneous formatting settings for the model backend',
-                description: 'Configure context templates and regex text transformations.',
-                searchPlaceholder: 'Search context templates, regex, or text replacements',
-                searchExamples: ['context', 'regex', 'replacement'],
+                description: 'lorum ipsum',
+                searchPlaceholder: 'Search formatting, context templates, regex, or text replacements',
+                searchExamples: ['formatting', 'context', 'advanced formatting', 'regex', 'replacement'],
+                searchAliases: ['Context', 'Advanced Formatting'],
             },
         ],
     },
@@ -9168,7 +9169,6 @@ const SB_SAMPLING_BACKENDS = Object.freeze([
         description: 'Uses the selected Text Completions backend and sampler visibility rules.',
         controls: [
             '#seed_textgenerationwebui',
-            '#n_textgenerationwebui',
             '#samplerResetButton',
             '#sampler_order_block_kcpp',
             '#sampler_order_block_lcpp',
@@ -9271,6 +9271,7 @@ const SB_LARGE_SAMPLING_CONTROLS = Object.freeze(new Set([
 ]));
 
 const SB_SAMPLING_GROUPS = Object.freeze([
+    { id: 'presets', title: 'Presets' },
     { id: 'sampling', title: 'Sampling' },
     { id: 'penalties', title: 'Penalties & Repetition' },
     { id: 'algorithms', title: 'Advanced Algorithms' },
@@ -9297,7 +9298,7 @@ const SB_SAMPLING_GROUP_SELECTORS = Object.freeze({
     ]),
     tokens: new Set([
         '#seed_openai', '#openai_logit_bias_preset', '#seed_textgenerationwebui',
-        '#n_textgenerationwebui', '#min_length_textgenerationwebui', '#max_tokens_second_textgenerationwebui',
+        '#min_length_textgenerationwebui', '#max_tokens_second_textgenerationwebui',
         '#banned_tokens_block_ooba', '#logit_bias_block_ooba', '#min_length_novel',
     ]),
     output: new Set([
@@ -9673,7 +9674,16 @@ function updateSamplingCardVisibility(section) {
 
     section.querySelectorAll('[data-sb-sampling-group]').forEach(group => {
         if (!(group instanceof HTMLElement)) return;
-        group.hidden = !Array.from(group.querySelectorAll('[data-sb-sampling-control]')).some(card => card instanceof HTMLElement && !card.hidden);
+        const hasSamplingCard = Array.from(group.querySelectorAll('[data-sb-sampling-control]'))
+            .some(card => card instanceof HTMLElement && !card.hidden);
+        const hasPresetRow = Array.from(group.querySelectorAll('.sb-non-chat-preset-row, #openai_api-presets'))
+            .some(row => row instanceof HTMLElement && (row.checkVisibility?.() ?? row.getClientRects().length > 0));
+        const activeApi = getCurrentMainApiValue();
+        const presetBackend = activeApi === 'koboldhorde' ? 'kobold' : activeApi;
+        const hasActivePreset = group.dataset.sbSamplingGroup === 'presets'
+            && ['textgenerationwebui', 'kobold', 'novel'].includes(presetBackend)
+            && group.querySelector(`#${presetBackend}_api-presets`) instanceof HTMLElement;
+        group.hidden = !(hasSamplingCard || hasPresetRow || hasActivePreset);
     });
 }
 
@@ -9773,6 +9783,11 @@ function buildSamplingPanel() {
     });
 
     const sections = createElement('div', { className: 'sb-sampling-sections' });
+    const samplingPresetNodes = new Map([
+        ['textgenerationwebui', document.getElementById('textgenerationwebui_api-presets')],
+        ['kobold', document.getElementById('kobold_api-presets')],
+        ['novel', document.getElementById('novel_api-presets')],
+    ]);
 
     for (const backend of SB_SAMPLING_BACKENDS) {
         const section = createElement('section', {
@@ -9797,6 +9812,18 @@ function buildSamplingPanel() {
                 createElement('div', { className: 'ds-pref-group' }),
             );
             section.append(category);
+        }
+        const presets = samplingPresetNodes.get(backend.id);
+        const presetBody = section.querySelector('[data-sb-sampling-group="presets"] > .ds-pref-group');
+        if (presets instanceof HTMLElement && presetBody instanceof HTMLElement) {
+            presetBody.append(presets);
+            enhancePresetActionButtons(presetBody);
+            const observer = new MutationObserver(mutations => {
+                if (mutations.some(mutation => [...mutation.addedNodes].some(node => getPresetActionKind(node)))) {
+                    enhancePresetActionButtons(presetBody);
+                }
+            });
+            observer.observe(presetBody, { childList: true, subtree: true });
         }
         sections.appendChild(section);
     }
@@ -9880,11 +9907,11 @@ function preparePromptingPanel(root) {
     if (!(configuration instanceof HTMLElement)) return;
 
     const disclaimer = createElement('div', { className: 'sb-backend-disclaimer', attrs: { 'data-sb-prompting-disclaimer': '' } });
-    const disclaimerCopy = createElement('p', { text: 'lorum ipsum', attrs: { 'data-sb-copy-placeholder': 'true' } });
+    const disclaimerCopy = createElement('p', { text: 'Note: advanced settings can be found in Formatting.' });
     const context = createElement('button', {
         className: 'menu_button',
-        text: 'Context',
-        attrs: { type: 'button', 'data-sb-prompting-context': '' },
+        text: 'Formatting',
+        attrs: { type: 'button', 'data-sb-prompting-formatting': '' },
     });
     context.addEventListener('click', () => openShell('left', 'context'));
     disclaimer.append(disclaimerCopy, context);
@@ -9921,6 +9948,26 @@ function preparePromptingPanel(root) {
         }
     }
 
+    const createPromptingGroup = (id, title) => {
+        const existing = configuration.querySelector(`#${CSS.escape(id)}`);
+        if (existing instanceof HTMLElement) return existing;
+        const group = createElement('section', { id, className: 'sb-prompting-group' });
+        group.append(
+            createElement('h3', { className: 'ds-pref-group-heading', text: title }),
+            createElement('div', { className: 'ds-pref-group sb-prompting-group-body' }),
+        );
+        configuration.append(group);
+        return group;
+    };
+
+    for (const [id, title] of [
+        ['sb-tc-sysprompt', 'System Prompt'],
+        ['sb-tc-instruct', 'Instruct Template'],
+        ['sb-tc-context', 'Context Template'],
+        ['sb-tc-names', 'Character Names'],
+        ['sb-reply-prefill', 'Reply Prefill'],
+    ]) createPromptingGroup(id, title);
+
     // SillyBunny: keep range_block_openai around its groups for provider visibility and preset lookups.
     const range = configuration.querySelector('#range_block_openai');
     const advanced = configuration.querySelector('#advanced-ai-config-block');
@@ -9930,6 +9977,7 @@ function preparePromptingPanel(root) {
 
 function updatePromptingPanel(panel) {
     if (!(panel instanceof HTMLElement)) return;
+    groupAdvancedFormattingIntoDrawers();
     const root = panel.querySelector('.sb-prompting-panel');
     if (!(root instanceof HTMLElement)) return;
     const activeApi = getCurrentMainApiValue();
@@ -9938,7 +9986,11 @@ function updatePromptingPanel(panel) {
     const modeLabel = `Backend: ${backend?.title ?? activeApi}`;
     if (mode && mode.textContent !== modeLabel) mode.textContent = modeLabel;
     const disclaimer = root.querySelector('[data-sb-prompting-disclaimer]');
-    if (disclaimer instanceof HTMLElement) disclaimer.hidden = !backend?.usesContextSettings;
+    if (disclaimer instanceof HTMLElement) disclaimer.hidden = false;
+    for (const selector of ['[name="bindModelPresetBlock"]', '#AdvancedFormatting > .flex-container.alignItemsBaseline > .flex-container[data-cc-null]']) {
+        const tcPresetControl = root.querySelector(selector) ?? document.querySelector(selector);
+        if (tcPresetControl instanceof HTMLElement) tcPresetControl.hidden = activeApi === 'openai';
+    }
 
     flattenNestedSettingsDrawers(root, { includeTopLevel: true });
     const range = root.querySelector('#range_block_openai');
@@ -9949,10 +10001,16 @@ function updatePromptingPanel(panel) {
         (managerGroup.querySelector(':scope > .sb-prompting-group-body') ?? managerGroup).append(managerBlock);
         managerGroup.style.display = '';
     }
-    for (const id of ['sb-openai-budget', 'sb-openai-output', 'sb-openai-advanced', 'sb-openai-prompt-manager', 'sb-openai-prompts']) {
+    const isChatCompletion = activeApi === 'openai';
+    const promptingGroupIds = [
+        'sb-openai-budget', 'sb-openai-sampling', 'sb-openai-names', 'sb-openai-prefill',
+        'sb-openai-request', 'sb-openai-prompt-manager', 'sb-openai-prompts',
+        'sb-tc-sysprompt', 'sb-tc-instruct', 'sb-tc-context', 'sb-tc-names', 'sb-reply-prefill',
+    ];
+    for (const id of promptingGroupIds) {
         const group = root.querySelector(`#${id}`);
         if (!(group instanceof HTMLElement)) continue;
-        if (range instanceof HTMLElement && group.parentElement !== range) range.append(group);
+        if (id.startsWith('sb-openai-') && range instanceof HTMLElement && group.parentElement !== range) range.append(group);
         group.classList.add('sb-prompting-group');
         if (id === 'sb-openai-budget') {
             const title = group.querySelector('.sb-settings-flat-header b');
@@ -9966,16 +10024,46 @@ function updatePromptingPanel(panel) {
             group.append(body);
         }
         normalizeBackendSettingsRows(group);
+        const isTcGroup = id.startsWith('sb-tc-') || id === 'sb-reply-prefill';
+        const isCcGroup = id.startsWith('sb-openai-');
+        group.hidden = id === 'sb-openai-sampling' || (isTcGroup ? isChatCompletion : isCcGroup ? !isChatCompletion : false);
     }
     // SillyBunny: the Prompt Manager may mount late, so restore the complete Chat Completions order on every update.
     if (range instanceof HTMLElement) {
-        let nextGroup = null;
-        for (const id of ['sb-openai-prompts', 'sb-openai-advanced', 'sb-openai-output', 'sb-openai-budget', 'sb-openai-prompt-manager']) {
+        const openAIReadingOrder = ['sb-openai-budget', 'sb-openai-names', 'sb-openai-prefill', 'sb-openai-request', 'sb-openai-prompts', 'sb-openai-prompt-manager'];
+        for (const id of openAIReadingOrder) {
             const group = root.querySelector(`#${id}`);
             if (!(group instanceof HTMLElement)) continue;
-            if (group.nextElementSibling !== nextGroup) range.insertBefore(group, nextGroup);
-            nextGroup = group;
+            if (group.parentElement !== range || group !== range.lastElementChild) range.append(group);
         }
+    }
+
+    const tcOrder = ['sb-tc-sysprompt', 'sb-tc-instruct', 'sb-tc-context', 'sb-tc-names', 'sb-reply-prefill'];
+    const commonGroup = root.querySelector('#common-gen-settings-block');
+    if (commonGroup instanceof HTMLElement) {
+        let anchor = commonGroup;
+        for (const id of tcOrder) {
+            const group = root.querySelector(`#${id}`);
+            if (!(group instanceof HTMLElement)) continue;
+            if (group.parentElement !== anchor.parentElement || group.previousElementSibling !== anchor) {
+                anchor.after(group);
+            }
+            anchor = group;
+        }
+    }
+
+    const prefill = root.querySelector('[name="startReplyWithBlock"]') ?? document.querySelector('[name="startReplyWithBlock"]');
+    const prefillTarget = root.querySelector(isChatCompletion ? '#sb-openai-prefill' : '#sb-reply-prefill');
+    if (prefill instanceof HTMLElement && prefillTarget instanceof HTMLElement) {
+        const body = prefillTarget.querySelector(':scope > .sb-prompting-group-body') ?? prefillTarget;
+        if (prefill.parentElement !== body) body.append(prefill);
+        prefillTarget.hidden = false;
+    }
+
+    const textgenSwipes = document.querySelector('#n_textgenerationwebui')?.closest('[data-tg-samplers="n"]');
+    const generationBody = root.querySelector('#common-gen-settings-block > .sb-prompting-group-body');
+    if (textgenSwipes instanceof HTMLElement && generationBody instanceof HTMLElement && textgenSwipes.parentElement !== generationBody) {
+        generationBody.append(textgenSwipes);
     }
     const presets = root.querySelector('#respective-presets-block');
     if (presets instanceof HTMLElement) normalizeBackendSettingsRows(presets);
@@ -9991,10 +10079,17 @@ function updatePromptingPanel(panel) {
     mergeOpenAIPresetToolbarRow(root);
     enhancePresetActionButtons(root);
     groupPromptingRowHelpers(root);
-    for (const group of root.querySelectorAll('.sb-openai-settings-drawer, .sb-textgen-drawers > .sb-settings-flat-section')) {
+    for (const group of root.querySelectorAll('.sb-openai-settings-drawer, .sb-textgen-drawers > .sb-settings-flat-section, .sb-prompting-group')) {
         if (!(group instanceof HTMLElement)) continue;
-        const hasControls = Boolean(group.querySelector('input:not([type="hidden"]), select, textarea, button, .menu_button'));
-        group.hidden = !hasControls;
+        if (group.id === 'sb-reply-prefill' && isChatCompletion) continue;
+        const shouldHideByMode = group.id === 'sb-openai-sampling'
+            || (group.id.startsWith('sb-openai-') && !isChatCompletion)
+            || ((group.id.startsWith('sb-tc-') || group.id === 'sb-reply-prefill') && isChatCompletion);
+        group.hidden = shouldHideByMode;
+        const hasControls = [...group.querySelectorAll('input:not([type="hidden"]), select, textarea, button, .menu_button, [name="startReplyWithBlock"]')]
+            .some(control => control instanceof HTMLElement && (control.checkVisibility?.() ?? control.getClientRects().length > 0));
+        if (!group.id.startsWith('sb-openai-') && !group.id.startsWith('sb-tc-') && group.id !== 'sb-reply-prefill') continue;
+        group.hidden = shouldHideByMode || !hasControls;
     }
 }
 
@@ -10062,111 +10157,134 @@ function setServerAdminMessage(element, message, tone = 'neutral') {
     element.hidden = !element.textContent;
 }
 
-/**
- * Creates a collapsible inline-drawer for Advanced Formatting sections.
- * @param {string} id Drawer element ID
- * @param {string} title Drawer title
- * @param {string} description Short description
- * @returns {HTMLElement} The drawer element
- */
-function createAdvFormattingDrawer(id, title, description) {
-    const drawer = createElement('div', {
-        id,
-        className: 'inline-drawer wide100p flexFlowColumn sb-af-settings-drawer',
-    });
-    const header = createElement('div', { className: 'inline-drawer-toggle inline-drawer-header' });
-    const label = createElement('div', { className: 'flex-container flexFlowColumn' });
-    const titleEl = createElement('b');
-    titleEl.textContent = title;
-    label.appendChild(titleEl);
-    if (description) {
-        const desc = createElement('small', { className: 'sb-group-meta' });
-        desc.textContent = description;
-        label.appendChild(desc);
+function groupAdvancedFormattingIntoDrawers() {
+    const formatting = document.getElementById('AdvancedFormatting');
+    if (!(formatting instanceof HTMLElement)) return;
+    if (formatting.dataset.sbGrouped === 'true') {
+        updateFormattingGroupVisibility(formatting);
+        return;
     }
-    header.appendChild(label);
-    const icon = createElement('div', { className: 'fa-solid fa-circle-chevron-down inline-drawer-icon down' });
-    header.appendChild(icon);
-    drawer.appendChild(header);
-    const content = createElement('div', { className: 'inline-drawer-content' });
-    content.style.display = 'none';
-    drawer.appendChild(content);
-    return drawer;
+
+    const columns = formatting.querySelector('.flex-container.spaceEvenly');
+    const contextColumn = formatting.querySelector('#ContextSettings');
+    const instructColumn = formatting.querySelector('#InstructSettingsColumn');
+    const systemColumn = formatting.querySelector('#SystemPromptColumn');
+    if (!(columns instanceof HTMLElement) || !(contextColumn instanceof HTMLElement)
+        || !(instructColumn instanceof HTMLElement) || !(systemColumn instanceof HTMLElement)) return;
+
+    const createGroup = (id, title) => {
+        const group = createElement('section', { id, className: 'sb-prompting-group sb-formatting-group' });
+        group.append(
+            createElement('h3', { className: 'ds-pref-group-heading', text: title }),
+            createElement('div', { className: 'ds-pref-group sb-prompting-group-body' }),
+        );
+        formatting.append(group);
+        return group.querySelector('.sb-prompting-group-body');
+    };
+    const bodies = new Map([
+        ['tokenizer', createGroup('sb-af-tokenizer', 'Tokenizer & Padding')],
+        ['stopping', createGroup('sb-af-stopping', 'Stopping Strings')],
+        ['cleanup', createGroup('sb-af-cleanup', 'Text Cleanup')],
+        ['reasoning', createGroup('sb-af-reasoning', 'Reasoning')],
+        ['rendering', createGroup('sb-af-rendering', 'Rendering')],
+    ]);
+
+    const move = (target, body) => {
+        if (!(target instanceof HTMLElement) || !(body instanceof HTMLElement)) return;
+        body.append(target);
+    };
+    const moveClosest = (selector, body, ancestorSelector = null) => {
+        const target = formatting.querySelector(selector);
+        if (!(target instanceof HTMLElement)) return;
+        const resolved = ancestorSelector ? target.closest(ancestorSelector) : target;
+        move(resolved, body);
+    };
+
+    const prompting = getShellState('left')?.tabs.get('prompting')?.panel;
+    const promptingGroupBody = id => prompting?.querySelector(`#${id} > .sb-prompting-group-body`);
+    const moveToPrompting = (selector, id, ancestorSelector = null) => {
+        const target = formatting.querySelector(selector);
+        const body = promptingGroupBody(id);
+        if (!(target instanceof HTMLElement) || !(body instanceof HTMLElement)) return;
+        move(ancestorSelector ? target.closest(ancestorSelector) : target, body);
+    };
+
+    const groupBody = id => promptingGroupBody(id);
+    const movePromptingNode = (node, id) => {
+        const body = groupBody(id);
+        if (node instanceof HTMLElement && body instanceof HTMLElement && node.parentElement !== body) body.append(node);
+    };
+
+    moveToPrompting('[name="bindModelPresetBlock"]', 'respective-presets-block');
+    moveToPrompting('#AdvancedFormatting > .flex-container.alignItemsBaseline > .flex-container[data-cc-null]', 'respective-presets-block');
+    const systemPromptBlock = systemColumn.querySelector('#SystemPromptBlock');
+    if (systemPromptBlock instanceof HTMLElement && !systemPromptBlock.querySelector(':scope > .sb-prompting-details')) {
+        const editorBlocks = [...systemPromptBlock.children].filter(child => child.querySelector('#sysprompt_content, #sysprompt_post_history'));
+        if (editorBlocks.length) {
+            const details = createElement('details', { className: 'sb-prompting-details', open: true });
+            details.append(createElement('summary', { text: 'System Prompt Content' }));
+            const content = createElement('div', { className: 'sb-prompting-details-content' });
+            editorBlocks.forEach(block => content.append(block));
+            details.append(content);
+            systemPromptBlock.append(details);
+        }
+    }
+    movePromptingNode(systemColumn.querySelector(':scope > .title_restorable[data-cc-null]'), 'sb-tc-sysprompt');
+    movePromptingNode(systemPromptBlock, 'sb-tc-sysprompt');
+    moveToPrompting('#InstructSettingsColumn', 'sb-tc-instruct');
+    movePromptingNode(contextColumn.querySelector(':scope > div > .title_restorable'), 'sb-tc-context');
+    movePromptingNode(contextColumn.querySelector(':scope > div > .flex-container.flexNoGap'), 'sb-tc-context');
+    const storyBlock = formatting.querySelector('[data-cc-null]:has(#context_story_string)');
+    if (storyBlock instanceof HTMLElement && !storyBlock.closest('details')) {
+        const details = createElement('details', { className: 'sb-prompting-details' });
+        details.append(createElement('summary', { text: 'Story String' }));
+        const content = createElement('div', { className: 'sb-prompting-details-content' });
+        details.append(content);
+        storyBlock.parentElement?.insertBefore(details, storyBlock);
+        content.append(storyBlock);
+    }
+    const storyDetails = [...(contextColumn.querySelectorAll('details.sb-prompting-details'))]
+        .find(details => details.querySelector('#context_story_string'));
+    const contextBody = promptingGroupBody('sb-tc-context');
+    if (storyDetails instanceof HTMLElement && contextBody instanceof HTMLElement) move(storyDetails, contextBody);
+    movePromptingNode(contextColumn.querySelector(':scope > div > div > .flex-container.flexFlowColumn[data-cc-null]'), 'sb-tc-context');
+    movePromptingNode(contextColumn.querySelector(':scope > div > div > .flex-container[data-cc-null]'), 'sb-tc-context');
+    movePromptingNode(contextColumn.querySelector('#context_use_stop_strings')?.closest('label'), 'sb-tc-context');
+    movePromptingNode(contextColumn.querySelector('#context_names_as_stop_strings')?.closest('label'), 'sb-tc-context');
+    movePromptingNode(contextColumn.querySelector('#always-force-name2-checkbox')?.closest('label'), 'sb-tc-names');
+    moveClosest('[name="tokenizerSettingsBlock"]', bodies.get('tokenizer'));
+    moveClosest('div[data-cc-null][data-cc-chat-completion-visible]', bodies.get('stopping'));
+    moveClosest('#single_line', bodies.get('cleanup'), 'label');
+    moveClosest('#collapse-newlines-checkbox', bodies.get('cleanup'), 'label');
+    moveClosest('#trim_spaces', bodies.get('cleanup'), 'label');
+    moveClosest('#trim_sentences_checkbox', bodies.get('cleanup'), 'label');
+    const cleanupHeading = [...contextColumn.querySelectorAll('h4.standoutHeader')]
+        .find(heading => heading.textContent?.includes('Context Formatting'));
+    cleanupHeading?.setAttribute('hidden', '');
+    const reasoningWrapper = systemColumn.querySelector('div:has(.sb-reasoning-toggle-grid)');
+    if (reasoningWrapper instanceof HTMLElement) move(reasoningWrapper, bodies.get('reasoning'));
+    const renderingControl = formatting.querySelector('#markdown_escape_strings')?.parentElement?.parentElement;
+    if (renderingControl instanceof HTMLElement) move(renderingControl, bodies.get('rendering'));
+
+    const notice = document.getElementById('advanced-formatting-cc-notice');
+    if (notice instanceof HTMLElement) notice.hidden = true;
+    const miscHeading = [...systemColumn.querySelectorAll('h4')].find(heading => heading.textContent?.trim() === 'Miscellaneous');
+    if (miscHeading instanceof HTMLElement) miscHeading.hidden = true;
+    columns.hidden = true;
+    formatting.dataset.sbGrouped = 'true';
+    updateFormattingGroupVisibility(formatting);
+    updatePromptingPanel(prompting);
 }
 
-/**
- * Wraps Advanced Formatting columns (Context Template, Instruct Template,
- * System Prompt, Reasoning) into collapsible drawers for better UX.
- */
-function groupAdvancedFormattingIntoDrawers() {
-    const $af = $('#AdvancedFormatting');
-    if ($af.length === 0 || $af.data('sb-grouped')) {
-        return;
+function updateFormattingGroupVisibility(formatting) {
+    if (!(formatting instanceof HTMLElement)) return;
+    for (const group of formatting.querySelectorAll('.sb-formatting-group')) {
+        if (!(group instanceof HTMLElement)) continue;
+        group.hidden = false;
+        const hasVisibleControl = [...group.querySelectorAll('input, select, textarea, button, .menu_button')]
+            .some(control => control instanceof HTMLElement && (control.checkVisibility?.() ?? control.getClientRects().length > 0));
+        group.hidden = !hasVisibleControl;
     }
-
-    // The three-column container
-    const $columnsContainer = $af.find('.flex-container.spaceEvenly').first();
-    if ($columnsContainer.length === 0) {
-        return;
-    }
-
-    const sections = [
-        {
-            id: 'sb-af-context',
-            title: 'Context Template',
-            description: 'Story string, separators, and context formatting options',
-            selector: '#ContextSettings',
-        },
-        {
-            id: 'sb-af-instruct',
-            title: 'Instruct Template',
-            description: 'Instruct mode sequences, wrapping, and activation',
-            selector: '#InstructSettingsColumn',
-        },
-        {
-            id: 'sb-af-sysprompt',
-            title: 'System Prompt',
-            description: 'System prompt, post-history instructions, and tokenizer',
-            selector: '#SystemPromptColumn',
-        },
-    ];
-
-    const $drawersContainer = $('<div>', { class: 'sb-af-drawers flex-container flexFlowColumn gap10' });
-
-    sections.forEach(section => {
-        const $col = $(section.selector).first();
-        if ($col.length === 0) return;
-
-        $col.detach();
-
-        const drawer = createAdvFormattingDrawer(section.id, section.title, section.description);
-        const content = drawer.querySelector('.inline-drawer-content');
-
-        // Remove the flex1 class so it fills the full width in stacked layout
-        $col.removeClass('flex1');
-        $col.addClass('wide100p');
-
-        content.appendChild($col[0]);
-        $drawersContainer.append(drawer);
-    });
-
-    // Also check if Reasoning section exists after the columns container
-    const $reasoning = $columnsContainer.nextAll().filter(function () {
-        return $(this).find('#reasoning_auto_parse').length > 0 || $(this).find('.sb-reasoning-toggle-grid').length > 0;
-    }).first();
-
-    if ($reasoning.length > 0) {
-        $reasoning.detach();
-        const drawer = createAdvFormattingDrawer('sb-af-reasoning', 'Reasoning', 'Auto-parse, formatting, and reasoning block settings');
-        const content = drawer.querySelector('.inline-drawer-content');
-        content.appendChild($reasoning[0]);
-        $drawersContainer.append(drawer);
-    }
-
-    // Replace the columns container with the stacked drawers
-    $columnsContainer.replaceWith($drawersContainer);
-
-    $af.data('sb-grouped', true);
 }
 
 function updateSillyTavernImportInteractivity() {
@@ -12720,6 +12838,10 @@ function buildShell(shellKey) {
             if (formattingPrep) {
                 const contextPanel = createShellPanel(customTab);
                 contextPanel.scroller.appendChild(formattingPrep.drawer);
+                contextPanel.onActivate = () => {
+                    groupAdvancedFormattingIntoDrawers();
+                    updateFormattingGroupVisibility(document.getElementById('AdvancedFormatting'));
+                };
                 registerShellTab(shellKey, customTab, contextPanel, formattingPrep.drawerContent);
             }
             continue;
@@ -15146,6 +15268,7 @@ function buildSettingsPageFor(shellKey, tabId) {
                 'data-sb-settings-tab': tab.id,
                 // Short action-oriented hint; the tab's `description` is the page sub-title instead.
                 title: tab.tooltip ?? '',
+                'data-sb-search-aliases': (tab.searchAliases ?? []).join('|'),
             },
         });
         button.innerHTML = `<i class="fa-solid ${tab.icon}" aria-hidden="true"></i><span>${tab.label}</span>`;
@@ -15454,15 +15577,17 @@ function initSettingsPageClose() {
 
 let sbSettingsSidebarFilterRequest = 0;
 
-function settingsTabLabelMatches(label, query) {
-    const normalizedLabel = normalizeText(label);
-    if (normalizedLabel.includes(query)) {
+function settingsTabLabelMatches(label, query, aliases = []) {
+    const labels = [label, ...aliases];
+    if (labels.some(value => normalizeText(value).includes(query))) {
         return true;
     }
 
     // Word-initial matching, e.g. "cl" for Console Logs.
-    const initials = normalizedLabel.split(/[\s-]+/).filter(Boolean).map(word => word[0]).join('');
-    return query.length > 1 && initials.startsWith(query.replace(/\s+/g, ''));
+    return query.length > 1 && labels.some(value => {
+        const initials = normalizeText(value).split(/[\s-]+/).filter(Boolean).map(word => word[0]).join('');
+        return initials.startsWith(query.replace(/\s+/g, ''));
+    });
 }
 
 async function filterSettingsSidebarTabs(rawQuery) {
@@ -15479,7 +15604,8 @@ async function filterSettingsSidebarTabs(rawQuery) {
         for (const button of tabList.querySelectorAll('.sb-settings-tab')) {
             const label = button.textContent ?? '';
             const tabId = button.dataset.sbSettingsTab;
-            const labelMatch = Boolean(query) && settingsTabLabelMatches(label, query);
+            const aliases = String(button.dataset.sbSearchAliases ?? '').split('|').filter(Boolean);
+            const labelMatch = Boolean(query) && settingsTabLabelMatches(label, query, aliases);
             // Label hits always keep their tab. A content hit only reveals a tab when the label
             // itself did not match, so typing "Logs" opens Logs rather than every tab that happens
             // to mention logs somewhere in its body.

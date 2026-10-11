@@ -32,9 +32,8 @@
     #UI-Customization,
     #power-user-options-block,
     #sb-appearance-content > *,
-    #ContextSettings,
-    #InstructSettingsColumn,
-    #InstructSequencesColumn {
+    #InstructSequencesColumn,
+    #AdvancedFormatting > .sb-formatting-group {
         flex-basis: 100%;
     }
 
@@ -87,26 +86,26 @@
         min-width: 0;
     }
 
-    #InstructSettingsColumn > .margin0.title_restorable.standoutHeader {
+    #sb-tc-instruct > .sb-prompting-group-body > #InstructSettingsColumn > .margin0.title_restorable.standoutHeader {
         display: flex;
         align-items: center;
         gap: 6px;
         flex-wrap: nowrap;
     }
 
-    #InstructSettingsColumn > .margin0.title_restorable.standoutHeader > strong {
+    #sb-tc-instruct > .sb-prompting-group-body > #InstructSettingsColumn > .margin0.title_restorable.standoutHeader > strong {
         min-width: 0;
         font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
         line-height: 1.15;
     }
 
-    #InstructSettingsColumn > .margin0.title_restorable.standoutHeader > .flex-container {
+    #sb-tc-instruct > .sb-prompting-group-body > #InstructSettingsColumn > .margin0.title_restorable.standoutHeader > .flex-container {
         flex: 0 0 auto;
         gap: 4px;
         flex-wrap: nowrap;
     }
 
-    #InstructSettingsColumn > .margin0.title_restorable.standoutHeader .menu_button_icon {
+    #sb-tc-instruct > .sb-prompting-group-body > #InstructSettingsColumn > .margin0.title_restorable.standoutHeader .menu_button_icon {
         width: var(--sb-mobile-touch-target, 44px);
         min-width: var(--sb-mobile-touch-target, 44px);
         height: var(--sb-mobile-touch-target, 44px);
@@ -115,33 +114,33 @@
         justify-content: center;
     }
 
-    #InstructSettingsColumn > .margin0.title_restorable.standoutHeader .menu_button_icon > span {
+    #sb-tc-instruct > .sb-prompting-group-body > #InstructSettingsColumn > .margin0.title_restorable.standoutHeader .menu_button_icon > span {
         display: none;
     }
 
-    #InstructSettingsColumn #instructSettingsBlock > .flex-container.flexNoGap {
+    #sb-tc-instruct #instructSettingsBlock > .flex-container.flexNoGap {
         gap: 6px;
         flex-wrap: nowrap;
         align-items: center;
     }
 
-    #InstructSettingsColumn #instructSettingsBlock > .flex-container.flexNoGap::before {
+    #sb-tc-instruct #instructSettingsBlock > .flex-container.flexNoGap::before {
         content: none !important;
         display: none !important;
     }
 
-    #InstructSettingsColumn #instructSettingsBlock > .flex-container.flexNoGap > #instruct_presets {
+    #sb-tc-instruct #instructSettingsBlock > .flex-container.flexNoGap > #instruct_presets {
         min-width: 0;
         flex: 1 1 auto;
     }
 
-    #InstructSettingsColumn #instructSettingsBlock > .flex-container.flexNoGap > .flex-container.marginLeft5 {
+    #sb-tc-instruct #instructSettingsBlock > .flex-container.flexNoGap > .flex-container.marginLeft5 {
         gap: 4px;
         flex-wrap: nowrap;
         flex: 0 0 auto;
     }
 
-    #InstructSettingsColumn #instructSettingsBlock > .flex-container.flexNoGap .menu_button_icon {
+    #sb-tc-instruct #instructSettingsBlock > .flex-container.flexNoGap .menu_button_icon {
         width: var(--sb-mobile-touch-target, 44px);
         min-width: var(--sb-mobile-touch-target, 44px);
         height: var(--sb-mobile-touch-target, 44px);
@@ -150,7 +149,7 @@
         justify-content: center;
     }
 
-    #InstructSettingsColumn #instructSettingsBlock > .flex-container.flexNoGap .menu_button_icon > span {
+    #sb-tc-instruct #instructSettingsBlock > .flex-container.flexNoGap .menu_button_icon > span {
         display: none;
     }
 

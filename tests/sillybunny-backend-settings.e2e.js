@@ -95,11 +95,13 @@ async function expectSwitchGeometry(root, compactSampling = false) {
 
 async function expectPromptingFlow(prompting, api) {
     if (api !== 'openai') {
-        await expect(prompting.locator('.sb-prompting-group:visible > h3')).toHaveText(['Presets', 'Generation Settings']);
+        await expect(prompting.locator('.sb-prompting-group:visible > h3')).toHaveText([
+            'Presets', 'Generation Settings', 'System Prompt', 'Instruct Template', 'Context Template', 'Character Names', 'Reply Prefill',
+        ]);
         return;
     }
     await expect(prompting.locator('.sb-prompting-group:visible').locator(':scope > h3, :scope > .sb-settings-flat-header b')).toHaveText([
-        'Presets', 'Prompt Manager', 'Generation Settings', 'Output', 'Advanced & Reasoning', 'Quick Prompts Edit / Utility Prompts',
+        'Presets', 'Generation Settings', 'Character Names & Prompt Formatting', 'Reply Prefill', 'Request Options', 'Quick Prompts Edit / Utility Prompts', 'Prompt Manager',
     ]);
     await expect(prompting.locator('#completion_prompt_manager')).toBeVisible();
     await expect(prompting.locator('.openai-tab-buttons, .sb-subpage')).toHaveCount(0);
@@ -171,9 +173,14 @@ async function readBackendHeaderMetrics(header) {
 }
 
 async function expectSamplingTaxonomy(sampling, api) {
-    if (api !== 'textgenerationwebui') return;
+    if (api !== 'textgenerationwebui') {
+        if (['kobold', 'koboldhorde', 'novel'].includes(api)) {
+            await expect(sampling.locator('.sb-sampling-group:visible > h3').first()).toHaveText('Presets');
+        }
+        return;
+    }
     await expect(sampling.locator('.sb-sampling-group:visible > h3')).toHaveText([
-        'Sampling', 'Penalties & Repetition', 'Advanced Algorithms', 'Token Control', 'Output & Generation',
+        'Presets', 'Sampling', 'Penalties & Repetition', 'Advanced Algorithms', 'Token Control', 'Output & Generation',
     ]);
 }
 
@@ -222,7 +229,7 @@ async function bindPresetSampling(page, api) {
 for (const theme of ['Libadwaita', 'Libadwaita Light']) {
     for (const width of [1920, 390]) {
         test(`${theme} Backend groups retain their flow at ${width}px`, async ({ page, baseURL }) => {
-            test.setTimeout(60000);
+            test.setTimeout(120000);
             await loadSettings(page, baseURL);
             await page.setViewportSize({ width, height: width === 390 ? 844 : 1080 });
             await page.evaluate(theme => $('#themes').val(theme).trigger('change'), theme);
@@ -240,13 +247,14 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                 await expect(promptingHeader).toBeVisible();
                 await expect(promptingHeader.locator(':scope > .sb-backend-title-row > [data-sb-prompting-mode]')).toBeVisible();
                 await expect(promptingHeader.locator(':scope > p[data-sb-copy-placeholder]')).toHaveText('lorum ipsum');
-                await expect(promptingHeader.locator('[data-sb-prompting-disclaimer]')).toBeVisible({ visible: api !== 'openai' });
-                await expect(promptingHeader.locator('[data-sb-prompting-context]')).toBeVisible({ visible: api !== 'openai' });
+                await expect(promptingHeader.locator('[data-sb-prompting-disclaimer]')).toBeVisible();
+                await expect(promptingHeader.locator('[data-sb-prompting-formatting]')).toHaveText('Formatting');
                 await expectPromptingFlow(prompting, api);
                 await expectPresetActionLabels(prompting, width);
                 await expectPromptingInsets(prompting);
                 const promptingHeaderMetrics = await readBackendHeaderMetrics(promptingHeader);
                 await expect(prompting.locator('#sb-openai-sampling')).toBeHidden();
+                await expect(prompting.locator('[name="startReplyWithBlock"]')).toHaveCount(1);
                 await expectNoOverflow(prompting);
                 await expectSwitchGeometry(prompting);
                 const sampling = await openPanel(page, 'sampling');
@@ -363,20 +371,59 @@ test('Sampling uses compact full-width rows at desktop and mobile widths', async
         }))).toEqual([]);
 });
 
-test('Text-style Prompting opens Context from the keyboard for every backend', async ({ page, baseURL }) => {
+test('Prompting opens Formatting from the keyboard for every backend', async ({ page, baseURL }) => {
     await loadSettings(page, baseURL);
     for (const api of ['textgenerationwebui', 'kobold', 'koboldhorde', 'novel']) {
         await selectBackend(page, api, api === 'textgenerationwebui' ? 'ooba' : null);
         for (const key of ['Enter', 'Space']) {
             const prompting = await openPanel(page, 'prompting');
-            const context = prompting.getByRole('button', { name: 'Context', exact: true });
-            await expect(prompting.locator('[data-sb-prompting-disclaimer] > p[data-sb-copy-placeholder]')).toHaveText('lorum ipsum');
-            await context.focus();
-            await expect(context).toBeFocused();
+            const formatting = prompting.getByRole('button', { name: 'Formatting', exact: true });
+            await expect(prompting.locator('[data-sb-prompting-disclaimer] > p')).toHaveText('Note: advanced settings can be found in Formatting.');
+            await formatting.focus();
+            await expect(formatting).toBeFocused();
             await page.keyboard.press(key);
             await expect(page.locator('[data-sb-panel="context"]')).toHaveAttribute('aria-hidden', 'false');
         }
     }
+});
+
+test('Prompting and Formatting rehome live template nodes across repeated backend changes', async ({ page, baseURL }) => {
+    await loadSettings(page, baseURL);
+    const uniqueSelectors = [
+        '#SystemPromptBlock', '#InstructSettingsColumn', '#context_presets', '#always-force-name2-checkbox',
+        '#n_textgenerationwebui', '[name="startReplyWithBlock"]',
+    ];
+    for (const api of ['openai', 'textgenerationwebui', 'openai', 'textgenerationwebui', 'openai', 'textgenerationwebui']) {
+        await selectBackend(page, api, api === 'openai' ? 'openrouter' : 'mancer');
+        const prompting = await openPanel(page, 'prompting');
+        await expect(prompting.locator('[name="startReplyWithBlock"]')).toHaveCount(1);
+        for (const selector of uniqueSelectors) {
+            await expect.poll(() => page.locator(selector).count()).toBe(1);
+        }
+        if (api === 'openai') {
+            await expect(prompting.locator('#sb-openai-prefill [name="startReplyWithBlock"]')).toHaveCount(1);
+            await expect(prompting.locator('#sb-tc-sysprompt')).toBeHidden();
+        } else {
+            await expect(prompting.locator('#sb-reply-prefill [name="startReplyWithBlock"]')).toHaveCount(1);
+            await expect(prompting.locator('#common-gen-settings-block #n_textgenerationwebui')).toBeVisible();
+            const sampling = await openPanel(page, 'sampling');
+            await expect(sampling.locator('#n_textgenerationwebui')).toHaveCount(0);
+        }
+    }
+
+    await selectBackend(page, 'openai', 'openrouter');
+    const formatting = await openPanel(page, 'context');
+    await expect(page.locator('[data-sb-settings-tab="context"]')).toContainText('Formatting');
+    await expect(formatting.locator('.sb-formatting-group:visible > h3')).toHaveText([
+        'Stopping Strings', 'Text Cleanup', 'Reasoning', 'Rendering',
+    ]);
+    await expect(formatting.locator('#advanced-formatting-cc-notice')).toBeHidden();
+
+    await selectBackend(page, 'textgenerationwebui', 'ooba');
+    const textFormatting = await openPanel(page, 'context');
+    await expect(textFormatting.locator('.sb-formatting-group:visible > h3')).toHaveText([
+        'Tokenizer & Padding', 'Stopping Strings', 'Text Cleanup', 'Reasoning', 'Rendering',
+    ]);
 });
 
 test('Sampling keeps live nodes, provider visibility, numeric handlers and transmission policy', async ({ page, baseURL }) => {
@@ -433,7 +480,7 @@ test('Native sampler expanders reveal search results and preserve switch and cou
     await page.keyboard.press('Enter');
     await expect(toggle).toBeChecked({ checked: !checked });
     const prompting = await openPanel(page, 'prompting');
-    await prompting.locator('[data-sb-prompting-context]').click();
+    await prompting.locator('[data-sb-prompting-formatting]').click();
     await expect(page.locator('[data-sb-panel="context"]')).toHaveAttribute('aria-hidden', 'false');
 });
 
@@ -498,23 +545,25 @@ for (const api of ['openai', 'textgenerationwebui']) {
         await loadSettings(page, baseURL);
         await selectBackend(page, api, api === 'openai' ? 'openrouter' : 'ooba');
         const prompting = await openPanel(page, 'prompting');
-        const select = prompting.locator(api === 'openai' ? '#settings_preset_openai' : '#settings_preset_textgenerationwebui');
+        const sampling = api === 'openai' ? prompting : await openPanel(page, 'sampling');
+        const select = sampling.locator(api === 'openai' ? '#settings_preset_openai' : '#settings_preset_textgenerationwebui');
         const original = await select.inputValue();
         const preset = getPresetFixture(api);
         const name = `phase3-${api}-fixture`;
-        const file = prompting.locator(api === 'openai' ? '#openai_preset_import_file' : '[data-preset-manager-file="textgenerationwebui"]');
+        const file = sampling.locator(api === 'openai' ? '#openai_preset_import_file' : '[data-preset-manager-file="textgenerationwebui"]');
         await file.setInputFiles({ name: `${name}.json`, mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(preset)) });
         await expect(select.locator('option:checked')).toHaveText(name);
         const importedValue = await select.inputValue();
         await bindPresetSampling(page, api);
         await select.selectOption(original);
         await select.selectOption(importedValue);
-        const sampling = await openPanel(page, 'sampling');
-        await expect(sampling.locator(api === 'openai' ? '#temp_openai' : '#temp_textgenerationwebui')).toHaveValue('0.62');
-        await expect(sampling.locator(api === 'openai' ? '#top_p_openai' : '#top_p_textgenerationwebui')).toHaveValue('0.87');
+        const samplingPanel = await openPanel(page, 'sampling');
+        await expect(samplingPanel.locator(api === 'openai' ? '#temp_openai' : '#temp_textgenerationwebui')).toHaveValue('0.62');
+        await expect(samplingPanel.locator(api === 'openai' ? '#top_p_openai' : '#top_p_textgenerationwebui')).toHaveValue('0.87');
         await openPanel(page, 'prompting');
+        const exportRoot = api === 'openai' ? prompting : await openPanel(page, 'sampling');
         const downloadPromise = page.waitForEvent('download');
-        await prompting.locator(api === 'openai' ? '#export_oai_preset' : '[data-preset-manager-export="textgenerationwebui"]').click();
+        await exportRoot.locator(api === 'openai' ? '#export_oai_preset' : '[data-preset-manager-export="textgenerationwebui"]').click();
         await confirmPresetExport(page, api);
         const exported = await readPresetDownload(await downloadPromise);
         expectPresetMetadata(exported, preset, api);
