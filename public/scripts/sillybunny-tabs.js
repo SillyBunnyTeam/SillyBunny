@@ -2244,6 +2244,37 @@ function isCharacterEditorMenuType(menuType) {
     return ['character_edit', 'create'].includes(menuType ?? '');
 }
 
+// Row subtitles and section meta lines describe a setting rather than name it: they stay searchable,
+// but folding them into `textContent` turned every label into "NameDescription". Placeholder copy is
+// unwritten filler and is neither searchable nor shown.
+const SB_SEARCH_DESCRIPTION_SELECTOR = [
+    '.ds-row-subtitle',
+    '.sb-group-meta',
+    '.sb-settings-category-heading > small',
+    `.${SB_FLAT_SECTION_HEADER_CLASS} > .flex-container > small`,
+].join(', ');
+const SB_SEARCH_PLACEHOLDER_SELECTOR = '[data-sb-copy-placeholder]';
+
+/** Text inside `element`, leaving out descendants matching `skipSelector`. */
+function getSearchNodeText(element, skipSelector) {
+    if (!element.querySelector(skipSelector)) {
+        return element.textContent ?? '';
+    }
+    const parts = [];
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const skipped = node.parentElement?.closest(skipSelector);
+        if (skipped && skipped !== element && element.contains(skipped)) continue;
+        parts.push(node.data);
+    }
+    return parts.join(' ');
+}
+
+/** The name a row or heading shows, without its description or placeholder copy. */
+function getSearchLabelText(element) {
+    return getSearchNodeText(element, `${SB_SEARCH_DESCRIPTION_SELECTOR}, ${SB_SEARCH_PLACEHOLDER_SELECTOR}`);
+}
+
 function getSearchTextCandidates(element) {
     const extensionContainer = element.closest('.extension_container');
     const extensionName = extensionContainer?.querySelector('.extension_name')?.textContent ?? '';
@@ -2261,7 +2292,7 @@ function getSearchTextCandidates(element) {
         element.matches('.extension_container, .extension_name')
             ? extensionContainer?.querySelector('.extension_name, .inline-drawer-header, .inline-drawer-toggle, h3, h4, strong')?.textContent
             : '',
-        element.textContent,
+        getSearchLabelText(element),
     ];
 
     return candidates
@@ -2280,6 +2311,7 @@ function getSearchDisplayText(element, fallback = '') {
 function getSearchText(element, sectionLabel = '') {
     return normalizeText([
         ...getSearchTextCandidates(element),
+        getSearchNodeText(element, SB_SEARCH_PLACEHOLDER_SELECTOR),
         sectionLabel,
     ].join(' '));
 }
@@ -2500,12 +2532,30 @@ function queueLayoutViewportScrollRestore(anchor) {
     window.setTimeout(() => restoreLayoutViewportScroll(anchor), 120);
 }
 
+const SB_MANAGED_SCROLL_CONTAINER_SELECTOR = '.sb-shell-panel-scroller, .scrollableInner, .scrollableInnerFull, .sb-search-results, #chat';
+
+/** Whether the element would actually move when scrolled, rather than only clipping. */
+function isScrollableContainer(element) {
+    if (element.scrollHeight - element.clientHeight <= 1) {
+        return false;
+    }
+    const overflowY = window.getComputedStyle(element).overflowY;
+    return overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay';
+}
+
 function getManagedScrollContainer(target) {
     if (!(target instanceof HTMLElement)) {
         return null;
     }
 
-    return target.closest('.sb-shell-panel-scroller, .scrollableInner, .scrollableInnerFull, .sb-search-results, #chat');
+    // Nearest match first: a panel can nest a taller, non-scrolling wrapper inside the element that
+    // really scrolls, and scrolling that wrapper moves nothing.
+    const candidates = [];
+    for (let element = target; element; element = element.parentElement) {
+        if (element.matches(SB_MANAGED_SCROLL_CONTAINER_SELECTOR)) candidates.push(element);
+    }
+
+    return candidates.find(isScrollableContainer) ?? candidates[0] ?? null;
 }
 
 function scrollElementIntoManagedView(target, { block = 'nearest', behavior = 'auto' } = {}) {
@@ -9660,6 +9710,7 @@ function buildSamplingControlCard(selector) {
         const text = createElement('div', { className: 'ds-row-text' });
         const heading = controlBlock.querySelector(':scope > h4');
         const label = createElement('span', { className: 'ds-row-label', text: heading?.textContent.replace(/\s+/g, ' ').trim() || 'lorum ipsum' });
+        if (label.textContent === 'lorum ipsum') label.dataset.sbCopyPlaceholder = 'true';
         const tooltip = heading?.matches('[title], [data-sttt--title]') ? heading : heading?.querySelector('[title], [data-sttt--title]');
         const subtitle = createElement('small', {
             className: 'ds-row-subtitle',
@@ -12046,9 +12097,14 @@ function createSearchIndex(tabState, { includeThemeCard = false } = {}) {
     // inside the store bypasses the subpage stack and triggers jQuery slideToggle on the old
     // inline-drawer, injecting display:block and freezing the page. The row labels rendered
     // outside the store already cover every section as the correct entry point.
-    const excludedSelector = includeThemeCard
-        ? `.sb-search-result, .sb-legacy-search-hidden, .sb-mobile-quick-actions-group, .sb-desktop-quick-actions-group, .${SB_SUBPAGE_STORE_CLASS}`
-        : `.sb-search-result, .sb-theme-card, .sb-legacy-search-hidden, .${SB_SUBPAGE_STORE_CLASS}`;
+    const excludedSelector = [
+        '.sb-search-result',
+        '.sb-legacy-search-hidden',
+        // Unwritten placeholder copy is not a setting.
+        SB_SEARCH_PLACEHOLDER_SELECTOR,
+        ...(includeThemeCard ? ['.sb-mobile-quick-actions-group', '.sb-desktop-quick-actions-group'] : ['.sb-theme-card']),
+        `.${SB_SUBPAGE_STORE_CLASS}`,
+    ].join(', ');
 
     for (const element of searchRoot.querySelectorAll(SB_SEARCH_TARGET_SELECTOR)) {
         if (!(element instanceof HTMLElement)) {
@@ -12156,7 +12212,7 @@ function getSearchSectionLabel(element, fallback) {
     if (inlineDrawer instanceof HTMLElement) {
         const toggle = inlineDrawer.querySelector(':scope > .inline-drawer-toggle');
         if (toggle) {
-            const text = String(toggle.textContent ?? '').replace(/\s+/g, ' ').trim();
+            const text = getSearchLabelText(toggle).replace(/\s+/g, ' ').trim();
             if (text && text !== fallback) return text;
         }
     }
@@ -12166,7 +12222,7 @@ function getSearchSectionLabel(element, fallback) {
     const flatSection = element.closest(`.${SB_FLAT_SECTION_CLASS}`);
     if (flatSection instanceof HTMLElement) {
         const heading = flatSection.querySelector(`:scope > .${SB_FLAT_SECTION_HEADER_CLASS}`);
-        const text = String(heading?.textContent ?? '').replace(/\s+/g, ' ').trim();
+        const text = (heading ? getSearchLabelText(heading) : '').replace(/\s+/g, ' ').trim();
         if (text && text !== fallback) return text;
     }
 
@@ -12175,7 +12231,7 @@ function getSearchSectionLabel(element, fallback) {
         ?? element.closest('.bg-header-row-2')
         ?? element.closest('label, h3, h4, h5, strong');
 
-    const text = String(preferred?.textContent ?? fallback).replace(/\s+/g, ' ').trim();
+    const text = (preferred ? getSearchLabelText(preferred) : String(fallback ?? '')).replace(/\s+/g, ' ').trim();
     return text || fallback;
 }
 
