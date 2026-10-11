@@ -151,7 +151,10 @@ export function makeKeyboardInteractable(...interactables) {
                 const tabIndex = interactable.getAttribute('data-original-tabindex') ?? '0';
                 interactable.setAttribute('tabindex', tabIndex);
             }
-        } else {
+        } else if (interactable.hasAttribute('tabindex')) {
+            // SillyBunny: only stash a tabindex that exists. Controls are revisited on every rescan
+            // (and twice per pass, as most match two selectors); stashing a missing one stored the
+            // string "null", which re-enabling then restored as an invalid, unfocusable tabindex.
             interactable.setAttribute('data-original-tabindex', interactable.getAttribute('tabindex'));
             interactable.removeAttribute('tabindex');
         }
@@ -179,11 +182,18 @@ function getAllInteractables(element) {
     return [].concat(...interactableSelectors.map(selector => Array.from(element.querySelectorAll(`${selector}`))));
 }
 
+// SillyBunny: containers are found again on every rescan of an ancestor; bind each one only once.
+const boundScrollResetContainers = new WeakSet();
+
 /**
  * Function to apply scroll reset behavior to a container
  * @param {Element} container - The container
  */
 const applyScrollResetBehavior = (container) => {
+    if (boundScrollResetContainers.has(container)) {
+        return;
+    }
+    boundScrollResetContainers.add(container);
     container.addEventListener('focusout', (e) => {
         setTimeout(() => {
             const focusedElement = document.activeElement;
