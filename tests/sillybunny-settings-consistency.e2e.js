@@ -108,19 +108,37 @@ async function switchBackend(page, backend) {
     }, { backend, source });
 }
 
+// Reviewed exceptions: container selector -> reason.
+const SWITCH_SEMANTICS_ALLOWLIST = {
+    '#completion_prompt_manager_popup': 'Prompt Manager entry editor is redesigned in Phase 5',
+    '#bpt-animated-bg-panel': 'Third-party extension (BunnyPresetTools) not in Phase 4 scope',
+    // SillyBunny: built-in extension settings are allowlisted per user decision (PR #870):
+    // switch conversion is deferred to keep the PR focused. The store CSS hides these
+    // containers, so their checkboxes are display:none and already skipped by the display
+    // guard above; these entries cover the case where a subpage row is opened during a test.
+    '#extensions_settings': 'Built-in extension settings; switch conversion deferred (PR #870 scope)',
+    '#extensions_settings2': 'Built-in extension settings; switch conversion deferred (PR #870 scope)',
+    '#assets_container': 'Download Extensions & Assets is a feature panel, not a settings panel',
+};
+
 async function expectSwitchSemantics(panel) {
-    const failures = await panel.locator('input[type="checkbox"]').evaluateAll(inputs => inputs.flatMap(input => {
+    const failures = await panel.locator('input[type="checkbox"]').evaluateAll((inputs, allowlist) => inputs.flatMap(input => {
+        // Icon-button toggles keep their state in a display:none checkbox; the label button is the control.
+        if (getComputedStyle(input).display === 'none') return [];
+        if (allowlist.some(selector => input.closest(selector))) return [];
         const name = input.id || input.name || input.getAttribute('aria-label') || 'unnamed checkbox';
         const issues = [];
         if (input.getAttribute('role') !== 'switch') issues.push('missing role=switch');
-        if (!['true', 'false'].includes(input.getAttribute('aria-checked'))) issues.push('invalid aria-checked');
+        // ARIA in HTML forbids aria-checked on elements with a native checked state.
+        if (input.hasAttribute('aria-checked')) issues.push('redundant aria-checked');
         return issues.map(issue => `${name}: ${issue}`);
-    }));
+    }), Object.keys(SWITCH_SEMANTICS_ALLOWLIST));
     expect(failures).toEqual([]);
 }
 
 async function expectSwitchGeometry(panel, compactSampling = false) {
-    const failures = await panel.locator('input[type="checkbox"]:visible').evaluateAll((inputs, compact) => inputs.flatMap(input => {
+    const failures = await panel.locator('input[type="checkbox"]:visible').evaluateAll((inputs, { compact, allowlist }) => inputs.flatMap(input => {
+        if (allowlist.some(selector => input.closest(selector))) return [];
         const row = input.closest('.ds-row-switch, .ds-row');
         const name = input.id || input.name || 'unnamed switch';
         if (!row) return [`${name}: missing settings row`];
@@ -137,7 +155,7 @@ async function expectSwitchGeometry(panel, compactSampling = false) {
             centered: Math.abs(switchRect.top + switchRect.height / 2 - rowRect.top - rowRect.height / 2) <= 1,
         };
         return Object.entries(metrics).filter(([, pass]) => !pass).map(([metric]) => `${name}: ${metric}`);
-    }), compactSampling);
+    }), { compact: compactSampling, allowlist: Object.keys(SWITCH_SEMANTICS_ALLOWLIST) });
     expect(failures).toEqual([]);
 }
 
@@ -202,8 +220,8 @@ test.describe('Prompting and Sampling consistency', () => {
 
     test('Chat and Text Completions share the first two groups and render their full prompting flows', async ({ page }) => {
         const chatGroups = [
-            'Presets', 'Generation Settings', 'Character Names & Prompt Formatting', 'Reply Prefill',
-            'Request Options', 'Quick Prompts Edit / Utility Prompts', 'Prompt Manager',
+            'Presets', 'Generation Settings', 'Prompt Manager', 'Character Names & Prompt Formatting',
+            'Reply Prefill', 'Request Options', 'Quick Prompts Edit / Utility Prompts',
         ];
         const textGroups = [
             'Presets', 'Generation Settings', 'System Prompt', 'Instruct Template', 'Context Template',
@@ -231,16 +249,19 @@ test.describe('Prompting and Sampling consistency', () => {
         expect(textContent.every(content => content.length > 0)).toBe(true);
     });
 
-    test('Sampling Presets leads text-style backends but is absent for Chat Completions', async ({ page }) => {
-        for (const backend of TEXT_BACKENDS) {
+    test('Presets live in Prompting, not Sampling, for every backend', async ({ page }) => {
+        for (const backend of BACKENDS) {
             await switchBackend(page, backend);
             const sampling = await openSettingsTab(page, 'sampling');
-            await expect(sampling.locator('.sb-sampling-group:visible > h3').first()).toHaveText('Presets');
+            await expect(sampling.locator('.sb-sampling-group:visible > h3').first()).toHaveText('Sampling');
+            await expect(sampling.locator('.sb-sampling-group[data-sb-sampling-group="presets"]:visible')).toHaveCount(0);
         }
 
-        await switchBackend(page, 'openai');
-        const sampling = await openSettingsTab(page, 'sampling');
-        await expect(sampling.locator('.sb-sampling-group[data-sb-sampling-group="presets"]:visible')).toHaveCount(0);
+        for (const backend of TEXT_BACKENDS) {
+            await switchBackend(page, backend);
+            const prompting = await openSettingsTab(page, 'prompting');
+            await expect.poll(() => getPromptingGroupTitles(prompting).then(titles => titles[0])).toBe('Presets');
+        }
     });
 
     test('Formatting controls stay unchanged when a Chat Completions preset loads', async ({ page }) => {
@@ -344,6 +365,7 @@ test.describe('Customize consistency', () => {
                 const visible = element => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
                 const results = [];
                 for (const input of root.querySelectorAll('input[type="checkbox"]')) {
+                    if (!visible(input)) continue;
                     if (!input.closest('.checkbox_label') && input.getAttribute('role') !== 'switch') {
                         results.push(`${input.id || input.name || 'unnamed input'}: plain checkbox`);
                     }
@@ -370,8 +392,9 @@ test.describe('Customize consistency', () => {
             groups.map(group => group.querySelectorAll(':scope > .ds-row').length),
         );
         expect(colorRows).toEqual([5, 5]);
-        await expect(appearance.locator('#AppearanceLayoutSection .ds-row-slider')).toHaveCount(8);
-        await expect(appearance.locator('#ThemeTogglesSection .ds-row-switch')).toHaveCount(20);
+        await expect(appearance.locator('#AppearanceLayoutSection .ds-row-slider')).toHaveCount(7);
+        await expect(appearance.locator('#sb-background-settings-controls #background-blur-block, #sb-background-settings-controls #background-opacity-block')).toHaveCount(2);
+        await expect(appearance.locator('#ThemeTogglesSection .ds-row-switch')).toHaveCount(22);
     });
 });
 
