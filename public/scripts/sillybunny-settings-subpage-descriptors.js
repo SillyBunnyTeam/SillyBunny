@@ -42,6 +42,8 @@ export function buildExtensionsSubpage(panel) {
     return {
         rows: collectExtensionRows(body),
         observe: body,
+        // SillyBunny: always-visible section placed above the row list, not treated as a row.
+        pinned: body.querySelector('#assets_container') ?? null,
     };
 }
 
@@ -62,6 +64,11 @@ function collectExtensionRows(body) {
 
     for (const container of containers) {
         if (!(container instanceof HTMLElement) || isContainerEmpty(container)) {
+            continue;
+        }
+
+        // SillyBunny: assets_container is pinned above the row list; skip it as a row.
+        if (container.id === 'assets_container') {
             continue;
         }
 

@@ -63,7 +63,7 @@ import {
     splitUserSettingsContent,
 } from './sillybunny-settings-content.js';
 import { normalizeBackendSettingsRows, normalizeSettingsDetail, normalizeSettingsPresentation } from './sillybunny-settings-presentation.js';
-import { createSubpageStack, SB_SUBPAGE_STORE_CLASS } from './sillybunny-settings-subpage.js';
+import { createSubpageStack, SB_SUBPAGE_DURATION, SB_SUBPAGE_STORE_CLASS } from './sillybunny-settings-subpage.js';
 import { SB_SUBPAGE_BUILDERS } from './sillybunny-settings-subpage-descriptors.js';
 import { createConnectionsPanel } from './sillybunny-connections-panel.js';
 
@@ -156,10 +156,6 @@ function installSettingsSubpage(shellKey, tabId) {
     }
 
     const panel = getShellState(shellKey)?.tabs.get(tabId)?.panel;
-    if (tabId === 'extensions') {
-        const header = panel?.querySelector('#extensions_notify_updates')?.closest('.flex-container');
-        normalizeBackendSettingsRows(header, { fields: false });
-    }
     const scroller = panel?.querySelector(':scope > .sb-shell-panel-scroller');
     if (!(scroller instanceof HTMLElement)) {
         return;
@@ -199,6 +195,43 @@ function installSettingsSubpage(shellKey, tabId) {
     });
     stack.setRows(built.rows);
     sbSubpageStacks.set(key, stack);
+
+    // SillyBunny: Extensions — the manage/install/notify header and the Download Extensions &
+    // Assets section are always visible, above the extension row list. Move them out of the store
+    // (where the CSS hides them) and into the list page heading so they are never hidden.
+    if (tabId === 'extensions' && panel instanceof HTMLElement) {
+        const header = panel.querySelector('#extensions_notify_updates')?.closest('.flex-container');
+        if (header instanceof HTMLElement) {
+            normalizeBackendSettingsRows(header, { fields: false });
+            const pill = document.createElement('div');
+            pill.className = 'ds-pref-group sb-ext-actions-pill';
+            pill.appendChild(header);
+            stack.listHeading.appendChild(pill);
+        }
+        if (built.pinned instanceof HTMLElement) {
+            built.pinned.classList.add('sb-ext-pinned-section');
+            stack.listHeading.appendChild(built.pinned);
+
+            // SillyBunny: The assets extension mounts async and builds a closed inline-drawer.
+            // Watch the container and expand the drawer the moment content appears; a closed
+            // drawer here looks like just another extension entry instead of a feature panel.
+            const expandPinnedDrawer = (container) => {
+                const content = container.querySelector('.inline-drawer-content');
+                if (content instanceof HTMLElement) {
+                    content.style.removeProperty('display');
+                    content.style.removeProperty('height');
+                    content.style.removeProperty('overflow');
+                }
+            };
+            const pinnedObserver = new MutationObserver(() => {
+                expandPinnedDrawer(built.pinned);
+                if (built.pinned.querySelector('.inline-drawer-content')) {
+                    pinnedObserver.disconnect();
+                }
+            });
+            pinnedObserver.observe(built.pinned, { childList: true, subtree: false });
+        }
+    }
 
     if (built.observe instanceof HTMLElement) {
         // Extension containers mount over the first seconds after the panel is built, so the list is
@@ -10242,6 +10275,10 @@ function groupAdvancedFormattingIntoDrawers() {
     columns.hidden = true;
     formatting.dataset.sbGrouped = 'true';
     updateFormattingGroupVisibility(formatting);
+    // Normalize switch semantics for Formatting groups without restructuring.
+    for (const body of bodies.values()) {
+        normalizeBackendSettingsRows(body, { fields: false });
+    }
     updatePromptingPanel(prompting);
 }
 
@@ -12408,6 +12445,13 @@ function setUniversalSearchActiveIndex(index) {
 }
 
 function expandHiddenAccordions(target) {
+    // SillyBunny: elements in the subpage store are hidden by CSS, not by a closed drawer;
+    // clicking their toggles fires jQuery slideToggle and injects inline display:block,
+    // overriding the store hide rule and bleeding the old panel into view.
+    if (target?.closest('.' + SB_SUBPAGE_STORE_CLASS)) {
+        return;
+    }
+
     const hiddenContents = [];
     let current = target.parentElement;
 
@@ -12523,6 +12567,41 @@ function revealSearchMatch(shellKey, match) {
     openShell(shellKey, match.tabId);
 
     window.setTimeout(() => {
+        // SillyBunny: subpage-hosted tabs route through the stack, not the old drawer routing.
+        // Matches inside the store would otherwise trigger jQuery slideToggle on inline-drawer
+        // toggles, injecting inline display:block and bleeding the old panel into view.
+        const stack = sbSubpageStacks.get(`${shellKey}:${match.tabId}`);
+        if (stack) {
+            const row = stack.rows.find(r => {
+                const source = r.source?.();
+                return source instanceof HTMLElement && source.contains(match.element);
+            });
+            if (row) {
+                stack.open(row.id);
+                const slideDelay = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+                    ? 0
+                    : SB_SUBPAGE_DURATION;
+                window.setTimeout(() => {
+                    if (!(match.element instanceof HTMLElement)) return;
+                    expandHiddenAccordions(match.element);
+                    scrollElementIntoManagedView(match.element, {
+                        block: 'center',
+                        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+                    });
+                    pulseSearchTarget(match.element);
+                }, slideDelay + 40);
+                return;
+            }
+            if (match.element instanceof HTMLElement) {
+                scrollElementIntoManagedView(match.element, {
+                    block: 'center',
+                    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+                });
+                pulseSearchTarget(match.element);
+            }
+            return;
+        }
+
         revealSettingsCategoryFor(match.element);
         expandHiddenAccordions(match.element);
         scrollElementIntoManagedView(match.element, {

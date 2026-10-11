@@ -133,7 +133,6 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
 
         if (refs?.verboseLoggingActionButton instanceof HTMLInputElement) {
             refs.verboseLoggingActionButton.checked = enabled;
-            refs.verboseLoggingActionButton.setAttribute('aria-checked', String(enabled));
         }
 
         updateConsoleLogsInteractivity();
@@ -1618,7 +1617,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         const verboseLoggingSuffix = createElement('span', { className: 'ds-row-suffix' });
         const verboseLoggingActionButton = createElement('input', {
             className: 'sb-switch sb-console-log-verbose-action',
-            attrs: { type: 'checkbox', role: 'switch', 'aria-checked': 'false', 'aria-label': 'Verbose Debug Logging' },
+            attrs: { type: 'checkbox', role: 'switch', 'aria-label': 'Verbose Debug Logging' },
         });
 
         buttonGroup.append(refreshButton, pauseButton);
@@ -1650,7 +1649,6 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         });
         pauseButton.addEventListener('click', toggleConsoleLogsPolling);
         verboseLoggingActionButton.addEventListener('change', () => {
-            verboseLoggingActionButton.setAttribute('aria-checked', String(verboseLoggingActionButton.checked));
             void toggleConsoleLogsVerboseLogging();
         });
         verboseLoggingActionButton.addEventListener('keydown', event => {
