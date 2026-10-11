@@ -3014,7 +3014,14 @@ function scheduleMobilePopupKeyboardSync() {
     sbMobilePopupKeyboardSyncTimer = window.setTimeout(syncMobilePopupKeyboardShift, 400);
 }
 
+/** Account storage once its migration marker is present; init() never removes it, so it stays ready. */
+let sbReadyAccountStorage = null;
+
 function getShellAccountStorage() {
+    if (sbReadyAccountStorage) {
+        return sbReadyAccountStorage;
+    }
+
     const storage = getSillyTavernContext()?.accountStorage;
 
     if (!storage || typeof storage.getState !== 'function') {
@@ -3022,8 +3029,13 @@ function getShellAccountStorage() {
     }
 
     try {
+        // getState() deep-clones the whole store; only pay for it until readiness is observed once.
         const snapshot = storage.getState();
-        return snapshot && Object.hasOwn(snapshot, SB_ACCOUNT_STORAGE_READY_MARKER) ? storage : null;
+        if (!snapshot || !Object.hasOwn(snapshot, SB_ACCOUNT_STORAGE_READY_MARKER)) {
+            return null;
+        }
+        sbReadyAccountStorage = storage;
+        return storage;
     } catch {
         return null;
     }
@@ -9770,32 +9782,40 @@ function updateSamplingCardVisibility(section) {
         return;
     }
 
-    section.querySelectorAll('[data-sb-sampling-control]').forEach(card => {
-        if (!(card instanceof HTMLElement)) {
-            return;
-        }
+    // Read every card's state before writing any `hidden`, so the pass costs one style flush, not one per card.
+    const cardVisibility = Array.from(section.querySelectorAll('[data-sb-sampling-control]'))
+        .filter(card => card instanceof HTMLElement)
+        .map(card => {
+            const content = card.querySelector(':scope > .ds-row-expander-content') ?? card;
+            const hasVisibleContent = Array.from(content.children).some(child => child instanceof HTMLElement
+                && !child.classList.contains('sb-sampling-transmission')
+                && !child.classList.contains('sb-chat-neutralize-row')
+                && getComputedStyle(child).display !== 'none');
+            return [card, hasVisibleContent];
+        });
+    for (const [card, hasVisibleContent] of cardVisibility) {
+        if (card.hidden !== !hasVisibleContent) card.hidden = !hasVisibleContent;
+    }
 
-        const content = card.querySelector(':scope > .ds-row-expander-content') ?? card;
-        const hasVisibleContent = Array.from(content.children).some(child => child instanceof HTMLElement
-            && !child.classList.contains('sb-sampling-transmission')
-            && !child.classList.contains('sb-chat-neutralize-row')
-            && getComputedStyle(child).display !== 'none');
-        card.hidden = !hasVisibleContent;
-    });
-
-    section.querySelectorAll('[data-sb-sampling-group]').forEach(group => {
-        if (!(group instanceof HTMLElement)) return;
-        const hasSamplingCard = Array.from(group.querySelectorAll('[data-sb-sampling-control]'))
-            .some(card => card instanceof HTMLElement && !card.hidden);
-        const hasPresetRow = Array.from(group.querySelectorAll('.sb-non-chat-preset-row, #openai_api-presets'))
+    // Track visibility as we write: `card.hidden` writes above have not been flushed yet, so a
+    // checkVisibility() here would force the very layout this function is trying to avoid.
+    const visibleCards = new Set(cardVisibility.filter(([, visible]) => visible).map(([card]) => card));
+    const activeApi = getCurrentMainApiValue();
+    const groups = [];
+    for (const group of section.querySelectorAll('[data-sb-sampling-group]')) {
+        if (!(group instanceof HTMLElement)) continue;
+        const hasSamplingCard = [...group.querySelectorAll('[data-sb-sampling-control]')].some(card => visibleCards.has(card));
+        const hasPresetRow = [...group.querySelectorAll('.sb-non-chat-preset-row, #openai_api-presets')]
             .some(row => row instanceof HTMLElement && (row.checkVisibility?.() ?? row.getClientRects().length > 0));
-        const activeApi = getCurrentMainApiValue();
         const presetBackend = activeApi === 'koboldhorde' ? 'kobold' : activeApi;
         const hasActivePreset = group.dataset.sbSamplingGroup === 'presets'
             && ['textgenerationwebui', 'kobold', 'novel'].includes(presetBackend)
             && group.querySelector(`#${presetBackend}_api-presets`) instanceof HTMLElement;
-        group.hidden = !(hasSamplingCard || hasPresetRow || hasActivePreset);
-    });
+        groups.push([group, !(hasSamplingCard || hasPresetRow || hasActivePreset)]);
+    }
+    for (const [group, hidden] of groups) {
+        if (group.hidden !== hidden) group.hidden = hidden;
+    }
 }
 
 function syncSamplingPanelControls(root) {
@@ -10185,6 +10205,9 @@ function updatePromptingPanel(panel) {
     mergeOpenAIPresetToolbarRow(root);
     enhancePresetActionButtons(root);
     groupPromptingRowHelpers(root);
+    // Batch writes and reads: interleaving `hidden` writes with checkVisibility() forces a style and
+    // layout flush per group, which is what made opening Prompting drop frames on slower devices.
+    const measured = [];
     for (const group of root.querySelectorAll('.sb-openai-settings-drawer, .sb-textgen-drawers > .sb-settings-flat-section, .sb-prompting-group')) {
         if (!(group instanceof HTMLElement)) continue;
         if (group.id === 'sb-reply-prefill' && isChatCompletion) continue;
@@ -10194,12 +10217,14 @@ function updatePromptingPanel(panel) {
         // The text-generation sampling sections are source containers for the separate Sampling tab,
         // not Prompting content; only their live controls belong in the sampling cards.
         const isSamplingSourceGroup = group.matches('.sb-textgen-drawers > .sb-settings-flat-section');
-        group.hidden = shouldHideByMode || isSamplingSourceGroup;
-        const hasControls = [...group.querySelectorAll('input:not([type="hidden"]), select, textarea, button, .menu_button, [name="startReplyWithBlock"]')]
-            .some(control => control instanceof HTMLElement && (control.checkVisibility?.() ?? control.getClientRects().length > 0));
-        if (!group.id.startsWith('sb-openai-') && !group.id.startsWith('sb-tc-') && group.id !== 'sb-reply-prefill') continue;
-        group.hidden = shouldHideByMode || !hasControls;
+        const hidesWhenEmpty = group.id.startsWith('sb-openai-') || group.id.startsWith('sb-tc-') || group.id === 'sb-reply-prefill';
+        const hidden = shouldHideByMode || isSamplingSourceGroup;
+        if (group.hidden !== hidden) group.hidden = hidden;
+        if (hidesWhenEmpty && !hidden) measured.push(group);
     }
+    const emptyGroups = measured.filter(group => ![...group.querySelectorAll('input:not([type="hidden"]), select, textarea, button, .menu_button, [name="startReplyWithBlock"]')]
+        .some(control => control instanceof HTMLElement && (control.checkVisibility?.() ?? control.getClientRects().length > 0)));
+    for (const group of emptyGroups) group.hidden = true;
 }
 
 function getImporterState() {
@@ -10407,13 +10432,14 @@ function positionAdvancedFormattingHelpLink() {
 
 function updateFormattingGroupVisibility(formatting) {
     if (!(formatting instanceof HTMLElement)) return;
-    for (const group of formatting.querySelectorAll('.sb-formatting-group')) {
-        if (!(group instanceof HTMLElement)) continue;
-        group.hidden = false;
-        const hasVisibleControl = [...group.querySelectorAll('input, select, textarea, button, .menu_button')]
-            .some(control => control instanceof HTMLElement && (control.checkVisibility?.() ?? control.getClientRects().length > 0));
-        group.hidden = !hasVisibleControl;
+    const groups = [...formatting.querySelectorAll('.sb-formatting-group')].filter(group => group instanceof HTMLElement);
+    // Unhide every group first, then measure all, then write: one layout flush instead of one per group.
+    for (const group of groups) {
+        if (group.hidden) group.hidden = false;
     }
+    const empty = groups.filter(group => ![...group.querySelectorAll('input, select, textarea, button, .menu_button')]
+        .some(control => control instanceof HTMLElement && (control.checkVisibility?.() ?? control.getClientRects().length > 0)));
+    for (const group of empty) group.hidden = true;
 }
 
 function updateSillyTavernImportInteractivity() {

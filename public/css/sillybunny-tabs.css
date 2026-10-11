@@ -7866,6 +7866,11 @@ body.reduced-motion .sb-shell-main {
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
+    /* The host behind this root is an opaque --sb-layer-view fill, so the floating-drawer blur
+       from `.drawer-content` samples a flat colour: invisible, but it adds a backdrop pass to
+       every frame of the page open/close and tab-switch motion. */
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     transform: none;
     pointer-events: auto !important;
 }
