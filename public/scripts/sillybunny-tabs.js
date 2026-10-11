@@ -200,14 +200,35 @@ function installSettingsSubpage(shellKey, tabId) {
     // Assets section are always visible, above the extension row list. Move them out of the store
     // (where the CSS hides them) and into the list page heading so they are never hidden.
     if (tabId === 'extensions' && panel instanceof HTMLElement) {
-        const header = panel.querySelector('#extensions_notify_updates')?.closest('.flex-container');
-        if (header instanceof HTMLElement) {
-            normalizeBackendSettingsRows(header, { fields: false });
+        const notifyLabel   = panel.querySelector('label[for="extensions_notify_updates"]');
+        const manageBtn     = panel.querySelector('#extensions_details');
+        const installBtn    = panel.querySelector('#third_party_extension_button');
+
+        if (notifyLabel || manageBtn || installBtn) {
             const pill = document.createElement('div');
             pill.className = 'ds-pref-group sb-ext-actions-pill';
-            pill.appendChild(header);
+
+            // Action buttons row (Manage + Install)
+            if (manageBtn instanceof HTMLElement || installBtn instanceof HTMLElement) {
+                const btnRow = document.createElement('div');
+                btnRow.className = 'sb-ext-action-buttons ds-row';
+                if (manageBtn instanceof HTMLElement) btnRow.appendChild(manageBtn);
+                if (installBtn instanceof HTMLElement) btnRow.appendChild(installBtn);
+                pill.appendChild(btnRow);
+            }
+
+            // Notify toggle row — normalize via a temp wrapper because normalizeBackendSettingsRows
+            // queries descendants; passing the label itself finds nothing.
+            if (notifyLabel instanceof HTMLElement) {
+                const wrapper = document.createElement('div');
+                wrapper.appendChild(notifyLabel);
+                normalizeBackendSettingsRows(wrapper, { fields: false });
+                pill.appendChild(notifyLabel);
+            }
+
             stack.listHeading.appendChild(pill);
         }
+
         if (built.pinned instanceof HTMLElement) {
             built.pinned.classList.add('sb-ext-pinned-section');
             stack.listHeading.appendChild(built.pinned);
@@ -218,18 +239,20 @@ function installSettingsSubpage(shellKey, tabId) {
             const expandPinnedDrawer = (container) => {
                 const content = container.querySelector('.inline-drawer-content');
                 if (content instanceof HTMLElement) {
-                    content.style.removeProperty('display');
-                    content.style.removeProperty('height');
-                    content.style.removeProperty('overflow');
+                    // Set inline style — the drawer starts display:none via CSS class, not inline style,
+                    // so removeProperty would be a no-op; an explicit inline display wins.
+                    content.style.display = 'block';
                 }
             };
+            // Run immediately in case extension already mounted before we got here
+            expandPinnedDrawer(built.pinned);
             const pinnedObserver = new MutationObserver(() => {
                 expandPinnedDrawer(built.pinned);
                 if (built.pinned.querySelector('.inline-drawer-content')) {
                     pinnedObserver.disconnect();
                 }
             });
-            pinnedObserver.observe(built.pinned, { childList: true, subtree: false });
+            pinnedObserver.observe(built.pinned, { childList: true, subtree: true });
         }
     }
 
@@ -11970,9 +11993,13 @@ function createSearchIndex(tabState, { includeThemeCard = false } = {}) {
 
     const entries = [];
     const seen = new Set();
+    // SillyBunny: subpage store children are hidden by CSS; clicking a search result that lands
+    // inside the store bypasses the subpage stack and triggers jQuery slideToggle on the old
+    // inline-drawer, injecting display:block and freezing the page. The row labels rendered
+    // outside the store already cover every section as the correct entry point.
     const excludedSelector = includeThemeCard
-        ? '.sb-search-result, .sb-legacy-search-hidden, .sb-mobile-quick-actions-group, .sb-desktop-quick-actions-group'
-        : '.sb-search-result, .sb-theme-card, .sb-legacy-search-hidden';
+        ? `.sb-search-result, .sb-legacy-search-hidden, .sb-mobile-quick-actions-group, .sb-desktop-quick-actions-group, .${SB_SUBPAGE_STORE_CLASS}`
+        : `.sb-search-result, .sb-theme-card, .sb-legacy-search-hidden, .${SB_SUBPAGE_STORE_CLASS}`;
 
     for (const element of searchRoot.querySelectorAll(SB_SEARCH_TARGET_SELECTOR)) {
         if (!(element instanceof HTMLElement)) {
