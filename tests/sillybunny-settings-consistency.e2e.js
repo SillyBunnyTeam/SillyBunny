@@ -1,0 +1,408 @@
+import { expect, test } from '@playwright/test';
+import { auditPromptingLayout } from './helpers/libadwaita-audit.js';
+
+test.use({ serviceWorkers: 'block', reducedMotion: 'reduce' });
+
+const BACKENDS = ['openai', 'textgenerationwebui', 'kobold', 'koboldhorde', 'novel'];
+const TEXT_BACKENDS = ['textgenerationwebui', 'kobold', 'novel'];
+const READ_ONLY_POST_ENDPOINTS = new Set([
+    '/api/characters/all', '/api/characters/chats', '/api/groups/all', '/api/backgrounds/all',
+    '/api/avatars/get', '/api/stats/get', '/api/secrets/read', '/api/users/me',
+]);
+const SETTINGS_TABS = [
+    { id: 'connections', shell: 'left' },
+    { id: 'sampling', shell: 'left' },
+    { id: 'prompting', shell: 'left' },
+    { id: 'agents', shell: 'left' },
+    { id: 'context', shell: 'left' },
+    { id: 'appearance', shell: 'right' },
+    { id: 'interface', shell: 'right' },
+    { id: 'messages', shell: 'right' },
+    { id: 'extensions', shell: 'right' },
+    { id: 'data-security', shell: 'right' },
+    { id: 'logs', shell: 'right' },
+];
+
+/** Install API write interceptors before visiting the app. */
+async function mockWrites(page, settingsStore = null) {
+    let settingsVersion = 1_000_000_000_000_000;
+
+    await page.route('**/api/**', async route => {
+        const request = route.request();
+        const url = new URL(request.url());
+        const method = request.method();
+
+        if (url.pathname === '/api/settings/get') {
+            const response = await route.fetch();
+            const data = await response.json();
+            const settings = settingsStore?.saved ?? JSON.parse(data.settings);
+            settings.firstRun = false;
+            settings._version ??= settingsVersion;
+            settings.extension_settings ??= {};
+            settings.extension_settings['quick-image-gen'] = {
+                ...settings.extension_settings['quick-image-gen'],
+                setupWizardSeen: true,
+            };
+            settingsVersion = Math.max(settingsVersion, settings._version);
+            data.request_compression = { ...data.request_compression, enabled: false };
+            data.settings = JSON.stringify(settings);
+            return route.fulfill({ response, json: data });
+        }
+
+        if (url.pathname === '/api/settings/save') {
+            settingsVersion += 1;
+            settingsStore && (settingsStore.saved = { ...request.postDataJSON(), _version: settingsVersion });
+            return route.fulfill({ json: { result: 'ok', version: settingsVersion } });
+        }
+
+        if (url.pathname === '/api/presets/save') {
+            return route.fulfill({ json: { name: request.postDataJSON()?.name ?? '' } });
+        }
+
+        if (READ_ONLY_POST_ENDPOINTS.has(url.pathname) || url.pathname.startsWith('/api/tokenizers/')) {
+            return route.continue();
+        }
+
+        const isWriteMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+        const isWriteEndpoint = /^\/api\/.*\/(save|delete|create|edit|rename|update|import|upload|restore|duplicate|write|set)(?:\/|$)/i.test(url.pathname);
+        if (isWriteMethod || isWriteEndpoint) {
+            return route.fulfill({ json: {} });
+        }
+
+        return route.continue();
+    });
+
+    // Keep the legacy settings-save route covered too; the general API route above also blocks it.
+    await page.route('**/api/savesettings**', route => route.fulfill({ json: { result: 'ok' } }));
+}
+
+async function loadSettings(page, baseURL, settingsStore = null) {
+    const hostname = new URL(baseURL).hostname;
+    expect(['127.0.0.1', 'localhost', '[::1]']).toContain(hostname);
+    await mockWrites(page, settingsStore);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(
+        () => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'),
+        null,
+        { timeout: 60000 },
+    );
+}
+
+async function openSettingsTab(page, tab, shell = 'left') {
+    await page.evaluate(({ shell, tab }) => window.SillyBunnyShell.openTab(shell, tab), { shell, tab });
+    const button = page.locator(`button[data-sb-settings-tab="${tab}"]`);
+    await button.evaluate(element => element.click());
+    const panel = page.locator(`[data-sb-panel="${tab}"]`);
+    await expect(panel).toHaveAttribute('aria-hidden', 'false');
+    await panel.locator('.sb-shell-panel-scroller').evaluate(scroller => { scroller.scrollTop = 0; });
+    return panel;
+}
+
+async function switchBackend(page, backend) {
+    const source = backend === 'openai' ? 'openrouter' : backend === 'textgenerationwebui' ? 'ooba' : null;
+    await page.evaluate(({ backend, source }) => {
+        $('#main_api').val(backend).trigger('change');
+        if (source) $('#textgen_type, #chat_completion_source').filter((_, element) =>
+            element.id === (backend === 'openai' ? 'chat_completion_source' : 'textgen_type'),
+        ).val(source).trigger('change');
+    }, { backend, source });
+}
+
+async function expectSwitchSemantics(panel) {
+    const failures = await panel.locator('input[type="checkbox"]').evaluateAll(inputs => inputs.flatMap(input => {
+        const name = input.id || input.name || input.getAttribute('aria-label') || 'unnamed checkbox';
+        const issues = [];
+        if (input.getAttribute('role') !== 'switch') issues.push('missing role=switch');
+        if (!['true', 'false'].includes(input.getAttribute('aria-checked'))) issues.push('invalid aria-checked');
+        return issues.map(issue => `${name}: ${issue}`);
+    }));
+    expect(failures).toEqual([]);
+}
+
+async function expectSwitchGeometry(panel, compactSampling = false) {
+    const failures = await panel.locator('input[type="checkbox"]:visible').evaluateAll((inputs, compact) => inputs.flatMap(input => {
+        const row = input.closest('.ds-row-switch, .ds-row');
+        const name = input.id || input.name || 'unnamed switch';
+        if (!row) return [`${name}: missing settings row`];
+
+        const style = getComputedStyle(row);
+        const rowRect = row.getBoundingClientRect();
+        const switchRect = input.getBoundingClientRect();
+        const subtitle = Boolean(row.querySelector('.ds-row-subtitle'));
+        const samplingRow = compact && Boolean(input.closest('.sb-sampling-group'));
+        const minimumHeight = samplingRow ? (subtitle ? 44 : 36) : (subtitle ? 52 : 44);
+        const metrics = {
+            minHeight: parseFloat(style.minHeight) >= minimumHeight,
+            actualHeight: rowRect.height >= minimumHeight,
+            centered: Math.abs(switchRect.top + switchRect.height / 2 - rowRect.top - rowRect.height / 2) <= 1,
+        };
+        return Object.entries(metrics).filter(([, pass]) => !pass).map(([metric]) => `${name}: ${metric}`);
+    }), compactSampling);
+    expect(failures).toEqual([]);
+}
+
+function getPromptingGroupTitles(prompting) {
+    return prompting.locator('.sb-prompting-group:visible').evaluateAll(groups => groups.map(group => {
+        const heading = group.querySelector(':scope > h3, :scope > .sb-settings-flat-header b, :scope > .inline-drawer-header b');
+        return heading?.textContent.replace(/\s+/g, ' ').trim() ?? '';
+    }));
+}
+
+async function snapshotFormattingControls(page) {
+    return page.locator('#AdvancedFormatting').evaluate(root => [...root.querySelectorAll('input, select, textarea')]
+        .filter(control => {
+            if (['hidden', 'file', 'button', 'submit', 'reset'].includes(control.type)) return false;
+            return !['reasoning_select', 'reasoning_prefix', 'reasoning_suffix', 'reasoning_separator'].includes(control.id);
+        })
+        .map((control, index) => ({
+            key: control.id || control.name || `${control.tagName.toLowerCase()}-${index}`,
+            value: control.matches('input[type="checkbox"], input[type="radio"]') ? control.checked : control.value,
+        })));
+}
+
+async function expectNoHorizontalOverflow(element) {
+    await expect.poll(() => element.evaluate(node => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(1);
+}
+
+test.describe('Settings switch-row consistency', () => {
+    test.beforeEach(async ({ page, baseURL }) => loadSettings(page, baseURL));
+
+    test('all tabs and backend modes expose switch semantics and row geometry', async ({ page }) => {
+        test.setTimeout(120000);
+        for (const { id, shell } of SETTINGS_TABS) {
+            const panel = await openSettingsTab(page, id, shell);
+            await expect(panel).toBeVisible();
+            await expectSwitchSemantics(panel);
+            await expectSwitchGeometry(panel);
+        }
+
+        for (const backend of BACKENDS) {
+            await switchBackend(page, backend);
+            for (const tab of ['sampling', 'prompting', 'context']) {
+                const panel = await openSettingsTab(page, tab);
+                await expectSwitchSemantics(panel);
+                await expectSwitchGeometry(panel, tab === 'sampling');
+            }
+        }
+    });
+});
+
+test.describe('Prompting and Sampling consistency', () => {
+    test.beforeEach(async ({ page, baseURL }) => loadSettings(page, baseURL));
+
+    test('Formatting shortcut and disclaimer are visible for every backend', async ({ page }) => {
+        for (const backend of BACKENDS) {
+            await switchBackend(page, backend);
+            const prompting = await openSettingsTab(page, 'prompting');
+            await expect(prompting.locator('[data-sb-prompting-disclaimer] > p'))
+                .toHaveText('Note: advanced settings can be found in Formatting.');
+            await expect(prompting.getByRole('button', { name: 'Formatting', exact: true })).toBeVisible();
+        }
+    });
+
+    test('Chat and Text Completions share the first two groups and render their full prompting flows', async ({ page }) => {
+        const chatGroups = [
+            'Presets', 'Generation Settings', 'Character Names & Prompt Formatting', 'Reply Prefill',
+            'Request Options', 'Quick Prompts Edit / Utility Prompts', 'Prompt Manager',
+        ];
+        const textGroups = [
+            'Presets', 'Generation Settings', 'System Prompt', 'Instruct Template', 'Context Template',
+            'Character Names', 'Reply Prefill',
+        ];
+
+        await switchBackend(page, 'openai');
+        const chatPrompting = await openSettingsTab(page, 'prompting');
+        await expect.poll(() => getPromptingGroupTitles(chatPrompting)).toEqual(chatGroups);
+        expect(await chatPrompting.evaluate(auditPromptingLayout).then(records => records.filter(record => !record.pass))).toEqual([]);
+        const chatContent = await chatPrompting.locator('.sb-prompting-group:visible').evaluateAll(groups => groups.map(group =>
+            group.querySelector('.sb-prompting-group-body')?.textContent.trim() ?? '',
+        ));
+        expect(chatContent.length).toBeGreaterThan(0);
+        expect(chatContent.every(content => content.length > 0)).toBe(true);
+
+        await switchBackend(page, 'textgenerationwebui');
+        const textPrompting = await openSettingsTab(page, 'prompting');
+        await expect.poll(() => getPromptingGroupTitles(textPrompting)).toEqual(textGroups);
+        expect(await textPrompting.evaluate(auditPromptingLayout).then(records => records.filter(record => !record.pass))).toEqual([]);
+        const textContent = await textPrompting.locator('.sb-prompting-group:visible').evaluateAll(groups => groups.map(group =>
+            group.querySelector('.sb-prompting-group-body')?.textContent.trim() ?? '',
+        ));
+        expect(textContent.length).toBeGreaterThan(0);
+        expect(textContent.every(content => content.length > 0)).toBe(true);
+    });
+
+    test('Sampling Presets leads text-style backends but is absent for Chat Completions', async ({ page }) => {
+        for (const backend of TEXT_BACKENDS) {
+            await switchBackend(page, backend);
+            const sampling = await openSettingsTab(page, 'sampling');
+            await expect(sampling.locator('.sb-sampling-group:visible > h3').first()).toHaveText('Presets');
+        }
+
+        await switchBackend(page, 'openai');
+        const sampling = await openSettingsTab(page, 'sampling');
+        await expect(sampling.locator('.sb-sampling-group[data-sb-sampling-group="presets"]:visible')).toHaveCount(0);
+    });
+
+    test('Formatting controls stay unchanged when a Chat Completions preset loads', async ({ page }) => {
+        await switchBackend(page, 'openai');
+        await openSettingsTab(page, 'context');
+        const before = await snapshotFormattingControls(page);
+
+        const prompting = await openSettingsTab(page, 'prompting');
+        const preset = prompting.locator('#respective-presets-block #settings_preset_openai');
+        const currentValue = await preset.inputValue();
+        const alternate = await preset.locator('option').evaluateAll((options, current) =>
+            options.find(option => option.value !== current && !option.disabled)?.value ?? null,
+        currentValue);
+        expect(alternate, 'a second Chat Completions preset is required to verify preset loading').not.toBeNull();
+        await preset.selectOption(alternate);
+
+        await openSettingsTab(page, 'context');
+        const after = await snapshotFormattingControls(page);
+        expect(after).toEqual(before);
+    });
+
+    test('Sampling is a full-width single column with compact rows at 1920×1080', async ({ page }) => {
+        await page.setViewportSize({ width: 1920, height: 1080 });
+        await switchBackend(page, 'textgenerationwebui');
+        const sampling = await openSettingsTab(page, 'sampling');
+        const connections = await openSettingsTab(page, 'connections');
+        const expectedColumnWidth = await connections.locator('.sb-shell-column').first()
+            .evaluate(column => column.getBoundingClientRect().width);
+        await openSettingsTab(page, 'sampling');
+
+        const column = sampling.locator('.sb-sampling-panel');
+        await expect.poll(() => column.evaluate((element, width) => Math.abs(element.getBoundingClientRect().width - width), expectedColumnWidth))
+            .toBeLessThanOrEqual(1);
+
+        const nonFullWidthCards = await sampling.locator('.sb-sampling-group:visible > .ds-pref-group').evaluateAll(groups =>
+            groups.flatMap(group => [...group.children]
+                .filter(card => !card.hidden && getComputedStyle(card).display !== 'none')
+                .flatMap(card => Math.abs(card.getBoundingClientRect().width - group.clientWidth) <= 1 ? [] : [card.dataset.sbSamplingControl ?? card.className])),
+        );
+        expect(nonFullWidthCards).toEqual([]);
+
+        const incorrectRows = await sampling.locator('.sb-sampling-group:visible .ds-row:visible').evaluateAll(rows => rows.flatMap(row => {
+            const subtitle = Boolean(row.querySelector('.ds-row-subtitle'));
+            const expectedMinimum = subtitle ? 44 : 36;
+            const style = getComputedStyle(row);
+            return parseFloat(style.minHeight) >= expectedMinimum && row.getBoundingClientRect().height >= expectedMinimum
+                ? [] : [`${row.id || row.className}: expected ${expectedMinimum}px, got ${style.minHeight}/${row.getBoundingClientRect().height}px`];
+        }));
+        expect(incorrectRows).toEqual([]);
+    });
+
+    test('Sampling mode pill uses the Backend label format for every backend', async ({ page }) => {
+        for (const backend of BACKENDS) {
+            await switchBackend(page, backend);
+            const sampling = await openSettingsTab(page, 'sampling');
+            const pill = sampling.locator('.sb-sampling-mode-pill:visible');
+            await expect(pill).toHaveCount(1);
+            await expect(pill).toHaveText(/^Backend: .+$/);
+        }
+    });
+});
+
+test.describe('Customize consistency', () => {
+    test.beforeEach(async ({ page, baseURL }) => loadSettings(page, baseURL));
+
+    test('Extensions list reaches its last row without overflow or stray detail pages', async ({ page }) => {
+        await page.setViewportSize({ width: 390, height: 844 });
+        const extensions = await openSettingsTab(page, 'extensions', 'right');
+        await expect.poll(() => extensions.locator('.sb-subpage-row').count()).toBeGreaterThan(0);
+        await expect(extensions.locator('.sb-subpage')).toHaveCount(1);
+        await expect(extensions.locator('.sb-subpage-detail[aria-hidden="false"]')).toHaveCount(0);
+        await expect(extensions.locator('.sb-subpage-detail-content')).toHaveCount(0);
+
+        const scroller = extensions.locator('.sb-subpage-list');
+        await scroller.evaluate(element => { element.scrollTop = element.scrollHeight; });
+        const lastRow = extensions.locator('.sb-subpage-row:visible').last();
+        await expect(lastRow).toBeVisible();
+        const visibleAtBottom = await scroller.evaluate(element => {
+            const row = element.querySelector('.sb-subpage-row:last-of-type');
+            const rect = row?.getBoundingClientRect();
+            const bounds = element.getBoundingClientRect();
+            return {
+                horizontalOverflow: element.scrollWidth - element.clientWidth,
+                verticalOverflow: element.scrollHeight - element.clientHeight,
+                atBottom: element.scrollTop + element.clientHeight >= element.scrollHeight - 1,
+                lastRowVisible: Boolean(rect && rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1),
+            };
+        });
+        expect(visibleAtBottom.horizontalOverflow).toBeLessThanOrEqual(1);
+        expect(visibleAtBottom.verticalOverflow).toBeGreaterThanOrEqual(0);
+        expect(visibleAtBottom.atBottom).toBe(true);
+        expect(visibleAtBottom.lastRowVisible).toBe(true);
+        await expectNoHorizontalOverflow(scroller);
+    });
+
+    test('settings have no plain checkboxes or title-only descriptions', async ({ page }) => {
+        const violations = [];
+        for (const { id, shell } of SETTINGS_TABS) {
+            const panel = await openSettingsTab(page, id, shell);
+            const panelViolations = await panel.evaluate(root => {
+                const visible = element => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
+                const results = [];
+                for (const input of root.querySelectorAll('input[type="checkbox"]')) {
+                    if (!input.closest('.checkbox_label') && input.getAttribute('role') !== 'switch') {
+                        results.push(`${input.id || input.name || 'unnamed input'}: plain checkbox`);
+                    }
+                }
+                for (const row of root.querySelectorAll('[title]')) {
+                    if (!visible(row) || !row.matches('.ds-row, .ds-row-switch, .checkbox_label, .flex-container')) continue;
+                    const hasSubtitle = [...row.querySelectorAll('.ds-row-subtitle')]
+                        .some(subtitle => visible(subtitle) && subtitle.textContent.trim());
+                    const hasDescription = [...row.querySelectorAll('.ds-row-label, .checkbox_label, label, small, .notes, .toggle-description, p, [data-sb-description]')]
+                        .some(description => visible(description) && description.textContent.trim());
+                    if (!hasSubtitle && !hasDescription) results.push(`${row.id || row.className || row.tagName}: title-only description`);
+                }
+                return results;
+            });
+            violations.push(...panelViolations.map(violation => `${id}: ${violation}`));
+        }
+        expect(violations).toEqual([]);
+    });
+
+    test('Appearance includes the expected Theme Colors, Page Size, and Visual Toggles rows', async ({ page }) => {
+        const appearance = await openSettingsTab(page, 'appearance', 'right');
+        await expect(appearance.locator('#color-picker-block > .ds-pref-group')).toHaveCount(2);
+        const colorRows = await appearance.locator('#color-picker-block > .ds-pref-group').evaluateAll(groups =>
+            groups.map(group => group.querySelectorAll(':scope > .ds-row').length),
+        );
+        expect(colorRows).toEqual([5, 5]);
+        await expect(appearance.locator('#AppearanceLayoutSection .ds-row-slider')).toHaveCount(8);
+        await expect(appearance.locator('#ThemeTogglesSection .ds-row-switch')).toHaveCount(20);
+    });
+});
+
+test.describe('Preset persistence regression', () => {
+    test('a loaded Chat Completions preset remains selected after saving and reloading', async ({ page, baseURL }) => {
+        const settingsStore = {};
+        await loadSettings(page, baseURL, settingsStore);
+        await switchBackend(page, 'openai');
+        const prompting = await openSettingsTab(page, 'prompting');
+        const preset = prompting.locator('#respective-presets-block #settings_preset_openai');
+        const currentValue = await preset.inputValue();
+        const selectedValue = await preset.locator('option').evaluateAll((options, current) =>
+            options.find(option => option.value !== current && !option.disabled)?.value ?? null,
+        currentValue);
+        expect(selectedValue, 'a second Chat Completions preset is required to verify persistence').not.toBeNull();
+        await preset.selectOption(selectedValue);
+        await prompting.locator('#update_oai_preset').click();
+        await page.evaluate(async () => {
+            const { saveSettings } = await import('/script.js');
+            await saveSettings();
+        });
+        expect(settingsStore.saved).toBeTruthy();
+
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(
+            () => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'),
+            null,
+            { timeout: 60000 },
+        );
+        await switchBackend(page, 'openai');
+        const reloadedPrompting = await openSettingsTab(page, 'prompting');
+        await expect(reloadedPrompting.locator('#respective-presets-block #settings_preset_openai')).toHaveValue(selectedValue);
+    });
+});
