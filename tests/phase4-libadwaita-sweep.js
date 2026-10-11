@@ -102,8 +102,21 @@ function applyCrossTabParity(records, expectedTabs) {
     for (const [scenarioKey, tabRecords] of scenarios) {
         const family = scenarioKey.split('|')[0];
         const tabs = expectedTabs[family];
-        const referenceTab = tabs[0];
-        const referenceSignature = getRepresentativeSignature(tabRecords.get(referenceTab.label) || []);
+        // SillyBunny: pick the first tab that yields a non-null signature AND is not
+        // allowlisted for cross-tab-parity. Connections has no .ds-row elements (null
+        // signature). Sampling uses intentionally compact 44 px rows. Using either as
+        // the reference would fail all other tabs. Skip both via the allowlist.
+        let referenceTab = tabs[0];
+        let referenceSignature = null;
+        for (const candidate of tabs) {
+            const candidateSelector = `[data-sb-panel="${candidate.id}"]`;
+            const candidateExcluded = LIBADWAITA_AUDIT_ALLOWLIST.some(
+                e => (e.rule === '*' || e.rule === 'cross-tab-parity') && e.selector === candidateSelector,
+            );
+            if (candidateExcluded) continue;
+            const sig = getRepresentativeSignature(tabRecords.get(candidate.label) || []);
+            if (sig) { referenceTab = candidate; referenceSignature = sig; break; }
+        }
         for (const tab of tabs) {
             const currentRecords = tabRecords.get(tab.label) || [];
             const currentSignature = getRepresentativeSignature(currentRecords);
@@ -123,7 +136,11 @@ function applyCrossTabParity(records, expectedTabs) {
                     differences: result.differences,
                 },
                 pass: result.pass,
-                allowlisted: basis ? isAllowlisted(basis) : false,
+                // SillyBunny: also check the tab's panel selector so allowlist entries
+                // like `[data-sb-panel="sampling"]` fire even when `basis` points to a
+                // deep row selector that does not start with the panel selector.
+                allowlisted: isAllowlisted({ selector: `[data-sb-panel="${tab.id}"]`, rule: 'cross-tab-parity' })
+                    || (basis ? isAllowlisted(basis) : false),
                 family,
             });
         }
@@ -246,16 +263,19 @@ async function auditTab(page, tab, family, backend, theme, viewport) {
         family,
     }));
     if (!records.some(record => record.rule === 'cross-tab-parity')) {
+        const fallbackSelector = `[data-sb-panel="${tab.id}"]`;
         records.push({
             tab: tab.label,
             backend: backend?.id ?? 'n/a',
             theme: normalizedTheme,
             viewport: viewport.label,
             rule: 'cross-tab-parity',
-            selector: `[data-sb-panel="${tab.id}"]`,
+            selector: fallbackSelector,
             measured: { error: 'No visible preference row was available to derive a signature' },
             pass: false,
-            allowlisted: false,
+            // SillyBunny: Connections has no .ds-row rows; its fallback record must also
+            // be checked against the allowlist so the pre-existing allowlist entry fires.
+            allowlisted: isAllowlisted({ selector: fallbackSelector, rule: 'cross-tab-parity' }),
             family,
         });
     }

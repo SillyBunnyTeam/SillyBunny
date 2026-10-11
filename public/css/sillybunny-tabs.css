@@ -8098,6 +8098,23 @@ body.reduced-motion .sb-shell-main {
     margin: 0;
 }
 
+/* SillyBunny: counter inputs inside .ds-row-suffix measure 28px without an explicit
+   min-height; the desktop touch-target floor is 32px. Counters may be nested inside
+   .range-block-range-and-counter, so use a descendant selector. Also covers compact
+   textareas (instruct/context prefix fields) and shortcut selects that measure 27-30px. */
+#sb-settings-page .ds-row-suffix input[type='number'] {
+    min-height: 32px;
+}
+
+#sb-settings-page .ds-row-suffix textarea,
+#sb-settings-page .ds-row-suffix select {
+    min-height: 32px;
+}
+
+.sb-shortcut-select {
+    min-height: 32px;
+}
+
 .sb-settings-mounted-shell .flex-container:not(.flexFlowColumn, .checkbox_label, .ds-row-suffix):is(.alignitemscenter, .alignItemsCenter, .alignItemsBaseline) > :is(select, textarea, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='image'])) {
     flex: 1 1 190px;
     min-width: 0;

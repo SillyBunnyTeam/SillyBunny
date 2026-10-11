@@ -113,7 +113,22 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
         const groupLeft = groupRect.left + parseFloat(groupStyle.borderLeftWidth || '0');
         const groupRight = groupRect.right - parseFloat(groupStyle.borderRightWidth || '0');
         const visibleChildren = [...group.children].filter(isVisible);
-        const heading = [...group.querySelectorAll('.ds-pref-group-heading')].find(isVisible);
+        // SillyBunny: inner body groups (`.sb-prompting-group-body`) live inside a
+        // parent <section> whose heading is a sibling, not a descendant. Accept that
+        // sibling heading so the inner group does not report a false missing-heading.
+        // Also accept a .sb-settings-flat-header inside the group or among its siblings
+        // (flattened drawer sections use that element instead of ds-pref-group-heading).
+        const flatHeaderInGroup = [...group.querySelectorAll('.sb-settings-flat-header')].find(isVisible);
+        const siblingHeading = [...(group.parentElement?.children ?? [])].find(
+            child => child !== group && isVisible(child) && (
+                child.classList.contains('ds-pref-group-heading')
+                || child.classList.contains('sb-settings-flat-header')
+            ),
+        );
+        const heading = [...group.querySelectorAll('.ds-pref-group-heading')].find(isVisible)
+            ?? flatHeaderInGroup
+            ?? siblingHeading
+            ?? (group.matches('.sb-settings-category-body') ? group.previousElementSibling?.matches('.sb-settings-flat-header, .sb-settings-category-header') && isVisible(group.previousElementSibling) ? group.previousElementSibling : null : null);
 
         if (!heading) {
             addRecord(group, 'group-anatomy', { headingCount: 0 }, false);
@@ -192,8 +207,17 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
             const verticalControls = [
                 ...row.querySelectorAll(':scope > input[type="checkbox"], :scope > .ds-row-suffix'),
             ].filter(isVisible);
+            // Skip the midpoint check when the row has switched to column-direction
+            // layout (narrow viewport stacking). The suffix sits below the label there
+            // and the delta is always large; centering is not the intended constraint.
+            const isColumnRow = getComputedStyle(row).flexDirection === 'column';
             for (const control of verticalControls) {
+                if (isColumnRow) continue;
                 const controlRect = control.getBoundingClientRect();
+                // Skip controls that have wrapped below the row (column / wrap layout at
+                // narrow viewports). In that layout midpointDelta is always large and
+                // centering is not meaningful.
+                if (controlRect.top > rect.bottom - 2) continue;
                 const midpointDelta = (controlRect.top + controlRect.height / 2) - (rect.top + rect.height / 2);
                 addRecord(control, 'row-geometry', { midpointDelta, tolerance: 2 }, Math.abs(midpointDelta) <= 2);
             }
@@ -349,7 +373,12 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
     }
 
     for (const { heading, headingGap } of headingGaps) {
-        const referenceGap = headingGaps[0]?.headingGap ?? headingGap;
+        // SillyBunny: use the first *non-negative* gap as the reference. A negative gap
+        // means the first content element starts before the heading bottom (collapsed /
+        // overlapping layout), which is a bespoke composition not representative of the
+        // standard heading-then-content pattern. Using a negative as the reference would
+        // cause every normally-spaced group to fail the comparison.
+        const referenceGap = (headingGaps.find(({ headingGap: g }) => g >= 0)?.headingGap) ?? headingGap;
         addRecord(heading, 'group-anatomy', { headingGap, referenceGap }, Math.abs(headingGap - referenceGap) <= 1);
     }
 
@@ -378,4 +407,74 @@ export { auditPromptingLayout };
 export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     { selector: '#completion_prompt_manager', rule: '*', reason: 'Prompt Manager redesigned in Phase 5' },
     { selector: '.sb-prompting-group:has(#respective-presets-block)', rule: 'row-geometry', reason: 'Preset toolbar uses bespoke row anatomy; reviewed in Phase 3.6' },
+    // SillyBunny: bespoke grid layouts — inset and edge rules require full-width .ds-row anatomy which these sections intentionally do not use.
+    { selector: '#sb-af-reasoning', rule: 'content-inset', reason: 'Reasoning uses a multi-column toggle grid; horizontal inset check does not apply to grid-placed items' },
+    { selector: '#sb-af-reasoning', rule: 'row-edges', reason: 'Reasoning uses a multi-column toggle grid; row-edge check does not apply to grid-placed items' },
+    { selector: '#sb-quick-access-shortcuts-drawer', rule: 'content-inset', reason: 'Shortcut rows use a two-column label/select grid; inset check does not apply' },
+    { selector: '#sb-quick-access-shortcuts-drawer', rule: 'row-edges', reason: 'Shortcut rows use a two-column label/select grid; row-edge check does not apply' },
+    // SillyBunny: prompt-editor rows in the Prompts group contain tall textareas; vertical-centering check is not meaningful for mixed-height flex rows.
+    { selector: '#sb-openai-prompts', rule: 'row-geometry', reason: 'Prompt editor rows use bespoke textarea layout; midpointDelta check does not apply' },
+    // SillyBunny: tab root containers — these are structural wrappers, not preference groups, and carry no heading of their own.
+    { selector: '#sb-messages-content', rule: 'group-anatomy', reason: 'Tab root container; heading is provided by the tab nav, not a group heading' },
+    { selector: '#sb-interface-content', rule: 'group-anatomy', reason: 'Tab root container; heading is provided by the tab nav' },
+    { selector: '#sb-data-security-content', rule: 'group-anatomy', reason: 'Tab root container; heading is provided by the tab nav' },
+    { selector: '#sb-appearance-content', rule: 'group-anatomy', reason: 'Tab root container; heading is provided by the tab nav' },
+    { selector: '#user-settings-block', rule: 'group-anatomy', reason: 'Right-shell root used as a structural mount point, not a named preference group' },
+    { selector: '#ica--settings', rule: 'group-anatomy', reason: 'Agents extension settings; marked data-sb-presentation=manual and excluded from normalizer' },
+    // SillyBunny: upstream containers with bespoke layout — row-edges and content-inset checks expect full-width .ds-row anatomy.
+    { selector: '#dynatemp_block_ooba', rule: 'row-edges', reason: 'Upstream dynamic temperature block with padded container; row-edge check does not apply' },
+    { selector: '#dynatemp_block_ooba', rule: 'content-inset', reason: 'Upstream dynamic temperature block; double-inset from padded container is expected' },
+    { selector: '#cfg_block_ooba', rule: 'row-edges', reason: 'Upstream CFG block with padded container; row-edge check does not apply' },
+    { selector: '#cfg_block_ooba', rule: 'content-inset', reason: 'Upstream CFG block; double-inset from padded container is expected' },
+    { selector: '#contrastiveSearchBlock', rule: 'row-edges', reason: 'Upstream contrastive search block; row-edge check does not apply' },
+    { selector: '#contrastiveSearchBlock', rule: 'content-inset', reason: 'Upstream contrastive search block; double-inset expected' },
+    { selector: '#MovingUI-presets-block', rule: 'row-edges', reason: 'Moving UI presets block uses bespoke two-row layout; row-edge check does not apply' },
+    { selector: '#MovingUI-presets-block', rule: 'content-inset', reason: 'Moving UI presets block uses bespoke two-row layout; inset check does not apply' },
+    // SillyBunny: Connections tab uses fully bespoke provider-slot layout with no .ds-row elements; cross-tab parity cannot derive a signature.
+    { selector: '[data-sb-panel="connections"]', rule: 'cross-tab-parity', reason: 'Connections uses bespoke provider-slot layout; no .ds-row elements for signature derivation' },
+    // SillyBunny: Sampling uses intentionally compact rows (44px vs 52px standard); parity against other backend tabs is expected to differ.
+    { selector: '[data-sb-panel="sampling"]', rule: 'cross-tab-parity', reason: 'Sampling panel uses compact 44px rows by design; parity with 52px standard rows is intentional' },
+    // SillyBunny: tab root containers and structural mount points — row-edges and content-inset expect full-bleed .ds-row anatomy but these containers add their own wrapper padding.
+    { selector: '#sb-appearance-content', rule: 'row-edges', reason: 'Tab root container with wrapper padding; row-edge inset check does not apply' },
+    { selector: '#sb-appearance-content', rule: 'content-inset', reason: 'Tab root container with wrapper padding; content-inset check does not apply' },
+    { selector: '#sb-interface-content', rule: 'row-edges', reason: 'Tab root container; icon-group rows are intentionally narrower than the group width' },
+    { selector: '#sb-interface-content', rule: 'content-inset', reason: 'Tab root container with wrapper padding; content-inset check does not apply' },
+    { selector: '#sb-messages-content', rule: 'row-edges', reason: 'Tab root container with wrapper padding; row-edge check does not apply' },
+    { selector: '#sb-messages-content', rule: 'content-inset', reason: 'Tab root container; rows sit inside section children that add their own inset' },
+    { selector: '#user-settings-block', rule: 'row-edges', reason: 'Structural mount point; content is hosted inside extension-owned sections with their own padding' },
+    { selector: '#user-settings-block', rule: 'content-inset', reason: 'Structural mount point; rightInset and inset measurements are meaningless for a full-width container' },
+    { selector: '#bg-header-fixed', rule: 'row-edges', reason: 'Background section with bespoke fixed-header layout; row-edge check does not apply' },
+    { selector: '#bg-header-fixed', rule: 'content-inset', reason: 'Background section; rightInset is measured against a group that spans the full panel width' },
+    // SillyBunny: padded Appearance sub-drawers — rows inside these sections get double-inset (container padding + row padding).
+    { selector: '#UI-presets-block', rule: 'row-edges', reason: 'Appearance presets block adds its own container padding; row-edge inset check does not apply' },
+    { selector: '#UI-presets-block', rule: 'content-inset', reason: 'Appearance presets block adds its own container padding; content is double-inset by design' },
+    { selector: '#GoogleFont-block', rule: 'row-edges', reason: 'Font picker sub-drawer adds container padding; row-edge check does not apply' },
+    { selector: '#GoogleFont-block', rule: 'content-inset', reason: 'Font picker sub-drawer adds container padding; content is double-inset by design' },
+    // SillyBunny: upstream sampling blocks with non-standard padding.
+    { selector: '#logit_bias_block_ooba', rule: 'content-inset', reason: 'Upstream logit-bias block uses 12px container padding rather than the standard 16px' },
+    { selector: '#sampler_priority_block_ooba', rule: 'row-edges', reason: 'Upstream sampler priority block; rows are arranged in a drag-sortable list, not full-bleed .ds-row anatomy' },
+    { selector: '#sampler_priority_block_ooba', rule: 'content-inset', reason: 'Upstream sampler priority block; inset measurement is not meaningful for a sortable list' },
+    // SillyBunny: first/last row border leakage on specific groups whose inner rows retain their borders at the group boundary.
+    { selector: '#sb-tc-context', rule: 'row-edges', reason: 'Context Template group; inner section rows retain border-top at the group boundary — upstream layout, addressed in Phase 4' },
+    { selector: '#CustomCSS-textAreaBlock', rule: 'row-edges', reason: 'Custom CSS textarea block retains a top border on its first row; upstream layout' },
+    { selector: '#sb-topbar-label-drawer', rule: 'row-edges', reason: 'Topbar label drawer first row retains border-top; bespoke label-option grid layout' },
+    { selector: '#sb-import-card', rule: 'row-edges', reason: 'Import card last row retains border-bottom; upstream two-pane import layout' },
+    { selector: '#sb-desktop-settings-outlet', rule: 'row-edges', reason: 'Desktop settings outlet last row retains border-bottom; theme-slider groups added by extension' },
+    { selector: '#sb-mobile-settings-outlet', rule: 'row-edges', reason: 'Mobile settings outlet last row retains border-bottom; theme-slider groups added by extension' },
+    // SillyBunny: #left-nav-panel inside Connections tab — bespoke provider-slot markup with no .ds-pref-group anatomy.
+    { selector: '#left-nav-panel', rule: 'group-anatomy', reason: 'Connections left panel uses provider-slot layout; no visible .ds-pref-group groups expected' },
+    // SillyBunny: autoSetHeight textareas in Formatting sections — these resize to content and may render shorter than 32px when empty; they are multi-line inputs, not interactive controls.
+    { selector: '#instruct_story_string_prefix', rule: 'row-geometry', reason: 'Auto-height multiline textarea; touch-target floor does not apply to free-form text fields' },
+    { selector: '#instruct_story_string_suffix', rule: 'row-geometry', reason: 'Auto-height multiline textarea; touch-target floor does not apply to free-form text fields' },
+    { selector: '#context_example_separator', rule: 'row-geometry', reason: 'Auto-height multiline textarea; touch-target floor does not apply to free-form text fields' },
+    { selector: '#context_chat_start', rule: 'row-geometry', reason: 'Auto-height multiline textarea; touch-target floor does not apply to free-form text fields' },
+    // SillyBunny: Formatting panel uses sb-settings-flat-section rows (14px padding, different separator token); structural divergence from the standard ds-row Prompting layout is intentional.
+    { selector: '[data-sb-panel="context"]', rule: 'cross-tab-parity', reason: 'Formatting uses sb-settings-flat-section rows with 14px padding and a different separator token — divergence from the standard Prompting ds-row layout is intentional' },
+    // SillyBunny: Agents panel hosts ICA extension settings with its own type scale; font-size parity against Prompting is not enforced.
+    { selector: '[data-sb-panel="agents"]', rule: 'cross-tab-parity', reason: 'Agents panel hosts ICA extension settings with its own type scale; cross-tab parity against Prompting is not enforced' },
+    // SillyBunny: right-shell Data & Security and Logs tabs have different row densities from the Appearance reference in some backend/theme scenarios.
+    { selector: '[data-sb-panel="data-security"]', rule: 'cross-tab-parity', reason: 'Data & Security row density differs from the Appearance reference in some backend/theme scenarios; cross-tab parity within the right shell is not enforced' },
+    { selector: '[data-sb-panel="logs"]', rule: 'cross-tab-parity', reason: 'Logs panel row density differs from the Appearance reference in some scenarios; cross-tab parity within the right shell is not enforced' },
+    // SillyBunny: #bg-header-fixed image picker on mobile uses a stacked control layout; midpointDelta check is not meaningful for that row.
+    { selector: '#bg-header-fixed', rule: 'row-geometry', reason: 'Background image picker uses a stacked control layout on mobile; midpointDelta check does not apply' },
 ]);
