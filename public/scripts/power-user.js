@@ -56,7 +56,7 @@ import { resetTokenCache, tokenizers } from './tokenizers.js';
 import { BIAS_CACHE } from './logit-bias.js';
 import { renderTemplateAsync } from './templates.js';
 
-import { countOccurrences, debounce, delay, download, getFileText, getSanitizedFilename, getStringHash, isOdd, isTrueBoolean, onlyUnique, resetScrollHeight, shuffle, sortMoments, stringToRange, timestampToMoment, toggleDrawer } from './utils.js';
+import { countOccurrences, debounce, delay, download, getFileText, getSanitizedFilename, getStringHash, isOdd, isTrueBoolean, onlyUnique, resetScrollHeight, shuffle, sortMoments, stringToRange, timestampToMoment } from './utils.js';
 import { FILTER_TYPES } from './filters.js';
 import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from './slash-commands/SlashCommandArgument.js';
@@ -168,7 +168,8 @@ const SILLYBUNNY_PALETTE_BINDINGS = Object.freeze([
     ['border_color', '#border-color-picker', 'border'],
 ]);
 const SB_ACCENT_PROFILE_SEED_VERSION = 2;
-const SB_ACCENT_PROFILES_DRAWER_KEY = 'SBAccentProfilesDrawerExpanded';
+// Preserve the legacy account-storage key; removing the drawer must not clear existing state.
+export const SB_ACCENT_PROFILES_DRAWER_KEY = 'SBAccentProfilesDrawerExpanded';
 const MAX_SB_ACCENT_PROFILE_NAME_LENGTH = 40;
 const SILLYBUNNY_ACCENT_PROFILE_SEEDS = Object.freeze([
     { name: 'Warm Signal', quote_text_color: 'rgba(201, 198, 168, 1)', underline_text_color: 'rgba(166, 164, 147, 1)' },
@@ -1562,7 +1563,6 @@ function syncThemeColorPickersFromState() {
     }
 
     syncCustomAccentPickersFromState();
-    renderAccentProfiles();
 }
 
 function syncCustomAccentPickersFromState() {
@@ -1629,185 +1629,13 @@ function normalizeAccentProfiles() {
     return changed;
 }
 
-function getAccentProfile(index) {
-    normalizeAccentProfiles();
-    return power_user.sb_accent_profiles[index] || null;
-}
-
-function renderAccentProfiles() {
-    const list = $('#sb-accent-profiles-list');
-    const emptyState = $('#sb-accent-profiles-empty');
-
-    if (!list.length) {
-        return;
-    }
-
-    normalizeAccentProfiles();
-    list.empty();
-    emptyState.toggle(power_user.sb_accent_profiles.length === 0);
-
-    power_user.sb_accent_profiles.forEach((profile, index) => {
-        const isSelected = profile.quote_text_color === power_user.quote_text_color && profile.underline_text_color === power_user.underline_text_color;
-        const item = $('<div></div>', { class: 'sb-accent-profile-item', role: 'listitem' });
-        const applyButton = $('<button></button>', {
-            type: 'button',
-            class: 'menu_button sb-accent-profile-apply',
-            title: `Apply ${profile.name}`,
-            'aria-label': `Apply ${profile.name} accent profile`,
-            'aria-pressed': String(isSelected),
-        })
-            .attr('data-accent-profile-index', String(index))
-            .toggleClass('is-selected', isSelected)
-            .css('--sb-accent-profile-primary', profile.quote_text_color)
-            .css('--sb-accent-profile-secondary', profile.underline_text_color);
-        const swatches = $('<span></span>', { class: 'sb-accent-profile-swatches', 'aria-hidden': 'true' })
-            .append($('<span></span>', { class: 'sb-accent-profile-swatch sb-accent-profile-swatch-primary' }))
-            .append($('<span></span>', { class: 'sb-accent-profile-swatch sb-accent-profile-swatch-secondary' }));
-        const name = $('<span></span>', { class: 'sb-accent-profile-name' }).text(profile.name);
-        const deleteButton = $('<button></button>', {
-            type: 'button',
-            class: 'menu_button menu_button_icon sb-accent-profile-delete',
-            title: `Delete ${profile.name}`,
-            'aria-label': `Delete ${profile.name} accent profile`,
-        })
-            .attr('data-accent-profile-index', String(index))
-            .append($('<i></i>', { class: 'fa-solid fa-trash-can' }));
-
-        applyButton.append(swatches, name);
-        item.append(applyButton, deleteButton);
-        list.append(item);
-    });
-}
-
-function getStoredSbAccentProfilesDrawerExpanded() {
-    const storedValue = accountStorage.getItem(SB_ACCENT_PROFILES_DRAWER_KEY);
-    if (storedValue === null) {
-        return null;
-    }
-
-    return storedValue === 'true';
-}
-
-function setStoredSbAccentProfilesDrawerExpanded(expanded) {
-    accountStorage.setItem(SB_ACCENT_PROFILES_DRAWER_KEY, String(Boolean(expanded)));
-}
-
-function syncSbAccentProfilesDrawerExpandedState(drawer, expanded) {
-    const toggle = drawer.querySelector(':scope > .inline-drawer-header .sb-accent-profiles-toggle');
-    if (toggle instanceof HTMLElement) {
-        toggle.setAttribute('aria-expanded', String(Boolean(expanded)));
-    }
-}
-
-function bindSbAccentProfilesDrawerPersistence() {
-    const drawer = document.getElementById('sb-accent-profiles-panel');
-    if (!(drawer instanceof HTMLElement) || drawer.dataset.sbAccentProfilesDrawerBound === 'true') {
-        return;
-    }
-
-    drawer.dataset.sbAccentProfilesDrawerBound = 'true';
-
-    const storedExpanded = getStoredSbAccentProfilesDrawerExpanded();
-    toggleDrawer(drawer, storedExpanded ?? false);
-    syncSbAccentProfilesDrawerExpandedState(drawer, storedExpanded ?? false);
-
-    drawer.addEventListener('inline-drawer-toggle', () => {
-        const icon = drawer.querySelector(':scope > .inline-drawer-header .inline-drawer-icon');
-        if (!(icon instanceof HTMLElement)) {
-            return;
-        }
-
-        const expanded = icon.classList.contains('up');
-        syncSbAccentProfilesDrawerExpandedState(drawer, expanded);
-        setStoredSbAccentProfilesDrawerExpanded(expanded);
-    });
-}
-
 function applyAccentColors(quoteColor, underlineColor) {
     power_user.quote_text_color = quoteColor;
     power_user.underline_text_color = underlineColor;
     applyThemeColor('quote');
     applyThemeColor('underline');
     syncCustomAccentPickersFromState();
-    renderAccentProfiles();
     saveSettingsDebounced();
-}
-
-function applyAccentProfile(index) {
-    const profile = getAccentProfile(index);
-
-    if (!profile) {
-        return;
-    }
-
-    applyAccentColors(profile.quote_text_color, profile.underline_text_color);
-    toastr.info(`${profile.name} applied.`, 'Accent profile');
-}
-
-async function saveAccentProfile() {
-    const newName = await callGenericPopup('Save current accent colors as:', POPUP_TYPE.INPUT, 'My Accent', {
-        okButton: 'Save',
-        cancelButton: 'Cancel',
-    });
-
-    if (!newName) {
-        return;
-    }
-
-    const newProfile = normalizeAccentProfile({
-        name: String(newName),
-        quote_text_color: power_user.quote_text_color,
-        underline_text_color: power_user.underline_text_color,
-    });
-
-    if (!newProfile) {
-        toastr.warning('Accent profile name is required.', 'Accent profile');
-        return;
-    }
-
-    normalizeAccentProfiles();
-    const existingIndex = power_user.sb_accent_profiles.findIndex(profile => profile.name.toLocaleLowerCase() === newProfile.name.toLocaleLowerCase());
-
-    if (existingIndex !== -1) {
-        const confirm = await callGenericPopup(`Replace the "${newProfile.name}" accent profile?`, POPUP_TYPE.CONFIRM, '', {
-            okButton: 'Replace',
-            cancelButton: 'Cancel',
-        });
-
-        if (!confirm) {
-            return;
-        }
-
-        power_user.sb_accent_profiles[existingIndex] = newProfile;
-    } else {
-        power_user.sb_accent_profiles.push(newProfile);
-    }
-
-    renderAccentProfiles();
-    saveSettingsDebounced();
-    toastr.success(`${newProfile.name} saved.`, 'Accent profile');
-}
-
-async function deleteAccentProfile(index) {
-    const profile = getAccentProfile(index);
-
-    if (!profile) {
-        return;
-    }
-
-    const confirm = await callGenericPopup(`Delete the "${profile.name}" accent profile?`, POPUP_TYPE.CONFIRM, '', {
-        okButton: 'Delete',
-        cancelButton: 'Cancel',
-    });
-
-    if (!confirm) {
-        return;
-    }
-
-    power_user.sb_accent_profiles.splice(index, 1);
-    renderAccentProfiles();
-    saveSettingsDebounced();
-    toastr.success(`${profile.name} deleted.`, 'Accent profile');
 }
 
 function applySillyBunnyPalettePreset(presetId) {
@@ -5231,20 +5059,6 @@ jQuery(async () => {
         }
     });
 
-    bindSbAccentProfilesDrawerPersistence();
-
-    $(document).on('click', '#sb-accent-profile-save', async function () {
-        await saveAccentProfile();
-    });
-
-    $(document).on('click', '.sb-accent-profile-apply', function () {
-        applyAccentProfile(Number($(this).attr('data-accent-profile-index')));
-    });
-
-    $(document).on('click', '.sb-accent-profile-delete', async function () {
-        await deleteAccentProfile(Number($(this).attr('data-accent-profile-index')));
-    });
-
     // Custom RGB accent toggle
     $('#sb-custom-accent-mode').on('change', function () {
         const customPickers = $('#sb-custom-accent-pickers');
@@ -5259,14 +5073,12 @@ jQuery(async () => {
     $('#sb-accent-primary-picker').on('change', (/** @type {ColorPickerEvent} */ evt) => {
         power_user.quote_text_color = evt.detail.rgba;
         applyThemeColor('quote');
-        renderAccentProfiles();
         saveSettingsDebounced();
     });
 
     $('#sb-accent-secondary-picker').on('change', (/** @type {ColorPickerEvent} */ evt) => {
         power_user.underline_text_color = evt.detail.rgba;
         applyThemeColor('underline');
-        renderAccentProfiles();
         saveSettingsDebounced();
     });
 

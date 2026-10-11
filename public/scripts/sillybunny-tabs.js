@@ -315,6 +315,7 @@ function flattenRightShellSettingsDrawers() {
         return;
     }
 
+    syncBackgroundSettingsSection();
     for (const [tabId, tabState] of shellState.tabs.entries()) {
         if (!SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) && !isSubpagePanel(tabId) && tabState.panel instanceof HTMLElement) {
             flattenNestedSettingsDrawers(tabState.panel, { includeTopLevel: true });
@@ -408,6 +409,7 @@ function openAllInlineDrawers(root = null) {
  * @param {string} tabId
  */
 function flattenSettingsPanelDrawers(shellKey, tabId) {
+    if (shellKey === 'right') syncBackgroundSettingsSection();
     if (SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) || isSubpagePanel(tabId)) {
         return;
     }
@@ -9084,6 +9086,56 @@ function prepareEmbeddedDrawer(drawerId, root = document) {
     }
 
     return { drawer, drawerContent };
+}
+
+function syncBackgroundSettingsSection() {
+    const appearance = document.getElementById(SB_USER_SETTINGS_CONTAINER_IDS.appearance);
+    const gallery = document.getElementById('backgrounds-button');
+    if (!(appearance instanceof HTMLElement) || !(gallery instanceof HTMLElement)) return;
+
+    let section = appearance.querySelector('#sb-background-settings-section');
+    let changed = false;
+    if (!(section instanceof HTMLElement)) {
+        section = createElement('section', {
+            id: 'sb-background-settings-section',
+            className: `${SB_FLAT_SECTION_CLASS} sb-settings-category`,
+            attrs: { 'data-sb-category': 'background', 'data-settings-tab': 'appearance', 'aria-labelledby': 'sb-background-settings-heading' },
+        });
+        const header = createElement('div', { className: `${SB_FLAT_SECTION_HEADER_CLASS} sb-settings-category-header` });
+        const heading = createElement('div', { className: 'flex-container flexFlowColumn sb-settings-category-heading' });
+        heading.append(
+            createElement('h3', {
+                id: 'sb-background-settings-heading',
+                className: 'ds-pref-group-heading sb-settings-category-title',
+                text: 'Background',
+                attrs: { 'data-i18n': 'Background' },
+            }),
+            createElement('small', { text: 'lorum ipsum', attrs: { 'data-sb-copy-placeholder': 'true' } }),
+        );
+        header.append(heading);
+        section.append(header, createElement('div', { id: 'sb-background-settings-controls', className: 'ds-pref-group sb-settings-category-body' }));
+        appearance.append(section);
+        changed = true;
+    }
+
+    const controls = section.querySelector('#sb-background-settings-controls');
+    if (!(controls instanceof HTMLElement)) throw new Error('Missing Background settings control group.');
+
+    // The gallery owns its toolbar and layout; the normalizer must not box it around another pill.
+    if (gallery.dataset.sbPresentation !== 'manual') gallery.dataset.sbPresentation = 'manual';
+    // These rows are authored in three tabs, and Interface injects its slider after the initial split.
+    for (const id of ['background-blur-block', 'background-opacity-block', 'background_thumbnails_animation', 'sb-surface-transparency-input']) {
+        const row = document.getElementById(id)?.closest('.ds-row, .checkbox_label');
+        if (!(row instanceof HTMLElement) || row.parentElement === controls) continue;
+        controls.append(row);
+        changed = true;
+    }
+
+    if (gallery.parentElement !== section) {
+        section.append(gallery);
+        changed = true;
+    }
+    if (changed) invalidateUserSettingsTabSearchIndexes();
 }
 
 const SB_SAMPLING_BACKENDS = Object.freeze([

@@ -16,8 +16,11 @@
 .extensions_info .extension_toggle {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     flex: 0 0 42px;
+    width: 42px;
     min-height: 24px;
+    margin-inline-start: auto;
 }
 
 .extensions_info .extension_toggle input[type="checkbox"] {
@@ -272,6 +275,40 @@ input.extension_missing[type="checkbox"] {
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 72%, transparent);
 }
 
+/* SillyBunny: keep the Regex creation actions in one compact, wrapping toolbar on detail pages. */
+.sb-subpage-detail-content .regex_settings .inline-drawer-content > .flex-container:first-child {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    column-gap: 0;
+    row-gap: 6px;
+}
+
+.sb-subpage-detail-content .regex_settings .inline-drawer-content > .flex-container:first-child > .menu_button,
+.sb-subpage-detail-content .regex_settings .inline-drawer-content > .flex-container:first-child > label.menu_button {
+    flex: 0 0 auto;
+    width: auto;
+    max-width: 100%;
+    margin: 0;
+    border-radius: 0;
+}
+
+.sb-subpage-detail-content .regex_settings .inline-drawer-content > .flex-container:first-child > .menu_button ~ .menu_button {
+    border-inline-start-width: 0;
+}
+
+.sb-subpage-detail-content .regex_settings .inline-drawer-content > .flex-container:first-child > .menu_button:first-child {
+    border-start-start-radius: var(--sb-radius-button, 14px);
+    border-end-start-radius: var(--sb-radius-button, 14px);
+}
+
+.sb-subpage-detail-content .regex_settings .inline-drawer-content > .flex-container:first-child > .menu_button:last-child {
+    border-start-end-radius: var(--sb-radius-button, 14px);
+    border-end-end-radius: var(--sb-radius-button, 14px);
+}
+
 @media screen and (max-width: 1360px) and (min-width: 769px) {
     #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label[for='extensions_notify_updates'] {
         flex-basis: 100%;
@@ -309,5 +346,20 @@ input.extension_missing[type="checkbox"] {
         overflow: visible;
         text-overflow: clip;
         overflow-wrap: anywhere;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-subpage-list,
+    .sb-subpage-detail,
+    .sb-subpage-back,
+    .extensions_info .extension_block,
+    .extensions_info .extension_actions .menu_button,
+    .extensions_toolbar,
+    .regex_settings #scoped_scripts_block,
+    .regex_settings #preset_scripts_block,
+    .regex_settings .regex-toggle-off {
+        animation: none;
+        transition: none;
     }
 }

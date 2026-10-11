@@ -315,6 +315,7 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
             { id: 'theme', adopt: '#UI-presets-block', boxed: false },
             { section: '.sb-settings-flat-section:has(> .sb-settings-flat-header [data-i18n="Theme Colors"])' },
             { section: '#AppearanceLayoutSection' },
+            { section: '#sb-background-settings-section' },
             { section: '#GoogleFont-block' },
             {
                 id: 'chat-display',

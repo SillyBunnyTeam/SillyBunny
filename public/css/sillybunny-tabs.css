@@ -8972,7 +8972,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
    drawer, and those treatments would otherwise stack a tinted box inside a tinted box. */
 .sb-settings-mounted-shell .sb-settings-flat-section.sb-settings-subdrawer,
 .sb-settings-mounted-shell .sb-settings-flat-section.sb-theme-settings-drawer,
-.sb-settings-mounted-shell .sb-settings-flat-section.sb-accent-profiles-panel,
 .sb-settings-mounted-shell .sb-settings-flat-section.sb-openai-settings-drawer {
     margin: 0;
     background: transparent;
@@ -9687,6 +9686,158 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     width: auto;
 }
 
+/* Server Tools uses the same named category and boxed-list primitives as the other Backend tabs.
+   The controls are still created on demand so their existing refs and handlers remain untouched. */
+#sb-settings-page .sb-server-column > .sb-settings-category {
+    margin-bottom: 24px;
+}
+
+#sb-settings-page .sb-server-column > .sb-settings-category:last-child {
+    margin-bottom: 0;
+}
+
+#sb-settings-page .sb-server-column .sb-server-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+#sb-settings-page .sb-server-column .sb-server-stat {
+    display: flex;
+    min-height: 44px;
+    padding: 6px 16px;
+    border: 0;
+    border-bottom: 1px solid var(--sb-shell-border);
+    border-radius: 0;
+    background: transparent;
+}
+
+#sb-settings-page .sb-server-column .sb-server-stat:last-child {
+    border-bottom: 0;
+}
+
+#sb-settings-page .sb-server-column .sb-server-stat-value {
+    font-size: var(--sb-type-control);
+    font-weight: 500;
+}
+
+#sb-settings-page .sb-server-column .sb-server-actions {
+    display: flex;
+    min-height: 52px;
+    padding-block: 8px;
+}
+
+#sb-settings-page .sb-server-column .sb-server-actions > .ds-row-suffix {
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+}
+
+#sb-settings-page .sb-server-column .sb-server-actions .sb-server-action {
+    width: auto;
+    min-width: 0;
+}
+
+#sb-settings-page .sb-server-column .sb-thumbnail-card .sb-server-actions {
+    grid-template-columns: none;
+}
+
+#sb-settings-page .sb-server-column .sb-thumbnail-size-row {
+    min-height: 44px;
+    padding: 6px 16px;
+}
+
+#sb-settings-page .sb-server-column .sb-thumbnail-dimensions {
+    flex: 1 1 320px;
+}
+
+#sb-settings-page .sb-server-column .sb-thumbnail-dimensions > .sb-thumbnail-number {
+    flex: 1 1 100px;
+    width: auto;
+}
+
+#sb-settings-page .sb-server-column .sb-settings-category-body > .sb-server-note,
+#sb-settings-page .sb-server-column .sb-settings-category-body > .sb-server-config-meta {
+    border-inline: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+#sb-settings-page .sb-console-log-actions {
+    gap: 8px;
+}
+
+#sb-settings-page .ds-button-group {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: stretch;
+    gap: 0;
+}
+
+#sb-settings-page .ds-button {
+    min-height: 36px;
+    padding: 7px 12px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 80%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    color: var(--sb-shell-text);
+    font: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-console-log-actions .ds-button-group > .ds-button:first-child {
+    border-radius: var(--sb-radius-control) 0 0 var(--sb-radius-control) !important;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-console-log-actions .ds-button-group > .ds-button:last-child {
+    border-radius: 0 var(--sb-radius-control) var(--sb-radius-control) 0 !important;
+}
+
+#sb-settings-page .ds-button + .ds-button {
+    border-inline-start: 0;
+}
+
+#sb-settings-page .ds-button:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
+}
+
+#sb-settings-page .ds-button:active {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
+}
+
+#sb-settings-page .ds-button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+#sb-settings-page .ds-button:focus-visible {
+    position: relative;
+    z-index: 1;
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (pointer: coarse) {
+    #sb-settings-page .sb-console-log-actions .ds-button {
+        min-height: 44px;
+    }
+}
+
+#sb-settings-page .sb-console-log-card .sb-console-log-toolbar {
+    border-bottom: 1px solid var(--sb-shell-border);
+}
+
+#sb-settings-page .sb-console-log-card .sb-console-log-frame {
+    padding: 0;
+    overflow: hidden;
+}
+
+#sb-settings-page .sb-console-log-card .sb-server-note {
+    border-radius: 0;
+    border-inline: 0;
+    background: transparent;
+}
+
 .ds-pref-group > .flex-container.alignitemscenter,
 .sb-settings-mounted-shell .flex-container:not(.flexFlowColumn, .checkbox_label, .ds-row-suffix):is(.alignitemscenter, .alignItemsCenter, .alignItemsBaseline):has(> :is(select, textarea, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='image']))) {
     flex-wrap: nowrap;
@@ -9954,11 +10105,12 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 
 .sb-subpage {
     --sb-subpage-shift: 26%;
-    --sb-subpage-duration: 260ms;
+    --sb-subpage-duration: 180ms;
 
     display: grid;
     grid-template-areas: 'page';
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
     /* The stack owns the panel's scroll: each page scrolls on its own, so a slide never leaves the
        list scrolled to the position the detail page happened to be at. */
     height: 100%;
@@ -9972,10 +10124,8 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     grid-area: page;
     display: flex;
     flex-direction: column;
-    /* Both pages sit in one grid cell, where the default `stretch` would make each as tall as the
-       tallest and turn the pair into a scroll box of their own. `min-content` keeps each page its
-       own height and the full width, so each page's own `overflow-y` is what scrolls. */
-    height: min-content;
+    /* The bounded grid track lets the page itself scroll instead of growing past the panel. */
+    height: 100%;
     max-height: 100%;
     min-width: 0;
     min-height: 0;
@@ -9985,6 +10135,12 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     -webkit-overflow-scrolling: touch;
     padding: var(--sb-shell-panel-padding-block) var(--sb-shell-panel-padding-inline) var(--sb-shell-panel-bottom-padding);
     background: var(--sb-layer-view);
+}
+
+.sb-subpage-list {
+    transition:
+        transform var(--sb-subpage-duration) var(--sb-ease-out-cubic),
+        opacity var(--sb-subpage-duration) var(--sb-ease-out-cubic);
 }
 
 /* The trailing gap belongs to the scroll content, so the last row can always clear the bottom. The
@@ -10009,9 +10165,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     transform: translateX(calc(-1 * var(--sb-subpage-shift)));
     opacity: 0.42;
     pointer-events: none;
-    transition:
-        transform var(--sb-subpage-duration) var(--sb-ease-out-cubic),
-        opacity var(--sb-subpage-duration) var(--sb-ease-out-cubic);
 }
 
 .sb-subpage--open > .sb-subpage-detail {
@@ -10021,16 +10174,15 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     transition-delay: 0s;
 }
 
-/* Reduced motion keeps the state change and drops the travel. */
-.sb-subpage-detail--instant,
-.sb-subpage--open > .sb-subpage-list,
-.sb-subpage--open > .sb-subpage-detail {
+/* A caller may skip the detail transition when replacing or destroying a page. */
+.sb-subpage-detail--instant {
     transition: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .sb-subpage-list,
     .sb-subpage-detail,
-    .sb-subpage--open > .sb-subpage-list {
+    .sb-subpage-back {
         transition: none;
     }
 }
@@ -10068,6 +10220,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 .sb-subpage-list-body {
     display: flex;
     flex-direction: column;
+    flex: 0 0 auto;
     border-radius: var(--sb-radius-lg, 16px);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);

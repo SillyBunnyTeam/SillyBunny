@@ -38,7 +38,7 @@ const SB_SUBPAGE_STORE_CLASS = 'sb-subpage-store';
 const SB_SUBPAGE_LIST_SHIFT = '26%';
 
 /** How long the slide takes, in milliseconds. Matches `--sb-subpage-duration` in the stylesheet. */
-const SB_SUBPAGE_DURATION = 260;
+const SB_SUBPAGE_DURATION = 180;
 
 /**
  * Whether the slide should be skipped.
@@ -104,6 +104,10 @@ export class SubpageStack {
         this.onContent = options.onContent ?? null;
         /** @type {(() => ({rows?: object[]}|null))|null} a refresh that arrived while a page was open */
         this.pendingRebuild = null;
+        /** @type {number|null} fallback for the detail page's exit transition */
+        this.pendingCloseTimer = null;
+        /** @type {((event: TransitionEvent) => void)|null} */
+        this.pendingCloseTransition = null;
 
         this.root = document.createElement('div');
         this.root.className = 'sb-subpage';
@@ -328,6 +332,10 @@ export class SubpageStack {
      * @param {string} rowId
      */
     open(rowId) {
+        if (this.pendingCloseTimer !== null) {
+            this.finishClose();
+        }
+
         const row = this.rows.find(candidate => candidate.id === rowId);
         if (!row) {
             return;
@@ -380,13 +388,56 @@ export class SubpageStack {
     }
 
     /**
-     * Slides the detail page back out and returns any moved section to its authored place.
+     * Slides the detail page back out and returns its section after the exit transition.
      *
      * @param {{restoreFocus?: boolean, instant?: boolean}} [options]
      */
     close(options = {}) {
         if (!this.isOpen()) {
+            if (options.instant) {
+                this.finishClose();
+            }
             return;
+        }
+
+        this.openRowId = null;
+        this.root.classList.remove('sb-subpage--open');
+        this.list.setAttribute('aria-hidden', 'false');
+        this.detail.setAttribute('aria-hidden', 'true');
+
+        const shouldCloseImmediately = options.instant || prefersReducedMotion();
+        if (shouldCloseImmediately) {
+            this.finishClose();
+        } else {
+            this.pendingCloseTransition = event => {
+                if (event.target === this.detail && event.propertyName === 'transform') {
+                    this.finishClose();
+                }
+            };
+            this.detail.addEventListener('transitionend', this.pendingCloseTransition);
+            this.detail.addEventListener('transitioncancel', this.pendingCloseTransition);
+            this.pendingCloseTimer = window.setTimeout(() => this.finishClose(), SB_SUBPAGE_DURATION + 50);
+        }
+
+        const trigger = this.lastTrigger;
+        this.lastTrigger = null;
+        if (options.restoreFocus !== false && trigger?.isConnected) {
+            trigger.focus({ preventScroll: true });
+        }
+    }
+
+    /**
+     * Finishes a detail page exit and restores its section to the authored DOM position.
+     */
+    finishClose() {
+        if (this.pendingCloseTimer !== null) {
+            window.clearTimeout(this.pendingCloseTimer);
+            this.pendingCloseTimer = null;
+        }
+        if (this.pendingCloseTransition) {
+            this.detail.removeEventListener('transitionend', this.pendingCloseTransition);
+            this.detail.removeEventListener('transitioncancel', this.pendingCloseTransition);
+            this.pendingCloseTransition = null;
         }
 
         if (this.moved && this.movedFrom) {
@@ -403,23 +454,7 @@ export class SubpageStack {
 
         this.detailBody.replaceChildren();
 
-        this.openRowId = null;
-        this.root.classList.remove('sb-subpage--open');
-        this.list.setAttribute('aria-hidden', 'false');
-        this.detail.setAttribute('aria-hidden', 'true');
-
-        if (options.instant) {
-            this.detail.classList.add('sb-subpage-detail--instant');
-        }
-
-        const trigger = this.lastTrigger;
-        this.lastTrigger = null;
-        if (options.restoreFocus !== false && trigger?.isConnected) {
-            trigger.focus({ preventScroll: true });
-        }
-
-        // A refresh that arrived while this page was open: the section is back in place now, so the
-        // list can be re-read and rebuilt without pulling it out from under anything.
+        // A refresh held while the page was open can be read once its section is back in the panel.
         const pending = this.pendingRebuild;
         this.pendingRebuild = null;
         const rows = pending?.()?.rows;
