@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
-import { auditPromptingLayout } from './helpers/prompting-layout.js';
+import { auditPromptingLayout } from './helpers/libadwaita-audit.js';
 
 test.use({ serviceWorkers: 'block', reducedMotion: 'reduce' });
 

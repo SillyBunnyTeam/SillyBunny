@@ -9783,12 +9783,6 @@ function buildSamplingPanel() {
     });
 
     const sections = createElement('div', { className: 'sb-sampling-sections' });
-    const samplingPresetNodes = new Map([
-        ['textgenerationwebui', document.getElementById('textgenerationwebui_api-presets')],
-        ['kobold', document.getElementById('kobold_api-presets')],
-        ['novel', document.getElementById('novel_api-presets')],
-    ]);
-
     for (const backend of SB_SAMPLING_BACKENDS) {
         const section = createElement('section', {
             id: `sb-sampling-${backend.id}`,
@@ -9812,18 +9806,6 @@ function buildSamplingPanel() {
                 createElement('div', { className: 'ds-pref-group' }),
             );
             section.append(category);
-        }
-        const presets = samplingPresetNodes.get(backend.id);
-        const presetBody = section.querySelector('[data-sb-sampling-group="presets"] > .ds-pref-group');
-        if (presets instanceof HTMLElement && presetBody instanceof HTMLElement) {
-            presetBody.append(presets);
-            enhancePresetActionButtons(presetBody);
-            const observer = new MutationObserver(mutations => {
-                if (mutations.some(mutation => [...mutation.addedNodes].some(node => getPresetActionKind(node)))) {
-                    enhancePresetActionButtons(presetBody);
-                }
-            });
-            observer.observe(presetBody, { childList: true, subtree: true });
         }
         sections.appendChild(section);
     }
@@ -10030,7 +10012,7 @@ function updatePromptingPanel(panel) {
     }
     // SillyBunny: the Prompt Manager may mount late, so restore the complete Chat Completions order on every update.
     if (range instanceof HTMLElement) {
-        const openAIReadingOrder = ['sb-openai-budget', 'sb-openai-names', 'sb-openai-prefill', 'sb-openai-request', 'sb-openai-prompts', 'sb-openai-prompt-manager'];
+        const openAIReadingOrder = ['sb-openai-budget', 'sb-openai-prompt-manager', 'sb-openai-names', 'sb-openai-prefill', 'sb-openai-request', 'sb-openai-prompts'];
         for (const id of openAIReadingOrder) {
             const group = root.querySelector(`#${id}`);
             if (!(group instanceof HTMLElement)) continue;
@@ -10057,10 +10039,11 @@ function updatePromptingPanel(panel) {
     if (prefill instanceof HTMLElement && prefillTarget instanceof HTMLElement) {
         const body = prefillTarget.querySelector(':scope > .sb-prompting-group-body') ?? prefillTarget;
         if (prefill.parentElement !== body) body.append(prefill);
+        prefill.hidden = false;
         prefillTarget.hidden = false;
     }
 
-    const textgenSwipes = document.querySelector('#n_textgenerationwebui')?.closest('[data-tg-samplers="n"]');
+    const textgenSwipes = document.getElementById('n_textgenerationwebui')?.closest('.range-block');
     const generationBody = root.querySelector('#common-gen-settings-block > .sb-prompting-group-body');
     if (textgenSwipes instanceof HTMLElement && generationBody instanceof HTMLElement && textgenSwipes.parentElement !== generationBody) {
         generationBody.append(textgenSwipes);
@@ -10172,6 +10155,9 @@ function groupAdvancedFormattingIntoDrawers() {
     if (!(columns instanceof HTMLElement) || !(contextColumn instanceof HTMLElement)
         || !(instructColumn instanceof HTMLElement) || !(systemColumn instanceof HTMLElement)) return;
 
+    const startReplyWith = systemColumn.querySelector('[name="startReplyWithBlock"]');
+    if (startReplyWith instanceof HTMLElement) startReplyWith.hidden = true;
+
     const createGroup = (id, title) => {
         const group = createElement('section', { id, className: 'sb-prompting-group sb-formatting-group' });
         group.append(
@@ -10217,6 +10203,7 @@ function groupAdvancedFormattingIntoDrawers() {
 
     moveToPrompting('[name="bindModelPresetBlock"]', 'respective-presets-block');
     moveToPrompting('#AdvancedFormatting > .flex-container.alignItemsBaseline > .flex-container[data-cc-null]', 'respective-presets-block');
+    document.querySelectorAll('.sb-sampling-section').forEach(updateSamplingCardVisibility);
     const systemPromptBlock = systemColumn.querySelector('#SystemPromptBlock');
     if (systemPromptBlock instanceof HTMLElement && !systemPromptBlock.querySelector(':scope > .sb-prompting-details')) {
         const editorBlocks = [...systemPromptBlock.children].filter(child => child.querySelector('#sysprompt_content, #sysprompt_post_history'));
