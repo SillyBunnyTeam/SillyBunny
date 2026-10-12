@@ -2162,10 +2162,12 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
 }
 
 /* Swipe picker close: a libadwaita circular flat button with a plain cross. swipe-picker.js sets
-   inline display:block, width/height:auto and padding:0, so the glyph is centred with text-align
-   and a line-height equal to the min-size box instead of flex. */
+   inline display:block, width/height:auto, so the glyph is centred with text-align and a
+   line-height equal to the min-size box instead of flex. Padding lives here rather than in the
+   picker script: the button's box model belongs with its sizing. */
 .swipe_picker_popup .popup-button-close.right_menu_button.fa-solid {
     flex: 0 0 auto;
+    padding: 0;
     min-inline-size: 34px;
     max-inline-size: 34px;
     min-block-size: 34px;
@@ -5038,7 +5040,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 
 #UI-presets-block {
     gap: 12px;
-    padding: 20px;
+    padding: 0;
     border-radius: var(--sb-radius-lg);
     background:
         linear-gradient(135deg, color-mix(in srgb, var(--sb-accent) 16%, transparent), transparent 62%),
