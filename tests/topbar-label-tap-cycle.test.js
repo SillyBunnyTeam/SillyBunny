@@ -407,7 +407,7 @@ describe('icons only top bar', () => {
         expect(navSource).toContain('group.append(header, topbarIconsOnlyChoice);');
 
         expect(normalizedTabsSource).not.toContain('createTopbarIconsOnlySettingsGroup');
-        expect(getFunctionSource('createShortcutSettingsGroup')).toContain('content: [description, rows],');
+        expect(getFunctionSource('createShortcutSettingsGroup')).toContain('content: [description, ...rows],');
         // One shared factory builds both groups, so the label exists once in source.
         expect(normalizedTabsSource.match(/'Icons only top bar'/g)).toHaveLength(1);
     });
