@@ -57,6 +57,9 @@ export const event_types = {
     CHAT_RENAMED: 'chat_renamed',
     GROUP_CHAT_DELETED: 'group_chat_deleted',
     GROUP_CHAT_CREATED: 'group_chat_created',
+    // SillyBunny: an extension may hide prompt lines from this generation's speaker before retained
+    // Companion notes are merged; the payload is a request answered by index (generation-hidden-messages.js).
+    GENERATION_HIDE_MESSAGES: 'generation_hide_messages',
     GENERATE_BEFORE_COMBINE_PROMPTS: 'generate_before_combine_prompts',
     GENERATE_AFTER_COMBINE_PROMPTS: 'generate_after_combine_prompts',
     GENERATION_OUTPUT_BUFFERING_DECISION: 'generation_output_buffering_decision',
@@ -65,6 +68,8 @@ export const event_types = {
     GROUP_MEMBER_DRAFTED: 'group_member_drafted',
     GROUP_WRAPPER_STARTED: 'group_wrapper_started',
     GROUP_WRAPPER_FINISHED: 'group_wrapper_finished',
+    // SillyBunny: speaker bar pick changed; the payload is the picked avatar, or '' when cleared.
+    GROUP_SPEAKER_SELECTION_CHANGED: 'group_speaker_selection_changed',
     WORLD_INFO_ACTIVATED: 'world_info_activated',
     TEXT_COMPLETION_SETTINGS_READY: 'text_completion_settings_ready',
     CHAT_COMPLETION_SETTINGS_READY: 'chat_completion_settings_ready',
@@ -74,6 +79,10 @@ export const event_types = {
     CHARACTER_DELETED: 'characterDeleted',
     CHARACTER_DUPLICATED: 'character_duplicated',
     CHARACTER_RENAMED: 'character_renamed',
+    // SillyBunny: args (messages, oldAvatar, newAvatar, rename). For a renamed group member it fires for every chat
+    // of each group the member is in, including chats the member never wrote in, so listeners must tolerate chats
+    // with no matching messages. A listener that changes such a chat calls rename.markChanged() to have it saved;
+    // chats the host itself rewrote are saved anyway. Solo character chats pass no `rename` and are always saved.
     CHARACTER_RENAMED_IN_PAST_CHAT: 'character_renamed_in_past_chat',
     /** @deprecated The event is aliased to STREAM_TOKEN_RECEIVED. */
     SMOOTH_STREAM_TOKEN_RECEIVED: 'stream_token_received',

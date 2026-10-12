@@ -54,6 +54,7 @@ import {
     cancelTtsPlay,
     displayPastChats,
     sendMessageAsUser,
+    saveChatConditional,
     getBiasStrings,
     flushPendingChatSavesForNavigation,
     deactivateSendButtons,
@@ -92,6 +93,8 @@ import { compressRequest } from './request-compression.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
 import { chat_completion_sources, oai_settings } from './openai.js';
 import { getRegexedString, regex_placement } from './extensions/regex/engine.js';
+import { ToolManager } from './tool-calling.js';
+import { createGroupTurnRouting, getRoutedReplyStatus } from './group-turn-routing.js';
 
 export {
     selected_group,
@@ -110,7 +113,9 @@ export {
     select_group_chats,
     getGroupChatNames,
     getSelectedGroupSpeakerAvatar,
+    setSelectedGroupSpeakerAvatar,
     updateGroupSpeakerControls,
+    groupTurnRoutingApi,
 };
 
 let is_group_generating = false; // Group generation flag
@@ -252,6 +257,24 @@ let groupSpeakerControlsInitialized = false;
 let activeGroupTypingName = '';
 let groupSpeakerAvatarRenderKey = '';
 
+// SillyBunny: one extension at a time may plan who answers ordinary user messages; see group-turn-routing.js.
+const groupTurnRouting = createGroupTurnRouting({ getScope: getGroupTurnRoutingScope });
+const groupTurnRoutingApi = groupTurnRouting.api;
+
+function getGroupTurnRoutingScope() {
+    const group = selected_group ? groups.find(x => x.id === selected_group) : null;
+    if (!group) {
+        return null;
+    }
+
+    return {
+        groupId: group.id,
+        chatId: group.chat_id,
+        strategy: Number(group.activation_strategy ?? group_activation_strategy.NATURAL),
+        chat,
+    };
+}
+
 function getCharacterIdByAvatar(avatarId) {
     return characters.findIndex(character => character.avatar === avatarId);
 }
@@ -268,13 +291,45 @@ function getGroupEnabledMembers(group) {
     return group.members.filter(member => !group.disabled_members?.includes(member));
 }
 
+function changeSelectedGroupSpeaker(avatarId) {
+    if (selectedGroupSpeakerAvatar === avatarId) {
+        return;
+    }
+
+    selectedGroupSpeakerAvatar = avatarId;
+    eventSource.emit(event_types.GROUP_SPEAKER_SELECTION_CHANGED, avatarId);
+}
+
+/**
+ * Picks who answers the next group message, the same way clicking the speaker bar does.
+ * SillyBunny: exposed through getContext() so extensions such as Group Chat Overhaul can drive the bar.
+ * @param {string} avatarId Avatar of an enabled member of the open group, or an empty string to clear the pick
+ * @returns {boolean} True if the pick was applied
+ */
+function setSelectedGroupSpeakerAvatar(avatarId) {
+    if (typeof avatarId !== 'string') {
+        return false;
+    }
+
+    if (avatarId) {
+        const group = selected_group ? groups.find(x => x.id === selected_group) : null;
+        if (!getGroupEnabledMembers(group).includes(avatarId) || getCharacterIdByAvatar(avatarId) === -1) {
+            return false;
+        }
+    }
+
+    changeSelectedGroupSpeaker(avatarId);
+    updateGroupSpeakerControls();
+    return true;
+}
+
 function getSelectedGroupSpeakerChid(group) {
     if (!selectedGroupSpeakerAvatar) {
         return -1;
     }
 
     if (!getGroupEnabledMembers(group).includes(selectedGroupSpeakerAvatar)) {
-        selectedGroupSpeakerAvatar = '';
+        changeSelectedGroupSpeaker('');
         return -1;
     }
 
@@ -361,7 +416,7 @@ async function addSelectedGroupGreeting() {
 
     const group = groups.find(x => x.id === selected_group);
     if (!getGroupEnabledMembers(group).includes(selectedGroupSpeakerAvatar)) {
-        selectedGroupSpeakerAvatar = '';
+        changeSelectedGroupSpeaker('');
         updateGroupSpeakerControls();
         toastr.warning(t`Pick a group member first.`);
         return;
@@ -416,8 +471,9 @@ function getMessageSpeakerName(message) {
 }
 
 function clearSelectedGroupSpeaker() {
-    selectedGroupSpeakerAvatar = '';
+    // Unhighlight first: a listener of the change event may already pick the next speaker.
     $('#group_speaker_controls .group_speaker_avatar').removeClass('selected');
+    changeSelectedGroupSpeaker('');
 }
 
 function limitGroupSpeakersForControl(activatedMembers, forceSingleSpeaker) {
@@ -471,6 +527,11 @@ function updateGroupSpeakerControls() {
         return;
     }
 
+    // A pick from another group, or of a member muted since, can no longer answer here.
+    if (selectedGroupSpeakerAvatar && !members.includes(selectedGroupSpeakerAvatar)) {
+        changeSelectedGroupSpeaker('');
+    }
+
     const avatarRenderKey = JSON.stringify({
         groupId: group.id,
         members,
@@ -514,7 +575,7 @@ function initGroupSpeakerControls() {
     container.on('click', '.group_speaker_avatar', async function (event) {
         const avatarId = String($(this).data('avatar') || '');
         const alreadySelected = selectedGroupSpeakerAvatar === avatarId;
-        selectedGroupSpeakerAvatar = alreadySelected ? '' : avatarId;
+        changeSelectedGroupSpeaker(alreadySelected ? '' : avatarId);
         updateGroupSpeakerControls();
 
         if (event.shiftKey && selected_group) {
@@ -602,7 +663,8 @@ async function regenerateGroup() {
 
     const abortController = new AbortController();
     setExternalAbortController(abortController);
-    return generateGroupWrapper(false, 'normal', { signal: abortController.signal });
+    // SillyBunny: marks the send as Regenerate, which a turn routing owner never plans.
+    return generateGroupWrapper(false, 'normal', { signal: abortController.signal, isRegenerate: true });
 }
 
 /**
@@ -1307,9 +1369,14 @@ export async function renameGroupMember(oldAvatar, newAvatar, newName) {
                         }
                     }
 
-                    if (hadChanges) {
-                        await eventSource.emit(event_types.CHARACTER_RENAMED_IN_PAST_CHAT, messages, oldAvatar, newAvatar);
+                    // SillyBunny: extensions keep per-chat data about members who never wrote a line (for
+                    // example which messages a member missed), so every chat of the group hears the rename.
+                    // A listener that changes the chat calls markChanged() on the fourth argument to have it saved.
+                    await eventSource.emit(event_types.CHARACTER_RENAMED_IN_PAST_CHAT, messages, oldAvatar, newAvatar, {
+                        markChanged: () => { hadChanges = true; },
+                    });
 
+                    if (hadChanges) {
                         const saveChatRequest = await compressRequest({
                             method: 'POST',
                             headers: getRequestHeaders(),
@@ -1557,6 +1624,8 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
     /** @type {any} Caution: JS war crimes ahead */
     let textResult = '';
     const group = groups.find((x) => x.id === selected_group);
+    /** @type {import('./group-turn-routing.js').GroupRoutedTurn|null} */
+    let routedTurn = null;
 
     if (!group || !Array.isArray(group.members) || !group.members.length) {
         sendSystemMessage(system_message_types.EMPTY, '', { isSmallSys: true });
@@ -1592,30 +1661,44 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
         let activatedMembers = [];
 
         const selectedSpeakerChid = getSelectedGroupSpeakerChid(group);
+        const selectedSpeakerAvatar = selectedSpeakerChid !== -1 ? selectedGroupSpeakerAvatar : '';
+        // Only a new reply answers as the pick and uses it up. Swipes and Continue redo or extend the last message,
+        // and quiet or Impersonate generations never reply as a member, so they all leave the pick for the next reply.
+        // Impersonate still borrows the picked member's card, as it did before the pick could be kept.
+        const isNewReply = !['quiet', 'swipe', 'continue', 'impersonate'].includes(type);
+        const usesPick = isNewReply || type === 'impersonate';
         const addressedMemberChid = findDirectlyAddressedMember(group, activationText);
         const isWholeGroupAddress = isAddressedToEntireGroup(activationText);
+        // SillyBunny: an extension holding the turn routing lease plans who answers an ordinary user message, after
+        // the message is saved. Forced speakers and the speaker bar pick still come first, and native routing answers
+        // when it declines; native addressing is passed to the owner as a hint instead of taking the turn.
+        const isRoutableSend = isUserInput && (!type || type === 'normal') && !params?.isRegenerate && !Array.isArray(params?.force_chids)
+            && typeof params?.force_chid != 'number' && selectedSpeakerChid === -1;
+        routedTurn = isRoutableSend ? groupTurnRouting.startTurn({ turnId: group_generation_id, text: userInput }) : null;
         if (params && Array.isArray(params.force_chids)) {
             activatedMembers = params.force_chids;
         } else if (params && typeof params.force_chid == 'number') {
             activatedMembers = [params.force_chid];
+        } else if (type === 'swipe' || type === 'continue') {
+            // SillyBunny: swipes and Continue redo or extend the last message, so its author writes them
+            // even when that message or the composer names other members.
+            activatedMembers = activateSwipe(enabledMembers, { allowSystem: false });
+
+            if (activatedMembers.length === 0) {
+                toastr.warning(t`Deleted group member swiped. To get a reply, add them back to the group.`);
+                throw new Error('Deleted group member swiped');
+            }
         } else if (type !== 'quiet' && isWholeGroupAddress && isUserInput) {
             activatedMembers = enabledMembers.map(avatar => getCharacterIdByAvatar(avatar)).filter(chid => chid !== -1);
         } else if (type !== 'quiet' && addressedMemberChid !== -1) {
             activatedMembers = [addressedMemberChid];
-        } else if (type !== 'quiet' && selectedSpeakerChid !== -1) {
+        } else if (usesPick && selectedSpeakerChid !== -1) {
             activatedMembers = [selectedSpeakerChid];
         } else if (type === 'quiet') {
             activatedMembers = activateSwipe(enabledMembers, { allowSystem: true }).slice(0, 1);
 
             if (activatedMembers.length === 0) {
                 activatedMembers = activateListOrder(enabledMembers.slice(0, 1));
-            }
-        } else if (type === 'swipe' || type === 'continue') {
-            activatedMembers = activateSwipe(enabledMembers, { allowSystem: false });
-
-            if (activatedMembers.length === 0) {
-                toastr.warning(t`Deleted group member swiped. To get a reply, add them back to the group.`);
-                throw new Error('Deleted group member swiped');
             }
         } else if (type === 'impersonate') {
             activatedMembers = activateImpersonate(enabledMembers);
@@ -1647,11 +1730,29 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
                 await sendMessageAsUser(userInput, bias.messageBias);
             }
             didRenderUserMessage = true;
+            if (routedTurn) {
+                // SillyBunny: sendMessageAsUser does not report whether its save went through, so a routed turn saves
+                // again before the owner plans against the chat, and writes no replies when the save failed.
+                const routedMembers = await routedTurn.prepare({
+                    saved: await saveChatConditional(),
+                    loadMembers: () => unshallowGroupMembers(group.id),
+                    resolveMember: avatar => enabledMembers.includes(avatar) ? getCharacterIdByAvatar(avatar) : -1,
+                    addressed: { avatar: characters[addressedMemberChid]?.avatar, wholeGroup: isWholeGroupAddress },
+                    // Each reply runs under its member's model override, which decides whether it can call tools.
+                    canCallTools: chId => runWithGroupMemberModelOverride(group, characters[chId].avatar, () => ToolManager.canPerformToolCalls('normal')),
+                });
+                if (routedMembers) {
+                    activatedMembers = routedMembers;
+                } else {
+                    routedTurn = null;
+                }
+            }
             $('#send_textarea').val('')[0].dispatchEvent(new Event('input', { bubbles: true }));
             await new Promise(resolve => requestAnimationFrame(resolve));
         }
 
         if (activatedMembers.length === 0) {
+            routedTurn?.finish('success');
             return Promise.resolve();
         }
 
@@ -1667,6 +1768,11 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
         // now the real generation begins: cycle through every activated character
         for (const chId of activatedMembers) {
             throwIfAborted();
+            const avatar = characters[chId]?.avatar;
+            // SillyBunny: a routed turn stops before the next reply once its owner cancels it or its plan goes stale.
+            if (routedTurn && !routedTurn.startReply(avatar)) {
+                break;
+            }
             deactivateSendButtons();
             setCharacterId(chId);
             setCharacterName(characters[chId].name);
@@ -1685,6 +1791,12 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
             mergedParams.quiet_prompt = [mergedParams.quiet_prompt, contextPrompt].filter(Boolean).join('\n');
             mergedParams.quietToLoud = true;
             mergedParams.suppressUserMessage = didRenderUserMessage || mergedParams.suppressUserMessage;
+            if (routedTurn) {
+                // Each planned member writes one reply, which auto-continue or auto-swipe would add to or redo.
+                mergedParams.suppressAutoContinue = true;
+                mergedParams.suppressAutoSwipe = true;
+            }
+            const replyStart = chat.length;
             textResult = await runWithGroupMemberModelOverride(group, characters[chId]?.avatar, () => Generate(generateType, { automatic_trigger: byAutoMode, ...mergedParams }));
             let messageChunk = textResult?.messageChunk;
 
@@ -1700,12 +1812,22 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
                 groupChatQueueOrder.forEach((value, key, map) => map.set(key, value - 1));
             }
             setGroupTypingIndicator('');
+
+            if (routedTurn && !routedTurn.finishReply(avatar, getRoutedReplyStatus(chat.slice(replyStart), avatar, Boolean(params.signal?.aborted)))) {
+                break;
+            }
         }
 
-        if (selectedSpeakerChid !== -1 && !(params && typeof params.force_chid == 'number')) {
+        routedTurn?.finish('success');
+
+        // A pick made while this reply was being written is meant for the reply after it.
+        if (selectedSpeakerChid !== -1 && isNewReply && !(params && typeof params.force_chid == 'number')
+            && selectedGroupSpeakerAvatar === selectedSpeakerAvatar) {
             clearSelectedGroupSpeaker();
         }
     } finally {
+        // SillyBunny: a routed turn always ends, even when Stop or an error cuts it short.
+        routedTurn?.finish(params.signal?.aborted ? 'cancelled' : 'failed');
         setGroupTypingIndicator('');
         is_group_generating = false;
         setSendButtonState(false);
@@ -2106,6 +2228,8 @@ async function onGroupActivationStrategyInput(e) {
     if (openGroupId) {
         let _thisGroup = groups.find((x) => x.id == openGroupId);
         _thisGroup.activation_strategy = Number(e.target.value);
+        // SillyBunny: a turn routing lease ends when its group's reply strategy changes.
+        groupTurnRouting.refresh();
         await editGroup(openGroupId, false, false);
     }
 }
@@ -3261,4 +3385,7 @@ jQuery(() => {
     $(document).on('change', '.group_member_model_input', onGroupMemberModelInput);
     eventSource.on(event_types.CHAT_CHANGED, updateGroupSpeakerControls);
     eventSource.on(event_types.GROUP_UPDATED, updateGroupSpeakerControls);
+    // SillyBunny: a turn routing lease ends when its chat or group changes.
+    eventSource.on(event_types.CHAT_CHANGED, () => groupTurnRouting.refresh());
+    eventSource.on(event_types.GROUP_UPDATED, () => groupTurnRouting.refresh());
 });
