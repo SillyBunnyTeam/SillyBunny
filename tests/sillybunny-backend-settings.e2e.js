@@ -774,6 +774,40 @@ test('Extensions detail pages retain live controls and restore their list', asyn
     expect(await page.evaluate(() => window.phase3ExtensionNodes.every(node => node.isConnected))).toBe(true);
 });
 
+test('Universal search reaches Extensions detail pages after the list is built', async ({ page, baseURL }) => {
+    await loadSettings(page, baseURL);
+    // Activating the tab moves every extension section into the hidden subpage store.
+    const extensions = await openPanel(page, 'extensions', 'right');
+    await expect.poll(() => extensions.locator('.sb-subpage-row').count()).toBeGreaterThan(0);
+    const jumpTo = async (query, option = /^Summarize Trigger a summary update/) => {
+        await page.evaluate(() => window.SillyBunnyShell.openGlobalSearch());
+        await page.locator('#sb-universal-search input').fill(query);
+        const result = page.getByRole('group', { name: 'Customize · Extensions', exact: true })
+            .getByRole('option', { name: option });
+        await expect(result).toHaveCount(1);
+        await result.click();
+    };
+    await jumpTo('summarize now');
+    await expect(extensions.locator('.sb-subpage-detail')).toHaveAttribute('aria-hidden', 'false');
+    await expect(extensions.locator('.sb-subpage-detail-content')).toHaveAttribute('id', 'summarize_container');
+    await expect(page.locator('#memory_force_summarize')).toBeInViewport();
+    // The store keeps every other section out of the layout; a stored section that still lays out
+    // puts a second, stale copy of the menu under the list.
+    await expect.poll(() => extensions.locator('.sb-shell-panel-scroller').evaluate(scroller => scroller.scrollHeight - scroller.clientHeight)).toBeLessThan(200);
+    await expect(extensions.locator('.sb-subpage-store #tts_container')).toBeHidden();
+    // The list page's own chrome is presented by the stack, so it is searchable too.
+    await jumpTo('manage extensions', /^Manage extensions/);
+    await expect(extensions.locator('.sb-subpage-detail')).toHaveAttribute('aria-hidden', 'true');
+    await expect(page.locator('#extensions_details')).toBeInViewport();
+    await jumpTo('summarize now');
+    // A second jump into the page already on screen must not lose the section when it closes.
+    await jumpTo('summarize now');
+    await expect(extensions.locator('.sb-subpage-detail-content')).toHaveAttribute('id', 'summarize_container');
+    await extensions.locator('.sb-subpage-back').click();
+    await expect(extensions.locator('.sb-subpage-detail')).toHaveAttribute('aria-hidden', 'true');
+    await expect(extensions.locator('.sb-subpage-store #summarize_container')).toHaveCount(1);
+});
+
 test('Backend edits and quick context actions survive settings serialization and reload', async ({ page, baseURL }) => {
     const store = {};
     await loadSettings(page, baseURL, store);

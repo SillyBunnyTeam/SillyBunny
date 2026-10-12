@@ -341,7 +341,14 @@ export class SubpageStack {
             return;
         }
 
-        if (this.isOpen() && this.openRowId !== rowId) {
+        // Re-opening the page already on screen (a search jump into it) must not move its section
+        // again: that would record the detail body as where it came from, and the next close would
+        // put it back there and then empty the body, dropping the section from the document.
+        if (this.openRowId === rowId) {
+            return;
+        }
+
+        if (this.isOpen()) {
             this.close({ restoreFocus: false, instant: true });
         }
 

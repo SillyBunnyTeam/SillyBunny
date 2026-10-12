@@ -10650,14 +10650,14 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 }
 
 /* The store's own wrapper keeps its content out of the flow while the stack presents it. Compacting
-   it rather than hiding it matters for the sections that measure themselves at build time. */
-.sb-subpage-store > * {
-    display: none;
-}
-
+   it rather than hiding it matters for the sections that measure themselves at build time.
+   `!important` because a stored section still carries the shell's own `.sb-managed` reset, whose
+   `display: block !important` would otherwise win and lay the whole legacy menu out under the list:
+   the panel then scrolls into a second, stale copy of itself. */
+.sb-subpage-store > *,
 .sb-subpage-store .sb-shell-embedded-content,
 .sb-subpage-store .drawer-content {
-    display: none;
+    display: none !important;
 }
 
 /* Strip the frame an authored block arrives with. Inside a detail page the pill is the only box:

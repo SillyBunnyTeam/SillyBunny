@@ -261,7 +261,15 @@ function installSettingsSubpage(shellKey, tabId) {
     if (built.observe instanceof HTMLElement) {
         // Extension containers mount over the first seconds after the panel is built, so the list is
         // rebuilt from the DOM rather than captured once.
-        const observer = new MutationObserver(() => stack.rebuild(() => spec(panel)));
+        const observer = new MutationObserver(() => {
+            stack.rebuild(() => spec(panel));
+            // The list just changed, so what the tab's search index holds for it is now short of a
+            // row at best. A search taken before an extension finished mounting must not stick.
+            const tab = getShellState(shellKey)?.tabs.get(tabId);
+            if (tab) {
+                tab.searchIndex = null;
+            }
+        });
         observer.observe(built.observe, { childList: true, subtree: true });
         stack.observeWith(() => observer.disconnect());
     }
@@ -12402,6 +12410,31 @@ function updateThemePickerUi() {
     }
 }
 
+/**
+ * The sections the subpage stacks around `searchRoot` present as rows, with each row's label.
+ *
+ * A stack keeps its closed sections in the hidden store, moves the open one into its detail page,
+ * and moves the panel's own chrome into its list heading. Once a stack is mounted none of that is
+ * inside the tab's search root, so the headings are returned as extra roots alongside the sections.
+ */
+function getSubpageSearchRoots(searchRoot) {
+    const sections = new Map();
+    const headings = [];
+    for (const stack of sbSubpageStacks.values()) {
+        if (!stack.host.contains(searchRoot) && !searchRoot.contains(stack.host)) {
+            continue;
+        }
+        headings.push(stack.listHeading);
+        for (const row of stack.rows) {
+            const source = row.source?.();
+            if (source instanceof HTMLElement) {
+                sections.set(source, row.label);
+            }
+        }
+    }
+    return { sections, headings };
+}
+
 function createSearchIndex(tabState, { includeThemeCard = false } = {}) {
     const searchRoot = tabState.searchRoot;
     if (!(searchRoot instanceof HTMLElement)) {
@@ -12410,20 +12443,18 @@ function createSearchIndex(tabState, { includeThemeCard = false } = {}) {
 
     const entries = [];
     const seen = new Set();
-    // SillyBunny: subpage store children are hidden by CSS; clicking a search result that lands
-    // inside the store bypasses the subpage stack and triggers jQuery slideToggle on the old
-    // inline-drawer, injecting display:block and freezing the page. The row labels rendered
-    // outside the store already cover every section as the correct entry point.
     const excludedSelector = [
         '.sb-search-result',
         '.sb-legacy-search-hidden',
         // Unwritten placeholder copy is not a setting.
         SB_SEARCH_PLACEHOLDER_SELECTOR,
         ...(includeThemeCard ? ['.sb-mobile-quick-actions-group', '.sb-desktop-quick-actions-group'] : ['.sb-theme-card']),
-        `.${SB_SUBPAGE_STORE_CLASS}`,
     ].join(', ');
+    const { sections: subpageSections, headings: subpageHeadings } = getSubpageSearchRoots(searchRoot);
+    const searchRoots = [searchRoot, ...subpageHeadings, ...subpageSections.keys()]
+        .filter((root, index) => index === 0 || !searchRoot.contains(root));
 
-    for (const element of searchRoot.querySelectorAll(SB_SEARCH_TARGET_SELECTOR)) {
+    for (const element of searchRoots.flatMap(root => Array.from(root.querySelectorAll(SB_SEARCH_TARGET_SELECTOR)))) {
         if (!(element instanceof HTMLElement)) {
             continue;
         }
@@ -12432,7 +12463,21 @@ function createSearchIndex(tabState, { includeThemeCard = false } = {}) {
             continue;
         }
 
-        const sectionLabel = getSearchSectionLabel(element, tabState.label);
+        // SillyBunny: the subpage store is hidden by CSS, and a match there is only reachable
+        // through the row that moves its section onto the detail page (see revealSearchMatch).
+        // Store content no row presents has no way on screen, so it is left out.
+        let subpageLabel = null;
+        for (const [section, label] of subpageSections) {
+            if (section.contains(element)) {
+                subpageLabel = label;
+                break;
+            }
+        }
+        if (subpageLabel === null && element.closest(`.${SB_SUBPAGE_STORE_CLASS}`)) {
+            continue;
+        }
+
+        const sectionLabel = subpageLabel ?? getSearchSectionLabel(element, tabState.label);
         const searchText = getSearchText(element, sectionLabel);
         const displayText = getSearchDisplayText(element, sectionLabel);
         const dedupeKey = getSearchEntryDedupeKey(tabState, sectionLabel, displayText, { element });
@@ -13040,6 +13085,11 @@ function revealSearchMatch(shellKey, match) {
                     pulseSearchTarget(match.element);
                 }, slideDelay + 40);
                 return;
+            }
+            // The match is in the list page's own chrome, which a detail page covers: put the list
+            // back before scrolling it, or the scroll would move a page nobody can see.
+            if (stack.isOpen()) {
+                stack.close({ instant: true });
             }
             if (match.element instanceof HTMLElement) {
                 scrollElementIntoManagedView(match.element, {
