@@ -629,30 +629,145 @@
     margin-top: 1em;
 }
 
-#prompt-manager-reset-character,
-#completion_prompt_manager_popup .completion_prompt_manager_popup_entry_form_footer #completion_prompt_manager_popup_entry_form_reset {
-    color: rgb(220 173 16);
+/* SillyBunny: trigger chips replace Select2 multi-select to avoid overflow:hidden clipping issues
+   and provide touch-friendly 44px targets. The hidden <select> is kept for upstream JS compat. — feat/v1.9.0-ui-overhaul */
+.pm-trigger-hidden-select {
+    display: none !important;
 }
 
-#completion_prompt_manager_popup .completion_prompt_manager_popup_entry_form_footer #completion_prompt_manager_popup_entry_form_close,
-#completion_prompt_manager_popup .completion_prompt_manager_popup_entry_form_footer #completion_prompt_manager_popup_entry_form_reset,
-#completion_prompt_manager_popup .completion_prompt_manager_popup_entry_form_footer #completion_prompt_manager_popup_entry_form_save {
-    font-size: 1.25em;
-    padding: 0.5em;
-    display: inline-flex !important;
-    align-items: center;
-    justify-content: center;
-    line-height: 1;
+.pm-trigger-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
 }
 
-#completion_prompt_manager_popup .completion_prompt_manager_popup_entry_form_footer .menu_button:is(.fa, .fa-solid, .fa-regular, .fa-brands)::before {
+.pm-trigger-chip {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1em;
-    height: 1em;
-    margin: 0;
-    line-height: 1;
+    min-height: 32px;
+    padding: 4px 12px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent);
+    border-radius: 99px;
+    background: transparent;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 70%, transparent);
+    font-size: var(--sb-type-control, calc(var(--mainFontSize) * 0.88));
+    font-family: inherit;
+    cursor: pointer;
+    transition: background var(--sb-transition-slow), border-color var(--sb-transition-slow), color var(--sb-transition-slow);
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.pm-trigger-chip:hover {
+    border-color: var(--SmartThemeBorderColor);
+    color: var(--SmartThemeBodyColor);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+}
+
+.pm-trigger-chip[aria-checked="true"] {
+    border-color: var(--SmartThemeQuoteColor);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 14%, transparent);
+    color: var(--SmartThemeQuoteColor);
+}
+
+.pm-trigger-chip:focus-visible {
+    outline: 2px solid var(--SmartThemeQuoteColor);
+    outline-offset: 2px;
+}
+
+/* SillyBunny: editor popup footer — proper button elements with icon + text labels replace
+   icon-only <a> tags; Save is primary (accent color), Close is muted. — feat/v1.9.0-ui-overhaul */
+.completion_prompt_manager_popup_entry_form_footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 48%, transparent);
+}
+
+.pm-editor-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    font-size: var(--sb-type-control, calc(var(--mainFontSize) * 0.88));
+    white-space: nowrap;
+}
+
+.pm-editor-btn-primary {
+    border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 60%, transparent);
+    color: var(--SmartThemeQuoteColor);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+}
+
+.pm-editor-btn-primary:hover {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, transparent);
+    border-color: var(--SmartThemeQuoteColor);
+}
+
+/* SillyBunny: accordion header elements — chevron, active count, lock. — feat/v1.9.0-ui-overhaul */
+.pm-accordion-meta {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 4px;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 56%, transparent);
+    font-size: var(--sb-type-control, calc(var(--mainFontSize) * 0.84));
+}
+
+.pm-accordion-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
+    border-radius: 6px;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: background var(--sb-transition-slow);
+}
+
+.pm-accordion-toggle:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+.pm-accordion-toggle:focus-visible {
+    outline: 2px solid var(--SmartThemeQuoteColor);
+    outline-offset: 2px;
+}
+
+.pm-accordion-chevron {
+    font-size: 10px;
+    transition: transform 160ms ease;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 56%, transparent);
+}
+
+.pm-accordion-toggle.pm-accordion-collapsed .pm-accordion-chevron {
+    transform: rotate(-90deg);
+}
+
+.pm-accordion-count {
+    font-size: calc(var(--mainFontSize) * 0.75);
+    font-weight: 600;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 48%, transparent);
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+}
+
+.pm-accordion-lock {
+    font-size: 9px;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 38%, transparent);
+}
+#prompt-manager-reset-character,
+#completion_prompt_manager_popup_entry_form_reset {
+    color: rgb(220 173 16);
 }
 
 #completion_prompt_manager_popup .completion_prompt_manager_popup_entry_form_control #completion_prompt_manager_popup_entry_form_prompt {
@@ -807,20 +922,52 @@
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 88%, transparent);
 }
 
+/* SillyBunny: two-part footer toolbar — left=select+insert, right=global actions. — feat/v1.9.0-ui-overhaul */
 #completion_prompt_manager .completion_prompt_manager_footer {
     display: flex;
     flex-direction: row;
-    justify-content: flex-end;
+    justify-content: space-between;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.25em;
-    padding: 0 0.25em;
+    gap: 6px;
+    padding: 6px 0 0;
     width: 100%;
+    min-width: 0;
+    border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 48%, transparent);
+}
+
+.pm-footer-left,
+.pm-footer-right,
+.pm-footer-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+/* SillyBunny: primary group stretches to fill space; actions group stays compact. — feat/v1.9.0-ui-overhaul */
+.pm-footer-group-primary {
+    flex: 1 1 auto;
     min-width: 0;
 }
 
-#completion_prompt_manager .completion_prompt_manager_footer a {
-    font-size: 12px;
+.pm-footer-group-actions {
+    flex: 0 0 auto;
+}
+
+.pm-footer-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    font-size: var(--sb-type-control, calc(var(--mainFontSize) * 0.88));
+    white-space: nowrap;
+}
+
+/* SillyBunny: labeled variant shows icon + text label; icon-only variant gets square padding. — feat/v1.9.0-ui-overhaul */
+.pm-footer-btn-labeled {
+    gap: 6px;
+    padding: 4px 12px;
 }
 
 #completion_prompt_manager .completion_prompt_manager_important a {
@@ -977,6 +1124,27 @@
     }
 }
 
+/* SillyBunny: JS-side touch fallback — .sb-touch-device is added when navigator.maxTouchPoints > 0
+   for DevTools and environments where hover:none media query is unreliable. — feat/v1.9.0-ui-overhaul */
+#completion_prompt_manager.sb-touch-device #completion_prompt_manager_list li .pm-row-actions {
+    display: none;
+}
+
+#completion_prompt_manager.sb-touch-device #completion_prompt_manager_list li .pm-row-kebab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#completion_prompt_manager.sb-touch-device #completion_prompt_manager_list li .pm-row-end-zone .prompt_manager_prompt_tokens {
+    opacity: 1 !important;
+    padding-right: 32px;
+}
+
+#completion_prompt_manager.sb-touch-device #completion_prompt_manager_list li.completion_prompt_manager_prompt {
+    min-height: 52px;
+}
+
 .completion_prompt_manager_popup_entry_form_control:has(#completion_prompt_manager_popup_entry_form_prompt:disabled)>div:first-child::after {
     content: attr(external_piece_text);
     display: block;
@@ -1100,12 +1268,45 @@
 }
 
 @media screen and (min-width: 961px) {
+    /* SillyBunny: flex layout lets the list pane use --pm-list-width (set by the
+       drag divider) while keeping the editor fluid; replaces the fixed 280px grid. — feat/v1.9.0-ui-overhaul */
     .sb-workspace-split {
-        display: grid;
-        /* SillyBunny: narrow fixed list (280px) + fluid editor — replaces the previous
-           equal 50/50 split to give the editor substantially more space. */
-        grid-template-columns: 280px minmax(0, 1fr);
+        display: flex;
         align-items: start;
+        gap: 0;
+    }
+
+    .pm-workspace-divider {
+        display: none;
+        flex: 0 0 12px;
+        width: 12px;
+        align-self: stretch;
+        cursor: col-resize;
+        align-items: center;
+        justify-content: center;
+        -webkit-user-select: none;
+        user-select: none;
+        touch-action: none;
+    }
+
+    .pm-workspace-divider::after {
+        content: '';
+        display: block;
+        width: 2px;
+        height: 40px;
+        border-radius: 99px;
+        background: color-mix(in srgb, var(--SmartThemeBorderColor) 48%, transparent);
+        transition: background var(--sb-transition-slow), height var(--sb-transition-slow);
+    }
+
+    .pm-workspace-divider:hover::after,
+    .pm-workspace-divider.sb-divider-active::after {
+        background: var(--SmartThemeQuoteColor);
+        height: 60px;
+    }
+
+    #completion_prompt_manager.completion_prompt_manager_has_editor .pm-workspace-divider {
+        display: flex;
     }
 
     #completion_prompt_manager .completion_prompt_manager_drawer_content {
@@ -1114,32 +1315,58 @@
     }
 
     #completion_prompt_manager .completion_prompt_manager_list_pane {
+        /* SillyBunny: width driven by --pm-list-width custom property so the drag
+           divider can resize without JS touching individual element widths. — feat/v1.9.0-ui-overhaul */
+        flex: 0 0 var(--pm-list-width, 280px);
+        width: var(--pm-list-width, 280px);
+        min-width: 200px;
+        max-width: 480px;
         min-height: 0;
-        height: clamp(360px, 58vh, 820px);
-        max-height: clamp(360px, 58vh, 820px);
+        height: min(90vh, 900px);
+        max-height: min(90vh, 900px);
     }
 
     #completion_prompt_manager #completion_prompt_manager_list {
         min-height: 0;
-        max-height: clamp(280px, 48vh, 700px);
+        max-height: min(74vh, 760px);
         overflow-y: auto;
         padding-right: 4px;
     }
 
     #completion_prompt_manager .completion_prompt_manager_editor_pane {
         display: flex;
+        /* SillyBunny: start collapsed; expands to fluid width when has_editor is set
+           so the list pane can occupy full width when nothing is selected. — feat/v1.9.0-ui-overhaul */
+        flex: 0 0 0;
+        width: 0;
+        min-width: 0;
         flex-direction: column;
         min-height: 0;
-        height: clamp(360px, 58vh, 820px);
-        max-height: clamp(360px, 58vh, 820px);
-        padding: 18px;
+        height: min(90vh, 900px);
+        max-height: min(90vh, 900px);
+        padding: 0;
         border-radius: var(--sb-radius-md, 16px);
+        border: 1px solid transparent;
+        background: transparent;
+        box-shadow: none;
+        overflow: hidden;
+        transition:
+            flex-basis 220ms ease,
+            width 220ms ease,
+            padding 220ms ease,
+            border-color 220ms ease,
+            background 220ms ease;
+    }
+
+    #completion_prompt_manager.completion_prompt_manager_has_editor .completion_prompt_manager_editor_pane {
+        flex: 1 1 0;
+        width: auto;
+        min-width: 200px;
+        padding: 18px;
         border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 64%, transparent);
         background:
             linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent), transparent 24%),
             color-mix(in srgb, var(--SmartThemeBodyColor) 2%, transparent);
-        box-shadow: none;
-        overflow: hidden;
     }
 
     #completion_prompt_manager .completion_prompt_manager_editor_host {
@@ -1254,7 +1481,9 @@
     }
 
     #completion_prompt_manager .completion_prompt_manager_editor_host #completion_prompt_manager_popup_entry_form_prompt {
-        flex: 0 0 auto;
+        /* SillyBunny: flex: 1 1 auto lets the textarea fill remaining vertical space in the
+           editor pane rather than collapsing to its default 2-row intrinsic height. — feat/v1.9.0-ui-overhaul */
+        flex: 1 1 auto;
         min-height: clamp(220px, 32vh, 420px);
     }
 
@@ -1270,10 +1499,6 @@
 }
 
 @media screen and (min-width: 961px) and (max-height: 820px) {
-    #completion_prompt_manager .sb-workspace-split {
-        gap: 12px;
-    }
-
     #completion_prompt_manager .completion_prompt_manager_list_pane {
         height: clamp(320px, 54vh, 700px);
         max-height: clamp(320px, 54vh, 700px);
@@ -1288,6 +1513,10 @@
         max-height: clamp(320px, 54vh, 700px);
         padding: 12px;
         border-radius: 18px;
+    }
+
+    #completion_prompt_manager.completion_prompt_manager_has_editor .completion_prompt_manager_editor_pane {
+        padding: 12px;
     }
 
     #completion_prompt_manager .completion_prompt_manager_editor_host #completion_prompt_manager_popup_entry_form_prompt {

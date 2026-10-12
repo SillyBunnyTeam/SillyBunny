@@ -402,6 +402,11 @@ class PromptManager {
         // Active editor pane area (`edit` / `inspect` / `preview`) when visible.
         this.activePopupArea = '';
 
+        // SillyBunny: set of marker identifiers whose accordion groups are currently collapsed. — feat/v1.9.0-ui-overhaul
+        this.collapsedMarkers = new Set(
+            (() => { try { return JSON.parse(localStorage.getItem('sb-pm-collapsed-markers') ?? '[]'); } catch (_) { return []; } })(),
+        );
+
         // Prompt preview update state.
         this.previewUpdateDebounced = null;
         this.previewTokenCountRequest = 0;
@@ -779,6 +784,7 @@ class PromptManager {
                 '.prompt-manager-inspect-action',
                 '.prompt-manager-toggle-action',
                 '.prompt-manager-send-to-agents-action',
+                '.pm-accordion-toggle',
                 'input',
                 'select',
                 'textarea',
@@ -789,6 +795,25 @@ class PromptManager {
             if (ignoredClickTarget) return;
 
             const promptID = event.currentTarget?.dataset?.pmIdentifier;
+
+            // SillyBunny: accordion retract — clicking the already-selected prompt closes
+            // the editor instead of reopening it. — feat/v1.9.0-ui-overhaul
+            if (promptID && promptID === this.selectedPromptId && this.isPopupVisible()) {
+                const closeAndClear = () => {
+                    this.hidePopup();
+                    this.clearEditForm();
+                    this.clearInspectForm();
+                    this.selectedPromptId = null;
+                    this.activePopupArea = '';
+                    this.syncEditorPaneState();
+                    this.syncListSelection();
+                };
+                closeAndClear();
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
+
             if (editPromptById(promptID)) {
                 event.preventDefault();
                 event.stopPropagation();
@@ -1219,6 +1244,31 @@ class PromptManager {
         this.setupPreviewListeners();
         closeAndClearPopup();
 
+        // SillyBunny: accordion toggle — clicking .pm-accordion-toggle collapses/expands
+        // a marker group without a full re-render; persists state to localStorage. — feat/v1.9.0-ui-overhaul
+        this.containerElement?.addEventListener('click', (event) => {
+            const toggle = /** @type {HTMLElement} */(event.target instanceof Element ? event.target.closest('.pm-accordion-toggle') : null);
+            if (!toggle) return;
+            event.stopPropagation();
+            const markerId = toggle.dataset.pmAccordion;
+            if (!markerId) return;
+            if (this.collapsedMarkers.has(markerId)) {
+                this.collapsedMarkers.delete(markerId);
+            } else {
+                this.collapsedMarkers.add(markerId);
+            }
+            try { localStorage.setItem('sb-pm-collapsed-markers', JSON.stringify([...this.collapsedMarkers])); } catch (_) { /* ignore */ }
+            this.renderDebounced();
+        });
+
+        this.containerElement?.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
+            const toggle = /** @type {HTMLElement} */(event.target instanceof Element ? event.target.closest('.pm-accordion-toggle') : null);
+            if (!toggle) return;
+            event.preventDefault();
+            toggle.click();
+        });
+
         // SillyBunny: mobile kebab ⋮ — builds a transient context menu for touch users who can't hover — feat/v1.9.0-ui-overhaul
         this.containerElement?.addEventListener('click', (event) => {
             const kebab = event.target.closest('.pm-row-kebab');
@@ -1228,6 +1278,79 @@ class PromptManager {
             if (!identifier) return;
             this.showKebabMenu(kebab, identifier);
         });
+
+        // SillyBunny: JS-side touch detection fallback — media query `hover:none` is unreliable
+        // in DevTools emulation; this adds .sb-touch-device so CSS can target it independently. — feat/v1.9.0-ui-overhaul
+        if (navigator.maxTouchPoints > 0) {
+            this.containerElement?.classList.add('sb-touch-device');
+        }
+
+        // SillyBunny: trigger chip toggle — syncs chip aria-checked + hidden <select> so that
+        // the existing handleSavePrompt path reading selectedOptions keeps working. — feat/v1.9.0-ui-overhaul
+        document.getElementById(this.configuration.prefix + 'prompt_manager_popup_trigger_chips')
+            ?.addEventListener('click', (event) => {
+                const chip = /** @type {HTMLElement} */(event.target instanceof Element ? event.target.closest('.pm-trigger-chip') : null);
+                if (!chip) return;
+                const val = chip.dataset.triggerValue;
+                if (!val) return;
+                const checked = chip.getAttribute('aria-checked') === 'true';
+                chip.setAttribute('aria-checked', checked ? 'false' : 'true');
+                const triggerField = /** @type {HTMLSelectElement} */(document.getElementById(this.configuration.prefix + 'prompt_manager_popup_entry_form_injection_trigger'));
+                if (!triggerField) return;
+                const option = Array.from(triggerField.options).find(o => o.value === val);
+                if (option) option.selected = !checked;
+                triggerField.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+
+        // SillyBunny: resizable list/editor divider — drags update --pm-list-width on the workspace
+        // so both panes reflow without JS touching individual widths. — feat/v1.9.0-ui-overhaul
+        this.containerElement?.addEventListener('pointerdown', (event) => {
+            const divider = event.target.closest('.pm-workspace-divider');
+            if (!divider) return;
+
+            const workspace = this.containerElement.querySelector(`.${this.configuration.prefix}prompt_manager_workspace`);
+            if (!(workspace instanceof HTMLElement)) return;
+
+            event.preventDefault();
+            divider.classList.add('sb-divider-active');
+            divider.setPointerCapture(event.pointerId);
+
+            const startX = event.clientX;
+            const startWidth = parseInt(
+                getComputedStyle(workspace).getPropertyValue('--pm-list-width') || '280',
+                10,
+            );
+
+            const onMove = (moveEvent) => {
+                const delta = moveEvent.clientX - startX;
+                const next = Math.min(480, Math.max(200, startWidth + delta));
+                workspace.style.setProperty('--pm-list-width', `${next}px`);
+            };
+
+            const onUp = () => {
+                divider.classList.remove('sb-divider-active');
+                divider.releasePointerCapture(event.pointerId);
+                divider.removeEventListener('pointermove', onMove);
+                divider.removeEventListener('pointerup', onUp);
+                // Persist across sessions
+                const width = workspace.style.getPropertyValue('--pm-list-width');
+                if (width) {
+                    try { localStorage.setItem('sb-pm-list-width', width); } catch (_) { /* ignore */ }
+                }
+            };
+
+            divider.addEventListener('pointermove', onMove);
+            divider.addEventListener('pointerup', onUp);
+        });
+
+        // SillyBunny: restore persisted list pane width on init. — feat/v1.9.0-ui-overhaul
+        const savedWidth = (() => { try { return localStorage.getItem('sb-pm-list-width'); } catch (_) { return null; } })();
+        if (savedWidth) {
+            const workspace = this.containerElement?.querySelector(`.${this.configuration.prefix}prompt_manager_workspace`);
+            if (workspace instanceof HTMLElement) {
+                workspace.style.setProperty('--pm-list-width', savedWidth);
+            }
+        }
 
         // Re-render prompt manager on openai preset change
         eventSource.on(event_types.OAI_PRESET_CHANGED_AFTER, () => {
@@ -1887,6 +2010,11 @@ class PromptManager {
             option.selected = Array.isArray(prompt.injection_trigger) && prompt.injection_trigger.includes(option.value);
         });
         injectionTriggerField.dispatchEvent(new Event('change', { bubbles: true }));
+        // SillyBunny: sync chip state to match the hidden select after loading. — feat/v1.9.0-ui-overhaul
+        document.querySelectorAll('#completion_prompt_manager_popup_trigger_chips .pm-trigger-chip').forEach(chip => {
+            const active = Array.isArray(prompt.injection_trigger) && prompt.injection_trigger.includes(chip.dataset.triggerValue);
+            chip.setAttribute('aria-checked', active ? 'true' : 'false');
+        });
         this.setEditFormBlockVisibility(injectionDepthBlock, prompt.injection_position === INJECTION_POSITION.ABSOLUTE);
         this.setEditFormBlockVisibility(injectionOrderBlock, prompt.injection_position === INJECTION_POSITION.ABSOLUTE);
         injectionPositionField.removeAttribute('disabled');
@@ -2059,6 +2187,10 @@ class PromptManager {
         injectionDepthField.value = DEFAULT_DEPTH.toString();
         injectionOrderField.value = DEFAULT_ORDER.toString();
         injectionTriggerField.value = '';
+        // SillyBunny: reset chips when the edit form is cleared. — feat/v1.9.0-ui-overhaul
+        document.querySelectorAll('#completion_prompt_manager_popup_trigger_chips .pm-trigger-chip').forEach(chip => {
+            chip.setAttribute('aria-checked', 'false');
+        });
         this.setEditFormBlockVisibility(injectionDepthBlock, true);
         this.setEditFormBlockVisibility(injectionOrderBlock, true);
         this.setEditFormBlockVisibility(forbidOverridesBlock, true);
@@ -2306,9 +2438,8 @@ class PromptManager {
             }
 
             footerDiv?.querySelector('#prompt-manager-reset-character')?.addEventListener('click', this.handleCharacterReset);
-            footerDiv.querySelector('.menu_button:nth-child(2)').addEventListener('click', this.handleAppendPrompt);
-            footerDiv.querySelector('.caution').addEventListener('click', this.handleDeletePrompt);
-            footerDiv.querySelector('.menu_button:last-child').addEventListener('click', this.handleNewPrompt);
+            footerDiv.querySelector('[data-pm-footer-action="insert"]').addEventListener('click', this.handleAppendPrompt);
+            footerDiv.querySelector('[data-pm-footer-action="new"]').addEventListener('click', this.handleNewPrompt);
             footerDiv.querySelector('select').selectedIndex = selectedPromptIndex;
 
             // Add prompt export dialogue and options
@@ -2358,6 +2489,22 @@ class PromptManager {
             return false;
         }
 
+        // SillyBunny: pre-pass — build per-marker group membership so markers can render
+        // chevron, active count, and lock state without a second traversal. — feat/v1.9.0-ui-overhaul
+        const allPrompts = this.getPromptsForCharacter(this.activeCharacter);
+        /** @type {Map<string, string[]>} markerId → child identifiers */
+        const markerGroups = new Map();
+        let currentMarkerId = null;
+        allPrompts.forEach(p => {
+            if (!p) return;
+            if (p.marker) {
+                currentMarkerId = p.identifier;
+                markerGroups.set(currentMarkerId, []);
+            } else if (currentMarkerId) {
+                markerGroups.get(currentMarkerId)?.push(p.identifier);
+            }
+        });
+
         this.getPromptsForCharacter(this.activeCharacter).forEach(prompt => {
             if (!prompt) return;
 
@@ -2365,6 +2512,14 @@ class PromptManager {
             const enabledClass = listEntry.enabled ? '' : `${prefix}prompt_manager_prompt_disabled`;
             const draggableClass = `${prefix}prompt_manager_prompt_draggable`;
             const markerClass = prompt.marker ? `${prefix}prompt_manager_marker` : '';
+
+            // SillyBunny: skip children of collapsed marker groups — accordion hide. — feat/v1.9.0-ui-overhaul
+            if (!prompt.marker) {
+                const isChildCollapsed = [...markerGroups.entries()].some(([mid, children]) =>
+                    children.includes(prompt.identifier) && this.collapsedMarkers.has(mid),
+                );
+                if (isChildCollapsed) return;
+            }
             const tokens = displayTokenCounts?.[prompt.identifier] ?? this.tokenHandler?.getCounts()[prompt.identifier] ?? 0;
 
             // Warn the user if the chat history goes below certain token thresholds.
@@ -2457,6 +2612,34 @@ class PromptManager {
                 ? `<span class="pm-row-chip pm-chip-depth">↓${escapeHtml((prompt.injection_depth ?? 0).toString())}</span>` : '';
             const subtitleChipHtml = typeChipHtml + roleChipHtml + depthChipHtml;
 
+            // SillyBunny: accordion state — marker rows show a chevron, active count, and
+            // toggle-disabled lock; non-marker rows are skipped when their group is collapsed. — feat/v1.9.0-ui-overhaul
+            let accordionHtml = '';
+            if (isMarkerPrompt) {
+                const groupChildren = markerGroups.get(prompt.identifier) ?? [];
+                const isCollapsed = this.collapsedMarkers.has(prompt.identifier);
+                const totalInGroup = groupChildren.length;
+                const activeInGroup = groupChildren.filter(cid => {
+                    const entry = this.getPromptOrderEntry(this.activeCharacter, cid);
+                    return entry?.enabled;
+                }).length;
+                const isLocked = !this.isPromptToggleAllowed(prompt);
+                const chevronClass = isCollapsed ? 'fa-chevron-right' : 'fa-chevron-down';
+                const collapsedClass = isCollapsed ? 'pm-accordion-collapsed' : '';
+                const lockHtml = isLocked
+                    ? '<i class="fa-solid fa-lock pm-accordion-lock" aria-hidden="true"></i>'
+                    : '';
+                const countHtml = totalInGroup > 0
+                    ? `<span class="pm-accordion-count">${activeInGroup}/${totalInGroup}</span>`
+                    : '';
+                accordionHtml = `
+                    <span class="pm-accordion-toggle ${collapsedClass}" data-pm-accordion="${escapeHtml(prompt.identifier)}" role="button" tabindex="0" aria-expanded="${isCollapsed ? 'false' : 'true'}" aria-label="${isCollapsed ? 'Expand' : 'Collapse'} group">
+                        <i class="fa-solid ${chevronClass} pm-accordion-chevron fa-fw" aria-hidden="true"></i>
+                    </span>
+                    ${countHtml}${lockHtml}
+                `;
+            }
+
             listItemHtml += `
                 <li class="${prefix}prompt_manager_prompt ${prefix}prompt_manager_prompt_visible ${draggableClass} ${enabledClass} ${markerClass} ${importantClass} ${selectedClass} ${typeRowClass}" data-pm-identifier="${escapeHtml(prompt.identifier)}">
                     <span class="drag-handle pm-row-grip" aria-hidden="true">☰</span>
@@ -2468,6 +2651,7 @@ class PromptManager {
                         </span>
                         ${subtitleChipHtml ? `<span class="pm-row-chips">${subtitleChipHtml}</span>` : ''}
                     </span>
+                    ${isMarkerPrompt ? `<span class="pm-accordion-meta">${accordionHtml}</span>` : ''}
                     <span class="pm-row-end-zone">
                         <span class="prompt_manager_prompt_tokens" data-pm-tokens="${calculatedTokens}"><span class="${warningClass}" title="${warningTitle}"> </span>${calculatedTokens}</span>
                         <span class="pm-row-actions">
