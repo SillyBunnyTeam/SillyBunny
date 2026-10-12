@@ -926,7 +926,8 @@ class PromptManager {
 
         // Save prompt edit form to settings and close form.
         this.handleSavePrompt = (event) => {
-            const promptId = event.target.dataset.pmPrompt;
+            // SillyBunny: labelled buttons have child spans; the listener's button owns the prompt ID.
+            const promptId = event.currentTarget.dataset.pmPrompt;
             const prompt = this.getPromptById(promptId);
             const isDesktopSplit = this.isDesktopSplitLayout();
             this.#queuePromptManagerScrollRestore();
