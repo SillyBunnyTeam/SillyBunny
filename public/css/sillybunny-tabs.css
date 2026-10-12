@@ -4113,51 +4113,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     min-height: 34px;
 }
 
-.sb-shortcut-rows {
-    display: grid;
-    gap: 10px;
-    margin-top: 2px;
-}
-
-.sb-shortcut-row {
-    display: grid;
-    grid-template-columns: 110px minmax(0, 1fr);
-    align-items: center;
-    gap: 12px;
-    min-width: 0;
-}
-
-.sb-shortcut-label {
-    display: flex;
-    align-items: center;
-    min-height: 30px;
-    margin: 0;
-    font-size: var(--sb-type-control);
-    line-height: 1.2;
-    opacity: 0.8;
-}
-
-.sb-shortcut-select {
-    width: 100%;
-    min-width: 0;
-    height: 30px;
-    min-height: 30px;
-    margin: 0;
-    padding: 0 10px;
-    box-sizing: border-box;
-    font: inherit;
-    font-size: var(--sb-type-control);
-    color: var(--SmartThemeBodyColor);
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 60%, transparent);
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
-    border-radius: 10px;
-}
-
-.sb-shortcut-select:focus-visible {
-    outline: none;
-    box-shadow: inset 0 0 0 2px var(--color-primary, var(--sb-accent));
-}
-
 .sb-mobile-quick-actions-group {
     gap: 12px;
 }
@@ -8101,17 +8056,13 @@ body.reduced-motion .sb-shell-main {
 /* SillyBunny: counter inputs inside .ds-row-suffix measure 28px without an explicit
    min-height; the desktop touch-target floor is 32px. Counters may be nested inside
    .range-block-range-and-counter, so use a descendant selector. Also covers compact
-   textareas (instruct/context prefix fields) and shortcut selects that measure 27-30px. */
+   textareas (instruct/context prefix fields). */
 #sb-settings-page .ds-row-suffix input[type='number'] {
     min-height: 32px;
 }
 
 #sb-settings-page .ds-row-suffix textarea,
 #sb-settings-page .ds-row-suffix select {
-    min-height: 32px;
-}
-
-.sb-shortcut-select {
     min-height: 32px;
 }
 
@@ -8377,7 +8328,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 
 #sb-settings-page .sb-sampling-panel .sb-sampling-transmission {
     margin: 0;
-    padding: 8px 12px;
+    padding: 8px 16px;
     border-top: 0;
 }
 
@@ -8604,7 +8555,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     padding-inline: 0;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body :is(.sb-settings-flat-header, .toggle-description:where(:not(.ds-row-subtitle)), .range-block:where(:not(.ds-row, .sb-settings-row-wrapper)):where(:not(:has(.ds-row, .toggle-description)))) {
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body :is(.sb-settings-flat-header, .quick_context_size_container, .toggle-description:where(:not(.ds-row-subtitle)), .range-block:where(:not(.ds-row, .sb-settings-row-wrapper)):where(:not(:has(.ds-row, .toggle-description)))) {
     padding-inline: 16px;
 }
 
@@ -9231,7 +9182,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 /* Rows lifted out of a flattened drawer lose the spacing the enclosing expander used to draw, so
    they get the grouped row metric back: 44px tall, 16px inset, separator between rows. */
 .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label:not(.ds-row),
-.sb-settings-mounted-shell .sb-settings-flat-section > .flex-container:not(.ds-row, .sb-settings-row-wrapper) {
+.sb-settings-mounted-shell .sb-settings-flat-section > .flex-container:not(.ds-row, .ds-pref-group, .sb-settings-row-wrapper) {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -9399,8 +9350,8 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 }
 
 /* Flex-container select rows get action-row spacing */
-.sb-settings-mounted-shell .ds-pref-group .flex-container.alignitemscenter:not(.ds-row, .sb-settings-row-wrapper),
-.sb-settings-mounted-shell .ds-pref-group .flex-container.alignItemsBaseline:not(.ds-row, .sb-settings-row-wrapper) {
+.sb-settings-mounted-shell .ds-pref-group .flex-container.alignitemscenter:not(.ds-row, .sb-settings-row-wrapper, :has(.ds-row)),
+.sb-settings-mounted-shell .ds-pref-group .flex-container.alignItemsBaseline:not(.ds-row, .sb-settings-row-wrapper, :has(.ds-row)) {
     padding: 10px 16px;
     min-height: 48px;
     gap: 12px;
@@ -9550,8 +9501,49 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     gap: 0;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > :not(.checkbox_label, .flex-container.alignitemscenter, .flex-container.alignItemsBaseline, .sb-settings-flat-section, .ds-row, .ds-row-expander, .sb-sampling-control-card, .sb-settings-row-wrapper) {
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > :not(.checkbox_label, .flex-container.alignitemscenter, .flex-container.alignItemsBaseline, .sb-settings-flat-section, .ds-row, .ds-row-expander, .sb-sampling-control-card, .sb-settings-row-wrapper, :has(.ds-row, .ds-row-expander, .ds-pref-group)) {
     padding: 10px 16px;
+}
+
+/* A wrapper that holds rows draws nothing of its own: the rows inside own the 16px inset and the
+   separators, so a padded or gapped wrapper insets them twice and breaks the separator line
+   (Quick Access, AutoComplete, MovingUI). Rows stack, and any loose label, note, or button strip
+   beside them takes the row inset itself. Buttons take it as margin so they keep their size. */
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card) {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    padding: 0;
+    gap: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card) > :not(.ds-row, .ds-row-expander, .sb-settings-row-wrapper, .sb-settings-flat-section, .sb-sampling-transmission, .menu_button, button, :has(.ds-row, .ds-row-expander)) {
+    padding: 10px 16px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card) > :is(label, small, span):not(.ds-row, .checkbox_label) {
+    display: block;
+    padding: 10px 16px 0;
+}
+
+/* The first row after a loose heading owns the gap the heading opened. */
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card) > :is(label, small, span):not(.ds-row, .checkbox_label) + :is(.ds-row, .ds-row-expander) {
+    border-top: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card) > :is(.menu_button, button):not(.ds-row) {
+    align-self: flex-start;
+    margin: 10px 16px;
+}
+
+/* A subsection heading inside a group is a group heading, not a section header. The generic
+   mounted-shell heading rule zeroes the inline padding, which put these flush against the border. */
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-flat-section > .sb-settings-flat-header, .ds-pref-group-heading) {
+    padding: 10px 16px 4px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-sampling-transmission > .flex-container {
+    padding: 0;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group > * + * {
@@ -10114,22 +10106,32 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     }
 }
 
-/* The MovingUI preset picker stacks its label above its controls, so the whole group wraps to two
-   lines inside a full-width row and leaves most of that row empty. Lay the label, picker, and save
-   button along one axis, matching the theme picker row in Appearance. */
-.sb-settings-mounted-shell #MovingUI-presets-block {
-    padding: 10px 16px;
-    min-height: 48px;
-    gap: 12px;
+/* The MovingUI preset picker is a row whose save button sits beside it rather than in its suffix.
+   The block is only a wrapper, so the inner pair is drawn as the row: it carries the separator and
+   the trailing inset, and the row inside gives up its own so the button lands on the 16px edge. */
+#sb-settings-page .sb-settings-mounted-shell #MovingUI-presets-block {
+    padding: 0;
+    gap: 0;
 }
 
-.sb-settings-mounted-shell #MovingUI-presets-block > .flex-container {
+#sb-settings-page .sb-settings-mounted-shell #MovingUI-presets-block > .flex-container {
     flex: 1 1 auto;
     flex-flow: row;
     flex-wrap: nowrap;
     align-items: center;
     min-width: 0;
-    gap: 12px;
+    gap: 0;
+    padding-inline-end: 16px;
+    border-bottom: 1px solid var(--sb-shell-border);
+}
+
+#sb-settings-page .sb-settings-mounted-shell #MovingUI-presets-block > .flex-container > .ds-row {
+    padding-inline-end: 12px;
+    border-bottom: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell #MovingUI-presets-block #movingui-preset-save-button {
+    margin: 0;
 }
 
 .sb-settings-mounted-shell #MovingUI-presets-block label {
@@ -10788,11 +10790,10 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
    moved out of the subpage store into the list heading so they are never hidden. */
 .sb-ext-actions-pill {
     display: flex;
-    flex-direction: row;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--sb-shell-space-sm, 8px);
-    padding: var(--sb-shell-space-sm, 8px);
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 0;
     margin-bottom: var(--sb-shell-space-sm, 8px);
 }
 
@@ -11261,8 +11262,9 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
    (sillybunny-theme.css, `.menu_button:not(#bg_selection_mode_button)…:has(> i:only-child)`) carries
    an id inside :not() and sizes the 38px square through logical properties, so it outranks any
    selector this panel can reasonably write; !important mirrors what setModelIdPickerTouchTarget()
-   in openai.js already does inline for the picker toggle. */
-.sb-connections-panel .sb-connections-provider-body :is(.manage-api-keys, #openai_proxy_access_key_show, #model_openai_favorite_toggle, .sb-model-id-favorite-toggle) {
+   in openai.js already does inline for the picker toggle. Both toggles are listed: the rule used to
+   cover only the favourite star, so the picker toggle's geometry lived in JS alone. */
+.sb-connections-panel .sb-connections-provider-body :is(.manage-api-keys, #openai_proxy_access_key_show, #model_openai_favorite_toggle, .sb-model-id-favorite-toggle, #model_openai_picker_toggle, .sb-model-id-picker-toggle) {
     flex: 0 0 44px !important;
     inline-size: 44px !important;
     min-inline-size: 44px !important;

@@ -11352,9 +11352,7 @@ function createShortcutSettingsGroup() {
         className: 'sb-theme-slider-caption',
         text: 'Assign a shell tab or universal search to each shortcut button in the top bar.',
     });
-    const rows = createElement('div', {
-        className: 'sb-shortcut-rows',
-    });
+    const rows = [];
 
     for (const side of SB_SHORTCUT_SLOTS) {
         const selectId = `sb-shortcut-${side}-select`;
@@ -11392,13 +11390,13 @@ function createShortcutSettingsGroup() {
         });
 
         row.append(label, select);
-        rows.appendChild(row);
+        rows.push(row);
     }
 
     return createThemeSettingsDrawer({
         id: 'sb-quick-access-shortcuts-drawer',
         title: 'Quick Access Shortcuts',
-        content: [description, rows],
+        content: [description, ...rows],
     });
 }
 
