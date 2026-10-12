@@ -4,7 +4,7 @@
  * The Connections tab is where a user picks a backend and configures it, so every control that
  * decides *what* is being configured belongs on one page, always visible:
  *
- *     heading
+ *     Connections panel
  *     ├── Connection Profile   which saved configuration is loaded
  *     ├── Backend              Chat Completion | Text Completion | Other Backends
  *     ├── Source               the provider within that backend (Chat and Text only)
@@ -39,9 +39,6 @@ import { eventSource, event_types } from '../script.js';
  * `#rm_api_block` have something to key on that survives the move.
  */
 export const SB_CONNECTIONS_PANEL_CLASS = 'sb-connections-panel';
-
-/** The title the panel's own heading carries. */
-const SB_PANEL_TITLE = 'Connections';
 
 /**
  * The three choices the backend control offers.
@@ -111,7 +108,7 @@ const SB_CONNECT_BUTTON_SELECTOR = '.api_button, #horde_api_key_button';
 /**
  * The leftovers of the drawer that are not a provider and not the profile.
  *
- * The drawer's own title is dropped -- the panel draws its own heading -- and the row of controls
+ * The drawer's own title is dropped, and the row of controls
  * that apply to every backend rather than to one (auto-connecting on start, opening the hidden-key
  * viewer) is moved to the panel's footer, because it is not a provider setting.
  */
@@ -169,9 +166,6 @@ export function createConnectionsPanel({
         attrs: { 'data-sb-presentation': 'manual', 'data-sb-connections-panel': '' },
     });
 
-    const heading = createElement('div', { className: 'sb-connections-heading' });
-    heading.appendChild(createElement('h2', { className: 'sb-connections-title', text: SB_PANEL_TITLE }));
-
     const profileSlot = createElement('div', { className: 'sb-connections-profile' });
     const switcher = createElement('div', { className: 'sb-connections-switcher' });
     const backendRow = createElement('div', {
@@ -183,7 +177,7 @@ export function createConnectionsPanel({
     const footer = createElement('div', { className: 'sb-connections-footer' });
 
     switcher.append(backendRow, sourceSlot);
-    column.append(heading, profileSlot, switcher, body, footer);
+    column.append(profileSlot, switcher, body, footer);
 
     /** The slot each provider block is moved into, keyed by api id. */
     const providerSlots = new Map();

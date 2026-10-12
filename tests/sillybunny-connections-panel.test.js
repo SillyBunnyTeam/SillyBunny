@@ -37,6 +37,14 @@ describe('SillyBunny Connections panel', () => {
         expect(tabsSource).toContain('basePanel.scroller.appendChild(connectionsPanel.column);');
     });
 
+    test('starts with the profile controls without a redundant title or heading space', () => {
+        expect(panelSource).toContain('column.append(profileSlot, switcher, body, footer);');
+        expect(panelSource).not.toContain('sb-connections-title');
+        expect(panelSource).not.toContain('sb-connections-heading');
+        expect(tabsCss).not.toContain('.sb-connections-title');
+        expect(tabsCss).not.toContain('.sb-connections-heading');
+    });
+
     test('keeps the native API selects in the document as the source of truth', () => {
         // The panel draws views over these; removing them would break every reader in the app.
         expect(panelSource).toContain('document.getElementById(\'main_api\')');

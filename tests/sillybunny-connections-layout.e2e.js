@@ -92,6 +92,12 @@ for (const width of [1440, 768, 390]) {
     test.describe(`Connections provider layout at ${width}px`, () => {
         test.use({ viewport: { width, height: 1000 } });
 
+        test('omits the redundant panel title and its wrapper', async ({ page }) => {
+            await mountConnections(page, 'openai');
+            await expect(page.locator('.sb-connections-title, .sb-connections-heading')).toHaveCount(0);
+            await expect(page.locator('.sb-connections-panel > :first-child')).toHaveClass('sb-connections-profile');
+        });
+
         for (const provider of providers) {
             test(`${provider.source} keeps settings inset within the provider pill`, async ({ page }, testInfo) => {
                 await mountConnections(page, provider.source);

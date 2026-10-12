@@ -10815,7 +10815,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
    row that stands for it is opened.
 
    Every provider block, its settings, and its connect row are upstream's own nodes, moved rather
-   than rebuilt, so most of what is here is framing: the heading, the pill switch, the combo row,
+   than rebuilt, so most of what is here is framing: the pill switch, the combo row,
    and the sticky band the switch rides in.
    ========================================================================================== */
 
@@ -10825,21 +10825,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
        through each other. */
     --sb-connections-band-bg: var(--sb-layer-view, var(--sb-layer-canvas));
     --sb-connections-band-pad: var(--sb-shell-space-sm);
-}
-
-.sb-connections-heading {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 0 2px;
-}
-
-.sb-connections-title {
-    margin: 0;
-    font-size: var(--sb-type-headline);
-    font-weight: 700;
-    line-height: var(--sb-line-title, 1.18);
-    color: var(--sb-shell-text);
 }
 
 /* libadwaita preference pill, matching `.ds-pref-group` so the profile card reads as the same
