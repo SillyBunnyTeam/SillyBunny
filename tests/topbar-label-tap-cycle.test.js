@@ -14,6 +14,32 @@ function getFunctionSource(name) {
     return match[0];
 }
 
+describe('Backend shortcut routes', () => {
+    const migrate = new Function(`${getFunctionSource('migrateLegacyWorldInfoRoute')}\n${getFunctionSource('migrateTabId')}\n${getFunctionSource('migrateShortcutTarget')}\nreturn migrateShortcutTarget;`)();
+
+    test.each([
+        ['left:presets', 'left:prompting'],
+        ['left:api', 'left:connections'],
+        ['left:advanced-formatting', 'left:context'],
+        ['left:world-info', 'characters:world-info'],
+        ['left:editor', 'left:editor'],
+        ['characters:editor', 'characters:editor'],
+        ['right:extensions', 'right:extensions'],
+        [null, null],
+    ])('migrates %s to %s without crossing shell boundaries', (stored, expected) => {
+        expect(migrate(stored)).toBe(expected);
+    });
+
+    test('migrates before validating saved shortcuts against the canonical registry', () => {
+        const registry = tabsSource.match(/const SB_SHORTCUT_TARGETS = Object\.freeze\(\[[\s\S]*?\n\]\);/)[0];
+        const values = [...registry.matchAll(/value: '([^']+)'/g)].map(match => match[1]);
+        expect(values.filter(value => value.startsWith('left:'))).toEqual([
+            'left:connections', 'left:sampling', 'left:prompting', 'left:editor', 'left:context', 'left:agents',
+        ]);
+        expect(getFunctionSource('getShortcutTarget')).toContain('const stored = migrateShortcutTarget(');
+    });
+});
+
 describe('topbar label tap cycle', () => {
     test('keeps preview cycle state transient', () => {
         expect(tabsSource).toContain('const SB_TOPBAR_LABEL_CYCLE_RESET_MS = 5000;');
@@ -146,7 +172,7 @@ describe('icons only top bar', () => {
             .map(match => [...match[1].matchAll(/value: '([^']+)'/g)].map(pageMatch => pageMatch[1]));
 
         expect(pageLists).toEqual([
-            ['left:connections', 'left:sampling', 'left:prompting', 'left:agents', 'left:context'],
+            ['left:connections', 'left:sampling', 'left:prompting', 'left:editor', 'left:context', 'left:agents'],
             ['right:appearance', 'right:interface', 'right:messages', 'right:extensions', 'right:data-security', 'right:logs'],
             ['characters:groups', 'characters:editor', 'characters:world-info', 'characters:persona', 'characters:import'],
         ]);

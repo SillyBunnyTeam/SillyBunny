@@ -52,14 +52,15 @@ const presetManagers = {};
 const PRESET_CHANGE_EVENT_APIS = new Set(['kobold', 'novel', 'openai', 'textgenerationwebui']);
 const PRESET_CHANGE_TIMEOUT_MS = 10000;
 const PRESET_TEXT_FIELD_SELECTOR = 'textarea, input[type="text"]';
+// SillyBunny: track live text fields independently of their Presets/Editor placement, including relocated context bodies.
 const PRESET_TEXT_FIELD_PANEL_SELECTORS = Object.freeze({
     kobold: '#kobold_api-settings',
     novel: '#range_block_novel, #novel_api-settings',
-    openai: '#range_block_openai, #openai_settings',
+    openai: '#range_block_openai, #openai_settings, #completion_prompt_manager, #sb-editor-utility',
     textgenerationwebui: '#textgenerationwebui_api-settings',
-    context: '#ContextSettings',
-    instruct: '#InstructSettingsColumn',
-    sysprompt: '#SystemPromptBlock',
+    context: '#ContextSettings, #context_story_string, #context_example_separator, #context_chat_start',
+    instruct: '#InstructSettingsColumn, #InstructSequencesColumn',
+    sysprompt: '#SystemPromptBlock, #sysprompt_content, #sysprompt_post_history',
     reasoning: '#reasoning_prefix, #reasoning_suffix, #reasoning_separator',
 });
 

@@ -254,7 +254,7 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
             }
 
             const signatureTitle = row.querySelector('.ds-row-label') || row.querySelector('.ds-row-text');
-            const separatorColor = bottomWidth > 0 ? rowStyle.borderBottomColor : rowStyle.borderTopColor;
+            const separatorColor = bottomWidth > 0 ? rowStyle.borderBottomColor : topWidth > 0 ? rowStyle.borderTopColor : null;
             const signature = {
                 paddingLeft: parseFloat(rowStyle.paddingLeft || '0'),
                 paddingRight: parseFloat(rowStyle.paddingRight || '0'),

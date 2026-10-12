@@ -8437,6 +8437,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     }
 }
 
+#sb-settings-page .sb-editor-panel,
 #sb-settings-page .sb-prompting-panel #ai_response_configuration,
 #sb-settings-page .sb-prompting-panel #advanced-ai-config-block,
 #sb-settings-page .sb-prompting-panel #range_block_openai {
@@ -8445,6 +8446,91 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     gap: var(--sb-shell-section-gap);
     min-width: 0;
     width: 100%;
+}
+
+#sb-settings-page .sb-action-btn.sb-backend-navigation-pill {
+    flex: 0 1 auto;
+    align-self: flex-start;
+    min-height: 44px;
+    max-width: 100%;
+    padding: 8px 18px;
+    border: 0;
+    border-radius: var(--sb-shell-control-radius);
+    background: var(--sb-raised-bg);
+    white-space: normal;
+}
+
+#sb-settings-page .sb-backend-navigation-pill:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+#sb-settings-page .sb-action-btn.sb-edit-prompts {
+    margin-block: 16px;
+    color: var(--sb-on-solid-accent);
+    background: var(--sb-accent);
+}
+
+#sb-settings-page .sb-editor-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    color: var(--sb-muted-fg);
+    overflow-wrap: anywhere;
+}
+
+#sb-settings-page .sb-editor-panel #InstructSequencesColumn {
+    padding: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-editor-panel .ds-row:has(> .ds-row-suffix textarea) {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-editor-panel .ds-row:has(> .ds-row-suffix textarea) > :is(.ds-row-text, .ds-row-suffix) {
+    flex: 0 0 auto;
+    width: 100%;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-editor-panel .ds-row-suffix > :is(textarea, div:has(textarea)) {
+    width: 100%;
+}
+
+#sb-settings-page .sb-prompting-panel .ds-row-label {
+    font-size: var(--sb-type-control);
+}
+
+#sb-settings-page .sb-editor-panel .ds-row {
+    border-color: var(--sb-shell-border);
+}
+
+#sb-settings-page .sb-editor-panel textarea:not(#completion_prompt_manager textarea) {
+    width: 100%;
+    min-height: 8lh;
+    max-height: 55vh;
+    overflow-y: auto;
+    resize: vertical;
+}
+
+#sb-settings-page .sb-editor-panel #context_story_string,
+#sb-settings-page .sb-editor-panel #sysprompt_content {
+    min-height: 14lh;
+}
+
+#sb-settings-page .sb-editor-panel .disabled {
+    opacity: 0.6;
+}
+
+@media (hover: hover) {
+    #sb-settings-page .sb-action-btn.sb-backend-navigation-pill:hover {
+        background: var(--sb-raised-hover-bg);
+    }
+
+    #sb-settings-page .sb-action-btn.sb-edit-prompts:hover {
+        color: var(--sb-on-solid-accent);
+        background: color-mix(in srgb, var(--sb-accent) 90%, var(--SmartThemeBodyColor));
+    }
 }
 
 #sb-settings-page .sb-prompting-panel :is(.sb-prompting-group, .sb-prompting-group-body) {

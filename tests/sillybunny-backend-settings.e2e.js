@@ -97,14 +97,14 @@ async function expectSwitchGeometry(root, compactSampling = false) {
 async function expectPromptingFlow(prompting, api) {
     if (api !== 'openai') {
         await expect(prompting.locator('.sb-prompting-group:visible > h3')).toHaveText([
-            'Presets', 'Generation Settings', 'System Prompt', 'Instruct Template', 'Context Template', 'Character Names', 'Reply Prefill',
+            'Presets', 'Generation Settings', 'System Prompt', 'Instruct Template', 'Context Template', 'Character Names', 'Reply Prefill', 'Reasoning Template',
         ]);
         return;
     }
     await expect(prompting.locator('.sb-prompting-group:visible').locator(':scope > h3, :scope > .sb-settings-flat-header b')).toHaveText([
-        'Presets', 'Generation Settings', 'Prompt Manager', 'Character Names & Prompt Formatting', 'Reply Prefill', 'Request Options', 'Quick Prompts Edit / Utility Prompts',
+        'Presets', 'Generation Settings', 'Character Names & Prompt Formatting', 'Reply Prefill', 'Request Options', 'Reasoning Template',
     ]);
-    await expect(prompting.locator('#completion_prompt_manager')).toBeVisible();
+    await expect(prompting.locator('#completion_prompt_manager')).toHaveCount(0);
     await expect(prompting.locator('.openai-tab-buttons, .sb-subpage')).toHaveCount(0);
 }
 
@@ -246,8 +246,12 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                 await expect(promptingHeader).toBeVisible();
                 await expect(promptingHeader.locator(':scope > .sb-backend-title-row > [data-sb-prompting-mode]')).toBeVisible();
                 await expect(promptingHeader.locator(':scope > p[data-sb-copy-placeholder]')).toHaveText('lorum ipsum');
-                await expect(promptingHeader.locator('[data-sb-prompting-disclaimer]')).toBeVisible();
-                await expect(promptingHeader.locator('[data-sb-prompting-formatting]')).toHaveText('Formatting');
+                await expect(promptingHeader.locator('.sb-backend-disclaimer, button')).toHaveCount(0);
+                expect(await promptingHeader.evaluate(header => {
+                    const container = header.parentElement.getBoundingClientRect();
+                    const box = header.getBoundingClientRect();
+                    return Math.abs(box.left - container.left) <= 1 && Math.abs(box.right - container.right) <= 1;
+                })).toBe(true);
                 await expectPromptingFlow(prompting, api);
                 await expectPresetActionLabels(prompting, width);
                 await expectPromptingInsets(prompting);
@@ -256,6 +260,12 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                 await expect(prompting.locator('[name="startReplyWithBlock"]')).toHaveCount(1);
                 await expectNoOverflow(prompting);
                 await expectSwitchGeometry(prompting);
+                const editor = await openPanel(page, 'editor');
+                await expect(editor.locator('[data-sb-editor-mode]')).toHaveText(`Backend: ${label}`);
+                await expect(editor.locator('.sb-prompting-group:visible').locator(':scope > h3, :scope > .sb-settings-flat-header b')).toHaveText(api === 'openai'
+                    ? ['Prompt Manager', 'Utility Prompts'] : ['System Prompt', 'Instruct Template', 'Context Template']);
+                await expect(editor.locator(api === 'openai' ? '#completion_prompt_manager' : '#context_story_string')).toBeVisible();
+                await expectNoOverflow(editor);
                 const sampling = await openPanel(page, 'sampling');
                 await expect(sampling.locator('.sb-sampling-mode-pill:visible')).toHaveText(`Backend: ${label}`);
                 await expect(sampling.locator('.sb-backend-section-header:visible')).toHaveCount(1);
@@ -370,39 +380,41 @@ test('Sampling uses compact full-width rows at desktop and mobile widths', async
         }))).toEqual([]);
 });
 
-test('Prompting opens Formatting from the keyboard for every backend', async ({ page, baseURL }) => {
-    await loadSettings(page, baseURL);
-    for (const api of ['textgenerationwebui', 'kobold', 'koboldhorde', 'novel']) {
-        await selectBackend(page, api, api === 'textgenerationwebui' ? 'ooba' : null);
-        for (const key of ['Enter', 'Space']) {
-            const prompting = await openPanel(page, 'prompting');
-            const formatting = prompting.getByRole('button', { name: 'Formatting', exact: true });
-            await expect(prompting.locator('[data-sb-prompting-disclaimer] > p')).toHaveText('Note: advanced settings can be found in Formatting.');
-            await formatting.focus();
-            await expect(formatting).toBeFocused();
-            await page.keyboard.press(key);
-            await expect(page.locator('[data-sb-panel="context"]')).toHaveAttribute('aria-hidden', 'false');
-        }
-    }
-});
-
 test('Prompting and Formatting rehome live template nodes across repeated backend changes', async ({ page, baseURL }) => {
     await loadSettings(page, baseURL);
     const uniqueSelectors = [
         '#SystemPromptBlock', '#InstructSettingsColumn', '#context_presets', '#always-force-name2-checkbox',
         '#n_textgenerationwebui', '[name="startReplyWithBlock"]',
+        '#completion_prompt_manager', '#sb-openai-prompt-manager', '#InstructSequencesColumn',
+        '#sysprompt_content', '#sysprompt_post_history', '#context_story_string', '#context_story_string_position',
+        '#context_story_string_depth', '#context_story_string_role', '#context_example_separator', '#context_chat_start',
+        '#impersonation_prompt_textarea', '#wi_format_textarea', '#scenario_format_textarea', '#personality_format_textarea',
+        '#group_nudge_prompt_textarea', '#newchat_prompt_textarea', '#newgroupchat_prompt_textarea',
+        '#newexamplechat_prompt_textarea', '#continue_nudge_prompt_textarea', '#send_if_empty_textarea',
+        '#reasoning_select', '#reasoning_prefix', '#reasoning_suffix', '#reasoning_separator',
     ];
-    for (const api of ['openai', 'textgenerationwebui', 'openai', 'textgenerationwebui', 'openai', 'textgenerationwebui']) {
+    await openPanel(page, 'prompting');
+    await page.evaluate(selectors => { window.phase45Nodes = selectors.map(selector => document.querySelector(selector)); }, uniqueSelectors);
+    for (const api of ['openai', 'textgenerationwebui', 'kobold', 'koboldhorde', 'novel', 'openai', 'textgenerationwebui']) {
         await selectBackend(page, api, api === 'openai' ? 'openrouter' : 'mancer');
         const prompting = await openPanel(page, 'prompting');
         await expect(prompting.locator('[name="startReplyWithBlock"]')).toHaveCount(1);
         for (const selector of uniqueSelectors) {
             await expect.poll(() => page.locator(selector).count()).toBe(1);
         }
+        expect(await page.evaluate(selectors => window.phase45Nodes.every((node, index) => node === document.querySelector(selectors[index])), uniqueSelectors)).toBe(true);
+        const editor = await openPanel(page, 'editor');
+        await expect(editor.locator('#completion_prompt_manager, #InstructSequencesColumn, #sysprompt_content, #context_story_string')).toHaveCount(4);
+        await expect(prompting.locator('#reasoning_select, #reasoning_prefix, #reasoning_suffix, #reasoning_separator')).toHaveCount(4);
+        for (const id of ['main_prompt_quick_edit_textarea', 'nsfw_prompt_quick_edit_textarea', 'jailbreak_prompt_quick_edit_textarea']) {
+            await expect(page.locator(`#${id}`)).toHaveCount(1);
+            await expect(page.locator(`#${id}`)).toBeHidden();
+        }
+        await openPanel(page, 'prompting');
         if (api === 'openai') {
             await expect(prompting.locator('#sb-openai-prefill [name="startReplyWithBlock"]')).toHaveCount(1);
             await expect(prompting.locator('#sb-tc-sysprompt')).toBeHidden();
-        } else {
+        } else if (api === 'textgenerationwebui') {
             await expect(prompting.locator('#sb-reply-prefill [name="startReplyWithBlock"]')).toHaveCount(1);
             await expect(prompting.locator('#common-gen-settings-block #n_textgenerationwebui')).toBeVisible();
             const sampling = await openPanel(page, 'sampling');
@@ -417,12 +429,54 @@ test('Prompting and Formatting rehome live template nodes across repeated backen
         'Stopping Strings', 'Text Cleanup', 'Reasoning', 'Rendering',
     ]);
     await expect(formatting.locator('#advanced-formatting-cc-notice')).toBeHidden();
+    await expect(formatting.locator('#reasoning_select, #reasoning_prefix, #reasoning_suffix, #reasoning_separator')).toHaveCount(0);
+    await expect(formatting.locator('#reasoning_auto_parse, #reasoning_auto_expand, #reasoning_show_hidden, #reasoning_add_to_prompts, #reasoning_max_additions')).toHaveCount(5);
 
     await selectBackend(page, 'textgenerationwebui', 'ooba');
     const textFormatting = await openPanel(page, 'context');
     await expect(textFormatting.locator('.sb-formatting-group:visible > h3')).toHaveText([
         'Tokenizer & Padding', 'Stopping Strings', 'Text Cleanup', 'Reasoning', 'Rendering',
     ]);
+});
+
+test('Backend tabs, aliases and Presets/Editor links are stable in every mode', async ({ page, baseURL }) => {
+    await loadSettings(page, baseURL);
+    for (const api of ['openai', 'textgenerationwebui', 'kobold', 'koboldhorde', 'novel']) {
+        await selectBackend(page, api);
+        const presets = await openPanel(page, 'prompting');
+        await expect(page.locator('#sb-settings-tab-list button')).toHaveText(['Connections', 'Sampling', 'Presets', 'Editor', 'Formatting', 'Agents']);
+        await expect(page.locator('[data-sb-settings-tab="prompting"]')).toHaveAttribute('data-sb-search-aliases', 'Prompting|Presets');
+        await expect(page.locator('[data-sb-settings-tab="editor"]')).toHaveAttribute('data-sb-search-aliases', 'Prompt Manager|Prompts');
+        const edit = presets.getByRole('button', { name: 'Edit prompts', exact: true });
+        expect(await edit.evaluate(button => button.previousElementSibling?.id)).toBe('respective-presets-block');
+        await edit.focus();
+        await page.keyboard.press('Enter');
+        const editor = page.locator('[data-sb-panel="editor"]');
+        await expect(editor).toHaveAttribute('aria-hidden', 'false');
+        await expect(editor.locator('[data-sb-editor-preset]')).not.toHaveText('');
+        await expect(editor.locator('.sb-backend-disclaimer')).toHaveCount(0);
+        await editor.getByRole('button', { name: 'Presets', exact: true }).click();
+        await expect(presets).toHaveAttribute('aria-hidden', 'false');
+    }
+    await page.locator('#sb-settings-search-toggle').click();
+    const search = page.locator('#sb-settings-search-input');
+    for (const [query, tab] of [['Prompting', 'prompting'], ['Prompt Manager', 'editor'], ['Prompts', 'editor']]) {
+        await search.fill(query);
+        await expect(page.locator(`[data-sb-settings-tab="${tab}"]`)).not.toHaveClass(/sb-settings-tab--filtered/);
+    }
+});
+
+test('Legacy Backend shortcuts resolve to current routes', async ({ page, baseURL }) => {
+    await page.addInitScript(() => {
+        localStorage.setItem('sb-shortcut-left', 'left:presets');
+        localStorage.setItem('sb-shortcut-right', 'left:api');
+        localStorage.setItem('sb-shortcut-slot3', 'left:advanced-formatting');
+    });
+    await loadSettings(page, baseURL);
+    for (const [side, tab] of [['left', 'prompting'], ['right', 'connections'], ['slot3', 'context']]) {
+        await page.locator(`#sb-shortcut-${side}`).evaluate(button => button.click());
+        await expect(page.locator(`[data-sb-panel="${tab}"]`)).toHaveAttribute('aria-hidden', 'false');
+    }
 });
 
 test('Sampling keeps live nodes, provider visibility, numeric handlers and transmission policy', async ({ page, baseURL }) => {
@@ -478,9 +532,6 @@ test('Native sampler expanders reveal search results and preserve switch and cou
     const checked = await toggle.isChecked();
     await page.keyboard.press('Enter');
     await expect(toggle).toBeChecked({ checked: !checked });
-    const prompting = await openPanel(page, 'prompting');
-    await prompting.locator('[data-sb-prompting-formatting]').click();
-    await expect(page.locator('[data-sb-panel="context"]')).toHaveAttribute('aria-hidden', 'false');
 });
 
 test('Agents globals and Connections switches use the shared row semantics', async ({ page, baseURL }) => {

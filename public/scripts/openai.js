@@ -3815,7 +3815,7 @@ function groupOpenAISettingsIntoDrawers() {
                 '#openai_settings > div > .flex-container:has(#openai_verbosity)',
             ],
         },
-        // SillyBunny: keep prompt editors and utility prompts in their final Prompting group.
+        // SillyBunny: retain Quick Prompts here; the shell moves Utility Prompts and Prompt Manager into Editor.
         {
             id: 'sb-openai-prompts',
             title: 'Quick Prompts Edit / Utility Prompts',

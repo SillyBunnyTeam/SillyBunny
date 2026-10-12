@@ -13,8 +13,9 @@ const SETTINGS_TABS = [
     { id: 'connections', shell: 'left' },
     { id: 'sampling', shell: 'left' },
     { id: 'prompting', shell: 'left' },
-    { id: 'agents', shell: 'left' },
+    { id: 'editor', shell: 'left' },
     { id: 'context', shell: 'left' },
+    { id: 'agents', shell: 'left' },
     { id: 'appearance', shell: 'right' },
     { id: 'interface', shell: 'right' },
     { id: 'messages', shell: 'right' },
@@ -200,7 +201,7 @@ test.describe('Settings switch-row consistency', () => {
 
         for (const backend of BACKENDS) {
             await switchBackend(page, backend);
-            for (const tab of ['sampling', 'prompting', 'context']) {
+            for (const tab of ['sampling', 'prompting', 'editor', 'context']) {
                 const panel = await openSettingsTab(page, tab);
                 await expectSwitchSemantics(panel);
                 await expectSwitchGeometry(panel, tab === 'sampling');
@@ -319,24 +320,14 @@ test.describe('Settings header consistency', () => {
 test.describe('Prompting and Sampling consistency', () => {
     test.beforeEach(async ({ page, baseURL }) => loadSettings(page, baseURL));
 
-    test('Formatting shortcut and disclaimer are visible for every backend', async ({ page }) => {
-        for (const backend of BACKENDS) {
-            await switchBackend(page, backend);
-            const prompting = await openSettingsTab(page, 'prompting');
-            await expect(prompting.locator('[data-sb-prompting-disclaimer] > p'))
-                .toHaveText('Note: advanced settings can be found in Formatting.');
-            await expect(prompting.getByRole('button', { name: 'Formatting', exact: true })).toBeVisible();
-        }
-    });
-
     test('Chat and Text Completions share the first two groups and render their full prompting flows', async ({ page }) => {
         const chatGroups = [
-            'Presets', 'Generation Settings', 'Prompt Manager', 'Character Names & Prompt Formatting',
-            'Reply Prefill', 'Request Options', 'Quick Prompts Edit / Utility Prompts',
+            'Presets', 'Generation Settings', 'Character Names & Prompt Formatting',
+            'Reply Prefill', 'Request Options', 'Reasoning Template',
         ];
         const textGroups = [
             'Presets', 'Generation Settings', 'System Prompt', 'Instruct Template', 'Context Template',
-            'Character Names', 'Reply Prefill',
+            'Character Names', 'Reply Prefill', 'Reasoning Template',
         ];
 
         await switchBackend(page, 'openai');
@@ -400,17 +391,18 @@ test.describe('Prompting and Sampling consistency', () => {
         const sampling = await openSettingsTab(page, 'sampling');
         const connections = await openSettingsTab(page, 'connections');
         const expectedColumnWidth = await connections.locator('.sb-shell-column').first()
-            .evaluate(column => column.getBoundingClientRect().width);
+            .evaluate(column => parseFloat(getComputedStyle(column).width));
         await openSettingsTab(page, 'sampling');
 
         const column = sampling.locator('.sb-sampling-panel');
-        await expect.poll(() => column.evaluate((element, width) => Math.abs(element.getBoundingClientRect().width - width), expectedColumnWidth))
+        // Measure layout width, not the shell reveal's transient scale transform.
+        await expect.poll(() => column.evaluate((element, width) => Math.abs(parseFloat(getComputedStyle(element).width) - width), expectedColumnWidth))
             .toBeLessThanOrEqual(1);
 
         const nonFullWidthCards = await sampling.locator('.sb-sampling-group:visible > .ds-pref-group').evaluateAll(groups =>
             groups.flatMap(group => [...group.children]
                 .filter(card => !card.hidden && getComputedStyle(card).display !== 'none')
-                .flatMap(card => Math.abs(card.getBoundingClientRect().width - group.clientWidth) <= 1 ? [] : [card.dataset.sbSamplingControl ?? card.className])),
+                .flatMap(card => Math.abs(parseFloat(getComputedStyle(card).width) - group.clientWidth) <= 1 ? [] : [card.dataset.sbSamplingControl ?? card.className])),
         );
         expect(nonFullWidthCards).toEqual([]);
 
@@ -418,8 +410,8 @@ test.describe('Prompting and Sampling consistency', () => {
             const subtitle = Boolean(row.querySelector('.ds-row-subtitle'));
             const expectedMinimum = subtitle ? 44 : 36;
             const style = getComputedStyle(row);
-            return parseFloat(style.minHeight) >= expectedMinimum && row.getBoundingClientRect().height >= expectedMinimum
-                ? [] : [`${row.id || row.className}: expected ${expectedMinimum}px, got ${style.minHeight}/${row.getBoundingClientRect().height}px`];
+            return parseFloat(style.minHeight) >= expectedMinimum && parseFloat(style.height) >= expectedMinimum
+                ? [] : [`${row.id || row.className}: expected ${expectedMinimum}px, got ${style.minHeight}/${style.height}`];
         }));
         expect(incorrectRows).toEqual([]);
     });

@@ -7,12 +7,14 @@ import { auditLibadwaita, LIBADWAITA_AUDIT_ALLOWLIST } from './helpers/libadwait
 
 const baseURL = process.env.SILLYBUNNY_TEST_BASE_URL || 'http://127.0.0.1:4444';
 const outputPath = process.env.PHASE4_AUDIT_OUTPUT || '/tmp/opencode/phase4-libadwaita-audit.json';
+const screenshotDirectory = process.env.PHASE4_VISUAL_OUTPUT;
 const backendTabs = [
     { id: 'connections', label: 'Connections', shell: 'left' },
     { id: 'sampling', label: 'Sampling', shell: 'left' },
-    { id: 'prompting', label: 'Prompting', shell: 'left' },
-    { id: 'agents', label: 'Agents', shell: 'left' },
+    { id: 'prompting', label: 'Presets', shell: 'left' },
+    { id: 'editor', label: 'Editor', shell: 'left' },
     { id: 'context', label: 'Formatting', shell: 'left' },
+    { id: 'agents', label: 'Agents', shell: 'left' },
 ];
 const customizeTabs = [
     { id: 'appearance', label: 'Appearance', shell: 'right' },
@@ -58,7 +60,8 @@ function isAllowlisted(record) {
 
 function getRepresentativeSignature(records) {
     const signatures = records
-        .filter(record => record.rule === 'cross-tab-parity' && record.measured?.signature)
+        // Zero-width borders resolve to currentColor; only painted separators establish parity.
+        .filter(record => record.rule === 'cross-tab-parity' && record.measured?.signature?.separatorColor)
         .map(record => record.measured.signature);
     if (!signatures.length) return null;
 
@@ -252,6 +255,10 @@ async function openSettingsTab(page, tab) {
 
 async function auditTab(page, tab, family, backend, theme, viewport) {
     const panel = await openSettingsTab(page, tab);
+    if (screenshotDirectory && family === 'backend' && ['prompting', 'editor', 'sampling', 'context'].includes(tab.id)) {
+        await mkdir(screenshotDirectory, { recursive: true });
+        await page.screenshot({ path: `${screenshotDirectory}/${theme.label}-${viewport.label}-${backend.id}-${tab.id}.png` });
+    }
     const measuredRecords = await panel.evaluate(auditLibadwaita, { allowlist: LIBADWAITA_AUDIT_ALLOWLIST });
     const normalizedTheme = theme.label;
     const records = measuredRecords.map(record => ({
