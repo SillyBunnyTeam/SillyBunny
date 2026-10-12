@@ -27,6 +27,7 @@ class FakeBrowser {
         this.cacheStorage = new Set(['sillybunny-cache-v1-static', 'sillybunny-cache-v1-shell']);
         this.registrations = 1;
         this.serviceWorkerPurges = 0;
+        this.stoppedLoads = 0;
     }
 
     get cookieHeader() {
@@ -87,6 +88,9 @@ class FakeBrowser {
         const window = {
             setTimeout,
             clearTimeout,
+            stop: () => {
+                browser.stoppedLoads++;
+            },
             caches: {
                 keys: async () => [...browser.cacheStorage],
                 delete: async key => browser.cacheStorage.delete(key),
@@ -145,6 +149,17 @@ describe('restart cache clear', () => {
 
         const later = await browser.open(middleware);
         expect(later).toEqual({ clearSiteDataLoads: 0, loads: 1 });
+    });
+
+    test('stops loading the app on every load that is about to reload', async () => {
+        const browser = new FakeBrowser();
+        const middleware = createRestartCacheClearMiddleware({ enabled: true, bootId: 'boot-a' });
+
+        await browser.open(middleware);
+        expect(browser.stoppedLoads).toBe(2);
+
+        await browser.open(middleware);
+        expect(browser.stoppedLoads).toBe(2);
     });
 
     test('a new server boot clears twice again', async () => {
