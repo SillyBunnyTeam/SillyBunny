@@ -620,6 +620,56 @@ class PromptManager {
         }
     }
 
+    // SillyBunny: mobile context menu for the ⋮ kebab button — surfaces edit/inspect/detach/send actions on touch — feat/v1.9.0-ui-overhaul
+    showKebabMenu(anchorEl, identifier) {
+        document.querySelector('.pm-kebab-menu')?.remove();
+
+        const row = this.containerElement?.querySelector(`[data-pm-identifier="${CSS.escape(identifier)}"]`);
+        const hasEdit = row?.querySelector('.prompt-manager-edit-action');
+        const hasDetach = row?.querySelector('.prompt-manager-detach-action');
+        const hasSend = row?.querySelector('.prompt-manager-send-to-agents-action');
+        const hasInspect = row?.querySelector('.prompt-manager-inspect-action');
+
+        const menu = document.createElement('div');
+        menu.className = 'pm-kebab-menu';
+        menu.setAttribute('role', 'menu');
+
+        const items = [
+            hasEdit && { label: 'Edit', icon: 'fa-pencil', action: () => hasEdit.click() },
+            hasInspect && { label: 'Inspect tokens', icon: 'fa-magnifying-glass', action: () => hasInspect.click() },
+            hasSend && { label: 'Send to agents', icon: 'fa-paper-plane', action: () => hasSend.click() },
+            hasDetach && { label: 'Detach', icon: 'fa-chain-broken', action: () => hasDetach.click() },
+        ].filter(Boolean);
+
+        items.forEach(({ label, icon, action }) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'pm-kebab-menu-item menu_button';
+            btn.setAttribute('role', 'menuitem');
+            btn.innerHTML = `<i class="fa-solid ${icon} fa-fw" aria-hidden="true"></i><span>${label}</span>`;
+            btn.addEventListener('click', () => { menu.remove(); action(); });
+            menu.appendChild(btn);
+        });
+
+        if (!items.length) return;
+
+        document.body.appendChild(menu);
+
+        const rect = anchorEl.getBoundingClientRect();
+        const menuW = 200;
+        let left = rect.right - menuW;
+        if (left < 8) left = 8;
+        menu.style.cssText = `position:fixed;top:${rect.bottom + 4}px;left:${left}px;min-width:${menuW}px;z-index:var(--sb-z-menu,1200)`;
+
+        const dismiss = (e) => {
+            if (!menu.contains(e.target) && e.target !== anchorEl) {
+                menu.remove();
+                document.removeEventListener('click', dismiss, true);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', dismiss, true), 0);
+    }
+
     isPopupVisible() {
         const popup = this.getPopupElement();
         return popup instanceof HTMLElement && popup.style.display !== 'none';
@@ -1168,6 +1218,16 @@ class PromptManager {
         });
         this.setupPreviewListeners();
         closeAndClearPopup();
+
+        // SillyBunny: mobile kebab ⋮ — builds a transient context menu for touch users who can't hover — feat/v1.9.0-ui-overhaul
+        this.containerElement?.addEventListener('click', (event) => {
+            const kebab = event.target.closest('.pm-row-kebab');
+            if (!kebab) return;
+            event.stopPropagation();
+            const identifier = kebab.dataset.pmKebab;
+            if (!identifier) return;
+            this.showKebabMenu(kebab, identifier);
+        });
 
         // Re-render prompt manager on openai preset change
         eventSource.on(event_types.OAI_PRESET_CHANGED_AFTER, () => {
@@ -2371,39 +2431,58 @@ class PromptManager {
             const importantClass = isImportantPrompt ? `${prefix}prompt_manager_important` : '';
             const selectedClass = this.selectedPromptId === prompt.identifier && this.activePopupArea ? `${prefix}prompt_manager_prompt_selected` : '';
             const iconLookup = prompt.role === 'system' && (prompt.marker || prompt.system_prompt) ? '' : prompt.role;
+            // SillyBunny: type class drives the left accent bar colour in the new row layout — feat/v1.9.0-ui-overhaul
+            const typeRowClass = isMarkerPrompt ? 'pm-row-type-marker'
+                : isSystemPrompt || isImportantPrompt ? 'pm-row-type-system'
+                    : isInjectionPrompt ? 'pm-row-type-injection'
+                        : 'pm-row-type-user';
 
-            //add role icons to the right of prompt name
-            const promptRoles = {
-                assistant: { roleIcon: 'fa-robot', roleTitle: 'Prompt will be sent as Assistant' },
-                user: { roleIcon: 'fa-user', roleTitle: 'Prompt will be sent as User' },
-            };
-            const roleIcon = promptRoles[iconLookup]?.roleIcon || '';
-            const roleTitle = promptRoles[iconLookup]?.roleTitle || '';
+            // SillyBunny: build subtitle chip HTML — replaces icon columns that ate name space — feat/v1.9.0-ui-overhaul
+            const typeChipLabel = isMarkerPrompt ? 'marker'
+                : isSystemPrompt ? 'system'
+                    : isImportantPrompt ? 'required'
+                        : isInjectionPrompt ? 'injection'
+                            : isUserPrompt ? 'preset' : '';
+            const typeChipClass = isMarkerPrompt ? 'pm-chip-marker'
+                : isSystemPrompt ? 'pm-chip-system'
+                    : isImportantPrompt ? 'pm-chip-important'
+                        : isInjectionPrompt ? 'pm-chip-injection'
+                            : 'pm-chip-user';
+            const typeChipHtml = typeChipLabel
+                ? `<span class="pm-row-chip ${typeChipClass}">${typeChipLabel}</span>` : '';
+            const roleChipHtml = iconLookup
+                ? `<span class="pm-row-chip pm-chip-role pm-chip-role-${escapeHtml(prompt.role || 'system')}">${escapeHtml(prompt.role || 'system')}</span>` : '';
+            const depthChipHtml = isInjectionPrompt
+                ? `<span class="pm-row-chip pm-chip-depth">↓${escapeHtml((prompt.injection_depth ?? 0).toString())}</span>` : '';
+            const subtitleChipHtml = typeChipHtml + roleChipHtml + depthChipHtml;
 
             listItemHtml += `
-                <li class="${prefix}prompt_manager_prompt ${draggableClass} ${enabledClass} ${markerClass} ${importantClass} ${selectedClass}" data-pm-identifier="${escapeHtml(prompt.identifier)}">
-                    <span class="drag-handle">☰</span>
-                    <span class="${prefix}prompt_manager_prompt_name" data-pm-name="${encodedName}">
-                        ${isMarkerPrompt ? '<span class="fa-fw fa-solid fa-thumb-tack" title="Marker"></span>' : ''}
-                        ${isSystemPrompt ? '<span class="fa-fw fa-solid fa-square-poll-horizontal" title="Global Prompt"></span>' : ''}
-                        ${isImportantPrompt ? '<span class="fa-fw fa-solid fa-star" title="Important Prompt"></span>' : ''}
-                        ${isUserPrompt ? '<span class="fa-fw fa-solid fa-asterisk" title="Preset Prompt"></span>' : ''}
-                        ${isInjectionPrompt ? '<span class="fa-fw fa-solid fa-syringe" title="In-Chat Injection"></span>' : ''}
-                        ${this.isPromptInspectionAllowed(prompt) ? `<a title="${encodedName}" class="prompt-manager-inspect-action" role="button" tabindex="0">${encodedName}</a>` : `<span title="${encodedName}">${encodedName}</span>`}
-                        ${roleIcon ? `<span data-role="${escapeHtml(prompt.role)}" class="fa-xs fa-solid ${roleIcon}" title="${roleTitle}"></span>` : ''}
-                        ${isInjectionPrompt ? `<small class="prompt-manager-injection-depth">@ ${escapeHtml(prompt.injection_depth.toString())}</small>` : ''}
-                        ${isOverriddenPrompt ? '<small class="fa-solid fa-address-card prompt-manager-overridden" title="Pulled from a character card"></small>' : ''}
+                <li class="${prefix}prompt_manager_prompt ${prefix}prompt_manager_prompt_visible ${draggableClass} ${enabledClass} ${markerClass} ${importantClass} ${selectedClass} ${typeRowClass}" data-pm-identifier="${escapeHtml(prompt.identifier)}">
+                    <span class="drag-handle pm-row-grip" aria-hidden="true">☰</span>
+                    <span class="pm-row-type-bar" aria-hidden="true"></span>
+                    <span class="pm-row-name-area ${prefix}prompt_manager_prompt_name" data-pm-name="${encodedName}">
+                        <span class="pm-row-primary">
+                            ${this.isPromptInspectionAllowed(prompt) ? `<a title="${encodedName}" class="prompt-manager-inspect-action" role="button" tabindex="0">${encodedName}</a>` : `<span title="${encodedName}">${encodedName}</span>`}
+                            ${isOverriddenPrompt ? '<small class="fa-solid fa-address-card prompt-manager-overridden" title="Pulled from a character card"></small>' : ''}
+                        </span>
+                        ${subtitleChipHtml ? `<span class="pm-row-chips">${subtitleChipHtml}</span>` : ''}
                     </span>
-                    <span>
-                            <span class="prompt_manager_prompt_controls">
-                                ${sendToAgentsSpanHtml}
-                                ${detachSpanHtml}
-                                ${editSpanHtml}
-                                ${toggleSpanHtml}
-                            </span>
+                    <span class="pm-row-end-zone">
+                        <span class="prompt_manager_prompt_tokens" data-pm-tokens="${calculatedTokens}"><span class="${warningClass}" title="${warningTitle}"> </span>${calculatedTokens}</span>
+                        <span class="pm-row-actions">
+                            ${sendToAgentsSpanHtml}
+                            ${detachSpanHtml}
+                            ${editSpanHtml}
+                        </span>
+                        <button type="button" class="pm-row-kebab menu_button menu_button_icon" title="Actions" aria-label="Actions" aria-haspopup="true" data-pm-kebab="${escapeHtml(prompt.identifier)}">
+                            <i class="fa-solid fa-ellipsis-vertical fa-fw" aria-hidden="true"></i>
+                        </button>
                     </span>
-
-                    <span class="prompt_manager_prompt_tokens" data-pm-tokens="${calculatedTokens}"><span class="${warningClass}" title="${warningTitle}"> </span>${calculatedTokens}</span>
+                    <span class="pm-row-toggle-cell">
+                        <span class="prompt_manager_prompt_controls">
+                            ${toggleSpanHtml}
+                        </span>
+                    </span>
                 </li>
             `;
         });
@@ -2413,12 +2492,19 @@ class PromptManager {
             ? `${prefix}prompt_manager_prompt_selected`
             : '';
         listItemHtml += `
-            <li class="${prefix}prompt_manager_prompt ${prefix}prompt_manager_marker prompt-manager-runtime-row ${runtimeSelectedClass}" data-pm-identifier="${RUNTIME_AGENTS_IDENTIFIER}" data-pm-runtime="true">
-                <span class="${prefix}prompt_manager_prompt_name" data-pm-name="Agents">
-                    <span class="fa-fw fa-solid fa-robot" aria-hidden="true"></span>
-                    <a title="Agents" class="prompt-manager-inspect-action" role="button" tabindex="0">Agents</a>
+            <li class="${prefix}prompt_manager_prompt ${prefix}prompt_manager_prompt_visible ${prefix}prompt_manager_marker pm-row-type-marker prompt-manager-runtime-row ${runtimeSelectedClass}" data-pm-identifier="${RUNTIME_AGENTS_IDENTIFIER}" data-pm-runtime="true">
+                <span class="drag-handle pm-row-grip" aria-hidden="true"></span>
+                <span class="pm-row-type-bar" aria-hidden="true"></span>
+                <span class="pm-row-name-area ${prefix}prompt_manager_prompt_name" data-pm-name="Agents">
+                    <span class="pm-row-primary">
+                        <a title="Agents" class="prompt-manager-inspect-action" role="button" tabindex="0">Agents</a>
+                    </span>
+                    <span class="pm-row-chips"><span class="pm-row-chip pm-chip-depth">runtime</span></span>
                 </span>
-                <span class="prompt_manager_prompt_tokens" data-pm-tokens="${runtimeAgentTokens || '-'}">${runtimeAgentTokens || '-'}</span>
+                <span class="pm-row-end-zone">
+                    <span class="prompt_manager_prompt_tokens" data-pm-tokens="${runtimeAgentTokens || '-'}">${runtimeAgentTokens || '-'}</span>
+                </span>
+                <span class="pm-row-toggle-cell"></span>
             </li>
         `;
 

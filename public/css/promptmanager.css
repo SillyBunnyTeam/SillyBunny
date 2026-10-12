@@ -52,24 +52,13 @@
 }
 
 #completion_prompt_manager #completion_prompt_manager_list li {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto minmax(54px, auto);
+    display: flex;
+    flex-direction: row;
     align-items: center;
-    column-gap: 12px;
-    row-gap: 6px;
     margin-bottom: 0;
     width: 100%;
     min-width: 0;
     box-sizing: border-box;
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt .completion_prompt_manager_prompt_name .fa-solid {
-    color: var(--white50a);
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt .completion_prompt_manager_prompt_name .fa-solid[data-role] {
-    vertical-align: unset;
-    margin-left: 3px;
 }
 
 #completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_invisible {
@@ -77,31 +66,50 @@
 }
 
 #completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_visible {
-    display: grid;
-}
-
-
-#completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_list_head .prompt_manager_prompt_tokens,
-#completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_tokens {
-    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
-    text-align: right;
-    min-width: 54px;
-    justify-self: end;
-    white-space: nowrap;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 82%, transparent);
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt .prompt_manager_prompt_controls {
-    min-width: max-content;
-    justify-self: end;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
 }
 
 #completion_prompt_manager .completion_prompt_manager_list_head {
-    /* SillyBunny: was `0.35em 0.5em 0`, which resolved to 4.1px/5.9px against the meta size and
-       left the column labels off the 16px inset every row below them uses. */
-    padding: 8px 16px 0;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 64%, transparent);
-    font-size: var(--sb-type-meta); /* SillyBunny: snapped to --sb-type-* tokens */
+    display: flex;
+    align-items: center;
+    padding: 6px 0 6px 0;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 54%, transparent);
+    font-size: var(--sb-type-meta, calc(var(--mainFontSize) * 0.84));
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+#completion_prompt_manager .completion_prompt_manager_list_head .pm-list-head-grip {
+    flex: 0 0 24px;
+    width: 24px;
+}
+
+#completion_prompt_manager .completion_prompt_manager_list_head .pm-list-head-bar {
+    flex: 0 0 9px;
+    width: 9px;
+}
+
+#completion_prompt_manager .completion_prompt_manager_list_head .pm-list-head-name {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-left: 4px;
+}
+
+#completion_prompt_manager .completion_prompt_manager_list_head .pm-list-head-tokens {
+    flex: 0 0 96px;
+    width: 96px;
+    text-align: right;
+    padding-right: 6px;
+    min-width: unset;
+    justify-self: unset;
+}
+
+#completion_prompt_manager .completion_prompt_manager_list_head .pm-list-head-toggle {
+    flex: 0 0 44px;
+    width: 44px;
+    text-align: center;
 }
 
 #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt {
@@ -118,61 +126,363 @@
         transform var(--sb-transition-slow);
 }
 
-/* Runtime inspection rows have no editable controls, including on mobile. */
-#completion_prompt_manager #completion_prompt_manager_list li.prompt-manager-runtime-row {
-    grid-template-columns: minmax(0, 1fr) minmax(54px, auto);
-}
+/* ── New AdwActionRow-style flex layout ── SillyBunny: feat/v1.9.0-ui-overhaul ── */
 
-#completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_controls {
+/* Drag grip */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-grip {
+    flex: 0 0 24px;
+    width: 24px;
     display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 4px;
-    font-size: calc(var(--mainFontSize)*1.2);
-}
-
-#completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_controls span {
-    display: inline-flex;
     align-items: center;
     justify-content: center;
-    height: 28px;
-    width: 28px;
-    flex: 0 0 28px;
-    border-radius: 8px;
-    box-sizing: border-box;
+    height: 100%;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 38%, transparent);
+    font-size: 12px;
+    opacity: 0;
+    cursor: grab;
+    transition: opacity var(--sb-transition-slow);
+    white-space: nowrap;
+    padding-left: 4px;
 }
 
-#completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_controls .prompt-manager-control-placeholder {
+#completion_prompt_manager #completion_prompt_manager_list li:hover .pm-row-grip,
+#completion_prompt_manager #completion_prompt_manager_list li:focus-within .pm-row-grip {
+    opacity: 0.6;
+}
+
+#completion_prompt_manager #completion_prompt_manager_list.prompt-manager-drag-locked li .pm-row-grip {
     opacity: 0;
     pointer-events: none;
 }
 
-#completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_controls > :is(
-    .prompt-manager-send-to-agents-action,
-    .prompt-manager-detach-action,
-    .prompt-manager-edit-action,
-    .prompt-manager-toggle-action
-) {
-    align-items: center;
-    flex-direction: row;
-    justify-content: center;
-    margin-left: 0;
-    cursor: pointer;
-    transition: background-color var(--sb-transition-slow), color var(--sb-transition-slow), opacity var(--sb-transition-slow);
-    height: 28px;
-    width: 28px;
-    filter: drop-shadow(0px 0px 2px black);
-    opacity: 0.58;
+/* Type accent bar */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-type-bar {
+    flex: 0 0 3px;
+    width: 3px;
+    align-self: stretch;
+    margin: 6px 6px 6px 0;
+    border-radius: 99px;
+    background: transparent;
+    transition: background-color var(--sb-transition-slow);
 }
 
-#completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_controls > :is(
-    .prompt-manager-send-to-agents-action,
-    .prompt-manager-detach-action,
-    .prompt-manager-edit-action,
-    .prompt-manager-toggle-action
-):hover {
-    opacity: 1;
+#completion_prompt_manager #completion_prompt_manager_list li.pm-row-type-marker .pm-row-type-bar {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 72%, transparent);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li.pm-row-type-system .pm-row-type-bar {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 28%, transparent);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li.pm-row-type-injection .pm-row-type-bar {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 44%, transparent);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li.pm-row-type-user .pm-row-type-bar {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 32%, transparent);
+}
+
+/* Name area — takes all remaining space */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-name-area,
+#completion_prompt_manager #completion_prompt_manager_list li .completion_prompt_manager_prompt_name {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 7px 6px 7px 4px;
+    overflow: hidden;
+}
+
+/* Primary name line */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-primary {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-primary > a,
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-primary > span:not(.fa-solid):not(.pm-row-chip) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--SmartThemeBodyColor);
+    font-size: var(--sb-type-body, var(--mainFontSize));
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt_disabled .pm-row-primary > a,
+#completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt_disabled .pm-row-primary > span {
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 42%, transparent);
+}
+
+.prompt-manager-inspect-action {
+    cursor: pointer;
+}
+
+.prompt-manager-inspect-action:hover {
+    text-decoration: underline;
+}
+
+.prompt-manager-inspect-action:focus-visible {
+    outline: 2px solid var(--SmartThemeQuoteColor);
+    outline-offset: 2px;
+    border-radius: 4px;
+    text-decoration: underline;
+}
+
+/* Chips row */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chips {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    overflow: hidden;
+    flex-wrap: nowrap;
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 5px;
+    border-radius: 99px;
+    font-size: calc(var(--mainFontSize) * 0.68);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    flex: 0 0 auto;
+    line-height: 1.6;
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 62%, transparent);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chip.pm-chip-marker {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 14%, transparent);
+    color: var(--SmartThemeQuoteColor);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chip.pm-chip-system {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 9%, transparent);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 68%, transparent);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chip.pm-chip-important {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 16%, transparent);
+    color: var(--SmartThemeQuoteColor);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chip.pm-chip-injection {
+    background: color-mix(in srgb, var(--SmartThemeEmColor) 12%, transparent);
+    color: var(--SmartThemeEmColor);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chip.pm-chip-user {
+    background: color-mix(in srgb, var(--SmartThemeEmColor) 8%, transparent);
+    color: color-mix(in srgb, var(--SmartThemeEmColor) 80%, transparent);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chip.pm-chip-role-user {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+    color: color-mix(in srgb, var(--SmartThemeQuoteColor) 80%, transparent);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chip.pm-chip-role-assistant {
+    background: color-mix(in srgb, var(--SmartThemeEmColor) 10%, transparent);
+    color: color-mix(in srgb, var(--SmartThemeEmColor) 80%, transparent);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chip.pm-chip-depth {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 52%, transparent);
+}
+
+/* End zone — fixed width, position:relative for action overlay */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-end-zone {
+    flex: 0 0 96px;
+    width: 96px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    height: 100%;
+    padding-right: 6px;
+}
+
+/* Token count */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-end-zone .prompt_manager_prompt_tokens {
+    transition: opacity var(--sb-transition-slow);
+    font-size: var(--sb-type-control, calc(var(--mainFontSize) * 0.88));
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 56%, transparent);
+    white-space: nowrap;
+    text-align: right;
+    pointer-events: none;
+    min-width: 0;
+}
+
+/* Action buttons — hover revealed on desktop */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-actions {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 2px;
+    padding-right: 4px;
+    opacity: 0;
+    transform: translateX(4px);
+    pointer-events: none;
+    transition: opacity var(--sb-transition-slow), transform var(--sb-transition-slow);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li:hover .pm-row-actions,
+#completion_prompt_manager #completion_prompt_manager_list li:focus-within .pm-row-actions {
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: auto;
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li:hover .pm-row-end-zone .prompt_manager_prompt_tokens,
+#completion_prompt_manager #completion_prompt_manager_list li:focus-within .pm-row-end-zone .prompt_manager_prompt_tokens {
+    opacity: 0;
+}
+
+/* Individual action spans inside pm-row-actions — keep existing fa-icon spans */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-actions > span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    flex: 0 0 26px;
+    border-radius: 8px;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: background-color var(--sb-transition-slow), opacity var(--sb-transition-slow);
+    filter: drop-shadow(0 0 2px black);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-actions > span:hover {
+    opacity: 1;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-actions > .prompt-manager-control-placeholder {
+    opacity: 0;
+    pointer-events: none;
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .prompt-manager-toggle-action {
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity var(--sb-transition-slow);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .prompt-manager-toggle-action:hover {
+    opacity: 1;
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li:not(.completion_prompt_manager_prompt_disabled) .prompt-manager-toggle-action {
+    color: var(--SmartThemeQuoteColor);
+}
+
+/* Kebab button — hidden on desktop, shown on mobile */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-kebab {
+    display: none;
+    position: absolute;
+    right: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    flex: 0 0 28px;
+    border: none;
+    background: transparent;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background var(--sb-transition-slow), color var(--sb-transition-slow);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-kebab:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    color: var(--SmartThemeBodyColor);
+}
+
+/* Toggle cell */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-toggle-cell {
+    flex: 0 0 44px;
+    width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-toggle-cell .prompt_manager_prompt_controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: unset;
+    gap: 0;
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-toggle-cell .prompt_manager_prompt_controls span {
+    height: 28px;
+    width: 28px;
+    flex: 0 0 28px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-toggle-cell .prompt-manager-control-placeholder {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Kebab context menu */
+.pm-kebab-menu {
+    background: var(--SmartThemeBlurTintColor, #38383c);
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 12px;
+    padding: 4px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    overflow: hidden;
+}
+
+.pm-kebab-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 12px;
+    border: none;
+    background: transparent;
+    color: var(--SmartThemeBodyColor);
+    font-size: var(--sb-type-body, var(--mainFontSize));
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background var(--sb-transition-slow);
+}
+
+.pm-kebab-menu-item:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+.pm-kebab-menu-item i {
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
+    width: 16px;
+    flex: 0 0 16px;
 }
 
 #completion_prompt_manager_popup #completion_prompt_manager_popup_edit,
@@ -357,47 +667,6 @@
     cursor: grab;
 }
 
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name {
-    white-space: nowrap;
-    overflow: hidden;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name > a,
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name > span[title]:not(.fa-solid) {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name .prompt-manager-inspect-action {
-    color: var(--SmartThemeBodyColor);
-    cursor: pointer;
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name .prompt-manager-inspect-action:hover {
-    text-decoration: underline;
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name .prompt-manager-inspect-action:focus-visible {
-    outline: 2px solid var(--SmartThemeQuoteColor);
-    outline-offset: 2px;
-    border-radius: 4px;
-    text-decoration: underline;
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_disabled .completion_prompt_manager_prompt_name,
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_disabled .completion_prompt_manager_prompt_name .prompt-manager-inspect-action {
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 42%, transparent);
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt:not(.completion_prompt_manager_prompt_disabled) .prompt-manager-toggle-action {
-    color: var(--SmartThemeQuoteColor);
-}
-
 #completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt.completion_prompt_manager_prompt_disabled {
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 52%, transparent);
 }
@@ -563,24 +832,6 @@
     opacity: 0.8;
 }
 
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt .drag-handle:not(.ui-sortable-handle) {
-    display: none;
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt:has(.drag-handle.ui-sortable-handle) {
-    position: relative;
-    padding-left: 20px;
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt .drag-handle {
-    position: absolute;
-    height: 100%;
-    top: 0;
-    padding: 0 5px;
-    display: flex;
-    align-items: center;
-}
-
 #completion_prompt_manager #completion_prompt_manager_list.prompt-manager-drag-locked .completion_prompt_manager_prompt_draggable {
     cursor: default;
 }
@@ -589,11 +840,6 @@
     cursor: default;
     opacity: 1;
     pointer-events: auto;
-}
-
-#completion_prompt_manager #completion_prompt_manager_list.prompt-manager-drag-locked .drag-handle {
-    cursor: default;
-    opacity: 0.38;
 }
 
 #completion_prompt_manager_footer_append_prompt {
@@ -689,75 +935,38 @@
         gap: 0.5em;
     }
 
-    #completion_prompt_manager #completion_prompt_manager_list li {
-        grid-template-columns: minmax(0, 1fr) minmax(42px, auto);
-        grid-template-areas:
-            "name tokens"
-            "controls controls";
-        column-gap: 8px;
-        row-gap: 8px;
+    /* On touch devices hover doesn't fire — show kebab, hide hover actions */
+    #completion_prompt_manager #completion_prompt_manager_list li .pm-row-actions {
+        display: none;
     }
 
+    #completion_prompt_manager #completion_prompt_manager_list li .pm-row-kebab {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Token count makes room for kebab */
+    #completion_prompt_manager #completion_prompt_manager_list li .pm-row-end-zone .prompt_manager_prompt_tokens {
+        opacity: 1 !important;
+        padding-right: 30px;
+    }
+
+    /* Never fade tokens on mobile hover (no hover on touch) */
+    #completion_prompt_manager #completion_prompt_manager_list li:hover .pm-row-end-zone .prompt_manager_prompt_tokens {
+        opacity: 1;
+    }
+
+    /* Larger touch targets */
     #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt {
-        min-height: 0;
-        padding: 10px;
+        min-height: 52px;
     }
 
-    #completion_prompt_manager #completion_prompt_manager_list li.prompt-manager-runtime-row {
-        grid-template-areas: "name tokens";
-    }
-
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_list_head > span:nth-child(2) {
-        display: none;
-    }
-
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .completion_prompt_manager_prompt_name {
-        grid-area: name;
-        min-width: 0;
-    }
-
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_list_head .prompt_manager_prompt_tokens,
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_tokens {
-        grid-area: tokens;
-        align-self: center;
-        min-width: 42px;
-    }
-
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt > span:nth-child(3) {
-        grid-area: controls;
-        justify-self: stretch;
-        min-width: 0;
-        overflow-x: auto;
-        overflow-y: hidden;
-        scrollbar-width: none;
-    }
-
-    /* Keep the controls row clear of the absolutely positioned drag handle. */
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt:has(.drag-handle.ui-sortable-handle) > span:nth-child(3) {
-        padding-left: 14px;
-    }
-
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt > span:nth-child(3)::-webkit-scrollbar {
-        display: none;
-    }
-
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_controls {
-        min-width: max-content;
-        justify-content: flex-start;
-        gap: 4px;
-    }
-
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_controls span,
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt span span span {
+    #completion_prompt_manager #completion_prompt_manager_list li .pm-row-toggle-cell .prompt_manager_prompt_controls span {
         height: clamp(34px, var(--sb-mobile-toggle-size, var(--sb-mobile-touch-target, 44px)), 44px);
         width: clamp(34px, var(--sb-mobile-toggle-size, var(--sb-mobile-touch-target, 44px)), 44px);
         flex-basis: clamp(34px, var(--sb-mobile-toggle-size, var(--sb-mobile-touch-target, 44px)), 44px);
-        flex-shrink: 0;
         border-radius: var(--sb-icon-control-radius, 10px);
-    }
-
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt span span span {
-        margin-left: 0;
     }
 }
 
