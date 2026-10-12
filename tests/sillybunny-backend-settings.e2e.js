@@ -500,6 +500,7 @@ test('Sampling keeps live nodes, provider visibility, numeric handlers and trans
     const temperature = sampling.locator('[data-sb-sampling-control="#temp_openai"]');
     await temperature.getByRole('radio', { name: 'Omit', exact: true }).click();
     await expect(temperature.getByRole('radio', { name: 'Omit', exact: true })).toHaveAttribute('aria-checked', 'true');
+    await expect(sampling.locator('#sb-sampling-openai [data-sb-sampling-control]').first()).toHaveAttribute('data-sb-sampler-id', 'sampler_toolbar');
     await sampling.locator('.sb-neutralize-chat-samplers').click();
     await expect(sampling.locator('#temp_openai')).toHaveValue('1');
     await expect(sampling.locator('#top_p_openai')).toHaveValue('1');

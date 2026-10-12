@@ -13,6 +13,7 @@ import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-bu
 import { initializeMobileBottomBar, syncMobileBottomBar } from './sillybunny-mobile-bottom-bar.js';
 import { initializeMessageActions } from './sillybunny-message-actions.js';
 import { initializeToastMotion } from './sillybunny-toast-motion.js';
+import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProtectionUi } from './sillybunny-preset-autosave.js';
 import {
     animateIn,
     animateOut,
@@ -348,6 +349,64 @@ function enhancePresetActionButtons(root) {
             for (const icon of button.querySelectorAll(':scope > i')) icon.setAttribute('aria-hidden', 'true');
         }
         groupPresetActions(actionContainer);
+    }
+}
+
+const SB_PRESET_BLOCK_BY_API = Object.freeze({
+    kobold: 'kobold_api-presets',
+    koboldhorde: 'kobold_api-presets',
+    novel: 'novel_api-presets',
+    textgenerationwebui: 'textgenerationwebui_api-presets',
+    openai: 'openai_api-presets',
+});
+
+/**
+ * Moves the shared preset controls next to the active backend's preset toolbar: Master Import/Export
+ * joins its action buttons (Text Completion backends only, as upstream), and the autosave switch sits
+ * directly below the toolbar row.
+ */
+function placeSharedPresetControls(root, activeApi) {
+    const block = document.getElementById(SB_PRESET_BLOCK_BY_API[activeApi] ?? '');
+    if (!(block instanceof HTMLElement) || !root.contains(block)) return;
+    const isChatCompletion = activeApi === 'openai';
+
+    const masterImport = document.getElementById('af_master_import');
+    const masterExport = document.getElementById('af_master_export');
+    const masterFile = document.getElementById('af_master_import_file');
+    if (masterImport instanceof HTMLElement && masterExport instanceof HTMLElement) {
+        let masterGroup = masterImport.closest(`.${SB_PRESET_ACTION_GROUP_CLASS}--master`);
+        if (!(masterGroup instanceof HTMLElement)) {
+            // The emptied upstream container stays mounted (hidden) so the group always has a home in the
+            // document, even while Chat Completions is active and no Text Completion toolbar is shown.
+            const originalContainer = masterImport.parentElement;
+            masterGroup = createElement('span', { className: `${SB_PRESET_ACTION_GROUP_CLASS} ${SB_PRESET_ACTION_GROUP_CLASS}--master` });
+            for (const button of [masterImport, masterExport]) {
+                button.classList.add('margin0', 'sb-action-btn');
+                const label = button.querySelector(':scope > span');
+                if (label instanceof HTMLElement) {
+                    label.classList.add('sb-action-btn-label');
+                    label.id ||= `${button.id}-label`;
+                    button.setAttribute('aria-labelledby', label.id);
+                }
+                for (const icon of button.querySelectorAll(':scope > i')) icon.setAttribute('aria-hidden', 'true');
+            }
+            masterGroup.append(...[masterFile, masterImport, masterExport].filter(Boolean));
+            originalContainer?.append(masterGroup);
+            if (originalContainer instanceof HTMLElement) originalContainer.hidden = true;
+        }
+        const actions = block.querySelector('.sb-non-chat-preset-actions');
+        if (!isChatCompletion && actions instanceof HTMLElement && masterGroup.parentElement !== actions) {
+            const fileGroup = actions.querySelector(`:scope > .${SB_PRESET_ACTION_GROUP_CLASS}--file`);
+            if (fileGroup) fileGroup.after(masterGroup);
+            else actions.prepend(masterGroup);
+        }
+        masterGroup.hidden = isChatCompletion;
+    }
+
+    const autosaveRow = root.querySelector('[data-sb-preset-autosave]');
+    const anchor = isChatCompletion ? block.querySelector(`.${SB_PRESET_TOOLBAR_ROW_CLASS}`) : block;
+    if (autosaveRow instanceof HTMLElement && anchor instanceof HTMLElement && anchor.nextElementSibling !== autosaveRow) {
+        anchor.after(autosaveRow);
     }
 }
 
@@ -9330,7 +9389,7 @@ const SB_SAMPLING_GROUPS = Object.freeze([
  */
 const SB_SAMPLER_REGISTRY = Object.freeze([
     // Sampling
-    { id: 'sampler_toolbar', group: 'sampling', textgenerationwebui: '#samplerResetButton', large: true, gated: true },
+    { id: 'sampler_toolbar', group: 'sampling', openai: '#sb_neutralize_chat_samplers', textgenerationwebui: '#samplerResetButton', large: true, gated: true },
     { id: 'temperature', group: 'sampling', openai: '#temp_openai', textgenerationwebui: '#temp_textgenerationwebui', kobold: '#temp', novel: '#temp_novel' },
     { id: 'top_k', group: 'sampling', openai: '#top_k_openai', textgenerationwebui: '#top_k_textgenerationwebui', kobold: '#top_k', novel: '#top_k_novel' },
     { id: 'top_p', group: 'sampling', openai: '#top_p_openai', textgenerationwebui: '#top_p_textgenerationwebui', kobold: '#top_p', novel: '#top_p_novel' },
@@ -9601,25 +9660,34 @@ function decorateSamplingControlCard(card, selector) {
             text: 'Set to get deterministic results. Use -1 for a random seed.',
         }));
     }
+}
 
-    if (selector === '#seed_openai') {
-        const row = createElement('small', { className: 'sb-chat-neutralize-row flex-container alignitemscenter' });
-        const button = createElement('button', {
-            className: 'menu_button menu_button_icon sb-neutralize-chat-samplers',
-            text: 'Neutralize Samplers',
-            attrs: { type: 'button' },
-        });
-        const info = createElement('div', {
-            className: 'fa-solid fa-circle-info opacity50p',
-            attrs: {
-                title: 'Set all samplers to their neutral/disabled state.',
-                'data-i18n': '[title]Set all samplers to their neutral/disabled state.',
-            },
-        });
-        button.addEventListener('click', neutralizeChatCompletionSamplers);
-        row.append(button, info);
-        card.appendChild(row);
-    }
+/** Chat Completions counterpart of the Text Completions sampler toolbar (`#samplerResetButton` row). */
+function getChatSamplerToolbarControlBlock() {
+    const existing = document.getElementById('sb_neutralize_chat_samplers');
+    if (existing instanceof HTMLElement) return existing.closest('.sb-sampling-sampler-tools-card');
+
+    const block = createElement('div', { className: 'sb-sampling-sampler-tools-card' });
+    const toolbar = createElement('div', { className: 'flex-container justifyCenter' });
+    const item = createElement('small', { className: 'flex-container alignitemscenter' });
+    const button = createElement('button', {
+        id: 'sb_neutralize_chat_samplers',
+        className: 'menu_button whitespacenowrap sb-neutralize-chat-samplers',
+        text: 'Neutralize Samplers',
+        attrs: { type: 'button', 'data-i18n': 'Neutralize Samplers' },
+    });
+    const info = createElement('div', {
+        className: 'fa-solid fa-circle-info opacity50p',
+        attrs: {
+            title: 'Set all samplers to their neutral/disabled state.',
+            'data-i18n': '[title]Set all samplers to their neutral/disabled state.',
+        },
+    });
+    button.addEventListener('click', neutralizeChatCompletionSamplers);
+    item.append(button, info);
+    toolbar.append(item);
+    block.append(toolbar);
+    return block;
 }
 
 function getSamplingControlBlock(selector) {
@@ -9648,7 +9716,9 @@ function getSamplingControlBlock(selector) {
 function buildSamplingControlCard(selector, root = document) {
     const controlBlock = selector === '#samplerResetButton'
         ? getSamplerToolbarControlBlock()
-        : getSamplingControlBlock(selector);
+        : selector === '#sb_neutralize_chat_samplers'
+            ? getChatSamplerToolbarControlBlock()
+            : getSamplingControlBlock(selector);
     if (!(controlBlock instanceof HTMLElement)) {
         return null;
     }
@@ -9834,7 +9904,6 @@ function updateSamplingCardVisibility(section) {
             const content = card.querySelector(':scope > .ds-row-expander-content') ?? card;
             const hasVisibleContent = Array.from(content.children).some(child => child instanceof HTMLElement
                 && !child.classList.contains('sb-sampling-transmission')
-                && !child.classList.contains('sb-chat-neutralize-row')
                 && getComputedStyle(child).display !== 'none');
             return [card, hasVisibleContent];
         });
@@ -10114,8 +10183,8 @@ function prepareEditorPanel(root) {
     const meta = createElement('div', { className: 'sb-editor-meta' });
     meta.append(
         createElement('span', { attrs: { 'data-sb-editor-preset': '', 'aria-live': 'polite' } }),
-        // Commit C supplies the actual state; do not imply autosave or protection is active yet.
-        createElement('span', { text: 'Autosave', attrs: { 'data-sb-editor-autosave': '', 'data-i18n': 'Autosave', hidden: '' } }),
+        // sillybunny-preset-autosave.js fills in and reveals both states.
+        createElement('span', { text: 'Autosave off', attrs: { 'data-sb-editor-autosave': '', 'data-i18n': 'Autosave off', hidden: '' } }),
         createElement('span', { text: 'Read-only', attrs: { 'data-sb-editor-read-only': '', 'data-i18n': 'Read-only', hidden: '' } }),
     );
     const back = createElement('button', {
@@ -10216,6 +10285,7 @@ function updateEditorPanel(panel = getShellState('left')?.tabs.get('editor')?.pa
     const names = presetNames.filter(Boolean).join(' · ');
     const meta = root.querySelector('[data-sb-editor-preset]');
     if (meta.textContent !== names) meta.textContent = names;
+    refreshPresetProtectionUi();
     for (const group of root.querySelectorAll('.sb-prompting-group:not(#sb-openai-prompt-manager)')) normalizeBackendSettingsRows(group);
     for (const wrapper of root.querySelectorAll('[data-sb-editor-document]:not(.ds-row)')) wrapper.classList.add('sb-settings-row-wrapper');
     groupPromptingRowHelpers(root);
@@ -10306,10 +10376,8 @@ function updatePromptingPanel(panel) {
     const mode = root.querySelector('[data-sb-prompting-mode]');
     const modeLabel = `Backend: ${backend?.title ?? activeApi}`;
     if (mode && mode.textContent !== modeLabel) mode.textContent = modeLabel;
-    for (const selector of ['[name="bindModelPresetBlock"]', '#AdvancedFormatting > .flex-container.alignItemsBaseline > .flex-container[data-cc-null]']) {
-        const tcPresetControl = root.querySelector(selector) ?? document.querySelector(selector);
-        if (tcPresetControl instanceof HTMLElement) tcPresetControl.hidden = activeApi === 'openai';
-    }
+    const bindModelPresetBlock = root.querySelector('[name="bindModelPresetBlock"]') ?? document.querySelector('[name="bindModelPresetBlock"]');
+    if (bindModelPresetBlock instanceof HTMLElement) bindModelPresetBlock.hidden = activeApi === 'openai';
 
     flattenNestedSettingsDrawers(root, { includeTopLevel: true });
     updateEditorPanel();
@@ -10407,6 +10475,10 @@ function updatePromptingPanel(panel) {
         generationBody.append(textgenSwipes);
     }
     const presets = root.querySelector('#respective-presets-block');
+    const presetsBody = presets?.querySelector(':scope > .sb-prompting-group-body');
+    if (presetsBody instanceof HTMLElement && !presetsBody.querySelector('[data-sb-preset-autosave]')) {
+        presetsBody.append(createPresetAutosaveToggle());
+    }
     if (presets instanceof HTMLElement) normalizeBackendSettingsRows(presets);
     const common = root.querySelector('#common-gen-settings-block');
     if (common instanceof HTMLElement) {
@@ -10419,6 +10491,7 @@ function updatePromptingPanel(panel) {
     hideEmptyGroupedSettingsDrawers();
     mergeOpenAIPresetToolbarRow(root);
     enhancePresetActionButtons(root);
+    placeSharedPresetControls(root, activeApi);
     groupPromptingRowHelpers(root);
     // Batch writes and reads: interleaving `hidden` writes with checkVisibility() forces a style and
     // layout flush per group, which is what made opening Prompting drop frames on slower devices.
@@ -15326,6 +15399,7 @@ function initAll() {
     initializeMobileShellUi();
     initializeMessageActions();
     initializeToastMotion();
+    initializePresetAutosave();
 
     const sillyBunnyShell = /** @type {any} */ (globalThis.SillyBunnyShell || {});
     globalThis.SillyBunnyShell = Object.assign(sillyBunnyShell, {

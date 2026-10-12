@@ -357,6 +357,7 @@ export const power_user = {
     quote_text_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeQuoteColor').trim()}`,
     sb_accent_profiles: SILLYBUNNY_ACCENT_PROFILE_SEEDS.map(profile => ({ ...profile })),
     sb_accent_profiles_seed_version: SB_ACCENT_PROFILE_SEED_VERSION,
+    sb_preset_autosave: false,
     blur_tint_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeBlurTintColor').trim()}`,
     chat_tint_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeChatTintColor').trim()}`,
     user_mes_blur_tint_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeUserMesBlurTintColor').trim()}`,
@@ -2166,6 +2167,11 @@ export async function loadPowerUserSettings(settings, data) {
             delete settings.power_user.auto_sort_tags;
         }
         Object.assign(power_user, settings.power_user);
+    }
+
+    // SillyBunny: preset autosave is on for new installs and off for upgrades until the user opts in.
+    if (!Object.hasOwn(savedPowerUserSettings, 'sb_preset_autosave')) {
+        power_user.sb_preset_autosave = !!settings.firstRun;
     }
 
     // SillyBunny: Dark V 1.0 was the previous bundled default. Migrate only

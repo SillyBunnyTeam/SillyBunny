@@ -8375,8 +8375,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     margin: 0;
 }
 
-#sb-settings-page .sb-sampling-panel .sb-sampling-transmission,
-#sb-settings-page .sb-sampling-panel .sb-chat-neutralize-row {
+#sb-settings-page .sb-sampling-panel .sb-sampling-transmission {
     margin: 0;
     padding: 8px 12px;
     border-top: 0;
@@ -8392,8 +8391,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
         min-height: 44px;
     }
 
-    #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-transmission,
-    #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-chat-neutralize-row {
+    #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-transmission {
         padding: 4px 16px;
     }
 
@@ -8512,8 +8510,19 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     overflow-wrap: anywhere;
 }
 
+#sb-settings-page .sb-editor-meta [data-sb-editor-read-only] {
+    font-weight: 600;
+    color: var(--SmartThemeBodyColor);
+}
+
 #sb-settings-page .sb-editor-panel #InstructSequencesColumn {
     padding: 0;
+}
+
+/* Bundled presets: Update stays focusable for its tooltip, but reads and acts as unavailable. */
+.menu_button.sb-preset-update-read-only {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-editor-panel .ds-row:has(> .ds-row-suffix textarea) {

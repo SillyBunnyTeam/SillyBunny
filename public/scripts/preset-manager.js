@@ -164,6 +164,13 @@ function snapshotAllPresetManagers() {
     Object.values(presetManagers).forEach(manager => manager.scheduleSnapshotTextFields());
 }
 
+/**
+ * SillyBunny: re-evaluates unload warnings after the preset autosave setting changes.
+ */
+export function refreshPresetDirtyGuards() {
+    Object.values(presetManagers).forEach(manager => manager._updateBeforeUnload());
+}
+
 function registerPresetDirtySnapshots() {
     // SillyBunny: keep preset dirty-state tracking aligned with the extra
     // text fields and template drawers added outside the upstream preset UI.
@@ -701,6 +708,15 @@ class PresetManager {
     }
 
     _updateBeforeUnload() {
+        // SillyBunny: with preset autosave on, edits are saved (and flushed on unload) instead of discarded.
+        if (power_user.sb_preset_autosave === true) {
+            if (this._beforeUnloadHandler) {
+                window.removeEventListener('beforeunload', this._beforeUnloadHandler);
+                this._beforeUnloadHandler = null;
+            }
+            return;
+        }
+
         if (this._dirty && !this._beforeUnloadHandler) {
             this._beforeUnloadHandler = (event) => {
                 event.preventDefault();
@@ -745,7 +761,8 @@ class PresetManager {
             this._checkDirty({ force: true });
         }
 
-        if (this._allowPresetSelectChange || !this._dirty) {
+        // SillyBunny: autosave flushes pending edits before the switch, so there is nothing to discard.
+        if (this._allowPresetSelectChange || !this._dirty || power_user.sb_preset_autosave === true) {
             this.scheduleSnapshotTextFields();
             return;
         }

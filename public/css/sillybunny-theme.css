@@ -3130,15 +3130,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     line-height: inherit;
 }
 
-.sb-neutralize-chat-samplers {
-    justify-content: center;
-}
-
-.sb-chat-neutralize-row {
-    margin-top: 10px;
-    justify-content: center;
-}
-
 /* Sampling Parameter Transmission Policy Controls */
 .sb-sampling-transmission {
     display: flex;
@@ -6229,8 +6220,8 @@ body.reduced-motion *::after {
         gap: 8px;
     }
 
-    #af_master_import > span,
-    #af_master_export > span {
+    #af_master_import:not(.sb-action-btn) > span,
+    #af_master_export:not(.sb-action-btn) > span {
         display: none;
     }
 
