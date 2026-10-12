@@ -8302,6 +8302,35 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     border-radius: 0;
 }
 
+/* Inert Chat Completions rows for Text Completions-only samplers keep their layout but read as unavailable. */
+#sb-settings-page .sb-sampling-panel .sb-sampling-placeholder-card {
+    cursor: not-allowed;
+    background: repeating-linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent) 0 6px,
+        transparent 6px 12px
+    );
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-placeholder-card .ds-row-text {
+    opacity: 0.5;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-unavailable-badge {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 28%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    color: var(--SmartThemeBodyColor);
+    font-size: var(--sb-type-meta);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
 #sb-settings-page .sb-sampling-panel [data-sb-sampling-control='#openai_logit_bias_preset'] > .ds-row > .ds-row-suffix {
     flex-direction: column;
     align-items: stretch;
@@ -8397,6 +8426,10 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     display: flex;
     flex-direction: column;
     gap: 0;
+    /* Adaptive-P's wrapper also matches the generic flex-container action-row padding. */
+    min-height: 0;
+    padding: 0;
+    border-top: 0;
 }
 
 /* Legacy sampler grids also match migrated rows; the live rows own their layout and insets. */

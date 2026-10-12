@@ -178,9 +178,7 @@ async function expectSamplingTaxonomy(sampling, api) {
     await expect(sampling.locator('.sb-sampling-group:visible > h3')).toHaveText([
         'Sampling', 'Penalties & Repetition', 'Advanced Algorithms', 'Token Control', 'Output & Generation',
     ]);
-    const presetGroups = sampling.locator('.sb-sampling-group[data-sb-sampling-group="presets"]');
-    await expect(presetGroups).toHaveCount(4);
-    expect(await presetGroups.evaluateAll(groups => groups.every(group => group.hidden))).toBe(true);
+    await expect(sampling.locator('.sb-sampling-group[data-sb-sampling-group="presets"]')).toHaveCount(0);
 }
 
 async function readPresetDownload(download) {
@@ -488,7 +486,12 @@ test('Sampling keeps live nodes, provider visibility, numeric handlers and trans
     await selectBackend(page, 'openai', 'openai');
     const sampling = await openPanel(page, 'sampling');
     await expect(sampling.locator('#temp_openai')).toBeVisible();
-    await expect(sampling.locator('[data-sb-sampling-control="#top_k_openai"]')).toBeHidden();
+    // Samplers stay visible for every provider; non-sampler rows keep provider gating.
+    await expect(sampling.locator('[data-sb-sampling-control="#top_k_openai"]')).toBeVisible();
+    await expect(sampling.locator('[data-sb-sampling-control="#openai_logit_bias_preset"]')).toBeVisible();
+    await selectBackend(page, 'openai', 'claude');
+    await expect(sampling.locator('[data-sb-sampling-control="#top_k_openai"]')).toBeVisible();
+    await expect(sampling.locator('[data-sb-sampling-control="#openai_logit_bias_preset"]')).toBeHidden();
     await selectBackend(page, 'openai', 'openrouter');
     await expect(sampling.locator('[data-sb-sampling-control="#top_k_openai"]')).toBeVisible();
     await sampling.locator('#temp_counter_openai').fill('0.73');
@@ -504,6 +507,89 @@ test('Sampling keeps live nodes, provider visibility, numeric handlers and trans
     await expect(prompting.locator('#settings_preset_openai')).toBeVisible();
     await expect(prompting.locator('#import_oai_preset, #export_oai_preset, #update_oai_preset, #new_oai_preset, #delete_oai_preset')).toHaveCount(5);
     expect(await page.evaluate(() => window.phase3Nodes.every(node => node === document.getElementById(node.id)))).toBe(true);
+});
+
+async function readSamplingRegistryLayout(page) {
+    return page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.sb-sampling-section')].map(section => [
+        section.id.replace('sb-sampling-', ''),
+        [...section.querySelectorAll('[data-sb-sampling-control]')].map(card => ({
+            id: card.dataset.sbSamplerId,
+            group: card.closest('[data-sb-sampling-group]').dataset.sbSamplingGroup,
+            selector: card.dataset.sbSamplingControl,
+            className: card.className,
+        })),
+    ])));
+}
+
+test('Sampling uses one registry order, grouping and styling for every backend', async ({ page, baseURL }) => {
+    await loadSettings(page, baseURL);
+    await selectBackend(page, 'kobold', null);
+    await openPanel(page, 'sampling');
+    const layout = await readSamplingRegistryLayout(page);
+    const selectors = Object.values(layout).flat().map(card => card.selector);
+    expect(selectors.filter((selector, index) => selectors.indexOf(selector) !== index)).toEqual([]);
+    expect(Object.values(layout).flat().every(card => card.id)).toBe(true);
+    await expect(page.locator('.sb-sampling-group[data-sb-sampling-group="presets"]')).toHaveCount(0);
+
+    const tcOrder = layout.textgenerationwebui.map(card => card.id);
+    for (const backend of ['openai', 'kobold', 'novel']) {
+        const shared = layout[backend].filter(card => tcOrder.includes(card.id));
+        expect(shared.map(card => card.id), `${backend} follows the Text Completions order`)
+            .toEqual(tcOrder.filter(id => shared.some(card => card.id === id)).filter((id, index, ids) => ids.indexOf(id) === index));
+        for (const card of shared) {
+            const tc = layout.textgenerationwebui.find(entry => entry.id === card.id);
+            expect(card.group, `${backend} ${card.id} group`).toBe(tc.group);
+            const shape = className => ['ds-row-expander', 'sb-sampling-large-card'].filter(token => className.split(' ').includes(token));
+            expect(shape(card.className), `${backend} ${card.id} styling`).toEqual(shape(tc.className));
+        }
+    }
+
+    expect(layout.kobold.map(card => card.id)).toEqual([
+        'temperature', 'top_k', 'top_p', 'typical_p', 'min_p', 'top_a', 'tfs',
+        'repetition_penalty', 'rep_pen_range', 'rep_pen_slope',
+        'mirostat', 'seed', 'sampler_order', 'use_default_badwordsids', 'grammar',
+    ]);
+    const kobold = page.locator('#sb-sampling-kobold');
+    for (const id of ['top_k', 'typical_p', 'min_p', 'top_a', 'tfs', 'rep_pen_range', 'rep_pen_slope', 'mirostat', 'seed', 'sampler_order', 'grammar']) {
+        await expect(kobold.locator(`[data-sb-sampler-id="${id}"]`)).toBeVisible();
+    }
+    await expect(kobold.locator('[data-sb-sampler-id="mirostat"] .ds-row-subtitle').first()).not.toHaveText('lorum ipsum');
+    await expect(page.locator('#sb-sampling-kobold .sb-sampling-header-note')).toHaveText('Some backends ignore samplers they do not support.');
+});
+
+test('Text Completions types keep sampler rows visible and swap only backend mechanisms', async ({ page, baseURL }) => {
+    test.setTimeout(120000);
+    await loadSettings(page, baseURL);
+    await selectBackend(page, 'textgenerationwebui', 'ooba');
+    const sampling = await openPanel(page, 'sampling');
+    const card = selector => sampling.locator(`[data-sb-sampling-control="${selector}"]`);
+    const samplerRows = ['#top_k_textgenerationwebui', '#typical_p_textgenerationwebui', '#tfs_textgenerationwebui', '#epsilon_cutoff_textgenerationwebui', '#nsigma_textgenerationwebui', '#rep_pen_decay_textgenerationwebui', '#smoothingBlock', '#xtc_block', '#dryBlock', '#mirostat_block_ooba', '#seed_textgenerationwebui'];
+    const mechanisms = {
+        ooba: { visible: ['#sampler_priority_block_ooba'], hidden: ['#sampler_order_block_kcpp', '#sampler_order_block_lcpp', '#json_schema_block'] },
+        llamacpp: { visible: ['#sampler_order_block_lcpp', '#json_schema_block'], hidden: ['#sampler_priority_block_ooba', '#sampler_order_block_kcpp', '#beamSearchBlock'] },
+        koboldcpp: { visible: ['#sampler_order_block_kcpp'], hidden: ['#sampler_order_block_lcpp', '#sampler_priority_block_ooba', '#json_schema_block'] },
+    };
+    for (const [type, { visible, hidden }] of Object.entries(mechanisms)) {
+        await selectBackend(page, 'textgenerationwebui', type);
+        for (const selector of samplerRows) await expect(card(selector), `${type} ${selector}`).toBeVisible();
+        for (const selector of visible) await expect(card(selector), `${type} ${selector}`).toBeVisible();
+        for (const selector of hidden) await expect(card(selector), `${type} ${selector}`).toBeHidden();
+    }
+
+    await page.evaluate(async () => {
+        const { setApiSamplerVisibilityState } = await import('/scripts/samplerSelect.js');
+        setApiSamplerVisibilityState({ st_manual_priority: true, temp: true }, 'ooba');
+    });
+    await selectBackend(page, 'textgenerationwebui', 'ooba');
+    await expect(card('#temp_textgenerationwebui')).toBeVisible();
+    await expect(card('#top_k_textgenerationwebui')).toBeHidden();
+    await expect(card('#dryBlock')).toBeHidden();
+    await page.evaluate(async () => {
+        const { setApiSamplerVisibilityState } = await import('/scripts/samplerSelect.js');
+        setApiSamplerVisibilityState({}, 'ooba');
+    });
+    await selectBackend(page, 'textgenerationwebui', 'llamacpp');
+    await expect(card('#top_k_textgenerationwebui')).toBeVisible();
 });
 
 test('Native sampler expanders reveal search results and preserve switch and counter interactions', async ({ page, baseURL }) => {
@@ -557,6 +643,53 @@ test('Agents globals and Connections switches use the shared row semantics', asy
     const list = page.locator('dialog[open] .extensions_info');
     await expect(list).toBeVisible();
     await expectSwitchGeometry(list);
+});
+
+test('Chat Completions lists Text Completions-only samplers as inert rows in the shared order', async ({ page, baseURL }) => {
+    await loadSettings(page, baseURL);
+    const placeholderIds = [
+        'typical_p', 'tfs', 'epsilon_cutoff', 'eta_cutoff', 'nsigma', 'min_keep', 'skew',
+        'rep_pen_range', 'rep_pen_slope', 'rep_pen_decay', 'encoder_rep_pen', 'no_repeat_ngram',
+        'adaptive_p', 'smoothing', 'xtc', 'dry', 'dynatemp', 'mirostat',
+    ];
+    const readCards = section => page.locator(`#sb-sampling-${section}`).evaluate(root => [...root.querySelectorAll('[data-sb-sampling-control], [data-sb-sampling-placeholder]')].map(card => ({
+        id: card.dataset.sbSamplerId,
+        group: card.closest('[data-sb-sampling-group]').dataset.sbSamplingGroup,
+        placeholder: card.hasAttribute('data-sb-sampling-placeholder'),
+        label: (card.querySelector(':scope > summary .ds-row-label') ?? card.querySelector('.ds-row-label'))?.textContent.replace(/\s+/g, ' ').trim(),
+    })));
+
+    for (const source of ['openai', 'custom', 'openrouter']) {
+        await selectBackend(page, 'openai', source);
+        const sampling = await openPanel(page, 'sampling');
+        const cc = sampling.locator('#sb-sampling-openai');
+        for (const id of placeholderIds) {
+            const row = cc.locator(`[data-sb-sampling-placeholder][data-sb-sampler-id="${id}"]`);
+            await expect(row, `${source} ${id}`).toBeVisible();
+            await expect(row.locator('input, select, textarea, button, summary')).toHaveCount(0);
+            await expect(row.locator('.ds-row-subtitle')).toHaveText('Not available in Chat Completions. Custom endpoints can send it with Additional Parameters.');
+            await expect(row.locator('.sb-sampling-unavailable-badge')).toHaveText('Unavailable');
+        }
+        await expect(cc.locator('[data-sb-sampling-placeholder]')).toHaveCount(placeholderIds.length);
+        await expect(cc.locator('[data-sb-sampling-group="algorithms"]')).toBeVisible();
+        // Placeholders never borrow Text Completions controls.
+        await expect(cc.locator('[id$="_textgenerationwebui"], #dryBlock, #xtc_block, #smoothingBlock')).toHaveCount(0);
+        await expect(cc.locator('[data-sb-sampler-id="sampler_priority"], [data-sb-sampler-id="json_schema"], [data-sb-sampler-id="beam_search"]')).toHaveCount(0);
+    }
+
+    const cc = await readCards('openai');
+    const tc = await readCards('textgenerationwebui');
+    const ccIds = cc.map(card => card.id);
+    expect(ccIds.filter((id, index) => ccIds.indexOf(id) !== index)).toEqual([]);
+    expect(ccIds).toEqual(tc.map(card => card.id).filter(id => ccIds.includes(id)).filter((id, index, ids) => ids.indexOf(id) === index));
+    for (const card of cc.filter(entry => entry.placeholder)) {
+        const source = tc.find(entry => entry.id === card.id);
+        expect(card.group, `${card.id} group`).toBe(source.group);
+        expect(card.label, `${card.id} label`).toBe(source.label);
+    }
+    for (const section of ['textgenerationwebui', 'kobold', 'novel']) {
+        await expect(page.locator(`#sb-sampling-${section} [data-sb-sampling-placeholder]`)).toHaveCount(0);
+    }
 });
 
 test('Mobile Sampling follows provider and manual sampler visibility', async ({ page, baseURL }) => {

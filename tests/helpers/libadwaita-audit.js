@@ -454,6 +454,7 @@ export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     { selector: '#logit_bias_block_ooba', rule: 'content-inset', reason: 'Upstream logit-bias block uses 12px container padding rather than the standard 16px' },
     { selector: '#sampler_priority_block_ooba', rule: 'row-edges', reason: 'Upstream sampler priority block; rows are arranged in a drag-sortable list, not full-bleed .ds-row anatomy' },
     { selector: '#sampler_priority_block_ooba', rule: 'content-inset', reason: 'Upstream sampler priority block; inset measurement is not meaningful for a sortable list' },
+    { selector: ':is(#sampler_order_block_kcpp, #sampler_order_block_lcpp, [name="KoboldSamplerOrderBlock"])', rule: 'content-inset', reason: 'Upstream sampler order block; centred title and description above a drag-sortable list' },
     // SillyBunny: first/last row border leakage on specific groups whose inner rows retain their borders at the group boundary.
     { selector: '#sb-tc-context', rule: 'row-edges', reason: 'Context Template group; inner section rows retain border-top at the group boundary — upstream layout, addressed in Phase 4' },
     { selector: '#CustomCSS-textAreaBlock', rule: 'row-edges', reason: 'Custom CSS textarea block retains a top border on its first row; upstream layout' },

@@ -52,6 +52,7 @@ import {
     getTextSamplingParameterTransmissionState,
     setTextSamplingParameterTransmissionState,
     getTextSamplingParameterViewModel,
+    showTGSamplerControls,
 } from './textgen-settings.js';
 import {
     SB_USER_SETTINGS_CONTAINER_IDS,
@@ -9290,20 +9291,6 @@ const SB_SAMPLING_BACKENDS = Object.freeze([
         title: 'Chat Completions',
         usesContextSettings: false,
         description: 'Uses the active Chat Completions provider and its provider-specific sampler support.',
-        controls: [
-            '#seed_openai',
-            '#openai_logit_bias_preset',
-            '#temp_openai',
-            '#claude_disable_temperature',
-            '#top_p_openai',
-            '#claude_disable_top_p',
-            '#repetition_penalty_openai',
-            '#freq_pen_openai',
-            '#pres_pen_openai',
-            '#top_k_openai',
-            '#min_p_openai',
-            '#top_a_openai',
-        ],
     },
     {
         id: 'textgenerationwebui',
@@ -9311,56 +9298,6 @@ const SB_SAMPLING_BACKENDS = Object.freeze([
         title: 'Text Completions',
         usesContextSettings: true,
         description: 'Uses the selected Text Completions backend and sampler visibility rules.',
-        controls: [
-            '#seed_textgenerationwebui',
-            '#samplerResetButton',
-            '#sampler_order_block_kcpp',
-            '#sampler_order_block_lcpp',
-            '#sampler_priority_block_ooba',
-            '#sampler_priority_block_aphrodite',
-            '#json_schema_block',
-            '#banned_tokens_block_ooba',
-            '#logit_bias_block_ooba',
-            '#temp_textgenerationwebui',
-            '#top_k_textgenerationwebui',
-            '#top_p_textgenerationwebui',
-            '#typical_p_textgenerationwebui',
-            '#min_p_textgenerationwebui',
-            '#top_a_textgenerationwebui',
-            '#tfs_textgenerationwebui',
-            '#epsilon_cutoff_textgenerationwebui',
-            '#nsigma_textgenerationwebui',
-            '#min_keep_textgenerationwebui',
-            '#eta_cutoff_textgenerationwebui',
-            '#rep_pen_textgenerationwebui',
-            '#rep_pen_range_textgenerationwebui',
-            '#rep_pen_slope_textgenerationwebui',
-            '#rep_pen_decay_textgenerationwebui',
-            '#encoder_rep_pen_textgenerationwebui',
-            '#freq_pen_textgenerationwebui',
-            '#presence_pen_textgenerationwebui',
-            '#no_repeat_ngram_size_textgenerationwebui',
-            '#skew_textgenerationwebui',
-            '#min_length_textgenerationwebui',
-            '#max_tokens_second_textgenerationwebui',
-            '#adaptive_p_block',
-            '#smoothingBlock',
-            '#xtc_block',
-            '#dryBlock',
-            '#dynatemp_block_ooba',
-            '#mirostat_block_ooba',
-            '#beamSearchBlock',
-            '#contrastiveSearchBlock',
-            '#do_sample_textgenerationwebui',
-            '#add_bos_token_textgenerationwebui',
-            '#ignore_eos_token_textgenerationwebui',
-            '#include_reasoning_textgenerationwebui',
-            '#temperature_last_textgenerationwebui',
-            '#speculative_ngram_textgenerationwebui',
-            '#spaces_between_special_tokens_textgenerationwebui',
-            '#cfg_block_ooba',
-            '#grammar_block_ooba',
-        ],
     },
     {
         id: 'kobold',
@@ -9368,7 +9305,6 @@ const SB_SAMPLING_BACKENDS = Object.freeze([
         title: 'Kobold/Horde',
         usesContextSettings: true,
         description: 'Kobold Horde reuses Kobold sampler settings; Horde still requires a non-GUI preset.',
-        controls: ['#temp', '#top_p', '#rep_pen'],
     },
     {
         id: 'novel',
@@ -9376,46 +9312,10 @@ const SB_SAMPLING_BACKENDS = Object.freeze([
         title: 'NovelAI',
         usesContextSettings: true,
         description: 'Uses NovelAI preset sampling fields without changing the backend request format.',
-        controls: [
-            '#temp_novel',
-            '#rep_pen_novel',
-            '#rep_pen_size_novel',
-            '#rep_pen_slope_novel',
-            '#rep_pen_freq_novel',
-            '#rep_pen_presence_novel',
-            '#min_p_novel',
-            '#tail_free_sampling_novel',
-            '#top_p_novel',
-            '#top_a_novel',
-            '#top_k_novel',
-            '#mirostat_tau_novel',
-            '#mirostat_lr_novel',
-            '#typical_p_novel',
-            '#math1_temp_novel',
-            '#math1_quad_novel',
-            '#math1_quad_entropy_scale_novel',
-            '#min_length_novel',
-        ],
     },
 ]);
 
-const SB_LARGE_SAMPLING_CONTROLS = Object.freeze(new Set([
-    '#seed_openai',
-    '#openai_logit_bias_preset',
-    '#samplerResetButton',
-    '#n_textgenerationwebui',
-    '#seed_textgenerationwebui',
-    '#banned_tokens_block_ooba',
-    '#logit_bias_block_ooba',
-    '#json_schema_block',
-    '#sampler_order_block_kcpp',
-    '#sampler_order_block_lcpp',
-    '#sampler_priority_block_ooba',
-    '#sampler_priority_block_aphrodite',
-]));
-
 const SB_SAMPLING_GROUPS = Object.freeze([
-    { id: 'presets', title: 'Presets' },
     { id: 'sampling', title: 'Sampling' },
     { id: 'penalties', title: 'Penalties & Repetition' },
     { id: 'algorithms', title: 'Advanced Algorithms' },
@@ -9423,50 +9323,81 @@ const SB_SAMPLING_GROUPS = Object.freeze([
     { id: 'output', title: 'Output & Generation' },
 ]);
 
-// SillyBunny: use Text Completions' existing taxonomy without changing sampler state or requests.
-const SB_SAMPLING_GROUP_SELECTORS = Object.freeze({
-    penalties: new Set([
-        '#repetition_penalty_openai', '#freq_pen_openai', '#pres_pen_openai',
-        '#rep_pen_textgenerationwebui', '#rep_pen_range_textgenerationwebui',
-        '#rep_pen_slope_textgenerationwebui', '#rep_pen_decay_textgenerationwebui',
-        '#encoder_rep_pen_textgenerationwebui', '#freq_pen_textgenerationwebui',
-        '#presence_pen_textgenerationwebui', '#no_repeat_ngram_size_textgenerationwebui',
-        '#rep_pen', '#rep_pen_novel', '#rep_pen_size_novel', '#rep_pen_slope_novel',
-        '#rep_pen_freq_novel', '#rep_pen_presence_novel',
-    ]),
-    algorithms: new Set([
-        '#adaptive_p_block', '#smoothingBlock', '#xtc_block', '#dryBlock',
-        '#dynatemp_block_ooba', '#mirostat_block_ooba', '#beamSearchBlock', '#contrastiveSearchBlock',
-        '#mirostat_tau_novel', '#mirostat_lr_novel', '#math1_temp_novel',
-        '#math1_quad_novel', '#math1_quad_entropy_scale_novel',
-    ]),
-    tokens: new Set([
-        '#seed_openai', '#openai_logit_bias_preset', '#seed_textgenerationwebui',
-        '#min_length_textgenerationwebui', '#max_tokens_second_textgenerationwebui',
-        '#banned_tokens_block_ooba', '#logit_bias_block_ooba', '#min_length_novel',
-    ]),
-    output: new Set([
-        '#sampler_order_block_kcpp', '#sampler_order_block_lcpp', '#sampler_priority_block_ooba',
-        '#sampler_priority_block_aphrodite', '#json_schema_block', '#cfg_block_ooba', '#grammar_block_ooba',
-        '#do_sample_textgenerationwebui', '#add_bos_token_textgenerationwebui', '#ignore_eos_token_textgenerationwebui',
-        '#include_reasoning_textgenerationwebui', '#temperature_last_textgenerationwebui',
-        '#speculative_ngram_textgenerationwebui', '#spaces_between_special_tokens_textgenerationwebui',
-    ]),
-});
+/**
+ * Shared sampler registry. Each entry maps a canonical sampler id to selectors across backends.
+ * Controls are displayed in registry order within their group. Backends with no selector omit the entry.
+ * @type {ReadonlyArray<{id: string, group: string, openai?: string|string[], textgenerationwebui?: string|string[], kobold?: string|string[], novel?: string|string[], expander?: boolean, large?: boolean, gated?: boolean, subtitleSource?: string}>}
+ */
+const SB_SAMPLER_REGISTRY = Object.freeze([
+    // Sampling
+    { id: 'sampler_toolbar', group: 'sampling', textgenerationwebui: '#samplerResetButton', large: true, gated: true },
+    { id: 'temperature', group: 'sampling', openai: '#temp_openai', textgenerationwebui: '#temp_textgenerationwebui', kobold: '#temp', novel: '#temp_novel' },
+    { id: 'top_k', group: 'sampling', openai: '#top_k_openai', textgenerationwebui: '#top_k_textgenerationwebui', kobold: '#top_k', novel: '#top_k_novel' },
+    { id: 'top_p', group: 'sampling', openai: '#top_p_openai', textgenerationwebui: '#top_p_textgenerationwebui', kobold: '#top_p', novel: '#top_p_novel' },
+    { id: 'typical_p', group: 'sampling', textgenerationwebui: '#typical_p_textgenerationwebui', kobold: '#typical_p', novel: '#typical_p_novel' },
+    { id: 'min_p', group: 'sampling', openai: '#min_p_openai', textgenerationwebui: '#min_p_textgenerationwebui', kobold: '#min_p', novel: '#min_p_novel' },
+    { id: 'top_a', group: 'sampling', openai: '#top_a_openai', textgenerationwebui: '#top_a_textgenerationwebui', kobold: '#top_a', novel: '#top_a_novel' },
+    { id: 'tfs', group: 'sampling', textgenerationwebui: '#tfs_textgenerationwebui', kobold: '#tfs', novel: '#tail_free_sampling_novel' },
+    { id: 'epsilon_cutoff', group: 'sampling', textgenerationwebui: '#epsilon_cutoff_textgenerationwebui' },
+    { id: 'eta_cutoff', group: 'sampling', textgenerationwebui: '#eta_cutoff_textgenerationwebui' },
+    { id: 'nsigma', group: 'sampling', textgenerationwebui: '#nsigma_textgenerationwebui' },
+    { id: 'min_keep', group: 'sampling', textgenerationwebui: '#min_keep_textgenerationwebui' },
+    { id: 'skew', group: 'sampling', textgenerationwebui: '#skew_textgenerationwebui' },
+    // Penalties
+    { id: 'repetition_penalty', group: 'penalties', openai: '#repetition_penalty_openai', textgenerationwebui: '#rep_pen_textgenerationwebui', kobold: '#rep_pen', novel: '#rep_pen_novel' },
+    { id: 'rep_pen_range', group: 'penalties', textgenerationwebui: '#rep_pen_range_textgenerationwebui', kobold: '#rep_pen_range', novel: '#rep_pen_size_novel' },
+    { id: 'rep_pen_slope', group: 'penalties', textgenerationwebui: '#rep_pen_slope_textgenerationwebui', kobold: '#rep_pen_slope', novel: '#rep_pen_slope_novel' },
+    { id: 'rep_pen_decay', group: 'penalties', textgenerationwebui: '#rep_pen_decay_textgenerationwebui' },
+    { id: 'encoder_rep_pen', group: 'penalties', textgenerationwebui: '#encoder_rep_pen_textgenerationwebui' },
+    { id: 'frequency_penalty', group: 'penalties', openai: '#freq_pen_openai', textgenerationwebui: '#freq_pen_textgenerationwebui', novel: '#rep_pen_freq_novel' },
+    { id: 'presence_penalty', group: 'penalties', openai: '#pres_pen_openai', textgenerationwebui: '#presence_pen_textgenerationwebui', novel: '#rep_pen_presence_novel' },
+    { id: 'no_repeat_ngram', group: 'penalties', textgenerationwebui: '#no_repeat_ngram_size_textgenerationwebui' },
+    // Algorithms
+    { id: 'adaptive_p', group: 'algorithms', textgenerationwebui: '#adaptive_p_block', expander: true },
+    { id: 'smoothing', group: 'algorithms', textgenerationwebui: '#smoothingBlock', expander: true },
+    { id: 'math1_temp', group: 'algorithms', novel: '#math1_temp_novel' },
+    { id: 'math1_quad', group: 'algorithms', novel: '#math1_quad_novel' },
+    { id: 'math1_quad_entropy_scale', group: 'algorithms', novel: '#math1_quad_entropy_scale_novel' },
+    { id: 'xtc', group: 'algorithms', textgenerationwebui: '#xtc_block', expander: true },
+    { id: 'dry', group: 'algorithms', textgenerationwebui: '#dryBlock', expander: true },
+    { id: 'dynatemp', group: 'algorithms', textgenerationwebui: '#dynatemp_block_ooba', expander: true },
+    { id: 'mirostat', group: 'algorithms', textgenerationwebui: '#mirostat_block_ooba', kobold: '[name="miroStatBlock-kobold"]', expander: true, subtitleSource: '[data-sb-sampling-control="#mirostat_block_ooba"] .ds-row-subtitle' },
+    { id: 'mirostat_tau', group: 'algorithms', novel: '#mirostat_tau_novel' },
+    { id: 'mirostat_lr', group: 'algorithms', novel: '#mirostat_lr_novel' },
+    { id: 'beam_search', group: 'algorithms', textgenerationwebui: '#beamSearchBlock', expander: true, gated: true },
+    { id: 'contrastive_search', group: 'algorithms', textgenerationwebui: '#contrastiveSearchBlock', expander: true, gated: true },
+    // Tokens
+    { id: 'seed', group: 'tokens', openai: '#seed_openai', textgenerationwebui: '#seed_textgenerationwebui', kobold: '#seed_kobold', large: true, subtitleSource: '[data-sb-sampling-control="#seed_textgenerationwebui"] .ds-row-subtitle' },
+    { id: 'logit_bias', group: 'tokens', openai: '#openai_logit_bias_preset', textgenerationwebui: '#logit_bias_block_ooba', large: true, gated: true },
+    { id: 'banned_tokens', group: 'tokens', textgenerationwebui: '#banned_tokens_block_ooba', large: true, gated: true },
+    { id: 'min_length', group: 'tokens', textgenerationwebui: '#min_length_textgenerationwebui', novel: '#min_length_novel', gated: true },
+    { id: 'max_tokens_second', group: 'tokens', textgenerationwebui: '#max_tokens_second_textgenerationwebui', gated: true },
+    // Output
+    { id: 'sampler_order', group: 'output', textgenerationwebui: ['#sampler_order_block_kcpp', '#sampler_order_block_lcpp'], kobold: '#kobold_order', large: true, gated: true },
+    { id: 'sampler_priority', group: 'output', textgenerationwebui: ['#sampler_priority_block_ooba', '#sampler_priority_block_aphrodite'], large: true, gated: true },
+    { id: 'json_schema', group: 'output', textgenerationwebui: '#json_schema_block', large: true, gated: true },
+    { id: 'do_sample', group: 'output', textgenerationwebui: '#do_sample_textgenerationwebui', gated: true },
+    { id: 'add_bos_token', group: 'output', textgenerationwebui: '#add_bos_token_textgenerationwebui', gated: true },
+    { id: 'ignore_eos_token', group: 'output', textgenerationwebui: '#ignore_eos_token_textgenerationwebui', gated: true },
+    { id: 'use_default_badwordsids', group: 'output', kobold: '#use_default_badwordsids', gated: true },
+    { id: 'temperature_last', group: 'output', textgenerationwebui: '#temperature_last_textgenerationwebui', gated: true },
+    { id: 'include_reasoning', group: 'output', textgenerationwebui: '#include_reasoning_textgenerationwebui', gated: true },
+    { id: 'speculative_ngram', group: 'output', textgenerationwebui: '#speculative_ngram_textgenerationwebui', gated: true },
+    { id: 'spaces_between_special_tokens', group: 'output', textgenerationwebui: '#spaces_between_special_tokens_textgenerationwebui', gated: true },
+    { id: 'cfg', group: 'output', textgenerationwebui: '#cfg_block_ooba', gated: true },
+    { id: 'grammar', group: 'output', textgenerationwebui: '#grammar_block_ooba', kobold: '#grammar', gated: true, subtitleSource: '[data-sb-sampling-control="#grammar_block_ooba"] .ds-row-subtitle' },
+]);
 
-const SB_MULTI_SAMPLING_CONTROLS = Object.freeze(new Set([
-    '#adaptive_p_block',
-    '#smoothingBlock',
-    '#xtc_block',
-    '#dryBlock',
-    '#dynatemp_block_ooba',
-    '#mirostat_block_ooba',
-    '#beamSearchBlock',
-    '#contrastiveSearchBlock',
-]));
+function getSamplingBackendControls(backendId) {
+    return SB_SAMPLER_REGISTRY.flatMap(entry => [entry[backendId] ?? []].flat());
+}
+
+const SB_SAMPLER_ENTRY_BY_SELECTOR = Object.freeze(new Map(SB_SAMPLER_REGISTRY.flatMap(entry => SB_SAMPLING_BACKENDS
+    .flatMap(backend => [entry[backend.id] ?? []].flat())
+    .map(selector => [selector, entry]))));
 
 function getSamplingGroupId(selector) {
-    return Object.entries(SB_SAMPLING_GROUP_SELECTORS).find(([, selectors]) => selectors.has(selector))?.[0] ?? 'sampling';
+    return SB_SAMPLER_ENTRY_BY_SELECTOR.get(selector)?.group ?? 'sampling';
 }
 
 function getSpecialTokenControlBlock() {
@@ -9701,7 +9632,7 @@ function getSamplingControlBlock(selector) {
         return input.closest('.flex-container.justifyCenter') ?? input.parentElement;
     }
 
-    if (SB_MULTI_SAMPLING_CONTROLS.has(selector) || input.matches('#cfg_block_ooba, #grammar_block_ooba, #json_schema_block, #banned_tokens_block_ooba, #logit_bias_block_ooba, [id^="sampler_order_block_"], [id^="sampler_priority_block_"]')) {
+    if (SB_SAMPLER_ENTRY_BY_SELECTOR.get(selector)?.expander || input.matches('#cfg_block_ooba, #grammar_block_ooba, #json_schema_block, #banned_tokens_block_ooba, #logit_bias_block_ooba, [id^="sampler_order_block_"], [id^="sampler_priority_block_"]')) {
         return input;
     }
 
@@ -9714,7 +9645,7 @@ function getSamplingControlBlock(selector) {
         ?? input.parentElement;
 }
 
-function buildSamplingControlCard(selector) {
+function buildSamplingControlCard(selector, root = document) {
     const controlBlock = selector === '#samplerResetButton'
         ? getSamplerToolbarControlBlock()
         : getSamplingControlBlock(selector);
@@ -9722,18 +9653,27 @@ function buildSamplingControlCard(selector) {
         return null;
     }
 
+    const entry = SB_SAMPLER_ENTRY_BY_SELECTOR.get(selector);
     const isTextGenSampler = controlBlock.hasAttribute('data-tg-samplers') || controlBlock.querySelector('[data-tg-samplers]');
-    const isExpander = SB_MULTI_SAMPLING_CONTROLS.has(selector);
+    const isExpander = Boolean(entry?.expander);
     const card = createElement(isExpander ? 'details' : 'div', {
         className: [
             'sb-sampling-control-card',
             isTextGenSampler ? 'sb-sampling-textgen-card' : '',
-            SB_LARGE_SAMPLING_CONTROLS.has(selector) ? 'sb-sampling-large-card' : '',
+            entry?.large ? 'sb-sampling-large-card' : '',
             isExpander ? 'ds-row-expander' : 'sb-sampling-row',
         ].filter(Boolean).join(' '),
     });
     card.dataset.sbSamplingControl = selector;
-    for (const attributeName of ['data-source', 'data-source-mode']) {
+    if (entry) card.dataset.sbSamplerId = entry.id;
+    // Ungated samplers stay visible for every provider; gating code in openai.js and
+    // textgen-settings.js skips elements carrying this marker.
+    if (entry && !entry.gated) {
+        for (const element of [controlBlock, ...controlBlock.querySelectorAll('[data-source], [data-tg-type]')]) {
+            element.setAttribute('data-sb-sampler-ungated', '');
+        }
+    }
+    for (const attributeName of ['data-source', 'data-source-mode', 'data-sb-sampler-ungated']) {
         if (controlBlock.hasAttribute(attributeName)) {
             card.setAttribute(attributeName, controlBlock.getAttribute(attributeName));
         }
@@ -9743,7 +9683,10 @@ function buildSamplingControlCard(selector) {
         const summary = createElement('summary', { className: 'ds-row' });
         const text = createElement('div', { className: 'ds-row-text' });
         const heading = controlBlock.querySelector(':scope > h4');
-        const label = createElement('span', { className: 'ds-row-label', text: heading?.textContent.replace(/\s+/g, ' ').trim() || 'lorum ipsum' });
+        // A header toggle may already be normalized; its subtitle is not part of the sampler name.
+        const headingCopy = heading?.cloneNode(true);
+        headingCopy?.querySelectorAll('.ds-row-subtitle, [data-sb-copy-placeholder]').forEach(node => node.remove());
+        const label = createElement('span', { className: 'ds-row-label', text: headingCopy?.textContent.replace(/\s+/g, ' ').trim() || 'lorum ipsum' });
         if (label.textContent === 'lorum ipsum') label.dataset.sbCopyPlaceholder = 'true';
         const tooltip = heading?.matches('[title], [data-sttt--title]') ? heading : heading?.querySelector('[title], [data-sttt--title]');
         const subtitle = createElement('small', {
@@ -9763,7 +9706,87 @@ function buildSamplingControlCard(selector) {
     }
     decorateSamplingControlCard(card, selector);
     normalizeBackendSettingsRows(card);
+    applySamplingSubtitleSource(card, entry, root);
     return card;
+}
+
+/** Reuses another backend's subtitle (text and i18n key) when this card's native markup has none. */
+function applySamplingSubtitleSource(card, entry, root) {
+    if (!entry?.subtitleSource) return;
+    const placeholder = card.querySelector('.ds-row-subtitle[data-sb-copy-placeholder]');
+    const source = root.querySelector(entry.subtitleSource);
+    if (!(placeholder instanceof HTMLElement) || !(source instanceof HTMLElement) || source.hasAttribute('data-sb-copy-placeholder')) return;
+    const text = source.textContent.trim();
+    if (!text) return;
+    placeholder.textContent = text;
+    delete placeholder.dataset.sbCopyPlaceholder;
+    if (source.dataset.i18n) placeholder.dataset.i18n = source.dataset.i18n;
+}
+
+/**
+ * Text Completions samplers that Chat Completions has no setting for. They are listed in the CC
+ * section as inert rows so both lists read the same; gated mechanisms are left out because TC only
+ * shows them for some backend types.
+ */
+const SB_CC_PLACEHOLDER_SAMPLERS = Object.freeze(SB_SAMPLER_REGISTRY.filter(entry => entry.textgenerationwebui && !entry.openai && !entry.gated));
+const SB_CC_PLACEHOLDER_SUBTITLE = 'Not available in Chat Completions. Custom endpoints can send it with Additional Parameters.';
+
+/** Registry position of a sampling card, so placeholder rows sort beside real controls. */
+function getSamplingCardRank(card) {
+    const entry = SB_SAMPLER_ENTRY_BY_SELECTOR.get(card.dataset.sbSamplingControl)
+        ?? SB_SAMPLER_REGISTRY.find(candidate => candidate.id === card.dataset.sbSamplerId);
+    const index = SB_SAMPLER_REGISTRY.indexOf(entry);
+    if (index < 0) return Number.MAX_SAFE_INTEGER;
+    const selectors = Object.values(entry).flat().filter(value => typeof value === 'string');
+    return index + Math.max(0, selectors.indexOf(card.dataset.sbSamplingControl)) / 100;
+}
+
+/** Builds an inert CC row from the live Text Completions card's label; returns null until that card exists. */
+function buildChatCompletionPlaceholderCard(entry, root) {
+    const source = root.querySelector(`#sb-sampling-textgenerationwebui [data-sb-sampling-control="${entry.textgenerationwebui}"]`);
+    const sourceLabel = source?.querySelector(entry.expander ? ':scope > summary .ds-row-label' : '.ds-row-label');
+    const labelText = sourceLabel?.textContent.replace(/\s+/g, ' ').trim();
+    if (!labelText || sourceLabel.hasAttribute('data-sb-copy-placeholder')) return null;
+
+    const card = createElement('div', {
+        className: 'sb-sampling-control-card sb-sampling-row sb-sampling-placeholder-card',
+        attrs: { 'data-sb-sampling-placeholder': '', 'data-sb-sampler-id': entry.id },
+    });
+    const row = createElement('div', { className: 'ds-row' });
+    const text = createElement('div', { className: 'ds-row-text' });
+    const label = createElement('span', { className: 'ds-row-label', text: labelText });
+    const i18nKey = sourceLabel.getAttribute('data-i18n') ?? sourceLabel.querySelector(':scope > [data-i18n]')?.getAttribute('data-i18n');
+    if (i18nKey && !i18nKey.startsWith('[')) label.dataset.i18n = i18nKey;
+    text.append(label, createElement('small', {
+        className: 'ds-row-subtitle',
+        text: SB_CC_PLACEHOLDER_SUBTITLE,
+        attrs: { 'data-i18n': SB_CC_PLACEHOLDER_SUBTITLE },
+    }));
+    const badge = createElement('span', { className: 'sb-sampling-unavailable-badge' });
+    badge.append(
+        createElement('i', { className: 'fa-solid fa-ban', attrs: { 'aria-hidden': 'true' } }),
+        createElement('span', { text: 'Unavailable', attrs: { 'data-i18n': 'Unavailable' } }),
+    );
+    const suffix = createElement('div', { className: 'ds-row-suffix' });
+    suffix.append(badge);
+    row.append(text, suffix);
+    card.append(row);
+    return card;
+}
+
+function syncChatCompletionPlaceholderCards(root) {
+    const section = root.querySelector('#sb-sampling-openai');
+    if (!(section instanceof HTMLElement)) return false;
+    let built = false;
+    for (const entry of SB_CC_PLACEHOLDER_SAMPLERS) {
+        if (section.querySelector(`[data-sb-sampling-placeholder][data-sb-sampler-id="${entry.id}"]`)) continue;
+        const target = section.querySelector(`[data-sb-sampling-group="${entry.group}"] > .ds-pref-group`);
+        const card = target instanceof HTMLElement ? buildChatCompletionPlaceholderCard(entry, root) : null;
+        if (!card) continue;
+        target.append(card);
+        built = true;
+    }
+    return built;
 }
 
 function drawerHasControls(drawer) {
@@ -9822,22 +9845,31 @@ function updateSamplingCardVisibility(section) {
     // Track visibility as we write: `card.hidden` writes above have not been flushed yet, so a
     // checkVisibility() here would force the very layout this function is trying to avoid.
     const visibleCards = new Set(cardVisibility.filter(([, visible]) => visible).map(([card]) => card));
-    const activeApi = getCurrentMainApiValue();
     const groups = [];
     for (const group of section.querySelectorAll('[data-sb-sampling-group]')) {
         if (!(group instanceof HTMLElement)) continue;
-        const hasSamplingCard = [...group.querySelectorAll('[data-sb-sampling-control]')].some(card => visibleCards.has(card));
-        const hasPresetRow = [...group.querySelectorAll('.sb-non-chat-preset-row, #openai_api-presets')]
-            .some(row => row instanceof HTMLElement && (row.checkVisibility?.() ?? row.getClientRects().length > 0));
-        const presetBackend = activeApi === 'koboldhorde' ? 'kobold' : activeApi;
-        const hasActivePreset = group.dataset.sbSamplingGroup === 'presets'
-            && ['textgenerationwebui', 'kobold', 'novel'].includes(presetBackend)
-            && group.querySelector(`#${presetBackend}_api-presets`) instanceof HTMLElement;
-        groups.push([group, !(hasSamplingCard || hasPresetRow || hasActivePreset)]);
+        // Placeholder rows have no gated content, so they always keep their group visible.
+        const hasSamplingCard = Boolean(group.querySelector('[data-sb-sampling-placeholder]'))
+            || [...group.querySelectorAll('[data-sb-sampling-control]')].some(card => visibleCards.has(card));
+        groups.push([group, !hasSamplingCard]);
     }
     for (const [group, hidden] of groups) {
         if (group.hidden !== hidden) group.hidden = hidden;
     }
+}
+
+function sortSamplingSectionCards(section) {
+    for (const group of section.querySelectorAll('[data-sb-sampling-group] > .ds-pref-group')) {
+        const cards = [...group.querySelectorAll(':scope > [data-sb-sampling-control], :scope > [data-sb-sampling-placeholder]')];
+        const sorted = [...cards].sort((a, b) => getSamplingCardRank(a) - getSamplingCardRank(b));
+        if (sorted.some((card, index) => card !== cards[index])) group.append(...sorted);
+    }
+}
+
+function resyncUngatedSamplerVisibility(section, backendId) {
+    // Cards built after the backend's own gating pass may still carry its inline display:none.
+    $(section).find('[data-sb-sampler-ungated]').filter('[data-source], [data-tg-type]').show();
+    if (backendId === 'textgenerationwebui') showTGSamplerControls();
 }
 
 function syncSamplingPanelControls(root) {
@@ -9853,7 +9885,10 @@ function syncSamplingPanelControls(root) {
 
         section.querySelector('.sb-sampling-note')?.remove();
 
-        for (const selector of backend.controls) {
+        let builtCards = false;
+        const backendControls = getSamplingBackendControls(backend.id);
+
+        for (const selector of backendControls) {
             const groupId = getSamplingGroupId(selector);
             const target = section.querySelector(`[data-sb-sampling-group="${groupId}"] > .ds-pref-group`);
             if (!(target instanceof HTMLElement)) throw new Error(`Missing Sampling group: ${backend.id}/${groupId}`);
@@ -9869,13 +9904,26 @@ function syncSamplingPanelControls(root) {
 
             existingCard?.remove();
 
-            const card = buildSamplingControlCard(selector);
+            const card = buildSamplingControlCard(selector, root);
             if (card) {
                 target.appendChild(card);
+                builtCards = true;
             }
         }
 
-        if (!section.querySelector('[data-sb-sampling-control]')) {
+        if (backend.id === 'openai' && syncChatCompletionPlaceholderCards(root)) builtCards = true;
+
+        if (builtCards) {
+            sortSamplingSectionCards(section);
+            section.dataset.sbUngatedResyncPending = 'true';
+        }
+        // Base gating and manual sampler hiding query the live document, so wait until the panel is attached.
+        if (section.dataset.sbUngatedResyncPending && section.isConnected) {
+            delete section.dataset.sbUngatedResyncPending;
+            resyncUngatedSamplerVisibility(section, backend.id);
+        }
+
+        if (!section.querySelector('[data-sb-sampling-control]') && !section.querySelector('[data-sb-sampling-placeholder]')) {
             section.appendChild(createElement('p', {
                 className: 'sb-sampling-note',
                 text: 'Sampler controls are not ready yet. Reopen the Backend menu after settings finish loading.',
@@ -9947,6 +9995,11 @@ function buildSamplingPanel() {
             title: `Backend: ${backend.title}`,
             description: `Active backend samplers are shown here. ${backend.description}`,
         });
+        header.append(createElement('p', {
+            className: 'sb-sampling-header-note',
+            text: 'Some backends ignore samplers they do not support.',
+            attrs: { 'data-i18n': 'Some backends ignore samplers they do not support.' },
+        }));
         section.append(header);
         for (const group of SB_SAMPLING_GROUPS) {
             const category = createElement('section', {

@@ -9547,6 +9547,13 @@ function toggleChatCompletionForms() {
     }
 
     $('[data-source]').each(function () {
+        // SillyBunny: the shared Sampling tab shows every sampler for every provider
+        // (sillybunny-tabs.js SB_SAMPLER_REGISTRY); unsupported values are ignored by the provider.
+        if (this.hasAttribute('data-sb-sampler-ungated')) {
+            $(this).show();
+            return;
+        }
+
         const mode = $(this).data('source-mode');
         const validSources = $(this).data('source').split(',');
         const effectiveSource = oai_settings.chat_completion_source === chat_completion_sources.OPENAI_RESPONSES ? chat_completion_sources.OPENAI : oai_settings.chat_completion_source;

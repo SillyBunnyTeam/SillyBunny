@@ -54,7 +54,7 @@ const PRESET_CHANGE_TIMEOUT_MS = 10000;
 const PRESET_TEXT_FIELD_SELECTOR = 'textarea, input[type="text"]';
 // SillyBunny: track live text fields independently of their Presets/Editor placement, including relocated context bodies.
 const PRESET_TEXT_FIELD_PANEL_SELECTORS = Object.freeze({
-    kobold: '#kobold_api-settings',
+    kobold: '#kobold_api-settings, #grammar',
     novel: '#range_block_novel, #novel_api-settings',
     openai: '#range_block_openai, #openai_settings, #completion_prompt_manager, #sb-editor-utility',
     textgenerationwebui: '#textgenerationwebui_api-settings',
