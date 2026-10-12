@@ -65,6 +65,9 @@ function getMediaQueryPxValues(cssSource) {
 // !important frame rule, and the send button beats style.css's 0.7 composer-button dimming.
 // sillybunny-tabs.css raised 394 -> 398: the joined desktop bottom-bar stack must square the
 // composer's top corners against the !important #send_form frame radius in sillybunny-theme.css.
+// sillybunny-tabs.css raised 398 -> 400: the Extensions manage/install pill (eddb4ff0c) pins one
+// layout rule, and the subpage store must hide stored sections over the .sb-managed reset's
+// display:block !important, or the legacy Extensions menu lays out under the row list.
 // sillybunny-mobile-shell.css raised 684 -> 685: the circular send/stop button beats the
 // !important 10px/9px radius in upstream mobile-styles.css.
 // sillybunny-mobile-shell.css raised 685 -> 688: the libadwaita composer entry's rest border
@@ -72,7 +75,7 @@ function getMediaQueryPxValues(cssSource) {
 const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
     'sillybunny-mobile-shell.css': 688,
     'sillybunny-paper-theme.css': 51,
-    'sillybunny-tabs.css': 398,
+    'sillybunny-tabs.css': 400,
     'sillybunny-chat-styles.css': 225,
     'sillybunny-theme.css': 248,
 });
