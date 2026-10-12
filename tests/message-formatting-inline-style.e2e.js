@@ -1,10 +1,11 @@
 /* global document, getComputedStyle */
 import { expect, test } from '@playwright/test';
+import { testSetup } from './frontend/frontent-test-utils.js';
 
 test.describe('message formatting inline styles', () => {
     test('preserves safe inline CSS effects and strips dangerous CSS from rendered message spans', async ({ page }) => {
-        await page.goto('/', { waitUntil: 'domcontentloaded' });
-        await page.waitForFunction(() => document.readyState === 'complete', { timeout: 0 });
+        // messageFormatting needs the markdown converter, which startup creates after the document loads.
+        await testSetup.awaitST({ page });
 
         const result = await page.evaluate(async () => {
             const mod = await import('/script.js');
