@@ -142,27 +142,51 @@ function insertConversationStylesheetLink() {
     customStyle.before(link);
 }
 
-function ensureConversationStylesheet() {
-    if (conversationState.conversationCssLoaded) {
+// 'idle' | 'loading' | 'ready' | 'failed'. The chrome stays hidden while 'loading': revealing it
+// before the lazy sheet applies paints one or more frames of unstyled markup on the first open.
+let conversationStylesheetStatus = 'idle';
+
+export function isConversationStylesheetLoading() {
+    return conversationStylesheetStatus === 'loading';
+}
+
+// The open path focuses the composer after 100ms; a slower first sheet load reveals the
+// chrome after that, so focus it again on the reveal frame (queued after the refresh flush).
+function revealConversationWorkspaceAfterStylesheet() {
+    if (!conversationState.conversationWorkspaceOpen) {
         return;
     }
 
-    conversationState.conversationCssLoaded = true;
+    conversationState.timelineBottomScrollPending = true;
+    scheduleInterfaceRefresh({ syncControls: false });
+    requestAnimationFrame(() => {
+        document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
+    });
+}
+
+function ensureConversationStylesheet() {
+    if (conversationStylesheetStatus === 'loading' || conversationStylesheetStatus === 'ready') {
+        return;
+    }
+
+    conversationStylesheetStatus = 'loading';
     insertConversationStylesheetLink();
     loadStylesheetAsync(CONVERSATION_STYLESHEET_HREF, { id: CONVERSATION_STYLESHEET_ID })
         .then(() => {
+            conversationStylesheetStatus = 'ready';
             const input = document.getElementById(CHROME_IDS.input);
             if (input instanceof HTMLTextAreaElement) {
                 resizeConversationInput(input);
             }
-            if (conversationState.conversationWorkspaceOpen) {
-                conversationState.timelineBottomScrollPending = true;
-                scheduleTimelineRender();
-            }
+            revealConversationWorkspaceAfterStylesheet();
         })
         .catch(error => {
-            conversationState.conversationCssLoaded = false;
+            // Reveal unstyled rather than leave the workspace stuck closed. Drop the dead link:
+            // loadStylesheetAsync adopts an existing link by id and would wait on it forever.
+            conversationStylesheetStatus = 'failed';
+            document.getElementById(CONVERSATION_STYLESHEET_ID)?.remove();
             console.warn('Conversation Mode: stylesheet failed to load', error);
+            revealConversationWorkspaceAfterStylesheet();
         });
 }
 

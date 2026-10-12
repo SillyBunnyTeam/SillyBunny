@@ -17,7 +17,7 @@ function getStore(personaId, avatar = 'char.png', groupId = '') {
     return stores.get(key(personaId, avatar, groupId));
 }
 
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/chrome.js', () => ({ setConversationInterfaceActive: jest.fn() }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/chrome.js', () => ({ isConversationStylesheetLoading: () => false, setConversationInterfaceActive: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
     getConversationBranches: () => [],
     getConversationGroupById: () => null,

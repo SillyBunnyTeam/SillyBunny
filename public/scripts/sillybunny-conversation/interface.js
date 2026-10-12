@@ -1,4 +1,4 @@
-import { setConversationInterfaceActive } from './chrome.js';
+import { isConversationStylesheetLoading, setConversationInterfaceActive } from './chrome.js';
 import { CHROME_IDS, DEFAULT_BRANCH_ID, DEFAULT_SETTINGS, SETTINGS_FIELDS } from './constants.js';
 import {
     getConversationBranches,
@@ -297,7 +297,8 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
     const personaId = getConversationPersonaId();
     const groupId = getConversationGroupIdForAvatar(avatar);
     const settings = getSettings(avatar, { groupId, personaId });
-    const active = Boolean(conversationState.conversationWorkspaceOpen);
+    // First open lazy-loads the Conversation sheet; keep Roleplay painted until it applies.
+    const active = Boolean(conversationState.conversationWorkspaceOpen) && !isConversationStylesheetLoading();
 
     setConversationInterfaceActive(active);
 
