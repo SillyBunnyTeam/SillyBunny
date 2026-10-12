@@ -635,10 +635,10 @@ class PromptManager {
         menu.setAttribute('role', 'menu');
 
         const items = [
-            hasEdit && { label: 'Edit', icon: 'fa-pencil', action: () => hasEdit.click() },
-            hasInspect && { label: 'Inspect tokens', icon: 'fa-magnifying-glass', action: () => hasInspect.click() },
-            hasSend && { label: 'Send to agents', icon: 'fa-paper-plane', action: () => hasSend.click() },
-            hasDetach && { label: 'Detach', icon: 'fa-chain-broken', action: () => hasDetach.click() },
+            hasEdit && { label: 'Edit', icon: 'fa-pencil', action: () => hasEdit.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) },
+            hasInspect && { label: 'Inspect tokens', icon: 'fa-magnifying-glass', action: () => hasInspect.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) },
+            hasSend && { label: 'Send to agents', icon: 'fa-paper-plane', action: () => hasSend.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) },
+            hasDetach && { label: 'Detach', icon: 'fa-chain-broken', action: () => hasDetach.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) },
         ].filter(Boolean);
 
         items.forEach(({ label, icon, action }) => {
@@ -2450,7 +2450,8 @@ class PromptManager {
                             : 'pm-chip-user';
             const typeChipHtml = typeChipLabel
                 ? `<span class="pm-row-chip ${typeChipClass}">${typeChipLabel}</span>` : '';
-            const roleChipHtml = iconLookup
+            // SillyBunny: only show role chip when role is non-default (user/assistant) — system is already implied by the type chip — feat/v1.9.0-ui-overhaul
+            const roleChipHtml = iconLookup && prompt.role !== 'system'
                 ? `<span class="pm-row-chip pm-chip-role pm-chip-role-${escapeHtml(prompt.role || 'system')}">${escapeHtml(prompt.role || 'system')}</span>` : '';
             const depthChipHtml = isInjectionPrompt
                 ? `<span class="pm-row-chip pm-chip-depth">↓${escapeHtml((prompt.injection_depth ?? 0).toString())}</span>` : '';

@@ -98,8 +98,8 @@
 }
 
 #completion_prompt_manager .completion_prompt_manager_list_head .pm-list-head-tokens {
-    flex: 0 0 96px;
-    width: 96px;
+    flex: 0 0 72px;
+    width: 72px;
     text-align: right;
     padding-right: 6px;
     min-width: unset;
@@ -114,9 +114,9 @@
 
 #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt {
     align-items: center;
-    /* SillyBunny: the grouped row metric (44px / 10px / 16px) rather than 12px/14px, which made
-       every row 54px tall and put the list on a different inset from the rest of the tab. */
-    padding: 10px 16px;
+    /* SillyBunny: zero horizontal padding — row parts own their own spacing so the name
+       column gets maximum budget at narrow widths. — feat/v1.9.0-ui-overhaul */
+    padding: 0 4px 0 0;
     min-height: 44px;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 14px;
@@ -301,8 +301,10 @@
 
 /* End zone — fixed width, position:relative for action overlay */
 #completion_prompt_manager #completion_prompt_manager_list li .pm-row-end-zone {
-    flex: 0 0 96px;
-    width: 96px;
+    /* SillyBunny: 72px fits 3 × 22px action buttons + gaps and keeps the name column viable
+       at the 280px desktop list pane width. — feat/v1.9.0-ui-overhaul */
+    flex: 0 0 72px;
+    width: 72px;
     position: relative;
     display: flex;
     align-items: center;
@@ -906,6 +908,7 @@
     justify-content: space-between;
 }
 
+/* Small-screen adjustments (popup layout, tab sizing) — viewport-based */
 @media screen and (max-width: 412px) {
     #completion_prompt_manager_popup {
         max-width: 100%;
@@ -934,7 +937,11 @@
         flex-direction: column;
         gap: 0.5em;
     }
+}
 
+/* SillyBunny: kebab/hover model keyed on pointer capability, not viewport width.
+   hover:none + pointer:coarse = touch device regardless of window size. — feat/v1.9.0-ui-overhaul */
+@media (hover: none) and (pointer: coarse) {
     /* On touch devices hover doesn't fire — show kebab, hide hover actions */
     #completion_prompt_manager #completion_prompt_manager_list li .pm-row-actions {
         display: none;
@@ -949,10 +956,10 @@
     /* Token count makes room for kebab */
     #completion_prompt_manager #completion_prompt_manager_list li .pm-row-end-zone .prompt_manager_prompt_tokens {
         opacity: 1 !important;
-        padding-right: 30px;
+        padding-right: 32px;
     }
 
-    /* Never fade tokens on mobile hover (no hover on touch) */
+    /* Never fade tokens on touch */
     #completion_prompt_manager #completion_prompt_manager_list li:hover .pm-row-end-zone .prompt_manager_prompt_tokens {
         opacity: 1;
     }
