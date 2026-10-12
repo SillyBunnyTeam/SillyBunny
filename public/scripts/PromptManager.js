@@ -15,6 +15,7 @@ import { isMobile } from './RossAscends-mods.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { getPromptDisplayTokenCounts, getPromptSourceTokenCounts, isCommentOnlyPromptContent, mergePromptTokenCounts } from './prompt-token-counts.js';
 import { getRenderedMarkerPrompt } from './prompt-manager-marker-preview.js';
+import { reorderPromptOrder } from './prompt-manager-order.js';
 import { clearPromptSetVariables } from './prompt-variable-cleanup.js';
 import { RUNTIME_AGENTS_IDENTIFIER, resolveInChatAgentTokenUsage } from './in-chat-agent-inspection.js';
 import {
@@ -414,6 +415,7 @@ class PromptManager {
         // Original popup position before the desktop editor host moves it inline.
         this.popupOriginalParent = null;
         this.popupOriginalNextSibling = null;
+        this.closeKebabMenu = null;
 
         // Media query controlling the desktop split layout.
         this.desktopSplitMediaQuery = window.matchMedia(PROMPT_MANAGER_DESKTOP_SPLIT_QUERY);
@@ -627,7 +629,7 @@ class PromptManager {
 
     // SillyBunny: mobile context menu for the ⋮ kebab button — surfaces edit/inspect/detach/send actions on touch — feat/v1.9.0-ui-overhaul
     showKebabMenu(anchorEl, identifier) {
-        document.querySelector('.pm-kebab-menu')?.remove();
+        this.closeKebabMenu?.();
 
         const row = this.containerElement?.querySelector(`[data-pm-identifier="${CSS.escape(identifier)}"]`);
         const hasEdit = row?.querySelector('.prompt-manager-edit-action');
@@ -649,30 +651,66 @@ class PromptManager {
         items.forEach(({ label, icon, action }) => {
             const btn = document.createElement('button');
             btn.type = 'button';
-            btn.className = 'pm-kebab-menu-item menu_button';
+            btn.className = 'pm-kebab-menu-item';
             btn.setAttribute('role', 'menuitem');
             btn.innerHTML = `<i class="fa-solid ${icon} fa-fw" aria-hidden="true"></i><span>${label}</span>`;
-            btn.addEventListener('click', () => { menu.remove(); action(); });
+            btn.addEventListener('click', () => { this.closeKebabMenu?.(); action(); });
             menu.appendChild(btn);
         });
 
         if (!items.length) return;
 
-        document.body.appendChild(menu);
+        // SillyBunny: menus must share a native dialog's layer and sit above the settings overlay.
+        const dialog = anchorEl.closest('dialog[open]');
+        (dialog ?? document.body).appendChild(menu);
 
         const rect = anchorEl.getBoundingClientRect();
         const menuW = 200;
-        let left = rect.right - menuW;
-        if (left < 8) left = 8;
-        menu.style.cssText = `position:fixed;top:${rect.bottom + 4}px;left:${left}px;min-width:${menuW}px;z-index:var(--sb-z-menu,1200)`;
+        menu.style.cssText = `position:fixed;top:0;left:0;min-width:${menuW}px;z-index:var(--sb-z-context-menu,8000)`;
+        const menuRect = menu.getBoundingClientRect();
+        const left = Math.max(8, Math.min(rect.right - menuRect.width, window.innerWidth - menuRect.width - 8));
+        const top = rect.bottom + 4 + menuRect.height <= window.innerHeight - 8
+            ? rect.bottom + 4
+            : Math.max(8, rect.top - menuRect.height - 4);
+        // A filtered dialog can be the containing block for fixed-position descendants.
+        menu.style.left = `${left - menuRect.left}px`;
+        menu.style.top = `${top - menuRect.top}px`;
 
-        const dismiss = (e) => {
-            if (!menu.contains(e.target) && e.target !== anchorEl) {
-                menu.remove();
-                document.removeEventListener('click', dismiss, true);
+        const dismiss = (event) => {
+            if (!menu.contains(event.target) && !anchorEl.contains(event.target)) {
+                close();
             }
         };
-        setTimeout(() => document.addEventListener('click', dismiss, true), 0);
+        const onKeyDown = (event) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                close();
+                anchorEl.focus({ preventScroll: true });
+            }
+        };
+        const onScroll = (event) => {
+            if (menu.contains(event.target)) return;
+            // Queued or unrelated scroll events can arrive after opening without moving the anchor.
+            const currentRect = anchorEl.getBoundingClientRect();
+            if (currentRect.top !== rect.top || currentRect.left !== rect.left) close();
+        };
+        const close = () => {
+            menu.remove();
+            document.removeEventListener('click', dismiss, true);
+            document.removeEventListener('keydown', onKeyDown, true);
+            document.removeEventListener('scroll', onScroll, true);
+            window.removeEventListener('resize', close);
+            dialog?.removeEventListener('close', close);
+            this.closeKebabMenu = null;
+        };
+        this.closeKebabMenu = close;
+        document.addEventListener('click', dismiss, true);
+        document.addEventListener('keydown', onKeyDown, true);
+        document.addEventListener('scroll', onScroll, true);
+        window.addEventListener('resize', close);
+        dialog?.addEventListener('close', close);
+        menu.querySelector('button')?.focus({ preventScroll: true });
     }
 
     isPopupVisible() {
@@ -1302,8 +1340,7 @@ class PromptManager {
                 triggerField.dispatchEvent(new Event('change', { bubbles: true }));
             });
 
-        // SillyBunny: resizable list/editor divider — drags update --pm-list-width on the workspace
-        // so both panes reflow without JS touching individual widths. — feat/v1.9.0-ui-overhaul
+        // SillyBunny: keep the split width on the persistent container because rendering replaces the workspace.
         this.containerElement?.addEventListener('pointerdown', (event) => {
             const divider = event.target.closest('.pm-workspace-divider');
             if (!divider) return;
@@ -1324,7 +1361,7 @@ class PromptManager {
             const onMove = (moveEvent) => {
                 const delta = moveEvent.clientX - startX;
                 const next = Math.min(480, Math.max(200, startWidth + delta));
-                workspace.style.setProperty('--pm-list-width', `${next}px`);
+                this.containerElement.style.setProperty('--pm-list-width', `${next}px`);
             };
 
             const onUp = () => {
@@ -1333,7 +1370,7 @@ class PromptManager {
                 divider.removeEventListener('pointermove', onMove);
                 divider.removeEventListener('pointerup', onUp);
                 // Persist across sessions
-                const width = workspace.style.getPropertyValue('--pm-list-width');
+                const width = this.containerElement.style.getPropertyValue('--pm-list-width');
                 if (width) {
                     try { localStorage.setItem('sb-pm-list-width', width); } catch (_) { /* ignore */ }
                 }
@@ -1345,11 +1382,8 @@ class PromptManager {
 
         // SillyBunny: restore persisted list pane width on init. — feat/v1.9.0-ui-overhaul
         const savedWidth = (() => { try { return localStorage.getItem('sb-pm-list-width'); } catch (_) { return null; } })();
-        if (savedWidth) {
-            const workspace = this.containerElement?.querySelector(`.${this.configuration.prefix}prompt_manager_workspace`);
-            if (workspace instanceof HTMLElement) {
-                workspace.style.setProperty('--pm-list-width', savedWidth);
-            }
+        if (savedWidth && this.containerElement instanceof HTMLElement) {
+            this.containerElement.style.setProperty('--pm-list-width', savedWidth);
         }
 
         // Re-render prompt manager on openai preset change
@@ -2420,6 +2454,7 @@ class PromptManager {
             this.activePopupArea = '';
         }
 
+        this.closeKebabMenu?.();
         this.restorePopupToOrigin();
         promptManagerDiv.innerHTML = '';
         promptManagerDiv.insertAdjacentHTML('beforeend', headerHtml);
@@ -2440,6 +2475,7 @@ class PromptManager {
             footerDiv?.querySelector('#prompt-manager-reset-character')?.addEventListener('click', this.handleCharacterReset);
             footerDiv.querySelector('[data-pm-footer-action="insert"]').addEventListener('click', this.handleAppendPrompt);
             footerDiv.querySelector('[data-pm-footer-action="new"]').addEventListener('click', this.handleNewPrompt);
+            footerDiv.querySelector('[data-pm-footer-action="delete"]').addEventListener('click', this.handleDeletePrompt);
             footerDiv.querySelector('select').selectedIndex = selectedPromptIndex;
 
             // Add prompt export dialogue and options
@@ -2870,8 +2906,7 @@ class PromptManager {
             update: (event, ui) => {
                 const promptOrder = this.getPromptOrderForCharacter(this.activeCharacter);
                 const promptListElement = $(`#${this.configuration.prefix}prompt_manager_list`).sortable('toArray', { attribute: 'data-pm-identifier' });
-                const idToObjectMap = new Map(promptOrder.map(prompt => [prompt.identifier, prompt]));
-                const updatedPromptOrder = promptListElement.map(identifier => idToObjectMap.get(identifier));
+                const updatedPromptOrder = reorderPromptOrder(promptOrder, promptListElement);
 
                 this.removePromptOrderForCharacter(this.activeCharacter);
                 this.addPromptOrderForCharacter(this.activeCharacter, updatedPromptOrder);
@@ -2879,6 +2914,7 @@ class PromptManager {
                 this.log(`Prompt order updated for ${this.activeCharacter.name}.`);
 
                 this.saveServiceSettings();
+                this.renderDebounced(false);
             },
         });
         this.updateDragLockState();
