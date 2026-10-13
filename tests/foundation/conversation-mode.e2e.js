@@ -1,23 +1,27 @@
 import { expect, test } from '@playwright/test';
 
 test.beforeEach(async ({ page, baseURL }) => {
+    let settingsVersion = Date.now();
     await page.route('**/*', route => {
         const url = new URL(route.request().url());
         if (url.origin !== baseURL) {
             return route.abort();
         }
-        if (url.pathname === '/api/chats/save' || url.pathname === '/api/settings/save') {
+        if (url.pathname === '/api/settings/save') {
+            return route.fulfill({ json: { version: ++settingsVersion } });
+        }
+        if (url.pathname === '/api/chats/save') {
             return route.fulfill({ json: {} });
         }
         return route.continue();
     });
 });
 
-async function seedConversation(page) {
+async function seedConversation(page, { messageOverrides = [] } = {}) {
     await page.goto('/');
     await page.waitForFunction(() => document.getElementById('preloader') === null, null, { timeout: 60000 });
     await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close()));
-    await page.evaluate(async () => {
+    await page.evaluate(async (messageOverrides) => {
         const context = window.SillyTavern.getContext();
         if (!context.characters.length) {
             await context.getCharacters();
@@ -38,13 +42,13 @@ async function seedConversation(page) {
             { id: 'seed-1', role: 'user', name: 'Tester', mes: 'Hi. I wanted to check in.', send_date: new Date(day + 60_000).toISOString(), created_at: day + 60_000, extra: {} },
             { id: 'seed-2', role: 'character', name: character.name, mes: 'Still here after a longer pause.', send_date: new Date(day + 21 * 60_000).toISOString(), created_at: day + 21 * 60_000, extra: {} },
             { id: 'seed-3', role: 'character', name: character.name, mes: 'A new day in the forest.', send_date: new Date(nextDay).toISOString(), created_at: nextDay, extra: {} },
-        ]);
+        ].map((message, index) => ({ ...message, ...messageOverrides[index] })));
 
         const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
         if (!openConversationWorkspaceForAvatar(character.avatar, { showToast: false, enable: true })) {
             throw new Error(`Could not open Conversation workspace for ${character.avatar}`);
         }
-    });
+    }, messageOverrides);
     await expect(page.locator('#sheld[data-sb-conversation-mode="on"]')).toBeVisible();
     await expect(page.locator('#sb_conversation_timeline .sb-conversation-message')).toHaveCount(4, { timeout: 15000 });
 }
@@ -73,6 +77,60 @@ test('desktop split view groups bubbles and keeps settings as a pane', async ({ 
     await expect(page.locator('#sb_conv_grounded_dialogue_rules')).toBeHidden();
     await expect(page.locator('[data-sb-conversation-action="edit-grounded-dialogue-rules"]')).toBeVisible();
 });
+
+for (const compact of [false, true]) {
+    test(`desktop message toolbar stays inside the timeline for short and long bubbles${compact ? ' in compact mode' : ''}`, async ({ page, isMobile }, testInfo) => {
+        test.skip(isMobile, 'The hover toolbar is desktop-only.');
+        const date = Date.UTC(2026, 8, 30, 12, 22, 0);
+        await seedConversation(page, { messageOverrides: [
+            { mes: 'This longer message has enough room for all of its quick actions.' },
+            { mes: 'test' },
+            { mes: 'This longer message has enough room for all of its quick actions.' },
+            { mes: 'test', send_date: new Date(date).toISOString(), created_at: date },
+        ] });
+        if (compact) {
+            await page.evaluate(() => { document.documentElement.dataset.sbCompactMode = 'true'; });
+        }
+
+        for (const expanded of [false, true]) {
+            await page.evaluate(expanded => document.body.classList.toggle('expandMessageActions', expanded), expanded);
+            for (const id of ['seed-3', 'seed-2', 'seed-1']) {
+                const message = page.locator(`.sb-conversation-message[data-message-id="${id}"]`);
+                await message.hover();
+                const toolbar = message.locator('.sb-conversation-message-actions');
+                await expect(toolbar).toHaveCSS('opacity', '1');
+                const layout = await toolbar.evaluate(element => {
+                    const rect = element.getBoundingClientRect();
+                    const timeline = document.getElementById('sb_conversation_timeline').getBoundingClientRect();
+                    const bubble = element.closest('.sb-conversation-message').querySelector('.sb-conversation-message-bubble').getBoundingClientRect();
+                    const controls = [...element.querySelectorAll('button')].filter(button => button.getClientRects().length);
+                    return {
+                        left: rect.left,
+                        right: rect.right,
+                        timelineLeft: timeline.left,
+                        timelineRight: timeline.right,
+                        width: rect.width,
+                        bubbleWidth: bubble.width,
+                        bubbleRight: bubble.right,
+                        controlsReachable: controls.every(button => {
+                            const box = button.getBoundingClientRect();
+                            return button.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2));
+                        }),
+                    };
+                });
+                expect(layout.left, `${id}: toolbar start must not be clipped`).toBeGreaterThanOrEqual(layout.timelineLeft);
+                expect(layout.right, `${id}: toolbar end must not be clipped`).toBeLessThanOrEqual(layout.timelineRight);
+                expect(layout.controlsReachable, `${id}: every quick action must be reachable`).toBe(true);
+                if (id === 'seed-3') {
+                    expect(layout.bubbleWidth, 'Short bubbles must keep their content width').toBeLessThan(layout.width);
+                    await page.screenshot({ path: testInfo.outputPath(`short-message-${expanded ? 'expanded-' : ''}toolbar.png`) });
+                } else {
+                    expect(layout.right, `${id}: toolbar keeps the bubble end alignment`).toBeCloseTo(layout.bubbleRight, 0);
+                }
+            }
+        }
+    });
+}
 
 test('mobile pages keep pals, chat, and settings as full screens', async ({ page, isMobile }) => {
     test.skip(!isMobile, 'Mobile pages.');

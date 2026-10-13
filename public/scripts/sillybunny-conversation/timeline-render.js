@@ -681,10 +681,12 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
     } else {
         bubble.append(text);
     }
-    bubble.append(actionBar);
+    const content = document.createElement('div');
+    content.className = 'sb-conversation-message-content';
+    content.append(bubble, actionBar);
     const body = document.createElement('div');
     body.className = 'sb-conversation-message-body';
-    body.append(meta, bubble);
+    body.append(meta, content);
     if (reactions) {
         body.append(reactions);
     }

@@ -130,8 +130,18 @@ describe('Conversation mobile controls', () => {
         expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on']").height).toBe('calc(100dvh - var(--sb-topbar-layout-offset, var(--topBarBlockSize)))');
         expect(css).not.toMatch(/\.sb-conversation-message\[data-role='user'\] \.sb-conversation-message-actions/);
         expect(getRuleDeclarations('.sb-conversation-message-actions').transform).toBe('translate(0, -8px)');
-        expect(getRuleDeclarations('.sb-conversation-message-actions')['inset-inline-end']).toBe('0');
-        expect(getRuleDeclarations('.sb-conversation-message-actions')['inset-inline-start']).toBe('auto');
+        expect(getRuleDeclarations('.sb-conversation-message-actions')).toMatchObject({
+            'grid-area': '1 / 1',
+            'align-self': 'start',
+            'justify-self': 'end',
+            'max-inline-size': '100%',
+            'flex-wrap': 'wrap',
+        });
+        expect(getRuleDeclarations('.sb-conversation-message-content')).toMatchObject({
+            display: 'grid',
+            'grid-template-columns': 'minmax(0, 1fr)',
+            'max-inline-size': '100%',
+        });
         expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on'] #sb_conversation_settings_drawer").background).toBe('var(--sb-layer-drawer)');
         expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on'] #sb_conversation_stage").background).toBe('var(--sb-layer-view)');
         expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on'] .sb-conversation-header-back").display).toBe('none');

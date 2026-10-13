@@ -1267,8 +1267,18 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     align-items: flex-end;
 }
 
+/* The toolbar contributes its width without stretching the bubble or overflowing the timeline. */
+.sb-conversation-message-content {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    min-inline-size: 0;
+    max-inline-size: 100%;
+}
+
 .sb-conversation-message-bubble {
     position: relative;
+    grid-area: 1 / 1;
+    justify-self: start;
     min-inline-size: 0;
     max-inline-size: 100%;
     padding: 8px 12px;
@@ -1279,6 +1289,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 }
 
 .sb-conversation-message[data-role='user'] .sb-conversation-message-bubble {
+    justify-self: end;
     border-radius: var(--sb-conv-bubble-radius) var(--sb-conv-bubble-radius) var(--sb-conv-bubble-attached) var(--sb-conv-bubble-radius);
     background: var(--sb-conv-bubble-own-bg);
     text-align: start;
@@ -1434,13 +1445,15 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-/* Floating Toolbar for Desktop: same top-end corner of every bubble, overlapping it. */
+/* Overlap the bubble's top-end corner, reserving enough inline space for short messages. */
 .sb-conversation-message-actions {
-    position: absolute;
-    inset-block-start: 0;
-    inset-inline-end: 0;
-    inset-inline-start: auto;
+    grid-area: 1 / 1;
+    align-self: start;
+    justify-self: end;
+    inline-size: max-content;
+    max-inline-size: 100%;
     display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 4px;
     padding: 3px;
@@ -1704,6 +1717,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     inline-size: 100%;
 }
 
+.sb-conversation-message.is-editing .sb-conversation-message-content,
 .sb-conversation-message.is-editing .sb-conversation-message-bubble {
     inline-size: 100%;
     box-sizing: border-box;
