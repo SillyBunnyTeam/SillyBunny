@@ -13,6 +13,7 @@ import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-bu
 import { initializeMobileBottomBar, syncMobileBottomBar } from './sillybunny-mobile-bottom-bar.js';
 import { initializeMessageActions } from './sillybunny-message-actions.js';
 import { initializeToastMotion } from './sillybunny-toast-motion.js';
+import { initializeColorPickers } from './sillybunny-color-picker.js';
 import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProtectionUi } from './sillybunny-preset-autosave.js';
 import {
     animateIn,
@@ -15447,6 +15448,7 @@ function initAll() {
     initializeMobileShellUi();
     initializeMessageActions();
     initializeToastMotion();
+    initializeColorPickers();
     initializePresetAutosave();
 
     const sillyBunnyShell = /** @type {any} */ (globalThis.SillyBunnyShell || {});
