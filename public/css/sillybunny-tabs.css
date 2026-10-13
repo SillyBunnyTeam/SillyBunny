@@ -9426,6 +9426,269 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     color: var(--sb-shell-text);
 }
 
+/* SillyBunny: gallery and extension chrome follow Settings without changing their data or controls. */
+#sb-settings-page #Backgrounds {
+    --sb-bg-icon-size: 40px;
+}
+
+#sb-settings-page #Backgrounds #bpt-animated-bg-panel {
+    gap: 8px;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+#sb-settings-page #Backgrounds .bpt-animated-bg-header {
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    justify-content: flex-start;
+    min-height: 0;
+    padding: 0 4px;
+}
+
+#sb-settings-page #Backgrounds .bpt-animated-bg-note {
+    margin: 0;
+    font-size: var(--sb-type-meta);
+    font-weight: 400;
+    line-height: 1.4;
+    color: var(--sb-shell-text-secondary);
+    overflow-wrap: anywhere;
+}
+
+#sb-settings-page #Backgrounds .bpt-animated-bg-controls {
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 0;
+}
+
+#sb-settings-page #Backgrounds .bpt-animated-bg-url-row {
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding: 10px 16px;
+}
+
+#sb-settings-page #Backgrounds .bpt-animated-bg-url-row input {
+    flex: 1 1 0;
+    min-width: 0;
+    margin: 0;
+}
+
+#sb-settings-page #Backgrounds .bpt-animated-bg-volume {
+    display: flex;
+    min-width: 0;
+}
+
+#sb-settings-page #Backgrounds .bpt-animated-bg-volume > .ds-row-suffix {
+    flex: 0 1 190px;
+}
+
+#sb-settings-page #Backgrounds .bpt-animated-bg-volume input[type='range'] {
+    width: 100%;
+    min-width: 0;
+}
+
+#sb-settings-page #Backgrounds #bpt-animated-bg-sources {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+#sb-settings-page #Backgrounds .bpt-animated-source-empty {
+    padding: 0 4px;
+    font-size: var(--sb-type-meta);
+    line-height: 1.4;
+    color: var(--sb-shell-text-secondary);
+}
+
+#sb-settings-page #Backgrounds .bpt-animated-source-card {
+    min-width: 0;
+    padding: 4px;
+    gap: 4px;
+    border: 0;
+    border-radius: var(--sb-radius-card);
+    background: transparent;
+    box-shadow: none;
+}
+
+#sb-settings-page #Backgrounds .bpt-animated-source-card.is-active {
+    background: var(--sb-flat-selected-bg);
+}
+
+#sb-settings-page #Backgrounds .bpt-animated-source-main {
+    min-height: var(--sb-bg-icon-size);
+    padding: 8px 12px;
+    border-radius: var(--sb-shell-control-radius);
+    font-size: var(--sb-type-control);
+}
+
+#sb-settings-page #Backgrounds .bpt-animated-source-card > .menu_button {
+    color: var(--sb-color-danger);
+}
+
+#sb-settings-page #Backgrounds .menu_button {
+    flex: 0 0 auto;
+    min-height: var(--sb-bg-icon-size);
+    margin: 0;
+    padding: 8px 16px;
+    border: 0;
+    border-radius: var(--sb-shell-control-radius);
+    background: var(--sb-raised-bg);
+    box-shadow: none;
+    transform: none;
+    font-size: var(--sb-type-control);
+    line-height: 1.3;
+    white-space: normal;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    transition: background-color var(--sb-transition-fast);
+}
+
+#sb-settings-page #Backgrounds :is(#bpt-animated-bg-url, #bg-filter, #bg-sort, #background_fitting) {
+    min-height: max(var(--sb-field-min-height), var(--sb-bg-icon-size));
+    border-radius: var(--sb-shell-control-radius);
+}
+
+#sb-settings-page #Backgrounds #bg_tabs {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px 12px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+#sb-settings-page #Backgrounds .bg_tabs_list {
+    justify-self: start;
+    margin: 0;
+}
+
+#sb-settings-page #Backgrounds .bg_tabs_list .bg_tab_button {
+    min-width: 0;
+}
+
+#sb-settings-page #Backgrounds .bg_tabs_list a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--sb-bg-icon-size);
+    padding: 8px 16px;
+    font-size: var(--sb-type-control);
+    line-height: 1.3;
+}
+
+#sb-settings-page #Backgrounds .bg_tabs_list .bg_tab_button.ui-tabs-active {
+    background: var(--sb-flat-selected-bg);
+    box-shadow: none;
+}
+
+#sb-settings-page #Backgrounds .bg_tabs_list .bg_tab_button:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+#sb-settings-page #Backgrounds .heading-controls {
+    margin: 0;
+    gap: 4px;
+}
+
+#sb-settings-page #Backgrounds :is(#bg_thumb_zoom_out, #bg_thumb_zoom_in, #bg-scroll-top, #bg_selection_mode_button:not(:has(#bg_group_select_count:not(:empty))), .bpt-animated-source-card > .menu_button) {
+    width: var(--sb-bg-icon-size);
+    height: var(--sb-bg-icon-size);
+    min-width: var(--sb-bg-icon-size);
+    padding: 0;
+}
+
+#sb-settings-page #Backgrounds .bg_tab_panel {
+    grid-column: 1 / -1;
+    min-width: 0;
+    padding: 0;
+}
+
+#sb-settings-page #Backgrounds :is(#bg_menu_content, #bg_custom_content, #bg_folder_grid) {
+    gap: 8px;
+}
+
+#sb-settings-page #Backgrounds :is(.bg_example, .bg_folder_tile) {
+    border-radius: var(--sb-radius-card);
+    box-shadow: none;
+}
+
+#sb-settings-page #Backgrounds .bg_example.selected-background {
+    outline-color: var(--SmartThemeBodyColor);
+}
+
+#sb-settings-page #Backgrounds .bg_example:focus-visible {
+    outline-color: var(--sb-focus-ring);
+}
+
+#sb-settings-page #Backgrounds :is(.menu_button, .bpt-animated-source-main):active {
+    background: var(--sb-raised-active-bg);
+    transform: none;
+}
+
+#sb-settings-page #Backgrounds :is(.menu_button, .bpt-animated-source-main):focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    #sb-settings-page #Backgrounds :is(.menu_button, .bpt-animated-source-main):hover {
+        background: var(--sb-raised-hover-bg);
+        box-shadow: none;
+        transform: none;
+    }
+
+    #sb-settings-page #Backgrounds :is(.menu_button, .bpt-animated-source-main):hover:focus-visible {
+        box-shadow: var(--sb-focus-ring-inset);
+    }
+}
+
+@media (pointer: coarse) {
+    #sb-settings-page #Backgrounds {
+        --sb-bg-icon-size: 44px;
+    }
+}
+
+@media screen and (max-width: 768px) {
+    /* The mobile paper baseline forces 14px on inputs and buttons; these keep the shell pill shape. */
+    #sb-settings-page #Backgrounds :is(.menu_button, .bpt-animated-source-main, #bpt-animated-bg-url, #bg-filter, #bg-sort, #background_fitting) {
+        border-radius: var(--sb-shell-control-radius) !important;
+    }
+}
+
+@media screen and (max-width: 620px) {
+    #sb-settings-page #Backgrounds :is(#auto_background, #bg_add_folder_button, #add_background_button_top, #bg_group_add_to_folder_button, #bg_folder_remove_selected_button) > span {
+        display: inline;
+    }
+
+    #sb-settings-page #Backgrounds #bg_tabs {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #sb-settings-page #Backgrounds .heading-controls {
+        justify-content: flex-start;
+    }
+
+    #sb-settings-page #Backgrounds .bpt-animated-bg-url-row {
+        align-items: stretch;
+    }
+
+    #sb-settings-page #Backgrounds .bpt-animated-bg-url-row input {
+        flex-basis: auto;
+        width: 100%;
+    }
+
+    #sb-settings-page #Backgrounds .bpt-animated-bg-volume > .ds-row-suffix {
+        flex-basis: auto;
+        width: 100%;
+    }
+}
+
 /* 6F.3 named sub-categories, as libadwaita preference groups: a title and a description line above
    one boxed list, groups separated by space rather than a rule (DESIGN.md Cards / Containers). The
    category reuses the flat-section class for search labels, so the section rule and the ID-weighted

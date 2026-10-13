@@ -86,8 +86,8 @@ function removePresentClasses(element, ...tokens) {
     if (present.length) element.classList.remove(...present);
 }
 
-/** @param {HTMLLabelElement} label */
-function normalizeCustomizeSwitch(label) {
+/** @param {HTMLLabelElement} label @param {{subtitles?: boolean}} [options] */
+function normalizeCustomizeSwitch(label, { subtitles = true } = {}) {
     const input = label.querySelector('input[type="checkbox"]');
     if (!(input instanceof HTMLInputElement)) return;
 
@@ -106,7 +106,7 @@ function normalizeCustomizeSwitch(label) {
         title.id = `sb-setting-${input.id}-label`;
         input.setAttribute('aria-labelledby', title.id);
     }
-    const subtitle = createRowSubtitle(label);
+    const subtitle = subtitles ? createRowSubtitle(label) : null;
     for (const marker of label.querySelectorAll('.fa-circle-info:not(a .fa-circle-info)')) marker.remove();
     const suffix = document.createElement('span');
     suffix.className = 'ds-row-suffix';
@@ -114,7 +114,8 @@ function normalizeCustomizeSwitch(label) {
         if (node === input || node instanceof HTMLElement && node.matches('audio, [hidden]')) continue;
         title.appendChild(node);
     }
-    text.append(title, subtitle);
+    text.append(title);
+    if (subtitle) text.append(subtitle);
     suffix.appendChild(input);
     label.append(text, suffix);
     label.classList.add('ds-row', 'ds-row-switch');
@@ -134,8 +135,8 @@ function normalizeSwitchRowWrappers(scope) {
     }
 }
 
-/** @param {HTMLElement} row @param {HTMLElement} control */
-function normalizeCustomizeField(row, control) {
+/** @param {HTMLElement} row @param {HTMLElement} control @param {{subtitles?: boolean}} [options] */
+function normalizeCustomizeField(row, control, { subtitles = true } = {}) {
     if (row.classList.contains('ds-row') || row.querySelector('.ds-row, .checkbox_label')) return;
     const title = row.querySelector(':scope > label, :scope > small, :scope > span, :scope > .range-block-title, :scope > h4');
     if (!(title instanceof HTMLElement)) return;
@@ -144,13 +145,14 @@ function normalizeCustomizeField(row, control) {
     text.className = 'ds-row-text';
     const suffix = document.createElement('div');
     suffix.className = 'ds-row-suffix';
-    const subtitle = createRowSubtitle(row);
+    const subtitle = subtitles ? createRowSubtitle(row) : null;
     // Tooltip info markers have become visible copy; actionable help links keep their handlers.
     for (const marker of title.querySelectorAll('.fa-circle-info')) marker.remove();
     addMissingClasses(title, 'ds-row-label');
     removePresentClasses(title, 'displayNone');
     if (title instanceof HTMLLabelElement && control.id) title.htmlFor = control.id;
-    text.append(title, subtitle);
+    text.append(title);
+    if (subtitle) text.append(subtitle);
     if (!control.hasAttribute('aria-label') && !control.hasAttribute('aria-labelledby') && !(title instanceof HTMLLabelElement)) {
         if (!title.id && control.id) title.id = `sb-setting-${control.id}-label`;
         if (title.id) control.setAttribute('aria-labelledby', title.id);
@@ -244,8 +246,63 @@ function bindCustomizeSliderCounters(scope) {
     }
 }
 
+/** @param {HTMLElement} gallery */
+function normalizeAnimatedBackgroundPanel(gallery) {
+    const panel = gallery.querySelector('#bpt-animated-bg-panel');
+    if (!(panel instanceof HTMLElement) || panel.dataset.sbBackgroundPresented === 'true') return;
+
+    const header = panel.querySelector('.bpt-animated-bg-header');
+    const title = header?.querySelector('.bpt-animated-bg-title');
+    const note = header?.querySelector('.bpt-animated-bg-note');
+    const controls = panel.querySelector('.bpt-animated-bg-controls');
+    const urlRow = panel.querySelector('.bpt-animated-bg-url-row');
+    if (![header, title, note, controls, urlRow].every(node => node instanceof HTMLElement)) return;
+
+    // BunnyPresetTools owns the inputs and listeners; move its nodes rather than rewriting its markup.
+    panel.classList.add('sb-settings-category');
+    title.classList.add('sb-settings-category-title');
+    title.id ||= 'sb-animated-backgrounds-heading';
+    title.setAttribute('role', 'heading');
+    title.setAttribute('aria-level', '3');
+    panel.setAttribute('aria-labelledby', title.id);
+    note.id ||= 'sb-animated-backgrounds-note';
+    const heading = document.createElement('div');
+    heading.className = 'flex-container flexFlowColumn sb-settings-category-heading';
+    heading.append(title, ' ', note);
+    header.classList.add('sb-settings-flat-header', 'sb-settings-category-header');
+    header.append(heading);
+
+    controls.classList.add('ds-pref-group', 'sb-settings-category-body');
+    urlRow.classList.add('ds-row', 'ds-row-actions');
+    controls.prepend(urlRow);
+    const url = urlRow.querySelector('input');
+    if (url instanceof HTMLInputElement) {
+        url.setAttribute('aria-labelledby', title.id);
+        url.setAttribute('aria-describedby', note.id);
+    }
+    for (const label of controls.querySelectorAll('.checkbox_label')) {
+        if (label instanceof HTMLLabelElement) normalizeCustomizeSwitch(label, { subtitles: false });
+    }
+    const volume = controls.querySelector('input[type="range"]');
+    if (volume instanceof HTMLInputElement) normalizeCustomizeField(volume.parentElement, volume, { subtitles: false });
+    panel.dataset.sbBackgroundPresented = 'true';
+}
+
+/** @param {HTMLElement} scope */
+function normalizeBackgroundSettings(scope) {
+    const gallery = scope.querySelector('#Backgrounds');
+    if (!(gallery instanceof HTMLElement)) return;
+    normalizeAnimatedBackgroundPanel(gallery);
+    if (gallery.dataset.sbBackgroundObserverBound === 'true') return;
+
+    // Extensions can inject the panel after Appearance is already open. Only direct additions matter.
+    new MutationObserver(() => normalizeAnimatedBackgroundPanel(gallery)).observe(gallery, { childList: true });
+    gallery.dataset.sbBackgroundObserverBound = 'true';
+}
+
 /** @param {HTMLElement} scope */
 function normalizeCustomizeRows(scope) {
+    normalizeBackgroundSettings(scope);
     for (const header of scope.querySelectorAll('[data-sb-settings-compound] > .sb-settings-flat-header')) {
         if (header instanceof HTMLElement) ensureDescription(header, header, true);
     }

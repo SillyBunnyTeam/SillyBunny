@@ -24,6 +24,101 @@ const SETTINGS_TABS = [
     { id: 'logs', shell: 'right' },
 ];
 
+// Verbatim panel markup from BunnyPresetTools/content.js keeps coverage independent of installation.
+const ANIMATED_BACKGROUND_PANEL_FIXTURE = `
+    <div class="bpt-animated-bg-header">
+        <div class="bpt-animated-bg-title">Animated Backgrounds</div>
+        <div class="bpt-animated-bg-note">Use the normal uploader for local MP4/WebM files, or paste a YouTube/direct video URL here.</div>
+    </div>
+    <div class="bpt-animated-bg-url-row">
+        <input id="bpt-animated-bg-url" class="text_pole" type="text" placeholder="https://youtube.com/... or https://.../loop.mp4">
+        <button id="bpt-animated-bg-apply" class="menu_button menu_button_icon" type="button">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            <span>Use URL</span>
+        </button>
+    </div>
+    <div class="bpt-animated-bg-controls">
+        <label class="checkbox_label" for="bpt-animated-bg-enabled">
+            <input id="bpt-animated-bg-enabled" type="checkbox">
+            <span>Enable video and YouTube backgrounds</span>
+        </label>
+        <label class="checkbox_label" for="bpt-animated-bg-muted">
+            <input id="bpt-animated-bg-muted" type="checkbox">
+            <span>Muted</span>
+        </label>
+        <label class="checkbox_label" for="bpt-animated-bg-loop">
+            <input id="bpt-animated-bg-loop" type="checkbox">
+            <span>Loop</span>
+        </label>
+        <label class="checkbox_label" for="bpt-animated-bg-autoplay">
+            <input id="bpt-animated-bg-autoplay" type="checkbox">
+            <span>Autoplay</span>
+        </label>
+        <label class="bpt-animated-bg-volume" for="bpt-animated-bg-volume">
+            <span>Volume</span>
+            <input id="bpt-animated-bg-volume" type="range" min="0" max="100" step="1">
+        </label>
+    </div>
+    <div id="bpt-animated-bg-sources"></div>
+`;
+
+async function ensureAnimatedBackgroundPanel(page) {
+    await page.evaluate(markup => {
+        if (document.getElementById('bpt-animated-bg-panel')) return;
+        const gallery = document.getElementById('Backgrounds');
+        if (!(gallery instanceof HTMLElement)) throw new Error('Missing Backgrounds gallery for the extension fixture.');
+
+        const panel = document.createElement('div');
+        panel.id = 'bpt-animated-bg-panel';
+        panel.innerHTML = markup;
+        const nodes = [...panel.querySelectorAll('*')];
+        const ids = [panel, ...nodes].filter(node => node.id).map(node => [node.id, node]);
+        const labels = [...panel.querySelectorAll('.checkbox_label')];
+        const inputs = [...panel.querySelectorAll('input')];
+        const events = [];
+        const settings = {};
+        for (const [id, key, checked] of [
+            ['bpt-animated-bg-enabled', 'enableAnimatedBackgrounds', true],
+            ['bpt-animated-bg-muted', 'animatedBackgroundMuted', false],
+            ['bpt-animated-bg-loop', 'animatedBackgroundLoop', true],
+            ['bpt-animated-bg-autoplay', 'animatedBackgroundAutoplay', false],
+        ]) {
+            const input = panel.querySelector(`#${id}`);
+            input.checked = checked;
+            settings[key] = checked;
+            input.addEventListener('change', event => {
+                settings[key] = event.target.checked;
+                events.push({ key, value: event.target.checked });
+            });
+        }
+        const url = panel.querySelector('#bpt-animated-bg-url');
+        const apply = panel.querySelector('#bpt-animated-bg-apply');
+        const volume = panel.querySelector('#bpt-animated-bg-volume');
+        url.value = 'https://example.invalid/loop.mp4';
+        volume.value = '37';
+        settings.animatedBackgroundVolume = 37;
+        apply.addEventListener('click', () => {
+            events.push({ key: 'url', value: url.value });
+            url.value = '';
+        });
+        url.addEventListener('keydown', event => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            apply.click();
+        });
+        volume.addEventListener('input', event => {
+            settings.animatedBackgroundVolume = Number(event.target.value);
+            events.push({ key: 'animatedBackgroundVolume', value: Number(event.target.value) });
+        });
+        window.__sbAnimatedBackgroundFixture = {
+            panel, nodes, ids, labels, inputs, events, settings,
+            text: panel.textContent.replace(/\s+/g, ' ').trim(),
+            values: inputs.map(input => ({ id: input.id, value: input.type === 'checkbox' ? input.checked : input.value })),
+        };
+        gallery.insertBefore(panel, gallery.querySelector('#bg_tabs'));
+    }, ANIMATED_BACKGROUND_PANEL_FIXTURE);
+}
+
 /** Install API write interceptors before visiting the app. */
 async function mockWrites(page, settingsStore = null) {
     let settingsVersion = 1_000_000_000_000_000;
@@ -112,7 +207,6 @@ async function switchBackend(page, backend) {
 // Reviewed exceptions: container selector -> reason.
 const SWITCH_SEMANTICS_ALLOWLIST = {
     '#completion_prompt_manager_popup': 'Prompt Manager entry editor is redesigned in Phase 5',
-    '#bpt-animated-bg-panel': 'Third-party extension (BunnyPresetTools) not in Phase 4 scope',
     // SillyBunny: built-in extension settings are allowlisted per user decision (PR #870):
     // switch conversion is deferred to keep the PR focused. The store CSS hides these
     // containers, so their checkboxes are display:none and already skipped by the display
@@ -185,6 +279,28 @@ async function snapshotFormattingControls(page) {
 
 async function expectNoHorizontalOverflow(element) {
     await expect.poll(() => element.evaluate(node => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(1);
+}
+
+async function expectAnimatedBackgroundStructure(appearance, { geometry = true } = {}) {
+    const animated = appearance.locator('#bpt-animated-bg-panel.sb-settings-category');
+    await expect(animated).toBeVisible();
+    await expect(animated).toHaveAttribute('data-sb-background-presented', 'true');
+    const header = animated.locator(':scope > .bpt-animated-bg-header.sb-settings-flat-header.sb-settings-category-header');
+    await expect(header).toHaveCount(1);
+    await expect(header.locator(':scope > .sb-settings-category-heading')).toHaveCount(1);
+    await expect(header.locator('.sb-settings-category-heading > .bpt-animated-bg-title.sb-settings-category-title')).toHaveText('Animated Backgrounds');
+    await expect(header.locator('.sb-settings-category-heading > .bpt-animated-bg-note')).toHaveText('Use the normal uploader for local MP4/WebM files, or paste a YouTube/direct video URL here.');
+    const controls = animated.locator(':scope > .bpt-animated-bg-controls.ds-pref-group.sb-settings-category-body');
+    await expect(controls).toHaveCount(1);
+    await expect(controls.locator(':scope > .bpt-animated-bg-url-row.ds-row.ds-row-actions:first-child')).toHaveCount(1);
+    await expect(controls.locator(':scope > label.checkbox_label.ds-row.ds-row-switch')).toHaveCount(4);
+    await expect(controls.locator(':scope > .bpt-animated-bg-volume.ds-row.ds-row-slider #bpt-animated-bg-volume')).toHaveCount(1);
+    await expect(animated.locator('.ds-pref-group')).toHaveCount(1);
+    await expect(animated.locator(':scope > #bpt-animated-bg-sources')).toHaveCount(1);
+    await expect(animated.locator('[data-sb-copy-placeholder]')).toHaveCount(0);
+    await expectSwitchSemantics(animated);
+    if (geometry) await expectSwitchGeometry(animated);
+    return animated;
 }
 
 test.describe('Settings switch-row consistency', () => {
@@ -498,6 +614,260 @@ test.describe('Customize consistency', () => {
         await expect(appearance.locator('#AppearanceLayoutSection .ds-row-slider')).toHaveCount(7);
         await expect(appearance.locator('#sb-background-settings-controls #background-blur-block, #sb-background-settings-controls #background-opacity-block')).toHaveCount(2);
         await expect(appearance.locator('#ThemeTogglesSection .ds-row-switch')).toHaveCount(22);
+    });
+});
+
+test.describe('Backgrounds settings consistency', () => {
+    test.describe.configure({ timeout: 60000 });
+
+    for (const { name, width, theme, compact } of [
+        { name: 'desktop', width: 1440, theme: 'Libadwaita', compact: false },
+        { name: 'compact light desktop', width: 1440, theme: 'Libadwaita Light', compact: true },
+        { name: 'compact light mobile', width: 390, theme: 'Libadwaita Light', compact: true },
+    ]) {
+        test.describe(`${name}`, () => {
+            const mobile = width < 620;
+            test.use({ viewport: { width, height: mobile ? 844 : 900 }, hasTouch: mobile });
+
+            test('animated preferences and gallery controls share Settings geometry', async ({ page, baseURL }) => {
+                await loadSettings(page, baseURL);
+                await page.evaluate(({ theme, compact }) => {
+                    $('#themes').val(theme).trigger('change');
+                    document.documentElement.dataset.sbCompactMode = String(compact);
+                }, { theme, compact });
+                await openSettingsTab(page, 'appearance', 'right');
+                await ensureAnimatedBackgroundPanel(page);
+                await openSettingsTab(page, 'interface', 'right');
+                const appearance = await openSettingsTab(page, 'appearance', 'right');
+                await page.evaluate(() => document.fonts.ready);
+                const animated = await expectAnimatedBackgroundStructure(appearance);
+
+                const headingMetrics = await appearance.evaluate(root => {
+                    const metric = element => {
+                        const style = getComputedStyle(element);
+                        return {
+                            fontSize: style.fontSize,
+                            fontWeight: style.fontWeight,
+                            lineHeight: style.lineHeight,
+                            letterSpacing: style.letterSpacing,
+                        };
+                    };
+                    const reference = root.querySelector('#sb-background-settings-heading');
+                    return {
+                        reference: metric(reference),
+                        animated: metric(root.querySelector('.bpt-animated-bg-title')),
+                        referenceNoteSize: getComputedStyle(reference.parentElement.querySelector('small')).fontSize,
+                        animatedNoteSize: getComputedStyle(root.querySelector('.bpt-animated-bg-note')).fontSize,
+                    };
+                });
+                expect(headingMetrics.animated).toEqual(headingMetrics.reference);
+                expect(headingMetrics.animatedNoteSize).toBe(headingMetrics.referenceNoteSize);
+
+                const switchFailures = await animated.locator('.ds-row-switch').evaluateAll(rows => rows.flatMap(row => {
+                    const bounds = row.getBoundingClientRect();
+                    const group = row.parentElement;
+                    const input = row.querySelector('input').getBoundingClientRect();
+                    const text = row.querySelector('.ds-row-text').getBoundingClientRect();
+                    const checks = {
+                        fullWidth: Math.abs(bounds.width - group.clientWidth) <= 1,
+                        trailingSwitch: input.left > bounds.left + bounds.width / 2,
+                        noOverlap: text.right <= input.left + 1,
+                    };
+                    return Object.entries(checks).filter(([, pass]) => !pass).map(([check]) => `${row.htmlFor}: ${check}`);
+                }));
+                expect(switchFailures).toEqual([]);
+
+                const gallery = appearance.locator('#Backgrounds');
+                const pillFailures = await gallery.locator([
+                    '#bpt-animated-bg-url', '#bpt-animated-bg-apply', '#bg-filter', '#bg-sort', '#background_fitting',
+                    '#auto_background', '#bg_add_folder_button', '#add_background_button_top', '#bg_tabs .heading-controls .menu_button',
+                ].map(selector => `${selector}:visible`).join(', ')).evaluateAll((controls, minimumHeight) => controls.flatMap(control => {
+                    const style = getComputedStyle(control);
+                    const bounds = control.getBoundingClientRect();
+                    const radii = ['borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius'];
+                    const checks = {
+                        pill: radii.every(radius => parseFloat(style[radius]) >= bounds.height / 2),
+                        comfortableTarget: bounds.height >= minimumHeight - 1,
+                    };
+                    return Object.entries(checks).filter(([, pass]) => !pass).map(([check]) => `${control.id}: ${check}`);
+                }), mobile ? 44 : 40);
+                expect(pillFailures).toEqual([]);
+                const circleFailures = await gallery.locator('#bg_selection_mode_button, #bg_thumb_zoom_out, #bg_thumb_zoom_in, #bg-scroll-top')
+                    .evaluateAll(buttons => buttons.flatMap(button => {
+                        const bounds = button.getBoundingClientRect();
+                        return Math.abs(bounds.width - bounds.height) <= 1 ? [] : [button.id];
+                    }));
+                expect(circleFailures).toEqual([]);
+
+                const tabs = gallery.locator('#bg_tabs');
+                await expect(tabs).toHaveCSS('display', 'grid');
+                const toolbarFailures = await tabs.evaluate((root, mobile) => {
+                    const list = root.querySelector('[role="tablist"]').getBoundingClientRect();
+                    const actions = root.querySelector('.heading-controls').getBoundingClientRect();
+                    const checks = mobile ? {
+                        wrapsBelowTabs: actions.top >= list.bottom - 1,
+                    } : {
+                        sameRow: Math.abs(list.top - actions.top) <= Math.abs(list.height - actions.height) / 2 + 1,
+                        noOverlap: actions.left >= list.right - 1,
+                    };
+                    return Object.entries(checks).filter(([, pass]) => !pass).map(([check]) => check);
+                }, mobile);
+                expect(toolbarFailures).toEqual([]);
+
+                for (const id of ['bg_global_tab', 'bg_chat_tab']) {
+                    await tabs.locator(`a[href="#${id}"]`).click();
+                    const tabPanel = tabs.locator(`#${id}`);
+                    await expect(tabPanel).toBeVisible();
+                    await expect.poll(() => tabPanel.evaluate(panel => {
+                        const grid = panel.parentElement;
+                        const bounds = panel.getBoundingClientRect();
+                        const gridBounds = grid.getBoundingClientRect();
+                        const list = grid.querySelector('[role="tablist"]').getBoundingClientRect();
+                        const actions = grid.querySelector('.heading-controls').getBoundingClientRect();
+                        return Math.abs(bounds.width - grid.clientWidth) <= 1
+                            && Math.abs(bounds.left - gridBounds.left) <= 1
+                            && bounds.top >= Math.max(list.bottom, actions.bottom) - 1;
+                    })).toBe(true);
+                    await expectNoHorizontalOverflow(tabPanel);
+                }
+                for (const element of [animated, gallery, appearance.locator('.sb-shell-panel-scroller'), page.locator('html')]) {
+                    await expectNoHorizontalOverflow(element);
+                }
+            });
+        });
+    }
+
+    test('saved source rows retain selection, removal, and mobile keyboard focus', async ({ page, baseURL }) => {
+        await page.route('**/BunnyPresetTools/content.js*', route => route.fulfill({ contentType: 'text/javascript', body: '' }));
+        await loadSettings(page, baseURL);
+        await page.setViewportSize({ width: 390, height: 844 });
+        const appearance = await openSettingsTab(page, 'appearance', 'right');
+        await ensureAnimatedBackgroundPanel(page);
+        const sources = appearance.locator('#bpt-animated-bg-sources');
+        await sources.evaluate(container => {
+            for (const source of ['https://example.invalid/loop.mp4', `https://example.invalid/${'long-source-'.repeat(20)}.mp4`]) {
+                const card = document.createElement('div');
+                card.className = 'bpt-animated-source-card';
+                card.innerHTML = `
+                    <button class="bpt-animated-source-main" type="button">
+                        <i class="fa-solid fa-film"></i>
+                        <span class="bpt-animated-source-label"></span>
+                    </button>
+                    <button class="menu_button menu_button_icon" type="button" title="Remove saved source">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                `;
+                card.querySelector('.bpt-animated-source-label').textContent = source;
+                card.querySelector('.bpt-animated-source-main').addEventListener('click', () => {
+                    for (const sibling of container.children) sibling.classList.toggle('is-active', sibling === card);
+                });
+                card.querySelector('.menu_button').addEventListener('click', () => card.remove());
+                container.append(card);
+            }
+        });
+        await expectNoHorizontalOverflow(sources);
+        const main = sources.locator('.bpt-animated-source-main').last();
+        await main.click();
+        await expect(sources.locator('.bpt-animated-source-card').last()).toHaveClass(/is-active/);
+        await page.keyboard.press('Tab');
+        await page.keyboard.press('Shift+Tab');
+        await expect(main).toBeFocused();
+        const metrics = await main.evaluate(button => {
+            const style = getComputedStyle(button);
+            const card = getComputedStyle(button.parentElement);
+            return {
+                targetHeight: button.getBoundingClientRect().height,
+                pill: parseFloat(style.borderRadius) >= button.getBoundingClientRect().height / 2,
+                focusRing: style.boxShadow !== 'none',
+                selectedFill: card.backgroundColor !== 'rgba(0, 0, 0, 0)',
+                noSelectionGlow: card.boxShadow === 'none',
+            };
+        });
+        expect(metrics.targetHeight).toBeGreaterThanOrEqual(40);
+        expect(metrics).toMatchObject({ pill: true, focusRing: true, selectedFill: true, noSelectionGlow: true });
+        const remove = sources.locator('.bpt-animated-source-card > .menu_button').last();
+        const dimensions = await remove.evaluate(button => ({ width: button.clientWidth, height: button.clientHeight }));
+        expect(dimensions.width).toBe(dimensions.height);
+        expect(dimensions.height).toBeGreaterThanOrEqual(40);
+        await remove.click();
+        await expect(sources.locator('.bpt-animated-source-card')).toHaveCount(1);
+    });
+
+    test('late normalization and reopening preserve original fixture nodes, values, and handlers', async ({ page, baseURL }) => {
+        // The extension's one-second bootstrap would otherwise overwrite the fixture's control state.
+        await page.route('**/BunnyPresetTools/content.js*', route => route.fulfill({ contentType: 'text/javascript', body: '' }));
+        await loadSettings(page, baseURL);
+        const appearance = await openSettingsTab(page, 'appearance', 'right');
+        await ensureAnimatedBackgroundPanel(page);
+        await expect(page.locator('#bpt-animated-bg-panel')).toHaveAttribute('data-sb-background-presented', 'true');
+        const animated = await expectAnimatedBackgroundStructure(appearance, { geometry: false });
+        const initialMarkup = await animated.evaluate(panel => panel.outerHTML);
+        await page.evaluate(async () => {
+            const { normalizeSettingsPresentation } = await import('/scripts/sillybunny-settings-presentation.js');
+            const appearance = document.querySelector('[data-sb-panel="appearance"]');
+            for (let pass = 0; pass < 3; pass++) normalizeSettingsPresentation(appearance, { name: 'appearance' });
+        });
+        await openSettingsTab(page, 'interface', 'right');
+        await openSettingsTab(page, 'appearance', 'right');
+        expect(await animated.evaluate(panel => panel.outerHTML)).toBe(initialMarkup);
+
+        const preserved = await animated.evaluate(panel => {
+            const fixture = window.__sbAnimatedBackgroundFixture;
+            if (!fixture) throw new Error('Expected original animated background fixture.');
+            return {
+                samePanel: fixture.panel === panel,
+                originalNodesRetained: fixture.nodes.every(node => panel.contains(node)),
+                originalIdsRetained: fixture.ids.every(([id, node]) => document.getElementById(id) === node && document.querySelectorAll(`#${id}`).length === 1),
+                originalLabelsRetained: fixture.labels.every(label => label.parentElement === panel.querySelector('.bpt-animated-bg-controls') && label.matches('.ds-row-switch')),
+                text: panel.textContent.replace(/\s+/g, ' ').trim(),
+                originalText: fixture.text,
+                values: fixture.inputs.map(input => ({ id: input.id, value: input.type === 'checkbox' ? input.checked : input.value })),
+                originalValues: fixture.values,
+                events: fixture.events,
+            };
+        });
+        expect(preserved.samePanel).toBe(true);
+        expect(preserved.originalNodesRetained).toBe(true);
+        expect(preserved.originalIdsRetained).toBe(true);
+        expect(preserved.originalLabelsRetained).toBe(true);
+        expect(preserved.text).toBe(preserved.originalText);
+        expect(preserved.values).toEqual(preserved.originalValues);
+        expect(preserved.events).toEqual([]);
+
+        for (const [id, checked] of [
+            ['bpt-animated-bg-enabled', false], ['bpt-animated-bg-muted', true],
+            ['bpt-animated-bg-loop', false], ['bpt-animated-bg-autoplay', true],
+        ]) {
+            await animated.locator(`label[for="${id}"]`).click();
+            await expect(animated.locator(`#${id}`)).toBeChecked({ checked });
+        }
+        const url = animated.locator('#bpt-animated-bg-url');
+        await url.fill('https://example.invalid/updated.mp4');
+        await url.press('Enter');
+        await expect(url).toHaveValue('');
+        await animated.locator('#bpt-animated-bg-volume').evaluate(input => {
+            input.value = '68';
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        const handlers = await page.evaluate(() => ({
+            events: window.__sbAnimatedBackgroundFixture.events,
+            settings: window.__sbAnimatedBackgroundFixture.settings,
+        }));
+        expect(handlers.events).toEqual([
+            { key: 'enableAnimatedBackgrounds', value: false },
+            { key: 'animatedBackgroundMuted', value: true },
+            { key: 'animatedBackgroundLoop', value: false },
+            { key: 'animatedBackgroundAutoplay', value: true },
+            { key: 'url', value: 'https://example.invalid/updated.mp4' },
+            { key: 'animatedBackgroundVolume', value: 68 },
+        ]);
+        expect(handlers.settings).toEqual({
+            enableAnimatedBackgrounds: false,
+            animatedBackgroundMuted: true,
+            animatedBackgroundLoop: false,
+            animatedBackgroundAutoplay: true,
+            animatedBackgroundVolume: 68,
+        });
     });
 });
 
