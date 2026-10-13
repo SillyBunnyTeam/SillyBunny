@@ -103,6 +103,10 @@ export function initializePromptEditor(column) {
     let collapsed = false;
     let sidebarWidth = Number(localStorage.getItem('sb-pm-list-width')) || 0;
     let layoutFrame = 0;
+    let synchronizeFrame = 0;
+    let renderedListKey = '';
+    let headerMeasuredWidth = 0;
+    let headerMeasuredText = '';
     let listRefreshPending = false;
     let listPointerActive = false;
     let transition = null;
@@ -121,6 +125,8 @@ export function initializePromptEditor(column) {
     let stylesReady = false;
     let tokenizerKey = '';
     const contentCounts = new Map();
+    const contentRequests = new Map();
+    const listGroups = new Map();
     const mobile = matchMedia('(max-width: 768px)');
 
     const dirty = () => Boolean(draft) && JSON.stringify(draft) !== baseline;
@@ -138,8 +144,23 @@ export function initializePromptEditor(column) {
     }
 
     function countContent(content) {
+        if (contentCounts.has(content)) return Promise.resolve(contentCounts.get(content));
+        if (contentRequests.has(content)) return contentRequests.get(content);
+        const expectedTokenizer = tokenizerKey;
+        let request;
         countingEditorContent = true;
-        try { return getTokenCountAsync(content, 0); } finally { countingEditorContent = false; }
+        try { request = getTokenCountAsync(content, 0); } finally { countingEditorContent = false; }
+        const pending = request.then(count => {
+            if (tokenizerKey === expectedTokenizer) {
+                contentCounts.set(content, count);
+                if (contentCounts.size > 128) contentCounts.delete(contentCounts.keys().next().value);
+            }
+            return count;
+        }).finally(() => {
+            if (contentRequests.get(content) === pending) contentRequests.delete(content);
+        });
+        contentRequests.set(content, pending);
+        return pending;
     }
 
     function knownCount(prompt) {
@@ -246,6 +267,7 @@ export function initializePromptEditor(column) {
         const finish = save => {
             if (finished) return;
             finished = true;
+            input.replaceWith(name);
             if (save) run(() => model.rename(prompt.identifier, input.value, expectedScope));
             if (draft?.identifier === prompt.identifier && save) {
                 draft.name = input.value;
@@ -291,7 +313,7 @@ export function initializePromptEditor(column) {
         row.classList.toggle('is-selected', selectedId() === id);
         const disabledDrag = Boolean(filter);
         if (orderEntry) {
-            const grip = element('div', 'sb-prompt-grip menu_button menu_button_icon');
+            const grip = element('div', 'sb-prompt-grip menu_button menu_button_icon ui-sortable-handle');
             grip.append(icon('grip-vertical'));
             grip.setAttribute('role', 'button');
             grip.setAttribute('aria-label', t`Drag to reorder ${prompt.name}`);
@@ -347,7 +369,7 @@ export function initializePromptEditor(column) {
             } else if (event.altKey && orderEntry && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
                 event.preventDefault();
                 event.stopPropagation();
-                move(id, state.order.indexOf(orderEntry) + (event.key === 'ArrowUp' ? -1 : 1));
+                move(id, state.order.findIndex(entry => entry.identifier === id) + (event.key === 'ArrowUp' ? -1 : 1));
             }
         });
         if (!utility && !prompt.marker) name.addEventListener('dblclick', event => {
@@ -357,16 +379,62 @@ export function initializePromptEditor(column) {
         return row;
     }
 
-    function group(title, rows, className = '') {
+    function group(title, className = '') {
+        if (listGroups.has(className)) return listGroups.get(className);
         const section = element('section', `sb-prompt-section ${className}`);
         const heading = element('h3', '', title);
         heading.tabIndex = -1;
         const box = element('div', 'sb-prompt-box');
         box.setAttribute('role', 'list');
-        box.append(...rows);
         section.append(heading, box);
         listBody.append(section);
-        return box;
+        const result = { box, rows: new Map() };
+        listGroups.set(className, result);
+        return result;
+    }
+
+    function reconcileRows(group, entries) {
+        const identifiers = new Set();
+        let cursor = group.box.firstElementChild;
+        for (const { prompt, orderEntry = null, available = false, utility = false } of entries) {
+            const id = prompt.identifier;
+            identifiers.add(id);
+            const signature = JSON.stringify([prompt, utility ? model.readUtility(id) : [model.permissions(prompt), describe(prompt)]]);
+            let cached = group.rows.get(id);
+            if (!cached || cached.signature !== signature) {
+                const row = makeRow(prompt, orderEntry, available, utility);
+                if (cached) {
+                    if (cursor === cached.row) cursor = cached.row.nextElementSibling;
+                    cached.row.replaceWith(row);
+                }
+                cached = { row, signature };
+                group.rows.set(id, cached);
+            }
+            const row = cached.row;
+            const selected = selectedId() === id;
+            const disabled = orderEntry?.enabled === false;
+            if (row.classList.contains('is-selected') !== selected) row.classList.toggle('is-selected', selected);
+            if (row.classList.contains('is-disabled') !== disabled) row.classList.toggle('is-disabled', disabled);
+            const grip = row.querySelector('.sb-prompt-grip');
+            if (grip && grip.getAttribute('aria-disabled') !== String(Boolean(filter))) grip.setAttribute('aria-disabled', String(Boolean(filter)));
+            const control = row.querySelector('input.sb-switch');
+            if (control) {
+                if (control.checked !== Boolean(orderEntry.enabled)) control.checked = Boolean(orderEntry.enabled);
+                if (control.getAttribute('aria-checked') !== String(control.checked)) control.setAttribute('aria-checked', String(control.checked));
+            }
+            const token = row.querySelector('.sb-prompt-token');
+            const count = String(knownCount(prompt));
+            if (token && token.textContent !== count) token.textContent = count;
+            if (row === cursor) cursor = cursor.nextElementSibling;
+            else if (row.nextElementSibling !== cursor || row.parentElement !== group.box) {
+                group.box.insertBefore(row, cursor);
+            }
+        }
+        for (const [id, cached] of group.rows) {
+            if (identifiers.has(id)) continue;
+            cached.row.remove();
+            group.rows.delete(id);
+        }
     }
 
     function renderList() {
@@ -374,25 +442,32 @@ export function initializePromptEditor(column) {
             listRefreshPending = true;
             return;
         }
-        const scroll = listBody.scrollTop;
-        const focusedId = document.activeElement?.closest('[data-prompt-id]')?.dataset.promptId;
-        for (const node of listBody.querySelectorAll('.ui-sortable')) $(node).sortable('destroy');
-        listBody.replaceChildren();
+        const utilities = UTILITY_FIELDS.map(([identifier, name]) => ({ identifier, name: translate(name), content: model.readUtility(identifier) }));
+        const nextKey = JSON.stringify([state.scope, state.prompts, state.order, state.counts, state.sources, state.error, state.runtime, state.character?.name, utilities, filter, selectedId(), tokenizerKey]);
+        if (nextKey === renderedListKey) return false;
+        renderedListKey = nextKey;
+        const focused = listBody.contains(document.activeElement) ? document.activeElement : null;
+        const focusedId = focused?.closest('[data-prompt-id]')?.dataset.promptId;
         const matches = prompt => prompt.name.toLowerCase().includes(filter.toLowerCase());
         const rows = state.order.flatMap(entry => {
             const prompt = promptFor(entry.identifier);
-            return prompt && matches(prompt) ? [makeRow(prompt, entry)] : [];
+            return prompt && matches(prompt) ? [{ prompt, orderEntry: entry }] : [];
         });
         // The assembled Agents row is inspection-only and never enters persisted order data.
-        if (matches(state.runtime)) rows.push(makeRow(state.runtime));
-        const box = group(t`Prompt order`, rows, 'sb-prompt-order');
-        if (state.error) listBody.prepend(element('div', 'sb-prompt-error', state.error));
+        if (matches(state.runtime)) rows.push({ prompt: state.runtime });
+        const order = group(t`Prompt order`, 'sb-prompt-order');
+        reconcileRows(order, rows);
+        const box = order.box;
+        const error = listBody.querySelector('.sb-prompt-error');
+        if (!state.error) error?.remove();
+        else if (!error) listBody.prepend(element('div', 'sb-prompt-error', state.error));
+        else if (error.textContent !== state.error) error.textContent = state.error;
         const available = state.prompts.filter(prompt => !state.order.some(entry => entry.identifier === prompt.identifier));
-        group(t`Available`, available.filter(matches).map(prompt => makeRow(prompt, null, true)), 'sb-prompt-available');
-        group(t`Utility prompts`, UTILITY_FIELDS.map(([identifier, name]) => ({ identifier, name: translate(name) })).filter(matches).map(prompt => makeRow(prompt, null, false, true)));
+        reconcileRows(group(t`Available`, 'sb-prompt-available'), available.filter(matches).map(prompt => ({ prompt, available: true })));
+        reconcileRows(group(t`Utility prompts`), utilities.filter(matches).map(prompt => ({ prompt, utility: true })));
         updateListSubtitle();
         let dragScope = state.scope;
-        if ($.fn.sortable) $(box).sortable({
+        if ($.fn.sortable && !box.classList.contains('ui-sortable')) $(box).sortable({
             handle: '.sb-prompt-grip', axis: 'y', delay: mobile.matches ? 30 : 0, distance: 4,
             cancel: 'input,textarea,button,select,option', items: '> .sb-prompt-row:has(.sb-prompt-grip)',
             disabled: Boolean(filter),
@@ -411,9 +486,13 @@ export function initializePromptEditor(column) {
                 renderList();
             }),
         });
-        listBody.scrollTop = scroll;
-        if (focusedId) rowFor(focusedId)?.focus({ preventScroll: true });
+        else if ($.fn.sortable) {
+            // Sortable refreshes items and positions on drag start; doing so here forces a full layout.
+            if ($(box).sortable('option', 'disabled') !== Boolean(filter)) $(box).sortable('option', 'disabled', Boolean(filter));
+        }
+        if (focusedId && !focused.isConnected) rowFor(focusedId)?.focus({ preventScroll: true });
         scheduleListTokens();
+        return true;
     }
 
     function updateListSubtitle() {
@@ -432,11 +511,12 @@ export function initializePromptEditor(column) {
             const expectedTokenizer = tokenizerKey;
             const prompts = [...listBody.querySelectorAll('[data-prompt-id]')].map(row => promptFor(row.dataset.promptId)).filter(prompt => prompt && !prompt.marker && prompt.content && knownCount(prompt) === '-');
             for (const prompt of prompts) {
+                if (knownCount(prompt) !== '-') continue;
+                const content = prompt.content;
                 try {
-                    const count = await countContent(prompt.content);
+                    const count = await countContent(content);
                     if (state.scope !== expectedScope || tokenizerKey !== expectedTokenizer) return;
-                    contentCounts.set(prompt.content, count);
-                    if (contentCounts.size > 128) contentCounts.delete(contentCounts.keys().next().value);
+                    if (promptFor(prompt.identifier)?.content !== content) continue;
                     const token = rowFor(prompt.identifier)?.querySelector('.sb-prompt-token');
                     if (token && !transition) token.textContent = String(count);
                 } catch { return; }
@@ -1024,7 +1104,7 @@ export function initializePromptEditor(column) {
         }, 300);
     }
 
-    function updateActions() {
+    function measureActions() {
         const header = editor.querySelector('.sb-prompt-detail-header');
         if (!header || !draft || transition) return;
         const title = header.querySelector('.sb-prompt-title');
@@ -1038,14 +1118,22 @@ export function initializePromptEditor(column) {
         const active = document.activeElement;
         const focusWillHide = actions.some((item, index) => item.control === active && index >= count)
             || active === menuTrigger && count === actions.length;
-        actions.forEach((item, index) => item.control.hidden = index >= count);
-        menuTrigger.hidden = count === actions.length;
-        group.hidden = actions.length === 0;
+        return { count, title, group, focusWillHide };
+    }
+
+    function updateActions(measurement) {
+        if (!measurement) return;
+        const { count, title, group, focusWillHide } = measurement;
+        actions.forEach((item, index) => {
+            if (item.control.hidden !== (index >= count)) item.control.hidden = index >= count;
+        });
+        if (menuTrigger.hidden !== (count === actions.length)) menuTrigger.hidden = count === actions.length;
+        if (group.hidden !== (actions.length === 0)) group.hidden = actions.length === 0;
         if (focusWillHide) title.focus({ preventScroll: true });
     }
 
     function scheduleLayout() {
-        if (layoutFrame) return;
+        if (layoutFrame || transition) return;
         layoutFrame = requestAnimationFrame(() => {
             layoutFrame = 0;
             layout();
@@ -1053,23 +1141,45 @@ export function initializePromptEditor(column) {
     }
 
     function layout() {
-        if (!root.clientWidth || transition) return;
-        const nextCollapsed = mobile.matches || root.clientWidth < 720;
+        if (transition) return;
+        const width = root.clientWidth;
+        if (!width) return;
+        const nextCollapsed = mobile.matches || width < 720;
+        const nextListWidth = Math.max(240, Math.min(420, sidebarWidth || width * 0.3));
+        const hideCollapsed = Boolean(draft) && nextCollapsed;
+        const card = column.querySelector(':scope > .sb-backend-section-header');
+        const headerText = card?.textContent ?? '';
+        const headerHidden = column.classList.contains('sb-prompt-hide-header');
+        const revealHeader = !hideCollapsed && headerHidden && (headerMeasuredWidth !== width || headerMeasuredText !== headerText || !draft);
+        const fits = !headerHidden && card && [...card.querySelectorAll('.sb-backend-title-row, .sb-editor-meta')].every(node => node.scrollWidth <= node.clientWidth + 1);
+        const actionLayout = measureActions();
         if (collapsed !== nextCollapsed) closeOverlays();
         collapsed = nextCollapsed;
-        root.dataset.collapsed = String(collapsed);
-        root.style.setProperty('--sb-prompt-list-width', `${listWidth()}px`);
-        divider.setAttribute('aria-valuenow', String(Math.round(listWidth())));
+        if (root.dataset.collapsed !== String(collapsed)) root.dataset.collapsed = String(collapsed);
+        if (root.style.getPropertyValue('--sb-prompt-list-width') !== `${nextListWidth}px`) root.style.setProperty('--sb-prompt-list-width', `${nextListWidth}px`);
+        if (divider.getAttribute('aria-valuenow') !== String(Math.round(nextListWidth))) divider.setAttribute('aria-valuenow', String(Math.round(nextListWidth)));
         list.inert = collapsed && Boolean(draft);
-        column.classList.toggle('sb-prompt-detail-open', Boolean(draft));
-        const card = column.querySelector(':scope > .sb-backend-section-header');
-        column.classList.remove('sb-prompt-hide-header');
-        const fits = card && [...card.querySelectorAll('.sb-backend-title-row, .sb-editor-meta')].every(node => node.scrollWidth <= node.clientWidth + 1);
-        column.classList.toggle('sb-prompt-hide-header', Boolean(draft) && (collapsed || !fits));
-        updateActions();
+        if (column.classList.contains('sb-prompt-detail-open') !== Boolean(draft)) column.classList.toggle('sb-prompt-detail-open', Boolean(draft));
+        const hideHeader = !revealHeader && Boolean(draft) && (collapsed || !fits);
+        if (headerHidden !== hideHeader) column.classList.toggle('sb-prompt-hide-header', hideHeader);
+        headerMeasuredWidth = width;
+        headerMeasuredText = headerText;
+        updateActions(actionLayout);
+        // A previously collapsed header must become measurable before checking its overflow.
+        if (revealHeader) scheduleLayout();
+    }
+
+    function scheduleSynchronize() {
+        if (synchronizeFrame) return;
+        synchronizeFrame = requestAnimationFrame(() => {
+            synchronizeFrame = 0;
+            synchronize();
+        });
     }
 
     function synchronize() {
+        cancelAnimationFrame(synchronizeFrame);
+        synchronizeFrame = 0;
         if (!stylesReady || !promptManager?.serviceSettings) return;
         model ??= createPromptEditorModel(promptManager);
         const next = model.snapshot();
@@ -1079,14 +1189,19 @@ export function initializePromptEditor(column) {
         if (nextTokenizer !== tokenizerKey) {
             tokenizerKey = nextTokenizer;
             contentCounts.clear();
+            contentRequests.clear();
             tokenRequest++;
             if (draft) scheduleTokens();
         }
         if (draft && draftScope !== state.scope && !dirty()) closeNow();
         const enabled = main_api === 'openai';
-        if (!enabled) contentCounts.clear();
-        root.hidden = !enabled;
-        column.classList.toggle('sb-prompt-owned', enabled);
+        if (!enabled) {
+            tokenizerKey = '';
+            contentCounts.clear();
+            contentRequests.clear();
+        }
+        if (root.hidden === enabled) root.hidden = !enabled;
+        if (column.classList.contains('sb-prompt-owned') !== enabled) column.classList.toggle('sb-prompt-owned', enabled);
         if (!enabled) { cancelNavigation(); closeOverlays(); return; }
         if (draft && !dirty()) {
             const live = kind === 'prompt' ? promptFor(draft.identifier) : { ...draft, content: model.readUtility(draft.identifier) };
@@ -1098,8 +1213,7 @@ export function initializePromptEditor(column) {
                 renderEditor();
             }
         }
-        renderList();
-        scheduleLayout();
+        if (renderList()) scheduleLayout();
     }
 
     divider.addEventListener('keydown', event => {
@@ -1117,7 +1231,7 @@ export function initializePromptEditor(column) {
         const startWidth = listWidth();
         const move = moveEvent => {
             sidebarWidth = Math.max(240, Math.min(420, startWidth + moveEvent.clientX - startX));
-            layout();
+            scheduleLayout();
         };
         const end = () => {
             divider.removeEventListener('pointermove', move);
@@ -1167,7 +1281,7 @@ export function initializePromptEditor(column) {
         event.preventDefault();
         event.returnValue = '';
     });
-    document.addEventListener('sb:prompt-manager-rendered', synchronize);
+    document.addEventListener('sb:prompt-manager-rendered', scheduleSynchronize);
     document.getElementById('main_api')?.addEventListener('change', synchronize);
     eventSource.on(event_types.APP_READY, synchronize);
     const resizeObserver = new ResizeObserver(scheduleLayout);

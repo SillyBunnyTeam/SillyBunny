@@ -269,6 +269,10 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     font-size: calc(var(--mainFontSize) * 0.9);
 }
 
+.sb-prompt-row.is-disabled .sb-prompt-row-text {
+    opacity: 0.6;
+}
+
 :is(.sb-prompt-row-subtitle, .sb-prompt-token) {
     color: var(--sb-muted-fg);
     font-size: calc(var(--mainFontSize) * 0.75);
@@ -303,6 +307,18 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
 
 .sb-prompt-row .sb-switch {
     flex: none;
+}
+
+#sb-settings-page .sb-prompt-editor input.sb-switch,
+.sb-prompt-sheet input.sb-switch {
+    transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast), opacity var(--sb-transition-fast);
+    transition-timing-function: var(--sb-ease);
+}
+
+#sb-settings-page .sb-prompt-editor input.sb-switch::after,
+.sb-prompt-sheet input.sb-switch::after {
+    transition: transform var(--sb-transition-fast), background-color var(--sb-transition-fast), opacity var(--sb-transition-fast);
+    transition-timing-function: var(--sb-ease);
 }
 
 :is(.sb-prompt-handle-slot, .sb-prompt-switch-slot, .sb-prompt-menu-slot) {
@@ -877,14 +893,16 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
 }
 
 body.reduced-motion :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) *,
-body.reduced-motion :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) *::before {
+body.reduced-motion :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) *::before,
+body.reduced-motion :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) *::after {
     transition: none !important;
     animation: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
     :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) *,
-    :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) *::before {
+    :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) *::before,
+    :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) *::after {
         transition: none !important;
         animation: none !important;
     }
