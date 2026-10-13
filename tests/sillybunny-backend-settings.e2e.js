@@ -97,7 +97,7 @@ async function expectSwitchGeometry(root, compactSampling = false) {
 async function expectPromptingFlow(prompting, api) {
     if (api !== 'openai') {
         await expect(prompting.locator('.sb-prompting-group:visible > h3')).toHaveText([
-            'Presets', 'Generation Settings', 'System Prompt', 'Instruct Template', 'Context Template', 'Character Names', 'Reply Prefill', 'Reasoning Template',
+            'Presets', 'Generation Settings', 'System Prompt', 'Instruct Template', 'Context Template', 'Character Names', 'Reasoning Template',
         ]);
         return;
     }
@@ -255,14 +255,18 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                 await expectPromptingInsets(prompting);
                 const promptingHeaderMetrics = await readBackendHeaderMetrics(promptingHeader);
                 await expect(prompting.locator('#sb-openai-sampling')).toBeHidden();
-                await expect(prompting.locator('[name="startReplyWithBlock"]')).toHaveCount(1);
+                await expect(prompting.locator('[name="startReplyWithBlock"]')).toHaveCount(0);
+                await expect(page.locator('#AdvancedFormatting #sb-af-reply-prefix [name="startReplyWithBlock"]')).toHaveCount(1);
                 await expectNoOverflow(prompting);
                 await expectSwitchGeometry(prompting);
                 const editor = await openPanel(page, 'editor');
                 await expect(editor.locator('[data-sb-editor-mode]')).toHaveText(`Backend: ${label}`);
-                await expect(editor.locator('.sb-prompting-group:visible').locator(':scope > h3, :scope > .sb-settings-flat-header b')).toHaveText(api === 'openai'
-                    ? ['Prompt Manager', 'Utility Prompts'] : ['System Prompt', 'Instruct Template', 'Context Template']);
-                await expect(editor.locator(api === 'openai' ? '#completion_prompt_manager' : '#context_story_string')).toBeVisible();
+                await expect(editor.locator('.sb-prompt-list-titles h2')).toHaveText(api === 'openai' ? 'Prompts' : 'Prompt templates');
+                await expect(editor.locator('.sb-prompt-section:visible h3')).toHaveText(api === 'openai'
+                    ? ['Prompt order', 'Available', 'Utility prompts'] : ['System prompt', 'Context', 'Instruct']);
+                await expect(editor.locator('#completion_prompt_manager, #context_story_string')).toHaveCount(2);
+                await expect(editor.locator('#completion_prompt_manager')).toBeHidden();
+                await expect(editor.locator('#context_story_string')).toBeHidden();
                 await expectNoOverflow(editor);
                 const sampling = await openPanel(page, 'sampling');
                 await expect(sampling.locator('.sb-sampling-mode-pill:visible')).toHaveText(`Backend: ${label}`);
@@ -396,7 +400,8 @@ test('Prompting and Formatting rehome live template nodes across repeated backen
     for (const api of ['openai', 'textgenerationwebui', 'kobold', 'koboldhorde', 'novel', 'openai', 'textgenerationwebui']) {
         await selectBackend(page, api, api === 'openai' ? 'openrouter' : 'mancer');
         const prompting = await openPanel(page, 'prompting');
-        await expect(prompting.locator('[name="startReplyWithBlock"]')).toHaveCount(1);
+        await expect(prompting.locator('[name="startReplyWithBlock"]')).toHaveCount(0);
+        await expect(page.locator('#AdvancedFormatting #sb-af-reply-prefix [name="startReplyWithBlock"]')).toHaveCount(1);
         for (const selector of uniqueSelectors) {
             await expect.poll(() => page.locator(selector).count()).toBe(1);
         }
@@ -410,10 +415,9 @@ test('Prompting and Formatting rehome live template nodes across repeated backen
         }
         await openPanel(page, 'prompting');
         if (api === 'openai') {
-            await expect(prompting.locator('#sb-openai-prefill [name="startReplyWithBlock"]')).toHaveCount(1);
+            await expect(prompting.locator('#sb-openai-prefill [name="startReplyWithBlock"]')).toHaveCount(0);
             await expect(prompting.locator('#sb-tc-sysprompt')).toBeHidden();
         } else if (api === 'textgenerationwebui') {
-            await expect(prompting.locator('#sb-reply-prefill [name="startReplyWithBlock"]')).toHaveCount(1);
             await expect(prompting.locator('#common-gen-settings-block #n_textgenerationwebui')).toBeVisible();
             const sampling = await openPanel(page, 'sampling');
             await expect(sampling.locator('#n_textgenerationwebui')).toHaveCount(0);
@@ -424,8 +428,9 @@ test('Prompting and Formatting rehome live template nodes across repeated backen
     const formatting = await openPanel(page, 'context');
     await expect(page.locator('[data-sb-settings-tab="context"]')).toContainText('Formatting');
     await expect(formatting.locator('.sb-formatting-group:visible > h3')).toHaveText([
-        'Stopping Strings', 'Text Cleanup', 'Reasoning', 'Rendering',
+        'Stopping Strings', 'Reply Prefix', 'Text Cleanup', 'Reasoning', 'Rendering',
     ]);
+    await expect(formatting.locator('#sb-af-reply-prefix [name="startReplyWithBlock"]')).toBeVisible();
     await expect(formatting.locator('#advanced-formatting-cc-notice')).toBeHidden();
     await expect(formatting.locator('#reasoning_select, #reasoning_prefix, #reasoning_suffix, #reasoning_separator')).toHaveCount(0);
     await expect(formatting.locator('#reasoning_auto_parse, #reasoning_auto_expand, #reasoning_show_hidden, #reasoning_add_to_prompts, #reasoning_max_additions')).toHaveCount(5);
@@ -433,7 +438,7 @@ test('Prompting and Formatting rehome live template nodes across repeated backen
     await selectBackend(page, 'textgenerationwebui', 'ooba');
     const textFormatting = await openPanel(page, 'context');
     await expect(textFormatting.locator('.sb-formatting-group:visible > h3')).toHaveText([
-        'Tokenizer & Padding', 'Stopping Strings', 'Text Cleanup', 'Reasoning', 'Rendering',
+        'Tokenizer & Padding', 'Stopping Strings', 'Reply Prefix', 'Text Cleanup', 'Reasoning', 'Rendering',
     ]);
 });
 
@@ -591,6 +596,115 @@ test('Text Completions types keep sampler rows visible and swap only backend mec
     });
     await selectBackend(page, 'textgenerationwebui', 'llamacpp');
     await expect(card('#top_k_textgenerationwebui')).toBeVisible();
+});
+
+test('Text Completions templates use the shared editor and guard backend and preset changes', async ({ page, baseURL }) => {
+    test.setTimeout(120000);
+    await loadSettings(page, baseURL);
+    await selectBackend(page, 'textgenerationwebui', 'ooba');
+    const alternatePreset = await page.evaluate(async () => {
+        const { getPresetManager } = await import('/scripts/preset-manager.js');
+        const manager = getPresetManager('instruct');
+        const selected = manager.getSelectedPresetName();
+        const current = structuredClone(manager.getPresetSettings(selected));
+        const name = 'SB Prompt Editor Guard';
+        manager.updateList(name, { ...current, name, input_sequence: 'alternate preset value' });
+        await manager.selectPreset(manager.findPreset(selected));
+        return { selected, alternate: name };
+    });
+
+    const editor = await openPanel(page, 'editor');
+    await expect(editor.locator('.sb-prompt-section:visible h3')).toHaveText(['System prompt', 'Context', 'Instruct']);
+    await expect(editor.getByRole('button', { name: 'Add prompt', exact: true })).toBeHidden();
+    await expect(editor.getByRole('button', { name: 'Prompt list actions', exact: true })).toBeHidden();
+    await expect(editor.locator('.sb-prompt-tc-system input[type="checkbox"], .sb-prompt-tc-instruct input[type="checkbox"]')).toHaveCount(0);
+    for (const id of ['sb-editor-sysprompt', 'sb-editor-instruct', 'sb-editor-context']) {
+        await expect(editor.locator(`#${id}`)).toBeHidden();
+    }
+    await editor.locator('[data-prompt-id="tc-user"] .sb-prompt-row-name').click();
+    const detail = editor.locator('.sb-prompt-detail');
+    const fields = detail.locator('.sb-prompt-tc-textarea');
+    await expect(fields).toHaveCount(4);
+    const originalPrefix = await page.locator('#instruct_input_sequence').inputValue();
+    await expect.poll(() => fields.evaluateAll(nodes => {
+        const heights = nodes.map(node => node.getBoundingClientRect().height);
+        return Math.max(...heights) - Math.min(...heights);
+    })).toBeLessThanOrEqual(1);
+    await fields.first().fill('Unsaved TC draft');
+    await expect(page.locator('#instruct_input_sequence')).toHaveValue(originalPrefix);
+
+    const dispatchChange = async (selector, value) => page.evaluate(({ selector, value }) => {
+        const control = document.querySelector(selector);
+        control.value = value;
+        control.dispatchEvent(new Event('change', { bubbles: true }));
+    }, { selector, value });
+    const dialog = page.locator('dialog.popup[open]');
+
+    await dispatchChange('#main_api', 'openai');
+    await expect(dialog).toBeVisible();
+    await dialog.locator('.popup-button-cancel').click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('#main_api')).toHaveValue('textgenerationwebui');
+    await expect(detail.locator('.sb-prompt-tc-textarea').first()).toHaveValue('Unsaved TC draft');
+
+    await dispatchChange('#main_api', 'openai');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Discard', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('#main_api')).toHaveValue('openai');
+    await expect(page.locator('#instruct_input_sequence')).toHaveValue(originalPrefix);
+    await expect(editor.locator('.sb-prompt-detail')).toBeHidden();
+    await dispatchChange('#main_api', 'textgenerationwebui');
+    await expect(editor.locator('.sb-prompt-list-titles h2')).toHaveText('Prompt templates');
+
+    await editor.locator('[data-prompt-id="tc-user"] .sb-prompt-row-name').click();
+    await fields.first().fill('Saved before preset switch');
+    for (const id of ['sysprompt_select', 'instruct_presets', 'context_presets']) {
+        const select = page.locator(`#${id}`);
+        const previousValue = await select.inputValue();
+        const nextValue = await select.locator('option').evaluateAll((options, previous) => options.find(option => option.value !== previous)?.value, previousValue);
+        expect(nextValue).toBeTruthy();
+        await dispatchChange(`#${id}`, nextValue);
+        await expect(dialog).toBeVisible();
+        await dialog.locator('.popup-button-cancel').click();
+        await expect(dialog).toBeHidden();
+        await expect(select).toHaveValue(previousValue);
+        await expect(fields.first()).toHaveValue('Saved before preset switch');
+    }
+    const alternateValue = await page.locator('#instruct_presets option').evaluateAll(options => options.find(option => option.textContent === 'SB Prompt Editor Guard')?.value);
+    expect(alternateValue).toBeTruthy();
+    await dispatchChange('#instruct_presets', alternateValue);
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(dialog).toContainText('You have unsaved changes to this template. Discard them?');
+    await dialog.getByRole('button', { name: 'Yes', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('#instruct_presets option:checked')).toHaveText('SB Prompt Editor Guard');
+    await expect(editor.locator('.sb-prompt-detail')).toBeHidden();
+
+    const originalPresetValue = await page.locator('#instruct_presets option').evaluateAll((options, selected) => options.find(option => option.textContent === selected)?.value, alternatePreset.selected);
+    expect(originalPresetValue).toBeTruthy();
+    await editor.locator('[data-prompt-id="tc-user"] .sb-prompt-row-name').click();
+    await fields.first().fill('Discarded before preset switch');
+    await dispatchChange('#instruct_presets', originalPresetValue);
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Discard', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('#instruct_presets')).toHaveValue(originalPresetValue);
+    await expect(page.locator('#instruct_input_sequence')).toHaveValue(originalPrefix);
+    await editor.locator('[data-prompt-id="tc-user"] .sb-prompt-row-name').click();
+    await fields.first().fill('Saved before backend switch');
+    await dispatchChange('#main_api', 'openai');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('#main_api')).toHaveValue('openai');
+    await expect(page.locator('#instruct_input_sequence')).toHaveValue('Saved before backend switch');
+    await dispatchChange('#main_api', 'textgenerationwebui');
+    await expect(editor.locator('.sb-prompt-list-titles h2')).toHaveText('Prompt templates');
+    await editor.locator('[data-prompt-id="context_story_string"] .sb-prompt-row-name').click();
+    await expect(detail.locator('.sb-prompt-tc-properties select')).toHaveCount(2);
+    await expect(detail.locator('.sb-prompt-tc-properties input[type="number"]')).toHaveCount(1);
 });
 
 test('Native sampler expanders reveal search results and preserve switch and counter interactions', async ({ page, baseURL }) => {

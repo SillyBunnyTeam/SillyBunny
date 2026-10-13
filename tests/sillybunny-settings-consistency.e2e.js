@@ -238,14 +238,14 @@ async function expectSwitchSemantics(panel) {
 async function expectSwitchGeometry(panel, compactSampling = false) {
     const failures = await panel.locator('input[type="checkbox"]:visible').evaluateAll((inputs, { compact, allowlist }) => inputs.flatMap(input => {
         if (allowlist.some(selector => input.closest(selector))) return [];
-        const row = input.closest('.ds-row-switch, .ds-row');
-        const name = input.id || input.name || 'unnamed switch';
+        const row = input.closest('.ds-row-switch, .ds-row, .sb-prompt-row');
+        const name = input.id || input.name || input.getAttribute('aria-label') || 'unnamed switch';
         if (!row) return [`${name}: missing settings row`];
 
         const style = getComputedStyle(row);
         const rowRect = row.getBoundingClientRect();
         const switchRect = input.getBoundingClientRect();
-        const subtitle = Boolean(row.querySelector('.ds-row-subtitle'));
+        const subtitle = Boolean(row.querySelector('.ds-row-subtitle, .sb-prompt-row-subtitle'));
         const samplingRow = compact && Boolean(input.closest('.sb-sampling-group'));
         const minimumHeight = samplingRow ? (subtitle ? 44 : 36) : (subtitle ? 52 : 44);
         const metrics = {
@@ -443,7 +443,7 @@ test.describe('Prompting and Sampling consistency', () => {
         ];
         const textGroups = [
             'Presets', 'Generation Settings', 'System Prompt', 'Instruct Template', 'Context Template',
-            'Character Names', 'Reply Prefill', 'Reasoning Template',
+            'Character Names', 'Reasoning Template',
         ];
 
         await switchBackend(page, 'openai');

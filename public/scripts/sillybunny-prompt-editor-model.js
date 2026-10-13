@@ -17,6 +17,54 @@ export const PROMPT_EDITOR_UTILITY_FIELDS = Object.freeze([
     ['continue_nudge_prompt_textarea', 'Continue nudge'], ['send_if_empty_textarea', 'Replace empty message'],
 ]);
 
+const textCompletionField = (id, name) => Object.freeze({ id, name });
+const textCompletionEntry = (id, name, section, fields, options = {}) => Object.freeze({
+    id,
+    name,
+    section,
+    fields: Object.freeze(fields),
+    enabledBy: options.enabledBy ?? null,
+    properties: Object.freeze(options.properties ?? []),
+});
+
+export const PROMPT_EDITOR_TEXT_COMPLETION_ENTRIES = Object.freeze([
+    textCompletionEntry('sysprompt_content', 'System prompt', 'System prompt', [textCompletionField('sysprompt_content', 'System prompt')], { enabledBy: 'sysprompt_enabled' }),
+    textCompletionEntry('sysprompt_post_history', 'Post-history instructions', 'System prompt', [textCompletionField('sysprompt_post_history', 'Post-history instructions')], { enabledBy: 'sysprompt_enabled' }),
+    textCompletionEntry('context_story_string', 'Story string', 'Context', [textCompletionField('context_story_string', 'Story string')], {
+        properties: [
+            textCompletionField('context_story_string_position', 'Position'),
+            textCompletionField('context_story_string_depth', 'Depth'),
+            textCompletionField('context_story_string_role', 'Role'),
+        ],
+    }),
+    textCompletionEntry('context_example_separator', 'Example separator', 'Context', [textCompletionField('context_example_separator', 'Example separator')]),
+    textCompletionEntry('context_chat_start', 'Chat start', 'Context', [textCompletionField('context_chat_start', 'Chat start')]),
+    textCompletionEntry('tc-user', 'User', 'Instruct', [
+        textCompletionField('instruct_input_sequence', 'User Message Prefix'),
+        textCompletionField('instruct_input_suffix', 'User Message Suffix'),
+        textCompletionField('instruct_first_input_sequence', 'First User Prefix'),
+        textCompletionField('instruct_last_input_sequence', 'Last User Prefix'),
+    ], { enabledBy: 'instruct_enabled' }),
+    textCompletionEntry('tc-assistant', 'Assistant', 'Instruct', [
+        textCompletionField('instruct_output_sequence', 'Assistant Message Prefix'),
+        textCompletionField('instruct_output_suffix', 'Assistant Message Suffix'),
+        textCompletionField('instruct_first_output_sequence', 'First Assistant Prefix'),
+        textCompletionField('instruct_last_output_sequence', 'Last Assistant Prefix'),
+    ], { enabledBy: 'instruct_enabled' }),
+    textCompletionEntry('tc-system', 'System', 'Instruct', [
+        textCompletionField('instruct_system_sequence', 'System Message Prefix'),
+        textCompletionField('instruct_system_suffix', 'System Message Suffix'),
+        textCompletionField('instruct_system_same_as_user', 'System same as User'),
+        textCompletionField('instruct_last_system_sequence', 'System Instruction Prefix'),
+    ], { enabledBy: 'instruct_enabled' }),
+    textCompletionEntry('tc-misc', 'Misc', 'Instruct', [
+        textCompletionField('instruct_story_string_prefix', 'Story String Prefix'),
+        textCompletionField('instruct_story_string_suffix', 'Story String Suffix'),
+        textCompletionField('instruct_stop_sequence', 'Stop Sequence'),
+        textCompletionField('instruct_user_alignment_message', 'User Filler Message'),
+    ], { enabledBy: 'instruct_enabled' }),
+]);
+
 // Keep upstream form handlers as the write boundary, including quick-edit aliases and variable cleanup.
 export function createPromptEditorModel(manager = promptManager) {
     function scope() {
@@ -51,6 +99,51 @@ export function createPromptEditorModel(manager = promptManager) {
         const element = document.getElementById(identifier);
         if (!(element instanceof HTMLTextAreaElement)) throw new Error(`Utility prompt field is missing: ${identifier}`);
         return element;
+    }
+
+    function textCompletionControl(identifier) {
+        if (!PROMPT_EDITOR_TEXT_COMPLETION_ENTRIES.some(entry => [...entry.fields, ...entry.properties].some(field => field.id === identifier))
+            && !['sysprompt_enabled', 'instruct_enabled'].includes(identifier)) {
+            throw new Error(`Unknown Text Completions editor field: ${identifier}`);
+        }
+        const control = document.getElementById(identifier);
+        if (!(control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement)) {
+            throw new Error(`Text Completions editor field is missing: ${identifier}`);
+        }
+        return control;
+    }
+
+    function readTextCompletionValue(identifier) {
+        const control = textCompletionControl(identifier);
+        return control instanceof HTMLInputElement && control.type === 'checkbox' ? control.checked : control.value;
+    }
+
+    function readTextCompletionEntry(entry) {
+        return {
+            ...entry,
+            identifier: entry.id,
+            values: Object.fromEntries(entry.fields.map(({ id }) => [id, readTextCompletionValue(id)])),
+            propertyValues: Object.fromEntries(entry.properties.map(({ id }) => [id, readTextCompletionValue(id)])),
+            disabled: entry.enabledBy ? !readTextCompletionValue(entry.enabledBy) : false,
+        };
+    }
+
+    function textCompletionScope() {
+        return JSON.stringify([
+            document.getElementById('main_api')?.value ?? '',
+            ...['sysprompt_select', 'instruct_presets', 'context_presets'].map(id => document.getElementById(id)?.value ?? ''),
+        ]);
+    }
+
+    function writeTextCompletionValue(identifier, value) {
+        const control = textCompletionControl(identifier);
+        const isCheckbox = control instanceof HTMLInputElement && control.type === 'checkbox';
+        const nextValue = isCheckbox ? Boolean(value) : String(value ?? '');
+        const currentValue = isCheckbox ? control.checked : control.value;
+        if (currentValue === nextValue) return;
+        if (isCheckbox) control.checked = nextValue;
+        else control.value = nextValue;
+        control.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
     function refresh() {
@@ -91,6 +184,26 @@ export function createPromptEditorModel(manager = promptManager) {
                 error: manager.error,
                 runtime: { identifier: RUNTIME_AGENTS_IDENTIFIER, name: 'In-Chat Agents', marker: true, runtime: true },
             };
+        },
+        snapshotTextCompletions() {
+            return {
+                type: 'text-completions',
+                scope: textCompletionScope(),
+                textCompletionEntries: PROMPT_EDITOR_TEXT_COMPLETION_ENTRIES.map(readTextCompletionEntry),
+            };
+        },
+        readTextCompletionEntry(identifier) {
+            const entry = PROMPT_EDITOR_TEXT_COMPLETION_ENTRIES.find(candidate => candidate.id === identifier);
+            if (!entry) throw new Error(`Text Completions editor entry is missing: ${identifier}`);
+            return readTextCompletionEntry(entry);
+        },
+        textCompletionScope,
+        saveTextCompletion(draft, expectedScope) {
+            if (expectedScope !== textCompletionScope()) throw new Error('The Text Completions preset context changed before this edit was saved.');
+            const entry = PROMPT_EDITOR_TEXT_COMPLETION_ENTRIES.find(candidate => candidate.id === draft.identifier);
+            if (!entry) throw new Error(`Text Completions editor entry is missing: ${draft.identifier}`);
+            for (const { id } of entry.fields) writeTextCompletionValue(id, draft.values[id]);
+            for (const { id } of entry.properties) writeTextCompletionValue(id, draft.propertyValues[id]);
         },
         newDraft() {
             return { identifier: manager.getUuidv4(), name: '', role: 'system', content: '', system_prompt: false, marker: false, injection_position: 0, injection_depth: 4, injection_order: 100, injection_trigger: [], forbid_overrides: false };
