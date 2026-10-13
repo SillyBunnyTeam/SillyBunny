@@ -418,6 +418,13 @@ Springs are sampled from libadwaita's AdwSpringAnimation into CSS `linear()` eas
 - **Mobile:** Preserve the same destinations, ordering, action names, and shell-control shapes. Use the mobile section hub and trigger menu in place of the desktop tab strip, safe-area-aware sheets, comfortable touch targets, and no hover-only discovery.
 - **Desktop:** Keep the existing top-bar actions and chat-navigation rows visible. Users may hide the Guided Generations and Chat Navigation rows in settings; the shell restyle does not change that behavior.
 
+### List → Split Editor
+- **Pattern:** SillyBunny-specific pattern built from Libadwaita parts; `AdwNavigationSplitView` collapse rules. Libadwaita sidebars are not user-resizable and no stock widget animates from a full-width list into a split view.
+- **Sidebar:** Resizable sidebar `240–420px`, default `30%`; collapse at viewport `≤768px` or Editor pane `<720px`. Collapsed navigation: the editor is a full-screen page with a back button; no sidebar.
+- **Sizing:** The editor pane never scrolls. The textarea takes the highest sizing priority: `flex: 1 1 auto; min-height: 0`; it fills the leftover height and scrolls internally.
+- **Transition:** Full list → list shrinks to a sidebar while the editor slides in from the right; reverse on close. `SPRING_NAVIGATION` (`334ms`), continuous compression. Clicking another row in the sidebar swaps editor content without replaying the slide, after the dirty check.
+- **Reduced motion:** Instant swap for OS `prefers-reduced-motion` or `body.reduced-motion`.
+
 ### Message Actions
 - **Placement:** Actions sit in the message name row, aligned to the inline end. The name truncates before the actions move. Only the desktop expanded row may wrap.
 - **Sizing:** Use `--sb-message-hit-size` for the target and `--sb-message-glyph-size` for the icon. Mobile targets are `44px` (`40px` in compact mode). Swipe arrows keep `--sb-message-icon-size`.

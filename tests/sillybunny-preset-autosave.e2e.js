@@ -141,11 +141,12 @@ test('edits in Sampling, Presets and Editor each save the owning preset once aft
     expect(saves[1]).toMatchObject({ apiId: 'openai', name: USER_PRESET, preset: { openai_max_tokens: 777 } });
 
     const editor = await openPanel(page, 'editor');
-    const impersonation = editor.locator('#impersonation_prompt_textarea');
-    await impersonation.scrollIntoViewIfNeeded();
+    await editor.locator('[data-prompt-id="impersonation_prompt_textarea"] .sb-prompt-row-name').click();
+    const impersonation = editor.locator('.sb-prompt-textarea');
     await impersonation.click();
     await page.keyboard.press('End');
     await page.keyboard.type(' autosaved');
+    await editor.getByRole('button', { name: 'Save', exact: true }).click();
     await expect.poll(() => saves.length).toBe(3);
     expect(saves[2]).toMatchObject({ apiId: 'openai', name: USER_PRESET });
     expect(saves[2].preset.impersonation_prompt).toMatch(/ autosaved$/);
@@ -202,6 +203,22 @@ test('programmatic changes never write a preset', async ({ page }) => {
     expect(saves).toHaveLength(0);
 });
 
+test('prompt editor drafts autosave only when committed through Save', async ({ page }) => {
+    const saves = await loadApp(page);
+    await selectPreset(page, 'openai', USER_PRESET);
+    const panel = await openPanel(page, 'editor');
+    await panel.locator('[data-prompt-id="main"] .sb-prompt-row-name').click();
+    await panel.locator('.sb-prompt-textarea').fill('Committed editor prompt');
+    await waitPastDebounce(page);
+    expect(saves).toHaveLength(0);
+    await panel.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect.poll(() => saves.length).toBe(1);
+    expect(saves[0]).toMatchObject({ apiId: 'openai', name: USER_PRESET });
+    expect(saves[0].preset.prompts.find(prompt => prompt.identifier === 'main').content).toBe('Committed editor prompt');
+    await waitPastDebounce(page);
+    expect(saves).toHaveLength(1);
+});
+
 test('editing a bundled preset forks it once and keeps saving the copy', async ({ page }) => {
     const saves = await loadApp(page);
     await selectPreset(page, 'openai', 'Default');
@@ -256,11 +273,12 @@ test('switching presets flushes the pending save to the previous preset first', 
     const saves = await loadApp(page);
     await selectPreset(page, 'openai', USER_PRESET);
     const editor = await openPanel(page, 'editor');
-    const impersonation = editor.locator('#impersonation_prompt_textarea');
-    await impersonation.scrollIntoViewIfNeeded();
+    await editor.locator('[data-prompt-id="impersonation_prompt_textarea"] .sb-prompt-row-name').click();
+    const impersonation = editor.locator('.sb-prompt-textarea');
     await impersonation.click();
     await page.keyboard.press('End');
     await page.keyboard.type(' before switch');
+    await editor.getByRole('button', { name: 'Save', exact: true }).click();
 
     await openPanel(page, 'prompting');
     await page.locator('#settings_preset_openai').selectOption({ label: SECOND_PRESET });
@@ -269,7 +287,7 @@ test('switching presets flushes the pending save to the previous preset first', 
     expect(saves[0].preset.impersonation_prompt).toMatch(/ before switch$/);
     await expect(page.locator('.popup:has-text("Unsaved changes")')).toHaveCount(0);
     await expect(page.locator('#settings_preset_openai option:checked')).toHaveText(SECOND_PRESET);
-    await expect(impersonation).not.toHaveValue(/ before switch$/);
+    await expect(page.locator('#impersonation_prompt_textarea')).not.toHaveValue(/ before switch$/);
 
     await waitPastDebounce(page);
     expect(saves).toHaveLength(1);
@@ -292,10 +310,11 @@ test('turning autosave off stops saves and restores the unsaved-changes guard', 
 
     const editor = await openPanel(page, 'editor');
     await expect(editor.locator('[data-sb-editor-autosave]')).toHaveText('Autosave off');
-    const impersonation = editor.locator('#impersonation_prompt_textarea');
-    await impersonation.scrollIntoViewIfNeeded();
+    await editor.locator('[data-prompt-id="impersonation_prompt_textarea"] .sb-prompt-row-name').click();
+    const impersonation = editor.locator('.sb-prompt-textarea');
     await impersonation.click();
     await page.keyboard.type('x');
+    await editor.getByRole('button', { name: 'Save', exact: true }).click();
     await openPanel(page, 'prompting');
     await page.locator('#settings_preset_openai').selectOption({ label: SECOND_PRESET });
     await expect(page.locator('.popup:has-text("Unsaved changes")')).toBeVisible();

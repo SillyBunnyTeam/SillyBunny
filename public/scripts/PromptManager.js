@@ -1518,6 +1518,8 @@ class PromptManager {
 
                 this.makeDraggable();
                 this.#setScrollPosition(scrollPosition);
+                // SillyBunny: notify the owned editor only after the current render and token counts commit.
+                document.dispatchEvent(new CustomEvent('sb:prompt-manager-rendered', { detail: { manager: this } }));
             } finally {
                 this.profileEnd('render');
             }

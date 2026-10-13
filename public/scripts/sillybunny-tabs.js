@@ -69,6 +69,7 @@ import { normalizeBackendSettingsRows, normalizeSettingsDetail, normalizeSetting
 import { createSubpageStack, SB_SUBPAGE_DURATION, SB_SUBPAGE_STORE_CLASS } from './sillybunny-settings-subpage.js';
 import { SB_SUBPAGE_BUILDERS } from './sillybunny-settings-subpage-descriptors.js';
 import { createConnectionsPanel } from './sillybunny-connections-panel.js';
+import { initializePromptEditor } from './sillybunny-prompt-editor.js';
 
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
@@ -666,6 +667,9 @@ const SB_SHORTCUT_LABELS = Object.freeze({
     slot6: 'Slot 6 (Desktop)',
 });
 const SB_PANEL_STYLESHEETS = Object.freeze({
+    'left:editor': [
+        { href: 'css/sillybunny-prompt-editor.css', id: 'deferred-prompt-editor-css' },
+    ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
     ],
@@ -10217,6 +10221,7 @@ function buildEditorPanel() {
     const { panel, scroller } = createShellPanel({ id: 'editor' });
     const column = createElement('div', { className: 'sb-shell-column' });
     prepareEditorPanel(column);
+    initializePromptEditor(column);
     scroller.append(column);
     return { panel, scroller, searchRoot: column, onActivate: () => {
         groupAdvancedFormattingIntoDrawers();

@@ -27,6 +27,8 @@ const EDIT_SURFACE_SELECTOR = [
     '[data-sb-panel="prompting"]',
     '[data-sb-panel="editor"]',
     '#completion_prompt_manager_popup',
+    '.sb-prompt-editor', '.sb-prompt-properties', '.sb-prompt-popover',
+    '[data-sb-prompt-menu="true"]',
 ].join(', ');
 // Preset management controls write or replace presets themselves; pending edits are saved before they act.
 const FLUSH_CONTROL_SELECTOR = [
