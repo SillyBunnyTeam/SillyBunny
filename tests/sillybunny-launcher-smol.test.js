@@ -246,4 +246,24 @@ describe('launcher parity', () => {
         expect(prMetadataSource).not.toContain('"$BASE_REF" = "main"');
         expect(prMetadataSource).not.toContain('TLD/mobile-refactor');
     });
+
+    test('PR metadata accepts the hotfix title prefix', () => {
+        const prefixLine = prMetadataSource
+            .split('\n')
+            .find(line => line.includes('grep -Eq \'^('));
+        expect(prefixLine).toBeDefined();
+
+        // The workflow runs under grep, so its POSIX [[:space:]] class is translated to \s for JS.
+        const alternation = prefixLine.slice(prefixLine.indexOf('\'^(') + 3, prefixLine.indexOf(')('));
+        const prefixPattern = new RegExp(`^${alternation}(\\([^)]+\\))?!?:\\s.+`);
+
+        for (const prefix of ['fix', 'chore', 'feat', 'sync', 'docs', 'hotfix']) {
+            expect(prefixPattern.test(`${prefix}: a change`)).toBe(true);
+        }
+        expect(prefixPattern.test('hotfix(x): a change')).toBe(true);
+        expect(prefixPattern.test('hotfixed: a change')).toBe(false);
+        expect(prefixPattern.test('hotfix:')).toBe(false);
+        expect(prefixPattern.test('Hotfix: a change')).toBe(false);
+        expect(prMetadataSource).toContain('fix:, chore:, feat:, sync:, docs:, hotfix:');
+    });
 });

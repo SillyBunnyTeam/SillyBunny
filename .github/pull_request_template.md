@@ -6,6 +6,7 @@ Please [read the Contributor's Guide](https://github.com/SillyBunnyTeam/SillyBun
 In this project we follow [Conventional Commits][2] as title prefixes to describe features and fixes.
 
 - `fix` - a direct bug fix.
+- `hotfix` - a critical fix that must ship from `release` ahead of the next release. Hotfixes are on a per-case basis, and can be merged as an exception to favor speed over thoroughness by maintainers/code owners.
 - `chore` - a simple maintenance change.
 - `feat` - a new feature implementation.
 - `sync` - synchronizing with upstream.
