@@ -367,24 +367,25 @@ function promptEditorDriver(page) {
 
         /** Drags `identifier` so it lands directly before `targetIdentifier`. */
         async moveBefore(identifier, targetIdentifier) {
-            let sourceBox;
-            let targetBox;
+            const placeholder = page.locator('.sb-prompt-order .ui-sortable-placeholder');
+            let startX;
+            let startY;
+            // The list can still shift (header card, token counts) after a single measurement, so a press may
+            // miss the handle; re-measure and press again until jQuery UI sortable creates its placeholder.
             await expect.poll(async () => {
-                sourceBox = await row(identifier).locator('.sb-prompt-grip').boundingBox();
-                targetBox = await row(targetIdentifier).boundingBox();
-                return Boolean(sourceBox && targetBox);
-            }).toBe(true);
-            const startX = sourceBox.x + sourceBox.width / 2;
-            const startY = sourceBox.y + sourceBox.height / 2;
-
-            await page.mouse.move(startX, startY);
-            await page.mouse.down();
-            // jQuery UI sortable starts after its mouse delay and a small distance; nudge until the placeholder exists.
-            await expect.poll(async () => {
+                if (await placeholder.count()) return true;
+                await page.mouse.up();
+                const sourceBox = await row(identifier).locator('.sb-prompt-grip').boundingBox();
+                if (!sourceBox) return false;
+                startX = sourceBox.x + sourceBox.width / 2;
+                startY = sourceBox.y + sourceBox.height / 2;
+                await page.mouse.move(startX, startY);
+                await page.mouse.down();
                 await page.mouse.move(startX, startY + 6, { steps: 2 });
                 await page.mouse.move(startX, startY, { steps: 2 });
-                return page.locator('.sb-prompt-order .ui-sortable-placeholder').count();
-            }, { timeout: 5000 }).toBeGreaterThan(0);
+                return (await placeholder.count()) > 0;
+            }, { timeout: 5000 }).toBe(true);
+            const targetBox = await row(targetIdentifier).boundingBox();
             await page.mouse.move(startX, targetBox.y + targetBox.height * 0.25, { steps: 12 });
             await page.mouse.up();
         },
