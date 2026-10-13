@@ -356,7 +356,9 @@ function enhancePresetActionButtons(root) {
                 button.append(labelNode);
                 button.setAttribute('aria-labelledby', labelId);
             }
-            for (const icon of button.querySelectorAll(':scope > i')) icon.setAttribute('aria-hidden', 'true');
+            for (const icon of button.querySelectorAll(':scope > i')) {
+                if (icon.getAttribute('aria-hidden') !== 'true') icon.setAttribute('aria-hidden', 'true');
+            }
         }
         groupPresetActions(actionContainer);
     }
@@ -410,7 +412,7 @@ function placeSharedPresetControls(root, activeApi) {
             if (fileGroup) fileGroup.after(masterGroup);
             else actions.prepend(masterGroup);
         }
-        masterGroup.hidden = isChatCompletion;
+        if (masterGroup.hidden !== isChatCompletion) masterGroup.hidden = isChatCompletion;
     }
 
     const autosaveRow = root.querySelector('[data-sb-preset-autosave]');
@@ -10246,14 +10248,14 @@ function updateEditorPanel(panel = getShellState('left')?.tabs.get('editor')?.pa
         const documentNode = field.closest('[data-sb-editor-document]')
             ?? (wrapperSelector ? field.closest(wrapperSelector) : field.parentElement);
         if (!(documentNode instanceof HTMLElement)) return;
-        documentNode.dataset.sbEditorDocument = 'true';
+        if (documentNode.dataset.sbEditorDocument !== 'true') documentNode.dataset.sbEditorDocument = 'true';
         if (documentNode.parentElement !== body) body.append(documentNode);
     };
 
     const manager = document.getElementById('sb-openai-prompt-manager');
     if (manager instanceof HTMLElement) {
         if (manager.parentElement !== root || manager.previousElementSibling !== root.firstElementChild) root.firstElementChild.after(manager);
-        manager.style.display = '';
+        if (manager.style.display) manager.style.display = '';
         if (!manager.classList.contains('sb-prompting-group')) manager.classList.add('sb-prompting-group');
         // The flatten pass visits descendants, so include the group's outer drawer via its parent.
         flattenNestedSettingsDrawers(root, { includeTopLevel: true });
@@ -10267,7 +10269,7 @@ function updateEditorPanel(panel = getShellState('left')?.tabs.get('editor')?.pa
         }
         const block = document.getElementById('completion_prompt_manager')?.closest('.range-block');
         if (block instanceof HTMLElement && !manager.contains(block)) body.append(block);
-        manager.hidden = !isChatCompletion;
+        if (manager.hidden === isChatCompletion) manager.hidden = !isChatCompletion;
     }
     for (const id of SB_EDITOR_UTILITY_PROMPT_IDS) adoptDocument(id, 'sb-editor-utility', '.range-block');
     for (const id of ['sysprompt_content', 'sysprompt_post_history']) adoptDocument(id, 'sb-editor-sysprompt');
@@ -10280,8 +10282,9 @@ function updateEditorPanel(panel = getShellState('left')?.tabs.get('editor')?.pa
     for (const id of ['sb-editor-utility', 'sb-editor-sysprompt', 'sb-editor-instruct', 'sb-editor-context']) {
         const group = root.querySelector(`#${id}`);
         if (!(group instanceof HTMLElement)) continue;
-        group.hidden = (id === 'sb-editor-utility' ? !isChatCompletion : isChatCompletion)
+        const hidden = (id === 'sb-editor-utility' ? !isChatCompletion : isChatCompletion)
             || !group.querySelector('textarea, select, input');
+        if (group.hidden !== hidden) group.hidden = hidden;
     }
     root.querySelector('#sb-editor-sysprompt').classList.toggle('disabled', document.getElementById('SystemPromptBlock')?.classList.contains('disabled') ?? false);
 
@@ -10301,7 +10304,7 @@ function updateEditorPanel(panel = getShellState('left')?.tabs.get('editor')?.pa
     if (meta.textContent !== names) meta.textContent = names;
     refreshPresetProtectionUi();
     for (const group of root.querySelectorAll('.sb-prompting-group:not(#sb-openai-prompt-manager)')) normalizeBackendSettingsRows(group);
-    for (const wrapper of root.querySelectorAll('[data-sb-editor-document]:not(.ds-row)')) wrapper.classList.add('sb-settings-row-wrapper');
+    for (const wrapper of root.querySelectorAll('[data-sb-editor-document]:not(.ds-row):not(.sb-settings-row-wrapper)')) wrapper.classList.add('sb-settings-row-wrapper');
     groupPromptingRowHelpers(root);
     const tab = getShellState('left')?.tabs.get('editor');
     if (tab) tab.searchIndex = null;
@@ -10391,21 +10394,21 @@ function updatePromptingPanel(panel) {
     const modeLabel = `Backend: ${backend?.title ?? activeApi}`;
     if (mode && mode.textContent !== modeLabel) mode.textContent = modeLabel;
     const bindModelPresetBlock = root.querySelector('[name="bindModelPresetBlock"]') ?? document.querySelector('[name="bindModelPresetBlock"]');
-    if (bindModelPresetBlock instanceof HTMLElement) bindModelPresetBlock.hidden = activeApi === 'openai';
+    if (bindModelPresetBlock instanceof HTMLElement && bindModelPresetBlock.hidden !== (activeApi === 'openai')) bindModelPresetBlock.hidden = activeApi === 'openai';
 
     flattenNestedSettingsDrawers(root, { includeTopLevel: true });
     updateEditorPanel();
     const range = root.querySelector('#range_block_openai');
     // SillyBunny: Quick Prompts remain mounted for upstream integrations; the Prompt Manager is their single editor.
     const quickPrompts = root.querySelector('#sb-openai-prompts');
-    if (quickPrompts instanceof HTMLElement) quickPrompts.hidden = true;
+    if (quickPrompts instanceof HTMLElement && !quickPrompts.hidden) quickPrompts.hidden = true;
     const reasoningBody = root.querySelector('#sb-reasoning-template > .sb-prompting-group-body');
     const reasoningDetails = document.getElementById('reasoning_select')?.closest('details');
     if (reasoningBody instanceof HTMLElement && reasoningDetails instanceof HTMLElement) {
         for (const child of [...reasoningDetails.children]) {
             if (child.tagName !== 'SUMMARY') reasoningBody.append(child);
         }
-        reasoningDetails.hidden = true;
+        if (!reasoningDetails.hidden) reasoningDetails.hidden = true;
     }
     const isChatCompletion = activeApi === 'openai';
     const promptingGroupIds = [
@@ -10432,7 +10435,8 @@ function updatePromptingPanel(panel) {
         normalizeBackendSettingsRows(group);
         const isTcGroup = id.startsWith('sb-tc-') || id === 'sb-reply-prefill';
         const isCcGroup = id.startsWith('sb-openai-');
-        group.hidden = id === 'sb-openai-sampling' || (isTcGroup ? isChatCompletion : isCcGroup ? !isChatCompletion : false);
+        const hidden = id === 'sb-openai-sampling' || (isTcGroup ? isChatCompletion : isCcGroup ? !isChatCompletion : false);
+        if (group.hidden !== hidden) group.hidden = hidden;
     }
     // SillyBunny: the Prompt Manager may mount late, so restore the complete Chat Completions order on every update.
     // The check must be "is the tail already in this order", not "is this group last yet": `append` on a
@@ -10477,8 +10481,8 @@ function updatePromptingPanel(panel) {
     if (prefill instanceof HTMLElement && prefillTarget instanceof HTMLElement) {
         const body = prefillTarget.querySelector(':scope > .sb-prompting-group-body') ?? prefillTarget;
         if (prefill.parentElement !== body) body.append(prefill);
-        prefill.hidden = false;
-        prefillTarget.hidden = false;
+        if (prefill.hidden) prefill.hidden = false;
+        if (prefillTarget.hidden) prefillTarget.hidden = false;
     }
 
     // SillyBunny: the multiple-swipes control is authored as a data-tg-samplers wrapper,
@@ -10498,7 +10502,7 @@ function updatePromptingPanel(panel) {
     if (common instanceof HTMLElement) {
         const contextRow = common.querySelector('#max_context_block');
         const quickContext = contextRow?.querySelector('.quick_context_size_container');
-        if (quickContext && contextRow) contextRow.after(quickContext);
+        if (quickContext && contextRow && contextRow.nextElementSibling !== quickContext) contextRow.after(quickContext);
         normalizeBackendSettingsRows(common);
     }
     normalizeBackendSettingsRows(root, { fields: false });
@@ -10599,7 +10603,7 @@ function groupAdvancedFormattingIntoDrawers() {
     const formatting = document.getElementById('AdvancedFormatting');
     if (!(formatting instanceof HTMLElement)) return;
     if (formatting.dataset.sbGrouped === 'true') {
-        updateFormattingGroupVisibility(formatting);
+        if (isShellTabOpen('left', 'context')) updateFormattingGroupVisibility(formatting);
         return;
     }
 
@@ -14069,7 +14073,8 @@ function setInlineDrawerExpanded(drawer, expand) {
     icon.classList.toggle('fa-circle-chevron-down', !expand);
     icon.classList.toggle('up', expand);
     icon.classList.toggle('fa-circle-chevron-up', expand);
-    content.style.display = expand ? 'block' : 'none';
+    const display = expand ? 'block' : 'none';
+    if (content.style.display !== display) content.style.display = display;
 }
 
 function getLegacySettingsDrawerStorageKey(drawer) {
@@ -14320,7 +14325,12 @@ function ensureInlineDrawerPersistenceObserver() {
         return;
     }
 
-    sbInlineDrawerPersistenceObserver = new MutationObserver(() => queueInlineDrawerPersistenceBind());
+    sbInlineDrawerPersistenceObserver = new MutationObserver(mutations => {
+        // Only newly authored drawers need binding/flattening, not token or autosave text updates.
+        const addedDrawer = mutations.some(mutation => [...mutation.addedNodes].some(node => node instanceof Element
+            && (node.matches('.inline-drawer') || node.querySelector('.inline-drawer'))));
+        if (addedDrawer) queueInlineDrawerPersistenceBind();
+    });
     for (const root of roots) {
         sbInlineDrawerPersistenceObserver.observe(root, { childList: true, subtree: true });
     }
@@ -15352,6 +15362,10 @@ function initAll() {
     sbState.initObserver?.disconnect();
     sbState.initObserver = null;
     sbState.initialized = true;
+
+    // Sizzle caches compiled selectors, not DOM results. Its default 50-entry cache thrashes across
+    // the shell's 120+ delegated input selectors, recompiling them for every keystroke.
+    if (window.jQuery?.expr) window.jQuery.expr.cacheLength = Math.max(window.jQuery.expr.cacheLength, 512);
 
     restorePersistedTopbarState();
     migrateLegacyNavigationState();

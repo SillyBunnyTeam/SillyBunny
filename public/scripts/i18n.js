@@ -184,18 +184,22 @@ function findLang(language) {
  * @param {Element} element The element to translate
  */
 function translateElement(element) {
-    const keys = element.getAttribute('data-i18n').split(';'); // Multi-key entries are ; delimited
+    // SillyBunny: an attribute can be removed before its queued mutation is delivered.
+    const translationKeys = element.getAttribute('data-i18n');
+    if (translationKeys === null) return;
+    const keys = translationKeys.split(';'); // Multi-key entries are ; delimited
     for (const key of keys) {
         const attributeMatch = key.match(/\[(\S+)\](.+)/); // [attribute]key
         if (attributeMatch) { // attribute-tagged key
             const localizedValue = localeData?.[attributeMatch[2]];
             if (localizedValue || localizedValue === '') {
-                element.setAttribute(attributeMatch[1], localizedValue);
+                // SillyBunny: avoid re-firing shell observers for unchanged translations.
+                if (element.getAttribute(attributeMatch[1]) !== localizedValue) element.setAttribute(attributeMatch[1], localizedValue);
             }
         } else { // No attribute tag, treat as 'text'
             const localizedValue = localeData?.[key];
             if (localizedValue || localizedValue === '') {
-                element.textContent = localizedValue;
+                if (element.textContent !== localizedValue) element.textContent = localizedValue;
             }
         }
     }

@@ -368,13 +368,16 @@ export function refreshPresetProtectionUi() {
     const autosave = document.querySelector('[data-sb-editor-autosave]');
     if (autosave instanceof HTMLElement) {
         const label = isPresetAutosaveEnabled() ? 'Autosave on' : 'Autosave off';
-        autosave.hidden = false;
-        autosave.dataset.i18n = label;
-        autosave.textContent = isPresetAutosaveEnabled() ? t`Autosave on` : t`Autosave off`;
+        const text = isPresetAutosaveEnabled() ? t`Autosave on` : t`Autosave off`;
+        if (autosave.hidden) autosave.hidden = false;
+        if (autosave.dataset.i18n !== label) autosave.dataset.i18n = label;
+        // Replacing identical text requeues the shell's child-list drawer observer indefinitely.
+        if (autosave.textContent !== text) autosave.textContent = text;
     }
     const readOnly = document.querySelector('[data-sb-editor-read-only]');
     if (readOnly instanceof HTMLElement) {
-        readOnly.hidden = !getActiveKinds().some(kind => kind !== 'reasoning' && isBundledPresetName(kind, getSelectedName(kind)) === true);
+        const hidden = !getActiveKinds().some(kind => kind !== 'reasoning' && isBundledPresetName(kind, getSelectedName(kind)) === true);
+        if (readOnly.hidden !== hidden) readOnly.hidden = hidden;
     }
     const toggle = document.getElementById('sb_preset_autosave');
     if (toggle instanceof HTMLInputElement && toggle.checked !== isPresetAutosaveEnabled()) toggle.checked = isPresetAutosaveEnabled();

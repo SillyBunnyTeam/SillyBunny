@@ -2252,7 +2252,8 @@ function getLastCharacterMessage({ characterName = '' } = {}) {
 function removeExpression() {
     lastMessage = null;
     $('img.expression').off('error');
-    $('img.expression').prop('src', '');
+    // SillyBunny: the no-character poll must not keep assigning an already empty image source.
+    $('img.expression').filter((_index, image) => image.getAttribute('src') !== '').prop('src', '');
     $('img.expression').removeClass('default');
     $('#open_chat_expressions').hide();
     $('#no_chat_expressions').show();

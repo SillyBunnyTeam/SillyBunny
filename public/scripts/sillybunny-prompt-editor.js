@@ -637,10 +637,12 @@ export function initializePromptEditor(column) {
         const dot = editor.querySelector('.sb-prompt-dirty');
         const saveButton = editor.querySelector('.sb-prompt-save');
         if (!dot || !saveButton) return;
-        const changed = dot.hidden === dirty();
-        saveButton.disabled = !dirty() || (kind === 'prompt' && !model.permissions(draft).edit);
+        const isDirty = dirty();
+        const changed = dot.hidden === isDirty;
+        const disabled = !isDirty || (kind === 'prompt' && !model.permissions(draft).edit);
+        if (saveButton.disabled !== disabled) saveButton.disabled = disabled;
         if (!changed) return;
-        if (dirty()) {
+        if (isDirty) {
             dot.hidden = false;
             play(dot, [{ opacity: 0, transform: 'scale(0.7)' }, { opacity: 1, transform: 'none' }], { duration: MOTION_FAST });
         } else animateOut(dot, [{ opacity: 1 }, { opacity: 0 }], () => dot.hidden = true, { duration: MOTION_POPOVER_CLOSE, onEnd: scheduleLayout });
@@ -717,10 +719,11 @@ export function initializePromptEditor(column) {
             stopMotion(node);
             for (const property of ['width', 'transform', 'opacity', 'will-change']) node.style.removeProperty(property);
         }
-        editor.classList.remove('sb-prompt-travelling');
-        editor.hidden = !draft;
-        editor.inert = !draft;
-        list.inert = collapsed && Boolean(draft);
+        if (editor.classList.contains('sb-prompt-travelling')) editor.classList.remove('sb-prompt-travelling');
+        if (editor.hidden !== !draft) editor.hidden = !draft;
+        if (editor.inert !== !draft) editor.inert = !draft;
+        const listInert = collapsed && Boolean(draft);
+        if (list.inert !== listInert) list.inert = listInert;
         if (listRefreshPending) { listRefreshPending = false; renderList(); }
     }
 
@@ -1158,7 +1161,8 @@ export function initializePromptEditor(column) {
         if (root.dataset.collapsed !== String(collapsed)) root.dataset.collapsed = String(collapsed);
         if (root.style.getPropertyValue('--sb-prompt-list-width') !== `${nextListWidth}px`) root.style.setProperty('--sb-prompt-list-width', `${nextListWidth}px`);
         if (divider.getAttribute('aria-valuenow') !== String(Math.round(nextListWidth))) divider.setAttribute('aria-valuenow', String(Math.round(nextListWidth)));
-        list.inert = collapsed && Boolean(draft);
+        const listInert = collapsed && Boolean(draft);
+        if (list.inert !== listInert) list.inert = listInert;
         if (column.classList.contains('sb-prompt-detail-open') !== Boolean(draft)) column.classList.toggle('sb-prompt-detail-open', Boolean(draft));
         const hideHeader = !revealHeader && Boolean(draft) && (collapsed || !fits);
         if (headerHidden !== hideHeader) column.classList.toggle('sb-prompt-hide-header', hideHeader);
