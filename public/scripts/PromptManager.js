@@ -970,7 +970,8 @@ class PromptManager {
 
         // Reset prompt should it be a system prompt
         this.handleResetPrompt = (event) => {
-            const promptId = event.target.dataset.pmPrompt;
+            // SillyBunny: labelled buttons have child spans; the listener's button owns the prompt ID.
+            const promptId = event.currentTarget.dataset.pmPrompt;
             const prompt = this.getPromptById(promptId);
             const isPulledPrompt = Object.keys(this.promptSources).includes(promptId);
 
