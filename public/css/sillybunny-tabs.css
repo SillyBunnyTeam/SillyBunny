@@ -7428,6 +7428,13 @@ body.reduced-motion .sb-shell-main {
     pointer-events: none;
 }
 
+/* Native floating portraits sit above settings. Keep their position and open state while
+   concealing them until the settings page has finished its closing animation. */
+body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
+    visibility: hidden;
+    pointer-events: none;
+}
+
 #sb-settings-inner {
     display: grid;
     grid-template-columns: 220px 1fr;
@@ -8285,7 +8292,17 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 #sb-settings-page .sb-sampling-panel [data-sb-sampling-control='#openai_logit_bias_preset'] > .ds-row > .ds-row-suffix {
     flex-direction: column;
     align-items: stretch;
-    flex: 1 1 320px;
+    flex: 0 0 auto;
+}
+
+#sb-settings-page .sb-sampling-panel [data-sb-sampling-control='#openai_logit_bias_preset'] > .ds-row {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+#sb-settings-page .sb-sampling-panel [data-sb-sampling-control='#openai_logit_bias_preset'] > .ds-row > :is(.ds-row-text, .ds-row-suffix) {
+    flex: 0 0 auto;
+    width: 100%;
 }
 
 #sb-settings-page .sb-sampling-panel [data-sb-sampling-control='#openai_logit_bias_preset'] :is(.openai_logit_bias_preset_form, .inline-drawer) {
@@ -8399,16 +8416,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 }
 
 @media screen and (max-width: 620px) {
-    #sb-settings-page .sb-sampling-panel [data-sb-sampling-control='#openai_logit_bias_preset'] > .ds-row {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    #sb-settings-page .sb-sampling-panel [data-sb-sampling-control='#openai_logit_bias_preset'] > .ds-row > :is(.ds-row-text, .ds-row-suffix) {
-        flex: 0 0 auto;
-        width: 100%;
-    }
-
     #sb-settings-page .sb-sampling-panel .openai_logit_bias_preset_form {
         flex-wrap: wrap;
     }
@@ -8702,8 +8709,40 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     }
 }
 
+#sb-settings-page .sb-sampling-panel .sb-sampling-group > .sb-settings-flat-header,
 #sb-settings-page .sb-prompting-panel .sb-prompting-group > .sb-settings-flat-header {
     margin-bottom: 8px;
+}
+
+/* The container owns category spacing so hidden groups leave no gaps or leading margins. */
+#sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-section,
+#sb-settings-page .sb-settings-mounted-shell #AdvancedFormatting,
+#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) #range_block_openai {
+    row-gap: 24px;
+}
+
+#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) #range_block_openai[style*='display: block']:not([hidden]) {
+    /* Backend visibility writes display:block; retain its hidden state and restore the column layout. */
+    display: flex !important;
+}
+
+#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) #range_block_openai > .sb-prompting-group {
+    padding-block-end: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell #AdvancedFormatting.sb-managed {
+    /* The embedded drawer reset uses display:block!important, which disables category gaps. */
+    display: flex !important;
+    flex-direction: column;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel:not(.sb-editor-panel) #ai_response_configuration {
+    /* The source container retains flexNoGap, whose gap reset is important. */
+    row-gap: 24px !important;
+}
+
+#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .sb-edit-prompts {
+    margin-block: 0;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body .ds-row {
@@ -8794,10 +8833,26 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     justify-content: flex-start;
 }
 
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-preset-toolbar-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+}
+
+#sb-settings-page .sb-prompting-panel .sb-preset-toolbar-row > .flex-container {
+    grid-column: 1 / -1;
+}
+
+@media screen and (max-width: 620px) {
+    #sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-preset-toolbar-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
 /* The order pass also marks a wrapper it emptied with `hidden`, but `.flex-container` and
    `.flexFlowColumn` set `display` on most of them and would paint the leftover heading anyway. */
 #sb-settings-page .sb-sampling-panel [hidden],
 #sb-settings-page .sb-prompting-panel [hidden],
+#sb-settings-page #AdvancedFormatting > .sb-formatting-group[hidden],
 #sb-settings-page [data-sb-emptied-by-order] {
     display: none !important;
 }
@@ -9780,7 +9835,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     gap: 0;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card) > :not(.ds-row, .ds-row-expander, .sb-settings-row-wrapper, .sb-settings-flat-section, .sb-sampling-transmission, .menu_button, button, :has(.ds-row, .ds-row-expander)) {
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card, .sb-prompting-row-with-help, .sb-custom-stopping-strings) > :not(.ds-row, .ds-row-expander, .sb-settings-row-wrapper, .sb-settings-flat-section, .sb-sampling-transmission, .menu_button, button, :has(.ds-row, .ds-row-expander)) {
     padding: 10px 16px;
 }
 
@@ -9807,6 +9862,145 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 
 #sb-settings-page .sb-settings-mounted-shell .sb-sampling-transmission > .flex-container {
     padding: 0;
+    min-height: 0;
+    border: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-transmission {
+    justify-content: flex-end;
+    min-height: 0;
+    gap: 8px;
+    padding: 0 16px 8px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-sampling-sampler-tools-card > .flex-container > small.flex-container {
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    flex: 0 1 auto;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-sampling-sampler-tools-card .menu_button {
+    width: auto;
+    height: auto;
+    white-space: nowrap;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .ds-row.sb-sampling-help-row {
+    flex-wrap: wrap;
+    row-gap: 4px;
+    min-height: 44px;
+    padding: 6px 16px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-help-row > .ds-row-text {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-help-row > .sb-sampling-help {
+    flex: 0 0 100%;
+    width: 100%;
+    max-width: 100%;
+    padding: 0 0 4px;
+    white-space: normal;
+    text-align: start;
+    font-weight: 400;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-help[hidden] {
+    display: none;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-help-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 32px;
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--sb-input-placeholder);
+    cursor: pointer;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-help-toggle:is(:hover, [aria-expanded='true']) {
+    background: var(--sb-flat-hover-bg);
+    color: var(--SmartThemeBodyColor);
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-help-toggle:focus-visible {
+    outline: 2px solid var(--sb-accent);
+    outline-offset: 1px;
+}
+
+/* Keep a field's explanation with its label, and keep capability icons in that heading. */
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .ds-row-label > :is([data-cc-toggle], .flex-container:has([data-cc-toggle])) {
+    display: inline-flex;
+    vertical-align: middle;
+    gap: 6px;
+    margin-inline-start: 6px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .ds-row-switch:not([for='openai_media_inlining']):has(input:not(:checked)) .ds-row-label > :is([data-cc-toggle], .flex-container:has([data-cc-toggle])) {
+    display: none;
+}
+
+#sb-settings-page .sb-settings-mounted-shell label:is([for='swipes-checkbox'], [for='gestures-checkbox']) .ds-row-label > i {
+    margin-inline-start: 6px;
+}
+
+/* The radio input and following span stay siblings: OpenAI reads the selected label there. */
+#sb-settings-page #sb-openai-names label:has(> input[name='character_names']) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 2px 10px;
+    text-align: start;
+}
+
+#sb-settings-page #sb-openai-names label > input[name='character_names'] {
+    grid-column: 1;
+    grid-row: 1;
+    margin: 0;
+}
+
+#sb-settings-page #sb-openai-names label:has(> input[name='character_names']) > :is(span, small) {
+    grid-column: 2;
+    width: auto;
+    min-width: 0;
+    white-space: normal;
+    text-align: start;
+}
+
+#sb-settings-page #sb-openai-names label:has(> input[name='character_names']) > small {
+    font-size: var(--sb-type-meta);
+    line-height: 1.4;
+    color: var(--sb-input-placeholder);
+}
+
+#sb-settings-page #sb-openai-names .sb-settings-flat-header .flexBasis100p:has(:is(#character_names_display, #continue_postfix_display)) {
+    flex: 0 1 auto;
+    width: auto;
+    color: var(--sb-input-placeholder);
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group .sb-custom-stopping-strings > h4 {
+    margin: 0;
+    padding: 12px 16px 4px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-custom-stopping-strings > div:has(> small) {
+    padding: 0 16px 8px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-custom-stopping-strings > div:has(> textarea) {
+    padding: 0 16px 12px;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group > * + * {
