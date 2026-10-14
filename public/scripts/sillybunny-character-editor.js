@@ -443,6 +443,10 @@ function _bindDraftPersistence() {
         if (currentSession && _isDirty()) {
             _saveDraftNow();
             event.preventDefault();
+            // SillyBunny: preventDefault() alone does not arm the browser's
+            // "leave site?" prompt — the spec requires a truthy returnValue.
+            // Without this the dirty guard silently did nothing on reload/close.
+            event.returnValue = '';
         }
     });
 }

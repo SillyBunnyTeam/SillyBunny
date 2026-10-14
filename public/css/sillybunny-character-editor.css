@@ -124,7 +124,17 @@
     max-height: 36px;
     margin: 0;
     padding: 0 !important;
-    display: inline-flex !important;
+    /* Must not be `display: none !important`-proof: create mode hides the
+       edit-only actions (#delete_button, #dupe_button, #export_button,
+       #char_connections_button, .chat_lorebook_button) with inline styles in
+       select_rm_create(). This was `inline-flex !important` until Step 3b
+       safety fixes — the `!important` beat those inline declarations and left
+       Delete/Duplicate targeting the still-selected previously-edited
+       character while a new card was being created.
+       `display: flex` matches the upstream `.menu_button` value (style.css:4254)
+       so the rendered layout is unchanged and the cascade is left intact.
+       Do not reintroduce `!important` here. See docs/ui-migration.md. */
+    display: flex;
     align-items: center;
     justify-content: center;
     border-radius: var(--sb-radius-control, 9px);
