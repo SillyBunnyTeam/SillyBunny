@@ -69,7 +69,7 @@
                             <i class="fa-solid fa-clock-rotate-left fa-sm"></i>
                         </div>
                     </label>
-                    <small data-i18n="Sent to Quick Image Gen before generating or regenerating expression sprites. Macros: {{generationInstructions}}, {{characterName}}, {{expression}}, {{expressions}}, {{characterCard}}, {{framingInstructions}}, {{sheetInstructions}}.">Sent to Quick Image Gen before generating or regenerating expression sprites. Macros: {{generationInstructions}}, {{characterName}}, {{expression}}, {{expressions}}, {{characterCard}}, {{framingInstructions}}, {{sheetInstructions}}.</small>
+                    <small data-i18n="Sent to Quick Image Gen before generating or regenerating expression sprites. Macros: &#123;&#123;generationInstructions&#125;&#125;, &#123;&#123;characterName&#125;&#125;, &#123;&#123;expression&#125;&#125;, &#123;&#123;expressions&#125;&#125;, &#123;&#123;characterCard&#125;&#125;, &#123;&#123;framingInstructions&#125;&#125;, &#123;&#123;sheetInstructions&#125;&#125;.">Sent to Quick Image Gen before generating or regenerating expression sprites. Macros: <code>&#123;&#123;generationInstructions&#125;&#125;</code>, <code>&#123;&#123;characterName&#125;&#125;</code>, <code>&#123;&#123;expression&#125;&#125;</code>, <code>&#123;&#123;expressions&#125;&#125;</code>, <code>&#123;&#123;characterCard&#125;&#125;</code>, <code>&#123;&#123;framingInstructions&#125;&#125;</code>, <code>&#123;&#123;sheetInstructions&#125;&#125;</code>.</small>
                     <textarea id="expressions_agent_sprite_prompt" type="text" class="text_pole textarea_compact autoSetHeight" rows="8" placeholder="Use &lcub;&lcub;generationInstructions&rcub;&rcub;, &lcub;&lcub;characterCard&rcub;&rcub;, &lcub;&lcub;framingInstructions&rcub;&rcub;, and &lcub;&lcub;sheetInstructions&rcub;&rcub; macros."></textarea>
                 </div>
                 <p class="expression_agent_hint hint" data-i18n="Turning on auto-generation switches Classifier API to In-Chat Agent. Enable the bundled Expressions Agent companion in In-Chat Agents if the status says it is not ready.">
@@ -174,9 +174,14 @@
                             Examples: </span><tt>joy.png</tt>, <tt>joy-1.png</tt>, <tt>joy.expressive.png</tt>
                     </i>
                 </p>
-                <h3 id="image_list_header">
-                    <strong data-i18n="Sprite set:">Sprite set:</strong>&nbsp;<span id="image_list_header_name"></span>
-                </h3>
+                <div class="sb-settings-flat-header sb-settings-category-header">
+                    <div class="flex-container flexFlowColumn sb-settings-category-heading">
+                        <h3 id="image_list_header" class="sb-settings-category-title">
+                            <strong data-i18n="Sprite set:">Sprite set:</strong>&nbsp;<span id="image_list_header_name"></span>
+                        </h3>
+                        <small data-i18n="View and manage the expression images in this sprite set.">View and manage the expression images in this sprite set.</small>
+                    </div>
+                </div>
                 <div id="image_list"></div>
 
             </div>
