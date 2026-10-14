@@ -69,10 +69,14 @@ export function initializePromptEditor(column) {
     const titles = element('div', 'sb-prompt-list-titles');
     const subtitle = element('span', 'sb-prompt-list-subtitle');
     titles.append(element('h2', '', t`Prompts`), subtitle);
+    const searchField = element('label', 'sb-prompt-search-field');
+    searchField.hidden = true;
+    const searchIcon = icon('magnifying-glass');
     const search = element('input', 'sb-prompt-search');
     search.type = 'search';
-    search.hidden = true;
+    search.placeholder = t`Search...`;
     search.setAttribute('aria-label', t`Search prompts`);
+    searchField.append(searchIcon, search);
     const listBody = element('div', 'sb-prompt-list-body');
     const editor = element('div', 'sb-prompt-detail');
     editor.hidden = true;
@@ -86,7 +90,7 @@ export function initializePromptEditor(column) {
     const status = element('div', 'sb-prompt-visually-hidden');
     status.setAttribute('aria-live', 'polite');
     root.append(list, divider, editor, status);
-    list.append(listHeader, search, listBody);
+    list.append(listHeader, searchField, listBody);
     root.hidden = true;
     column.append(root);
 
@@ -595,15 +599,16 @@ export function initializePromptEditor(column) {
     }
 
     function toggleSearch() {
-        const show = search.hidden;
-        stopMotion(search);
+        const show = searchField.hidden;
+        stopMotion(searchField);
+        const height = `${parseFloat(getComputedStyle(searchField).getPropertyValue('--sb-prompt-search-height')) || 40}px`;
         if (show) {
-            search.hidden = false;
-            play(search, [{ height: '0px', marginBlock: '0px', opacity: 0 }, { height: '40px', marginBlock: '8px', opacity: 1 }], { duration: MOTION_SLOW });
+            searchField.hidden = false;
+            play(searchField, [{ height: '0px', marginBlock: '0px', opacity: 0 }, { height, marginBlock: '8px', opacity: 1 }], { duration: MOTION_SLOW });
             search.focus({ preventScroll: true });
             return;
         }
-        animateOut(search, [{ height: '40px', marginBlock: '8px', opacity: 1 }, { height: '0px', marginBlock: '0px', opacity: 0 }], () => search.hidden = true, { duration: MOTION_SLOW });
+        animateOut(searchField, [{ height, marginBlock: '8px', opacity: 1 }, { height: '0px', marginBlock: '0px', opacity: 0 }], () => searchField.hidden = true, { duration: MOTION_SLOW });
         search.value = '';
         filter = '';
         renderList();

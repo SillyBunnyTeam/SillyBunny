@@ -135,7 +135,7 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     width: 100%;
     min-width: 0;
     min-height: 0;
-    background: var(--sb-layer-window);
+    background: var(--sb-sidebar-bg);
 }
 
 .sb-prompt-editor[data-open='true'][data-collapsed='false'] .sb-prompt-list {
@@ -185,16 +185,49 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     font-size: calc(var(--mainFontSize) * 0.75);
 }
 
-#sb-settings-page .sb-prompt-editor .sb-prompt-search {
-    flex: none;
-    width: calc(100% - 16px);
-    height: 40px;
+.sb-prompt-search-field {
+    --sb-prompt-search-height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    height: var(--sb-prompt-search-height);
     margin: 8px;
-    padding: 8px 12px;
-    border: 1px solid var(--SmartThemeBorderColor);
     border-radius: var(--sb-radius-control);
-    background: var(--sb-layer-view);
-    color: inherit;
+    background: var(--sb-flat-hover-bg);
+    border: 1px solid var(--sb-shell-border);
+    cursor: text;
+    transition: border-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+.sb-prompt-search-field:focus-within {
+    border-color: var(--color-primary, var(--sb-accent));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 40%, transparent);
+}
+
+.sb-prompt-search-field .fa-magnifying-glass {
+    font-size: 12px;
+    color: var(--sb-shell-text-secondary);
+    flex-shrink: 0;
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-search {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    font-size: var(--sb-type-control);
+    color: var(--sb-shell-text);
+    outline: none;
+    min-width: 0;
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-search::placeholder {
+    color: var(--sb-shell-text-secondary);
+}
+
+:root[data-sb-compact-mode='true'] .sb-prompt-search-field {
+    --sb-prompt-search-height: 36px;
 }
 
 .sb-prompt-list-body {
@@ -204,7 +237,7 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     overscroll-behavior: contain;
     padding: 8px 0 8px 8px;
     scrollbar-gutter: stable;
-    background: var(--sb-layer-window);
+    background: var(--sb-sidebar-bg);
 }
 
 .sb-prompt-section {
@@ -340,6 +373,22 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
 
 :root[data-sb-compact-mode='true'] .sb-prompt-editor {
     --sb-prompt-switch-width: 38px;
+}
+
+:root[data-sb-compact-mode='true'] .sb-prompt-row {
+    min-height: 46px;
+}
+
+:root[data-sb-compact-mode='true'] .sb-prompt-list-header {
+    min-height: 52px;
+}
+
+:root[data-sb-compact-mode='true'] .sb-prompt-list-titles h2 {
+    font-size: var(--mainFontSize);
+}
+
+:root[data-sb-compact-mode='true'] .sb-prompt-row-name {
+    font-size: calc(var(--mainFontSize) * 0.85);
 }
 
 @container sb-prompt-list (width < 440px) {
@@ -560,7 +609,13 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     color: inherit;
     line-height: 1.25;
     white-space: nowrap;
+    cursor: pointer;
     transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+#sb-settings-page .sb-prompt-editor .sb-boolean-radio-option > span:hover,
+.sb-prompt-sheet .sb-boolean-radio-option > span:hover {
+    background: var(--sb-flat-hover-bg);
 }
 
 #sb-settings-page .sb-prompt-editor .sb-boolean-radio-option > input:checked + span,
@@ -834,10 +889,15 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) :is(input:not([type='checkbox']):not([type='radio']):not(.sb-prompt-title:read-only), textarea):focus {
+:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) :is(input:not([type='checkbox']):not([type='radio']):not(.sb-prompt-title:read-only):not(.sb-prompt-search), textarea):is(:focus, :focus-visible) {
     outline: none;
-    border-color: var(--sb-entry-focus-border) !important;
-    box-shadow: inset 0 0 0 1px var(--sb-entry-focus-ring);
+    border-color: var(--sb-composer-focus-border) !important;
+    box-shadow: var(--sb-composer-focus-ring) !important;
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-search:is(:focus, :focus-visible) {
+    border: 0 !important;
+    box-shadow: none !important;
 }
 
 :is(.sb-prompt-editor, .sb-prompt-sheet) .sb-boolean-radio-option > input:focus-visible + span {
