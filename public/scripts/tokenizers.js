@@ -730,7 +730,7 @@ export function getTokenizerModel() {
         return commandRTokenizer;
     }
 
-    if (oai_settings.chat_completion_source == chat_completion_sources.MAKERSUITE) {
+    if ([chat_completion_sources.MAKERSUITE, chat_completion_sources.GEMINI_INTERACTIONS].includes(oai_settings.chat_completion_source)) {
         return gemmaTokenizer;
     }
 
