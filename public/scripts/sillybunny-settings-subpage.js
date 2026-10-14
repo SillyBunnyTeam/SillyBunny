@@ -56,6 +56,7 @@ function prefersReducedMotion() {
  * @property {string} id stable key, used by {@link SubpageStack#open}
  * @property {string} label the row's title
  * @property {string} [description] the row's second line
+ * @property {string} [descriptionKey] localization key for the row's description
  * @property {string} [icon] a Font Awesome class for the row's leading glyph
  * @property {string} [value] trailing text, for a row that reports a current setting
  * @property {() => (HTMLElement|null)} [source] the section to move into the detail page on open
@@ -175,9 +176,10 @@ export class SubpageStack {
      *
      * @param {string} title
      * @param {string} [description]
+     * @param {string} [descriptionKey]
      * @returns {HTMLElement}
      */
-    buildHeading(title, description) {
+    buildHeading(title, description, descriptionKey) {
         const heading = document.createElement('div');
         heading.className = 'sb-subpage-heading';
 
@@ -190,6 +192,7 @@ export class SubpageStack {
             const descriptionElement = document.createElement('small');
             descriptionElement.className = 'sb-subpage-heading-description';
             descriptionElement.textContent = description;
+            if (descriptionKey) descriptionElement.dataset.i18n = descriptionKey;
             heading.appendChild(descriptionElement);
         }
 
@@ -227,7 +230,7 @@ export class SubpageStack {
                 button.appendChild(icon);
             }
 
-            button.appendChild(this.buildHeading(row.label, row.description));
+            button.appendChild(this.buildHeading(row.label, row.description, row.descriptionKey));
 
             const trailing = document.createElement('span');
             trailing.className = 'sb-subpage-row-trailing';
@@ -362,6 +365,11 @@ export class SubpageStack {
 
         this.detailTitle.textContent = row.label;
         this.detailDescription.textContent = row.description ?? '';
+        if (row.descriptionKey) {
+            this.detailDescription.dataset.i18n = row.descriptionKey;
+        } else {
+            delete this.detailDescription.dataset.i18n;
+        }
         this.detailDescription.hidden = !row.description;
 
         const source = row.source?.() ?? null;
