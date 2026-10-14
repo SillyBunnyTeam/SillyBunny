@@ -252,6 +252,7 @@ export const chat_completion_sources = {
     OPENROUTER: 'openrouter',
     AI21: 'ai21',
     MAKERSUITE: 'makersuite',
+    GEMINI_INTERACTIONS: 'gemini_interactions',
     VERTEXAI: 'vertexai',
     MISTRALAI: 'mistralai',
     CUSTOM: 'custom',
@@ -283,6 +284,7 @@ export const REVERSE_PROXY_SUPPORTED_SOURCES = [
     chat_completion_sources.OPENAI_RESPONSES,
     chat_completion_sources.MISTRALAI,
     chat_completion_sources.MAKERSUITE,
+    chat_completion_sources.GEMINI_INTERACTIONS,
     chat_completion_sources.VERTEXAI,
     chat_completion_sources.DEEPSEEK,
     chat_completion_sources.XAI,
@@ -296,6 +298,7 @@ const REVERSE_PROXY_SOURCE_LABELS = {
     [chat_completion_sources.CLAUDE]: 'Claude',
     [chat_completion_sources.MISTRALAI]: 'MistralAI',
     [chat_completion_sources.MAKERSUITE]: 'AI Studio',
+    [chat_completion_sources.GEMINI_INTERACTIONS]: 'Gemini Interactions API',
     [chat_completion_sources.VERTEXAI]: 'Vertex AI',
     [chat_completion_sources.DEEPSEEK]: 'DeepSeek',
     [chat_completion_sources.XAI]: 'xAI',
@@ -2170,6 +2173,7 @@ export function getChatCompletionModel(settings = null) {
         case chat_completion_sources.OPENAI_RESPONSES:
             return settings.openai_model;
         case chat_completion_sources.MAKERSUITE:
+        case chat_completion_sources.GEMINI_INTERACTIONS:
             return settings.google_model;
         case chat_completion_sources.VERTEXAI:
             return settings.vertexai_model;
@@ -2289,7 +2293,7 @@ function shouldInjectAutoAppendReasoningInstruction(settings = oai_settings, mod
         return ['gpt-4.5', 'o1', 'o3'].some(prefix => normalizedModel.startsWith(prefix));
     }
 
-    if ([chat_completion_sources.MAKERSUITE, chat_completion_sources.VERTEXAI].includes(source)) {
+    if ([chat_completion_sources.MAKERSUITE, chat_completion_sources.GEMINI_INTERACTIONS, chat_completion_sources.VERTEXAI].includes(source)) {
         return ['gemini-2.0-flash-thinking-exp', 'gemini-2.0-pro-exp'].some(prefix => normalizedModel.startsWith(prefix));
     }
 
@@ -4784,7 +4788,7 @@ function saveModelList(data) {
         $('#model_pollinations_select').val(oai_settings.pollinations_model).trigger('change');
     }
 
-    if (oai_settings.chat_completion_source === chat_completion_sources.MAKERSUITE) {
+    if ([chat_completion_sources.MAKERSUITE, chat_completion_sources.GEMINI_INTERACTIONS].includes(oai_settings.chat_completion_source)) {
         // Clear only the "Other" optgroup for dynamic models
         $('#google_other_models').empty();
 
@@ -5626,7 +5630,7 @@ export async function createGenerationParameters(settings, model, type, messages
         generate_data.chat_id = getCurrentChatId();
     }
 
-    if ([chat_completion_sources.MAKERSUITE, chat_completion_sources.VERTEXAI].includes(settings.chat_completion_source)) {
+    if ([chat_completion_sources.MAKERSUITE, chat_completion_sources.GEMINI_INTERACTIONS, chat_completion_sources.VERTEXAI].includes(settings.chat_completion_source)) {
         const stopStringsLimit = 5;
         generate_data.top_k = settings.top_k_openai > 0 ? Number(settings.top_k_openai) : undefined;
         generate_data.stop = getCustomStoppingStrings(stopStringsLimit).slice(0, stopStringsLimit).filter(x => x.length >= 1 && x.length <= 16);
@@ -6150,6 +6154,11 @@ export function getStreamingReply(data, state, { chatCompletionSource = null, ov
         }
         const content = data.choices?.[0]?.delta?.content ?? data.choices?.[0]?.message?.content ?? data.choices?.[0]?.text ?? '';
         return Array.isArray(content) ? content.map(x => x.text).filter(x => x).join('') : content;
+    } else if (chat_completion_source === chat_completion_sources.GEMINI_INTERACTIONS) {
+        if (show_thoughts) {
+            state.reasoning += (data.choices?.filter(x => x?.delta?.reasoning_content)?.[0]?.delta?.reasoning_content || '');
+        }
+        return data.choices?.[0]?.delta?.content || '';
     } else {
         return data.choices?.[0]?.delta?.content ?? data.choices?.[0]?.message?.content ?? data.choices?.[0]?.text ?? '';
     }
@@ -9398,6 +9407,7 @@ async function onConnectButtonClick(e) {
     const apiSourceConfig = {
         [chat_completion_sources.OPENROUTER]: { key: SECRET_KEYS.OPENROUTER, selector: '#api_key_openrouter', proxy: false },
         [chat_completion_sources.MAKERSUITE]: { key: SECRET_KEYS.MAKERSUITE, selector: '#api_key_makersuite', proxy: true },
+        [chat_completion_sources.GEMINI_INTERACTIONS]: { key: SECRET_KEYS.MAKERSUITE, selector: '#api_key_makersuite', proxy: true },
         [chat_completion_sources.CLAUDE]: { key: SECRET_KEYS.CLAUDE, selector: '#api_key_claude', proxy: true },
         [chat_completion_sources.OPENAI]: { key: SECRET_KEYS.OPENAI, selector: '#api_key_openai', proxy: true },
         [chat_completion_sources.OPENAI_RESPONSES]: { key: SECRET_KEYS.OPENAI, selector: '#api_key_openai', proxy: true },
@@ -9489,7 +9499,8 @@ function toggleChatCompletionForms() {
         } else {
             $('#model_openai_select').trigger('change');
         }
-    } else if (oai_settings.chat_completion_source == chat_completion_sources.MAKERSUITE) {
+    } else if ([chat_completion_sources.MAKERSUITE, chat_completion_sources.GEMINI_INTERACTIONS].includes(oai_settings.chat_completion_source)) {
+        // The Interactions source shares the AI Studio model picker.
         refreshModelIdSearchControlsForSource(chat_completion_sources.MAKERSUITE);
         $('#model_google_select').val(oai_settings.google_model).trigger('change');
     } else if (oai_settings.chat_completion_source == chat_completion_sources.VERTEXAI) {
@@ -9556,7 +9567,11 @@ function toggleChatCompletionForms() {
 
         const mode = $(this).data('source-mode');
         const validSources = $(this).data('source').split(',');
-        const effectiveSource = oai_settings.chat_completion_source === chat_completion_sources.OPENAI_RESPONSES ? chat_completion_sources.OPENAI : oai_settings.chat_completion_source;
+        const effectiveSource = oai_settings.chat_completion_source === chat_completion_sources.OPENAI_RESPONSES
+            ? chat_completion_sources.OPENAI
+            : oai_settings.chat_completion_source === chat_completion_sources.GEMINI_INTERACTIONS
+                ? chat_completion_sources.MAKERSUITE
+                : oai_settings.chat_completion_source;
         const matchesSource = validSources.includes(oai_settings.chat_completion_source) || validSources.includes(effectiveSource);
         $(this).toggle(mode !== 'except' ? matchesSource : !matchesSource);
     });
@@ -9762,6 +9777,8 @@ export function isImageInliningSupported() {
         }
         case chat_completion_sources.MAKERSUITE:
             return visionSupportedModels.some(model => oai_settings.google_model.includes(model));
+        case chat_completion_sources.GEMINI_INTERACTIONS:
+            return visionSupportedModels.some(model => oai_settings.google_model.includes(model));
         case chat_completion_sources.VERTEXAI:
             return visionSupportedModels.some(model => oai_settings.vertexai_model.includes(model));
         case chat_completion_sources.CLAUDE:
@@ -9841,6 +9858,8 @@ export function isVideoInliningSupported() {
     switch (oai_settings.chat_completion_source) {
         case chat_completion_sources.MAKERSUITE:
             return videoSupportedModels.some(model => oai_settings.google_model.includes(model));
+        case chat_completion_sources.GEMINI_INTERACTIONS:
+            return videoSupportedModels.some(model => oai_settings.google_model.includes(model));
         case chat_completion_sources.VERTEXAI:
             return videoSupportedModels.some(model => oai_settings.vertexai_model.includes(model));
         case chat_completion_sources.MINIMAX:
@@ -9888,6 +9907,8 @@ export function isAudioInliningSupported() {
             return audioSupportedModels.some(model => oai_settings.openai_model.includes(model));
         case chat_completion_sources.MAKERSUITE:
             return audioSupportedModels.some(model => oai_settings.google_model.includes(model));
+        case chat_completion_sources.GEMINI_INTERACTIONS:
+            return audioSupportedModels.some(model => oai_settings.google_model.includes(model));
         case chat_completion_sources.VERTEXAI:
             return audioSupportedModels.some(model => oai_settings.vertexai_model.includes(model));
         case chat_completion_sources.OPENROUTER:
@@ -9933,7 +9954,7 @@ function getEffectiveToolReasoningMode(settings = oai_settings) {
  */
 export function isReasoningSignatureSupported(settings = oai_settings) {
     // If it's Vertex AI or Makersuite, that's OK - convertGooglePrompt() will handle it later
-    const isGoogle = [chat_completion_sources.VERTEXAI, chat_completion_sources.MAKERSUITE].includes(settings.chat_completion_source);
+    const isGoogle = [chat_completion_sources.VERTEXAI, chat_completion_sources.MAKERSUITE, chat_completion_sources.GEMINI_INTERACTIONS].includes(settings.chat_completion_source);
     // Need a more crunchy check for OpenRouter: look for Gemini models
     const isOpenRouterGemini = settings.chat_completion_source === chat_completion_sources.OPENROUTER && /google\/gemini/i.test(settings.openrouter_model);
     return isGoogle || isOpenRouterGemini;

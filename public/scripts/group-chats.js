@@ -208,6 +208,7 @@ function getCurrentChatCompletionModelSettingKey() {
         case chat_completion_sources.OPENAI:
         case chat_completion_sources.OPENAI_RESPONSES: return 'openai_model';
         case chat_completion_sources.MAKERSUITE: return 'google_model';
+        case chat_completion_sources.GEMINI_INTERACTIONS: return 'google_model';
         case chat_completion_sources.VERTEXAI: return 'vertexai_model';
         case chat_completion_sources.OPENROUTER: return 'openrouter_model';
         case chat_completion_sources.AI21: return 'ai21_model';

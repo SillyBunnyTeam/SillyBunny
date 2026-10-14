@@ -2097,7 +2097,7 @@ router.post('/status', async function (request, statusResponse) {
                 console.error('Error fetching Fireworks models:', error);
                 return statusResponse.send({ error: true, data: { data: [] } });
             }
-        } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.MAKERSUITE) {
+        } else if ([CHAT_COMPLETION_SOURCES.MAKERSUITE, CHAT_COMPLETION_SOURCES.GEMINI_INTERACTIONS].includes(request.body.chat_completion_source)) {
             apiKey = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.MAKERSUITE);
             apiUrl = trimTrailingSlash(request.body.reverse_proxy || API_MAKERSUITE);
             const apiVersion = getConfigValue('gemini.apiVersion', 'v1beta');
@@ -2921,6 +2921,526 @@ function getSafeCompletionErrorStatus(status) {
     const parsed = Number(status);
     return Number.isInteger(parsed) && parsed >= 400 && parsed < 500 ? parsed : 502;
 }
+/**
+ * Converts Chat Completions messages into Interactions API steps.
+ * @param {object[]} messages Chat Completions messages
+ * @param {boolean} useSystemPrompt Whether to lift leading system messages into system_instruction
+ * @param {{userName?: string, charName?: string, startsWithGroupName?: (text: string) => boolean}} names Prompt names
+ * @returns {{input: object[], system_instruction: string|undefined}} Interaction input and system instruction
+ */
+function convertMessagesToInteractionSteps(messages, useSystemPrompt, names) {
+    const systemParts = [];
+    const input = [];
+    const toolCallNames = new Map();
+
+    if (!Array.isArray(messages)) {
+        return { input: [{ type: 'user_input', content: [{ type: 'text', text: String(messages) }] }], system_instruction: undefined };
+    }
+
+    const converted = messages.map(message => ({ ...message, content: message.content }));
+
+    if (useSystemPrompt) {
+        while (converted.length > 1 && converted[0].role === 'system') {
+            const message = converted.shift();
+            if (Array.isArray(message.content)) {
+                systemParts.push(message.content.filter(part => part.type === 'text').map(part => part.text).join('\n\n'));
+            } else {
+                systemParts.push(String(message.content ?? ''));
+            }
+        }
+    }
+
+    for (const message of converted) {
+        const parts = [];
+
+        if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+            for (const toolCall of message.tool_calls) {
+                const name = toolCall.function?.name;
+                if (name && toolCall.id) {
+                    toolCallNames.set(toolCall.id, name);
+                }
+                parts.push({
+                    type: 'function_call',
+                    id: toolCall.id,
+                    name: name,
+                    arguments: tryParse(toolCall.function?.arguments) ?? toolCall.function?.arguments ?? {},
+                });
+            }
+        }
+
+        if (typeof message.tool_call_id === 'string' && message.tool_call_id.length > 0) {
+            input.push({
+                type: 'function_result',
+                call_id: message.tool_call_id,
+                name: toolCallNames.get(message.tool_call_id) ?? 'unknown',
+                result: String(message.content ?? ''),
+            });
+            continue;
+        }
+
+        const contentParts = Array.isArray(message.content) ? message.content : [{ type: 'text', text: String(message.content ?? '') }];
+        for (const part of contentParts) {
+            if (part.type === 'text') {
+                if (part.text) {
+                    parts.push({ type: 'text', text: part.text });
+                }
+            } else if (part.type === 'image_url' && typeof part.image_url?.url === 'string' && part.image_url.url.startsWith('data:')) {
+                const [header, data] = part.image_url.url.split(',');
+                parts.push({
+                    type: 'image',
+                    data: data,
+                    mime_type: header.match(/data:([^;]+)/)?.[1] || 'image/png',
+                });
+            }
+        }
+
+        if (message.role === 'assistant' && parts.some(part => part.type === 'function_call')) {
+            input.push(...parts);
+            continue;
+        }
+
+        if (parts.length > 0) {
+            input.push({ type: 'user_input', content: parts });
+        }
+    }
+
+    return {
+        input: input,
+        system_instruction: systemParts.length > 0 ? systemParts.join('\n\n') : undefined,
+    };
+}
+
+/**
+ * Transforms an Interactions API resource into a Chat Completions response.
+ * @param {object} data Interactions API resource
+ * @returns {object} Chat Completions compatible response
+ */
+function transformInteractionToChatCompletion(data) {
+    let content = '';
+    let reasoning_content = '';
+    const toolCalls = [];
+    const steps = Array.isArray(data?.steps) ? data.steps : [];
+
+    for (const step of steps) {
+        if (step?.type === 'model_output' && Array.isArray(step.content)) {
+            for (const part of step.content) {
+                if (part.type === 'text') {
+                    content += part.text;
+                }
+            }
+        }
+
+        // Retain reasoning summaries so the UI can render thinking.
+        if (step?.type === 'thought' && Array.isArray(step.summary)) {
+            for (const part of step.summary) {
+                if (part.type === 'text') {
+                    reasoning_content += part.text;
+                }
+            }
+        }
+
+        if (step?.type === 'function_call') {
+            toolCalls.push({
+                id: step.id ?? 'call_' + uuidv4(),
+                type: 'function',
+                function: {
+                    name: step.name,
+                    arguments: JSON.stringify(step.arguments ?? {}),
+                },
+            });
+        }
+    }
+
+    const message = {
+        role: 'assistant',
+        content: content,
+    };
+
+    if (reasoning_content) {
+        message.reasoning_content = reasoning_content;
+    }
+
+    if (toolCalls.length > 0) {
+        message.tool_calls = toolCalls;
+    }
+
+    const choice = {
+        index: 0,
+        message: message,
+        finish_reason: toolCalls.length > 0 ? 'tool_calls' : (data?.status === 'completed' ? 'stop' : (data?.status || 'stop')),
+    };
+
+    return {
+        id: data?.id || 'int-' + uuidv4(),
+        object: 'chat.completion',
+        created: Math.floor(Date.now() / 1000),
+        model: data?.model || '',
+        choices: [choice],
+        usage: data?.usage ? {
+            prompt_tokens: data.usage.total_input_tokens || 0,
+            completion_tokens: data.usage.total_output_tokens || 0,
+            total_tokens: data.usage.total_tokens || 0,
+        } : undefined,
+    };
+}
+
+/**
+ * Converts an Interactions API SSE event to a Chat Completions delta chunk.
+ * @param {object} event Parsed Interactions API event
+ * @returns {object|null} Chat Completions chunk or null if event should be skipped
+ */
+function convertInteractionEventToChatDelta(event) {
+    const eventType = event?.event_type ?? event?.type;
+    const interactionId = event?.interaction?.id ?? event?.interaction_id ?? 'chatcmpl-' + uuidv4();
+
+    if (eventType === 'step.start' && event?.step?.type === 'function_call') {
+        return {
+            id: interactionId,
+            object: 'chat.completion.chunk',
+            choices: [{
+                index: 0,
+                delta: {
+                    tool_calls: [{
+                        index: event.index ?? 0,
+                        id: event.step.id ?? 'call_' + uuidv4(),
+                        type: 'function',
+                        function: { name: event.step.name, arguments: '' },
+                    }],
+                },
+                finish_reason: null,
+            }],
+        };
+    }
+
+    if (eventType !== 'step.delta' || !event?.delta) {
+        return null;
+    }
+
+    if (event.delta.type === 'text') {
+        return {
+            id: interactionId,
+            object: 'chat.completion.chunk',
+            choices: [{ index: 0, delta: { content: event.delta.text || '' }, finish_reason: null }],
+        };
+    }
+
+    if (event.delta.type === 'thought_summary') {
+        const text = event.delta.content?.type === 'text' ? event.delta.content.text : '';
+        if (!text) {
+            return null;
+        }
+        return {
+            id: interactionId,
+            object: 'chat.completion.chunk',
+            choices: [{ index: 0, delta: { reasoning_content: text }, finish_reason: null }],
+        };
+    }
+
+    if (event.delta.type === 'arguments_delta') {
+        return {
+            id: interactionId,
+            object: 'chat.completion.chunk',
+            choices: [{
+                index: 0,
+                delta: {
+                    tool_calls: [{ index: event.index ?? 0, function: { arguments: event.delta.arguments || '' } }],
+                },
+                finish_reason: null,
+            }],
+        };
+    }
+
+    return null;
+}
+
+/**
+ * Transforms an Interactions API SSE stream into Chat Completions SSE format.
+ * @param {import('node-fetch').Response} fetchResponse The upstream Interactions API response
+ * @param {import('express').Response} expressResponse The Express response to write to
+ * @param {import('express').Request} request The Express request to poll for OS-level disconnects
+ * @param {() => void} onDisconnect Upstream disconnect callback
+ */
+function forwardInteractionStream(fetchResponse, expressResponse, request, onDisconnect = null) {
+    let statusCode = fetchResponse.status;
+    const statusText = fetchResponse.statusText;
+
+    if (!fetchResponse.ok) {
+        console.warn(`Interactions API streaming request failed with status ${statusCode} ${statusText}`);
+    }
+
+    if (statusCode === 401) {
+        statusCode = 400;
+    }
+
+    expressResponse.statusCode = statusCode;
+    expressResponse.statusMessage = statusText;
+
+    if (!fetchResponse.ok || !fetchResponse.body) {
+        fetchResponse.body?.pipe(expressResponse);
+        return;
+    }
+
+    expressResponse.setHeader('Content-Type', 'text/event-stream');
+    expressResponse.setHeader('Cache-Control', 'no-cache, no-transform');
+    expressResponse.setHeader('Connection', 'keep-alive');
+
+    let buffer = '';
+    let done = false;
+    const stopPolling = pollStreamingRequestConnection(request, expressResponse, closeStream);
+
+    function closeStream() {
+        if (done) {
+            return;
+        }
+
+        done = true;
+        stopPolling();
+        try {
+            onDisconnect?.();
+        } catch (error) {
+            console.warn('Error handling Interactions API stream disconnect:', error);
+        }
+        if (fetchResponse.body && typeof fetchResponse.body.destroy === 'function') {
+            fetchResponse.body.destroy();
+        }
+        if (!expressResponse.destroyed && !expressResponse.writableEnded) {
+            expressResponse.end();
+        }
+    }
+
+    function finishStream() {
+        if (done) return;
+        done = true;
+        stopPolling();
+        if (!expressResponse.writableEnded) {
+            expressResponse.write('data: [DONE]\n\n');
+            expressResponse.end();
+        }
+    }
+
+    fetchResponse.body.on('data', (chunk) => {
+        if (done) return;
+        buffer += chunk.toString();
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+            if (done) break;
+            if (!line.startsWith('data: ')) {
+                continue;
+            }
+
+            const dataStr = line.slice(6).trim();
+            if (!dataStr || dataStr === '[DONE]') {
+                finishStream();
+                break;
+            }
+
+            try {
+                const event = JSON.parse(dataStr);
+                const eventType = event?.event_type ?? event?.type;
+                if (eventType === 'interaction.completed') {
+                    finishStream();
+                    break;
+                }
+                const chatDelta = convertInteractionEventToChatDelta(event);
+                if (chatDelta) {
+                    expressResponse.write(`data: ${JSON.stringify(chatDelta)}\n\n`);
+                }
+            } catch {
+                // Skip unparseable events
+            }
+        }
+    });
+
+    fetchResponse.body.on('end', () => {
+        finishStream();
+    });
+
+    fetchResponse.body.on('error', (err) => {
+        stopPolling();
+        if (done || isExpectedStreamAbort(err) || expressResponse.destroyed) {
+            done = true;
+            if (!expressResponse.destroyed && !expressResponse.writableEnded) {
+                expressResponse.end();
+            }
+            return;
+        }
+
+        done = true;
+        console.error('Interactions API stream error:', err);
+        if (!expressResponse.writableEnded) {
+            expressResponse.end();
+        }
+    });
+
+    const resumableGeneration = getResumableGeneration(request);
+    if (resumableGeneration) {
+        // SillyBunny: a resumable generation finishes without the client; only an explicit cancel stops it.
+        resumableGeneration.onCancel(closeStream);
+    } else {
+        expressResponse.on('close', () => {
+            closeStream();
+        });
+    }
+}
+
+/**
+ * Sends a request to the Gemini Interactions API (/v1beta/interactions).
+ * Transforms requests from Chat Completions format and normalizes responses back.
+ * @param {express.Request} request Express request
+ * @param {express.Response} response Express response
+ */
+async function sendGeminiInteractionsRequest(request, response) {
+    const apiKey = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.MAKERSUITE);
+
+    if (!apiKey && !request.body.reverse_proxy) {
+        console.warn('Google AI Studio API key is missing.');
+        return response.status(400).send({ error: true });
+    }
+
+    const controller = new AbortController();
+    abortOnRequestClose(request, controller, response);
+
+    try {
+        const model = String(request.body.model);
+        const useSystemPrompt = Boolean(request.body.use_sysprompt);
+        const { input, system_instruction } = convertMessagesToInteractionSteps(request.body.messages, useSystemPrompt, getPromptNames(request));
+
+        const generationConfig = {
+            max_output_tokens: request.body.max_tokens,
+            temperature: request.body.temperature,
+            top_p: request.body.top_p,
+            seed: request.body.seed === -1 ? undefined : request.body.seed,
+        };
+
+        // Gemini 4 and Gemini 3.6+ ignore custom sampling values and return deprecation warning headers.
+        if (/^gemini-4/.test(model) || /^gemini-3\.[6-9]/.test(model)) {
+            delete generationConfig.temperature;
+            delete generationConfig.top_p;
+        }
+
+        if (Array.isArray(request.body.stop) && request.body.stop.length > 0) {
+            generationConfig.stop_sequences = request.body.stop;
+        }
+
+        // Thinking level substitutes for the generateContent thinkingBudget on this API.
+        const thinkingBudget = calculateGoogleBudgetTokens(generationConfig.max_output_tokens, request.body.reasoning_effort, model);
+        if (thinkingBudget === 0) {
+            generationConfig.thinking_level = 'minimal';
+        } else if (typeof thinkingBudget === 'string' && thinkingBudget.length > 0) {
+            generationConfig.thinking_level = thinkingBudget;
+        }
+
+        // Reasoning summaries must be requested explicitly.
+        if (request.body.include_reasoning) {
+            generationConfig.thinking_summaries = 'auto';
+        }
+
+        const requestBody = {
+            model: model,
+            input: input,
+            // Interactions always runs stateless here: history is resent each turn and nothing is retained server-side.
+            store: false,
+            stream: Boolean(request.body.stream),
+            generation_config: generationConfig,
+        };
+
+        if (system_instruction) {
+            requestBody.system_instruction = system_instruction;
+        }
+
+        if (Array.isArray(request.body.tools) && request.body.tools.length > 0) {
+            const tools = [];
+            for (const tool of request.body.tools) {
+                if (tool.type === 'function' && tool.function) {
+                    const parameters = tool.function.parameters ? { ...tool.function.parameters } : undefined;
+                    if (parameters) {
+                        delete parameters.$schema;
+                        if (parameters.properties && Object.keys(parameters.properties).length === 0) {
+                            delete parameters.properties;
+                        }
+                    }
+                    tools.push({
+                        type: 'function',
+                        name: tool.function.name,
+                        description: tool.function.description,
+                        parameters: parameters,
+                    });
+                }
+            }
+
+            if (tools.length > 0) {
+                requestBody.tools = tools;
+
+                const toolChoice = request.body.tool_choice;
+                if (toolChoice === 'none') {
+                    generationConfig.tool_choice = 'none';
+                } else if (toolChoice === 'required') {
+                    generationConfig.tool_choice = 'any';
+                } else if (toolChoice === 'auto') {
+                    generationConfig.tool_choice = 'auto';
+                }
+            }
+        }
+
+        const responseSchema = request.body.responseSchema ?? (request.body.json_schema ? request.body.json_schema.value : undefined);
+        if (responseSchema) {
+            requestBody.response_format = {
+                type: 'text',
+                mime_type: 'application/json',
+                schema: responseSchema,
+            };
+        }
+
+        const apiUrl = trimTrailingSlash(request.body.reverse_proxy || API_MAKERSUITE);
+        const apiVersion = getConfigValue('gemini.interactionsApiVersion', 'v1beta');
+        const baseUrl = getGoogleApiBaseUrl(apiUrl, apiVersion);
+        const endpointUrl = `${baseUrl}/interactions`;
+        const config = {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey,
+            },
+            body: JSON.stringify(requestBody),
+            signal: controller.signal,
+        };
+
+        logVerboseGenerationRequest('Google Interactions API', request, requestBody);
+
+        const generateResponse = await fetch(endpointUrl, config);
+
+        if (request.body.stream) {
+            console.info('Streaming Interactions API request in progress');
+            return forwardInteractionStream(generateResponse, response, request, () => controller.abort());
+        }
+
+        if (!generateResponse.ok) {
+            const errorText = await generateResponse.text();
+            console.warn(`Google Interactions API returned error: ${generateResponse.status} ${generateResponse.statusText}`, errorText);
+            const errorJson = tryParse(errorText) ?? { error: true };
+            return response.status(500).send(errorJson);
+        }
+
+        /** @type {any} */
+        const generateResponseJson = await generateResponse.json();
+        console.debug('Google Interactions API response:', summarizeLlmPayloadForLog(generateResponseJson));
+        return response.send(transformInteractionToChatCompletion(generateResponseJson));
+    } catch (error) {
+        if (isExpectedStreamAbort(error)) {
+            if (!response.headersSent && !response.destroyed) {
+                response.end();
+            }
+            return;
+        }
+
+        console.error('Error communicating with Google Interactions API: ', error);
+        if (!response.headersSent) {
+            response.send({ error: true });
+        }
+    }
+}
 
 // SillyBunny divergence: export the existing handler so Conversation REST can reuse upstream request assembly without forking backend logic.
 export async function handleChatCompletionsGenerate(request, response) {
@@ -2973,6 +3493,7 @@ export async function handleChatCompletionsGenerate(request, response) {
             case CHAT_COMPLETION_SOURCES.CLAUDE: return await sendClaudeRequest(request, response);
             case CHAT_COMPLETION_SOURCES.AI21: return await sendAI21Request(request, response);
             case CHAT_COMPLETION_SOURCES.MAKERSUITE: return await sendMakerSuiteRequest(request, response);
+            case CHAT_COMPLETION_SOURCES.GEMINI_INTERACTIONS: return await sendGeminiInteractionsRequest(request, response);
             case CHAT_COMPLETION_SOURCES.VERTEXAI: return await sendMakerSuiteRequest(request, response);
             case CHAT_COMPLETION_SOURCES.MISTRALAI: return await sendMistralAIRequest(request, response);
             case CHAT_COMPLETION_SOURCES.COHERE: return await sendCohereRequest(request, response);
