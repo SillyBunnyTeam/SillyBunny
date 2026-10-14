@@ -3707,6 +3707,11 @@ function createOpenAISettingsDrawer(id, title, description) {
     const $title = $('<b>').text(title);
     const $label = $('<div>', { class: 'flex-container flexFlowColumn' })
         .append($title);
+    const isEditorDrawer = id === 'sb-openai-prompt-manager';
+    if (!isEditorDrawer) {
+        $title.addClass('sb-settings-category-title');
+        $label.addClass('sb-settings-category-heading');
+    }
 
     if (id === 'sb-openai-sampling') {
         const $helpLink = $('<a>', {
@@ -3725,7 +3730,9 @@ function createOpenAISettingsDrawer(id, title, description) {
     }
 
     if (description) {
-        $label.append($('<small>', { class: 'sb-group-meta' }).text(description));
+        const $description = $('<small>', { class: 'sb-group-meta' }).text(description);
+        if (!isEditorDrawer) $description.attr('data-i18n', description);
+        $label.append($description);
     }
 
     $header.append($label);
@@ -3784,7 +3791,7 @@ function groupOpenAISettingsIntoDrawers() {
         {
             id: 'sb-openai-names',
             title: 'Character Names & Prompt Formatting',
-            description: '',
+            description: 'Control name formatting, system messages, and spacing when continuing replies.',
             selectors: [
                 '#openai_settings > div > :is(.inline-drawer, .sb-settings-flat-section):has(#character_names_none)',
                 '#openai_settings > div > :is(.inline-drawer, .sb-settings-flat-section):has(#continue_postfix_none)',
@@ -3795,7 +3802,7 @@ function groupOpenAISettingsIntoDrawers() {
         {
             id: 'sb-openai-prefill',
             title: 'Reply Prefill',
-            description: '',
+            description: 'Set starting text for replies and adjust continuation prefill.',
             selectors: [
                 '#openai_settings > div > .range-block:has(#continue_prefill)',
                 '#openai_settings > div > .range-block:has(#openai_kimi_partial_prefill)',
@@ -4254,17 +4261,21 @@ function buildServerChatCompletionConfigCard({ nested = false } = {}) {
                     <label class="checkbox_label widthFreeExpand" for="sb-config-claude-system-prompt-cache">
                         <input id="sb-config-claude-system-prompt-cache" type="checkbox">
                         <span>System prompt cache</span>
+                        <small class="ds-row-subtitle" data-i18n="Let Claude cache system instructions for reuse between replies.">Let Claude cache system instructions for reuse between replies.</small>
                     </label>
                     <label class="checkbox_label widthFreeExpand" for="sb-config-claude-extended-ttl">
                         <input id="sb-config-claude-extended-ttl" type="checkbox">
                         <span>Extended cache TTL</span>
+                        <small class="ds-row-subtitle" data-i18n="Extend the cache duration from five minutes to one hour. Cache creation costs more.">Extend the cache duration from five minutes to one hour. Cache creation costs more.</small>
                     </label>
                     <label class="checkbox_label widthFreeExpand" for="sb-config-claude-adaptive-thinking">
                         <input id="sb-config-claude-adaptive-thinking" type="checkbox">
                         <span>Adaptive thinking</span>
+                        <small class="ds-row-subtitle" data-i18n="Let supported Claude models adjust their thinking based on your chosen reasoning effort.">Let supported Claude models adjust their thinking based on your chosen reasoning effort.</small>
                     </label>
                     <label class="sb-chat-completion-config-field" for="sb-config-claude-caching-depth">
                         <span>Caching at depth</span>
+                        <small class="ds-row-subtitle" data-i18n="Higher values place cache markers earlier in the chat. Set to -1 to disable.">Higher values place cache markers earlier in the chat. Set to -1 to disable.</small>
                         <input id="sb-config-claude-caching-depth" class="text_pole" type="number" step="1" min="-1">
                     </label>
                     <div class="toggle-description justifyLeft">
@@ -4275,15 +4286,18 @@ function buildServerChatCompletionConfigCard({ nested = false } = {}) {
                     <strong class="sb-chat-completion-config-title">Gemini</strong>
                     <label class="sb-chat-completion-config-field" for="sb-config-gemini-api-version">
                         <span>API version</span>
+                        <small class="ds-row-subtitle" data-i18n="Set the Google AI Studio API version. Leave blank to use v1beta.">Set the Google AI Studio API version. Leave blank to use v1beta.</small>
                         <input id="sb-config-gemini-api-version" class="text_pole" type="text" placeholder="v1beta">
                     </label>
                     <label class="checkbox_label widthFreeExpand" for="sb-config-gemini-thought-signatures">
                         <input id="sb-config-gemini-thought-signatures" type="checkbox">
                         <span>Thought signatures</span>
+                        <small class="ds-row-subtitle" data-i18n="Send saved thought signatures back to Gemini to preserve reasoning context between replies.">Send saved thought signatures back to Gemini to preserve reasoning context between replies.</small>
                     </label>
                     <label class="checkbox_label widthFreeExpand" for="sb-config-gemini-system-prompt-cache">
                         <input id="sb-config-gemini-system-prompt-cache" type="checkbox">
                         <span>System prompt cache</span>
+                        <small class="ds-row-subtitle" data-i18n="Let supported Gemini models cache system instructions through OpenRouter.">Let supported Gemini models cache system instructions through OpenRouter.</small>
                     </label>
                 </section>
             </div>
