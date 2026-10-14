@@ -2359,8 +2359,9 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     display: none !important;
 }
 
-/* SillyBunny: favorites bar does not belong in editor mode; hidden in non-fullscreen editor (Step 3b fix) */
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]):not(.sb-character-editor-fullscreen) > #CharListButtonAndHotSwaps {
+/* SillyBunny: favorites bar does not belong in editor mode; hidden in non-fullscreen editor (Step 3b fix)
+ * Needs .openDrawer to beat the flex !important at line ~2120 which requires .openDrawer */
+#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]):not(.sb-character-editor-fullscreen) > #CharListButtonAndHotSwaps {
     display: none !important;
 }
 
