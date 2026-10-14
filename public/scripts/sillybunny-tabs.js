@@ -1098,6 +1098,7 @@ const SB_SHELLS = Object.freeze({
                 id: 'editor',
                 label: 'Editor',
                 icon: 'fa-pen-to-square',
+                tooltip: 'Edit prompt content, order, and placement.',
                 description: 'Edit prompt content, order, and placement.',
                 descriptionI18n: 'Edit prompt content, order, and placement.',
                 searchAliases: ['Prompt Manager', 'Prompts'],
@@ -1107,7 +1108,8 @@ const SB_SHELLS = Object.freeze({
                 label: 'Formatting',
                 icon: 'fa-text-height',
                 tooltip: 'Set miscellaneous formatting settings for the model backend',
-                description: 'lorum ipsum',
+                description: 'Adjust token counting, stopping strings, text cleanup, and reasoning display.',
+                descriptionI18n: 'Adjust token counting, stopping strings, text cleanup, and reasoning display.',
                 searchPlaceholder: 'Search formatting, context templates, regex, or text replacements',
                 searchExamples: ['formatting', 'context', 'advanced formatting', 'regex', 'replacement'],
                 searchAliases: ['Context', 'Advanced Formatting'],
@@ -2405,10 +2407,13 @@ function getSearchDisplayText(element, fallback = '') {
     return clampText(preferredCandidate || candidates[0] || fallback, 110);
 }
 
-function getSearchText(element, sectionLabel = '') {
+function getSearchText(element, sectionLabel = '', includeCategoryDescription = false) {
+    const descriptionRoot = includeCategoryDescription && element.matches('.sb-settings-category-title')
+        ? element.closest('.sb-settings-category-heading') ?? element
+        : element;
     return normalizeText([
         ...getSearchTextCandidates(element),
-        getSearchNodeText(element, SB_SEARCH_PLACEHOLDER_SELECTOR),
+        getSearchNodeText(descriptionRoot, SB_SEARCH_PLACEHOLDER_SELECTOR),
         sectionLabel,
     ].join(' '));
 }
@@ -9330,7 +9335,7 @@ function syncBackgroundSettingsSection() {
                 text: 'Background',
                 attrs: { 'data-i18n': 'Background' },
             }),
-            createElement('small', { text: 'lorum ipsum', attrs: { 'data-sb-copy-placeholder': 'true' } }),
+            createElement('small', { text: 'Choose backgrounds and adjust their size, blur, opacity, and visibility.', attrs: { 'data-i18n': 'Choose backgrounds and adjust their size, blur, opacity, and visibility.' } }),
         );
         header.append(heading);
         section.append(header, createElement('div', { id: 'sb-background-settings-controls', className: 'ds-pref-group sb-settings-category-body' }));
@@ -9390,17 +9395,17 @@ const SB_SAMPLING_BACKENDS = Object.freeze([
 ]);
 
 const SB_SAMPLING_GROUPS = Object.freeze([
-    { id: 'sampling', title: 'Sampling' },
-    { id: 'penalties', title: 'Penalties & Repetition' },
-    { id: 'algorithms', title: 'Advanced Algorithms' },
-    { id: 'tokens', title: 'Token Control' },
-    { id: 'output', title: 'Output & Generation' },
+    { id: 'sampling', title: 'Sampling', description: 'Adjust how the AI chooses tokens and how varied its replies can be.' },
+    { id: 'penalties', title: 'Penalties & Repetition', description: 'Control how the AI reuses tokens and repeats phrases.' },
+    { id: 'algorithms', title: 'Advanced Algorithms', description: 'Use advanced sampling methods to adjust token choices and repetition.' },
+    { id: 'tokens', title: 'Token Control', description: 'Set seeds, token preferences, minimum length, and streaming speed limits.' },
+    { id: 'output', title: 'Output & Generation', description: 'Adjust sampler order, generation options, and output rules.' },
 ]);
 
 /**
  * Shared sampler registry. Each entry maps a canonical sampler id to selectors across backends.
  * Controls are displayed in registry order within their group. Backends with no selector omit the entry.
- * @type {ReadonlyArray<{id: string, group: string, openai?: string|string[], textgenerationwebui?: string|string[], kobold?: string|string[], novel?: string|string[], expander?: boolean, large?: boolean, gated?: boolean, subtitleSource?: string}>}
+ * @type {ReadonlyArray<{id: string, group: string, openai?: string|string[], textgenerationwebui?: string|string[], kobold?: string|string[], novel?: string|string[], expander?: boolean, large?: boolean, gated?: boolean, description?: string, subtitleSource?: string}>}
  */
 const SB_SAMPLER_REGISTRY = Object.freeze([
     // Sampling
@@ -9427,12 +9432,12 @@ const SB_SAMPLER_REGISTRY = Object.freeze([
     { id: 'presence_penalty', group: 'penalties', openai: '#pres_pen_openai', textgenerationwebui: '#presence_pen_textgenerationwebui', novel: '#rep_pen_presence_novel' },
     { id: 'no_repeat_ngram', group: 'penalties', textgenerationwebui: '#no_repeat_ngram_size_textgenerationwebui' },
     // Algorithms
-    { id: 'adaptive_p', group: 'algorithms', textgenerationwebui: '#adaptive_p_block', expander: true },
+    { id: 'adaptive_p', group: 'algorithms', textgenerationwebui: '#adaptive_p_block', expander: true, description: 'Adjust token choices toward your chosen level of predictability.' },
     { id: 'smoothing', group: 'algorithms', textgenerationwebui: '#smoothingBlock', expander: true },
     { id: 'math1_temp', group: 'algorithms', novel: '#math1_temp_novel' },
     { id: 'math1_quad', group: 'algorithms', novel: '#math1_quad_novel' },
     { id: 'math1_quad_entropy_scale', group: 'algorithms', novel: '#math1_quad_entropy_scale_novel' },
-    { id: 'xtc', group: 'algorithms', textgenerationwebui: '#xtc_block', expander: true },
+    { id: 'xtc', group: 'algorithms', textgenerationwebui: '#xtc_block', expander: true, description: 'Exclude top token choices to encourage more varied replies.' },
     { id: 'dry', group: 'algorithms', textgenerationwebui: '#dryBlock', expander: true },
     { id: 'dynatemp', group: 'algorithms', textgenerationwebui: '#dynatemp_block_ooba', expander: true },
     { id: 'mirostat', group: 'algorithms', textgenerationwebui: '#mirostat_block_ooba', kobold: '[name="miroStatBlock-kobold"]', expander: true, subtitleSource: '[data-sb-sampling-control="#mirostat_block_ooba"] .ds-row-subtitle' },
@@ -9778,6 +9783,10 @@ function buildSamplingControlCard(selector, root = document) {
             className: 'ds-row-subtitle',
             text: tooltip?.getAttribute('title') || tooltip?.getAttribute('data-sttt--title') || 'lorum ipsum',
         });
+        if (entry?.description) {
+            subtitle.textContent = entry.description;
+            subtitle.dataset.i18n = entry.description;
+        }
         if (subtitle.textContent === 'lorum ipsum') subtitle.dataset.sbCopyPlaceholder = 'true';
         text.append(label, subtitle);
         summary.append(text);
@@ -9792,7 +9801,42 @@ function buildSamplingControlCard(selector, root = document) {
     decorateSamplingControlCard(card, selector);
     normalizeBackendSettingsRows(card);
     applySamplingSubtitleSource(card, entry, root);
+    addSamplingDescriptionToggles(card);
     return card;
+}
+
+/** Slider explanations stay searchable and translated, but open only when the reader needs them. */
+function addSamplingDescriptionToggles(card) {
+    for (const row of card.querySelectorAll('.ds-row-slider')) {
+        if (row.querySelector('.sb-sampling-help-toggle')) continue;
+        const text = row.querySelector(':scope > .ds-row-text');
+        const label = text?.querySelector(':scope > .ds-row-label');
+        const subtitle = text?.querySelector(':scope > .ds-row-subtitle:not([data-sb-copy-placeholder])');
+        const control = row.querySelector('input[type="range"][id]');
+        if (!label || !subtitle || !control) continue;
+
+        label.id ||= `sb-sampler-${control.id}-label`;
+        subtitle.id ||= `sb-sampler-${control.id}-help`;
+        subtitle.classList.add('sb-sampling-help');
+        subtitle.hidden = true;
+        const button = createElement('button', {
+            className: 'sb-sampling-help-toggle',
+            attrs: { type: 'button', 'aria-expanded': 'false', 'aria-controls': subtitle.id },
+        });
+        const name = createElement('span', {
+            className: 'sr-only', text: 'Details',
+            attrs: { id: `sb-sampler-${control.id}-help-label`, 'data-i18n': 'Details' },
+        });
+        button.setAttribute('aria-labelledby', `${label.id} ${name.id}`);
+        button.append(createElement('i', { className: 'fa-solid fa-circle-info', attrs: { 'aria-hidden': 'true' } }), name);
+        button.addEventListener('click', () => {
+            subtitle.hidden = !subtitle.hidden;
+            button.setAttribute('aria-expanded', String(!subtitle.hidden));
+        });
+        text.append(button);
+        row.append(subtitle);
+        row.classList.add('sb-sampling-help-row');
+    }
 }
 
 /** Reuses another backend's subtitle (text and i18n key) when this card's native markup has none. */
@@ -10059,6 +10103,25 @@ function createBackendSectionHeader({ title = '', description, modeAttrs = {}, d
     return header;
 }
 
+// SillyBunny: manually built Backend groups share the Messages category-heading anatomy.
+function createBackendGroupHeader(title, attrs = {}, description = '') {
+    const header = createElement('div', { className: 'sb-settings-flat-header sb-settings-category-header' });
+    const heading = createElement('div', { className: 'flex-container flexFlowColumn sb-settings-category-heading' });
+    heading.append(createElement('h3', {
+        className: 'ds-pref-group-heading sb-settings-category-title',
+        text: title,
+        attrs: { 'data-i18n': title, ...attrs },
+    }));
+    if (description) {
+        heading.append(createElement('small', {
+            text: description,
+            attrs: { 'data-i18n': description },
+        }));
+    }
+    header.append(heading);
+    return header;
+}
+
 function buildSamplingPanel() {
     const { panel, scroller } = createShellPanel({ id: 'sampling' });
     const column = createElement('div', {
@@ -10091,7 +10154,7 @@ function buildSamplingPanel() {
                 attrs: { 'data-sb-sampling-group': group.id },
             });
             category.append(
-                createElement('h3', { className: 'ds-pref-group-heading', text: group.title }),
+                createBackendGroupHeader(group.title, {}, group.description),
                 createElement('div', { className: 'ds-pref-group' }),
             );
             section.append(category);
@@ -10321,9 +10384,9 @@ function preparePromptingPanel(root) {
     if (!(configuration instanceof HTMLElement)) return;
 
     const header = createBackendSectionHeader({
-        description: 'lorum ipsum',
+        description: 'Manage presets and their settings, prompt templates, and reply options.',
         modeAttrs: { 'data-sb-prompting-mode': '' },
-        descriptionAttrs: { 'data-sb-copy-placeholder': 'true' },
+        descriptionAttrs: { 'data-i18n': 'Manage presets and their settings, prompt templates, and reply options.' },
     });
     configuration.prepend(header);
     const presetsContainer = configuration.querySelector('#respective-presets-block');
@@ -10335,11 +10398,14 @@ function preparePromptingPanel(root) {
         actionsObserver.observe(presetsContainer, { childList: true, subtree: true });
     }
 
-    for (const [id, title] of [['respective-presets-block', 'Presets'], ['common-gen-settings-block', 'Generation Settings']]) {
+    for (const [id, title, description] of [
+        ['respective-presets-block', 'Presets', 'Choose and manage presets for the current backend.'],
+        ['common-gen-settings-block', 'Generation Settings', 'Set context and reply limits, streaming, and other generation options.'],
+    ]) {
         const block = configuration.querySelector(`#${id}`);
         if (!(block instanceof HTMLElement)) continue;
         block.classList.add('sb-prompting-group');
-        block.prepend(createElement('h3', { className: 'ds-pref-group-heading', text: title }));
+        block.prepend(createBackendGroupHeader(title, {}, description));
         const body = createElement('div', { className: 'ds-pref-group sb-prompting-group-body' });
         for (const child of [...block.children].slice(1)) body.append(child);
         block.append(body);
@@ -10359,21 +10425,22 @@ function preparePromptingPanel(root) {
         }
     }
 
-    const createPromptingGroup = (id, title) => {
+    const createPromptingGroup = (id, title, description = '') => {
         const existing = configuration.querySelector(`#${CSS.escape(id)}`);
         if (existing instanceof HTMLElement) return existing;
         const group = createBackendPromptGroup(id, title);
+        group.firstElementChild.replaceWith(createBackendGroupHeader(title, {}, description));
         configuration.append(group);
         return group;
     };
 
-    for (const [id, title] of [
-        ['sb-tc-sysprompt', 'System Prompt'],
-        ['sb-tc-instruct', 'Instruct Template'],
-        ['sb-tc-context', 'Context Template'],
-        ['sb-tc-names', 'Character Names'],
-        ['sb-reasoning-template', 'Reasoning Template'],
-    ]) createPromptingGroup(id, title);
+    for (const [id, title, description] of [
+        ['sb-tc-sysprompt', 'System Prompt', 'Choose and manage system prompt presets.'],
+        ['sb-tc-instruct', 'Instruct Template', 'Choose an instruct template and adjust how it formats messages for the AI.'],
+        ['sb-tc-context', 'Context Template', 'Choose a context template and adjust its stopping rules.'],
+        ['sb-tc-names', 'Character Names', 'Choose whether to add the character\'s name outside Instruct Mode.'],
+        ['sb-reasoning-template', 'Reasoning Template', 'Choose a template and set the text around reasoning blocks.'],
+    ]) createPromptingGroup(id, title, description);
 
     // SillyBunny: keep range_block_openai around its groups for provider visibility and preset lookups.
     const range = configuration.querySelector('#range_block_openai');
@@ -10619,22 +10686,22 @@ function groupAdvancedFormattingIntoDrawers() {
 
     const startReplyWith = systemColumn.querySelector('[name="startReplyWithBlock"]');
 
-    const createGroup = (id, title) => {
-        const group = createElement('section', { id, className: 'sb-prompting-group sb-formatting-group' });
+    const createGroup = (id, title, description) => {
+        const group = createElement('section', { id, className: 'sb-prompting-group sb-formatting-group sb-settings-category' });
         group.append(
-            createElement('h3', { className: 'ds-pref-group-heading', text: title }),
-            createElement('div', { className: 'ds-pref-group sb-prompting-group-body' }),
+            createBackendGroupHeader(title, { 'data-i18n': title }, description),
+            createElement('div', { className: 'ds-pref-group sb-prompting-group-body sb-settings-category-body' }),
         );
         formatting.append(group);
         return group.querySelector('.sb-prompting-group-body');
     };
     const bodies = new Map([
-        ['tokenizer', createGroup('sb-af-tokenizer', 'Tokenizer & Padding')],
-        ['stopping', createGroup('sb-af-stopping', 'Stopping Strings')],
-        ['reply-prefix', createGroup('sb-af-reply-prefix', 'Reply Prefix')],
-        ['cleanup', createGroup('sb-af-cleanup', 'Text Cleanup')],
-        ['reasoning', createGroup('sb-af-reasoning', 'Reasoning')],
-        ['rendering', createGroup('sb-af-rendering', 'Rendering')],
+        ['tokenizer', createGroup('sb-af-tokenizer', 'Tokenizer & Padding', 'Choose a tokenizer and adjust prompt token counts with padding.')],
+        ['stopping', createGroup('sb-af-stopping', 'Stopping Strings', 'Choose text that stops generation, with optional macro replacement.')],
+        ['reply-prefix', createGroup('sb-af-reply-prefix', 'Reply Prefix', 'Set how replies begin and whether that text appears in chat.')],
+        ['cleanup', createGroup('sb-af-cleanup', 'Text Cleanup', 'Control line breaks, extra spaces, and unfinished sentences in replies.')],
+        ['reasoning', createGroup('sb-af-reasoning', 'Reasoning', 'Control how reasoning is parsed, displayed, and included in prompts.')],
+        ['rendering', createGroup('sb-af-rendering', 'Rendering', 'Keep specified standalone text from being treated as Markdown.')],
     ]);
 
     const move = (target, body) => {
@@ -10730,6 +10797,13 @@ function positionAdvancedFormattingHelpLink() {
     }
 
     const advancedHeading = advancedHeader?.querySelector(':scope > .sb-settings-category-heading');
+    const advancedDescription = advancedHeading?.querySelector(':scope > small');
+    if (advancedDescription instanceof HTMLElement && advancedDescription.dataset.sbCopyPlaceholder === 'true') {
+        const description = 'Adjust token counting, stopping strings, text cleanup, and reasoning display.';
+        advancedDescription.textContent = description;
+        advancedDescription.dataset.i18n = description;
+        delete advancedDescription.dataset.sbCopyPlaceholder;
+    }
     const notesLink = formatting.querySelector('a.notes-link[href*="advancedformatting"]');
     const advancedTitle = advancedHeading?.querySelector(':scope > .sb-settings-category-title');
     const legacyBar = formatting.querySelector(':scope > .flex-container.alignItemsBaseline');
@@ -11142,7 +11216,7 @@ function injectSillyTavernImportCard(host = null) {
     const folderPane = createElement('div', { className: 'ds-row sb-import-pane' });
     const folderCopy = createElement('div', { className: 'ds-row-text' });
     const folderTitle = createElement('label', { className: 'ds-row-label', text: 'Import From Folder Path', attrs: { for: 'sb-import-path-input' } });
-    const folderBody = createElement('p', { className: 'ds-row-subtitle', text: 'Paste the path to your SillyTavern install, its `data` folder, or the specific user folder you want to import. Use the full import for everything, or sync just your third-party extensions with a detailed report.' });
+    const folderBody = createElement('p', { className: 'ds-row-subtitle', html: 'Paste the path to your SillyTavern install, its <code>data</code> folder, or the specific user folder you want to import. Use the full import for everything, or sync just your third-party extensions with a detailed report.' });
     const pathRow = createElement('div', { className: 'ds-row-suffix sb-import-path-row' });
     const actionRow = createElement('div', { className: 'sb-import-action-row' });
     const pathInput = createElement('input', {
@@ -11254,7 +11328,7 @@ function injectSillyTavernImportCard(host = null) {
     updateSillyTavernImportInteractivity();
 }
 
-function createThemeSettingsDrawer({ id, title, content, className = '' }) {
+function createThemeSettingsDrawer({ id, title, content, description = '', className = '' }) {
     const drawer = createElement('section', {
         id,
         className: `inline-drawer sb-theme-settings-drawer ${className}`.trim(),
@@ -11269,6 +11343,13 @@ function createThemeSettingsDrawer({ id, title, content, className = '' }) {
     body.style.display = 'none';
 
     header.append(heading);
+    if (description) {
+        header.append(createElement('small', {
+            className: 'ds-row-subtitle',
+            text: description,
+            attrs: { 'data-i18n': description },
+        }));
+    }
     header.append(icon);
     body.append(...content);
     drawer.append(header, body);
@@ -11407,7 +11488,14 @@ function createShortcutSettingsGroup() {
             updateShortcutButton(side);
         });
 
-        row.append(label, select);
+        row.append(label);
+        const subtitleText = 'Choose what this top bar shortcut opens on desktop. Select None to hide it.';
+        row.append(createElement('small', {
+            className: 'ds-row-subtitle',
+            text: subtitleText,
+            attrs: { 'data-i18n': subtitleText },
+        }));
+        row.append(select);
         rows.push(row);
     }
 
@@ -11812,7 +11900,7 @@ function createGuidedGenerationsBarSettingsGroup(mode = 'mobile') {
     return group;
 }
 
-function createMobileNavChoice({ id, type = 'radio', name = '', value = '', label, icon, onChange }) {
+function createMobileNavChoice({ id, type = 'radio', name = '', value = '', label, description = '', icon, onChange }) {
     const choice = createElement('label', {
         className: 'sb-mobile-nav-choice',
         attrs: {
@@ -11856,6 +11944,13 @@ function createMobileNavChoice({ id, type = 'radio', name = '', value = '', labe
     });
 
     copy.appendChild(title);
+    if (description) {
+        copy.append(createElement('small', {
+            className: 'ds-row-subtitle',
+            text: description,
+            attrs: { 'data-i18n': description },
+        }));
+    }
     choice.append(input, iconElement, copy);
     return choice;
 }
@@ -11887,6 +11982,9 @@ function createNavigationSettingsGroup(mode = 'mobile') {
         type: 'checkbox',
         value: 'topbar-icons-only',
         label: 'Icons only top bar',
+        description: isDesktop
+            ? 'Show page icons in the desktop top bar and hide button labels.'
+            : 'Show page icons in the mobile top bar and hide button labels.',
         icon: 'fa-grip',
         onChange: input => setTopbarIconsOnly(modePrefix, input.checked),
     });
@@ -11919,6 +12017,7 @@ function createPaperTextureSettingsGroup() {
         type: 'checkbox',
         value: 'paper-texture-enabled',
         label: 'Enable paper texture',
+        description: 'Add a paper texture across the mobile interface.',
         icon: 'fa-scroll',
         onChange: input => setPaperTextureEnabled(input.checked),
     });
@@ -12188,6 +12287,7 @@ function injectThemePicker() {
     const interfaceSettingsGroup = createThemeSettingsDrawer({
         id: 'sb-interface-drawer',
         title: 'Interface',
+        description: 'Change the app icon and bottom chat bar size.',
         content: [frontendIconSettingsGroup, surfaceSliderGroup, bottomBarSliderGroup],
     });
 
@@ -12470,12 +12570,23 @@ function createSearchIndex(tabState, { includeThemeCard = false } = {}) {
     const searchRoots = [searchRoot, ...subpageHeadings, ...subpageSections.keys()]
         .filter((root, index) => index === 0 || !searchRoot.contains(root));
 
-    for (const element of searchRoots.flatMap(root => Array.from(root.querySelectorAll(SB_SEARCH_TARGET_SELECTOR)))) {
+    // The Editor retains its existing heading and search structure.
+    const includeCategoryTitles = tabState.id !== 'editor';
+    const targetSelector = includeCategoryTitles
+        ? `${SB_SEARCH_TARGET_SELECTOR}, .sb-settings-category-title`
+        : SB_SEARCH_TARGET_SELECTOR;
+    for (const element of searchRoots.flatMap(root => Array.from(root.querySelectorAll(targetSelector)))) {
         if (!(element instanceof HTMLElement)) {
             continue;
         }
 
         if (element.closest(excludedSelector)) {
+            continue;
+        }
+
+        // The title carries the category description in search; indexing its wrapper adds a second result.
+        if (includeCategoryTitles && element.matches('.sb-settings-category-header, .sb-settings-flat-header, .inline-drawer-toggle')
+            && element.querySelector('.sb-settings-category-title')) {
             continue;
         }
 
@@ -12494,15 +12605,19 @@ function createSearchIndex(tabState, { includeThemeCard = false } = {}) {
         }
 
         const sectionLabel = subpageLabel ?? getSearchSectionLabel(element, tabState.label);
-        const searchText = getSearchText(element, sectionLabel);
+        const searchText = getSearchText(element, sectionLabel, includeCategoryTitles);
         const displayText = getSearchDisplayText(element, sectionLabel);
         const dedupeKey = getSearchEntryDedupeKey(tabState, sectionLabel, displayText, { element });
+        // Identical sampler explanations belong to separate live backend sections. Keep both
+        // until availability filtering, or the hidden first backend masks the active one's help.
+        const indexDedupeKey = [dedupeKey, element.closest('[data-sb-sampling-apis]')?.id].filter(Boolean).join('::');
 
-        if (searchText.length < 3 || seen.has(dedupeKey)) {
+        // Keep each backend's category title until the active-backend filter runs.
+        if (searchText.length < 3 || (seen.has(indexDedupeKey) && !(includeCategoryTitles && element.matches('.sb-settings-category-title')))) {
             continue;
         }
 
-        seen.add(dedupeKey);
+        seen.add(indexDedupeKey);
         entries.push({
             element,
             searchText,
@@ -12652,7 +12767,8 @@ function collectGlobalSearchMatches(query, { limit = SB_UNIVERSAL_SEARCH_RESULT_
                     // Whether the hit sits on a section-name element. The universal search panel
                     // ignores this; the sidebar needs it to tell a page-level hit from a control.
                     headingMatch: entry.element instanceof HTMLElement
-                        && entry.element.matches(SB_SIDEBAR_SECTION_MATCH_SELECTOR),
+                        && (entry.element.matches(SB_SIDEBAR_SECTION_MATCH_SELECTOR)
+                            || (tabState.id !== 'editor' && entry.element.matches('.sb-settings-category-title'))),
                     score: Number(exactMatch) * 100 + Number(startsWithQuery) * 10 - entry.displayText.length / 1000,
                 };
                 const matchKey = [
@@ -12686,6 +12802,8 @@ function isBackendSearchEntryAvailable(entry, tabState) {
     if (!['sampling', 'prompting', 'editor'].includes(tabState.id)) return true;
     if (!(entry.element instanceof HTMLElement) || !tabState.searchRoot.contains(entry.element)) return false;
     for (let element = entry.element; element && element !== tabState.searchRoot; element = element.parentElement) {
+        // Collapsed sampler help is searchable; its provider/card ancestors still gate availability.
+        if (element.matches('.sb-sampling-help[hidden]')) continue;
         if (element.hidden || getComputedStyle(element).display === 'none') return false;
     }
     return true;
@@ -12962,6 +13080,12 @@ function expandHiddenAccordions(target) {
         return;
     }
 
+    const helpRow = target.closest('.sb-sampling-help-row');
+    const help = helpRow?.querySelector(':scope > .sb-sampling-help');
+    if (help?.hidden) {
+        helpRow.querySelector('.sb-sampling-help-toggle')?.click();
+    }
+
     const hiddenContents = [];
     let current = target.parentElement;
 
@@ -13218,12 +13342,13 @@ function mergeOpenAIPresetToolbarRow(root) {
 
     const container = root.querySelector('#openai_api-presets > div');
     const card = container?.querySelector(':scope > .standoutHeader');
-    const row = container?.querySelector(':scope > .flex-container.flexNoGap');
+    const row = container?.querySelector(`:scope > .${SB_PRESET_TOOLBAR_ROW_CLASS}, :scope > .flex-container.flexNoGap`);
 
     if (!(card instanceof HTMLElement) || !(row instanceof HTMLElement)) {
         return;
     }
 
+    row.classList.remove('flexNoGap');
     if (row.classList.contains(SB_PRESET_TOOLBAR_ROW_CLASS)) {
         return;
     }
@@ -13448,6 +13573,9 @@ function buildShell(shellKey) {
                 panel.scroller.appendChild(userSettingsSplit.interface);
             }
             panel.ensureReady = initializeSettingsPanel;
+            // Interface shares the deferred controls authored by Appearance. Initialize them on
+            // direct entry as well as through search, before the post-injection presentation pass.
+            panel.onActivate = basePanel.onActivate;
             registerShellTab(shellKey, customTab, panel);
             continue;
         }
