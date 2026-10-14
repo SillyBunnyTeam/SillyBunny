@@ -192,7 +192,7 @@ describe('conversation mode scoped connection profile', () => {
         expect(timelineSource).toContain('sb-conversation-composer-actions');
         expect(timelineSource).toContain('data-sb-conversation-action="attach-file"');
         expect(timelineSource).toContain('data-sb-conversation-action="quick-selfie"');
-        expect(timelineSource).toContain('bubble.append(actionBar)');
+        expect(timelineSource).toContain('content.append(bubble, actionBar)');
         expect(timelineSource).toContain('item.append(avatarWrap, body, mobileTrigger)');
         expect(timelineSource).not.toContain('bubble.append(actionBar, mobileTrigger)');
         expect(pickersSource).toContain('maxLeft < minLeft');

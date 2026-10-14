@@ -72,10 +72,12 @@ function getMediaQueryPxValues(cssSource) {
 // !important 10px/9px radius in upstream mobile-styles.css.
 // sillybunny-mobile-shell.css raised 685 -> 688: the libadwaita composer entry's rest border
 // and focus border-color/box-shadow must beat upstream mobile-styles.css !important rules.
+// sillybunny-tabs.css raised 400 -> 405: settings-page category layout and the mobile Backgrounds
+// controls need five late-stage overrides to beat upstream inline/important presentation rules.
 const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
     'sillybunny-mobile-shell.css': 688,
     'sillybunny-paper-theme.css': 51,
-    'sillybunny-tabs.css': 400,
+    'sillybunny-tabs.css': 405,
     'sillybunny-chat-styles.css': 225,
     'sillybunny-theme.css': 248,
 });

@@ -69,18 +69,22 @@ test('application shell baseline and reduced motion', async ({ page }, testInfo)
         await expect(setupWizard).toBeHidden({ timeout: 5000 });
     }
     await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'presets'));
-    await expect(page.locator('#left-nav-panel')).toHaveClass(/openDrawer/);
+    const settingsPage = page.locator('#sb-settings-page');
+    await expect(settingsPage).toBeVisible();
+    await expect(settingsPage).not.toHaveAttribute('hidden');
+    await expect(page.locator('#left-nav-panel')).toHaveClass(/sb-settings-active-root/);
     await page.screenshot({ path: testInfo.outputPath('shell.png') });
     await testInfo.attach('shell', { path: testInfo.outputPath('shell.png'), contentType: 'image/png' });
     if (process.env.SB_UI_CAPTURE_ONLY === '1') return;
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    const shellRoot = page.locator('#left-nav-panel .sb-shell-root, #left-nav-panel.sb-shell-root, #left-nav-panel').first();
+    const shellRoot = page.locator('#left-nav-panel');
     const motion = await shellRoot.evaluate(element => {
         const style = getComputedStyle(element);
         return { duration: style.animationDuration, delay: style.animationDelay };
     });
     expect(motion).toEqual({ duration: '0s', delay: '0s' });
-    await shellRoot.locator('.sb-shell-close').click();
-    await expect(page.locator('#left-nav-panel')).not.toHaveClass(/openDrawer/);
+    await page.locator('#sb-settings-close').click();
+    await expect(settingsPage).toHaveAttribute('hidden', '');
+    await expect(page.locator('#left-nav-panel')).not.toHaveClass(/sb-settings-active-root/);
 });
