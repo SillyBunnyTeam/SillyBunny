@@ -260,9 +260,45 @@ async function expectSwitchGeometry(panel, compactSampling = false) {
 
 function getPromptingGroupTitles(prompting) {
     return prompting.locator('.sb-prompting-group:visible').evaluateAll(groups => groups.map(group => {
-        const heading = group.querySelector(':scope > h3, :scope > .sb-settings-flat-header b, :scope > .inline-drawer-header b');
+        const heading = group.querySelector(':scope > .sb-settings-flat-header .sb-settings-category-title, :scope > .sb-settings-flat-header b, :scope > .inline-drawer-header b');
         return heading?.textContent.replace(/\s+/g, ' ').trim() ?? '';
     }));
+}
+
+async function readBackendCategorySpacing(panel, groupSelector) {
+    return panel.evaluate((root, selector) => {
+        const visible = element => element instanceof HTMLElement && element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
+        const groups = [...root.querySelectorAll(selector)].filter(visible);
+        const failures = [];
+        let boundaries = 0;
+        for (const group of groups) {
+            const header = group.querySelector(':scope > .sb-settings-category-header, :scope > .sb-settings-flat-header');
+            const body = group.querySelector(':scope > .ds-pref-group');
+            const name = group.id || group.dataset.sbSamplingGroup;
+            if (!header || !body) {
+                failures.push(`${name}: missing category header or body`);
+                continue;
+            }
+            const insideGap = body.getBoundingClientRect().top - header.getBoundingClientRect().bottom;
+            if (Math.abs(insideGap - 8) > 1) failures.push(`${name}: header-to-body gap ${insideGap}px`);
+            let previous = group.previousElementSibling;
+            while (previous && !visible(previous)) previous = previous.previousElementSibling;
+            // Navigation actions and wrapper boundaries are not consecutive categories.
+            if (previous?.matches(selector)) {
+                const previousBody = previous.querySelector(':scope > .ds-pref-group');
+                if (!previousBody) {
+                    failures.push(`${name}: preceding category has no body`);
+                    continue;
+                }
+                boundaries++;
+                const betweenGap = header.getBoundingClientRect().top - previousBody.getBoundingClientRect().bottom;
+                if (Math.abs(betweenGap - 24) > 1) failures.push(`${name}: between-category gap ${betweenGap}px`);
+            } else if (parseFloat(getComputedStyle(group).marginTop) !== 0) {
+                failures.push(`${name}: first or separated category has a leading margin`);
+            }
+        }
+        return { groups: groups.length, boundaries, failures };
+    }, groupSelector);
 }
 
 async function snapshotFormattingControls(page) {
@@ -405,31 +441,54 @@ test.describe('Settings header consistency', () => {
         expect(mobileTitleMetrics).toEqual({ visible: true, fits: true });
 
         await page.setViewportSize({ width: 1280, height: 720 });
+        const messages = await openSettingsTab(page, 'messages', 'right');
+        const titleMetrics = await messages.locator('.sb-settings-category-title:visible').first().evaluate(title => {
+            const style = getComputedStyle(title);
+            return { fontSize: style.fontSize, fontWeight: style.fontWeight, lineHeight: style.lineHeight, letterSpacing: style.letterSpacing, color: style.color };
+        });
         const formatting = await openSettingsTab(page, 'context', 'left');
-        await expect(formatting.locator('#AdvancedFormatting > .sb-settings-flat-header')).toHaveCount(1);
-        const formattingMetrics = await formatting.locator('#AdvancedFormatting:visible').evaluate(root => {
-            const header = root.firstElementChild;
-            const titleRow = header?.querySelector('.sb-settings-category-title-row');
-            const help = titleRow?.querySelector('.notes-link');
-            const group = root.querySelector('.sb-formatting-group:has(.sb-prompting-group-body)');
-            const body = group?.querySelector(':scope > .sb-prompting-group-body');
-            const groupStyle = group ? getComputedStyle(group) : null;
+        const groups = formatting.locator('#AdvancedFormatting > .sb-formatting-group');
+        await expect(groups).toHaveCount(6);
+        await expect(groups.locator(':scope > .sb-settings-category-header .sb-settings-category-title')).toHaveText([
+            'Tokenizer & Padding', 'Stopping Strings', 'Reply Prefix', 'Text Cleanup', 'Reasoning', 'Rendering',
+        ]);
+        await expect(groups.locator(':scope > .sb-settings-category-header .sb-settings-category-heading > small')).toHaveText([
+            'Choose a tokenizer and adjust prompt token counts with padding.',
+            'Choose text that stops generation, with optional macro replacement.',
+            'Set how replies begin and whether that text appears in chat.',
+            'Control line breaks, extra spaces, and unfinished sentences in replies.',
+            'Control how reasoning is parsed, displayed, and included in prompts.',
+            'Keep specified standalone text from being treated as Markdown.',
+        ]);
+        const failures = await groups.evaluateAll((groups, expectedTitle) => groups.flatMap(group => {
+            const header = group.querySelector(':scope > .sb-settings-category-header');
+            const body = group.querySelector(':scope > .ds-pref-group.sb-settings-category-body');
+            const title = header?.querySelector('.sb-settings-category-title');
+            const subtitle = header?.querySelector('.sb-settings-category-heading > small');
+            const groupStyle = getComputedStyle(group);
             const bodyStyle = body ? getComputedStyle(body) : null;
-            const titleRect = titleRow?.getBoundingClientRect();
-            const helpRect = help?.getBoundingClientRect();
-            return {
-                headerIsFirst: header?.matches('.sb-settings-flat-header') ?? false,
-                helpBesideTitle: Boolean(titleRect && helpRect && Math.abs(titleRect.top - helpRect.top) < 2),
-                outerGroupHasNoBox: groupStyle?.borderTopWidth === '0px' && groupStyle.padding === '0px',
+            const titleStyle = title ? getComputedStyle(title) : null;
+            const checks = {
+                headerIsFirst: header === group.firstElementChild,
+                oneHeaderAndBody: group.children.length === 2 && header?.nextElementSibling === body,
+                localizedTitle: Boolean(title && title.dataset.i18n === title.textContent),
+                localizedSubtitle: Boolean(subtitle && subtitle.dataset.i18n === subtitle.textContent),
+                titleMetrics: Boolean(titleStyle && Object.entries(expectedTitle).every(([key, value]) => titleStyle[key] === value)),
+                outerGroupHasNoBox: groupStyle.borderTopWidth === '0px' && groupStyle.padding === '0px' && groupStyle.backgroundColor === 'rgba(0, 0, 0, 0)' && groupStyle.boxShadow === 'none',
                 bodyKeepsPreferenceBox: bodyStyle?.borderTopWidth === '1px' && bodyStyle.borderRadius !== '0px',
             };
-        });
-        expect(formattingMetrics).toEqual({
-            headerIsFirst: true,
-            helpBesideTitle: true,
-            outerGroupHasNoBox: true,
-            bodyKeepsPreferenceBox: true,
-        });
+            return Object.entries(checks).filter(([, pass]) => !pass).map(([check]) => `${group.id}: ${check}`);
+        }), titleMetrics);
+        expect(failures).toEqual([]);
+        const help = formatting.locator('#AdvancedFormatting a.notes-link[href$="/advancedformatting/"]');
+        await expect(help).toBeVisible();
+        expect(await help.evaluate(link => {
+            const title = link.closest('h3')?.querySelector('span[data-i18n="Advanced Formatting"]');
+            const titleRect = title?.getBoundingClientRect();
+            const helpRect = link.getBoundingClientRect();
+            return Boolean(titleRect && helpRect.left >= titleRect.right - 1
+                && Math.abs(helpRect.top + helpRect.height / 2 - titleRect.top - titleRect.height / 2) <= 2);
+        })).toBe(true);
     });
 });
 
@@ -471,7 +530,7 @@ test.describe('Prompting and Sampling consistency', () => {
         for (const backend of BACKENDS) {
             await switchBackend(page, backend);
             const sampling = await openSettingsTab(page, 'sampling');
-            await expect(sampling.locator('.sb-sampling-group:visible > h3').first()).toHaveText('Sampling');
+            await expect(sampling.locator('.sb-sampling-group:visible > .sb-settings-category-header .sb-settings-category-title').first()).toHaveText('Sampling');
             await expect(sampling.locator('.sb-sampling-group[data-sb-sampling-group="presets"]:visible')).toHaveCount(0);
         }
 
@@ -479,6 +538,30 @@ test.describe('Prompting and Sampling consistency', () => {
             await switchBackend(page, backend);
             const prompting = await openSettingsTab(page, 'prompting');
             await expect.poll(() => getPromptingGroupTitles(prompting).then(titles => titles[0])).toBe('Presets');
+        }
+    });
+
+    test('Backend categories keep 24px boundaries and 8px internal gaps across layouts', async ({ page }) => {
+        test.setTimeout(120000);
+        for (const width of [1440, 390]) {
+            await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+            for (const compact of [false, true]) {
+                await page.evaluate(compact => { document.documentElement.dataset.sbCompactMode = String(compact); }, compact);
+                for (const backend of ['openai', 'textgenerationwebui']) {
+                    await switchBackend(page, backend);
+                    for (const [tab, selector] of [
+                        ['sampling', '.sb-sampling-group'],
+                        ['prompting', '.sb-prompting-group'],
+                        ['context', '#AdvancedFormatting > .sb-formatting-group'],
+                    ]) {
+                        const panel = await openSettingsTab(page, tab);
+                        await expect.poll(async () => (await readBackendCategorySpacing(panel, selector)).failures).toEqual([]);
+                        const metrics = await readBackendCategorySpacing(panel, selector);
+                        expect(metrics.groups).toBeGreaterThan(1);
+                        expect(metrics.boundaries).toBeGreaterThan(0);
+                    }
+                }
+            }
         }
     });
 
@@ -869,6 +952,153 @@ test.describe('Backgrounds settings consistency', () => {
             animatedBackgroundVolume: 68,
         });
     });
+});
+
+test.describe('Settings entry regressions', () => {
+    for (const width of [1440, 390]) {
+        test.describe(`${width}px`, () => {
+            const mobile = width < 620;
+            const mode = mobile ? 'mobile' : 'desktop';
+            test.use({ viewport: { width, height: mobile ? 844 : 1000 }, hasTouch: mobile, locale: 'en-US' });
+
+            test.beforeEach(async ({ page }) => {
+                await page.addInitScript(() => {
+                    localStorage.setItem('language', 'en');
+                    localStorage.setItem('sb-right-tab', 'interface');
+                });
+            });
+
+            test('cold Interface entry creates live normalized controls without visiting Appearance', async ({ page, baseURL }) => {
+                const settingsStore = {};
+                await loadSettings(page, baseURL, settingsStore);
+                const ids = ['topbar-icons-only-input', 'button-scale-input', 'compact-mode-input', 'bottom-bar-visible-input', 'gg-bar-visible-input']
+                    .map(suffix => `sb-${mode}-${suffix}`);
+                const interfacePanel = page.locator('[data-sb-panel="interface"]');
+                const outlet = interfacePanel.locator(`#sb-${mode}-settings-outlet`);
+
+                const openInterface = async () => {
+                    // One native entry only: a second tab activation can conceal initialization-order bugs.
+                    await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
+                    await expect(interfacePanel).toHaveAttribute('aria-hidden', 'false');
+                    await expect.poll(() => page.evaluate(ids => ids.filter(id => !document.getElementById(id)), ids)).toEqual([]);
+                    await expect(outlet).toHaveClass(/ds-pref-group/);
+                    await expect(outlet.locator(`.sb-${mode}-quick-actions-group`)).toHaveCount(1);
+                    for (const id of ids) {
+                        const input = outlet.locator(`#${id}`);
+                        await expect(input).toHaveCount(1);
+                        await expect(input).toBeVisible();
+                    }
+                    await expectSwitchSemantics(outlet);
+                    const anatomy = await page.evaluate(({ ids, mode }) => ids.every(id => {
+                        const input = document.getElementById(id);
+                        return document.querySelectorAll(`[id="${id}"]`).length === 1
+                            && input.closest('.ds-pref-group')?.id === `sb-${mode}-settings-outlet`
+                            && (input.type !== 'checkbox' || input.classList.contains('sb-switch') && Boolean(input.closest('.ds-row-switch')));
+                    }), { ids, mode });
+                    expect(anatomy).toBe(true);
+                };
+
+                await openInterface();
+                await page.evaluate(ids => {
+                    window.__sbInterfaceControlRefs = ids.map(id => document.getElementById(id));
+                }, ids);
+                const iconsOnly = outlet.locator(`#sb-${mode}-topbar-icons-only-input`);
+                const nextIconsOnly = !(await iconsOnly.isChecked());
+                await iconsOnly.setChecked(nextIconsOnly);
+                await expect(page.locator('html')).toHaveAttribute('data-sb-topbar-icons-only', String(nextIconsOnly));
+                const scale = outlet.locator(`#sb-${mode}-button-scale-input`);
+                await scale.focus();
+                await scale.press('Home');
+                await scale.press('ArrowRight');
+                await expect(scale).toHaveValue('75');
+                await expect.poll(() => page.evaluate(mode => document.documentElement.style.getPropertyValue(`--sb-${mode}-button-scale`), mode)).toBe('0.75');
+
+                await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'messages'));
+                await openInterface();
+                expect(await page.evaluate(ids => ids.every((id, index) => document.getElementById(id) === window.__sbInterfaceControlRefs[index]), ids)).toBe(true);
+                await expect(iconsOnly).toBeChecked({ checked: nextIconsOnly });
+                await expect(scale).toHaveValue('75');
+
+                await page.reload({ waitUntil: 'domcontentloaded' });
+                await page.waitForFunction(
+                    () => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'),
+                    null,
+                    { timeout: 60000 },
+                );
+                await openInterface();
+                await expect(iconsOnly).toBeChecked({ checked: nextIconsOnly });
+                await expect(scale).toHaveValue('75');
+                await iconsOnly.setChecked(!nextIconsOnly);
+                await expect(page.locator('html')).toHaveAttribute('data-sb-topbar-icons-only', String(!nextIconsOnly));
+                await scale.focus();
+                await scale.press('ArrowRight');
+                await expect(scale).toHaveValue('80');
+                await expect.poll(() => page.evaluate(mode => document.documentElement.style.getPropertyValue(`--sb-${mode}-button-scale`), mode)).toBe('0.8');
+            });
+
+            test('native enlarged avatar stays hidden during settings and returns unchanged on close', async ({ page, baseURL }) => {
+                await loadSettings(page, baseURL);
+                await page.evaluate(async () => {
+                    const native = await import('/script.js');
+                    const message = {
+                        name: 'Portrait verification', is_user: false, is_system: false,
+                        mes: 'Disposable portrait verification message.', send_date: new Date().toISOString(),
+                        force_avatar: '/img/ai4.png', extra: {},
+                    };
+                    native.chat.push(message);
+                    native.addOneMessage(message, { forceId: native.chat.length - 1, scroll: false, showSwipes: false });
+                });
+                // Invoke the rendered message's native avatar handler; do not inject a portrait fixture.
+                await page.locator('#chat .mes .avatar').last().evaluate(avatar => avatar.click());
+                const portrait = page.locator('body > .zoomed_avatar[forchar]');
+                await expect(portrait).toBeVisible();
+                const original = await portrait.evaluate(node => {
+                    window.__sbPortraitRef = node;
+                    const bounds = node.getBoundingClientRect();
+                    return {
+                        x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height,
+                        style: node.getAttribute('style'), src: node.querySelector('img').getAttribute('src'),
+                    };
+                });
+                const point = {
+                    x: Math.max(1, Math.min(width - 1, original.x + original.width / 2)),
+                    y: Math.max(1, Math.min((mobile ? 844 : 1000) - 1, original.y + original.height / 2)),
+                };
+                const portraitHit = () => page.evaluate(point => Boolean(window.__sbPortraitRef?.contains(document.elementFromPoint(point.x, point.y))), point);
+                await expect.poll(portraitHit).toBe(true);
+                const settingsPage = page.locator('#sb-settings-page');
+
+                for (const [shell, tab] of [['left', 'connections'], ['right', 'interface'], ['characters', 'characters']]) {
+                    await page.evaluate(({ shell, tab }) => window.SillyBunnyShell.openTab(shell, tab), { shell, tab });
+                    await expect(settingsPage).toBeVisible();
+                    await expect(portrait).toHaveCount(1);
+                    expect(await portrait.evaluate(node => node === window.__sbPortraitRef)).toBe(true);
+                    await expect.soft(portrait, `${shell} settings must conceal the portrait`).not.toBeVisible({ timeout: 1500 });
+                    expect.soft(await portraitHit(), `${shell} settings must receive input instead of the portrait`).toBe(false);
+                    expect.soft(await page.evaluate(point => document.getElementById('sb-settings-page').contains(document.elementFromPoint(point.x, point.y)), point)).toBe(true);
+
+                    await page.locator('#sb-settings-close').click();
+                    await expect(settingsPage).toBeHidden();
+                    await expect(portrait).toBeVisible();
+                    await expect.poll(portraitHit).toBe(true);
+                    const restored = await portrait.evaluate(node => {
+                        const bounds = node.getBoundingClientRect();
+                        return {
+                            sameNode: node === window.__sbPortraitRef,
+                            x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height,
+                            style: node.getAttribute('style'), src: node.querySelector('img').getAttribute('src'),
+                        };
+                    });
+                    expect(restored).toEqual({ sameNode: true, ...original });
+                }
+
+                await portrait.hover();
+                await portrait.locator('.dragClose').click();
+                await expect(portrait).toHaveCount(0);
+                await expect(page.locator('#zoomed_avatar_template .zoomed_avatar')).toHaveCount(1);
+            });
+        });
+    }
 });
 
 test.describe('Preset persistence regression', () => {
