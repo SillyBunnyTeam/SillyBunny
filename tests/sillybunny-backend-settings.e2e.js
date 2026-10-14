@@ -4,6 +4,8 @@ import { auditPromptingLayout } from './helpers/libadwaita-audit.js';
 
 test.use({ serviceWorkers: 'block', reducedMotion: 'reduce' });
 
+const BACKEND_CATEGORY_TITLE = ':scope > .sb-settings-flat-header .sb-settings-category-title, :scope > .sb-settings-flat-header b';
+
 async function loadSettings(page, baseURL, settingsStore) {
     const origin = new URL(baseURL).origin;
     expect(['127.0.0.1', 'localhost', '[::1]']).toContain(new URL(baseURL).hostname);
@@ -95,13 +97,16 @@ async function expectSwitchGeometry(root, compactSampling = false) {
 }
 
 async function expectPromptingFlow(prompting, api) {
+    const categoryTitles = prompting.locator(':is(#respective-presets-block, #common-gen-settings-block):visible > .sb-settings-flat-header .sb-settings-category-title');
+    await expect(categoryTitles).toHaveCount(api === 'openai' ? 1 : 2);
+    expect(await categoryTitles.evaluateAll(titles => titles.filter(title => title.dataset.i18n !== title.textContent.trim()).map(title => title.textContent))).toEqual([]);
     if (api !== 'openai') {
-        await expect(prompting.locator('.sb-prompting-group:visible > h3')).toHaveText([
+        await expect(prompting.locator('.sb-prompting-group:visible').locator(BACKEND_CATEGORY_TITLE)).toHaveText([
             'Presets', 'Generation Settings', 'System Prompt', 'Instruct Template', 'Context Template', 'Character Names', 'Reasoning Template',
         ]);
         return;
     }
-    await expect(prompting.locator('.sb-prompting-group:visible').locator(':scope > h3, :scope > .sb-settings-flat-header b')).toHaveText([
+    await expect(prompting.locator('.sb-prompting-group:visible').locator(BACKEND_CATEGORY_TITLE)).toHaveText([
         'Presets', 'Generation Settings', 'Character Names & Prompt Formatting', 'Reply Prefill', 'Request Options', 'Reasoning Template',
     ]);
     await expect(prompting.locator('#completion_prompt_manager')).toHaveCount(0);
@@ -174,8 +179,19 @@ async function readBackendHeaderMetrics(header) {
 }
 
 async function expectSamplingTaxonomy(sampling, api) {
+    const headers = sampling.locator('.sb-sampling-group:visible > .sb-settings-category-header');
+    expect(await headers.count()).toBeGreaterThan(0);
+    expect(await headers.evaluateAll(elements => elements.flatMap(header => {
+        const title = header.querySelector('.sb-settings-category-title');
+        const subtitle = header.querySelector('.sb-settings-category-heading > small');
+        const failures = [];
+        if (!title?.textContent.trim() || title.dataset.i18n !== title.textContent.trim()) failures.push('missing title localization key');
+        if (!subtitle?.textContent.trim() || /(?:lorum|lorem) ipsum/i.test(subtitle.textContent)) failures.push('missing category subtitle');
+        if (subtitle?.dataset.i18n !== subtitle?.textContent.trim()) failures.push('missing subtitle localization key');
+        return failures.map(failure => `${title?.textContent}: ${failure}`);
+    }))).toEqual([]);
     if (api !== 'textgenerationwebui') return;
-    await expect(sampling.locator('.sb-sampling-group:visible > h3')).toHaveText([
+    await expect(sampling.locator('.sb-sampling-group:visible').locator(BACKEND_CATEGORY_TITLE)).toHaveText([
         'Sampling', 'Penalties & Repetition', 'Advanced Algorithms', 'Token Control', 'Output & Generation',
     ]);
     await expect(sampling.locator('.sb-sampling-group[data-sb-sampling-group="presets"]')).toHaveCount(0);
@@ -243,7 +259,8 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                 const promptingHeader = prompting.locator('#ai_response_configuration > .sb-backend-section-header');
                 await expect(promptingHeader).toBeVisible();
                 await expect(promptingHeader.locator(':scope > .sb-backend-title-row > [data-sb-prompting-mode]')).toBeVisible();
-                await expect(promptingHeader.locator(':scope > p[data-sb-copy-placeholder]')).toHaveText('lorum ipsum');
+                await expect(promptingHeader.locator(':scope > p')).toHaveText('Manage presets and their settings, prompt templates, and reply options.');
+                await expect(promptingHeader.locator('[data-sb-copy-placeholder]')).toHaveCount(0);
                 await expect(promptingHeader.locator('.sb-backend-disclaimer, button')).toHaveCount(0);
                 expect(await promptingHeader.evaluate(header => {
                     const container = header.parentElement.getBoundingClientRect();
@@ -427,7 +444,7 @@ test('Prompting and Formatting rehome live template nodes across repeated backen
     await selectBackend(page, 'openai', 'openrouter');
     const formatting = await openPanel(page, 'context');
     await expect(page.locator('[data-sb-settings-tab="context"]')).toContainText('Formatting');
-    await expect(formatting.locator('.sb-formatting-group:visible > h3')).toHaveText([
+    await expect(formatting.locator('.sb-formatting-group:visible').locator(BACKEND_CATEGORY_TITLE)).toHaveText([
         'Stopping Strings', 'Reply Prefix', 'Text Cleanup', 'Reasoning', 'Rendering',
     ]);
     await expect(formatting.locator('#sb-af-reply-prefix [name="startReplyWithBlock"]')).toBeVisible();
@@ -437,7 +454,7 @@ test('Prompting and Formatting rehome live template nodes across repeated backen
 
     await selectBackend(page, 'textgenerationwebui', 'ooba');
     const textFormatting = await openPanel(page, 'context');
-    await expect(textFormatting.locator('.sb-formatting-group:visible > h3')).toHaveText([
+    await expect(textFormatting.locator('.sb-formatting-group:visible').locator(BACKEND_CATEGORY_TITLE)).toHaveText([
         'Tokenizer & Padding', 'Stopping Strings', 'Reply Prefix', 'Text Cleanup', 'Reasoning', 'Rendering',
     ]);
 });
@@ -466,6 +483,33 @@ test('Backend tabs, aliases and Presets/Editor links are stable in every mode', 
     for (const [query, tab] of [['Prompting', 'prompting'], ['Prompt Manager', 'editor'], ['Prompts', 'editor']]) {
         await search.fill(query);
         await expect(page.locator(`[data-sb-settings-tab="${tab}"]`)).not.toHaveClass(/sb-settings-tab--filtered/);
+    }
+});
+
+test('Backend category search returns one title and retains subtitle matches', async ({ page, baseURL }) => {
+    await loadSettings(page, baseURL);
+    await selectBackend(page, 'textgenerationwebui', 'ooba');
+    const sampling = await openPanel(page, 'sampling');
+    for (const query of ['Token Control', 'minimum length streaming speed limits']) {
+        await page.evaluate(() => window.SillyBunnyShell.openGlobalSearch());
+        await page.locator('#sb-universal-search input').fill(query);
+        const result = page.getByRole('group', { name: 'Backend · Sampling', exact: true })
+            .getByRole('option', { name: /^Token Control\b/ });
+        await expect(result).toHaveCount(1);
+        await result.click();
+        await expect(sampling.locator('.sb-sampling-section:visible [data-sb-sampling-group="tokens"] .sb-settings-category-title')).toBeInViewport();
+    }
+
+    await selectBackend(page, 'openai', 'openrouter');
+    const prompting = await openPanel(page, 'prompting');
+    for (const query of ['Reply Prefill', 'adjust continuation prefill']) {
+        await page.evaluate(() => window.SillyBunnyShell.openGlobalSearch());
+        await page.locator('#sb-universal-search input').fill(query);
+        const result = page.getByRole('group', { name: 'Backend · Presets', exact: true })
+            .getByRole('option', { name: 'Reply Prefill Jump to setting', exact: true });
+        await expect(result).toHaveCount(1);
+        await result.click();
+        await expect(prompting.locator('#sb-openai-prefill .sb-settings-category-title')).toBeInViewport();
     }
 });
 
