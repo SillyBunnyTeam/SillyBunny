@@ -10,7 +10,7 @@
  * copy becomes the active preset. Update buttons are disabled for bundled presets.
  */
 
-import { eventSource, event_types, getRequestHeaders, main_api, saveSettingsDebounced } from '../script.js';
+import { eventSource, event_types, getRequestHeaders, main_api, refreshCsrfToken, saveSettingsDebounced } from '../script.js';
 import { t } from './i18n.js';
 import { getChatCompletionPreset, oai_settings, openai_setting_names, openai_settings } from './openai.js';
 import { power_user } from './power-user.js';
@@ -100,11 +100,12 @@ function normalizeName(name) {
  */
 function loadBundledNames(kind) {
     if (!bundledNameRequests.has(kind)) {
-        const request = fetch('/api/presets/defaults', {
+        // Shell initialization can run before firstLoadInit has received its CSRF token.
+        const request = refreshCsrfToken().then(() => fetch('/api/presets/defaults', {
             method: 'POST',
             headers: getRequestHeaders(),
             body: JSON.stringify({ apiId: kind }),
-        }).then(async response => {
+        })).then(async response => {
             if (!response.ok) throw new Error(`Bundled preset names request failed with ${response.status}`);
             const data = await response.json();
             const names = new Set((Array.isArray(data?.names) ? data.names : []).map(normalizeName));
