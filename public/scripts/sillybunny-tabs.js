@@ -37,7 +37,7 @@ import {
     TOPBAR_ADOPTION_ATTRIBUTE,
     TOPBAR_EXTENSION_SLOT_ID,
 } from './topbar-extension-slot/index.js';
-import { setCharacterSpoilerFreeFieldsHidden } from './power-user.js';
+
 import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
 import { extension_settings } from './extensions.js';
@@ -604,7 +604,7 @@ const SB_STORAGE_KEYS = Object.freeze({
     desktopTopbarIconsOnly: 'sb-desktop-topbar-icons-only',
     mobileTopbarIconsOnly: 'sb-mobile-topbar-icons-only',
     frontendIcon: 'sb-frontend-icon',
-    characterEditorSubTab: 'sb-character-editor-sub-tab',
+
     bottomChatBarVisible: 'sb-bottom-chat-bar-visible',
     paperTextureEnabled: 'sb-paper-texture-enabled',
     paperTextureOpacity: 'sb-paper-texture-opacity',
@@ -992,15 +992,6 @@ const SB_MESSAGE_STYLES = Object.freeze([
 const SB_SAMPLING_SUBTITLE_HTML = 'Modify model text parameters here - useful for dialing in responses! If you\'re unsure what these all mean, check out <a class="notes-link" href="https://rentry.org/samplersettings" target="_blank" rel="noopener noreferrer">Geechan\'s guide on sampling.</a>';
 
 const SB_WORLD_INFO_SUBTITLE_HTML = 'Advanced: Modify lorebooks for character cards here. For more information, read the guide found <a class="notes-link" href="https://docs.sillytavern.app/usage/core-concepts/worldinfo/" target="_blank" rel="noopener noreferrer">here</a>.';
-
-const SB_CHARACTER_EDITOR_SUB_TABS = Object.freeze([
-    'char-info',
-    'definitions',
-    'greetings',
-    'metadata',
-]);
-const SB_CHARACTER_EDITOR_DEFAULT_SUB_TAB = 'char-info';
-const SB_CHARACTER_EDITOR_SPOILER_FREE_VISIBLE_TABS = Object.freeze(['char-info', 'metadata']);
 
 const SB_CHARACTER_PANEL_TABS = Object.freeze([
     {
@@ -2317,26 +2308,6 @@ function createElement(tagName, { id = '', className = '', text = '', html = '',
 
 function wait(ms) {
     return new Promise(resolve => window.setTimeout(resolve, ms));
-}
-
-function normalizeCharacterEditorSubTab(tabId) {
-    const normalizedTabId = normalizeText(tabId);
-    return SB_CHARACTER_EDITOR_SUB_TABS.includes(normalizedTabId) ? normalizedTabId : SB_CHARACTER_EDITOR_DEFAULT_SUB_TAB;
-}
-
-function isCharacterSpoilerFreeFieldsHidden() {
-    const form = document.getElementById('form_create');
-    return form instanceof HTMLElement && form.dataset.sbSpoilerFreeFieldsHidden === 'true';
-}
-
-function isCharacterEditorSubTabSpoilerHidden(tabId) {
-    return isCharacterSpoilerFreeFieldsHidden()
-        && !SB_CHARACTER_EDITOR_SPOILER_FREE_VISIBLE_TABS.includes(normalizeCharacterEditorSubTab(tabId));
-}
-
-function resolveCharacterEditorSubTab(tabId) {
-    const normalizedTabId = normalizeCharacterEditorSubTab(tabId);
-    return isCharacterEditorSubTabSpoilerHidden(normalizedTabId) ? 'metadata' : normalizedTabId;
 }
 
 function isCharacterEditorMenuType(menuType) {
@@ -7611,69 +7582,6 @@ function setCharacterWorldInfoPanelVisible(visible) {
     }
 }
 
-function getCharacterEditorSubTabState() {
-    const storedTab = safeGetItem(SB_STORAGE_KEYS.characterEditorSubTab);
-    return normalizeCharacterEditorSubTab(storedTab);
-}
-
-function saveCharacterEditorSubTab(tabId) {
-    safeSetItem(SB_STORAGE_KEYS.characterEditorSubTab, normalizeCharacterEditorSubTab(tabId));
-}
-
-function updateCharacterEditorSubTabButtons(activeTabId) {
-    const activeSubTab = resolveCharacterEditorSubTab(activeTabId);
-
-    for (const tabButton of document.querySelectorAll('#sb_character_editor_subtabs [data-sb-character-editor-tab]')) {
-        if (!(tabButton instanceof HTMLElement)) {
-            continue;
-        }
-
-        const isActive = tabButton.dataset.sbCharacterEditorTab === activeSubTab;
-        tabButton.classList.toggle('is-active', isActive);
-        tabButton.setAttribute('aria-selected', String(isActive));
-        tabButton.setAttribute('tabindex', isActive ? '0' : '-1');
-        // Dimmed, not disabled: tapping a spoiler-hidden tab reveals the fields (see bindCharacterEditorSubTabs).
-        tabButton.classList.toggle('is-spoiler-hidden', isCharacterEditorSubTabSpoilerHidden(tabButton.dataset.sbCharacterEditorTab));
-    }
-}
-
-function updateCharacterEditorSubTabPanels(activeTabId) {
-    const activeSubTab = resolveCharacterEditorSubTab(activeTabId);
-
-    for (const panel of document.querySelectorAll('#form_create [data-sb-character-editor-panel]')) {
-        if (!(panel instanceof HTMLElement)) {
-            continue;
-        }
-
-        const isActive = panel.dataset.sbCharacterEditorPanel === activeSubTab;
-        panel.hidden = !isActive;
-        panel.setAttribute('aria-hidden', String(!isActive));
-    }
-}
-
-function syncCharacterEditorSubTabs(activeTabId = getCharacterEditorSubTabState()) {
-    const normalizedTab = resolveCharacterEditorSubTab(activeTabId);
-    saveCharacterEditorSubTab(normalizedTab);
-    updateCharacterEditorSubTabButtons(normalizedTab);
-    updateCharacterEditorSubTabPanels(normalizedTab);
-}
-
-function focusCharacterEditorSubTab(tabId) {
-    const button = document.querySelector(`#sb_character_editor_subtabs [data-sb-character-editor-tab="${tabId}"]`);
-    if (button instanceof HTMLElement) {
-        button.focus({ preventScroll: true });
-    }
-}
-
-function setCharacterEditorSubTab(tabId, { focusButton = false } = {}) {
-    const normalizedTab = normalizeCharacterEditorSubTab(tabId);
-    syncCharacterEditorSubTabs(normalizedTab);
-
-    if (focusButton) {
-        focusCharacterEditorSubTab(normalizedTab);
-    }
-}
-
 function setCharacterEditorFullscreenState(expanded, { focusButton = false } = {}) {
     const panel = getCharacterPanel();
     const toggleButton = document.getElementById('sb_character_editor_fullscreen_toggle');
@@ -7703,7 +7611,7 @@ function setCharacterEditorFullscreenState(expanded, { focusButton = false } = {
     }
 
     if (isExpanded && !wasExpanded) {
-        scrollElementIntoManagedView(document.getElementById('sb_character_editor_subtabs'), { block: 'nearest' });
+        scrollElementIntoManagedView(document.getElementById('sb_character_editor_header'), { block: 'nearest' });
     }
 }
 
@@ -7854,7 +7762,7 @@ async function openCreatorNotesFullscreen() {
         if (anchor.isConnected) {
             anchor.replaceWith(spoiler);
         } else {
-            document.querySelector('.sb-character-creator-notes-preview-body')?.prepend(spoiler);
+            document.querySelector('.sb-creator-notes-preview__body')?.prepend(spoiler);
         }
     }
 }
@@ -7876,71 +7784,6 @@ function focusCharacterPanelTab(tabId) {
     if (button instanceof HTMLElement) {
         button.focus({ preventScroll: true });
     }
-}
-
-function bindCharacterEditorSubTabs() {
-    const tablist = document.getElementById('sb_character_editor_subtabs');
-    if (!(tablist instanceof HTMLElement) || tablist.dataset.sbBound === 'true') {
-        return;
-    }
-
-    tablist.dataset.sbBound = 'true';
-
-    tablist.addEventListener('click', (event) => {
-        const target = event.target instanceof HTMLElement ? event.target.closest('[data-sb-character-editor-tab]') : null;
-        if (!(target instanceof HTMLButtonElement)) {
-            return;
-        }
-
-        const tabId = target.dataset.sbCharacterEditorTab;
-        // Spoiler-free mode hides Definitions/Greetings; a deliberate tap on one of them is the same request as the eye
-        // button's peek, so reveal the fields first instead of silently landing on Metadata.
-        if (isCharacterEditorSubTabSpoilerHidden(tabId)) {
-            setCharacterSpoilerFreeFieldsHidden(false);
-        }
-
-        setCharacterEditorSubTab(tabId, { focusButton: false });
-    });
-
-    tablist.addEventListener('keydown', (event) => {
-        if (!(event.target instanceof HTMLElement)) {
-            return;
-        }
-
-        const targetButton = event.target.closest('[data-sb-character-editor-tab]');
-        if (!(targetButton instanceof HTMLButtonElement)) {
-            return;
-        }
-
-        const buttons = Array.from(tablist.querySelectorAll('[data-sb-character-editor-tab]'));
-        const currentIndex = buttons.indexOf(targetButton);
-        if (currentIndex === -1) {
-            return;
-        }
-
-        const lastIndex = buttons.length - 1;
-        let nextIndex = currentIndex;
-
-        if (event.key === 'ArrowRight') {
-            nextIndex = currentIndex === lastIndex ? 0 : currentIndex + 1;
-        } else if (event.key === 'ArrowLeft') {
-            nextIndex = currentIndex === 0 ? lastIndex : currentIndex - 1;
-        } else if (event.key === 'Home') {
-            nextIndex = 0;
-        } else if (event.key === 'End') {
-            nextIndex = lastIndex;
-        } else {
-            return;
-        }
-
-        event.preventDefault();
-        const nextButton = buttons[nextIndex];
-        if (nextButton instanceof HTMLButtonElement) {
-            setCharacterEditorSubTab(nextButton.dataset.sbCharacterEditorTab, { focusButton: true });
-        }
-    });
-
-    syncCharacterEditorSubTabs();
 }
 
 function hideCharacterMainPanels() {
@@ -15548,7 +15391,6 @@ function initAll() {
     scheduleChatbarRefresh(0);
     interceptDrawerOpeners();
     bindWorldInfoRoute();
-    bindCharacterEditorSubTabs();
     applyDefaultDrawerStates();
     // SillyBunny: Phase 1 — settings page + mode toggle + keyboard shortcuts (feat/v1.9.0-ui-overhaul)
     initSettingsPageClose();

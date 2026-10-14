@@ -76,14 +76,13 @@ describe('mobile character editor css', () => {
         expect(editorBandRule).toContain('min-height: 54px !important;');
     });
 
-    test('dims the spoiler-hidden editor sub-tabs without making them untappable', () => {
-        const hiddenTabRule = getRuleBody(tabsCss, '#right-nav-panel .sb-character-editor-subtab.is-spoiler-hidden');
-
-        expect(hiddenTabRule).toContain('opacity: 0.45;');
-        // A tap on a dimmed tab reveals the fields, so nothing here may swallow the click or advertise a dead button.
-        expect(hiddenTabRule).not.toContain('pointer-events');
-        expect(hiddenTabRule).not.toContain('not-allowed');
-        expect(tabsCss).not.toContain('.sb-character-editor-subtab[aria-disabled');
+    test('drops the retired editor sub-tab and spoiler-panel rules', () => {
+        // The editor is one scrolling sheet; stale sub-tab rules would only fight the new layout.
+        for (const source of [tabsCss, mobileShellCss]) {
+            expect(source).not.toContain('sb-character-editor-subtab');
+            expect(source).not.toContain('data-sb-character-editor-panel');
+            expect(source).not.toContain('is-spoiler-hidden');
+        }
     });
 
     test('keeps the desktop editor shell from reintroducing refactor padding and wrapper collapse', () => {

@@ -6861,27 +6861,6 @@
                         </div>
                     </div>
                 </div>
-                <!-- SillyBunny: keep upstream character fields compatible, but arrange them as inline editor sub-tabs instead of the legacy ADV modal. This differs from upstream so the editor stays single-surface and modal-free. -->
-                <div class="sb-character-editor-subtabs-wrapper">
-                    <div id="sb_character_editor_subtabs" class="sb-character-editor-subtabs sb-shell-nav" role="tablist" aria-label="Character editor sections">
-                        <button id="sb_character_editor_tab_char_info" class="sb-character-editor-subtab sb-shell-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="sb_character_editor_panel_char_info" tabindex="0" data-sb-character-editor-tab="char-info">
-                            <i class="fa-solid fa-id-card" aria-hidden="true"></i>
-                            <span class="sb-shell-tab-copy"><strong data-i18n="Information">Information</strong></span>
-                        </button>
-                        <button id="sb_character_editor_tab_definitions" class="sb-character-editor-subtab sb-shell-tab" type="button" role="tab" aria-selected="false" aria-controls="sb_character_editor_panel_definitions" tabindex="-1" data-sb-character-editor-tab="definitions">
-                            <i class="fa-solid fa-book-open" aria-hidden="true"></i>
-                            <span class="sb-shell-tab-copy"><strong data-i18n="Definitions">Definitions</strong></span>
-                        </button>
-                        <button id="sb_character_editor_tab_greetings" class="sb-character-editor-subtab sb-shell-tab" type="button" role="tab" aria-selected="false" aria-controls="sb_character_editor_panel_greetings" tabindex="-1" data-sb-character-editor-tab="greetings">
-                            <i class="fa-solid fa-comments" aria-hidden="true"></i>
-                            <span class="sb-shell-tab-copy"><strong data-i18n="Greetings">Greetings</strong></span>
-                        </button>
-                        <button id="sb_character_editor_tab_metadata" class="sb-character-editor-subtab sb-shell-tab" type="button" role="tab" aria-selected="false" aria-controls="sb_character_editor_panel_metadata" tabindex="-1" data-sb-character-editor-tab="metadata">
-                            <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
-                            <span class="sb-shell-tab-copy"><strong data-i18n="Metadata">Metadata</strong></span>
-                        </button>
-                    </div>
-                </div>
                 <!-- this div structure must be preserved until group peeking can adjust -->
                 <div id="rm_PinAndTabs">
                     <div id="right-nav-panel-tabs" class="">
@@ -6906,7 +6885,6 @@
                                 <i id="character_media_forbidden_icon" class="fa-solid fa-fw fa-link-slash"></i>
                             </div>
                             <i title="Click for stats!" data-i18n="[title]Click for stats!" class="fa-solid fa-ranking-star right_menu_button rm_stats_button"></i>
-                            <div id="spoiler_free_desc_button" class="right_menu_button fa-solid fa-eye fa-fw" title="Toggle character info" data-i18n="[title]Toggle character info"></div>
                         </div>
                         <button id="sb_character_editor_fullscreen_toggle" class="menu_button menu_button_icon sb-character-editor-fullscreen-toggle" type="button" aria-controls="rm_ch_create_block" aria-pressed="false" aria-expanded="false" title="Enter editor fullscreen" aria-label="Enter editor fullscreen" data-i18n="[title]Enter editor fullscreen;[aria-label]Enter editor fullscreen">
                             <i class="fa-solid fa-maximize" aria-hidden="true"></i>
@@ -6962,335 +6940,343 @@
                     <!-- SillyBunny: runtime reparents the upstream #WI-SP-button/#WorldInfo node here so World Info behaves as a right Characters tab without duplicating IDs. This differs from upstream so the route stays compatible with saved shortcuts and existing selectors. -->
                     <div id="sb_character_world_info_panel" class="sb-character-world-info-panel" role="tabpanel" aria-labelledby="sb_character_tab_world_info" aria-hidden="true" hidden></div>
                     <div name="Solo Char Create/Edit Panel" id="rm_ch_create_block" class="right_menu flex-container flexFlowColumn" style="display: none;">
-                        <form id="form_create" action="javascript:void(null);" method="post" enctype="multipart/form-data">
-                            <div id="spoiler_free_desc" class="flex-container flexFlowColumn flexNoGap sb-creator-notes-compact sb-character-creator-notes-preview">
-                                <div id="creators_notes_div" class="title_restorable flexGap5 wide100p sb-character-creator-notes-preview-title">
-                                    <span class="flex1" data-i18n="Creator's Notes">Creator's Notes</span>
-                                    <!-- SillyBunny: this sits beside the rendered preview, so it opens the formatted notes rather than the raw textarea value; the editor's own .editor_maximize in Char Info still expands the source. -->
-                                    <button type="button" id="sb_creator_notes_maximize" class="menu_button menu_button_icon margin0" title="Expand the editor" aria-label="Expand the editor" data-i18n="[title]Expand the editor;[aria-label]Expand the editor">
-                                        <i class="fa-solid fa-maximize" aria-hidden="true"></i>
-                                    </button>
-                                </div>
-                                <div class="sb-character-creator-notes-preview-body">
-                                    <div id="creator_notes_spoiler"></div>
-                                    <div id="creator_notes_empty" data-i18n="No Creator's Notes provided.">
-                                        No Creator's Notes provided.
-                                    </div>
-                                </div>
+                        <!-- SillyBunny: flat scrolling character sheet replaces the four sub-tab panels; every upstream field ID and wrapper ID is kept for extension compatibility. -->
+                        <form id="form_create" class="sb-character-sheet" action="javascript:void(null);" method="post" enctype="multipart/form-data">
+                            <header class="sb-editor-header" id="sb_character_editor_header">
+                                <button class="sb-editor-back menu_button menu_button_icon" id="sb_character_editor_back" type="button" title="Back to character list" aria-label="Back to character list" data-i18n="[title]Back to character list;[aria-label]Back to character list">
+                                    <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+                                </button>
+                                <h2 class="sb-editor-title" id="sb_character_editor_title"></h2>
+                                <span class="sb-editor-dirty" id="sb_character_editor_dirty" role="status" aria-live="polite" hidden>
+                                    <span class="sb-editor-dirty-dot" aria-hidden="true"></span>
+                                    <span class="sr-only" data-i18n="Unsaved changes">Unsaved changes</span>
+                                </span>
+                                <button class="ds-button-ghost menu_button" id="sb_character_editor_cancel" type="button" data-i18n="Cancel">Cancel</button>
+                                <button class="ds-button-primary menu_button" id="sb_character_editor_save" type="button" data-i18n="Save">Save</button>
+                            </header>
+
+                            <div class="sb-editor-toolbar form_create_bottom_buttons_block" id="sb_character_editor_toolbar">
+                                <div id="favorite_button" class="menu_button fa-solid fa-star" title="Add to Favorites" data-i18n="[title]Add to Favorites" data-label="FAV."></div>
+                                <input type="hidden" id="fav_checkbox" name="fav" />
+                                <div id="world_button" class="menu_button fa-solid fa-globe" title="Character Lore&#10;&#10;Click to load&#10;Shift/Alt-click or long-press to open 'Link to World Info' popup" data-i18n="[title]world_button_title"><span data-i18n="Character Lore">Character Lore</span></div>
+                                <div class="chat_lorebook_button menu_button fa-solid fa-passport" title="Chat Lore&#10;&#10;Click to load&#10;Shift/Alt-click or long-press to open 'Link to Chat Lorebook' popup" data-i18n="[title]chat_lorebook_button_title"></div>
+                                <div id="char_connections_button" class="menu_button fa-solid fa-face-smile" title="Connected Personas" data-i18n="[title]Connected Personas"></div>
+                                <div id="export_button" class="menu_button fa-solid fa-file-export" title="Export and Download" data-i18n="[title]Export and Download"></div>
+                                <div id="dupe_button" class="menu_button fa-solid fa-clone" title="Duplicate Character" data-i18n="[title]Duplicate Character"></div>
+                                <div id="delete_button" class="menu_button fa-solid fa-skull red_button" title="Delete Character" data-i18n="[title]Delete Character"></div>
+                                <span class="sb-editor-toolbar-spacer" aria-hidden="true"></span>
+                                <button id="sb_character_editor_quick_edit" class="menu_button menu_button_icon" type="button" aria-pressed="false" title="Quick edit mode" aria-label="Quick edit mode" data-i18n="[title]Quick edit mode;[aria-label]Quick edit mode">
+                                    <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
+                                </button>
+                                <label for="char-management-dropdown" class="sb-editor-toolbar-more">
+                                    <select id="char-management-dropdown" class="text_pole">
+                                        <option value="default" disabled selected data-i18n="More...">More...</option>
+                                        <option id="set_character_world" data-i18n="Link to World Info">Link to World Info</option>
+                                        <option id="import_character_info" data-i18n="Import Card Lore">Import Card Lore</option>
+                                        <option id="regenerate_thumbnail" data-i18n="Regenerate Thumbnail">Regenerate Thumbnail</option>
+                                        <option id="set_chat_character_settings" data-i18n="Character Settings Overrides">Character Settings Overrides</option>
+                                        <option id="convert_to_persona" data-i18n="Convert to Persona">Convert to Persona</option>
+                                        <option id="renameCharButton" data-i18n="Rename">Rename</option>
+                                        <option id="character_source" data-i18n="Link to Source">Link to Source</option>
+                                        <option id="replace_update" data-i18n="Replace / Update">Replace / Update</option>
+                                        <option id="import_tags" data-i18n="Import Tags">Import Tags</option>
+                                        <option id="set_as_assistant" data-i18n="Set / Unset as Welcome Page Assistant">Set / Unset as Welcome Page Assistant</option>
+                                    </select>
+                                </label>
                             </div>
-                            <small id="creators_note_desc_hidden" data-i18n="Character details are hidden.">Character details are hidden.</small>
-                            <div class="sb-character-editor-subtab-panels">
-                                <section id="sb_character_editor_panel_char_info" class="sb-character-editor-panel" role="tabpanel" aria-labelledby="sb_character_editor_tab_char_info" aria-hidden="false" data-sb-character-editor-panel="char-info">
-                                    <div id="avatar-and-name-block" class="sb-character-editor-identity">
-                                        <div class="flex-container flexFlowColumn expander flexNoGap">
-                                            <div id="avatar_div" class="avatar_div buttons_block alignitemsflexstart justifySpaceBetween flexnowrap">
-                                                <div class="sb-character-editor-controls-row">
-                                                    <label id="avatar_div_div" class="add_avatar avatar" for="add_avatar_button" title="Click to select a new avatar for this character" data-i18n="[title]Click to select a new avatar for this character">
-                                                        <img id="avatar_load_preview" src="img/ai4.png" alt="avatar">
-                                                        <input hidden type="file" id="add_avatar_button" name="avatar" accept="image/*">
-                                                    </label>
-                                                    <div class="char-button-group char-button-group-primary char-button-group-utility sb-character-editor-side-actions">
-                                                        <div id="favorite_button" class="menu_button fa-solid fa-star" title="Add to Favorites" data-i18n="[title]Add to Favorites" data-label="FAV."></div>
-                                                        <input type="hidden" id="fav_checkbox" name="fav" />
-                                                    </div>
-                                                    <div id="name_div">
-                                                        <input id="character_name_pole" name="ch_name" class="text_pole" data-i18n="[placeholder]Name this character" placeholder="Name this character" value="" autocomplete="off">
-                                                        <div class="extension_token_counter">
-                                                            <span data-i18n="extension_token_counter">Tokens:</span> <span data-token-counter="character_name_pole" data-token-permanent="true">counting...</span>
-                                                        </div>
-                                                    </div>
-                                                    <div id="character-editor-pinned-actions" class="sb-character-editor-pinned-actions">
-                                                        <div class="flex-container" id="avatar_controls">
-                                                            <div class="form_create_bottom_buttons_block buttons_block">
-                                                                <div class="char-button-toolbar">
-                                                                    <div class="char-button-group char-button-group-secondary char-button-group-icons">
-                                                                        <div id="world_button" class="menu_button fa-solid fa-globe" title="Character Lore&#10;&#10;Click to load&#10;Shift/Alt-click or long-press to open 'Link to World Info' popup" data-i18n="[title]world_button_title"><span data-i18n="Character Lore">Character Lore</span></div>
-                                                                        <label for="create_button" id="create_button_label" class="menu_button fa-solid fa-user-check" title="Create Character" data-i18n="[title]Create Character">
-                                                                            <span data-i18n="Create Character">Create Character</span>
-                                                                            <input type="submit" id="create_button" name="create_button">
-                                                                        </label>
-                                                                        <div class="chat_lorebook_button menu_button fa-solid fa-passport" title="Chat Lore&#10;&#10;Click to load&#10;Shift/Alt-click or long-press to open 'Link to Chat Lorebook' popup" data-i18n="[title]chat_lorebook_button_title"></div>
-                                                                        <div id="char_connections_button" class="menu_button fa-solid fa-face-smile" title="Connected Personas" data-i18n="[title]Connected Personas"></div>
-                                                                        <div id="export_button" class="menu_button fa-solid fa-file-export" title="Export and Download" data-i18n="[title]Export and Download"></div>
-                                                                        <div id="dupe_button" class="menu_button fa-solid fa-clone" title="Duplicate Character" data-i18n="[title]Duplicate Character"></div>
-                                                                            <div id="delete_button" class="menu_button fa-solid fa-skull red_button" title="Delete Character" data-i18n="[title]Delete Character"></div>
-                                                                        </div>
-                                                                        <div class="char-button-group char-button-group-primary char-button-group-utility">
-                                                                            <div id="rm_button_back" class="menu_button fa-solid fa-left-long" data-label="Back"></div>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            <div id="tags_div">
-                                                                <div class="tag_controls">
-                                                                    <input id="tagInput" class="text_pole textarea_compact tag_input wide100p margin0" data-i18n="[placeholder]Search / Create Tags" placeholder="Search / Create tags" />
-                                                                    <div class="tags_view menu_button fa-solid fa-tags" title="View all tags" data-i18n="[title]View all tags"></div>
-                                                                    <label for="char-management-dropdown">
-                                                                        <select id="char-management-dropdown" class="text_pole">
-                                                                            <option value="default" disabled selected data-i18n="More...">More...</option>
-                                                                            <option id="set_character_world" data-i18n="Link to World Info">
-                                                                                Link to World Info
-                                                                            </option>
-                                                                            <option id="import_character_info" data-i18n="Import Card Lore">
-                                                                                Import Card Lore
-                                                                            </option>
-                                                                            <option id="regenerate_thumbnail" data-i18n="Regenerate Thumbnail">
-                                                                                Regenerate Thumbnail
-                                                                            </option>
-                                                                            <option id="set_chat_character_settings" data-i18n="Character Settings Overrides">
-                                                                                Character Settings Overrides
-                                                                            </option>
-                                                                            <option id="convert_to_persona" data-i18n="Convert to Persona">
-                                                                                Convert to Persona
-                                                                            </option>
-                                                                            <option id="renameCharButton" data-i18n="Rename">
-                                                                                Rename
-                                                                            </option>
-                                                                            <option id="character_source" data-i18n="Link to Source">
-                                                                                Link to Source
-                                                                            </option>
-                                                                            <option id="replace_update" data-i18n="Replace / Update">
-                                                                                Replace / Update
-                                                                            </option>
-                                                                            <option id="import_tags" data-i18n="Import Tags">
-                                                                                Import Tags
-                                                                            </option>
-                                                                            <option id="set_as_assistant" data-i18n="Set / Unset as Welcome Page Assistant">
-                                                                                Set / Unset as Welcome Page Assistant
-                                                                            </option>
-                                                                            <!--<option id="dupe_button">
-                                                                                    Duplicate
-                                                                                </option>
-                                                                                <option id="export_button">
-                                                                                    Export
-                                                                                </option>
-                                                                                <option id="delete_button">
-                                                                                    Delete
-                                                                                </option>-->
-                                                                        </select>
-                                                                    </label>
-                                                                </div>
-                                                            </div>
-                                                        </div>
+
+                            <div class="sb-character-sheet__content">
+                                <section class="sb-editor-section" data-sb-section="essentials" aria-labelledby="sb_character_section_essentials">
+                                    <h3 class="ds-pref-group-heading" id="sb_character_section_essentials" data-i18n="Essentials">Essentials</h3>
+                                    <div class="ds-pref-group sb-editor-section__body">
+                                        <div id="avatar-and-name-block" class="sb-character-essentials">
+                                            <div id="avatar_div" class="sb-character-essentials__avatar">
+                                                <label id="avatar_div_div" class="add_avatar avatar" for="add_avatar_button" title="Click to select a new avatar for this character" data-i18n="[title]Click to select a new avatar for this character">
+                                                    <img id="avatar_load_preview" src="img/ai4.png" alt="avatar">
+                                                    <input hidden type="file" id="add_avatar_button" name="avatar" accept="image/*">
+                                                </label>
+                                            </div>
+                                            <div class="sb-character-essentials__fields">
+                                                <div id="name_div" class="sb-editor-field">
+                                                    <label class="sb-editor-field__label" for="character_name_pole" data-i18n="Name">Name</label>
+                                                    <input id="character_name_pole" name="ch_name" class="text_pole" data-sb-editor-field="name" data-i18n="[placeholder]Name this character" placeholder="Name this character" value="" autocomplete="off">
+                                                    <div class="extension_token_counter">
+                                                        <span data-i18n="extension_token_counter">Tokens:</span> <span data-token-counter="character_name_pole" data-token-permanent="true">counting...</span>
                                                     </div>
                                                 </div>
-                                                <div id="tagList" class="tags"></div>
+                                                <div class="sb-editor-field">
+                                                    <label class="sb-editor-field__label" for="character_nickname_pole" data-i18n="Nickname">Nickname</label>
+                                                    <!-- HUMAN: replace the placeholder copy below -->
+                                                    <input id="character_nickname_pole" name="nickname" type="text" class="text_pole" data-sb-editor-field="nickname" maxlength="100" placeholder="lorum ipsum" value="" autocomplete="off">
+                                                </div>
+                                                <div id="tags_div" class="sb-editor-field">
+                                                    <label class="sb-editor-field__label" for="tagInput" data-i18n="Tags">Tags</label>
+                                                    <div class="tag_controls">
+                                                        <input id="tagInput" class="text_pole textarea_compact tag_input wide100p margin0" data-i18n="[placeholder]Search / Create Tags" placeholder="Search / Create tags" />
+                                                        <div class="tags_view menu_button fa-solid fa-tags" title="View all tags" data-i18n="[title]View all tags"></div>
+                                                    </div>
+                                                    <div id="tagList" class="tags"></div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="sb-character-editor-field-group sb-character-editor-prompt-overrides">
-                                        <small data-i18n="Insert {{original}} into either box to include the respective default prompt from system settings.">Insert <code>{{original}}</code> into either box to include the respective default prompt from system settings.</small>
-                                        <div class="sb-character-editor-field-box">
-                                            <h4 class="flex-container alignItemsBaseline">
-                                                <span data-i18n="Main Prompt">Main Prompt</span>
-                                                <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="system_prompt_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
-                                            </h4>
-                                            <textarea id="system_prompt_textarea" name="system_prompt" data-macros data-i18n="[placeholder]Any contents here will replace the default Main Prompt used for this character. (v2 spec: system_prompt)" placeholder="Any contents here will replace the default Main Prompt used for this character.&#10;(v2 spec: system_prompt)" form="form_create" class="text_pole" autocomplete="off" rows="3"></textarea>
+                                </section>
+
+                                <section class="sb-editor-section" data-sb-section="character-fields" aria-labelledby="sb_character_section_character_fields">
+                                    <h3 class="ds-pref-group-heading" id="sb_character_section_character_fields" data-i18n="Character fields">Character fields</h3>
+                                    <div class="ds-pref-group sb-editor-section__body">
+                                        <div id="descriptionWrapper" class="sb-editor-field">
+                                            <div id="description_div" class="sb-editor-field__header">
+                                                <label class="sb-editor-field__label mdhotkey_location" for="description_textarea" data-i18n="Character Description">Description</label>
+                                                <a href="https://docs.sillytavern.app/usage/core-concepts/characterdesign/#character-description" class="notes-link" target="_blank" rel="noopener noreferrer"><span class="fa-solid fa-circle-question note-link-span"></span></a>
+                                                <span class="sb-editor-field__actions">
+                                                    <button type="button" class="sb-preview-toggle menu_button" data-sb-preview-for="description_textarea" aria-expanded="false" data-i18n="Preview">Preview</button>
+                                                    <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="description_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
+                                                </span>
+                                            </div>
+                                            <textarea id="description_textarea" class="text_pole mdHotkeys" data-macros data-sb-editor-field="description" data-i18n="[placeholder]Describe your character's physical and mental traits here." placeholder="Describe your character's physical and mental traits here." name="description"></textarea>
+                                            <div class="sb-preview-pane" data-sb-preview-pane="description_textarea" hidden></div>
+                                            <div class="extension_token_counter">
+                                                <span data-i18n="extension_token_counter">Tokens:</span> <span data-token-counter="description_textarea" data-token-permanent="true">counting...</span>
+                                            </div>
+                                        </div>
+                                        <div id="personality_div" class="sb-editor-field">
+                                            <div class="sb-editor-field__header">
+                                                <label class="sb-editor-field__label" for="personality_textarea" data-i18n="Personality summary">Personality summary</label>
+                                                <a href="https://docs.sillytavern.app/usage/core-concepts/characterdesign/#personality-summary" class="notes-link" target="_blank" rel="noopener noreferrer"><span class="fa-solid fa-circle-question note-link-span"></span></a>
+                                                <span class="sb-editor-field__actions">
+                                                    <button type="button" class="sb-preview-toggle menu_button" data-sb-preview-for="personality_textarea" aria-expanded="false" data-i18n="Preview">Preview</button>
+                                                    <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="personality_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
+                                                </span>
+                                            </div>
+                                            <textarea id="personality_textarea" name="personality" data-macros data-sb-editor-field="personality" data-i18n="[placeholder](A brief description of the personality)" placeholder="(A brief description of the personality)" form="form_create" class="text_pole" autocomplete="off" rows="4"></textarea>
+                                            <div class="sb-preview-pane" data-sb-preview-pane="personality_textarea" hidden></div>
+                                            <div class="extension_token_counter">
+                                                <span data-i18n="extension_token_counter">Tokens:</span> <span data-token-counter="personality_textarea" data-token-permanent="true">counting...</span>
+                                            </div>
+                                        </div>
+                                        <div id="scenario_div" class="sb-editor-field">
+                                            <div class="sb-editor-field__header">
+                                                <label class="sb-editor-field__label" for="scenario_pole" data-i18n="Scenario">Scenario</label>
+                                                <a href="https://docs.sillytavern.app/usage/core-concepts/characterdesign/#scenario" class="notes-link" target="_blank" rel="noopener noreferrer"><span class="fa-solid fa-circle-question note-link-span"></span></a>
+                                                <span class="sb-editor-field__actions">
+                                                    <button type="button" class="sb-preview-toggle menu_button" data-sb-preview-for="scenario_pole" aria-expanded="false" data-i18n="Preview">Preview</button>
+                                                    <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="scenario_pole" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
+                                                </span>
+                                            </div>
+                                            <textarea id="scenario_pole" name="scenario" data-macros data-sb-editor-field="scenario" data-i18n="[placeholder](Circumstances and context of the interaction)" placeholder="(Circumstances and context of the interaction)" class="text_pole" autocomplete="off" form="form_create" rows="4"></textarea>
+                                            <div class="sb-preview-pane" data-sb-preview-pane="scenario_pole" hidden></div>
+                                            <div class="extension_token_counter">
+                                                <span data-i18n="extension_token_counter">Tokens:</span> <span data-token-counter="scenario_pole" data-token-permanent="true">counting...</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
+
+                                <section class="sb-editor-section" data-sb-section="advanced-fields" aria-labelledby="sb_character_section_advanced_fields">
+                                    <h3 class="ds-pref-group-heading" id="sb_character_section_advanced_fields" data-i18n="Advanced fields">Advanced fields</h3>
+                                    <div class="ds-pref-group sb-editor-section__body">
+                                        <small class="sb-editor-section-hint" data-i18n="Insert {{original}} into either box to include the respective default prompt from system settings.">Insert <code>{{original}}</code> into either box to include the respective default prompt from system settings.</small>
+                                        <div class="sb-editor-field">
+                                            <div class="sb-editor-field__header">
+                                                <label class="sb-editor-field__label" for="system_prompt_textarea" data-i18n="Main Prompt">Main Prompt</label>
+                                                <span class="sb-editor-field__actions">
+                                                    <button type="button" class="sb-preview-toggle menu_button" data-sb-preview-for="system_prompt_textarea" aria-expanded="false" data-i18n="Preview">Preview</button>
+                                                    <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="system_prompt_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
+                                                </span>
+                                            </div>
+                                            <textarea id="system_prompt_textarea" name="system_prompt" data-macros data-sb-editor-field="system_prompt" data-i18n="[placeholder]Any contents here will replace the default Main Prompt used for this character. (v2 spec: system_prompt)" placeholder="Any contents here will replace the default Main Prompt used for this character.&#10;(v2 spec: system_prompt)" form="form_create" class="text_pole" autocomplete="off" rows="3"></textarea>
+                                            <div class="sb-preview-pane" data-sb-preview-pane="system_prompt_textarea" hidden></div>
                                             <div class="extension_token_counter">
                                                 <span data-i18n="extension_token_counter">Tokens:</span> <span data-token-counter="system_prompt_textarea">counting...</span>
                                             </div>
                                         </div>
-                                        <div class="sb-character-editor-field-box">
-                                            <h4 class="flex-container alignItemsBaseline">
-                                                <span data-i18n="Post-History Instructions">Post-History Instructions</span>
-                                                <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="post_history_instructions_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
-                                            </h4>
-                                            <textarea id="post_history_instructions_textarea" name="post_history_instructions" data-macros data-i18n="[placeholder]Any contents here will replace the default Post-History Instructions used for this character. (v2 spec: post_history_instructions)" placeholder="Any contents here will replace the default Post-History Instructions used for this character.&#10;(v2 spec: post_history_instructions)" form="form_create" class="text_pole" autocomplete="off" rows="3"></textarea>
+                                        <div class="sb-editor-field">
+                                            <div class="sb-editor-field__header">
+                                                <label class="sb-editor-field__label" for="post_history_instructions_textarea" data-i18n="Post-History Instructions">Post-History Instructions</label>
+                                                <span class="sb-editor-field__actions">
+                                                    <button type="button" class="sb-preview-toggle menu_button" data-sb-preview-for="post_history_instructions_textarea" aria-expanded="false" data-i18n="Preview">Preview</button>
+                                                    <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="post_history_instructions_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
+                                                </span>
+                                            </div>
+                                            <textarea id="post_history_instructions_textarea" name="post_history_instructions" data-macros data-sb-editor-field="post_history_instructions" data-i18n="[placeholder]Any contents here will replace the default Post-History Instructions used for this character. (v2 spec: post_history_instructions)" placeholder="Any contents here will replace the default Post-History Instructions used for this character.&#10;(v2 spec: post_history_instructions)" form="form_create" class="text_pole" autocomplete="off" rows="3"></textarea>
+                                            <div class="sb-preview-pane" data-sb-preview-pane="post_history_instructions_textarea" hidden></div>
                                             <div class="extension_token_counter">
                                                 <span data-i18n="extension_token_counter">Tokens:</span> <span data-token-counter="post_history_instructions_textarea">counting...</span>
                                             </div>
                                         </div>
-                                    </div>
-                                </section>
-                                <section id="sb_character_editor_panel_definitions" class="sb-character-editor-panel" role="tabpanel" aria-labelledby="sb_character_editor_tab_definitions" aria-hidden="true" data-sb-character-editor-panel="definitions" hidden>
-                                    <div id="descriptionWrapper" class="flex-container flexFlowColumn flex1">
-                                        <h4 id="description_div" class="flex-container alignItemsBaseline">
-                                            <span data-i18n="Character Description" class="mdhotkey_location">Description</span>
-                                            <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="description_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
-                                            <a href="https://docs.sillytavern.app/usage/core-concepts/characterdesign/#character-description" class="notes-link" target="_blank">
-                                                <span class="fa-solid fa-circle-question note-link-span"></span>
-                                            </a>
-                                        </h4>
-                                        <textarea id="description_textarea" class="text_pole mdHotkeys" data-macros data-i18n="[placeholder]Describe your character's physical and mental traits here." placeholder="Describe your character's physical and mental traits here." name="description" placeholder=""></textarea>
-                                        <div class="extension_token_counter">
-                                            <span data-i18n="extension_token_counter">Tokens:</span> <span data-token-counter="description_textarea" data-token-permanent="true">counting...</span>
-                                        </div>
-                                    </div>
-                                    <div id="personality_div">
-                                        <h4 class="flex-container alignItemsBaseline">
-                                            <span data-i18n="Personality summary">Personality summary</span>
-                                            <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="personality_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
-                                            <a href="https://docs.sillytavern.app/usage/core-concepts/characterdesign/#personality-summary" class="notes-link" target="_blank"><span class="fa-solid fa-circle-question note-link-span"></span></a>
-                                        </h4>
-                                        <textarea id="personality_textarea" name="personality" data-macros data-i18n="[placeholder](A brief description of the personality)" placeholder="(A brief description of the personality)" form="form_create" class="text_pole" autocomplete="off" rows="4"></textarea>
-                                        <div class="extension_token_counter">
-                                            <span data-i18n="extension_token_counter">Tokens:</span> <span data-token-counter="personality_textarea" data-token-permanent="true">counting...</span>
-                                        </div>
-                                    </div>
-                                    <div id="scenario_div">
-                                        <h4 class="flex-container alignItemsBaseline">
-                                            <span data-i18n="Scenario">Scenario</span>
-                                            <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="scenario_pole" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
-                                            <a href="https://docs.sillytavern.app/usage/core-concepts/characterdesign/#scenario" class="notes-link" target="_blank">
-                                                <span class="fa-solid fa-circle-question note-link-span"></span>
-                                            </a>
-                                        </h4>
-                                        <textarea id="scenario_pole" name="scenario" data-macros data-i18n="[placeholder](Circumstances and context of the interaction)" placeholder="(Circumstances and context of the interaction)" class="text_pole" value="" autocomplete="off" form="form_create" rows="4"></textarea>
-                                        <div class="extension_token_counter">
-                                            <span data-i18n="extension_token_counter">Tokens:</span> <span data-token-counter="scenario_pole" data-token-permanent="true">counting...</span>
-                                        </div>
-                                    </div>
-                                    <div id="depth_prompt_div" class="flex-container">
-                                        <div class="flex1">
-                                            <h4 class="flex-container alignItemsBaseline">
-                                                <span data-i18n="Character's Note">
-                                                    Character's Note
+                                        <div id="depth_prompt_div" class="sb-editor-field">
+                                            <div class="sb-editor-field__header">
+                                                <label class="sb-editor-field__label" for="depth_prompt_prompt" data-i18n="Character's Note">Character's Note</label>
+                                                <span class="sb-editor-field__actions">
+                                                    <button type="button" class="sb-preview-toggle menu_button" data-sb-preview-for="depth_prompt_prompt" aria-expanded="false" data-i18n="Preview">Preview</button>
+                                                    <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="depth_prompt_prompt" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
                                                 </span>
-                                                <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="depth_prompt_prompt" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
-                                            </h4>
-                                            <textarea id="depth_prompt_prompt" name="depth_prompt_prompt" data-macros class="text_pole" rows="5" autocomplete="off" form="form_create" data-i18n="[placeholder](Text to be inserted in-chat @ designated depth and role)" placeholder="(Text to be inserted in-chat @ designated depth and role)"></textarea>
-                                        </div>
-                                        <div>
-                                            <h4>
-                                                <span data-i18n="@ Depth">
-                                                    @ Depth
-                                                </span>
-                                            </h4>
-                                            <input id="depth_prompt_depth" name="depth_prompt_depth" class="text_pole textarea_compact m-t-0" type="number" min="0" max="9999" value="4" form="form_create" />
-                                            <h4>
-                                                <span data-i18n="Role">
-                                                    Role
-                                                </span>
-                                            </h4>
-                                            <select id="depth_prompt_role" name="depth_prompt_role" form="form_create" class="text_pole textarea_compact m-t-0">
-                                                <option value="system" data-i18n="System">System</option>
-                                                <option value="user" data-i18n="User">User</option>
-                                                <option value="assistant" data-i18n="Assistant">Assistant</option>
-                                            </select>
+                                            </div>
+                                            <textarea id="depth_prompt_prompt" name="depth_prompt_prompt" data-macros data-sb-editor-field="depth_prompt_prompt" class="text_pole" rows="5" autocomplete="off" form="form_create" data-i18n="[placeholder](Text to be inserted in-chat @ designated depth and role)" placeholder="(Text to be inserted in-chat @ designated depth and role)"></textarea>
+                                            <div class="sb-preview-pane" data-sb-preview-pane="depth_prompt_prompt" hidden></div>
+                                            <div class="sb-editor-inline-controls">
+                                                <label class="sb-editor-inline-control">
+                                                    <span data-i18n="@ Depth">@ Depth</span>
+                                                    <input id="depth_prompt_depth" name="depth_prompt_depth" data-sb-editor-field="depth_prompt_depth" class="text_pole textarea_compact m-t-0" type="number" min="0" max="9999" value="4" form="form_create" />
+                                                </label>
+                                                <label class="sb-editor-inline-control">
+                                                    <span data-i18n="Role">Role</span>
+                                                    <select id="depth_prompt_role" name="depth_prompt_role" data-sb-editor-field="depth_prompt_role" form="form_create" class="text_pole textarea_compact m-t-0">
+                                                        <option value="system" data-i18n="System">System</option>
+                                                        <option value="user" data-i18n="User">User</option>
+                                                        <option value="assistant" data-i18n="Assistant">Assistant</option>
+                                                    </select>
+                                                </label>
+                                            </div>
                                             <div class="extension_token_counter">
                                                 <span data-i18n="extension_token_counter">Tokens:</span> <span data-token-counter="depth_prompt_prompt" data-token-permanent="true">counting...</span>
                                             </div>
                                         </div>
-                                    </div>
-                                    <div id="talkativeness_div">
-                                        <h4><span data-i18n="Talkativeness">Talkativeness</span></h4>
-                                        <h5 data-i18n="How often the character speaks in group chats!"><!-- This data-i18n attribute on the left is kept for backward compatibility, use the ones below when translating -->
-                                            <span data-i18n="How often the character speaks in">How often the character speaks in</span>&nbsp;<span class="warning" data-i18n="group chats!">group chats!</span>
-                                        </h5>
-                                        <input id="talkativeness_slider" name="talkativeness" type="range" min="0" max="1" step="0.05" value="0.5" form="form_create">
-                                        <div class="slider_hint">
-                                            <span data-i18n="Shy">Shy</span>
-                                            <span data-i18n="Normal">Normal</span>
-                                            <span data-i18n="Chatty">Chatty</span>
+                                        <div id="talkativeness_div" class="sb-editor-field">
+                                            <label class="sb-editor-field__label" for="talkativeness_slider" data-i18n="Talkativeness">Talkativeness</label>
+                                            <small class="sb-editor-field__hint" data-i18n="How often the character speaks in group chats!"><!-- This data-i18n attribute on the left is kept for backward compatibility, use the ones below when translating -->
+                                                <span data-i18n="How often the character speaks in">How often the character speaks in</span>&nbsp;<span class="warning" data-i18n="group chats!">group chats!</span>
+                                            </small>
+                                            <input id="talkativeness_slider" name="talkativeness" data-sb-editor-field="talkativeness" type="range" min="0" max="1" step="0.05" value="0.5" form="form_create">
+                                            <div class="slider_hint">
+                                                <span data-i18n="Shy">Shy</span>
+                                                <span data-i18n="Normal">Normal</span>
+                                                <span data-i18n="Chatty">Chatty</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div id="mes_example_div" class="flex-container flexFlowColumn">
-                                        <div>
-                                            <h4 class="flex-container alignItemsBaseline">
-                                                <span data-i18n="Examples of dialogue" class="mdhotkey_location">Examples of dialogue</span>
-                                                <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="mes_example_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
-                                            </h4>
-                                            <h5>
-                                                <span data-i18n="Important to set the character's writing style.">Important to set the character's writing style.</span>
-                                                <a href="https://docs.sillytavern.app/usage/core-concepts/characterdesign/#examples-of-dialogue" class="notes-link" target="_blank">
-                                                    <span class="fa-solid fa-circle-question note-link-span"></span>
-                                                </a>
-                                            </h5>
+                                        <div id="mes_example_div" class="sb-editor-field">
+                                            <div class="sb-editor-field__header">
+                                                <label class="sb-editor-field__label mdhotkey_location" for="mes_example_textarea" data-i18n="Examples of dialogue">Examples of dialogue</label>
+                                                <a href="https://docs.sillytavern.app/usage/core-concepts/characterdesign/#examples-of-dialogue" class="notes-link" target="_blank" rel="noopener noreferrer"><span class="fa-solid fa-circle-question note-link-span"></span></a>
+                                                <span class="sb-editor-field__actions">
+                                                    <button type="button" class="sb-preview-toggle menu_button" data-sb-preview-for="mes_example_textarea" aria-expanded="false" data-i18n="Preview">Preview</button>
+                                                    <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="mes_example_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
+                                                </span>
+                                            </div>
+                                            <small class="sb-editor-field__hint" data-i18n="Important to set the character's writing style.">Important to set the character's writing style.</small>
+                                            <textarea id="mes_example_textarea" class="text_pole mdHotkeys" name="mes_example" data-macros data-sb-editor-field="mes_example" data-i18n="[placeholder](Examples of chat dialog. Begin each example with START on a new line.)" placeholder="(Examples of chat dialog. Begin each example with &lt;START&gt; on a new line.)" form="form_create" rows="6"></textarea>
+                                            <div class="sb-preview-pane" data-sb-preview-pane="mes_example_textarea" hidden></div>
+                                            <div class="extension_token_counter">
+                                                <span data-i18n="extension_token_counter">Tokens:</span> <span data-token-counter="mes_example_textarea">counting...</span>
+                                            </div>
                                         </div>
-                                        <textarea id="mes_example_textarea" class="flexGrow mdHotkeys" name="mes_example" data-macros data-i18n="[placeholder](Examples of chat dialog. Begin each example with START on a new line.)" placeholder="(Examples of chat dialog. Begin each example with &lt;START&gt; on a new line.)" form="form_create" rows="6"></textarea>
-                                        <div class="extension_token_counter">
-                                            <span data-i18n="extension_token_counter">Tokens:</span> <span data-token-counter="mes_example_textarea">counting...</span>
-                                        </div>
-                                        <!-- TODO: Example chats handhold-editor concept: https://gist.github.com/Cohee1207/50da02a4001ac1adae9b440f9b8e1079 -->
                                     </div>
                                 </section>
-                                <section id="sb_character_editor_panel_greetings" class="sb-character-editor-panel" role="tabpanel" aria-labelledby="sb_character_editor_tab_greetings" aria-hidden="true" data-sb-character-editor-panel="greetings" hidden>
-                                    <div id="firstMessageWrapper" class="flex-container flexFlowColumn flex1 greetings-editor-shell">
-                                        <div id="first_message_div" class="title_restorable">
-                                            <div class="flex-container alignitemscenter flex1">
-                                                <span data-i18n="Greetings" class="mdhotkey_location">Greetings</span>
-                                                <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="firstmessage_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
-                                                <a href="https://docs.sillytavern.app/usage/core-concepts/characterdesign/#first-message" class="notes-link" target="_blank">
-                                                    <span class="fa-solid fa-circle-question note-link-span"></span>
-                                                </a>
+
+                                <section class="sb-editor-section" data-sb-section="alternate-fields" aria-labelledby="sb_character_section_greetings">
+                                    <h3 class="ds-pref-group-heading" id="sb_character_section_greetings" data-i18n="Greetings">Greetings</h3>
+                                    <div class="ds-pref-group sb-editor-section__body">
+                                        <div id="firstMessageWrapper" class="sb-editor-field">
+                                            <div id="first_message_div" class="sb-editor-field__header">
+                                                <label class="sb-editor-field__label mdhotkey_location" for="firstmessage_textarea" data-i18n="First message">First message</label>
+                                                <a href="https://docs.sillytavern.app/usage/core-concepts/characterdesign/#first-message" class="notes-link" target="_blank" rel="noopener noreferrer"><span class="fa-solid fa-circle-question note-link-span"></span></a>
+                                                <span class="sb-editor-field__actions">
+                                                    <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="firstmessage_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
+                                                </span>
                                             </div>
-                                        </div>
-                                        <small class="character-greetings-summary">
-                                            <span data-i18n="First message">First message</span>
-                                            starts every new chat. Alternate greetings appear as extra opening swipes.
-                                        </small>
-                                        <div class="character-greetings-primary sb-character-editor-field-box">
-                                            <div class="character-greeting-label-row">
-                                                <span data-i18n="First message">First message</span>
-                                            </div>
-                                        <textarea id="firstmessage_textarea" class="text_pole mdHotkeys" data-macros data-i18n="[placeholder]This will be the first message from the character that starts every chat." placeholder="This will be the first message from the character that starts every chat." name="first_mes" placeholder=""></textarea>
+                                            <textarea id="firstmessage_textarea" class="text_pole mdHotkeys" data-macros data-sb-editor-field="first_mes" data-i18n="[placeholder]This will be the first message from the character that starts every chat." placeholder="This will be the first message from the character that starts every chat." name="first_mes"></textarea>
                                             <div class="extension_token_counter">
                                                 <span data-i18n="extension_token_counter">Tokens:</span> <span data-token-counter="firstmessage_textarea">counting...</span>
                                             </div>
                                         </div>
-                                        <div id="character_greetings_editor" class="character-greetings-editor sb-character-editor-field-box flex-container flexFlowColumn flexNoGap">
-                                            <div class="title_restorable character-greetings-editor-title">
-                                                <div class="flex-container alignitemscenter flex1">
-                                                    <span data-i18n="Alternate Greetings">Alternate Greetings</span>
-                                                </div>
-                                                <div class="menu_button menu_button_icon open_alternate_greetings margin0" title="Click to add an alternate greeting" data-i18n="[title]Click to add an alternate greeting">
-                                                    <i class="fa-solid fa-plus"></i>
+                                        <div id="character_greetings_editor" class="sb-greetings-editor" data-sb-greetings-kind="alternate">
+                                            <div class="sb-greetings-editor__header">
+                                                <span class="sb-editor-field__label" data-i18n="Alternate Greetings">Alternate Greetings</span>
+                                                <button type="button" class="menu_button menu_button_icon open_alternate_greetings margin0" title="Click to add an alternate greeting" data-i18n="[title]Click to add an alternate greeting">
+                                                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
                                                     <span data-i18n="Add">Add</span>
-                                                </div>
+                                                </button>
                                             </div>
-                                            <small class="justifyLeft" data-i18n="Alternate_Greetings_desc">
+                                            <small class="sb-editor-field__hint" data-i18n="Alternate_Greetings_desc">
                                                 These will be displayed as swipes on the first message when starting a new chat.
                                                 Group members can select one of them to initiate the conversation.
                                             </small>
-                                            <div class="alternate_greetings_list flexFlowColumn flex-container wide100p">
-                                                <strong class="alternate_grettings_hint margin-bot-10px">
-                                                    <span data-i18n="alternate_greetings_hint_1">Click the</span> <i class="fa-solid fa-plus"></i> <span data-i18n="alternate_greetings_hint_2">button to get started!</span>
-                                                </strong>
-                                            </div>
+                                            <div class="alternate_greetings_list sb-greetings-list" role="list"></div>
                                         </div>
+                                        <details class="ds-row-expander sb-greetings-expander" id="sb_character_group_greetings">
+                                            <summary class="ds-row-expander__summary">
+                                                <span data-i18n="Group-only greetings">Group-only greetings</span>
+                                                <span class="sb-greetings-expander__count" id="sb_character_group_greetings_count"></span>
+                                            </summary>
+                                            <div id="character_group_greetings_editor" class="sb-greetings-editor" data-sb-greetings-kind="group">
+                                                <!-- HUMAN: replace -->
+                                                <small class="sb-editor-field__hint">lorum ipsum</small>
+                                                <div class="group_only_greetings_list sb-greetings-list" role="list"></div>
+                                                <button type="button" id="sb_character_add_group_greeting" class="menu_button menu_button_icon margin0 sb-greetings-editor__add" title="Add a group-only greeting" data-i18n="[title]Add a group-only greeting">
+                                                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                                                    <span data-i18n="Add">Add</span>
+                                                </button>
+                                            </div>
+                                        </details>
                                     </div>
                                 </section>
-                                <section id="sb_character_editor_panel_metadata" class="sb-character-editor-panel" role="tabpanel" aria-labelledby="sb_character_editor_tab_metadata" aria-hidden="true" data-sb-character-editor-panel="metadata" hidden>
-                                    <div class="sb-character-editor-field-group">
-                                        <small data-i18n="Everything here is optional">Everything here is optional</small>
-                                        <div class="flex-container flexnowrap sb-character-editor-two-column">
-                                            <div class="flex1">
-                                                <h4 data-i18n="Created by">Created by</h4>
-                                                <textarea id="creator_textarea" name="creator" data-i18n="[placeholder](Botmaker's name / Contact Info)" placeholder="(Botmaker's name / Contact info)" form="form_create" class="text_pole" autocomplete="off" rows="2"></textarea>
+
+                                <section class="sb-editor-section" data-sb-section="metadata" aria-labelledby="sb_character_section_metadata">
+                                    <h3 class="ds-pref-group-heading" id="sb_character_section_metadata" data-i18n="Metadata">Metadata</h3>
+                                    <div class="ds-pref-group sb-editor-section__body">
+                                        <div id="spoiler_free_desc" class="sb-creator-notes-preview">
+                                            <div id="creators_notes_div" class="sb-creator-notes-preview__title">
+                                                <span class="flex1" data-i18n="Creator's Notes">Creator's Notes</span>
+                                                <!-- SillyBunny: this opens the formatted notes rather than the raw textarea value; the field's own .editor_maximize still expands the source. -->
+                                                <button type="button" id="sb_creator_notes_maximize" class="menu_button menu_button_icon margin0" title="Expand the editor" aria-label="Expand the editor" data-i18n="[title]Expand the editor;[aria-label]Expand the editor">
+                                                    <i class="fa-solid fa-maximize" aria-hidden="true"></i>
+                                                </button>
                                             </div>
-                                            <div class="flex1">
-                                                <h4 data-i18n="Character Version">Character Version</h4>
-                                                <textarea id="character_version_textarea" name="character_version" data-i18n="[placeholder](If you want to track character versions)" placeholder="(If you want to track character versions)" form="form_create" class="text_pole" autocomplete="off" rows="2"></textarea>
+                                            <div class="sb-creator-notes-preview__body">
+                                                <div id="creator_notes_spoiler"></div>
+                                                <div id="creator_notes_empty" data-i18n="No Creator's Notes provided.">
+                                                    No Creator's Notes provided.
+                                                </div>
                                             </div>
                                         </div>
-                                        <div class="flex-container flexnowrap sb-character-editor-two-column">
-                                            <div class="flex1">
-                                                <h4 class="flex-container alignItemsBaseline">
-                                                    <span data-i18n="Creator's Notes">Creator's Notes</span>
-                                                    <i class="editor_maximize fa-solid fa-maximize" data-for="creator_notes_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
-                                                </h4>
-                                                <textarea id="creator_notes_textarea" name="creator_notes" data-i18n="[placeholder](Describe the bot, give use tips, or list the chat models it has been tested on. This will be displayed in the character list.)" placeholder="(Describe the bot, give use tips, or list the chat models it has been tested on. This will be displayed in the character list.)" form="form_create" class="text_pole" autocomplete="off" rows="4"></textarea>
+                                        <small class="sb-editor-section-hint" data-i18n="Everything here is optional">Everything here is optional</small>
+                                        <div class="sb-editor-field-pair">
+                                            <div class="sb-editor-field">
+                                                <label class="sb-editor-field__label" for="creator_textarea" data-i18n="Created by">Created by</label>
+                                                <textarea id="creator_textarea" name="creator" data-sb-editor-field="creator" data-i18n="[placeholder](Botmaker's name / Contact Info)" placeholder="(Botmaker's name / Contact info)" form="form_create" class="text_pole" autocomplete="off" rows="2"></textarea>
                                             </div>
-                                            <div class="flex1">
-                                                <h4 class="flex-container alignItemsBaseline">
-                                                    <span data-i18n="Tags to Embed">Tags to Embed</span>
-                                                    <i class="editor_maximize fa-solid fa-maximize" data-for="tags_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
-                                                </h4>
-                                                <textarea id="tags_textarea" name="tags" data-i18n="[placeholder](Write a comma-separated list of tags)" placeholder="(Write a comma-separated list of tags)" form="form_create" class="text_pole" autocomplete="off" rows="4"></textarea>
+                                            <div class="sb-editor-field">
+                                                <label class="sb-editor-field__label" for="character_version_textarea" data-i18n="Character Version">Character Version</label>
+                                                <textarea id="character_version_textarea" name="character_version" data-sb-editor-field="character_version" data-i18n="[placeholder](If you want to track character versions)" placeholder="(If you want to track character versions)" form="form_create" class="text_pole" autocomplete="off" rows="2"></textarea>
                                             </div>
+                                        </div>
+                                        <div class="sb-editor-field">
+                                            <div class="sb-editor-field__header">
+                                                <label class="sb-editor-field__label" for="creator_notes_textarea" data-i18n="Creator's Notes">Creator's Notes</label>
+                                                <span class="sb-editor-field__actions">
+                                                    <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="creator_notes_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
+                                                </span>
+                                            </div>
+                                            <textarea id="creator_notes_textarea" name="creator_notes" data-sb-editor-field="creator_notes" data-i18n="[placeholder](Describe the bot, give use tips, or list the chat models it has been tested on. This will be displayed in the character list.)" placeholder="(Describe the bot, give use tips, or list the chat models it has been tested on. This will be displayed in the character list.)" form="form_create" class="text_pole" autocomplete="off" rows="4"></textarea>
+                                        </div>
+                                        <div class="sb-editor-field">
+                                            <div class="sb-editor-field__header">
+                                                <label class="sb-editor-field__label" for="tags_textarea" data-i18n="Tags to Embed">Tags to Embed</label>
+                                                <span class="sb-editor-field__actions">
+                                                    <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="tags_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
+                                                </span>
+                                            </div>
+                                            <textarea id="tags_textarea" name="tags" data-sb-editor-field="tags_embedded" data-i18n="[placeholder](Write a comma-separated list of tags)" placeholder="(Write a comma-separated list of tags)" form="form_create" class="text_pole" autocomplete="off" rows="4"></textarea>
                                         </div>
                                     </div>
                                 </section>
                             </div>
+
                             <!-- these divs are invisible and used for server communication purposes -->
-                            <div id="hidden-divs">
+                            <div id="hidden-divs" hidden>
                                 <input id="character_json_data" name="json_data" type="hidden">
                                 <input id="avatar_url_pole" name="avatar_url" type="hidden">
                                 <input id="selected_chat_pole" name="chat" type="hidden">
                                 <input id="create_date_pole" name="create_date" type="hidden">
                                 <input id="last_mes_pole" name="last_mes" type="hidden">
                                 <input id="character_world" name="world" type="hidden">
+                                <!-- SillyBunny: the sheet header's Save button replaces these; they stay as hidden stubs because upstream code and extensions click/toggle them. -->
+                                <label for="create_button" id="create_button_label">
+                                    <input type="submit" id="create_button" name="create_button">
+                                </label>
+                                <div id="rm_button_back" class="menu_button fa-solid fa-left-long"></div>
                             </div>
-                            <!-- now back to normal divs for display purposes-->
                         </form>
                     </div>
                     <div name="Group Chat Edit Panel" id="rm_group_chats_block" class="right_menu flex-container flexNoGap">

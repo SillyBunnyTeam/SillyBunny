@@ -358,6 +358,7 @@ export const power_user = {
     sb_accent_profiles: SILLYBUNNY_ACCENT_PROFILE_SEEDS.map(profile => ({ ...profile })),
     sb_accent_profiles_seed_version: SB_ACCENT_PROFILE_SEED_VERSION,
     sb_preset_autosave: false,
+    characterEditorQuickEdit: false,
     blur_tint_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeBlurTintColor').trim()}`,
     chat_tint_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeChatTintColor').trim()}`,
     user_mes_blur_tint_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeUserMesBlurTintColor').trim()}`,
@@ -1252,67 +1253,19 @@ function switchWaifuMode() {
     scrollChatToBottom();
 }
 
-const characterSpoilerFreePanelSelector = '#form_create [data-sb-character-editor-panel]:not([data-sb-character-editor-panel="char-info"]):not([data-sb-character-editor-panel="metadata"])';
-
-function showCharacterEditorMetadataPanel() {
-    const metadataTab = document.querySelector('#sb_character_editor_subtabs [data-sb-character-editor-tab="metadata"]');
-
-    if (metadataTab instanceof HTMLElement) {
-        metadataTab.click();
-    }
+// SillyBunny: Quick edit replaces upstream spoiler-free mode and collapses the sheet to Essentials.
+// `spoiler_free_mode` is read once as a migration source and left in settings for upstream compatibility.
+function applyCharacterEditorQuickEdit() {
+    const enabled = !!power_user.characterEditorQuickEdit;
+    document.getElementById('form_create')?.classList.toggle('sb-character-sheet--quick-edit', enabled);
+    $('#spoiler_free_mode').prop('checked', enabled);
+    $('#sb_character_editor_quick_edit').attr('aria-pressed', String(enabled));
 }
 
-function syncActiveCharacterEditorPanel() {
-    const activeTab = document.querySelector('#sb_character_editor_subtabs [data-sb-character-editor-tab][aria-selected="true"]');
-
-    if (activeTab instanceof HTMLElement) {
-        activeTab.click();
-    }
-}
-
-// Exported so the editor sub-tabs (sillybunny-tabs.js) can reveal the hidden fields when a dimmed tab is tapped.
-export function setCharacterSpoilerFreeFieldsHidden(hidden) {
-    const form = document.getElementById('form_create');
-    const activePanel = form?.querySelector('[data-sb-character-editor-panel]:not([hidden])');
-    const activePanelCanRemainVisible = activePanel instanceof HTMLElement
-        && ['char-info', 'metadata'].includes(activePanel.dataset.sbCharacterEditorPanel ?? '');
-
-    if (form instanceof HTMLElement) {
-        form.dataset.sbSpoilerFreeFieldsHidden = String(hidden);
-    }
-
-    if (hidden) {
-        document.querySelectorAll(characterSpoilerFreePanelSelector).forEach(panel => {
-            if (!(panel instanceof HTMLElement)) {
-                return;
-            }
-
-            panel.hidden = true;
-            panel.setAttribute('aria-hidden', 'true');
-        });
-    }
-
-    $('#spoiler_free_desc').toggleClass('flex1', hidden);
-    $('#creators_note_desc_hidden').toggle(hidden);
-    // The eye mirrors the actual state, so it stays correct when the fields are revealed from a sub-tab or at load.
-    $('#spoiler_free_desc_button').toggleClass('fa-eye', !hidden).toggleClass('fa-eye-slash', hidden);
-
-    // Always re-click a tab so the sub-tab buttons pick up their spoiler-hidden state.
-    if (hidden && !activePanelCanRemainVisible) {
-        showCharacterEditorMetadataPanel();
-    } else {
-        syncActiveCharacterEditorPanel();
-    }
-}
-
-function switchSpoilerMode() {
-    setCharacterSpoilerFreeFieldsHidden(power_user.spoiler_free_mode);
-}
-
-function peekSpoilerMode() {
-    const form = document.getElementById('form_create');
-    const isHidden = form instanceof HTMLElement && form.dataset.sbSpoilerFreeFieldsHidden === 'true';
-    setCharacterSpoilerFreeFieldsHidden(!isHidden);
+export function setCharacterEditorQuickEdit(enabled) {
+    power_user.characterEditorQuickEdit = !!enabled;
+    applyCharacterEditorQuickEdit();
+    saveSettingsDebounced();
 }
 
 function switchMovingUI() {
@@ -2174,6 +2127,10 @@ export async function loadPowerUserSettings(settings, data) {
         power_user.sb_preset_autosave = !!settings.firstRun;
     }
 
+    if (!Object.hasOwn(savedPowerUserSettings, 'characterEditorQuickEdit')) {
+        power_user.characterEditorQuickEdit = !!savedPowerUserSettings.spoiler_free_mode;
+    }
+
     // SillyBunny: Dark V 1.0 was the previous bundled default. Migrate only
     // that exact legacy selection; explicitly chosen themes remain untouched.
     if (power_user.theme === 'Dark V 1.0') {
@@ -2337,7 +2294,6 @@ export async function loadPowerUserSettings(settings, data) {
     $(`#tokenizer option[value="${power_user.tokenizer}"]`).prop('selected', true);
     $(`#send_on_enter option[value=${power_user.send_on_enter}]`).prop('selected', true);
     $('#confirm_message_delete').prop('checked', power_user.confirm_message_delete !== undefined ? !!power_user.confirm_message_delete : true);
-    $('#spoiler_free_mode').prop('checked', power_user.spoiler_free_mode);
     $('#collapse-newlines-checkbox').prop('checked', power_user.collapse_newlines);
     $('#always-force-name2-checkbox').prop('checked', power_user.always_force_name2);
     $('#trim_sentences_checkbox').prop('checked', power_user.trim_sentences);
@@ -2489,7 +2445,7 @@ export async function loadPowerUserSettings(settings, data) {
     await loadReasoningTemplates(data);
     loadMaxContextUnlocked();
     switchWaifuMode();
-    switchSpoilerMode();
+    applyCharacterEditorQuickEdit();
     applyGoogleFont();
     loadMovingUIState();
     loadCharListState();
@@ -4745,15 +4701,9 @@ jQuery(async () => {
     });
 
     $('#spoiler_free_mode').on('input', function () {
-        power_user.spoiler_free_mode = !!$(this).prop('checked');
-        switchSpoilerMode();
-        saveSettingsDebounced();
+        setCharacterEditorQuickEdit($(this).prop('checked'));
     });
 
-    $('#spoiler_free_desc_button').on('click', function (e) {
-        e.stopPropagation();
-        peekSpoilerMode();
-    });
 
     $('#custom_stopping_strings').on('input', function () {
         power_user.custom_stopping_strings = String($(this).val()).trim();

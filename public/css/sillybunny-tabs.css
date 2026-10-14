@@ -2356,10 +2356,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     display: none !important;
 }
 
-#right-nav-panel:not(:is([data-menu-type="editor"], [data-menu-type="character_edit"], [data-menu-type="create"])) > .sb-character-editor-subtabs-wrapper {
-    display: none !important;
-}
-
 .sb-character-editor-empty {
     min-height: min(360px, 54vh);
     display: flex;
@@ -5563,31 +5559,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     background: transparent;
 }
 
-#right-nav-panel .sb-character-editor-subtabs-wrapper {
-    flex: 0 0 auto;
-    align-self: stretch;
-    box-sizing: border-box;
-    margin: var(--sb-shell-space-sm) var(--sb-shell-panel-padding-inline) 0;
-    padding: var(--sb-shell-space-sm);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 84%, transparent);
-    border-radius: var(--sb-radius-md, 16px);
-    background: color-mix(in srgb, var(--sb-shell-surface) 76%, transparent);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-}
-
-#right-nav-panel .sb-character-editor-subtabs {
-    flex: 1 1 100%;
-    min-width: 0;
-    justify-content: safe center;
-    gap: 6px;
-    width: 100%;
-    padding: 0;
-    border-bottom: 0;
-}
-
 #sb_character_editor_fullscreen_toggle {
     display: none;
 }
@@ -5614,34 +5585,12 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     pointer-events: none;
 }
 
-#right-nav-panel .sb-character-editor-subtab {
-    flex: 0 0 auto;
-    min-width: max-content;
-    min-height: 40px;
-    padding: 7px 12px;
-    border-radius: var(--sb-shell-control-radius);
-    background: color-mix(in srgb, var(--sb-shell-main-bg) 54%, transparent);
-}
-
-/* Spoiler-free mode hides Definitions/Greetings; dim them, but keep them tappable so a tap can reveal the fields. */
-#right-nav-panel .sb-character-editor-subtab.is-spoiler-hidden {
-    opacity: 0.45;
-}
-
-#right-nav-panel .sb-character-editor-subtabs::before {
-    display: none;
-}
-
 #right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) {
     min-height: 0 !important;
 }
 
 #right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) > #CharListButtonAndHotSwaps {
     display: none !important;
-}
-
-#right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) > .sb-character-editor-subtabs-wrapper {
-    margin-block-start: 0;
 }
 
 #right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) > .scrollableInner,
@@ -5677,49 +5626,12 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     overscroll-behavior: contain;
 }
 
-#right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) .sb-character-editor-subtab-panels {
-    flex: 1 1 auto;
-    min-height: 0;
-    max-height: 100%;
-    overflow: visible;
-    padding-inline-end: 0;
-}
-
-#right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) .sb-character-editor-panel {
-    gap: 18px;
-}
-
 #right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) .sb-character-editor-fullscreen-toggle {
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 12%, var(--sb-shell-surface) 88%);
 }
 
 #right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) .sb-character-editor-fullscreen-toggle i.fa-maximize::before {
     content: '\f066';
-}
-
-#right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) .sb-character-editor-identity,
-#right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) .sb-character-editor-field-box,
-#right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) .sb-character-creator-notes-preview {
-    box-shadow: 0 18px 50px color-mix(in srgb, var(--SmartThemeShadowColor) 14%, transparent);
-}
-
-#right-nav-panel .sb-character-editor-subtab-panels {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sb-shell-space-lg);
-    min-width: 0;
-    min-height: 0;
-}
-
-#right-nav-panel .sb-character-editor-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    min-width: 0;
-}
-
-#form_create [data-sb-character-editor-panel][hidden] {
-    display: none !important;
 }
 
 #right-nav-panel .sb-character-editor-field-group {
@@ -5740,7 +5652,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     background: color-mix(in srgb, var(--color-surface, var(--SmartThemeBlurTintColor)) 65%, transparent);
 }
 
-#right-nav-panel .sb-character-creator-notes-preview {
+#right-nav-panel .sb-creator-notes-preview {
     margin: 8px 0 12px;
     padding: 10px 12px;
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 76%, transparent);
@@ -5748,7 +5660,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     background: color-mix(in srgb, var(--sb-shell-surface) 58%, transparent);
 }
 
-#right-nav-panel .sb-character-creator-notes-preview-body {
+#right-nav-panel .sb-creator-notes-preview__body {
     min-height: 34px;
     max-height: 7.5rem;
     overflow-y: auto;

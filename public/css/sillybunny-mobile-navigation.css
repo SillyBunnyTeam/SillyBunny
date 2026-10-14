@@ -338,64 +338,6 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDr
     display: none;
 }
 
-/*
- * Editor sub-tabs: four equal segments with the icon over a short label, so every
- * section is visible without a hidden horizontal scroll or icon-only guessing.
- */
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer > .sb-character-editor-subtabs-wrapper:not(#sb-specificity) {
-    margin: 4px 12px 8px !important;
-    padding: 4px !important;
-    border-radius: 16px !important;
-}
-
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #sb_character_editor_subtabs:not(#sb-specificity) {
-    display: grid !important;
-    grid-auto-columns: minmax(0, 1fr);
-    grid-auto-flow: column;
-    gap: 4px !important;
-    width: 100%;
-    overflow: hidden !important;
-}
-
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #sb_character_editor_subtabs > .sb-character-editor-subtab:not(#sb-specificity) {
-    display: flex !important;
-    flex-direction: column;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 4px !important;
-    width: auto !important;
-    min-width: 0 !important;
-    max-width: none !important;
-    min-height: 52px !important;
-    margin: 0 !important;
-    padding: 6px 4px !important;
-    border-radius: 12px !important;
-    scroll-snap-align: none;
-}
-
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #sb_character_editor_subtabs > .sb-character-editor-subtab > i:not(#sb-specificity) {
-    flex: 0 0 auto !important;
-    width: auto !important;
-    margin: 0 !important;
-    font-size: 1rem;
-}
-
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #sb_character_editor_subtabs .sb-shell-tab-copy:not(#sb-specificity) {
-    display: flex !important;
-    justify-content: center;
-    min-width: 0;
-    max-width: 100%;
-    text-align: center;
-}
-
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #sb_character_editor_subtabs .sb-shell-tab-copy strong:not(#sb-specificity) {
-    overflow: hidden;
-    font-size: calc(var(--mainFontSize) * 0.72) !important;
-    line-height: 1.2;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 /* Compact bottom chat bar. See public/scripts/sillybunny-mobile-bottom-bar.js. */
 
 /* Chip row: persona, current chat chip, extension tray toggle. Search adds a second row. */
