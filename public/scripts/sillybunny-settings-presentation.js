@@ -35,6 +35,8 @@
  * section it has normalized has a pill body and a description, so a second run finds nothing to do.
  */
 
+import { formatSettingsMacroExamples } from './sillybunny-settings-macros.js';
+
 /**
  * Placeholder description, used where a section has no copy of its own.
  *
@@ -47,16 +49,22 @@ const SB_CUSTOMIZE_TABS = new Set(['appearance', 'interface', 'messages', 'data-
 
 /** @param {HTMLElement} row @returns {HTMLElement} */
 function createRowSubtitle(row) {
-    const existing = row.querySelector('.ds-row-subtitle, :scope > .toggle-description, :scope > .ica--profile-help, .sb-topbar-label-option-copy > small, .sb-compact-mode-copy > small, .sb-mobile-nav-choice-copy > small, label small + small');
+    let existing = row.querySelector('.ds-row-subtitle, :scope > .toggle-description, :scope > .ica--profile-help, .sb-topbar-label-option-copy > small, .sb-compact-mode-copy > small, .sb-mobile-nav-choice-copy > small, label small + small');
+    // These rows already own live help beside the label. Keep that node (and its dynamic
+    // provider/preset updates) instead of promoting a redundant title or a status-icon tooltip.
+    if (!existing && row.matches('label:is([for="bind_preset_to_connection"], [for="bind_preset_to_sampling"], [for="squash_system_messages"], [for="openai_function_calling"], [for="openai_media_inlining"])') && row.nextElementSibling?.matches('.toggle-description')) {
+        existing = row.nextElementSibling;
+    }
     if (existing instanceof HTMLElement && existing.textContent.trim()) {
         existing.classList.add('ds-row-subtitle');
+        formatSettingsMacroExamples(existing);
         return existing;
     }
 
     const subtitle = document.createElement('small');
     subtitle.className = 'ds-row-subtitle';
     // The tooltip extension relocates title attributes before the settings panel opens.
-    const tooltipSelector = ':is([title], [data-sttt--title]):not(input, select, button, a, .menu_button)';
+    const tooltipSelector = ':is([title], [data-sttt--title]):not(input, select, button, a, .menu_button, [data-cc-toggle], [data-cc-toggle] *)';
     const source = (row.matches(tooltipSelector) ? row : row.querySelector(tooltipSelector))
         ?? row.querySelector('select[title], select[data-sttt--title], textarea[title], textarea[data-sttt--title]');
     subtitle.textContent = (source?.getAttribute('title') || source?.getAttribute('data-sttt--title'))?.trim() || SB_PLACEHOLDER_DESCRIPTION;
@@ -66,6 +74,7 @@ function createRowSubtitle(row) {
         const key = source?.getAttribute('data-i18n')?.match(/(?:^|;)\[title\]([^;]+)/)?.[1];
         if (key) subtitle.dataset.i18n = key;
     }
+    formatSettingsMacroExamples(subtitle);
     return subtitle;
 }
 
