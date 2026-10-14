@@ -142,6 +142,11 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     width: var(--sb-prompt-list-width);
 }
 
+/* libadwaita drops sidebar colours once a split view collapses into stacked pages. */
+.sb-prompt-editor[data-collapsed='true'] .sb-prompt-list {
+    background: var(--sb-layer-window);
+}
+
 :is(.sb-prompt-list-header, .sb-prompt-detail-header) {
     display: flex;
     align-items: center;
@@ -153,13 +158,17 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     box-sizing: border-box;
     gap: 4px;
     padding: 6px 8px;
-    background: var(--sb-layer-headerbar);
+    background: transparent;
 }
 
 .sb-prompt-list-header {
     overflow: hidden;
     gap: 2px;
     padding-inline: 10px;
+}
+
+.sb-prompt-detail-header {
+    border-bottom: var(--sb-headerbar-shade);
 }
 
 .sb-prompt-list-titles {
@@ -237,7 +246,7 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     overscroll-behavior: contain;
     padding: 8px 0 8px 8px;
     scrollbar-gutter: stable;
-    background: var(--sb-sidebar-bg);
+    background: transparent;
 }
 
 .sb-prompt-section {
@@ -254,7 +263,12 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     overflow: hidden;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: var(--sb-radius-card);
-    background: var(--sb-flat-hover-bg);
+    /* libadwaita --card-bg-color: a translucent lift in dark, View white in light. */
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+:root[data-sb-surface-tone='light'] .sb-prompt-box {
+    background: var(--sb-layer-view);
 }
 
 .sb-prompt-box:empty {
@@ -429,7 +443,7 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     content: '';
     position: absolute;
     inset: 0;
-    background: var(--SmartThemeBorderColor);
+    background: var(--sb-shell-border);
     pointer-events: none;
 }
 
@@ -514,7 +528,8 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     align-items: center;
     gap: 8px 12px;
     padding: 10px 12px;
-    background: var(--sb-layer-window);
+    border-bottom: var(--sb-headerbar-shade);
+    background: transparent;
 }
 
 .sb-prompt-property {
@@ -534,9 +549,9 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     min-height: 36px;
     margin: 0;
     padding: 4px 8px;
-    border: 1px solid var(--SmartThemeBorderColor);
+    border: 1px solid transparent;
     border-radius: var(--sb-radius-control);
-    background: var(--sb-layer-window);
+    background: var(--sb-raised-bg);
     color: inherit;
 }
 
@@ -548,7 +563,7 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     min-width: 128px;
     max-width: 260px;
     gap: 10px;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
+    border: 0;
     background: var(--sb-raised-bg);
 }
 
@@ -568,9 +583,9 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     min-height: 36px;
     margin: 0;
     padding: 4px 8px;
-    border: 1px solid var(--SmartThemeBorderColor);
+    border: 1px solid transparent;
     border-radius: var(--sb-radius-control);
-    background: var(--sb-layer-window);
+    background: var(--sb-raised-bg);
     color: inherit;
 }
 
@@ -679,9 +694,9 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     font-family: var(--monoFontFamily);
     font-size: calc(var(--mainFontSize) * 0.84);
     line-height: 1.45;
-    border: 1px solid var(--SmartThemeBorderColor);
+    border: 1px solid transparent;
     border-radius: var(--sb-radius-control);
-    background: var(--sb-layer-window);
+    background: transparent;
     color: inherit;
 }
 
@@ -693,8 +708,9 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     padding: 12px;
+    border: 1px solid transparent;
     border-radius: var(--sb-radius-control);
-    background: var(--sb-layer-window);
+    background: transparent;
     font-family: var(--monoFontFamily);
     font-size: calc(var(--mainFontSize) * 0.84);
     line-height: 1.45;
@@ -748,7 +764,10 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    background: var(--sb-layer-window);
+    border: 0;
+    border-bottom: var(--sb-headerbar-shade);
+    border-radius: 0;
+    background: transparent;
 }
 
 .sb-prompt-visually-hidden {
@@ -797,7 +816,7 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     padding: 8px 12px calc(12px + env(safe-area-inset-bottom, 0px));
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
-    background: var(--sb-layer-drawer);
+    background: var(--sb-layer-dialog);
     color: var(--SmartThemeBodyColor);
     font-family: var(--mainFontFamily);
     box-shadow: var(--sb-shadow-dialog);
@@ -827,6 +846,8 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
 .sb-prompt-sheet .sb-prompt-properties {
     flex-direction: column;
     align-items: stretch;
+    padding: 0;
+    border: 0;
     background: transparent;
 }
 
