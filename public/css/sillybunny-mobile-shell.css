@@ -2028,10 +2028,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 
     #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select).is-active-entity:not(.inline_avatar) {
         border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 64%, var(--sb-shell-border) 36%) !important;
-        background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 22%, var(--sb-button-bg) 78%) !important;
-        box-shadow:
-            inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 42%, transparent),
-            0 12px 24px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 14%, transparent) !important;
+        background: var(--sb-flat-selected-bg) !important;
     }
 
     #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select).is-active-entity:not(.inline_avatar) :is(.ch_name, .group_select_counter) {

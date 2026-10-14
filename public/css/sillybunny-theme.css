@@ -2624,10 +2624,12 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     }
 }
 
-.character_select:hover,
-.bogus_folder_select:hover,
-.group_select:hover {
-    background-color: var(--sb-flat-hover-bg);
+@media (hover: hover) {
+    .character_select:hover,
+    .bogus_folder_select:hover,
+    .group_select:hover {
+        background-color: var(--sb-flat-hover-bg);
+    }
 }
 
 #rm_print_characters_block:not(.group_overlay_mode_select):not(.bulk_select) {
@@ -2649,10 +2651,7 @@ body.bubblechat .mes[is_user='true'] .mes_block {
 
 #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select).is-active-entity:not(.inline_avatar) {
     border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 58%, var(--sb-shell-border) 42%);
-    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 16%, var(--sb-button-bg) 84%);
-    box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent),
-        0 12px 22px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 10%, transparent);
+    background: var(--sb-flat-selected-bg);
 }
 
 #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select).sb-just-selected:not(.inline_avatar) {
@@ -6163,9 +6162,11 @@ body #toast-container > .toast:hover {
 }
 
 /* libadwaita character/group hover: unified token instead of upstream's high-contrast fill. */
-:is(.sb-shell-root, .sb-character-drawer-root) :is(.character_select:hover, .group_select:hover, .bogus_folder_select:hover, .avatar-container:hover) {
-    background-color: var(--sb-flat-hover-bg);
-    border-color: transparent;
+@media (hover: hover) {
+    :is(.sb-shell-root, .sb-character-drawer-root) :is(.character_select:hover, .group_select:hover, .bogus_folder_select:hover, .avatar-container:hover) {
+        background-color: var(--sb-flat-hover-bg);
+        border-color: transparent;
+    }
 }
 
 :focus:not(:focus-visible) {
