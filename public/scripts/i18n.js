@@ -1,5 +1,6 @@
 import { registerDebugFunction } from './power-user.js';
 import { updateSecretDisplay } from './secrets.js';
+import { formatSettingsMacroExamples } from './sillybunny-settings-macros.js';
 
 const storageKey = 'language';
 const overrideLanguage = getStoredLanguage();
@@ -203,6 +204,8 @@ function translateElement(element) {
             }
         }
     }
+    // SillyBunny: restore code styling after translation writes subtitle text.
+    formatSettingsMacroExamples(element);
 }
 
 /**
