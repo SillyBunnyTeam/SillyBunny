@@ -70,6 +70,8 @@ import { createSubpageStack, SB_SUBPAGE_DURATION, SB_SUBPAGE_STORE_CLASS } from 
 import { SB_SUBPAGE_BUILDERS } from './sillybunny-settings-subpage-descriptors.js';
 import { createConnectionsPanel } from './sillybunny-connections-panel.js';
 import { initializePromptEditor } from './sillybunny-prompt-editor.js';
+// SillyBunny: character editor controller (Step 3b, feat/v1.9.0-ui-overhaul)
+import { initCharacterEditor } from './sillybunny-character-editor.js';
 
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
@@ -15396,6 +15398,8 @@ function initAll() {
     initSettingsPageClose();
     initModeToggle();
     initSettingsKeyboardShortcuts();
+    // SillyBunny: Phase 3b — character editor controller (feat/v1.9.0-ui-overhaul)
+    initCharacterEditor();
     bindInlineDrawerAutoCloseToggle();
     syncMobileViewportState();
 

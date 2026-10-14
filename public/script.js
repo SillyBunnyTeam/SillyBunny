@@ -341,6 +341,15 @@ import { compressRequest, setRequestCompressionConfig } from './scripts/request-
 import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker } from './scripts/swipe-picker.js';
 import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-send-button.js';
 import { DELETE_CHOICE, confirmMessageDeletion } from './scripts/sillybunny-delete-confirm.js';
+// SillyBunny: character editor controller (Step 3b, feat/v1.9.0-ui-overhaul)
+import {
+    beginCharacterEditorLoad,
+    loadCharacterEditorGreetings,
+    openCharacterEditorSession,
+    openCharacterEditorCreateSession,
+    markCharacterEditorSaved,
+    getCharacterEditorGroupGreetings,
+} from './scripts/sillybunny-character-editor.js';
 import { formatMobileStreamingPreview, getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval, isAndroidStreamingPlatform, shouldReduceStreamingDomWork, shouldUsePlainTextStreamingPreview } from './scripts/mobile-streaming.js';
 import { fetchResumable } from './scripts/resumable-generation.js';
 import { applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse } from './scripts/generation-request-controls.js';
@@ -921,6 +930,8 @@ export let create_save = {
     world: '',
     talkativeness: talkativeness_default,
     alternate_greetings: [],
+    group_only_greetings: [],
+    nickname: '',
     depth_prompt_prompt: '',
     depth_prompt_depth: depth_prompt_depth_default,
     depth_prompt_role: depth_prompt_role_default,
@@ -14868,6 +14879,8 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
     $('#add_avatar_button').val('');
     $('#avatar_div').css('display', 'flex');
 
+    // SillyBunny: flush pending draft before overwriting fields (Step 3b)
+    beginCharacterEditorLoad();
     $('#character_name_pole').val(characters[chid].name);
     $('#description_textarea').val(characters[chid].description);
     $('#character_world').val(characters[chid].data?.extensions?.world || '');
@@ -14903,7 +14916,9 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
     $('#set_character_world').data('chid', chid);
     setWorldInfoButtonClass(chid);
     checkEmbeddedWorld(chid);
-    syncAlternateGreetingsEditor();
+    // SillyBunny: controller renders greetings and opens edit session (Step 3b)
+    loadCharacterEditorGreetings(chid, 'edit');
+    openCharacterEditorSession(chid);
     focusUiSurface(document.getElementById('right-nav-panel'));
 
     $('#name_div').removeClass('displayNone');
@@ -14961,8 +14976,10 @@ function select_rm_create({ switchMenu = true, resetForm = true } = {}) {
     //create text poles
     $('#rm_button_back').css('display', '');
     $('#character_import_button').css('display', '');
+    // SillyBunny: flush pending draft before overwriting fields (Step 3b)
+    beginCharacterEditorLoad();
     $('#character_name_pole').val(create_save.name);
-    $('#description_textarea').val(create_save.description);
+    $('#character_nickname_pole').val(create_save.nickname || '');
     $('#character_world').val(create_save.world);
     $('#creator_notes_textarea').val(create_save.creator_notes);
     $('#creator_notes_spoiler').html(formatCreatorNotes(create_save.creator_notes, ''));
@@ -14991,7 +15008,9 @@ function select_rm_create({ switchMenu = true, resetForm = true } = {}) {
     setWorldInfoButtonClass(undefined, !!create_save.world);
     updateFavButtonState(false);
     checkEmbeddedWorld();
-    syncAlternateGreetingsEditor();
+    // SillyBunny: controller renders greetings and opens create session (Step 3b)
+    loadCharacterEditorGreetings(null, 'create');
+    openCharacterEditorCreateSession();
     focusUiSurface(document.getElementById('right-nav-panel'));
 
     $('#form_create').attr('actiontype', 'createcharacter');
@@ -15819,6 +15838,9 @@ export async function createOrEditCharacter(e) {
             for (const value of getSubmittedAlternateGreetings()) {
                 formData.append('alternate_greetings', value);
             }
+            // SillyBunny: group-only greetings (Step 3b)
+            formData.delete('group_only_greetings');
+            formData.set('group_only_greetings', JSON.stringify(getCharacterEditorGroupGreetings()));
 
             formData.append('extensions', JSON.stringify(create_save.extensions));
 
@@ -15889,6 +15911,8 @@ export async function createOrEditCharacter(e) {
             await getCharacters();
 
             select_rm_info('char_create', avatarId, oldSelectedChar);
+            // SillyBunny: clear new-character draft after successful create (Step 3b)
+            markCharacterEditorSaved();
 
             crop_data = undefined;
         } catch (error) {
@@ -15907,6 +15931,9 @@ export async function createOrEditCharacter(e) {
             for (const value of getSubmittedAlternateGreetings()) {
                 formData.append('alternate_greetings', value);
             }
+            // SillyBunny: group-only greetings (Step 3b)
+            formData.delete('group_only_greetings');
+            formData.set('group_only_greetings', JSON.stringify(getCharacterEditorGroupGreetings()));
 
             const editedAvatar = String(formData.get('avatar_url') ?? '');
             const editedCharacter = characters.find(character => character?.avatar === editedAvatar) ?? characters[this_chid];
@@ -15946,6 +15973,8 @@ export async function createOrEditCharacter(e) {
             );
             $('#create_button').attr('value', 'Save');
             crop_data = undefined;
+            // SillyBunny: recapture baseline after successful edit (Step 3b)
+            markCharacterEditorSaved();
             await eventSource.emit(event_types.CHARACTER_EDITED, { detail: { id: this_chid, character: characters[this_chid] } });
 
             // Recreate the chat if it hasn't been used at least once (i.e. with continue).
@@ -17678,6 +17707,12 @@ jQuery(async function () {
         }
     });
 
+    $('#character_nickname_pole').on('input', function () {
+        if (menu_type == 'create') {
+            create_save.nickname = String($('#character_nickname_pole').val());
+        }
+    });
+
     const elementsToUpdate = {
         '#description_textarea': function () { create_save.description = String($('#description_textarea').val()); },
         '#creator_notes_textarea': function () { create_save.creator_notes = String($('#creator_notes_textarea').val()); },
@@ -17700,9 +17735,8 @@ jQuery(async function () {
         $(id).on('input', function () {
             if (menu_type == 'create') {
                 elementsToUpdate[id]();
-            } else {
-                saveCharacterDebounced();
             }
+            // SillyBunny: edit mode uses explicit save; controller dirty listener handles state (Step 3b)
         });
     });
 
@@ -17714,9 +17748,7 @@ jQuery(async function () {
 
     $('#favorite_button').on('click', function () {
         updateFavButtonState(!fav_ch_checked);
-        if (menu_type != 'create') {
-            saveCharacterDebounced();
-        }
+        // SillyBunny: explicit-save model; controller marks dirty via requestAnimationFrame (Step 3b)
     });
 
     /* $("#renameCharButton").on('click', renameCharacter); */
