@@ -103,11 +103,13 @@
     flex-direction: row !important;
     flex-wrap: nowrap;
     align-items: center !important;
+    /* Override upstream .form_create_bottom_buttons_block flex: 1 1 320px which
+       causes the toolbar to eat all available space in the flex-column form */
+    flex: 0 0 auto !important;
     gap: 4px;
     padding: 6px 12px;
     background: var(--sb-layer-headerbar, var(--SmartThemeBlurTintColor));
     border-bottom: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
-    flex-shrink: 0;
     min-height: 44px;
 }
 
