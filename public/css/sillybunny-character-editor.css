@@ -101,18 +101,38 @@
 .sb-editor-toolbar {
     display: flex !important;
     flex-direction: row !important;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center !important;
-    gap: 8px;
-    padding: 10px 16px;
-    background: var(--sb-layer-view, var(--SmartThemeChatTintColor));
+    gap: 4px;
+    padding: 6px 12px;
+    background: var(--sb-layer-headerbar, var(--SmartThemeBlurTintColor));
     border-bottom: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
     flex-shrink: 0;
+    min-height: 44px;
 }
 
+/* All buttons in the toolbar are icon-only — fixed 36px square, no text labels */
 .sb-editor-toolbar .menu_button {
+    flex: 0 0 36px;
+    width: 36px;
+    min-width: 36px;
+    max-width: 36px;
+    height: 36px;
+    min-height: 36px;
+    max-height: 36px;
     margin: 0;
-    flex-shrink: 0;
+    padding: 0 !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--sb-radius-control, 9px);
+    overflow: hidden;
+}
+
+/* Suppress any text-node spans inside icon toolbar buttons (e.g. #world_button span) */
+.sb-editor-toolbar .menu_button > span:not(.sr-only),
+.sb-editor-toolbar .menu_button > span[data-i18n] {
+    display: none !important;
 }
 
 .sb-editor-toolbar-spacer {
@@ -121,17 +141,21 @@
 
 .sb-editor-toolbar-more {
     display: flex;
+    flex: 0 0 auto;
     position: relative;
 }
 
 .sb-editor-toolbar-more select {
     appearance: none;
     -webkit-appearance: none;
-    padding-right: 28px;
+    height: 36px;
+    padding: 0 28px 0 10px;
+    font-size: var(--sb-type-meta, 13px);
+    border-radius: var(--sb-radius-control, 9px);
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path fill="white" d="M6 8l-4-4h8z"/></svg>');
     background-repeat: no-repeat;
-    background-position: right 10px center;
-    background-size: 12px;
+    background-position: right 8px center;
+    background-size: 10px;
 }
 
 /* Sections and fields
@@ -487,9 +511,9 @@
 }
 
 /* Quick edit mode — hide all sections except Essentials
+   the toolbar and its quick-edit toggle remain accessible so the user can turn it off
    ========================================================================= */
 
-.sb-character-sheet--quick-edit .sb-editor-toolbar,
 .sb-character-sheet--quick-edit .sb-editor-section:not([data-sb-section="essentials"]) {
     display: none !important;
 }

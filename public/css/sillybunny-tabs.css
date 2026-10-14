@@ -2352,7 +2352,15 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 #right-nav-panel[data-menu-type="groups"] > #rm_PinAndTabs,
 #right-nav-panel[data-menu-type="editor_empty"] > #rm_PinAndTabs,
 #right-nav-panel[data-menu-type="world-info"] > #rm_PinAndTabs,
-#right-nav-panel[data-menu-type="persona"] > #rm_PinAndTabs {
+#right-nav-panel[data-menu-type="persona"] > #rm_PinAndTabs,
+/* SillyBunny: editor has its own sticky header; #rm_PinAndTabs void removed (Step 3b fix) */
+#right-nav-panel[data-menu-type="character_edit"] > #rm_PinAndTabs,
+#right-nav-panel[data-menu-type="create"] > #rm_PinAndTabs {
+    display: none !important;
+}
+
+/* SillyBunny: favorites bar does not belong in editor mode; hidden in non-fullscreen editor (Step 3b fix) */
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]):not(.sb-character-editor-fullscreen) > #CharListButtonAndHotSwaps {
     display: none !important;
 }
 

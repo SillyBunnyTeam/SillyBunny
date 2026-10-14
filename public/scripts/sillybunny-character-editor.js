@@ -203,8 +203,11 @@ async function _handleBack(event) {
         event.stopImmediatePropagation();
         return;
     }
-    // Re-dispatch to the hidden upstream back button stub
-    document.getElementById('rm_button_back')?.click();
+    // Navigate to the characters tab — clicking the shell tab button
+    // triggers the full navigation path including syncCharacterShellTabs.
+    // The hidden #rm_button_back stub only fires the panel switch without
+    // activating the correct tab, leaving the UI desynchronized. (Step 3b fix)
+    document.getElementById('sb_character_tab_characters')?.click();
 }
 
 function _handleCancel() {
