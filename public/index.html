@@ -6881,12 +6881,11 @@
                                 </div>
                             </div>
                             <a id="chartokenwarning" class="right_menu_button fa-solid fa-triangle-exclamation" href="https://docs.sillytavern.app/usage/core-concepts/characterdesign/#character-tokens" target="_blank" title="About Token 'Limits'" data-i18n="[title]About Token 'Limits'"></a>
-                            <div id="creators_note_styles_button" class="right_menu_button fa-solid fa-palette fa-fw" title="Allow / Forbid the use of global styles for this character." data-i18n="[title]Allow / Forbid the use of global styles for this character."></div>
-                            <div id="character_open_media_overrides" class="right_menu_button open_media_overrides" title="Click to allow/forbid the use of external media for this character." data-i18n="[title]Click to allow/forbid the use of external media for this character.">
-                                <i id="character_media_allowed_icon" class="fa-solid fa-fw fa-link"></i>
-                                <i id="character_media_forbidden_icon" class="fa-solid fa-fw fa-link-slash"></i>
-                            </div>
-                            <i title="Click for stats!" data-i18n="[title]Click for stats!" class="fa-solid fa-ranking-star right_menu_button rm_stats_button"></i>
+                            <!-- SillyBunny: #creators_note_styles_button, #character_open_media_overrides
+                                 and .rm_stats_button were MOVED into the character editor toolbar so they
+                                 stay reachable; #rm_PinAndTabs is hidden for character_edit/create.
+                                 Do not reintroduce them here: duplicate IDs make getElementById return
+                                 the first match in document order, which would be the hidden copy. -->
                         </div>
                         <button id="sb_character_editor_exit" class="menu_button menu_button_icon" type="button" title="Close Characters" aria-label="Close Characters">
                             <i class="fa-solid fa-xmark" aria-hidden="true"></i>
@@ -6942,49 +6941,83 @@
                         <!-- SillyBunny: flat scrolling character sheet replaces the four sub-tab panels; every upstream field ID and wrapper ID is kept for extension compatibility. -->
                         <form id="form_create" class="sb-character-sheet" action="javascript:void(null);" method="post" enctype="multipart/form-data">
                             <header class="sb-editor-header" id="sb_character_editor_header">
-                                <button class="sb-editor-back menu_button menu_button_icon" id="sb_character_editor_back" type="button" title="Back to character list" aria-label="Back to character list" data-i18n="[title]Back to character list;[aria-label]Back to character list">
+                                <button class="sb-editor-icon-button sb-editor-back" id="sb_character_editor_back" type="button" title="Back to character list" aria-label="Back to character list" data-i18n="[title]Back to character list;[aria-label]Back to character list">
                                     <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
                                 </button>
-                                <h2 class="sb-editor-title" id="sb_character_editor_title"></h2>
+                                <!-- SillyBunny: the title doubles as the rename affordance (the legacy
+                                     #rm_button_selected_ch h2 click target is inside the hidden
+                                     #rm_PinAndTabs). It is a real button so keyboard users get the
+                                     same entry point; the controller focuses #character_name_pole. -->
+                                <button class="sb-editor-title-button" id="sb_character_editor_title_button" type="button" title="Rename character" data-i18n="[title]Rename character">
+                                    <span class="sb-editor-title" id="sb_character_editor_title"></span>
+                                    <i class="fa-solid fa-pencil sb-editor-title-pencil" aria-hidden="true"></i>
+                                </button>
                                 <span class="sb-editor-dirty" id="sb_character_editor_dirty" role="status" aria-live="polite" hidden>
                                     <span class="sb-editor-dirty-dot" aria-hidden="true"></span>
                                     <span class="sr-only" data-i18n="Unsaved changes">Unsaved changes</span>
                                 </span>
-                                <button class="menu_button" id="sb_character_editor_cancel" type="button" data-i18n="Cancel">Cancel</button>
-                                <button class="menu_button menu_button_primary" id="sb_character_editor_save" type="button" data-i18n="Save">Save</button>
-                                <button id="sb_character_editor_fullscreen_toggle" class="menu_button menu_button_icon sb-character-editor-fullscreen-toggle" type="button" aria-controls="rm_ch_create_block" aria-pressed="false" aria-expanded="false" title="Enter editor fullscreen" aria-label="Enter editor fullscreen" data-i18n="[title]Enter editor fullscreen;[aria-label]Enter editor fullscreen">
+                                <!-- SillyBunny: mirrors the legacy #result_info token counter, which
+                                     lives inside the hidden #rm_PinAndTabs. Populated by the controller
+                                     from #result_info_total_tokens so the counting code stays the single
+                                     source of truth. -->
+                                <span class="sb-editor-tokens" id="sb_character_editor_tokens" title="Token counts may be inaccurate and provided just for reference." data-i18n="[title]Token counts may be inaccurate and provided just for reference." hidden>
+                                    <a class="sb-editor-tokens__warning" id="sb_character_editor_token_warning" href="https://docs.sillytavern.app/usage/core-concepts/characterdesign/#character-tokens" target="_blank" rel="noopener noreferrer" title="About Token 'Limits'" data-i18n="[title]About Token 'Limits'">
+                                        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+                                    </a>
+                                    <span class="sb-editor-tokens__value" id="sb_character_editor_tokens_value"></span>
+                                </span>
+                                <button id="sb_character_editor_fullscreen_toggle" class="sb-editor-icon-button sb-character-editor-fullscreen-toggle" type="button" aria-controls="rm_ch_create_block" aria-pressed="false" aria-expanded="false" title="Enter editor fullscreen" aria-label="Enter editor fullscreen" data-i18n="[title]Enter editor fullscreen;[aria-label]Enter editor fullscreen">
                                     <i class="fa-solid fa-maximize" aria-hidden="true"></i>
                                 </button>
+                                <button id="sb_character_editor_cancel" type="button" data-i18n="Cancel">Cancel</button>
+                                <button id="sb_character_editor_save" type="button" data-i18n="Save">Save</button>
                             </header>
 
                             <div class="sb-editor-toolbar form_create_bottom_buttons_block" id="sb_character_editor_toolbar">
-                                <div id="favorite_button" class="menu_button fa-solid fa-star" title="Add to Favorites" data-i18n="[title]Add to Favorites" data-label="FAV."></div>
+                                <div id="favorite_button" class="sb-editor-icon-button menu_button fa-solid fa-star" title="Add to Favorites" data-i18n="[title]Add to Favorites" data-label="FAV."></div>
                                 <input type="hidden" id="fav_checkbox" name="fav" />
-                                <div id="world_button" class="menu_button fa-solid fa-globe" title="Character Lore&#10;&#10;Click to load&#10;Shift/Alt-click or long-press to open 'Link to World Info' popup" data-i18n="[title]world_button_title"><span data-i18n="Character Lore">Character Lore</span></div>
-                                <div class="chat_lorebook_button menu_button fa-solid fa-passport" title="Chat Lore&#10;&#10;Click to load&#10;Shift/Alt-click or long-press to open 'Link to Chat Lorebook' popup" data-i18n="[title]chat_lorebook_button_title"></div>
-                                <div id="char_connections_button" class="menu_button fa-solid fa-face-smile" title="Connected Personas" data-i18n="[title]Connected Personas"></div>
-                                <div id="export_button" class="menu_button fa-solid fa-file-export" title="Export and Download" data-i18n="[title]Export and Download"></div>
-                                <div id="dupe_button" class="menu_button fa-solid fa-clone" title="Duplicate Character" data-i18n="[title]Duplicate Character"></div>
-                                <div id="delete_button" class="menu_button fa-solid fa-skull red_button" title="Delete Character" data-i18n="[title]Delete Character"></div>
+                                <div id="world_button" class="sb-editor-icon-button menu_button fa-solid fa-globe" title="Character Lore&#10;&#10;Click to load&#10;Shift/Alt-click or long-press to open 'Link to World Info' popup" data-i18n="[title]world_button_title"><span class="sr-only" data-i18n="Character Lore">Character Lore</span></div>
+                                <div class="chat_lorebook_button sb-editor-icon-button menu_button fa-solid fa-passport" title="Chat Lore&#10;&#10;Click to load&#10;Shift/Alt-click or long-press to open 'Link to Chat Lorebook' popup" data-i18n="[title]chat_lorebook_button_title"></div>
+                                <div id="char_connections_button" class="sb-editor-icon-button menu_button fa-solid fa-face-smile" title="Connected Personas" data-i18n="[title]Connected Personas"></div>
+                                <div id="export_button" class="sb-editor-icon-button menu_button fa-solid fa-file-export" title="Export and Download" data-i18n="[title]Export and Download"></div>
+                                <div id="dupe_button" class="sb-editor-icon-button menu_button fa-solid fa-clone" title="Duplicate Character" data-i18n="[title]Duplicate Character"></div>
                                 <span class="sb-editor-toolbar-spacer" aria-hidden="true"></span>
-                                <button id="sb_character_editor_quick_edit" class="menu_button menu_button_icon" type="button" aria-pressed="false" title="Quick edit mode" aria-label="Quick edit mode" data-i18n="[title]Quick edit mode;[aria-label]Quick edit mode">
+                                <button id="sb_character_editor_quick_edit" class="sb-editor-icon-button" type="button" aria-pressed="false" title="Quick edit mode" aria-label="Quick edit mode" data-i18n="[title]Quick edit mode;[aria-label]Quick edit mode">
                                     <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
                                 </button>
-                                <label for="char-management-dropdown" class="sb-editor-toolbar-more">
-                                    <select id="char-management-dropdown" class="text_pole">
-                                        <option value="default" disabled selected data-i18n="More...">More...</option>
-                                        <option id="set_character_world" data-i18n="Link to World Info">Link to World Info</option>
-                                        <option id="import_character_info" data-i18n="Import Card Lore">Import Card Lore</option>
-                                        <option id="regenerate_thumbnail" data-i18n="Regenerate Thumbnail">Regenerate Thumbnail</option>
-                                        <option id="set_chat_character_settings" data-i18n="Character Settings Overrides">Character Settings Overrides</option>
-                                        <option id="convert_to_persona" data-i18n="Convert to Persona">Convert to Persona</option>
-                                        <option id="renameCharButton" data-i18n="Rename">Rename</option>
-                                        <option id="character_source" data-i18n="Link to Source">Link to Source</option>
-                                        <option id="replace_update" data-i18n="Replace / Update">Replace / Update</option>
-                                        <option id="import_tags" data-i18n="Import Tags">Import Tags</option>
-                                        <option id="set_as_assistant" data-i18n="Set / Unset as Welcome Page Assistant">Set / Unset as Welcome Page Assistant</option>
-                                    </select>
-                                </label>
+                                <!-- SillyBunny: #char-management-dropdown is kept as a hidden transport,
+                                     not deleted. world-info.js:7456 sets and triggers it on long-press of
+                                     #world_button, and extensions (e.g. the gallery) append options to it
+                                     at runtime. The visible GNOME menu below reads its options and is the
+                                     only user-facing entry point. -->
+                                <select id="char-management-dropdown">
+                                    <option value="default" disabled selected data-i18n="More...">More...</option>
+                                    <option id="set_character_world" data-i18n="Link to World Info">Link to World Info</option>
+                                    <option id="import_character_info" data-i18n="Import Card Lore">Import Card Lore</option>
+                                    <option id="regenerate_thumbnail" data-i18n="Regenerate Thumbnail">Regenerate Thumbnail</option>
+                                    <option id="set_chat_character_settings" data-i18n="Character Settings Overrides">Character Settings Overrides</option>
+                                    <option id="convert_to_persona" data-i18n="Convert to Persona">Convert to Persona</option>
+                                    <option id="renameCharButton" data-i18n="Rename">Rename</option>
+                                    <option id="character_source" data-i18n="Link to Source">Link to Source</option>
+                                    <option id="replace_update" data-i18n="Replace / Update">Replace / Update</option>
+                                    <option id="import_tags" data-i18n="Import Tags">Import Tags</option>
+                                    <option id="set_as_assistant" data-i18n="Set / Unset as Welcome Page Assistant">Set / Unset as Welcome Page Assistant</option>
+                                </select>
+                                <button id="sb_character_editor_more" class="sb-editor-icon-button" type="button" aria-haspopup="menu" aria-expanded="false" title="More character actions" aria-label="More character actions" data-i18n="[title]More character actions;[aria-label]More character actions">
+                                    <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
+                                </button>
+                                <!-- SillyBunny: recovered from the hidden #rm_PinAndTabs so these actions
+                                     stay reachable; the menu dispatches clicks on them. They are
+                                     transports, not visible controls, so they must not be rendered:
+                                     upstream re-shows several of them with inline styles, which is why
+                                     the transport rule is !important. -->
+                                <div id="creators_note_styles_button" class="sb-editor-transport right_menu_button fa-solid fa-palette fa-fw" title="Allow / Forbid the use of global styles for this character." data-i18n="[title]Allow / Forbid the use of global styles for this character."></div>
+                                <div id="character_open_media_overrides" class="sb-editor-transport right_menu_button open_media_overrides" title="Click to allow/forbid the use of external media for this character." data-i18n="[title]Click to allow/forbid the use of external media for this character.">
+                                    <i id="character_media_allowed_icon" class="fa-solid fa-fw fa-link" aria-hidden="true"></i>
+                                    <i id="character_media_forbidden_icon" class="fa-solid fa-fw fa-link-slash" aria-hidden="true"></i>
+                                </div>
+                                <i title="Click for stats!" data-i18n="[title]Click for stats!" class="fa-solid fa-ranking-star right_menu_button rm_stats_button sb-editor-transport" aria-hidden="true"></i>
+                                <div id="delete_button" class="sb-editor-transport menu_button fa-solid fa-skull" title="Delete Character" data-i18n="[title]Delete Character"></div>
                             </div>
 
                             <div class="sb-character-sheet__content">

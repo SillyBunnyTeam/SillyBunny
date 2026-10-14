@@ -1852,6 +1852,10 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         max-width: 100%;
     }
 
+    /* SillyBunny: #avatar_controls was removed in the Step 3 editor rebuild and
+       #char-management-dropdown is now a hidden transport, so the four rules
+       below that target them are dead. Left in place because they are harmless
+       and this block is shared with other menu types. */
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > #tags_div .tag_controls {
         grid-template-columns: minmax(0, 1fr) auto;
     }

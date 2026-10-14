@@ -15,6 +15,7 @@
 
 import { formatCreatorNotes, getCurrentEntityId } from './chats.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT } from './popup.js';
+import { openActionMenu, closeActionMenu } from './sillybunny-action-menu.js';
 import { setCharacterEditorQuickEdit } from './power-user.js';
 import { eventSource, event_types } from './events.js';
 import {
@@ -23,7 +24,7 @@ import {
     create_save,
     createOrEditCharacter,
 } from '../script.js';
-import { t } from './i18n.js';
+import { t, translate } from './i18n.js';
 import { getCurrentUserHandle } from './user.js';
 
 const DRAFT_KEY_PREFIX = 'sb-editor-draft-';
@@ -35,6 +36,9 @@ const NEW_CHAR_DRAFT_KEY = 'new-character';
 /** @type {{ mode: 'edit'|'create', chid: number|null, avatar: string, baseline: object }|null} */
 let currentSession = null;
 let draftTimerId = null;
+/** @type {MutationObserver|null} */
+let tokenMirrorObserver = null;
+let tokenMirrorScheduled = false;
 
 // ============================================================
 // Public API
@@ -43,6 +47,9 @@ let draftTimerId = null;
 export function initCharacterEditor() {
     _bindHeaderButtons();
     _bindToolbarButtons();
+    _bindActionMenu();
+    _bindTokenMirror();
+    _bindToolbarOverflowObserver();
     _bindPreviewToggles();
     _bindGreetingAddButtons();
     _bindFieldDirtyListeners();
@@ -104,6 +111,9 @@ export function openCharacterEditorSession(chid) {
     _resetPreviewToggles();
     _checkDraftRestore();
     _startDraftTimer();
+    _syncTokenReadout();
+    _syncFavoritePressed();
+    _scheduleToolbarOverflow();
 }
 
 /**
@@ -125,6 +135,19 @@ export function openCharacterEditorCreateSession() {
     _resetPreviewToggles();
     _checkDraftRestore();
     _startDraftTimer();
+    _syncTokenReadout();
+    _syncFavoritePressed();
+    _scheduleToolbarOverflow();
+}
+
+/**
+ * Runs the toolbar overflow pass after the browser has laid the panel out, since
+ * the pass measures real widths and so cannot run before the drawer is sized.
+ */
+function _scheduleToolbarOverflow() {
+    requestAnimationFrame(() => {
+        if (currentSession) _applyToolbarOverflow();
+    });
 }
 
 /**
@@ -195,6 +218,32 @@ function _bindHeaderButtons() {
         ?.addEventListener('click', _handleCancel);
     document.getElementById('sb_character_editor_save')
         ?.addEventListener('click', _handleSave);
+    document.getElementById('sb_character_editor_title_button')
+        ?.addEventListener('click', _handleRenameTrigger);
+}
+
+/**
+ * The sticky header's title is the rename affordance, replacing the legacy
+ * #rm_button_selected_ch h2 click target that now sits inside the hidden
+ * #rm_PinAndTabs.
+ *
+ * This focuses the Name field rather than calling renameCharacter(): the two are
+ * not the same operation. Saving the Name field rewrites name/data.name while
+ * preserving the character's avatar identity; renameCharacter() posts
+ * /api/characters/rename, mints a NEW avatar identity and moves the chat
+ * directory. Renaming by editing the field is the reversible, in-editor action,
+ * so it is what the title offers. The destructive full rename stays reachable
+ * from the action menu as its own entry.
+ */
+function _handleRenameTrigger(event) {
+    event.preventDefault();
+    if (!currentSession) return;
+
+    const nameField = document.getElementById('character_name_pole');
+    if (!(nameField instanceof HTMLInputElement)) return;
+
+    nameField.focus({ preventScroll: false });
+    nameField.select();
 }
 
 async function _handleBack(event) {
@@ -236,6 +285,363 @@ function _bindToolbarButtons() {
             const pressed = btn?.getAttribute('aria-pressed') === 'true';
             setCharacterEditorQuickEdit(!pressed);
         });
+
+    // The favourite button is a div toggled by the fav_on/fav_off classes, which
+    // the toolbar cannot use to express state. Mirror it into aria-pressed so the
+    // button can render a selected fill the way DESIGN.md expects.
+    const favButton = document.getElementById('favorite_button');
+    if (favButton) {
+        new MutationObserver(_syncFavoritePressed)
+            .observe(favButton, { attributes: true, attributeFilter: ['class'] });
+        _syncFavoritePressed();
+    }
+
+    _syncQuickEditPressed();
+}
+
+/**
+ * The quick-edit toggle persists in power_user, so its pressed state must follow
+ * the setting rather than only the last click.
+ */
+function _syncQuickEditPressed() {
+    const button = document.getElementById('sb_character_editor_quick_edit');
+    if (!button) return;
+    const sheet = document.getElementById('form_create');
+    const enabled = sheet?.classList.contains('sb-character-sheet--quick-edit') ?? false;
+    button.setAttribute('aria-pressed', String(enabled));
+}
+
+function _syncFavoritePressed() {
+    const favButton = document.getElementById('favorite_button');
+    if (!favButton) return;
+    favButton.setAttribute('aria-pressed', String(favButton.classList.contains('fav_on')));
+}
+
+// ============================================================
+// Action menu
+// ============================================================
+
+/**
+ * Option id -> glyph for the transport select's entries. Anything not listed
+ * (for example an option an extension appended at runtime) falls back to a
+ * generic glyph, so extension actions still appear in the menu.
+ */
+const ACTION_GLYPHS = {
+    set_character_world: 'globe',
+    import_character_info: 'book',
+    regenerate_thumbnail: 'image',
+    set_chat_character_settings: 'sliders',
+    convert_to_persona: 'user-pen',
+    renameCharButton: 'signature',
+    character_source: 'link',
+    replace_update: 'rotate',
+    import_tags: 'tags',
+    set_as_assistant: 'house',
+};
+
+/**
+ * Toolbar buttons that may be collapsed into the overflow menu when the editor
+ * panel is too narrow for the full row, lowest priority first. Each entry is the
+ * live button; clicking the menu item forwards a click to it, so no handler
+ * moves and no ID changes.
+ *
+ * Ordered most-expendable first: destructive and duplicate actions are the
+ * safest to tuck away, while favourite, lore and personas stay visible because
+ * they are state indicators or very frequently used.
+ */
+const OVERFLOW_CANDIDATES = [
+    '#dupe_button',
+    '#export_button',
+    '#char_connections_button',
+    '.chat_lorebook_button',
+    '#world_button',
+];
+
+/**
+ * Toolbar buttons that had to collapse into the overflow menu. Recomputed on
+ * every layout pass so the menu reflects the current panel width.
+ * @type {Array<{id: string, label: string, icon: string, selector: string}>}
+ */
+let collapsedToolbarActions = [];
+
+/**
+ * Collapses toolbar buttons into the overflow menu until the row fits the panel.
+ *
+ * The toolbar is `flex-wrap: nowrap` with `overflow: hidden`, so without this the
+ * trailing buttons — including the ⋯ trigger itself — are simply clipped off the
+ * panel edge at narrow widths and become unreachable. Buttons that collapse are
+ * forwarded to from the menu via a synthetic click, so their handlers and IDs are
+ * untouched.
+ */
+function _applyToolbarOverflow() {
+    const toolbar = document.getElementById('sb_character_editor_toolbar');
+    const more = document.getElementById('sb_character_editor_more');
+    if (!(toolbar instanceof HTMLElement) || !(more instanceof HTMLElement)) return;
+
+    const candidates = OVERFLOW_CANDIDATES.map(selector => ({
+        selector,
+        element: /** @type {HTMLElement|null} */ (document.querySelector(selector)),
+    }));
+
+    const restore = () => {
+        for (const { element } of candidates) {
+            // Class only: create mode's own inline display:none for edit-only
+            // actions must survive the restore.
+            if (element instanceof HTMLElement) {
+                element.classList.remove('sb-editor-toolbar-collapsed');
+            }
+        }
+    };
+
+    restore();
+    collapsedToolbarActions = [];
+
+    // Everything already fits; nothing to move into the menu.
+    if (toolbar.scrollWidth <= toolbar.clientWidth + 1) return;
+
+    for (const { selector, element } of candidates) {
+        if (!(element instanceof HTMLElement)) continue;
+        // Only collapse what is actually showing; create mode hides several of
+        // these already, and a hidden button occupies no width.
+        if (element.getBoundingClientRect().width === 0) continue;
+
+        // Tooltips can carry a second line of usage hints (e.g. the world
+        // button's "Shift/Alt-click ..." line); the menu label takes the first.
+        const tooltip = element.getAttribute('title') ?? element.getAttribute('data-sttt--title');
+        const label = tooltip?.split('\n')[0]?.trim()
+            || element.getAttribute('aria-label')
+            || selector;
+        const icon = Array.from(element.classList).find(cls => cls.startsWith('fa-')) ?? 'fa-circle-dot';
+
+        element.classList.add('sb-editor-toolbar-collapsed');
+        collapsedToolbarActions.push({ id: element.id || selector, label, icon: `fa-solid ${icon}`, selector });
+
+        if (toolbar.scrollWidth <= toolbar.clientWidth + 1) break;
+    }
+}
+
+/**
+ * Re-runs the overflow pass when the panel changes width. Debounced to the next
+ * frame so a resize drag does not thrash layout.
+ */
+function _bindToolbarOverflowObserver() {
+    const panel = document.getElementById('right-nav-panel');
+    if (!(panel instanceof HTMLElement) || panel.dataset.sbToolbarOverflowBound === 'true') return;
+    panel.dataset.sbToolbarOverflowBound = 'true';
+
+    let scheduled = false;
+    const schedule = () => {
+        if (scheduled) return;
+        scheduled = true;
+        requestAnimationFrame(() => {
+            scheduled = false;
+            if (currentSession) _applyToolbarOverflow();
+        });
+    };
+
+    if (typeof ResizeObserver === 'function') {
+        new ResizeObserver(schedule).observe(panel);
+    } else {
+        window.addEventListener('resize', schedule);
+    }
+}
+
+/**
+ * The three actions recovered from the legacy #rm_PinAndTabs titlebar, which is
+ * hidden by CSS for character_edit/create. They are plain hidden transports;
+ * dispatching a click on each runs its existing binding:
+ *   #creators_note_styles_button    -> chats.js:2335  openGlobalStylesPreferenceDialog()
+ *   #character_open_media_overrides -> chats.js:2309  delegated .open_media_overrides
+ *   .rm_stats_button                -> stats.js:327   characterStatsHandler()
+ */
+const RECOVERED_ACTIONS = [
+    { id: 'sb_action_global_styles', label: 'Global Styles', glyph: 'palette', transport: '#creators_note_styles_button' },
+    { id: 'sb_action_media_overrides', label: 'External Media', glyph: 'link-slash', transport: '#character_open_media_overrides' },
+    { id: 'sb_action_stats', label: 'Character Stats', glyph: 'ranking-star', transport: '.rm_stats_button' },
+];
+
+function _bindActionMenu() {
+    const trigger = document.getElementById('sb_character_editor_more');
+    if (!trigger) return;
+
+    trigger.addEventListener('click', () => {
+        if (trigger.getAttribute('aria-expanded') === 'true') {
+            closeActionMenu({ restoreFocus: true });
+            return;
+        }
+        _openEditorActionMenu(trigger);
+    });
+}
+
+/**
+ * Builds the character action menu from the live transport select, so entries
+ * that extensions append at runtime stay reachable.
+ */
+function _openEditorActionMenu(trigger) {
+    const select = /** @type {HTMLSelectElement|null} */ (document.getElementById('char-management-dropdown'));
+    if (!select) return;
+
+    const primary = [];
+    for (const option of Array.from(select.options)) {
+        const id = option.id;
+        if (!id || option.disabled) continue;
+        // Upstream hides entries it does not apply to (Rename in create mode,
+        // Character Settings Overrides without a group) with an inline
+        // `display: none`. That does NOT set option.hidden, so it has to be read
+        // from the resolved style instead.
+        if (option.hidden || getComputedStyle(option).display === 'none') continue;
+
+        primary.push({
+            label: option.textContent.trim(),
+            icon: `fa-solid fa-${ACTION_GLYPHS[id] ?? 'circle-dot'}`,
+            onSelect: () => _dispatchTransportAction(id),
+        });
+    }
+
+    // Toolbar buttons that did not fit the panel width, so every action stays
+    // reachable instead of being clipped off the narrow panel edge.
+    const overflow = collapsedToolbarActions.map(action => ({
+        label: action.label,
+        icon: action.icon,
+        onSelect: () => _dispatchTransportClick(action.selector),
+    }));
+
+    const recovered = RECOVERED_ACTIONS
+        .filter(action => document.querySelector(action.transport))
+        .map(action => ({
+            label: translate(action.label),
+            icon: `fa-solid fa-${action.glyph}`,
+            onSelect: () => _dispatchTransportClick(action.transport),
+        }));
+
+    const danger = [];
+    // Delete is only meaningful for an existing character, never a draft.
+    if (currentSession?.mode === 'edit') {
+        danger.push({
+            label: t`Delete Character`,
+            icon: 'fa-solid fa-skull',
+            danger: true,
+            onSelect: () => _dispatchTransportClick('#delete_button'),
+        });
+    }
+
+    openActionMenu({
+        trigger,
+        title: t`Character Actions`,
+        sections: [
+            { items: overflow },
+            { items: primary },
+            { items: recovered },
+            { items: danger },
+        ].filter(section => section.items.length > 0),
+        onClose: () => trigger.setAttribute('aria-expanded', 'false'),
+    });
+    trigger.setAttribute('aria-expanded', 'true');
+}
+
+/**
+ * Runs a transport-select entry by selecting it and firing change, so the
+ * upstream dispatcher at script.js:18707 stays the single implementation of
+ * every one of these actions.
+ * @param {string} optionId
+ */
+function _dispatchTransportAction(optionId) {
+    const select = /** @type {HTMLSelectElement|null} */ (document.getElementById('char-management-dropdown'));
+    if (!select) return;
+
+    const option = Array.from(select.options).find(candidate => candidate.id === optionId);
+    if (!option) return;
+
+    select.value = option.value;
+    select.selectedIndex = option.index;
+    $(select).trigger('change');
+}
+
+/**
+ * Runs an action whose handler is bound to another element, by forwarding a
+ * click. Used for the recovered titlebar controls and for toolbar buttons that
+ * collapsed into the overflow menu.
+ * @param {string} selector
+ */
+function _dispatchTransportClick(selector) {
+    const element = document.querySelector(selector);
+    if (!(element instanceof HTMLElement)) return;
+    element.click();
+}
+
+// ============================================================
+// Token readout
+// ============================================================
+
+/**
+ * Mirrors the legacy #result_info counters into the editor header. Those nodes
+ * live inside the hidden #rm_PinAndTabs, but RA_CountCharTokens() still updates
+ * them, so reading them keeps one implementation of the counting and keeps
+ * extensions that read #result_info working.
+ *
+ * Read rather than observed: counting is triggered by editor load and by form
+ * input, both of which are moments the controller already knows about, so a
+ * MutationObserver would cost more than it earns.
+ */
+function _syncTokenReadout() {
+    const readout = document.getElementById('sb_character_editor_tokens');
+    const value = document.getElementById('sb_character_editor_tokens_value');
+    const warning = document.getElementById('sb_character_editor_token_warning');
+    if (!readout || !value) return;
+
+    const total = document.getElementById('result_info_total_tokens')?.textContent?.trim() ?? '';
+    const permanent = document.getElementById('result_info_permanent_tokens')?.textContent?.trim() ?? '';
+
+    if (!total || /^calculating/i.test(total) || total === '...') {
+        readout.hidden = true;
+        return;
+    }
+
+    readout.hidden = false;
+    value.textContent = permanent
+        ? `${total} ${t`Tokens`} (${permanent} ${t`Permanent`})`
+        : `${total} ${t`Tokens`}`;
+
+    // RA_CountCharTokens() classifies the card by toggling neutral_warning on the
+    // legacy wrapper. Drive the new readout from that single source of truth:
+    // inline display, so it matches how upstream shows/hides its own warning.
+    const warn = document.getElementById('result_info_text')?.classList.contains('neutral_warning') ?? false;
+    readout.classList.toggle('is-over-budget', warn);
+    if (warning instanceof HTMLElement) {
+        warning.style.display = warn ? '' : 'none';
+    }
+}
+
+function _bindTokenMirror() {
+    // Counting is debounced upstream (1000ms on form input, 200ms on title
+    // mutation), so poll briefly after a session opens rather than racing it.
+    const timers = [120, 600, 1400];
+    _syncTokenReadout();
+    timers.forEach(delay => setTimeout(() => {
+        if (currentSession) _syncTokenReadout();
+    }, delay));
+
+    _stopTokenMirror();
+    tokenMirrorObserver = new MutationObserver(() => {
+        if (tokenMirrorScheduled) return;
+        tokenMirrorScheduled = true;
+        requestAnimationFrame(() => {
+            tokenMirrorScheduled = false;
+            if (currentSession) _syncTokenReadout();
+        });
+    });
+
+    for (const id of ['result_info_total_tokens', 'result_info_permanent_tokens', 'result_info_text']) {
+        const target = document.getElementById(id);
+        if (target) {
+            tokenMirrorObserver.observe(target, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+        }
+    }
+}
+
+function _stopTokenMirror() {
+    tokenMirrorObserver?.disconnect();
+    tokenMirrorObserver = null;
 }
 
 // ============================================================
@@ -557,7 +963,20 @@ function _markDirty() {
 
 function _updateDirtyIndicator() {
     const el = document.getElementById('sb_character_editor_dirty');
-    if (el) el.hidden = !_isDirty();
+    if (!el) return;
+
+    const dirty = _isDirty();
+    const wasHidden = el.hidden;
+    el.hidden = !dirty;
+    if (dirty === !wasHidden) return;
+
+    if (dirty) {
+        // DESIGN.md: state reveals are a fade with a small scale, no movement.
+        el.animate(
+            [{ opacity: 0, transform: 'scale(0.7)' }, { opacity: 1, transform: 'none' }],
+            { duration: 200, easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' },
+        );
+    }
 }
 
 function _updateHeaderButtons() {
@@ -566,18 +985,31 @@ function _updateHeaderButtons() {
     const dirty = _isDirty();
     const isCreate = currentSession?.mode === 'create';
 
-    if (save) {
+    if (save instanceof HTMLButtonElement) {
         save.textContent = isCreate ? t`Create` : t`Save`;
-        /** @type {HTMLButtonElement} */ (save).disabled = !isCreate && !dirty;
+        save.disabled = !isCreate && !dirty;
     }
-    if (cancel) {
-        /** @type {HTMLButtonElement} */ (cancel).disabled = !dirty;
+    if (cancel instanceof HTMLButtonElement) {
+        cancel.disabled = !dirty;
     }
+
+    // The quick-edit toggle persists in power_user, so its pressed state must
+    // follow the setting rather than only the last click.
+    _syncQuickEditPressed();
 }
 
 function _updateHeaderTitle(title) {
     const el = document.getElementById('sb_character_editor_title');
     if (el) el.textContent = title;
+
+    // Renaming a draft is meaningless until it exists, so the title only offers
+    // the affordance for a saved character.
+    const button = document.getElementById('sb_character_editor_title_button');
+    const canRename = currentSession?.mode === 'edit';
+    if (button instanceof HTMLButtonElement) {
+        button.disabled = !canRename;
+        button.classList.toggle('is-static', !canRename);
+    }
 }
 
 // ============================================================

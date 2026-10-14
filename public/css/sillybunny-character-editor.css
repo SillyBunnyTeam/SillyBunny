@@ -33,141 +33,394 @@
 /* Header — sticky, horizontal buttons
    ========================================================================= */
 
+/* The header toggles visibility with the `hidden` attribute, but the flex
+   display declarations below would beat the UA [hidden] rule on specificity.
+   Restore the attribute's meaning for the header's own status elements. */
+.sb-editor-header > :is(.sb-editor-dirty, .sb-editor-tokens)[hidden] {
+    display: none !important;
+}
+
 .sb-editor-header {
     position: sticky;
     top: 0;
-    z-index: var(--sb-z-sticky, 500);
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--sb-layer-headerbar);
+    border-bottom: 1px solid var(--sb-shell-border);
+    flex-shrink: 0;
+    min-height: 52px;
+}
+
+/* Shared flat icon-button base for the header and toolbar.
+   DESIGN.md: flat buttons are transparent, borderless, control-radius, and show
+   a fill only on hover/active/selected. */
+.sb-editor-icon-button {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--sb-control-icon-physical-size, 36px);
+    min-width: var(--sb-control-icon-physical-size, 36px);
+    height: var(--sb-control-icon-physical-size, 36px);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control, 9px);
+    background: transparent;
+    color: var(--sb-shell-text);
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    .sb-editor-icon-button:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.sb-editor-icon-button:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-editor-icon-button:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+/* Toggled / selected state, e.g. the favourite star and quick edit.
+   DESIGN.md: selection is an accent ink on a flat selected fill, never a glow. */
+.sb-editor-icon-button[aria-pressed='true'] {
+    background: var(--sb-flat-selected-bg);
+    color: var(--sb-accent);
+}
+
+@media (hover: hover) {
+    .sb-editor-icon-button[aria-pressed='true']:hover {
+        background: var(--sb-flat-selected-hover-bg);
+    }
+}
+
+.sb-editor-icon-button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* A disabled title is not a control the user can act on; do not draw a fill. */
+.sb-editor-icon-button:disabled:hover {
+    background: transparent;
+}
+
+.sb-editor-icon-button i {
+    pointer-events: none;
+}
+
+/* The title doubles as the rename affordance. It is a real button so it is
+   reachable by keyboard, but it must read as a heading at rest, not a control. */
+.sb-editor-title-button {
+    flex: 1 1 auto;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 14px;
-    background: var(--sb-layer-headerbar, var(--SmartThemeBlurTintColor));
-    border-bottom: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
-    flex-shrink: 0;
+    margin: 0;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: var(--sb-radius-control, 9px);
+    background: transparent;
+    color: var(--sb-shell-text);
+    font-family: var(--mainFontFamily);
+    text-align: start;
+    cursor: text;
+    transition: background-color var(--sb-transition-fast);
 }
 
-.sb-editor-back {
-    flex-shrink: 0;
+.sb-editor-title-button:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    .sb-editor-title-button:not(.is-static):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+
+    .sb-editor-title-button:not(.is-static):hover .sb-editor-title {
+        text-decoration: underline dotted color-mix(in srgb, currentColor 38%, transparent);
+        text-underline-offset: 4px;
+    }
+
+    .sb-editor-title-button:not(.is-static):hover .sb-editor-title-pencil {
+        opacity: 1;
+    }
+}
+
+.sb-editor-title-button.is-static {
+    cursor: default;
 }
 
 .sb-editor-title {
-    flex: 1 1 auto;
     min-width: 0;
     margin: 0;
     font-size: var(--sb-type-title, 16px);
     font-weight: 700;
-    color: var(--SmartThemeBodyColor);
+    color: inherit;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
+.sb-editor-title-pencil {
+    flex: 0 0 auto;
+    font-size: 0.75em;
+    color: var(--sb-muted-fg);
+    opacity: 0;
+    transition: opacity var(--sb-transition-fast);
+}
+
+.sb-editor-title-button:focus-visible .sb-editor-title-pencil {
+    opacity: 1;
+}
+
 .sb-editor-dirty {
-    flex-shrink: 0;
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: var(--sb-type-meta, 13px);
-    color: var(--sb-muted-fg, color-mix(in srgb, var(--SmartThemeBodyColor) 70%, transparent));
 }
 
 .sb-editor-dirty-dot {
-    width: 6px;
-    height: 6px;
+    display: block;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    background: var(--sb-accent, var(--color-primary, var(--SmartThemeQuoteColor)));
+    background: var(--sb-accent);
 }
 
-.sb-editor-header #sb_character_editor_cancel,
-.sb-editor-header #sb_character_editor_save {
-    flex-shrink: 0;
+/* Token readout — mirrors the legacy #result_info counters. */
+.sb-editor-tokens {
+    flex: 0 1 auto;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 6px;
+    font-size: var(--sb-type-meta, 13px);
+    color: var(--sb-muted-fg);
+    white-space: nowrap;
+}
+
+.sb-editor-tokens.is-over-budget {
+    color: var(--sb-color-warning, var(--color-warning));
+}
+
+/* The warning glyph is a link, not a status: it only carries the warning colour
+   once the card is genuinely over budget, so the header stays quiet otherwise. */
+.sb-editor-tokens:not(.is-over-budget) .sb-editor-tokens__warning {
+    color: var(--sb-muted-fg);
+}
+
+.sb-editor-tokens__warning {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    color: inherit;
+    text-decoration: none;
+}
+
+.sb-editor-tokens__warning:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+    border-radius: var(--sb-radius-control, 9px);
+}
+
+.sb-editor-tokens__value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Header actions keep their intrinsic width and never shrink into the title. */
+.sb-editor-header > #sb_character_editor_cancel,
+.sb-editor-header > #sb_character_editor_save,
+.sb-editor-header > #sb_character_editor_fullscreen_toggle {
+    flex: 0 0 auto;
+}
+
+/* The legacy #right-nav-panel .sb-character-editor-fullscreen-toggle rule in
+   sillybunny-tabs.css pins this button to --sb-mobile-touch-target (44px), which
+   is an ID-scoped selector and so outranks the class-based sizing above. It was
+   written when the toggle sat in the toolbar; inside the header it renders a
+   mismatched button among 38px siblings. Re-pin it here at the header size
+   without !important by matching the ID specificity. */
+#right-nav-panel .sb-editor-header > #sb_character_editor_fullscreen_toggle {
+    flex: 0 0 auto;
+    width: var(--sb-control-icon-physical-size, 36px);
+    min-width: var(--sb-control-icon-physical-size, 36px);
+    max-width: var(--sb-control-icon-physical-size, 36px);
+    height: var(--sb-control-icon-physical-size, 36px);
+    min-height: var(--sb-control-icon-physical-size, 36px);
+    max-height: var(--sb-control-icon-physical-size, 36px);
+    border-radius: var(--sb-radius-control, 9px);
+}
+
+/* Primary action. --sb-on-accent resolves to literal black, which is unreadable
+   on a dark accent; --sb-on-solid-accent is the token designed for accent fills. */
+.sb-editor-header > #sb_character_editor_save {
+    min-height: 38px;
     margin: 0;
-}
-
-.sb-editor-header #sb_character_editor_save {
-    background-color: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
-    color: var(--sb-on-accent, var(--SmartThemeBlurTintColor));
-    border-color: transparent;
+    padding: 0 16px;
+    border: 0;
+    border-radius: var(--sb-radius-control, 9px);
+    background: var(--color-primary, var(--sb-accent));
+    color: var(--sb-on-solid-accent);
     font-weight: 600;
+    transition: background-color var(--sb-transition-fast), opacity var(--sb-transition-fast);
 }
 
-.sb-editor-header #sb_character_editor_save:hover {
-    filter: brightness(1.1);
+@media (hover: hover) {
+    .sb-editor-header > #sb_character_editor_save:not(:disabled):hover {
+        background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 88%, var(--SmartThemeBodyColor));
+    }
+}
+
+.sb-editor-header > #sb_character_editor_save:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-editor-header > #sb_character_editor_cancel {
+    min-height: 38px;
+    margin: 0;
+    padding: 0 16px;
+    border: 1px solid var(--sb-shell-border);
+    border-radius: var(--sb-radius-control, 9px);
+    background: transparent;
+    color: var(--sb-shell-text);
+    transition: background-color var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    .sb-editor-header > #sb_character_editor_cancel:not(:disabled):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.sb-editor-header > #sb_character_editor_cancel:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-editor-header > :is(#sb_character_editor_save, #sb_character_editor_cancel):disabled {
+    opacity: 0.5;
+    cursor: default;
 }
 
 /* Toolbar — horizontal action buttons
    ========================================================================= */
 
 .sb-editor-toolbar {
-    display: flex !important;
-    flex-direction: row !important;
+    display: flex;
+    /* Upstream .form_create_bottom_buttons_block is a column flex container;
+       an explicit row keeps the actions on one line without !important. */
+    flex-direction: row;
     flex-wrap: nowrap;
-    align-items: center !important;
+    align-items: center;
+    justify-content: flex-start;
     /* Override upstream .form_create_bottom_buttons_block flex: 1 1 320px which
        causes the toolbar to eat all available space in the flex-column form */
-    flex: 0 0 auto !important;
-    gap: 4px;
-    padding: 6px 12px;
-    background: var(--sb-layer-headerbar, var(--SmartThemeBlurTintColor));
-    border-bottom: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
-    min-height: 44px;
-}
-
-/* All buttons in the toolbar are icon-only — fixed 36px square, no text labels */
-.sb-editor-toolbar .menu_button {
-    flex: 0 0 36px;
-    width: 36px;
-    min-width: 36px;
-    max-width: 36px;
-    height: 36px;
-    min-height: 36px;
-    max-height: 36px;
-    margin: 0;
-    padding: 0 !important;
-    /* Must not be `display: none !important`-proof: create mode hides the
-       edit-only actions (#delete_button, #dupe_button, #export_button,
-       #char_connections_button, .chat_lorebook_button) with inline styles in
-       select_rm_create(). This was `inline-flex !important` until Step 3b
-       safety fixes — the `!important` beat those inline declarations and left
-       Delete/Duplicate targeting the still-selected previously-edited
-       character while a new card was being created.
-       `display: flex` matches the upstream `.menu_button` value (style.css:4254)
-       so the rendered layout is unchanged and the cascade is left intact.
-       Do not reintroduce `!important` here. See docs/ui-migration.md. */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--sb-radius-control, 9px);
+    flex: 0 0 auto;
+    gap: 2px;
+    padding: 6px 10px;
+    background: var(--sb-layer-headerbar);
+    border-bottom: 1px solid var(--sb-shell-border);
+    min-height: 48px;
     overflow: hidden;
 }
 
-/* Suppress any text-node spans inside icon toolbar buttons (e.g. #world_button span) */
-.sb-editor-toolbar .menu_button > span:not(.sr-only),
-.sb-editor-toolbar .menu_button > span[data-i18n] {
+/* Upstream sets display: flex on .menu_button (style.css:4254), which these divs
+   carry for their click handlers. Do not add !important here: create mode hides
+   the edit-only actions with inline styles, and !important would defeat that and
+   leave Delete/Duplicate pointing at the previously selected character.
+
+   The same class paints .menu_button as a chip (1px border, 5% fill), and
+   sillybunny-theme.css:677 re-applies a fill and a 14px radius with four :not()
+   guards — specificity 0,5,0, which outranks a plain class selector. DESIGN.md
+   specifies flat buttons for a toolbar of icon actions, so the chip chrome is
+   stripped here. The #right-nav-panel prefix is what makes these declarations
+   win without !important, matching how the rest of the shell scopes its
+   overrides. Without it the toolbar renders as a mix of bordered chips and flat
+   buttons. */
+#right-nav-panel #sb_character_editor_toolbar > :is(.menu_button, .chat_lorebook_button) {
+    flex: 0 0 auto;
+    width: var(--sb-control-icon-physical-size, 36px);
+    min-width: var(--sb-control-icon-physical-size, 36px);
+    height: var(--sb-control-icon-physical-size, 36px);
+    min-height: var(--sb-control-icon-physical-size, 36px);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control, 9px);
+    background: transparent;
+    color: var(--sb-shell-text);
+    font-size: var(--sb-type-body, 15px);
+    box-shadow: none;
+}
+
+/* sillybunny-theme.css:1044 supplies its own hover fill for .menu_button, which
+   would fight the flat hover below unless it is overridden at the same weight. */
+#right-nav-panel #sb_character_editor_toolbar > :is(.menu_button, .chat_lorebook_button):hover {
+    background: var(--sb-flat-hover-bg);
+    border-color: transparent;
+    box-shadow: none;
+}
+
+#right-nav-panel #sb_character_editor_toolbar > :is(.menu_button, .chat_lorebook_button):active {
+    background: var(--sb-flat-active-bg);
+}
+
+#right-nav-panel #sb_character_editor_toolbar > :is(.menu_button, .chat_lorebook_button):focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+/* Favourite is a stateful toggle; upstream signals it with .fav_on. Surface that
+   as the same selected treatment the aria-pressed buttons use. */
+#right-nav-panel #sb_character_editor_toolbar > #favorite_button.fav_on {
+    background: var(--sb-flat-selected-bg);
+    color: var(--sb-accent);
+}
+
+/* Transport elements kept in the DOM for their handlers and for extensions.
+   Several are re-shown by upstream with inline styles, so this must be
+   !important. The menu dispatches clicks on them instead. */
+.sb-editor-transport {
+    display: none !important;
+}
+
+/* Toolbar buttons the overflow pass moved into the ⋯ menu because the panel is
+   too narrow for the full row. The element stays in the DOM and keeps its
+   handlers; the menu forwards clicks to it. */
+.sb-editor-toolbar-collapsed {
     display: none !important;
 }
 
 .sb-editor-toolbar-spacer {
-    flex: 1 0 auto;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
-.sb-editor-toolbar-more {
-    display: flex;
+#sb_character_editor_more {
     flex: 0 0 auto;
-    position: relative;
+    margin-inline-start: 4px;
 }
 
-.sb-editor-toolbar-more select {
-    appearance: none;
-    -webkit-appearance: none;
-    height: 36px;
-    padding: 0 28px 0 10px;
-    font-size: var(--sb-type-meta, 13px);
-    border-radius: var(--sb-radius-control, 9px);
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path fill="white" d="M6 8l-4-4h8z"/></svg>');
-    background-repeat: no-repeat;
-    background-position: right 8px center;
-    background-size: 10px;
+/* Upstream #char-management-dropdown styling is obsolete now the select is a
+   hidden transport; the visible menu above replaces it. */
+.sb-editor-toolbar #char-management-dropdown {
+    display: none !important;
 }
 
 /* Sections and fields
@@ -301,7 +554,7 @@
     display: block;
     width: 120px;
     height: 120px;
-    border-radius: var(--sb-radius-lg, 16px);
+    border-radius: var(--sb-radius-card, 12px);
     overflow: hidden;
     cursor: pointer;
     transition: opacity var(--sb-transition-fast, 200ms ease);
@@ -514,7 +767,7 @@
     font-weight: 600;
     color: var(--sb-muted-fg, color-mix(in srgb, var(--SmartThemeBodyColor) 70%, transparent));
     background: var(--sb-flat-selected-bg, color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent));
-    border-radius: var(--sb-shell-control-radius, 999px);
+    border-radius: 999px;
 }
 
 .sb-greetings-expander .sb-greetings-editor {
@@ -540,12 +793,12 @@
     }
 
     .sb-editor-header {
-        padding: 8px 12px;
+        padding: 6px 8px;
+        gap: 4px;
     }
 
     .sb-editor-toolbar {
-        padding: 8px 12px;
-        gap: 6px;
+        padding: 6px 8px;
     }
 
     .sb-editor-field {
@@ -555,6 +808,30 @@
     .sb-greetings-editor {
         padding: 10px 12px;
     }
+
+    /* On a narrow header the token text is the first thing to go; the warning
+       icon stays so an over-budget card is still flagged. */
+    .sb-editor-tokens__value {
+        display: none;
+    }
+
+    .sb-editor-tokens.is-over-budget .sb-editor-tokens__value {
+        display: block;
+    }
+}
+
+/* Touch targets. DESIGN.md requires 44px for coarse pointers; the toolbar and
+   header are the primary hit areas in this editor. */
+@media (pointer: coarse) {
+    .sb-editor-icon-button {
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+    }
+
+    .sb-editor-header > :is(#sb_character_editor_save, #sb_character_editor_cancel) {
+        min-height: 44px;
+    }
 }
 
 /* Reduced motion
@@ -563,7 +840,10 @@
 @media (prefers-reduced-motion: reduce) {
     .sb-character-essentials__avatar #avatar_div_div,
     .sb-greeting-row,
-    .sb-editor-header #sb_character_editor_save {
+    .sb-editor-icon-button,
+    .sb-editor-title-button,
+    .sb-editor-header > #sb_character_editor_save,
+    .sb-editor-header > #sb_character_editor_cancel {
         transition: none;
     }
 }
