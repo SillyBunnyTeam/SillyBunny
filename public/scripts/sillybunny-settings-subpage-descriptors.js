@@ -22,6 +22,25 @@ export const SB_SUBPAGE_PLACEHOLDER_ATTRIBUTE = 'data-sb-copy-placeholder';
 /** The same placeholder text the settings normalizer uses, so one pass can find both. */
 const SB_SUBPAGE_PLACEHOLDER = 'lorum ipsum';
 
+const SB_EXTENSION_DESCRIPTIONS = new Map([
+    ['sbdbg-settings', 'Inspect console logs, network requests, and page elements, and create diagnostic reports.'],
+    ['bpt-settings', 'Organize prompts into collapsible sections, search them, and use video backgrounds.'],
+    ['expressions_container', 'Show character sprites that change to match the emotions in their messages.'],
+    ['ChatCompletionTabs-drawer', 'Adds Parameters and Prompts tabs to the older Chat Completion layout.'],
+    ['ChatCompletionTabs-container', 'Adds Parameters and Prompts tabs to the older Chat Completion layout.'],
+    ['translation_container', 'Translate chat messages manually or automatically using your chosen translation service.'],
+    ['extension_settings_guided-generations', 'Guide replies, rewrites, and impersonation with instructions from the message box.'],
+    ['caption_container', 'Generate text descriptions for images in your chats.'],
+    ['sd_container', 'Generate character portraits, scenes, and backgrounds with your chosen image service.'],
+    ['extension_settings_in_chat_agents_pathfinder', 'Let an AI agent search and update lorebooks and summarize your chat.'],
+    ['qig-settings', 'Generate images from prompts or chat scenes, with style presets and a gallery.'],
+    ['qr_container', 'Create buttons that insert or send saved text, or run commands.'],
+    ['regex_container', 'Find and replace text in messages and prompts using regular expressions.'],
+    ['summarize_container', 'Create and update a chat summary to use in the AI\'s prompt.'],
+    ['tts_container', 'Read chat messages aloud using your chosen voices and speech provider.'],
+    ['vectors_container', 'Find relevant messages, file passages, and lorebook entries for the AI\'s prompt.'],
+]);
+
 /**
  * Builds the row list for the Extensions panel.
  *
@@ -77,11 +96,13 @@ function collectExtensionRows(body) {
             continue;
         }
 
+        const description = SB_EXTENSION_DESCRIPTIONS.get(container.id);
         rows.push({
             id: container.id || `extension-${rows.length}`,
             label,
-            description: SB_SUBPAGE_PLACEHOLDER,
-            placeholder: true,
+            description: description ?? SB_SUBPAGE_PLACEHOLDER,
+            descriptionKey: description,
+            placeholder: !description,
             icon: 'fa-puzzle-piece',
             source: () => container,
             isAvailable: () => !isContainerEmpty(container),
