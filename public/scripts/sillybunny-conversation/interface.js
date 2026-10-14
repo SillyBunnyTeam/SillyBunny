@@ -1,3 +1,4 @@
+import { online_status } from '../../script.js';
 import { isConversationStylesheetLoading, setConversationInterfaceActive } from './chrome.js';
 import { CHROME_IDS, DEFAULT_BRANCH_ID, DEFAULT_SETTINGS, SETTINGS_FIELDS } from './constants.js';
 import {
@@ -321,16 +322,19 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
         const unavailableGroup = conversationState.conversationUnavailableGroupId
             ? getConversationGroupById(conversationState.conversationUnavailableGroupId)
             : null;
+        const isConnected = online_status !== 'no_connection';
         if (input instanceof HTMLTextAreaElement) {
             input.disabled = !avatar;
-            input.placeholder = avatar
-                ? 'Type your message...'
-                : unavailableGroup
-                    ? 'This group has no eligible Conversation members yet...'
-                    : 'Pick or start a DM from the Pals rail...';
+            input.placeholder = !isConnected
+                ? 'Not connected to API!'
+                : avatar
+                    ? 'Type your message...'
+                    : unavailableGroup
+                        ? 'This group has no eligible Conversation members yet...'
+                        : 'Pick or start a DM from the Pals rail...';
         }
         if (send instanceof HTMLButtonElement) {
-            send.disabled = !avatar;
+            send.disabled = !avatar || !isConnected || conversationState.conversationUploadActive;
         }
         document.querySelectorAll(`#${CHROME_IDS.form} .sb-conversation-composer-quick`).forEach((button) => {
             if (button instanceof HTMLButtonElement) {

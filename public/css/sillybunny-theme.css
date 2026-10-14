@@ -1393,10 +1393,13 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     /* libadwaita toolbar row, as in the Conversation composer: flat buttons either side of
        one filled entry. A hairline above separates it from the quick-action row. */
     border: 0;
-    border-block-start: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
     border-radius: 0;
     background: transparent;
     box-shadow: none;
+}
+
+#send_form:has(> #gg-action-button-container:not([hidden]), > .stih--buttons.stih--standalone:not(.stih--hidden)) #nonQRFormItems {
+    border-block-start: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
 }
 
 #leftSendForm,
@@ -1626,6 +1629,14 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     color: var(--sb-on-solid-accent, var(--sb-on-accent, var(--color-background, var(--SmartThemeBlurTintColor)))) !important;
     font-size: var(--sb-composer-action-icon-size) !important;
     opacity: 1;
+}
+
+/* Keep the send affordance in place offline; show it as unavailable until an API is connected. */
+#send_form.no-connection #rightSendForm > #send_but {
+    background: var(--sb-raised-bg) !important;
+    color: var(--sb-muted-fg) !important;
+    cursor: not-allowed;
+    pointer-events: none;
 }
 
 #send_form .mes_stop,

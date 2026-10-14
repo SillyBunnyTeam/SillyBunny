@@ -386,7 +386,11 @@ function RA_checkOnlineStatus() {
         const send_textarea = $('#send_textarea');
         send_textarea.attr('placeholder', send_textarea.attr('no_connection_text')); //Input bar placeholder tells users they are not connected
         $('#send_form').addClass('no-connection');
-        $('#send_but').addClass('displayNone'); //send button is hidden when not connected;
+        // SillyBunny: keep idle Send visible offline, but disable keyboard activation and preserve generation hiding.
+        $('#send_but')
+            .toggleClass('displayNone', is_send_press || Boolean(selected_group && is_group_generating))
+            .addClass('disabled')
+            .attr('aria-disabled', 'true');
         $('#mes_continue').addClass('displayNone'); //continue button is hidden when not connected;
         $('#mes_impersonate').addClass('displayNone'); //continue button is hidden when not connected;
         $('#API-status-top').removeClass('fa-plug');
@@ -397,6 +401,7 @@ function RA_checkOnlineStatus() {
             const send_textarea = $('#send_textarea');
             send_textarea.attr('placeholder', send_textarea.attr('connected_text')); //on connect, placeholder tells user to type message
             $('#send_form').removeClass('no-connection');
+            $('#send_but').removeClass('disabled').attr('aria-disabled', 'false');
             $('#API-status-top').removeClass('fa-plug-circle-exclamation redOverlayGlow');
             $('#API-status-top').addClass('fa-plug');
             connection_made = true;

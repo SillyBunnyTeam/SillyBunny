@@ -10877,6 +10877,10 @@ export function activateSendButtons({ emitGenerationEnded = true } = {}) {
     if (!lockState.shouldShowStopButton) {
         hideStopButton({ emitGenerationEnded });
     }
+    // SillyBunny: restore the disabled offline affordance after generation without waiting for a status change.
+    if (online_status === 'no_connection' && !lockState.shouldShowStopButton && !(selected_group && is_group_generating)) {
+        document.getElementById?.('send_but')?.classList?.remove('displayNone');
+    }
     if (!lockState.shouldHideSwipeButtons) {
         showSwipeButtons();
     }
@@ -17341,6 +17345,10 @@ jQuery(async function () {
     const userInputGenerateMutex = new SimpleMutex(sendTextareaMessage);
     const sendButtonElement = document.getElementById('send_but');
     bindIOSFastTapSendButton(sendButtonElement, async () => {
+        // SillyBunny: the offline Send control stays visible; reject activation before draft or chat mutation.
+        if (online_status === 'no_connection' || online_status === undefined) {
+            return;
+        }
         await userInputGenerateMutex.update();
     }, { isIOS: isIOSFocusSensitiveBrowser });
 

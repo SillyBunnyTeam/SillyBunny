@@ -18,6 +18,7 @@ function getStore(personaId, avatar = 'char.png', groupId = '') {
 }
 
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/chrome.js', () => ({ isConversationStylesheetLoading: () => false, setConversationInterfaceActive: jest.fn() }));
+await jest.unstable_mockModule('../public/script.js', () => ({ online_status: 'Connected' }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
     getConversationBranches: () => [],
     getConversationGroupById: () => null,

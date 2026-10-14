@@ -1,4 +1,4 @@
-import { is_send_press } from '../../script.js';
+import { is_send_press, online_status } from '../../script.js';
 import { MEDIA_DISPLAY } from '../constants.js';
 import { checkMultiCharacterChime, handleAvailabilityAutoResponder } from './auto-engine.js';
 import {
@@ -748,7 +748,7 @@ export async function processSendQueue({ processItem = processQueuedConversation
 }
 
 export async function submitConversationInput() {
-    if (is_send_press || conversationState.conversationUploadActive) {
+    if (online_status === 'no_connection' || is_send_press || conversationState.conversationUploadActive) {
         return;
     }
 
@@ -886,9 +886,7 @@ export async function submitConversationInput() {
         void processSendQueue();
     } finally {
         conversationState.conversationUploadActive = false;
-        if (sendButton instanceof HTMLButtonElement) {
-            sendButton.disabled = false;
-        }
+        scheduleInterfaceRefresh({ syncControls: false });
     }
 }
 
