@@ -68,12 +68,21 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     flex: 1 1 0;
     min-width: 0;
     min-height: 0;
+    /* libadwaita --border-color: currentColor at --border-opacity (15%, 50% in high contrast). The editor
+       shares the settings pane's View tone, so this edge is the only thing separating the two. */
+    --sb-prompt-editor-edge: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
     overflow: hidden;
-    border: 1px solid var(--SmartThemeBorderColor);
+    border: 1px solid var(--sb-prompt-editor-edge);
     border-radius: var(--sb-radius-card);
     background: var(--sb-layer-window);
     color: var(--SmartThemeBodyColor);
     font-family: var(--mainFontFamily);
+}
+
+@media (prefers-contrast: more) {
+    .sb-prompt-editor {
+        --sb-prompt-editor-edge: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
+    }
 }
 
 :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-sheet-backdrop)[hidden],
