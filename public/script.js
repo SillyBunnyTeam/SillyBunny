@@ -10940,11 +10940,6 @@ export function resetChatState() {
 export function setMenuType(value) {
     const rightNavPanel = document.getElementById('right-nav-panel');
 
-    if (rightNavPanel instanceof HTMLElement && value !== 'character_edit' && value !== 'create') {
-        rightNavPanel.classList.remove('sb-character-editor-fullscreen');
-        rightNavPanel.dataset.sbCharacterEditorFullscreen = 'false';
-    }
-
     menu_type = value;
     // Allow custom CSS to see which menu type is active
     if (rightNavPanel instanceof HTMLElement) {

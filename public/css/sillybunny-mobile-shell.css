@@ -1735,10 +1735,10 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #right-nav-panel-tabs {
         position: relative;
         display: grid;
-        grid-template-columns: minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);
+        grid-template-columns: minmax(0, 1fr) var(--sb-mobile-touch-target, 44px);
         grid-template-areas:
-            'title fullscreen close'
-            'meta meta meta';
+            'title close'
+            'meta meta';
         align-items: center;
         gap: 2px 6px;
         min-height: var(--sb-mobile-touch-target, 44px);
@@ -1796,7 +1796,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         border-radius: 8px;
     }
 
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) :is(#sb_character_editor_fullscreen_toggle, #sb_character_editor_exit) {
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb_character_editor_exit {
         width: var(--sb-mobile-touch-target, 44px);
         min-width: var(--sb-mobile-touch-target, 44px);
         max-width: var(--sb-mobile-touch-target, 44px);
@@ -1810,11 +1810,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb_character_editor_exit {
         grid-area: close;
-        display: inline-flex;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb_character_editor_fullscreen_toggle:not([hidden]) {
-        grid-area: fullscreen;
         display: inline-flex;
     }
 

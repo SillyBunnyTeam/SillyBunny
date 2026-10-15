@@ -2312,10 +2312,6 @@ function wait(ms) {
     return new Promise(resolve => window.setTimeout(resolve, ms));
 }
 
-function isCharacterEditorMenuType(menuType) {
-    return ['character_edit', 'create'].includes(menuType ?? '');
-}
-
 // Row subtitles and section meta lines describe a setting rather than name it: they stay searchable,
 // but folding them into `textContent` turned every label into "NameDescription". Placeholder copy is
 // unwritten filler and is neither searchable nor shown.
@@ -7497,7 +7493,6 @@ function syncCharacterTitlebarVisibility() {
 
     const shouldHide = ['characters', 'groups', 'editor_empty', 'world-info', 'persona', 'import', 'conversation'].includes(panel.dataset.menuType ?? '');
     pinAndTabs.style.display = shouldHide ? 'none' : '';
-    syncCharacterEditorFullscreenAvailability();
 }
 
 function ensureCharacterPersonaPanel() {
@@ -7584,103 +7579,15 @@ function setCharacterWorldInfoPanelVisible(visible) {
     }
 }
 
-function setCharacterEditorFullscreenState(expanded, { focusButton = false } = {}) {
-    const panel = getCharacterPanel();
-    const toggleButton = document.getElementById('sb_character_editor_fullscreen_toggle');
-    const wasExpanded = panel instanceof HTMLElement && panel.classList.contains('sb-character-editor-fullscreen');
-    const canExpand = panel instanceof HTMLElement
-        && panel.classList.contains('openDrawer')
-        && isCharacterEditorMenuType(panel.dataset.menuType);
-    const isExpanded = Boolean(expanded) && canExpand;
-
-    if (panel instanceof HTMLElement) {
-        panel.classList.toggle('sb-character-editor-fullscreen', isExpanded);
-        panel.dataset.sbCharacterEditorFullscreen = String(isExpanded);
-    }
-
-    if (toggleButton instanceof HTMLButtonElement) {
-        setButtonPressed(toggleButton, isExpanded);
-        toggleButton.title = isExpanded ? 'Exit editor fullscreen' : 'Enter editor fullscreen';
-        toggleButton.setAttribute('aria-label', toggleButton.title);
-        toggleButton.setAttribute('aria-expanded', String(isExpanded));
-        toggleButton.dataset.i18n = isExpanded
-            ? '[title]Exit editor fullscreen;[aria-label]Exit editor fullscreen'
-            : '[title]Enter editor fullscreen;[aria-label]Enter editor fullscreen';
-
-        if (focusButton) {
-            toggleButton.focus({ preventScroll: true });
-        }
-    }
-
-    if (isExpanded && !wasExpanded) {
-        scrollElementIntoManagedView(document.getElementById('sb_character_editor_header'), { block: 'nearest' });
-    }
-}
-
 function setCharacterPanelMenuType(panel, menuType) {
     if (!(panel instanceof HTMLElement)) {
         return;
-    }
-
-    if (!isCharacterEditorMenuType(menuType)) {
-        setCharacterEditorFullscreenState(false);
     }
 
     panel.dataset.menuType = menuType;
     if (panel.dataset.menuType !== menuType) {
         panel.setAttribute('data-menu-type', menuType);
     }
-}
-
-function toggleCharacterEditorFullscreen() {
-    const panel = getCharacterPanel();
-    if (!(panel instanceof HTMLElement) || !panel.classList.contains('openDrawer') || !isCharacterEditorMenuType(panel.dataset.menuType)) {
-        return;
-    }
-
-    setCharacterEditorFullscreenState(!panel.classList.contains('sb-character-editor-fullscreen'), { focusButton: true });
-}
-
-function syncCharacterEditorFullscreenAvailability() {
-    const panel = getCharacterPanel();
-    const toggleButton = document.getElementById('sb_character_editor_fullscreen_toggle');
-    const canUseFullscreen = panel instanceof HTMLElement
-        && isCharacterEditorMenuType(panel.dataset.menuType)
-        && panel.classList.contains('openDrawer');
-
-    if (toggleButton instanceof HTMLButtonElement) {
-        toggleButton.hidden = !canUseFullscreen;
-    }
-
-    if (!canUseFullscreen) {
-        setCharacterEditorFullscreenState(false);
-    }
-}
-
-function bindCharacterEditorFullscreenToggle() {
-    const toggleButton = document.getElementById('sb_character_editor_fullscreen_toggle');
-    if (!(toggleButton instanceof HTMLButtonElement) || toggleButton.dataset.sbBound === 'true') {
-        return;
-    }
-
-    toggleButton.dataset.sbBound = 'true';
-    toggleButton.addEventListener('click', () => toggleCharacterEditorFullscreen());
-
-    const panel = getCharacterPanel();
-    if (panel instanceof HTMLElement && panel.dataset.sbEditorFullscreenKeyBound !== 'true') {
-        panel.dataset.sbEditorFullscreenKeyBound = 'true';
-        panel.addEventListener('keydown', (event) => {
-            if (event.key !== 'Escape' || !panel.classList.contains('sb-character-editor-fullscreen')) {
-                return;
-            }
-
-            setCharacterEditorFullscreenState(false, { focusButton: true });
-            event.preventDefault();
-            event.stopImmediatePropagation();
-        });
-    }
-
-    syncCharacterEditorFullscreenAvailability();
 }
 
 function isVisibleCharacterDrawerEscapeControl(element) {
@@ -7961,10 +7868,6 @@ function activateCharacterPanelTabInPlace(tabId) {
     const normalizedTabId = normalizeCharacterPanelTab(tabId);
     sbState.characterDrawer.lastTab = normalizedTabId;
 
-    if (normalizedTabId !== 'editor') {
-        setCharacterEditorFullscreenState(false);
-    }
-
     if (normalizedTabId === 'world-info' || normalizedTabId === 'persona') {
         preloadPanelStylesheets('characters', normalizedTabId);
     }
@@ -8170,7 +8073,6 @@ function syncCharacterDrawerStateFromDom({ force = false } = {}) {
     sbState.characterDrawer.observedOpen = isOpen;
     syncDrawerIconState('#rightNavDrawerIcon', isOpen);
     syncDrawerIconState('#WIDrawerIcon', isOpen && panel.dataset.menuType === 'world-info');
-    syncCharacterEditorFullscreenAvailability();
 
     if (!isOpen && document.activeElement instanceof HTMLElement && panel.contains(document.activeElement)) {
         document.activeElement.blur();
@@ -8197,7 +8099,6 @@ function bindCharacterDrawerStateObserver() {
             setCharacterPersonaPanelVisible(panel.dataset.menuType === 'persona');
             setCharacterImportPanelVisible(panel.dataset.menuType === 'import');
             setCharacterWorldInfoPanelVisible(panel.dataset.menuType === 'world-info');
-            syncCharacterEditorFullscreenAvailability();
             syncCharacterTitlebarVisibility();
             syncCharacterShellTabs();
         }
@@ -8210,7 +8111,6 @@ function bindCharacterDrawerStateObserver() {
 }
 
 function closeCharacterPanel() {
-    setCharacterEditorFullscreenState(false);
     if (isSettingsPageHosting('characters')) {
         closeSettingsPage();
     }
@@ -13918,7 +13818,6 @@ function closeMobileNav() {
 function injectCharacterDrawerControls() {
     getCharacterPanel()?.classList.add('sb-character-drawer-root');
     ensureCharacterListToolbarLayout();
-    bindCharacterEditorFullscreenToggle();
     bindCharacterDrawerEscapeHandler();
     bindCreatorNotesFullscreen();
 
@@ -14033,7 +13932,6 @@ function bindCharacterEditorExitButton() {
 
     button.dataset.sbBound = 'true';
     button.addEventListener('click', () => {
-        setCharacterEditorFullscreenState(false);
         closeCharacterPanel();
     });
 }
@@ -15998,9 +15896,7 @@ function deactivateSettingsPageRoot(shellKey) {
         document.activeElement.blur();
     }
 
-    if (shellKey === 'characters') {
-        setCharacterEditorFullscreenState(false);
-    } else {
+    if (shellKey !== 'characters') {
         const shellState = getShellState(shellKey);
         shellState?.tabs.get(shellState.activeTabId)?.onDeactivate?.();
     }

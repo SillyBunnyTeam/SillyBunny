@@ -244,26 +244,8 @@
 
 /* Header actions keep their intrinsic width and never shrink into the title. */
 .sb-editor-header > #sb_character_editor_cancel,
-.sb-editor-header > #sb_character_editor_save,
-.sb-editor-header > #sb_character_editor_fullscreen_toggle {
+.sb-editor-header > #sb_character_editor_save {
     flex: 0 0 auto;
-}
-
-/* The legacy #right-nav-panel .sb-character-editor-fullscreen-toggle rule in
-   sillybunny-tabs.css pins this button to --sb-mobile-touch-target (44px), which
-   is an ID-scoped selector and so outranks the class-based sizing above. It was
-   written when the toggle sat in the toolbar; inside the header it renders a
-   mismatched button among 38px siblings. Re-pin it here at the header size
-   without !important by matching the ID specificity. */
-#right-nav-panel .sb-editor-header > #sb_character_editor_fullscreen_toggle {
-    flex: 0 0 auto;
-    width: var(--sb-control-icon-physical-size, 36px);
-    min-width: var(--sb-control-icon-physical-size, 36px);
-    max-width: var(--sb-control-icon-physical-size, 36px);
-    height: var(--sb-control-icon-physical-size, 36px);
-    min-height: var(--sb-control-icon-physical-size, 36px);
-    max-height: var(--sb-control-icon-physical-size, 36px);
-    border-radius: var(--sb-radius-control, 9px);
 }
 
 /* Primary action. --sb-on-accent resolves to literal black, which is unreadable

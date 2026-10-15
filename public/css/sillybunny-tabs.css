@@ -2359,12 +2359,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     display: none !important;
 }
 
-/* SillyBunny: favorites bar does not belong in editor mode; hidden in non-fullscreen editor (Step 3b fix)
- * Needs .openDrawer to beat the flex !important at line ~2120 which requires .openDrawer */
-#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]):not(.sb-character-editor-fullscreen) > #CharListButtonAndHotSwaps {
-    display: none !important;
-}
-
 .sb-character-editor-empty {
     min-height: min(360px, 54vh);
     display: flex;
@@ -5566,81 +5560,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     margin: 0;
     padding: 0;
     background: transparent;
-}
-
-#sb_character_editor_fullscreen_toggle {
-    display: none;
-}
-
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb_character_editor_fullscreen_toggle:not([hidden]) {
-    display: inline-flex;
-}
-
-#right-nav-panel .sb-character-editor-fullscreen-toggle {
-    flex: 0 0 var(--sb-mobile-touch-target, 40px);
-    width: var(--sb-mobile-touch-target, 40px);
-    min-width: var(--sb-mobile-touch-target, 40px);
-    max-width: var(--sb-mobile-touch-target, 40px);
-    height: var(--sb-mobile-touch-target, 40px);
-    min-height: var(--sb-mobile-touch-target, 40px);
-    max-height: var(--sb-mobile-touch-target, 40px);
-    align-self: center;
-    margin: 0;
-    padding: 0 !important;
-    border-radius: var(--sb-radius-button, 14px);
-}
-
-#right-nav-panel .sb-character-editor-fullscreen-toggle i {
-    pointer-events: none;
-}
-
-#right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) {
-    min-height: 0 !important;
-}
-
-#right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) > #CharListButtonAndHotSwaps {
-    display: none !important;
-}
-
-#right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) > .scrollableInner,
-#right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) > .scrollableInnerFull {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-    max-height: none !important;
-    height: 100% !important;
-    padding-top: 0;
-}
-
-#right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) #rm_ch_create_block {
-    flex: 1 1 auto;
-    min-height: 0;
-    height: 100%;
-    display: flex !important;
-    flex-direction: column;
-    overflow: hidden;
-    padding-inline-end: 0;
-}
-
-#right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) #form_create {
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-    min-height: 0;
-    height: 100%;
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding-inline-end: var(--sb-character-scroll-gutter, 8px);
-    overscroll-behavior: contain;
-}
-
-#right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) .sb-character-editor-fullscreen-toggle {
-    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 12%, var(--sb-shell-surface) 88%);
-}
-
-#right-nav-panel.openDrawer.sb-character-editor-fullscreen:is([data-menu-type="character_edit"], [data-menu-type="create"]) .sb-character-editor-fullscreen-toggle i.fa-maximize::before {
-    content: '\f066';
 }
 
 #right-nav-panel .sb-character-editor-field-group {

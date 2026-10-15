@@ -152,45 +152,6 @@ test('mobile Characters pager stays below the toolbar after Home navigation', as
     expect(layout.overlapsToolbar).toBe(false);
 });
 
-test('Characters settings page Escape preserves fullscreen editor precedence', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForFunction(() => typeof window.SillyBunnyShell?.openTab === 'function' && !document.querySelector('#preloader'));
-
-    const openDialog = page.locator('dialog[open]');
-    if (await openDialog.count()) {
-        await page.keyboard.press('Escape');
-        await expect(openDialog).toHaveCount(0);
-    }
-    const setupWizard = page.locator('#qig-setup-wizard');
-    if (await setupWizard.isVisible().catch(() => false)) {
-        await setupWizard.locator('.qig-close-btn').click({ force: true });
-        await expect(setupWizard).toBeHidden();
-    }
-
-    const settingsPage = page.locator('#sb-settings-page');
-    const characterPanel = page.locator('#right-nav-panel');
-    await page.locator('#sb-character-toggle').click();
-    await expect(settingsPage).toBeVisible();
-    await expect(characterPanel).toHaveClass(/sb-settings-active-root/);
-
-    const editorTab = characterPanel.locator('[data-sb-character-tab="editor"]');
-    if (await editorTab.isVisible().catch(() => false)) {
-        await editorTab.click();
-    }
-
-    const fullscreenToggle = characterPanel.locator('#sb_character_editor_fullscreen_toggle');
-    if (await fullscreenToggle.isVisible().catch(() => false)) {
-        await fullscreenToggle.click();
-        await expect(characterPanel).toHaveClass(/sb-character-editor-fullscreen/);
-        await page.keyboard.press('Escape');
-        await expect(characterPanel).not.toHaveClass(/sb-character-editor-fullscreen/);
-    }
-
-    await page.locator('#sb-settings-close').click();
-    await expect(settingsPage).toHaveAttribute('hidden', '');
-    await expect(characterPanel).not.toHaveClass(/sb-settings-active-root/);
-});
-
 test('mobile top-bar shell triggers open the settings page with motion', async ({ page, isMobile }) => {
     test.skip(!isMobile, 'Mobile shell motion is mobile-only.');
     await page.goto('/');
