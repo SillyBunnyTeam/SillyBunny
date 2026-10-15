@@ -170,3 +170,32 @@ test('desktop fields share one height and Created by aligns with its section', a
     expect(layout.createdBy).toBe(layout.notes);
     expect(layout.flat.every(width => width === '0px')).toBe(true);
 });
+
+test('dirty draft recovers after page reload', async ({ page }) => {
+    await openEditor(page);
+    const name = page.locator('#character_name_pole');
+    const initialName = await name.inputValue();
+    await name.fill('Draft Recovery Test');
+    await expect(page.locator('#sb_character_editor_dirty')).toBeVisible();
+    // beforeunload writes the draft and arms the browser's leave prompt; accept it.
+    page.on('dialog', dialog => dialog.accept());
+    await page.reload();
+    await page.waitForFunction(() => !document.getElementById('preloader'));
+    // Reopen editor
+    await page.locator('#sb-character-toggle').click();
+    await page.evaluate(async () => {
+        const app = await import('/script.js');
+        app.setCharacterId(0);
+        app.select_selected_character(0);
+    });
+    await expect(page.locator('#sb_character_editor_header')).toBeVisible();
+    await page.locator('#sb_draft_restore_btn').click();
+    await expect(name).toHaveValue('Draft Recovery Test');
+    await expect(page.locator('#sb_character_editor_dirty')).toBeVisible();
+    // Escape runs the dirty guard; Discard reverts to the saved card and drops the draft.
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Discard', exact: true }).click();
+    await expect(name).toHaveValue(initialName);
+    expect(await page.evaluate(() => Object.keys(localStorage).some(key => key.startsWith('sb-editor-draft-')))).toBe(false);
+    await expect(page.locator('#sb_character_editor_dirty')).toBeHidden();
+});

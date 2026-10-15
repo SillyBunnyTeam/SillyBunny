@@ -448,7 +448,8 @@
     line-height: 1.4;
 }
 
-.sb-editor-field {
+/* ds-field: vertical field layout (label-above-textarea). Rows use ds-row instead. */
+.ds-field {
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -456,25 +457,25 @@
     border-bottom: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
 }
 
-.ds-pref-group > .sb-editor-field:last-child {
+.ds-pref-group > .ds-field:last-child {
     border-bottom: 0;
 }
 
-.sb-editor-field__header {
+.ds-field-header {
     display: flex;
     align-items: center;
     gap: 6px;
     flex-wrap: wrap;
 }
 
-.sb-editor-field__label {
+.ds-field-label {
     font-size: var(--sb-type-control, 15px);
     font-weight: 600;
     color: var(--SmartThemeBodyColor);
     margin: 0;
 }
 
-.sb-editor-field__subtitle {
+.ds-field-subtitle {
     display: block;
     font-size: var(--sb-type-meta, 13px);
     font-weight: 400;
@@ -483,20 +484,20 @@
     margin-top: 2px;
 }
 
-.sb-editor-field__hint {
+.ds-field-hint {
     font-size: var(--sb-type-meta, 13px);
     color: var(--sb-muted-fg, color-mix(in srgb, var(--SmartThemeBodyColor) 70%, transparent));
     line-height: 1.4;
 }
 
-.sb-editor-field__actions {
+.ds-field-actions {
     display: flex;
     align-items: center;
     gap: 6px;
     margin-left: auto;
 }
 
-.sb-editor-field__actions .menu_button,
+.ds-field-actions .menu_button,
 #tags_div .tags_view,
 #sb_creator_notes_maximize {
     margin: 0;
@@ -505,21 +506,21 @@
     font-size: var(--sb-type-meta, 13px);
 }
 
-.sb-editor-inline-controls {
+.ds-inline-controls {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
 }
 
-.sb-editor-inline-control {
+.ds-inline-control {
     display: flex;
     align-items: center;
     gap: 8px;
     font-size: var(--sb-type-control, 15px);
 }
 
-.sb-editor-inline-control input,
-.sb-editor-inline-control select {
+.ds-inline-control input,
+.ds-inline-control select {
     flex: 1 1 120px;
     min-width: 0;
 }
@@ -535,7 +536,7 @@
 }
 
 /* Field pair layout for creator/version */
-.sb-editor-field-pair {
+.ds-field-pair {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0;
@@ -544,25 +545,25 @@
 /* sillybunny-tabs.css pads every non-row .ds-pref-group child by 10px 16px when
    the panel is mounted in the settings page. The pair is only a grid wrapper;
    its fields already carry that padding, so the wrapper must not add more. */
-#right-nav-panel #form_create .sb-editor-section__body > .sb-editor-field-pair {
+#right-nav-panel #form_create .sb-editor-section__body > .ds-field-pair {
     padding: 0;
 }
 
-.sb-editor-field-pair > .sb-editor-field {
+.ds-field-pair > .ds-field {
     padding: 10px 16px;
     border-bottom: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
 }
 
-.sb-editor-field-pair > .sb-editor-field:nth-child(odd) {
+.ds-field-pair > .ds-field:nth-child(odd) {
     border-right: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
 }
 
 @media screen and (max-width: 620px) {
-    .sb-editor-field-pair {
+    .ds-field-pair {
         grid-template-columns: 1fr;
     }
 
-    .sb-editor-field-pair > .sb-editor-field:nth-child(odd) {
+    .ds-field-pair > .ds-field:nth-child(odd) {
         border-right: 0;
     }
 }
@@ -610,7 +611,7 @@
     gap: 14px;
 }
 
-.sb-character-essentials__fields .sb-editor-field {
+.sb-character-essentials__fields .ds-field {
     padding: 0;
     border-bottom: 0;
 }
@@ -961,7 +962,7 @@
         padding: 6px 8px;
     }
 
-    .sb-editor-field {
+    .ds-field {
         padding: 10px 12px;
     }
 
