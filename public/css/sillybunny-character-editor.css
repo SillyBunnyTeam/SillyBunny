@@ -1054,6 +1054,14 @@
     }
 }
 
+/* Draft-recovery toast actions (sillybunny-editor/chrome.js). Toasts render
+   outside both editors, so this is not scoped to either sheet. */
+.sb-draft-toast__actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
 /* Scroll-hide — header and toolbar collapse when scrolling down on mobile
    ========================================================================= */
 

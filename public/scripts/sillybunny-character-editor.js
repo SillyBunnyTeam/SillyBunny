@@ -1,7 +1,11 @@
 // SillyBunny: character editor controller — explicit-save, draft backup, greeting renderer
 // (Step 3b, feat/v1.9.0-ui-overhaul)
 //
-/* global moment */
+// Session, draft, leave-guard, header/toolbar, and preview mechanics are shared
+// with the group editor through ./sillybunny-editor/. This file keeps only what
+// is specific to characters: the field snapshot, greetings, the action menu,
+// the token readout, and preview formatting.
+//
 // Public API consumed by script.js:
 //   beginCharacterEditorLoad()          — flush draft before field writes
 //   loadCharacterEditorGreetings(chid, mode) — render greeting lists after fields are loaded
@@ -16,7 +20,7 @@
 
 import { formatCreatorNotes, getCurrentEntityId } from './chats.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT } from './popup.js';
-import { openActionMenu, closeActionMenu, isActionMenuOpen } from './sillybunny-action-menu.js';
+import { openActionMenu } from './sillybunny-action-menu.js';
 import { setCharacterEditorQuickEdit } from './power-user.js';
 import { eventSource, event_types } from './events.js';
 import {
@@ -30,16 +34,46 @@ import { t, translate } from './i18n.js';
 import { getCurrentUserHandle } from './user.js';
 import { createSegmentedControl, setSegmentedControlValue } from './sillybunny-segmented-control.js';
 import { DOMPurify } from '../lib.js';
+import { createEditorSession } from './sillybunny-editor/session.js';
+import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
+import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
+import { registerEditorNavigation, confirmEditorLeave, discardEditorChanges } from './sillybunny-editor/navigation.js';
+import { mountEditorPreviews } from './sillybunny-editor/preview.js';
 
+// Existing users' backups live under this prefix; changing it orphans them.
 const DRAFT_KEY_PREFIX = 'sb-editor-draft-';
-const DRAFT_INTERVAL_MS = 5000;
 const NEW_CHAR_DRAFT_KEY = 'new-character';
 
 // --- Module state ---
 
-/** @type {{ mode: 'edit'|'create', chid: number|null, avatar: string, baseline: object, baselineJson: string }|null} */
-let currentSession = null;
-let draftTimerId = null;
+const drafts = createEditorDraftStore({
+    keyFor: avatar => `${DRAFT_KEY_PREFIX}${getCurrentUserHandle() || 'default'}-${avatar}`,
+});
+
+const session = createEditorSession({
+    captureSnapshot: _captureSnapshot,
+    restoreSnapshot: _restoreSnapshot,
+    // script.js calls markCharacterEditorSaved() on success, which moves the
+    // baseline; a failed or user-aborted save leaves the editor dirty.
+    persist: () => createOrEditCharacter(),
+    drafts,
+    onStateChange: _renderChrome,
+    offerDraft: showDraftRecoveryToast,
+});
+
+const navigation = {
+    session,
+    isActive: _isEditorVisible,
+    close: _closeSafely,
+};
+
+/** @type {ReturnType<typeof mountEditorChrome>|null} */
+let chrome = null;
+/** @type {ReturnType<typeof mountEditorPreviews>|null} */
+let previews = null;
+/** Header title for the open session; follows inline renames. */
+let editorTitle = '';
+
 /** @type {MutationObserver|null} */
 let tokenMirrorObserver = null;
 let tokenMirrorScheduled = false;
@@ -54,30 +88,20 @@ let draftGrp = [];
 /** @type {string|null} */
 let draftOwner = null;
 
-// Plan §3.3: user-input handlers debounce at 300ms.
-const DIRTY_DEBOUNCE_MS = 300;
-let dirtyTimerId = null;
-let leavePromptOpen = false;
-
 // ============================================================
 // Public API
 // ============================================================
 
 export function initCharacterEditor() {
-    _bindHeaderButtons();
+    _mountChrome();
     _bindToolbarButtons();
-    _bindActionMenu();
     _bindExportMenu();
     _bindTokenMirror();
-    _bindToolbarOverflowObserver();
-    _bindPreviewToggles();
+    previews = mountEditorPreviews(/** @type {HTMLElement} */ (document.getElementById('form_create')), _renderPreview);
     _mountRoleSegment();
     _bindGreetingAddButtons();
     _bindFieldDirtyListeners();
-    _bindKeyboardShortcuts();
-    _bindNavigationGuards();
-    _bindDraftPersistence();
-    _bindScrollHide();
+    registerEditorNavigation(navigation);
 
     // Recapture baseline whenever the backend saves (avatar change, world link, export)
     eventSource.on(event_types.CHARACTER_EDITED, _handleExternalSave);
@@ -88,10 +112,8 @@ export function initCharacterEditor() {
  * Flushes any pending dirty draft so it isn't lost.
  */
 export function beginCharacterEditorLoad() {
-    if (currentSession && _isDirty()) {
-        _saveDraftNow();
-    }
-    _closeDraftTimer();
+    session.suspend();
+    dismissDraftRecoveryToast();
 }
 
 /**
@@ -120,25 +142,14 @@ export function loadCharacterEditorGreetings(chid, mode) {
  * @param {number} chid
  */
 export function openCharacterEditorSession(chid) {
-    _closeDraftTimer();
-
     const character = characters[chid];
     if (!character) {
         console.warn('[sb-editor] openCharacterEditorSession: character not found', chid);
         return;
     }
 
-    currentSession = _createSession('edit', chid, character.avatar);
-
-    _updateHeaderTitle(character.name);
-    _updateHeaderButtons();
-    _resetPreviewToggles();
-    _checkDraftRestore();
-    _startDraftTimer();
-    _syncTokenReadout();
-    _syncFavoritePressed();
-    _scheduleToolbarOverflow();
-    _resetEditorChrome();
+    editorTitle = character.name;
+    _openSession({ mode: 'edit', entityId: character.avatar, chid });
 }
 
 /**
@@ -146,29 +157,8 @@ export function openCharacterEditorSession(chid) {
  * Call after loadCharacterEditorGreetings and after all fields are written.
  */
 export function openCharacterEditorCreateSession() {
-    _closeDraftTimer();
-
-    currentSession = _createSession('create', null, NEW_CHAR_DRAFT_KEY);
-
-    _updateHeaderTitle(t`Create New Character`);
-    _updateHeaderButtons();
-    _resetPreviewToggles();
-    _checkDraftRestore();
-    _startDraftTimer();
-    _syncTokenReadout();
-    _syncFavoritePressed();
-    _scheduleToolbarOverflow();
-    _resetEditorChrome();
-}
-
-/**
- * Runs the toolbar overflow pass after the browser has laid the panel out, since
- * the pass measures real widths and so cannot run before the drawer is sized.
- */
-function _scheduleToolbarOverflow() {
-    requestAnimationFrame(() => {
-        if (currentSession) _applyToolbarOverflow();
-    });
+    editorTitle = t`Create New Character`;
+    _openSession({ mode: 'create', entityId: NEW_CHAR_DRAFT_KEY, chid: null });
 }
 
 /**
@@ -176,13 +166,7 @@ function _scheduleToolbarOverflow() {
  * Removes the stored draft for this session.
  */
 export function markCharacterEditorSaved() {
-    if (!currentSession) return;
-    currentSession.baseline = _captureSnapshot();
-    currentSession.baselineJson = JSON.stringify(currentSession.baseline);
-    _clearDirtyDebounce();
-    _updateDirtyIndicator();
-    _updateHeaderButtons();
-    _removeDraft(currentSession.avatar);
+    session.markSaved();
 }
 
 /**
@@ -213,12 +197,12 @@ export function getCharacterEditorGroupGreetings(targetAvatar) {
  * Add a new alternate greeting row and focus its textarea.
  */
 export function addAlternateGreeting() {
-    if (!currentSession) return;
+    if (!session.isOpen()) return;
     const newIndex = draftAlt.length;
     draftAlt.push('');
     _renderAlternateGreetings();
     _commitCreateDrafts();
-    _refreshDirtyState();
+    session.changed({ immediate: true });
     _focusGreetingRow('.alternate_greetings_list', newIndex);
 }
 
@@ -226,12 +210,12 @@ export function addAlternateGreeting() {
  * Add a new group-only greeting row and focus its textarea.
  */
 export function addGroupGreeting() {
-    if (!currentSession) return;
+    if (!session.isOpen()) return;
     const newIndex = draftGrp.length;
     draftGrp.push('');
     _renderGroupGreetings();
     _commitCreateDrafts();
-    _refreshDirtyState();
+    session.changed({ immediate: true });
     _focusGreetingRow('.group_only_greetings_list', newIndex);
 }
 
@@ -239,9 +223,15 @@ export function addGroupGreeting() {
 // Internal: session and greeting-draft helpers
 // ============================================================
 
-function _createSession(mode, chid, avatar) {
-    const baseline = _captureSnapshot();
-    return { mode, chid, avatar, baseline, baselineJson: JSON.stringify(baseline) };
+/** @param {{ mode: 'edit'|'create', entityId: string, chid: number|null }} context */
+function _openSession(context) {
+    previews?.reset();
+    _syncRoleSegment();
+    session.open(context);
+    _syncTokenReadout();
+    _syncFavoritePressed();
+    chrome?.scheduleOverflow();
+    chrome?.reset();
 }
 
 /** @param {unknown} list */
@@ -273,85 +263,77 @@ function _commitCreateDrafts() {
 }
 
 // ============================================================
-// Header buttons
+// Header and toolbar chrome
 // ============================================================
 
-function _bindHeaderButtons() {
-    document.getElementById('sb_character_editor_back')
-        ?.addEventListener('click', _handleBack);
-    document.getElementById('sb_character_editor_cancel')
-        ?.addEventListener('click', _handleCancel);
-    document.getElementById('sb_character_editor_save')
-        ?.addEventListener('click', _handleSave);
-    document.getElementById('sb_character_editor_title_button')
-        ?.addEventListener('click', _handleRenameTrigger);
+function _mountChrome() {
+    const root = document.getElementById('form_create');
+    const header = document.getElementById('sb_character_editor_header');
+    const toolbar = document.getElementById('sb_character_editor_toolbar');
+    const content = root?.querySelector('.sb-character-sheet__content');
+    if (!root || !header || !toolbar || !(content instanceof HTMLElement)) return;
+
+    const nameField = /** @type {HTMLInputElement|null} */ (document.getElementById('character_name_pole'));
+
+    chrome = mountEditorChrome({
+        root,
+        header,
+        toolbar,
+        content,
+        controls: {
+            back: document.getElementById('sb_character_editor_back'),
+            cancel: /** @type {HTMLButtonElement} */ (document.getElementById('sb_character_editor_cancel')),
+            save: /** @type {HTMLButtonElement} */ (document.getElementById('sb_character_editor_save')),
+            title: document.getElementById('sb_character_editor_title'),
+            titleButton: /** @type {HTMLButtonElement|null} */ (document.getElementById('sb_character_editor_title_button')),
+            dirty: document.getElementById('sb_character_editor_dirty'),
+            more: document.getElementById('sb_character_editor_more'),
+        },
+        onBack: _handleBack,
+        onCancel: () => {
+            // Cancel is disabled when clean, so a click is intentional.
+            if (session.isDirty()) discardEditorChanges(navigation);
+        },
+        onSave: () => void session.save(),
+        // The sticky header's title is the rename affordance, replacing the
+        // legacy #rm_button_selected_ch h2 inside the hidden #rm_PinAndTabs. It
+        // writes name/data.name and keeps the avatar identity; the destructive
+        // full rename (renameCharacter() → /api/characters/rename, which mints a
+        // new avatar and moves the chat directory) stays in the action menu.
+        rename: nameField ? {
+            getValue: () => nameField.value,
+            commit: (value) => {
+                nameField.value = value;
+                nameField.dispatchEvent(new Event('input', { bubbles: true }));
+                editorTitle = value;
+            },
+            onFinish: (value) => {
+                editorTitle = value;
+            },
+        } : undefined,
+        overflowCandidates: OVERFLOW_CANDIDATES,
+        getActionSections: _buildActionSections,
+        actionMenuTitle: t`Character Actions`,
+        isActive: () => session.isOpen(),
+    });
 }
 
-/**
- * The sticky header's title is the rename affordance, replacing the legacy
- * #rm_button_selected_ch h2 click target that now sits inside the hidden
- * #rm_PinAndTabs.
- *
- * Clicking the title button replaces it with an inline text input, so you can
- * rename the character without scrolling to the Name field. Saving writes to
- * name/data.name while preserving the character's avatar identity. The
- * destructive full rename (renameCharacter() → /api/characters/rename) mints a
- * NEW avatar identity and moves the chat directory; it stays reachable from the
- * action menu as its own entry.
- */
-function _handleRenameTrigger(event) {
-    event.preventDefault();
-    if (!currentSession || currentSession.mode !== 'edit') return;
-
-    const titleButton = document.getElementById('sb_character_editor_title_button');
-    const nameField = document.getElementById('character_name_pole');
-    if (!titleButton || !(nameField instanceof HTMLInputElement)) return;
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = nameField.value;
-    input.id = 'sb_character_editor_title_input';
-    input.classList.add('sb-editor-title-input');
-    input.autocomplete = 'off';
-    input.spellcheck = false;
-
-    // Swapping the input out of the DOM fires blur, so Enter/Escape would
-    // otherwise commit a second time and Escape would end up saving.
-    let finished = false;
-    const finish = (save, restoreFocus) => {
-        if (finished) return;
-        finished = true;
-        const trimmed = input.value.trim();
-        if (save && trimmed && trimmed !== nameField.value) {
-            nameField.value = trimmed;
-            nameField.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-        input.replaceWith(titleButton);
-        _updateHeaderTitle(currentSession?.mode === 'edit' ? nameField.value : t`Create New Character`);
-        if (restoreFocus) titleButton.focus();
-    };
-
-    input.addEventListener('blur', () => finish(true, false));
-    input.addEventListener('keydown', (e) => {
-        if (e.isComposing) return;
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            finish(true, true);
-        } else if (e.key === 'Escape') {
-            // Keep the editor's own Escape-to-close from also handling this key.
-            e.preventDefault();
-            e.stopPropagation();
-            finish(false, true);
-        }
+/** @param {import('./sillybunny-editor/session.js').EditorState} state */
+function _renderChrome(state) {
+    if (!state.open) return;
+    chrome?.render({
+        mode: state.mode,
+        dirty: state.dirty,
+        saving: state.saving,
+        title: editorTitle,
     });
-
-    titleButton.replaceWith(input);
-    input.focus();
-    input.select();
+    // The quick-edit toggle persists in power_user, so its pressed state must
+    // follow the setting rather than only the last click.
+    _syncQuickEditPressed();
 }
 
 async function _handleBack(event) {
-    if (!await _allowLeave()) {
+    if (!await confirmEditorLeave(navigation)) {
         event.preventDefault();
         event.stopImmediatePropagation();
         return;
@@ -370,36 +352,6 @@ function _closeSafely() {
     const isPageMode = !drawerTab?.offsetParent && Boolean(settingsTab?.offsetParent);
     (isPageMode ? settingsTab : drawerTab)?.click();
 }
-
-function _handleCancel() {
-    if (!currentSession || !_isDirty()) return;
-    // Direct revert — Cancel is disabled when clean, so a click is intentional
-    _discardChanges();
-}
-
-function _discardChanges() {
-    if (!currentSession) return;
-    _restoreSnapshot(currentSession.baseline);
-    _removeDraft(currentSession.avatar);
-    _syncRoleSegment();
-}
-
-/**
- * @returns {Promise<boolean>} true when the editor holds no unsaved changes afterwards
- */
-async function _handleSave() {
-    if (!currentSession) return true;
-    if (currentSession.mode === 'edit' && !_isDirty()) return true;
-
-    // script.js calls markCharacterEditorSaved() on success, which moves the
-    // baseline; a failed or user-aborted save leaves the editor dirty.
-    await createOrEditCharacter();
-    return !_isDirty();
-}
-
-// ============================================================
-// Toolbar buttons
-// ============================================================
 
 function _bindToolbarButtons() {
     document.getElementById('sb_character_editor_quick_edit')
@@ -464,9 +416,8 @@ const ACTION_GLYPHS = {
 
 /**
  * Toolbar buttons that may be collapsed into the overflow menu when the editor
- * panel is too narrow for the full row, lowest priority first. Each entry is the
- * live button; clicking the menu item forwards a click to it, so no handler
- * moves and no ID changes.
+ * panel is too narrow for the full row. Resolved inside #form_create, so the
+ * group editor's own .chat_lorebook_button is never picked up.
  *
  * Ordered most-expendable first: destructive and duplicate actions are the
  * safest to tuck away, while favourite, lore and personas stay visible because
@@ -479,95 +430,6 @@ const OVERFLOW_CANDIDATES = [
     '.chat_lorebook_button',
     '#world_button',
 ];
-
-/**
- * Toolbar buttons that had to collapse into the overflow menu. Recomputed on
- * every layout pass so the menu reflects the current panel width.
- * @type {Array<{id: string, label: string, icon: string, selector: string}>}
- */
-let collapsedToolbarActions = [];
-
-/**
- * Collapses toolbar buttons into the overflow menu until the row fits the panel.
- *
- * The toolbar is `flex-wrap: nowrap` with `overflow: hidden`, so without this the
- * trailing buttons — including the ⋯ trigger itself — are simply clipped off the
- * panel edge at narrow widths and become unreachable. Buttons that collapse are
- * forwarded to from the menu via a synthetic click, so their handlers and IDs are
- * untouched.
- */
-function _applyToolbarOverflow() {
-    const toolbar = document.getElementById('sb_character_editor_toolbar');
-    const more = document.getElementById('sb_character_editor_more');
-    if (!(toolbar instanceof HTMLElement) || !(more instanceof HTMLElement)) return;
-
-    const candidates = OVERFLOW_CANDIDATES.map(selector => ({
-        selector,
-        element: /** @type {HTMLElement|null} */ (document.querySelector(selector)),
-    }));
-
-    const restore = () => {
-        for (const { element } of candidates) {
-            // Class only: create mode's own inline display:none for edit-only
-            // actions must survive the restore.
-            if (element instanceof HTMLElement) {
-                element.classList.remove('sb-editor-toolbar-collapsed');
-            }
-        }
-    };
-
-    restore();
-    collapsedToolbarActions = [];
-
-    // Everything already fits; nothing to move into the menu.
-    if (toolbar.scrollWidth <= toolbar.clientWidth + 1) return;
-
-    for (const { selector, element } of candidates) {
-        if (!(element instanceof HTMLElement)) continue;
-        // Only collapse what is actually showing; create mode hides several of
-        // these already, and a hidden button occupies no width.
-        if (element.getBoundingClientRect().width === 0) continue;
-
-        // Tooltips can carry a second line of usage hints (e.g. the world
-        // button's "Shift/Alt-click ..." line); the menu label takes the first.
-        const tooltip = element.getAttribute('title') ?? element.getAttribute('data-sttt--title');
-        const label = tooltip?.split('\n')[0]?.trim()
-            || element.getAttribute('aria-label')
-            || selector;
-        const icon = Array.from(element.classList).find(cls => cls.startsWith('fa-')) ?? 'fa-circle-dot';
-
-        element.classList.add('sb-editor-toolbar-collapsed');
-        collapsedToolbarActions.push({ id: element.id || selector, label, icon: `fa-solid ${icon}`, selector });
-
-        if (toolbar.scrollWidth <= toolbar.clientWidth + 1) break;
-    }
-}
-
-/**
- * Re-runs the overflow pass when the panel changes width. Debounced to the next
- * frame so a resize drag does not thrash layout.
- */
-function _bindToolbarOverflowObserver() {
-    const panel = document.getElementById('right-nav-panel');
-    if (!(panel instanceof HTMLElement) || panel.dataset.sbToolbarOverflowBound === 'true') return;
-    panel.dataset.sbToolbarOverflowBound = 'true';
-
-    let scheduled = false;
-    const schedule = () => {
-        if (scheduled) return;
-        scheduled = true;
-        requestAnimationFrame(() => {
-            scheduled = false;
-            if (currentSession) _applyToolbarOverflow();
-        });
-    };
-
-    if (typeof ResizeObserver === 'function') {
-        new ResizeObserver(schedule).observe(panel);
-    } else {
-        window.addEventListener('resize', schedule);
-    }
-}
 
 /**
  * The three actions recovered from the legacy #rm_PinAndTabs titlebar, which is
@@ -583,29 +445,16 @@ const RECOVERED_ACTIONS = [
     { id: 'sb_action_stats', label: 'Character Stats', glyph: 'ranking-star', transport: '.rm_stats_button' },
 ];
 
-function _bindActionMenu() {
-    const trigger = document.getElementById('sb_character_editor_more');
-    if (!trigger) return;
-
-    trigger.addEventListener('click', () => {
-        if (trigger.getAttribute('aria-expanded') === 'true') {
-            closeActionMenu({ restoreFocus: true });
-            return;
-        }
-        _openEditorActionMenu(trigger);
-    });
-}
-
 /**
  * Builds the character action menu from the live transport select, so entries
- * that extensions append at runtime stay reachable.
+ * that extensions append at runtime stay reachable. Collapsed toolbar buttons
+ * are prepended by the shared chrome.
  */
-function _openEditorActionMenu(trigger) {
+function _buildActionSections() {
     const select = /** @type {HTMLSelectElement|null} */ (document.getElementById('char-management-dropdown'));
-    if (!select) return;
 
     const primary = [];
-    for (const option of Array.from(select.options)) {
+    for (const option of Array.from(select?.options ?? [])) {
         const id = option.id;
         if (!id || option.disabled) continue;
         // Upstream hides entries it does not apply to (Rename in create mode,
@@ -621,14 +470,6 @@ function _openEditorActionMenu(trigger) {
         });
     }
 
-    // Toolbar buttons that did not fit the panel width, so every action stays
-    // reachable instead of being clipped off the narrow panel edge.
-    const overflow = collapsedToolbarActions.map(action => ({
-        label: action.label,
-        icon: action.icon,
-        onSelect: () => _dispatchTransportClick(action.selector),
-    }));
-
     const recovered = RECOVERED_ACTIONS
         .filter(action => document.querySelector(action.transport))
         .map(action => ({
@@ -639,7 +480,7 @@ function _openEditorActionMenu(trigger) {
 
     const danger = [];
     // Delete is only meaningful for an existing character, never a draft.
-    if (currentSession?.mode === 'edit') {
+    if (session.context?.mode === 'edit') {
         danger.push({
             label: t`Delete Character`,
             icon: 'fa-solid fa-skull',
@@ -648,18 +489,7 @@ function _openEditorActionMenu(trigger) {
         });
     }
 
-    openActionMenu({
-        trigger,
-        title: t`Character Actions`,
-        sections: [
-            { items: overflow },
-            { items: primary },
-            { items: recovered },
-            { items: danger },
-        ].filter(section => section.items.length > 0),
-        onClose: () => trigger.setAttribute('aria-expanded', 'false'),
-    });
-    trigger.setAttribute('aria-expanded', 'true');
+    return [{ items: primary }, { items: recovered }, { items: danger }];
 }
 
 /**
@@ -682,8 +512,7 @@ function _dispatchTransportAction(optionId) {
 
 /**
  * Runs an action whose handler is bound to another element, by forwarding a
- * click. Used for the recovered titlebar controls and for toolbar buttons that
- * collapsed into the overflow menu.
+ * click. Used for the recovered titlebar controls.
  * @param {string} selector
  */
 function _dispatchTransportClick(selector) {
@@ -727,10 +556,6 @@ function _bindExportMenu() {
  * live inside the hidden #rm_PinAndTabs, but RA_CountCharTokens() still updates
  * them, so reading them keeps one implementation of the counting and keeps
  * extensions that read #result_info working.
- *
- * Read rather than observed: counting is triggered by editor load and by form
- * input, both of which are moments the controller already knows about, so a
- * MutationObserver would cost more than it earns.
  */
 function _syncTokenReadout() {
     const readout = document.getElementById('sb_character_editor_tokens');
@@ -767,16 +592,16 @@ function _bindTokenMirror() {
     const timers = [120, 600, 1400];
     _syncTokenReadout();
     timers.forEach(delay => setTimeout(() => {
-        if (currentSession) _syncTokenReadout();
+        if (session.isOpen()) _syncTokenReadout();
     }, delay));
 
-    _stopTokenMirror();
+    tokenMirrorObserver?.disconnect();
     tokenMirrorObserver = new MutationObserver(() => {
         if (tokenMirrorScheduled) return;
         tokenMirrorScheduled = true;
         requestAnimationFrame(() => {
             tokenMirrorScheduled = false;
-            if (currentSession) _syncTokenReadout();
+            if (session.isOpen()) _syncTokenReadout();
         });
     });
 
@@ -788,13 +613,8 @@ function _bindTokenMirror() {
     }
 }
 
-function _stopTokenMirror() {
-    tokenMirrorObserver?.disconnect();
-    tokenMirrorObserver = null;
-}
-
 // ============================================================
-// Preview toggles
+// Preview rendering
 // ============================================================
 
 /**
@@ -848,54 +668,6 @@ function _renderPreview(textarea, pane) {
     pane.innerHTML = DOMPurify.sanitize(raw, { RETURN_TRUSTED_TYPE: false });
 }
 
-function _setFieldPreview(textarea, pane, showPreview) {
-    if (showPreview) {
-        // Measure before hiding the source so the replacement keeps its resized height.
-        pane.style.height = `${textarea.getBoundingClientRect().height}px`;
-        _renderPreview(textarea, pane);
-    }
-    pane.hidden = !showPreview;
-    textarea.hidden = showPreview;
-}
-
-function _bindPreviewToggles() {
-    document.querySelectorAll('.sb-preview-toggle[data-sb-preview-for]').forEach(oldToggle => {
-        const textareaId = /** @type {HTMLElement} */ (oldToggle).dataset.sbPreviewFor;
-        const textarea = /** @type {HTMLTextAreaElement|null} */ (document.getElementById(textareaId));
-        const pane = /** @type {HTMLElement|null} */ (document.querySelector(`.sb-preview-pane[data-sb-preview-pane="${textareaId}"]`));
-        if (!textarea || !pane) return;
-
-        const segment = createSegmentedControl(
-            t`Edit / Preview`,
-            [[false, t`Edit`], [true, t`Preview`]],
-            false,
-            value => _setFieldPreview(textarea, pane, value),
-            { compact: true, detachFromForm: true },
-        );
-        // Carry the data attribute so _resetPreviewToggles can find this control.
-        segment.dataset.sbSegmentFor = textareaId;
-
-        oldToggle.replaceWith(segment);
-
-        $(textarea).on('input', () => {
-            if (!pane.hidden) _renderPreview(textarea, pane);
-        });
-    });
-}
-
-/** Reset all segmented preview controls to Edit mode. Called on session open. */
-function _resetPreviewToggles() {
-    document.querySelectorAll('.sb-boolean-radio-group[data-sb-segment-for]').forEach(segment => {
-        const textareaId = /** @type {HTMLElement} */ (segment).dataset.sbSegmentFor;
-        const textarea = document.getElementById(textareaId);
-        const pane = document.querySelector(`.sb-preview-pane[data-sb-preview-pane="${textareaId}"]`);
-        setSegmentedControlValue(/** @type {HTMLElement} */ (segment), false);
-        if (pane) /** @type {HTMLElement} */ (pane).hidden = true;
-        if (textarea) /** @type {HTMLElement} */ (textarea).hidden = false;
-    });
-    _syncRoleSegment();
-}
-
 // ============================================================
 // Depth-prompt role segmented control
 // ============================================================
@@ -931,7 +703,7 @@ function _mountRoleSegment() {
 
 /**
  * Sync the role segmented control to the current select value.
- * Called on session open, discard, and snapshot restore.
+ * Called on session open and snapshot restore.
  */
 function _syncRoleSegment() {
     if (!_roleSegment) return;
@@ -973,110 +745,14 @@ function _bindFieldDirtyListeners() {
     // jQuery so programmatic .trigger('input') writes (maximize editor, upstream
     // field setters) are counted as well as native typing.
     $('#form_create').on('input', () => {
-        _markDirty();
+        session.changed();
     });
 
     // Favorite button toggle
     document.getElementById('favorite_button')?.addEventListener('click', () => {
         // State update happens inside the upstream handler; we re-check after it runs
-        requestAnimationFrame(() => _markDirty());
+        requestAnimationFrame(() => session.changed());
     });
-}
-
-// ============================================================
-// Keyboard shortcuts
-// ============================================================
-
-function _bindKeyboardShortcuts() {
-    // Cmd/Ctrl+S — save
-    document.addEventListener('keydown', (event) => {
-        if (!(event.metaKey || event.ctrlKey) || event.key !== 's') return;
-        if (!_isEditorVisible()) return;
-        event.preventDefault();
-        _handleSave();
-    }, { capture: true });
-
-    // Escape — dirty guard. Runs from inside fields too (A.2.9): editing means
-    // focus is almost always in a field, so skipping them disabled the guard.
-    // A clean editor lets Escape fall through to the shell's own handling.
-    document.addEventListener('keydown', async (event) => {
-        if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) return;
-        if (!_isEditorVisible()) return;
-        if (_isPopupOpen() || isActionMenuOpen()) return;
-        if (!_isDirty()) return;
-
-        event.preventDefault();
-        event.stopPropagation();
-
-        if (await _allowLeave()) _closeSafely();
-    }, { capture: true });
-}
-
-// ============================================================
-// Navigation guards
-// ============================================================
-
-function _bindNavigationGuards() {
-    document.addEventListener('click', async (event) => {
-        if (!event.isTrusted) return;
-
-        // The drawer rail uses data-sb-character-tab; when the characters panel
-        // is page-hosted, the settings sidebar uses data-sb-settings-tab instead.
-        const target = /** @type {HTMLElement} */ (event.target);
-        const tab = target.closest(
-            '[data-sb-character-tab]:not([data-sb-character-tab="editor"]), '
-            + '[data-sb-settings-tab]:not([data-sb-settings-tab="editor"])',
-        );
-        if (!tab) return;
-        if (!_isEditorVisible() || !_isDirty()) return;
-
-        event.preventDefault();
-        event.stopImmediatePropagation();
-
-        if (await _allowLeave()) {
-            // Re-dispatch as synthetic (isTrusted=false bypasses this guard)
-            tab.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        }
-    }, { capture: true });
-}
-
-// ============================================================
-// Unsaved changes popup
-// ============================================================
-
-async function _allowLeave() {
-    if (!currentSession || !_isDirty()) return true;
-    if (leavePromptOpen) return false;
-
-    leavePromptOpen = true;
-    const popup = new Popup(
-        (() => { const p = document.createElement('p'); p.textContent = t`Unsaved changes`; return p; })(),
-        POPUP_TYPE.CONFIRM,
-        '',
-        {
-            okButton: t`Save`,
-            cancelButton: t`Cancel`,
-            customButtons: [{ text: t`Discard`, result: 2, classes: ['sb-editor-discard'] }],
-            defaultResult: POPUP_RESULT.NEGATIVE,
-        },
-    );
-    // AdwAlertDialog order: Cancel (start) · Discard · Save (end). The theme
-    // already sets .popup-button-cancel { order: -1 }, so only Save needs adjustment.
-    popup.okButton.style.order = '2';
-
-    const result = await popup.show();
-    leavePromptOpen = false;
-
-    if (result === POPUP_RESULT.AFFIRMATIVE) {
-        return await _handleSave();
-    }
-
-    if (result === 2) {
-        _discardChanges();
-        return true;
-    }
-
-    return false;
 }
 
 // ============================================================
@@ -1086,276 +762,10 @@ async function _allowLeave() {
 function _handleExternalSave() {
     // Avatar change, world link, export etc. all call saveCharacterDebounced which fires this event.
     // Recapture baseline so the dirty indicator reflects the new saved state.
-    if (!currentSession || currentSession.mode !== 'edit') return;
-    if (currentSession.chid !== this_chid) return;
-    currentSession.baseline = _captureSnapshot();
-    currentSession.baselineJson = JSON.stringify(currentSession.baseline);
-    _refreshDirtyState();
-}
-
-// ============================================================
-// Scroll-hide header and toolbar on mobile
-// ============================================================
-
-let _resetEditorChrome = () => {};
-
-function _bindScrollHide() {
-    const content = document.querySelector('.sb-character-sheet__content');
-    const header = document.getElementById('sb_character_editor_header');
-    const toolbar = document.getElementById('sb_character_editor_toolbar');
-    if (!content || !header || !toolbar) return;
-
-    const mobile = window.matchMedia('(pointer: coarse), (max-width: 620px)');
-    let lastScrollY = content.scrollTop;
-    let distance = 0;
-    let ticking = false;
-    let settleUntil = 0;
-
-    const setHidden = hidden => {
-        const changed = header.classList.contains('sb-editor-chrome-hidden') !== hidden;
-        header.classList.toggle('sb-editor-chrome-hidden', hidden);
-        toolbar.classList.toggle('sb-editor-chrome-hidden', hidden);
-        // Collapsing at the bottom can clamp scrollTop on every frame of the 200ms
-        // transition. Don't read that layout change as a user scroll in the opposite
-        // direction and immediately reopen the bars.
-        if (changed) settleUntil = performance.now() + 250;
-        lastScrollY = content.scrollTop;
-        distance = 0;
-    };
-
-    _resetEditorChrome = () => setHidden(false);
-    mobile.addEventListener('change', _resetEditorChrome);
-    header.addEventListener('focusin', _resetEditorChrome);
-    toolbar.addEventListener('focusin', _resetEditorChrome);
-
-    content.addEventListener('scroll', () => {
-        if (ticking) return;
-        ticking = true;
-        requestAnimationFrame(() => {
-            const currentY = Math.max(0, content.scrollTop);
-            const delta = currentY - lastScrollY;
-            lastScrollY = currentY;
-            ticking = false;
-
-            const maxScrollY = content.scrollHeight - content.clientHeight;
-            if (currentY > maxScrollY) return;
-            if (!mobile.matches || currentY <= 60) {
-                setHidden(false);
-                return;
-            }
-            if (!delta || performance.now() < settleUntil) return;
-            distance = Math.sign(delta) === Math.sign(distance) ? distance + delta : delta;
-            if (Math.abs(distance) < 8) return;
-            if (isActionMenuOpen() || header.querySelector(':focus-visible') || toolbar.querySelector(':focus-visible')) return;
-            setHidden(distance > 0);
-        });
-    }, { passive: true });
-}
-
-// ============================================================
-// Draft persistence
-// ============================================================
-
-function _bindDraftPersistence() {
-    window.addEventListener('pagehide', () => {
-        if (currentSession && _isDirty()) _saveDraftNow();
-    });
-
-    document.addEventListener('visibilitychange', () => {
-        if (document.hidden && currentSession && _isDirty()) _saveDraftNow();
-    });
-
-    window.addEventListener('beforeunload', (event) => {
-        if (currentSession && _isDirty()) {
-            _saveDraftNow();
-            event.preventDefault();
-            // SillyBunny: preventDefault() alone does not arm the browser's
-            // "leave site?" prompt — the spec requires a truthy returnValue.
-            // Without this the dirty guard silently did nothing on reload/close.
-            event.returnValue = '';
-        }
-    });
-}
-
-function _startDraftTimer() {
-    _closeDraftTimer();
-    draftTimerId = setInterval(() => {
-        if (_isDirty()) _saveDraftNow();
-    }, DRAFT_INTERVAL_MS);
-}
-
-function _closeDraftTimer() {
-    if (draftTimerId !== null) {
-        clearInterval(draftTimerId);
-        draftTimerId = null;
-    }
-}
-
-function _saveDraftNow() {
-    if (!currentSession) return;
-    const draft = { v: 1, ts: Date.now(), snapshot: _captureSnapshot() };
-    try {
-        localStorage.setItem(_draftKey(currentSession.avatar), JSON.stringify(draft));
-    } catch (err) {
-        console.warn('[sb-editor] Failed to write draft', err);
-    }
-}
-
-function _removeDraft(avatar) {
-    try {
-        localStorage.removeItem(_draftKey(avatar));
-    } catch (err) {
-        console.warn('[sb-editor] Failed to remove draft', err);
-    }
-}
-
-function _draftKey(avatar) {
-    const user = getCurrentUserHandle() || 'default';
-    return `${DRAFT_KEY_PREFIX}${user}-${avatar}`;
-}
-
-function _checkDraftRestore() {
-    if (!currentSession) return;
-
-    let draft;
-    try {
-        const raw = localStorage.getItem(_draftKey(currentSession.avatar));
-        if (!raw) return;
-        draft = JSON.parse(raw);
-    } catch {
-        return;
-    }
-
-    if (!draft?.v || !draft.snapshot) return;
-
-    // A.2.6: a draft is only worth restoring if it differs from the last-saved state.
-    if (JSON.stringify(draft.snapshot) === currentSession.baselineJson) {
-        _removeDraft(currentSession.avatar);
-        return;
-    }
-
-    _showDraftRestoreToast(draft);
-}
-
-function _showDraftRestoreToast(draft) {
-    const sessionAvatar = currentSession?.avatar;
-    const relTime = typeof moment !== 'undefined' ? moment(draft.ts).fromNow() : new Date(draft.ts).toLocaleTimeString();
-
-    // <!-- HUMAN: replace toast body text -->
-    const body = `<div>lorum ipsum ${relTime}</div>
-        <div style="margin-top:0.5rem;display:flex;gap:0.5rem;">
-            <button type="button" id="sb_draft_restore_btn" class="menu_button">${t`Restore`}</button>
-            <button type="button" id="sb_draft_discard_btn" class="menu_button">${t`Discard`}</button>
-        </div>`;
-
-    toastr.info(body, '', {
-        timeOut: 0,
-        extendedTimeOut: 0,
-        closeButton: true,
-        escapeHtml: false,
-        onShown() {
-            document.getElementById('sb_draft_restore_btn')?.addEventListener('click', () => {
-                if (currentSession?.avatar !== sessionAvatar) return;
-                _restoreSnapshot(draft.snapshot);
-                toastr.clear();
-            });
-            document.getElementById('sb_draft_discard_btn')?.addEventListener('click', () => {
-                _removeDraft(sessionAvatar);
-                toastr.clear();
-            });
-        },
-    });
-}
-
-// ============================================================
-// Dirty tracking
-// ============================================================
-
-/**
- * Exact comparison against the session baseline. Guards (save, leave, unload)
- * call this directly so they never act on a stale debounced value.
- */
-function _isDirty() {
-    if (!currentSession) return false;
-    return JSON.stringify(_captureSnapshot()) !== currentSession.baselineJson;
-}
-
-/**
- * Typing in a long field would otherwise serialize every field per keystroke
- * (A.2.5), so the visible indicator refreshes on a trailing debounce.
- */
-function _markDirty() {
-    _clearDirtyDebounce();
-    dirtyTimerId = setTimeout(() => {
-        dirtyTimerId = null;
-        _refreshDirtyState();
-    }, DIRTY_DEBOUNCE_MS);
-}
-
-function _clearDirtyDebounce() {
-    if (dirtyTimerId !== null) {
-        clearTimeout(dirtyTimerId);
-        dirtyTimerId = null;
-    }
-}
-
-/** Immediate refresh for structural changes (add, move, delete, revert, save). */
-function _refreshDirtyState() {
-    _clearDirtyDebounce();
-    const dirty = _isDirty();
-    _updateDirtyIndicator(dirty);
-    _updateHeaderButtons(dirty);
-}
-
-/** @param {boolean} [dirty] */
-function _updateDirtyIndicator(dirty = _isDirty()) {
-    const el = document.getElementById('sb_character_editor_dirty');
-    if (!el) return;
-
-    const wasHidden = el.hidden;
-    el.hidden = !dirty;
-    if (dirty === !wasHidden) return;
-
-    if (dirty) {
-        // DESIGN.md: state reveals are a fade with a small scale, no movement.
-        el.animate(
-            [{ opacity: 0, transform: 'scale(0.7)' }, { opacity: 1, transform: 'none' }],
-            { duration: 200, easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' },
-        );
-    }
-}
-
-/** @param {boolean} [dirty] */
-function _updateHeaderButtons(dirty = _isDirty()) {
-    const save = document.getElementById('sb_character_editor_save');
-    const cancel = document.getElementById('sb_character_editor_cancel');
-    const isCreate = currentSession?.mode === 'create';
-
-    if (save instanceof HTMLButtonElement) {
-        save.textContent = isCreate ? t`Create` : t`Save`;
-        save.disabled = !isCreate && !dirty;
-    }
-    if (cancel instanceof HTMLButtonElement) {
-        cancel.disabled = !dirty;
-    }
-
-    // The quick-edit toggle persists in power_user, so its pressed state must
-    // follow the setting rather than only the last click.
-    _syncQuickEditPressed();
-}
-
-function _updateHeaderTitle(title) {
-    const el = document.getElementById('sb_character_editor_title');
-    if (el) el.textContent = title;
-
-    // Renaming a draft is meaningless until it exists, so the title only offers
-    // the affordance for a saved character.
-    const button = document.getElementById('sb_character_editor_title_button');
-    const canRename = currentSession?.mode === 'edit';
-    if (button instanceof HTMLButtonElement) {
-        button.disabled = !canRename;
-        button.classList.toggle('is-static', !canRename);
-    }
+    const context = session.context;
+    if (!context || context.mode !== 'edit') return;
+    if (context.chid !== this_chid) return;
+    session.rebase();
 }
 
 // ============================================================
@@ -1427,12 +837,8 @@ function _restoreSnapshot(snap) {
     }
 
     _commitCreateDrafts();
-    _refreshDirtyState();
+    _syncRoleSegment();
 }
-
-// ============================================================
-// Greeting data access
-// ============================================================
 
 // ============================================================
 // Greeting renderers
@@ -1455,11 +861,6 @@ function _renderGroupGreetings() {
     if (badge) badge.textContent = draftGrp.length > 0 ? String(draftGrp.length) : '';
 }
 
-/**
- * @param {string} greeting
- * @param {number} index
- * @param {'alternate'|'group'} kind
- */
 const GREETING_SNIPPET_LENGTH = 80;
 
 function _greetingSnippet(text) {
@@ -1519,7 +920,7 @@ function _createGreetingRow(greeting, index, kind) {
         greetingsRef[index] = textarea.value;
         subtitle.textContent = _greetingSnippet(textarea.value);
         _commitCreateDrafts();
-        _markDirty();
+        session.changed();
     });
 
     const actions = document.createElement('div');
@@ -1546,7 +947,7 @@ function _createGreetingRow(greeting, index, kind) {
         greetingsRef.splice(index, 1);
         _reRenderKind(kind);
         _commitCreateDrafts();
-        _refreshDirtyState();
+        session.changed({ immediate: true });
     });
     deleteButton.classList.add('sb-greeting-row__delete');
 
@@ -1601,7 +1002,7 @@ function _moveGreeting(kind, index, delta) {
     [list[index], list[target]] = [list[target], list[index]];
     _reRenderKind(kind);
     _commitCreateDrafts();
-    _refreshDirtyState();
+    session.changed({ immediate: true });
 
     // Keep the moved row open and its control focused so repeated moves work
     // from the keyboard without hunting for the row again.
@@ -1640,15 +1041,11 @@ function _focusGreetingRow(listSelector, index) {
  * data-menu-type, and the drawer is open while it carries .openDrawer.
  */
 function _isEditorVisible() {
-    if (!currentSession) return false;
+    if (!session.isOpen()) return false;
     const panel = document.getElementById('right-nav-panel');
     if (!panel?.classList.contains('openDrawer')) return false;
     const menuType = panel.dataset.menuType;
     return menuType === 'character_edit' || menuType === 'create';
-}
-
-function _isPopupOpen() {
-    return !!document.querySelector('dialog.popup[open]');
 }
 
 function _prefersReducedMotion() {

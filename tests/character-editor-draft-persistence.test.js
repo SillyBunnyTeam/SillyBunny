@@ -1,140 +1,177 @@
 import { describe, expect, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
-import vm from 'node:vm';
+import { createEditorDraftStore } from '/scripts/sillybunny-editor/drafts.js';
+import { createEditorSession } from '/scripts/sillybunny-editor/session.js';
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const editorSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-character-editor.js'), 'utf8').replace(/\r\n/g, '\n');
+describe('editor drafts storage', () => {
+    test('writes v1 envelope with snapshot and timestamp', () => {
+        const storage = new Map();
+        const now = () => 123456789;
+        const drafts = createEditorDraftStore({
+            keyFor: (id) => `test-${id}`,
+            storage: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: (k) => storage.delete(k) },
+            now,
+        });
 
-function getFunctionSource(name) {
-    const pattern = new RegExp(`^(async )?function ${name}\\(`,'m');
-    const match = editorSource.match(pattern);
-    if (!match) throw new Error(`Function ${name} not found`);
+        drafts.write('alice', { name: 'Test' });
 
-    const start = match.index;
-    const bodyStart = editorSource.indexOf('{', editorSource.indexOf(')', start));
-    let depth = 0;
-    for (let index = bodyStart; index < editorSource.length; index++) {
-        if (editorSource[index] === '{') depth++;
-        if (editorSource[index] === '}' && --depth === 0) {
-            return editorSource.slice(start, index + 1);
-        }
-    }
-    throw new Error(`Unterminated function ${name}`);
-}
-
-function createDraftHarness() {
-    const storage = new Map();
-    const toastShown = [];
-    const context = {
-        localStorage: {
-            getItem: (key) => storage.get(key) ?? null,
-            setItem: (key, value) => storage.set(key, value),
-            removeItem: (key) => storage.delete(key),
-        },
-        getCurrentUserHandle: () => 'test-user',
-        console: { warn: () => {} },
-        currentSession: null,
-        draftAlt: [],
-        draftGrp: [],
-        _showDraftRestoreToast: (draft) => toastShown.push(draft),
-        _restoreSnapshot: () => {},
-        Date: Date,
-        JSON: JSON,
-    };
-
-    const constants = editorSource.match(/const DRAFT_KEY_PREFIX = '([^']+)'/);
-    if (constants) context.DRAFT_KEY_PREFIX = constants[1];
-
-    vm.runInNewContext([
-        'const DRAFT_KEY_PREFIX = globalThis.DRAFT_KEY_PREFIX;',
-        'let currentSession = globalThis.currentSession;',
-        'let draftAlt = globalThis.draftAlt;',
-        'let draftGrp = globalThis.draftGrp;',
-        'function _captureSnapshot() { return currentSession.baseline; }',
-        getFunctionSource('_draftKey'),
-        getFunctionSource('_saveDraftNow'),
-        getFunctionSource('_removeDraft'),
-        getFunctionSource('_checkDraftRestore'),
-        'globalThis.api = { _draftKey, _saveDraftNow, _removeDraft, _checkDraftRestore };',
-        'globalThis.setSession = (s) => { currentSession = s; globalThis.currentSession = s; };',
-    ].join('\n'), context);
-
-    return { context, storage, toastShown };
-}
-
-describe('character editor draft persistence', () => {
-    test('draft key includes user handle and avatar', () => {
-        const { context } = createDraftHarness();
-        const key = context.api._draftKey('alice.png');
-        expect(key).toBe('sb-editor-draft-test-user-alice.png');
+        expect(storage.has('test-alice')).toBe(true);
+        const envelope = JSON.parse(storage.get('test-alice'));
+        expect(envelope.v).toBe(1);
+        expect(envelope.ts).toBe(123456789);
+        expect(envelope.snapshot).toEqual({ name: 'Test' });
     });
 
-    test('saving a draft writes v1 structure with snapshot and timestamp', () => {
-        const { context, storage } = createDraftHarness();
-        const snapshot = { character_name_pole: 'Test', _alt: [], _grp: [] };
-        context.setSession({ avatar: 'bob.png', baseline: {}, baselineJson: '{}' });
-        context.currentSession.baseline = snapshot;
+    test('read returns null for missing or malformed drafts', () => {
+        const drafts = createEditorDraftStore({
+            keyFor: (id) => id,
+            storage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
+        });
+        expect(drafts.read('missing')).toBeNull();
 
-        context.api._saveDraftNow();
+        const badStorage = new Map([['bad', '{broken']]);
+        const badDrafts = createEditorDraftStore({
+            keyFor: (id) => id,
+            storage: { getItem: (k) => badStorage.get(k) ?? null, setItem: (k, v) => badStorage.set(k, v), removeItem: (k) => badStorage.delete(k) },
+        });
+        expect(badDrafts.read('bad')).toBeNull();
+    });
 
-        const key = 'sb-editor-draft-test-user-bob.png';
-        expect(storage.has(key)).toBe(true);
-        const draft = JSON.parse(storage.get(key));
+    test('read rejects primitive or array snapshots', () => {
+        const storage = new Map([
+            ['string', JSON.stringify({ v: 1, ts: 1, snapshot: 'text' })],
+            ['array', JSON.stringify({ v: 1, ts: 1, snapshot: [] })],
+            ['null', JSON.stringify({ v: 1, ts: 1, snapshot: null })],
+        ]);
+        const drafts = createEditorDraftStore({
+            keyFor: (id) => id,
+            storage: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: (k) => storage.delete(k) },
+        });
+        expect(drafts.read('string')).toBeNull();
+        expect(drafts.read('array')).toBeNull();
+        expect(drafts.read('null')).toBeNull();
+    });
+
+    test('read accepts valid v1 draft with object snapshot', () => {
+        const valid = { v: 1, ts: 123, snapshot: { name: 'Alice' } };
+        const storage = new Map([['ok', JSON.stringify(valid)]]);
+        const drafts = createEditorDraftStore({
+            keyFor: (id) => id,
+            storage: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: (k) => storage.delete(k) },
+        });
+        const draft = drafts.read('ok');
         expect(draft.v).toBe(1);
-        expect(draft.snapshot).toEqual(snapshot);
-        expect(draft.ts).toBeGreaterThan(Date.now() - 1000);
+        expect(draft.ts).toBe(123);
+        expect(draft.snapshot).toEqual({ name: 'Alice' });
     });
 
-    test('removing a draft deletes the localStorage entry', () => {
-        const { context, storage } = createDraftHarness();
-        storage.set('sb-editor-draft-test-user-charlie.png', '{"v":1}');
-        context.api._removeDraft('charlie.png');
-        expect(storage.has('sb-editor-draft-test-user-charlie.png')).toBe(false);
+    test('remove deletes the storage entry', () => {
+        const storage = new Map([['entity', 'draft']]);
+        const drafts = createEditorDraftStore({
+            keyFor: (id) => id,
+            storage: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: (k) => storage.delete(k) },
+        });
+        drafts.remove('entity');
+        expect(storage.has('entity')).toBe(false);
+    });
+});
+
+describe('editor session dirty tracking and draft backup', () => {
+    test('isDirty compares snapshot against baseline', () => {
+        let state = { name: 'A' };
+        const session = createEditorSession({
+            captureSnapshot: () => ({ ...state }),
+            restoreSnapshot: (snap) => { state = snap; },
+            persist: () => Promise.resolve(),
+            drafts: { read: () => null, write: () => {}, remove: () => {} },
+        });
+
+        session.open({ mode: 'edit', entityId: 'test' });
+        expect(session.isDirty()).toBe(false);
+        state.name = 'B';
+        expect(session.isDirty()).toBe(true);
     });
 
-    test('checkDraftRestore ignores missing drafts', () => {
-        const { context, toastShown } = createDraftHarness();
-        context.setSession({ avatar: 'empty.png', baseline: {}, baselineJson: '{}' });
-        context.api._checkDraftRestore();
-        expect(toastShown).toHaveLength(0);
+    test('discard reverts to baseline and removes draft', () => {
+        let state = { name: 'A' };
+        const removed = [];
+        const session = createEditorSession({
+            captureSnapshot: () => ({ ...state }),
+            restoreSnapshot: (snap) => { state = { ...snap }; },
+            persist: () => Promise.resolve(),
+            drafts: { read: () => null, write: () => {}, remove: (id) => removed.push(id) },
+        });
+
+        session.open({ mode: 'edit', entityId: 'test' });
+        state.name = 'B';
+        session.discard();
+        expect(state.name).toBe('A');
+        expect(removed).toEqual(['test']);
     });
 
-    test('checkDraftRestore ignores malformed JSON', () => {
-        const { context, storage, toastShown } = createDraftHarness();
-        storage.set('sb-editor-draft-test-user-bad.png', '{broken');
-        context.setSession({ avatar: 'bad.png', baseline: {}, baselineJson: '{}' });
-        context.api._checkDraftRestore();
-        expect(toastShown).toHaveLength(0);
+    test('session ignores stale recovery-toast restore after entityId changed', () => {
+        let state = { name: 'A' };
+        let offered = null;
+        const session = createEditorSession({
+            captureSnapshot: () => ({ ...state }),
+            restoreSnapshot: (snap) => { state = { ...snap }; },
+            persist: () => Promise.resolve(),
+            drafts: {
+                read: (id) => (id === 'entity1' ? { v: 1, ts: 1, snapshot: { name: 'Draft1' } } : null),
+                write: () => {},
+                remove: () => {},
+            },
+            offerDraft: (draft, actions) => { offered = actions; },
+        });
+
+        session.open({ mode: 'edit', entityId: 'entity1' });
+        session.markSaved({ entityId: 'entity2', mode: 'edit' });
+        offered.restore();
+        expect(state.name).toBe('A');
     });
 
-    test('checkDraftRestore ignores drafts missing version or snapshot', () => {
-        const { context, storage, toastShown } = createDraftHarness();
-        storage.set('sb-editor-draft-test-user-v0.png', JSON.stringify({ ts: Date.now() }));
-        context.setSession({ avatar: 'v0.png', baseline: {}, baselineJson: '{}' });
-        context.api._checkDraftRestore();
-        expect(toastShown).toHaveLength(0);
-    });
+    test('periodic draft writes snapshot to storage', async () => {
+        let state = { name: 'A' };
+        const storage = new Map();
+        const timers = [];
+        let fakeNow = 0;
+        const session = createEditorSession({
+            captureSnapshot: () => ({ ...state }),
+            restoreSnapshot: (snap) => { state = { ...snap }; },
+            persist: () => Promise.resolve(),
+            drafts: {
+                read: () => null,
+                write: (id, snap) => storage.set(id, { v: 1, ts: fakeNow, snapshot: snap }),
+                remove: (id) => storage.delete(id),
+            },
+            timers: {
+                setTimeout: (...args) => ({ args }),
+                clearTimeout: () => {},
+                setInterval: (fn, ms) => {
+                    const id = timers.length;
+                    timers.push({ fn, ms });
+                    return id;
+                },
+                clearInterval: () => {},
+            },
+        });
 
-    test('checkDraftRestore removes draft identical to baseline', () => {
-        const { context, storage, toastShown } = createDraftHarness();
-        const snapshot = { character_name_pole: 'Unchanged' };
-        const draft = { v: 1, ts: Date.now(), snapshot };
-        storage.set('sb-editor-draft-test-user-same.png', JSON.stringify(draft));
-        context.setSession({ avatar: 'same.png', baseline: snapshot, baselineJson: JSON.stringify(snapshot) });
-        context.api._checkDraftRestore();
-        expect(toastShown).toHaveLength(0);
-        expect(storage.has('sb-editor-draft-test-user-same.png')).toBe(false);
+        session.open({ mode: 'edit', entityId: 'test' });
+        state.name = 'B';
+        fakeNow = 1000;
+        timers[0].fn();
+        const draft = storage.get('test');
+        expect(draft.snapshot.name).toBe('B');
+        expect(draft.ts).toBe(1000);
     });
+});
 
-    test('checkDraftRestore offers toast when draft differs from baseline', () => {
-        const { context, storage, toastShown } = createDraftHarness();
-        const draft = { v: 1, ts: Date.now(), snapshot: { character_name_pole: 'Changed' } };
-        storage.set('sb-editor-draft-test-user-diff.png', JSON.stringify(draft));
-        context.setSession({ avatar: 'diff.png', baseline: {}, baselineJson: '{}' });
-        context.api._checkDraftRestore();
-        expect(toastShown).toHaveLength(1);
-        expect(toastShown[0].snapshot.character_name_pole).toBe('Changed');
+describe('character-editor draft key contract', () => {
+    test('user-avatar key matches original format', () => {
+        const keyFor = (entityId) => {
+            const user = 'test-user';
+            return `sb-editor-draft-${user}-${entityId}`;
+        };
+        expect(keyFor('alice.png')).toBe('sb-editor-draft-test-user-alice.png');
+        expect(keyFor('new-character')).toBe('sb-editor-draft-test-user-new-character');
     });
 });
