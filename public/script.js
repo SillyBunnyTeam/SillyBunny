@@ -348,6 +348,7 @@ import {
     openCharacterEditorSession,
     openCharacterEditorCreateSession,
     markCharacterEditorSaved,
+    getCharacterEditorAlternateGreetings,
     getCharacterEditorGroupGreetings,
 } from './scripts/sillybunny-character-editor.js';
 import { formatMobileStreamingPreview, getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval, isAndroidStreamingPlatform, shouldReduceStreamingDomWork, shouldUsePlainTextStreamingPreview } from './scripts/mobile-streaming.js';
@@ -14617,25 +14618,11 @@ function getEditableAlternateGreetings() {
     return characters[chid].data.alternate_greetings;
 }
 
-function getSubmittedAlternateGreetings() {
-    const greetings = getEditableAlternateGreetings();
-    if (!Array.isArray(greetings)) {
-        return [];
-    }
-
-    const editor = $('#character_greetings_editor');
-    if (!editor.length) {
-        return greetings;
-    }
-
-    const fields = editor.find('.alternate_greeting_text');
-    if (!fields.length) {
-        return greetings;
-    }
-
-    const currentValues = fields.toArray().map(field => String($(field).val()));
-    greetings.splice(0, greetings.length, ...currentValues);
-    return greetings;
+// SillyBunny: greetings are edited as session drafts in sillybunny-character-editor.js
+// and only reach the entity through a save. Reading the DOM here returned the stale
+// entity list whenever every row had been deleted (no fields to read).
+function getSubmittedAlternateGreetings(targetAvatar) {
+    return getCharacterEditorAlternateGreetings(targetAvatar);
 }
 
 function syncAlternateGreetingsEditor() {
@@ -15830,12 +15817,12 @@ export async function createOrEditCharacter(e) {
             }
 
             formData.delete('alternate_greetings');
-            for (const value of getSubmittedAlternateGreetings()) {
+            for (const value of getSubmittedAlternateGreetings(null)) {
                 formData.append('alternate_greetings', value);
             }
             // SillyBunny: group-only greetings (Step 3b)
             formData.delete('group_only_greetings');
-            formData.set('group_only_greetings', JSON.stringify(getCharacterEditorGroupGreetings()));
+            formData.set('group_only_greetings', JSON.stringify(getCharacterEditorGroupGreetings(null)));
 
             formData.append('extensions', JSON.stringify(create_save.extensions));
 
@@ -15922,13 +15909,15 @@ export async function createOrEditCharacter(e) {
                 url += `?crop=${encodeURIComponent(JSON.stringify(crop_data))}`;
             }
 
+            // SillyBunny: submit the drafts only when they belong to the card being saved.
+            const greetingsAvatar = String(formData.get('avatar_url') ?? '');
             formData.delete('alternate_greetings');
-            for (const value of getSubmittedAlternateGreetings()) {
+            for (const value of getSubmittedAlternateGreetings(greetingsAvatar)) {
                 formData.append('alternate_greetings', value);
             }
             // SillyBunny: group-only greetings (Step 3b)
             formData.delete('group_only_greetings');
-            formData.set('group_only_greetings', JSON.stringify(getCharacterEditorGroupGreetings()));
+            formData.set('group_only_greetings', JSON.stringify(getCharacterEditorGroupGreetings(greetingsAvatar)));
 
             const editedAvatar = String(formData.get('avatar_url') ?? '');
             const editedCharacter = characters.find(character => character?.avatar === editedAvatar) ?? characters[this_chid];

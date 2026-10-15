@@ -8,14 +8,15 @@
 //   openCharacterEditorSession(chid)    — open edit session (call after fields are written)
 //   openCharacterEditorCreateSession()  — open create session
 //   markCharacterEditorSaved()          — recapture baseline after a successful save
-//   getCharacterEditorGroupGreetings()  — read current group-only draft for FormData
+//   getCharacterEditorAlternateGreetings(avatar) — alternate greetings to submit for a save
+//   getCharacterEditorGroupGreetings(avatar)     — group-only greetings to submit for a save
 //   addAlternateGreeting()              — add a new alternate greeting row
 //   addGroupGreeting()                  — add a new group-only greeting row
 //   initCharacterEditor()               — bind all DOM handlers (called once at startup)
 
 import { formatCreatorNotes, getCurrentEntityId } from './chats.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT } from './popup.js';
-import { openActionMenu, closeActionMenu } from './sillybunny-action-menu.js';
+import { openActionMenu, closeActionMenu, isActionMenuOpen } from './sillybunny-action-menu.js';
 import { setCharacterEditorQuickEdit } from './power-user.js';
 import { eventSource, event_types } from './events.js';
 import {
@@ -33,12 +34,27 @@ const NEW_CHAR_DRAFT_KEY = 'new-character';
 
 // --- Module state ---
 
-/** @type {{ mode: 'edit'|'create', chid: number|null, avatar: string, baseline: object }|null} */
+/** @type {{ mode: 'edit'|'create', chid: number|null, avatar: string, baseline: object, baselineJson: string }|null} */
 let currentSession = null;
 let draftTimerId = null;
 /** @type {MutationObserver|null} */
 let tokenMirrorObserver = null;
 let tokenMirrorScheduled = false;
+
+// Session-local greeting drafts (A.2.3). Rows edit these, never the entity, so
+// Cancel/Discard can revert and unrelated autosaves cannot persist half-edits.
+// draftOwner is the avatar (or NEW_CHAR_DRAFT_KEY) the drafts were loaded for.
+/** @type {string[]} */
+let draftAlt = [];
+/** @type {string[]} */
+let draftGrp = [];
+/** @type {string|null} */
+let draftOwner = null;
+
+// Plan §3.3: user-input handlers debounce at 300ms.
+const DIRTY_DEBOUNCE_MS = 300;
+let dirtyTimerId = null;
+let leavePromptOpen = false;
 
 // ============================================================
 // Public API
@@ -78,9 +94,16 @@ export function beginCharacterEditorLoad() {
  * @param {'edit'|'create'} mode
  */
 export function loadCharacterEditorGreetings(chid, mode) {
-    // Stash the chid/mode so the renderers know where to read from
-    _sessionChid = chid;
-    _sessionMode = mode;
+    if (mode === 'create') {
+        draftAlt = _copyGreetings(create_save.alternate_greetings);
+        draftGrp = _copyGreetings(create_save.group_only_greetings);
+        draftOwner = NEW_CHAR_DRAFT_KEY;
+    } else {
+        const data = characters[chid]?.data;
+        draftAlt = _copyGreetings(data?.alternate_greetings);
+        draftGrp = _copyGreetings(data?.group_only_greetings);
+        draftOwner = characters[chid]?.avatar ?? null;
+    }
     _renderAlternateGreetings();
     _renderGroupGreetings();
 }
@@ -99,12 +122,7 @@ export function openCharacterEditorSession(chid) {
         return;
     }
 
-    currentSession = {
-        mode: 'edit',
-        chid,
-        avatar: character.avatar,
-        baseline: _captureSnapshot(),
-    };
+    currentSession = _createSession('edit', chid, character.avatar);
 
     _updateHeaderTitle(character.name);
     _updateHeaderButtons();
@@ -123,12 +141,7 @@ export function openCharacterEditorSession(chid) {
 export function openCharacterEditorCreateSession() {
     _closeDraftTimer();
 
-    currentSession = {
-        mode: 'create',
-        chid: null,
-        avatar: NEW_CHAR_DRAFT_KEY,
-        baseline: _captureSnapshot(),
-    };
+    currentSession = _createSession('create', null, NEW_CHAR_DRAFT_KEY);
 
     _updateHeaderTitle(t`Create New Character`);
     _updateHeaderButtons();
@@ -157,31 +170,47 @@ function _scheduleToolbarOverflow() {
 export function markCharacterEditorSaved() {
     if (!currentSession) return;
     currentSession.baseline = _captureSnapshot();
+    currentSession.baselineJson = JSON.stringify(currentSession.baseline);
+    _clearDirtyDebounce();
     _updateDirtyIndicator();
     _updateHeaderButtons();
     _removeDraft(currentSession.avatar);
 }
 
 /**
- * Return the current group-only greeting array for use in FormData.
+ * Alternate greetings to submit for a save. Returns the editor draft when it
+ * belongs to the character being saved, otherwise that character's stored list,
+ * so a save for another card (or with no editor open) never submits [] and wipes
+ * its greetings.
+ * @param {string|null} targetAvatar  Avatar being saved, or null for create
  * @returns {string[]}
  */
-export function getCharacterEditorGroupGreetings() {
-    return _getEditableGroupGreetings() ?? [];
+export function getCharacterEditorAlternateGreetings(targetAvatar) {
+    if (_draftBelongsTo(targetAvatar)) return [...draftAlt];
+    return _copyGreetings(_storedGreetings(targetAvatar)?.alternate_greetings);
+}
+
+/**
+ * Group-only greetings to submit for a save; same ownership rule as
+ * getCharacterEditorAlternateGreetings().
+ * @param {string|null} targetAvatar  Avatar being saved, or null for create
+ * @returns {string[]}
+ */
+export function getCharacterEditorGroupGreetings(targetAvatar) {
+    if (_draftBelongsTo(targetAvatar)) return [...draftGrp];
+    return _copyGreetings(_storedGreetings(targetAvatar)?.group_only_greetings);
 }
 
 /**
  * Add a new alternate greeting row and focus its textarea.
  */
 export function addAlternateGreeting() {
-    const greetings = _getEditableAlternateGreetings();
-    if (!greetings) return;
-
-    const newIndex = greetings.length;
-    greetings.push('');
+    if (!currentSession) return;
+    const newIndex = draftAlt.length;
+    draftAlt.push('');
     _renderAlternateGreetings();
-    _markDirty();
-    if (currentSession?.mode === 'create') create_save.alternate_greetings = greetings;
+    _commitCreateDrafts();
+    _refreshDirtyState();
     _focusGreetingRow('.alternate_greetings_list', newIndex);
 }
 
@@ -189,23 +218,51 @@ export function addAlternateGreeting() {
  * Add a new group-only greeting row and focus its textarea.
  */
 export function addGroupGreeting() {
-    const greetings = _getEditableGroupGreetings();
-    if (!greetings) return;
-
-    const newIndex = greetings.length;
-    greetings.push('');
+    if (!currentSession) return;
+    const newIndex = draftGrp.length;
+    draftGrp.push('');
     _renderGroupGreetings();
-    _markDirty();
-    if (currentSession?.mode === 'create') create_save.group_only_greetings = greetings;
+    _commitCreateDrafts();
+    _refreshDirtyState();
     _focusGreetingRow('.group_only_greetings_list', newIndex);
 }
 
 // ============================================================
-// Internal: per-render session context (populated by loadCharacterEditorGreetings)
+// Internal: session and greeting-draft helpers
 // ============================================================
 
-let _sessionChid = null;
-let _sessionMode = 'edit';
+function _createSession(mode, chid, avatar) {
+    const baseline = _captureSnapshot();
+    return { mode, chid, avatar, baseline, baselineJson: JSON.stringify(baseline) };
+}
+
+/** @param {unknown} list */
+function _copyGreetings(list) {
+    return Array.isArray(list) ? list.map(value => String(value ?? '')) : [];
+}
+
+/** @param {string|null} targetAvatar */
+function _draftBelongsTo(targetAvatar) {
+    if (draftOwner === null) return false;
+    return targetAvatar === null ? draftOwner === NEW_CHAR_DRAFT_KEY : draftOwner === targetAvatar;
+}
+
+/** @param {string|null} targetAvatar */
+function _storedGreetings(targetAvatar) {
+    if (targetAvatar === null) return create_save;
+    return characters.find(character => character?.avatar === targetAvatar)?.data ?? null;
+}
+
+/**
+ * Create mode keeps its in-progress card in create_save, which survives leaving
+ * and re-entering the create panel. Mirror the drafts there so greetings persist
+ * the same way the text fields do; edit mode never writes to the entity.
+ */
+function _commitCreateDrafts() {
+    if (draftOwner !== NEW_CHAR_DRAFT_KEY) return;
+    create_save.alternate_greetings = [...draftAlt];
+    create_save.group_only_greetings = [...draftGrp];
+}
 
 // ============================================================
 // Header buttons
@@ -252,6 +309,10 @@ async function _handleBack(event) {
         event.stopImmediatePropagation();
         return;
     }
+    _closeSafely();
+}
+
+function _closeSafely() {
     // Navigate to the characters tab — clicking the shell tab button
     // triggers the full navigation path including syncCharacterShellTabs.
     // The hidden #rm_button_back stub only fires the panel switch without
@@ -262,16 +323,26 @@ async function _handleBack(event) {
 function _handleCancel() {
     if (!currentSession || !_isDirty()) return;
     // Direct revert — Cancel is disabled when clean, so a click is intentional
+    _discardChanges();
+}
+
+function _discardChanges() {
+    if (!currentSession) return;
     _restoreSnapshot(currentSession.baseline);
     _removeDraft(currentSession.avatar);
 }
 
+/**
+ * @returns {Promise<boolean>} true when the editor holds no unsaved changes afterwards
+ */
 async function _handleSave() {
-    if (!currentSession) return;
-    if (currentSession.mode === 'edit' && !_isDirty()) return;
+    if (!currentSession) return true;
+    if (currentSession.mode === 'edit' && !_isDirty()) return true;
 
-    // createOrEditCharacter is called here; script.js calls markCharacterEditorSaved() on success
+    // script.js calls markCharacterEditorSaved() on success, which moves the
+    // baseline; a failed or user-aborted save leaves the editor dirty.
     await createOrEditCharacter();
+    return !_isDirty();
 }
 
 // ============================================================
@@ -696,10 +767,16 @@ function _resetPreviewToggles() {
 // ============================================================
 
 function _bindGreetingAddButtons() {
-    // Intercept the upstream delegated handler for .open_alternate_greetings
-    $(document).on('click', '.open_alternate_greetings', (event) => {
-        event.stopImmediatePropagation();
-        addAlternateGreeting();
+    // Upstream delegates .open_alternate_greetings on document (script.js:18654)
+    // and registers first, so a second delegated handler could never stop it:
+    // one click added two greetings, one written straight into the entity. A
+    // listener on the button itself runs before anything delegated on document.
+    document.querySelectorAll('#form_create .open_alternate_greetings').forEach(button => {
+        button.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            addAlternateGreeting();
+        });
     });
 
     document.getElementById('sb_character_add_group_greeting')
@@ -714,8 +791,10 @@ function _bindGreetingAddButtons() {
 // ============================================================
 
 function _bindFieldDirtyListeners() {
-    // All text fields inside #form_create dispatch 'input' — one delegated handler covers them all
-    document.getElementById('form_create')?.addEventListener('input', () => {
+    // One delegated handler covers every field in #form_create. Bound through
+    // jQuery so programmatic .trigger('input') writes (maximize editor, upstream
+    // field setters) are counted as well as native typing.
+    $('#form_create').on('input', () => {
         _markDirty();
     });
 
@@ -739,24 +818,19 @@ function _bindKeyboardShortcuts() {
         _handleSave();
     }, { capture: true });
 
-    // Escape — dirty guard (skip when a popup is open or focus is in a text input)
+    // Escape — dirty guard. Runs from inside fields too (A.2.9): editing means
+    // focus is almost always in a field, so skipping them disabled the guard.
+    // A clean editor lets Escape fall through to the shell's own handling.
     document.addEventListener('keydown', async (event) => {
-        if (event.key !== 'Escape') return;
+        if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) return;
         if (!_isEditorVisible()) return;
-        if (_isPopupOpen()) return;
-
-        const active = document.activeElement;
-        if (active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT')) return;
-
+        if (_isPopupOpen() || isActionMenuOpen()) return;
         if (!_isDirty()) return;
 
         event.preventDefault();
-        event.stopImmediatePropagation();
+        event.stopPropagation();
 
-        if (await _allowLeave()) {
-            // Navigate to the characters list
-            document.querySelector('[data-sb-character-tab="characters"]')?.click();
-        }
+        if (await _allowLeave()) _closeSafely();
     }, { capture: true });
 }
 
@@ -767,11 +841,16 @@ function _bindKeyboardShortcuts() {
 function _bindNavigationGuards() {
     document.addEventListener('click', async (event) => {
         if (!event.isTrusted) return;
-        if (!_isDirty()) return;
 
+        // The drawer rail uses data-sb-character-tab; when the characters panel
+        // is page-hosted, the settings sidebar uses data-sb-settings-tab instead.
         const target = /** @type {HTMLElement} */ (event.target);
-        const tab = target.closest('[data-sb-character-tab]:not([data-sb-character-tab="editor"])');
+        const tab = target.closest(
+            '[data-sb-character-tab]:not([data-sb-character-tab="editor"]), '
+            + '[data-sb-settings-tab]:not([data-sb-settings-tab="editor"])',
+        );
         if (!tab) return;
+        if (!_isEditorVisible() || !_isDirty()) return;
 
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -789,29 +868,33 @@ function _bindNavigationGuards() {
 
 async function _allowLeave() {
     if (!currentSession || !_isDirty()) return true;
+    if (leavePromptOpen) return false;
 
+    leavePromptOpen = true;
     const popup = new Popup(
-        t`Unsaved changes`,
+        (() => { const p = document.createElement('p'); p.textContent = t`Unsaved changes`; return p; })(),
         POPUP_TYPE.CONFIRM,
         '',
         {
             okButton: t`Save`,
             cancelButton: t`Cancel`,
-            customButtons: [{ text: t`Discard`, result: 2 }],
+            customButtons: [{ text: t`Discard`, result: 2, classes: ['sb-editor-discard'] }],
             defaultResult: POPUP_RESULT.NEGATIVE,
         },
     );
+    // AdwAlertDialog order: Cancel (start) · Discard · Save (end). The theme
+    // already sets .popup-button-cancel { order: -1 }, so only Save needs adjustment.
+    popup.okButton.style.order = '2';
 
     const result = await popup.show();
+    leavePromptOpen = false;
 
     if (result === POPUP_RESULT.AFFIRMATIVE) {
-        await _handleSave();
-        return true;
+        return await _handleSave();
     }
 
     if (result === 2) {
-        _restoreSnapshot(currentSession.baseline);
-        _removeDraft(currentSession.avatar);
+        _discardChanges();
         return true;
     }
 
@@ -828,8 +911,8 @@ function _handleExternalSave() {
     if (!currentSession || currentSession.mode !== 'edit') return;
     if (currentSession.chid !== this_chid) return;
     currentSession.baseline = _captureSnapshot();
-    _updateDirtyIndicator();
-    _updateHeaderButtons();
+    currentSession.baselineJson = JSON.stringify(currentSession.baseline);
+    _refreshDirtyState();
 }
 
 // ============================================================
@@ -908,8 +991,8 @@ function _checkDraftRestore() {
 
     if (!draft?.v || !draft.snapshot) return;
 
-    const currentSnap = _captureSnapshot();
-    if (JSON.stringify(draft.snapshot) === JSON.stringify(currentSnap)) {
+    // A.2.6: a draft is only worth restoring if it differs from the last-saved state.
+    if (JSON.stringify(draft.snapshot) === currentSession.baselineJson) {
         _removeDraft(currentSession.avatar);
         return;
     }
@@ -951,21 +1034,47 @@ function _showDraftRestoreToast(draft) {
 // Dirty tracking
 // ============================================================
 
+/**
+ * Exact comparison against the session baseline. Guards (save, leave, unload)
+ * call this directly so they never act on a stale debounced value.
+ */
 function _isDirty() {
     if (!currentSession) return false;
-    return JSON.stringify(_captureSnapshot()) !== JSON.stringify(currentSession.baseline);
+    return JSON.stringify(_captureSnapshot()) !== currentSession.baselineJson;
 }
 
+/**
+ * Typing in a long field would otherwise serialize every field per keystroke
+ * (A.2.5), so the visible indicator refreshes on a trailing debounce.
+ */
 function _markDirty() {
-    _updateDirtyIndicator();
-    _updateHeaderButtons();
+    _clearDirtyDebounce();
+    dirtyTimerId = setTimeout(() => {
+        dirtyTimerId = null;
+        _refreshDirtyState();
+    }, DIRTY_DEBOUNCE_MS);
 }
 
-function _updateDirtyIndicator() {
+function _clearDirtyDebounce() {
+    if (dirtyTimerId !== null) {
+        clearTimeout(dirtyTimerId);
+        dirtyTimerId = null;
+    }
+}
+
+/** Immediate refresh for structural changes (add, move, delete, revert, save). */
+function _refreshDirtyState() {
+    _clearDirtyDebounce();
+    const dirty = _isDirty();
+    _updateDirtyIndicator(dirty);
+    _updateHeaderButtons(dirty);
+}
+
+/** @param {boolean} [dirty] */
+function _updateDirtyIndicator(dirty = _isDirty()) {
     const el = document.getElementById('sb_character_editor_dirty');
     if (!el) return;
 
-    const dirty = _isDirty();
     const wasHidden = el.hidden;
     el.hidden = !dirty;
     if (dirty === !wasHidden) return;
@@ -979,10 +1088,10 @@ function _updateDirtyIndicator() {
     }
 }
 
-function _updateHeaderButtons() {
+/** @param {boolean} [dirty] */
+function _updateHeaderButtons(dirty = _isDirty()) {
     const save = document.getElementById('sb_character_editor_save');
     const cancel = document.getElementById('sb_character_editor_cancel');
-    const dirty = _isDirty();
     const isCreate = currentSession?.mode === 'create';
 
     if (save instanceof HTMLButtonElement) {
@@ -1044,8 +1153,8 @@ function _captureSnapshot() {
     }
     // Read favorite state from DOM class since fav_ch_checked is not exported
     snap._fav = document.getElementById('favorite_button')?.classList.contains('fav_on') ?? false;
-    snap._alt = [...(_getEditableAlternateGreetings() ?? [])];
-    snap._grp = [...(_getEditableGroupGreetings() ?? [])];
+    snap._alt = [...draftAlt];
+    snap._grp = [...draftGrp];
     return snap;
 }
 
@@ -1071,57 +1180,22 @@ function _restoreSnapshot(snap) {
     }
 
     if ('_alt' in snap) {
-        const arr = _getEditableAlternateGreetings();
-        if (arr) {
-            arr.splice(0, arr.length, ...(snap._alt || []));
-            _renderAlternateGreetings();
-        }
+        draftAlt.splice(0, draftAlt.length, ...(snap._alt || []));
+        _renderAlternateGreetings();
     }
 
     if ('_grp' in snap) {
-        const arr = _getEditableGroupGreetings();
-        if (arr) {
-            arr.splice(0, arr.length, ...(snap._grp || []));
-            _renderGroupGreetings();
-        }
+        draftGrp.splice(0, draftGrp.length, ...(snap._grp || []));
+        _renderGroupGreetings();
     }
 
-    _markDirty();
+    _commitCreateDrafts();
+    _refreshDirtyState();
 }
 
 // ============================================================
 // Greeting data access
 // ============================================================
-
-function _getEditableAlternateGreetings() {
-    const mode = currentSession?.mode ?? _sessionMode;
-    if (mode === 'create') {
-        if (!Array.isArray(create_save.alternate_greetings)) create_save.alternate_greetings = [];
-        return create_save.alternate_greetings;
-    }
-    const chid = currentSession?.chid ?? _sessionChid;
-    if (chid == null || !characters[chid]) return null;
-    characters[chid].data ??= {};
-    if (!Array.isArray(characters[chid].data.alternate_greetings)) {
-        characters[chid].data.alternate_greetings = [];
-    }
-    return characters[chid].data.alternate_greetings;
-}
-
-function _getEditableGroupGreetings() {
-    const mode = currentSession?.mode ?? _sessionMode;
-    if (mode === 'create') {
-        if (!Array.isArray(create_save.group_only_greetings)) create_save.group_only_greetings = [];
-        return create_save.group_only_greetings;
-    }
-    const chid = currentSession?.chid ?? _sessionChid;
-    if (chid == null || !characters[chid]) return null;
-    characters[chid].data ??= {};
-    if (!Array.isArray(characters[chid].data.group_only_greetings)) {
-        characters[chid].data.group_only_greetings = [];
-    }
-    return characters[chid].data.group_only_greetings;
-}
 
 // ============================================================
 // Greeting renderers
@@ -1130,114 +1204,178 @@ function _getEditableGroupGreetings() {
 function _renderAlternateGreetings() {
     const list = document.querySelector('.alternate_greetings_list');
     if (!list) return;
-
-    const greetings = _getEditableAlternateGreetings() ?? [];
     list.innerHTML = '';
-    greetings.forEach((g, i) => list.appendChild(_createGreetingRow(g, i, 'alternate', greetings)));
-
-    const hint = list.closest('.sb-greetings-editor')?.querySelector('.alternate_grettings_hint');
-    if (hint) hint.style.display = greetings.length === 0 ? '' : 'none';
+    draftAlt.forEach((g, i) => list.appendChild(_createGreetingRow(g, i, 'alternate')));
 }
 
 function _renderGroupGreetings() {
     const list = document.querySelector('.group_only_greetings_list');
     if (!list) return;
-
-    const greetings = _getEditableGroupGreetings() ?? [];
     list.innerHTML = '';
-    greetings.forEach((g, i) => list.appendChild(_createGreetingRow(g, i, 'group', greetings)));
+    draftGrp.forEach((g, i) => list.appendChild(_createGreetingRow(g, i, 'group')));
 
     const badge = document.getElementById('sb_character_group_greetings_count');
-    if (badge) badge.textContent = greetings.length > 0 ? String(greetings.length) : '';
+    if (badge) badge.textContent = draftGrp.length > 0 ? String(draftGrp.length) : '';
 }
 
 /**
  * @param {string} greeting
  * @param {number} index
  * @param {'alternate'|'group'} kind
- * @param {string[]} greetingsRef  live array reference for mutations
  */
-function _createGreetingRow(greeting, index, kind, greetingsRef) {
-    const row = document.createElement('div');
-    row.className = 'sb-greeting-row alternate_greeting';
+const GREETING_SNIPPET_LENGTH = 80;
+
+function _greetingSnippet(text) {
+    const flat = String(text ?? '').replace(/\s+/g, ' ').trim();
+    if (!flat) return t`(empty)`;
+    return flat.length > GREETING_SNIPPET_LENGTH ? `${flat.slice(0, GREETING_SNIPPET_LENGTH)}…` : flat;
+}
+
+/**
+ * One greeting as an AdwExpanderRow: the summary carries the label and a
+ * one-line snippet, the body carries the editor and the row's actions. Actions
+ * live in the body, not the summary, because <summary> is itself the toggle
+ * button and must not contain other interactive content.
+ * @param {string} greeting
+ * @param {number} index
+ * @param {'alternate'|'group'} kind
+ */
+function _createGreetingRow(greeting, index, kind) {
+    const greetingsRef = kind === 'alternate' ? draftAlt : draftGrp;
+    // Upstream's maximize editor and extensions address greetings by these ids.
+    const textareaId = kind === 'alternate' ? `alternate_greeting_inline_${index}` : `group_greeting_inline_${index}`;
+
+    const row = document.createElement('details');
+    row.className = 'ds-row-expander sb-greeting-row alternate_greeting';
     row.dataset.index = String(index);
+    row.setAttribute('role', 'listitem');
 
-    const snippet = greeting.length > 70 ? greeting.slice(0, 70) + '…' : greeting || t`(empty)`;
+    const summary = document.createElement('summary');
+    summary.className = 'ds-row';
 
-    row.innerHTML = `
-        <details class="sb-greeting-row__details">
-            <summary class="sb-greeting-row__summary">
-                <span class="sb-greeting-row__index">${index + 1}</span>
-                <span class="sb-greeting-row__snippet">${_esc(snippet)}</span>
-                <span class="sb-greeting-row__actions" role="group">
-                    <button type="button" class="menu_button menu_button_icon sb-greeting-row__btn"
-                        data-action="up" aria-label="${t`Move up`}" title="${t`Move up`}">
-                        <i class="fa-solid fa-arrow-up" aria-hidden="true"></i>
-                    </button>
-                    <button type="button" class="menu_button menu_button_icon sb-greeting-row__btn"
-                        data-action="down" aria-label="${t`Move down`}" title="${t`Move down`}">
-                        <i class="fa-solid fa-arrow-down" aria-hidden="true"></i>
-                    </button>
-                    <button type="button" class="menu_button menu_button_icon sb-greeting-row__btn"
-                        data-action="delete" aria-label="${t`Delete`}" title="${t`Delete`}">
-                        <i class="fa-solid fa-trash" aria-hidden="true"></i>
-                    </button>
-                </span>
-            </summary>
-            <div class="sb-greeting-row__body">
-                <textarea class="text_pole alternate_greeting_text sb-greeting-row__textarea"
-                    data-macros rows="6">${_esc(greeting)}</textarea>
-            </div>
-        </details>
-    `;
+    const text = document.createElement('span');
+    text.className = 'ds-row-text';
+    const title = document.createElement('span');
+    title.className = 'ds-row-label';
+    title.textContent = kind === 'alternate'
+        ? t`Alternate greeting #${index + 1}`
+        : t`Group greeting #${index + 1}`;
+    const subtitle = document.createElement('span');
+    subtitle.className = 'ds-row-subtitle sb-greeting-row__snippet';
+    subtitle.textContent = _greetingSnippet(greeting);
+    text.append(title, subtitle);
+    summary.append(text);
 
-    const textarea = /** @type {HTMLTextAreaElement} */ (row.querySelector('textarea'));
+    const body = document.createElement('div');
+    body.className = 'ds-row-expander-content sb-greeting-row__body';
 
-    textarea.addEventListener('input', () => {
+    const textarea = document.createElement('textarea');
+    textarea.id = textareaId;
+    textarea.className = 'text_pole alternate_greeting_text sb-greeting-row__textarea';
+    textarea.rows = 6;
+    textarea.dataset.macros = '';
+    textarea.value = greeting;
+    textarea.setAttribute('aria-label', title.textContent);
+    // jQuery binding: the maximize editor writes back with jQuery .trigger('input'),
+    // which does not reach addEventListener listeners.
+    $(textarea).on('input', () => {
         greetingsRef[index] = textarea.value;
-        const snippet_el = row.querySelector('.sb-greeting-row__snippet');
-        if (snippet_el) {
-            const t2 = textarea.value;
-            snippet_el.textContent = t2.length > 70 ? t2.slice(0, 70) + '…' : t2 || t`(empty)`;
-        }
+        subtitle.textContent = _greetingSnippet(textarea.value);
+        _commitCreateDrafts();
         _markDirty();
-        if (currentSession?.mode === 'create') {
-            if (kind === 'alternate') create_save.alternate_greetings = greetingsRef;
-            else create_save.group_only_greetings = greetingsRef;
-        }
     });
 
-    row.querySelectorAll('.sb-greeting-row__btn').forEach(btn => {
-        btn.addEventListener('click', async (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            const action = /** @type {HTMLElement} */ (btn).dataset.action;
+    const actions = document.createElement('div');
+    actions.className = 'sb-greeting-row__actions';
+    actions.setAttribute('role', 'group');
+    actions.setAttribute('aria-label', title.textContent);
 
-            if (action === 'up') {
-                if (index === 0) return;
-                [greetingsRef[index - 1], greetingsRef[index]] = [greetingsRef[index], greetingsRef[index - 1]];
-                _reRenderKind(kind);
-                _markDirty();
-            } else if (action === 'down') {
-                if (index >= greetingsRef.length - 1) return;
-                [greetingsRef[index], greetingsRef[index + 1]] = [greetingsRef[index + 1], greetingsRef[index]];
-                _reRenderKind(kind);
-                _markDirty();
-            } else if (action === 'delete') {
-                const pop = new Popup(t`Delete this greeting?`, POPUP_TYPE.CONFIRM);
-                if (await pop.show() !== POPUP_RESULT.AFFIRMATIVE) return;
-                greetingsRef.splice(index, 1);
-                _reRenderKind(kind);
-                _markDirty();
-                if (currentSession?.mode === 'create') {
-                    if (kind === 'alternate') create_save.alternate_greetings = greetingsRef;
-                    else create_save.group_only_greetings = greetingsRef;
-                }
-            }
+    const upButton = _createGreetingButton('fa-arrow-up', t`Move up`, () => _moveGreeting(kind, index, -1));
+    upButton.disabled = index === 0;
+    const downButton = _createGreetingButton('fa-arrow-down', t`Move down`, () => _moveGreeting(kind, index, 1));
+    downButton.disabled = index >= greetingsRef.length - 1;
+    const expandButton = _createGreetingButton('fa-maximize', t`Expand the editor`, null);
+    // Delegated upstream handler (.editor_maximize[data-for]) opens the large editor
+    // and writes back through an input event, which the listener above picks up.
+    expandButton.classList.add('editor_maximize');
+    expandButton.dataset.for = textareaId;
+
+    const spacer = document.createElement('span');
+    spacer.className = 'sb-greeting-row__spacer';
+
+    const deleteButton = _createGreetingButton('fa-trash-can', t`Delete`, async () => {
+        const popup = new Popup(t`Delete this greeting?`, POPUP_TYPE.CONFIRM);
+        if (await popup.show() !== POPUP_RESULT.AFFIRMATIVE) return;
+        greetingsRef.splice(index, 1);
+        _reRenderKind(kind);
+        _commitCreateDrafts();
+        _refreshDirtyState();
+    });
+    deleteButton.classList.add('sb-greeting-row__delete');
+
+    actions.append(upButton, downButton, expandButton, spacer, deleteButton);
+    body.append(textarea, actions);
+    row.append(summary, body);
+
+    // AdwExpanderRow lists keep one row open, so a long list stays scannable.
+    row.addEventListener('toggle', () => {
+        if (!row.open) return;
+        row.parentElement?.querySelectorAll(':scope > details[open]').forEach(other => {
+            if (other !== row) /** @type {HTMLDetailsElement} */ (other).open = false;
         });
     });
 
     return row;
+}
+
+/**
+ * @param {string} icon
+ * @param {string} label
+ * @param {(() => void)|null} handler  null leaves the click to a delegated handler
+ */
+function _createGreetingButton(icon, label, handler) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'sb-greeting-row__btn';
+    btn.setAttribute('aria-label', label);
+    btn.title = label;
+    const glyph = document.createElement('i');
+    glyph.className = `fa-solid ${icon}`;
+    glyph.setAttribute('aria-hidden', 'true');
+    btn.appendChild(glyph);
+    if (handler) {
+        btn.addEventListener('click', (event) => {
+            event.preventDefault();
+            handler();
+        });
+    }
+    return btn;
+}
+
+/**
+ * @param {'alternate'|'group'} kind
+ * @param {number} index
+ * @param {-1|1} delta
+ */
+function _moveGreeting(kind, index, delta) {
+    const list = kind === 'alternate' ? draftAlt : draftGrp;
+    const target = index + delta;
+    if (target < 0 || target >= list.length) return;
+    [list[index], list[target]] = [list[target], list[index]];
+    _reRenderKind(kind);
+    _commitCreateDrafts();
+    _refreshDirtyState();
+
+    // Keep the moved row open and its control focused so repeated moves work
+    // from the keyboard without hunting for the row again.
+    const selector = kind === 'alternate' ? '.alternate_greetings_list' : '.group_only_greetings_list';
+    const row = document.querySelector(`${selector} > .sb-greeting-row[data-index="${target}"]`);
+    if (row instanceof HTMLDetailsElement) {
+        row.open = true;
+        const button = row.querySelector(`.sb-greeting-row__btn[aria-label="${CSS.escape(delta < 0 ? t`Move up` : t`Move down`)}"]`);
+        const fallback = row.querySelector('textarea');
+        (button instanceof HTMLButtonElement && !button.disabled ? button : fallback)?.focus({ preventScroll: true });
+    }
 }
 
 function _reRenderKind(kind) {
@@ -1247,11 +1385,10 @@ function _reRenderKind(kind) {
 
 function _focusGreetingRow(listSelector, index) {
     requestAnimationFrame(() => {
-        const row = document.querySelector(`${listSelector} .sb-greeting-row[data-index="${index}"]`);
-        if (!(row instanceof HTMLElement)) return;
+        const row = document.querySelector(`${listSelector} > .sb-greeting-row[data-index="${index}"]`);
+        if (!(row instanceof HTMLDetailsElement)) return;
+        row.open = true;
         row.scrollIntoView({ block: 'nearest', behavior: _prefersReducedMotion() ? 'auto' : 'smooth' });
-        const details = row.querySelector('details');
-        if (details) details.open = true;
         row.querySelector('textarea')?.focus({ preventScroll: true });
     });
 }
@@ -1260,9 +1397,17 @@ function _focusGreetingRow(listSelector, index) {
 // Utilities
 // ============================================================
 
+/**
+ * A.2.8: gate on the shell's authoritative state rather than a layout read,
+ * which gave false negatives mid-animation. setMenuType() mirrors menu_type into
+ * data-menu-type, and the drawer is open while it carries .openDrawer.
+ */
 function _isEditorVisible() {
-    const panel = document.getElementById('rm_ch_create_block');
-    return !!panel && panel.style.display !== 'none' && panel.getBoundingClientRect().width > 0;
+    if (!currentSession) return false;
+    const panel = document.getElementById('right-nav-panel');
+    if (!panel?.classList.contains('openDrawer')) return false;
+    const menuType = panel.dataset.menuType;
+    return menuType === 'character_edit' || menuType === 'create';
 }
 
 function _isPopupOpen() {
@@ -1271,10 +1416,4 @@ function _isPopupOpen() {
 
 function _prefersReducedMotion() {
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
-
-function _esc(text) {
-    const d = document.createElement('div');
-    d.textContent = text;
-    return d.innerHTML;
 }

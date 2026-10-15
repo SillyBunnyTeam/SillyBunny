@@ -68,7 +68,7 @@
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-navigation.css?v=20261001e">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261003a">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-list-editor.css?v=20261014a">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-character-editor.css?v=20261014a">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-character-editor.css?v=20261015a">
     <!-- SillyBunny: colour menus render outside clipped preference groups. -->
     <link rel="preload" as="style" href="css/sillybunny-color-picker.css" data-sb-deferred-style data-sb-media="all">
     <link rel="stylesheet" type="text/css" href="css/user.css">
@@ -7213,18 +7213,22 @@
                                             </div>
                                         </div>
                                         <div id="character_greetings_editor" class="sb-greetings-editor" data-sb-greetings-kind="alternate">
-                                            <div class="sb-greetings-editor__header">
-                                                <span class="sb-editor-field__label" data-i18n="Alternate Greetings">Alternate Greetings</span>
-                                                <button type="button" class="menu_button menu_button_icon open_alternate_greetings margin0" title="Click to add an alternate greeting" data-i18n="[title]Click to add an alternate greeting">
-                                                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
-                                                    <span data-i18n="Add">Add</span>
-                                                </button>
+                                            <div class="ds-row sb-greetings-editor__header">
+                                                <span class="ds-row-text">
+                                                    <span class="ds-row-label" id="sb_character_alternate_greetings_label" data-i18n="Alternate Greetings">Alternate Greetings</span>
+                                                    <small class="ds-row-subtitle" data-i18n="Alternate_Greetings_desc">
+                                                        These will be displayed as swipes on the first message when starting a new chat.
+                                                        Group members can select one of them to initiate the conversation.
+                                                    </small>
+                                                </span>
+                                                <span class="ds-row-suffix">
+                                                    <button type="button" class="menu_button menu_button_icon sb-greetings-editor__add open_alternate_greetings" title="Click to add an alternate greeting" data-i18n="[title]Click to add an alternate greeting">
+                                                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                                                        <span data-i18n="Add">Add</span>
+                                                    </button>
+                                                </span>
                                             </div>
-                                            <small class="sb-editor-field__hint" data-i18n="Alternate_Greetings_desc">
-                                                These will be displayed as swipes on the first message when starting a new chat.
-                                                Group members can select one of them to initiate the conversation.
-                                            </small>
-                                            <div class="alternate_greetings_list sb-greetings-list" role="list"></div>
+                                            <div class="alternate_greetings_list sb-greetings-list" role="list" aria-labelledby="sb_character_alternate_greetings_label"></div>
                                         </div>
                                         <details class="ds-row-expander sb-greetings-expander" id="sb_character_group_greetings">
                                             <summary class="ds-row">
@@ -7237,13 +7241,19 @@
                                             </summary>
                                             <div class="ds-row-expander-content">
                                                 <div id="character_group_greetings_editor" class="sb-greetings-editor" data-sb-greetings-kind="group">
-                                                    <!-- HUMAN: replace -->
-                                                    <small class="sb-editor-field__hint">lorum ipsum</small>
-                                                    <div class="group_only_greetings_list sb-greetings-list" role="list"></div>
-                                                    <button type="button" id="sb_character_add_group_greeting" class="menu_button menu_button_icon margin0 sb-greetings-editor__add" title="Add a group-only greeting" data-i18n="[title]Add a group-only greeting">
-                                                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
-                                                        <span data-i18n="Add">Add</span>
-                                                    </button>
+                                                    <div class="ds-row sb-greetings-editor__header">
+                                                        <span class="ds-row-text">
+                                                            <!-- HUMAN: replace -->
+                                                            <small class="ds-row-subtitle">lorum ipsum</small>
+                                                        </span>
+                                                        <span class="ds-row-suffix">
+                                                            <button type="button" id="sb_character_add_group_greeting" class="menu_button menu_button_icon sb-greetings-editor__add" title="Add a group-only greeting" data-i18n="[title]Add a group-only greeting">
+                                                                <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                                                                <span data-i18n="Add">Add</span>
+                                                            </button>
+                                                        </span>
+                                                    </div>
+                                                    <div class="group_only_greetings_list sb-greetings-list" role="list" aria-label="Group-only greetings" data-i18n="[aria-label]Group-only greetings"></div>
                                                 </div>
                                             </div>
                                         </details>

@@ -641,14 +641,15 @@
 }
 
 /* Greetings editor
+   Greetings are AdwExpanderRows inside the Greetings group: one row per
+   greeting, a header row carrying the description and the Add action.
    ========================================================================= */
 
 .sb-greetings-editor {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
+    min-width: 0;
+    border-bottom: 1px solid var(--sb-shell-border);
 }
 
 .ds-pref-group > .sb-greetings-editor:last-child {
@@ -656,72 +657,132 @@
 }
 
 .sb-greetings-editor__header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+    min-height: 52px;
 }
 
-.sb-greetings-editor__header .sb-editor-field__label {
+.sb-greetings-editor__header > .ds-row-suffix {
+    align-self: center;
+}
+
+#form_create .sb-greetings-editor__add {
     margin: 0;
+    white-space: nowrap;
 }
 
-.sb-greetings-editor__header .menu_button {
-    margin: 0;
-}
-
-.sb-greetings-editor__add {
-    align-self: flex-start;
-    margin: 0;
-}
-
-.sb-greetings-list {
+/* style.css:7102 and :4053 give the list its own forced scroll box, which
+   reads as a nested dropdown inside the sheet. The sheet already scrolls. */
+#form_create .sb-greetings-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    max-height: none;
+    padding: 0;
+    overflow: visible;
+    border-top: 1px solid var(--sb-shell-border);
 }
 
-.sb-greetings-list:empty {
+#form_create .sb-greetings-list:empty {
     display: none;
 }
 
-.sb-greeting-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 12px;
-    background: var(--sb-button-bg, color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent));
-    border: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
-    border-radius: var(--sb-radius-control, 9px);
-    transition: background-color var(--sb-transition-fast, 200ms ease);
+/* Each greeting keeps .alternate_greeting for extensions; neutralise the
+   legacy summary marker/indent (style.css:3876–3928) so it is a plain row. */
+#form_create .sb-greeting-row {
+    width: 100%;
+    padding: 0;
 }
 
-.sb-greeting-row:hover {
-    background: var(--sb-flat-hover-bg, color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent));
+#form_create .sb-greetings-list > .sb-greeting-row:last-child {
+    border-bottom: 0;
 }
 
-.sb-greeting-row__text {
-    flex: 1 1 auto;
-    min-width: 0;
-    font-size: var(--sb-type-control, 15px);
-    color: var(--SmartThemeBodyColor);
+#form_create .sb-greeting-row > summary.ds-row {
+    margin: 0;
+    padding-inline: 16px;
+    list-style: none;
+}
+
+#form_create .sb-greeting-row > summary::marker {
+    content: '';
+}
+
+.sb-greeting-row__snippet {
+    display: block;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
+.sb-greeting-row[open] .sb-greeting-row__snippet {
+    display: none;
+}
+
+.sb-greeting-row__body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 16px;
+}
+
+#form_create .sb-greeting-row__textarea {
+    width: 100%;
+    min-height: 8em;
+    max-height: 50dvh;
+    margin: 0;
+    field-sizing: content;
+    box-sizing: border-box;
+}
+
 .sb-greeting-row__actions {
-    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 4px;
 }
 
-.sb-greeting-row__actions .menu_button {
+.sb-greeting-row__spacer {
+    flex: 1 1 auto;
+}
+
+/* Flat circular icon buttons, the libadwaita .flat .circular style. */
+.sb-greeting-row__btn {
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
     margin: 0;
-    padding: 4px 8px;
-    min-height: 28px;
-    min-width: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--sb-shell-text);
+    font-size: 15px;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: background-color var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    .sb-greeting-row__btn:not(:disabled):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+
+    .sb-greeting-row__delete:not(:disabled):hover {
+        color: var(--sb-color-danger);
+    }
+}
+
+.sb-greeting-row__btn:not(:disabled):active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-greeting-row__btn:focus-visible {
+    outline: 2px solid var(--sb-focus-ring);
+    outline-offset: 1px;
+}
+
+.sb-greeting-row__btn:disabled {
+    opacity: 0.4;
+    cursor: default;
 }
 
 /* Greetings expander (group-only)
@@ -752,8 +813,16 @@
     border-radius: 999px;
 }
 
+.sb-greetings-expander__count:empty {
+    display: none;
+}
+
+/* AdwAlertDialog destructive response: red label, never the default action. */
+.popup-controls > .popup-button-custom.sb-editor-discard {
+    color: var(--sb-color-danger);
+}
+
 .sb-greetings-expander .sb-greetings-editor {
-    padding-top: 6px;
     border-bottom: 0;
 }
 
@@ -787,10 +856,6 @@
         padding: 10px 12px;
     }
 
-    .sb-greetings-editor {
-        padding: 10px 12px;
-    }
-
     /* On a narrow header the token text is the first thing to go; the warning
        icon stays so an over-budget card is still flagged. */
     .sb-editor-tokens__value {
@@ -814,6 +879,11 @@
     .sb-editor-header > :is(#sb_character_editor_save, #sb_character_editor_cancel) {
         min-height: 44px;
     }
+
+    .sb-greeting-row__btn {
+        width: 44px;
+        height: 44px;
+    }
 }
 
 /* Reduced motion
@@ -821,7 +891,7 @@
 
 @media (prefers-reduced-motion: reduce) {
     .sb-character-essentials__avatar #avatar_div_div,
-    .sb-greeting-row,
+    .sb-greeting-row__btn,
     .sb-editor-icon-button,
     .sb-editor-title-button,
     .sb-editor-header > #sb_character_editor_save,
