@@ -9,7 +9,7 @@
         <i id="connection_profile_spinner" class="fa-solid fa-spinner fa-spin hidden"></i>
     </div>
     <div class="flex-container flexFlowColumn connection-profile-picker">
-        <select class="text_pole wide100p" id="connection_profiles" aria-label="Connection Profile" data-i18n="[aria-label]Connection Profile"></select>
+        <select class="text_pole wide100p" id="connection_profiles" aria-label="Connection Profile" aria-describedby="sb-connection-profile-sets" data-i18n="[aria-label]Connection Profile"></select>
         <div class="connection-profile-actions" role="group" aria-label="Connection profile actions">
             <button id="view_connection_profile" class="sb-profile-action-btn" title="View connection profile details" data-i18n="[title]View connection profile details">
                 <i class="fa-solid fa-info-circle" aria-hidden="true"></i>
@@ -48,6 +48,8 @@
                 <span data-i18n="Delete">Delete</span>
             </button>
         </div>
+        <!-- SillyBunny: what the selected profile applies outside the connection fields. -->
+        <p id="sb-connection-profile-sets" class="sb-connection-profile-sets" hidden></p>
     </div>
     <div id="connection_profile_details_content" class="hidden"></div>
 </div>
