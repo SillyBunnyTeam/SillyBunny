@@ -457,15 +457,15 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 ### In-Chat Agents expressions and connection profiles
 | Field | Value |
 | --- | --- |
-| File | `public/scripts/extensions/expressions/index.js`, `public/scripts/extensions/connection-manager/index.js`, `public/scripts/extensions/shared.js`, `public/scripts/custom-request.js`. |
+| File | `public/scripts/extensions/expressions/index.js`, `public/scripts/extensions/connection-manager/index.js`, `public/scripts/extensions/connection-manager/{settings,view,profile,edit}.html`, `public/scripts/extensions/connection-manager/style.css`, `public/scripts/extensions/shared.js`, `public/scripts/custom-request.js`. |
 | Area | Extension runtime, expressions, and connection-profile secrets. |
 | Divergence reason | Fork-owned agent classification, generated sprites, profile-scoped requests, and secret-aware connection state extend upstream extension surfaces. |
-| Target seam | `public/scripts/extensions/in-chat-agents/`, `public/scripts/extensions/expressions/`, and `public/scripts/extensions/connection-manager/`. |
+| Target seam | `public/scripts/extensions/in-chat-agents/`, `public/scripts/extensions/expressions/`, `public/scripts/extensions/connection-manager/`, `public/scripts/extensions/connection-manager/profile-change-model.js`, and `public/scripts/extensions/connection-manager/profile-change-notice.js`. |
 | Adapter shape | Keep extension boot and provider calls in upstream modules; delegate fork agent/profile decisions through existing narrow exports. |
-| Protecting tests | `tests/expressions-agent.test.js`, `tests/connection-profile-request-fields.test.js`, `tests/connection-manager-profile-save.test.js`, `tests/in-chat-agents-runner.test.js`. |
+| Protecting tests | `tests/expressions-agent.test.js`, `tests/connection-profile-request-fields.test.js`, `tests/connection-manager-profile-save.test.js`, `tests/in-chat-agents-runner.test.js`, `tests/unit/connection-profile-change-notice.test.js`, `tests/unit/connection-profile-change-notice-wiring.test.js`, `tests/connection-profile-change-notice.e2e.js`. |
 | Validation | Focused unit tests, `npm run lint`, `npm run check:frontend-budgets`. |
 | Rollback path | Disable fork classifier/profile hooks while retaining upstream expression and connection behavior. |
-| Last reviewed | 2026-07-28 pre-release audit. |
+| Last reviewed | 2026-10-14 profile change notice. |
 | Owner | In-Chat Agents maintainer. |
 
 ### Settings, personas, presets, and prompt context
