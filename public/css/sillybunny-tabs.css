@@ -7337,6 +7337,15 @@ body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
     padding: 10px 16px 4px;
 }
 
+.ds-pref-group-subtitle {
+    display: block;
+    padding: 0 16px 8px;
+    font-size: var(--sb-type-meta);
+    font-weight: 400;
+    color: var(--sb-input-placeholder, color-mix(in srgb, var(--SmartThemeBodyColor) 55%, transparent));
+    line-height: 1.4;
+}
+
 .ds-action-row {
     display: flex;
     align-items: center;

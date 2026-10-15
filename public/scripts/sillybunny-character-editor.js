@@ -76,6 +76,7 @@ export function initCharacterEditor() {
     _bindKeyboardShortcuts();
     _bindNavigationGuards();
     _bindDraftPersistence();
+    _bindScrollHide();
 
     // Recapture baseline whenever the backend saves (avatar change, world link, export)
     eventSource.on(event_types.CHARACTER_EDITED, _handleExternalSave);
@@ -1022,6 +1023,39 @@ function _handleExternalSave() {
     currentSession.baseline = _captureSnapshot();
     currentSession.baselineJson = JSON.stringify(currentSession.baseline);
     _refreshDirtyState();
+}
+
+// ============================================================
+// Scroll-hide header and toolbar on mobile
+// ============================================================
+
+/**
+ * On touch devices / narrow screens, hide the header and toolbar when
+ * the user scrolls down and reveal them again when scrolling up.
+ * Uses the CSS class `.sb-editor-chrome-hidden` which the stylesheet
+ * transitions with max-height so there is no layout jump.
+ */
+function _bindScrollHide() {
+    const content = document.querySelector('.sb-character-sheet__content');
+    const header = document.getElementById('sb_character_editor_header');
+    const toolbar = document.getElementById('sb_character_editor_toolbar');
+    if (!content || !header || !toolbar) return;
+
+    let lastScrollY = 0;
+    let ticking = false;
+
+    content.addEventListener('scroll', () => {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => {
+            const currentY = content.scrollTop;
+            const scrollingDown = currentY > lastScrollY && currentY > 60;
+            header.classList.toggle('sb-editor-chrome-hidden', scrollingDown);
+            toolbar.classList.toggle('sb-editor-chrome-hidden', scrollingDown);
+            lastScrollY = currentY;
+            ticking = false;
+        });
+    }, { passive: true });
 }
 
 // ============================================================

@@ -454,6 +454,15 @@
     margin: 0;
 }
 
+.sb-editor-field__subtitle {
+    display: block;
+    font-size: var(--sb-type-meta, 13px);
+    font-weight: 400;
+    color: var(--sb-input-placeholder, color-mix(in srgb, var(--SmartThemeBodyColor) 55%, transparent));
+    line-height: 1.4;
+    margin-top: 2px;
+}
+
 .sb-editor-field__hint {
     font-size: var(--sb-type-meta, 13px);
     color: var(--sb-muted-fg, color-mix(in srgb, var(--SmartThemeBodyColor) 70%, transparent));
@@ -534,8 +543,8 @@
 
 .sb-character-essentials__avatar #avatar_div_div {
     display: block;
-    width: 120px;
-    height: 120px;
+    width: 88px;
+    height: 88px;
     border-radius: var(--sb-radius-card, 12px);
     overflow: hidden;
     cursor: pointer;
@@ -550,6 +559,7 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
+    object-position: top center;
 }
 
 .sb-character-essentials__fields {
@@ -567,17 +577,21 @@
 
 @media screen and (max-width: 620px) {
     .sb-character-essentials {
-        flex-direction: column;
-        align-items: stretch;
+        flex-direction: row;
+        align-items: flex-start;
     }
 
+    /* Fixed square that stays correct without cropping */
     .sb-character-essentials__avatar #avatar_div_div {
-        width: 100px;
-        height: 100px;
+        width: 72px;
+        height: 72px;
     }
 }
 
 /* Preview pane — rendered Markdown output
+   ========================================================================= */
+
+/* Preview pane — replaces the textarea in-place when active
    ========================================================================= */
 
 .sb-preview-pane {
@@ -592,6 +606,8 @@
     font-size: var(--sb-type-control, 15px);
     color: var(--SmartThemeBodyColor);
     line-height: 1.5;
+    /* Match the textarea height so toggling doesn't cause layout shift */
+    box-sizing: border-box;
 }
 
 .sb-preview-pane:empty::before {
@@ -915,16 +931,148 @@
     }
 }
 
-/* Reduced motion
+/* Tag chips — libadwaita pill style
    ========================================================================= */
 
-@media (prefers-reduced-motion: reduce) {
-    .sb-character-essentials__avatar #avatar_div_div,
-    .sb-greeting-row__btn,
-    .sb-editor-icon-button,
-    .sb-editor-title-button,
-    .sb-editor-header > #sb_character_editor_save,
-    .sb-editor-header > #sb_character_editor_cancel {
-        transition: none;
+/* The .tags container (tagList) and upstream .tag pills need libadwaita
+   treatment inside the character editor. Scope tightly to avoid changing
+   global tag appearance on other panels. */
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #tagList.tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 16px 10px;
+}
+
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #tagList .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    font-size: var(--sb-type-meta, 13px);
+    font-weight: 500;
+    color: var(--SmartThemeBodyColor);
+    line-height: 1.3;
+    cursor: default;
+    transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+@media (hover: hover) {
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #tagList .tag:hover {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+        border-color: color-mix(in srgb, var(--sb-shell-border) 100%, transparent);
+    }
+}
+
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #tagList .tag .tag_remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
+    color: var(--SmartThemeBodyColor);
+    font-size: 10px;
+    cursor: pointer;
+    line-height: 1;
+    transition: background-color 120ms ease;
+    flex-shrink: 0;
+}
+
+@media (hover: hover) {
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #tagList .tag .tag_remove:hover {
+        background: color-mix(in srgb, var(--SmartThemeBotMesBlurTintColor, var(--SmartThemeQuoteColor)) 30%, transparent);
+    }
+}
+
+/* Export popup — libadwaita action-sheet style
+   ========================================================================= */
+
+/* The #export_format_popup is positioned by Popper relative to #export_button.
+   Re-style it as a small bordered surface consistent with the action menu. */
+#export_format_popup {
+    display: none; /* shown by script.js toggle */
+    flex-direction: column;
+    min-width: 160px;
+    padding: 4px 0;
+    border: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
+    border-radius: 10px;
+    background: var(--sb-shell-surface, var(--SmartThemeBlurTintColor));
+    -webkit-backdrop-filter: blur(16px) saturate(1.6);
+    backdrop-filter: blur(16px) saturate(1.6);
+    box-shadow: 0 4px 24px color-mix(in srgb, #000 18%, transparent);
+    overflow: hidden;
+    z-index: 200;
+}
+
+/* When shown via jQuery .toggle() it gets inline display:block; restore list layout */
+#export_format_popup[style*="display: block"],
+#export_format_popup[style*="display:block"] {
+    display: flex !important;
+    flex-direction: column;
+}
+
+#export_format_popup .export_format {
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 14px;
+    font-size: var(--sb-type-control, 15px);
+    font-weight: 500;
+    color: var(--sb-shell-text, var(--SmartThemeBodyColor));
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    cursor: pointer;
+    transition: background-color 120ms ease;
+    text-align: start;
+}
+
+@media (hover: hover) {
+    #export_format_popup .export_format:hover {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    }
+}
+
+#export_format_popup .export_format:active {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+}
+
+/* Scroll-hide — header and toolbar collapse when scrolling down on mobile
+   ========================================================================= */
+
+/* The .sb-editor-chrome-hidden class is toggled by the controller's scroll
+   listener. Use max-height + overflow:hidden so the collapse is animatable
+   and existing content below doesn't jump. */
+@media (pointer: coarse), (max-width: 620px) {
+    #sb_character_editor_header,
+    #sb_character_editor_toolbar {
+        transition: max-height 200ms ease, padding 200ms ease, opacity 200ms ease;
+        overflow: hidden;
+    }
+
+    #sb_character_editor_header.sb-editor-chrome-hidden {
+        max-height: 0 !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        opacity: 0;
+    }
+
+    #sb_character_editor_toolbar.sb-editor-chrome-hidden {
+        max-height: 0 !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        opacity: 0;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        #sb_character_editor_header,
+        #sb_character_editor_toolbar {
+            transition: none;
+        }
     }
 }
