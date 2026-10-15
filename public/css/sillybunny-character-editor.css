@@ -48,8 +48,8 @@
     align-items: center;
     gap: 6px;
     padding: 8px 12px;
-    background: var(--sb-layer-headerbar);
-    border-bottom: 1px solid var(--sb-shell-border);
+    background: var(--sb-layer-view);
+    border-bottom: 0;
     flex-shrink: 0;
     min-height: 52px;
 }
@@ -336,7 +336,7 @@
     flex: 0 0 auto;
     gap: 2px;
     padding: 6px 10px;
-    background: var(--sb-layer-headerbar);
+    background: var(--sb-layer-view);
     border-bottom: 1px solid var(--sb-shell-border);
     min-height: 48px;
     overflow: hidden;
