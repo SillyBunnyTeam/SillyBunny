@@ -24,9 +24,12 @@ import {
     this_chid,
     create_save,
     createOrEditCharacter,
+    converter,
 } from '../script.js';
 import { t, translate } from './i18n.js';
 import { getCurrentUserHandle } from './user.js';
+import { createSegmentedControl, setSegmentedControlValue } from './sillybunny-segmented-control.js';
+import { DOMPurify } from '../lib.js';
 
 const DRAFT_KEY_PREFIX = 'sb-editor-draft-';
 const DRAFT_INTERVAL_MS = 5000;
@@ -67,6 +70,7 @@ export function initCharacterEditor() {
     _bindTokenMirror();
     _bindToolbarOverflowObserver();
     _bindPreviewToggles();
+    _mountRoleSegment();
     _bindGreetingAddButtons();
     _bindFieldDirtyListeners();
     _bindKeyboardShortcuts();
@@ -330,6 +334,7 @@ function _discardChanges() {
     if (!currentSession) return;
     _restoreSnapshot(currentSession.baseline);
     _removeDraft(currentSession.avatar);
+    _syncRoleSegment();
 }
 
 /**
@@ -719,47 +724,151 @@ function _stopTokenMirror() {
 // Preview toggles
 // ============================================================
 
+/**
+ * Which IDs use formatCreatorNotes (runs substituteParams) vs raw Markdown.
+ * Tags get chip rendering; mes_example gets <START> escaping first.
+ */
+const PREVIEW_KIND = /** @type {const} */ ({
+    creator_notes_textarea: 'creator-notes',
+    tags_textarea: 'tags',
+    mes_example_textarea: 'mes-example',
+});
+
+/**
+ * Render preview HTML for a textarea into its pane.
+ * @param {HTMLTextAreaElement} textarea
+ * @param {HTMLElement} pane
+ */
+function _renderPreview(textarea, pane) {
+    const id = textarea.id;
+    const text = textarea.value || '';
+    const kind = PREVIEW_KIND[id] ?? 'markdown';
+
+    if (!text.trim()) {
+        pane.innerHTML = `<em class="sb-preview-empty">${t`(empty)`}</em>`;
+        return;
+    }
+
+    if (kind === 'creator-notes') {
+        const avatarId = getCurrentEntityId() || '';
+        pane.innerHTML = formatCreatorNotes(text, avatarId);
+        return;
+    }
+
+    if (kind === 'tags') {
+        pane.innerHTML = '';
+        text.split(',').map(tag => tag.trim()).filter(Boolean).forEach(tag => {
+            const chip = document.createElement('span');
+            chip.className = 'sb-preview-tag-chip';
+            chip.textContent = tag;
+            pane.append(chip);
+        });
+        return;
+    }
+
+    // For mes_example, escape <START> markers so they don't become stray HTML
+    const safeText = kind === 'mes-example'
+        ? text.replace(/<START>/gi, '&lt;START&gt;')
+        : text;
+
+    const raw = converter.makeHtml(safeText);
+    pane.innerHTML = DOMPurify.sanitize(raw, { RETURN_TRUSTED_TYPE: false });
+}
+
+/**
+ * Mount a compact segmented Edit/Preview control for each `.sb-preview-toggle`
+ * button in the editor. The existing button is replaced by the segmented control
+ * so that CSS positioning and the `.sb-editor-field__actions` layout are unchanged.
+ */
 function _bindPreviewToggles() {
-    document.querySelectorAll('.sb-preview-toggle[data-sb-preview-for]').forEach(toggle => {
-        const textareaId = /** @type {HTMLElement} */ (toggle).dataset.sbPreviewFor;
+    document.querySelectorAll('.sb-preview-toggle[data-sb-preview-for]').forEach(oldToggle => {
+        const textareaId = /** @type {HTMLElement} */ (oldToggle).dataset.sbPreviewFor;
         const textarea = /** @type {HTMLTextAreaElement|null} */ (document.getElementById(textareaId));
-        const pane = document.querySelector(`.sb-preview-pane[data-sb-preview-pane="${textareaId}"]`);
+        const pane = /** @type {HTMLElement|null} */ (document.querySelector(`.sb-preview-pane[data-sb-preview-pane="${textareaId}"]`));
         if (!textarea || !pane) return;
 
-        toggle.addEventListener('click', () => {
-            const expanded = toggle.getAttribute('aria-expanded') === 'true';
-            const next = !expanded;
-            toggle.setAttribute('aria-expanded', String(next));
-            /** @type {HTMLElement} */ (pane).hidden = !next;
-            textarea.hidden = next;
-            if (next) _renderPreview(textarea, /** @type {HTMLElement} */ (pane));
-        });
+        let showPreview = false;
+
+        const segment = createSegmentedControl(
+            t`Edit / Preview`,
+            [[false, t`Edit`], [true, t`Preview`]],
+            false,
+            (value) => {
+                showPreview = value;
+                pane.hidden = !showPreview;
+                textarea.hidden = showPreview;
+                if (showPreview) _renderPreview(textarea, pane);
+            },
+            { compact: true, detachFromForm: true },
+        );
+        // Carry the data attribute so _resetPreviewToggles can find this control.
+        segment.dataset.sbSegmentFor = textareaId;
+
+        oldToggle.replaceWith(segment);
 
         textarea.addEventListener('input', () => {
-            if (toggle.getAttribute('aria-expanded') === 'true') {
-                _renderPreview(textarea, /** @type {HTMLElement} */ (pane));
-            }
+            if (showPreview) _renderPreview(textarea, pane);
         });
     });
 }
 
-function _renderPreview(textarea, pane) {
-    const text = textarea.value || '';
-    const avatarId = getCurrentEntityId() || '';
-    const html = formatCreatorNotes(text, avatarId);
-    pane.innerHTML = html || `<em style="color:var(--sb-muted-fg);">${t`(empty)`}</em>`;
-}
-
-/** Reset all preview toggles to Edit mode. Called on session open. */
+/** Reset all segmented preview controls to Edit mode. Called on session open. */
 function _resetPreviewToggles() {
-    document.querySelectorAll('.sb-preview-toggle[data-sb-preview-for]').forEach(toggle => {
-        const textareaId = /** @type {HTMLElement} */ (toggle).dataset.sbPreviewFor;
+    document.querySelectorAll('.sb-boolean-radio-group[data-sb-segment-for]').forEach(segment => {
+        const textareaId = /** @type {HTMLElement} */ (segment).dataset.sbSegmentFor;
         const textarea = document.getElementById(textareaId);
         const pane = document.querySelector(`.sb-preview-pane[data-sb-preview-pane="${textareaId}"]`);
-        toggle.setAttribute('aria-expanded', 'false');
+        // Select the first radio (Edit) without firing onChange
+        const first = /** @type {HTMLInputElement|null} */ (segment.querySelector('input[type="radio"]'));
+        if (first && !first.checked) first.checked = true;
         if (pane) /** @type {HTMLElement} */ (pane).hidden = true;
         if (textarea) /** @type {HTMLElement} */ (textarea).hidden = false;
     });
+    _syncRoleSegment();
+}
+
+// ============================================================
+// Depth-prompt role segmented control
+// ============================================================
+
+/** Mounted role segment, kept for sync. @type {HTMLElement|null} */
+let _roleSegment = null;
+
+function _mountRoleSegment() {
+    const select = /** @type {HTMLSelectElement|null} */ (document.getElementById('depth_prompt_role'));
+    if (!select) return;
+
+    const choices = /** @type {Array<[string, string]>} */ (
+        Array.from(select.options).map(opt => [opt.value, opt.text])
+    );
+    const initialValue = select.value || 'system';
+
+    _roleSegment = createSegmentedControl(
+        t`Role`,
+        choices,
+        initialValue,
+        (value) => {
+            select.value = value;
+            // Notify script.js input handlers that listen on the select
+            select.dispatchEvent(new Event('input', { bubbles: true }));
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+        },
+        { compact: true, detachFromForm: true },
+    );
+
+    // Insert the segment immediately before the hidden select
+    select.before(_roleSegment);
+}
+
+/**
+ * Sync the role segmented control to the current select value.
+ * Called on session open, discard, and snapshot restore.
+ */
+function _syncRoleSegment() {
+    if (!_roleSegment) return;
+    const select = /** @type {HTMLSelectElement|null} */ (document.getElementById('depth_prompt_role'));
+    if (!select) return;
+    setSegmentedControlValue(_roleSegment, select.value || 'system');
 }
 
 // ============================================================

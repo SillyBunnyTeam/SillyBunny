@@ -600,6 +600,35 @@
     font-style: italic;
 }
 
+.sb-preview-empty {
+    color: var(--sb-muted-fg, color-mix(in srgb, var(--SmartThemeBodyColor) 70%, transparent));
+}
+
+.sb-preview-tag-chip {
+    display: inline-flex;
+    align-items: center;
+    margin: 2px 4px 2px 0;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: var(--sb-flat-selected-bg, color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent));
+    font-size: var(--sb-type-meta, 13px);
+    color: var(--SmartThemeBodyColor);
+    line-height: 1.4;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+/* Role segmented control — sits immediately before the hidden #depth_prompt_role
+   select; takes all remaining suffix space on its row. */
+#right-nav-panel .sb-boolean-radio-group[aria-label] + #depth_prompt_role {
+    /* select is a hidden transport; the segment above is the visible control */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
 .sb-preview-pane p:first-child {
     margin-top: 0;
 }

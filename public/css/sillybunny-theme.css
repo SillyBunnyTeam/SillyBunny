@@ -931,6 +931,58 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     outline-offset: 2px;
 }
 
+/* Compact variant: inline flex, no outer container chrome, narrower pills.
+   Used by character editor, prompt editor, world info, and personas. */
+.sb-segmented-control--compact.sb-boolean-radio-group {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    width: auto;
+    min-width: 0;
+    padding: 3px;
+    gap: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-raised-bg);
+}
+
+.sb-segmented-control--compact .sb-boolean-radio-option {
+    display: inline-flex;
+    position: relative;
+    flex: none;
+    width: auto;
+    margin: 0;
+    min-width: 0;
+}
+
+.sb-segmented-control--compact .sb-boolean-radio-option > span {
+    padding: 6px 9px;
+    min-height: 30px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    box-shadow: none;
+    background: transparent;
+    color: inherit;
+    line-height: 1.25;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    .sb-segmented-control--compact .sb-boolean-radio-option > input:not(:checked) + span:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.sb-segmented-control--compact .sb-boolean-radio-option > input:checked + span {
+    background: var(--sb-flat-selected-bg);
+}
+
+.sb-segmented-control--compact .sb-boolean-radio-option > input:focus-visible + span {
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
 .sb-boolean-radio-option:hover > input[type="radio"]:not(:checked) + span {
     border-color: color-mix(in srgb, var(--sb-shell-border) 88%, transparent);
     background: var(--sb-button-hover);

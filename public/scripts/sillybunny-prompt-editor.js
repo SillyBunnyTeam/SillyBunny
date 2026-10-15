@@ -7,6 +7,7 @@ import { play, stopMotion, animateOut, prefersReducedMotion, SPRING_NAVIGATION, 
 import { Popup, POPUP_TYPE, POPUP_RESULT } from './popup.js';
 import { getTokenCountAsync, getTokenizerModel } from './tokenizers.js';
 import { t, translate } from './i18n.js';
+import { createSegmentedControl } from './sillybunny-segmented-control.js';
 
 const mountedEditors = new WeakSet();
 let countingEditorContent = false;
@@ -854,22 +855,8 @@ export function initializePromptEditor(column) {
     }
 
     function segmented(label, choices, value, change) {
-        const node = element('div', 'sb-boolean-radio-group');
-        node.setAttribute('role', 'group');
-        node.setAttribute('aria-label', label);
-        const name = `sb-prompt-${label}-${Math.random().toString(36).slice(2)}`;
-        for (const [key, title] of choices) {
-            const option = element('label', 'sb-boolean-radio-option');
-            const input = element('input');
-            input.type = 'radio';
-            input.name = name;
-            input.value = key;
-            input.checked = String(key) === String(value);
-            input.addEventListener('change', () => change(key));
-            option.append(input, element('span', '', title));
-            node.append(option);
-        }
-        return node;
+        // The prompt sheet scopes its own pill styling (sillybunny-prompt-editor.css:601).
+        return createSegmentedControl(label, choices, value, change, { compact: false });
     }
 
     function closePopover(animate = true, restoreFocus = false) {

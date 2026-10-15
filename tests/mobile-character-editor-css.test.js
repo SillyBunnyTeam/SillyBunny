@@ -7,6 +7,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const mobileShellCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8').replace(/\r\n/g, '\n');
 const tabsCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-tabs.css'), 'utf8').replace(/\r\n/g, '\n');
 const styleCss = readFileSync(path.join(repoRoot, 'public', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+const characterEditorCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-character-editor.css'), 'utf8').replace(/\r\n/g, '\n');
 
 function getRuleBody(cssSource, selector) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -86,13 +87,14 @@ describe('mobile character editor css', () => {
     });
 
     test('keeps the desktop editor shell from reintroducing refactor padding and wrapper collapse', () => {
-        const desktopActionWrappersRule = getRuleBody(tabsCss, '#right-nav-panel .sb-character-editor-controls-row #character-editor-pinned-actions,\n#right-nav-panel .sb-character-editor-controls-row #avatar_controls,\n#right-nav-panel .sb-character-editor-controls-row #avatar_controls > .form_create_bottom_buttons_block,\n#right-nav-panel .sb-character-editor-controls-row #avatar_controls .char-button-toolbar');
+        // The legacy .sb-character-editor-controls-row grid was removed in the Commit 2
+        // field-sheet rebuild; its selectors must not reappear in tabs.css.
         const desktopCreateButtonSelector = '#right-nav-panel .sb-character-create-bar #rm_button_create,\n#right-nav-panel .sb-character-create-bar #rm_button_group_chats';
         const desktopCreateButtonRule = getRuleBody(tabsCss, desktopCreateButtonSelector);
         const unlayeredGuardIndex = tabsCss.indexOf('/* Unlayered fork cascade guards');
         const desktopCreateButtonIndex = getLastRuleIndex(tabsCss, desktopCreateButtonSelector);
 
-        expect(desktopActionWrappersRule).toContain('display: contents !important;');
+        expect(tabsCss).not.toContain('.sb-character-editor-controls-row');
         expect(desktopCreateButtonIndex).toBeGreaterThan(unlayeredGuardIndex);
         expect(desktopCreateButtonRule).toContain('inline-size: auto;');
         expect(desktopCreateButtonRule).toContain('min-inline-size: max-content;');
