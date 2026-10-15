@@ -146,3 +146,27 @@ test('mobile scroll-hide reclaims header and toolbar space and restores it on sc
     await expect(header).toBeVisible();
     await expect(toolbar).toBeVisible();
 });
+
+test('desktop fields share one height and Created by aligns with its section', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openEditor(page);
+    const layout = await page.evaluate(() => {
+        const form = document.getElementById('form_create');
+        const heights = [...form.querySelectorAll('[data-sb-section]:not([data-sb-section="metadata"]) textarea[data-sb-editor-field]')]
+            .filter(node => node.offsetParent)
+            .map(node => Math.round(node.getBoundingClientRect().height));
+        const x = selector => Math.round(form.querySelector(selector).getBoundingClientRect().x);
+        const flat = [...form.querySelectorAll('.sb-greetings-editor__add, #tags_div .tags_view, #sb_creator_notes_maximize')]
+            .map(node => getComputedStyle(node).borderTopWidth);
+        return {
+            heights,
+            createdBy: x('#creator_textarea'),
+            notes: x('#creator_notes_textarea'),
+            flat,
+        };
+    });
+    expect(layout.heights.length).toBeGreaterThan(1);
+    expect(new Set(layout.heights).size).toBe(1);
+    expect(layout.createdBy).toBe(layout.notes);
+    expect(layout.flat.every(width => width === '0px')).toBe(true);
+});

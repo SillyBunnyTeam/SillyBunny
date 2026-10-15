@@ -172,6 +172,26 @@
     white-space: nowrap;
 }
 
+.sb-editor-title-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    padding: 4px 8px;
+    border: 1px solid var(--sb-shell-border);
+    border-radius: var(--sb-radius-control, 9px);
+    background: var(--sb-flat-hover-bg);
+    font-family: inherit;
+    font-size: var(--sb-type-title, 16px);
+    font-weight: 700;
+    color: var(--sb-shell-text);
+}
+
+.sb-editor-title-input:focus {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+
 .sb-editor-title-pencil {
     flex: 0 0 auto;
     font-size: 0.75em;
@@ -476,7 +496,9 @@
     margin-left: auto;
 }
 
-.sb-editor-field__actions .menu_button {
+.sb-editor-field__actions .menu_button,
+#tags_div .tags_view,
+#sb_creator_notes_maximize {
     margin: 0;
     padding: 4px 10px;
     min-height: 28px;
@@ -502,6 +524,16 @@
     min-width: 0;
 }
 
+/* style.css:2866 sizes description (29dvh) and first message (clamp to 18rem)
+   from the viewport, so they dwarf every other field. One shared height for
+   every non-Metadata field; Metadata keeps its own compact sizes. */
+@media screen and (min-width: 1001px) {
+    #right-nav-panel #form_create [data-sb-section]:not([data-sb-section="metadata"]) textarea[data-sb-editor-field] {
+        height: 10.5rem;
+        min-height: 5rem;
+    }
+}
+
 /* Field pair layout for creator/version */
 .sb-editor-field-pair {
     display: grid;
@@ -509,7 +541,15 @@
     gap: 0;
 }
 
+/* sillybunny-tabs.css pads every non-row .ds-pref-group child by 10px 16px when
+   the panel is mounted in the settings page. The pair is only a grid wrapper;
+   its fields already carry that padding, so the wrapper must not add more. */
+#right-nav-panel #form_create .sb-editor-section__body > .sb-editor-field-pair {
+    padding: 0;
+}
+
 .sb-editor-field-pair > .sb-editor-field {
+    padding: 10px 16px;
     border-bottom: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
 }
 
@@ -713,7 +753,26 @@
     align-self: center;
 }
 
+/* Unify action-button chrome across the editor so Tags View, Add, and Maximize
+   all follow the flat toolbar style instead of bordered chips. */
+#right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize) {
+    border: 0;
+    background: transparent;
+    transition: background-color var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    #right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+#right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize):active {
+    background: var(--sb-flat-active-bg);
+}
+
 #form_create .sb-greetings-editor__add {
+    display: inline-flex;
     margin: 0;
     white-space: nowrap;
 }
@@ -996,11 +1055,38 @@
 /* Scroll-hide — header and toolbar collapse when scrolling down on mobile
    ========================================================================= */
 
-/* Remove the entire flex items, not only their paint: min-height and child
-   sizing would otherwise preserve the blank header and toolbar allocation. */
 @media (pointer: coarse), (max-width: 620px) {
+    /* max-height cannot interpolate from `none`, so the visible state needs a
+       concrete ceiling above the ~57px single-row bars. Visibility flips at once
+       on reveal and only after the fade on hide, which also takes the collapsed
+       bars out of the tab order. */
+    #sb_character_editor_header,
+    #sb_character_editor_toolbar {
+        max-height: 6rem;
+        overflow: hidden;
+        transition: max-height 200ms ease, min-height 200ms ease, padding 200ms ease,
+            border-width 200ms ease, opacity 150ms ease, visibility 0s linear 0s;
+    }
+
     #sb_character_editor_header.sb-editor-chrome-hidden,
     #sb_character_editor_toolbar.sb-editor-chrome-hidden {
-        display: none;
+        max-height: 0;
+        min-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        border-width: 0;
+        visibility: hidden;
+        opacity: 0;
+        transition: max-height 200ms ease, min-height 200ms ease, padding 200ms ease,
+            border-width 200ms ease, opacity 150ms ease, visibility 0s linear 200ms;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        #sb_character_editor_header,
+        #sb_character_editor_toolbar,
+        #sb_character_editor_header.sb-editor-chrome-hidden,
+        #sb_character_editor_toolbar.sb-editor-chrome-hidden {
+            transition: none;
+        }
     }
 }

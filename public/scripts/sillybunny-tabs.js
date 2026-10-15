@@ -7943,6 +7943,20 @@ function syncCharacterShellTabs(activeTab = null) {
         tab.setAttribute('tabindex', isActive ? '0' : '-1');
     });
 
+    // When the character panel is page-hosted, navigation that bypasses the
+    // settings sidebar (editor Back, opening a card, Create) must still move the
+    // sidebar selection, or it stays on whichever tab was last clicked.
+    if (sbSettingsState.open && sbSettingsState.activeShell === 'characters' && sbSettingsState.activeTabId !== normalizedTab) {
+        const settingsTab = getSettingsPageTabs('characters').find(tab => tab.id === normalizedTab);
+        if (settingsTab) {
+            sbSettingsState.activeTabId = normalizedTab;
+            document.querySelectorAll('#sb-settings-tab-list .sb-settings-tab').forEach(button => {
+                button.setAttribute('aria-selected', String(button instanceof HTMLElement && button.dataset.sbSettingsTab === normalizedTab));
+            });
+            renderSettingsPageHeading(settingsTab);
+        }
+    }
+
     document.querySelectorAll('[data-sb-rail-shell-key="characters"]').forEach(button => {
         if (!(button instanceof HTMLElement)) {
             return;

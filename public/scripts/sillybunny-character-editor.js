@@ -292,23 +292,62 @@ function _bindHeaderButtons() {
  * #rm_button_selected_ch h2 click target that now sits inside the hidden
  * #rm_PinAndTabs.
  *
- * This focuses the Name field rather than calling renameCharacter(): the two are
- * not the same operation. Saving the Name field rewrites name/data.name while
- * preserving the character's avatar identity; renameCharacter() posts
- * /api/characters/rename, mints a NEW avatar identity and moves the chat
- * directory. Renaming by editing the field is the reversible, in-editor action,
- * so it is what the title offers. The destructive full rename stays reachable
- * from the action menu as its own entry.
+ * Clicking the title button replaces it with an inline text input, so you can
+ * rename the character without scrolling to the Name field. Saving writes to
+ * name/data.name while preserving the character's avatar identity. The
+ * destructive full rename (renameCharacter() → /api/characters/rename) mints a
+ * NEW avatar identity and moves the chat directory; it stays reachable from the
+ * action menu as its own entry.
  */
 function _handleRenameTrigger(event) {
     event.preventDefault();
-    if (!currentSession) return;
+    if (!currentSession || currentSession.mode !== 'edit') return;
 
+    const titleButton = document.getElementById('sb_character_editor_title_button');
     const nameField = document.getElementById('character_name_pole');
-    if (!(nameField instanceof HTMLInputElement)) return;
+    if (!titleButton || !(nameField instanceof HTMLInputElement)) return;
 
-    nameField.focus({ preventScroll: false });
-    nameField.select();
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = nameField.value;
+    input.id = 'sb_character_editor_title_input';
+    input.classList.add('sb-editor-title-input');
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+
+    // Swapping the input out of the DOM fires blur, so Enter/Escape would
+    // otherwise commit a second time and Escape would end up saving.
+    let finished = false;
+    const finish = (save, restoreFocus) => {
+        if (finished) return;
+        finished = true;
+        const trimmed = input.value.trim();
+        if (save && trimmed && trimmed !== nameField.value) {
+            nameField.value = trimmed;
+            nameField.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        input.replaceWith(titleButton);
+        _updateHeaderTitle(currentSession?.mode === 'edit' ? nameField.value : t`Create New Character`);
+        if (restoreFocus) titleButton.focus();
+    };
+
+    input.addEventListener('blur', () => finish(true, false));
+    input.addEventListener('keydown', (e) => {
+        if (e.isComposing) return;
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            finish(true, true);
+        } else if (e.key === 'Escape') {
+            // Keep the editor's own Escape-to-close from also handling this key.
+            e.preventDefault();
+            e.stopPropagation();
+            finish(false, true);
+        }
+    });
+
+    titleButton.replaceWith(input);
+    input.focus();
+    input.select();
 }
 
 async function _handleBack(event) {
@@ -321,11 +360,15 @@ async function _handleBack(event) {
 }
 
 function _closeSafely() {
-    // Navigate to the characters tab — clicking the shell tab button
-    // triggers the full navigation path including syncCharacterShellTabs.
-    // The hidden #rm_button_back stub only fires the panel switch without
-    // activating the correct tab, leaving the UI desynchronized. (Step 3b fix)
-    document.getElementById('sb_character_tab_characters')?.click();
+    // Navigate to the characters tab. Two possible entry points exist: the
+    // character panel as a drawer has data-sb-character-tab tabs, while the
+    // page-hosted layout uses a settings page sidebar with data-sb-settings-tab.
+    // Clicking #rm_button_back (the hidden stub) only fires the panel switch
+    // without activating the correct tab, leaving the UI desynchronized. (Step 3b fix)
+    const drawerTab = document.getElementById('sb_character_tab_characters');
+    const settingsTab = document.querySelector('[data-sb-settings-tab="characters"]');
+    const isPageMode = !drawerTab?.offsetParent && Boolean(settingsTab?.offsetParent);
+    (isPageMode ? settingsTab : drawerTab)?.click();
 }
 
 function _handleCancel() {
@@ -1066,12 +1109,16 @@ function _bindScrollHide() {
     let lastScrollY = content.scrollTop;
     let distance = 0;
     let ticking = false;
+    let settleUntil = 0;
 
     const setHidden = hidden => {
+        const changed = header.classList.contains('sb-editor-chrome-hidden') !== hidden;
         header.classList.toggle('sb-editor-chrome-hidden', hidden);
         toolbar.classList.toggle('sb-editor-chrome-hidden', hidden);
-        // Collapsing at the bottom can clamp scrollTop. Don't read that layout change
-        // as a user scroll in the opposite direction and immediately reopen the bars.
+        // Collapsing at the bottom can clamp scrollTop on every frame of the 200ms
+        // transition. Don't read that layout change as a user scroll in the opposite
+        // direction and immediately reopen the bars.
+        if (changed) settleUntil = performance.now() + 250;
         lastScrollY = content.scrollTop;
         distance = 0;
     };
@@ -1096,7 +1143,7 @@ function _bindScrollHide() {
                 setHidden(false);
                 return;
             }
-            if (!delta) return;
+            if (!delta || performance.now() < settleUntil) return;
             distance = Math.sign(delta) === Math.sign(distance) ? distance + delta : delta;
             if (Math.abs(distance) < 8) return;
             if (isActionMenuOpen() || header.querySelector(':focus-visible') || toolbar.querySelector(':focus-visible')) return;

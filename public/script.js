@@ -14962,6 +14962,7 @@ function select_rm_create({ switchMenu = true, resetForm = true } = {}) {
     beginCharacterEditorLoad();
     $('#character_name_pole').val(create_save.name);
     $('#character_nickname_pole').val(create_save.nickname || '');
+    $('#description_textarea').val(create_save.description);
     $('#character_world').val(create_save.world);
     $('#creator_notes_textarea').val(create_save.creator_notes);
     $('#creator_notes_spoiler').html(formatCreatorNotes(create_save.creator_notes, ''));
