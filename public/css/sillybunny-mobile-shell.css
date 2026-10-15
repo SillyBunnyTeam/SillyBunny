@@ -508,25 +508,28 @@
         padding-bottom: max(24px, calc(var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + var(--sb-ios-keyboard-bottom-inset, 0px))) !important;
     }
 
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) > .scrollableInner,
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) > .scrollableInnerFull {
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) > .scrollableInner,
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) > .scrollableInnerFull {
         scrollbar-gutter: auto !important;
         padding-inline: var(--sb-character-editor-mobile-edge, 6px) !important;
     }
 
     #right-nav-panel.openDrawer #rm_print_characters_block,
-    #right-nav-panel.openDrawer #rm_ch_create_block {
+    #right-nav-panel.openDrawer #rm_ch_create_block,
+    #right-nav-panel.openDrawer #rm_group_chats_block {
         box-sizing: border-box !important;
         scrollbar-gutter: stable !important;
         padding-inline-end: var(--sb-character-scroll-gutter, 8px) !important;
     }
 
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #rm_ch_create_block {
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #rm_ch_create_block,
+    #right-nav-panel.openDrawer:is([data-menu-type="group_edit"], [data-menu-type="group_create"]) #rm_group_chats_block {
         scrollbar-gutter: auto !important;
         padding-inline: 0 !important;
     }
 
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #form_create {
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #form_create,
+    #right-nav-panel.openDrawer:is([data-menu-type="group_edit"], [data-menu-type="group_create"]) #rm_group_chats_block {
         padding-inline: 0 !important;
     }
 
@@ -1677,12 +1680,12 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 
     /* Must beat the generic 34px !important band height above: the parked mode toggle
        (top 8px + 44px) otherwise hangs over the top of the editor sub-tab pills. */
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) > #CharListButtonAndHotSwaps {
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) > #CharListButtonAndHotSwaps {
         min-height: 54px !important;
         padding-block: 5px;
     }
 
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #HotSwapWrapper {
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) #HotSwapWrapper {
         display: none !important;
     }
 

@@ -3714,9 +3714,9 @@ input[type=search]:focus::-webkit-search-cancel-button {
     position: relative;
 }
 
-#rm_group_top_bar:not(:has(#rm_group_activation_strategy option[value="0"]:checked)) label:has(#rm_group_allow_self_responses) {
-    display: none;
-}
+/* SillyBunny: the allow-self-responses row lives in the group editor's Chat
+   Settings section now, and toggleHiddenControls() shows or hides it from the
+   draft. The old #rm_group_top_bar :has() rule no longer matches anything. */
 
 .group_member .queue_position:not(:empty)::before {
     content: "#";

@@ -37,7 +37,7 @@ import { t } from '../i18n.js';
  *     Inline title rename. The title button is only enabled while the state's mode is 'edit'.
  * @param {string[]} [config.overflowCandidates]  Toolbar selectors that may collapse into More, most expendable first.
  * @param {() => ActionSection[]} config.getActionSections  More-menu contents, built on every open.
- * @param {string} config.actionMenuTitle
+ * @param {string|(() => string)} config.actionMenuTitle  A function defers translation to menu-open time.
  * @param {() => boolean} [config.isActive]  Skips layout work while the editor is off screen.
  */
 export function mountEditorChrome(config) {
@@ -230,7 +230,7 @@ export function mountEditorChrome(config) {
 
         openActionMenu({
             trigger: controls.more,
-            title: actionMenuTitle,
+            title: typeof actionMenuTitle === 'function' ? actionMenuTitle() : actionMenuTitle,
             sections,
             onClose: () => controls.more.setAttribute('aria-expanded', 'false'),
         });

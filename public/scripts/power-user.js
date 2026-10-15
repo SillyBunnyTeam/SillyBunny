@@ -1257,7 +1257,7 @@ function switchWaifuMode() {
 // `spoiler_free_mode` is read once as a migration source and left in settings for upstream compatibility.
 function applyCharacterEditorQuickEdit() {
     const enabled = !!power_user.characterEditorQuickEdit;
-    document.getElementById('form_create')?.classList.toggle('sb-character-sheet--quick-edit', enabled);
+    document.getElementById('form_create')?.classList.toggle('sb-editor-sheet--quick-edit', enabled);
     $('#spoiler_free_mode').prop('checked', enabled);
     $('#sb_character_editor_quick_edit').attr('aria-pressed', String(enabled));
 }

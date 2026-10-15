@@ -1,15 +1,16 @@
-/* SillyBunny character editor — flat scrolling sheet (Step 3b)
+/* SillyBunny editor sheet — shared chrome, character sections, group sections
  * =========================================================================
- * Single-column layout with sticky header, toolbar, five scrollable sections.
- * Overrides upstream .form_create_bottom_buttons_block, #avatar-and-name-block,
- * and #right-nav-panel rules to match libadwaita and DESIGN.md patterns.
+ * One stylesheet for both explicit-save editors (Step 3b/Step 4). The header,
+ * toolbar, sections, rows and fields are shared and unstyled by ID; the
+ * character-only sections come first, then the group-only rules at the bottom.
+ * Every ID-scoped rule names both editors, so the two can never drift apart.
+ * Sharing the file also keeps the blocking-stylesheet budget from growing.
  */
 
 /* Sheet container and scroll behavior
    ========================================================================= */
 
-.sb-character-sheet {
-    display: flex;
+.sb-editor-sheet {
     flex-direction: column;
     min-height: 0;
     flex: 1 1 auto;
@@ -17,7 +18,11 @@
     padding: 0 !important;
 }
 
-.sb-character-sheet__content {
+/* The group panel is a .right_menu toggled by selectRightMenuWithAnimation
+   (script.js:14501), which writes an inline display; the group-specific
+   container rules live at the bottom of this file. */
+
+.sb-editor-sheet__content {
     display: flex;
     flex-direction: column;
     gap: 14px;
@@ -263,14 +268,14 @@
 }
 
 /* Header actions keep their intrinsic width and never shrink into the title. */
-.sb-editor-header > #sb_character_editor_cancel,
-.sb-editor-header > #sb_character_editor_save {
+.sb-editor-header > :is(#sb_character_editor_cancel, #sb_group_editor_cancel),
+.sb-editor-header > :is(#sb_character_editor_save, #sb_group_editor_save) {
     flex: 0 0 auto;
 }
 
 /* Primary action. --sb-on-accent resolves to literal black, which is unreadable
    on a dark accent; --sb-on-solid-accent is the token designed for accent fills. */
-.sb-editor-header > #sb_character_editor_save {
+.sb-editor-header > :is(#sb_character_editor_save, #sb_group_editor_save) {
     min-height: 38px;
     margin: 0;
     padding: 0 16px;
@@ -283,17 +288,17 @@
 }
 
 @media (hover: hover) {
-    .sb-editor-header > #sb_character_editor_save:not(:disabled):hover {
+    .sb-editor-header > :is(#sb_character_editor_save, #sb_group_editor_save):not(:disabled):hover {
         background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 88%, var(--SmartThemeBodyColor));
     }
 }
 
-.sb-editor-header > #sb_character_editor_save:focus-visible {
+.sb-editor-header > :is(#sb_character_editor_save, #sb_group_editor_save):focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-.sb-editor-header > #sb_character_editor_cancel {
+.sb-editor-header > :is(#sb_character_editor_cancel, #sb_group_editor_cancel) {
     min-height: 38px;
     margin: 0;
     padding: 0 16px;
@@ -305,17 +310,17 @@
 }
 
 @media (hover: hover) {
-    .sb-editor-header > #sb_character_editor_cancel:not(:disabled):hover {
+    .sb-editor-header > :is(#sb_character_editor_cancel, #sb_group_editor_cancel):not(:disabled):hover {
         background: var(--sb-flat-hover-bg);
     }
 }
 
-.sb-editor-header > #sb_character_editor_cancel:focus-visible {
+.sb-editor-header > :is(#sb_character_editor_cancel, #sb_group_editor_cancel):focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-.sb-editor-header > :is(#sb_character_editor_save, #sb_character_editor_cancel):disabled {
+.sb-editor-header > :is(#sb_character_editor_save, #sb_character_editor_cancel, #sb_group_editor_save, #sb_group_editor_cancel):disabled {
     opacity: 0.5;
     cursor: default;
 }
@@ -355,7 +360,7 @@
    win without !important, matching how the rest of the shell scopes its
    overrides. Without it the toolbar renders as a mix of bordered chips and flat
    buttons. */
-#right-nav-panel #sb_character_editor_toolbar > :is(.menu_button, .chat_lorebook_button) {
+#right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button) {
     flex: 0 0 auto;
     width: var(--sb-control-icon-physical-size, 36px);
     min-width: var(--sb-control-icon-physical-size, 36px);
@@ -373,24 +378,24 @@
 
 /* sillybunny-theme.css:1044 supplies its own hover fill for .menu_button, which
    would fight the flat hover below unless it is overridden at the same weight. */
-#right-nav-panel #sb_character_editor_toolbar > :is(.menu_button, .chat_lorebook_button):hover {
+#right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button):hover {
     background: var(--sb-flat-hover-bg);
     border-color: transparent;
     box-shadow: none;
 }
 
-#right-nav-panel #sb_character_editor_toolbar > :is(.menu_button, .chat_lorebook_button):active {
+#right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button):active {
     background: var(--sb-flat-active-bg);
 }
 
-#right-nav-panel #sb_character_editor_toolbar > :is(.menu_button, .chat_lorebook_button):focus-visible {
+#right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button):focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
 
 /* Favourite is a stateful toggle; upstream signals it with .fav_on. Surface that
    as the same selected treatment the aria-pressed buttons use. */
-#right-nav-panel #sb_character_editor_toolbar > #favorite_button.fav_on {
+#right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(#favorite_button, #group_favorite_button).fav_on {
     background: var(--sb-flat-selected-bg);
     color: var(--sb-accent);
 }
@@ -421,7 +426,7 @@
 
 /* Upstream #char-management-dropdown styling is obsolete now the select is a
    hidden transport; the visible menu above replaces it. */
-.sb-editor-toolbar #char-management-dropdown {
+.sb-editor-toolbar :is(#char-management-dropdown, #group-chat-lorebook-dropdown) {
     display: none !important;
 }
 
@@ -525,6 +530,54 @@
     min-width: 0;
 }
 
+/* ds-row-button: a whole row that is a control, e.g. a section that opens a
+   dialog. Same geometry as .ds-row-switch so the two can sit side by side. */
+.ds-row-button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    margin: 0;
+    padding: 10px 16px;
+    border: 0;
+    border-bottom: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    text-align: start;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.ds-pref-group > .ds-row-button:last-child {
+    border-bottom: 0;
+}
+
+@media (hover: hover) {
+    .ds-row-button:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.ds-row-button:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.ds-row-button:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+/* The chevron is a suffix glyph, not a state; the row itself is the control. */
+.ds-row-button > .ds-row-suffix {
+    color: var(--sb-muted-fg, color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent));
+}
+
+.ds-row-button > .ds-row-suffix i + i {
+    margin-inline-start: 6px;
+}
+
 /* style.css:2866 sizes description (29dvh) and first message (clamp to 18rem)
    from the viewport, so they dwarf every other field. One shared height for
    every non-Metadata field; Metadata keeps its own compact sizes. */
@@ -582,7 +635,7 @@
     flex-shrink: 0;
 }
 
-.sb-character-essentials__avatar #avatar_div_div {
+.sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div) {
     display: block;
     width: 88px;
     height: 88px;
@@ -592,11 +645,11 @@
     transition: opacity var(--sb-transition-fast, 200ms ease);
 }
 
-.sb-character-essentials__avatar #avatar_div_div:hover {
+.sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div):hover {
     opacity: 0.9;
 }
 
-.sb-character-essentials__avatar #avatar_div_div img {
+.sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div) img {
     width: 100%;
     height: 100%;
     object-fit: cover;
@@ -623,7 +676,7 @@
     }
 
     /* Fixed square that stays correct without cropping */
-    .sb-character-essentials__avatar #avatar_div_div {
+    .sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div) {
         width: 72px;
         height: 72px;
     }
@@ -940,7 +993,7 @@
    the toolbar and its quick-edit toggle remain accessible so the user can turn it off
    ========================================================================= */
 
-.sb-character-sheet--quick-edit .sb-editor-section:not([data-sb-section="essentials"]) {
+.sb-editor-sheet--quick-edit .sb-editor-section:not([data-sb-section="essentials"]) {
     display: none !important;
 }
 
@@ -948,7 +1001,7 @@
    ========================================================================= */
 
 @media screen and (max-width: 620px) {
-    .sb-character-sheet__content {
+    .sb-editor-sheet__content {
         padding: 12px;
         gap: 12px;
     }
@@ -986,7 +1039,7 @@
         height: 44px;
     }
 
-    .sb-editor-header > :is(#sb_character_editor_save, #sb_character_editor_cancel) {
+    .sb-editor-header > :is(#sb_character_editor_save, #sb_character_editor_cancel, #sb_group_editor_save, #sb_group_editor_cancel) {
         min-height: 44px;
     }
 
@@ -1002,14 +1055,14 @@
 /* The .tags container (tagList) and upstream .tag pills need libadwaita
    treatment inside the character editor. Scope tightly to avoid changing
    global tag appearance on other panels. */
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #tagList.tags {
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList).tags {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
     padding: 6px 16px 10px;
 }
 
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #tagList .tag {
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -1026,13 +1079,13 @@
 }
 
 @media (hover: hover) {
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #tagList .tag:hover {
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag:hover {
         background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
         border-color: color-mix(in srgb, var(--sb-shell-border) 100%, transparent);
     }
 }
 
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #tagList .tag .tag_remove {
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_remove {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1049,7 +1102,7 @@
 }
 
 @media (hover: hover) {
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #tagList .tag .tag_remove:hover {
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_remove:hover {
         background: color-mix(in srgb, var(--SmartThemeBotMesBlurTintColor, var(--SmartThemeQuoteColor)) 30%, transparent);
     }
 }
@@ -1071,15 +1124,16 @@
        on reveal and only after the fade on hide, which also takes the collapsed
        bars out of the tab order. */
     #sb_character_editor_header,
-    #sb_character_editor_toolbar {
+    #sb_character_editor_toolbar,
+    #sb_group_editor_header,
+    #sb_group_editor_toolbar {
         max-height: 6rem;
         overflow: hidden;
         transition: max-height 200ms ease, min-height 200ms ease, padding 200ms ease,
             border-width 200ms ease, opacity 150ms ease, visibility 0s linear 0s;
     }
 
-    #sb_character_editor_header.sb-editor-chrome-hidden,
-    #sb_character_editor_toolbar.sb-editor-chrome-hidden {
+    :is(#sb_character_editor_header, #sb_character_editor_toolbar, #sb_group_editor_header, #sb_group_editor_toolbar).sb-editor-chrome-hidden {
         max-height: 0;
         min-height: 0;
         padding-top: 0;
@@ -1094,9 +1148,231 @@
     @media (prefers-reduced-motion: reduce) {
         #sb_character_editor_header,
         #sb_character_editor_toolbar,
-        #sb_character_editor_header.sb-editor-chrome-hidden,
-        #sb_character_editor_toolbar.sb-editor-chrome-hidden {
+        #sb_group_editor_header,
+        #sb_group_editor_toolbar,
+        :is(#sb_character_editor_header, #sb_character_editor_toolbar, #sb_group_editor_header, #sb_group_editor_toolbar).sb-editor-chrome-hidden {
             transition: none;
         }
     }
+}
+
+/* Group editor — group-specific sheet rules (Step 4)
+   ========================================================================= */
+
+/* Panel and sheet container
+   ========================================================================= */
+
+/* #rm_group_chats_block is the toggled .right_menu, so it keeps the upstream
+   display:none and align-items:flex-start from rm-groups.css that
+   selectRightMenuWithAnimation overrides with an inline display:flex. Only the
+   sheet layout is set here, at one class more specificity than that file. */
+#rm_group_chats_block.sb-editor-sheet {
+    flex-direction: column;
+    align-items: stretch;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0 !important;
+}
+
+/* Avatar — the label is the fixed square; the collage fills it
+   ========================================================================= */
+
+.sb-character-essentials__avatar #group_avatar_div {
+    display: block;
+    border-radius: var(--sb-radius-card, 12px);
+    overflow: hidden;
+}
+
+#group_avatar_preview,
+#group_avatar_preview > .avatar {
+    width: 100%;
+    height: 100%;
+}
+
+#group_avatar_preview > .avatar {
+    position: relative;
+}
+
+/* group-avatars.css rounds the collage to a circle for the group list; inside
+   the square editor preview it must follow the label's radius instead. */
+#group_avatar_preview .avatar.avatar_collage {
+    border-radius: inherit;
+}
+
+/* Member rows
+   ========================================================================= */
+
+/* The drag handle is an overlay pinned to the row's leading edge rather than a
+   grid track: the row's column set belongs to the member-list layout, which the
+   bundled SB-GroupUtilities extension also styles at the same specificity, so
+   inserting a track here would shift every cell of whichever rule lost the
+   cascade. An overlay leaves the columns and the row's box alone, sitting in the
+   row's own inset instead. It is revealed on hover or when focused, so the
+   leading edge stays quiet at rest; the up/down buttons remain the keyboard and
+   touch path. */
+#rm_group_members .group_member {
+    position: relative;
+}
+
+#rm_group_members .group_member .sb-group-member-grip {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    margin: 0;
+    padding: 0;
+    color: var(--sb-muted-fg, color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent));
+    cursor: grab;
+    touch-action: none;
+    opacity: 0;
+    transition: opacity var(--sb-transition-fast, 120ms ease);
+}
+
+#rm_group_members .group_member:focus-within .sb-group-member-grip {
+    opacity: 0.7;
+}
+
+#rm_group_members .group_member .sb-group-member-grip:active {
+    cursor: grabbing;
+    opacity: 1;
+}
+
+@media (hover: hover) {
+    #rm_group_members .group_member:hover .sb-group-member-grip {
+        opacity: 0.7;
+    }
+
+    #rm_group_members .group_member .sb-group-member-grip:hover,
+    #rm_group_members .group_member .sb-group-member-grip:focus-visible {
+        opacity: 1;
+        color: var(--sb-shell-text);
+    }
+}
+
+/* A row being dragged keeps its handle in view on the floating clone. */
+#rm_group_members .group_member.ui-sortable-helper .sb-group-member-grip {
+    opacity: 1;
+}
+
+/* The grip rides the row itself, so the other member lists never ship one. */
+#rm_group_add_members .group_member .sb-group-member-grip,
+#groupMemberListPopout .group_member .sb-group-member-grip {
+    display: none;
+}
+
+/* The list re-sorts itself while a filter is active, so the handle would drop
+   a row somewhere the user did not choose. */
+#rm_group_members.is-filtered .sb-group-member-grip {
+    display: none;
+}
+
+/* The shell gives every .menu_button/.right_menu_button a 38px physical minimum
+   (sillybunny-theme.css:1209-1212), which is right for a toolbar but inflates
+   these 18px row controls until they spill past their row and cover the next
+   row's buttons. The minimum is dropped for pointers that can hover, where the
+   rows are compact; touch is left to the 44px targets in mobile-styles.css,
+   which this must not outrank. */
+@media (hover: hover) and (pointer: fine) {
+    #rm_group_members .group_member_icon .right_menu_button,
+    #rm_group_add_members .group_member_icon .right_menu_button {
+        width: 18px;
+        min-width: 18px;
+        height: 18px;
+        min-height: 18px;
+        padding: 0;
+        font-size: calc(var(--mainFontSize) * 0.82);
+        line-height: 18px;
+    }
+
+    /* The up/down pair is the one stacked control, so it sizes as a column. */
+    #rm_group_members .group_member_icon .flex-container,
+    #rm_group_add_members .group_member_icon .flex-container {
+        width: 18px;
+        min-width: 18px;
+        height: 36px;
+        flex: 0 0 18px;
+        flex-flow: column nowrap;
+        gap: 0;
+        align-items: center;
+        justify-content: center;
+    }
+}
+
+/* Touch pointers: the grip needs a reachable target and rides the row's full
+   height, since the compact pointer rules above do not apply here. */
+@media (hover: none), (pointer: coarse) {
+    #rm_group_members .group_member .sb-group-member-grip {
+        width: 24px;
+        opacity: 0.5;
+        font-size: var(--sb-type-body, 15px);
+    }
+
+    /* The up/down pair stacks inside one 44px lane. Left at the shell's 44px
+       minimum each, the pair is 88px tall and spills over the rows above and
+       below, so their own arrows answer for them. Half-height steps keep the
+       pair inside the lane; the whole 44px column stays the tap target. */
+    #rm_group_members .group_member_icon .flex-container .right_menu_button,
+    #rm_group_add_members .group_member_icon .flex-container .right_menu_button {
+        height: 22px;
+        min-height: 22px;
+    }
+
+    #rm_group_members .group_member_icon .flex-container,
+    #rm_group_add_members .group_member_icon .flex-container {
+        height: 44px;
+        min-height: 44px;
+    }
+}
+
+/* The jQuery UI sortable clone is a floating chip; give it a surface so it
+   reads as lifted rather than pasted over the row beneath. */
+#rm_group_members .group_member.ui-sortable-helper {
+    background: var(--sb-layer-view);
+    border-radius: var(--sb-radius-card, 12px);
+    box-shadow: var(--sb-shadow-md, 0 6px 18px rgb(0 0 0 / 35%));
+    opacity: 0.95;
+}
+
+#rm_group_members .group_member.ui-sortable-placeholder {
+    visibility: visible !important;
+    border: 1px dashed var(--sb-shell-border);
+    border-radius: var(--sb-radius-card, 12px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+}
+
+/* Member lists and their search rows
+   ========================================================================= */
+
+#rm_group_members,
+#rm_group_add_members {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    border-top: 1px solid var(--sb-shell-border);
+    padding: 6px 0 0;
+}
+
+#rm_group_members:empty,
+#rm_group_add_members:empty {
+    min-height: 44px;
+}
+
+#rm_group_members_header,
+#rm_group_add_members_header {
+    padding: 0 16px;
+}
+
+#rm_group_members_header input,
+#rm_group_add_members_header input {
+    width: 100%;
+}
+
+/* The tag filter rows sit between the search row and the list. */
+.sb-editor-section .rm_tag_controls:empty {
+    display: none;
 }

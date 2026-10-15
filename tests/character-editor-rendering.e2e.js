@@ -122,7 +122,8 @@ test('keyboard previews reset cleanly when another editor session opens', async 
 test('mobile scroll-hide reclaims header and toolbar space and restores it on scroll-up', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await openEditor(page);
-    const content = page.locator('.sb-character-sheet__content');
+    // Both editors share .sb-editor-sheet__content, so scope to the character form.
+    const content = page.locator('#form_create .sb-editor-sheet__content');
     const header = page.locator('#sb_character_editor_header');
     const toolbar = page.locator('#sb_character_editor_toolbar');
     const height = (await content.boundingBox()).height;
@@ -134,6 +135,9 @@ test('mobile scroll-hide reclaims header and toolbar space and restores it on sc
     await expect.poll(async () => (await content.boundingBox()).height).toBeLessThan(height + 2);
     await expect(header).toBeVisible();
     await expect(toolbar).toBeVisible();
+    // The chrome suppresses layout-induced scroll for 250ms after revealing;
+    // a single synthetic jump inside that window is intentionally ignored.
+    await page.waitForTimeout(250);
     await content.evaluate(node => { node.scrollTop = node.scrollHeight; });
     await expect(header).toBeHidden();
     await page.evaluate(async () => {

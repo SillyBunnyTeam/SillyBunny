@@ -22,7 +22,7 @@ function getRuleBody(cssSource, selector) {
 describe('mobile character drawer top row css', () => {
     test('keeps the favorites strip wide before the close control', () => {
         const rowRule = getRuleBody(mobileStylesCss, '#right-nav-panel #CharListButtonAndHotSwaps');
-        const wrapperRule = getRuleBody(mobileStylesCss, '#right-nav-panel:not(:is([data-menu-type="character_edit"], [data-menu-type="create"])) #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container');
+        const wrapperRule = getRuleBody(mobileStylesCss, '#right-nav-panel:not(:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"])) #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container');
         const hotswapRule = getRuleBody(mobileStylesCss, '#right-nav-panel #HotSwapWrapper');
         const closeRule = getRuleBody(mobileStylesCss, '#right-nav-panel #sb-character-mobile-close');
 
@@ -34,11 +34,11 @@ describe('mobile character drawer top row css', () => {
     });
 
     test('uses full touch target controls in editor mode', () => {
-        const editorRowRule = getRuleBody(mobileStylesCss, '#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #CharListButtonAndHotSwaps');
-        const editorWrapperRule = getRuleBody(mobileStylesCss, '#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container');
-        const editorHotswapRule = getRuleBody(mobileShellCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #HotSwapWrapper');
-        const backRule = getRuleBody(mobileStylesCss, '#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-back-to-list');
-        const closeRule = getRuleBody(mobileStylesCss, '#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-mobile-close');
+        const editorRowRule = getRuleBody(mobileStylesCss, '#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) #CharListButtonAndHotSwaps');
+        const editorWrapperRule = getRuleBody(mobileStylesCss, '#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container');
+        const editorHotswapRule = getRuleBody(mobileShellCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) #HotSwapWrapper');
+        const backRule = getRuleBody(mobileStylesCss, '#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) #sb-character-back-to-list');
+        const closeRule = getRuleBody(mobileStylesCss, '#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) #sb-character-mobile-close');
 
         expect(editorRowRule).toContain('grid-template-columns: var(--sb-mobile-touch-target, 44px) minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);');
         expect(editorWrapperRule).toContain('grid-column: 1;');

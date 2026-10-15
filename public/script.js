@@ -17260,10 +17260,9 @@ function initCharacterSearch() {
 
 // MARK: DOM Handlers Start
 jQuery(async function () {
-    setTimeout(function () {
-        $('#groupControlsToggle').trigger('click');
-        $('#groupCurrentMemberListToggle .inline-drawer-icon').trigger('click');
-    }, 200);
+    // SillyBunny: the group editor's sections are always open in the scrolling
+    // sheet, so the upstream "expand the drawers on open" pre-clicks are gone
+    // with the drawer markup (Step 4).
 
     $(document).on('click', '.api_loading', () => {
         cancelStatusCheck('Canceled because connecting was manually canceled');

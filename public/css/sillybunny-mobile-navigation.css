@@ -31,6 +31,8 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDr
 
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer[data-menu-type='character_edit'] > #CharListButtonAndHotSwaps:not(#sb-specificity),
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer[data-menu-type='create'] > #CharListButtonAndHotSwaps:not(#sb-specificity),
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer[data-menu-type='group_edit'] > #CharListButtonAndHotSwaps:not(#sb-specificity),
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer[data-menu-type='group_create'] > #CharListButtonAndHotSwaps:not(#sb-specificity),
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer[data-menu-type='editor_empty'] > #CharListButtonAndHotSwaps:not(#sb-specificity) {
     display: none !important;
 }

@@ -183,7 +183,7 @@
         min-width: var(--sb-mobile-touch-target, 44px);
     }
 
-    #right-nav-panel:not(:is([data-menu-type="character_edit"], [data-menu-type="create"])) #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
+    #right-nav-panel:not(:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"])) #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
         display: none;
     }
 
@@ -235,24 +235,24 @@
         grid-column: 2;
     }
 
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #CharListButtonAndHotSwaps {
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) #CharListButtonAndHotSwaps {
         grid-template-columns: var(--sb-mobile-touch-target, 44px) minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);
     }
 
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
         display: flex;
         grid-column: 1;
     }
 
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #rm_button_characters {
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) #rm_button_characters {
         grid-column: 1;
     }
 
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-back-to-list {
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) #sb-character-back-to-list {
         grid-column: 3;
     }
 
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-mobile-close {
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) #sb-character-mobile-close {
         grid-column: 4;
     }
 

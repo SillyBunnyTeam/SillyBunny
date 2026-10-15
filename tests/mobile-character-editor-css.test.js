@@ -71,7 +71,7 @@ describe('mobile character editor css', () => {
     });
 
     test('keeps the parked mode toggle and close button clear of the editor sub-tabs on mobile', () => {
-        const editorBandRule = getRuleBody(mobileShellCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) > #CharListButtonAndHotSwaps');
+        const editorBandRule = getRuleBody(mobileShellCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) > #CharListButtonAndHotSwaps');
 
         // The generic band rule is `min-height: 34px !important`; the toggle sits at top 8px with a 44px touch target.
         expect(editorBandRule).toContain('min-height: 54px !important;');

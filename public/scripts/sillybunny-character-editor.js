@@ -270,7 +270,7 @@ function _mountChrome() {
     const root = document.getElementById('form_create');
     const header = document.getElementById('sb_character_editor_header');
     const toolbar = document.getElementById('sb_character_editor_toolbar');
-    const content = root?.querySelector('.sb-character-sheet__content');
+    const content = root?.querySelector('.sb-editor-sheet__content');
     if (!root || !header || !toolbar || !(content instanceof HTMLElement)) return;
 
     const nameField = /** @type {HTMLInputElement|null} */ (document.getElementById('character_name_pole'));
@@ -382,7 +382,7 @@ function _syncQuickEditPressed() {
     const button = document.getElementById('sb_character_editor_quick_edit');
     if (!button) return;
     const sheet = document.getElementById('form_create');
-    const enabled = sheet?.classList.contains('sb-character-sheet--quick-edit') ?? false;
+    const enabled = sheet?.classList.contains('sb-editor-sheet--quick-edit') ?? false;
     button.setAttribute('aria-pressed', String(enabled));
 }
 

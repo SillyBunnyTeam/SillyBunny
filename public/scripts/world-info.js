@@ -7518,7 +7518,10 @@ export function initWorldInfo() {
         $(this).prop('selectedIndex', 0);
 
         if (target === 'renameGroupButton') {
-            await /** @type {any} */ (globalThis.SillyBunnyShell)?.renameOpenGroup?.();
+            // SillyBunny: the group editor's header title is the rename affordance;
+            // it owns the name field, so hand the request over rather than
+            // reaching into the group state from here (Step 4).
+            document.dispatchEvent(new CustomEvent('sb-group-rename-requested'));
             return;
         }
 

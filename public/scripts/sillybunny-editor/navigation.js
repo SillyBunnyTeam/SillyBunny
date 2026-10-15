@@ -76,10 +76,23 @@ export async function confirmEditorLeave(registration) {
 }
 
 /**
+ * Commit whatever field currently holds focus by blurring it, so a control that
+ * reports its edit on `change` cannot land that edit *after* the caller has
+ * already acted. `change` fires on blur, so a Cancel clicked while focus is still
+ * inside such a field would otherwise revert first and then re-apply the stale
+ * value, leaving the editor dirty again.
+ */
+function commitFocusedField() {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active !== document.body) active.blur();
+}
+
+/**
  * Revert to the saved baseline and run the editor's resync hook.
  * @param {EditorRegistration} registration
  */
 export function discardEditorChanges(registration) {
+    commitFocusedField();
     registration.session.discard();
     registration.afterDiscard?.();
 }
@@ -96,11 +109,26 @@ function isPopupOpen() {
     return Boolean(document.querySelector('dialog.popup[open]'));
 }
 
+/**
+ * True when a key event belongs to an inline editor that owns its own Enter and
+ * Escape handling. These guards run on capture, so without this they would claim
+ * the key first: Escape in the header title rename would open the leave
+ * confirmation instead of abandoning the rename, and the blur that follows would
+ * commit the abandoned name. The input's own handler stops the event, so once it
+ * has run nothing here needs to act.
+ * @param {Event} event
+ */
+function isInlineEditorEvent(event) {
+    const target = /** @type {Element|null} */ (event.target);
+    return Boolean(target?.closest?.('.sb-editor-title-input'));
+}
+
 function bindDocumentGuards() {
     // Ctrl/Cmd+S saves whichever editor is on screen.
     document.addEventListener('keydown', (event) => {
         // Lowercase only: Ctrl+Shift+S belongs to the browser (Firefox screenshots).
         if (!(event.metaKey || event.ctrlKey) || event.key !== 's') return;
+        if (isInlineEditorEvent(event)) return;
         const editor = activeEditor();
         if (!editor) return;
         event.preventDefault();
@@ -111,6 +139,7 @@ function bindDocumentGuards() {
     // always in a field. A clean editor lets Escape fall through to the shell.
     document.addEventListener('keydown', async (event) => {
         if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) return;
+        if (isInlineEditorEvent(event)) return;
         const editor = activeEditor();
         if (!editor || !editor.session.isDirty()) return;
         if (isPopupOpen() || isActionMenuOpen()) return;

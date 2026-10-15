@@ -2,6 +2,37 @@ import { describe, expect, test } from '@jest/globals';
 import { createEditorDraftStore } from '/scripts/sillybunny-editor/drafts.js';
 import { createEditorSession } from '/scripts/sillybunny-editor/session.js';
 
+function createDelayedSave() {
+    let snapshot = { name: 'Saved' };
+    let finish;
+    let receipt;
+    const request = new Promise(resolve => { finish = resolve; });
+    const storage = new Map();
+    const session = createEditorSession({
+        captureSnapshot: () => structuredClone(snapshot),
+        restoreSnapshot: value => { snapshot = structuredClone(value); },
+        persist: async submitted => {
+            receipt = submitted;
+            const result = await request;
+            if (result !== false) submitted.markSaved(result?.context, result?.snapshot);
+        },
+        drafts: {
+            read: () => null,
+            write: (id, value) => storage.set(id, structuredClone(value)),
+            remove: id => storage.delete(id),
+        },
+        timers: { setTimeout: () => 1, clearTimeout: () => {}, setInterval: () => 1, clearInterval: () => {} },
+    });
+    return {
+        session,
+        storage,
+        finish,
+        get receipt() { return receipt; },
+        get snapshot() { return snapshot; },
+        set snapshot(value) { snapshot = value; },
+    };
+}
+
 describe('editor drafts storage', () => {
     test('writes v1 envelope with snapshot and timestamp', () => {
         const storage = new Map();
@@ -76,6 +107,74 @@ describe('editor drafts storage', () => {
 });
 
 describe('editor session dirty tracking and draft backup', () => {
+    test('a delayed save baselines the submitted snapshot and backs up later edits', async () => {
+        const harness = createDelayedSave();
+        harness.session.open({ mode: 'edit', entityId: 'group-1' });
+        harness.snapshot.name = 'Submitted';
+        const saving = harness.session.save();
+        harness.snapshot.name = 'Still unsaved';
+        await Promise.resolve();
+        expect(harness.receipt.snapshot).toEqual({ name: 'Submitted' });
+
+        harness.finish();
+        expect(await saving).toBe(false);
+        expect(harness.session.readBaseline()).toEqual({ name: 'Submitted' });
+        expect(harness.storage.get('group-1')).toEqual({ name: 'Still unsaved' });
+        harness.session.discard();
+        expect(harness.snapshot.name).toBe('Submitted');
+    });
+
+    for (const entityId of ['group-1', 'group-2']) {
+        test(`a delayed receipt cannot clean a reopened ${entityId} session or its backup`, async () => {
+            const harness = createDelayedSave();
+            harness.session.open({ mode: 'edit', entityId: 'group-1' });
+            harness.snapshot.name = 'Submitted';
+            const saving = harness.session.save();
+            await Promise.resolve();
+            harness.session.suspend();
+            harness.snapshot = { name: 'Other saved state' };
+            harness.session.open({ mode: 'edit', entityId });
+            harness.snapshot.name = 'Other pending edit';
+            harness.session.flushDraft();
+
+            harness.finish();
+            expect(await saving).toBe(false);
+            expect(harness.session.readBaseline()).toEqual({ name: 'Other saved state' });
+            expect(harness.storage.get(entityId)).toEqual({ name: 'Other pending edit' });
+            expect(harness.receipt.isCurrent()).toBe(false);
+        });
+    }
+
+    test('create receipts re-key remaining edits without retaining the create backup', async () => {
+        const harness = createDelayedSave();
+        harness.session.open({ mode: 'create', entityId: 'new-group' });
+        harness.snapshot = { name: 'Submitted', id: null };
+        harness.session.flushDraft();
+        const saving = harness.session.save();
+        await Promise.resolve();
+        harness.snapshot = { name: 'Later edit', id: 'created' };
+        harness.finish({ context: { mode: 'edit', entityId: 'created' }, snapshot: { name: 'Submitted', id: 'created' } });
+
+        expect(await saving).toBe(false);
+        expect(harness.session.context).toEqual({ mode: 'edit', entityId: 'created' });
+        expect(harness.storage.has('new-group')).toBe(false);
+        expect(harness.storage.get('created')).toEqual({ name: 'Later edit', id: 'created' });
+        expect(harness.session.readBaseline()).toEqual({ name: 'Submitted', id: 'created' });
+    });
+
+    test('unsuccessful persistence keeps the baseline and backup', async () => {
+        const harness = createDelayedSave();
+        harness.session.open({ mode: 'edit', entityId: 'group-1' });
+        harness.snapshot.name = 'Unsaved';
+        harness.session.flushDraft();
+        const saving = harness.session.save();
+        harness.finish(false);
+
+        expect(await saving).toBe(false);
+        expect(harness.session.readBaseline()).toEqual({ name: 'Saved' });
+        expect(harness.storage.get('group-1')).toEqual({ name: 'Unsaved' });
+    });
+
     test('isDirty compares snapshot against baseline', () => {
         let state = { name: 'A' };
         const session = createEditorSession({

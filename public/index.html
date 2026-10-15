@@ -69,7 +69,6 @@
     <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261003a">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-list-editor.css?v=20261014a">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-character-editor.css?v=20261015h">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-group-editor.css?v=20261015a">
     <!-- SillyBunny: colour menus render outside clipped preference groups. -->
     <link rel="preload" as="style" href="css/sillybunny-color-picker.css" data-sb-deferred-style data-sb-media="all">
     <link rel="stylesheet" type="text/css" href="css/user.css">
@@ -6940,7 +6939,7 @@
                     <div id="sb_character_world_info_panel" class="sb-character-world-info-panel" role="tabpanel" aria-labelledby="sb_character_tab_world_info" aria-hidden="true" hidden></div>
                     <div name="Solo Char Create/Edit Panel" id="rm_ch_create_block" class="right_menu flex-container flexFlowColumn" style="display: none;">
                         <!-- SillyBunny: flat scrolling character sheet replaces the four sub-tab panels; every upstream field ID and wrapper ID is kept for extension compatibility. -->
-                        <form id="form_create" class="sb-character-sheet" action="javascript:void(null);" method="post" enctype="multipart/form-data">
+                        <form id="form_create" class="sb-editor-sheet" action="javascript:void(null);" method="post" enctype="multipart/form-data">
                             <header class="sb-editor-header" id="sb_character_editor_header">
                                 <button class="sb-editor-icon-button sb-editor-back" id="sb_character_editor_back" type="button" title="Back to character list" aria-label="Back to character list" data-i18n="[title]Back to character list;[aria-label]Back to character list">
                                     <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
@@ -7018,7 +7017,7 @@
                                 <div id="delete_button" class="sb-editor-transport menu_button fa-solid fa-skull" title="Delete Character" data-i18n="[title]Delete Character"></div>
                             </div>
 
-                            <div class="sb-character-sheet__content">
+                            <div class="sb-editor-sheet__content">
                                 <section class="sb-editor-section" data-sb-section="essentials" aria-labelledby="sb_character_section_essentials">
                                     <header class="ds-pref-group-header">
                                         <h3 class="ds-pref-group-heading" id="sb_character_section_essentials" data-i18n="Essentials">Essentials</h3>
@@ -7350,192 +7349,263 @@
                             </div>
                         </form>
                     </div>
-                    <div name="Group Chat Edit Panel" id="rm_group_chats_block" class="right_menu flex-container flexNoGap">
-                        <!-- SillyBunny: explicit-save header for the group editor, mirrors #sb_character_editor_header (Step 4) -->
+                    <!-- SillyBunny: group editor sheet (Step 4). Mirrors #form_create inside
+                         #rm_ch_create_block: this element stays the toggled menu panel, while
+                         nav_list/expand stays display:none until selectRightMenuWithAnimation
+                         sets an inline display (script.js:14501). The shared chrome classes
+                         (.sb-editor-*, .ds-*, .sb-editor-sheet) come from
+                         sillybunny-character-editor.css; only the group-specific row layout lives here. -->
+                    <div name="Group Chat Edit Panel" id="rm_group_chats_block" class="right_menu sb-editor-sheet">
                         <header class="sb-editor-header" id="sb_group_editor_header">
                             <button class="sb-editor-icon-button sb-editor-back" id="sb_group_editor_back" type="button" title="Back to groups" aria-label="Back to groups" data-i18n="[title]Back to groups;[aria-label]Back to groups">
                                 <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
                             </button>
-                            <button class="sb-editor-title-button" id="sb_group_editor_title_button" type="button" aria-label="Rename group">
-                                <h2 class="sb-editor-title" id="sb_group_editor_title"></h2>
+                            <!-- SillyBunny: the title doubles as the rename affordance, matching the
+                                 character editor's header (the legacy #rm_button_selected_ch h2 click
+                                 target is inside the hidden #rm_PinAndTabs). -->
+                            <button class="sb-editor-title-button" id="sb_group_editor_title_button" type="button" title="Rename group" data-i18n="[title]Rename group">
+                                <span class="sb-editor-title" id="sb_group_editor_title"></span>
+                                <i class="fa-solid fa-pencil sb-editor-title-pencil" aria-hidden="true"></i>
                             </button>
-                            <span class="sb-editor-dirty-dot" id="sb_group_editor_dirty" hidden aria-label="Unsaved changes" aria-hidden="true"></span>
-                            <div class="sb-editor-header-actions">
-                                <button class="sb-editor-icon-button sb-editor-cancel" id="sb_group_editor_cancel" type="button" title="Discard changes" aria-label="Discard changes" data-i18n="[title]Discard changes;[aria-label]Discard changes">
-                                    <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
-                                </button>
-                                <button class="sb-editor-primary-action" id="sb_group_editor_save" type="button" data-i18n="Save">Save</button>
-                            </div>
+                            <span class="sb-editor-dirty" id="sb_group_editor_dirty" role="status" aria-live="polite" hidden>
+                                <span class="sb-editor-dirty-dot" aria-hidden="true"></span>
+                                <span class="sr-only" data-i18n="Unsaved changes">Unsaved changes</span>
+                            </span>
+                            <button id="sb_group_editor_cancel" class="sb-editor-cancel" type="button" data-i18n="Cancel">Cancel</button>
+                            <button id="sb_group_editor_save" class="sb-editor-save" type="button" data-i18n="Save">Save</button>
                         </header>
+
                         <div class="sb-editor-toolbar" id="sb_group_editor_toolbar">
-                            <div class="sb-editor-toolbar-inner">
-                                <!-- group toolbar actions inserted here by group-chats.js / sillybunny-tabs.js -->
-                            </div>
-                            <button class="sb-editor-icon-button sb-editor-more" id="sb_group_editor_more" type="button" title="More actions" aria-label="More actions" aria-haspopup="menu" aria-expanded="false" data-i18n="[title]More actions;[aria-label]More actions">
+                            <div id="group_favorite_button" class="sb-editor-icon-button menu_button fa-solid fa-star" title="Add to Favorites" data-i18n="[title]Add to Favorites" data-label="FAV."></div>
+                            <input id="rm_group_fav" type="hidden" />
+                            <span class="sb-editor-toolbar-spacer" aria-hidden="true"></span>
+                            <button id="sb_group_editor_more" class="sb-editor-icon-button" type="button" aria-haspopup="menu" aria-expanded="false" title="Group actions" aria-label="Group actions" data-i18n="[title]Group actions;[aria-label]Group actions">
                                 <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
                             </button>
+                            <!-- SillyBunny: transports. These keep their upstream handlers and IDs
+                                 but are never rendered; the toolbar and the ⋯ menu dispatch clicks
+                                 on them, so world-info.js, chats.js, tags.js and group-chats.js keep
+                                 working unchanged (see .sb-editor-transport). -->
+                            <div id="rm_group_submit" class="sb-editor-transport heightFitContent margin0 menu_button fa-solid fa-fw fa-check" title="Create" data-i18n="[title]Create" data-label="Create Group"></div>
+                            <div id="rm_group_restore_avatar" class="sb-editor-transport menu_button fa-solid fa-fw fa-images" title="Restore collage avatar" data-i18n="[title]Restore collage avatar"></div>
+                            <div id="group_open_media_overrides" class="sb-editor-transport menu_button menu_button_icon open_media_overrides" title="Click to allow/forbid the use of external media for this group." data-i18n="[title]Click to allow/forbid the use of external media for this group.">
+                                <i id="group_media_allowed_icon" class="fa-solid fa-fw fa-link" aria-hidden="true"></i>
+                                <i id="group_media_forbidden_icon" class="fa-solid fa-fw fa-link-slash" aria-hidden="true"></i>
+                            </div>
+                            <div id="rm_group_delete" class="sb-editor-transport menu_button fa-solid fa-fw fa-trash-can" title="Delete Group" data-i18n="[title]Delete Group"></div>
+                            <div id="rm_button_back_from_group" class="sb-editor-transport menu_button fa-solid fa-fw fa-left-long" aria-hidden="true"></div>
+                            <label class="sb-editor-transport" for="group-chat-lorebook-dropdown">
+                                <select id="group-chat-lorebook-dropdown" class="text_pole">
+                                    <option value="default" disabled selected data-i18n="More...">More...</option>
+                                    <option id="group_chat_lorebook_link" data-i18n="Link to Chat Lorebook">Link to Chat Lorebook</option>
+                                    <option id="renameGroupButton" data-i18n="Rename Group">Rename Group</option>
+                                </select>
+                            </label>
                         </div>
-                        <div class="sb-group-editor-content" id="sb_group_editor_content">
-                        <section class="sb-group-settings-section">
-                            <div id="group-metadata-controls" class="marginTopBot5">
-                                <div id="rm_group_top_bar" class="flex-container alignitemscenter spaceBetween width100p fontsize80p">
-                                    <div>
-                                        <label class="add_avatar avatar flex-container justifyCenter" for="group_avatar_button" title="Click to select a new avatar for this group" data-i18n="[title]Click to select a new avatar for this group">
-                                            <div id="group_avatar_preview">
-                                                <div class="avatar">
-                                                    <img src="img/ai4.png" alt="avatar">
-                                                </div>
-                                            </div>
-                                            <input hidden type="file" id="group_avatar_button" name="avatar" accept="image/png, image/jpeg, image/jpg, image/gif, image/bmp">
-                                        </label>
-                                    </div>
-                                    <div class="sb-group-editor-primary">
-                                        <div class="sb-group-editor-name-row">
-                                            <input id="rm_group_chat_name" class="text_pole flex1" type="text" name="chat_name" data-i18n="[placeholder]Chat Name (Optional)" placeholder="Chat Name (Optional)" />
-                                            <div class="flex-container sb-group-editor-action-cluster">
-                                                <div class="flex-container sb-group-editor-side-actions">
-                                                    <div id="group_favorite_button" class="heightFitContent margin0 menu_button fa-solid fa-fw fa-star" title="Add to Favorites" data-i18n="[title]Add to Favorites" data-label="FAV."></div>
-                                                    <div id="rm_group_scenario" class="heightFitContent margin0 menu_button fa-solid fa-fw fa-scroll" title="Set group chat character settings overrides" data-i18n="[title]Set group chat character settings overrides" data-label="ADV."></div>
-                                                    <input id="rm_group_fav" type="hidden" />
-                                                </div>
-                                                <div class="flex-container sb-group-editor-utility-actions">
-                                                    <div class="chat_lorebook_button menu_button fa-solid fa-passport" title="Chat Lore&#10;&#10;Click to load&#10;Shift/Alt-click or long-press to open 'Link to Chat Lorebook' popup" data-i18n="[title]chat_lorebook_button_title"></div>
-                                                    <div id="rm_group_submit" class="heightFitContent margin0 menu_button fa-solid fa-fw fa-check" title="Create" data-i18n="[title]Create" data-label="Create Group"></div>
-                                                    <div id="group_open_media_overrides" class="heightFitContent margin0 menu_button menu_button_icon open_media_overrides" title="Click to allow/forbid the use of external media for this group." data-i18n="[title]Click to allow/forbid the use of external media for this group.">
-                                                        <i id="group_media_allowed_icon" class="fa-solid fa-fw fa-link"></i>
-                                                        <i id="group_media_forbidden_icon" class="fa-solid fa-fw fa-link-slash"></i>
+
+                        <div class="sb-editor-sheet__content" id="sb_group_editor_content">
+                            <!-- SillyBunny: six flat sections, same .sb-editor-section /
+                                 .ds-pref-group pattern as #form_create. The legacy drawer markup
+                                 is gone; the IDs groupControlsToggle, groupCurrentMemberListToggle
+                                 and groupAddMemberListToggle are kept because script.js:17264 and
+                                 tags.js still query them. -->
+                            <section class="sb-editor-section" data-sb-section="essentials" aria-labelledby="sb_group_section_essentials">
+                                <header class="ds-pref-group-header">
+                                    <h3 class="ds-pref-group-heading" id="sb_group_section_essentials" data-i18n="Essentials">Essentials</h3>
+                                    <p class="ds-pref-group-subtitle" data-i18n="group_essentials_subtitle">lorum ipsum</p>
+                                </header>
+                                <div class="ds-pref-group sb-editor-section__body">
+                                    <div id="group-metadata-controls" class="sb-character-essentials">
+                                        <div class="sb-character-essentials__avatar">
+                                            <label id="group_avatar_div" class="add_avatar avatar" for="group_avatar_button" title="Click to select a new avatar for this group" data-i18n="[title]Click to select a new avatar for this group">
+                                                <div id="group_avatar_preview">
+                                                    <div class="avatar">
+                                                        <img src="img/ai4.png" alt="avatar">
                                                     </div>
-                                                    <div id="rm_group_delete" class="heightFitContent margin0 menu_button fa-solid fa-fw fa-trash-can" title="Delete" data-i18n="[title]Delete"></div>
                                                 </div>
-                                            </div>
-                                            <label class="height100p" for="group-chat-lorebook-dropdown">
-                                                <select id="group-chat-lorebook-dropdown" class="text_pole">
-                                                    <option value="default" disabled selected data-i18n="More...">More...</option>
-                                                    <option id="group_chat_lorebook_link" data-i18n="Link to Chat Lorebook">Link to Chat Lorebook</option>
-                                                    <option id="renameGroupButton" data-i18n="Rename Group">Rename Group</option>
-                                                </select>
+                                                <input hidden type="file" id="group_avatar_button" name="avatar" accept="image/png, image/jpeg, image/jpg, image/gif, image/bmp">
                                             </label>
-                                            <div id="group_tags_div" class="wide100p">
-                                                <div class="tag_controls">
-                                                    <input id="groupTagInput" class="text_pole textarea_compact tag_input flex1 margin0" data-i18n="[placeholder]Search / Create Tags" placeholder="Search / Create tags" />
-                                                    <div class="tags_view menu_button fa-solid fa-tags margin0" title="View all tags" data-i18n="[title]View all tags"></div>
-                                                </div>
+                                        </div>
+                                        <div class="sb-character-essentials__fields">
+                                            <div id="rm_group_top_bar" class="ds-field">
+                                                <label class="ds-field-label" for="rm_group_chat_name" data-i18n="Name">Name</label>
+                                                <input id="rm_group_chat_name" class="text_pole" type="text" name="chat_name" placeholder="Name this group" data-i18n="[placeholder]Name this group" autocomplete="off" />
                                             </div>
-                                            <div id="groupTagList" class="tags paddingTopBot5"></div>
+                                            <div id="group_tags_div" class="ds-field">
+                                                <label class="ds-field-label" for="groupTagInput" data-i18n="Tags">Tags</label>
+                                                <div class="tag_controls">
+                                                    <input id="groupTagInput" class="text_pole textarea_compact tag_input wide100p margin0" data-i18n="[placeholder]Search / Create Tags" placeholder="Search / Create tags" />
+                                                    <div class="tags_view menu_button fa-solid fa-tags" title="View all tags" data-i18n="[title]View all tags"></div>
+                                                </div>
+                                                <div id="groupTagList" class="tags"></div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        </section>
-                        <div class="inline-drawer wide100p flexFlowColumn">
-                            <div id="groupControlsToggle" class="inline-drawer-toggle inline-drawer-header">
-                                <span>
-                                    <span data-i18n="Group Controls">Group Controls</span>
-                                    <a href="https://docs.sillytavern.app/usage/core-concepts/groupchats/" class="notes-link" target="_blank">
-                                        <span class="fa-solid fa-circle-question note-link-span"></span>
-                                    </a>
-                                </span>
-                                <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
-                            </div>
-                            <div class="inline-drawer-content">
-                                <div name="GroupStragegyAndOrder" id="rm_group_buttons" class="flex-container paddingLeftRight5 flex2">
-                                            <div class="flex1 flexGap5">
-                                                <label for="rm_group_activation_strategy" class="flexnowrap width100p whitespacenowrap">
-                                                    <span data-i18n="Group reply strategy">Group reply strategy</span>
-                                                </label>
-                                                <select id="rm_group_activation_strategy">
+                            </section>
+
+                            <section class="sb-editor-section" data-sb-section="members" aria-labelledby="sb_group_section_members">
+                                <header class="ds-pref-group-header">
+                                    <h3 class="ds-pref-group-heading" id="sb_group_section_members" data-i18n="Members">Members</h3>
+                                    <p class="ds-pref-group-subtitle" data-i18n="group_members_subtitle">lorum ipsum</p>
+                                </header>
+                                <div class="ds-pref-group sb-editor-section__body">
+                                    <div class="ds-row sb-group-members-header" id="groupCurrentMemberListToggle">
+                                        <span class="ds-row-text">
+                                            <a href="https://docs.sillytavern.app/usage/core-concepts/groupchats/" class="notes-link" target="_blank" rel="noopener noreferrer" aria-label="Open the group chats documentation">
+                                                <span class="fa-solid fa-circle-question note-link-span" aria-hidden="true"></span>
+                                            </a>
+                                        </span>
+                                        <span class="ds-row-suffix">
+                                            <button id="groupCurrentMemberPopoutButton" class="sb-editor-icon-button" type="button" title="Pop out member list" aria-label="Pop out member list" data-i18n="[title]Pop out member list;[aria-label]Pop out member list">
+                                                <i class="fa-solid fa-window-restore" aria-hidden="true"></i>
+                                            </button>
+                                        </span>
+                                    </div>
+                                    <div id="currentGroupMembers" name="Current Group Members" class="flex-container flexFlowColumn">
+                                        <!-- tags.js reads .rm_tag_controls as the immediate next sibling of
+                                             #rm_group_members_header, so the header must stay directly above it. -->
+                                        <div id="rm_group_members_header" class="ds-row">
+                                            <input id="rm_group_members_filter" class="text_pole margin0" type="search" data-i18n="[placeholder]Search..." placeholder="Search..." />
+                                        </div>
+                                        <div class="rm_tag_controls">
+                                            <div class="tags rm_tag_filter"></div>
+                                        </div>
+                                        <div id="rm_group_members_pagination" class="rm_group_members_pagination group_pagination"></div>
+                                        <div id="rm_group_members" class="rm_group_members flex-container" group_empty_text="Group is empty." data-i18n="[group_empty_text]Group is empty."></div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section class="sb-editor-section" data-sb-section="add-members" aria-labelledby="sb_group_section_add_members">
+                                <header class="ds-pref-group-header">
+                                    <h3 class="ds-pref-group-heading" id="sb_group_section_add_members" data-i18n="Add Members">Add Members</h3>
+                                    <p class="ds-pref-group-subtitle" data-i18n="group_add_members_subtitle">lorum ipsum</p>
+                                </header>
+                                <div class="ds-pref-group sb-editor-section__body">
+                                    <div id="groupAddMemberListToggle" class="ds-row">
+                                        <div class="flex-container flexGap5 wide100p">
+                                            <input id="rm_group_filter" class="text_pole margin0 flex1" type="search" data-i18n="[placeholder]Search..." placeholder="Search..." />
+                                            <div id="rm_group_quick_create" class="menu_button menu_button_icon" title="Create group from selected members" data-i18n="[title]Create group from selected members">
+                                                <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+                                                <span data-i18n="Quick Create">Quick Create</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="unaddedCharList" name="Unadded Char List" class="flex-container flexFlowColumn">
+                                        <div id="rm_group_add_members_header" class="ds-row"></div>
+                                        <div class="rm_tag_controls">
+                                            <div class="tags rm_tag_filter"></div>
+                                        </div>
+                                        <div id="rm_group_add_members_pagination" class="group_pagination"></div>
+                                        <div id="rm_group_add_members" class="flex-container" no_characters_text="No characters available" data-i18n="[no_characters_text]No characters available"></div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section class="sb-editor-section" data-sb-section="chat-settings" aria-labelledby="sb_group_section_chat_settings">
+                                <header class="ds-pref-group-header">
+                                    <h3 class="ds-pref-group-heading" id="sb_group_section_chat_settings" data-i18n="Chat Settings">Chat Settings</h3>
+                                    <p class="ds-pref-group-subtitle" data-i18n="group_chat_settings_subtitle">lorum ipsum</p>
+                                </header>
+                                <div class="ds-pref-group sb-editor-section__body">
+                                    <div id="rm_group_buttons" class="ds-field">
+                                        <div class="ds-inline-controls">
+                                            <label class="ds-inline-control" for="rm_group_activation_strategy">
+                                                <span data-i18n="Group reply strategy">Group reply strategy</span>
+                                                <select id="rm_group_activation_strategy" class="text_pole textarea_compact m-t-0">
                                                     <option value="2" data-i18n="Manual">Manual</option>
                                                     <option value="0" data-i18n="Natural order">Natural order</option>
                                                     <option value="1" data-i18n="List order">List order</option>
                                                     <option value="3" data-i18n="Pooled order">Pooled order</option>
                                                 </select>
-                                            </div>
-                                            <div class="flex1 flexGap5">
-                                                <label for="rm_group_generation_mode" class="flexnowrap width100p whitespacenowrap">
-                                                    <span data-i18n="Group generation handling mode">Group generation handling mode</span>
-                                                </label>
-                                                <select id="rm_group_generation_mode">
+                                            </label>
+                                            <label class="ds-inline-control" for="rm_group_generation_mode">
+                                                <span data-i18n="Group generation handling mode">Group generation handling mode</span>
+                                                <select id="rm_group_generation_mode" class="text_pole textarea_compact m-t-0">
                                                     <option value="0" data-i18n="Swap character cards">Swap character cards</option>
                                                     <option value="1" data-i18n="Join character cards (exclude muted)">Join character cards (exclude muted)</option>
                                                     <option value="2" data-i18n="Join character cards (include muted)">Join character cards (include muted)</option>
                                                 </select>
-                                            </div>
-                                            <div class="flex1 flexGap5" title="Inserted before each part of the joined fields." data-i18n="[title]Inserted before each part of the joined fields.">
-                                                <label for="rm_group_generation_mode_join_prefix" class="flexnowrap width100p whitespacenowrap">
-                                                    <span data-i18n="Join Prefix">Join Prefix</span>
-                                                    <div class="fa-solid fa-circle-info opacity50p" data-i18n="[title]When 'Join character cards' is selected, all respective fields of the characters are being joined together.This means that in the story string for example all character descriptions will be joined to one big text.If you want those fields to be separated, you can define a prefix or suffix here.This value supports normal macros and will also replace {{char}} with the relevant char's name and &lt;FIELDNAME&gt; with the name of the part (e.g.: description, personality, scenario, etc.)" title="When 'Join character cards' is selected, all respective fields of the characters are being joined together.&#13;This means that in the story string for example all character descriptions will be joined to one big text.&#13;If you want those fields to be separated, you can define a prefix or suffix here.&#13;&#13;This value supports normal macros and will also replace {{char}} with the relevant char's name and &lt;FIELDNAME&gt; with the name of the part (e.g.: description, personality, scenario, etc.)">
-                                                    </div>
-                                                </label>
-                                                <textarea id="rm_group_generation_mode_join_prefix" class="text_pole wide100p textarea_compact autoSetHeight" placeholder="&mdash;" rows="1"></textarea>
-                                            </div>
-                                            <div class="flex1 flexGap5" title="Inserted after each part of the joined fields." data-i18n="[title]Inserted after each part of the joined fields.">
-                                                <label for="rm_group_generation_mode_join_suffix" class="flexnowrap width100p whitespacenowrap">
-                                                    <span data-i18n="Join Suffix">Join Suffix</span>
-                                                    <div class="fa-solid fa-circle-info opacity50p" data-i18n="[title]When 'Join character cards' is selected, all respective fields of the characters are being joined together.This means that in the story string for example all character descriptions will be joined to one big text.If you want those fields to be separated, you can define a prefix or suffix here.This value supports normal macros and will also replace {{char}} with the relevant char's name and &lt;FIELDNAME&gt; with the name of the part (e.g.: description, personality, scenario, etc.)" title="When 'Join character cards' is selected, all respective fields of the characters are being joined together.&#13;This means that in the story string for example all character descriptions will be joined to one big text.&#13;If you want those fields to be separated, you can define a prefix or suffix here.&#13;&#13;This value supports normal macros and will also replace {{char}} with the relevant char's name and &lt;FIELDNAME&gt; with the name of the part (e.g.: description, personality, scenario, etc.)">
-                                                    </div>
-                                                </label>
-                                                <textarea id="rm_group_generation_mode_join_suffix" class="text_pole wide100p textarea_compact autoSetHeight" placeholder="&mdash;" rows="1"></textarea>
-                                            </div>
-                                </div>
-                                <div id="GroupFavDelOkBack" class="flex-container flexGap5 spaceEvenly flex1">
-                                            <div id="rm_button_back_from_group" class="heightFitContent margin0 menu_button fa-solid fa-fw fa-left-long"></div>
-                                            <div id="rm_group_restore_avatar" class="heightFitContent margin0 menu_button fa-solid fa-fw fa-images" title="Restore collage avatar" data-i18n="[title]Restore collage avatar"></div>
-                                            <div class="flex1">
-                                                <label id="rm_group_hidemutedsprites_label" class="checkbox_label whitespacenowrap">
-                                                    <input id="rm_group_hidemutedsprites" type="checkbox" />
-                                                    <span data-i18n="Hide Muted Member Sprites">Hide Muted Member Sprites</span>
-                                                </label>
-                                                <label class="checkbox_label whitespacenowrap">
-                                                    <input id="rm_group_allow_self_responses" type="checkbox" />
-                                                    <span data-i18n="Allow self responses">Allow self responses</span>
-                                                </label>
-                                            </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="inline-drawer wide100p flexFlowColumn">
-                            <div id="groupCurrentMemberListToggle" class="inline-drawer-toggle inline-drawer-header">
-                                <span data-i18n="Current Members">Current Members </span><i id="groupCurrentMemberPopoutButton" class="fa-solid fa-window-restore menu_button"></i>
-                                <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
-                            </div>
-                            <div class="inline-drawer-content">
-                                <div id="currentGroupMembers" name="Current Group Members" class="flex-container flexFlowColumn overflowYAuto flex1">
-                                    <div id="rm_group_members_header">
-                                        <input id="rm_group_members_filter" class="text_pole margin0" type="search" data-i18n="[placeholder]Search..." placeholder="Search..." />
-                                    </div>
-                                    <div class="rm_tag_controls">
-                                        <div class="tags rm_tag_filter"></div>
-                                    </div>
-                                    <div id="rm_group_members_pagination" class="rm_group_members_pagination group_pagination"></div>
-                                    <div id="rm_group_members" class="rm_group_members overflowYAuto flex-container" group_empty_text="Group is empty." data-i18n="[group_empty_text]Group is empty."></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="inline-drawer wide100p flexFlowColumn">
-                            <div id="groupAddMemberListToggle" class="inline-drawer-toggle inline-drawer-header">
-                                <span data-i18n="Add Members">Add Members</span>
-                                <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
-                            </div>
-                            <div class="inline-drawer-content">
-                                <div id="unaddedCharList" name="Unadded Char List" class="flex-container flexFlowColumn overflowYAuto flex1">
-                                    <div id="rm_group_add_members_header">
-                                        <div class="flex-container flexGap5">
-                                            <input id="rm_group_filter" class="text_pole margin0 flex1" type="search" data-i18n="[placeholder]Search..." placeholder="Search..." />
-                                            <div id="rm_group_quick_create" class="menu_button menu_button_icon" title="Create group from selected members" data-i18n="[title]Create group from selected members">
-                                                <i class="fa-solid fa-wand-magic-sparkles"></i>
-                                                <span data-i18n="Quick Create">Quick Create</span>
-                                            </div>
+                                            </label>
                                         </div>
+                                        <div class="ds-inline-controls" id="group_join_templates">
+                                            <label class="ds-inline-control" for="rm_group_generation_mode_join_prefix" setting="generation_mode_join_prefix" title="Inserted before each part of the joined fields." data-i18n="[title]Inserted before each part of the joined fields.">
+                                                <span data-i18n="Join Prefix">Join Prefix</span>
+                                                <textarea id="rm_group_generation_mode_join_prefix" class="text_pole textarea_compact m-t-0 autoSetHeight" setting="generation_mode_join_prefix" placeholder="&mdash;" rows="1"></textarea>
+                                            </label>
+                                            <label class="ds-inline-control" for="rm_group_generation_mode_join_suffix" setting="generation_mode_join_suffix" title="Inserted after each part of the joined fields." data-i18n="[title]Inserted after each part of the joined fields.">
+                                                <span data-i18n="Join Suffix">Join Suffix</span>
+                                                <textarea id="rm_group_generation_mode_join_suffix" class="text_pole textarea_compact m-t-0 autoSetHeight" setting="generation_mode_join_suffix" placeholder="&mdash;" rows="1"></textarea>
+                                            </label>
+                                        </div>
+                                        <small class="ds-field-subtitle" data-i18n="group_join_templates_subtitle">lorum ipsum</small>
                                     </div>
-                                    <div class="rm_tag_controls">
-                                        <div class="tags rm_tag_filter"></div>
-                                    </div>
-                                    <div id="rm_group_add_members_pagination" class="group_pagination"></div>
-                                    <div id="rm_group_add_members" class="overflowYAuto flex-container" no_characters_text="No characters available" data-i18n="[no_characters_text]No characters available"></div>
+                                    <label class="ds-row ds-row-switch" for="rm_group_allow_self_responses" id="rm_group_allow_self_responses_row">
+                                        <span class="ds-row-text">
+                                            <span class="ds-row-label" data-i18n="Allow self responses">Allow self responses</span>
+                                            <small class="ds-row-subtitle" data-i18n="group_allow_self_responses_subtitle">lorum ipsum</small>
+                                        </span>
+                                        <input id="rm_group_allow_self_responses" type="checkbox" class="sb-switch" role="switch" />
+                                    </label>
+                                    <label class="ds-row ds-row-switch" for="rm_group_hidemutedsprites" id="rm_group_hidemutedsprites_label">
+                                        <span class="ds-row-text">
+                                            <span class="ds-row-label" data-i18n="Hide Muted Member Sprites">Hide Muted Member Sprites</span>
+                                            <small class="ds-row-subtitle" data-i18n="group_hide_muted_sprites_subtitle">lorum ipsum</small>
+                                        </span>
+                                        <input id="rm_group_hidemutedsprites" type="checkbox" class="sb-switch" role="switch" />
+                                    </label>
                                 </div>
-                            </div>
-                        </div>
-                        </div><!-- /sb_group_editor_content -->
+                            </section>
+
+                            <section class="sb-editor-section" data-sb-section="overrides" aria-labelledby="sb_group_section_overrides">
+                                <header class="ds-pref-group-header">
+                                    <h3 class="ds-pref-group-heading" id="sb_group_section_overrides" data-i18n="Chat Overrides">Chat Overrides</h3>
+                                    <p class="ds-pref-group-subtitle" data-i18n="group_overrides_subtitle">lorum ipsum</p>
+                                </header>
+                                <div class="ds-pref-group sb-editor-section__body">
+                                    <button type="button" class="ds-row ds-row-button" id="rm_group_scenario" title="Set group chat character settings overrides" data-i18n="[title]Set group chat character settings overrides">
+                                        <span class="ds-row-text">
+                                            <span class="ds-row-label" data-i18n="Character settings">Character settings</span>
+                                            <small class="ds-row-subtitle" data-i18n="group_scenario_subtitle">lorum ipsum</small>
+                                        </span>
+                                        <span class="ds-row-suffix" aria-hidden="true">
+                                            <i class="fa-solid fa-chevron-right"></i>
+                                        </span>
+                                    </button>
+                                    <!-- SillyBunny: chats.js:2309 binds .open_media_overrides by delegation,
+                                         so this row only needs the class. The hidden transport above holds
+                                         the same class for the ⋯ menu. -->
+                                    <button type="button" class="ds-row ds-row-button open_media_overrides" id="group_media_overrides_row" title="Click to allow/forbid the use of external media for this group." data-i18n="[title]Click to allow/forbid the use of external media for this group.">
+                                        <span class="ds-row-text">
+                                            <span class="ds-row-label" data-i18n="External media">External media</span>
+                                            <small class="ds-row-subtitle" data-i18n="group_media_overrides_subtitle">lorum ipsum</small>
+                                        </span>
+                                        <span class="ds-row-suffix" aria-hidden="true">
+                                            <i class="fa-solid fa-chevron-right"></i>
+                                        </span>
+                                    </button>
+                                </div>
+                            </section>
+
+                            <section class="sb-editor-section" data-sb-section="lorebook" aria-labelledby="sb_group_section_lorebook">
+                                <header class="ds-pref-group-header">
+                                    <h3 class="ds-pref-group-heading" id="sb_group_section_lorebook" data-i18n="Lorebook">Lorebook</h3>
+                                    <p class="ds-pref-group-subtitle" data-i18n="group_lorebook_subtitle">lorum ipsum</p>
+                                </header>
+                                <div class="ds-pref-group sb-editor-section__body">
+                                    <button type="button" class="ds-row ds-row-button chat_lorebook_button" title="Chat Lore&#10;&#10;Click to load&#10;Shift/Alt-click or long-press to open 'Link to Chat Lorebook' popup" data-i18n="[title]chat_lorebook_button_title">
+                                        <span class="ds-row-text">
+                                            <span class="ds-row-label" data-i18n="Chat Lore">Chat Lore</span>
+                                            <small class="ds-row-subtitle" data-i18n="group_chat_lore_subtitle">lorum ipsum</small>
+                                        </span>
+                                        <span class="ds-row-suffix" aria-hidden="true">
+                                            <i class="fa-solid fa-chevron-right"></i>
+                                        </span>
+                                    </button>
+                                </div>
+                            </section>
+                        </div><!-- /sb-editor-sheet__content -->
                     </div>
                     <div id="rm_character_import" class="right_menu" style="display: none;">
                         <form id="form_import" action="javascript:void(null);" method="post" enctype="multipart/form-data">

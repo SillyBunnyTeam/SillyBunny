@@ -29,10 +29,18 @@ export const DRAFT_INTERVAL_MS = 5000;
  */
 
 /**
+ * @typedef {object} EditorSaveReceipt
+ * @property {EditorContext & Record<string, unknown>} context
+ * @property {object} snapshot
+ * @property {() => boolean} isCurrent
+ * @property {(nextContext?: Partial<EditorContext>, savedSnapshot?: object) => boolean} markSaved
+ */
+
+/**
  * @param {object} config
  * @param {() => object} config.captureSnapshot  Fresh JSON-compatible copy of the editable values.
  * @param {(snapshot: object) => void} config.restoreSnapshot  Writes a snapshot back into the editor.
- * @param {() => Promise<unknown>} config.persist  Saves the editor. Must call markSaved() on success;
+ * @param {(receipt: EditorSaveReceipt) => Promise<unknown>} config.persist  Saves the editor. Must call markSaved() on success;
  *     a failed or aborted save simply leaves the session dirty.
  * @param {{ read: (id: string) => EditorDraft|null, write: (id: string, snapshot: object) => void, remove: (id: string) => void }} config.drafts
  * @param {(state: EditorState) => void} [config.onStateChange]
@@ -181,13 +189,47 @@ export function createEditorSession(config) {
         notify();
     }
 
+    /** Capture before dispatch; only this session may accept the submitted values. */
+    function captureSaveReceipt() {
+        if (!context) return null;
+        const savingToken = token;
+        const submittedContext = { ...context };
+        const snapshot = captureSnapshot();
+        const isCurrent = () => token === savingToken && context?.entityId === submittedContext.entityId;
+        return {
+            context: submittedContext,
+            snapshot,
+            isCurrent,
+            markSaved(nextContext, savedSnapshot = snapshot) {
+                if (!isCurrent()) return false;
+                const previousId = context.entityId;
+                if (nextContext) context = { ...context, ...nextContext };
+                baseline = structuredClone(savedSnapshot);
+                baselineJson = JSON.stringify(baseline);
+                if (context.entityId !== previousId) drafts.remove(previousId);
+                if (isDirty()) writeDraft();
+                else drafts.remove(context.entityId);
+                notify();
+                return true;
+            },
+        };
+    }
+
     /**
      * Rebase without touching the draft store: a save made outside the editor
      * (avatar upload, linked lorebook) changed the stored entity.
+     * @param {object} [nextSnapshot]  The adopted values. Use when the editor
+     *     reconciled its own state with an external change and needs the new
+     *     state to become the baseline (three-way merge on reselect).
      */
-    function rebase() {
+    function rebase(nextSnapshot) {
         if (!context) return;
-        captureBaseline();
+        if (nextSnapshot) {
+            baseline = nextSnapshot;
+            baselineJson = JSON.stringify(baseline);
+        } else {
+            captureBaseline();
+        }
         notify();
     }
 
@@ -210,11 +252,12 @@ export function createEditorSession(config) {
         if (context.mode === 'edit' && !isDirty()) return Promise.resolve(true);
 
         const savingToken = token;
+        const receipt = captureSaveReceipt();
         // Registered before persist() runs, so a markSaved() it calls
         // synchronously already sees the session as saving.
         const operation = { token: savingToken, promise: null };
         operation.promise = Promise.resolve()
-            .then(() => persist())
+            .then(() => receipt.isCurrent() ? persist(receipt) : undefined)
             .catch(error => console.error('[sb-editor] Save failed', error))
             // Creating a character reopens the editor on the new card before
             // persist() resolves, so judge whatever session is open now: a
@@ -266,6 +309,7 @@ export function createEditorSession(config) {
         close,
         changed,
         markSaved,
+        captureSaveReceipt,
         rebase,
         discard,
         save,
@@ -273,6 +317,10 @@ export function createEditorSession(config) {
         isDirty,
         isOpen,
         getState,
+        /** Snapshot the editor was opened with (or last rebased to). @returns {object|null} */
+        readBaseline() {
+            return baseline;
+        },
         /** @returns {(EditorContext & Record<string, unknown>)|null} */
         get context() {
             return context;

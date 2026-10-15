@@ -56,7 +56,7 @@ describe('character editor quick edit', () => {
 
         context.apply();
 
-        expect(classes.has('sb-character-sheet--quick-edit')).toBe(true);
+        expect(classes.has('sb-editor-sheet--quick-edit')).toBe(true);
         expect(jqueryState['#spoiler_free_mode:checked']).toBe(true);
         expect(jqueryState['#sb_character_editor_quick_edit:aria-pressed']).toBe('true');
         expect(saves).toHaveLength(0);
@@ -68,7 +68,7 @@ describe('character editor quick edit', () => {
         context.set(0);
 
         expect(context.power_user.characterEditorQuickEdit).toBe(false);
-        expect(classes.has('sb-character-sheet--quick-edit')).toBe(false);
+        expect(classes.has('sb-editor-sheet--quick-edit')).toBe(false);
         expect(jqueryState['#sb_character_editor_quick_edit:aria-pressed']).toBe('false');
         expect(saves).toHaveLength(1);
     });
