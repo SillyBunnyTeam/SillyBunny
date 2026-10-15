@@ -1,12 +1,24 @@
+<!-- SillyBunny: rows are keyed by command id; the profile snapshot fields follow in their own list with a heading identifying them as saved values. -->
 <div class="profile-summary-scope">
     <ul class="profile-summary--two-col">
-        {{#each profile}}
+        {{#each applied}}
         <li>
-            <strong class="profile-summary-label" data-i18n="{{@key}}">{{@key}}</strong>
-            <span class="profile-summary-value">{{this}}</span>
+            <strong class="profile-summary-label" data-i18n="{{label}}">{{label}}</strong>
+            <span class="profile-summary-value">{{value}}</span>
         </li>
         {{/each}}
     </ul>
+    {{#if snapshot.length}}
+    <div class="margin5"><strong data-sb-profile-copy="true">{{snapshotHeading}}</strong></div>
+    <ul class="profile-summary--two-col">
+        {{#each snapshot}}
+        <li>
+            <strong class="profile-summary-label" data-i18n="{{label}}">{{label}}</strong>
+            <span class="profile-summary-value">{{value}}</span>
+        </li>
+        {{/each}}
+    </ul>
+    {{/if}}
     {{#if omitted}}
     <div class="margin5">
         <strong data-i18n="Omitted Settings:">Omitted Settings:</strong>&nbsp;<span>{{omitted}}</span>
