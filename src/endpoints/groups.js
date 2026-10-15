@@ -243,6 +243,12 @@ router.post('/create', (request, response) => {
         chats: request.body.chats ?? [id],
         generation_mode_join_prefix: request.body.generation_mode_join_prefix ?? '',
         generation_mode_join_suffix: request.body.generation_mode_join_suffix ?? '',
+        // SillyBunny: hideMutedSprites and member_models were accepted by the frontend create payload
+        // but not whitelisted here, so they were silently dropped on creation (Step 4 fix).
+        hideMutedSprites: !!request.body.hideMutedSprites,
+        member_models: (request.body.member_models && typeof request.body.member_models === 'object' && !Array.isArray(request.body.member_models))
+            ? request.body.member_models
+            : {},
         conversation_settings: request.body.conversation_settings ?? {},
     };
     const pathToFile = path.join(request.user.directories.groups, sanitize(`${id}.json`));

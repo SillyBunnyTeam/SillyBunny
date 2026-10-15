@@ -95,6 +95,15 @@ import { chat_completion_sources, oai_settings } from './openai.js';
 import { getRegexedString, regex_placement } from './extensions/regex/engine.js';
 import { ToolManager } from './tool-calling.js';
 import { createGroupTurnRouting, getRoutedReplyStatus } from './group-turn-routing.js';
+// SillyBunny: group editor controller (Step 4 - explicit save)
+import {
+    beginGroupEditorLoad,
+    openGroupEditorSession,
+    openGroupEditorCreateSession,
+    markGroupEditorSaved,
+    isGroupEditorOwner,
+    notifyGroupEditorChanged,
+} from './sillybunny-group-editor.js';
 
 export {
     selected_group,
@@ -2231,6 +2240,8 @@ async function onGroupActivationStrategyInput(e) {
         _thisGroup.activation_strategy = Number(e.target.value);
         // SillyBunny: a turn routing lease ends when its group's reply strategy changes.
         groupTurnRouting.refresh();
+        // SillyBunny: route through group editor when it owns this group (Step 4)
+        if (isGroupEditorOwner(openGroupId)) { notifyGroupEditorChanged(); return; }
         await editGroup(openGroupId, false, false);
     }
 }
@@ -2239,7 +2250,8 @@ async function onGroupGenerationModeInput(e) {
     if (openGroupId) {
         let _thisGroup = groups.find((x) => x.id == openGroupId);
         _thisGroup.generation_mode = Number(e.target.value);
-        await editGroup(openGroupId, false, false);
+        // SillyBunny: route through group editor when it owns this group (Step 4)
+        if (isGroupEditorOwner(openGroupId)) { notifyGroupEditorChanged(); } else { await editGroup(openGroupId, false, false); }
 
         toggleHiddenControls(_thisGroup);
     }
@@ -2250,6 +2262,8 @@ async function onGroupGenerationModeTemplateInput(e) {
         let _thisGroup = groups.find((x) => x.id == openGroupId);
         const prop = $(e.target).attr('setting');
         _thisGroup[prop] = String(e.target.value);
+        // SillyBunny: route through group editor when it owns this group (Step 4)
+        if (isGroupEditorOwner(openGroupId)) { notifyGroupEditorChanged(); return; }
         await editGroup(openGroupId, false, false);
     }
 }
@@ -2259,6 +2273,8 @@ async function onGroupNameInput() {
         let _thisGroup = groups.find((x) => x.id == openGroupId);
         _thisGroup.name = $(this).val();
         $('#rm_button_selected_ch').children('h2').text(_thisGroup.name);
+        // SillyBunny: route through group editor when it owns this group (Step 4)
+        if (isGroupEditorOwner(openGroupId)) { notifyGroupEditorChanged(); return; }
         await editGroup(openGroupId, false);
     }
 }
@@ -2287,6 +2303,10 @@ async function renameOpenGroup() {
 const sillyBunnyShell = /** @type {any} */ (globalThis.SillyBunnyShell || {});
 globalThis.SillyBunnyShell = Object.assign(sillyBunnyShell, {
     renameOpenGroup,
+    // SillyBunny: group editor callbacks (Step 4)
+    getGroups: () => groups,
+    editGroupImmediate: (groupId) => editGroup(groupId, true, false),
+    createGroupFromEditor: () => createGroup(),
 });
 
 /**
@@ -2516,6 +2536,8 @@ async function onFavoriteGroupClick() {
     if (openGroupId) {
         let _thisGroup = groups.find((x) => x.id == openGroupId);
         _thisGroup.fav = fav_grp_checked;
+        // SillyBunny: route through group editor when it owns this group (Step 4)
+        if (isGroupEditorOwner(openGroupId)) { notifyGroupEditorChanged(); favsToHotswap(); return; }
         await editGroup(openGroupId, false, false);
         favsToHotswap();
     }
@@ -2526,6 +2548,8 @@ async function onGroupSelfResponsesClick() {
         let _thisGroup = groups.find((x) => x.id == openGroupId);
         const value = $(this).prop('checked');
         _thisGroup.allow_self_responses = value;
+        // SillyBunny: route through group editor when it owns this group (Step 4)
+        if (isGroupEditorOwner(openGroupId)) { notifyGroupEditorChanged(); return; }
         await editGroup(openGroupId, false, false);
     }
 }
@@ -2535,6 +2559,8 @@ async function onHideMutedSpritesClick(value) {
         let _thisGroup = groups.find((x) => x.id == openGroupId);
         _thisGroup.hideMutedSprites = value;
         console.log(`_thisGroup.hideMutedSprites = ${_thisGroup.hideMutedSprites}`);
+        // SillyBunny: route through group editor when it owns this group (Step 4)
+        if (isGroupEditorOwner(openGroupId)) { notifyGroupEditorChanged(); await eventSource.emit(event_types.GROUP_UPDATED); return; }
         await editGroup(openGroupId, false, false);
         await eventSource.emit(event_types.GROUP_UPDATED);
     }
@@ -2562,6 +2588,8 @@ function toggleHiddenControls(group, generationMode = null) {
  * @param {boolean} skipAnimation If true, skips the animation when selecting the group
  */
 function select_group_chats(groupId, skipAnimation) {
+    // SillyBunny: suspend any open group editor session before overwriting fields (Step 4)
+    beginGroupEditorLoad();
     openGroupId = groupId;
     newGroupMembers = [];
     const group = openGroupId && groups.find((x) => x.id == openGroupId);
@@ -2639,6 +2667,12 @@ function select_group_chats(groupId, skipAnimation) {
 
     updateGroupSpeakerControls();
     eventSource.emit('groupSelected', { detail: { id: openGroupId, group: group } });
+    // SillyBunny: open explicit-save editor session after fields are populated (Step 4)
+    if (openGroupId) {
+        openGroupEditorSession(openGroupId);
+    } else {
+        openGroupEditorCreateSession();
+    }
 }
 
 /**
@@ -2729,7 +2763,8 @@ async function onGroupActionClick(event) {
         const index = _thisGroup.disabled_members.indexOf(member.data('id'));
         if (index !== -1) {
             _thisGroup.disabled_members.splice(index, 1);
-            await editGroup(openGroupId, false, false);
+            // SillyBunny: route through group editor when it owns this group (Step 4)
+            if (isGroupEditorOwner(openGroupId)) { notifyGroupEditorChanged(); } else { await editGroup(openGroupId, false, false); }
         }
     }
 
@@ -2738,7 +2773,8 @@ async function onGroupActionClick(event) {
         const _thisGroup = groups.find(x => x.id === openGroupId);
         if (!_thisGroup.disabled_members.includes(member.data('id'))) {
             _thisGroup.disabled_members.push(member.data('id'));
-            await editGroup(openGroupId, false, false);
+            // SillyBunny: route through group editor when it owns this group (Step 4)
+            if (isGroupEditorOwner(openGroupId)) { notifyGroupEditorChanged(); } else { await editGroup(openGroupId, false, false); }
         }
     }
 
@@ -2933,6 +2969,8 @@ async function onGroupMemberModelInput() {
     const group = groups.find(x => x.id === openGroupId);
     const member = $(this).closest('.group_member');
     setGroupMemberModel(group, member.data('id'), $(this).val());
+    // SillyBunny: route through group editor when it owns this group (Step 4)
+    if (isGroupEditorOwner(openGroupId)) { notifyGroupEditorChanged(); return; }
     await editGroup(openGroupId, false, false);
 }
 
@@ -2987,6 +3025,8 @@ async function createGroup() {
         const data = await createGroupResponse.json();
         createTagMapFromList('#groupTagList', data.id);
         await getCharacters();
+        // SillyBunny: transition group editor session from create to edit (Step 4)
+        markGroupEditorSaved(data.id);
         select_rm_info('group_create', data.id);
     }
 }
@@ -3389,4 +3429,9 @@ jQuery(() => {
     // SillyBunny: a turn routing lease ends when its chat or group changes.
     eventSource.on(event_types.CHAT_CHANGED, () => groupTurnRouting.refresh());
     eventSource.on(event_types.GROUP_UPDATED, () => groupTurnRouting.refresh());
+    // SillyBunny: group editor controller signals a member list re-render (Step 4)
+    document.addEventListener('sb-group-reprint-members', () => {
+        printGroupCandidates();
+        printGroupMembers();
+    });
 });

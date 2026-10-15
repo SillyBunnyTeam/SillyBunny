@@ -69,6 +69,7 @@
     <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261003a">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-list-editor.css?v=20261014a">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-character-editor.css?v=20261015h">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-group-editor.css?v=20261015a">
     <!-- SillyBunny: colour menus render outside clipped preference groups. -->
     <link rel="preload" as="style" href="css/sillybunny-color-picker.css" data-sb-deferred-style data-sb-media="all">
     <link rel="stylesheet" type="text/css" href="css/user.css">
@@ -7350,6 +7351,31 @@
                         </form>
                     </div>
                     <div name="Group Chat Edit Panel" id="rm_group_chats_block" class="right_menu flex-container flexNoGap">
+                        <!-- SillyBunny: explicit-save header for the group editor, mirrors #sb_character_editor_header (Step 4) -->
+                        <header class="sb-editor-header" id="sb_group_editor_header">
+                            <button class="sb-editor-icon-button sb-editor-back" id="sb_group_editor_back" type="button" title="Back to groups" aria-label="Back to groups" data-i18n="[title]Back to groups;[aria-label]Back to groups">
+                                <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+                            </button>
+                            <button class="sb-editor-title-button" id="sb_group_editor_title_button" type="button" aria-label="Rename group">
+                                <h2 class="sb-editor-title" id="sb_group_editor_title"></h2>
+                            </button>
+                            <span class="sb-editor-dirty-dot" id="sb_group_editor_dirty" hidden aria-label="Unsaved changes" aria-hidden="true"></span>
+                            <div class="sb-editor-header-actions">
+                                <button class="sb-editor-icon-button sb-editor-cancel" id="sb_group_editor_cancel" type="button" title="Discard changes" aria-label="Discard changes" data-i18n="[title]Discard changes;[aria-label]Discard changes">
+                                    <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+                                </button>
+                                <button class="sb-editor-primary-action" id="sb_group_editor_save" type="button" data-i18n="Save">Save</button>
+                            </div>
+                        </header>
+                        <div class="sb-editor-toolbar" id="sb_group_editor_toolbar">
+                            <div class="sb-editor-toolbar-inner">
+                                <!-- group toolbar actions inserted here by group-chats.js / sillybunny-tabs.js -->
+                            </div>
+                            <button class="sb-editor-icon-button sb-editor-more" id="sb_group_editor_more" type="button" title="More actions" aria-label="More actions" aria-haspopup="menu" aria-expanded="false" data-i18n="[title]More actions;[aria-label]More actions">
+                                <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                        <div class="sb-group-editor-content" id="sb_group_editor_content">
                         <section class="sb-group-settings-section">
                             <div id="group-metadata-controls" class="marginTopBot5">
                                 <div id="rm_group_top_bar" class="flex-container alignitemscenter spaceBetween width100p fontsize80p">
@@ -7509,6 +7535,7 @@
                                 </div>
                             </div>
                         </div>
+                        </div><!-- /sb_group_editor_content -->
                     </div>
                     <div id="rm_character_import" class="right_menu" style="display: none;">
                         <form id="form_import" action="javascript:void(null);" method="post" enctype="multipart/form-data">

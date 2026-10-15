@@ -72,6 +72,7 @@ import { createConnectionsPanel } from './sillybunny-connections-panel.js';
 import { initializePromptEditor } from './sillybunny-prompt-editor.js';
 // SillyBunny: character editor controller (Step 3b, feat/v1.9.0-ui-overhaul)
 import { initCharacterEditor } from './sillybunny-character-editor.js';
+import { initGroupEditor } from './sillybunny-group-editor.js';
 
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
@@ -15312,6 +15313,12 @@ function initAll() {
     initSettingsKeyboardShortcuts();
     // SillyBunny: Phase 3b — character editor controller (feat/v1.9.0-ui-overhaul)
     initCharacterEditor();
+    // SillyBunny: Phase 4 — group editor controller (feat/v1.9.0-ui-overhaul)
+    initGroupEditor({
+        getGroups: () => /** @type {any} */ (globalThis.SillyBunnyShell?.getGroups?.() ?? []),
+        persistEdit: (groupId) => /** @type {any} */ (globalThis.SillyBunnyShell?.editGroupImmediate?.(groupId)),
+        persistCreate: () => /** @type {any} */ (globalThis.SillyBunnyShell?.createGroupFromEditor?.()),
+    });
     bindInlineDrawerAutoCloseToggle();
     syncMobileViewportState();
 
