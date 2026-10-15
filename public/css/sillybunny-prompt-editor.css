@@ -704,9 +704,16 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     font-size: calc(var(--mainFontSize) * 0.84);
     line-height: 1.45;
     border: 1px solid transparent;
-    border-radius: var(--sb-radius-control);
-    background: transparent;
-    color: inherit;
+    border-radius: var(--sb-radius-button);
+    background: var(--sb-composer-input-bg);
+    color: var(--SmartThemeBodyColor);
+    caret-color: var(--color-primary, var(--sb-accent));
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-textarea::placeholder {
+    /* The upstream textarea placeholder colour is important. */
+    color: var(--sb-input-placeholder) !important;
+    opacity: 1;
 }
 
 .sb-prompt-preview {
