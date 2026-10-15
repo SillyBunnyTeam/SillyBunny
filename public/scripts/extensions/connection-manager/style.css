@@ -202,3 +202,25 @@
         width: 100%;
     }
 }
+
+/* SillyBunny: profile-switch summary toast list. Toasts are 300px wide with overflow hidden, so the list scrolls itself. */
+.sb-profile-switch-summary {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 2px;
+    overflow-wrap: anywhere;
+    max-height: min(50dvh, 320px);
+    overflow-y: auto;
+}
+
+/* SillyBunny: "Also sets" line under the profile actions. No display rule, so the hidden attribute works. */
+.sb-connection-profile-sets {
+    margin: 0;
+    min-width: 0;
+    font-size: var(--sb-type-meta);
+    line-height: 1.4;
+    color: var(--sb-input-placeholder);
+    overflow-wrap: anywhere;
+}
