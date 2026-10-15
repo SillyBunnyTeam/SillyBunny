@@ -657,36 +657,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         resize: vertical !important;
     }
 
-    /* Character's Note row - align the right column (@ Depth / Role / Tokens)
-       with the Character's Note header and textarea on the left. */
-    #right-nav-panel #depth_prompt_div {
-        align-items: start !important;
-        gap: 8px 10px !important;
-    }
-
-    #right-nav-panel #depth_prompt_div > .flex1 > h4,
-    #right-nav-panel #depth_prompt_div > :not(.flex1) > h4 {
-        margin: 0 0 4px !important;
-        min-height: 1.5rem !important;
-        line-height: 1.5rem !important;
-        display: flex !important;
-        align-items: center !important;
-    }
-
-    #right-nav-panel #depth_prompt_div > :not(.flex1) {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: stretch !important;
-        gap: 4px !important;
-        min-width: 7rem !important;
-    }
-
-    #right-nav-panel #depth_prompt_div > :not(.flex1) > .extension_token_counter {
-        margin: 0 !important;
-        text-align: left !important;
-        font-size: calc(var(--mainFontSize) * 0.78) !important;
-    }
-
     /* Alternate Greetings - icon-only Delete button */
     #right-nav-panel .delete_alternate_greeting > span,
     #right-nav-panel .delete_alternate_greeting [data-i18n="Delete"] {

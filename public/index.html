@@ -63,12 +63,12 @@
     <link rel="stylesheet" type="text/css" href="css/mobile-styles.css?v=20260814a" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20261003f">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-paper-theme.css?v=20261003a" media="(max-width: 768px)">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20261003b">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20261010a" media="(max-width: 768px)">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20261015a">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20261015a" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-navigation.css?v=20261001e">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261003a">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-list-editor.css?v=20261014a">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-character-editor.css?v=20261015c">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-character-editor.css?v=20261015d">
     <!-- SillyBunny: colour menus render outside clipped preference groups. -->
     <link rel="preload" as="style" href="css/sillybunny-color-picker.css" data-sb-deferred-style data-sb-media="all">
     <link rel="stylesheet" type="text/css" href="css/user.css">
@@ -7019,8 +7019,10 @@
 
                             <div class="sb-character-sheet__content">
                                 <section class="sb-editor-section" data-sb-section="essentials" aria-labelledby="sb_character_section_essentials">
-                                    <h3 class="ds-pref-group-heading" id="sb_character_section_essentials" data-i18n="Essentials">Essentials</h3>
-                                    <p class="ds-pref-group-subtitle" data-i18n="essentials_subtitle">lorum ipsum</p>
+                                    <header class="ds-pref-group-header">
+                                        <h3 class="ds-pref-group-heading" id="sb_character_section_essentials" data-i18n="Essentials">Essentials</h3>
+                                        <p class="ds-pref-group-subtitle" data-i18n="essentials_subtitle">lorum ipsum</p>
+                                    </header>
                                     <div class="ds-pref-group sb-editor-section__body">
                                         <div id="avatar-and-name-block" class="sb-character-essentials">
                                             <div id="avatar_div" class="sb-character-essentials__avatar">
@@ -7056,8 +7058,10 @@
                                 </section>
 
                                 <section class="sb-editor-section" data-sb-section="character-fields" aria-labelledby="sb_character_section_character_fields">
-                                    <h3 class="ds-pref-group-heading" id="sb_character_section_character_fields" data-i18n="Character Fields">Character Fields</h3>
-                                    <p class="ds-pref-group-subtitle" data-i18n="character_fields_subtitle">lorum ipsum</p>
+                                    <header class="ds-pref-group-header">
+                                        <h3 class="ds-pref-group-heading" id="sb_character_section_character_fields" data-i18n="Character Fields">Character Fields</h3>
+                                        <p class="ds-pref-group-subtitle" data-i18n="character_fields_subtitle">lorum ipsum</p>
+                                    </header>
                                     <div class="ds-pref-group sb-editor-section__body">
                                         <div id="descriptionWrapper" class="sb-editor-field">
                                             <div id="description_div" class="sb-editor-field__header">
@@ -7111,8 +7115,10 @@
                                 </section>
 
                                 <section class="sb-editor-section" data-sb-section="advanced-fields" aria-labelledby="sb_character_section_advanced_fields">
-                                    <h3 class="ds-pref-group-heading" id="sb_character_section_advanced_fields" data-i18n="Advanced Fields">Advanced Fields</h3>
-                                    <p class="ds-pref-group-subtitle" data-i18n="advanced_fields_subtitle">lorum ipsum</p>
+                                    <header class="ds-pref-group-header">
+                                        <h3 class="ds-pref-group-heading" id="sb_character_section_advanced_fields" data-i18n="Advanced Fields">Advanced Fields</h3>
+                                        <p class="ds-pref-group-subtitle" data-i18n="advanced_fields_subtitle">lorum ipsum</p>
+                                    </header>
                                     <div class="ds-pref-group sb-editor-section__body">
                                         <small class="sb-editor-section-hint" data-i18n="Insert {{original}} into either box to include the respective default prompt from system settings.">Insert <code>{{original}}</code> into either box to include the respective default prompt from system settings.</small>
                                         <div class="sb-editor-field">
@@ -7206,8 +7212,10 @@
                                 </section>
 
                                 <section class="sb-editor-section" data-sb-section="greetings" aria-labelledby="sb_character_section_greetings">
-                                    <h3 class="ds-pref-group-heading" id="sb_character_section_greetings" data-i18n="Greetings">Greetings</h3>
-                                    <p class="ds-pref-group-subtitle" data-i18n="greetings_subtitle">lorum ipsum</p>
+                                    <header class="ds-pref-group-header">
+                                        <h3 class="ds-pref-group-heading" id="sb_character_section_greetings" data-i18n="Greetings">Greetings</h3>
+                                        <p class="ds-pref-group-subtitle" data-i18n="greetings_subtitle">lorum ipsum</p>
+                                    </header>
                                     <div class="ds-pref-group sb-editor-section__body">
                                         <div id="firstMessageWrapper" class="sb-editor-field">
                                             <div id="first_message_div" class="sb-editor-field__header">
@@ -7272,8 +7280,10 @@
                                 </section>
 
                                 <section class="sb-editor-section" data-sb-section="metadata" aria-labelledby="sb_character_section_metadata">
-                                    <h3 class="ds-pref-group-heading" id="sb_character_section_metadata" data-i18n="Metadata">Metadata</h3>
-                                    <p class="ds-pref-group-subtitle" data-i18n="metadata_subtitle">lorum ipsum</p>
+                                    <header class="ds-pref-group-header">
+                                        <h3 class="ds-pref-group-heading" id="sb_character_section_metadata" data-i18n="Metadata">Metadata</h3>
+                                        <p class="ds-pref-group-subtitle" data-i18n="metadata_subtitle">lorum ipsum</p>
+                                    </header>
                                     <div class="ds-pref-group sb-editor-section__body">
                                         <div id="spoiler_free_desc" class="sb-creator-notes-preview">
                                             <div id="creators_notes_div" class="sb-creator-notes-preview__title">

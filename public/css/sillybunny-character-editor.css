@@ -594,9 +594,14 @@
 /* Preview pane — replaces the textarea in-place when active
    ========================================================================= */
 
+#form_create :is(textarea[data-sb-editor-field], .sb-preview-pane)[hidden] {
+    /* Upstream field rules set display:block, overriding the UA hidden rule. */
+    display: none !important;
+}
+
 .sb-preview-pane {
-    min-height: 80px;
-    max-height: 320px;
+    min-height: 0;
+    max-height: none;
     padding: 12px;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -606,7 +611,6 @@
     font-size: var(--sb-type-control, 15px);
     color: var(--SmartThemeBodyColor);
     line-height: 1.5;
-    /* Match the textarea height so toggling doesn't cause layout shift */
     box-sizing: border-box;
 }
 
@@ -989,90 +993,14 @@
     }
 }
 
-/* Export popup — libadwaita action-sheet style
-   ========================================================================= */
-
-/* The #export_format_popup is positioned by Popper relative to #export_button.
-   Re-style it as a small bordered surface consistent with the action menu. */
-#export_format_popup {
-    display: none; /* shown by script.js toggle */
-    flex-direction: column;
-    min-width: 160px;
-    padding: 4px 0;
-    border: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
-    border-radius: 10px;
-    background: var(--sb-shell-surface, var(--SmartThemeBlurTintColor));
-    -webkit-backdrop-filter: blur(16px) saturate(1.6);
-    backdrop-filter: blur(16px) saturate(1.6);
-    box-shadow: 0 4px 24px color-mix(in srgb, #000 18%, transparent);
-    overflow: hidden;
-    z-index: 200;
-}
-
-/* When shown via jQuery .toggle() it gets inline display:block; restore list layout */
-#export_format_popup[style*="display: block"],
-#export_format_popup[style*="display:block"] {
-    display: flex !important;
-    flex-direction: column;
-}
-
-#export_format_popup .export_format {
-    display: flex;
-    align-items: center;
-    min-height: 40px;
-    padding: 0 14px;
-    font-size: var(--sb-type-control, 15px);
-    font-weight: 500;
-    color: var(--sb-shell-text, var(--SmartThemeBodyColor));
-    background: transparent;
-    border: 0;
-    border-radius: 0;
-    cursor: pointer;
-    transition: background-color 120ms ease;
-    text-align: start;
-}
-
-@media (hover: hover) {
-    #export_format_popup .export_format:hover {
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
-    }
-}
-
-#export_format_popup .export_format:active {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-}
-
 /* Scroll-hide — header and toolbar collapse when scrolling down on mobile
    ========================================================================= */
 
-/* The .sb-editor-chrome-hidden class is toggled by the controller's scroll
-   listener. Use max-height + overflow:hidden so the collapse is animatable
-   and existing content below doesn't jump. */
+/* Remove the entire flex items, not only their paint: min-height and child
+   sizing would otherwise preserve the blank header and toolbar allocation. */
 @media (pointer: coarse), (max-width: 620px) {
-    #sb_character_editor_header,
-    #sb_character_editor_toolbar {
-        transition: max-height 200ms ease, padding 200ms ease, opacity 200ms ease;
-        overflow: hidden;
-    }
-
-    #sb_character_editor_header.sb-editor-chrome-hidden {
-        max-height: 0 !important;
-        padding-top: 0 !important;
-        padding-bottom: 0 !important;
-        opacity: 0;
-    }
-
+    #sb_character_editor_header.sb-editor-chrome-hidden,
     #sb_character_editor_toolbar.sb-editor-chrome-hidden {
-        max-height: 0 !important;
-        padding-top: 0 !important;
-        padding-bottom: 0 !important;
-        opacity: 0;
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-        #sb_character_editor_header,
-        #sb_character_editor_toolbar {
-            transition: none;
-        }
+        display: none;
     }
 }

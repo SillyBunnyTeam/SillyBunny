@@ -7346,6 +7346,21 @@ body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
     line-height: 1.4;
 }
 
+.ds-pref-group-header {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0 4px;
+    margin: 0 0 8px;
+    font-weight: 700;
+}
+
+#right-nav-panel #form_create .ds-pref-group-header > :is(.ds-pref-group-heading, .ds-pref-group-subtitle) {
+    margin: 0;
+    padding: 0;
+    font-weight: inherit;
+}
+
 .ds-action-row {
     display: flex;
     align-items: center;
@@ -8558,7 +8573,8 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     gap: 2px;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-header .sb-settings-category-heading :is(b, strong, h3, h4, .sb-settings-category-title) {
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-header .sb-settings-category-heading :is(b, strong, h3, h4, .sb-settings-category-title),
+#right-nav-panel #form_create .ds-pref-group-header > .ds-pref-group-heading {
     /* Body scale, not the metadata scale: a flat header title matches the 15px title of every
        Messages category header. Descendant rather than child because some legacy headers wrap the
        title in an additional flex column. */
@@ -8569,7 +8585,8 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     color: var(--sb-shell-text);
 }
 
-#sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-header .sb-settings-category-heading :is(small, .ds-row-subtitle) {
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-header .sb-settings-category-heading :is(small, .ds-row-subtitle),
+#right-nav-panel #form_create .ds-pref-group-header > .ds-pref-group-subtitle {
     /* The 2px gap above is the whole separation; the group-meta rule adds its own top margin. */
     margin: 0;
     font-size: var(--sb-type-meta);

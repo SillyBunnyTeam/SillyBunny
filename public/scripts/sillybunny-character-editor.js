@@ -67,6 +67,7 @@ export function initCharacterEditor() {
     _bindHeaderButtons();
     _bindToolbarButtons();
     _bindActionMenu();
+    _bindExportMenu();
     _bindTokenMirror();
     _bindToolbarOverflowObserver();
     _bindPreviewToggles();
@@ -137,6 +138,7 @@ export function openCharacterEditorSession(chid) {
     _syncTokenReadout();
     _syncFavoritePressed();
     _scheduleToolbarOverflow();
+    _resetEditorChrome();
 }
 
 /**
@@ -156,6 +158,7 @@ export function openCharacterEditorCreateSession() {
     _syncTokenReadout();
     _syncFavoritePressed();
     _scheduleToolbarOverflow();
+    _resetEditorChrome();
 }
 
 /**
@@ -646,6 +649,32 @@ function _dispatchTransportClick(selector) {
     element.click();
 }
 
+function _bindExportMenu() {
+    const trigger = document.getElementById('export_button');
+    if (!trigger) return;
+    trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.addEventListener('click', event => {
+        // The upstream Popper popup sits behind the page-hosted editor. Reuse the
+        // shell menu, but keep its format nodes as the save-and-download transport.
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const formats = document.querySelectorAll('#export_format_popup .export_format[data-format]');
+        openActionMenu({
+            trigger,
+            title: t`Export Character`,
+            keyboard: event.detail === 0,
+            sections: [{
+                items: Array.from(formats, format => ({
+                    label: format.textContent.trim(),
+                    icon: 'fa-solid fa-download',
+                    onSelect: () => /** @type {HTMLElement} */ (format).click(),
+                })),
+            }],
+        });
+    }, { capture: true });
+}
+
 // ============================================================
 // Token readout
 // ============================================================
@@ -776,11 +805,16 @@ function _renderPreview(textarea, pane) {
     pane.innerHTML = DOMPurify.sanitize(raw, { RETURN_TRUSTED_TYPE: false });
 }
 
-/**
- * Mount a compact segmented Edit/Preview control for each `.sb-preview-toggle`
- * button in the editor. The existing button is replaced by the segmented control
- * so that CSS positioning and the `.sb-editor-field__actions` layout are unchanged.
- */
+function _setFieldPreview(textarea, pane, showPreview) {
+    if (showPreview) {
+        // Measure before hiding the source so the replacement keeps its resized height.
+        pane.style.height = `${textarea.getBoundingClientRect().height}px`;
+        _renderPreview(textarea, pane);
+    }
+    pane.hidden = !showPreview;
+    textarea.hidden = showPreview;
+}
+
 function _bindPreviewToggles() {
     document.querySelectorAll('.sb-preview-toggle[data-sb-preview-for]').forEach(oldToggle => {
         const textareaId = /** @type {HTMLElement} */ (oldToggle).dataset.sbPreviewFor;
@@ -788,18 +822,11 @@ function _bindPreviewToggles() {
         const pane = /** @type {HTMLElement|null} */ (document.querySelector(`.sb-preview-pane[data-sb-preview-pane="${textareaId}"]`));
         if (!textarea || !pane) return;
 
-        let showPreview = false;
-
         const segment = createSegmentedControl(
             t`Edit / Preview`,
             [[false, t`Edit`], [true, t`Preview`]],
             false,
-            (value) => {
-                showPreview = value;
-                pane.hidden = !showPreview;
-                textarea.hidden = showPreview;
-                if (showPreview) _renderPreview(textarea, pane);
-            },
+            value => _setFieldPreview(textarea, pane, value),
             { compact: true, detachFromForm: true },
         );
         // Carry the data attribute so _resetPreviewToggles can find this control.
@@ -807,8 +834,8 @@ function _bindPreviewToggles() {
 
         oldToggle.replaceWith(segment);
 
-        textarea.addEventListener('input', () => {
-            if (showPreview) _renderPreview(textarea, pane);
+        $(textarea).on('input', () => {
+            if (!pane.hidden) _renderPreview(textarea, pane);
         });
     });
 }
@@ -819,9 +846,7 @@ function _resetPreviewToggles() {
         const textareaId = /** @type {HTMLElement} */ (segment).dataset.sbSegmentFor;
         const textarea = document.getElementById(textareaId);
         const pane = document.querySelector(`.sb-preview-pane[data-sb-preview-pane="${textareaId}"]`);
-        // Select the first radio (Edit) without firing onChange
-        const first = /** @type {HTMLInputElement|null} */ (segment.querySelector('input[type="radio"]'));
-        if (first && !first.checked) first.checked = true;
+        setSegmentedControlValue(/** @type {HTMLElement} */ (segment), false);
         if (pane) /** @type {HTMLElement} */ (pane).hidden = true;
         if (textarea) /** @type {HTMLElement} */ (textarea).hidden = false;
     });
@@ -1029,31 +1054,53 @@ function _handleExternalSave() {
 // Scroll-hide header and toolbar on mobile
 // ============================================================
 
-/**
- * On touch devices / narrow screens, hide the header and toolbar when
- * the user scrolls down and reveal them again when scrolling up.
- * Uses the CSS class `.sb-editor-chrome-hidden` which the stylesheet
- * transitions with max-height so there is no layout jump.
- */
+let _resetEditorChrome = () => {};
+
 function _bindScrollHide() {
     const content = document.querySelector('.sb-character-sheet__content');
     const header = document.getElementById('sb_character_editor_header');
     const toolbar = document.getElementById('sb_character_editor_toolbar');
     if (!content || !header || !toolbar) return;
 
-    let lastScrollY = 0;
+    const mobile = window.matchMedia('(pointer: coarse), (max-width: 620px)');
+    let lastScrollY = content.scrollTop;
+    let distance = 0;
     let ticking = false;
+
+    const setHidden = hidden => {
+        header.classList.toggle('sb-editor-chrome-hidden', hidden);
+        toolbar.classList.toggle('sb-editor-chrome-hidden', hidden);
+        // Collapsing at the bottom can clamp scrollTop. Don't read that layout change
+        // as a user scroll in the opposite direction and immediately reopen the bars.
+        lastScrollY = content.scrollTop;
+        distance = 0;
+    };
+
+    _resetEditorChrome = () => setHidden(false);
+    mobile.addEventListener('change', _resetEditorChrome);
+    header.addEventListener('focusin', _resetEditorChrome);
+    toolbar.addEventListener('focusin', _resetEditorChrome);
 
     content.addEventListener('scroll', () => {
         if (ticking) return;
         ticking = true;
         requestAnimationFrame(() => {
-            const currentY = content.scrollTop;
-            const scrollingDown = currentY > lastScrollY && currentY > 60;
-            header.classList.toggle('sb-editor-chrome-hidden', scrollingDown);
-            toolbar.classList.toggle('sb-editor-chrome-hidden', scrollingDown);
+            const currentY = Math.max(0, content.scrollTop);
+            const delta = currentY - lastScrollY;
             lastScrollY = currentY;
             ticking = false;
+
+            const maxScrollY = content.scrollHeight - content.clientHeight;
+            if (currentY > maxScrollY) return;
+            if (!mobile.matches || currentY <= 60) {
+                setHidden(false);
+                return;
+            }
+            if (!delta) return;
+            distance = Math.sign(delta) === Math.sign(distance) ? distance + delta : delta;
+            if (Math.abs(distance) < 8) return;
+            if (isActionMenuOpen() || header.querySelector(':focus-visible') || toolbar.querySelector(':focus-visible')) return;
+            setHidden(distance > 0);
         });
     }, { passive: true });
 }
