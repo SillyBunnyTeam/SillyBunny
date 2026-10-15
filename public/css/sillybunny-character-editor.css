@@ -754,20 +754,21 @@
 }
 
 /* Unify action-button chrome across the editor so Tags View, Add, and Maximize
-   all follow the flat toolbar style instead of bordered chips. */
-#right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize) {
+   all follow the flat toolbar style instead of bordered chips. The group
+   greetings button is injected by the bundled SB-GroupUtilities extension. */
+#right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button) {
     border: 0;
     background: transparent;
     transition: background-color var(--sb-transition-fast);
 }
 
 @media (hover: hover) {
-    #right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize):hover {
+    #right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button):hover {
         background: var(--sb-flat-hover-bg);
     }
 }
 
-#right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize):active {
+#right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button):active {
     background: var(--sb-flat-active-bg);
 }
 
