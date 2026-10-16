@@ -29,6 +29,7 @@ import { createEditorSession } from './sillybunny-editor/session.js';
 import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
 import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { registerEditorNavigation, confirmEditorLeave, discardEditorChanges } from './sillybunny-editor/navigation.js';
+import { MOTION_FAST, prefersReducedMotion } from './sillybunny-motion.js';
 
 const DRAFT_KEY_PREFIX = 'sb-group-editor-draft-';
 const NEW_GROUP_DRAFT_KEY = 'new-group';
@@ -452,6 +453,7 @@ function _mountMemberSortable() {
         items: '.group_member',
         axis: 'y',
         tolerance: 'pointer',
+        revert: prefersReducedMotion() ? 0 : MOTION_FAST,
         // A filtered list shows a subset in a different order, so the resulting
         // positions would not mean anything.
         cancel: '.is-filtered .group_member',

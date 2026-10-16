@@ -30,6 +30,7 @@ import { renderTemplateAsync } from './templates.js';
 import { t, translate } from './i18n.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { enumTypes, SlashCommandEnumValue } from './slash-commands/SlashCommandEnumValue.js';
+import { animateHeightFrom } from './sillybunny-motion.js';
 
 export {
     TAG_FOLDER_TYPES,
@@ -1319,6 +1320,9 @@ function appendTagToList(listElement, tag, { removable = false, isFilter = false
     if (tag.class) {
         tagElement.addClass(tag.class);
     }
+    // SillyBunny: expose tag colours as tokens while preserving legacy inline colours.
+    tagElement[0].style.setProperty('--sb-tag-color', tag.color ?? '');
+    tagElement[0].style.setProperty('--sb-tag-color2', tag.color2 ?? '');
     if (tag.title) {
         tagElement.attr('title', tag.title);
     }
@@ -1482,6 +1486,7 @@ function toggleTagThreeState(element, { stateOverride = undefined, simulateClick
         states.forEach(state => {
             element.toggleClass(FILTER_STATES[state].class, state === states[targetStateIndex]);
         });
+        element.attr('aria-pressed', String(states[targetStateIndex] !== DEFAULT_FILTER_STATE));
 
         if (states[currentStateIndex] !== states[targetStateIndex]) {
             console.debug('toggle three-way filter from', states[currentStateIndex], 'to', states[targetStateIndex], 'on', element);
@@ -1589,7 +1594,7 @@ function printTagFilters(type = tag_filter_type.character) {
     const showTagListButton = $(FILTER_SELECTOR).closest('.rm_tag_controls').find('.showTagList');
 
     // Update button state to match the saved setting
-    showTagListButton.toggleClass('selected', shouldShowTags);
+    showTagListButton.toggleClass('selected', shouldShowTags).attr('aria-pressed', String(shouldShowTags));
 
     if (shouldShowTags) {
         $(FILTER_SELECTOR).find('.tag:not(.actionable)').show();
@@ -2214,6 +2219,8 @@ const debouncedTagColoring = debounce((tagId, cssProperty, newColor) => {
 }, debounce_timeout.quick);
 
 function onTagListHintClick() {
+    const tagControls = $(this).closest('.ds-tag-filter')[0];
+    const previousHeight = tagControls?.getBoundingClientRect().height;
     $(this).toggleClass('selected');
 
     const $tagSiblings = $(this).siblings('.tag:not(.actionable)');
@@ -2222,6 +2229,11 @@ function onTagListHintClick() {
         $tagSiblings.show();
     } else {
         $tagSiblings.hide();
+    }
+    const isSelected = $(this).hasClass('selected');
+    $(this).attr('aria-pressed', String(isSelected));
+    if (tagControls && Number.isFinite(previousHeight)) {
+        animateHeightFrom(tagControls, previousHeight);
     }
 
     $(this).siblings('.innerActionable').toggleClass('hidden');
@@ -2237,7 +2249,6 @@ function onTagListHintClick() {
         filterType = tag_filter_type.group_members_list;
     }
 
-    const isSelected = $(this).hasClass('selected');
     setTagFilterVisibility(filterType, isSelected);
     console.debug('show_tag_filters for type', filterType, ':', isSelected);
 }

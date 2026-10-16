@@ -426,6 +426,14 @@
         font-size: calc(var(--mainFontSize) * 0.9) !important;
     }
 
+    /* SillyBunny: group-editor filters use the shared 44px coarse-pointer target. */
+    #right-nav-panel.openDrawer .rm_tag_controls.ds-tag-filter :is(.tag.actionable, .tags_view, .right_menu_button) {
+        width: 44px !important;
+        min-width: 44px !important;
+        height: 44px !important;
+        min-height: 44px !important;
+    }
+
     #right-nav-panel.openDrawer .sb-character-create-bar #rm_button_create::after {
         content: none !important;
         display: none !important;

@@ -90,6 +90,7 @@ import { POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
 import { t } from './i18n.js';
 // SillyBunny: member actions share the shell's popover / bottom-sheet menu.
 import { openActionMenu } from './sillybunny-action-menu.js';
+import { MOTION_FAST, animateListChange, applyListChange, captureListChange } from './sillybunny-motion.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { compressRequest } from './request-compression.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
@@ -2422,8 +2423,9 @@ async function modifyGroupMember(groupId, groupMember, isDelete) {
         }
     }
 
-    printGroupCandidates();
-    printGroupMembers();
+    // SillyBunny: data changes synchronously; only the resulting list paint is animated.
+    printGroupCandidates({ animate: true });
+    printGroupMembers({ animate: true });
 
     // Refresh the tag filters for both lists to reflect any new tags
     printTagFilters(tag_filter_type.group_candidates_list);
@@ -2451,7 +2453,7 @@ async function reorderGroupMember(groupId, groupMember, direction) {
     if (from === -1) return;
 
     moveGroupMemberInEditor(groupLike, from, to);
-    printGroupMembers();
+    printGroupMembers({ animate: true });
 }
 
 /**
@@ -2659,11 +2661,14 @@ function getGroupCharacters({ doFilter = false, onlyMembers = false } = {}) {
     return handleMembers(results, thisGroup);
 }
 
-function printGroupCandidates() {
+function printGroupCandidates({ animate = false } = {}) {
     const storageKey = 'GroupCandidates_PerPage';
     const pageSize = Number(accountStorage.getItem(storageKey)) || 5;
     const sizeChangerOptions = [5, 10, 25, 50, 100, 200, 500, 1000];
-    $('#rm_group_add_members_pagination').pagination({
+    const rows = document.getElementById('rm_group_add_members');
+    const pagination = $('#rm_group_add_members_pagination');
+    const previousPage = pagination.data('pagination')?.model?.pageNumber;
+    const render = () => pagination.pagination({
         dataSource: getGroupCharacters({ doFilter: true, onlyMembers: false }),
         pageRange: 1,
         position: 'top',
@@ -2679,49 +2684,93 @@ function printGroupCandidates() {
             accountStorage.setItem(storageKey, e.target.value);
             paginationDropdownChangeHandler(e, size);
         },
-        callback: function (data) {
-            $('#rm_group_add_members').empty();
-            for (const i of data) {
-                $('#rm_group_add_members').append(getGroupCharacterBlock(i.item));
+        callback: function (data, model) {
+            const renderRows = () => {
+                $(rows).empty();
+                for (const i of data) {
+                    $(rows).append(getGroupCharacterBlock(i.item));
+                }
+                localizePagination(pagination);
+            };
+            const pageChanged = !animate && previousPage !== undefined && previousPage !== model.pageNumber;
+            if (pageChanged) {
+                animateListChange(rows, renderRows, { duration: MOTION_FAST, enterDuration: MOTION_FAST });
+                return;
             }
-            localizePagination($('#rm_group_add_members_pagination'));
+            renderRows();
         },
     });
+
+    if (!animate) return render();
+    return animateListChange(rows, render);
 }
 
-function printGroupMembers() {
+function printGroupMembers({ animate = false } = {}) {
     const storageKey = 'GroupMembers_PerPage';
-    $('.rm_group_members_pagination').each(function () {
-        let that = this;
-        const pageSize = Number(accountStorage.getItem(storageKey)) || 5;
-        const sizeChangerOptions = [5, 10, 25, 50, 100, 200, 500, 1000];
-        $(this).pagination({
-            dataSource: getGroupCharacters({ doFilter: true, onlyMembers: true }),
-            pageRange: 1,
-            position: 'top',
-            showPageNumbers: false,
-            prevText: '<',
-            nextText: '>',
-            formatNavigator: PAGINATION_TEMPLATE,
-            showNavigator: true,
-            showSizeChanger: true,
-            formatSizeChanger: renderPaginationDropdown(pageSize, sizeChangerOptions),
-            pageSize,
-            afterSizeSelectorChange: function (e, size) {
-                accountStorage.setItem(storageKey, e.target.value);
-                paginationDropdownChangeHandler(e, size);
-            },
-            callback: function (data) {
-                const order = getEditedGroup()?.members ?? [];
-                $('.rm_group_members').empty();
-                for (const i of data) {
-                    $('.rm_group_members').append(getGroupCharacterBlock(i.item, { draftIndex: order.indexOf(i.item.avatar), grip: true }));
-                }
-                localizePagination($(that));
-                syncGroupMembersFilteredState();
-            },
+    const render = () => {
+        $('.rm_group_members_pagination').each(function () {
+            const pagination = $(this);
+            const previousPage = pagination.data('pagination')?.model?.pageNumber;
+            const pageSize = Number(accountStorage.getItem(storageKey)) || 5;
+            const sizeChangerOptions = [5, 10, 25, 50, 100, 200, 500, 1000];
+            pagination.pagination({
+                dataSource: getGroupCharacters({ doFilter: true, onlyMembers: true }),
+                pageRange: 1,
+                position: 'top',
+                showPageNumbers: false,
+                prevText: '<',
+                nextText: '>',
+                formatNavigator: PAGINATION_TEMPLATE,
+                showNavigator: true,
+                showSizeChanger: true,
+                formatSizeChanger: renderPaginationDropdown(pageSize, sizeChangerOptions),
+                pageSize,
+                afterSizeSelectorChange: function (e, size) {
+                    accountStorage.setItem(storageKey, e.target.value);
+                    paginationDropdownChangeHandler(e, size);
+                },
+                callback: function (data, model) {
+                    const renderRows = () => {
+                        const order = getEditedGroup()?.members ?? [];
+                        $('.rm_group_members').empty();
+                        for (const i of data) {
+                            $('.rm_group_members').append(getGroupCharacterBlock(i.item, { draftIndex: order.indexOf(i.item.avatar), grip: true }));
+                        }
+                        localizePagination(pagination);
+                        syncGroupMembersFilteredState();
+                    };
+                    const pageChanged = !animate && previousPage !== undefined && previousPage !== model.pageNumber;
+                    if (pageChanged) {
+                        animateMemberListRender(renderRows, { duration: MOTION_FAST, enterDuration: MOTION_FAST });
+                        return;
+                    }
+                    renderRows();
+                },
+            });
         });
-    });
+    };
+
+    if (!animate) return render();
+    return animateMemberListRender(render);
+}
+
+function getMemberRowsContainers() {
+    return Array.from(document.querySelectorAll('.rm_group_members'));
+}
+
+function animateMemberListRender(render, options = {}) {
+    const snapshots = getMemberRowsContainers()
+        .map(container => captureListChange(container, options));
+    const result = render();
+    const apply = () => snapshots.forEach(snapshot => applyListChange(snapshot, options));
+    if (result && typeof result.then === 'function') {
+        return result.then(value => {
+            apply();
+            return value;
+        });
+    }
+    apply();
+    return result;
 }
 
 /**
@@ -2788,7 +2837,7 @@ function getGroupCharacterBlock(character, { draftIndex = -1, grip = false } = {
     template.find('.ds-entity-row__subtitle').toggle(Boolean(auxFieldValue || model));
 
     // Display inline tags
-    const tagsElement = template.find('.tags');
+    const tagsElement = template.find('.tags').addClass('ds-tag-chips');
     printTagList(tagsElement, { forEntityOrKey: characters.indexOf(character), tagOptions: { isCharacterList: true } });
 
     // Speak only means something for a persisted group.
@@ -3275,7 +3324,7 @@ function reorderMembersByIndices(from, to) {
         return true;
     });
 
-    if (moved) printGroupMembers();
+    if (moved) printGroupMembers({ animate: true });
     return moved;
 }
 
@@ -3529,7 +3578,7 @@ async function editGroupMemberModel(member) {
     if (!getEditedGroup()?.members?.includes(avatarId)) return;
     const value = String(input).trim();
     await updateGroupMemberModel(avatarId, value);
-    printGroupMembers();
+    printGroupMembers({ animate: true });
     restoreGroupMemberFocus(focus);
 }
 

@@ -7,6 +7,7 @@
 /* global moment */
 import { openActionMenu, closeActionMenu, isActionMenuOpen } from '../sillybunny-action-menu.js';
 import { t } from '../i18n.js';
+import { prefersReducedMotion } from '../sillybunny-motion.js';
 
 /**
  * @typedef {{ label: string, icon: string, onSelect: () => void, danger?: boolean }} ActionItem
@@ -103,6 +104,7 @@ export function mountEditorChrome(config) {
         controls.dirty.hidden = !state.dirty;
         if (state.dirty && wasHidden) {
             // DESIGN.md: state reveals are a fade with a small scale, no movement.
+            if (prefersReducedMotion()) return;
             controls.dirty.animate?.(
                 [{ opacity: 0, transform: 'scale(0.7)' }, { opacity: 1, transform: 'none' }],
                 { duration: 200, easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' },

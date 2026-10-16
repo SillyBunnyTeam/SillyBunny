@@ -224,3 +224,95 @@ export function animateHeightFrom(element, fromHeight, { duration = MOTION_SLOW,
         styles: { 'box-sizing': 'border-box', overflow: 'hidden', 'align-content': 'start', ...styles },
     });
 }
+
+/**
+ * Captures the keyed direct children of a list before a synchronous or deferred
+ * render. Pair this with {@link applyListChange} when one render updates more
+ * than one list (for example the editor list and its detached popout).
+ *
+ * @param {HTMLElement} container Rows container whose direct children are keyed.
+ * @param {{key?: (element: HTMLElement) => string|undefined, items?: string}} [options]
+ * @returns {{container: HTMLElement, height: number, items: Map<string|HTMLElement, DOMRect>}|null}
+ */
+export function captureListChange(container, { key = (element) => element.dataset.avatar ?? element.dataset.id, items = ':scope > *' } = {}) {
+    if (!(container instanceof HTMLElement) || prefersReducedMotion()) return null;
+    stopMotion(container);
+    const keyedItems = new Map();
+    for (const element of container.querySelectorAll(items)) {
+        stopMotion(element);
+        const itemKey = key(element) ?? element;
+        keyedItems.set(itemKey, element.getBoundingClientRect());
+    }
+    return {
+        container,
+        height: container.getBoundingClientRect().height,
+        items: keyedItems,
+        key,
+        itemsSelector: items,
+    };
+}
+
+/**
+ * Applies a captured list snapshot after its rows have been rendered. Existing
+ * keyed rows use FLIP, new rows fade in, and the rows container eases to its new
+ * height. All animations are fire-and-forget: the caller's mutation and focus
+ * restoration do not wait for visual motion. Interrupted motion is cancelled by
+ * {@link stopMotion} before a new animation starts.
+ *
+ * @param {ReturnType<typeof captureListChange>} snapshot
+ * @param {{duration?: number, enterDuration?: number}} [options]
+ * @returns {void}
+ */
+export function applyListChange(snapshot, { duration = MOTION_SLOW, enterDuration = MOTION_FAST } = {}) {
+    if (!snapshot || !snapshot.container.isConnected || prefersReducedMotion()) return;
+
+    const { container, items: previousItems, key, itemsSelector } = snapshot;
+    animateHeightFrom(container, snapshot.height, { duration });
+    const nextItems = container.querySelectorAll(itemsSelector);
+    for (const element of nextItems) {
+        const itemKey = key(element) ?? element;
+        const previousRect = previousItems.get(itemKey);
+        if (!previousRect) {
+            play(element, [{ opacity: 0 }, { opacity: 1 }], {
+                duration: enterDuration,
+                easing: MOTION_EASE,
+            });
+            continue;
+        }
+
+        const nextRect = element.getBoundingClientRect();
+        const deltaX = previousRect.left - nextRect.left;
+        const deltaY = previousRect.top - nextRect.top;
+        if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1) continue;
+        play(element, [
+            { transform: `translate(${deltaX}px, ${deltaY}px)` },
+            { transform: 'none' },
+        ], { duration, easing: MOTION_EASE });
+    }
+}
+
+/**
+ * Runs a list mutation immediately, then animates the rendered result. If the
+ * renderer returns a promise, the snapshot is applied when rendering completes;
+ * the returned promise still resolves as soon as rendering does, not when the
+ * animations finish. Search and initial rendering can call the mutation
+ * directly when motion is not wanted.
+ *
+ * @template T
+ * @param {HTMLElement} container Rows container to snapshot.
+ * @param {() => T|Promise<T>} mutate Render or mutate callback.
+ * @param {{key?: (element: HTMLElement) => string|undefined, items?: string, duration?: number, enterDuration?: number}} [options]
+ * @returns {T|Promise<T>}
+ */
+export function animateListChange(container, mutate, options = {}) {
+    const snapshot = captureListChange(container, options);
+    const result = mutate();
+    if (result && typeof result.then === 'function') {
+        return result.then(value => {
+            applyListChange(snapshot, options);
+            return value;
+        });
+    }
+    applyListChange(snapshot, options);
+    return result;
+}
