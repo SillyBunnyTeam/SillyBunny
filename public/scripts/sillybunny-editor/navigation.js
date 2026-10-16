@@ -5,6 +5,7 @@
 
 import { Popup, POPUP_TYPE, POPUP_RESULT } from '../popup.js';
 import { isActionMenuOpen } from '../sillybunny-action-menu.js';
+import { isPickerOpen } from './picker.js';
 import { t } from '../i18n.js';
 
 const DISCARD_RESULT = 2;
@@ -15,7 +16,24 @@ const DISCARD_RESULT = 2;
  * @property {() => boolean} isActive  Authoritative "this editor is on screen" check.
  * @property {() => void} close  Leaves the editor (navigates back to its list).
  * @property {() => void} [afterDiscard]  Editor-specific resync after a discard.
+ * @property {string} [guardSelector]  Click targets that must pass the leave guard first.
+ *     Defaults to the character-panel tabs other than the character editor's own.
+ * @property {boolean} [escape=true]  Guard Escape here; false when the editor's shell owns Escape.
  */
+
+// Character panel tabs: the drawer rail uses data-sb-character-tab, the page-hosted
+// layout uses data-sb-settings-tab. The character and group editors live on "editor".
+export const CHARACTER_TAB_GUARD_SELECTOR = '[data-sb-character-tab]:not([data-sb-character-tab="editor"]), '
+    + '[data-sb-settings-tab]:not([data-sb-settings-tab="editor"])';
+
+/**
+ * Tab selector guarding every character-panel tab except `tabId`.
+ * @param {string} tabId
+ */
+export function characterTabGuardSelector(tabId) {
+    const id = String(tabId).replace(/["\\]/g, '\\$&');
+    return `[data-sb-character-tab]:not([data-sb-character-tab="${id}"]), [data-sb-settings-tab]:not([data-sb-settings-tab="${id}"])`;
+}
 
 /** @type {Set<EditorRegistration>} */
 const editors = new Set();
@@ -141,25 +159,32 @@ function bindDocumentGuards() {
         if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) return;
         if (isInlineEditorEvent(event)) return;
         const editor = activeEditor();
-        if (!editor || !editor.session.isDirty()) return;
-        if (isPopupOpen() || isActionMenuOpen()) return;
+        if (!editor || editor.escape === false) return;
+        // Open overlays own Escape; check them before the dirty snapshot, which serialises every field.
+        if (isPopupOpen() || isActionMenuOpen() || isPickerOpen()) return;
+        if (!editor.session.isDirty()) return;
 
         event.preventDefault();
         event.stopPropagation();
         if (await confirmEditorLeave(editor)) editor.close();
     }, { capture: true });
 
-    // Character panel tabs: the drawer rail uses data-sb-character-tab, the
-    // page-hosted layout uses data-sb-settings-tab. Both editors share them.
+    // Tab and other navigation clicks named by the active editor's guard selector.
     document.addEventListener('click', async (event) => {
         if (!event.isTrusted) return;
         const target = /** @type {HTMLElement} */ (event.target);
-        const tab = target.closest?.(
-            '[data-sb-character-tab]:not([data-sb-character-tab="editor"]), '
-            + '[data-sb-settings-tab]:not([data-sb-settings-tab="editor"])',
-        );
-        if (!tab) return;
-        const editor = activeEditor();
+        if (!target?.closest) return;
+        // Match a guarded target before isDirty(): the dirty check serialises every field.
+        let editor = null;
+        let tab = null;
+        for (const candidate of editors) {
+            const match = target.closest(candidate.guardSelector ?? CHARACTER_TAB_GUARD_SELECTOR);
+            if (match && candidate.session.isOpen() && candidate.isActive()) {
+                editor = candidate;
+                tab = match;
+                break;
+            }
+        }
         if (!editor || !editor.session.isDirty()) return;
 
         event.preventDefault();

@@ -27,25 +27,28 @@ import { animateIn, animateOut, MOTION_EASE_OUT_QUAD, MOTION_FAST, prefersReduce
  * @param {object} config
  * @param {HTMLElement} config.root  Editor root; overflow candidates resolve inside it.
  * @param {HTMLElement} config.header
- * @param {HTMLElement} config.toolbar
+ * @param {HTMLElement|null} [config.toolbar]  Optional; header-only editors (list detail panes) omit it.
  * @param {HTMLElement} config.content  The scrolling sheet body.
  * @param {{ back: HTMLElement, cancel: HTMLButtonElement, save: HTMLButtonElement, title: HTMLElement,
- *     titleButton?: HTMLButtonElement|null, dirty: HTMLElement, more: HTMLElement }} config.controls
+ *     titleButton?: HTMLButtonElement|null, dirty: HTMLElement, more?: HTMLElement|null }} config.controls
  * @param {(event: Event) => void} config.onBack
  * @param {() => void} config.onCancel
  * @param {() => void} config.onSave
  * @param {{ getValue: () => string, commit: (value: string) => void, onFinish?: (value: string) => void }} [config.rename]
  *     Inline title rename. The title button is only enabled while the state's mode is 'edit'.
  * @param {string[]} [config.overflowCandidates]  Toolbar selectors that may collapse into More, most expendable first.
- * @param {() => ActionSection[]} config.getActionSections  More-menu contents, built on every open.
- * @param {string|(() => string)} config.actionMenuTitle  A function defers translation to menu-open time.
+ * @param {() => ActionSection[]} [config.getActionSections]  More-menu contents, built on every open.
+ * @param {string|(() => string)} [config.actionMenuTitle]  A function defers translation to menu-open time.
  * @param {() => boolean} [config.isActive]  Skips layout work while the editor is off screen.
+ * @param {boolean} [config.scrollHide=true]  Hide the chrome on mobile while scrolling down.
+ * @returns {{ render: (state: ChromeState) => void, scheduleOverflow: () => void, reset: () => void, dispose: () => void }}
+ *     Call `dispose()` before discarding chrome whose header is rebuilt (e.g. per-entry detail panes).
  */
 export function mountEditorChrome(config) {
     const {
         root,
         header,
-        toolbar,
+        toolbar = null,
         content,
         controls,
         onBack,
@@ -53,30 +56,35 @@ export function mountEditorChrome(config) {
         onSave,
         rename = null,
         overflowCandidates = [],
-        getActionSections,
-        actionMenuTitle,
+        getActionSections = () => [],
+        actionMenuTitle = '',
         isActive = () => true,
+        scrollHide = true,
     } = config;
+
+    const abort = new AbortController();
+    const { signal } = abort;
+    const chromeParts = [header, toolbar].filter(Boolean);
 
     /** @type {Array<{ label: string, icon: string, element: HTMLElement }>} */
     let collapsed = [];
     /** @type {ChromeState|null} */
     let lastState = null;
 
-    controls.back.addEventListener('click', onBack);
-    controls.cancel.addEventListener('click', () => onCancel());
-    controls.save.addEventListener('click', () => onSave());
+    controls.back.addEventListener('click', onBack, { signal });
+    controls.cancel.addEventListener('click', () => onCancel(), { signal });
+    controls.save.addEventListener('click', () => onSave(), { signal });
     if (rename && controls.titleButton) {
-        controls.titleButton.addEventListener('click', startRename);
+        controls.titleButton.addEventListener('click', startRename, { signal });
     }
 
-    controls.more.addEventListener('click', () => {
+    controls.more?.addEventListener('click', () => {
         if (controls.more.getAttribute('aria-expanded') === 'true') {
             closeActionMenu({ restoreFocus: true });
             return;
         }
         openMoreMenu();
-    });
+    }, { signal });
 
     // ------------------------------------------------------------------
     // State presentation
@@ -191,6 +199,7 @@ export function mountEditorChrome(config) {
      * the menu forwards a click to them, so no handler or ID moves.
      */
     function applyOverflow() {
+        if (!toolbar) return;
         const elements = overflowCandidates
             .map(selector => root.querySelector(selector))
             .filter(element => element instanceof HTMLElement);
@@ -223,17 +232,22 @@ export function mountEditorChrome(config) {
         overflowScheduled = true;
         requestAnimationFrame(() => {
             overflowScheduled = false;
-            if (isActive()) applyOverflow();
+            if (!signal.aborted && isActive()) applyOverflow();
         });
     }
 
-    if (typeof ResizeObserver === 'function') {
-        new ResizeObserver(scheduleOverflow).observe(root);
-    } else {
-        window.addEventListener('resize', scheduleOverflow);
+    /** @type {ResizeObserver|null} */
+    let resizeObserver = null;
+    // Header-only chrome has nothing to collapse.
+    if (toolbar && typeof ResizeObserver === 'function') {
+        resizeObserver = new ResizeObserver(scheduleOverflow);
+        resizeObserver.observe(root);
+    } else if (toolbar) {
+        window.addEventListener('resize', scheduleOverflow, { signal });
     }
 
     function openMoreMenu() {
+        if (!controls.more) return;
         const overflow = collapsed.map(({ label, icon, element }) => ({
             label,
             icon,
@@ -263,8 +277,7 @@ export function mountEditorChrome(config) {
 
     const setChromeHidden = (hidden) => {
         const changed = header.classList.contains('sb-editor-chrome-hidden') !== hidden;
-        header.classList.toggle('sb-editor-chrome-hidden', hidden);
-        toolbar.classList.toggle('sb-editor-chrome-hidden', hidden);
+        for (const part of chromeParts) part.classList.toggle('sb-editor-chrome-hidden', hidden);
         // Collapsing at the bottom can clamp scrollTop on every frame of the
         // 200ms transition; don't read that as a user scroll the other way.
         if (changed) settleUntil = performance.now() + 250;
@@ -274,10 +287,9 @@ export function mountEditorChrome(config) {
     const showChrome = () => setChromeHidden(false);
 
     mobile.addEventListener('change', showChrome);
-    header.addEventListener('focusin', showChrome);
-    toolbar.addEventListener('focusin', showChrome);
+    for (const part of chromeParts) part.addEventListener('focusin', showChrome, { signal });
 
-    content.addEventListener('scroll', () => {
+    if (scrollHide) content.addEventListener('scroll', () => {
         if (ticking) return;
         ticking = true;
         requestAnimationFrame(() => {
@@ -294,16 +306,26 @@ export function mountEditorChrome(config) {
             if (!delta || performance.now() < settleUntil) return;
             distance = Math.sign(delta) === Math.sign(distance) ? distance + delta : delta;
             if (Math.abs(distance) < 8) return;
-            if (isActionMenuOpen() || header.querySelector(':focus-visible') || toolbar.querySelector(':focus-visible')) return;
+            if (isActionMenuOpen() || chromeParts.some(part => part.querySelector(':focus-visible'))) return;
             setChromeHidden(distance > 0);
         });
-    }, { passive: true });
+    }, { passive: true, signal });
+
+    function dispose() {
+        // The More menu is body-mounted; its actions would outlive this header.
+        if (controls.more && isActionMenuOpen(controls.more)) closeActionMenu({ animate: false, restoreFocus: false });
+        abort.abort();
+        mobile.removeEventListener('change', showChrome);
+        resizeObserver?.disconnect();
+        resizeObserver = null;
+    }
 
     return {
         render,
         scheduleOverflow,
         /** Reveal the header and toolbar; call when a session opens. */
         reset: showChrome,
+        dispose,
     };
 }
 

@@ -253,8 +253,10 @@ function ensureSheet() {
 /**
  * Places the popover beside its anchor, trailing-aligned to the trigger, inside `bounds`.
  * Triggers in the start half of the bounds (mirrored rows) align to their start edge instead.
+ * Exported for other body-mounted popovers (the shared editor picker) so placement stays identical.
+ * @returns {string} transform-origin for the opening animation.
  */
-function positionPopover(popover, trigger, point, boundsElement) {
+export function positionPopover(popover, trigger, point, boundsElement) {
     const boundsRect = boundsElement?.getBoundingClientRect();
     const bounds = boundsRect && boundsRect.width > 0
         ? {
