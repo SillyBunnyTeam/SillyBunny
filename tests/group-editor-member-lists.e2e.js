@@ -114,6 +114,37 @@ async function assertRowsFit(page) {
     expect(dimensions.every(row => row.scroll <= row.client)).toBe(true);
 }
 
+for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024 }, { width: 375, height: 812 }]) {
+    test(`group chat settings align dropdowns at ${viewport.width}px`, async ({ page }) => {
+        await page.setViewportSize(viewport);
+        await openCreateGroup(page, viewport.width <= 768);
+        const strategy = page.locator('#rm_group_activation_strategy');
+        const generation = page.locator('#rm_group_generation_mode');
+        await strategy.scrollIntoViewIfNeeded();
+        await expect(strategy).toHaveAccessibleName('Group reply strategy');
+        await expect(generation).toHaveAccessibleName('Group generation handling mode');
+
+        const strategyBox = await strategy.boundingBox();
+        const generationBox = await generation.boundingBox();
+        expect(Math.abs(strategyBox.x - generationBox.x)).toBeLessThan(1);
+        expect(Math.abs(strategyBox.width - generationBox.width)).toBeLessThan(1);
+        expect(Math.abs(strategyBox.height - generationBox.height)).toBeLessThan(1);
+        const layout = await page.locator('#rm_group_buttons').evaluate(node => ({
+            width: node.clientWidth,
+            scroll: node.scrollWidth,
+        }));
+        expect(layout.scroll).toBeLessThanOrEqual(layout.width);
+
+        // Rewrapping the selects must preserve the existing join-template toggle.
+        await generation.selectOption('1');
+        await expect(page.locator('#group_join_templates')).toBeVisible();
+        await expect(page.locator('#rm_group_generation_mode_join_prefix')).toBeVisible();
+        await expect(page.locator('#rm_group_generation_mode_join_suffix')).toBeVisible();
+        await generation.selectOption('0');
+        await expect(page.locator('#group_join_templates')).toBeHidden();
+    });
+}
+
 for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 }]) {
     test(`member boxed lists support row actions at ${viewport.width}px`, async ({ page }) => {
         await page.setViewportSize(viewport);

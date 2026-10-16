@@ -7497,37 +7497,47 @@
                                     <p class="ds-pref-group-subtitle" data-i18n="group_chat_settings_subtitle">lorum ipsum</p>
                                 </header>
                                 <div class="ds-pref-group sb-editor-section__body">
-                                    <div id="rm_group_buttons" class="ds-field">
-                                        <div class="ds-inline-controls">
-                                            <label class="ds-inline-control" for="rm_group_activation_strategy">
-                                                <span data-i18n="Group reply strategy">Group reply strategy</span>
-                                                <select id="rm_group_activation_strategy" class="text_pole textarea_compact m-t-0">
+                                    <!-- SillyBunny: share the settings-row sizing contract so label length
+                                         cannot change the dropdown column width. -->
+                                    <div id="rm_group_buttons">
+                                        <label class="ds-row" for="rm_group_activation_strategy">
+                                            <span class="ds-row-text ds-label-bounded">
+                                                <span class="ds-row-label" data-i18n="Group reply strategy">Group reply strategy</span>
+                                            </span>
+                                            <span class="ds-row-suffix">
+                                                <select id="rm_group_activation_strategy" class="text_pole textarea_compact m-t-0 ds-control-flex">
                                                     <option value="2" data-i18n="Manual">Manual</option>
                                                     <option value="0" data-i18n="Natural order">Natural order</option>
                                                     <option value="1" data-i18n="List order">List order</option>
                                                     <option value="3" data-i18n="Pooled order">Pooled order</option>
                                                 </select>
-                                            </label>
-                                            <label class="ds-inline-control" for="rm_group_generation_mode">
-                                                <span data-i18n="Group generation handling mode">Group generation handling mode</span>
-                                                <select id="rm_group_generation_mode" class="text_pole textarea_compact m-t-0">
+                                            </span>
+                                        </label>
+                                        <label class="ds-row" for="rm_group_generation_mode">
+                                            <span class="ds-row-text ds-label-bounded">
+                                                <span class="ds-row-label" data-i18n="Group generation handling mode">Group generation handling mode</span>
+                                            </span>
+                                            <span class="ds-row-suffix">
+                                                <select id="rm_group_generation_mode" class="text_pole textarea_compact m-t-0 ds-control-flex">
                                                     <option value="0" data-i18n="Swap character cards">Swap character cards</option>
                                                     <option value="1" data-i18n="Join character cards (exclude muted)">Join character cards (exclude muted)</option>
                                                     <option value="2" data-i18n="Join character cards (include muted)">Join character cards (include muted)</option>
                                                 </select>
-                                            </label>
+                                            </span>
+                                        </label>
+                                        <div class="ds-field">
+                                            <div class="ds-inline-controls" id="group_join_templates">
+                                                <label class="ds-inline-control" for="rm_group_generation_mode_join_prefix" setting="generation_mode_join_prefix" title="Inserted before each part of the joined fields." data-i18n="[title]Inserted before each part of the joined fields.">
+                                                    <span data-i18n="Join Prefix">Join Prefix</span>
+                                                    <textarea id="rm_group_generation_mode_join_prefix" class="text_pole textarea_compact m-t-0 autoSetHeight" setting="generation_mode_join_prefix" placeholder="&mdash;" rows="1"></textarea>
+                                                </label>
+                                                <label class="ds-inline-control" for="rm_group_generation_mode_join_suffix" setting="generation_mode_join_suffix" title="Inserted after each part of the joined fields." data-i18n="[title]Inserted after each part of the joined fields.">
+                                                    <span data-i18n="Join Suffix">Join Suffix</span>
+                                                    <textarea id="rm_group_generation_mode_join_suffix" class="text_pole textarea_compact m-t-0 autoSetHeight" setting="generation_mode_join_suffix" placeholder="&mdash;" rows="1"></textarea>
+                                                </label>
+                                            </div>
+                                            <small class="ds-field-subtitle" data-i18n="group_join_templates_subtitle">lorum ipsum</small>
                                         </div>
-                                        <div class="ds-inline-controls" id="group_join_templates">
-                                            <label class="ds-inline-control" for="rm_group_generation_mode_join_prefix" setting="generation_mode_join_prefix" title="Inserted before each part of the joined fields." data-i18n="[title]Inserted before each part of the joined fields.">
-                                                <span data-i18n="Join Prefix">Join Prefix</span>
-                                                <textarea id="rm_group_generation_mode_join_prefix" class="text_pole textarea_compact m-t-0 autoSetHeight" setting="generation_mode_join_prefix" placeholder="&mdash;" rows="1"></textarea>
-                                            </label>
-                                            <label class="ds-inline-control" for="rm_group_generation_mode_join_suffix" setting="generation_mode_join_suffix" title="Inserted after each part of the joined fields." data-i18n="[title]Inserted after each part of the joined fields.">
-                                                <span data-i18n="Join Suffix">Join Suffix</span>
-                                                <textarea id="rm_group_generation_mode_join_suffix" class="text_pole textarea_compact m-t-0 autoSetHeight" setting="generation_mode_join_suffix" placeholder="&mdash;" rows="1"></textarea>
-                                            </label>
-                                        </div>
-                                        <small class="ds-field-subtitle" data-i18n="group_join_templates_subtitle">lorum ipsum</small>
                                     </div>
                                     <label class="ds-row ds-row-switch" for="rm_group_allow_self_responses" id="rm_group_allow_self_responses_row">
                                         <span class="ds-row-text">
