@@ -217,6 +217,35 @@ test('opening an alternate greeting row skips motion with reduced motion', async
     expect(await countEditorAnimations(page)).toBe(0);
 });
 
+/** Enters Quick Edit, leaves it again and returns how many hidden sections faded back in. */
+async function countQuickEditRevealFades(page) {
+    await stubCharacterMutations(page);
+    await openEditor(page);
+    const toggle = page.locator('#sb_character_editor_quick_edit');
+    await page.evaluate(async () => {
+        const powerUser = await import('/scripts/power-user.js');
+        powerUser.setCharacterEditorQuickEdit(true);
+    });
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(() => countEditorAnimations(page)).toBe(0);
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    return page.evaluate(() => document.getAnimations().filter(animation => {
+        const target = animation.effect?.target;
+        return target instanceof HTMLElement && target.matches('#form_create .sb-editor-section:not([data-sb-section="essentials"])');
+    }).length);
+}
+
+test('leaving Quick Edit fades the revealed sections in', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    expect(await countQuickEditRevealFades(page)).toBeGreaterThan(0);
+});
+
+test('leaving Quick Edit is instant with reduced motion', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    expect(await countQuickEditRevealFades(page)).toBe(0);
+});
+
 test('mobile scroll-hide reclaims header and toolbar space and restores it on scroll-up', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await openEditor(page);

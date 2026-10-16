@@ -917,7 +917,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     text-align: center;
     background: transparent;
     color: var(--SmartThemeBodyColor);
-    transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+    transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast), color var(--sb-transition-fast);
     box-sizing: border-box;
 }
 
@@ -6131,7 +6131,6 @@ body #toast-container {
 
 .toast {
     border-radius: var(--sb-radius-md) !important;
-    animation: sb-toast-in 240ms var(--sb-ease-out) both;
 }
 
 /* Toastr's type icons are white PNGs; difference-blending keeps them legible on light surfaces too. */
@@ -6139,18 +6138,6 @@ body #toast-container > .toast,
 body #toast-container > .toast:hover {
     background-blend-mode: difference;
     box-shadow: 0 8px 24px color-mix(in srgb, var(--color-shadow, var(--SmartThemeShadowColor)) 30%, transparent);
-}
-
-@keyframes sb-toast-in {
-    from {
-        opacity: 0;
-        transform: translateY(-8px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
 }
 
 @keyframes sb-entity-select-pulse {

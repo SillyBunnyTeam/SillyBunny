@@ -39,7 +39,7 @@ import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
 import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { registerEditorNavigation, confirmEditorLeave, discardEditorChanges } from './sillybunny-editor/navigation.js';
 import { mountEditorPreviews } from './sillybunny-editor/preview.js';
-import { animateHeightFrom, animateListChange, MOTION_SLOW, prefersReducedMotion } from './sillybunny-motion.js';
+import { animateHeightFrom, animateIn, animateListChange, MOTION_EASE_OUT_QUAD, MOTION_FAST, MOTION_SLOW, prefersReducedMotion } from './sillybunny-motion.js';
 
 // Existing users' backups live under this prefix; changing it orphans them.
 const DRAFT_KEY_PREFIX = 'sb-editor-draft-';
@@ -387,6 +387,16 @@ function _bindToolbarButtons() {
             const btn = document.getElementById('sb_character_editor_quick_edit');
             const pressed = btn?.getAttribute('aria-pressed') === 'true';
             setCharacterEditorQuickEdit(!pressed);
+            // Leaving Quick Edit reveals the other sections; fade them in so the change
+            // reads as a reveal. Entering it only hides content, which stays instant.
+            if (pressed) {
+                document.querySelectorAll('#form_create .sb-editor-section:not([data-sb-section="essentials"])').forEach(section => {
+                    animateIn(/** @type {HTMLElement} */ (section), [{ opacity: 0 }, { opacity: 1 }], {
+                        duration: MOTION_FAST,
+                        easing: MOTION_EASE_OUT_QUAD,
+                    });
+                });
+            }
         });
 
     // The favourite button is a div toggled by the fav_on/fav_off classes, which

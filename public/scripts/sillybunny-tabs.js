@@ -20,6 +20,7 @@ import {
     animateOut,
     MOTION_FAST,
     MOTION_SLOW,
+    prefersReducedMotion,
     SPRING_SHEET,
     stopMotion,
 } from './sillybunny-motion.js';
@@ -15563,7 +15564,7 @@ function animateSettingsPage(page, direction, onFinish) {
         return;
     }
 
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reducedMotion = prefersReducedMotion();
     const isOpening = direction === 'in';
     const animation = page.animate(
         reducedMotion
