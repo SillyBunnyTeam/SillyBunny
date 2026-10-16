@@ -1,3 +1,153 @@
+/* Generic List→Editor shell component.
+   Consumers scope their own list and detail content styles.
+   Layout tokens: --sb-list-editor-sidebar-width is set inline by JS. */
+
+.sb-list-editor {
+    position: relative;
+    display: flex;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
+    border-radius: var(--sb-radius-card);
+    background: var(--sb-layer-window);
+    color: var(--SmartThemeBodyColor);
+    font-family: var(--mainFontFamily);
+}
+
+@media (prefers-contrast: more) {
+    .sb-list-editor {
+        border-color: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
+    }
+}
+
+:is(.sb-list-editor, .sb-list-editor *)[hidden] {
+    display: none !important;
+}
+
+/* --- Sidebar --- */
+
+.sb-list-editor__sidebar {
+    container-type: inline-size;
+    container-name: sb-list-editor-sidebar;
+    display: flex;
+    flex-direction: column;
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    background: var(--sb-sidebar-bg);
+    overflow: hidden;
+}
+
+.sb-list-editor[data-open='true'][data-collapsed='false'] .sb-list-editor__sidebar {
+    width: var(--sb-list-editor-sidebar-width);
+}
+
+/* libadwaita drops sidebar tint once collapsed into stacked pages. */
+.sb-list-editor[data-collapsed='true'] .sb-list-editor__sidebar {
+    background: var(--sb-layer-window);
+}
+
+/* --- Divider --- */
+
+.sb-list-editor__divider {
+    position: relative;
+    display: none;
+    flex: none;
+    align-self: stretch;
+    width: 1px;
+    cursor: col-resize;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    z-index: 4;
+}
+
+.sb-list-editor__divider::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--sb-shell-border);
+    pointer-events: none;
+}
+
+.sb-list-editor__divider::after {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    left: 50%;
+    width: 12px;
+    transform: translateX(-50%);
+}
+
+.sb-list-editor[data-open='true'][data-collapsed='false'] .sb-list-editor__divider {
+    display: block;
+}
+
+/* --- Detail pane --- */
+
+.sb-list-editor__detail {
+    container-type: inline-size;
+    container-name: sb-list-editor-detail;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--sb-layer-view);
+}
+
+/* Travelling class prevents pointer events during slide animation. */
+.sb-list-editor__detail--travelling {
+    pointer-events: none;
+}
+
+/* --- Status (live region) --- */
+
+.sb-list-editor__status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+}
+
+/* --- Back button (mobile / collapsed only) --- */
+
+.sb-list-editor__back {
+    display: none;
+}
+
+.sb-list-editor[data-collapsed='true'] .sb-list-editor__back {
+    display: inline-flex;
+}
+
+/* --- Collapse state: hide menu row hints when detail is open --- */
+
+.sb-list-editor[data-open='true'][data-collapsed='false'] .sb-list-editor__row-menu {
+    display: none !important;
+}
+
+.sb-list-editor[data-open='true'][data-collapsed='false'] .sb-list-editor__row-subtitle {
+    display: none;
+}
+
+/* --- Drag handle --- */
+
+.sb-list-editor__drag-handle {
+    cursor: grab;
+}
+
+.sb-list-editor__drag-handle[aria-disabled='true'] {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
 /* SillyBunny editor sheet — shared chrome, character sections, group sections
  * =========================================================================
  * One stylesheet for both explicit-save editors (Step 3b/Step 4). The header,
@@ -90,11 +240,6 @@
     background: var(--sb-flat-active-bg);
 }
 
-.sb-editor-icon-button:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
 /* Toggled / selected state, e.g. the favourite star and quick edit.
    DESIGN.md: selection is an accent ink on a flat selected fill, never a glow. */
 .sb-editor-icon-button[aria-pressed='true'] {
@@ -142,11 +287,6 @@
     transition: background-color var(--sb-transition-fast);
 }
 
-.sb-editor-title-button:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
 @media (hover: hover) {
     .sb-editor-title-button:not(.is-static):hover {
         background: var(--sb-flat-hover-bg);
@@ -189,11 +329,6 @@
     font-size: var(--sb-type-title, 16px);
     font-weight: 700;
     color: var(--sb-shell-text);
-}
-
-.sb-editor-title-input:focus {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
 }
 
 
@@ -256,8 +391,6 @@
 }
 
 .sb-editor-tokens__warning:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
     border-radius: var(--sb-radius-control, 9px);
 }
 
@@ -271,16 +404,16 @@
 .sb-editor-header > :is(#sb_character_editor_cancel, #sb_group_editor_cancel),
 .sb-editor-header > :is(#sb_character_editor_save, #sb_group_editor_save) {
     flex: 0 0 auto;
+    min-height: 38px;
+    margin: 0;
+    padding: 0 16px;
+    border-radius: var(--sb-radius-control, 9px);
 }
 
 /* Primary action. --sb-on-accent resolves to literal black, which is unreadable
    on a dark accent; --sb-on-solid-accent is the token designed for accent fills. */
 .sb-editor-header > :is(#sb_character_editor_save, #sb_group_editor_save) {
-    min-height: 38px;
-    margin: 0;
-    padding: 0 16px;
     border: 0;
-    border-radius: var(--sb-radius-control, 9px);
     background: var(--color-primary, var(--sb-accent));
     color: var(--sb-on-solid-accent);
     font-weight: 600;
@@ -293,17 +426,8 @@
     }
 }
 
-.sb-editor-header > :is(#sb_character_editor_save, #sb_group_editor_save):focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
 .sb-editor-header > :is(#sb_character_editor_cancel, #sb_group_editor_cancel) {
-    min-height: 38px;
-    margin: 0;
-    padding: 0 16px;
     border: 1px solid var(--sb-shell-border);
-    border-radius: var(--sb-radius-control, 9px);
     background: transparent;
     color: var(--sb-shell-text);
     transition: background-color var(--sb-transition-fast);
@@ -313,11 +437,6 @@
     .sb-editor-header > :is(#sb_character_editor_cancel, #sb_group_editor_cancel):not(:disabled):hover {
         background: var(--sb-flat-hover-bg);
     }
-}
-
-.sb-editor-header > :is(#sb_character_editor_cancel, #sb_group_editor_cancel):focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .sb-editor-header > :is(#sb_character_editor_save, #sb_character_editor_cancel, #sb_group_editor_save, #sb_group_editor_cancel):disabled {
@@ -388,11 +507,6 @@
     background: var(--sb-flat-active-bg);
 }
 
-#right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button):focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
 /* Favourite is a stateful toggle; upstream signals it with .fav_on. Surface that
    as the same selected treatment the aria-pressed buttons use. */
 #right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(#favorite_button, #group_favorite_button).fav_on {
@@ -433,12 +547,7 @@
 /* Sections and fields
    ========================================================================= */
 
-.sb-editor-section {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-}
-
+.sb-editor-section,
 .sb-editor-section__body {
     display: flex;
     flex-direction: column;
@@ -564,6 +673,13 @@
     background: var(--sb-flat-active-bg);
 }
 
+.sb-editor-icon-button:focus-visible,
+.sb-editor-title-button:focus-visible,
+.sb-editor-title-input:focus,
+.sb-editor-header > :is(#sb_character_editor_save, #sb_group_editor_save):focus-visible,
+.sb-editor-header > :is(#sb_character_editor_cancel, #sb_group_editor_cancel):focus-visible,
+#right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button):focus-visible,
+.sb-editor-tokens__warning:focus-visible,
 .ds-row-button:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
