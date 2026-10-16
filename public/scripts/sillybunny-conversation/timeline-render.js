@@ -780,9 +780,18 @@ function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId
         const fingerprint = buildConversationMessageFingerprint(message, { avatar, groupId, personaId, settings, index });
         const currentNode = existingNodes.get(messageId) || null;
         let nextNode = currentNode;
+        let focusTarget = null;
         if (!nextNode || nextNode.dataset.sbConversationMessageFingerprint !== fingerprint) {
             nextNode = createConversationMessageElement(message, { avatar, groupId, settings, index, fingerprint });
             if (currentNode) {
+                const focusedTrigger = currentNode.querySelector('[data-sb-conversation-menu]:focus');
+                if (focusedTrigger) {
+                    // Replacing a message must not discard focus returned by its action menu.
+                    const selector = focusedTrigger.classList.contains('sb-conversation-mobile-menu-trigger')
+                        ? '.sb-conversation-mobile-menu-trigger'
+                        : '.sb-conversation-message-menu';
+                    focusTarget = nextNode.querySelector(selector);
+                }
                 currentNode.replaceWith(nextNode);
             }
         }
@@ -801,6 +810,7 @@ function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId
                 nextNode.removeAttribute('data-show-header');
             }
         }
+        focusTarget?.focus({ preventScroll: true });
     });
 
     existingNodes.forEach(node => node.remove());
