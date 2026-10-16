@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test.use({ serviceWorkers: 'block', reducedMotion: 'reduce' });
+test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
 async function openConversation(page, baseURL) {
     const origin = new URL(baseURL).origin;
