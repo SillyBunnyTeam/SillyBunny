@@ -1,5 +1,6 @@
 import { describe, expect, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import {
     PROFILE_CONNECTION_COMMANDS, PROFILE_SNAPSHOT_NAMES, PROFILE_SWITCH_COPY, PROFILE_WATCH_LIST, SAMPLER_GROUP_BY_API,
     countSamplerChanges, createBusyHintTracker, diffProfileSnapshots, formatProfileChange, getAppliedCommands, getAppliedOverrideCommands,
@@ -466,7 +467,7 @@ describe('regex preset match', () => {
     }));
     const preset = lists => ({ id: 'p', name: 'P', isSelected: true, global: [], scoped: [], preset: [], ...lists });
 
-    test('equal sets match', () => {
+    test('equal enabled sequences match', () => {
         expect(regexPresetMatchesLive(preset({ global: [{ id: 'g1' }], scoped: [{ id: 's1' }], preset: [{ id: 'p1' }] }), live({ global: ['g1'], scoped: ['s1'], preset: ['p1'] }))).toBe(true);
     });
     test('a scoped id listed but disabled live is a mismatch', () => {
@@ -492,8 +493,90 @@ describe('regex preset match', () => {
         expect(regexPresetMatchesLive(preset({ global: [] }), live({ global: ['g1'] }))).toBe(false);
         expect(regexPresetMatchesLive(preset({ global: [] }), live({ global: ['g1'] }, ['g1']))).toBe(true);
     });
-    test('the order of ids does not matter', () => {
-        expect(regexPresetMatchesLive(preset({ global: [{ id: 'b' }, { id: 'a' }] }), live({ global: ['a', 'b', 'c'] }, ['c']))).toBe(true);
+    for (const type of ['global', 'scoped', 'preset']) {
+        test(`${type} scripts must follow the preset order`, () => {
+            const ordered = preset({ [type]: [{ id: 'b' }, { id: 'gone' }, { id: 'a' }] });
+            expect(regexPresetMatchesLive(ordered, live({ [type]: ['a', 'b', 'c'] }, ['c']))).toBe(false);
+            expect(regexPresetMatchesLive(ordered, live({ [type]: ['c', 'b', 'a'] }, ['c']))).toBe(true);
+        });
+    }
+    test('repeated preset ids use their first position', () => {
+        const repeated = preset({ scoped: [{ id: 'b' }, { id: 'a' }, { id: 'b' }] });
+        expect(regexPresetMatchesLive(repeated, live({ scoped: ['b', 'a'] }))).toBe(true);
+        expect(regexPresetMatchesLive(repeated, live({ scoped: ['a', 'b'] }))).toBe(false);
+    });
+    test('all live copies of a listed id must be enabled in preset order', () => {
+        const repeated = preset({ scoped: [{ id: 'b' }, { id: 'a' }] });
+        expect(regexPresetMatchesLive(repeated, live({ scoped: ['b', 'b', 'a'] }))).toBe(true);
+        expect(regexPresetMatchesLive(repeated, {
+            scoped: { all: ['b', 'b', 'a'], enabled: ['b', 'a'] },
+        })).toBe(false);
+    });
+    test('a report waits for a native order-only reapply across a delayed save', async () => {
+        const source = readFileSync(new URL('../../public/scripts/extensions/regex/index.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+        const engine = readFileSync(new URL('../../public/scripts/extensions/regex/engine.js', import.meta.url), 'utf8');
+        const classStart = source.indexOf('class RegexPresetManager {');
+        const classEnd = source.indexOf('\nconst presetManager =', classStart);
+        const scriptTypes = engine.match(/export const SCRIPT_TYPES = \{[\s\S]*?\n\};/);
+        expect(classStart).toBeGreaterThanOrEqual(0);
+        expect(classEnd).toBeGreaterThan(classStart);
+        expect(scriptTypes).not.toBeNull();
+
+        const selected = preset({ scoped: [{ id: 'a' }, { id: 'b' }] });
+        const scoped = [{ id: 'b', disabled: false }, { id: 'a', disabled: false }];
+        const scripts = new Map();
+        let releaseSave;
+        let markSaveStarted;
+        const saveStarted = new Promise(resolve => { markSaveStarted = resolve; });
+        const saved = new Promise(resolve => { releaseSave = resolve; });
+        const { manager, types } = runInNewContext(`${scriptTypes[0].replace('export ', '')}\n${source.slice(classStart, classEnd)}\n({ manager: new RegexPresetManager(), types: SCRIPT_TYPES })`, {
+            extension_settings: { regex_presets: [selected] },
+            getScriptsByType: type => scripts.get(type),
+            saveScriptsByType: (list, type) => {
+                if (type === types.PRESET) {
+                    markSaveStarted();
+                    return saved;
+                }
+                return Promise.resolve();
+            },
+            loadRegexScripts: async () => {},
+            reloadCurrentChat: async () => {},
+        });
+        scripts.set(types.GLOBAL, []);
+        scripts.set(types.PRESET, []);
+        scripts.set(types.SCOPED, scoped);
+        const readLive = () => live({ scoped: scoped.filter(script => !script.disabled).map(script => script.id) });
+        const snapshot = () => ({ mainApi: 'openai', values: { 'regex.preset': selected.name, 'regex.content': { global: [], preset: [], scoped: readLive().scoped.enabled } } });
+        const before = snapshot();
+        const applying = manager.applyPreset(selected.id);
+        await saveStarted;
+        const clock = makeClock();
+        let finished = false;
+        const reporting = waitForProfileSettle({
+            isCurrent: () => true,
+            readFingerprint: () => JSON.stringify(snapshot().values),
+            isBusy: () => !regexPresetMatchesLive(selected, readLive()),
+            subscribe: () => () => {},
+            initialNotBusy: true,
+            now: clock.now,
+            schedule: clock.schedule,
+            cancel: clock.cancel,
+        }).then(() => {
+            finished = true;
+            return diffProfileSnapshots(before, snapshot());
+        });
+        try {
+            clock.advance(1800);
+            await Promise.resolve();
+            expect(finished).toBe(false);
+        } finally {
+            releaseSave();
+            await applying;
+        }
+        expect(scoped.map(script => script.id)).toEqual(['a', 'b']);
+        clock.advance(900);
+        await expect(reporting).resolves.toEqual([expect.objectContaining({ id: 'regex.content', kind: 'content' })]);
+        expect(clock.pending()).toBe(0);
     });
 });
 
