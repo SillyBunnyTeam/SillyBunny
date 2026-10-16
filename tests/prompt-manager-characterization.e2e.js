@@ -791,6 +791,61 @@ test.describe('Prompt Manager characterization', () => {
         await expect(ui.row('main')).toBeFocused();
     });
 
+    test('shared list rows and search: arrow navigation, Ctrl+F, type-to-search and result announcements', async ({ page }) => {
+        const { ui } = await setup(page);
+        const order = await ui.visibleOrder();
+        await ui.row(order[0]).focus();
+        await page.keyboard.press('ArrowDown');
+        await expect(ui.row(order[1])).toBeFocused();
+        await page.keyboard.press('ArrowUp');
+        await expect(ui.row(order[0])).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect(page.locator('.sb-prompt-editor')).toHaveAttribute('data-open', 'true');
+        await page.keyboard.press('Escape');
+        await expect(page.locator('.sb-prompt-editor')).toHaveAttribute('data-open', 'false');
+
+        const searchButton = page.getByRole('button', { name: 'Search prompts', exact: true });
+        const search = page.getByRole('searchbox', { name: 'Search prompts', exact: true });
+        await ui.row('main').focus();
+        await page.keyboard.press('ControlOrMeta+f');
+        await expect(search).toBeFocused();
+        await expect(searchButton).toHaveAttribute('aria-expanded', 'true');
+        await expect(page.locator('#sb-universal-search')).not.toHaveClass(/\bis-open\b/);
+        await search.fill('Fixture Relative');
+        await expect(ui.row('sbFixtureRelative')).toBeVisible();
+        await expect(ui.row('main')).toHaveCount(0);
+        await expect(page.locator('.sb-prompt-editor > .sb-list-editor__status')).toHaveText(/^1 of \d+ results$/);
+        await search.fill('zz-no-such-prompt');
+        await expect(page.locator('.sb-prompt-editor > .sb-list-editor__status')).toHaveText('No results');
+        await page.keyboard.press('Escape');
+        await expect(search).toBeHidden();
+        await expect(searchButton).toBeFocused();
+        await expect(searchButton).toHaveAttribute('aria-expanded', 'false');
+        await expect(ui.row('main')).toBeVisible();
+
+        await ui.row('main').focus();
+        await page.keyboard.type('Fix');
+        await expect(search).toBeFocused();
+        await expect(search).toHaveValue('Fix');
+        await expect(ui.row('main')).toHaveCount(0);
+    });
+
+    test('clearing a search restores the list scroll position after the unfiltered render', async ({ page }) => {
+        await setup(page);
+        const body = page.locator('.sb-prompt-list-body');
+        const saved = await body.evaluate(node => {
+            node.scrollTo({ top: node.scrollHeight, behavior: 'instant' });
+            return node.scrollTop;
+        });
+        expect(saved).toBeGreaterThan(0);
+        await page.getByRole('button', { name: 'Search prompts', exact: true }).click();
+        const search = page.getByRole('searchbox', { name: 'Search prompts', exact: true });
+        await search.fill('Fixture Relative');
+        await expect.poll(() => body.evaluate(node => node.scrollHeight <= node.clientHeight + 1)).toBe(true);
+        await search.fill('');
+        await expect.poll(() => body.evaluate(node => Math.round(node.scrollTop))).toBe(Math.round(saved));
+    });
+
     test('dirty leave Save persists the draft and closes the editor', async ({ page }) => {
         const { store, ui } = await setup(page);
         await ui.openEditor('sbFixtureRelative');

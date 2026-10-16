@@ -3,12 +3,14 @@ import { createPromptEditorModel, PROMPT_EDITOR_UTILITY_FIELDS as UTILITY_FIELDS
 import { promptManager } from './openai.js';
 import { openActionMenu, closeActionMenu } from './sillybunny-action-menu.js';
 import { createSheetController, blockUpstreamDrawerClose } from './sillybunny-sheet.js';
-import { play, stopMotion, animateOut, MOTION_FAST, MOTION_SLOW, MOTION_SURFACE, MOTION_POPOVER_CLOSE, MOTION_EASE_OUT_CUBIC } from './sillybunny-motion.js';
+import { play, stopMotion, animateOut, MOTION_FAST, MOTION_SURFACE, MOTION_POPOVER_CLOSE, MOTION_EASE_OUT_CUBIC } from './sillybunny-motion.js';
 import { Popup } from './popup.js';
 import { getTokenCountAsync, getTokenizerModel } from './tokenizers.js';
 import { t, translate } from './i18n.js';
 import { createSegmentedControl } from './sillybunny-segmented-control.js';
 import { createListEditor, loadListEditorStyles } from './sillybunny-editor/list-shell.js';
+import { reconcileRows, rowEntry, bindListKeyboard, bindSortable } from './sillybunny-editor/list-rows.js';
+import { createListSearch } from './sillybunny-editor/list-search.js';
 
 const mountedEditors = new WeakSet();
 let countingEditorContent = false;
@@ -90,6 +92,7 @@ export function initializePromptEditor(column) {
     let headerMeasuredWidth = 0;
     let headerMeasuredText = '';
     let overlay = null;
+    let dragScope = '';
     let propertySheet = null;
     let sheetController = null;
     let tokenTimer = null;
@@ -388,25 +391,6 @@ export function initializePromptEditor(column) {
                 row.append(slot);
             }
         }
-        const open = () => textCompletion ? openTextCompletion(prompt) : utility ? openUtility(prompt) : openPrompt(prompt, prompt.runtime ? 'inspect' : null);
-        row.addEventListener('click', event => {
-            if (event.target.closest('button, input, .sb-prompt-grip')) return;
-            void open();
-        });
-        row.addEventListener('keydown', event => {
-            if (event.target !== row && !event.target.closest('.sb-prompt-grip')) return;
-            if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                void open();
-            } else if (event.key === 'F2' && !utility && !textCompletion && !prompt.runtime) {
-                event.preventDefault();
-                void rename(prompt);
-            } else if (event.altKey && orderEntry && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
-                event.preventDefault();
-                event.stopPropagation();
-                move(id, state.order.findIndex(entry => entry.identifier === id) + (event.key === 'ArrowUp' ? -1 : 1));
-            }
-        });
         if (!utility && !textCompletion && !prompt.marker) name.addEventListener('dblclick', event => {
             event.stopPropagation();
             void rename(prompt);
@@ -428,49 +412,60 @@ export function initializePromptEditor(column) {
         return result;
     }
 
-    function reconcileRows(group, entries) {
-        const identifiers = new Set();
-        let cursor = group.box.firstElementChild;
-        for (const { prompt, orderEntry = null, available = false, utility = false } of entries) {
-            const textCompletion = textCompletionView();
-            const id = textCompletion ? prompt.id : prompt.identifier;
-            identifiers.add(id);
-            const signature = JSON.stringify([prompt, utility ? model.readUtility(id) : textCompletion ? prompt : [model.permissions(prompt), describe(prompt)]]);
-            let cached = group.rows.get(id);
-            if (!cached || cached.signature !== signature) {
-                const row = makeRow(prompt, orderEntry, available, utility);
-                if (cached) {
-                    if (cursor === cached.row) cursor = cached.row.nextElementSibling;
-                    cached.row.replaceWith(row);
-                }
-                cached = { row, signature };
-                group.rows.set(id, cached);
-            }
-            const row = cached.row;
-            const selected = selectedId() === id;
-            const disabled = textCompletionView() ? Boolean(prompt.disabled) : orderEntry?.enabled === false;
-            if (row.classList.contains('is-selected') !== selected) row.classList.toggle('is-selected', selected);
-            if (row.classList.contains('is-disabled') !== disabled) row.classList.toggle('is-disabled', disabled);
-            const grip = row.querySelector('.sb-prompt-grip');
-            if (grip && grip.getAttribute('aria-disabled') !== String(Boolean(filter))) grip.setAttribute('aria-disabled', String(Boolean(filter)));
-            const control = row.querySelector('input.sb-switch');
-            if (control) {
-                if (control.checked !== Boolean(orderEntry.enabled)) control.checked = Boolean(orderEntry.enabled);
-            }
-            const token = row.querySelector('.sb-prompt-token');
-            const count = String(textCompletionView() ? knownTextCompletionCount(prompt) : knownCount(prompt));
-            if (token && token.textContent !== count) token.textContent = count;
-            if (row === cursor) cursor = cursor.nextElementSibling;
-            else if (row.nextElementSibling !== cursor || row.parentElement !== group.box) {
-                group.box.insertBefore(row, cursor);
-            }
-        }
-        for (const [id, cached] of group.rows) {
-            if (identifiers.has(id)) continue;
-            cached.row.remove();
-            group.rows.delete(id);
-        }
+    function renderRows(group, entries) {
+        const textCompletion = textCompletionView();
+        reconcileRows({
+            container: group.box,
+            cache: group.rows,
+            entries,
+            key: ({ prompt }) => textCompletion ? prompt.id : prompt.identifier,
+            signature: ({ prompt, utility = false }) => {
+                const id = textCompletion ? prompt.id : prompt.identifier;
+                return JSON.stringify([prompt, utility ? model.readUtility(id) : textCompletion ? prompt : [model.permissions(prompt), describe(prompt)]]);
+            },
+            create: ({ prompt, orderEntry = null, available = false, utility = false }) => makeRow(prompt, orderEntry, available, utility),
+            update: (row, { prompt, orderEntry = null }) => {
+                const id = textCompletion ? prompt.id : prompt.identifier;
+                const selected = selectedId() === id;
+                const disabled = textCompletion ? Boolean(prompt.disabled) : orderEntry?.enabled === false;
+                if (row.classList.contains('is-selected') !== selected) row.classList.toggle('is-selected', selected);
+                if (row.classList.contains('is-disabled') !== disabled) row.classList.toggle('is-disabled', disabled);
+                const grip = row.querySelector('.sb-prompt-grip');
+                if (grip && grip.getAttribute('aria-disabled') !== String(Boolean(filter))) grip.setAttribute('aria-disabled', String(Boolean(filter)));
+                const control = row.querySelector('input.sb-switch');
+                if (control && control.checked !== Boolean(orderEntry.enabled)) control.checked = Boolean(orderEntry.enabled);
+                const token = row.querySelector('.sb-prompt-token');
+                const count = String(textCompletion ? knownTextCompletionCount(prompt) : knownCount(prompt));
+                if (token && token.textContent !== count) token.textContent = count;
+            },
+        });
     }
+
+    function openEntry({ prompt, utility = false }) {
+        if (textCompletionView()) return openTextCompletion(prompt);
+        if (utility) return openUtility(prompt);
+        return openPrompt(prompt, prompt.runtime ? 'inspect' : null);
+    }
+
+    bindListKeyboard(listBody, {
+        rowSelector: '.sb-prompt-row',
+        keySourceSelector: '.sb-prompt-grip',
+        onOpen: row => {
+            const entry = rowEntry(row);
+            if (entry) void openEntry(entry);
+        },
+        onRename: row => {
+            const entry = rowEntry(row);
+            if (!entry || entry.utility || textCompletionView() || entry.prompt.runtime) return false;
+            void rename(entry.prompt);
+        },
+        onMove: (row, direction) => {
+            const entry = rowEntry(row);
+            if (!entry?.orderEntry) return false;
+            const id = entry.prompt.identifier;
+            move(id, state.order.findIndex(item => item.identifier === id) + direction);
+        },
+    });
 
     function renderList() {
         if (!state || !shell) return false;
@@ -498,14 +493,17 @@ export function initializePromptEditor(column) {
             if (nextKey === renderedListKey) return false;
             renderedListKey = nextKey;
             const matches = entry => translate(entry.name).toLowerCase().includes(filter.toLowerCase());
+            let shown = 0;
             for (const [section, className] of [
                 ['System prompt', 'sb-prompt-tc-system'],
                 ['Context', 'sb-prompt-tc-context'],
                 ['Instruct', 'sb-prompt-tc-instruct'],
             ]) {
                 const entries = state.textCompletionEntries.filter(entry => entry.section === section && matches(entry));
-                reconcileRows(group(translate(section), className), entries.map(prompt => ({ prompt })));
+                shown += entries.length;
+                renderRows(group(translate(section), className), entries.map(prompt => ({ prompt })));
             }
+            searchControl.report(shown, state.textCompletionEntries.length);
             updateListSubtitle();
             return true;
         }
@@ -523,21 +521,25 @@ export function initializePromptEditor(column) {
         // The assembled Agents row is inspection-only and never enters persisted order data.
         if (matches(state.runtime)) rows.push({ prompt: state.runtime });
         const order = group(t`Prompt order`, 'sb-prompt-order');
-        reconcileRows(order, rows);
+        renderRows(order, rows);
         const box = order.box;
         const error = listBody.querySelector('.sb-prompt-error');
         if (!state.error) error?.remove();
         else if (!error) listBody.prepend(element('div', 'sb-prompt-error', state.error));
         else if (error.textContent !== state.error) error.textContent = state.error;
         const available = state.prompts.filter(prompt => !state.order.some(entry => entry.identifier === prompt.identifier));
-        reconcileRows(group(t`Available`, 'sb-prompt-available'), available.filter(matches).map(prompt => ({ prompt, available: true })));
-        reconcileRows(group(t`Utility prompts`), utilities.filter(matches).map(prompt => ({ prompt, utility: true })));
+        const availableRows = available.filter(matches).map(prompt => ({ prompt, available: true }));
+        const utilityRows = utilities.filter(matches).map(prompt => ({ prompt, utility: true }));
+        renderRows(group(t`Available`, 'sb-prompt-available'), availableRows);
+        renderRows(group(t`Utility prompts`), utilityRows);
+        const ordered = state.order.filter(entry => promptFor(entry.identifier)).length;
+        searchControl.report(rows.length + availableRows.length + utilityRows.length, ordered + 1 + available.length + utilities.length);
         updateListSubtitle();
-        let dragScope = state.scope;
-        if ($.fn.sortable && !box.classList.contains('ui-sortable')) $(box).sortable({
-            handle: '.sb-prompt-grip', axis: 'y', delay: mobile.matches ? 30 : 0, distance: 4,
-            cancel: 'input,textarea,button,select,option', items: '> .sb-prompt-row:has(.sb-prompt-grip)',
+        bindSortable(box, {
+            handle: '.sb-prompt-grip',
+            items: '> .sb-prompt-row:has(.sb-prompt-grip)',
             disabled: Boolean(filter),
+            touch: () => mobile.matches,
             start: () => dragScope = state.scope,
             update: (_event, ui) => {
                 const ids = [...box.children].filter(row => row.querySelector('.sb-prompt-grip')).map(row => row.dataset.promptId);
@@ -549,10 +551,6 @@ export function initializePromptEditor(column) {
             },
             stop: () => requestAnimationFrame(() => shell.flushRefresh()),
         });
-        else if ($.fn.sortable) {
-            // Sortable refreshes items and positions on drag start; doing so here forces a full layout.
-            if ($(box).sortable('option', 'disabled') !== Boolean(filter)) $(box).sortable('option', 'disabled', Boolean(filter));
-        }
         if (focusedId && !focused.isConnected) rowFor(focusedId)?.focus({ preventScroll: true });
         scheduleListTokens();
         return true;
@@ -606,23 +604,8 @@ export function initializePromptEditor(column) {
         }, 300);
     }
 
-    function toggleSearch() {
-        const show = searchField.hidden;
-        stopMotion(searchField);
-        const height = `${parseFloat(getComputedStyle(searchField).getPropertyValue('--sb-prompt-search-height')) || 40}px`;
-        if (show) {
-            searchField.hidden = false;
-            play(searchField, [{ height: '0px', marginBlock: '0px', opacity: 0 }, { height, marginBlock: '8px', opacity: 1 }], { duration: MOTION_SLOW });
-            search.focus({ preventScroll: true });
-            return;
-        }
-        animateOut(searchField, [{ height, marginBlock: '8px', opacity: 1 }, { height: '0px', marginBlock: '0px', opacity: 0 }], () => searchField.hidden = true, { duration: MOTION_SLOW });
-        search.value = '';
-        filter = '';
-        renderList();
-    }
-
-    listHeader.append(titles, button(t`Search prompts`, 'magnifying-glass', toggleSearch));
+    const searchButton = button(t`Search prompts`, 'magnifying-glass', () => searchControl.toggle());
+    listHeader.append(titles, searchButton);
     const addPromptButton = button(t`Add prompt`, 'plus', trigger => {
         const count = state.prompts.filter(prompt => !state.order.some(entry => entry.identifier === prompt.identifier)).length;
         menu(trigger, t`Add prompt`, [[
@@ -631,9 +614,7 @@ export function initializePromptEditor(column) {
                 await openDraft(model.newDraft(), 'prompt', 'edit', true);
             }),
             { ...menuItem(t`Add from available (${count})`, 'folder-open', () => {
-                filter = '';
-                search.value = '';
-                renderList();
+                searchControl.setQuery('');
                 const section = listBody.querySelector('.sb-prompt-available');
                 const top = listBody.scrollTop + section.getBoundingClientRect().top - listBody.getBoundingClientRect().top;
                 listBody.scrollTo({ top, behavior: document.body.classList.contains('reduced-motion') || matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
@@ -650,12 +631,19 @@ export function initializePromptEditor(column) {
         trigger.setAttribute('aria-haspopup', 'menu');
         trigger.setAttribute('aria-expanded', 'false');
     }
-    search.addEventListener('input', () => { filter = search.value; renderList(); });
-    search.addEventListener('keydown', event => {
-        if (event.key !== 'Escape') return;
-        event.preventDefault();
-        event.stopPropagation();
-        toggleSearch();
+    const searchControl = createListSearch({
+        field: searchField,
+        input: search,
+        trigger: searchButton,
+        scope: list,
+        scroller: listBody,
+        status,
+        heightProperty: '--sb-prompt-search-height',
+        typeToSearchSelector: '.sb-prompt-row',
+        onChange: query => {
+            filter = query;
+            renderList();
+        },
     });
 
     function discardDraft() {
