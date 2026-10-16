@@ -341,10 +341,8 @@ const REGEX_PRESET_LISTS = Object.freeze(['global', 'scoped', 'preset']);
  */
 
 /**
- * Whether the live Regex scripts are in the state a Regex preset applies: for each script type, the enabled ids are
- * exactly the ids the preset lists that exist live. Listed ids that do not exist live are ignored, and order does not
- * matter. A list that is not an array leaves its type unconstrained, because the Regex extension's `applyPresetList`
- * leaves that type untouched; an empty list means nothing of that type is enabled, and so does a missing preset.
+ * Compares enabled scripts in native preset order. Missing script ids are ignored; repeated preset ids use their first position.
+ * Non-array lists leave their type unchanged. Empty lists and missing presets require all scripts to be disabled.
  * @param {{ global?: { id: string }[], scoped?: { id: string }[], preset?: { id: string }[] } | null | undefined} preset
  * Regex preset as stored in `extension_settings.regex_presets`
  * @param {Partial<Record<'global' | 'scoped' | 'preset', RegexLiveScripts>>} liveByType Live scripts per script type
@@ -356,10 +354,17 @@ export function regexPresetMatchesLive(preset, liveByType) {
         if (!Array.isArray(listed)) {
             return true;
         }
-        const all = new Set(liveByType?.[type]?.all ?? []);
-        const expected = new Set(listed.map(item => item?.id).filter(id => all.has(id)));
-        const enabled = new Set(liveByType?.[type]?.enabled ?? []);
-        return enabled.size === expected.size && [...enabled].every(id => expected.has(id));
+        const order = new Map();
+        listed.forEach((item, index) => {
+            if (!order.has(item?.id)) {
+                order.set(item?.id, index);
+            }
+        });
+        const expected = (liveByType?.[type]?.all ?? [])
+            .filter(id => order.has(id))
+            .sort((a, b) => order.get(a) - order.get(b));
+        const enabled = liveByType?.[type]?.enabled ?? [];
+        return enabled.length === expected.length && enabled.every((id, index) => id === expected[index]);
     });
 }
 
