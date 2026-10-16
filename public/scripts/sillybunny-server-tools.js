@@ -1,3 +1,4 @@
+import { yaml } from '../lib.js';
 import { normalizeBackendSettingsRows } from './sillybunny-settings-presentation.js';
 
 const SB_CONSOLE_LOG_LIMIT = 260;
@@ -18,6 +19,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             busy: false,
             restarting: false,
             configLoaded: false,
+            autoStashEnabled: false,
         },
         consoleLogs: {
             /** @type {{ statusPill: HTMLElement, refreshButton: HTMLButtonElement, pauseButton: HTMLButtonElement, statusNote: HTMLElement, output: HTMLElement, verboseLoggingStatus: HTMLElement, verboseLoggingActionButton: HTMLInputElement } | null} */
@@ -642,6 +644,9 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         setButtonDisabled(refs.restartButton, locked);
         setButtonDisabled(refs.saveConfigButton, locked || !hasConfigContent);
         setButtonDisabled(refs.saveConfigRestartButton, locked || !hasConfigContent);
+        const repository = state.lastStatusData?.repository;
+        refs.autoStashCheckbox.disabled = locked || !state.configLoaded
+            || state.lastStatusData?.installType === 'docker' || !repository?.supported || !repository?.isRepo;
         setThumbnailInputsDisabled(thumbnailLocked);
 
         if (refs.configEditor instanceof HTMLTextAreaElement) {
@@ -766,8 +771,8 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         }
 
         if (refs.autoStashCheckbox) {
-            refs.autoStashCheckbox.checked = Boolean(repository?.autoStash);
-            refs.autoStashCheckbox.disabled = !isGitInstall;
+            // The saved setting can differ from the running server until its next restart.
+            refs.autoStashCheckbox.checked = state.configLoaded ? state.autoStashEnabled : Boolean(repository?.autoStash);
         }
         updateServerAdminInteractivity();
     }
@@ -781,6 +786,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         }
 
         refs.configPath.textContent = data?.path || 'config.yaml';
+        syncSavedAutoStash(String(data?.content ?? ''));
         state.configLoaded = true;
 
         if (overwrite && refs.configEditor instanceof HTMLTextAreaElement) {
@@ -788,6 +794,90 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             state.originalConfig = refs.configEditor.value;
             state.lastModifiedMs = Number(data?.lastModifiedMs ?? 0) || 0;
             updateServerConfigDirtyState();
+        }
+    }
+
+    function parseServerConfig(content) {
+        const configDocument = yaml.parseDocument(content, { prettyErrors: true });
+        if (configDocument.errors.length) {
+            throw new Error(configDocument.errors.map(error => error.message).join('\n\n'));
+        }
+        return configDocument;
+    }
+
+    /**
+     * Capture the top-level setting separately from its spacing and trailing comment.
+     */
+    const AUTO_STASH_LINE_PATTERN = /^(autoStashBeforePull:)([ \t]*)([^#\s][^#\r\n]*?)?([ \t]*)(#.*)?$/m;
+
+    /**
+     * Replace only the setting value so YAML formatting and unrelated content survive.
+     * @param {string} content YAML text
+     * @param {boolean} enabled Setting value
+     * @returns {string} YAML text with only the autoStashBeforePull line changed or appended
+     */
+    function setAutoStashLine(content, enabled) {
+        const value = enabled ? 'true' : 'false';
+        if (!AUTO_STASH_LINE_PATTERN.test(content)) {
+            // A CRLF file keeps one line ending style, so the appended line takes the file's own terminator.
+            const lineEnding = content.includes('\r\n') ? '\r\n' : '\n';
+            const separator = content === '' || content.endsWith('\n') ? '' : lineEnding;
+            return `${content}${separator}autoStashBeforePull: ${value}${lineEnding}`;
+        }
+        return content.replace(AUTO_STASH_LINE_PATTERN, (_line, key, gap, oldValue, spacing, comment = '') => {
+            // A line without a value holds its whitespace in the gap, so the comment gets its own separator.
+            const commentGap = comment && oldValue === undefined ? ' ' : spacing;
+            return `${key}${gap || ' '}${value}${commentGap}${comment}`;
+        });
+    }
+
+    function syncSavedAutoStash(content) {
+        const value = parseServerConfig(content).get('autoStashBeforePull');
+        // Match the server's boolean conversion, including quoted YAML values.
+        const enabled = typeof value === 'string' && value.trim().toLowerCase() === 'false' ? false : Boolean(value);
+        getServerAdminState().autoStashEnabled = enabled;
+        getServerAdminRefs().autoStashCheckbox.checked = enabled;
+    }
+
+    async function handleAutoStashChange() {
+        const state = getServerAdminState();
+        const refs = getServerAdminRefs();
+        if (!refs || state.busy || state.restarting || !state.configLoaded) return;
+
+        const enabled = refs.autoStashCheckbox.checked;
+        const draft = refs.configEditor.value;
+        const isDirty = draft !== state.originalConfig;
+        state.busy = true;
+        updateServerAdminInteractivity();
+        try {
+            const data = await requestServerAdmin('/api/server-admin/config/get');
+            // Only the autoStashBeforePull line of the file on disk changes; the rest is written back
+            // byte for byte. Unrelated editor changes stay an unsaved draft with the same one-line edit.
+            const content = setAutoStashLine(String(data?.content ?? ''), enabled);
+            const configDocument = parseServerConfig(content);
+            if (configDocument.get('autoStashBeforePull') !== enabled) {
+                throw new Error('The autoStashBeforePull line in config.yaml could not be updated in place. Edit it in the config editor instead.');
+            }
+            const draftContent = isDirty ? setAutoStashLine(draft, enabled) : content;
+            const result = await requestServerAdmin('/api/server-admin/config/save', {
+                content,
+                expectedLastModifiedMs: isDirty ? state.lastModifiedMs : Number(data?.lastModifiedMs ?? 0),
+                restart: false,
+            });
+            refs.configEditor.value = draftContent;
+            // A textarea folds CRLF to LF. The saved text is kept in that form so the dirty check compares like with like.
+            state.originalConfig = isDirty ? content.replace(/\r\n?/g, '\n') : refs.configEditor.value;
+            state.lastModifiedMs = Number(result?.lastModifiedMs ?? 0) || state.lastModifiedMs;
+            syncSavedAutoStash(content);
+            updateServerConfigDirtyState();
+            setServerAdminMessage(refs.statusNote, result?.message || 'Config saved.', 'good');
+            setServerAdminMessage(refs.configNote, result?.message || 'Config saved.', 'good');
+        } catch (error) {
+            refs.autoStashCheckbox.checked = state.autoStashEnabled;
+            setServerAdminMessage(refs.statusNote, error.message || 'Failed to save config.yaml.', 'danger');
+        } finally {
+            state.busy = false;
+            updateServerAdminInteractivity();
         }
     }
 
@@ -959,6 +1049,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             refs.configEditor.value = normalizedContent;
             state.originalConfig = normalizedContent;
             state.lastModifiedMs = Number(result?.lastModifiedMs ?? 0) || state.lastModifiedMs;
+            syncSavedAutoStash(normalizedContent);
             updateServerConfigDirtyState();
             setServerAdminMessage(refs.configNote, result?.message || 'Config saved.', restart ? 'warn' : 'good');
             toastr.success(result?.message || 'Config saved.', 'Server config');
@@ -1563,18 +1654,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             updateServerConfigDirtyState();
             updateServerAdminInteractivity();
         });
-        autoStashCheckbox.addEventListener('change', function () {
-            const refs = getServerAdminRefs();
-            if (!refs?.configEditor) return;
-            const yaml = refs.configEditor.value;
-            const newValue = this.checked ? 'true' : 'false';
-            if (/^autoStashBeforePull:\s*(true|false)/m.test(yaml)) {
-                refs.configEditor.value = yaml.replace(/^(autoStashBeforePull:\s*)(true|false)/m, `$1${newValue}`);
-            } else {
-                refs.configEditor.value = yaml + `\nautoStashBeforePull: ${newValue}\n`;
-            }
-            refs.configEditor.dispatchEvent(new Event('input'));
-        });
+        autoStashCheckbox.addEventListener('change', handleAutoStashChange);
         updateServerAdminInteractivity();
 
         return {
