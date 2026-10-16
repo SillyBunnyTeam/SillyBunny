@@ -62,27 +62,8 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
 }
 
 .sb-prompt-editor {
+    /* Shell layout, edge and pane geometry live in sillybunny-editor-shell.css. */
     --sb-prompt-switch-width: 42px;
-    position: relative;
-    display: flex;
-    flex: 1 1 0;
-    min-width: 0;
-    min-height: 0;
-    /* libadwaita --border-color: currentColor at --border-opacity (15%, 50% in high contrast). The editor
-       shares the settings pane's View tone, so this edge is the only thing separating the two. */
-    --sb-prompt-editor-edge: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
-    overflow: hidden;
-    border: 1px solid var(--sb-prompt-editor-edge);
-    border-radius: var(--sb-radius-card);
-    background: var(--sb-layer-window);
-    color: var(--SmartThemeBodyColor);
-    font-family: var(--mainFontFamily);
-}
-
-@media (prefers-contrast: more) {
-    .sb-prompt-editor {
-        --sb-prompt-editor-edge: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
-    }
 }
 
 :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-sheet-backdrop)[hidden],
@@ -133,27 +114,6 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     background: var(--sb-raised-bg);
     color: var(--sb-muted-fg);
     cursor: not-allowed;
-}
-
-.sb-prompt-list {
-    container-type: inline-size;
-    container-name: sb-prompt-list;
-    display: flex;
-    flex-direction: column;
-    flex: none;
-    width: 100%;
-    min-width: 0;
-    min-height: 0;
-    background: var(--sb-sidebar-bg);
-}
-
-.sb-prompt-editor[data-open='true'][data-collapsed='false'] .sb-prompt-list {
-    width: var(--sb-prompt-list-width);
-}
-
-/* libadwaita drops sidebar colours once a split view collapses into stacked pages. */
-.sb-prompt-editor[data-collapsed='true'] .sb-prompt-list {
-    background: var(--sb-layer-window);
 }
 
 :is(.sb-prompt-list-header, .sb-prompt-detail-header) {
@@ -414,14 +374,14 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     font-size: calc(var(--mainFontSize) * 0.85);
 }
 
-@container sb-prompt-list (width < 440px) {
+@container sb-list-editor-sidebar (width < 440px) {
     .sb-prompt-row {
         gap: 6px;
         padding-inline: 4px;
     }
 }
 
-@container sb-prompt-list (width < 300px) {
+@container sb-list-editor-sidebar (width < 300px) {
     .sb-prompt-row > i {
         display: none;
     }
@@ -433,53 +393,6 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
 
 .sb-prompt-editor[data-open='true'][data-collapsed='false'] .sb-prompt-row-subtitle {
     display: none;
-}
-
-.sb-prompt-divider {
-    position: relative;
-    display: none;
-    flex: none;
-    align-self: stretch;
-    width: 1px;
-    cursor: col-resize;
-    touch-action: none;
-    -webkit-user-select: none;
-    user-select: none;
-    z-index: 4;
-}
-
-.sb-prompt-divider::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: var(--sb-shell-border);
-    pointer-events: none;
-}
-
-.sb-prompt-divider::after {
-    content: '';
-    position: absolute;
-    inset-block: 0;
-    left: 50%;
-    width: 12px;
-    transform: translateX(-50%);
-}
-
-.sb-prompt-editor[data-open='true'][data-collapsed='false'] .sb-prompt-divider {
-    display: block;
-}
-
-.sb-prompt-detail {
-    container-type: inline-size;
-    container-name: sb-prompt-detail;
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-width: 0;
-    min-height: 0;
-    height: 100%;
-    overflow: hidden;
-    background: var(--sb-layer-view);
 }
 
 .sb-prompt-detail-header > :not(.sb-prompt-title) {
@@ -749,25 +662,6 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     font-size: calc(var(--mainFontSize) * 0.75);
 }
 
-.sb-prompt-editor[data-collapsed='true'][data-open='true'] .sb-prompt-list {
-    transform: translateX(-26%);
-    opacity: 0.42;
-    pointer-events: none;
-}
-
-.sb-prompt-editor[data-collapsed='true'] .sb-prompt-detail {
-    position: absolute;
-    inset: 0;
-}
-
-.sb-prompt-editor .sb-prompt-travelling {
-    position: absolute;
-    inset-block: 0;
-    inset-inline-end: 0;
-    z-index: 5;
-    border-inline-start: 1px solid var(--SmartThemeBorderColor);
-}
-
 .sb-prompt-editor[data-collapsed='true'] .sb-prompt-detail > .sb-prompt-properties {
     display: none;
 }
@@ -784,16 +678,6 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     border-bottom: var(--sb-headerbar-shade);
     border-radius: 0;
     background: transparent;
-}
-
-.sb-prompt-visually-hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
 }
 
 .sb-prompt-toast {
@@ -921,7 +805,7 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     accent-color: var(--sb-accent);
 }
 
-:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) :is(button, .sb-prompt-row, .sb-prompt-divider):focus-visible {
+:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) :is(button, .sb-prompt-row):focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
@@ -949,11 +833,7 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     color: var(--sb-color-danger);
 }
 
-.sb-prompt-divider:focus-visible::before {
-    background: var(--sb-accent);
-}
-
-@container sb-prompt-detail (width < 560px) {
+@container sb-list-editor-detail (width < 560px) {
     #sb-settings-page .sb-prompt-editor .sb-prompt-modes {
         display: none !important;
     }
@@ -982,10 +862,6 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
 
     .sb-prompt-row.is-selected:hover {
         background: var(--sb-flat-selected-hover-bg);
-    }
-
-    .sb-prompt-divider:hover::before {
-        background: var(--sb-accent);
     }
 }
 
@@ -1034,10 +910,6 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
 @media (pointer: coarse) {
     .sb-prompt-trigger-row {
         min-height: 44px;
-    }
-
-    .sb-prompt-divider::after {
-        width: 24px;
     }
 }
 

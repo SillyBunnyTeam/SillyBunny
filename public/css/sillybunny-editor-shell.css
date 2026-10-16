@@ -1,0 +1,196 @@
+/* Shared List→Editor shell (sillybunny-editor/list-shell.js).
+   Deferred: consumers await loadListEditorStyles() before revealing the shell.
+   --sb-list-editor-sidebar-width is set inline by JS. Consumers style rows and detail content. */
+
+.sb-list-editor {
+    position: relative;
+    display: flex;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    /* libadwaita --border-color: currentColor at 15% (50% in high contrast). The shell shares the
+       settings pane's View tone, so this edge is the only thing separating the two. */
+    --sb-list-editor-edge: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
+    border: 1px solid var(--sb-list-editor-edge);
+    border-radius: var(--sb-radius-card);
+    background: var(--sb-layer-window);
+    color: var(--SmartThemeBodyColor);
+    font-family: var(--mainFontFamily);
+}
+
+@media (prefers-contrast: more) {
+    .sb-list-editor {
+        --sb-list-editor-edge: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
+    }
+}
+
+:is(.sb-list-editor, .sb-list-editor *)[hidden] {
+    display: none !important;
+}
+
+/* --- Sidebar --- */
+
+.sb-list-editor__sidebar {
+    container-type: inline-size;
+    container-name: sb-list-editor-sidebar;
+    display: flex;
+    flex-direction: column;
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    background: var(--sb-sidebar-bg);
+}
+
+.sb-list-editor[data-open='true'][data-collapsed='false'] .sb-list-editor__sidebar {
+    width: var(--sb-list-editor-sidebar-width);
+}
+
+/* libadwaita drops sidebar colours once a split view collapses into stacked pages. */
+.sb-list-editor[data-collapsed='true'] .sb-list-editor__sidebar {
+    background: var(--sb-layer-window);
+}
+
+.sb-list-editor[data-collapsed='true'][data-open='true'] .sb-list-editor__sidebar {
+    transform: translateX(-26%);
+    opacity: 0.42;
+    pointer-events: none;
+}
+
+/* --- Divider --- */
+
+.sb-list-editor__divider {
+    position: relative;
+    display: none;
+    flex: none;
+    align-self: stretch;
+    width: 1px;
+    cursor: col-resize;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    z-index: 4;
+}
+
+.sb-list-editor__divider::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--sb-shell-border);
+    pointer-events: none;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.sb-list-editor__divider::after {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    left: 50%;
+    width: 12px;
+    transform: translateX(-50%);
+}
+
+.sb-list-editor[data-open='true'][data-collapsed='false'] .sb-list-editor__divider {
+    display: block;
+}
+
+.sb-list-editor__divider:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-list-editor__divider:focus-visible::before {
+    background: var(--sb-accent);
+}
+
+@media (hover: hover) {
+    .sb-list-editor__divider:hover::before {
+        background: var(--sb-accent);
+    }
+}
+
+@media (pointer: coarse) {
+    .sb-list-editor__divider::after {
+        width: 24px;
+    }
+}
+
+/* --- Detail pane --- */
+
+.sb-list-editor__detail {
+    container-type: inline-size;
+    container-name: sb-list-editor-detail;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--sb-layer-view);
+}
+
+.sb-list-editor[data-collapsed='true'] .sb-list-editor__detail {
+    position: absolute;
+    inset: 0;
+}
+
+/* While sliding, the detail overlays the list at its settled width. */
+.sb-list-editor .sb-list-editor__detail--travelling {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+    z-index: 5;
+    border-inline-start: 1px solid var(--SmartThemeBorderColor);
+    pointer-events: none;
+}
+
+/* --- Status (live region) --- */
+
+.sb-list-editor__status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* --- Optional consumer hooks --- */
+
+.sb-list-editor__back {
+    display: none;
+}
+
+.sb-list-editor[data-collapsed='true'] .sb-list-editor__back {
+    display: inline-flex;
+}
+
+.sb-list-editor[data-open='true'][data-collapsed='false'] .sb-list-editor__row-menu {
+    display: none !important;
+}
+
+.sb-list-editor[data-open='true'][data-collapsed='false'] .sb-list-editor__row-subtitle {
+    display: none;
+}
+
+.sb-list-editor__drag-handle {
+    cursor: grab;
+}
+
+.sb-list-editor__drag-handle[aria-disabled='true'] {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+body.reduced-motion .sb-list-editor__divider::before {
+    transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-list-editor__divider::before {
+        transition: none;
+    }
+}

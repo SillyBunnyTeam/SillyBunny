@@ -307,7 +307,7 @@ describe('createListEditor', () => {
             const item = { id: 1, name: 'Test' };
             await editor.selectItem(item);
             expect(editor.detail.hidden).toBe(false);
-            expect(config.renderDetail).toHaveBeenCalledWith(editor.detail, item);
+            expect(config.renderDetail).toHaveBeenCalledWith(editor.detail, item, expect.objectContaining({ isCurrent: expect.any(Function) }));
         });
 
         test('sets data-open=true after selection', async () => {
@@ -352,7 +352,7 @@ describe('createListEditor', () => {
             await editor.selectItem({ id: 1 });
             config.renderDetail.mockClear();
             await editor.selectItem({ id: 2 });
-            expect(config.renderDetail).not.toHaveBeenCalledWith(editor.detail, { id: 2 });
+            expect(config.renderDetail).not.toHaveBeenCalledWith(editor.detail, { id: 2 }, expect.anything());
         });
 
         test('calls onSave and proceeds when user confirms save', async () => {
@@ -413,7 +413,218 @@ describe('createListEditor', () => {
         });
     });
 
+    describe('key-based selection', () => {
+        test('a falsy key such as UID 0 opens and stays open', async () => {
+            const config = makeConfig({ getKey: item => item.uid });
+            const editor = createListEditor(config);
+            expect(await editor.selectItem({ uid: 0 })).toBe(true);
+            expect(editor.isOpen).toBe(true);
+            expect(editor.selectedKey).toBe(0);
+            expect(editor.root.dataset.open).toBe('true');
+            expect(editor.detail.hidden).toBe(false);
+        });
+
+        test('same key with a different object is a no-op', async () => {
+            const config = makeConfig({ getKey: item => item.uid });
+            const editor = createListEditor(config);
+            await editor.selectItem({ uid: 7 });
+            config.renderDetail.mockClear();
+            expect(await editor.selectItem({ uid: 7 })).toBe(true);
+            expect(config.renderDetail).not.toHaveBeenCalled();
+        });
+
+        test('force re-renders the open key', async () => {
+            const config = makeConfig();
+            const editor = createListEditor(config);
+            await editor.selectItem('main');
+            config.renderDetail.mockClear();
+            await editor.selectItem('main', { force: true });
+            expect(config.renderDetail).toHaveBeenCalledTimes(1);
+        });
+
+        test('guard: false skips the leave dialog even when dirty', async () => {
+            const config = makeConfig({ isDirty: jest.fn().mockReturnValue(true) });
+            const editor = createListEditor(config);
+            await editor.selectItem('a', { guard: false });
+            await editor.selectItem('b', { guard: false });
+            expect(mockPopupShow).not.toHaveBeenCalled();
+            expect(editor.selectedKey).toBe('b');
+        });
+    });
+
+    describe('async renderDetail', () => {
+        test('passes an isCurrent context to the renderer', async () => {
+            const config = makeConfig();
+            const editor = createListEditor(config);
+            await editor.selectItem('a');
+            const context = config.renderDetail.mock.calls[0][2];
+            expect(context.isCurrent()).toBe(true);
+        });
+
+        test('a newer selection supersedes a pending render', async () => {
+            const resolvers = [];
+            const config = makeConfig({
+                renderDetail: jest.fn(() => new Promise(resolve => resolvers.push(resolve))),
+            });
+            const editor = createListEditor(config);
+            const first = editor.selectItem('a');
+            await new Promise(resolve => setTimeout(resolve, 0));
+            const second = editor.selectItem('b', { guard: false });
+            expect(resolvers).toHaveLength(2);
+            resolvers[1]();
+            resolvers[0]();
+            expect(await second).toBe(true);
+            expect(await first).toBe(false);
+            expect(editor.selectedKey).toBe('b');
+            expect(config.onSelect).toHaveBeenCalledTimes(1);
+            expect(config.onSelect).toHaveBeenCalledWith('b');
+        });
+
+        test('awaits the renderer before onSelect', async () => {
+            const order = [];
+            const config = makeConfig({
+                renderDetail: jest.fn(async () => { await Promise.resolve(); order.push('render'); }),
+                onSelect: jest.fn(() => order.push('select')),
+            });
+            const editor = createListEditor(config);
+            await editor.selectItem('a');
+            expect(order).toEqual(['render', 'select']);
+        });
+
+        test('a throwing renderer closes the detail and rethrows', async () => {
+            const config = makeConfig({ renderDetail: jest.fn(() => { throw new Error('boom'); }) });
+            const editor = createListEditor(config);
+            await expect(editor.selectItem('a')).rejects.toThrow('boom');
+            expect(editor.isOpen).toBe(false);
+            expect(editor.detail.hidden).toBe(true);
+        });
+    });
+
+    describe('guardLeave', () => {
+        test('resolves true when clean without a dialog', async () => {
+            const editor = createListEditor(makeConfig());
+            expect(await editor.guardLeave()).toBe(true);
+            expect(mockPopupShow).not.toHaveBeenCalled();
+        });
+
+        test('resolves false when dirty and the user cancels', async () => {
+            const editor = createListEditor(makeConfig({ isDirty: jest.fn().mockReturnValue(true) }));
+            expect(await editor.guardLeave()).toBe(false);
+        });
+
+        test('resolves with the save result', async () => {
+            popupShowResult = POPUP_RESULT.AFFIRMATIVE;
+            const onSave = jest.fn().mockResolvedValue(false);
+            const editor = createListEditor(makeConfig({ isDirty: jest.fn().mockReturnValue(true), onSave }));
+            expect(await editor.guardLeave()).toBe(false);
+            expect(onSave).toHaveBeenCalled();
+        });
+    });
+
+    describe('deselect focus and ordering', () => {
+        test('returns focus to the row found for the closed key', async () => {
+            const row = new FakeElement('div');
+            row.focus = jest.fn();
+            const findRow = jest.fn(() => row);
+            const editor = createListEditor(makeConfig({ getKey: item => item.uid, findRow }));
+            await editor.selectItem({ uid: 0 });
+            await editor.deselectItem();
+            expect(findRow).toHaveBeenCalledWith(0);
+            expect(row.focus).toHaveBeenCalled();
+        });
+
+        test('onDeselect runs before the closing list render', async () => {
+            const order = [];
+            const config = makeConfig({
+                renderList: jest.fn(() => order.push('list')),
+                onDeselect: jest.fn(() => order.push('deselect')),
+            });
+            const editor = createListEditor(config);
+            await editor.selectItem('a');
+            order.length = 0;
+            await editor.deselectItem();
+            expect(order[0]).toBe('deselect');
+            expect(order).toContain('list');
+        });
+
+        test('deselectItem resolves false when the guard blocks', async () => {
+            const editor = createListEditor(makeConfig({ isDirty: jest.fn().mockReturnValue(true) }));
+            await editor.selectItem('a', { guard: false });
+            expect(await editor.deselectItem()).toBe(false);
+            expect(editor.isOpen).toBe(true);
+        });
+    });
+
+    describe('consumer hooks', () => {
+        test('classNames extend the shell classes', () => {
+            const editor = createListEditor(makeConfig({ classNames: { root: 'sb-prompt-editor', detail: 'sb-prompt-detail' } }));
+            expect(editor.root.className).toBe('sb-list-editor sb-prompt-editor');
+            expect(editor.detail.className).toBe('sb-list-editor__detail sb-prompt-detail');
+            expect(editor.sidebar.className).toBe('sb-list-editor__sidebar');
+        });
+
+        test('measureLayout runs before applyLayout with the same info', () => {
+            const order = [];
+            const measureLayout = jest.fn(info => { order.push('measure'); return { seen: info.width }; });
+            const applyLayout = jest.fn(() => order.push('apply'));
+            const editor = createListEditor(makeConfig({ measureLayout, applyLayout }));
+            editor.layout();
+            expect(order.slice(-2)).toEqual(['measure', 'apply']);
+            expect(applyLayout).toHaveBeenLastCalledWith({ seen: 1000 }, expect.objectContaining({ width: 1000, collapsed: false, open: false }));
+        });
+
+        test('onCollapseChange fires when the layout collapses', () => {
+            const onCollapseChange = jest.fn();
+            global.matchMedia = jest.fn(() => ({ matches: true, media: '', addEventListener: jest.fn(), removeEventListener: jest.fn() }));
+            const editor = createListEditor(makeConfig({ onCollapseChange }));
+            editor.layout();
+            expect(onCollapseChange).toHaveBeenCalledWith(true);
+        });
+
+        test('escapeCloses: false leaves Escape to the consumer', async () => {
+            const editor = createListEditor(makeConfig({ escapeCloses: false }));
+            await editor.selectItem('a');
+            editor.detail.dispatchEvent({ type: 'keydown', key: 'Escape', target: new FakeElement('div'), preventDefault: jest.fn(), stopPropagation: jest.fn() });
+            await Promise.resolve();
+            expect(editor.isOpen).toBe(true);
+        });
+
+        test('Escape outside a field closes by default', async () => {
+            const editor = createListEditor(makeConfig());
+            await editor.selectItem('a');
+            editor.detail.dispatchEvent({ type: 'keydown', key: 'Escape', target: new FakeElement('div'), preventDefault: jest.fn(), stopPropagation: jest.fn() });
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(editor.isOpen).toBe(false);
+        });
+
+        test('deferRefresh holds a render until flushRefresh', () => {
+            const config = makeConfig();
+            const editor = createListEditor(config);
+            config.renderList.mockClear();
+            editor.flushRefresh();
+            expect(config.renderList).not.toHaveBeenCalled();
+            editor.deferRefresh();
+            editor.flushRefresh();
+            expect(config.renderList).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('compatibility entry point', () => {
+        test('sillybunny-list-editor.js re-exports the shared shell', async () => {
+            const shared = await import('../../public/scripts/sillybunny-editor/list-shell.js');
+            expect(createListEditor).toBe(shared.createListEditor);
+        });
+    });
+
     describe('destroy', () => {
+        test('removes the media-query listener', () => {
+            const editor = createListEditor(makeConfig());
+            const media = global.matchMedia.mock.results.at(-1).value;
+            const handler = media.addEventListener.mock.calls[0][1];
+            editor.destroy();
+            expect(media.removeEventListener).toHaveBeenCalledWith('change', handler);
+        });
+
         test('removes root from container', () => {
             const config = makeConfig();
             const editor = createListEditor(config);

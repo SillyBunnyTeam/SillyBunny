@@ -281,7 +281,7 @@ function promptEditorDriver(page) {
             const target = row(identifier);
             await target.locator('.sb-prompt-row-name').click();
             await expect(page.locator(`${FORM}_name`)).toBeVisible();
-            await expect(page.locator('.sb-prompt-travelling')).toHaveCount(0);
+            await expect(page.locator('.sb-list-editor__detail--travelling')).toHaveCount(0);
         },
 
         async isContentEditable() {
@@ -767,6 +767,39 @@ test.describe('Prompt Manager characterization', () => {
         await expect(ui.row('main')).not.toHaveClass(/is-selected/);
         await expect(ui.row('main')).toBeFocused();
         await expect(list).toBeVisible();
+    });
+
+    test('shared list-editor shell owns the split, divider resize and focus handoff', async ({ page }) => {
+        const { ui } = await setup(page);
+        const root = page.locator('.sb-prompt-editor');
+        await expect(root).toHaveClass(/\bsb-list-editor\b/);
+        await expect(page.locator('#deferred-editor-shell-css')).toHaveAttribute('data-loaded', 'true');
+        await ui.openEditor('main');
+        await expect(page.locator('.sb-prompt-title')).toBeFocused();
+        const divider = page.getByRole('separator', { name: 'Resize prompt sidebar', exact: true });
+        await expect(divider).toBeVisible();
+        const list = page.locator('.sb-prompt-list');
+        const before = Number(await divider.getAttribute('aria-valuenow'));
+        await divider.focus();
+        await page.keyboard.press('ArrowRight');
+        await expect(divider).toHaveAttribute('aria-valuenow', String(Math.min(420, before + 10)));
+        expect(await page.evaluate(() => Number(localStorage.getItem('sb-pm-list-width')))).toBe(Math.min(420, before + 10));
+        await expect.poll(async () => Math.round((await list.boundingBox()).width)).toBe(Math.min(420, before + 10));
+        await page.locator(`${FORM}_prompt`).focus();
+        await page.keyboard.press('Escape');
+        await expect(root).toHaveAttribute('data-open', 'false');
+        await expect(ui.row('main')).toBeFocused();
+    });
+
+    test('dirty leave Save persists the draft and closes the editor', async ({ page }) => {
+        const { store, ui } = await setup(page);
+        await ui.openEditor('sbFixtureRelative');
+        await ui.fill({ content: 'Saved through the leave guard' });
+        await page.getByRole('button', { name: 'Back to prompt list', exact: true }).click();
+        await page.locator('dialog.popup[open] .popup-button-ok').click();
+        await waitForSavedOai(store, oai => promptFor(oai, 'sbFixtureRelative')?.content === 'Saved through the leave guard');
+        await expect(page.locator('.sb-prompt-editor')).toHaveAttribute('data-open', 'false');
+        await expect(ui.row('sbFixtureRelative')).toBeFocused();
     });
 
     test('position controls reveal depth, order and six generation triggers', async ({ page }) => {

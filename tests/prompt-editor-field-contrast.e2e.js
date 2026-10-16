@@ -70,7 +70,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
             await row.locator('.sb-prompt-row-name').click();
             const field = page.locator('#sb-prompt-form_prompt');
             await expect(field).toBeVisible();
-            await expect(page.locator('.sb-prompt-detail')).not.toHaveClass(/sb-prompt-travelling/);
+            await expect(page.locator('.sb-prompt-detail')).not.toHaveClass(/sb-list-editor__detail--travelling/);
             await field.evaluate(node => node.blur());
             await expect.poll(() => field.evaluate(fieldAppearance)).toEqual(reference);
             const contrast = await field.evaluate(fieldContrast);

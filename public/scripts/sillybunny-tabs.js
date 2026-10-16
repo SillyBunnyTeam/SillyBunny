@@ -675,7 +675,8 @@ const SB_SHORTCUT_LABELS = Object.freeze({
 });
 const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:editor': [
-        { href: 'css/sillybunny-prompt-editor.css', id: 'deferred-prompt-editor-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261016a', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-prompt-editor.css?v=20261016a', id: 'deferred-prompt-editor-css' },
     ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },

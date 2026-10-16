@@ -3,11 +3,12 @@ import { createPromptEditorModel, PROMPT_EDITOR_UTILITY_FIELDS as UTILITY_FIELDS
 import { promptManager } from './openai.js';
 import { openActionMenu, closeActionMenu } from './sillybunny-action-menu.js';
 import { createSheetController, blockUpstreamDrawerClose } from './sillybunny-sheet.js';
-import { play, stopMotion, animateOut, prefersReducedMotion, SPRING_NAVIGATION, MOTION_FAST, MOTION_SLOW, MOTION_SURFACE, MOTION_POPOVER_CLOSE, MOTION_EASE_OUT_CUBIC } from './sillybunny-motion.js';
-import { Popup, POPUP_TYPE, POPUP_RESULT } from './popup.js';
+import { play, stopMotion, animateOut, MOTION_FAST, MOTION_SLOW, MOTION_SURFACE, MOTION_POPOVER_CLOSE, MOTION_EASE_OUT_CUBIC } from './sillybunny-motion.js';
+import { Popup } from './popup.js';
 import { getTokenCountAsync, getTokenizerModel } from './tokenizers.js';
 import { t, translate } from './i18n.js';
 import { createSegmentedControl } from './sillybunny-segmented-control.js';
+import { createListEditor, loadListEditorStyles } from './sillybunny-editor/list-shell.js';
 
 const mountedEditors = new WeakSet();
 let countingEditorContent = false;
@@ -63,9 +64,6 @@ export function initializePromptEditor(column) {
     if (mountedEditors.has(column)) return;
     mountedEditors.add(column);
     let model = null;
-    const root = element('section', 'sb-prompt-editor');
-    root.setAttribute('aria-label', t`Prompts`);
-    const list = element('div', 'sb-prompt-list');
     const listHeader = element('header', 'sb-prompt-list-header');
     const titles = element('div', 'sb-prompt-list-titles');
     const subtitle = element('span', 'sb-prompt-list-subtitle');
@@ -79,21 +77,6 @@ export function initializePromptEditor(column) {
     search.setAttribute('aria-label', t`Search prompts`);
     searchField.append(searchIcon, search);
     const listBody = element('div', 'sb-prompt-list-body');
-    const editor = element('div', 'sb-prompt-detail');
-    editor.hidden = true;
-    const divider = element('div', 'sb-prompt-divider');
-    divider.tabIndex = 0;
-    divider.setAttribute('role', 'separator');
-    divider.setAttribute('aria-orientation', 'vertical');
-    divider.setAttribute('aria-label', t`Resize prompt sidebar`);
-    divider.setAttribute('aria-valuemin', '240');
-    divider.setAttribute('aria-valuemax', '420');
-    const status = element('div', 'sb-prompt-visually-hidden');
-    status.setAttribute('aria-live', 'polite');
-    root.append(list, divider, editor, status);
-    list.append(listHeader, searchField, listBody);
-    root.hidden = true;
-    column.append(root);
 
     let state = null;
     let draft = null;
@@ -102,17 +85,10 @@ export function initializePromptEditor(column) {
     let kind = 'prompt';
     let mode = 'edit';
     let filter = '';
-    let busy = false;
-    let collapsed = false;
-    let sidebarWidth = Number(localStorage.getItem('sb-pm-list-width')) || 0;
-    let layoutFrame = 0;
     let synchronizeFrame = 0;
     let renderedListKey = '';
     let headerMeasuredWidth = 0;
     let headerMeasuredText = '';
-    let listRefreshPending = false;
-    let listPointerActive = false;
-    let transition = null;
     let overlay = null;
     let propertySheet = null;
     let sheetController = null;
@@ -120,7 +96,6 @@ export function initializePromptEditor(column) {
     let listTokenTimer = null;
     let tokenRequest = 0;
     let toastTimer = null;
-    let returningId = null;
     let actions = [];
     let menuTrigger = null;
     let observedHeader = null;
@@ -135,9 +110,44 @@ export function initializePromptEditor(column) {
     const dirty = () => Boolean(draft) && JSON.stringify(draft) !== baseline;
     const textCompletionView = () => state?.type === 'text-completions';
     const promptFor = id => state.prompts.find(prompt => prompt.identifier === id);
-    const rowFor = id => listBody.querySelector(`[data-prompt-id="${CSS.escape(id)}"]`);
+    const rowFor = id => id == null ? null : listBody.querySelector(`[data-prompt-id="${CSS.escape(id)}"]`);
     const selectedId = () => draft?.identifier;
-    const listWidth = () => Math.max(240, Math.min(420, sidebarWidth || root.clientWidth * 0.3));
+
+    // Assigned below; renderList returns early until synchronize() has produced state.
+    let shell = null;
+    shell = createListEditor({
+        container: column,
+        storageKey: 'sb-pm-list-width',
+        rootTag: 'section',
+        label: t`Prompts`,
+        dividerLabel: t`Resize prompt sidebar`,
+        classNames: { root: 'sb-prompt-editor', sidebar: 'sb-prompt-list', divider: 'sb-prompt-divider', detail: 'sb-prompt-detail' },
+        dragHandleSelector: '.sb-prompt-grip[aria-disabled="false"]',
+        // The editor's own keydown closes on Escape from any field and handles Ctrl/Cmd+S.
+        escapeCloses: false,
+        renderList: () => renderList(),
+        renderDetail: () => renderEditor(),
+        isDirty: dirty,
+        onSave: save,
+        onDiscard: discardDraft,
+        onDeselect: () => {
+            closeOverlays();
+            draft = null;
+        },
+        findRow: rowFor,
+        focusTarget: detail => detail.querySelector('.sb-prompt-title'),
+        fadeTarget: detail => detail.querySelector('.sb-prompt-content'),
+        measureLayout: measureShellLayout,
+        applyLayout: applyShellLayout,
+        onCollapseChange: () => closeOverlays(),
+    });
+    const root = shell.root;
+    const list = shell.sidebar;
+    const editor = shell.detail;
+    const status = shell.status;
+    const allowLeave = () => shell.allowLeave();
+    list.append(listHeader, searchField, listBody);
+    root.hidden = true;
 
     if (!tokenizerPrefilterInstalled) {
         // Extensions can replace jQuery without the app's CSRF prefilter; scope this repair to our reads.
@@ -463,8 +473,9 @@ export function initializePromptEditor(column) {
     }
 
     function renderList() {
-        if (transition || listPointerActive || listBody.querySelector('.ui-sortable-helper, .ui-sortable-placeholder')) {
-            listRefreshPending = true;
+        if (!state || !shell) return false;
+        if (shell.isNavigating || shell.pointerActive || listBody.querySelector('.ui-sortable-helper, .ui-sortable-placeholder')) {
+            shell.deferRefresh();
             return;
         }
         const textCompletion = textCompletionView();
@@ -536,11 +547,7 @@ export function initializePromptEditor(column) {
                 announceMove(id);
                 rowFor(id)?.focus({ preventScroll: true });
             },
-            stop: () => requestAnimationFrame(() => {
-                if (!listRefreshPending) return;
-                listRefreshPending = false;
-                renderList();
-            }),
+            stop: () => requestAnimationFrame(() => shell.flushRefresh()),
         });
         else if ($.fn.sortable) {
             // Sortable refreshes items and positions on drag start; doing so here forces a full layout.
@@ -567,7 +574,7 @@ export function initializePromptEditor(column) {
     function scheduleListTokens() {
         clearTimeout(listTokenTimer);
         listTokenTimer = setTimeout(async () => {
-            if (transition) { scheduleListTokens(); return; }
+            if (shell.isNavigating) { scheduleListTokens(); return; }
             const expectedScope = state.scope;
             const expectedTokenizer = tokenizerKey;
             if (textCompletionView()) {
@@ -578,7 +585,7 @@ export function initializePromptEditor(column) {
                         const count = await countContent(content);
                         if (state.scope !== expectedScope || tokenizerKey !== expectedTokenizer || !textCompletionView()) return;
                         const token = rowFor(entry.id)?.querySelector('.sb-prompt-token');
-                        if (token && !transition && token.textContent !== String(count)) token.textContent = String(count);
+                        if (token && !shell.isNavigating && token.textContent !== String(count)) token.textContent = String(count);
                     } catch { return; }
                 }
                 return;
@@ -592,10 +599,10 @@ export function initializePromptEditor(column) {
                     if (state.scope !== expectedScope || tokenizerKey !== expectedTokenizer) return;
                     if (promptFor(prompt.identifier)?.content !== content) continue;
                     const token = rowFor(prompt.identifier)?.querySelector('.sb-prompt-token');
-                    if (token && !transition) token.textContent = String(count);
+                    if (token && !shell.isNavigating) token.textContent = String(count);
                 } catch { return; }
             }
-            if (!transition) updateListSubtitle();
+            if (!shell.isNavigating) updateListSubtitle();
         }, 300);
     }
 
@@ -650,47 +657,19 @@ export function initializePromptEditor(column) {
         event.stopPropagation();
         toggleSearch();
     });
-    list.addEventListener('pointerdown', event => {
-        if (event.target.closest('.sb-prompt-grip[aria-disabled="false"]')) listPointerActive = true;
-    }, true);
-    const finishListPointer = () => {
-        if (!listPointerActive) return;
-        listPointerActive = false;
-        requestAnimationFrame(() => {
-            if (!listRefreshPending) return;
-            listRefreshPending = false;
-            renderList();
-        });
-    };
-    window.addEventListener('pointerup', finishListPointer, true);
-    window.addEventListener('pointercancel', finishListPointer, true);
-    window.addEventListener('blur', finishListPointer);
 
-    async function allowLeave() {
-        if (!dirty()) return true;
-        if (busy) return false;
-        busy = true;
-        const popup = new Popup(element('p', '', t`Unsaved changes`), POPUP_TYPE.CONFIRM, '', {
-            okButton: t`Save`, cancelButton: t`Cancel`, customButtons: [{ text: t`Discard`, result: 2 }], defaultResult: POPUP_RESULT.NEGATIVE,
-        });
-        popup.cancelButton.style.order = '0';
-        popup.okButton.style.order = '2';
-        const result = await popup.show();
-        busy = false;
-        if (result === POPUP_RESULT.AFFIRMATIVE) return save();
-        if (result !== 2) return false;
+    function discardDraft() {
         const live = kind === 'utility'
             ? { ...draft, content: model.readUtility(draft.identifier) }
             : kind === 'text-completion' ? model.readTextCompletionEntry(draft.identifier) : promptFor(draft.identifier);
         if (!live) {
             closeNow();
-            return true;
+            return;
         }
         draft = structuredClone(live);
         draftScope = state.scope;
         baseline = JSON.stringify(draft);
         renderEditor();
-        return true;
     }
 
     function save() {
@@ -753,99 +732,26 @@ export function initializePromptEditor(column) {
     }
 
     async function openDraft(value, nextKind, nextMode, isNew = false) {
-        cancelNavigation();
+        shell.cancelNavigation();
         closeOverlays();
-        const wasOpen = Boolean(draft);
-        const startWidth = list.getBoundingClientRect().width;
         draft = structuredClone(value);
         kind = nextKind;
         mode = nextMode;
         draftScope = state.scope;
         baseline = isNew ? '' : JSON.stringify(draft);
-        returningId = draft.identifier;
-        root.dataset.open = 'true';
-        renderEditor();
         renderList();
-        layout();
-        if (!wasOpen) navigate(true, startWidth);
-        else play(editor.querySelector('.sb-prompt-content'), [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_FAST });
-        editor.querySelector('.sb-prompt-title')?.focus({ preventScroll: true });
+        // Callers ran the leave guard; force re-renders the same prompt in a new mode.
+        await shell.selectItem(draft.identifier, { guard: false, force: true });
     }
 
-    async function closeEditor() {
-        if (!(await allowLeave())) return;
-        cancelNavigation();
-        closeOverlays();
-        const startWidth = list.getBoundingClientRect().width;
-        draft = null;
-        list.inert = false;
-        root.dataset.open = 'false';
-        navigate(false, startWidth);
-        rowFor(returningId)?.focus({ preventScroll: true });
+    function closeEditor() {
+        return shell.deselectItem();
     }
 
     function closeNow() {
         draft = null;
-        cancelNavigation();
         closeOverlays();
-        root.dataset.open = 'false';
-        editor.hidden = true;
-        layout();
-    }
-
-    function cancelNavigation() {
-        if (transition) {
-            const previous = transition;
-            transition = null;
-            cancelAnimationFrame(previous.startFrame);
-            previous.handles.forEach(handle => handle?.cancel());
-        }
-        for (const node of [list, editor]) {
-            stopMotion(node);
-            for (const property of ['width', 'transform', 'opacity', 'will-change']) node.style.removeProperty(property);
-        }
-        if (editor.classList.contains('sb-prompt-travelling')) editor.classList.remove('sb-prompt-travelling');
-        if (editor.hidden !== !draft) editor.hidden = !draft;
-        if (editor.inert !== !draft) editor.inert = !draft;
-        const listInert = collapsed && Boolean(draft);
-        if (list.inert !== listInert) list.inert = listInert;
-        if (listRefreshPending) { listRefreshPending = false; renderList(); }
-    }
-
-    function navigate(opening, startWidth) {
-        const frame = { handles: [], remaining: 2, startFrame: 0 };
-        transition = frame;
-        editor.hidden = false;
-        editor.inert = !opening;
-        editor.classList.add('sb-prompt-travelling');
-        // Width intentionally reflows the list; the editor keeps its settled width and slides over it.
-        editor.style.width = `${collapsed ? root.clientWidth : root.clientWidth - listWidth() - 1}px`;
-        editor.style.transform = opening ? 'translateX(100%)' : 'none';
-        list.style.width = `${startWidth}px`;
-        if (collapsed) {
-            list.style.transform = opening ? 'none' : 'translateX(-26%)';
-            list.style.opacity = opening ? '1' : '0.42';
-        }
-        const finish = () => {
-            if (transition !== frame || --frame.remaining) return;
-            transition = null;
-            cancelNavigation();
-            layout();
-            renderList();
-        };
-        const start = () => {
-            if (transition !== frame) return;
-            frame.handles.push(play(editor, opening
-                ? [{ transform: 'translateX(100%)' }, { transform: 'none' }]
-                : [{ transform: 'none' }, { transform: 'translateX(100%)' }], { ...SPRING_NAVIGATION, fill: 'both', onEnd: finish }));
-            frame.handles.push(play(list, collapsed
-                ? opening ? [{ transform: 'none', opacity: 1 }, { transform: 'translateX(-26%)', opacity: 0.42 }] : [{ transform: 'translateX(-26%)', opacity: 0.42 }, { transform: 'none', opacity: 1 }]
-                : [{ width: `${startWidth}px` }, { width: `${opening ? listWidth() : root.clientWidth}px` }], { ...SPRING_NAVIGATION, fill: 'both', onEnd: finish }));
-        };
-        // Settle the new editor DOM and its container-query layout before the first animation frame.
-        editor.getBoundingClientRect();
-        if (prefersReducedMotion()) start();
-        else frame.startFrame = requestAnimationFrame(start);
+        shell.deselectNow();
     }
 
     function property(label, control) {
@@ -1114,7 +1020,7 @@ export function initializePromptEditor(column) {
     }
 
     function setMode(value) {
-        cancelNavigation();
+        shell.cancelNavigation();
         mode = value;
         renderEditor();
         play(editor.querySelector('.sb-prompt-content'), [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_FAST });
@@ -1257,7 +1163,7 @@ export function initializePromptEditor(column) {
         const request = ++tokenRequest;
         tokenTimer = setTimeout(async () => {
             if (!draft || draft.marker) return;
-            if (transition) { scheduleTokens(); return; }
+            if (shell.isNavigating) { scheduleTokens(); return; }
             try {
                 const count = await countContent(draft.content || '');
                 if (request !== tokenRequest || !draft) return;
@@ -1273,7 +1179,7 @@ export function initializePromptEditor(column) {
 
     function measureActions() {
         const header = editor.querySelector('.sb-prompt-detail-header');
-        if (!header || !draft || transition) return;
+        if (!header || !draft || shell.isNavigating) return;
         const title = header.querySelector('.sb-prompt-title');
         const group = header.querySelector('.sb-prompt-actions');
         const fixed = [...header.children].filter(node => node !== title && node !== group && getComputedStyle(node).display !== 'none');
@@ -1300,33 +1206,21 @@ export function initializePromptEditor(column) {
     }
 
     function scheduleLayout() {
-        if (layoutFrame || transition) return;
-        layoutFrame = requestAnimationFrame(() => {
-            layoutFrame = 0;
-            layout();
-        });
+        shell?.scheduleLayout();
     }
 
-    function layout() {
-        if (transition) return;
-        const width = root.clientWidth;
-        if (!width) return;
-        const nextCollapsed = mobile.matches || width < 720;
-        const nextListWidth = Math.max(240, Math.min(420, sidebarWidth || width * 0.3));
-        const hideCollapsed = Boolean(draft) && nextCollapsed;
+    // Reads for the shell's layout pass; the shell applies its own writes in between.
+    function measureShellLayout({ width, collapsed }) {
+        const hideCollapsed = Boolean(draft) && collapsed;
         const card = column.querySelector(':scope > .sb-backend-section-header');
         const headerText = card?.textContent ?? '';
         const headerHidden = column.classList.contains('sb-prompt-hide-header');
         const revealHeader = !hideCollapsed && headerHidden && (headerMeasuredWidth !== width || headerMeasuredText !== headerText || !draft);
         const fits = !headerHidden && card && [...card.querySelectorAll('.sb-backend-title-row, .sb-editor-meta')].every(node => node.scrollWidth <= node.clientWidth + 1);
-        const actionLayout = measureActions();
-        if (collapsed !== nextCollapsed) closeOverlays();
-        collapsed = nextCollapsed;
-        if (root.dataset.collapsed !== String(collapsed)) root.dataset.collapsed = String(collapsed);
-        if (root.style.getPropertyValue('--sb-prompt-list-width') !== `${nextListWidth}px`) root.style.setProperty('--sb-prompt-list-width', `${nextListWidth}px`);
-        if (divider.getAttribute('aria-valuenow') !== String(Math.round(nextListWidth))) divider.setAttribute('aria-valuenow', String(Math.round(nextListWidth)));
-        const listInert = collapsed && Boolean(draft);
-        if (list.inert !== listInert) list.inert = listInert;
+        return { headerText, headerHidden, revealHeader, fits, actionLayout: measureActions() };
+    }
+
+    function applyShellLayout({ headerText, headerHidden, revealHeader, fits, actionLayout }, { width, collapsed }) {
         if (column.classList.contains('sb-prompt-detail-open') !== Boolean(draft)) column.classList.toggle('sb-prompt-detail-open', Boolean(draft));
         const hideHeader = !revealHeader && Boolean(draft) && (collapsed || !fits);
         if (headerHidden !== hideHeader) column.classList.toggle('sb-prompt-hide-header', hideHeader);
@@ -1386,36 +1280,10 @@ export function initializePromptEditor(column) {
         if (renderList()) scheduleLayout();
     }
 
-    divider.addEventListener('keydown', event => {
-        if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
-        event.preventDefault();
-        sidebarWidth = Math.max(240, Math.min(420, listWidth() + (event.key === 'ArrowLeft' ? -10 : 10)));
-        localStorage.setItem('sb-pm-list-width', String(sidebarWidth));
-        layout();
-    });
-    divider.addEventListener('pointerdown', event => {
-        if (transition) return;
-        event.preventDefault();
-        divider.setPointerCapture(event.pointerId);
-        const startX = event.clientX;
-        const startWidth = listWidth();
-        const move = moveEvent => {
-            sidebarWidth = Math.max(240, Math.min(420, startWidth + moveEvent.clientX - startX));
-            scheduleLayout();
-        };
-        const end = () => {
-            divider.removeEventListener('pointermove', move);
-            divider.removeEventListener('pointerup', end);
-            divider.removeEventListener('pointercancel', end);
-            localStorage.setItem('sb-pm-list-width', String(sidebarWidth));
-        };
-        divider.addEventListener('pointermove', move);
-        divider.addEventListener('pointerup', end, { once: true });
-        divider.addEventListener('pointercancel', end, { once: true });
-    });
     editor.addEventListener('keydown', event => {
         if (event.isComposing) return;
-        if (event.key === 'Escape') { event.preventDefault(); void closeEditor(); }
+        // Escape closes the innermost surface only; the settings page closes itself on any bubbling Escape.
+        if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); void closeEditor(); }
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); save(); }
     });
     document.addEventListener('pointerdown', event => {
@@ -1444,7 +1312,7 @@ export function initializePromptEditor(column) {
     }, true);
     document.addEventListener('sb:shell-tab-activated', async event => {
         if (event.detail.tabId === 'editor') { synchronize(); return; }
-        cancelNavigation();
+        shell.cancelNavigation();
         closeOverlays();
         if (!dirty()) return;
         if (!(await allowLeave())) {
@@ -1455,18 +1323,15 @@ export function initializePromptEditor(column) {
     document.addEventListener('change', event => {
         if (event.target instanceof HTMLSelectElement && event.target.matches('#sysprompt_select, #instruct_presets, #context_presets')) scheduleSynchronize();
     });
-    window.addEventListener('beforeunload', event => {
-        if (!dirty()) return;
-        event.preventDefault();
-        event.returnValue = '';
-    });
     document.addEventListener('sb:prompt-manager-rendered', scheduleSynchronize);
     document.getElementById('main_api')?.addEventListener('change', scheduleSynchronize);
     eventSource.on(event_types.APP_READY, synchronize);
+    // The shell observes its root; this observer re-measures header actions when the header resizes.
     const resizeObserver = new ResizeObserver(scheduleLayout);
-    resizeObserver.observe(root);
-    mobile.addEventListener('change', () => { cancelNavigation(); scheduleLayout(); });
-    window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css', { id: 'deferred-prompt-editor-css' })
+    Promise.all([
+        loadListEditorStyles(),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261016a', { id: 'deferred-prompt-editor-css' }),
+    ])
         .then(() => { stylesReady = true; synchronize(); })
         .catch(error => toastr.error(error.message));
 }
