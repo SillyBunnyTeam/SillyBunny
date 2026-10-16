@@ -41,11 +41,19 @@ test.describe('World Info sorting controls', () => {
                 openWorldInfoEditor(worldName);
             }, name);
 
-            const entries = page.locator('#world_popup_entries_list .world_entry');
+            // The rebuilt editor owns the list; sorting and Apply current sorting live in its menus.
+            const editor = page.locator('#WorldInfo .sb-wi-editor');
+            const entries = editor.locator('.sb-wi-row');
+            await expect(editor).toBeAttached();
             await expect(entries).toHaveCount(3);
-            await page.locator('#world_info_sort_order').selectOption('1');
-            await expect(entries.first().locator('textarea[name="comment"]')).toHaveValue('Alpha');
-            await page.locator('#world_apply_current_sorting').click();
+            await editor.locator('.sb-wi-list-tools button:has(.fa-sliders)').click();
+            await page.locator('.sb-action-menu [role^="menuitem"]', { hasText: 'Title A-Z' }).click();
+            await expect(entries.first()).toContainText('Alpha');
+            const applySorting = async () => {
+                await editor.locator('.sb-wi-list-header button:has(.fa-ellipsis-vertical)').click();
+                await page.locator('.sb-action-menu [role^="menuitem"]', { hasText: 'Apply current sorting as Order' }).click();
+            };
+            await applySorting();
 
             const start = page.locator('#wi_sort_start');
             const step = page.locator('#wi_sort_step');
@@ -65,7 +73,7 @@ test.describe('World Info sorting controls', () => {
             await popup.locator('.popup-button-ok').click();
             await expect.poll(readSavedOrders).toEqual({ native: [0, 5, 10], card: [0, 5, 10], cardIds: [4, 8, 12] });
 
-            await page.locator('#world_apply_current_sorting').click();
+            await applySorting();
             await start.fill('8');
             await step.fill('5');
             await expect(popup.locator('.info-block')).toContainText('clamped');

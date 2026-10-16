@@ -107,6 +107,9 @@ let desktopSelectedWorldInfoUid = null;
 let isWorldInfoEditorPopoutRequested = false;
 let isWorldInfoEditorPopoutShellSyncBound = false;
 let worldInfoEditorLoadId = 0;
+// SillyBunny: the rebuilt editor (sillybunny-world-info-editor.js) registers here and owns list
+// rendering, pagination and drag ordering; toolbar handlers below stay bound and act as its transport.
+let worldInfoEditorAdapter = null;
 
 // Do not optimize. updateEditor is a function that is updated by the displayWorldEntries with new data.
 export const worldInfoFilter = new FilterHelper(() => updateEditor());
@@ -2092,6 +2095,50 @@ export async function showWorldEditor(name) {
 }
 
 /**
+ * SillyBunny: registers the rebuilt World Info editor. While registered, `displayWorldEntries`
+ * calls `adapter.render({ name, data, navigation, flashOnNav })` instead of building the legacy list.
+ * @param {{ render: (state: { name: string|null, data: object|null, navigation: any, flashOnNav: boolean }) => unknown }|null} adapter
+ */
+export function setWorldInfoEditorAdapter(adapter) {
+    worldInfoEditorAdapter = adapter ?? null;
+    if (worldInfoEditorAdapter) {
+        return worldInfoEditor ? updateEditor(navigation_option.previous, false) : displayWorldEntries(null, null);
+    }
+}
+
+/** SillyBunny: the book open in the editor; `data` is the tracked object that saves must use. */
+export function getWorldInfoEditorState() {
+    return worldInfoEditor ? { name: worldInfoEditor.name, data: worldInfoEditor.data } : { name: null, data: null };
+}
+
+/** SillyBunny: re-runs the editor render for the open book (legacy `updateEditor`). */
+export function refreshWorldInfoEditor(navigation = navigation_option.none, flashOnNav = false) {
+    return updateEditor(navigation, flashOnNav);
+}
+
+/**
+ * SillyBunny: the legacy list pipeline (field backfill → search → view filter → sort), shared by
+ * the legacy list and the rebuilt editor.
+ * @param {object} data
+ * @returns {object[]}
+ */
+export function getWorldInfoDisplayEntries(data) {
+    let entriesArray = Object.keys(data?.entries ?? {}).map(uid => {
+        const entry = data.entries[uid];
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+            return null;
+        }
+        entry.displayIndex = entry.displayIndex ?? entry.uid;
+        return entry;
+    }).filter(entry => entry !== null);
+
+    entriesArray = addMissingWorldInfoFields(entriesArray);
+    entriesArray = worldInfoFilter.applyFilters(entriesArray);
+    entriesArray = filterWorldInfoEntriesByView(entriesArray);
+    return sortWorldInfoEntries(entriesArray);
+}
+
+/**
  * Loads world info from the backend.
  *
  * This function will return from `worldInfoCache` if it has already been loaded before.
@@ -2594,6 +2641,7 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
         $('#world_duplicate').off('click').on('click', nullWorldInfo);
         worldEntriesList.hide();
         $('#world_info_pagination').html('');
+        await worldInfoEditorAdapter?.render({ name: null, data: null, navigation, flashOnNav });
         return;
     }
 
@@ -2632,21 +2680,8 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
     verifyWorldInfoSearchSortRule();
 
     function getDataArray(callback) {
-        // Convert the data.entries object into an array
-        let entriesArray = Object.keys(data.entries).map(uid => {
-            const entry = data.entries[uid];
-            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-                return null;
-            }
-            entry.displayIndex = entry.displayIndex ?? entry.uid;
-            return entry;
-        }).filter(entry => entry !== null);
-
-        // Apply the filter and do the chosen sorting
-        entriesArray = addMissingWorldInfoFields(entriesArray);
-        entriesArray = worldInfoFilter.applyFilters(entriesArray);
-        entriesArray = filterWorldInfoEntriesByView(entriesArray);
-        entriesArray = sortWorldInfoEntries(entriesArray);
+        // SillyBunny: pipeline shared with the rebuilt editor.
+        const entriesArray = getWorldInfoDisplayEntries(data);
 
         // Cache keys
         const keys = entriesArray.flatMap(entry => [...entry.key, ...entry.keysecondary]);
@@ -2661,12 +2696,12 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
     const perPageDefault = 25;
     let startPage = 1;
 
-    if (navigation === navigation_option.previous) {
+    if (navigation === navigation_option.previous && !worldInfoEditorAdapter) {
         startPage = $('#world_info_pagination').pagination('getCurrentPageNum');
     }
 
     const navigationTargetUid = requestedUid ?? (isDesktopSplit ? desktopSelectedWorldInfoUid : null);
-    if (navigationTargetUid !== null) {
+    if (navigationTargetUid !== null && !worldInfoEditorAdapter) {
         const data = getDataArray();
         const uidIndex = data.findIndex(x => x.uid === navigationTargetUid);
         const perPage = Number(accountStorage.getItem(storageKey)) || perPageDefault;
@@ -2675,7 +2710,8 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
         }
     }
 
-    $('#world_info_pagination').pagination({
+    // SillyBunny: the rebuilt editor paginates, scrolls to and drags entries itself.
+    if (!worldInfoEditorAdapter) $('#world_info_pagination').pagination({
         dataSource: getDataArray,
         pageSize: Number(accountStorage.getItem(storageKey)) || perPageDefault,
         sizeChangerOptions: [10, 25, 50, 100, 500, 1000],
@@ -2750,7 +2786,7 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
         },
     });
 
-    if (navigationTargetUid !== null) {
+    if (navigationTargetUid !== null && !worldInfoEditorAdapter) {
         const selector = `#world_popup_entries_list [uid="${navigationTargetUid}"]`;
         waitUntilCondition(() => document.querySelector(selector) !== null).finally(() => {
             const element = $(selector);
@@ -2967,7 +3003,7 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
         worldEntriesList.sortable('destroy');
     }
 
-    worldEntriesList.sortable({
+    if (!worldInfoEditorAdapter) worldEntriesList.sortable({
         items: '.world_entry',
         delay: getSortableDelay(),
         handle: '.drag-handle',
@@ -2996,6 +3032,7 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
     });
 
     //$("#world_popup_entries_list").disableSelection();
+    await worldInfoEditorAdapter?.render({ name, data, navigation, flashOnNav });
 }
 
 export const originalWIDataKeyMap = {
@@ -7528,68 +7565,8 @@ export function initWorldInfo() {
         await assignLorebookToChat({ shiftKey: true, altKey: false });
     });
 
-    // Not needed on mobile
-    if (!isMobile()) {
-        const syncWorldInfoSelect2DropdownGeometry = (select) => {
-            const $select = $(select);
-            const select2 = $select.data('select2');
-            const $container = select2?.$container?.length ? select2.$container : $select.next('.select2-container');
-            const containerRect = $container[0]?.getBoundingClientRect();
-            const fallbackRect = select.closest('.world_popup_action_group')?.getBoundingClientRect();
-            const measuredWidth = containerRect?.width || fallbackRect?.width || select.getBoundingClientRect().width;
-            const maxViewportWidth = Math.max(240, (document.documentElement.clientWidth || window.innerWidth || measuredWidth) - 24);
-            const width = Math.min(Math.max(240, Math.ceil(measuredWidth || 0)), maxViewportWidth);
-            const $dropdown = select2?.dropdown?.$dropdown?.length
-                ? select2.dropdown.$dropdown
-                : $(`#select2-${select.id}-results`).closest('.select2-dropdown');
-
-            if (!$dropdown.length || !Number.isFinite(width)) {
-                return;
-            }
-
-            const dropdownWidth = `${width}px`;
-            const $dropdownContainer = $dropdown.closest('.select2-container--open');
-            $dropdown.css({ width: dropdownWidth, minWidth: dropdownWidth });
-            $dropdownContainer.css({ width: dropdownWidth, minWidth: dropdownWidth });
-        };
-
-        $('#world_editor_select').select2({
-            width: '100%',
-            placeholder: t`--- Pick to Edit ---`,
-            searchInputPlaceholder: t`Search...`,
-            dropdownCssClass: 'sb-world-info-select2-dropdown',
-            allowClear: true,
-            closeOnSelect: true,
-            multiple: false,
-        });
-
-        $('#world_info').select2({
-            width: '100%',
-            placeholder: t`No Worlds active. Click here to select.`,
-            dropdownCssClass: 'sb-world-info-select2-dropdown',
-            allowClear: true,
-            closeOnSelect: false,
-        });
-
-        $('#world_editor_select, #world_info')
-            .off('select2:open.sillybunnyWorldInfoGeometry')
-            .on('select2:open.sillybunnyWorldInfoGeometry', function () {
-                window.requestAnimationFrame(() => syncWorldInfoSelect2DropdownGeometry(this));
-            });
-
-        // Subscribe world loading to the select2 multiselect items (We need to target the specific select2 control)
-        select2ChoiceClickSubscribe($('#world_info'), target => {
-            const name = $(target).text();
-            const selectedIndex = world_names.indexOf(name);
-            const alreadySelectedInEditor = $('#world_editor_select option:selected').text() === name;
-            if (selectedIndex !== -1 && !alreadySelectedInEditor) {
-                $('#world_editor_select').val(selectedIndex).trigger('change');
-                console.log('Quick selection of world', name);
-            } else {
-                console.warn('lets not reload an already loaded list yes?');
-            }
-        }, { buttonStyle: true, closeDrawer: true });
-    }
+    // SillyBunny: no Select2 on #world_editor_select / #world_info; the rebuilt editor's book picker
+    // and Active books list drive these native selects (Appendix B D3).
 
     $('#WorldInfo, #world_popup_editor_host, #world_popup_entries_list').on('scroll', () => {
         $('.world_entry input[name="group"], .world_entry input[name="automationId"]').each((_, el) => {

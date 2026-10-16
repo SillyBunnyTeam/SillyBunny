@@ -680,6 +680,9 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
+        // SillyBunny: the rebuilt World Info shell stays deferred like the Prompt Editor.
+        { href: 'css/sillybunny-editor-shell.css?v=20261016b', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-world-info-editor.css?v=20261017a', id: 'deferred-world-info-editor-css' },
     ],
     'characters:persona': [
         { href: 'css/personas.css?v=20260609a', id: 'deferred-personas-css' },
@@ -7604,6 +7607,8 @@ function setCharacterImportPanelVisible(visible) {
     }
 }
 
+// SillyBunny: defer the rebuilt editor and its styles until this tab is first requested.
+let worldInfoEditorMountPromise = null;
 function setCharacterWorldInfoPanelVisible(visible) {
     const host = ensureCharacterWorldInfoPanel() ?? document.getElementById('sb_character_world_info_panel');
     const content = document.getElementById('WorldInfo');
@@ -7615,6 +7620,16 @@ function setCharacterWorldInfoPanelVisible(visible) {
 
     if (content instanceof HTMLElement) {
         content.setAttribute('aria-hidden', String(!visible));
+        if (visible && !worldInfoEditorMountPromise) {
+            worldInfoEditorMountPromise = import('./sillybunny-world-info-editor.js').then(async module => {
+                await Promise.all(SB_PANEL_STYLESHEETS['characters:world-info'].map(stylesheet =>
+                    window.SillyBunnyAssets?.loadStylesheetAsync(stylesheet.href, { id: stylesheet.id })));
+                return module.mountWorldInfoEditor(content);
+            }).catch(error => {
+                worldInfoEditorMountPromise = null;
+                console.warn('[SillyBunny] Could not mount the World Info editor.', error);
+            });
+        }
     }
 }
 
