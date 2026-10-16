@@ -60,7 +60,8 @@ function createFixture({ preservePaths = ['.cursor-key'] } = {}) {
         targetVersion: '2.0.0',
         tag: 'v2.0.0',
         commit: 'a'.repeat(40),
-        preservePaths,
+        // Staging records preserve paths with native separators.
+        preservePaths: preservePaths.map(value => value.split('/').join(path.sep)),
         expectedPluginId: 'example-server-plugin',
         releaseDigest,
     };
@@ -113,6 +114,23 @@ describe('server plugin update helper', () => {
 
         expect(fs.readFileSync(path.join(fixture.pluginPath, 'state', 'key'), 'utf8')).toBe('runtime-state');
         finalizeServerPluginRelease(transaction);
+    });
+
+    test('activates a release whose preserved state and Git objects are read-only', () => {
+        const fixture = createFixture();
+        const packPath = path.join('.git', 'objects', 'pack', 'pack-test.pack');
+        fs.chmodSync(path.join(fixture.pluginPath, '.cursor-key'), 0o444);
+        fs.mkdirSync(path.join(fixture.releaseRoot, path.dirname(packPath)), { recursive: true });
+        fs.writeFileSync(path.join(fixture.releaseRoot, packPath), 'PACK');
+        fs.chmodSync(path.join(fixture.releaseRoot, packPath), 0o444);
+
+        const transaction = applyServerPluginRelease(fixture.payload);
+
+        expect(fs.readFileSync(path.join(fixture.pluginPath, '.cursor-key'), 'utf8')).toBe('persistent-secret');
+        expect(fs.lstatSync(path.join(fixture.pluginPath, '.cursor-key')).mode & 0o200).toBe(0);
+        expect(fs.lstatSync(path.join(fixture.pluginPath, packPath)).mode & 0o200).toBe(0);
+        finalizeServerPluginRelease(transaction);
+        expect(fs.existsSync(fixture.journalPath)).toBe(false);
     });
 
     test('restores the previous plugin after activation validation fails', () => {

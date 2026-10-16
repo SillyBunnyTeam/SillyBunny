@@ -21,6 +21,7 @@ import {
 } from '../server-admin-git.js';
 import { getServerLogSnapshot } from '../server-log-buffer.js';
 import { getInstallType, hasOwnGitCheckout } from '../install-type.js';
+import { getNpmCommand } from '../npm-launcher.js';
 import {
     discardStagedServerPluginRelease,
     getServerPluginUpdateCapabilities,
@@ -548,19 +549,19 @@ async function runCommand(command, args, options = {}) {
     });
 }
 
-function getInstallCommand() {
-    const bunLockPath = path.join(serverDirectory, 'bun.lock');
-    const packageLockPath = path.join(serverDirectory, 'package-lock.json');
-    const preferNodeInstall = isNativeTermuxEnvironment() && !isBunRuntime();
+function getInstallCommand({ directory, commandExists, bunRuntime }) {
+    const bunLockPath = path.join(directory, 'bun.lock');
+    const packageLockPath = path.join(directory, 'package-lock.json');
+    const preferNodeInstall = isNativeTermuxEnvironment() && !bunRuntime;
 
-    if (!preferNodeInstall && (isBunRuntime() || fs.existsSync(bunLockPath)) && commandExistsSync('bun')) {
+    if (!preferNodeInstall && (bunRuntime || fs.existsSync(bunLockPath)) && commandExists('bun')) {
         return {
             command: 'bun',
             args: ['install'],
         };
     }
 
-    if (fs.existsSync(packageLockPath) && commandExistsSync('npm')) {
+    if (fs.existsSync(packageLockPath) && commandExists('npm')) {
         return {
             command: 'npm',
             args: ['ci', '--no-audit', '--no-fund', '--omit=dev'],
@@ -568,6 +569,65 @@ function getInstallCommand() {
     }
 
     return null;
+}
+
+/**
+ * Returns the command that runs an install command without a shell.
+ * @param {{ command: string, args: string[] }} installCommand
+ * @param {{ platform: NodeJS.Platform, env: NodeJS.ProcessEnv, bunRuntime: boolean }} options
+ * @returns {{ command: string, args: string[] }}
+ */
+function getInstallSpawnCommand(installCommand, { platform, env, bunRuntime }) {
+    // SillyBunny: Node on Windows needs npm-cli.js; Bun resolves npm.cmd without a shell.
+    if (installCommand.command === 'npm' && platform === 'win32' && !bunRuntime) {
+        return getNpmCommand(installCommand.args, { env, platform });
+    }
+
+    return installCommand;
+}
+
+/**
+ * Installs dependencies after a self-update merge.
+ * The returned command is the install command shown in the admin UI, not the spawned executable.
+ * @param {object} [options] Injectable for tests.
+ * @param {string} [options.directory] Checkout to install into.
+ * @param {NodeJS.Platform} [options.platform]
+ * @param {NodeJS.ProcessEnv} [options.env]
+ * @param {boolean} [options.bunRuntime] Whether the server runs under Bun.
+ * @param {(command: string) => boolean} [options.commandExists]
+ * @param {typeof runCommand} [options.run]
+ * @returns {Promise<{ command: string, stdout: string, stderr: string } | null>} null when no install command applies.
+ */
+export async function installUpdateDependencies({
+    directory = serverDirectory,
+    platform = process.platform,
+    env = process.env,
+    bunRuntime = isBunRuntime(),
+    commandExists = commandExistsSync,
+    run = runCommand,
+} = {}) {
+    const installCommand = getInstallCommand({ directory, commandExists, bunRuntime });
+
+    if (!installCommand) {
+        return null;
+    }
+
+    const restorePackageLockAfterInstall = installCommand.command === 'npm'
+        && installCommand.args.includes('ci')
+        && commandExists('git')
+        && fs.existsSync(path.join(directory, 'package-lock.json'));
+    const spawnCommand = getInstallSpawnCommand(installCommand, { platform, env, bunRuntime });
+    const result = await run(spawnCommand.command, spawnCommand.args, { cwd: directory, env });
+
+    if (restorePackageLockAfterInstall) {
+        await run('git', ['restore', '--', 'package-lock.json'], { cwd: directory, env }).catch(() => null);
+    }
+
+    return {
+        command: [installCommand.command, ...installCommand.args].join(' '),
+        stdout: result.stdout,
+        stderr: result.stderr,
+    };
 }
 
 async function getRepositoryStatus() {
@@ -1045,21 +1105,7 @@ router.post('/update', requireAdminMiddleware, async (_request, response) => {
             stashPopWarning = await restoreAutoStash(git, { reason: 'after update' });
         }
 
-        const installCommand = getInstallCommand();
-        let installResult = null;
-        let restorePackageLockAfterInstall = false;
-
-        if (installCommand) {
-            restorePackageLockAfterInstall = installCommand.command === 'npm'
-                && installCommand.args.includes('ci')
-                && commandExistsSync('git')
-                && fs.existsSync(path.join(serverDirectory, 'package-lock.json'));
-            installResult = await runCommand(installCommand.command, installCommand.args);
-
-            if (restorePackageLockAfterInstall) {
-                await runCommand('git', ['restore', '--', 'package-lock.json']).catch(() => null);
-            }
-        }
+        const install = await installUpdateDependencies();
 
         const nextRepository = await getRepositoryStatus();
         const nextVersion = await getVersion();
@@ -1074,10 +1120,10 @@ router.post('/update', requireAdminMiddleware, async (_request, response) => {
             message: stashPopWarning || `Update applied from ${repository.trackingBranch}. Restarting SillyBunny now.`,
             version: nextVersion,
             repository: nextRepository,
-            install: installResult ? {
-                command: [installCommand.command, ...installCommand.args].join(' '),
-                stdout: truncateOutput(installResult.stdout),
-                stderr: truncateOutput(installResult.stderr),
+            install: install ? {
+                command: install.command,
+                stdout: truncateOutput(install.stdout),
+                stderr: truncateOutput(install.stderr),
             } : null,
         });
     } catch (error) {
