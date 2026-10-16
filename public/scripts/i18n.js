@@ -310,14 +310,35 @@ export function applyLocale(root = document) {
     }
 }
 
-function addLanguagesToDropdown() {
-    const uiLanguageSelects = $('#ui_language_select, #onboarding_ui_language_select');
+// SillyBunny: the handler is named so addLanguagesToDropdown can bind it to a select it fills later.
+async function onUiLanguageSelectChange() {
+    const language = String($(this).val());
+
+    if (language) {
+        safeSetLocalStorageItem(storageKey, language);
+    } else {
+        safeRemoveLocalStorageItem(storageKey);
+    }
+
+    location.reload();
+}
+
+// SillyBunny: the settings split detaches #ui_language_select before the languages arrive, so the
+// Data & Security tab calls this again with its container. A select that is already filled is skipped.
+export function addLanguagesToDropdown(root = document) {
+    if (!Array.isArray(langs)) {
+        return;
+    }
+    const uiLanguageSelects = $(root).find('#ui_language_select, #onboarding_ui_language_select')
+        .filter((_index, select) => select.dataset.sbLanguagesLoaded !== 'true');
     for (const langObj of langs) { // Set the value to the language code
         const option = document.createElement('option');
         option.value = langObj.lang; // Set the value to the language code
         option.innerText = langObj.display; // Set the display text to the language name
         uiLanguageSelects.append(option);
     }
+    uiLanguageSelects.each((_index, select) => { select.dataset.sbLanguagesLoaded = 'true'; });
+    uiLanguageSelects.on('change', onUiLanguageSelectChange);
 
     const selectedLanguage = safeGetLocalStorageItem(storageKey);
     if (selectedLanguage) {
@@ -330,20 +351,9 @@ export async function initLocales() {
     localeData = await getLocaleData(localeFile);
     document.documentElement.lang = localeFile;
     applyLocale();
+    // SillyBunny: the language change handler is bound inside addLanguagesToDropdown, per select.
     addLanguagesToDropdown();
     updateSecretDisplay();
-
-    $('#ui_language_select, #onboarding_ui_language_select').on('change', async function () {
-        const language = String($(this).val());
-
-        if (language) {
-            safeSetLocalStorageItem(storageKey, language);
-        } else {
-            safeRemoveLocalStorageItem(storageKey);
-        }
-
-        location.reload();
-    });
 
     observer.observe(document, {
         childList: true,
