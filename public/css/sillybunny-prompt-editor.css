@@ -662,6 +662,25 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     font-size: calc(var(--mainFontSize) * 0.75);
 }
 
+#sb-settings-page .sb-prompt-editor .sb-prompt-footer .editor_maximize[data-for] {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: inherit;
+    box-shadow: none;
+    margin-inline-start: auto;
+}
+
 .sb-prompt-editor[data-collapsed='true'] .sb-prompt-detail > .sb-prompt-properties {
     display: none;
 }
@@ -953,6 +972,13 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
 }
 
 @media (pointer: coarse) {
+    #sb-settings-page .sb-prompt-editor .sb-prompt-footer .editor_maximize[data-for] {
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        min-height: 44px;
+    }
+
     .sb-prompt-trigger-row {
         min-height: 44px;
     }

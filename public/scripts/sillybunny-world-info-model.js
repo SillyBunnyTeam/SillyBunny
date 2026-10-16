@@ -261,12 +261,12 @@ export const FIELDS = Object.freeze([
     // Entry
     { ...text('comment', 'entry', 'Title', { placeholder: 'Entry Title/Memo' }), i18n: 'Title', header: true },
     {
-        id: 'enabled', section: 'entry', control: 'switch', label: 'Enabled', i18n: 'Enabled', keys: ['disable'],
+        id: 'enabled', section: 'entry', placement: 'list', control: 'switch', label: 'Enabled', i18n: 'Enabled', keys: ['disable'],
         read: entry => !entry.disable,
         write: (entry, value) => { entry.disable = !value; },
     },
     {
-        id: 'strategy', section: 'entry', control: 'combo', options: STRATEGY_OPTIONS, label: 'Strategy', i18n: 'Strategy', keys: ['constant', 'vectorized'],
+        id: 'strategy', section: 'entry', placement: 'bar', control: 'combo', options: STRATEGY_OPTIONS, label: 'Strategy', i18n: 'Strategy', keys: ['constant', 'vectorized'],
         read: strategyOf,
         write: (entry, value) => {
             if (!STRATEGY_OPTIONS.some(option => option.value === value)) return;
@@ -297,26 +297,28 @@ export const FIELDS = Object.freeze([
     { ...text('content', 'content', 'Content', { control: 'content', placeholder: 'What this keyword should mean to the AI, sent verbatim' }) },
     // Insertion
     {
-        id: 'position', section: 'insertion', control: 'combo', options: POSITION_OPTIONS, label: 'Position', i18n: 'Position', keys: ['position', 'role'],
+        id: 'position', section: 'insertion', placement: 'bar', control: 'combo', options: POSITION_OPTIONS, label: 'Position', i18n: 'Position', keys: ['position', 'role'],
         read: positionValue,
         write: (entry, value) => Object.assign(entry, parsePosition(value)),
     },
     {
         ...nullableSpin('depth', 'insertion', 'Depth', { max: 9999 }),
+        placement: 'bar',
         visibleWhen: entry => Number(entry.position) === WI_POSITION.atDepth,
     },
     {
         ...text('outletName', 'insertion', 'Outlet Name', { placeholder: 'Outlet Name' }),
+        placement: 'bar',
         visibleWhen: entry => Number(entry.position) === WI_POSITION.outlet,
     },
     {
-        id: 'order', section: 'insertion', control: 'spin', nullable: false, min: 0, max: 9999, label: 'Order', i18n: 'Order', keys: ['order'],
+        id: 'order', section: 'insertion', placement: 'bar', control: 'spin', nullable: false, min: 0, max: 9999, label: 'Order', i18n: 'Order', keys: ['order'],
         read: entry => parseOrder(entry.order ?? 0),
         write: (entry, value) => { entry.order = parseOrder(value); },
     },
     {
         // Legacy probability edits always switch useProbability on, even when the value becomes null.
-        id: 'probability', section: 'insertion', control: 'spin', nullable: true, min: 0, max: 100, label: 'Trigger %', i18n: 'Trigger %:', keys: ['probability', 'useProbability'],
+        id: 'probability', section: 'insertion', placement: 'bar', control: 'spin', nullable: true, min: 0, max: 100, label: 'Trigger %', i18n: 'Trigger %:', keys: ['probability', 'useProbability'],
         read: entry => entry.probability ?? null,
         write: (entry, value) => {
             entry.probability = parseProbability(value);

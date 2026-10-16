@@ -136,8 +136,9 @@ async function installFixture(page, { dragLocked = false } = {}) {
         }
 
         if (url.pathname === '/api/settings/save') {
-            settingsVersion += 1;
-            store.settingsSaves.push(request.postDataJSON());
+            const payload = request.postDataJSON();
+            settingsVersion = payload._version + 1;
+            store.settingsSaves.push(payload);
             return route.fulfill({ json: { result: 'ok', version: settingsVersion } });
         }
 
@@ -322,7 +323,9 @@ function promptEditorDriver(page) {
         async selectMode(mode) {
             const content = editor.locator(mode === 'preview' ? '.sb-prompt-preview' : '.sb-prompt-textarea');
             if (await content.count()) return;
-            await editor.getByRole('button', { name: mode === 'preview' ? 'Preview prompt' : 'Edit prompt', exact: true }).click();
+            const segment = editor.locator('.sb-prompt-modes label').filter({ hasText: mode === 'preview' ? 'Preview' : 'Edit' });
+            if (await segment.isVisible()) await segment.click();
+            else await editor.getByRole('button', { name: mode === 'preview' ? 'Preview prompt' : 'Edit prompt', exact: true }).click();
         },
 
         async resetToDefault() {
@@ -498,6 +501,35 @@ test.describe('Prompt Manager characterization', () => {
         await ui.close();
         await ui.openEditor('main');
         await expect(page.getByRole('switch', { name: 'Forbid overrides', exact: true })).toBeChecked();
+    });
+
+    test('expanded editor writes back to the draft and survives save and reopen', async ({ page }) => {
+        const { store, ui, baseline } = await setup(page);
+        await ui.openEditor('sbFixtureRelative');
+        const textarea = page.locator(`${FORM}_prompt`);
+        const expand = page.locator('.sb-prompt-footer .editor_maximize');
+        await expect(expand).toHaveAttribute('data-for', 'sb-prompt-form_prompt');
+        await expect(expand.locator('.fa-solid.fa-maximize')).toHaveCount(1);
+        await expand.click();
+        const popup = page.locator('dialog.popup[open]');
+        await expect(popup.locator('.maximized_textarea')).toHaveValue('Relative fixture content');
+        await popup.locator('.maximized_textarea').fill('Expanded prompt content');
+        await popup.locator('.popup-button-ok').click();
+        await expect(textarea).toHaveValue('Expanded prompt content');
+        await expect(expand).toBeFocused();
+        await expect(page.locator('.sb-prompt-dirty')).toBeVisible();
+        expect(promptFor(await readLiveOai(page), 'sbFixtureRelative').content).toBe('Relative fixture content');
+        await ui.selectMode('preview');
+        await expect(expand).toHaveCount(0);
+        await ui.selectMode('edit');
+        await ui.save();
+        await waitForSavedOai(store, oai => promptFor(oai, 'sbFixtureRelative')?.content === 'Expanded prompt content');
+        await ui.close();
+        await ui.openEditor('sbFixtureRelative');
+        await expect(textarea).toHaveValue('Expanded prompt content');
+        await ui.fill({ content: promptFor(baseline, 'sbFixtureRelative').content });
+        await ui.save();
+        await waitForSavedOai(store, oai => promptFor(oai, 'sbFixtureRelative')?.content === 'Relative fixture content');
     });
 
     test('reset to default fills the form and only persists on save', async ({ page }) => {

@@ -12,6 +12,7 @@ import { createEditorSession } from './sillybunny-editor/session.js';
 import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
 import { createSegmentedControl, setSegmentedControlValue } from './sillybunny-segmented-control.js';
 import { animateIn, stopMotion, MOTION_FAST } from './sillybunny-motion.js';
+import { createSheetController, blockUpstreamDrawerClose } from './sillybunny-sheet.js';
 
 let nextEntryId = 0;
 
@@ -80,6 +81,11 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
     let contentField;
     let showingPreview = false;
     let session;
+    let dropdown = null;
+    let propertySheet = null;
+    let sheetBackdrop = null;
+    let sheetController = null;
+    const propertyViews = [];
     let lastState = { dirty: false, saving: false };
     const fields = new Map();
     const chips = [];
@@ -116,8 +122,13 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
     banner.setAttribute('role', 'status');
     banner.hidden = true;
     const body = element('div', 'sb-wi-entry-body');
+    const summary = button('', 'sb-wi-property-summary');
+    summary.setAttribute('aria-label', t`World Info`);
+    summary.setAttribute('aria-haspopup', 'dialog');
+    summary.setAttribute('aria-expanded', 'false');
+    summary.addEventListener('click', openProperties);
     header.append(back, title, dirtyDot, modes, modeToggle, cancel, saveButton);
-    root.append(header, banner, body);
+    root.append(header, summary, createProperties(), banner, body);
     host.replaceChildren(root);
 
     const storage = createEditorDraftStore({
@@ -131,7 +142,6 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
             const payload = stored.snapshot;
             if (payload.fingerprint !== fingerprint(baseline) || !payload.draft || typeof payload.draft !== 'object' || Array.isArray(payload.draft)) {
                 storage.remove(id);
-                console.debug('[sb-wi-editor] Discarded draft with a different baseline', bookName, id);
                 return null;
             }
             return { ...stored, snapshot: payload.draft };
@@ -164,16 +174,189 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
     function restoreSnapshot(snapshot) {
         draft = snapshotOf(snapshot);
         for (const [id, field] of fields) field.setValue(model.readField(draft, id));
-        refreshVisibility();
+        refreshVisibility(true);
         setPreview(false);
         scheduleTokens();
     }
 
-    function refreshVisibility() {
+    function refreshVisibility(force = false) {
         for (const [id, field] of fields) field.setVisible(model.isFieldVisible(draft, id));
+        refreshProperties(force);
         const titleValue = model.readField(draft, titleField.id);
         if (title.value !== titleValue) title.value = titleValue;
         title.placeholder = model.entryTitle({ ...draft, comment: '' }, translate(titleField.placeholder, titleField.placeholderI18n));
+    }
+
+    function closeDropdown(restoreFocus = false) {
+        if (!dropdown) return;
+        const { trigger, node } = dropdown;
+        dropdown = null;
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.removeAttribute('aria-controls');
+        node.remove();
+        if (restoreFocus && trigger.isConnected) trigger.focus({ preventScroll: true });
+    }
+
+    function comboControl(field, label) {
+        const trigger = button('', 'sb-wi-dropdown');
+        const caption = element('span');
+        const chevron = element('i', 'fa-solid fa-chevron-down');
+        chevron.setAttribute('aria-hidden', 'true');
+        trigger.append(caption, chevron);
+        trigger.setAttribute('aria-label', label);
+        trigger.setAttribute('aria-haspopup', 'listbox');
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.addEventListener('click', () => {
+            if (dropdown?.trigger === trigger) return closeDropdown(true);
+            closeDropdown();
+            const node = element('div', 'sb-wi-property-popover');
+            node.id = `${instanceId}-${field.id}-options`;
+            node.setAttribute('role', 'listbox');
+            node.setAttribute('aria-label', label);
+            node.tabIndex = 0;
+            let active = Math.max(0, field.options.findIndex(option => option.value === model.readField(draft, field.id)));
+            const choose = index => {
+                writeField(field, field.options[index].value);
+                closeDropdown(true);
+            };
+            const options = field.options.map((option, index) => {
+                const item = element('div', 'sb-wi-property-option');
+                item.id = `${node.id}-${index}`;
+                item.setAttribute('role', 'option');
+                item.setAttribute('aria-selected', String(index === active));
+                const check = element('i', 'fa-solid fa-check');
+                check.setAttribute('aria-hidden', 'true');
+                item.append(check, element('span', '', translate(option.label, option.i18n)));
+                item.addEventListener('pointermove', () => { active = index; update(); });
+                item.addEventListener('click', () => choose(index));
+                return item;
+            });
+            const update = () => {
+                options.forEach((option, index) => option.classList.toggle('is-active', index === active));
+                node.setAttribute('aria-activedescendant', options[active].id);
+                options[active].scrollIntoView?.({ block: 'nearest' });
+            };
+            node.append(...options);
+            node.addEventListener('keydown', event => {
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    closeDropdown(true);
+                    return;
+                }
+                if (event.key === 'Tab') return closeDropdown(true);
+                if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' '].includes(event.key)) return;
+                event.preventDefault();
+                if (event.key === 'ArrowDown') active = (active + 1) % options.length;
+                if (event.key === 'ArrowUp') active = (active + options.length - 1) % options.length;
+                if (event.key === 'Home') active = 0;
+                if (event.key === 'End') active = options.length - 1;
+                if (event.key === 'Enter' || event.key === ' ') return choose(active);
+                update();
+            });
+            dropdown = { trigger, node };
+            trigger.setAttribute('aria-expanded', 'true');
+            trigger.setAttribute('aria-controls', node.id);
+            document.body.append(node);
+            blockUpstreamDrawerClose(node);
+            const rect = trigger.getBoundingClientRect();
+            const width = Math.min(Math.max(208, rect.width), innerWidth - 16);
+            node.style.width = `${width}px`;
+            node.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - width - 8))}px`;
+            node.style.top = `${innerHeight - rect.bottom > node.offsetHeight + 14 ? rect.bottom + 6 : Math.max(8, rect.top - node.offsetHeight - 6)}px`;
+            update();
+            animateIn(node, [{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }], { duration: MOTION_FAST });
+            node.focus({ preventScroll: true });
+        });
+        trigger.addEventListener('keydown', event => {
+            if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
+            event.preventDefault();
+            trigger.click();
+        });
+        return { control: trigger, setValue: value => {
+            const option = field.options.find(option => option.value === value);
+            caption.textContent = option ? translate(option.label, option.i18n) : value;
+        } };
+    }
+
+    function createProperties() {
+        const bar = element('div', 'sb-wi-properties');
+        for (const field of model.FIELDS.filter(field => field.placement === 'bar')) {
+            const label = translate(field.label, field.i18n);
+            let view;
+            if (field.control === 'combo') view = comboControl(field, label);
+            else {
+                const control = element('input');
+                control.type = field.control === 'spin' ? 'number' : 'text';
+                if (field.min !== undefined) control.min = String(field.min);
+                if (field.max !== undefined) control.max = String(field.max);
+                if (field.control === 'spin') control.step = 'any';
+                control.setAttribute('aria-label', label);
+                control.addEventListener('input', () => writeField(field, control.value));
+                control.addEventListener('change', () => writeField(field, control.value));
+                control.addEventListener('blur', () => refreshProperties());
+                view = { control, setValue: (value, force = false) => {
+                    if (force || document.activeElement !== control) control.value = value ?? '';
+                } };
+            }
+            const row = element('div', 'sb-wi-property');
+            row.dataset.sbEditorField = field.id;
+            row.append(element('span', '', label), view.control);
+            view.setValue(model.readField(draft, field.id));
+            row.hidden = !model.isFieldVisible(draft, field.id);
+            propertyViews.push({ field, row, ...view });
+            bar.append(row);
+        }
+        return bar;
+    }
+
+    function refreshProperties(force = false) {
+        for (const view of propertyViews) {
+            view.row.hidden = !model.isFieldVisible(draft, view.field.id);
+            view.setValue(model.readField(draft, view.field.id), force);
+        }
+        const strategy = model.STRATEGY_OPTIONS.find(option => option.value === model.entryStrategy(draft));
+        const outlet = Number(draft.position) === model.WI_POSITION.outlet && draft.outletName ? ` ${draft.outletName}` : '';
+        summary.textContent = `${translate(strategy.label, strategy.i18n)} · ${model.entryBadge(draft)}${outlet} · ${model.readField(draft, 'probability') ?? '—'}% ›`;
+    }
+
+    function openProperties() {
+        closeDropdown();
+        if (!sheetController) {
+            sheetBackdrop = element('button', 'sb-wi-sheet-backdrop');
+            sheetBackdrop.type = 'button';
+            sheetBackdrop.tabIndex = -1;
+            sheetBackdrop.hidden = true;
+            sheetBackdrop.setAttribute('aria-label', t`Close`);
+            propertySheet = element('div', 'sb-wi-property-sheet');
+            propertySheet.hidden = true;
+            propertySheet.setAttribute('role', 'dialog');
+            propertySheet.setAttribute('aria-modal', 'true');
+            const heading = element('h2', '', t`World Info`);
+            heading.id = `${instanceId}-properties-title`;
+            heading.tabIndex = -1;
+            propertySheet.setAttribute('aria-labelledby', heading.id);
+            const sheetHeader = element('header', 'sb-wi-sheet-header');
+            const close = button('', 'menu_button_icon');
+            close.title = t`Close`;
+            close.setAttribute('aria-label', t`Close`);
+            const glyph = element('i', 'fa-solid fa-xmark');
+            glyph.setAttribute('aria-hidden', 'true');
+            close.append(glyph);
+            close.addEventListener('click', () => sheetController.close());
+            sheetHeader.append(heading, close);
+            propertySheet.append(sheetHeader, createProperties());
+            propertySheet.addEventListener('keydown', event => {
+                if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') onKeydown(event);
+            });
+            document.body.append(sheetBackdrop, propertySheet);
+            sheetController = createSheetController({
+                sheet: propertySheet, backdrop: sheetBackdrop, getInitialFocus: () => heading, getReturnFocus: () => summary,
+                onClose: () => { closeDropdown(); summary.setAttribute('aria-expanded', 'false'); refreshProperties(); },
+            });
+        }
+        summary.setAttribute('aria-expanded', 'true');
+        sheetController.open();
     }
 
     function writeField(field, value) {
@@ -281,19 +464,27 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
         textarea.setAttribute('aria-label', label);
         textarea.placeholder = translate(field.placeholder, field.placeholderI18n);
         textarea.value = model.readField(draft, field.id);
-        textarea.addEventListener('input', () => writeField(field, textarea.value));
+        // The legacy expanded editor writes back with jQuery .trigger('input').
+        $(textarea).on('input.sbWiEntry', () => writeField(field, textarea.value));
         const pane = element('pre', 'sb-preview-pane sb-wi-entry-preview');
         pane.dataset.sbPreviewPane = textarea.id;
         pane.setAttribute('aria-label', label);
         pane.hidden = true;
         pane.tabIndex = 0;
         const footer = element('footer', 'sb-wi-entry-footer');
-        footer.append(tokens);
+        const expand = button('', 'menu_button_icon editor_maximize sb-wi-entry-expand');
+        expand.title = t`Expand the editor`;
+        expand.setAttribute('aria-label', t`Expand the editor`);
+        expand.dataset.for = textarea.id;
+        const expandIcon = element('i', 'fa-solid fa-maximize');
+        expandIcon.setAttribute('aria-hidden', 'true');
+        expand.append(expandIcon);
+        footer.append(tokens, expand);
         wrapper.append(textarea, pane);
         const row = createRow({ field: field.id, label, stacked: true, suffix: wrapper });
         // The section heading supplies the visible Content caption.
         row.row.querySelector('.ds-row-text').remove();
-        contentField = { textarea, pane, footer };
+        contentField = { textarea, pane, footer, expand };
         return { ...row, setValue: value => { if (textarea.value !== value) textarea.value = value; } };
     }
 
@@ -308,7 +499,8 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
         glyph.setAttribute('aria-hidden', 'true');
         modeToggle.replaceChildren(glyph);
         if (!contentField) return;
-        const { textarea, pane } = contentField;
+        const { textarea, pane, expand } = contentField;
+        expand.hidden = showPreview;
         if (showPreview) {
             pane.style.height = `${textarea.getBoundingClientRect().height}px`;
             pane.textContent = textarea.value;
@@ -359,11 +551,12 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
 
     for (const section of model.SECTIONS) {
         // The header field (comment) is edited inline in the header, as in the Prompt Editor.
-        const rows = model.FIELDS.filter(field => field.section === section.id && !field.header).map(field => {
+        const rows = model.FIELDS.filter(field => field.section === section.id && !field.header && !field.placement).map(field => {
             const row = createField(field);
             fields.set(field.id, row);
             return row;
         });
+        if (!rows.length) continue;
         const title = section.title ? translate(section.title, section.i18n) : undefined;
         const group = section.expander
             ? createPrefGroup({ field: `section-${section.id}`, rows: [createExpanderRow({ label: title, field: `expander-${section.id}`, children: rows })] })
@@ -575,6 +768,9 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
         if (oldName === bookName) rekeyBook(newName);
     };
     const flushDraft = () => session.flushDraft();
+    const onPointerdown = event => {
+        if (dropdown && !dropdown.node.contains(event.target) && !dropdown.trigger.contains(event.target)) closeDropdown();
+    };
 
     root.tabIndex = -1;
     root.addEventListener('keydown', onKeydown, true);
@@ -582,6 +778,7 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
     eventSource.on(event_types.WORLDINFO_DELETED, onBookDeleted);
     eventSource.on(event_types.WORLDINFO_RENAMED, onBookRenamed);
     window.addEventListener('pagehide', flushDraft);
+    document.addEventListener('pointerdown', onPointerdown);
     setPreview(false);
     chrome = mountEditorChrome({
         root, header, content: body, controls: { back, title, dirty: dirtyDot, cancel, save: saveButton },
@@ -609,6 +806,11 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
             clearTimeout(tokenTimer);
             tokenRequest++;
             chrome.dispose();
+            closeDropdown();
+            sheetController?.close({ animate: false, restoreFocus: false });
+            propertySheet?.remove();
+            sheetBackdrop?.remove();
+            $(contentField.textarea).off('.sbWiEntry');
             stopMotion(contentField.textarea);
             stopMotion(contentField.pane);
             for (const chip of chips) chip.destroy();
@@ -616,6 +818,7 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
             eventSource.removeListener(event_types.WORLDINFO_DELETED, onBookDeleted);
             eventSource.removeListener(event_types.WORLDINFO_RENAMED, onBookRenamed);
             window.removeEventListener('pagehide', flushDraft);
+            document.removeEventListener('pointerdown', onPointerdown);
             root.removeEventListener('keydown', onKeydown, true);
             root.remove();
         },

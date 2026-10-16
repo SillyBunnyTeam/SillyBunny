@@ -102,6 +102,13 @@ function createDeps(overrides = {}) {
 }
 
 describe('World Info schema parity', () => {
+    test('placement metadata keeps bar fields and the list switch out of the body without changing key coverage', () => {
+        expect(model.FIELDS.filter(field => field.placement === 'bar').map(field => field.id)).toEqual(['strategy', 'position', 'depth', 'outletName', 'order', 'probability']);
+        expect(model.FIELD_BY_ID.get('enabled').placement).toBe('list');
+        expect(model.FIELD_BY_ID.get('position').keys).toEqual(['position', 'role']);
+        expect(model.FIELD_BY_ID.get('probability').keys).toEqual(['probability', 'useProbability']);
+    });
+
     test('definition coverage contains every upstream definition key and no extras', () => {
         const upstreamKeys = definitionKeys().sort();
         const coveredKeys = Object.keys(model.DEFINITION_COVERAGE).sort();

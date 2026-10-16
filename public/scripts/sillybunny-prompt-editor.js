@@ -1153,13 +1153,23 @@ export function initializePromptEditor(column) {
             if (draft.marker) textarea.placeholder = state.sources[draft.identifier] ?? t`Generation time`;
             textarea.setAttribute('aria-label', t`Prompt content`);
             textarea.spellcheck = false;
-            textarea.addEventListener('input', () => { draft.content = textarea.value; markDirty(); });
+            // The legacy expanded editor writes back with jQuery .trigger('input').
+            $(textarea).on('input', () => { draft.content = textarea.value; markDirty(); });
             content.append(textarea);
         }
         const footer = element('footer', 'sb-prompt-footer');
         footer.append(element('span', 'sb-prompt-token-footer', kind === 'text-completion' ? '' : `${state.counts[draft.identifier] ?? '-'} ${t`tokens`}`));
         if (kind === 'text-completion' && draft.disabled) footer.append(element('span', '', t`Disabled`));
         if (state.sources?.[draft.identifier]) footer.append(element('span', '', `${t`Source`}: ${state.sources[draft.identifier]}`));
+        if (mode === 'edit' && kind !== 'text-completion') {
+            const expand = element('button', 'menu_button menu_button_icon editor_maximize sb-prompt-expand');
+            expand.type = 'button';
+            expand.title = t`Expand the editor`;
+            expand.setAttribute('aria-label', t`Expand the editor`);
+            expand.dataset.for = 'sb-prompt-form_prompt';
+            expand.append(icon('maximize'));
+            footer.append(expand);
+        }
         editor.append(content, footer);
         updateDirty();
         if (observedHeader) resizeObserver.unobserve(observedHeader);
@@ -1342,7 +1352,7 @@ export function initializePromptEditor(column) {
     const resizeObserver = new ResizeObserver(scheduleLayout);
     Promise.all([
         loadListEditorStyles(),
-        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261017b', { id: 'deferred-prompt-editor-css' }),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261018a', { id: 'deferred-prompt-editor-css' }),
     ])
         .then(() => { stylesReady = true; synchronize(); })
         .catch(error => toastr.error(error.message));

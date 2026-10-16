@@ -17,7 +17,7 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js',
 }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () => ({
     animateIn: jest.fn(), animateOut: (_node, _frames, finish) => finish(), animateHeightFrom: jest.fn(),
-    stopMotion: jest.fn(), prefersReducedMotion: () => true, MOTION_EASE_OUT_QUAD: 'linear', MOTION_FAST: 0,
+    stopMotion: jest.fn(), prefersReducedMotion: () => true, MOTION_EASE_OUT_QUAD: 'linear', MOTION_FAST: 0, SPRING_SHEET: {},
 }));
 
 const { mountWorldInfoEntry, worldInfoDraftKey } = await import('../../public/scripts/sillybunny-world-info-entry.js');
@@ -60,15 +60,21 @@ function mount(options = {}) {
 }
 
 function row(host, id) {
-    return host.querySelector(`[data-sb-editor-field="${id}"].ds-row, [data-sb-editor-field="${id}"].sb-wi-entry-filter`);
+    return host.querySelector(`[data-sb-editor-field="${id}"].ds-row, [data-sb-editor-field="${id}"].sb-wi-entry-filter, [data-sb-editor-field="${id}"].sb-wi-property`);
 }
 
 function control(host, id) {
-    return row(host, id).querySelector('textarea') ?? row(host, id).querySelector('input, select');
+    return row(host, id).querySelector('textarea, input, select') ?? row(host, id).querySelector('button');
 }
 
 function edit(host, id, value, type = 'input') {
     const input = control(host, id);
+    if (input.matches('.sb-wi-dropdown')) {
+        input.click();
+        const index = model.FIELD_BY_ID.get(id).options.findIndex(option => option.value === value);
+        document.querySelectorAll('.sb-wi-property-option')[index].click();
+        return input;
+    }
     if (input.type === 'checkbox') input.checked = value;
     else input.value = value;
     input.dispatchEvent(new Event(type, { bubbles: true }));
@@ -104,10 +110,30 @@ beforeEach(() => {
     global.structuredClone ??= value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
     global.CSS = { escape: value => value };
     window.matchMedia = jest.fn(() => ({ matches: false, addEventListener: jest.fn(), removeEventListener: jest.fn() }));
-    global.$ = target => ({
-        on(name, handler) { target.addEventListener(name.split('.')[0], handler); },
-        off() {},
-    });
+    const jqueryHandlers = new WeakMap();
+    global.$ = target => {
+        const api = {
+            on(name, handler) {
+                const type = name.split('.')[0];
+                jqueryHandlers.set(target, { type, handler });
+                target.addEventListener(type, handler);
+                return api;
+            },
+            off() {
+                const registered = jqueryHandlers.get(target);
+                if (registered) target.removeEventListener(registered.type, registered.handler);
+                jqueryHandlers.delete(target);
+                return api;
+            },
+            val(value) { target.value = value; return api; },
+            trigger(type) {
+                const registered = jqueryHandlers.get(target);
+                if (registered?.type === type) registered.handler();
+                return api;
+            },
+        };
+        return api;
+    };
     global.toastr = {
         error: jest.fn(), clear: jest.fn(),
         info: jest.fn(() => ({ find: selector => ({ on: (_type, handler) => recoveryActions.set(selector, handler) }) })),
@@ -126,7 +152,7 @@ describe('World Info schema form', () => {
         expect(headerFields.map(field => field.id)).toEqual(['comment']);
         expect(host.querySelector('.sb-wi-entry-title').dataset.sbEditorField).toBe('comment');
         expect(row(host, 'comment')).toBeNull();
-        for (const field of model.FIELDS.filter(candidate => !candidate.header)) {
+        for (const field of model.FIELDS.filter(candidate => !candidate.header && candidate.placement !== 'list')) {
             const fieldRow = row(host, field.id);
             expect(fieldRow).not.toBeNull();
             expect(fieldRow.hidden).toBe(!model.isFieldVisible(data.entries[0], field.id));
@@ -135,9 +161,104 @@ describe('World Info schema form', () => {
         expect([...host.querySelectorAll('.ds-row-expander')].every(node => !node.open)).toBe(true);
         expect(controller.isDirty()).toBe(false);
         expect(control(host, 'key').placeholder).toBe('translated:Keywords or Regexes');
-        expect(control(host, 'position').options[0].textContent).toBe('translated:Before Char Defs');
+        expect(control(host, 'position').textContent).toBe('translated:Before Char Defs');
         expect(host.querySelector('.sb-wi-detail-header')).not.toBeNull();
         expect(host.querySelector('.sb-wi-detail-back')).not.toBeNull();
+    });
+
+    test('properties follow the header and leave no duplicate body rows or empty cards', () => {
+        const { host } = mount();
+        const bar = host.querySelector('.sb-wi-entry > .sb-wi-properties');
+        expect([...bar.children].map(node => node.dataset.sbEditorField)).toEqual(['strategy', 'position', 'depth', 'outletName', 'order', 'probability']);
+        expect(bar.previousElementSibling.classList.contains('sb-wi-property-summary')).toBe(true);
+        expect(bar.previousElementSibling.previousElementSibling.classList.contains('sb-wi-entry-header')).toBe(true);
+        for (const id of ['enabled', 'strategy', 'position', 'depth', 'outletName', 'order', 'probability', 'section-entry', 'section-insertion']) {
+            expect(host.querySelector(`.sb-wi-entry-body [data-sb-editor-field="${id}"]`)).toBeNull();
+        }
+        expect(host.querySelector('[data-sb-editor-field="enabled"]')).toBeNull();
+        expect(Boolean(bar.compareDocumentPosition(host.querySelector('.sb-wi-entry-body')) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    });
+
+    test('bar edits refresh the summary and use explicit save with unchanged metadata', async () => {
+        const { host, controller, data, deps } = mount({ data: { entries: { 0: entry({ extension: { untouched: true } }) } } });
+        edit(host, 'strategy', 'constant');
+        edit(host, 'position', '4:1');
+        edit(host, 'depth', '8');
+        edit(host, 'order', '250');
+        edit(host, 'probability', '45');
+        expect(host.querySelector('.sb-wi-property-summary').textContent).toContain('translated:Constant');
+        expect(host.querySelector('.sb-wi-property-summary').textContent).toContain('45%');
+        expect(controller.isDirty()).toBe(true);
+        expect(data.entries[0].position).toBe(0);
+        expect(deps.saveWorldInfo).not.toHaveBeenCalled();
+        expect(await controller.save()).toBe(true);
+        expect(data.entries[0]).toMatchObject({ constant: true, vectorized: false, position: 4, role: 1, depth: 8, order: 250, probability: 45, useProbability: true, extension: { untouched: true } });
+        expect(deps.setOriginal).toHaveBeenCalledWith(data, 0, 'extensions.role', 1);
+        expect(controller.isDirty()).toBe(false);
+    });
+
+    test('sheet edits synchronize existing controls, retain input focus, and Escape closes only the sheet', async () => {
+        const { host, controller, requestClose } = mount();
+        const summary = host.querySelector('.sb-wi-property-summary');
+        summary.getClientRects = () => [{}];
+        summary.click();
+        const sheet = document.querySelector('.sb-wi-property-sheet');
+        const position = control(host, 'position');
+        edit(sheet, 'position', '7');
+        const outlet = control(sheet, 'outletName');
+        outlet.focus();
+        edit(sheet, 'outletName', 'sheet-outlet');
+        expect(document.activeElement).toBe(outlet);
+        expect(control(sheet, 'outletName')).toBe(outlet);
+        expect(control(host, 'position')).toBe(position);
+        expect(control(host, 'outletName').value).toBe('sheet-outlet');
+        expect(summary.textContent).toContain('sheet-outlet');
+        expect(controller.isDirty()).toBe(true);
+        const outer = jest.fn();
+        document.body.addEventListener('keydown', outer);
+        const event = keydown(outlet, 'Escape');
+        expect(event.defaultPrevented).toBe(true);
+        expect(sheet.hidden).toBe(true);
+        expect(summary.getAttribute('aria-expanded')).toBe('false');
+        expect(document.activeElement).toBe(summary);
+        expect(outer).not.toHaveBeenCalled();
+        expect(requestClose).not.toHaveBeenCalled();
+        document.body.removeEventListener('keydown', outer);
+        summary.click();
+        expect(control(sheet, 'outletName').value).toBe('sheet-outlet');
+        controller.destroy();
+        expect(document.querySelector('.sb-wi-property-sheet')).toBeNull();
+        expect(document.querySelector('.sb-wi-sheet-backdrop')).toBeNull();
+    });
+
+    test('discard restores focused bar inputs as well as their sheet counterparts', () => {
+        const { host, controller } = mount();
+        const order = control(host, 'order');
+        order.focus();
+        edit(host, 'order', '999');
+        controller.discard();
+        expect(order.value).toBe('100');
+        expect(controller.isDirty()).toBe(false);
+    });
+
+    test('expand targets unique textarea IDs and synthetic jQuery write-back reaches save', async () => {
+        const first = mount();
+        const second = mount({ name: 'Other book' });
+        const textarea = control(first.host, 'content');
+        const expand = first.host.querySelector('.sb-wi-entry-footer .editor_maximize');
+        expect(textarea.id).toMatch(/^sb-/);
+        expect(textarea.id).not.toBe(control(second.host, 'content').id);
+        expect(expand.dataset.for).toBe(textarea.id);
+        expect(expand.getAttribute('aria-label')).toBe('Expand the editor');
+        expect(expand.querySelector('.fa-solid.fa-maximize')).not.toBeNull();
+        $(textarea).val('Expanded content').trigger('input');
+        expect(first.controller.isDirty()).toBe(true);
+        first.host.querySelector('.sb-wi-entry-mode-toggle').click();
+        expect(expand.hidden).toBe(true);
+        first.host.querySelector('.sb-wi-entry-mode-toggle').click();
+        expect(expand.hidden).toBe(false);
+        expect(await first.controller.save()).toBe(true);
+        expect(first.data.entries[0].content).toBe('Expanded content');
     });
 
     test('UID zero is selectable, read-only and saved through the tracked data object', async () => {
@@ -360,7 +481,7 @@ describe('explicit save and drafts', () => {
         backup(harness);
         harness.controller.discard();
         expect(control(harness.host, 'content').value).toBe('Original content');
-        expect(control(harness.host, 'position').value).toBe('0');
+        expect(control(harness.host, 'position').textContent).toBe('translated:Before Char Defs');
         expect(harness.controller.isDirty()).toBe(false);
         expect(storedDraft()).toBeNull();
     });
@@ -417,15 +538,12 @@ describe('explicit save and drafts', () => {
     });
 
     test('a reused UID or changed live baseline discards an old backup', () => {
-        const debug = jest.spyOn(console, 'debug').mockImplementation(() => {});
         const first = mount();
         edit(first.host, 'content', 'Recovered');
         first.controller.destroy({ keepDraft: true });
         mount({ data: { entries: { 0: entry({ content: 'Different entry' }) } } });
         expect(global.toastr.info).not.toHaveBeenCalled();
         expect(storedDraft()).toBeNull();
-        expect(debug).toHaveBeenCalled();
-        debug.mockRestore();
     });
 
     test('fingerprints ignore object-key order and non-editable imported metadata', () => {
@@ -549,7 +667,8 @@ describe('external changes and character filters', () => {
         harness.data.entries[0].disable = true;
         harness.controller.rebaseKey('disable');
         expect(harness.controller.isDirty()).toBe(true);
-        expect(control(harness.host, 'enabled').checked).toBe(false);
+        expect(row(harness.host, 'enabled')).toBeNull();
+        expect(harness.data.entries[0].disable).toBe(true);
         expect(control(harness.host, 'content').value).toBe('Mine');
         await harness.controller.save();
         expect(harness.deps.setOriginal).not.toHaveBeenCalledWith(harness.data, 0, 'enabled', expect.anything());
