@@ -5,7 +5,7 @@ import { testSetup } from './frontend/frontent-test-utils.js';
 // silent scripted switches, the "Also sets" card line, and the id-keyed View popup.
 // Run it against an isolated server through an out-of-repo config (absolute testDir, channel 'msedge', baseURL of
 // that server). Such a config resolves '@playwright/test' from its own folder, so set NODE_PATH=<repo>/tests/node_modules.
-test.use({ serviceWorkers: 'block', reducedMotion: 'reduce' });
+test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
 // Longer than the 750 ms quiet window plus the 3 s busy grace, so a late summary would have shown.
 const SILENT_WAIT_MS = 4000;
@@ -349,7 +349,7 @@ async function delayPresetSaves(page, ms) {
 }
 
 /**
- * Starts recording, as `performance.now()` times, the first `CHAT_CHANGED` and the first summary toast the page adds.
+ * Records the first `CHAT_CHANGED` dispatch and summary toast as `performance.now()` times.
  * Stop and read the times with `stopRecordingSwitchTimes`.
  * @param {import('@playwright/test').Page} page
  */
@@ -368,7 +368,8 @@ async function startRecordingSwitchTimes(page) {
             }
         });
         observer.observe(document.body, { childList: true, subtree: true });
-        eventSource.on(eventTypes.CHAT_CHANGED, onChatChanged);
+        // Native listeners are awaited in order; a tail listener would timestamp their completion, not dispatch.
+        eventSource.makeFirst(eventTypes.CHAT_CHANGED, onChatChanged);
         window.sbSwitchTimes = {
             times,
             stop: () => {
@@ -528,8 +529,8 @@ test('View opens a dialog with unique labels and no TC rows on a CC profile', as
 test('a regex-preset profile reports after the chat reload', async ({ page }) => {
     await loadApp(page);
     await openConnections(page);
-    // CC_REGEX switches from SB Regex A to SB Regex B, whose script lists already match the live scripts. With a slow
-    // save the Regex apply only ends with its chat reload, and the summary must come after that reload.
+    // CC_REGEX switches from SB Regex A to SB Regex B, whose script lists already match the live scripts.
+    // The reload renders messages before dispatching CHAT_CHANGED; the summary must follow that dispatch.
     await delayPresetSaves(page, REGEX_SAVE_DELAY_MS);
     await startRecordingSwitchTimes(page);
     await selectProfile(page, 'CC_REGEX');
@@ -722,4 +723,29 @@ test('a same-id regex reapply with a slow save still reports the scoped change',
     await expect(summary.locator('li', { hasText: 'Regex Presets' })).toHaveText('Regex Presets (content reloaded)', { timeout: SUMMARY_TIMEOUT_MS });
     const scopedDisabled = await page.evaluate(async () => (await import('/script.js')).characters[0].data.extensions.regex_scripts[0].disabled);
     expect(scopedDisabled).toBe(false);
+});
+
+test('a same-id regex reapply with a slow save reports an order-only scoped change', async ({ page }) => {
+    test.slow();
+    const orderedProfile = profile({ id: 'sb-e2e-regex-order', name: 'Regex order', mode: 'cc', 'regex-preset': REGEX_PRESET_B.id });
+    const scripts = ['a', 'b'].map(id => ({ ...SCOPED_REGEX_SCRIPT, id: `sb-e2e-order-${id}`, disabled: false }));
+    await loadApp(page, { autosave: false, profiles: [...PROFILES, orderedProfile] });
+    await page.evaluate(async ({ presetId, scripts }) => {
+        const { characters, setCharacterId } = await import('/script.js');
+        const { extension_settings } = await import('/scripts/extensions.js');
+        setCharacterId(0);
+        characters[0].data.extensions.regex_scripts = [...scripts].reverse();
+        extension_settings.regex_presets.find(preset => preset.id === presetId).scoped = scripts.map(script => ({ id: script.id }));
+        extension_settings.regex_presets.forEach(preset => {
+            preset.isSelected = preset.id === presetId;
+        });
+        document.getElementById('regex_presets').value = presetId;
+    }, { presetId: REGEX_PRESET_B.id, scripts });
+    // The earlier completion-preset save delays the scoped reorder beyond the report's quiet window.
+    await delayPresetSaves(page, REGEX_SAVE_DELAY_MS);
+    await runProfileCommand(page, { await: 'true', quiet: 'false', timeout: '0' }, orderedProfile.name);
+    await expectSummaryFor(page, orderedProfile.name);
+    await expect(summaryOf(page).locator('li')).toHaveText(['Regex Presets (content reloaded)']);
+    const applied = await page.evaluate(async () => (await import('/script.js')).characters[0].data.extensions.regex_scripts.map(script => ({ id: script.id, disabled: script.disabled })));
+    expect(applied).toEqual(scripts.map(script => ({ id: script.id, disabled: false })));
 });
