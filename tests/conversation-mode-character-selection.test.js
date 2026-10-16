@@ -11,7 +11,7 @@ describe('Conversation mode character selection', () => {
     test('opens the selected character card in Conversation mode', () => {
         expect(scriptSource).toContain('window.dispatchEvent(new CustomEvent(\'sb:roleplay-character-selected\'');
         expect(scriptSource).toContain('detail: { avatar: characters[this_chid]?.avatar || \'\' }');
-        expect(tabsSource).toContain('characters, flushCharacterSaveDebounced');
+        expect(tabsSource).toContain('characters, displayVersion, flushCharacterSaveDebounced');
         expect(tabsSource).toContain('saveSettingsDebounced, this_chid } from \'../script.js\';');
         expect(tabsSource).toContain('avatar: characters[this_chid]?.avatar || \'\',');
         expect(tabsSource).toContain('showToast: false,');
