@@ -1,19 +1,23 @@
-/* global document, getComputedStyle, localStorage, requestAnimationFrame, window */
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
 
-// Mobile shell smoke pack: pins the current open/close contracts of the
-// SillyBunny mobile shell (drawers, section navigation, chat tools, character
-// panel) so the Phase 1 decomposition of sillybunny-tabs.js has a net.
+// Mobile shell smoke pack: pins the open/close contracts of the SillyBunny
+// mobile shell (settings page, section navigation, chat tools, character
+// panel) so shell refactors have a net.
 // Run with: SILLYBUNNY_TEST_BASE_URL=http://127.0.0.1:<port> npx playwright test mobile-shell-smoke.e2e.js
 
-test.describe.configure({ mode: 'serial' });
+test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
+// Each case boots the whole app, which can use most of the default 30 s when
+// several workers share one server.
+test.describe.configure({ timeout: 60_000 });
 
 const IPHONE_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 const VIEWPORT_SURFACE_SELECTOR = [
-    '#left-nav-panel.openDrawer',
-    '#right-nav-panel.openDrawer',
-    '#user-settings-block.openDrawer',
+    '#sb-settings-page:not([hidden])',
+    // On phones only one pane of the settings page is on screen at a time.
+    '#sb-settings-page:not([hidden]):not(.sb-settings-page--content) #sb-settings-sidebar',
+    '#sb-settings-page.sb-settings-page--content:not([hidden]) #sb-settings-content',
+    '#sb-settings-page.sb-settings-page--content:not([hidden]) .sb-settings-active-root',
     '#sb-mobile-nav.sb-nav-open',
     '#sb-mobile-chat-tools.sb-chat-tools-open',
     '#sb-universal-search.is-open .sb-universal-search-panel',
@@ -28,11 +32,88 @@ const VIEWPORT_SURFACE_SELECTOR = [
 ].join(', ');
 const IPAD_USER_AGENT = 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 
+// POST endpoints that only read. Any other request that is not a GET is
+// answered here, so the pack never writes to the server.
+const READ_ONLY_POSTS = new Set([
+    '/api/avatars/get',
+    '/api/backgrounds/all',
+    '/api/backgrounds/folders',
+    '/api/characters/all',
+    '/api/characters/chats',
+    '/api/characters/get',
+    '/api/chats/get',
+    '/api/chats/recent',
+    '/api/groups/all',
+    '/api/image-metadata/all',
+    '/api/in-chat-agents/groups/list',
+    '/api/presets/defaults',
+    '/api/sd/comfy/workflows',
+    '/api/secrets/read',
+    '/api/server-admin/config/chat-completions/get',
+    '/api/server-admin/install-type',
+    '/api/stats/get',
+    '/api/users/me',
+]);
+
+async function interceptWrites(page, baseURL) {
+    const origin = new URL(baseURL).origin;
+    let settingsVersion = Date.now();
+
+    expect(['127.0.0.1', 'localhost', '[::1]']).toContain(new URL(baseURL).hostname);
+    await page.route('**/*', async route => {
+        const request = route.request();
+        const url = new URL(request.url());
+
+        if (url.origin !== origin) {
+            return route.abort();
+        }
+
+        if (url.pathname === '/api/settings/get') {
+            // One retry: the fetch can land on a keep-alive socket the server just closed.
+            const response = await route.fetch().catch(() => route.fetch());
+            const data = await response.json();
+            const settings = JSON.parse(data.settings);
+            settings.firstRun = false;
+            settings.power_user.auto_connect = false;
+            settings.extension_settings['quick-image-gen'] = { ...settings.extension_settings['quick-image-gen'], setupWizardSeen: true };
+            data.settings = JSON.stringify(settings);
+            return route.fulfill({ json: data });
+        }
+
+        if (['GET', 'HEAD'].includes(request.method())
+            || READ_ONLY_POSTS.has(url.pathname)
+            || url.pathname.startsWith('/api/tokenizers/')) {
+            return route.continue();
+        }
+
+        // A settings save must return a newer version, or the app shows a save error.
+        if (url.pathname === '/api/settings/save') {
+            return route.fulfill({ json: { result: 'ok', version: ++settingsVersion } });
+        }
+
+        // Provider lists are fetched from the internet by the server.
+        return route.fulfill({ json: url.pathname.endsWith('/providers') ? [] : {} });
+    });
+}
+
+// Startup notices (for example a bundled character that could not be saved)
+// are transient and can sit over menus that are being hit tested.
+function clearToasts(page) {
+    return page.evaluate(() => window.toastr?.remove());
+}
+
 function getOverlayStateSnapshot(page) {
     return page.evaluate(() => {
-        const isSettingsPageOpen = () => {
-            const page = document.getElementById('sb-settings-page');
-            return Boolean(page && !page.hidden);
+        // Backend, Customize and Characters share one settings page; a section
+        // is open when the page is shown and its root is the active one.
+        const isSettingsSectionOpen = (rootId) => {
+            const settingsPage = document.getElementById('sb-settings-page');
+            const root = document.getElementById(rootId);
+
+            return Boolean(settingsPage
+                && !settingsPage.hidden
+                && root?.classList.contains('sb-settings-active-root')
+                && root.getAttribute('aria-hidden') === 'false');
         };
         const isOverlayOpen = (id, openClass) => {
             const overlay = document.getElementById(id);
@@ -49,31 +130,25 @@ function getOverlayStateSnapshot(page) {
         return {
             navOpen: isOverlayOpen('sb-mobile-nav', 'sb-nav-open'),
             chatToolsOpen: isOverlayOpen('sb-mobile-chat-tools', 'sb-chat-tools-open'),
-            leftShellOpen: isSettingsPageOpen(),
-            rightShellOpen: isSettingsPageOpen(),
-            characterPanelOpen: isSettingsPageOpen(),
+            leftShellOpen: isSettingsSectionOpen('left-nav-panel'),
+            rightShellOpen: isSettingsSectionOpen('user-settings-block'),
+            characterPanelOpen: isSettingsSectionOpen('right-nav-panel'),
         };
     });
 }
 
-function getDrawerBoundsSnapshot(page, drawerId) {
-    return page.evaluate((id) => {
-        const drawer = document.getElementById(id);
-
-        if (!drawer) {
-            return null;
-        }
+function getSettingsPageFit(page) {
+    return page.evaluate(() => {
+        const settingsPage = document.getElementById('sb-settings-page');
+        const rect = settingsPage.getBoundingClientRect();
 
         return {
-            isOpen: drawer.classList.contains('openDrawer'),
-            isViewportBound: drawer.dataset.sbMobileViewportBound === 'true',
-            top: drawer.style.top,
-            bottom: drawer.style.bottom,
-            height: drawer.style.height,
-            maxHeight: drawer.style.maxHeight,
-            boxSizing: drawer.style.boxSizing,
+            isOpen: !settingsPage.hidden,
+            top: Math.round(rect.top),
+            bottom: Math.round(rect.bottom),
+            viewportHeight: window.innerHeight,
         };
-    }, drawerId);
+    });
 }
 
 function getComposerViewportFit(page) {
@@ -151,29 +226,41 @@ async function expectNoDocumentOverflow(page) {
     }).toBe('[]');
 }
 
+// A plain open restores the section's saved tab (the content view on phones).
 function openLeftShell(page) {
     return page.evaluate(() => window.SillyBunnyShell.openTab('left'));
 }
 
-async function closeLeftShellThroughUi(page) {
-    const settingsClose = page.locator('#sb-settings-close');
+// Opening a section for a named tab shows the sidebar first on phones.
+async function openSettingsSection(page, shellKey, tabId) {
+    await page.evaluate(({ shell, tab }) => window.SillyBunnyShell.openTab(shell, tab), { shell: shellKey, tab: tabId });
 
-    if (await settingsClose.isVisible().catch(() => false)) {
-        await settingsClose.click();
-        return;
-    }
+    const settingsPage = page.locator('#sb-settings-page');
+    await expect(settingsPage).not.toHaveAttribute('hidden');
+    await expect(settingsPage).not.toHaveClass(/sb-settings-page--content/);
+}
 
-    const closeButton = page.locator('#left-nav-panel .sb-shell-close');
+function getSettingsTab(page, tabId) {
+    return page.locator(`#sb-settings-tab-list .sb-settings-tab[data-sb-settings-tab="${tabId}"]`);
+}
 
-    await closeButton.waitFor({ state: 'visible', timeout: 1000 }).catch(() => {});
+// Taps a sidebar tab the way a user does, which slides in the content view.
+async function showSettingsTab(page, tabId) {
+    const tab = getSettingsTab(page, tabId);
 
-    if (await closeButton.isVisible().catch(() => false)) {
-        await closeButton.click();
-        return;
-    }
+    await tab.click();
+    await expect(tab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#sb-settings-page')).toHaveClass(/sb-settings-page--content/);
+}
 
-    // Escape routes through closeFocusedShell on the shell root keydown handler.
-    await page.keyboard.press('Escape');
+async function showSettingsSidebar(page) {
+    await page.locator('#sb-settings-back').click();
+    await expect(page.locator('#sb-settings-page')).not.toHaveClass(/sb-settings-page--content/);
+}
+
+async function closeSettingsPageThroughUi(page) {
+    await page.locator('#sb-settings-close').click();
+    await expect(page.locator('#sb-settings-page')).toHaveAttribute('hidden', '');
 }
 
 async function captureCheckpoint(page, testInfo, name) {
@@ -182,6 +269,10 @@ async function captureCheckpoint(page, testInfo, name) {
     await page.screenshot({ path: screenshotPath });
     await testInfo.attach(name, { path: screenshotPath, contentType: 'image/png' });
 }
+
+test.beforeEach(async ({ page, baseURL }) => {
+    await interceptWrites(page, baseURL);
+});
 
 test.describe('mobile shell smoke at iPhone 390x844', () => {
     test.use({
@@ -193,6 +284,7 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
 
     test.beforeEach(async ({ page }) => {
         await openQuietChatForSmoke(page, { selectCharacter: false });
+        await clearToasts(page);
         await waitForAnimationFrames(page, 3);
     });
 
@@ -214,9 +306,7 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         expect(overflow.horizontal).toBeLessThanOrEqual(1);
         expect(overflow.vertical).toBeLessThanOrEqual(1);
 
-        await closeLeftShellThroughUi(page);
-        await page.waitForTimeout(400); // Wait for close animation
-        await expect(settingsPage).toHaveAttribute('hidden', '');
+        await closeSettingsPageThroughUi(page);
 
         await expectNoDocumentOverflow(page);
     });
@@ -224,25 +314,33 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
     test('settings page opens in mobile sidebar view', async ({ page }, testInfo) => {
         await expect(page.locator('html')).toHaveAttribute('data-sb-mobile-ui-mode', 'mobile');
 
-        await openLeftShell(page);
+        await openSettingsSection(page, 'left', 'sampling');
         const settingsPage = page.locator('#sb-settings-page');
-        await expect(settingsPage).not.toHaveAttribute('hidden');
-        
-        // Mobile starts in sidebar view
         const sidebar = settingsPage.locator('#sb-settings-sidebar');
-        await expect(sidebar).toBeVisible();
-        await expect(settingsPage).not.toHaveClass(/sb-settings-page--content/);
+        const content = settingsPage.locator('#sb-settings-content');
+        const samplingTab = getSettingsTab(page, 'sampling');
 
-        // Click a tab to enter content view
-        await sidebar.locator('.sb-settings-tab').first().click();
-        await expect(settingsPage).toHaveClass(/sb-settings-page--content/);
-        
+        // The named tab is preselected while the sidebar fills the page.
+        await expect(samplingTab).toHaveAttribute('aria-selected', 'true');
+        await expect(sidebar).toBeInViewport({ ratio: 1 });
+        await expect(content).not.toBeInViewport();
+        await expectNoDocumentOverflow(page);
+
+        await showSettingsTab(page, 'sampling');
+        await expect(settingsPage.locator('#sb-settings-content-title')).toHaveText('Sampling');
+        await expect(content).toBeInViewport({ ratio: 1 });
+        await expect(sidebar).not.toBeInViewport();
+
         await captureCheckpoint(page, testInfo, 'settings-content-view');
         await expectNoDocumentOverflow(page);
-        
-        // Close button closes the settings page (wait for animation to complete)
-        await page.locator('#sb-settings-close').click();
-        await expect(settingsPage).toHaveAttribute('hidden', '');
+
+        // Back returns to the sidebar and hands focus to the selected tab.
+        await showSettingsSidebar(page);
+        await expect(samplingTab).toBeFocused();
+        await expect(sidebar).toBeInViewport({ ratio: 1 });
+
+        await showSettingsTab(page, 'sampling');
+        await closeSettingsPageThroughUi(page);
 
         await expectNoDocumentOverflow(page);
     });
@@ -266,9 +364,15 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
     test('opening each overlay closes competing mobile surfaces', async ({ page }, testInfo) => {
         await openLeftShell(page);
 
-        await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({ leftShellOpen: true });
+        await expect.poll(() => getOverlayStateSnapshot(page)).toEqual({
+            navOpen: false,
+            chatToolsOpen: false,
+            leftShellOpen: true,
+            rightShellOpen: false,
+            characterPanelOpen: false,
+        });
 
-        // openMobileChatTools closes the nav, both shells, and the character panel.
+        // openMobileChatTools closes the nav and the settings page.
         await page.evaluate(() => window.SillyBunnyShell.openChatTools());
 
         await expect.poll(() => getOverlayStateSnapshot(page)).toEqual({
@@ -281,7 +385,8 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
 
         await captureCheckpoint(page, testInfo, 'chat-tools');
 
-        // toggleCharacterPanel routes through closeAllDropdowns({ except: 'characters' }).
+        // toggleCharacterPanel opens Characters in the settings page and
+        // closes the competing mobile surfaces first.
         await page.evaluate(() => window.SillyBunnyShell.openCharacters());
 
         await expect.poll(() => getOverlayStateSnapshot(page)).toEqual({
@@ -292,10 +397,46 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
             characterPanelOpen: true,
         });
 
+        // Switching sections leaves exactly one active root.
+        await page.evaluate(() => window.SillyBunnyShell.openTab('right'));
+
+        await expect.poll(() => getOverlayStateSnapshot(page)).toEqual({
+            navOpen: false,
+            chatToolsOpen: false,
+            leftShellOpen: false,
+            rightShellOpen: true,
+            characterPanelOpen: false,
+        });
+
+        await expectNoDocumentOverflow(page);
+    });
+
+    test('chat tools close on Escape and hand focus back', async ({ page }) => {
+        const composer = page.locator('#send_textarea');
+
+        await composer.focus();
+        await page.evaluate(() => window.SillyBunnyShell.openChatTools());
+        await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({ chatToolsOpen: true });
+        // Opening moves focus into the sheet, so Escape reaches its handler.
+        await expect(page.locator('#sb-mobile-chat-tools-panel')).toBeFocused();
+
+        await page.keyboard.press('Escape');
+
+        await expect.poll(() => getOverlayStateSnapshot(page)).toEqual({
+            navOpen: false,
+            chatToolsOpen: false,
+            leftShellOpen: false,
+            rightShellOpen: false,
+            characterPanelOpen: false,
+        });
+        await expect(page.locator('#sb-settings-page')).toHaveAttribute('hidden', '');
+        await expect(composer).toBeFocused();
         await expectNoDocumentOverflow(page);
     });
 
     test('every primary chat surface stays inside the document viewport', async ({ page }) => {
+        test.setTimeout(120_000);
+
         const detachedAutocompleteErrors = [];
         page.on('pageerror', error => {
             if (error.message.includes('Cannot read properties of null (reading \'getBoundingClientRect\')')) {
@@ -308,13 +449,19 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
                 await expectNoDocumentOverflow(page);
             });
         };
-        const closeOpenShell = () => page.evaluate(() => {
-            document.querySelector('.sb-shell-root.openDrawer .sb-shell-close')?.click();
-        });
-        for (const tabId of ['presets', 'api', 'sampling', 'advanced-formatting', 'agents']) {
-            await page.evaluate(tab => window.SillyBunnyShell.openTab('left', tab), tabId);
-            await checkpoint(`Workspace · ${tabId}`);
-        }
+        const settingsPage = page.locator('#sb-settings-page');
+        const visitSection = async (name, shellKey, tabIds) => {
+            await openSettingsSection(page, shellKey, tabIds[0]);
+            await checkpoint(`${name} · sidebar`);
+            for (const tabId of tabIds) {
+                await showSettingsTab(page, tabId);
+                await checkpoint(`${name} · ${tabId}`);
+                await showSettingsSidebar(page);
+            }
+        };
+
+        await visitSection('Backend', 'left', ['connections', 'sampling', 'prompting', 'editor', 'context', 'agents']);
+        await showSettingsTab(page, 'agents');
         const textareaFullscreenToggle = page.locator('#left-nav-panel .ica--textarea-fullscreen-toggle').first();
         await expect(textareaFullscreenToggle).toBeVisible();
         await textareaFullscreenToggle.click();
@@ -323,21 +470,17 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         await page.keyboard.press('Escape');
         await expect(page.locator('textarea.maximized_textarea')).toHaveCount(0);
         await checkpoint('Agents textarea · restored');
-        await closeOpenShell();
-        await checkpoint('Workspace · closed');
+        await closeSettingsPageThroughUi(page);
+        await checkpoint('Backend · closed');
 
-        for (const tabId of ['settings', 'extensions', 'background', 'server', 'console-logs']) {
-            await page.evaluate(tab => window.SillyBunnyShell.openTab('right', tab), tabId);
-            await checkpoint(`Customize · ${tabId}`);
-        }
-        await closeOpenShell();
+        await visitSection('Customize', 'right', ['appearance', 'extensions', 'interface', 'messages', 'data-security', 'logs']);
+        await page.keyboard.press('Escape');
+        await expect(settingsPage).toHaveAttribute('hidden', '');
         await checkpoint('Customize · closed');
 
-        for (const tabId of ['characters', 'groups', 'editor', 'world-info', 'persona', 'import']) {
-            await page.evaluate(tab => window.SillyBunnyShell.openTab('characters', tab), tabId);
-            await checkpoint(`Characters · ${tabId}`);
-        }
+        await visitSection('Characters', 'characters', ['characters', 'groups', 'editor', 'world-info', 'persona', 'import']);
         await page.evaluate(() => window.SillyBunnyShell.closeCharacters());
+        await expect(settingsPage).toHaveAttribute('hidden', '');
         await checkpoint('Characters · closed');
         await page.evaluate(async () => {
             const { AutoComplete } = await import('/scripts/autocomplete/AutoComplete.js');
@@ -352,13 +495,16 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
 
         await page.evaluate(() => window.SillyBunnyShell.openChatTools());
         await checkpoint('Chat tools · open');
-        await page.evaluate(() => document.querySelector('#sb-mobile-chat-tools .sb-mobile-panel-close')?.click());
+        await page.locator('#sb-mobile-chat-close').click();
+        await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({ chatToolsOpen: false });
         await checkpoint('Chat tools · closed');
 
         await page.evaluate(() => window.SillyBunnyShell.openGlobalSearch());
         await checkpoint('Global search · open');
         await page.keyboard.press('Escape');
+        await expect(page.locator('#sb-universal-search')).not.toHaveClass(/\bis-open\b/);
         await checkpoint('Global search · closed');
+        await expect(settingsPage).toHaveAttribute('hidden', '');
 
         await page.evaluate(() => document.getElementById('sb-persona-bubble')?.click());
         await checkpoint('Persona picker · open');
@@ -418,11 +564,11 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         await checkpoint('Quick Reply context menu · closed');
 
         const composer = page.locator('#send_textarea');
+        const autocomplete = page.locator('.autoComplete-wrap');
         const originalComposerValue = await composer.inputValue();
         try {
             await composer.fill('');
             await composer.pressSequentially('/');
-            const autocomplete = page.locator('.autoComplete-wrap');
             await expect(autocomplete).toBeVisible();
             const autocompleteBounds = await autocomplete.boundingBox();
             expect(autocompleteBounds).not.toBeNull();
@@ -433,8 +579,8 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
             await checkpoint('Composer autocomplete · open');
         } finally {
             await composer.fill(originalComposerValue);
-            await page.keyboard.press('Escape');
         }
+        await expect(autocomplete).toBeHidden();
         await checkpoint('Composer autocomplete · closed');
 
         const companionHandleStorageKey = 'ica--tracker-panel-handle-top-v2';
@@ -556,6 +702,7 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         await expect(page.locator('.ctx-sub-menu')).toBeVisible();
 
         const expectMenusContained = async () => {
+            await clearToasts(page);
             await waitForAnimationFrames(page, 2);
             const bounds = await page.locator('.ctx-menu').evaluateAll(menus => menus.map(menu => {
                 const rect = menu.getBoundingClientRect();
@@ -628,56 +775,32 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         await expect(page.locator('.ctx-menu')).toHaveCount(0);
     });
 
-    test('keyboard-style viewport shrink re-syncs open drawer bounds and recovers', async ({ page }) => {
+    test('keyboard-style viewport shrink re-syncs settings page bounds and recovers', async ({ page }) => {
         await openLeftShell(page);
 
-        // After a resize the inline height can be handed off to a stylesheet
-        // rule driven by --sb-shell-viewport-height, so this asserts the
-        // rendered geometry (the actual contract), not the inline styles.
-        const getRenderedDrawerFit = () => page.evaluate(() => {
-            const drawer = document.getElementById('left-nav-panel');
-            const rect = drawer.getBoundingClientRect();
+        // The page sits below the top bar and takes its height from the shell
+        // viewport, so its bottom edge must follow a viewport shrink (standing
+        // in for the on-screen keyboard) and come back on restore.
+        const expectPageFit = (viewportHeight) => expect.poll(async () => {
+            const fit = await getSettingsPageFit(page);
 
-            return {
-                isOpen: drawer.classList.contains('openDrawer'),
-                isViewportBound: drawer.dataset.sbMobileViewportBound === 'true',
-                top: Math.round(rect.top),
-                bottom: Math.round(rect.bottom),
-                viewportHeight: window.innerHeight,
-            };
-        });
-
-        await expect.poll(async () => {
-            const fit = await getRenderedDrawerFit();
-
-            return fit.isViewportBound && fit.top > 0 && Math.abs(fit.bottom - 844) <= 2;
+            return fit.isOpen && fit.top > 0 && Math.abs(fit.bottom - viewportHeight) <= 2;
         }).toBe(true);
 
-        // Viewport shrink stands in for the on-screen keyboard: the resize
-        // listener re-runs syncMobileViewportState and rebinds open drawers.
+        await expectPageFit(844);
+
         await page.setViewportSize({ width: 390, height: 500 });
 
-        await expect.poll(async () => {
-            const fit = await getRenderedDrawerFit();
-
-            return fit.isViewportBound && fit.top > 0 && Math.abs(fit.bottom - 500) <= 2;
-        }).toBe(true);
+        await expectPageFit(500);
+        await expect(page.locator('#sb-settings-close')).toBeInViewport({ ratio: 1 });
+        await expectNoDocumentOverflow(page);
 
         await page.setViewportSize({ width: 390, height: 844 });
 
-        await expect.poll(async () => {
-            const fit = await getRenderedDrawerFit();
+        await expectPageFit(844);
 
-            return fit.isViewportBound && fit.top > 0 && Math.abs(fit.bottom - 844) <= 2;
-        }).toBe(true);
-
-        await closeLeftShellThroughUi(page);
-
-        await expect.poll(async () => {
-            const bounds = await getDrawerBoundsSnapshot(page, 'left-nav-panel');
-
-            return bounds?.isOpen === false && bounds?.isViewportBound === false;
-        }).toBe(true);
+        await closeSettingsPageThroughUi(page);
+        await expect(page.locator('html')).not.toHaveAttribute('data-sb-settings-open');
 
         await expectNoDocumentOverflow(page);
     });
@@ -760,12 +883,16 @@ test.describe('mobile shell smoke at tablet 768x1024', () => {
 
         await expect.poll(() => getIsMobileShellViewport(page)).toBe(true);
 
+        // The phone layout applies: one pane at a time, the saved tab in the
+        // content view, and a back button to the sidebar.
         await openLeftShell(page);
 
-        await expect.poll(() => getDrawerBoundsSnapshot(page, 'left-nav-panel')).toMatchObject({
-            isOpen: true,
-            isViewportBound: true,
-        });
+        const settingsPage = page.locator('#sb-settings-page');
+        await expect(settingsPage).not.toHaveAttribute('hidden');
+        await expect(settingsPage).toHaveClass(/sb-settings-page--content/);
+        await expect(page.locator('#sb-settings-back')).toBeVisible();
+        await expect(page.locator('#sb-settings-content')).toBeInViewport({ ratio: 1 });
+        await expect(page.locator('#sb-settings-sidebar')).not.toBeInViewport();
 
         await page.evaluate(() => window.SillyBunnyShell.openChatTools());
 
@@ -791,13 +918,16 @@ test.describe('compact desktop smoke at 820x1180', () => {
 
         await expect.poll(() => getIsMobileShellViewport(page)).toBe(false);
 
-        // Shells open as pinned desktop panels without the mobile bound contract.
+        // The settings page opens in its desktop layout: sidebar and content
+        // side by side, no content-view switch and no back button.
         await openLeftShell(page);
 
-        await expect.poll(() => getDrawerBoundsSnapshot(page, 'left-nav-panel')).toMatchObject({
-            isOpen: true,
-            isViewportBound: false,
-        });
+        const settingsPage = page.locator('#sb-settings-page');
+        await expect(settingsPage).not.toHaveAttribute('hidden');
+        await expect(settingsPage).not.toHaveClass(/sb-settings-page--content/);
+        await expect(page.locator('#sb-settings-back')).toBeHidden();
+        await expect(page.locator('#sb-settings-sidebar')).toBeInViewport({ ratio: 1 });
+        await expect(page.locator('#sb-settings-content')).toBeInViewport({ ratio: 1 });
 
         // openChatTools routes to the desktop chat sidebar above 768px; the
         // mobile chat tools overlay must stay closed.
@@ -819,37 +949,36 @@ test.describe('desktop MovingUI containment at 1264x800', () => {
 
     test('clamps an active panel drag at every viewport edge', async ({ page }) => {
         await openQuietChatForSmoke(page, { selectCharacter: false });
-        await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'presets'));
-        await waitForAnimationFrames(page, 2);
 
+        // Backend, Customize and Characters live in the settings page and no
+        // longer drag; Author's Note is still a floating MovingUI panel.
         const original = await page.evaluate(async () => {
             const powerUserModule = await import('/scripts/power-user.js');
             const { dragElement } = await import('/scripts/RossAscends-mods.js');
-            const leftPanel = document.getElementById('left-nav-panel');
-            const rightPanel = document.getElementById('right-nav-panel');
+            const panel = document.getElementById('floatingPrompt');
             const snapshot = {
                 movingUI: powerUserModule.power_user.movingUI,
                 movingUIState: powerUserModule.power_user.movingUIState,
-                leftStyle: leftPanel.style.cssText,
-                rightStyle: rightPanel.style.cssText,
+                panelStyle: panel.style.cssText,
                 hadMovingUIClass: document.body.classList.contains('movingUI'),
             };
 
             powerUserModule.power_user.movingUI = true;
             powerUserModule.power_user.movingUIState = {};
             document.body.classList.add('movingUI');
-            leftPanel.style.setProperty('position', 'fixed', 'important');
-            leftPanel.style.setProperty('inset', 'auto', 'important');
-            leftPanel.style.setProperty('left', '100px', 'important');
-            leftPanel.style.setProperty('top', '100px', 'important');
-            leftPanel.style.setProperty('width', '400px', 'important');
-            leftPanel.style.setProperty('height', '500px', 'important');
-            dragElement(window.$(leftPanel));
+            panel.style.setProperty('display', 'flex', 'important');
+            panel.style.setProperty('position', 'fixed', 'important');
+            panel.style.setProperty('inset', 'auto', 'important');
+            panel.style.setProperty('left', '100px', 'important');
+            panel.style.setProperty('top', '100px', 'important');
+            panel.style.setProperty('width', '400px', 'important');
+            panel.style.setProperty('height', '500px', 'important');
+            dragElement(window.$(panel));
             return snapshot;
         });
 
         const dragBeyond = async (targetX, targetY) => {
-            const header = page.locator('#left-nav-panelheader').first();
+            const header = page.locator('#floatingPromptheader');
             const box = await header.boundingBox();
             expect(box).not.toBeNull();
             await page.mouse.move(box.x + (box.width / 2), box.y + (box.height / 2));
@@ -859,7 +988,7 @@ test.describe('desktop MovingUI containment at 1264x800', () => {
             await waitForAnimationFrames(page, 2);
         };
         const getBounds = () => page.evaluate(() => {
-            const rect = document.getElementById('left-nav-panel').getBoundingClientRect();
+            const rect = document.getElementById('floatingPrompt').getBoundingClientRect();
             return {
                 left: rect.left,
                 top: rect.top,
@@ -881,28 +1010,31 @@ test.describe('desktop MovingUI containment at 1264x800', () => {
         };
 
         try {
+            // Each drag must end on the far edges, or the clamp never ran.
             await dragBeyond(2000, 1600);
-            expectContained(await getBounds());
+            const bottomRight = await getBounds();
+            expectContained(bottomRight);
+            expect(bottomRight.right).toBeGreaterThanOrEqual(bottomRight.viewportWidth - 2);
+            expect(bottomRight.bottom).toBeGreaterThanOrEqual(bottomRight.viewportHeight - 2);
             await dragBeyond(-800, -600);
-            expectContained(await getBounds());
+            const topLeft = await getBounds();
+            expectContained(topLeft);
+            expect(topLeft.left).toBeLessThanOrEqual(1);
+            expect(topLeft.top).toBeLessThanOrEqual(1);
         } finally {
             await page.evaluate(async (snapshot) => {
                 const module = await import('/scripts/power-user.js');
-                const leftPanel = document.getElementById('left-nav-panel');
-                const rightPanel = document.getElementById('right-nav-panel');
                 module.power_user.movingUI = snapshot.movingUI;
                 module.power_user.movingUIState = snapshot.movingUIState;
                 document.body.classList.toggle('movingUI', snapshot.hadMovingUIClass);
-                leftPanel.style.cssText = snapshot.leftStyle;
-                rightPanel.style.cssText = snapshot.rightStyle;
-                document.querySelector('#left-nav-panel .sb-shell-close')?.click();
+                document.getElementById('floatingPrompt').style.cssText = snapshot.panelStyle;
             }, original);
         }
     });
 
     test('contains corrupt persisted panel geometry before it can enlarge the document', async ({ page }) => {
         await openQuietChatForSmoke(page, { selectCharacter: false });
-        await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'presets'));
+        await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'prompting'));
         await waitForAnimationFrames(page, 2);
 
         const snapshot = await page.evaluate(async () => {
@@ -955,7 +1087,7 @@ test.describe('desktop MovingUI containment at 1264x800', () => {
                 if (warning) {
                     warning.className = original.warningClass;
                 }
-                document.querySelector('#left-nav-panel .sb-shell-close')?.click();
+                document.getElementById('sb-settings-close')?.click();
             }
         });
 
@@ -967,5 +1099,107 @@ test.describe('desktop MovingUI containment at 1264x800', () => {
         expect(snapshot.state.right).toBe(0);
         expect(snapshot.warningVisible).toBe(false);
         await expectNoDocumentOverflow(page);
+    });
+});
+
+test.describe('desktop Escape at 1264x800', () => {
+    test.use({ viewport: { width: 1264, height: 800 } });
+
+    test('Escape closes one surface at a time, including floating portraits', async ({ page }) => {
+        await openQuietChatForSmoke(page, { selectCharacter: false });
+        await clearToasts(page);
+        const settingsPage = page.locator('#sb-settings-page');
+        const search = page.locator('#sb-universal-search');
+
+        // Leaving Characters on World Info keeps #WorldInfo laid out in the closed page.
+        await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'world-info'));
+        await expect(settingsPage).not.toHaveAttribute('hidden');
+
+        // Built the way the app builds a zoomed portrait: a draggable appended to the body.
+        await page.evaluate(() => {
+            const $ = window.jQuery;
+            const portrait = $($('#zoomed_avatar_template').html());
+            portrait.attr({ id: 'zoomFor_smoke', forChar: 'smoke' }).addClass('draggable');
+            $('body').append(portrait);
+            portrait.css('display', 'flex');
+        });
+        const portrait = page.locator('#zoomFor_smoke');
+        const chatSidebar = page.locator('#movingDivs > #sb-chat-sidebar.draggable');
+
+        // The open page hides the portrait, so Escape from outside the page leaves it alone.
+        await page.evaluate(() => document.activeElement?.blur());
+        await page.keyboard.press('Escape');
+        await expect(portrait).toBeAttached();
+
+        // Escape inside the page closes only the page, not Author's Note floating above it.
+        const authorsNote = page.locator('#floatingPrompt');
+        await page.evaluate(() => window.jQuery('#floatingPrompt').css({ display: 'flex', opacity: 1 }));
+        await page.locator('#sb-settings-close').focus();
+        await page.keyboard.press('Escape');
+        await expect(settingsPage).toHaveAttribute('hidden', '');
+        await expect(authorsNote).toBeVisible();
+        await page.evaluate(() => window.jQuery('#floatingPrompt').hide());
+
+        expect(await page.evaluate(() => window.jQuery('#WorldInfo').is(':visible'))).toBe(true);
+        await expect(portrait).toBeVisible();
+        await expect(chatSidebar).toBeAttached();
+        await expect(chatSidebar).toBeHidden();
+
+        // Global search marks its Escape as used, so that press leaves the portrait open.
+        await page.evaluate(() => window.SillyBunnyShell.openGlobalSearch());
+        await expect(search).toHaveClass(/\bis-open\b/);
+        await page.keyboard.press('Escape');
+        await expect(search).not.toHaveClass(/\bis-open\b/);
+        await expect(portrait).toBeVisible();
+
+        await page.keyboard.press('Escape');
+
+        await expect(portrait).toHaveCount(0);
+        await expect(chatSidebar).toBeAttached();
+        await expect(settingsPage).toHaveAttribute('hidden', '');
+    });
+});
+
+test.describe('mobile chat tools with a chat at iPhone 390x844', () => {
+    test.use({
+        viewport: { width: 390, height: 844 },
+        isMobile: true,
+        hasTouch: true,
+        userAgent: IPHONE_USER_AGENT,
+    });
+
+    test('Escape clears the search, then closes the chat files list, then the sheet', async ({ page }) => {
+        await openQuietChatForSmoke(page);
+        await clearToasts(page);
+        const search = page.locator('#sb-mobile-chat-search');
+        const chatFilesButton = page.locator('#sb-mobile-chat-tools-panel .sb-mobile-chat-actions button[title="View chat files"]');
+        const chatFiles = page.locator('#shadow_select_chat_popup');
+        const authorsNote = page.locator('#floatingPrompt');
+
+        await page.evaluate(() => window.SillyBunnyShell.openChatTools());
+        await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({ chatToolsOpen: true });
+
+        // A search with text clears first and keeps the sheet open.
+        await search.fill('Seraphina');
+        await page.keyboard.press('Escape');
+        await expect(search).toHaveValue('');
+        await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({ chatToolsOpen: true });
+
+        // The chat files list opens above the sheet; its Escape closes only the list.
+        await chatFilesButton.click();
+        await expect(chatFiles).toBeVisible();
+        await chatFilesButton.focus();
+        await page.keyboard.press('Escape');
+        await expect(chatFiles).toBeHidden();
+        await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({ chatToolsOpen: true });
+
+        // The sheet's own Escape stops there, so Author's Note behind it stays open.
+        await page.evaluate(() => window.jQuery('#floatingPrompt').css({ display: 'flex', opacity: 1 }));
+        await page.locator('#sb-mobile-chat-tools-panel').focus();
+        await page.keyboard.press('Escape');
+        await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({ chatToolsOpen: false });
+        await expect(authorsNote).toBeVisible();
+        await expect(page.locator('#sb-settings-page')).toHaveAttribute('hidden', '');
+        await page.evaluate(() => window.jQuery('#floatingPrompt').hide());
     });
 });
