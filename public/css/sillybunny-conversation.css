@@ -2849,9 +2849,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 }
 
 .sb-conversation-message[data-role='system'] .sb-conversation-message-avatar,
-.sb-conversation-message[data-role='system'] .sb-conversation-message-meta,
-.sb-conversation-message[data-role='system'] .sb-conversation-message-actions,
-.sb-conversation-message[data-role='system'] .sb-conversation-mobile-menu-trigger {
+.sb-conversation-message[data-role='system'] .sb-conversation-message-meta {
     display: none;
 }
 
@@ -2861,10 +2859,18 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 }
 
 .sb-conversation-message[data-role='system'] .sb-conversation-message-bubble {
+    /* The hidden pill shares the grid cell and can be wider than the note; keep the note centered under it. */
+    justify-self: center;
     background: transparent;
     color: var(--sb-muted-fg);
     font-size: var(--sb-type-meta);
     text-align: center;
+}
+
+/* System rows hide the name row, so the pill's usual lift lands on the single note line.
+   Lift it clear of the bubble; while shown it overlaps the previous row instead of the note. */
+.sb-conversation-message[data-role='system'] .sb-conversation-message-actions {
+    transform: translate(0, -100%);
 }
 
 .sb-conversation-image-preview img {
@@ -3199,6 +3205,11 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     /* Match the avatar offset so the trigger sits beside the bubble, not the name. */
     .sb-conversation-message[data-show-header='true'] .sb-conversation-mobile-menu-trigger {
         margin-block-start: 1.4em;
+    }
+
+    /* System rows hide the name row, so that offset would drop the trigger a line below the note. */
+    .sb-conversation-message[data-role='system'] .sb-conversation-mobile-menu-trigger {
+        margin-block-start: 0;
     }
 
     /* ::before is the Font Awesome glyph; ::after widens the hit area to 44px without moving the icon. */
