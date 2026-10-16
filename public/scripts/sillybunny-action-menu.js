@@ -230,7 +230,7 @@ function ensureSheet() {
     close.title = translate('Close');
     close.setAttribute('aria-label', translate('Close'));
     close.append(createIcon('fa-solid fa-xmark'));
-    close.addEventListener('click', () => closeActionMenu());
+    close.addEventListener('click', () => closeActionMenu({ restoreFocus: true }));
     header.append(heading, close);
 
     const body = document.createElement('div');
