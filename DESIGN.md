@@ -210,6 +210,7 @@ Shell layers are separated by tone first, then by a `1px` shade line or one over
 | Layer | Token | Source (dark) | Dark | Light | libadwaita role |
 |---|---|---|---|---|---|
 | View | `--sb-layer-view` | `--SmartThemeChatTintColor` | `#1d1d20` | `#ffffff` | `view-bg` |
+| Chat column (desktop) | `--sb-chat-view-bg` | View at the tint's own alpha, `min(1, alpha / 0.9)`, times the Background Visibility overlay | `#1d1d20` (0.9 maps to opaque) | `#ffffff` (0.9 maps to opaque) | `view-bg` |
 | Window | `--sb-layer-window` | `--SmartThemeBlurTintColor` | `#222226` | `#fafafb` | `window-bg` |
 | Page | `--sb-page-bg-source` | BlurTint 88% + Body 12% (light 86/14) | `#3c3c40` (approx.) | `#dedee0` (approx.) | window behind `#sheld` |
 | Canvas | `--sb-layer-canvas` | BlurTint 90% + Body 10% | `#38383c` (approx.) | `#e3e3e5` (approx.) | `sidebar-bg` |
@@ -220,7 +221,7 @@ Shell layers are separated by tone first, then by a `1px` shade line or one over
 | Dialog | `--sb-layer-dialog` | BlurTint 90% + Body 10%; light uses BlurTint | `#38383c` | `#fafafb` | `dialog-bg` |
 | Toast | `--sb-layer-toast` | BlurTint 80% + Body 20% | `#4e4e52` | inverse dark | toast `#505053` |
 
-- **The chat column** is View. The page behind `#sheld` is `--sb-page-bg-source`, a mix of BlurTint toward Body so the main window stays distinct from the canvas in every theme. The top bar is Header bar. The Roleplay composer, bottom chat bar, and Conversation composer sit on Bottom bar: View in dark mode, so they stay darker than the top bar; in light mode a step between the white View and the Header bar, so page, top bar, bottom bar, and chat never share one tone.
+- **The chat column** is the raw chat tint on mobile (upstream's rule) and `--sb-chat-view-bg` on desktop: View at the theme's tint alpha times the Background Visibility overlay, so the bundled 0.9 tints stay opaque and lower tints show the background. The page behind `#sheld` is `--sb-page-bg-source`, a mix of BlurTint toward Body so the main window stays distinct from the canvas in every theme. The top bar is Header bar. The Roleplay composer, bottom chat bar, and Conversation composer sit on Bottom bar: View in dark mode, so they stay darker than the top bar; in light mode a step between the white View and the Header bar, so page, top bar, bottom bar, and chat never share one tone.
 - **The top bar is a flat libadwaita headerbar.** SillyBunny is chat-first, so the headerbar recedes and messages, the composer, and the character list carry the visual weight. It shares the canvas tone in both styles and separates from the chat column by tone and the header bar shade. Do not raise it into a heavier, toolbar-style band.
 - **Shell drawers** continue the top bar. They separate from the view by tone and one overlay shadow, not by a heavy shadow or blur.
 - **Popovers, menus, and dialogs** are the lightest opaque layer in dark mode. In light mode they rely on a border and shade.
