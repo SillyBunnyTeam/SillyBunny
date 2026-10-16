@@ -1714,7 +1714,7 @@ export function getGroupBlock(group) {
 
     const avatar = getGroupAvatar(group);
     if (avatar) {
-        $(template).find('.avatar').replaceWith(avatar);
+        $(template).children('.avatar, .missing-avatar').first().replaceWith(avatar);
     }
 
     return template;
@@ -1727,11 +1727,17 @@ export function getGroupBlock(group) {
 function updateGroupAvatar(group) {
     $('#group_avatar_preview').empty().append(getGroupAvatar(group));
 
-    $('.group_select').each(function () {
-        if ($(this).data('id') == group.id) {
-            $(this).find('.avatar').replaceWith(getGroupAvatar(group));
-        }
-    });
+    // SillyBunny: a create-mode draft has no id, and the old loose `data('id') == group.id`
+    // matched the hidden #group_list_template row (undefined == null), stripping its
+    // .avatar so every later getGroupBlock() clone rendered the blank placeholder.
+    const groupId = group?.id === null || group?.id === undefined ? '' : String(group.id);
+    if (groupId) {
+        $('#rm_print_characters_block .group_select').each(function () {
+            if ($(this).attr('data-grid') === groupId) {
+                $(this).children('.avatar, .missing-avatar').first().replaceWith(getGroupAvatar(group));
+            }
+        });
+    }
 
     favsToHotswap();
 }
