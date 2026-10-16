@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { auditPromptingLayout } from './helpers/libadwaita-audit.js';
 
-test.use({ serviceWorkers: 'block', reducedMotion: 'reduce' });
+test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
 const BACKENDS = ['openai', 'textgenerationwebui', 'kobold', 'koboldhorde', 'novel'];
 const TEXT_BACKENDS = ['textgenerationwebui', 'kobold', 'novel'];
@@ -672,8 +672,18 @@ test.describe('Customize consistency', () => {
                         results.push(`${input.id || input.name || 'unnamed input'}: plain checkbox`);
                     }
                 }
+                // Gallery captions identify files and appear on hover or focus.
+                for (const tile of root.querySelectorAll('.bg_example')) {
+                    if (!visible(tile)) continue;
+                    const filename = tile.getAttribute('title') || '';
+                    const caption = tile.querySelector('.BGSampleTitle')?.textContent.trim();
+                    if (!filename || !caption || caption !== filename.slice(0, filename.lastIndexOf('.'))) {
+                        results.push(`${filename || 'unnamed background'}: gallery caption does not match its filename`);
+                    }
+                }
                 for (const row of root.querySelectorAll('[title]')) {
                     if (!visible(row) || !row.matches('.ds-row, .ds-row-switch, .checkbox_label, .flex-container')) continue;
+                    if (row.classList.contains('bg_example')) continue;
                     const hasSubtitle = [...row.querySelectorAll('.ds-row-subtitle')]
                         .some(subtitle => visible(subtitle) && subtitle.textContent.trim());
                     const hasDescription = [...row.querySelectorAll('.ds-row-label, .checkbox_label, label, small, .notes, .toggle-description, p, [data-sb-description]')]
@@ -685,6 +695,100 @@ test.describe('Customize consistency', () => {
             violations.push(...panelViolations.map(violation => `${id}: ${violation}`));
         }
         expect(violations).toEqual([]);
+    });
+
+    test('Reasoning Template keeps visible copy and live preset controls across layouts', async ({ page }, testInfo) => {
+        // Both settings layouts and their backend transitions run after app startup.
+        test.slow();
+        const actions = ['update', 'rename', 'new', 'import', 'export', 'restore', 'restore-defaults', 'delete'];
+        const selectors = [
+            '#reasoning_select', '#reasoning_prefix', '#reasoning_suffix', '#reasoning_separator',
+            '[data-preset-manager-file="reasoning"]',
+            ...actions.map(action => `[data-preset-manager-${action}="reasoning"]`),
+        ];
+        for (const selector of selectors) await expect(page.locator(selector)).toHaveCount(1);
+        await page.evaluate(selectors => {
+            window.__sbReasoningNodes = selectors.map(selector => document.querySelector(selector));
+        }, selectors);
+
+        const viewports = [
+            { width: 1440, backend: 'openai' },
+            { width: 390, backend: 'textgenerationwebui' },
+        ];
+        for (const { width, backend } of viewports) {
+            await page.setViewportSize({ width, height: 900 });
+            await switchBackend(page, backend);
+            const prompting = await openSettingsTab(page, 'prompting');
+            const row = prompting.locator('.ds-row:has(#reasoning_select)');
+            const label = row.locator('label[for="reasoning_select"]');
+            const subtitle = row.locator('.ds-row-subtitle');
+            await expect(label).toBeVisible();
+            await expect(label).toHaveText('Reasoning Template');
+            await expect(label).toHaveAttribute('data-i18n', 'Reasoning Template');
+            await expect(subtitle).toBeVisible();
+            await expect(subtitle).toHaveText('Select your current Reasoning Template');
+            await expect(subtitle).toHaveAttribute('data-i18n', 'Select your current Reasoning Template');
+            await expect(row).not.toHaveAttribute('title', /.+/);
+            await expect(row.locator('[data-sb-copy-placeholder]')).toHaveCount(0);
+            for (const action of actions) await expect(row.locator(`[data-preset-manager-${action}="reasoning"]`)).toBeVisible();
+            expect(await page.evaluate(selectors => window.__sbReasoningNodes.every((node, index) => node === document.querySelector(selectors[index])), selectors)).toBe(true);
+
+            const select = row.locator('#reasoning_select');
+            await expect(select).toHaveAttribute('data-preset-manager-for', 'reasoning');
+            await select.selectOption('Blank');
+            await expect(prompting.locator('#reasoning_prefix')).toHaveValue('');
+            await select.selectOption('DeepSeek');
+            await expect(prompting.locator('#reasoning_prefix')).toHaveValue('<think>\n');
+            await expectNoHorizontalOverflow(row);
+            await row.scrollIntoViewIfNeeded();
+        }
+
+        const layouts = [];
+        for (const width of [1440, 320, 390, 620, 621, 768, 769]) {
+            await page.setViewportSize({ width, height: 900 });
+            const prompting = await openSettingsTab(page, 'prompting');
+            const row = prompting.locator('.ds-row:has(#reasoning_select)');
+            const select = row.locator('#reasoning_select');
+            await expect(select).toHaveValue('DeepSeek');
+            for (const action of actions) await expect(row.locator(`[data-preset-manager-${action}="reasoning"]`)).toBeVisible();
+            expect(await page.evaluate(selectors => window.__sbReasoningNodes.every((node, index) => node === document.querySelector(selectors[index])), selectors)).toBe(true);
+            await expectNoHorizontalOverflow(row);
+            await row.scrollIntoViewIfNeeded();
+            await page.evaluate(() => document.fonts.ready);
+            layouts.push(await select.evaluate(control => {
+                const style = getComputedStyle(control);
+                const context = document.createElement('canvas').getContext('2d');
+                context.font = style.font;
+                const selectedText = control.selectedOptions[0].textContent;
+                const paddingLeft = parseFloat(style.paddingLeft);
+                const paddingRight = parseFloat(style.paddingRight);
+                const bounds = element => {
+                    const { x, y, width, height } = element.getBoundingClientRect();
+                    return { x, y, width, height };
+                };
+                return {
+                    viewportWidth: window.innerWidth,
+                    selectedText,
+                    textWidth: context.measureText(selectedText).width,
+                    availableTextWidth: control.clientWidth - paddingLeft - paddingRight,
+                    font: style.font,
+                    appearance: style.appearance,
+                    paddingLeft,
+                    paddingRight,
+                    select: bounds(control),
+                    actions: bounds(control.nextElementSibling),
+                    row: bounds(control.closest('.ds-row')),
+                };
+            }));
+            await page.screenshot({ path: testInfo.outputPath(`reasoning-template-${width}.png`) });
+        }
+        await testInfo.attach('reasoning-control-bounds', { body: JSON.stringify(layouts, null, 2), contentType: 'application/json' });
+        expect(layouts.filter(layout => layout.availableTextWidth + 1 < layout.textWidth)).toEqual([]);
+
+        const chooserPromise = page.waitForEvent('filechooser');
+        await page.locator('[data-preset-manager-import="reasoning"]').click();
+        const chooser = await chooserPromise;
+        expect(await chooser.element().evaluate(input => input === document.querySelector('[data-preset-manager-file="reasoning"]'))).toBe(true);
     });
 
     test('Appearance includes the expected Theme Colors, Page Size, and Visual Toggles rows', async ({ page }) => {
