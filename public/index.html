@@ -67,8 +67,7 @@
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20261015a" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-navigation.css?v=20261001e">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261003a">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-list-editor.css?v=20261014a">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-character-editor.css?v=20261015h">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-character-editor.css?v=20261015i">
     <!-- SillyBunny: colour menus render outside clipped preference groups. -->
     <link rel="preload" as="style" href="css/sillybunny-color-picker.css" data-sb-deferred-style data-sb-media="all">
     <link rel="stylesheet" type="text/css" href="css/user.css">
@@ -4910,7 +4909,9 @@
                                     <summary data-i18n="Reasoning Formatting">
                                         Reasoning Formatting
                                     </summary>
-                                    <div class="flex-container flexNoGap" title="Select your current Reasoning Template" data-i18n="[title]Select your current Reasoning Template">
+                                    <div class="flex-container flexNoGap">
+                                        <label for="reasoning_select" data-i18n="Reasoning Template">Reasoning Template</label>
+                                        <small class="ds-row-subtitle" data-i18n="Select your current Reasoning Template">Select your current Reasoning Template</small>
                                         <select id="reasoning_select" data-preset-manager-for="reasoning" class="flex1 text_pole" aria-label="Reasoning Template" data-i18n="[aria-label]Reasoning Template"></select>
                                         <div class="flex-container marginLeft5 gap3px">
                                             <input type="file" hidden data-preset-manager-file="reasoning" accept=".json, .settings">
