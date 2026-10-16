@@ -79,9 +79,21 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () =
     SPRING_NAVIGATION: {}, MOTION_FAST: 0, MOTION_SLOW: 0,
 }));
 
-const openActionMenu = jest.fn();
-const closeActionMenu = jest.fn();
-const isActionMenuOpen = jest.fn(() => false);
+let actionMenu;
+const closeActionMenu = jest.fn(() => {
+    const previous = actionMenu;
+    actionMenu = null;
+    previous?.trigger.setAttribute('aria-expanded', 'false');
+    previous?.onClose?.();
+});
+const openActionMenu = jest.fn(options => {
+    const toggling = actionMenu?.trigger === options.trigger;
+    closeActionMenu();
+    if (toggling) return;
+    actionMenu = options;
+    options.trigger.setAttribute('aria-expanded', 'true');
+});
+const isActionMenuOpen = jest.fn(trigger => Boolean(actionMenu) && (!trigger || actionMenu.trigger === trigger));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({
     openActionMenu, closeActionMenu, isActionMenuOpen,
 }));
@@ -164,8 +176,9 @@ beforeEach(() => {
     popupChoice = 0;
     entryControllers = [];
     mounted = null;
+    actionMenu = null;
     saveWorldInfo.mockImplementation(async name => name);
-    isActionMenuOpen.mockImplementation(() => false);
+    isActionMenuOpen.mockImplementation(trigger => Boolean(actionMenu) && (!trigger || actionMenu.trigger === trigger));
     isPickerOpen.mockImplementation(() => false);
     confirm.mockResolvedValue(true);
     localStorage.clear();
@@ -230,7 +243,7 @@ describe('World Info shell', () => {
         await mount();
         expect(container.querySelector('.sb-wi-list-status').textContent).toContain('--- Pick to Edit ---');
         expect(container.querySelectorAll('.sb-wi-list-status button')).toHaveLength(2);
-        expect(container.querySelector('.sb-wi-settings-row').hidden).toBe(false);
+        expect(container.querySelector('.sb-wi-settings-button').hidden).toBe(false);
     });
 
     test('an empty book routes to an empty status with New Entry', async () => {
@@ -239,11 +252,12 @@ describe('World Info shell', () => {
         expect(container.querySelector('.sb-wi-list-box').hidden).toBe(true);
     });
 
-    test('entries render as boxed rows and an unselected detail status', async () => {
+    test('entries render as boxed rows without a persistent empty detail', async () => {
         await mount({ name: 'Book A', data: book(3) });
         expect(container.querySelectorAll('.sb-wi-row')).toHaveLength(3);
         expect(container.querySelector('.sb-wi-list-status').hidden).toBe(true);
-        expect(container.querySelector('.sb-wi-empty-detail').textContent).toContain('No entry selected');
+        expect(container.querySelector('.sb-wi-empty-detail')).toBeNull();
+        expect(container.querySelector('.sb-wi-detail').hidden).toBe(true);
     });
 
     test('filtered nonempty books route to No results, including view-only filters', async () => {
@@ -253,9 +267,9 @@ describe('World Info shell', () => {
         expect(container.querySelector('.sb-wi-list-status button')).toBeNull();
     });
 
-    test('settings remain pinned outside the entry box and search counts skip them', async () => {
+    test('global settings stay in the header while search reports only entry counts', async () => {
         await mount({ name: 'Book A', data: book(3) });
-        const pinned = container.querySelector('.sb-wi-settings-row');
+        const gear = container.querySelector('.sb-wi-settings-button');
         const search = container.querySelector('.sb-wi-search');
         search.value = 'missing';
         search.dispatchEvent(new Event('input', { bubbles: true }));
@@ -264,22 +278,66 @@ describe('World Info shell', () => {
         jest.advanceTimersByTime(1);
         await settle();
         expect(setFilterData).toHaveBeenCalledWith('world_info_search', 'missing');
-        expect(container.querySelector('.sb-wi-settings-row')).toBe(pinned);
-        expect(pinned.closest('.sb-wi-list-body')).toBeNull();
-        expect(container.querySelector('.sb-wi-list-count').textContent).toBe('0 of 3 results');
+        expect(container.querySelector('.sb-wi-settings-button')).toBe(gear);
+        expect(gear.closest('.sb-wi-list-header')).not.toBeNull();
+        expect(container.querySelector('.sb-wi-list-count')).toBeNull();
+        expect(container.querySelector('.sb-wi-settings-row')).toBeNull();
         expect(container.querySelector('.sb-list-editor__status[aria-live="polite"]').textContent).toBe('No results');
     });
 
-    test('keyboard navigation reaches settings and opens them with Enter', async () => {
+    test('arrow navigation stays within entries and the gear remains a native Tab stop', async () => {
         await mount({ name: 'Book A', data: book(2) });
         const first = container.querySelector('.sb-wi-row');
         first.focus();
         first.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
-        const pinned = container.querySelector('.sb-wi-settings-row');
-        expect(document.activeElement).toBe(pinned);
-        pinned.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        expect(document.activeElement).toBe(first);
+        const gear = container.querySelector('.sb-wi-settings-button');
+        expect(gear.tabIndex).toBe(0);
+        gear.click();
         await settle();
         expect(mountSettings).toHaveBeenCalledWith(expect.objectContaining({ host: container.querySelector('.sb-wi-detail') }));
+    });
+
+    test('the global gear toggles settings, updates pressed state and receives returning focus', async () => {
+        await mount();
+        const gear = container.querySelector('.sb-wi-settings-button');
+        expect(gear.getAttribute('aria-pressed')).toBe('false');
+        gear.click();
+        await settle();
+        expect(gear.getAttribute('aria-pressed')).toBe('true');
+        expect(container.querySelector('.sb-wi-editor').dataset.open).toBe('true');
+        gear.click();
+        await settle();
+        expect(gear.getAttribute('aria-pressed')).toBe('false');
+        expect(container.querySelector('.sb-wi-editor').dataset.open).toBe('false');
+        expect(document.activeElement).toBe(gear);
+    });
+
+    test.each(['.sb-wi-sort-button', '.sb-wi-list-header button:has(.fa-ellipsis-vertical)', '.sb-wi-row-menu'])('reclicking %s closes its menu without reopening it', async selector => {
+        await mount({ name: 'Book A', data: book() });
+        const trigger = container.querySelector(selector);
+        trigger.click();
+        await settle();
+        expect(isActionMenuOpen(trigger)).toBe(true);
+        expect(trigger.getAttribute('aria-expanded')).toBe('true');
+        trigger.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+        trigger.click();
+        await settle();
+        expect(isActionMenuOpen()).toBe(false);
+        expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    test('sorting exposes two titled radio groups and the picker opts into trigger-width placement', async () => {
+        await mount({ name: 'Book A', data: book() });
+        container.querySelector('.sb-wi-sort-button').click();
+        await settle();
+        const { sections } = openActionMenu.mock.calls.at(-1)[0];
+        expect(sections.map(section => section.title)).toEqual(['lorum ipsum', 'lorum ipsum']);
+        expect(sections.map(section => section.items.map(item => item.checked))).toEqual([[true, false], [true, false]]);
+        const trigger = container.querySelector('.sb-wi-book-switcher');
+        trigger.click();
+        await settle();
+        expect(openPicker).toHaveBeenCalledWith(expect.objectContaining({ trigger, matchTriggerWidth: true }));
     });
 
     test('numeric UID navigation opens its page, including UID zero', async () => {
@@ -513,7 +571,7 @@ describe('World Info shell', () => {
 
     test('the global settings controller survives book changes and never becomes dirty', async () => {
         await mount();
-        container.querySelector('.sb-wi-settings-row').click();
+        container.querySelector('.sb-wi-settings-button').click();
         await settle();
         dirty = true;
         await render({ name: 'Book A', data: book() });
@@ -543,7 +601,7 @@ describe('World Info shell', () => {
         const detail = await open();
         dirty = true;
         popupChoice = choice;
-        container.querySelector('.sb-wi-settings-row').click();
+        container.querySelector('.sb-wi-settings-button').click();
         await settle();
         expect(detail[method]).toHaveBeenCalled();
         expect(mountSettings).toHaveBeenCalled();
@@ -556,10 +614,11 @@ describe('World Info shell', () => {
         dirty = true;
         popupChoice = 1;
         detail.save.mockResolvedValue(false);
-        container.querySelector('.sb-wi-settings-row').click();
+        container.querySelector('.sb-wi-settings-button').click();
         await settle();
         expect(mountSettings).not.toHaveBeenCalled();
         expect(detail.destroy).not.toHaveBeenCalled();
+        expect(container.querySelector('.sb-wi-settings-button').getAttribute('aria-pressed')).toBe('false');
     });
 
     test.each([0, 2])('sidebar Escape guards the open dirty entry instead of closing its settings page (choice %i)', async choice => {

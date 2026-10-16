@@ -1,9 +1,18 @@
 import { test, expect } from '@playwright/test';
 import { testSetup } from './frontent-test-utils.js';
+import { gunzipSync } from 'node:zlib';
 
 test.describe('World Info sorting controls', () => {
     test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
-    test.beforeEach(testSetup.awaitST);
+    test.beforeEach(async ({ page }) => {
+        await page.route('**/api/settings/save', route => {
+            const request = route.request();
+            const body = request.headers()['content-encoding'] === 'gzip' ? gunzipSync(request.postDataBuffer()) : request.postDataBuffer();
+            const payload = JSON.parse(body.toString());
+            return route.fulfill({ json: { result: 'ok', version: payload._version + 1 } });
+        });
+        await testSetup.awaitST({ page });
+    });
 
     test('applies ascending steps and descending clamping to native and character-book orders', async ({ page }) => {
         const name = `PARITY_SORT_${Date.now()}`;
@@ -46,7 +55,7 @@ test.describe('World Info sorting controls', () => {
             const entries = editor.locator('.sb-wi-row');
             await expect(editor).toBeAttached();
             await expect(entries).toHaveCount(3);
-            await editor.locator('.sb-wi-list-tools button:has(.fa-sliders)').click();
+            await editor.locator('.sb-wi-sort-button').click();
             await page.locator('.sb-action-menu [role^="menuitem"]', { hasText: 'Title A-Z' }).click();
             await expect(entries.first()).toContainText('Alpha');
             const applySorting = async () => {

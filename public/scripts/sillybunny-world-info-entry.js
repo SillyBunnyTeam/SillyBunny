@@ -10,7 +10,8 @@ import { createChipEntry } from './sillybunny-editor/chip-entry.js';
 import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { createEditorSession } from './sillybunny-editor/session.js';
 import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
-import { mountEditorPreviews } from './sillybunny-editor/preview.js';
+import { createSegmentedControl, setSegmentedControlValue } from './sillybunny-segmented-control.js';
+import { animateIn, stopMotion, MOTION_FAST } from './sillybunny-motion.js';
 
 let nextEntryId = 0;
 
@@ -76,7 +77,8 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
     let tokenRequest = 0;
     let rescueSave = null;
     let chrome;
-    let previews;
+    let contentField;
+    let showingPreview = false;
     let session;
     let lastState = { dirty: false, saving: false };
     const fields = new Map();
@@ -98,15 +100,23 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
     dirtyDot.setAttribute('aria-label', t`Unsaved changes`);
     dirtyDot.hidden = true;
     const tokens = element('span', 'sb-wi-entry-tokens', `— ${t`tokens`}`);
-    const cancel = element('button', 'sb-editor-action sb-editor-action--secondary sb-wi-entry-cancel', t`Cancel`);
+    const modes = createSegmentedControl(t`Edit / Preview`, [[false, t`Edit`], [true, t`Preview`]], false, setPreview, { compact: true, detachFromForm: true });
+    modes.classList.add('sb-wi-entry-modes');
+    const modeToggle = button(t`Preview`, 'menu_button_icon sb-wi-entry-mode-toggle');
+    modeToggle.addEventListener('click', () => setPreview(!showingPreview));
+    const cancel = element('button', 'sb-editor-action sb-editor-action--secondary sb-wi-entry-cancel');
     cancel.type = 'button';
+    cancel.title = t`Cancel`;
+    const cancelIcon = element('i', 'fa-solid fa-xmark sb-editor-action__icon');
+    cancelIcon.setAttribute('aria-hidden', 'true');
+    cancel.append(cancelIcon, element('span', 'sb-editor-action__label', t`Cancel`));
     const saveButton = element('button', 'sb-editor-action sb-editor-action--primary sb-wi-entry-save', t`Save`);
     saveButton.type = 'button';
     const banner = element('div', 'sb-wi-entry-banner');
     banner.setAttribute('role', 'status');
     banner.hidden = true;
     const body = element('div', 'sb-wi-entry-body');
-    header.append(back, title, dirtyDot, tokens, cancel, saveButton);
+    header.append(back, title, dirtyDot, modes, modeToggle, cancel, saveButton);
     root.append(header, banner, body);
     host.replaceChildren(root);
 
@@ -155,7 +165,7 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
         draft = snapshotOf(snapshot);
         for (const [id, field] of fields) field.setValue(model.readField(draft, id));
         refreshVisibility();
-        previews?.reset();
+        setPreview(false);
         scheduleTokens();
     }
 
@@ -266,27 +276,49 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
 
     function createContent(field, label) {
         const wrapper = element('div', 'ds-field sb-wi-entry-content');
-        const toolbar = element('div', 'sb-wi-entry-content-toolbar');
-        const caption = element('label', 'ds-row-label', label);
         const textarea = element('textarea', 'text_pole sb-wi-entry-textarea');
         textarea.id = `${instanceId}-content`;
-        caption.htmlFor = textarea.id;
+        textarea.setAttribute('aria-label', label);
         textarea.placeholder = translate(field.placeholder, field.placeholderI18n);
         textarea.value = model.readField(draft, field.id);
         textarea.addEventListener('input', () => writeField(field, textarea.value));
-        const toggle = element('span', 'sb-preview-toggle');
-        toggle.dataset.sbPreviewFor = textarea.id;
         const pane = element('pre', 'sb-preview-pane sb-wi-entry-preview');
         pane.dataset.sbPreviewPane = textarea.id;
         pane.setAttribute('aria-label', label);
         pane.hidden = true;
         pane.tabIndex = 0;
-        toolbar.append(caption, toggle);
-        wrapper.append(toolbar, textarea, pane);
+        const footer = element('footer', 'sb-wi-entry-footer');
+        footer.append(tokens);
+        wrapper.append(textarea, pane);
         const row = createRow({ field: field.id, label, stacked: true, suffix: wrapper });
-        // Content already has an associated visible label beside its Edit/Preview toggle.
+        // The section heading supplies the visible Content caption.
         row.row.querySelector('.ds-row-text').remove();
+        contentField = { textarea, pane, footer };
         return { ...row, setValue: value => { if (textarea.value !== value) textarea.value = value; } };
+    }
+
+    function setPreview(showPreview) {
+        showingPreview = showPreview;
+        setSegmentedControlValue(modes, showPreview);
+        const label = showPreview ? t`Edit` : t`Preview`;
+        modeToggle.setAttribute('aria-label', label);
+        modeToggle.title = label;
+        modeToggle.setAttribute('aria-pressed', String(showPreview));
+        const glyph = element('i', `fa-solid fa-${showPreview ? 'pen' : 'eye'}`);
+        glyph.setAttribute('aria-hidden', 'true');
+        modeToggle.replaceChildren(glyph);
+        if (!contentField) return;
+        const { textarea, pane } = contentField;
+        if (showPreview) {
+            pane.style.height = `${textarea.getBoundingClientRect().height}px`;
+            pane.textContent = textarea.value;
+        }
+        const changed = textarea.hidden !== showPreview;
+        stopMotion(textarea);
+        stopMotion(pane);
+        textarea.hidden = showPreview;
+        pane.hidden = !showPreview;
+        if (changed) animateIn(showPreview ? pane : textarea, [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_FAST });
     }
 
     function createField(field) {
@@ -326,7 +358,8 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
     }
 
     for (const section of model.SECTIONS) {
-        const rows = model.FIELDS.filter(field => field.section === section.id).map(field => {
+        // The header field (comment) is edited inline in the header, as in the Prompt Editor.
+        const rows = model.FIELDS.filter(field => field.section === section.id && !field.header).map(field => {
             const row = createField(field);
             fields.set(field.id, row);
             return row;
@@ -336,6 +369,7 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
             ? createPrefGroup({ field: `section-${section.id}`, rows: [createExpanderRow({ label: title, field: `expander-${section.id}`, children: rows })] })
             : createPrefGroup({ title, field: `section-${section.id}`, rows });
         body.append(group.section);
+        if (rows.some(row => row.row.dataset.sbEditorField === 'content')) body.append(contentField.footer);
     }
 
     function renderBanner() {
@@ -548,10 +582,11 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
     eventSource.on(event_types.WORLDINFO_DELETED, onBookDeleted);
     eventSource.on(event_types.WORLDINFO_RENAMED, onBookRenamed);
     window.addEventListener('pagehide', flushDraft);
-    previews = mountEditorPreviews(root, (textarea, pane) => { pane.textContent = textarea.value; });
+    setPreview(false);
     chrome = mountEditorChrome({
         root, header, content: body, controls: { back, title, dirty: dirtyDot, cancel, save: saveButton },
         onBack: () => requestClose(), onCancel: discard, onSave: () => { void save(); },
+        scrollHide: false,
     });
     session = createEditorSession({ captureSnapshot, restoreSnapshot, persist, drafts, offerDraft: showDraftRecoveryToast, onStateChange: renderState });
     refreshVisibility();
@@ -574,7 +609,8 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
             clearTimeout(tokenTimer);
             tokenRequest++;
             chrome.dispose();
-            previews.dispose();
+            stopMotion(contentField.textarea);
+            stopMotion(contentField.pane);
             for (const chip of chips) chip.destroy();
             dismissDraftRecoveryToast();
             eventSource.removeListener(event_types.WORLDINFO_DELETED, onBookDeleted);

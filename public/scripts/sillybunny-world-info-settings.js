@@ -63,7 +63,7 @@ function switchRow({ input, label, subtitle, field, listen, onChange }) {
 /**
  * @param {object} options
  * @param {HTMLElement} options.host Empty detail pane owned by the list shell.
- * @param {() => void} options.onClose Return to the list in collapsed mode.
+ * @param {() => void} options.onClose Guarded return to the list.
  * @returns {{ focusTarget: () => HTMLElement|null, destroy: () => void }}
  */
 export function mountWorldInfoSettings({ host, onClose }) {
@@ -111,7 +111,7 @@ export function mountWorldInfoSettings({ host, onClose }) {
 
     const root = element('section', 'sb-wi-settings');
     const header = element('header', 'sb-wi-detail-header sb-wi-settings-header');
-    const back = element('button', 'menu_button menu_button_icon sb-list-editor__back sb-wi-detail-back');
+    const back = element('button', 'menu_button menu_button_icon sb-wi-detail-back');
     back.type = 'button';
     back.title = t`Back`;
     back.setAttribute('aria-label', t`Back`);
@@ -122,7 +122,7 @@ export function mountWorldInfoSettings({ host, onClose }) {
         event.stopPropagation();
         onClose();
     });
-    const title = element('h2', 'sb-wi-detail-title sb-wi-settings-title', t`World Info settings`);
+    const title = element('h2', 'sb-wi-detail-title sb-wi-settings-title', t`Global Settings`);
     header.append(back, title);
     const body = element('div', 'sb-wi-settings-body');
     root.append(header, body);

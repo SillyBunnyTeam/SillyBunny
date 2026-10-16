@@ -24,7 +24,7 @@ import {
 import { mountWorldInfoSettings } from './sillybunny-world-info-settings.js';
 import { mountWorldInfoEntry, worldInfoDraftKey } from './sillybunny-world-info-entry.js';
 
-const STYLESHEET = { href: 'css/sillybunny-world-info-editor.css?v=20261017b', id: 'deferred-world-info-editor-css' };
+const STYLESHEET = { href: 'css/sillybunny-world-info-editor.css?v=20261017g', id: 'deferred-world-info-editor-css' };
 const mountedEditors = new WeakMap();
 const itemKey = item => item.kind === 'settings' ? 'settings' : `entry:${item.uid}`;
 
@@ -134,28 +134,26 @@ export function mountWorldInfoEditor(container) {
 
     const listHeader = element('header', 'sb-wi-list-header');
     const bookSwitcher = button(t`Worlds/Lorebooks`, null, trigger => openBookPicker(trigger), 'sb-wi-book-switcher');
+    const bookTitles = element('span', 'sb-wi-list-titles');
     const bookLabel = element('span', 'sb-wi-book-name');
-    bookSwitcher.replaceChildren(icon('book-atlas'), bookLabel, icon('chevron-down'));
+    const bookSubtitle = element('span', 'sb-wi-list-subtitle');
+    bookTitles.append(bookLabel, bookSubtitle);
+    bookSwitcher.replaceChildren(bookTitles, icon('chevron-down'));
     bookSwitcher.setAttribute('aria-haspopup', 'dialog');
+    bookSwitcher.setAttribute('aria-expanded', 'false');
     const bookActions = button(t`World Info`, 'ellipsis-vertical', trigger => openBookMenu(trigger));
     bookActions.setAttribute('aria-haspopup', 'menu');
     bookActions.setAttribute('aria-expanded', 'false');
-    listHeader.append(bookSwitcher, bookActions);
-
-    const pinned = element('div', 'sb-wi-list-pinned ds-pref-group');
-    const settingsRow = createRow({ label: t`Settings`, field: 'settings', activatable: true, prefix: icon('sliders') }).row;
-    settingsRow.classList.add('sb-wi-settings-row');
-    settingsRow.dataset.sbListKey = 'settings';
-    pinned.append(settingsRow);
-
-    const tools = element('div', 'sb-wi-list-tools');
+    const toggleSettings = () => shell.selectedKey === 'settings' ? shell.deselectItem() : shell.selectItem({ kind: 'settings' });
+    const settingsButton = button(t`Global Settings`, 'gear', toggleSettings, 'sb-wi-settings-button');
+    settingsButton.setAttribute('aria-pressed', 'false');
     const newEntryButton = button(t`New Entry`, 'plus', () => clickTransport('world_popup_new'));
     const searchButton = button(t`Search`, 'magnifying-glass', () => searchControl.toggle());
-    // HUMAN: replace — combined view-filter/sort control has no existing label.
-    const filterButton = button(t`lorum ipsum`, 'sliders', trigger => openFilterMenu(trigger));
+    // HUMAN: replace — Sort control label.
+    const filterButton = button(t`lorum ipsum`, 'arrow-down-wide-short', trigger => openFilterMenu(trigger), 'sb-wi-sort-button');
     filterButton.setAttribute('aria-haspopup', 'menu');
     filterButton.setAttribute('aria-expanded', 'false');
-    tools.append(element('span', 'sb-wi-list-count'), newEntryButton, searchButton, filterButton);
+    listHeader.append(bookSwitcher, searchButton, newEntryButton, filterButton, settingsButton, bookActions);
     const searchField = element('label', 'sb-wi-search-field');
     searchField.hidden = true;
     const searchInput = element('input', 'sb-wi-search');
@@ -170,9 +168,6 @@ export function mountWorldInfoEditor(container) {
     entryBox.setAttribute('role', 'list');
     const listStatus = element('div', 'sb-wi-list-status');
     listBody.append(entryBox, listStatus);
-    const emptyDetail = element('div', 'sb-wi-empty-detail');
-    // HUMAN: replace — guidance for the unselected detail pane.
-    showStatus(emptyDetail, { icon: 'book-open', title: t`No entry selected`, description: t`Select an entry to edit its keywords and content` });
 
     const listContent = element('div', 'sb-wi-list-content');
     const searchStatus = element('div', 'sb-list-editor__status');
@@ -231,6 +226,7 @@ export function mountWorldInfoEditor(container) {
             title: t`Worlds/Lorebooks`,
             items: (world_names ?? []).map(name => ({ value: name, label: name })),
             selected: state.name,
+            matchTriggerWidth: true,
             footer: [
                 { label: t`New`, icon: 'fa-solid fa-plus', onSelect: () => run(() => clickTransport('world_create_button')) },
                 { label: t`Import World Info`, icon: 'fa-solid fa-file-import', onSelect: () => run(() => clickTransport('world_import_button')) },
@@ -248,11 +244,11 @@ export function mountWorldInfoEditor(container) {
     }
 
     function menu(trigger, title, sections) {
-        menuTrigger = trigger;
         openActionMenu({
-            trigger, title, sections: sections.map(items => ({ items })),
+            trigger, title, sections: sections.map(section => Array.isArray(section) ? { items: section } : section),
             onClose: () => { if (menuTrigger === trigger) menuTrigger = null; },
         });
+        menuTrigger = isActionMenuOpen(trigger) ? trigger : null;
     }
 
     function closeOwnedOverlays() {
@@ -270,7 +266,11 @@ export function mountWorldInfoEditor(container) {
 
     function openBookMenu(trigger) {
         const action = (label, glyph, id, danger = false) => menuItem(label, glyph, () => clickTransport(id), danger);
+        // A narrow sidebar hides the gear button (CSS); Global Settings moves into this menu.
+        const settingsItem = getComputedStyle(settingsButton).display === 'none'
+            ? [menuItem(t`Global Settings`, 'gear', toggleSettings)] : [];
         menu(trigger, state.name ?? t`World Info`, [
+            ...(settingsItem.length ? [settingsItem] : []),
             [action(t`Rename World Info`, 'pencil', 'world_popup_name_button'), action(t`Duplicate World Info`, 'copy', 'world_duplicate'), action(t`Export World Info`, 'file-export', 'world_popup_export')],
             [action(t`Batch Import Embedded Lorebooks`, 'cubes-stacked', 'world_batch_import_embedded'), action(t`Fill empty Memo/Titles with Keywords`, 'notes-medical', 'world_backfill_memos'), action(t`Apply current sorting as Order`, 'arrow-down-9-1', 'world_apply_current_sorting'), action(t`Refresh`, 'arrows-rotate', 'world_refresh')],
             [action(t`Delete World Info`, 'trash', 'world_popup_delete', true)],
@@ -281,24 +281,27 @@ export function mountWorldInfoEditor(container) {
         const viewButtons = [...worldInfo.querySelectorAll('.world_info_view_filter')];
         const sort = transport('world_info_sort_order');
         const options = [...(sort?.options ?? [])].filter(option => !option.hidden);
-        const selected = [
-            ...viewButtons.map(control => control.classList.contains('is-active')),
-            ...options.map(option => option.selected),
-        ];
-        closeActionMenu({ animate: false });
         menu(trigger, filterButton.getAttribute('aria-label'), [
-            viewButtons.map(control => menuItem(translate(control.textContent.trim()), control.classList.contains('is-active') ? 'check' : 'circle', () => control.click())),
-            options.map(option => menuItem(translate(option.textContent.trim()), option.selected ? 'check' : 'circle', () => {
-                sort.value = option.value;
-                sort.dispatchEvent(new Event('change', { bubbles: true }));
-            })),
+            {
+                // HUMAN: replace — Show section title.
+                title: t`lorum ipsum`,
+                items: viewButtons.map(control => ({
+                    ...menuItem(translate(control.textContent.trim()), control.classList.contains('is-active') ? 'check' : 'circle', () => control.click()),
+                    checked: control.classList.contains('is-active'),
+                })),
+            },
+            {
+                // HUMAN: replace — Sort by section title.
+                title: t`lorum ipsum`,
+                items: options.map(option => ({
+                    ...menuItem(translate(option.textContent.trim()), option.selected ? 'check' : 'circle', () => {
+                        sort.value = option.value;
+                        sort.dispatchEvent(new Event('change', { bubbles: true }));
+                    }),
+                    checked: option.selected,
+                })),
+            },
         ]);
-        // The shared action menu owns focus/activation but has no radio-item API yet.
-        const menuNode = [...document.querySelectorAll('.sb-action-menu')].find(node => !node.closest('[hidden]'));
-        menuNode?.querySelectorAll('[role="menuitem"]').forEach((node, index) => {
-            node.setAttribute('role', 'menuitemradio');
-            node.setAttribute('aria-checked', String(Boolean(selected[index])));
-        });
     }
 
     async function setEntryEnabled(uid, enabled) {
@@ -431,10 +434,12 @@ export function mountWorldInfoEditor(container) {
         bookLabel.textContent = state.name || t`--- Pick to Edit ---`;
         bookActions.hidden = !state.name;
         newEntryButton.disabled = !state.data;
-        const total = Object.values(state.data?.entries ?? {}).filter(entry => entry && typeof entry === 'object').length;
-        tools.querySelector('.sb-wi-list-count').textContent = t`${entries.length} of ${total} results`;
-        settingsRow.classList.toggle('is-selected', shell.selectedKey === 'settings');
-        emptyDetail.hidden = shell.isOpen || !state.data;
+        const allEntries = Object.values(state.data?.entries ?? {}).filter(entry => entry && typeof entry === 'object');
+        const total = allEntries.length;
+        const active = allEntries.filter(entry => !entry.disable).length;
+        // HUMAN: replace — entry-count and active-count subtitle labels.
+        bookSubtitle.textContent = `${total} ${t`lorum ipsum`} · ${active} ${t`lorum ipsum`}`;
+        settingsButton.setAttribute('aria-pressed', String(shell.selectedKey === 'settings'));
         listStatus.hidden = Boolean(state.data && entries.length);
         entryBox.hidden = !listStatus.hidden;
         if (!state.data) {
@@ -507,24 +512,28 @@ export function mountWorldInfoEditor(container) {
         isDirty: () => entryController()?.isDirty() ?? false,
         onSave: () => entryController()?.save() ?? true,
         onDiscard: () => entryController()?.discard(),
-        onDeselect: () => destroyDetail(),
-        onSelect: () => renderList(),
-        findRow: key => key === 'settings' ? settingsRow : rows.get(key)?.row ?? null,
+        onDeselect: () => {
+            destroyDetail();
+            settingsButton.setAttribute('aria-pressed', 'false');
+        },
+        onSelect: item => {
+            settingsButton.setAttribute('aria-pressed', String(item.kind === 'settings'));
+            renderList();
+        },
+        findRow: key => key === 'settings' ? settingsButton : rows.get(key)?.row ?? null,
         focusTarget: () => activeController?.focusTarget() ?? null,
     });
     shell.root.hidden = true;
-    shell.root.append(emptyDetail);
-    listContent.append(listHeader, pinned, tools, searchField, listBody, pagination.element);
+    listContent.append(listHeader, searchField, listBody, pagination.element);
     shell.sidebar.append(listContent, searchStatus);
-    const unbindRows = bindListKeyboard(shell.sidebar, {
-        rowSelector: '[data-sb-list-key]', keySourceSelector: '.sb-wi-grip',
+    const unbindRows = bindListKeyboard(listBody, {
+        rowSelector: '.sb-wi-row', keySourceSelector: '.sb-wi-grip',
         ignoreSelector: 'button, input, select, textarea, a, label, [role="switch"], [role="button"]',
         onOpen: row => {
-            const item = row === settingsRow ? { kind: 'settings' } : { kind: 'entry', uid: rowEntry(row).uid };
-            run(() => shell.selectItem(item));
+            run(() => shell.selectItem({ kind: 'entry', uid: rowEntry(row).uid }));
         },
         onMove: (row, direction) => {
-            if (row === settingsRow || !customSort() || searchControl.query) return false;
+            if (!customSort() || searchControl.query) return false;
             run(() => moveEntryBy(rowEntry(row).uid, direction));
         },
     });

@@ -23,15 +23,18 @@ test.beforeEach(async ({ page }) => {
         const data = { entries: { 0: entry(0, 'Alpha'), 1: entry(1, 'Beta'), 2: entry(2, 'Gamma', { disable: true }) } };
         if (!await saveWorldInfo(name, data, true)) throw new Error('Could not save test lorebook');
         await updateWorldInfoList();
-        for (const key of Object.keys(localStorage)) if (key.startsWith('sb-wi-editor-draft-')) localStorage.removeItem(key);
+        for (const key of Object.keys(localStorage)) if (key.startsWith('sb-wi-editor-draft-') && key.includes(encodeURIComponent(name))) localStorage.removeItem(key);
     }, BOOK);
 });
 
 test.afterEach(async ({ page }) => {
     await page.evaluate(async name => {
-        const { deleteWorldInfo, world_names } = await import('./scripts/world-info.js');
-        if (world_names.includes(name)) await deleteWorldInfo(name);
-    }, BOOK).catch(() => {});
+        const worldInfo = await import('./scripts/world-info.js');
+        if (worldInfo.world_names.includes(name)) await worldInfo.deleteWorldInfo(name);
+        await worldInfo.updateWorldInfoList();
+        if (worldInfo.world_names.includes(name)) throw new Error(`Test lorebook cleanup failed: ${name}`);
+        for (const key of Object.keys(localStorage)) if (key.startsWith('sb-wi-editor-draft-') && key.includes(encodeURIComponent(name))) localStorage.removeItem(key);
+    }, BOOK);
 });
 
 const readEntries = page => page.evaluate(async name => {
@@ -117,13 +120,60 @@ test.describe('World Info editor', () => {
     test('settings apply immediately with no book open', async ({ page }) => {
         await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'world-info'));
         const editor = page.locator('#WorldInfo .sb-wi-editor');
-        await editor.locator('[data-sb-list-key="settings"]').click();
+        await editor.getByRole('button', { name: 'Global Settings', exact: true }).click();
         const recursive = editor.locator('#world_info_recursive');
         await expect(recursive).toBeVisible();
         const before = await recursive.isChecked();
         await recursive.click();
         await expect.poll(() => page.evaluate(async () => (await import('./scripts/world-info.js')).world_info_recursive)).toBe(!before);
         await recursive.click();
+    });
+
+    test('desktop list fills the shell, splits on selection, and Back returns to the full list', async ({ page }) => {
+        const editor = await openBook(page);
+        const list = editor.locator('.sb-wi-list');
+        const width = async locator => (await locator.boundingBox()).width;
+        await expect.poll(async () => Math.abs(await width(list) - await width(editor))).toBeLessThanOrEqual(2);
+        await expect(editor.locator('.sb-wi-empty-detail')).toHaveCount(0);
+        await row(editor, 'Alpha').click();
+        await expect(editor).toHaveAttribute('data-open', 'true');
+        await expect.poll(async () => await width(list) / await width(editor)).toBeLessThan(0.5);
+        await editor.locator('.sb-wi-entry .sb-wi-detail-back').click();
+        await expect.poll(async () => Math.abs(await width(list) - await width(editor))).toBeLessThanOrEqual(2);
+        await expect(row(editor, 'Alpha')).toBeFocused();
+    });
+
+    test('each header and row trigger toggles closed and picker matches its wide trigger', async ({ page }) => {
+        const editor = await openBook(page);
+        const picker = editor.locator('.sb-wi-book-switcher');
+        await picker.click();
+        const popover = page.locator('.sb-picker');
+        await expect(popover).toBeVisible();
+        // Wait for the scale animation to finish before checking pixel geometry.
+        await popover.evaluate(node => Promise.all(node.getAnimations().map(animation => animation.finished)));
+        const anchor = await picker.boundingBox();
+        const bounds = await popover.boundingBox();
+        expect(Math.abs(bounds.x - anchor.x)).toBeLessThanOrEqual(2);
+        expect(bounds.width).toBeGreaterThanOrEqual(Math.min(anchor.width, 560) - 1);
+        await picker.click();
+        await expect(popover).toBeHidden();
+        await expect(picker).toHaveAttribute('aria-expanded', 'false');
+        for (const trigger of [editor.locator('.sb-wi-list-header button:has(.fa-ellipsis-vertical)'), editor.locator('.sb-wi-sort-button'), row(editor, 'Alpha').locator('.sb-wi-row-menu')]) {
+            await trigger.click();
+            await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+            await trigger.click();
+            await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+            await expect(page.locator('.sb-action-popover:visible')).toHaveCount(0);
+        }
+        const gear = editor.getByRole('button', { name: 'Global Settings', exact: true });
+        await gear.click();
+        await expect(gear).toHaveAttribute('aria-pressed', 'true');
+        await gear.click();
+        await expect(gear).toHaveAttribute('aria-pressed', 'false');
+        await expect(editor.locator('.sb-wi-settings')).toHaveCount(0);
+        await gear.click();
+        await editor.locator('.sb-wi-settings .sb-wi-detail-back').click();
+        await expect(gear).toHaveAttribute('aria-pressed', 'false');
     });
 });
 
@@ -140,5 +190,23 @@ test.describe('World Info editor on mobile', () => {
         expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
         await back.click();
         await expect(row(editor, 'Beta')).toBeVisible();
+    });
+
+    test('keeps Back and the compact preview toggle visible while scrolling the entry', async ({ page }) => {
+        const editor = await openBook(page);
+        await row(editor, 'Alpha').click();
+        const entry = editor.locator('.sb-wi-entry');
+        const toggle = entry.locator('.sb-wi-entry-mode-toggle');
+        await expect(entry.locator('.sb-wi-entry-modes')).toBeHidden();
+        await toggle.click();
+        await expect(entry.locator('.sb-wi-entry-preview')).toHaveText('Alpha content');
+        await expect(entry.locator('.sb-wi-entry-textarea')).toBeHidden();
+        await toggle.click();
+        await entry.locator('.sb-wi-entry-footer').scrollIntoViewIfNeeded();
+        await expect(entry.locator('.sb-wi-entry-header')).not.toHaveClass(/sb-editor-chrome-hidden/);
+        await expect(entry.locator('.sb-wi-detail-back')).toBeInViewport();
+        await expect(toggle).toBeInViewport();
+        await entry.locator('.sb-wi-detail-back').click();
+        await expect(row(editor, 'Alpha')).toBeVisible();
     });
 });

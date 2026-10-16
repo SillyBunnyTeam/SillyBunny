@@ -193,8 +193,8 @@ describe('settings pane structure and lifecycle', () => {
         const header = root.firstElementChild;
         expect(header.tagName).toBe('HEADER');
         expect(header.classList.contains('sb-wi-detail-header')).toBe(true);
-        expect(header.querySelector('button.sb-wi-detail-back').classList.contains('sb-list-editor__back')).toBe(true);
-        expect(header.querySelector('h2').textContent).toBe('World Info settings');
+        expect(header.querySelector('button.sb-wi-detail-back').classList.contains('sb-list-editor__back')).toBe(false);
+        expect(header.querySelector('h2').textContent).toBe('Global Settings');
         expect(root.lastElementChild.classList.contains('sb-wi-settings-body')).toBe(true);
         expect([...root.querySelectorAll('.ds-pref-group-heading')].map(heading => heading.textContent)).toEqual([
             'Active World(s) for all chats',

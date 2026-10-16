@@ -25,6 +25,7 @@ const ITEM_SELECTOR = '[role^="menuitem"]:not([aria-disabled="true"])';
  * @property {string} [title] - Tooltip for the row.
  * @property {boolean} [danger]
  * @property {boolean} [disabled]
+ * @property {boolean} [checked] - When present, exposes the item as a radio choice.
  * @property {(event: MouseEvent) => void} onSelect
  */
 
@@ -36,7 +37,7 @@ const ITEM_SELECTOR = '[role^="menuitem"]:not([aria-disabled="true"])';
  * @property {(event: MouseEvent) => void} onSelect
  */
 
-/** @typedef {{ items: ActionMenuItem[] } | { reactions: ActionMenuReaction[] }} ActionMenuSection */
+/** @typedef {({ items: ActionMenuItem[] } | { reactions: ActionMenuReaction[] }) & { title?: string }} ActionMenuSection */
 
 let mobileQuery = null;
 let sheet = null;
@@ -81,6 +82,18 @@ function buildMenu(sections, label) {
         if (index > 0) {
             menu.append(createSeparator());
         }
+        let container = menu;
+        if (section.title) {
+            container = document.createElement('div');
+            container.setAttribute('role', 'group');
+            const heading = document.createElement('h3');
+            heading.className = 'sb-action-menu-section-title';
+            heading.id = `${MENU_ID}-section-${index}`;
+            heading.textContent = section.title;
+            container.setAttribute('aria-labelledby', heading.id);
+            container.append(heading);
+            menu.append(container);
+        }
         if ('reactions' in section) {
             const group = document.createElement('div');
             group.className = 'sb-action-menu-reactions';
@@ -98,7 +111,7 @@ function buildMenu(sections, label) {
                 button.addEventListener('click', event => activate(event, reaction.onSelect));
                 group.append(button);
             }
-            menu.append(group);
+            container.append(group);
             return;
         }
         for (const item of section.items) {
@@ -106,7 +119,8 @@ function buildMenu(sections, label) {
             button.type = 'button';
             button.className = 'sb-action-menu-item';
             button.classList.toggle('is-danger', Boolean(item.danger));
-            button.setAttribute('role', 'menuitem');
+            button.setAttribute('role', typeof item.checked === 'boolean' ? 'menuitemradio' : 'menuitem');
+            if (typeof item.checked === 'boolean') button.setAttribute('aria-checked', String(item.checked));
             if (item.title && item.title !== item.label) {
                 button.title = item.title;
             }
@@ -128,7 +142,7 @@ function buildMenu(sections, label) {
                     activate(event, item.onSelect);
                 }
             });
-            menu.append(button);
+            container.append(button);
         }
     });
     menu.addEventListener('keydown', handleMenuKeydown);
@@ -254,9 +268,10 @@ function ensureSheet() {
  * Places the popover beside its anchor, trailing-aligned to the trigger, inside `bounds`.
  * Triggers in the start half of the bounds (mirrored rows) align to their start edge instead.
  * Exported for other body-mounted popovers (the shared editor picker) so placement stays identical.
+ * @param {'auto'|'start'} [alignment='auto'] Explicit inline-start alignment for wide picker triggers.
  * @returns {string} transform-origin for the opening animation.
  */
-export function positionPopover(popover, trigger, point, boundsElement) {
+export function positionPopover(popover, trigger, point, boundsElement, alignment = 'auto') {
     const boundsRect = boundsElement?.getBoundingClientRect();
     const bounds = boundsRect && boundsRect.width > 0
         ? {
@@ -280,9 +295,11 @@ export function positionPopover(popover, trigger, point, boundsElement) {
     const height = Math.min(natural, available);
     const width = popover.offsetWidth;
 
-    const startAligned = point
-        ? true
-        : (anchor.left + anchor.right) / 2 < (bounds.left + bounds.right) / 2;
+    const startAligned = alignment === 'start'
+        ? getComputedStyle(trigger).direction !== 'rtl'
+        : point
+            ? true
+            : (anchor.left + anchor.right) / 2 < (bounds.left + bounds.right) / 2;
     let left = startAligned ? anchor.left : anchor.right - width;
     if (point && left + width > bounds.right - POPOVER_MARGIN) {
         left = anchor.left - width;

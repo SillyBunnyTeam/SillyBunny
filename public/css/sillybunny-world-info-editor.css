@@ -48,17 +48,34 @@
 }
 
 .sb-wi-list-header,
-.sb-wi-list-tools {
+.sb-wi-detail-header {
     display: flex;
     align-items: center;
     flex: none;
+    flex-wrap: nowrap;
+    box-sizing: border-box;
+    height: 60px;
+    min-height: 60px;
+    max-height: 60px;
     gap: 4px;
     padding: 6px 8px;
     min-width: 0;
+    background: transparent;
 }
 
 .sb-wi-list-header {
-    min-height: 60px;
+    overflow: hidden;
+    gap: 2px;
+    padding-inline: 10px;
+}
+
+.sb-wi-detail-header {
+    border-bottom: var(--sb-headerbar-shade);
+}
+
+.sb-wi-editor :is(button, input, textarea) {
+    box-sizing: border-box;
+    font-family: inherit;
 }
 
 #WorldInfo .sb-wi-editor .menu_button {
@@ -77,6 +94,7 @@
     box-shadow: none;
     font-family: inherit;
     cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), opacity var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
 #WorldInfo .sb-wi-editor .menu_button_icon {
@@ -100,26 +118,29 @@
     text-align: start;
     font-size: calc(var(--mainFontSize) * 1.08);
     font-weight: 700;
+    padding-inline: 0;
 }
 
-.sb-wi-book-name {
+.sb-wi-list-titles {
     flex: 1;
     min-width: 0;
+}
+
+.sb-wi-list-titles > span {
+    display: block;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.sb-wi-list-pinned {
-    flex: none;
-    margin: 0 8px 4px;
+.sb-wi-book-name {
+    line-height: 1.25;
 }
 
-.sb-wi-list-count {
-    flex: 1;
-    min-width: 0;
+.sb-wi-list-subtitle {
     color: var(--sb-muted-fg);
     font-size: calc(var(--mainFontSize) * 0.75);
+    font-weight: 400;
 }
 
 .sb-wi-search-field {
@@ -163,22 +184,23 @@
     overflow: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
-    padding: 0 0 8px 8px;
+    padding: 8px 0 8px 8px;
 }
 
-.sb-wi-list-box {
+#sb-settings-page #WorldInfo .sb-wi-list-box {
+    display: block;
+    gap: normal;
     overflow: hidden;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: var(--sb-radius-card);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
 }
 
-:root[data-sb-surface-tone='light'] .sb-wi-list-box {
+:root[data-sb-surface-tone='light'] #sb-settings-page #WorldInfo .sb-wi-list-box {
     background: var(--sb-layer-view);
 }
 
-#WorldInfo .sb-wi-editor .sb-wi-row,
-#WorldInfo .sb-wi-editor .sb-wi-settings-row {
+#sb-settings-page #WorldInfo .sb-wi-editor .sb-wi-row {
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -195,12 +217,11 @@
     transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
-#WorldInfo .sb-wi-editor .sb-wi-row:not(:last-child) {
+#sb-settings-page #WorldInfo .sb-wi-editor .sb-wi-row:not(:last-child) {
     border-bottom: 1px solid var(--SmartThemeBorderColor);
 }
 
-.sb-wi-row > i,
-.sb-wi-settings-row > i {
+.sb-wi-row > i {
     flex: none;
     width: 18px;
     color: var(--sb-muted-fg);
@@ -208,6 +229,9 @@
 }
 
 .sb-wi-row .ds-row-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
     flex: 1;
     min-width: 0;
     overflow: hidden;
@@ -220,9 +244,10 @@
     white-space: nowrap;
 }
 
-.sb-wi-row .ds-row-label {
+#sb-settings-page #WorldInfo .sb-wi-row .ds-row-label {
     font-size: calc(var(--mainFontSize) * 0.9);
     font-weight: 600;
+    line-height: 1.6;
 }
 
 .sb-wi-row .ds-row-suffix {
@@ -233,16 +258,17 @@
     min-width: 0;
 }
 
-.sb-wi-row .ds-row-subtitle {
+#sb-settings-page #WorldInfo .sb-wi-row .ds-row-subtitle {
     color: var(--sb-muted-fg);
     font-size: calc(var(--mainFontSize) * 0.75);
+    line-height: 1.6;
 }
 
 .sb-wi-row.is-disabled .ds-row-text {
     opacity: 0.6;
 }
 
-#WorldInfo .sb-wi-editor :is(.sb-wi-row, .sb-wi-settings-row).is-selected {
+#WorldInfo .sb-wi-editor :is(.sb-wi-row.is-selected, .sb-wi-settings-button[aria-pressed='true']) {
     background: var(--sb-flat-selected-bg);
 }
 
@@ -266,45 +292,53 @@
     flex: none;
     align-items: center;
     justify-content: center;
-    min-width: 44px;
-    min-height: 44px;
+    min-width: 42px;
+    min-height: 38px;
     cursor: pointer;
 }
 
 .sb-wi-editor .sb-list-pagination {
     flex: none;
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    padding: 0 12px max(10px, env(safe-area-inset-bottom));
+    font-size: calc(var(--mainFontSize) * 0.75);
 }
 
-.sb-wi-empty-detail {
-    display: flex;
-    flex: 1;
-    min-width: 0;
-    align-items: center;
-    justify-content: center;
-    overflow: auto;
-    background: var(--sb-layer-view);
+/* Split view keeps rows single-line like the Prompt Editor; the ⋯ menu stays so
+   Duplicate/Move/Delete remain reachable. */
+.sb-wi-editor[data-open='true'][data-collapsed='false'] .sb-wi-row .ds-row-subtitle {
+    display: none !important;
 }
 
-.sb-wi-editor[data-open='false'][data-collapsed='false']:has(.sb-wi-empty-detail:not([hidden])) .sb-wi-list {
-    width: var(--sb-list-editor-sidebar-width, 30%);
-    border-inline-end: 1px solid var(--sb-shell-border);
-}
-
-.sb-wi-editor[data-collapsed='true'] .sb-wi-empty-detail {
-    display: none;
-}
-
-@container sb-list-editor-sidebar (width < 400px) {
-    #WorldInfo .sb-wi-editor .sb-wi-row {
+@container sb-list-editor-sidebar (width < 440px) {
+    #sb-settings-page #WorldInfo .sb-wi-editor .sb-wi-row {
         gap: 6px;
         padding-inline: 4px;
     }
 }
 
+/* Collapsed (phone) layout: the title itself is the picker button, and Global
+   Settings moves into the book ⋯ menu, so the book name keeps its room. Keyed to
+   the collapsed layout, not sidebar width, so the desktop split keeps the gear.
+   !important: the global icon-button reset (sillybunny-theme.css, `:not(#bg_selection_mode_button)`)
+   carries ID specificity and sets display on every icon-only .menu_button. */
+#WorldInfo .sb-wi-editor[data-collapsed='true'] .sb-wi-book-switcher > .fa-chevron-down,
+#WorldInfo .sb-wi-editor[data-collapsed='true'] .sb-wi-settings-button {
+    display: none !important;
+}
+
+@container sb-list-editor-sidebar (width < 300px) {
+    .sb-wi-row > i {
+        display: none;
+    }
+}
+
 @media (hover: hover) {
-    #WorldInfo .sb-wi-editor :is(.menu_button:not(.menu_button_primary), .sb-wi-row, .sb-wi-settings-row):hover {
+    #WorldInfo .sb-wi-editor :is(.menu_button:not(.menu_button_primary):not(:disabled), .sb-wi-row):hover {
         background: var(--sb-flat-hover-bg);
+    }
+
+    #WorldInfo .sb-wi-editor .sb-wi-row.is-selected:hover {
+        background: var(--sb-flat-selected-hover-bg);
     }
 }
 
@@ -314,12 +348,18 @@
 }
 
 #WorldInfo .sb-wi-editor .menu_button:disabled {
+    background: var(--sb-raised-bg);
     color: var(--sb-muted-fg);
     opacity: 0.6;
     cursor: not-allowed;
 }
 
 @media (pointer: coarse) {
+    .sb-wi-row-enable {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
     #WorldInfo .sb-wi-editor .menu_button,
     #WorldInfo .sb-wi-editor .sb-wi-grip {
         min-width: 44px;
@@ -340,12 +380,14 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .sb-wi-row {
+    .sb-wi-row,
+    #WorldInfo .sb-wi-editor .menu_button {
         transition: none;
     }
 }
 
-body.reduced-motion .sb-wi-row {
+body.reduced-motion .sb-wi-row,
+body.reduced-motion #WorldInfo .sb-wi-editor .menu_button {
     transition: none;
 }
 
@@ -359,20 +401,6 @@ body.reduced-motion .sb-wi-row {
     height: 100%;
     overflow: hidden;
     font-family: var(--mainFontFamily);
-}
-
-.sb-wi-settings > .sb-wi-detail-header {
-    display: flex;
-    flex: none;
-    align-items: center;
-    flex-wrap: nowrap;
-    box-sizing: border-box;
-    height: 60px;
-    min-height: 60px;
-    gap: 4px;
-    padding: 6px 8px;
-    border-bottom: var(--sb-headerbar-shade);
-    background: transparent;
 }
 
 .sb-wi-settings-title {
@@ -390,7 +418,7 @@ body.reduced-motion .sb-wi-row {
 }
 
 #sb-settings-page .sb-wi-settings .sb-wi-detail-back {
-    display: none;
+    display: inline-flex;
     flex: none;
     align-items: center;
     justify-content: center;
@@ -405,10 +433,6 @@ body.reduced-motion .sb-wi-row {
     background: transparent;
     color: inherit;
     box-shadow: none;
-}
-
-#sb-settings-page .sb-list-editor[data-collapsed='true'] .sb-wi-settings .sb-wi-detail-back {
-    display: inline-flex;
 }
 
 .sb-wi-settings-body {
@@ -528,30 +552,14 @@ body.reduced-motion .sb-wi-row {
     font-family: var(--mainFontFamily);
 }
 
-.sb-wi-detail-header {
-    display: flex;
-    flex: none;
-    align-items: center;
-    gap: 6px;
-    min-height: 52px;
-    padding: 8px 12px;
-    border-bottom: var(--sb-headerbar-shade);
-    background: var(--sb-layer-view);
-}
-
-.sb-wi-detail-back {
-    display: none !important;
-}
-
-.sb-list-editor[data-collapsed='true'] .sb-wi-detail-back {
-    display: inline-flex !important;
-}
-
 #sb-settings-page .sb-wi-entry .sb-wi-entry-title {
-    flex: 1 1 0;
-    min-width: 40px;
+    flex: 1 1 112px;
+    width: 0;
+    min-width: 112px;
+    max-width: none;
+    height: 38px;
     margin: 0;
-    padding: 6px;
+    padding: 4px 6px;
     border: 1px solid transparent;
     border-radius: var(--sb-radius-control);
     background: transparent;
@@ -575,15 +583,87 @@ body.reduced-motion .sb-wi-row {
     white-space: nowrap;
 }
 
+.sb-wi-entry-footer {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    padding: 0 12px 10px;
+    gap: 6px;
+    color: var(--sb-muted-fg);
+    font-size: calc(var(--mainFontSize) * 0.75);
+}
+
+#sb-settings-page #WorldInfo .sb-wi-editor .sb-wi-entry-mode-toggle {
+    display: none;
+}
+
+#sb-settings-page #WorldInfo .sb-wi-editor .sb-wi-entry-modes {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    width: auto;
+    min-width: 0;
+    padding: 3px;
+    gap: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-raised-bg);
+}
+
+.sb-wi-entry-modes .sb-boolean-radio-option {
+    display: inline-flex;
+    position: relative;
+    flex: none;
+    width: auto;
+    min-width: 0;
+    margin: 0;
+}
+
+.sb-wi-entry-modes .sb-boolean-radio-option > span {
+    padding: 6px 9px;
+    min-height: 30px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: inherit;
+    line-height: 1.25;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.sb-wi-entry-modes .sb-boolean-radio-option > input:checked + span {
+    background: var(--sb-flat-selected-bg);
+}
+
+.sb-wi-entry-modes .sb-boolean-radio-option > input:focus-visible + span {
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
 .sb-wi-entry-body {
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
     min-height: 0;
-    gap: 14px;
+    gap: 12px;
     overflow: auto;
     overscroll-behavior: contain;
-    padding: 14px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+    padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+}
+
+#sb-settings-page #WorldInfo .sb-wi-entry .ds-pref-group-heading {
+    color: inherit;
+}
+
+#sb-settings-page #WorldInfo .sb-wi-entry [data-sb-editor-field='section-content'] > .ds-pref-group {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+#sb-settings-page #WorldInfo .sb-wi-entry .ds-pref-group > [data-sb-editor-field='content'] {
+    padding: 0;
 }
 
 #sb-settings-page .sb-wi-entry .ds-pref-group .ds-row.ds-row--stacked {
@@ -609,13 +689,6 @@ body.reduced-motion .sb-wi-row {
     gap: 8px;
 }
 
-.sb-wi-entry-content-toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-}
-
 #sb-settings-page .sb-wi-entry .sb-wi-entry-textarea,
 .sb-wi-entry-preview {
     box-sizing: border-box;
@@ -624,7 +697,7 @@ body.reduced-motion .sb-wi-row {
     margin: 0;
     padding: 12px;
     border: 1px solid transparent;
-    border-radius: var(--sb-radius-control);
+    border-radius: var(--sb-radius-button);
     background: var(--sb-composer-input-bg);
     color: var(--SmartThemeBodyColor);
     font-family: var(--monoFontFamily);
@@ -641,6 +714,8 @@ body.reduced-motion .sb-wi-row {
     overflow: auto;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
 }
 
 .sb-wi-entry-regex {
@@ -688,18 +763,81 @@ body.reduced-motion .sb-wi-row {
     }
 }
 
+@container sb-list-editor-detail (width < 560px) {
+    #sb-settings-page #WorldInfo .sb-wi-editor .sb-wi-entry-modes {
+        display: none;
+    }
+
+    #sb-settings-page #WorldInfo .sb-wi-editor .sb-wi-entry-mode-toggle {
+        display: inline-flex;
+    }
+
+    #sb-settings-page .sb-wi-entry .sb-wi-entry-title {
+        min-width: 96px;
+    }
+}
+
 @container sb-list-editor-detail (width < 440px) {
     .sb-wi-entry-header {
         padding-inline: 4px;
         gap: 2px;
     }
 
-    .sb-wi-entry-body {
-        padding-inline: 8px;
+    #sb-settings-page .sb-wi-entry .sb-wi-entry-cancel {
+        position: relative;
+        width: 40px;
+        min-width: 40px;
+        height: 40px;
+        min-height: 40px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        line-height: 1;
     }
 
-    .sb-list-editor[data-collapsed='true'] .sb-wi-entry-tokens {
-        display: none;
+    #sb-settings-page .sb-wi-entry .sb-wi-entry-cancel .sb-editor-action__icon {
+        display: block;
+        line-height: 1;
+    }
+
+    #sb-settings-page .sb-wi-entry .sb-wi-entry-cancel .sb-editor-action__label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    #sb-settings-page .sb-wi-entry .sb-wi-entry-save {
+        padding-inline: 12px;
+    }
+
+    @media (pointer: coarse) {
+        #sb-settings-page .sb-wi-entry .sb-wi-entry-cancel {
+            width: 44px;
+            min-width: 44px;
+            height: 44px;
+            min-height: 44px;
+        }
+    }
+}
+
+@media (max-width: 768px) {
+    .sb-wi-entry-header {
+        gap: 2px;
+        padding-inline: 4px;
+    }
+
+    #sb-settings-page .sb-wi-entry .sb-wi-entry-title {
+        flex: 1 1 0;
+        min-width: 56px;
+        padding-inline: 2px;
+    }
+
+    .sb-wi-entry-body {
+        padding: 8px;
     }
 }
 
@@ -707,34 +845,5 @@ body.reduced-motion .sb-wi-row {
     #sb-settings-page .sb-wi-entry :is(.sb-wi-detail-header, .sb-wi-entry-banner) .menu_button,
     #sb-settings-page .sb-wi-entry .sb-wi-entry-title {
         min-height: 44px;
-    }
-}
-
-@media (pointer: coarse), (max-width: 620px) {
-    .sb-wi-entry-header {
-        max-height: 6rem;
-        overflow: hidden;
-        transition: max-height var(--sb-transition-fast), min-height var(--sb-transition-fast),
-            padding var(--sb-transition-fast), border-width var(--sb-transition-fast),
-            opacity var(--sb-transition-fast), visibility 0s;
-    }
-
-    .sb-wi-entry-header.sb-editor-chrome-hidden {
-        max-height: 0;
-        min-height: 0;
-        padding-block: 0;
-        border-width: 0;
-        visibility: hidden;
-        opacity: 0;
-    }
-}
-
-body.reduced-motion .sb-wi-entry-header {
-    transition: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .sb-wi-entry-header {
-        transition: none;
     }
 }

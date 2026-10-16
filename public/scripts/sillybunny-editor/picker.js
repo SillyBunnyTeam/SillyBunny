@@ -144,6 +144,7 @@ function buildPickerContent(state, body) {
     input.setAttribute('aria-expanded', 'true');
     input.setAttribute('aria-autocomplete', 'list');
     input.setAttribute('aria-label', state.searchLabel);
+    input.placeholder = state.searchLabel;
     input.id = createId('sb-picker-search');
 
     const list = document.createElement('ul');
@@ -302,7 +303,18 @@ function handleResize() {
     if (!state || state.kind !== 'popover') {
         return;
     }
-    state.origin = positionPopover(state.surface, state.trigger, null, state.bounds);
+    if (state.matchTriggerWidth) {
+        const bounds = state.bounds?.getBoundingClientRect();
+        const available = bounds?.width > 0
+            ? Math.min(bounds.right, window.innerWidth) - Math.max(bounds.left, 0) - 16
+            : window.innerWidth - 16;
+        const width = Math.max(0, Math.min(560, Math.max(320, state.trigger.getBoundingClientRect().width), available));
+        state.surface.style.inlineSize = `${width}px`;
+        state.surface.style.maxInlineSize = `${width}px`;
+        state.origin = positionPopover(state.surface, state.trigger, null, state.bounds, 'start');
+    } else {
+        state.origin = positionPopover(state.surface, state.trigger, null, state.bounds);
+    }
     state.surface.style.transformOrigin = state.origin;
 }
 
@@ -335,6 +347,7 @@ function finishClose() {
  * @param {string} [options.searchLabel]
  * @param {string} [options.emptyText]
  * @param {Element|null} [options.bounds=null]
+ * @param {boolean} [options.matchTriggerWidth=false] Desktop: match the trigger up to 560px and align inline-start.
  * @param {() => void|null} [options.onClose=null]
  * @returns {{ close: () => void, readonly isOpen: boolean }}
  */
@@ -348,6 +361,7 @@ export function openPicker({
     searchLabel = t`Search`,
     emptyText = t`No results`,
     bounds = null,
+    matchTriggerWidth = false,
     onClose = null,
 }) {
     if (!(trigger instanceof HTMLElement) || !Array.isArray(items) || !Array.isArray(footer) || typeof onSelect !== 'function') {
@@ -369,6 +383,7 @@ export function openPicker({
         searchLabel,
         emptyText,
         bounds,
+        matchTriggerWidth,
         onClose,
         restoreFocus: true,
         input: null,
@@ -416,8 +431,7 @@ export function openPicker({
         };
         activePicker = state;
         renderOptions(state);
-        state.origin = positionPopover(popover, trigger, null, bounds);
-        popover.style.transformOrigin = state.origin;
+        handleResize();
         animateIn(popover, [{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }], {
             duration: MOTION_FAST,
             easing: MOTION_EASE_OUT_CUBIC,

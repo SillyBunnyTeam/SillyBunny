@@ -318,6 +318,28 @@ describe('searchable picker', () => {
         expect(mockPositionPopover).toHaveBeenCalledTimes(2);
     });
 
+    test.each([[240, 320], [450, 450], [900, 560]])('trigger-width placement sizes a %ipx trigger to %ipx and aligns inline-start', (triggerWidth, expected) => {
+        const trigger = document.createElement('button');
+        document.body.append(trigger);
+        jest.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({ width: triggerWidth });
+        const { surface, input } = makePicker({ trigger, matchTriggerWidth: true });
+        expect(surface.style.inlineSize).toBe(`${expected}px`);
+        expect(surface.style.maxInlineSize).toBe(`${expected}px`);
+        expect(mockPositionPopover).toHaveBeenCalledWith(surface, trigger, null, null, 'start');
+        filter(input, 'Alpha');
+        expect(surface.style.inlineSize).toBe(`${expected}px`);
+    });
+
+    test('trigger-width placement caps its width to viewport-clipped bounds on every resize', () => {
+        const bounds = document.createElement('div');
+        jest.spyOn(bounds, 'getBoundingClientRect').mockReturnValue({ left: -20, right: 260, width: 280 });
+        const { surface } = makePicker({ bounds, matchTriggerWidth: true });
+        expect(surface.style.inlineSize).toBe('244px');
+        bounds.getBoundingClientRect.mockReturnValue({ left: 0, right: 200, width: 200 });
+        window.dispatchEvent(new Event('resize'));
+        expect(surface.style.inlineSize).toBe('184px');
+    });
+
     test('custom search labels and text content are not interpreted as markup', () => {
         const { input, list } = makePicker({
             searchLabel: 'Find a book',

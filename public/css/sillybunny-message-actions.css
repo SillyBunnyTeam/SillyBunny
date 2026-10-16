@@ -355,6 +355,14 @@
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
 }
 
+.sb-action-menu-section-title {
+    margin: 0;
+    padding: 8px 12px 4px;
+    color: var(--sb-muted-fg);
+    font-size: calc(var(--mainFontSize) * 0.75);
+    font-weight: 700;
+}
+
 .sb-action-menu-reactions {
     display: flex;
     gap: 4px;

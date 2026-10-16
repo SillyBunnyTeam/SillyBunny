@@ -122,7 +122,11 @@ afterEach(() => {
 describe('World Info schema form', () => {
     test('renders every visible schema field, translates runtime keys and leaves expanders collapsed', () => {
         const { host, controller, data } = mount();
-        for (const field of model.FIELDS) {
+        const headerFields = model.FIELDS.filter(field => field.header);
+        expect(headerFields.map(field => field.id)).toEqual(['comment']);
+        expect(host.querySelector('.sb-wi-entry-title').dataset.sbEditorField).toBe('comment');
+        expect(row(host, 'comment')).toBeNull();
+        for (const field of model.FIELDS.filter(candidate => !candidate.header)) {
             const fieldRow = row(host, field.id);
             expect(fieldRow).not.toBeNull();
             expect(fieldRow.hidden).toBe(!model.isFieldVisible(data.entries[0], field.id));
@@ -146,15 +150,17 @@ describe('World Info schema form', () => {
         expect(data.entries[0].content).toBe('Changed');
     });
 
-    test('header and title row edit the same comment and use the key fallback as placeholder', () => {
+    test('header edits comment and uses the key fallback as placeholder', () => {
         const { host, controller } = mount();
         const title = host.querySelector('.sb-wi-entry-title');
+        expect(row(host, 'comment')).toBeNull();
         title.value = '';
         title.dispatchEvent(new Event('input'));
-        expect(control(host, 'comment').value).toBe('');
         expect(title.placeholder).toBe('alpha');
-        edit(host, 'comment', 'New title');
+        title.value = 'New title';
+        title.dispatchEvent(new Event('input'));
         expect(title.value).toBe('New title');
+        expect(controller.isDirty()).toBe(true);
         expect(controller.focusTarget()).toBe(title);
     });
 
@@ -206,6 +212,26 @@ describe('World Info schema form', () => {
         controller.discard();
         expect(pane.hidden).toBe(true);
         expect(control(host, 'content').hidden).toBe(false);
+    });
+
+    test('header owns both preview controls, content has one caption, and tokens follow its card', () => {
+        const { host, requestClose } = mount();
+        const header = host.querySelector('.sb-wi-entry-header');
+        expect(header.querySelector('.sb-wi-entry-modes')).not.toBeNull();
+        expect(header.querySelector('.sb-wi-entry-mode-toggle').getAttribute('aria-label')).toBe('Preview');
+        expect(row(host, 'content').querySelector('.ds-row-label')).toBeNull();
+        expect(control(host, 'content').getAttribute('aria-label')).toBe('translated:Content');
+        expect(host.querySelector('.sb-wi-entry-footer .sb-wi-entry-tokens')).not.toBeNull();
+        header.querySelector('.sb-wi-detail-back').click();
+        expect(requestClose).toHaveBeenCalledTimes(1);
+        const toggle = header.querySelector('.sb-wi-entry-mode-toggle');
+        toggle.click();
+        expect(control(host, 'content').hidden).toBe(true);
+        expect(toggle.getAttribute('aria-label')).toBe('Edit');
+        expect(header.querySelector('input[value="true"]').checked).toBe(true);
+        toggle.click();
+        expect(control(host, 'content').hidden).toBe(false);
+        expect(toggle.getAttribute('aria-pressed')).toBe('false');
     });
 
     test('token count is debounced and ignores stale responses', async () => {
