@@ -192,6 +192,8 @@
        light SmartThemeChatTintColor does not produce a white bar in dark mode. */
     --sb-layer-bottombar-source: var(--sb-layer-canvas-source);
     --sb-layer-view: var(--sb-layer-view-source);
+    /* Desktop chat opacity follows Background Visibility; bundled 0.9-alpha tints stay opaque at the default slider. */
+    --sb-chat-view-bg: var(--sb-layer-view-source);
     --sb-layer-bottombar: var(--sb-layer-bottombar-source);
     --sb-layer-window: var(--sb-layer-window-source);
     /* Complementary rail (Conversation pals rail, Settings sidebar and its header).
@@ -360,6 +362,7 @@ input[type="submit"] {
         --sb-fixed-surface-base: rgb(from var(--sb-chat-surface-source) r g b / 0.98);
         --sb-composer-surface-base: rgb(from var(--sb-chat-surface-source) r g b / calc(var(--sb-composer-surface-opacity) * 0.96));
         --sb-layer-view: rgb(from var(--sb-layer-view-source) r g b / 1);
+        --sb-chat-view-bg: rgb(from var(--sb-layer-view-source) r g b / calc(min(1, alpha / 0.9) * var(--sb-page-overlay-opacity)));
         --sb-layer-bottombar: rgb(from var(--sb-layer-bottombar-source) r g b / 1);
         --sb-layer-window: rgb(from var(--sb-layer-window-source) r g b / 1);
         --sb-sidebar-bg: rgb(from var(--sb-sidebar-bg-source) r g b / 1);
@@ -501,15 +504,13 @@ body::before {
     scroll-padding-bottom: 8px;
 }
 
-/* Desktop: the chat column is the libadwaita view, an opaque card with overlay radii so its
-   square edge no longer sits behind the rounded bottom-bar stack and shell drawers.
-   Upstream style.css paints it with the translucent ChatTint and square corners. */
+/* Rounded desktop chat columns retain the theme tint alpha; mobile keeps upstream styling. */
 @media screen and (min-width: 769px) {
     #chat {
         /* Same top gap and radii as open shell drawers, so a drawer covers the card exactly. */
         margin-block-start: var(--sb-drawer-top-gap, 6px);
         border-radius: var(--sb-radius-overlay);
-        background-color: var(--sb-layer-view);
+        background-color: var(--sb-chat-view-bg);
     }
 }
 
@@ -2324,6 +2325,19 @@ body.bubblechat #chat .mes {
     border: 0;
     border-radius: var(--sb-radius-card);
     box-shadow: none;
+}
+
+/* Desktop Default cards follow Background Visibility; #sheld outranks the later chat-style rule. */
+@supports (color: rgb(from black r g b / 1)) {
+    @media screen and (min-width: 769px) {
+        body.flatchat #sheld #chat .mes:not(.smallSysMes) .mes_block {
+            background-color: rgb(from var(--SmartThemeBotMesBlurTintColor) r g b / calc(alpha * var(--sb-page-card-opacity)));
+        }
+
+        body.flatchat #sheld #chat .mes[is_user='true']:not(.smallSysMes) .mes_block {
+            background-color: rgb(from var(--SmartThemeUserMesBlurTintColor) r g b / calc(alpha * var(--sb-page-card-opacity)));
+        }
+    }
 }
 
 /* Documents has no avatars or cards, so user turns sit on a tonal card. Scoped to Documents:
