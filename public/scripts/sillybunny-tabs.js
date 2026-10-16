@@ -41,7 +41,9 @@ import {
 import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
 import { extension_settings } from './extensions.js';
-import { changePanelApiVisibility, characters, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
+import { changePanelApiVisibility, characters, displayVersion, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
+import { addLanguagesToDropdown } from './i18n.js';
+import { syncUserControls } from './user.js';
 import {
     SAMPLING_PARAMETER_DESCRIPTORS,
 } from './sampling-parameter-policy.js';
@@ -1434,6 +1436,7 @@ const sbState = {
         connectionStripOpen: false,
         sidebarOpen: false,
         mobileToolsOpen: false,
+        mobileToolsReturnFocus: null,
         bindingRetryTimer: 0,
         boundEventSource: null,
         windowBindingsAttached: false,
@@ -5751,7 +5754,7 @@ function buildMobileChatTools() {
     }
 
     const overlay = createElement('div', { id: 'sb-mobile-chat-tools' });
-    const panel = createElement('div', { id: 'sb-mobile-chat-tools-panel' });
+    const panel = createElement('div', { id: 'sb-mobile-chat-tools-panel', attrs: { tabindex: '-1' } });
     const header = createElement('div', { className: 'sb-mobile-chat-header' });
     const dismissButton = createTopBarIconButton(
         {
@@ -5853,6 +5856,27 @@ function buildMobileChatTools() {
             closeMobileChatTools();
         }
     });
+    overlay.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented || !getChatbarState().mobileToolsOpen) {
+            return;
+        }
+
+        // The chat files list and legacy popups sit above the sheet; their own Escape closes them first.
+        if (['#dialogue_popup', '#select_chat_popup'].some(selector => isVisibleCharacterDrawerEscapeControl(document.querySelector(selector)))) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        // A search with text clears first, like the settings search.
+        if (event.target === searchInput && searchInput.value) {
+            setChatSearchQuery('');
+            return;
+        }
+
+        closeMobileChatTools({ restoreFocus: true });
+    });
 
     chatSelect.addEventListener('change', () => {
         void openChatById(chatSelect.value, { closeMobileTools: true });
@@ -5880,7 +5904,7 @@ function buildMobileChatTools() {
     return getChatbarState().mobileTools;
 }
 
-function setMobileChatToolsOpenState(shouldOpen) {
+function setMobileChatToolsOpenState(shouldOpen, { restoreFocus = false } = {}) {
     const refs = buildMobileChatTools();
     const isOpen = Boolean(shouldOpen) && isMobileViewport();
 
@@ -5890,6 +5914,10 @@ function setMobileChatToolsOpenState(shouldOpen) {
 
     const wasOpen = getChatbarState().mobileToolsOpen;
     getChatbarState().mobileToolsOpen = isOpen;
+    if (isOpen && !wasOpen) {
+        const activeElement = document.activeElement;
+        getChatbarState().mobileToolsReturnFocus = activeElement instanceof HTMLElement && activeElement !== document.body ? activeElement : null;
+    }
     if (isOpen || !wasOpen) {
         refs.overlay.hidden = !isOpen;
     }
@@ -5909,6 +5937,8 @@ function setMobileChatToolsOpenState(shouldOpen) {
                 { opacity: 0, transform: 'translateY(12px) scale(0.98)' },
                 { opacity: 1, transform: 'none' },
             ], SPRING_SHEET);
+            // Escape is handled on the sheet, so focus has to be inside it.
+            window.requestAnimationFrame(() => refs.panel.focus({ preventScroll: true }));
         }
         scheduleChatbarRefresh(0);
     } else if (wasOpen) {
@@ -5919,6 +5949,13 @@ function setMobileChatToolsOpenState(shouldOpen) {
         ], () => {
             refs.overlay.hidden = true;
         }, { enabled: isMobileViewport(), duration: MOTION_FAST });
+
+        const returnFocus = getChatbarState().mobileToolsReturnFocus;
+        getChatbarState().mobileToolsReturnFocus = null;
+        if (restoreFocus && returnFocus?.isConnected) {
+            // Wait for the modal sync frame, which lifts inert from the chat column.
+            window.requestAnimationFrame(() => returnFocus.focus({ preventScroll: true }));
+        }
     }
 }
 
@@ -5934,8 +5971,8 @@ function openMobileChatTools() {
     setMobileChatToolsOpenState(true);
 }
 
-function closeMobileChatTools() {
-    setMobileChatToolsOpenState(false);
+function closeMobileChatTools({ restoreFocus = false } = {}) {
+    setMobileChatToolsOpenState(false, { restoreFocus });
 }
 
 function getMobileShellSurfaceForShell(shellKey) {
@@ -12512,7 +12549,7 @@ function collectGlobalSearchMatches(query, { limit = SB_UNIVERSAL_SEARCH_RESULT_
                     : [];
 
             for (const entry of [...tabState.searchIndex, ...extraEntries]) {
-                if (!isBackendSearchEntryAvailable(entry, tabState)) continue;
+                if (!isSearchEntryAvailable(entry, tabState)) continue;
                 if (!searchTerms.every(term => entry.searchText.includes(term))) {
                     continue;
                 }
@@ -12557,7 +12594,10 @@ function collectGlobalSearchMatches(query, { limit = SB_UNIVERSAL_SEARCH_RESULT_
         .slice(0, limit);
 }
 
-function isBackendSearchEntryAvailable(entry, tabState) {
+function isSearchEntryAvailable(entry, tabState) {
+    // Keep both device variants indexed so resizing can reveal the newly available controls.
+    const unavailableDevice = isMobileViewport() ? '.sb-desktop-setting' : '.sb-mobile-setting';
+    if (entry.element instanceof HTMLElement && entry.element.closest(unavailableDevice)) return false;
     if (!['sampling', 'prompting', 'editor'].includes(tabState.id)) return true;
     if (!(entry.element instanceof HTMLElement) || !tabState.searchRoot.contains(entry.element)) return false;
     for (let element = entry.element; element && element !== tabState.searchRoot; element = element.parentElement) {
@@ -12582,7 +12622,7 @@ function getTabSearchEntries(tabState, { includeThemeCard = false } = {}) {
             : tabState.id === 'characters'
                 ? getCharacterPanelSearchEntries()
                 : []),
-    ].filter(entry => isBackendSearchEntryAvailable(entry, tabState));
+    ].filter(entry => isSearchEntryAvailable(entry, tabState));
 }
 
 function getMobileQuickActionSearchMatches(query) {
@@ -12958,6 +12998,8 @@ function revealSearchMatch(shellKey, match) {
     }
 
     openShell(shellKey, match.tabId);
+    // The search result already selects a destination, so show it past the mobile sidebar.
+    if (isMobileViewport()) setSettingsMobileContentView(true);
 
     window.setTimeout(() => {
         // SillyBunny: subpage-hosted tabs route through the stack, not the old drawer routing.
@@ -13349,9 +13391,24 @@ function buildShell(shellKey) {
                 const dataSecurityContent = userSettingsSplit?.dataSecurity;
                 if (dataSecurityContent instanceof HTMLElement) {
                     loaded.searchRoot?.prepend(dataSecurityContent);
+                    // SillyBunny: settings loaded while this control was detached from the document.
+                    const autoClearCache = dataSecurityContent.querySelector('#auto_clear_cache_on_update');
+                    const powerUserSettings = getSillyTavernContext()?.powerUserSettings;
+                    if (autoClearCache instanceof HTMLInputElement && powerUserSettings) {
+                        autoClearCache.checked = Boolean(powerUserSettings.auto_clear_cache_on_update);
+                    }
+                    // The language list, the account buttons and the version text are filled by
+                    // document-wide lookups that ran while this container was detached. They are
+                    // filled again from this container now that it is attached.
+                    addLanguagesToDropdown(dataSecurityContent);
+                    syncUserControls(dataSecurityContent);
+                    const versionDisplay = dataSecurityContent.querySelector('#version_display');
+                    if (versionDisplay instanceof HTMLElement && !versionDisplay.textContent.trim()) {
+                        versionDisplay.textContent = displayVersion;
+                    }
                     // The container was detached while the settings panel initialized, so the work
-                    // that normally runs there — opening the drawers and restoring their stored open
-                    // state — could not reach it. It is done now that the tree is attached.
+                    // that normally runs there, opening the drawers and restoring their stored open
+                    // state, could not reach it. It is done now that the tree is attached.
                     openAllInlineDrawers(dataSecurityContent);
                     bindInlineDrawerPersistence(dataSecurityContent);
                     // SillyBunny: this action was detached when the initial shell bindings ran.
@@ -14310,6 +14367,8 @@ function applyMobileShellUiState() {
     const isMobile = isMobileViewport();
     document.documentElement.dataset.sbMobileUiMode = isMobile ? 'mobile' : 'desktop';
     syncMobileBottomBar(isMobile);
+    const search = getUniversalSearchState();
+    if (search.expanded) renderUniversalSearchResults(search.input?.value ?? '');
 }
 
 function reinitSelect2AfterShell() {
