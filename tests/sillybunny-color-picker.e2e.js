@@ -4,10 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
 const publicRoot = path.resolve(fileURLToPath(new URL('../public/', import.meta.url)));
-test.use({ reducedMotion: 'reduce' });
+test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
 async function mountPicker(page, { accent = false, fallback = false } = {}) {
-    await page.emulateMedia({ reducedMotion: 'reduce' });
     if (fallback) {
         await page.addInitScript(() => { HTMLElement.prototype.showPopover = undefined; });
     }
@@ -49,6 +48,8 @@ async function mountPicker(page, { accent = false, fallback = false } = {}) {
         });
     });
     await page.goto('http://colors.test/');
+    // The context option turns motion off; tests that need motion turn it on after mounting.
+    expect(await page.evaluate(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
     await page.evaluate(() => customElements.whenDefined('toolcool-color-picker'));
     await page.evaluate(async () => {
         const { initializeColorPickers } = await import('/scripts/sillybunny-color-picker.js');
