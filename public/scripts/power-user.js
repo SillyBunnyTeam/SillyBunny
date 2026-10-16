@@ -216,6 +216,48 @@ const THEME_COLOR_PROPERTIES = Object.freeze([
     { key: 'border_color', selector: '#border-color-picker', type: 'border' },
 ]);
 
+// SillyBunny: the ten color keys of each historical default palette, in order: bundled Dark V 1.0, the stale
+// pre-release Libadwaita seed, the stale pre-release Libadwaita Light seed. Startup repair replaces saved
+// colors only when every key matches one palette.
+const LEGACY_DEFAULT_THEME_PALETTES = Object.freeze([
+    {
+        main_text_color: 'rgba(207, 207, 197, 1)',
+        italics_text_color: 'rgba(145, 145, 145, 1)',
+        underline_text_color: 'rgba(145, 145, 145, 1)',
+        quote_text_color: 'rgba(198, 193, 151, 1)',
+        blur_tint_color: 'rgba(29, 33, 40, 0.9)',
+        chat_tint_color: 'rgba(29, 33, 40, 0.9)',
+        user_mes_blur_tint_color: 'rgba(29, 33, 40, 0.9)',
+        bot_mes_blur_tint_color: 'rgba(29, 33, 40, 0.9)',
+        shadow_color: 'rgba(0, 0, 0, 0.9)',
+        border_color: 'rgba(0, 0, 0, 1)',
+    },
+    {
+        main_text_color: 'rgba(207, 207, 197, 1)',
+        italics_text_color: 'rgba(161, 162, 156, 1)',
+        underline_text_color: 'rgba(161, 162, 156, 1)',
+        quote_text_color: 'rgba(198, 193, 151, 1)',
+        blur_tint_color: 'rgba(29, 33, 40, 0.9)',
+        chat_tint_color: 'rgba(29, 33, 40, 0.9)',
+        user_mes_blur_tint_color: 'rgba(29, 33, 40, 0.9)',
+        bot_mes_blur_tint_color: 'rgba(29, 33, 40, 0.9)',
+        shadow_color: 'rgba(5, 6, 7, 0.9)',
+        border_color: 'rgba(5, 6, 7, 1)',
+    },
+    {
+        main_text_color: 'rgba(46, 45, 41, 1)',
+        italics_text_color: 'rgba(94, 92, 86, 1)',
+        underline_text_color: 'rgba(94, 92, 86, 1)',
+        quote_text_color: 'rgba(144, 137, 89, 1)',
+        blur_tint_color: 'rgba(250, 249, 245, 0.9)',
+        chat_tint_color: 'rgba(250, 249, 245, 0.9)',
+        user_mes_blur_tint_color: 'rgba(250, 249, 245, 0.9)',
+        bot_mes_blur_tint_color: 'rgba(250, 249, 245, 0.9)',
+        shadow_color: 'rgba(0, 0, 6, 0.1)',
+        border_color: 'rgba(0, 0, 6, 0.15)',
+    },
+]);
+
 const THEME_EFFECT_PROPERTIES = Object.freeze([
     { key: 'customCSS-bg-blur', selector: '#background_blur', counterSelector: '#background_blur_counter', cssVar: '--customCSS-bg-blur', defaultValue: 0, min: 0, max: 10, activeClass: 'sb-bg-blur' },
     { key: 'customCSS-bg-opacity', selector: '#background_opacity', counterSelector: '#background_opacity_counter', cssVar: '--customCSS-bg-opacity', defaultValue: 1, min: 0, max: 1 },
@@ -1953,13 +1995,9 @@ function isMediaDisplayReloadNeeded() {
     return hasUnprocessedMediaMessages;
 }
 
-function applyTheme(name) {
-    const theme = themes.find(x => x.name == name);
-
-    if (!theme) {
-        return;
-    }
-
+// SillyBunny: the color loop is split out of upstream applyTheme and shared with the startup palette repair,
+// which must not touch effects or custom CSS.
+function applyThemeColors(theme) {
     for (const { key, selector, type } of THEME_COLOR_PROPERTIES) {
         if (theme[key] !== undefined) {
             const newValue = theme[key];
@@ -1970,6 +2008,16 @@ function applyTheme(name) {
             console.debug(`Empty theme key: ${key}`);
         }
     }
+}
+
+function applyTheme(name) {
+    const theme = themes.find(x => x.name == name);
+
+    if (!theme) {
+        return;
+    }
+
+    applyThemeColors(theme);
 
     for (const { key } of THEME_EFFECT_PROPERTIES) {
         if (theme[key] !== undefined) {
@@ -2199,14 +2247,16 @@ export async function loadPowerUserSettings(settings, data) {
         themes = data.themes;
     }
 
-    // SillyBunny: pre-release Libadwaita seeds carried the Dark V 1.0 palette, so selecting them left
-    // Dark V colours behind. When the saved palette is still that exact seed, re-apply the (server-
-    // reconciled) bundled theme once; any colour the user changed keeps the saved state untouched.
+    // SillyBunny: the Dark V 1.0 migration above renames the theme and retunes only two accent colors on power_user,
+    // so the raw saved palette can still equal a legacy default. The match reads savedPowerUserSettings for that
+    // reason; a complete match is repaired from the bundled theme while authored colors, custom CSS, and effects
+    // stay as saved.
+    const migratedTheme = themes.find(theme => theme.name === power_user.theme);
     if (/^Libadwaita( Light)?$/.test(power_user.theme)
-        && power_user.main_text_color === 'rgba(207, 207, 197, 1)'
-        && power_user.blur_tint_color === 'rgba(29, 33, 40, 0.9)'
-        && themes.some(theme => theme.name === power_user.theme && theme.blur_tint_color !== power_user.blur_tint_color)) {
-        applyTheme(power_user.theme);
+        && LEGACY_DEFAULT_THEME_PALETTES.some(palette => Object.entries(palette)
+            .every(([key, value]) => savedPowerUserSettings[key] === value))
+        && migratedTheme && migratedTheme.blur_tint_color !== power_user.blur_tint_color) {
+        applyThemeColors(migratedTheme);
         saveSettingsDebounced();
     }
 
