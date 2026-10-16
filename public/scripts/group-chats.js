@@ -88,6 +88,8 @@ import { FILTER_TYPES, FilterHelper } from './filters.js';
 import { isExternalMediaAllowed } from './chats.js';
 import { POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
 import { t } from './i18n.js';
+// SillyBunny: member actions share the shell's popover / bottom-sheet menu.
+import { openActionMenu } from './sillybunny-action-menu.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { compressRequest } from './request-compression.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
@@ -2404,8 +2406,10 @@ async function modifyGroupMember(groupId, groupMember, isDelete) {
     const action = isDelete ? 'remove' : 'add';
     const unshallow = () => isDelete ? Promise.resolve() : unshallowGroupMembers(groupId);
 
-    if (_applyMemberActionToEditor(action, id)) {
-        await unshallow();
+    // SillyBunny: an owned no-op must not escape the explicit-save draft.
+    const draftAction = _applyMemberActionToEditor(action, id, groupId);
+    if (draftAction.owned) {
+        if (draftAction.changed) await unshallow();
     } else {
         // No editor owns this group: write straight through, as upstream did.
         const thisGroup = groups.find((x) => x.id == groupId);
@@ -2743,7 +2747,7 @@ function getGroupCharacterBlock(character, { draftIndex = -1, grip = false } = {
     // Appended here rather than shipped in the shared template so the add-members
     // list and the detached popout never render a handle they cannot use.
     if (grip) {
-        template.prepend('<div class="sb-group-member-grip fa-solid fa-grip-vertical right_menu_button" data-action="reorder" aria-hidden="true"></div>');
+        template.prepend('<div class="sb-group-member-grip ds-entity-row__grip fa-solid fa-grip-vertical" aria-hidden="true"></div>');
     }
     template.find('.avatar img').attr({ 'src': avatar, 'title': character.avatar });
     template.find('.ch_name').text(character.name);
@@ -2766,19 +2770,28 @@ function getGroupCharacterBlock(character, { draftIndex = -1, grip = false } = {
         template.toggleClass('is_active', queuePosition === 1);
     }
 
-    template.toggleClass('disabled', isGroupMemberDisabled(character.avatar));
-
+    // SillyBunny: the switch and menu replace the legacy icon strip on both lists.
+    const repliesEnabled = !isGroupMemberDisabled(character.avatar);
+    template.toggleClass('disabled', !repliesEnabled);
     const thisGroup = getEditedGroup();
-    const modelInput = template.find('.group_member_model_input');
-    modelInput.val(getGroupMemberModel(thisGroup, character.avatar));
-    modelInput.toggle(!!thisGroup && isGroupMember(thisGroup, character.avatar));
+    const isMember = isGroupMember(thisGroup, character.avatar);
+    template.toggleClass('sb-group-candidate ds-entity-row--activatable', !isMember);
+    template.find('.sb-group-member-switch').prop('checked', repliesEnabled).attr({
+        'aria-label': t`Replies from ${character.name}`,
+        'aria-checked': String(repliesEnabled),
+        'data-action': repliesEnabled ? 'disable' : 'enable',
+    });
+    template.find('.sb-group-member-menu').attr('aria-label', t`Member actions`);
+    template.find('[data-action="add"]').attr('aria-label', t`Add to group`);
+    const model = isMember ? getGroupMemberModel(thisGroup, character.avatar) : '';
+    template.find('.sb-group-member-model').text(model ? t`Model: ${model}` : '');
+    template.find('.ds-entity-row__subtitle').toggle(Boolean(auxFieldValue || model));
 
     // Display inline tags
     const tagsElement = template.find('.tags');
     printTagList(tagsElement, { forEntityOrKey: characters.indexOf(character), tagOptions: { isCharacterList: true } });
 
-    // Speak/mute only mean something for a persisted group; a draft being built
-    // has nothing to route replies through yet.
+    // Speak only means something for a persisted group.
     if (!openGroupId) {
         template.find('[data-action="speak"]').hide();
     }
@@ -3082,7 +3095,13 @@ async function onGroupActionClick(event) {
     event.stopPropagation();
     const action = $(this).data('action');
     const member = $(this).closest('.group_member');
+    await runGroupMemberAction(action, member);
+}
 
+// SillyBunny: delegated clicks, switches and menus use one action path, including
+// detached rows whose jQuery data store was not copied by the popout.
+async function runGroupMemberAction(action, member) {
+    const focus = captureGroupMemberFocus(member);
     if (action === 'remove') {
         await modifyGroupMember(openGroupId, member, true);
     }
@@ -3093,7 +3112,12 @@ async function onGroupActionClick(event) {
 
     if (action === 'enable' || action === 'disable') {
         const avatarId = member.data('id') ?? member.attr('data-avatar');
-        member.toggleClass('disabled', action === 'disable');
+        const rows = $('.group_member').filter(function () {
+            return ($(this).data('id') ?? $(this).attr('data-avatar')) === avatarId;
+        });
+        rows.toggleClass('disabled', action === 'disable');
+        rows.find('.sb-group-member-switch').prop('checked', action === 'enable')
+            .attr('aria-checked', String(action === 'enable')).attr('data-action', action === 'enable' ? 'disable' : 'enable');
         if (isGroupEditorActive()) {
             _editDraft((draft) => applyMemberAction(draft, action, avatarId));
         } else if (openGroupId) {
@@ -3126,26 +3150,90 @@ async function onGroupActionClick(event) {
     }
 
     await eventSource.emit(event_types.GROUP_UPDATED);
+    if (['up', 'down', 'remove', 'enable', 'disable'].includes(action)) {
+        restoreGroupMemberFocus(focus, {
+            removed: action === 'remove',
+            control: action === 'enable' || action === 'disable' ? '.sb-group-member-switch' : '.sb-group-member-menu',
+        });
+    }
 }
 
-function isMobileGroupCandidateRowTap(event) {
-    const target = event.target instanceof Element ? event.target : event.target?.parentElement;
-    if (!target || target.closest('.right_menu_button, input, button, select, textarea, a')) {
-        return false;
-    }
+// SillyBunny: use DOM identity and the originating list so re-rendered controls
+// regain focus in the sheet or its HTML-only popout, never in a newer session.
+function captureGroupMemberFocus(member) {
+    const list = member[0]?.closest('.rm_group_members');
+    return {
+        list,
+        avatar: member.data('id') ?? member.attr('data-avatar'),
+        index: list ? Array.from(list.querySelectorAll('.group_member')).indexOf(member[0]) : -1,
+        draft: editorDraft,
+        groupId: openGroupId,
+    };
+}
 
-    return globalThis.SillyBunnyShell?.isMobileViewport?.() ?? Boolean(globalThis.matchMedia?.('(max-width: 768px)')?.matches);
+function restoreGroupMemberFocus(focus, { removed = false, control = '.sb-group-member-menu' } = {}) {
+    if (!focus.list?.isConnected || focus.draft !== editorDraft || focus.groupId !== openGroupId) return;
+    const rows = Array.from(focus.list.querySelectorAll('.group_member'));
+    const member = removed
+        ? rows[Math.min(focus.index, rows.length - 1)]
+        : rows.find(row => row.getAttribute('data-avatar') === focus.avatar);
+    const target = member?.querySelector(control)
+        ?? focus.list.closest('.ds-entity-list')?.querySelector('[id="rm_group_members_filter"]');
+    target?.focus({ preventScroll: true });
+}
+
+function isGroupCandidateRowClick(event) {
+    const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+    // SillyBunny: a11y marks static chips as buttons too; only actionable chips
+    // (including the tag expander) and actual controls consume the row click.
+    return Boolean(target && !target.closest('.right_menu_button, input, button, select, textarea, a, label, [role="button"]:not(.tag), .tag:is(.actionable, .clickable-action, .placeholder-expander, .interactable), .tag_remove'));
 }
 
 async function onGroupCandidateRowClick(event) {
-    if (!isMobileGroupCandidateRowTap(event)) {
+    if (!isGroupCandidateRowClick(event)) {
         return;
     }
 
     event.preventDefault();
     event.stopPropagation();
-    await modifyGroupMember(openGroupId, $(this), false);
-    await eventSource.emit(event_types.GROUP_UPDATED);
+    await runGroupMemberAction('add', $(this));
+}
+
+async function onGroupMemberSwitchChange() {
+    await runGroupMemberAction(this.checked ? 'enable' : 'disable', $(this).closest('.group_member'));
+}
+
+function onGroupMemberMenuClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const member = $(this).closest('.group_member');
+    const avatarId = member.data('id') ?? member.attr('data-avatar');
+    const order = getEditedGroup()?.members ?? [];
+    const index = order.indexOf(avatarId);
+    if (index < 0) return;
+
+    const actionItem = (label, icon, action, extra = {}) => ({
+        label,
+        icon: `fa-solid fa-${icon}`,
+        onSelect: () => void runGroupMemberAction(action, member),
+        ...extra,
+    });
+    const actions = [];
+    if (openGroupId) actions.push(actionItem(t`Speak now`, 'comment', 'speak'));
+    actions.push(actionItem(t`View character`, 'image-portrait', 'view'));
+    actions.push({ label: t`Model override…`, icon: 'fa-solid fa-microchip', onSelect: () => void editGroupMemberModel(member) });
+    openActionMenu({
+        trigger: this,
+        title: member.find('.ch_name').text(),
+        sections: [
+            { items: actions },
+            { items: [
+                actionItem(t`Move up`, 'arrow-up', 'up', { disabled: index === 0 }),
+                actionItem(t`Move down`, 'arrow-down', 'down', { disabled: index === order.length - 1 }),
+            ] },
+            { items: [actionItem(t`Remove`, 'minus', 'remove', { danger: true })] },
+        ],
+    });
 }
 
 /**
@@ -3153,14 +3241,14 @@ async function onGroupCandidateRowClick(event) {
  * Draft edits are never written to groups[]; Save does that.
  * @param {'add'|'remove'|'enable'|'disable'} action
  * @param {string} avatarId
- * @returns {boolean} true when the editor owned the group and the draft changed
+ * @param {string|null} [groupId] Group whose member is being changed
+ * @returns {{ owned: boolean, changed: boolean }} Ownership is independent of mutation.
  */
-function _applyMemberActionToEditor(action, avatarId) {
-    const groupId = openGroupId ? String(openGroupId) : '';
-    if (!editorDraft) return false;
+function _applyMemberActionToEditor(action, avatarId, groupId = openGroupId) {
+    if (!editorDraft) return { owned: false, changed: false };
     // Create mode has no group id yet, so the draft is the only owner.
-    if (groupId && String(editorDraft.id) !== groupId) return false;
-    return _editDraft((draft) => applyMemberAction(draft, action, avatarId));
+    if (groupId && String(editorDraft.id) !== String(groupId)) return { owned: false, changed: false };
+    return { owned: true, changed: _editDraft((draft) => applyMemberAction(draft, action, avatarId)) };
 }
 
 /**
@@ -3411,14 +3499,6 @@ function filterGroupMemberList() {
 }
 
 
-function getSelectedGroupMemberAvatars() {
-    if (openGroupId) {
-        return getEditedGroup()?.members ?? [];
-    }
-
-    return editorDraft?.members ?? [];
-}
-
 function getGroupMemberSignature(members) {
     return [...new Set(Array.isArray(members) ? members : [])].sort().join('|');
 }
@@ -3432,49 +3512,28 @@ function findGroupByMembers(members) {
     return groups.find(group => getGroupMemberSignature(group.members) === signature) || null;
 }
 
-async function createQuickGroupFromSelectedMembers() {
-    const members = getSelectedGroupMemberAvatars().filter(onlyUnique);
-    if (members.length === 0) {
-        toastr.warning(t`Select at least one character first.`);
-        return;
-    }
-
-    const existingGroup = !openGroupId ? findGroupByMembers(members) : null;
-    if (existingGroup) {
-        await createNewGroupChat(existingGroup.id);
-        toastr.info(t`Opened a new chat branch for the existing group.`);
-        return;
-    }
-
-    if (openGroupId) {
-        await createNewGroupChat(openGroupId);
-        toastr.info(t`Opened a new chat branch for this group.`);
-        return;
-    }
-
-    const names = members
-        .map(avatar => characters.find(character => character.avatar === avatar)?.name)
-        .filter(Boolean);
-    const defaultName = names.length ? t`Group: ${names.join(', ')}` : t`New Group`;
-    const groupName = await Popup.show.input(t`Create Group Chat`, t`Name this group chat:`, defaultName);
-    if (groupName === null) {
-        return;
-    }
-
-    $('#rm_group_chat_name').val(String(groupName || defaultName));
-    if (_editDraft((draft) => { draft.name = String(groupName || defaultName); return true; }, { immediate: false })) {
-        writeGroupEditorFields(editorDraft);
-        return;
-    }
-    await createGroup();
-}
-
-async function onGroupMemberModelInput() {
-    const member = $(this).closest('.group_member');
-    const value = String($(this).val() ?? '');
+// SillyBunny: model overrides are available on mobile through the member menu.
+async function editGroupMemberModel(member) {
     const avatarId = member.data('id') ?? member.attr('data-avatar');
     if (!avatarId) return;
+    const group = getEditedGroup();
+    const draft = editorDraft;
+    const groupId = openGroupId;
+    const focus = captureGroupMemberFocus(member);
+    const input = await Popup.show.input(t`Model override`, '', getGroupMemberModel(group, avatarId));
+    if (draft !== editorDraft || groupId !== openGroupId) return;
+    if (input === null) {
+        restoreGroupMemberFocus(focus);
+        return;
+    }
+    if (!getEditedGroup()?.members?.includes(avatarId)) return;
+    const value = String(input).trim();
+    await updateGroupMemberModel(avatarId, value);
+    printGroupMembers();
+    restoreGroupMemberFocus(focus);
+}
 
+async function updateGroupMemberModel(avatarId, value) {
     if (isGroupEditorActive()) {
         _editDraft((draft) => {
             if (!draft.members.includes(avatarId)) return false;
@@ -3482,7 +3541,7 @@ async function onGroupMemberModelInput() {
             if (value) draft.member_models[avatarId] = value;
             else delete draft.member_models[avatarId];
             return true;
-        }, { immediate: false });
+        });
         return;
     }
 
@@ -3948,7 +4007,6 @@ jQuery(() => {
     // SillyBunny: include the search field created later by the native popout.
     $(document).on('input', '#rm_group_members_filter', filterGroupMemberList);
     $('#rm_group_submit').on('click', () => void createGroup());
-    $('#rm_group_quick_create').on('click', createQuickGroupFromSelectedMembers);
     $('#rm_group_scenario').on('click', setCharacterSettingsOverrides);
     $('#rm_group_hidemutedsprites').on('input', function () {
         const value = $(this).prop('checked');
@@ -3976,8 +4034,10 @@ jQuery(() => {
     $('#group_avatar_button').on('input', uploadGroupAvatar);
     $('#rm_group_restore_avatar').on('click', restoreGroupAvatar);
     $(document).on('click', '.group_member .right_menu_button', onGroupActionClick);
+    // SillyBunny: document delegation survives detached-list HTML cloning.
+    $(document).on('click', '.group_member .sb-group-member-menu', onGroupMemberMenuClick);
+    $(document).on('change', '.group_member .sb-group-member-switch', onGroupMemberSwitchChange);
     $(document).on('click', '#rm_group_add_members .group_member', onGroupCandidateRowClick);
-    $(document).on('input change', '.group_member_model_input', onGroupMemberModelInput);
     eventSource.on(event_types.CHAT_CHANGED, updateGroupSpeakerControls);
     eventSource.on(event_types.GROUP_UPDATED, updateGroupSpeakerControls);
     // SillyBunny: a turn routing lease ends when its chat or group changes.

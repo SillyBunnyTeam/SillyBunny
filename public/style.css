@@ -3718,33 +3718,16 @@ input[type=search]:focus::-webkit-search-cancel-button {
    Settings section now, and toggleHiddenControls() shows or hides it from the
    draft. The old #rm_group_top_bar :has() rule no longer matches anything. */
 
-.group_member .queue_position:not(:empty)::before {
-    content: "#";
-}
-
-.group_member .queue_position {
-    margin-right: 0.75rem;
-    font-size: calc(var(--mainFontSize) * 0.9);
-}
-
-.group_member.is_queued {
-    outline: 2px solid var(--golden);
-}
-
-.group_member.is_active {
-    outline: 2px solid var(--active);
-}
+/* SillyBunny: group queue state uses the entity-row badge, not row outlines. */
 
 .character_select.is_fav .avatar,
 .group_select.is_fav .avatar,
-.group_member.is_fav .avatar,
 .avatar.is_fav {
     outline: 2px solid var(--golden);
 }
 
 .character_select.is_fav .ch_name,
-.group_select.is_fav .ch_name,
-.group_member.is_fav .ch_name {
+.group_select.is_fav .ch_name {
     color: var(--golden);
 }
 
@@ -6626,10 +6609,7 @@ body:not(.movingUI) .drawer-content.maximized {
     display: none;
 }
 
-#rm_group_add_members a,
-#rm_group_members a {
-    color: var(--SmartThemeBodyColor);
-}
+/* SillyBunny: entity-list links inherit their shared control/tag styles. */
 
 .draggable {
     min-width: 100px;
@@ -6715,10 +6695,7 @@ body:not(.movingUI) .drawer-content.maximized {
     height: 100%;
 }
 
-#groupMemberListPopout #rm_group_members {
-    margin: 0;
-    padding: 20px 0 0;
-}
+/* SillyBunny: detached member rows retain ds-entity-list spacing. */
 
 
 

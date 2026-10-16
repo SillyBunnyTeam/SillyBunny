@@ -926,19 +926,22 @@
 /* Unify action-button chrome across the editor so Tags View, Add, and Maximize
    all follow the flat toolbar style instead of bordered chips. The group
    greetings button is injected by the bundled SB-GroupUtilities extension. */
-#right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button) {
+#right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button),
+#right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button {
     border: 0;
     background: transparent;
     transition: background-color var(--sb-transition-fast);
 }
 
 @media (hover: hover) {
-    #right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button):hover {
+    #right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button):hover,
+    #right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button:hover {
         background: var(--sb-flat-hover-bg);
     }
 }
 
-#right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button):active {
+#right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button):active,
+#right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button:active {
     background: var(--sb-flat-active-bg);
 }
 
@@ -1168,59 +1171,10 @@
 /* Tag chips — libadwaita pill style
    ========================================================================= */
 
-/* The .tags container (tagList) and upstream .tag pills need libadwaita
-   treatment inside the character editor. Scope tightly to avoid changing
-   global tag appearance on other panels. */
+/* Shared chip chrome lives beside the entity list in sillybunny-tabs.css;
+   only the editor's field insets belong here. */
 #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList).tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
     padding: 6px 16px 10px;
-}
-
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 3px 10px;
-    border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
-    font-size: var(--sb-type-meta, 13px);
-    font-weight: 500;
-    color: var(--SmartThemeBodyColor);
-    line-height: 1.3;
-    cursor: default;
-    transition: background-color 120ms ease, border-color 120ms ease;
-}
-
-@media (hover: hover) {
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag:hover {
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-        border-color: color-mix(in srgb, var(--sb-shell-border) 100%, transparent);
-    }
-}
-
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_remove {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
-    color: var(--SmartThemeBodyColor);
-    font-size: 10px;
-    cursor: pointer;
-    line-height: 1;
-    transition: background-color 120ms ease;
-    flex-shrink: 0;
-}
-
-@media (hover: hover) {
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_remove:hover {
-        background: color-mix(in srgb, var(--SmartThemeBotMesBlurTintColor, var(--SmartThemeQuoteColor)) 30%, transparent);
-    }
 }
 
 /* Draft-recovery toast actions (sillybunny-editor/chrome.js). Toasts render
@@ -1319,127 +1273,141 @@
 /* Member rows
    ========================================================================= */
 
-/* The drag handle is an overlay pinned to the row's leading edge rather than a
-   grid track: the row's column set belongs to the member-list layout, which the
-   bundled SB-GroupUtilities extension also styles at the same specificity, so
-   inserting a track here would shift every cell of whichever rule lost the
-   cascade. An overlay leaves the columns and the row's box alone, sitting in the
-   row's own inset instead. It is revealed on hover or when focused, so the
-   leading edge stays quiet at rest; the up/down buttons remain the keyboard and
-   touch path. */
-#rm_group_members .group_member {
+/* SB-GroupUtilities owns legacy grid tracks and 18px buttons. These scoped
+   flex overrides keep its injected .send_as suffix without inheriting the grid. */
+:is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row {
+    display: flex;
+    grid-template-columns: none;
     position: relative;
+    gap: 8px;
+    min-height: 56px;
+    padding: 8px 16px;
+    border-radius: 0;
+    outline: none;
 }
 
-#rm_group_members .group_member .sb-group-member-grip {
-    position: absolute;
-    inset-block: 0;
-    inset-inline-start: 1px;
+:is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row .character_version {
+    font: inherit;
+    color: inherit;
+}
+
+:is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row > .ds-entity-row__avatar,
+:is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row > .ds-entity-row__avatar img {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    max-width: 32px;
+    flex: 0 0 32px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+:is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row > .group_member_icon {
     display: flex;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    flex-wrap: nowrap;
+    gap: 4px;
+}
+
+:is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row .group_member_icon > :is(.right_menu_button, .ds-entity-row__button) {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
     margin: 0;
     padding: 0;
-    color: var(--sb-muted-fg, color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent));
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--SmartThemeBodyColor);
+    font-size: var(--sb-type-control);
+    line-height: 1;
+    cursor: pointer;
+}
+
+.group_member.ds-entity-row .sb-group-member-grip {
     cursor: grab;
     touch-action: none;
-    opacity: 0;
-    transition: opacity var(--sb-transition-fast, 120ms ease);
 }
 
-#rm_group_members .group_member:focus-within .sb-group-member-grip {
-    opacity: 0.7;
-}
-
-#rm_group_members .group_member .sb-group-member-grip:active {
+.group_member.ds-entity-row .sb-group-member-grip:active {
     cursor: grabbing;
-    opacity: 1;
 }
 
 @media (hover: hover) {
-    #rm_group_members .group_member:hover .sb-group-member-grip {
-        opacity: 0.7;
-    }
-
-    #rm_group_members .group_member .sb-group-member-grip:hover,
-    #rm_group_members .group_member .sb-group-member-grip:focus-visible {
-        opacity: 1;
-        color: var(--sb-shell-text);
+    :is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row .group_member_icon > :is(.right_menu_button, .ds-entity-row__button):hover {
+        background: var(--sb-flat-hover-bg);
     }
 }
 
-/* A row being dragged keeps its handle in view on the floating clone. */
-#rm_group_members .group_member.ui-sortable-helper .sb-group-member-grip {
-    opacity: 1;
+:is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row .group_member_icon > :is(.right_menu_button, .ds-entity-row__button):active {
+    background: var(--sb-flat-active-bg);
 }
 
-/* The grip rides the row itself, so the other member lists never ship one. */
-#rm_group_add_members .group_member .sb-group-member-grip,
-#groupMemberListPopout .group_member .sb-group-member-grip {
-    display: none;
+:is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row .group_member_icon > :is(.right_menu_button, .ds-entity-row__button):focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
-/* The list re-sorts itself while a filter is active, so the handle would drop
-   a row somewhere the user did not choose. */
+.sb-group-member-replies {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    min-width: 44px;
+    margin: 0;
+    cursor: pointer;
+}
+
+.group_member.disabled .ds-entity-row__avatar {
+    opacity: 0.55;
+}
+
+.group_member .sb-group-member-legacy,
+#rm_group_chats_block #rm_group_add_members .group_member_icon > :not([data-action="add"]),
+#rm_group_members .group_member .group_member_icon > [data-action="add"],
+#groupMemberListPopout .group_member .group_member_icon > [data-action="add"],
+#rm_group_add_members .group_member :is(.sb-group-member-replies, .sb-group-member-menu, .sb-group-member-grip),
+#groupMemberListPopout .group_member .sb-group-member-grip,
 #rm_group_members.is-filtered .sb-group-member-grip {
-    display: none;
+    display: none !important;
 }
 
-/* The shell gives every .menu_button/.right_menu_button a 38px physical minimum
-   (sillybunny-theme.css:1209-1212), which is right for a toolbar but inflates
-   these 18px row controls until they spill past their row and cover the next
-   row's buttons. The minimum is dropped for pointers that can hover, where the
-   rows are compact; touch is left to the 44px targets in mobile-styles.css,
-   which this must not outrank. */
-@media (hover: hover) and (pointer: fine) {
-    #rm_group_members .group_member_icon .right_menu_button,
-    #rm_group_add_members .group_member_icon .right_menu_button {
-        width: 18px;
-        min-width: 18px;
-        height: 18px;
-        min-height: 18px;
-        padding: 0;
-        font-size: calc(var(--mainFontSize) * 0.82);
-        line-height: 18px;
-    }
-
-    /* The up/down pair is the one stacked control, so it sizes as a column. */
-    #rm_group_members .group_member_icon .flex-container,
-    #rm_group_add_members .group_member_icon .flex-container {
-        width: 18px;
-        min-width: 18px;
-        height: 36px;
-        flex: 0 0 18px;
-        flex-flow: column nowrap;
-        gap: 0;
-        align-items: center;
-        justify-content: center;
-    }
+.group_member .queue_position:not(:empty)::before {
+    content: '#';
 }
 
-/* Touch pointers: the grip needs a reachable target and rides the row's full
-   height, since the compact pointer rules above do not apply here. */
-@media (hover: none), (pointer: coarse) {
-    #rm_group_members .group_member .sb-group-member-grip {
-        width: 24px;
-        opacity: 0.5;
-        font-size: var(--sb-type-body, 15px);
+.group_member.is_active .queue_position {
+    color: var(--sb-accent);
+}
+
+.group_member.is_queued .queue_position {
+    color: var(--color-warning);
+}
+
+.group_member.sb-group-candidate {
+    cursor: pointer;
+}
+
+@media (pointer: coarse), (max-width: 768px) {
+    :is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row {
+        gap: 4px;
+        padding-inline: 8px;
     }
 
-    /* The up/down pair stacks inside one 44px lane. Left at the shell's 44px
-       minimum each, the pair is 88px tall and spills over the rows above and
-       below, so their own arrows answer for them. Half-height steps keep the
-       pair inside the lane; the whole 44px column stays the tap target. */
-    #rm_group_members .group_member_icon .flex-container .right_menu_button,
-    #rm_group_add_members .group_member_icon .flex-container .right_menu_button {
-        height: 22px;
-        min-height: 22px;
-    }
-
-    #rm_group_members .group_member_icon .flex-container,
-    #rm_group_add_members .group_member_icon .flex-container {
+    :is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row .group_member_icon > :is(.right_menu_button, .ds-entity-row__button) {
+        width: 44px;
+        min-width: 44px;
         height: 44px;
+        min-height: 44px;
+    }
+
+    .sb-group-member-replies {
         min-height: 44px;
     }
 }
@@ -1449,7 +1417,7 @@
 #rm_group_members .group_member.ui-sortable-helper {
     background: var(--sb-layer-view);
     border-radius: var(--sb-radius-card, 12px);
-    box-shadow: var(--sb-shadow-md, 0 6px 18px rgb(0 0 0 / 35%));
+    box-shadow: var(--sb-shadow-popover);
     opacity: 0.95;
 }
 
@@ -1463,24 +1431,35 @@
 /* Member lists and their search rows
    ========================================================================= */
 
-#rm_group_members,
-#rm_group_add_members {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    margin: 0;
-    border-top: 1px solid var(--sb-shell-border);
-    padding: 6px 0 0;
+#rm_group_chats_block .sb-group-members-heading.ds-pref-group-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 8px;
 }
 
-#rm_group_members:empty,
-#rm_group_add_members:empty {
-    min-height: 44px;
+.sb-group-members-heading > :is(h3, p) {
+    grid-column: 1;
+}
+
+.sb-group-members-heading > .ds-row-suffix {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    gap: 0;
+}
+
+#rm_group_members:empty::before,
+#groupMemberListPopout .rm_group_members:empty::before {
+    content: attr(group_empty_text);
+}
+
+#rm_group_add_members:empty::before {
+    content: attr(no_characters_text);
 }
 
 #rm_group_members_header,
 #rm_group_add_members_header {
-    padding: 0 16px;
+    padding: 8px 12px;
 }
 
 #rm_group_members_header input,
@@ -1489,6 +1468,12 @@
 }
 
 /* The tag filter rows sit between the search row and the list. */
-.sb-editor-section .rm_tag_controls:empty {
+:is(#rm_group_chats_block, #groupMemberListPopout) .rm_tag_controls {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--sb-shell-border);
+}
+
+.sb-editor-section .rm_tag_controls:empty,
+:is(#rm_group_chats_block, #groupMemberListPopout) .rm_tag_controls:not(:has(.tag)) {
     display: none;
 }

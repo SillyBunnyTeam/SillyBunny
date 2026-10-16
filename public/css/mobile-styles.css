@@ -2028,68 +2028,7 @@
         grid-area: hide !important;
     }
 
-    /* SillyBunny: Mobile-specific group member touch targets for Add Members screen */
-    #rm_group_add_members .group_member {
-        cursor: pointer;
-        padding: 8px 5px;
-    }
-
-    #rm_group_add_members .group_member:active {
-        background-color: var(--white30a);
-    }
-
-    /* Increase touch target size for action buttons on mobile */
-    #rm_group_add_members .right_menu_button,
-    #rm_group_members .right_menu_button {
-        min-width: var(--sb-mobile-touch-target, 44px);
-        min-height: var(--sb-mobile-touch-target, 44px);
-        width: var(--sb-mobile-touch-target, 44px);
-        height: var(--sb-mobile-touch-target, 44px);
-        padding: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        -webkit-tap-highlight-color: transparent;
-    }
-
-    /* Adjust grid layout for mobile to accommodate larger touch targets */
-    #rm_group_add_members .group_member {
-        --sb-group-actions-width: calc(var(--sb-mobile-touch-target, 44px) + var(--sb-mobile-touch-target, 44px) + 4px);
-        grid-template-columns: auto minmax(0, 1fr) var(--sb-group-actions-width);
-        column-gap: 8px;
-    }
-
-    #rm_group_members .group_member {
-        --sb-group-actions-width: calc(var(--sb-mobile-touch-target, 44px) + var(--sb-mobile-touch-target, 44px) + var(--sb-mobile-touch-target, 44px) + 8px);
-        grid-template-columns: auto minmax(0, 1fr) minmax(var(--sb-mobile-touch-target, 44px), var(--sb-group-actions-width));
-        column-gap: 8px;
-    }
-
-    /* Hide model input and queue position on mobile to save space */
-    #rm_group_add_members .group_member_model,
-    #rm_group_add_members .queue_position,
-    #rm_group_members .group_member_model,
-    #rm_group_members .queue_position {
-        display: none;
-    }
-
-    /* Ensure action icons container has proper sizing */
-    #rm_group_add_members .group_member_icon,
-    #rm_group_members .group_member_icon {
-        min-width: var(--sb-mobile-touch-target, 44px);
-        gap: 4px;
-        justify-content: flex-end;
-    }
-
-    #rm_group_add_members .group_member_icon {
-        width: var(--sb-group-actions-width);
-    }
-
-    #rm_group_members .group_member_icon {
-        max-width: var(--sb-group-actions-width);
-        flex-wrap: wrap;
-    }
+    /* SillyBunny: ds-entity-row owns responsive group-member touch targets. */
 
     /* General fix for menu_button_icon with text on mobile */
     .menu_button_icon:has(> span) {

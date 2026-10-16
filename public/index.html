@@ -30,7 +30,7 @@
         }
     </script>
     <script src="scripts/sillybunny-restart-cache-clear.js?v=20261013a"></script>
-    <link rel="preload" as="style" href="style.css?v=20261001e">
+    <link rel="preload" as="style" href="style.css?v=20261016a">
     <link rel="modulepreload" href="script.js">
     <link rel="modulepreload" href="scripts/sillybunny-tabs.js">
     <link rel="modulepreload" href="scripts/sillybunny-conversation.js">
@@ -56,18 +56,18 @@
     <link rel="apple-touch-icon" sizes="114x114" href="img/apple-icon-114x114.png" />
     <link rel="apple-touch-icon" sizes="144x144" href="img/apple-icon-144x144.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="img/apple-icon-180x180.png" />
-    <link rel="stylesheet" type="text/css" href="style.css?v=20261001e">
+    <link rel="stylesheet" type="text/css" href="style.css?v=20261016a">
     <link rel="stylesheet" type="text/css" href="css/st-tailwind.css">
     <link rel="stylesheet" type="text/css" href="css/toggle-dependent.css">
     <link rel="stylesheet" type="text/css" href="css/select2-overrides.css?v=20260609a">
-    <link rel="stylesheet" type="text/css" href="css/mobile-styles.css?v=20260814a" media="(max-width: 768px)">
+    <link rel="stylesheet" type="text/css" href="css/mobile-styles.css?v=20261016a" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20261003f">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-paper-theme.css?v=20261003a" media="(max-width: 768px)">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20261015a">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20261016a">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20261015a" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-navigation.css?v=20261001e">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261003a">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-character-editor.css?v=20261015i">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-character-editor.css?v=20261016a">
     <!-- SillyBunny: colour menus render outside clipped preference groups. -->
     <link rel="preload" as="style" href="css/sillybunny-color-picker.css" data-sb-deferred-style data-sb-media="all">
     <link rel="stylesheet" type="text/css" href="css/user.css">
@@ -7411,7 +7411,7 @@
                                  and groupAddMemberListToggle are kept because script.js:17264 and
                                  tags.js still query them. -->
                             <section class="sb-editor-section" data-sb-section="essentials" aria-labelledby="sb_group_section_essentials">
-                                <header class="ds-pref-group-header">
+                                <header class="ds-pref-group-header" id="groupControlsToggle">
                                     <h3 class="ds-pref-group-heading" id="sb_group_section_essentials" data-i18n="Essentials">Essentials</h3>
                                     <p class="ds-pref-group-subtitle" data-i18n="group_essentials_subtitle">lorum ipsum</p>
                                 </header>
@@ -7446,61 +7446,46 @@
                             </section>
 
                             <section class="sb-editor-section" data-sb-section="members" aria-labelledby="sb_group_section_members">
-                                <header class="ds-pref-group-header">
+                                <header class="ds-pref-group-header sb-group-members-heading" id="groupCurrentMemberListToggle">
                                     <h3 class="ds-pref-group-heading" id="sb_group_section_members" data-i18n="Members">Members</h3>
                                     <p class="ds-pref-group-subtitle" data-i18n="group_members_subtitle">lorum ipsum</p>
+                                    <div class="ds-row-suffix">
+                                        <a href="https://docs.sillytavern.app/usage/core-concepts/groupchats/" class="sb-editor-icon-button" target="_blank" rel="noopener noreferrer" aria-label="Open the group chats documentation" data-i18n="[aria-label]Open the group chats documentation">
+                                            <span class="fa-solid fa-circle-question" aria-hidden="true"></span>
+                                        </a>
+                                        <button id="groupCurrentMemberPopoutButton" class="sb-editor-icon-button" type="button" title="Pop out member list" aria-label="Pop out member list" data-i18n="[title]Pop out member list;[aria-label]Pop out member list">
+                                            <i class="fa-solid fa-window-restore" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
                                 </header>
-                                <div class="ds-pref-group sb-editor-section__body">
-                                    <div class="ds-row sb-group-members-header" id="groupCurrentMemberListToggle">
-                                        <span class="ds-row-text">
-                                            <a href="https://docs.sillytavern.app/usage/core-concepts/groupchats/" class="notes-link" target="_blank" rel="noopener noreferrer" aria-label="Open the group chats documentation">
-                                                <span class="fa-solid fa-circle-question note-link-span" aria-hidden="true"></span>
-                                            </a>
-                                        </span>
-                                        <span class="ds-row-suffix">
-                                            <button id="groupCurrentMemberPopoutButton" class="sb-editor-icon-button" type="button" title="Pop out member list" aria-label="Pop out member list" data-i18n="[title]Pop out member list;[aria-label]Pop out member list">
-                                                <i class="fa-solid fa-window-restore" aria-hidden="true"></i>
-                                            </button>
-                                        </span>
+                                <div id="currentGroupMembers" name="Current Group Members" class="ds-pref-group sb-editor-section__body ds-entity-list">
+                                    <!-- tags.js reads .rm_tag_controls as the immediate next sibling of
+                                         #rm_group_members_header, so the header must stay directly above it. -->
+                                    <div id="rm_group_members_header" class="ds-row">
+                                        <input id="rm_group_members_filter" class="text_pole margin0" type="search" data-i18n="[placeholder]Search..." placeholder="Search..." />
                                     </div>
-                                    <div id="currentGroupMembers" name="Current Group Members" class="flex-container flexFlowColumn">
-                                        <!-- tags.js reads .rm_tag_controls as the immediate next sibling of
-                                             #rm_group_members_header, so the header must stay directly above it. -->
-                                        <div id="rm_group_members_header" class="ds-row">
-                                            <input id="rm_group_members_filter" class="text_pole margin0" type="search" data-i18n="[placeholder]Search..." placeholder="Search..." />
-                                        </div>
-                                        <div class="rm_tag_controls">
-                                            <div class="tags rm_tag_filter"></div>
-                                        </div>
-                                        <div id="rm_group_members_pagination" class="rm_group_members_pagination group_pagination"></div>
-                                        <div id="rm_group_members" class="rm_group_members flex-container" group_empty_text="Group is empty." data-i18n="[group_empty_text]Group is empty."></div>
+                                    <div class="rm_tag_controls">
+                                        <div class="tags rm_tag_filter"></div>
                                     </div>
+                                    <div id="rm_group_members" class="rm_group_members ds-entity-list__rows ds-entity-list__empty" group_empty_text="Group is empty." data-i18n="[group_empty_text]Group is empty."></div>
+                                    <div id="rm_group_members_pagination" class="rm_group_members_pagination group_pagination ds-entity-list__footer"></div>
                                 </div>
                             </section>
 
                             <section class="sb-editor-section" data-sb-section="add-members" aria-labelledby="sb_group_section_add_members">
-                                <header class="ds-pref-group-header">
+                                <header class="ds-pref-group-header" id="groupAddMemberListToggle">
                                     <h3 class="ds-pref-group-heading" id="sb_group_section_add_members" data-i18n="Add Members">Add Members</h3>
                                     <p class="ds-pref-group-subtitle" data-i18n="group_add_members_subtitle">lorum ipsum</p>
                                 </header>
-                                <div class="ds-pref-group sb-editor-section__body">
-                                    <div id="groupAddMemberListToggle" class="ds-row">
-                                        <div class="flex-container flexGap5 wide100p">
-                                            <input id="rm_group_filter" class="text_pole margin0 flex1" type="search" data-i18n="[placeholder]Search..." placeholder="Search..." />
-                                            <div id="rm_group_quick_create" class="menu_button menu_button_icon" title="Create group from selected members" data-i18n="[title]Create group from selected members">
-                                                <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
-                                                <span data-i18n="Quick Create">Quick Create</span>
-                                            </div>
-                                        </div>
+                                <div id="unaddedCharList" name="Unadded Char List" class="ds-pref-group sb-editor-section__body ds-entity-list">
+                                    <div id="rm_group_add_members_header" class="ds-row">
+                                        <input id="rm_group_filter" class="text_pole margin0" type="search" data-i18n="[placeholder]Search..." placeholder="Search..." />
                                     </div>
-                                    <div id="unaddedCharList" name="Unadded Char List" class="flex-container flexFlowColumn">
-                                        <div id="rm_group_add_members_header" class="ds-row"></div>
-                                        <div class="rm_tag_controls">
-                                            <div class="tags rm_tag_filter"></div>
-                                        </div>
-                                        <div id="rm_group_add_members_pagination" class="group_pagination"></div>
-                                        <div id="rm_group_add_members" class="flex-container" no_characters_text="No characters available" data-i18n="[no_characters_text]No characters available"></div>
+                                    <div class="rm_tag_controls">
+                                        <div class="tags rm_tag_filter"></div>
                                     </div>
+                                    <div id="rm_group_add_members" class="ds-entity-list__rows ds-entity-list__empty" no_characters_text="No characters available" data-i18n="[no_characters_text]No characters available"></div>
+                                    <div id="rm_group_add_members_pagination" class="group_pagination ds-entity-list__footer"></div>
                                 </div>
                             </section>
 
@@ -8758,33 +8743,42 @@
             </div>
         </div>
         <div id="group_member_template" class="template_element">
-            <div class="group_member">
-                <div class="avatar">
+            <div class="group_member ds-entity-row">
+                <div class="avatar ds-entity-row__avatar">
                     <img alt="Avatar" src="" />
                 </div>
-                <div class="group_member_name">
-                    <div class="character_name_block">
-                        <span class="ch_name"></span>
+                <div class="group_member_name ds-entity-row__text">
+                    <div class="ds-entity-row__title"><span class="ch_name"></span></div>
+                    <div class="ds-entity-row__subtitle">
                         <small class="ch_additional_info character_version"></small>
+                        <span class="sb-group-member-model"></span>
                     </div>
-                    <div class="tags tags_inline"></div>
+                    <div class="tags tags_inline ds-entity-row__tags ds-tag-chips"></div>
                 </div>
                 <input class="ch_fav" value="" hidden />
-                <div class="group_member_model">
-                    <input class="group_member_model_input text_pole textarea_compact" type="text" placeholder="Model override" title="Optional model for this member in this group" data-i18n="[placeholder]Model override;[title]Optional model for this member in this group" />
-                </div>
-                <div class="queue_position"></div>
-                <div class="group_member_icon">
-                    <div title="Temporarily disable automatic replies from this character" data-action="disable" class="right_menu_button fa-solid fa-lg fa-comment-slash" data-i18n="[title]Temporarily disable automatic replies from this character"></div>
-                    <div title="Enable automatic replies from this character" data-action="enable" class="right_menu_button fa-solid fa-lg fa-comment-slash" data-i18n="[title]Enable automatic replies from this character"></div>
-                    <div title="Trigger a message from this character" data-action="speak" class="right_menu_button fa-solid fa-lg fa-comment" data-i18n="[title]Trigger a message from this character"></div>
-                    <div class="flexFlowColumn flex-container">
-                        <div title="Move up" data-action="up" class="right_menu_button fa-solid fa-chevron-up" data-i18n="[title]Move up"></div>
-                        <div title="Move down" data-action="down" class="right_menu_button fa-solid fa-chevron-down" data-i18n="[title]Move down"></div>
+                <div class="queue_position ds-entity-row__badge"></div>
+                <div class="group_member_icon ds-entity-row__suffix">
+                    <label class="sb-group-member-replies">
+                        <input class="sb-switch sb-group-member-switch" type="checkbox" role="switch" checked />
+                    </label>
+                    <button class="sb-group-member-menu ds-entity-row__button" type="button" aria-haspopup="menu" aria-label="Member actions" data-i18n="[aria-label]Member actions">
+                        <i class="fa-solid fa-ellipsis" aria-hidden="true"></i>
+                    </button>
+                    <button class="right_menu_button ds-entity-row__button" type="button" data-action="add" aria-label="Add to group" data-i18n="[aria-label]Add to group">
+                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                    </button>
+                    <!-- SillyBunny: hidden action transports retain extension selectors. -->
+                    <div class="sb-group-member-legacy" hidden>
+                        <div title="Temporarily disable automatic replies from this character" data-action="disable" class="right_menu_button fa-solid fa-lg fa-comment-slash" data-i18n="[title]Temporarily disable automatic replies from this character"></div>
+                        <div title="Enable automatic replies from this character" data-action="enable" class="right_menu_button fa-solid fa-lg fa-comment-slash" data-i18n="[title]Enable automatic replies from this character"></div>
+                        <div title="Trigger a message from this character" data-action="speak" class="right_menu_button fa-solid fa-lg fa-comment" data-i18n="[title]Trigger a message from this character"></div>
+                        <div class="flexFlowColumn flex-container">
+                            <div title="Move up" data-action="up" class="right_menu_button fa-solid fa-chevron-up" data-i18n="[title]Move up"></div>
+                            <div title="Move down" data-action="down" class="right_menu_button fa-solid fa-chevron-down" data-i18n="[title]Move down"></div>
+                        </div>
+                        <div title="View character card" data-action="view" class="right_menu_button fa-solid fa-xl fa-image-portrait" data-i18n="[title]View character card"></div>
+                        <div title="Remove from group" data-action="remove" class="right_menu_button fa-solid fa-xl fa-xmark" data-i18n="[title]Remove from group"></div>
                     </div>
-                    <div title="View character card" data-action="view" class="right_menu_button fa-solid fa-xl fa-image-portrait" data-i18n="[title]View character card"></div>
-                    <div title="Remove from group" data-action="remove" class="right_menu_button fa-solid fa-xl fa-xmark" data-i18n="[title]Remove from group"></div>
-                    <div title="Add to group" data-action="add" class="right_menu_button fa-solid fa-xl fa-plus" data-i18n="[title]Add to group"></div>
                 </div>
             </div>
         </div>

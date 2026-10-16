@@ -65,15 +65,7 @@
     min-width: 200px;
 }
 
-#rm_group_members,
-#rm_group_add_members {
-    margin-top: 0.25rem;
-    margin-bottom: 0.5rem;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 10px;
-    background-color: var(--black30a);
-    padding: 2px;
-}
+/* SillyBunny: member lists use the shared ds-entity-list boxed-list primitive. */
 
 #rm_group_buttons_expander {
     flex-grow: 1;
@@ -83,121 +75,7 @@
     color: rgb(190, 0, 0);
 }
 
-#rm_group_members:empty {
-    width: 100%;
-    padding: 0.5em 0;
-}
-
-#rm_group_members:empty::before {
-    content: attr(group_empty_text);
-
-    font-weight: bolder;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    opacity: 0.8;
-}
-
-#rm_group_add_members:empty {
-    width: 100%;
-}
-
-#rm_group_add_members_header {
-    display: flex;
-    flex-direction: row;
-    width: 100%;
-    column-gap: 10px;
-}
-
-#rm_group_add_members_header input {
-    flex: 1;
-    width: 100%;
-}
-
-#rm_group_add_members:empty::before {
-    content: attr(no_characters_text);
-
-    font-weight: bolder;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    opacity: 0.8;
-}
-
-.group_member_icon {
-    display: flex;
-    column-gap: 10px;
-    align-items: center;
-    justify-content: end;
-    min-width: 135px;
-}
-
-.group_member {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) minmax(150px, 180px) 32px 135px;
-    column-gap: 10px;
-    align-items: center;
-    width: 100%;
-    padding: 5px;
-    border-radius: 10px;
-}
-
-.group_member .group_member_name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: flex;
-    gap: 5px;
-    height: 100%;
-    flex-direction: column;
-    justify-content: center;
-}
-
-.group_member_icon .flex-container {
-    gap: 0px;
-}
-
-#rm_group_members .right_menu_button,
-#rm_group_add_members .right_menu_button {
-    padding: 0px;
-    height: 20px;
-    display: flex;
-    align-items: center;
-}
-
-#rm_group_members .right_menu_button[data-action="speak"],
-#rm_group_members .group_member:not(.disabled) .right_menu_button[data-action="disable"] {
-    opacity: 0.4;
-    filter: brightness(0.5);
-    transition: all var(--sb-transition-slow);
-}
-
-/* #rm_group_members .right_menu_button[data-action="speak"]:hover, */
-#rm_group_members .group_member:not(.disabled) .right_menu_button[data-action="disable"]:hover {
-    opacity: inherit;
-    filter: drop-shadow(0px 0px 5px var(--color-warning));
-}
-
-#rm_group_members .group_member.disabled .right_menu_button[data-action="enable"] {
-    filter: drop-shadow(0px 0px 5px var(--color-warning));
-}
-
-
-#rm_group_members .right_menu_button[data-action="speak"]:hover {
-    opacity: inherit;
-    filter: drop-shadow(0px 0px 5px var(--color-success));
-}
-
-/* Rules for icon display */
-#rm_group_add_members .right_menu_button:not([data-action="add"], [data-action="view"]),
-#rm_group_members .right_menu_button[data-action="add"],
-#rm_group_members .group_member.disabled .right_menu_button[data-action="disable"],
-#rm_group_members .group_member:not(.disabled) .right_menu_button[data-action="enable"] {
-    display: none;
-}
+/* SillyBunny: row actions, empty states and search layout live in the editor sheet. */
 
 .group_select {
     display: flex;
@@ -238,17 +116,4 @@
     margin-top: 3px;
 }
 
-.group_member .avatar {
-    flex-shrink: 0;
-    flex-basis: auto;
-}
-
-.group_member_model {
-    width: 100%;
-    min-width: 0;
-}
-
-.group_member_model_input {
-    width: 100%;
-    min-width: 0;
-}
+/* SillyBunny: model overrides are menu actions, not inline row inputs. */
