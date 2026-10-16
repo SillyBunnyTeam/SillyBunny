@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 // Characterizes Prompt Manager behaviour through what it persists (the /api/settings/save payload).
 // UI interactions stay in the driver; persisted-data assertions are unchanged by the replacement UI.
 
-test.use({ serviceWorkers: 'block', reducedMotion: 'reduce', viewport: { width: 1920, height: 1080 } });
+test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' }, viewport: { width: 1920, height: 1080 } });
 
 const BASE_URL = process.env.SILLYBUNNY_TEST_BASE_URL || 'http://127.0.0.1:4444';
 const GLOBAL_ORDER_ID = 100001;
