@@ -32,6 +32,17 @@ export async function setUserControls(isEnabled) {
 }
 
 /**
+ * SillyBunny: the settings split detaches #account_controls before the settings load, so the
+ * document-wide lookups above miss its buttons. The Data & Security tab calls this with its container.
+ * @param {ParentNode} root Subtree that holds the account controls
+ */
+export function syncUserControls(root = document) {
+    const $root = $(root);
+    $root.find('#logout_button').toggle(accountsEnabled);
+    $root.find('#admin_button').toggle(accountsEnabled && isAdmin());
+}
+
+/**
  * Check if the current user is an admin.
  * @returns {boolean} True if the current user is an admin
  */
