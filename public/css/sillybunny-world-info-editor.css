@@ -676,11 +676,6 @@ body.reduced-motion .sb-wi-row {
     color: inherit;
 }
 
-#sb-settings-page .sb-wi-entry .sb-wi-entry-save {
-    background: var(--sb-accent);
-    color: var(--sb-on-solid-accent);
-}
-
 #sb-settings-page .sb-wi-entry :is(input:not([type='checkbox']), textarea):focus-visible {
     outline: none;
     border-color: var(--sb-composer-focus-border);
@@ -688,7 +683,7 @@ body.reduced-motion .sb-wi-row {
 }
 
 @media (hover: hover) {
-    #sb-settings-page .sb-wi-entry .menu_button:not(:disabled):not(.sb-wi-entry-save):hover {
+    #sb-settings-page .sb-wi-entry .menu_button:not(:disabled):hover {
         background: var(--sb-flat-hover-bg);
     }
 }

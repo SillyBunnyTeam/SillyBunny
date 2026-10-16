@@ -24,6 +24,22 @@ function element(tag, className = '', text = '') {
     return node;
 }
 
+// Header Save/Cancel use the shared editor action style (sillybunny-character-editor.css), not .menu_button.
+function actionButton(label, action, className, glyph = null) {
+    const node = element('button', `sb-editor-action ${className}`);
+    node.type = 'button';
+    if (glyph) {
+        node.title = label;
+        node.append(icon(glyph), element('span', 'sb-editor-action__label', label));
+        node.firstChild.classList.add('sb-editor-action__icon');
+    } else node.textContent = label;
+    node.addEventListener('click', event => {
+        event.stopPropagation();
+        void action(node, event);
+    });
+    return node;
+}
+
 function icon(name) {
     const node = element('i', `fa-solid fa-${name}`);
     node.setAttribute('aria-hidden', 'true');
@@ -660,6 +676,12 @@ export function initializePromptEditor(column) {
         renderEditor();
     }
 
+    function cancelEdits() {
+        if (!draft || !dirty()) return;
+        discardDraft();
+        editor.querySelector('.sb-prompt-title')?.focus({ preventScroll: true });
+    }
+
     function save() {
         if (!draft || !dirty()) return true;
         if (kind === 'prompt' && run(() => model.save(draft, draftScope)) === false) return false;
@@ -682,11 +704,13 @@ export function initializePromptEditor(column) {
     function updateDirty() {
         const dot = editor.querySelector('.sb-prompt-dirty');
         const saveButton = editor.querySelector('.sb-prompt-save');
+        const cancelButton = editor.querySelector('.sb-prompt-cancel');
         if (!dot || !saveButton) return;
         const isDirty = dirty();
         const changed = dot.hidden === isDirty;
         const disabled = !isDirty || (kind === 'prompt' && !model.permissions(draft).edit);
         if (saveButton.disabled !== disabled) saveButton.disabled = disabled;
+        if (cancelButton && cancelButton.disabled === isDirty) cancelButton.disabled = !isDirty;
         if (!changed) return;
         if (isDirty) {
             dot.hidden = false;
@@ -1056,7 +1080,7 @@ export function initializePromptEditor(column) {
         menuTrigger.setAttribute('aria-haspopup', 'menu');
         menuTrigger.setAttribute('aria-expanded', 'false');
         actionGroup.append(menuTrigger);
-        header.append(actionGroup, button(t`Save`, null, save, 'menu_button_primary sb-prompt-save'));
+        header.append(actionGroup, actionButton(t`Cancel`, cancelEdits, 'sb-editor-action--secondary sb-prompt-cancel', 'xmark'), actionButton(t`Save`, save, 'sb-editor-action--primary sb-prompt-save'));
         editor.append(header);
         if ((kind === 'prompt' && permission.edit || kind === 'text-completion' && draft.properties?.length) && mode !== 'inspect') {
             const summary = button('', null, openProperties, 'sb-prompt-property-summary');
@@ -1318,7 +1342,7 @@ export function initializePromptEditor(column) {
     const resizeObserver = new ResizeObserver(scheduleLayout);
     Promise.all([
         loadListEditorStyles(),
-        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261016a', { id: 'deferred-prompt-editor-css' }),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261017a', { id: 'deferred-prompt-editor-css' }),
     ])
         .then(() => { stylesReady = true; synchronize(); })
         .catch(error => toastr.error(error.message));

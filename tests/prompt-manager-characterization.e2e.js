@@ -716,6 +716,30 @@ test.describe('Prompt Manager characterization', () => {
         expect((await readLiveOai(page)).prompts).toEqual(baseline.prompts);
     });
 
+    test('header Cancel is disabled until dirty and reverts the draft without saving', async ({ page }) => {
+        const { store, ui, baseline } = await setup(page);
+        await ui.openEditor('sbFixtureRelative');
+        const editor = page.locator('.sb-prompt-detail');
+        const cancel = editor.getByRole('button', { name: 'Cancel', exact: true });
+        const save = editor.getByRole('button', { name: 'Save', exact: true });
+        const original = await page.locator(`${FORM}_prompt`).inputValue();
+        await expect(cancel).toBeDisabled();
+        await expect(save).toBeDisabled();
+
+        await ui.fill({ content: 'Unsaved local draft' });
+        const saves = store.settingsSaves.length;
+        await expect(cancel).toBeEnabled();
+        await cancel.click();
+
+        await expect(page.locator(`${FORM}_prompt`)).toHaveValue(original);
+        await expect(editor).toBeVisible();
+        await expect(cancel).toBeDisabled();
+        await expect(save).toBeDisabled();
+        await expect(editor.locator('.sb-prompt-dirty')).toBeHidden();
+        expect(store.settingsSaves.length).toBe(saves);
+        expect((await readLiveOai(page)).prompts).toEqual(baseline.prompts);
+    });
+
     test('Add from available clears search and scrolls only the list scroller', async ({ page }) => {
         await setup(page);
         await page.getByRole('button', { name: 'Search prompts', exact: true }).click();

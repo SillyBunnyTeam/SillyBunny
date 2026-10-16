@@ -98,8 +98,10 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
     dirtyDot.setAttribute('aria-label', t`Unsaved changes`);
     dirtyDot.hidden = true;
     const tokens = element('span', 'sb-wi-entry-tokens', `— ${t`tokens`}`);
-    const cancel = button(t`Cancel`, 'sb-wi-entry-cancel');
-    const saveButton = button(t`Save`, 'menu_button_primary sb-wi-entry-save');
+    const cancel = element('button', 'sb-editor-action sb-editor-action--secondary sb-wi-entry-cancel', t`Cancel`);
+    cancel.type = 'button';
+    const saveButton = element('button', 'sb-editor-action sb-editor-action--primary sb-wi-entry-save', t`Save`);
+    saveButton.type = 'button';
     const banner = element('div', 'sb-wi-entry-banner');
     banner.setAttribute('role', 'status');
     banner.hidden = true;

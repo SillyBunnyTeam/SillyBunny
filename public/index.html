@@ -69,7 +69,7 @@
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20261016b" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-navigation.css?v=20261001e">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261016b">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-character-editor.css?v=20261016d">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-character-editor.css?v=20261017a">
     <!-- SillyBunny: colour menus render outside clipped preference groups. -->
     <link rel="preload" as="style" href="css/sillybunny-color-picker.css" data-sb-deferred-style data-sb-media="all">
     <link rel="stylesheet" type="text/css" href="css/user.css">
@@ -6969,8 +6969,8 @@
                                     </a>
                                     <span class="sb-editor-tokens__value" id="sb_character_editor_tokens_value"></span>
                                 </span>
-                                <button id="sb_character_editor_cancel" type="button" data-i18n="Cancel">Cancel</button>
-                                <button id="sb_character_editor_save" type="button" data-i18n="Save">Save</button>
+                                <button id="sb_character_editor_cancel" class="sb-editor-action sb-editor-action--secondary" type="button" data-i18n="Cancel">Cancel</button>
+                                <button id="sb_character_editor_save" class="sb-editor-action sb-editor-action--primary" type="button" data-i18n="Save">Save</button>
                             </header>
 
                             <div class="sb-editor-toolbar form_create_bottom_buttons_block" id="sb_character_editor_toolbar">
@@ -7374,8 +7374,8 @@
                                 <span class="sb-editor-dirty-dot" aria-hidden="true"></span>
                                 <span class="sr-only" data-i18n="Unsaved changes">Unsaved changes</span>
                             </span>
-                            <button id="sb_group_editor_cancel" class="sb-editor-cancel" type="button" data-i18n="Cancel">Cancel</button>
-                            <button id="sb_group_editor_save" class="sb-editor-save" type="button" data-i18n="Save">Save</button>
+                            <button id="sb_group_editor_cancel" class="sb-editor-cancel sb-editor-action sb-editor-action--secondary" type="button" data-i18n="Cancel">Cancel</button>
+                            <button id="sb_group_editor_save" class="sb-editor-save sb-editor-action sb-editor-action--primary" type="button" data-i18n="Save">Save</button>
                         </header>
 
                         <div class="sb-editor-toolbar" id="sb_group_editor_toolbar">

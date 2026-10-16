@@ -251,48 +251,66 @@
     text-overflow: ellipsis;
 }
 
-/* Header actions keep their intrinsic width and never shrink into the title. */
-.sb-editor-header > :is(#sb_character_editor_cancel, #sb_group_editor_cancel),
-.sb-editor-header > :is(#sb_character_editor_save, #sb_group_editor_save) {
+/* Shared editor header actions (character, group, Prompt Editor, World Info).
+   Save is the suggested action; Cancel is outlined and enabled only while dirty.
+   The doubled class outranks the editors' scoped `.menu_button` resets. */
+.sb-editor-action.sb-editor-action {
     flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: auto;
     min-height: 38px;
     margin: 0;
     padding: 0 16px;
     border-radius: var(--sb-radius-control, 9px);
+    box-shadow: none;
+    font-family: inherit;
+    white-space: nowrap;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), opacity var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
-/* Primary action. --sb-on-accent resolves to literal black, which is unreadable
-   on a dark accent; --sb-on-solid-accent is the token designed for accent fills. */
-.sb-editor-header > :is(#sb_character_editor_save, #sb_group_editor_save) {
+/* --sb-on-accent resolves to literal black, which is unreadable on a dark
+   accent; --sb-on-solid-accent is the token designed for accent fills. */
+.sb-editor-action--primary.sb-editor-action--primary {
     border: 0;
     background: var(--color-primary, var(--sb-accent));
     color: var(--sb-on-solid-accent);
     font-weight: 600;
-    transition: background-color var(--sb-transition-fast), opacity var(--sb-transition-fast);
 }
 
-@media (hover: hover) {
-    .sb-editor-header > :is(#sb_character_editor_save, #sb_group_editor_save):not(:disabled):hover {
-        background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 88%, var(--SmartThemeBodyColor));
-    }
-}
-
-.sb-editor-header > :is(#sb_character_editor_cancel, #sb_group_editor_cancel) {
+.sb-editor-action--secondary.sb-editor-action--secondary {
     border: 1px solid var(--sb-shell-border);
     background: transparent;
     color: var(--sb-shell-text);
-    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
 @media (hover: hover) {
-    .sb-editor-header > :is(#sb_character_editor_cancel, #sb_group_editor_cancel):not(:disabled):hover {
+    .sb-editor-action--primary.sb-editor-action--primary:not(:disabled):hover {
+        background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 88%, var(--SmartThemeBodyColor));
+    }
+
+    .sb-editor-action--secondary.sb-editor-action--secondary:not(:disabled):hover {
         background: var(--sb-flat-hover-bg);
     }
 }
 
-.sb-editor-header > :is(#sb_character_editor_save, #sb_character_editor_cancel, #sb_group_editor_save, #sb_group_editor_cancel):disabled {
+/* Icon form for crowded headers; hidden unless an editor's narrow layout opts in. */
+.sb-editor-action__icon {
+    display: none;
+}
+
+.sb-editor-action.sb-editor-action:disabled {
     opacity: 0.5;
     cursor: default;
+}
+
+.sb-editor-action.sb-editor-action:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 /* Toolbar — horizontal action buttons
@@ -530,8 +548,6 @@
 .sb-editor-icon-button:focus-visible,
 .sb-editor-title-button:focus-visible,
 .sb-editor-title-input:focus,
-.sb-editor-header > :is(#sb_character_editor_save, #sb_group_editor_save):focus-visible,
-.sb-editor-header > :is(#sb_character_editor_cancel, #sb_group_editor_cancel):focus-visible,
 #right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button):focus-visible,
 .sb-editor-tokens__warning:focus-visible,
 .ds-row-button:focus-visible {
@@ -1044,7 +1060,7 @@ body.reduced-motion :is(
         height: 44px;
     }
 
-    .sb-editor-header > :is(#sb_character_editor_save, #sb_character_editor_cancel, #sb_group_editor_save, #sb_group_editor_cancel) {
+    .sb-editor-action.sb-editor-action {
         min-height: 44px;
     }
 

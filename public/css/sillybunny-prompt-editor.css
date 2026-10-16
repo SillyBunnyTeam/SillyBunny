@@ -847,6 +847,40 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     }
 }
 
+/* A phone-width header cannot fit text Cancel beside Save, Preview and the
+   actions menu; Cancel collapses to an icon and keeps its text for assistive tech. */
+@container sb-list-editor-detail (width < 440px) {
+    #sb-settings-page .sb-prompt-editor .sb-prompt-cancel {
+        width: 40px;
+        min-width: 40px;
+        padding: 0;
+    }
+
+    #sb-settings-page .sb-prompt-editor .sb-prompt-cancel .sb-editor-action__icon {
+        display: inline-block;
+    }
+
+    #sb-settings-page .sb-prompt-editor .sb-prompt-cancel .sb-editor-action__label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    #sb-settings-page .sb-prompt-editor .sb-prompt-save {
+        padding-inline: 12px;
+    }
+
+    @media (pointer: coarse) {
+        #sb-settings-page .sb-prompt-editor .sb-prompt-cancel {
+            width: 44px;
+            min-width: 44px;
+        }
+    }
+}
+
 @media (hover: hover) {
     #sb-settings-page .sb-prompt-editor .menu_button:not(:disabled):hover,
     :is(.sb-prompt-sheet, .sb-prompt-popover) .menu_button:hover,
