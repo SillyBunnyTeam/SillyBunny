@@ -22,12 +22,17 @@ function isVisible(element) {
     return element instanceof HTMLElement && element.getClientRects().length > 0;
 }
 
+function isFocusOnBody() {
+    const active = document.activeElement;
+    return !active || active === document.body;
+}
+
 /**
  * @param {object} options
  * @param {HTMLElement} options.sheet
  * @param {HTMLElement} options.backdrop
  * @param {() => HTMLElement|null} options.getInitialFocus - Focus target after opening.
- * @param {() => HTMLElement|null} [options.getReturnFocus] - Focus target after closing, when focus was inside.
+ * @param {() => HTMLElement|null} [options.getReturnFocus] - Focus target after closing, when focus was inside or fell back to body.
  * @param {() => boolean} [options.canAnimateClose] - Return false when the sheet's styles no longer apply.
  * @param {() => void} [options.onClose]
  */
@@ -72,8 +77,10 @@ export function createSheetController({ sheet, backdrop, getInitialFocus, getRet
         animateOut(backdrop, [{ opacity: 1 }, { opacity: 0 }], () => {
             backdrop.hidden = true;
         }, { enabled });
-        const returnTarget = restoreFocus && hadFocus ? getReturnFocus() : null;
-        if (returnTarget && isVisible(returnTarget)) {
+        // WebKit blurs the sheet to body on pointer down, before the click that closes it arrives,
+        // so focus resting on body after the close counts as focus the sheet held.
+        const returnTarget = restoreFocus && (hadFocus || isFocusOnBody()) ? getReturnFocus() : null;
+        if (returnTarget?.isConnected && isVisible(returnTarget)) {
             returnTarget.focus({ preventScroll: true });
         }
         onClose();
